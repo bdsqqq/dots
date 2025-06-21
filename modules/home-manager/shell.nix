@@ -1,6 +1,14 @@
 { config, pkgs, lib, ... }:
 
 {
+  # Ensure home directory structure exists (without overriding existing content)
+  home.file = {
+    "00_inbox/.keep".text = "";
+    "01_files/.keep".text = "";
+    "02_work/.keep".text = "";
+    "03_temp/.keep".text = "";
+  };
+
   programs = {
     zsh = {
       enable = true;
