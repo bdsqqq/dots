@@ -46,4 +46,97 @@
       };
     })
   ];
+
+  # macOS System Defaults - Complete Configuration
+  system.defaults = {
+    # Dock Configuration - Minimalist setup matching current preferences
+    dock = {
+      # Auto-hide dock when not in use for cleaner desktop
+      autohide = true;
+      autohide-delay = 0.0;         # No delay before hiding
+      autohide-time-modifier = 0.2; # Faster hide/show animation
+
+      # Dock positioning and appearance
+      orientation = "bottom";        # Dock at bottom of screen
+      tilesize = 56;                # Current preference: 56px tiles
+      magnification = false;        # Disable icon magnification on hover
+      
+      # App management and behavior - minimalist approach
+      show-recents = false;         # Don't show recently used apps
+      minimize-to-application = true; # Minimize windows into app icon
+      # static-only removed - allow dock to show all apps
+      
+      # Window management
+      expose-animation-duration = 0.1; # Faster Mission Control animation
+      
+      # Hot corners - all disabled (only bottom-right shows disabled state)
+      wvous-tl-corner = 1;  # Top-left: Disabled
+      wvous-tr-corner = 1;  # Top-right: Disabled  
+      wvous-bl-corner = 1;  # Bottom-left: Disabled
+      wvous-br-corner = 1;  # Bottom-right: Disabled
+
+      # No pinned applications - empty dock
+      persistent-apps = [ ];
+    };
+
+    # Finder Configuration - Power user setup with detailed information
+    finder = {
+      # Path and status bars
+      ShowPathbar = true;           # Show path bar at bottom
+      ShowStatusBar = false;        # Status bar disabled
+      
+      # Default view settings
+      FXPreferredViewStyle = "Nlsv"; # List view as default
+      FXDefaultSearchScope = "SCcf"; # Search current folder by default
+      
+      # File extension and preview settings
+      AppleShowAllExtensions = true; # Always show file extensions
+      ShowExternalHardDrivesOnDesktop = true;
+      ShowHardDrivesOnDesktop = true;
+      ShowMountedServersOnDesktop = true;
+      ShowRemovableMediaOnDesktop = true;
+      
+      # Advanced options
+      FXEnableExtensionChangeWarning = false; # Don't warn on extension changes
+    };
+
+    # Keyboard Configuration - Fast repeat rates for power users
+    NSGlobalDomain = {
+      # Keyboard repeat settings
+      KeyRepeat = 2;                # Very fast key repeat (1-120, lower = faster)
+      InitialKeyRepeat = 25;        # Short initial delay (10-120, lower = shorter)
+      
+      # System UI preferences
+      AppleShowScrollBars = "Always"; # Always show scroll bars
+      com.apple.swipescrolldirection = true; # Natural scrolling enabled
+      
+      # Interface style
+      AppleInterfaceStyleSwitchesAutomatically = false;
+    };
+
+    # Trackpad Configuration - Gesture-friendly setup
+    trackpad = {
+      # Basic clicking
+      Clicking = true;              # Tap to click enabled
+      TrackpadRightClick = true;    # Secondary click enabled
+      TrackpadThreeFingerDrag = false; # Three finger drag disabled
+      
+      # Scrolling and gestures
+      TrackpadScroll = true;        # Natural scrolling
+      TrackpadPinch = true;         # Zoom gestures
+      TrackpadRotate = true;        # Rotate gestures
+      
+      # Three and four finger gestures
+      TrackpadThreeFingerHorizSwipeGesture = 2; # App Exposé
+      TrackpadThreeFingerVertSwipeGesture = 2;  # Mission Control
+      TrackpadFourFingerHorizSwipeGesture = 2;  # Desktop switching
+      TrackpadFourFingerVertSwipeGesture = 2;   # App windows
+    };
+
+    # Login Window Configuration
+    loginwindow = {
+      GuestEnabled = false;         # Disable guest user
+      SHOWFULLNAME = false;         # Show username, not full name
+    };
+  };
 }
