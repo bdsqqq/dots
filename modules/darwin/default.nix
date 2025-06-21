@@ -114,23 +114,21 @@
       AppleInterfaceStyleSwitchesAutomatically = false;
     };
 
-    # Trackpad Configuration - Gesture-friendly setup
+    # Trackpad Configuration - Basic clicking and gestures
     trackpad = {
-      # Basic clicking
-      Clicking = true;              # Tap to click enabled
-      TrackpadRightClick = true;    # Secondary click enabled
-      TrackpadThreeFingerDrag = false; # Three finger drag disabled
+      # Basic clicking options
+      Clicking = true;                     # Tap to click enabled
+      TrackpadRightClick = true;           # Secondary click enabled  
+      TrackpadThreeFingerDrag = false;     # Three finger drag disabled
+      Dragging = false;                    # Tap-to-drag disabled
       
-      # Scrolling and gestures
-      TrackpadScroll = true;        # Natural scrolling
-      TrackpadPinch = true;         # Zoom gestures
-      TrackpadRotate = true;        # Rotate gestures
+      # Click pressure settings
+      FirstClickThreshold = 1;             # Medium click pressure
+      SecondClickThreshold = 1;            # Medium force touch pressure
+      ActuationStrength = 1;               # Normal clicking (not silent)
       
-      # Three and four finger gestures
-      TrackpadThreeFingerHorizSwipeGesture = 2; # App Exposé
-      TrackpadThreeFingerVertSwipeGesture = 2;  # Mission Control
-      TrackpadFourFingerHorizSwipeGesture = 2;  # Desktop switching
-      TrackpadFourFingerVertSwipeGesture = 2;   # App windows
+      # Three finger tap gesture
+      TrackpadThreeFingerTapGesture = 2;   # Look up & data detectors
     };
 
     # Login Window Configuration
