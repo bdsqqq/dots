@@ -125,7 +125,8 @@
       
       # Interface style
       AppleInterfaceStyleSwitchesAutomatically = false;
-      AppleInterfaceStyle = "Dark";  # Dark mode enabled};
+      AppleInterfaceStyle = "Dark";  # Dark mode enabled
+    };
 
     # Trackpad Configuration - Basic clicking and gestures
     trackpad = {

@@ -39,15 +39,7 @@
         PYTHONUNBUFFERED = "1"; # Unbuffered output for better logging
       };
       initExtra = ''
-        # PATH setup - Ensure nix-managed tools take absolute precedence
-        export PATH="$HOME/.nix-profile/bin:/etc/profiles/per-user/bdsqqq/bin:$PATH"
-        export PATH="$GOPATH/bin:$PATH" 
-        export PATH="$HOME/.scripts:$PATH"
-        export PATH="$PNPM_HOME:$PATH"
-        export PATH="$BUN_INSTALL/bin:$PATH"
-        export PATH="$HOME/.local/bin:$PATH" # Python user packages
-        
-        # Load homebrew AFTER setting nix PATH priority
+        # Load homebrew to get base environment
         eval "$(/opt/homebrew/bin/brew shellenv)"
         
         # Initialize nix-managed fnm for Node.js version management
@@ -58,6 +50,10 @@
 
         # SDKMAN
         [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+        
+        # FINAL PATH setup - Ensure nix-managed tools take absolute precedence
+        # This must be LAST to override all previous PATH modifications
+        export PATH="/etc/profiles/per-user/bdsqqq/bin:$HOME/.nix-profile/bin:$GOPATH/bin:$HOME/.scripts:$PNPM_HOME:$BUN_INSTALL/bin:$HOME/.local/bin:$PATH"
         
         # Python virtual environment helpers
         alias venv='python3 -m venv'
@@ -90,9 +86,12 @@
   home.packages = with pkgs; [
     # Git tools
     lazygit
+    git-filter-repo # Advanced git repository rewriting
 
     # Media tools
     mpv
+    exiftool # Read and write metadata in files
+    # jp2a # Convert images to ASCII art - currently broken in nixpkgs
 
     # Security/secrets
     sops
@@ -124,6 +123,8 @@
     ruff # Fast Python linter/formatter (rust-based)
     python312Packages.pytest # Testing framework
     python312Packages.ipython # Enhanced interactive shell
+    python312Packages.certifi # SSL certificates bundle
+    python312Packages.packaging # Core utilities for Python packages
 
     # Alternative Python versions (available on-demand)
     # python39   # Use when needed for legacy projects
@@ -149,8 +150,18 @@
     curl
     wget
     jq
+    yq # YAML processor (jq for YAML)
     tree
     tailscale
+    
+    # System utilities (Tier 2)
+    p7zip # 7-Zip archiver
+    cloc # Count lines of code
+    stow # Symlink farm manager
+    neofetch # System information display
+    
+    # Terminal management
+    tmux # Terminal multiplexer
 
     # Fun stuff
     asciiquarium-transparent
