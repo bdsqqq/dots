@@ -13,6 +13,9 @@
     home = "/Users/bdsqqq";
   };
 
+  # Set primary user for system-wide defaults
+  system.primaryUser = "bdsqqq";
+
   environment.darwinConfig = "$HOME/.config/nix-darwin/configuration.nix";
 
   # Necessary for using flakes on this system.
@@ -107,7 +110,7 @@
       InitialKeyRepeat = 25;        # Short initial delay (10-120, lower = shorter)
       
       # System UI preferences
-      AppleShowScrollBars = "Always"; # Always show scroll bars
+      AppleShowScrollBars = "WhenScrolling"; # Show scroll bars only when scrolling
       "com.apple.swipescrolldirection" = true; # Natural scrolling enabled
       
       # Interface style
