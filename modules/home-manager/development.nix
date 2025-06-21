@@ -27,19 +27,36 @@
     zsh = {
       sessionVariables = {
         GOPATH = "$HOME/go";
+        # GOROOT will be set by nix-managed Go
         PNPM_HOME = "$HOME/Library/pnpm";
         BUN_INSTALL = "$HOME/.bun";
         SDKMAN_DIR = "$HOME/.sdkman";
+
+        # Python environment configuration
+        PYTHONPATH = "$HOME/.local/lib/python3.12/site-packages";
+        PIP_USER = "true"; # Enable user-level pip installs
+        PYTHONDONTWRITEBYTECODE = "1"; # Don't write .pyc files
+        PYTHONUNBUFFERED = "1"; # Unbuffered output for better logging
       };
       initExtra = ''
-        # PATH additions
+        # Tool initializations - Load homebrew first
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+        
+        # PATH additions - Ensure nix-managed tools take absolute precedence
+        export PATH="$HOME/.nix-profile/bin:/etc/profiles/per-user/bdsqqq/bin:$PATH"
         export PATH="$GOPATH/bin:$PATH"
         export PATH="$HOME/.scripts:$PATH"
         export PATH="$PNPM_HOME:$PATH"
         export PATH="$BUN_INSTALL/bin:$PATH"
+        export PATH="$HOME/.local/bin:$PATH" # Python user packages
         
-        # Tool initializations
-        eval "$(/opt/homebrew/bin/brew shellenv)"
+        # Force nix Go to take precedence over homebrew
+        if command -v nix-env >/dev/null 2>&1; then
+          NIX_GO_PATH=$(nix-env -q --installed --out-path go 2>/dev/null | grep -o '/nix/store/[^[:space:]]*' | head -1)
+          if [ -n "$NIX_GO_PATH" ] && [ -d "$NIX_GO_PATH/bin" ]; then
+            export PATH="$NIX_GO_PATH/bin:$PATH"
+          fi
+        fi
         eval "$(fnm env --use-on-cd)"
 
         # bun completions
@@ -47,6 +64,15 @@
 
         # SDKMAN
         [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+        
+        # Python virtual environment helpers
+        alias venv='python3 -m venv'
+        alias activate='source venv/bin/activate'
+        alias py='python3'
+        alias pip3='python3 -m pip'
+        
+        # Poetry configuration for nix-managed Python
+        export POETRY_VENV_IN_PROJECT=true
         
         # API Keys with fallback behavior
         # Try sops secrets first, fallback to existing env vars
@@ -83,6 +109,48 @@
     fnm
     oh-my-zsh
     amp-cli
+
+    # Node.js development tools
+    nodejs # Latest stable Node.js
+    # For unstable/bleeding-edge Node.js, use: pkgs.unstable.nodejs
+    pnpm # Fast, disk space efficient package manager
+    bun # Fast all-in-one JavaScript runtime
+    # npm is included with nodejs
+    # yarn # Uncomment if needed
+    nodePackages.typescript # TypeScript compiler
+    nodePackages.typescript-language-server # TS language server
+    nodePackages.eslint # JavaScript linter
+    nodePackages.prettier # Code formatter
+
+    # Python development tools
+    python312 # Python 3.12 (current stable, default)
+    python312Packages.pip # Package installer  
+    python312Packages.virtualenv # Virtual environment creation
+    pipenv # Higher-level venv/pip workflow (standalone package)
+    poetry # Modern dependency management (standalone package)
+
+    # Python development tools
+    python312Packages.black # Code formatter
+    python312Packages.isort # Import sorter
+    python312Packages.mypy # Static type checker
+    ruff # Fast Python linter/formatter (rust-based)
+    python312Packages.pytest # Testing framework
+    python312Packages.ipython # Enhanced interactive shell
+
+    # Alternative Python versions (available on-demand)
+    # python39   # Use when needed for legacy projects
+    # python311  # Use when needed for compatibility
+    # python313  # Use unstable for bleeding-edge: pkgs.unstable.python313
+
+    # Go development tools
+    go # Latest stable Go version
+    # For unstable/bleeding-edge Go, use: pkgs.unstable.go
+    gofumpt # Stricter gofmt
+    golangci-lint # Go linter
+    gotools # Includes goimports, godoc, etc.
+    gopls # Go language server
+    gotests # Generate Go tests
+    delve # Go debugger
 
     # CLI utilities
     ripgrep
