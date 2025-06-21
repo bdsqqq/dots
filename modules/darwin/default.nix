@@ -110,7 +110,7 @@
       InitialKeyRepeat = 25;        # Short initial delay (10-120, lower = shorter)
       
       # System UI preferences
-      AppleShowScrollBars = "WhenScrolling"; # Show scroll bars only when scrolling
+      AppleShowScrollBars = "WhenScrolling"; # Never | WhenScrolling | Automatic
       "com.apple.swipescrolldirection" = true; # Natural scrolling enabled
       
       # Interface style
