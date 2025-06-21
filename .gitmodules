@@ -1,0 +1,3 @@
+[submodule "config/karabiner"]
+	path = config/karabiner
+	url = git@github.com:bdsqqq/karabiner.git

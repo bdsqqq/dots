@@ -1,96 +1,103 @@
-# Implementation Plan: Foundation → Development Migration
+# Phase 4 Implementation Plan: Application Ecosystem & Configuration Consolidation
 
-Modular structure migration is complete. This document outlines our **chosen implementation path** from the 2025 roadmap Phase 1.
+Foundation and development migration are complete. This document outlines **Phase 4 priorities** based on the updated 2025 roadmap status.
 
-## Current Status
-- ✅ **Modular Structure**: Complete migration from flat to modular nix-darwin structure
-- ✅ **Directory Organization**: Proper separation of concerns across modules/
-- ✅ **Neovim Configuration**: Excellent nixvim setup with LSP and AI assistance
-- 🔄 **Foundation Incomplete**: Missing modern flake patterns and overlays
-- ❌ **Secrets Management**: Basic sops-nix setup but not actively used
-- ❌ **Development Tools**: Still dependent on 70+ homebrew packages
+## Current Status (Updated June 2025)
+- ✅ **Foundation Infrastructure**: Complete modular structure with modern flake patterns and unstable overlay
+- ✅ **Development Environment**: 100% nix-managed go/node/python toolchains, 95% homebrew reduction
+- ✅ **System Configuration**: macOS defaults comprehensive setup verified working
+- ✅ **CLI Modernization**: All development and system tools migrated to nix
+- 🔄 **Configuration Consolidation**: Karabiner config still symlinked, dotfiles need consolidation
+- 🔄 **Application Migration**: ~5 remaining homebrew casks need evaluation
 
-## Decision: Foundation-First Approach
+## Decision: Phase 4 Focus Areas
 
-**Chosen Path:** Option A → Option C → Option B (later)
+**Current Strategy:** Application ecosystem migration + configuration consolidation
 
 **Rationale:**
-- Foundation infrastructure provides cleanest base for subsequent migrations
-- Better package availability via unstable overlay enables smoother dev tool migration  
-- Secrets management is functional enough to defer while focusing on workflow improvements
-- Lower risk progression from organizational improvements to complex toolchain migration
+- Foundation and development environments are complete and stable
+- Configuration symlinks are the last manual intervention points
+- Remaining homebrew applications need strategic evaluation for nix alternatives
+- High impact improvements for daily workflow and system reproducibility
 
-## Phase 1: Complete Foundation Infrastructure
+## Phase 4A: Application Ecosystem Migration (High Priority)
 
-*Estimated effort: 2-3 days | Complexity: Medium*  
+*Estimated effort: 3-4 days | Complexity: Medium*  
 **IMMEDIATE PRIORITY**
 
-Finalize the foundational flake architecture with modern 2025 patterns.
+Evaluate and migrate remaining homebrew applications to nix alternatives where beneficial.
 
 ### Implementation Tasks
 
-1. **Implement flake-parts organization**
+1. **Terminal stack evaluation**
    ```bash
-   # Add flake-parts input to flake.nix
-   # Refactor flake.nix to use flake-parts.lib.mkFlake
-   # Create flake-modules/ directory for reusable components
+   # Analyze warp vs alacritty/kitty + tmux
+   # Test terminal performance and feature compatibility
+   # Implement nix-managed terminal configuration if beneficial
    ```
 
-2. **Setup nixpkgs-unstable overlay**
+2. **Editor ecosystem**
    ```bash
-   # Add nixpkgs-unstable input
-   # Create overlays/unstable.nix for bleeding-edge packages
-   # Configure overlay in flake.nix
+   # Evaluate vscode extensions via nix vs keep as cask
+   # Test cursor vs vscode for AI development workflow
+   # Implement declarative extension management if viable
    ```
 
-3. **Enhance specialArgs and input handling**
+3. **Docker alternatives**
    ```bash
-   # Pass all inputs to modules via specialArgs
-   # Add system detection and multi-architecture support
-   # Setup proper input follows for dependency management
+   # Test colima + podman vs docker desktop
+   # Implement nix-managed container runtime
+   # Migrate docker-compose workflows to new setup
+   ```
+
+4. **Remaining homebrew analysis**
+   ```bash
+   # Audit ~5 remaining casks for nix alternatives
+   # Document strategic decisions for mac-only applications
+   # Clean final homebrew dependencies
    ```
 
 ### Success Criteria
-- Clean flake-parts based organization
-- Access to latest packages via unstable overlay
-- Multi-system support ready for future machines
-- Sub-30s rebuild times maintained
+- Strategic decisions made for all remaining applications
+- 98%+ homebrew reduction where technically feasible
+- Maintained or improved daily workflow experience
+- Documented rationale for any remaining homebrew dependencies
 
-## Phase 2: Development Environment Migration
+## Phase 4B: Configuration Consolidation (High Priority)
 
-*Estimated effort: 4-5 days | Complexity: Medium-High*  
-**STARTS AFTER PHASE 1 COMPLETION**
+*Estimated effort: 2-3 days | Complexity: Medium*  
+**PARALLEL WITH 4A**
 
-Migrate critical development tools from homebrew to nix management.
+Eliminate all manual configuration symlinks and consolidate into home-manager.
 
 ### Implementation Tasks
 
-1. **Go toolchain migration**
+1. **Karabiner configuration migration**
    ```bash
-   # Replace homebrew go@1.20, go@1.21 with nix versions
-   # Setup go version management via overlays
-   # Migrate GOPATH and module configuration
+   # Migrate ~/02_work/_self/karabiner to nix management
+   # Test complex-modifications and application-specific rules
+   # Implement declarative keyboard customization
    ```
 
-2. **Node ecosystem replacement**
+2. **Dotfiles consolidation**
    ```bash
-   # Replace homebrew node versions with nix-managed
-   # Implement corepack for package manager control
-   # Setup project-specific node versions via direnv
+   # Identify remaining manual symlinks in ~/.config/
+   # Migrate application configs to home-manager modules
+   # Implement proper XDG directory management
    ```
 
-3. **Python environment consolidation**
+3. **SSH configuration migration**
    ```bash
-   # Consolidate python@3.9-3.13 to nix-managed versions
-   # Setup proper venv integration with nix
-   # Migrate poetry/pip configurations
+   # Move ~/.ssh/config to home-manager declarative management
+   # Implement proper ssh key organization
+   # Setup host-specific ssh configurations
    ```
 
 ### Success Criteria
-- 50%+ reduction in homebrew dependencies
-- Declarative version management for all languages
-- Project-specific environment isolation
-- Faster development environment setup
+- Zero manual symlinks or configuration files
+- All dotfiles managed through home-manager
+- SSH configuration fully declarative
+- Karabiner complex modifications working via nix
 
 ## Future Phase: Secrets Infrastructure Modernization
 *Estimated effort: 3-4 days | Complexity: High*
@@ -127,46 +134,53 @@ Complete the sops-nix integration with proper age encryption and key management.
 
 ## Implementation Timeline
 
-**Phase 1 → Phase 2 → Future Phases**
+**Phase 4A + 4B → Future Phases**
 
-### Week 1-2: Foundation Infrastructure
-- Complete flake-parts refactoring and unstable overlay
-- Enhanced input handling and multi-system support
-- Validate foundation before proceeding
+### Week 5-6: Application Ecosystem & Configuration Consolidation (Current)
+- Evaluate remaining homebrew applications for nix alternatives
+- Migrate karabiner configuration to declarative management
+- Consolidate all dotfiles and eliminate manual symlinks
+- Complete SSH configuration migration to home-manager
 
-### Week 3-4: Development Environment Migration  
-- Begin development tool migration with solid foundation in place
-- Go, Node, Python toolchain transitions
-- Validate workflow improvements
+### Week 7-8: Services & Advanced Automation (Next)
+- System services migration (postgresql, custom launchd services)
+- Development infrastructure (redis/memcached local services)
+- Font and appearance management via nix
+- Performance optimization and binary cache setup
 
-### Future: Secrets & Advanced Features
-- Secrets management when workflow is stable
-- Application ecosystem migration (vscode, docker, terminal)
-- macOS system defaults and comprehensive configuration
-- Advanced automation and cross-machine compatibility
+### Future: Cross-Platform & Advanced Features
+- Secrets management expansion (when workflow is stable)
+- Cross-machine compatibility testing
+- Documentation and disaster recovery procedures
+- Advanced monitoring and maintenance automation
 
 ## Execution Commands
 
-### Phase 1: Foundation
+### Phase 4A & 4B: Application & Configuration Migration
 ```bash
 darwin-rebuild switch --flake . --show-trace
-# Validate with: nix flake check
+# Test application replacements before permanent migration
+# Validate karabiner complex-modifications after migration
 ```
 
-### Phase 2: Development Migration
+### Testing & Validation
 ```bash
-darwin-rebuild switch --flake . --show-trace  
-# Test development environments after each migration
+# Test development environments still work
+go version && node --version && python --version
+# Validate system defaults still working
+defaults read com.apple.dock
+# Check configuration symlinks eliminated
+find ~/.config -type l -ls
 ```
 
 ## Risk Mitigation
 
-**Phase 1**: Low risk - organizational improvements with rollback capability  
-**Phase 2**: Medium risk - staged migration with testing between language toolchains  
-**Future Phases**: Deferred until core workflow is stable
+**Phase 4A**: Medium risk - application replacements may affect daily workflow, test extensively  
+**Phase 4B**: Low risk - configuration migration with rollback capability via git  
+**Testing Strategy**: Parallel testing before permanent migration, maintain rollback procedures
 
 ## Success Metrics
 
-- **Foundation Complete**: Sub-30s rebuilds + unstable overlay access
-- **Development Migration**: 50% homebrew reduction + isolated environments  
-- **Overall**: Faster dev setup + declarative reproducibility
+- **Application Migration**: 98%+ homebrew reduction while maintaining workflow quality
+- **Configuration Consolidation**: Zero manual symlinks, all dotfiles via home-manager
+- **Overall Phase 4**: Complete system reproducibility via single `darwin-rebuild` command

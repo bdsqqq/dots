@@ -28,6 +28,9 @@
   # System identification for multi-host setups
   networking.hostName = "mbp14.local";
 
+  # Enable Karabiner Elements configuration management
+  custom.karabiner.enable = true;
+
   # Example of using enhanced specialArgs for conditional configuration
   # This demonstrates how modules can access system information
   # assertions = [
