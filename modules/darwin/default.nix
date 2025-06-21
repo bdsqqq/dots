@@ -108,7 +108,7 @@
       
       # System UI preferences
       AppleShowScrollBars = "Always"; # Always show scroll bars
-      com.apple.swipescrolldirection = true; # Natural scrolling enabled
+      "com.apple.swipescrolldirection" = true; # Natural scrolling enabled
       
       # Interface style
       AppleInterfaceStyleSwitchesAutomatically = false;
