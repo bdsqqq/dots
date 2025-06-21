@@ -39,24 +39,18 @@
         PYTHONUNBUFFERED = "1"; # Unbuffered output for better logging
       };
       initExtra = ''
-        # Tool initializations - Load homebrew first
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-        
-        # PATH additions - Ensure nix-managed tools take absolute precedence
+        # PATH setup - Ensure nix-managed tools take absolute precedence
         export PATH="$HOME/.nix-profile/bin:/etc/profiles/per-user/bdsqqq/bin:$PATH"
-        export PATH="$GOPATH/bin:$PATH"
+        export PATH="$GOPATH/bin:$PATH" 
         export PATH="$HOME/.scripts:$PATH"
         export PATH="$PNPM_HOME:$PATH"
         export PATH="$BUN_INSTALL/bin:$PATH"
         export PATH="$HOME/.local/bin:$PATH" # Python user packages
         
-        # Force nix Go to take precedence over homebrew
-        if command -v nix-env >/dev/null 2>&1; then
-          NIX_GO_PATH=$(nix-env -q --installed --out-path go 2>/dev/null | grep -o '/nix/store/[^[:space:]]*' | head -1)
-          if [ -n "$NIX_GO_PATH" ] && [ -d "$NIX_GO_PATH/bin" ]; then
-            export PATH="$NIX_GO_PATH/bin:$PATH"
-          fi
-        fi
+        # Load homebrew AFTER setting nix PATH priority
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+        
+        # Initialize nix-managed fnm for Node.js version management
         eval "$(fnm env --use-on-cd)"
 
         # bun completions
@@ -106,21 +100,15 @@
     ssh-to-age
 
     # Development tools
-    fnm
+    fnm # nix-managed fnm for Node.js version management
     oh-my-zsh
     amp-cli
 
     # Node.js development tools
-    nodejs # Latest stable Node.js
-    # For unstable/bleeding-edge Node.js, use: pkgs.unstable.nodejs
-    pnpm # Fast, disk space efficient package manager
+    # NOTE: nodejs removed - fnm will manage Node.js versions
+    # Global Node.js tools installed per-project or via fnm
+    pnpm # Fast, disk space efficient package manager  
     bun # Fast all-in-one JavaScript runtime
-    # npm is included with nodejs
-    # yarn # Uncomment if needed
-    nodePackages.typescript # TypeScript compiler
-    nodePackages.typescript-language-server # TS language server
-    nodePackages.eslint # JavaScript linter
-    nodePackages.prettier # Code formatter
 
     # Python development tools
     python312 # Python 3.12 (current stable, default)

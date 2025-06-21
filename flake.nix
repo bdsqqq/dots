@@ -84,9 +84,17 @@
               pkgsFor = system: import inputs.nixpkgs {
                 inherit system;
                 config.allowUnfree = true;
+                overlays = [ (import ./overlays/unstable.nix inputs) ];
               };
             };
             modules = [
+              # Apply overlays to the main system packages
+              {
+                nixpkgs = {
+                  config.allowUnfree = true;
+                  overlays = [ (import ./overlays/unstable.nix inputs) ];
+                };
+              }
               # Host-specific configuration
               ./hosts/mbp14.local/default.nix
 
