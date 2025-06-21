@@ -37,6 +37,55 @@
     hostName = lib.mkDefault "mbp14";
   };
 
+  # Homebrew integration - declarative cask management
+  homebrew = {
+    enable = true;
+    
+    # Applications to install via homebrew casks
+    casks = [
+      # Password management
+      "1password"
+      "1password-cli"
+      
+      # System utilities (Mac-specific)
+      "blackhole-2ch"        # Audio routing
+      "cleanshot"            # Screenshot tool  
+      "karabiner-elements"   # Keyboard customization
+      "raycast"              # Launcher/productivity
+      
+      # Development tools
+      "docker"               # Container runtime
+      "orbstack"             # Docker alternative
+      "tableplus"            # Database GUI
+      "ghostty"              # Terminal
+      
+      # Creative/Media tools
+      "blockbench"           # 3D model editor
+      "figma"                # Design tool
+      "iina"                 # Video player
+      "obs"                  # Streaming software
+      
+      # Productivity applications
+      "linear-linear"        # Project management
+      "notion-calendar"      # Calendar app
+      "obsidian"             # Note-taking
+      
+      # Entertainment/Gaming
+      "prismlauncher"        # Minecraft launcher
+      "spotify"              # Music streaming
+      "steam"                # Gaming platform
+      
+      # Utilities
+      "transmission"         # BitTorrent client
+    ];
+    
+    # Clean up orphaned applications
+    onActivation.cleanup = "zap";
+    
+    # Auto-update homebrew itself
+    onActivation.autoUpdate = true;
+  };
+
   # Used for backwards compatibility, please read the changelog before changing.
   # $ darwin-rebuild changelog
   system.stateVersion = 6;

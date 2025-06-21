@@ -166,5 +166,35 @@
     # Fun stuff
     asciiquarium-transparent
     fastfetch
+
+    # Tier 3 CLI Tools - Complex migration candidates
+    # Container & Docker management tools
+    lazydocker # Docker management TUI (replacement for GUI Docker Desktop features)
+    
+    # Development CLI tools
+    swagger-codegen # OpenAPI/Swagger code generation
+    swagger-cli # Swagger/OpenAPI validation and bundling
+    go-swagger # More powerful Swagger toolkit for Go
+    
+    # Media processing tools
+    ffmpeg # Video/audio processing (consolidates multiple homebrew media tools)
+    
+    # Database & backend development tools  
+    supabase-cli # Supabase project management and development
+    
+    # Cloud & Infrastructure tools
+    awscli2 # AWS command line interface (v2)
+    azure-cli # Microsoft Azure command line interface
+    
+    # HTTP/API testing tools
+    httpie # Modern curl replacement with JSON support
+    
+    # System monitoring and container tools
+    htop # Interactive process viewer (better than top)
+    dive # Tool for exploring Docker images
+    ctop # Container monitoring tool
+    
+    # DevOps and automation tools
+    ansible # Infrastructure automation platform
   ];
 }
