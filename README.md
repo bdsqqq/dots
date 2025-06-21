@@ -23,13 +23,17 @@ sudo darwin-rebuild switch --flake .
 ## structure
 
 ```
-configuration.nix    # system config
-home.nix            # user config
-flake.nix           # dependencies
-.sops.yaml          # encryption config
-secrets.yaml        # encrypted secrets
-kickstart.nixvim/   # neovim setup
-pkgs/               # custom packages
+flake.nix                           # main entry point
+hosts/mbp14.local/                  # host-specific config
+modules/
+  ├── darwin/default.nix           # macos system defaults + homebrew
+  └── home-manager/                # user environment
+      ├── development.nix          # dev tools (go/node/python)
+      ├── shell.nix               # zsh + cli tools  
+      └── neovim.nix              # editor config
+config/karabiner/                   # keyboard mapping (git submodule)
+.sops.yaml                         # encryption config
+secrets.yaml                       # encrypted secrets
 ```
 
 ## secrets
@@ -56,10 +60,11 @@ nix flake update                         # update packages
 
 ## customization
 
-- **system**: edit `configuration.nix`
-- **user**: edit `home.nix`
-- **neovim**: see `kickstart.nixvim/README.md`
-- **secrets**: see `SECRETS.md`
+- **system**: edit `modules/darwin/default.nix`
+- **development**: edit `modules/home-manager/development.nix`
+- **shell**: edit `modules/home-manager/shell.nix`
+- **neovim**: edit `modules/home-manager/neovim.nix`
+- **secrets**: see [SECRETS.md](./SECRETS.md)
 
 ## references
 
