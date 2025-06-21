@@ -1,103 +1,104 @@
-# Phase 4 Implementation Plan: Application Ecosystem & Configuration Consolidation
+# Phase 4 Implementation Plan: CLI Tools Migration & Strategic Application Evaluation
 
-Foundation and development migration are complete. This document outlines **Phase 4 priorities** based on the updated 2025 roadmap status.
+Foundation, development migration, and configuration consolidation are complete. This document outlines **Phase 4 priorities** based on the updated 2025 roadmap status.
 
 ## Current Status (Updated June 2025)
 - ✅ **Foundation Infrastructure**: Complete modular structure with modern flake patterns and unstable overlay
-- ✅ **Development Environment**: 100% nix-managed go/node/python toolchains, 95% homebrew reduction
+- ✅ **Development Environment**: 100% nix-managed go/node/python toolchains, development tools migrated
 - ✅ **System Configuration**: macOS defaults comprehensive setup verified working
-- ✅ **CLI Modernization**: All development and system tools migrated to nix
-- 🔄 **Configuration Consolidation**: Karabiner config still symlinked, dotfiles need consolidation
-- 🔄 **Application Migration**: ~5 remaining homebrew casks need evaluation
+- ✅ **Configuration Consolidation**: Karabiner via git submodule + nix module, only vesper theme symlink remains
+- ✅ **Networking Configuration**: Fixed SCPreferencesSetLocalHostName() error with proper hostname setup
+- ✅ **Tailscale Integration**: Migrated to nix-managed via home-manager for cross-platform availability
+- ⏳ **Homebrew Dependency**: 234 packages total (46 casks + 188 formulae), 70% reduction achieved
+- 🎯 **CLI Tools Migration**: Ready to start - git ecosystem, media tools, system utilities
 
 ## Decision: Phase 4 Focus Areas
 
-**Current Strategy:** Application ecosystem migration + configuration consolidation
+**Current Strategy:** CLI tools migration + strategic application evaluation
 
 **Rationale:**
-- Foundation and development environments are complete and stable
-- Configuration symlinks are the last manual intervention points
-- Remaining homebrew applications need strategic evaluation for nix alternatives
-- High impact improvements for daily workflow and system reproducibility
+- Configuration consolidation completed successfully (karabiner via submodule + nix)
+- 234 homebrew packages remain - realistic 20-30% additional reduction possible
+- CLI tools offer highest migration success rate and workflow improvement
+- Strategic application evaluation needed for complex Mac-specific applications
 
-## Phase 4A: Application Ecosystem Migration (High Priority)
+## Phase 4A: CLI Tools Migration (High Priority)
 
-*Estimated effort: 3-4 days | Complexity: Medium*  
+*Estimated effort: 2-3 days | Complexity: Low-Medium*  
 **IMMEDIATE PRIORITY**
 
-Evaluate and migrate remaining homebrew applications to nix alternatives where beneficial.
+Migrate remaining CLI tools from homebrew to nix where beneficial for better version control and reproducibility.
 
 ### Implementation Tasks
 
-1. **Terminal stack evaluation**
+1. **Git ecosystem migration**
    ```bash
-   # Analyze warp vs alacritty/kitty + tmux
-   # Test terminal performance and feature compatibility
+   # Migrate git-lfs, git-flow, git-extras to nix versions
+   # Consolidate git tooling for consistent behavior
+   # Test git workflow compatibility
+   ```
+
+2. **Media processing tools**
+   ```bash
+   # Migrate remaining imagemagick/ffmpeg variants to nix
+   # Consolidate media processing toolchain
+   # Test codec compatibility and performance
+   ```
+
+3. **System utilities migration**
+   ```bash
+   # Migrate remaining system tools (archiving, compression, etc.)
+   # Replace macOS-specific tools with cross-platform nix alternatives where beneficial
+   # Test functionality and performance
+   ```
+
+4. **Python/Ruby ecosystem evaluation**
+   ```bash
+   # Evaluate python@3.12, ruby dependencies for nix migration
+   # Test compatibility with existing workflows
+   # Document strategic decisions for complex language environments
+   ```
+
+### Success Criteria
+- 20-30% additional homebrew reduction through CLI tool migration
+- Consolidated and consistent CLI toolchain via nix
+- Maintained or improved daily workflow experience
+- Documented rationale for remaining homebrew dependencies
+
+## Phase 4B: Strategic Application Evaluation (Medium Priority)
+
+*Estimated effort: 2-3 days | Complexity: Medium-High*  
+**FOLLOW-UP TO 4A**
+
+Evaluate complex applications and services for potential nix migration or strategic homebrew retention.
+
+### Implementation Tasks
+
+1. **Editor ecosystem evaluation**
+   ```bash
+   # Evaluate vscode extensions via nix vs keep cursor as cask
+   # Test declarative extension management viability
+   # Document workflow impact of different approaches
+   ```
+
+2. **Terminal stack evaluation**
+   ```bash
+   # Analyze warp vs alacritty/kitty + tmux for full nix control
+   # Test terminal performance and feature parity
    # Implement nix-managed terminal configuration if beneficial
    ```
 
-2. **Editor ecosystem**
-   ```bash
-   # Evaluate vscode extensions via nix vs keep as cask
-   # Test cursor vs vscode for AI development workflow
-   # Implement declarative extension management if viable
-   ```
-
-3. **Docker alternatives**
+3. **Container runtime evaluation**
    ```bash
    # Test colima + podman vs docker desktop
-   # Implement nix-managed container runtime
-   # Migrate docker-compose workflows to new setup
-   ```
-
-4. **Remaining homebrew analysis**
-   ```bash
-   # Audit ~5 remaining casks for nix alternatives
-   # Document strategic decisions for mac-only applications
-   # Clean final homebrew dependencies
+   # Evaluate nix-managed container runtime viability
+   # Test docker-compose workflow compatibility
    ```
 
 ### Success Criteria
-- Strategic decisions made for all remaining applications
-- 98%+ homebrew reduction where technically feasible
-- Maintained or improved daily workflow experience
-- Documented rationale for any remaining homebrew dependencies
-
-## Phase 4B: Configuration Consolidation (High Priority)
-
-*Estimated effort: 2-3 days | Complexity: Medium*  
-**PARALLEL WITH 4A**
-
-Eliminate all manual configuration symlinks and consolidate into home-manager.
-
-### Implementation Tasks
-
-1. **Karabiner configuration migration**
-   ```bash
-   # Migrate ~/02_work/_self/karabiner to nix management
-   # Test complex-modifications and application-specific rules
-   # Implement declarative keyboard customization
-   ```
-
-2. **Dotfiles consolidation**
-   ```bash
-   # Identify remaining manual symlinks in ~/.config/
-   # Migrate application configs to home-manager modules
-   # Implement proper XDG directory management
-   ```
-
-3. **SSH configuration migration**
-   ```bash
-   # Move ~/.ssh/config to home-manager declarative management
-   # Implement proper ssh key organization
-   # Setup host-specific ssh configurations
-   ```
-
-### Success Criteria
-- Zero manual symlinks or configuration files
-- All dotfiles managed through home-manager
-- SSH configuration fully declarative
-- Karabiner complex modifications working via nix
+- Strategic decisions documented for complex applications
+- Workflow impact assessed for major application changes
+- Clear rationale for nix vs homebrew retention decisions
 
 ## Future Phase: Secrets Infrastructure Modernization
 *Estimated effort: 3-4 days | Complexity: High*
@@ -136,11 +137,11 @@ Complete the sops-nix integration with proper age encryption and key management.
 
 **Phase 4A + 4B → Future Phases**
 
-### Week 5-6: Application Ecosystem & Configuration Consolidation (Current)
-- Evaluate remaining homebrew applications for nix alternatives
-- Migrate karabiner configuration to declarative management
-- Consolidate all dotfiles and eliminate manual symlinks
-- Complete SSH configuration migration to home-manager
+### Week 5-6: CLI Tools Migration & Strategic Application Evaluation (Current)
+- Migrate CLI tools (git ecosystem, media processing, system utilities) to nix
+- Strategic evaluation of complex applications for nix migration viability
+- Consolidate overlapping homebrew packages and eliminate redundancies
+- Document rationale for remaining homebrew dependencies
 
 ### Week 7-8: Services & Advanced Automation (Next)
 - System services migration (postgresql, custom launchd services)
@@ -156,31 +157,31 @@ Complete the sops-nix integration with proper age encryption and key management.
 
 ## Execution Commands
 
-### Phase 4A & 4B: Application & Configuration Migration
+### Phase 4A & 4B: CLI Tools Migration & Application Evaluation
 ```bash
 darwin-rebuild switch --flake . --show-trace
-# Test application replacements before permanent migration
-# Validate karabiner complex-modifications after migration
+# Test CLI tool migrations for functionality and performance
+# Validate complex applications before major changes
 ```
 
 ### Testing & Validation
 ```bash
 # Test development environments still work
 go version && node --version && python --version
-# Validate system defaults still working
-defaults read com.apple.dock
-# Check configuration symlinks eliminated
-find ~/.config -type l -ls
+# Validate CLI tools migrated successfully
+git --version && convert --version && ffmpeg -version
+# Check homebrew package count reduction
+brew list | wc -l
 ```
 
 ## Risk Mitigation
 
-**Phase 4A**: Medium risk - application replacements may affect daily workflow, test extensively  
-**Phase 4B**: Low risk - configuration migration with rollback capability via git  
-**Testing Strategy**: Parallel testing before permanent migration, maintain rollback procedures
+**Phase 4A**: Low risk - CLI tool migrations with predictable behavior, easy rollback  
+**Phase 4B**: Medium risk - complex application changes may affect workflow, test extensively  
+**Testing Strategy**: CLI tools first for quick wins, application evaluation with parallel testing
 
 ## Success Metrics
 
-- **Application Migration**: 98%+ homebrew reduction while maintaining workflow quality
-- **Configuration Consolidation**: Zero manual symlinks, all dotfiles via home-manager
-- **Overall Phase 4**: Complete system reproducibility via single `darwin-rebuild` command
+- **CLI Tools Migration**: 20-30% additional homebrew reduction through systematic tool migration
+- **Application Evaluation**: Strategic decisions documented for complex applications with clear rationale
+- **Overall Phase 4**: Realistic homebrew reduction while maintaining optimal daily workflow experience

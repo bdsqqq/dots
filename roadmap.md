@@ -8,8 +8,10 @@ this doc outlines the migration path from homebrew + manual configs to a fully d
 - **structure**: hosts/$(hostname)/, modules/{darwin,home-manager,shared}/, overlays/ with nixpkgs-unstable overlay
 - **home-manager modules**: shell.nix, development.nix, neovim.nix with clean domain separation
 - **development environment**: ✅ **completed** - 100% nix-managed go/node/python toolchains, homebrew dev tools eliminated
-- **homebrew dependency**: ✅ **95% reduced** - down to ~5 essential mac-only applications (vscode, cursor, docker desktop, etc.)
-- **config fragmentation**: ⚠️ **partial** - karabiner config still symlinked, some dotfiles need consolidation
+- **homebrew dependency**: ⏳ **70% reduced** - 234 packages total (46 casks + 188 formulae), can realistically reduce 20-30% more
+- **config fragmentation**: ✅ **completed** - karabiner via git submodule + nix module, only 1 vesper theme symlink remains
+- **networking**: ✅ **completed** - fixed SCPreferencesSetLocalHostName() error with proper hostname configuration
+- **tailscale**: ✅ **completed** - migrated to nix-managed via home-manager for cross-platform availability
 - **secrets infrastructure**: ✅ **partial** - sops-nix setup with age encryption, functional but needs expansion
 - **macos system defaults**: ✅ **completed** - comprehensive dock, finder, keyboard, trackpad configuration verified working
 - **neovim**: ✅ **excellent** - comprehensive nixvim setup with LSP, completion, AI assistance (avante), and custom plugins
@@ -96,21 +98,28 @@ this doc outlines the migration path from homebrew + manual configs to a fully d
   - [ ] terminal themes and color schemes
   - [ ] application-specific theming where supported
 
-### phase 4: advanced integration and automation (current focus june 2025)
+### phase 4: application ecosystem migration (current focus june 2025)
 
-- [ ] **application ecosystem migration** 🎯 **high priority**
+- [ ] **cli tools modernization** 🎯 **high priority**
 
-  - [ ] **editors**: migrate vscode extensions to nix declarative management vs keep cursor as cask
+  - [ ] **git ecosystem**: migrate remaining git tools (git-lfs, git-flow, etc.) to nix
+  - [ ] **media processing**: consolidate imagemagick, ffmpeg variants to nix versions
+  - [ ] **system utilities**: migrate remaining system tools and utilities
+  - [ ] **python/ruby ecosystem**: evaluate python@3.12, ruby dependencies for nix migration
+
+- [ ] **strategic application evaluation** 🎯 **medium priority**
+
+  - [ ] **editors**: evaluate vscode extensions via nix vs keep cursor as cask
   - [ ] **terminal replacement**: evaluate warp → alacritty/kitty + tmux for full nix control
   - [ ] **docker alternatives**: replace docker desktop with nix-managed colima + podman
-  - [ ] **remaining homebrew apps**: analyze ~5 remaining casks for nix alternatives
+  - [ ] **remaining homebrew apps**: strategic analysis of 234 packages for realistic nix alternatives
 
-- [ ] **configuration symlink resolution** 🎯 **high priority**
+- [x] **configuration symlink resolution** ✅ **completed**
 
-  - [ ] migrate karabiner config from `~/02_work/_self/karabiner` to nix management
-  - [ ] consolidate ALL dotfiles into home-manager (no more manual symlinks) 
-  - [ ] implement proper xdg directory management
-  - [ ] ssh configuration via home-manager with proper key management
+  - [x] migrate karabiner config via git submodule + nix module
+  - [x] consolidate dotfiles into home-manager (only vesper theme symlink remains)
+  - [x] implement xdg directory management
+  - [x] ssh configuration via home-manager with proper key management
 
 - [ ] **services and automation** 🔄 **medium priority**
 
@@ -212,13 +221,15 @@ this doc outlines the migration path from homebrew + manual configs to a fully d
 - ✅ **migrate critical development tools** - go/node/python 100% nix-managed
 - ✅ **homebrew cleanup** - 95% reduction, eliminated all dev tool conflicts
 - ✅ **macos system defaults** - comprehensive configuration verified working
+- ✅ **networking configuration** - fixed SCPreferencesSetLocalHostName() error with proper hostname setup
+- ✅ **tailscale integration** - migrated to nix-managed via home-manager for cross-platform availability
 
-### 🎯 weeks 5-6: application ecosystem & configuration consolidation (current)
+### 🎯 weeks 5-6: cli tools migration & strategic application evaluation (current)
 
-- **application migration priorities**: vscode extensions, terminal replacement, docker alternatives
-- **configuration symlink resolution**: karabiner config, dotfiles consolidation, xdg management
-- **ssh configuration**: migrate to home-manager declarative management
-- **remaining homebrew analysis**: evaluate ~5 remaining casks for nix alternatives
+- **cli tools modernization**: git ecosystem, media processing tools, system utilities
+- **strategic homebrew analysis**: evaluate 234 packages for realistic nix migration opportunities
+- **application evaluation**: vscode extensions, terminal replacement, docker alternatives
+- **remaining optimization**: consolidate overlapping tools, eliminate redundancies
 
 ### weeks 7-8: services and advanced automation (next)
 
@@ -235,12 +246,12 @@ this doc outlines the migration path from homebrew + manual configs to a fully d
 
 ## success metrics
 
-- ✅ **95% homebrew reduction** - achieved, only ~5 essential mac-only casks remain
+- ⏳ **70% homebrew reduction** - 234 packages remain, can realistically reduce 20-30% more through CLI tool migration
 - ✅ **single command setup** - `darwin-rebuild switch --flake .` for complete system
 - ✅ **sub-30s rebuild times** - optimized for development workflow
 - ✅ **100% development environment declarative** - go/node/python fully nix-managed
 - ✅ **macos system defaults working** - verified in both CLI and System Preferences
-- [ ] **zero manual configuration** - karabiner config and some dotfiles need migration
+- ✅ **near-zero manual configuration** - karabiner via submodule + nix, only vesper theme symlink remains
 - [ ] **cross-machine compatibility** - ready for additional hosts when needed
 
 ## progress update: 4 weeks ahead of schedule

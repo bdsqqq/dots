@@ -1,4 +1,4 @@
-{ config, pkgs, inputs, ... }:
+{ config, pkgs, inputs, lib, ... }:
 
 {
   imports = [
@@ -29,6 +29,13 @@
 
   # Set Git commit hash for darwin-version.
   # system.configurationRevision = self.rev or self.dirtyRev or null;
+
+  # Networking configuration
+  networking = {
+    computerName = lib.mkDefault "mbp14";
+    localHostName = lib.mkDefault "mbp14";
+    hostName = lib.mkDefault "mbp14";
+  };
 
   # Used for backwards compatibility, please read the changelog before changing.
   # $ darwin-rebuild changelog
@@ -118,7 +125,7 @@
       
       # Interface style
       AppleInterfaceStyleSwitchesAutomatically = false;
-    };
+      AppleInterfaceStyle = "Dark";  # Dark mode enabled};
 
     # Trackpad Configuration - Basic clicking and gestures
     trackpad = {

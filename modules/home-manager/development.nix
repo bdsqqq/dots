@@ -150,6 +150,7 @@
     wget
     jq
     tree
+    tailscale
 
     # Fun stuff
     asciiquarium-transparent
