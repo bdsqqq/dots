@@ -2,12 +2,14 @@
 
 this doc outlines the migration path from homebrew + manual configs to a fully declarative nix-darwin setup. based on deep analysis of current configs and 2025 best practices research.
 
-## current state analysis (january 2025)
+## current state analysis (updated march 2025)
 
-- **basic nix-darwin setup**: minimal flake with home-manager, nixvim, sops-nix
+- **modular nix-darwin setup**: ✅ **completed** - implemented flat-ish modular structure
+- **structure**: hosts/$(hostname)/, modules/{darwin,home-manager,shared}/, overlays/
+- **home-manager modules**: shell.nix, development.nix, neovim.nix with clean domain separation
 - **homebrew dependency**: 70+ packages including critical dev tools
 - **config fragmentation**: dotfiles in `~/.config/`, symlinked karabiner config, manual ssh setup
-- **secrets gaps**: basic sops-nix setup but no active secrets management
+- **secrets infrastructure**: ✅ **partial** - sops-nix setup with age encryption, needs completion
 - **missing system management**: no macos defaults, no font management, no service management
 - **neovim**: comprehensive nixvim setup with LSP, completion, AI assistance (avante), and custom plugins
 
@@ -15,26 +17,26 @@ this doc outlines the migration path from homebrew + manual configs to a fully d
 
 ### phase 1: establish proper nix foundation (critical first)
 
-- [ ] **flake structure overhaul following 2025 patterns**
+- [x] **flake structure overhaul following 2025 patterns** ✅ **completed**
 
-  - [ ] **migrate from flat to modular structure** (addresses current pain points)
-    - [ ] create `hosts/$(hostname)/` for machine-specific configs
-    - [ ] create `modules/darwin/` for macos-specific modules (defaults, homebrew, fonts)
-    - [ ] create `modules/home-manager/` organized by domain (shell/, editors/, development/)
-    - [ ] create `modules/shared/` for cross-platform modules
-    - [ ] create `overlays/` for package customizations
-    - [ ] move `configuration.nix` → `modules/darwin/default.nix`
-    - [ ] split `home.nix` into logical domain modules (shell, packages, development)
-    - [ ] move `neovim.nix` → `modules/home-manager/editors/neovim.nix`
-    - [ ] create clean host config that imports relevant modules
-    - [ ] update `flake.nix` to use new modular imports
+  - [x] **migrate from flat to modular structure** (addresses current pain points) - **flat-ish approach chosen**
+    - [x] create `hosts/$(hostname)/` for machine-specific configs → `hosts/mbp14.local/`
+    - [x] create `modules/darwin/` for macos-specific modules → `modules/darwin/default.nix`
+    - [x] create `modules/home-manager/` organized by domain → **flat-ish**: `shell.nix`, `development.nix`, `neovim.nix`
+    - [x] create `modules/shared/` for cross-platform modules → `modules/shared/` (placeholder)
+    - [x] create `overlays/` for package customizations → `overlays/` (placeholder)
+    - [x] move `configuration.nix` → `modules/darwin/default.nix`
+    - [x] split `home.nix` into logical domain modules → **clean separation achieved**
+    - [x] move `neovim.nix` → `modules/home-manager/neovim.nix` (kept at top level, not nested)
+    - [x] create clean host config that imports relevant modules → `hosts/mbp14.local/default.nix`
+    - [x] update `flake.nix` to use new modular imports
   - [ ] add proper specialArgs and input handling for multi-system support
   - [ ] implement nixpkgs-unstable overlay for bleeding edge packages
   - [ ] setup proper flake-parts or flake-utils for organization
 
-- [ ] **secrets infrastructure modernization**
+- [ ] **secrets infrastructure modernization** 🔄 **partial progress**
 
-  - [ ] complete sops-nix integration with age encryption (current setup incomplete)
+  - [x] complete sops-nix integration with age encryption → **basic setup working**
   - [ ] migrate ssh keys to declarative management
   - [ ] implement proper secret rotation strategy with age keys
   - [ ] setup separate secrets repository following security best practices
@@ -236,6 +238,49 @@ realistic estimate for complete migration assuming dedicated focus. could extend
 - incomplete secrets management (security risk)
 - not testing full system rebuilds regularly
 
+## structural decision: flat-ish approach (march 2025)
+
+### why we chose flat-ish over deep modular
+
+**original plan**: deep nesting like `modules/home-manager/shell/zsh.nix`, `modules/home-manager/editors/neovim.nix`
+
+**implemented approach**: flat-ish structure with domain separation at top level:
+- `modules/home-manager/shell.nix` - all shell-related config
+- `modules/home-manager/development.nix` - all dev tools and languages  
+- `modules/home-manager/neovim.nix` - editor config (substantial enough to warrant separation)
+
+### benefits achieved
+
+- **eliminated shallow files**: no more `default.nix` files that just import one thing
+- **clear domain boundaries**: easy to find shell config vs dev tools vs editor config
+- **easy navigation**: 3-4 meaningful files instead of dozens of nested directories
+- **reduced complexity**: simpler imports, less cognitive overhead
+- **maintainable**: each file has substantial content worth organizing separately
+
+### structure comparison
+
+```
+# avoided this over-modularized approach:
+modules/home-manager/
+├── shell/
+│   ├── default.nix  # shallow, just imports zsh.nix
+│   └── zsh.nix      # actual content
+├── editors/
+│   └── neovim.nix   # could be substantial
+└── development/
+    ├── default.nix  # shallow, imports everything
+    ├── git.nix      # small file
+    ├── node.nix     # small file  
+    └── go.nix       # small file
+
+# implemented this flat-ish approach:
+modules/home-manager/
+├── default.nix      # imports main modules
+├── shell.nix        # zsh + starship + shell tools
+├── development.nix  # git + node + go + dev tools
+└── neovim.nix       # comprehensive editor config
+```
+
 ## modular structure migration plan
 
 ### current flat structure problems
@@ -249,40 +294,49 @@ realistic estimate for complete migration assuming dedicated focus. could extend
 └── ...                # will become dozens of files
 ```
 
-### target modular structure
+### actual implemented structure ✅
 
 ```
 /private/etc/nix-darwin/
 ├── flake.nix                           # clean entry point
 ├── hosts/                              # machine-specific configs
-│   └── $(hostname)/
-│       ├── default.nix                # host config (imports modules)
-│       └── hardware.nix               # hardware-specific settings
+│   └── mbp14.local/
+│       └── default.nix                # host config (imports modules)
 ├── modules/                           # reusable modules
 │   ├── darwin/                        # macos-specific
-│   │   ├── default.nix               # system defaults
-│   │   ├── homebrew.nix              # managed homebrew
-│   │   └── fonts.nix                 # font management
-│   ├── home-manager/                 # user environment
-│   │   ├── shell/                    # shell configs
-│   │   │   ├── zsh.nix
-│   │   │   └── starship.nix
-│   │   ├── editors/                  # editor configs
-│   │   │   └── neovim.nix           # your existing config
-│   │   └── development/              # dev tools
-│   │       ├── git.nix
-│   │       ├── node.nix
-│   │       └── go.nix
-│   └── shared/                       # cross-platform
-│       └── packages.nix              # common packages
-└── overlays/                         # package customizations
-    └── custom-packages.nix
+│   │   └── default.nix               # system defaults (needs expansion)
+│   ├── home-manager/                 # user environment - flat-ish approach
+│   │   ├── default.nix              # imports main modules + user config
+│   │   ├── shell.nix                # zsh + starship + shell tools
+│   │   ├── development.nix          # git + node + go + dev tools
+│   │   └── neovim.nix              # comprehensive editor config
+│   └── shared/                       # cross-platform (placeholder)
+└── overlays/                         # package customizations (placeholder)
 ```
 
-### migration benefits for your setup
+### originally planned deep structure (not implemented)
 
-- **easier multi-machine support** - when you get new hardware
-- **logical organization** - find configs by domain, not flat list
-- **reusable modules** - share shell config across different hosts
-- **cleaner flake.nix** - imports one host config instead of dozen files
-- **better maintenance** - change git config once, affects all hosts
+```
+# this was the original plan but proved over-modularized:
+modules/home-manager/
+├── shell/
+│   ├── default.nix
+│   ├── zsh.nix
+│   └── starship.nix
+├── editors/
+│   └── neovim.nix
+└── development/
+    ├── git.nix
+    ├── node.nix
+    └── go.nix
+```
+
+### benefits achieved with flat-ish structure ✅
+
+- **easier multi-machine support** - `hosts/mbp14.local/` pattern supports multiple machines
+- **logical organization** - clear domain separation: shell vs development vs editor
+- **reusable modules** - modular structure allows sharing across hosts when needed
+- **cleaner flake.nix** - imports single host config instead of dozen files
+- **better maintenance** - change dev tools once in `development.nix`, affects whole system
+- **eliminated shallow files** - no more `default.nix` files that just import single items
+- **easy navigation** - 3-4 meaningful files instead of deeply nested directories

@@ -1,181 +1,172 @@
-# Migration Plan: Flat to Modular Nix-Darwin Structure
+# Implementation Plan: Foundation → Development Migration
 
-This document provides a step-by-step action plan to migrate a flat Nix flake configuration to a modern, modular structure. This plan is designed to be executed by an agent.
+Modular structure migration is complete. This document outlines our **chosen implementation path** from the 2025 roadmap Phase 1.
 
-## Overview
+## Current Status
+- ✅ **Modular Structure**: Complete migration from flat to modular nix-darwin structure
+- ✅ **Directory Organization**: Proper separation of concerns across modules/
+- ✅ **Neovim Configuration**: Excellent nixvim setup with LSP and AI assistance
+- 🔄 **Foundation Incomplete**: Missing modern flake patterns and overlays
+- ❌ **Secrets Management**: Basic sops-nix setup but not actively used
+- ❌ **Development Tools**: Still dependent on 70+ homebrew packages
 
-The migration is broken down into four stages:
+## Decision: Foundation-First Approach
 
-1.  **Directory Scaffolding**: Create the new directory structure.
-2.  **Configuration Migration**: Move and split existing Nix files into the new structure.
-3.  **Flake Refactoring**: Update `flake.nix` to use the new modular system.
-4.  **Verification and Cleanup**: Ensure the new configuration builds and remove old artifacts.
+**Chosen Path:** Option A → Option C → Option B (later)
 
----
+**Rationale:**
+- Foundation infrastructure provides cleanest base for subsequent migrations
+- Better package availability via unstable overlay enables smoother dev tool migration  
+- Secrets management is functional enough to defer while focusing on workflow improvements
+- Lower risk progression from organizational improvements to complex toolchain migration
 
-### **Stage 1: Directory Scaffolding**
+## Phase 1: Complete Foundation Infrastructure
 
-This stage creates the foundational directory tree for the modular setup.
+*Estimated effort: 2-3 days | Complexity: Medium*  
+**IMMEDIATE PRIORITY**
 
-**Instructions:**
+Finalize the foundational flake architecture with modern 2025 patterns.
 
-1.  Execute the following shell commands from the root of the Nix configuration directory (`/private/etc/nix-darwin`).
-2.  Verify that all directories are created successfully.
+### Implementation Tasks
 
+1. **Implement flake-parts organization**
+   ```bash
+   # Add flake-parts input to flake.nix
+   # Refactor flake.nix to use flake-parts.lib.mkFlake
+   # Create flake-modules/ directory for reusable components
+   ```
+
+2. **Setup nixpkgs-unstable overlay**
+   ```bash
+   # Add nixpkgs-unstable input
+   # Create overlays/unstable.nix for bleeding-edge packages
+   # Configure overlay in flake.nix
+   ```
+
+3. **Enhance specialArgs and input handling**
+   ```bash
+   # Pass all inputs to modules via specialArgs
+   # Add system detection and multi-architecture support
+   # Setup proper input follows for dependency management
+   ```
+
+### Success Criteria
+- Clean flake-parts based organization
+- Access to latest packages via unstable overlay
+- Multi-system support ready for future machines
+- Sub-30s rebuild times maintained
+
+## Phase 2: Development Environment Migration
+
+*Estimated effort: 4-5 days | Complexity: Medium-High*  
+**STARTS AFTER PHASE 1 COMPLETION**
+
+Migrate critical development tools from homebrew to nix management.
+
+### Implementation Tasks
+
+1. **Go toolchain migration**
+   ```bash
+   # Replace homebrew go@1.20, go@1.21 with nix versions
+   # Setup go version management via overlays
+   # Migrate GOPATH and module configuration
+   ```
+
+2. **Node ecosystem replacement**
+   ```bash
+   # Replace homebrew node versions with nix-managed
+   # Implement corepack for package manager control
+   # Setup project-specific node versions via direnv
+   ```
+
+3. **Python environment consolidation**
+   ```bash
+   # Consolidate python@3.9-3.13 to nix-managed versions
+   # Setup proper venv integration with nix
+   # Migrate poetry/pip configurations
+   ```
+
+### Success Criteria
+- 50%+ reduction in homebrew dependencies
+- Declarative version management for all languages
+- Project-specific environment isolation
+- Faster development environment setup
+
+## Future Phase: Secrets Infrastructure Modernization
+*Estimated effort: 3-4 days | Complexity: High*
+
+Complete the sops-nix integration with proper age encryption and key management.
+
+### Tasks (Deferred)
+1. **Complete sops-nix with age encryption**
+   ```bash
+   # Generate age key from ssh key: ssh-keyscan | age-keygen -y
+   # Create .sops.yaml with age recipients
+   # Setup encrypted secrets repository
+   ```
+
+2. **Migrate SSH keys to declarative management**
+   ```bash
+   # Move ~/.ssh/config to modules/home-manager/development/ssh.nix
+   # Implement proper ssh key derivation for age
+   # Setup host-specific ssh configurations
+   ```
+
+3. **Implement secret rotation strategy**
+   ```bash
+   # Create separate secrets repository
+   # Setup automated secret rotation procedures
+   # Document emergency recovery procedures
+   ```
+
+### Success Criteria
+- All secrets encrypted with age and version controlled
+- SSH configuration fully declarative
+- Zero manual secret management
+- Proper backup and recovery procedures
+
+## Implementation Timeline
+
+**Phase 1 → Phase 2 → Future Phases**
+
+### Week 1-2: Foundation Infrastructure
+- Complete flake-parts refactoring and unstable overlay
+- Enhanced input handling and multi-system support
+- Validate foundation before proceeding
+
+### Week 3-4: Development Environment Migration  
+- Begin development tool migration with solid foundation in place
+- Go, Node, Python toolchain transitions
+- Validate workflow improvements
+
+### Future: Secrets & Advanced Features
+- Secrets management when workflow is stable
+- Application ecosystem migration (vscode, docker, terminal)
+- macOS system defaults and comprehensive configuration
+- Advanced automation and cross-machine compatibility
+
+## Execution Commands
+
+### Phase 1: Foundation
 ```bash
-# Create Core Directories
-mkdir -p modules/darwin modules/home-manager modules/shared overlays hosts
-
-# Create Host Directory (dynamically using the system's hostname)
-mkdir -p "hosts/$(hostname)"
-
-# Create Home-Manager Sub-modules
-mkdir -p modules/home-manager/shell modules/home-manager/editors modules/home-manager/development modules/home-manager/packages
-
-# Create Placeholder Files for future configuration
-touch "hosts/$(hostname)/default.nix"
-touch modules/darwin/default.nix
-touch modules/home-manager/default.nix
-touch modules/home-manager/editors/default.nix
-touch modules/home-manager/shell/default.nix
-touch modules/home-manager/development/default.nix
-touch modules/home-manager/packages/default.nix
-touch modules/shared/default.nix
-touch overlays/default.nix
+darwin-rebuild switch --flake . --show-trace
+# Validate with: nix flake check
 ```
 
----
+### Phase 2: Development Migration
+```bash
+darwin-rebuild switch --flake . --show-trace  
+# Test development environments after each migration
+```
 
-### **Stage 2: Configuration Migration**
+## Risk Mitigation
 
-This stage involves moving and refactoring the existing configurations into the new, organized structure.
+**Phase 1**: Low risk - organizational improvements with rollback capability  
+**Phase 2**: Medium risk - staged migration with testing between language toolchains  
+**Future Phases**: Deferred until core workflow is stable
 
-**Instructions:**
+## Success Metrics
 
-1.  Move the specified files to their new locations.
-2.  Split `home.nix` into smaller, domain-specific files as described.
-3.  Create the necessary `default.nix` files to act as importers for each module.
-
-**Action Steps:**
-
-1.  **Migrate Darwin Configuration**:
-
-    - **Action**: Move `configuration.nix`.
-    - **Command**: `mv configuration.nix modules/darwin/default.nix`
-
-2.  **Migrate Neovim Configuration**:
-
-    - **Action**: Move `neovim.nix`.
-    - **Command**: `mv neovim.nix modules/home-manager/editors/neovim.nix`
-    - **Action**: Populate `modules/home-manager/editors/default.nix` with the following content to import `neovim.nix`:
-      ```nix
-      # modules/home-manager/editors/default.nix
-      {
-        imports = [
-          ./neovim.nix
-          # ./vscode.nix # Placeholder for future VSCode config
-        ];
-      }
-      ```
-
-3.  **Deconstruct `home.nix`**:
-
-    - **Action**: Read the contents of the existing `home.nix`.
-    - **Action**: Create new files for each logical domain and copy the relevant sections from `home.nix`.
-    - **Example Splits**:
-      - `modules/home-manager/shell/zsh.nix`: Should contain `programs.zsh`, `programs.starship`, etc.
-      - `modules/home-manager/development/git.nix`: Should contain `programs.git`.
-      - `modules/home-manager/packages/cli.nix`: Should contain `home.packages`.
-    - **Action**: Populate the corresponding `default.nix` importers. For example:
-      ```nix
-      # modules/home-manager/shell/default.nix
-      { imports = [ ./zsh.nix ]; }
-      ```
-    - **Action**: Populate `modules/home-manager/default.nix` with top-level settings (`home.username`, `home.homeDirectory`, `home.stateVersion`).
-
-4.  **Assemble the Host Configuration**:
-
-    - **Action**: Populate `hosts/$(hostname)/default.nix` to tie all modules together.
-
-      ```nix
-      # hosts/your-hostname/default.nix
-      { pkgs, inputs, ... }: {
-        imports = [
-          # Import all the modular components
-          ../../modules/darwin/default.nix
-          ../../modules/home-manager/default.nix
-        ];
-
-        # Host-specific settings, like networking.hostName, can go here
-        # Example:
-        # networking.hostName = "your-hostname";
-      }
-      ```
-
-      _Note: The `home-manager` modules are typically imported via the main `modules/home-manager/default.nix`._
-
----
-
-### **Stage 3: Flake Refactoring**
-
-This stage simplifies the main `flake.nix` to use the new host-centric configuration.
-
-**Instructions:**
-
-1.  Edit `flake.nix` to replace the long list of modules with a single import.
-
-**Action Steps:**
-
-1.  **Refactor `flake.nix`**:
-
-    - **Locate**: The `darwinConfigurations` section.
-    - **Modify**: Change the `modules` attribute to point to the new host configuration file.
-
-    **Before:**
-
-    ```nix
-    darwinConfigurations."your-hostname" = nix-darwin.lib.darwinSystem {
-      modules = [
-        ./configuration.nix
-        ./home.nix
-        ./neovim.nix
-        # ... and other files
-      ];
-    };
-    ```
-
-    **After:**
-
-    ```nix
-    darwinConfigurations."your-hostname" = nix-darwin.lib.darwinSystem {
-      system = "aarch64-darwin"; # Or "x86_64-darwin"
-      specialArgs = { inherit inputs; }; # Pass inputs down to modules
-      modules = [
-        ./hosts/your-hostname/default.nix
-      ];
-    };
-    ```
-
----
-
-### **Stage 4: Verification and Cleanup**
-
-This final stage ensures the new configuration is valid and removes legacy files.
-
-**Instructions:**
-
-1.  Run the `darwin-rebuild` command to test the new structure.
-2.  Delete the original `home.nix` file after a successful build.
-
-**Action Steps:**
-
-1.  **Build the New Configuration**:
-
-    - **Command**: `darwin-rebuild switch --flake .`
-    - **Observe**: Watch for any errors, which will likely be related to incorrect import paths. Debug by verifying all paths in the `default.nix` files.
-
-2.  **Cleanup**:
-    - **Action**: After a successful build, remove the original `home.nix`.
-    - **Command**: `rm home.nix`
-
-This plan provides a complete, structured path to a more maintainable and scalable Nix configuration.
+- **Foundation Complete**: Sub-30s rebuilds + unstable overlay access
+- **Development Migration**: 50% homebrew reduction + isolated environments  
+- **Overall**: Faster dev setup + declarative reproducibility
