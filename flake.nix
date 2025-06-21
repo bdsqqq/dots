@@ -25,23 +25,11 @@
     # Build darwin flake using:
     # $ darwin-rebuild build --flake .#mbp14
     darwinConfigurations."mbp14" = nix-darwin.lib.darwinSystem {
-      modules = [ 
-        ./configuration.nix
-        home-manager.darwinModules.home-manager
-        {
-          nixpkgs.config.allowUnfree = true;
-          home-manager.useGlobalPkgs = true;
-          home-manager.useUserPackages = true;
-          home-manager.backupFileExtension = "backup-nix";
-          home-manager.users.bdsqqq = import ./home.nix;
-          home-manager.sharedModules = [
-            sops-nix.homeManagerModules.sops
-            nixvim.homeManagerModules.nixvim
-            ./neovim.nix
-          ];
-        }
-      ];
+      system = "aarch64-darwin";
       specialArgs = { inherit inputs; };
+      modules = [
+        ./hosts/mbp14.local/default.nix
+      ];
     };
   };
 }
