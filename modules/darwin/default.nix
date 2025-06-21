@@ -77,6 +77,10 @@
       
       # Utilities
       "transmission"         # BitTorrent client
+      
+      # Browsers
+      # Note: zen-browser not yet available in homebrew
+      # Manual install required for now
     ];
     
     # Clean up orphaned applications
