@@ -70,20 +70,20 @@
   home.packages = with pkgs; [
     # Git tools
     lazygit
-    
+
     # Media tools
     mpv
-    
+
     # Security/secrets
     sops
     age
     ssh-to-age
-    
+
     # Development tools
     fnm
     oh-my-zsh
     amp-cli
-    
+
     # CLI utilities
     ripgrep
     fd
@@ -94,7 +94,7 @@
     wget
     jq
     tree
-    
+
     # Fun stuff
     asciiquarium-transparent
     fastfetch

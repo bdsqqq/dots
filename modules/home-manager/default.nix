@@ -3,7 +3,7 @@
 {
   imports = [
     ./shell.nix
-    ./development.nix  
+    ./development.nix
     ./neovim.nix
   ];
 
@@ -16,15 +16,15 @@
   sops = lib.mkIf (builtins.pathExists ../../secrets.yaml) {
     # age key file location (never commit this!)
     age.keyFile = "/Users/bdsqqq/.config/sops/age/keys.txt";
-    
+
     # default secrets file location
     defaultSopsFile = ../../secrets.yaml;
-    
+
     # secrets definitions go here
     secrets = {
       # api keys
-      anthropic_api_key = {};
-      copilot_token = {};
+      anthropic_api_key = { };
+      copilot_token = { };
     };
   };
 

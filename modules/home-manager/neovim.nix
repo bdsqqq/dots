@@ -1,7 +1,7 @@
 { pkgs, inputs, lib, ... }: {
   programs.nixvim = {
     enable = true;
-    
+
     extraPlugins = [
       (pkgs.vimUtils.buildVimPlugin {
         name = "vesper.nvim";
@@ -174,7 +174,7 @@
 
     autoCmd = [
       {
-        event = ["TextYankPost"];
+        event = [ "TextYankPost" ];
         desc = "highlight when yanking (copying) text";
         group = "kickstart-highlight-yank";
         callback.__raw = ''
@@ -218,9 +218,9 @@
         enable = true;
         settings = {
           library = [
-            { 
-              path = "\${3rd}/luv/library"; 
-              words = [ "vim%.uv" ]; 
+            {
+              path = "\${3rd}/luv/library";
+              words = [ "vim%.uv" ];
             }
           ];
         };
@@ -428,7 +428,7 @@
               desc = "lsp: [r]e[n]ame";
             };
             "gra" = {
-              mode = ["n" "x"];
+              mode = [ "n" "x" ];
               action = "code_action";
               desc = "lsp: [g]oto code [a]ction";
             };
@@ -458,7 +458,7 @@
             end
           '';
           formatters_by_ft = {
-            lua = ["stylua"];
+            lua = [ "stylua" ];
           };
         };
       };
@@ -473,9 +473,9 @@
           };
           appearance.nerd_font_variant = "mono";
           completion = {
-            documentation = { 
-              auto_show = true; 
-              auto_show_delay_ms = 500; 
+            documentation = {
+              auto_show = true;
+              auto_show_delay_ms = 500;
             };
             ghost_text.enabled = true;
             menu = {
@@ -487,10 +487,10 @@
           sources = {
             default = [ "lsp" "path" "snippets" "buffer" ];
             providers = {
-              lazydev = { 
+              lazydev = {
                 name = "LazyDev";
-                module = "lazydev.integrations.blink"; 
-                score_offset = 100; 
+                module = "lazydev.integrations.blink";
+                score_offset = 100;
               };
             };
           };
@@ -504,9 +504,9 @@
         enable = true;
         modules = {
           ai.n_lines = 500;
-          surround = {};
+          surround = { };
           statusline.use_icons.__raw = "vim.g.have_nerd_font";
-          comment = {};
+          comment = { };
           map = {
             symbols = {
               scroll_line = "█";
@@ -527,9 +527,26 @@
         enable = true;
         settings = {
           ensureInstalled = [
-            "bash" "c" "diff" "html" "lua" "luadoc" "markdown" "markdown_inline"
-            "query" "vim" "vimdoc" "nix" "javascript" "typescript" "jsx" "tsx"
-            "json" "jsonc" "python" "regex"
+            "bash"
+            "c"
+            "diff"
+            "html"
+            "lua"
+            "luadoc"
+            "markdown"
+            "markdown_inline"
+            "query"
+            "vim"
+            "vimdoc"
+            "nix"
+            "javascript"
+            "typescript"
+            "jsx"
+            "tsx"
+            "json"
+            "jsonc"
+            "python"
+            "regex"
           ];
           highlight = {
             enable = true;

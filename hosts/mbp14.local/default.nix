@@ -1,12 +1,13 @@
 # hosts/mbp14.local/default.nix
-{ pkgs, inputs, ... }: {
+# Enhanced host configuration with improved input handling
+{ pkgs, inputs, systems ? [ ], pkgsFor ? null, ... }: {
   imports = [
     # Import all the modular components
     ../../modules/darwin/default.nix
     inputs.home-manager.darwinModules.home-manager
   ];
 
-  # Configure Home Manager
+  # Configure Home Manager with enhanced input passing
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
@@ -17,10 +18,22 @@
         ../../modules/home-manager/default.nix
       ];
     };
-    extraSpecialArgs = { inherit inputs; };
+    # Pass all enhanced specialArgs to home-manager modules
+    extraSpecialArgs = {
+      inherit inputs systems pkgsFor;
+    };
   };
 
-  # Host-specific settings, like networking.hostName, can go here
-  # Example:
-  # networking.hostName = "mbp14.local";
+  # Host-specific settings
+  # System identification for multi-host setups
+  networking.hostName = "mbp14.local";
+
+  # Example of using enhanced specialArgs for conditional configuration
+  # This demonstrates how modules can access system information
+  # assertions = [
+  #   {
+  #     assertion = pkgs.stdenv.system == "aarch64-darwin";
+  #     message = "This configuration is designed for Apple Silicon Macs";
+  #   }
+  # ];
 }

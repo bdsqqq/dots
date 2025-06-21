@@ -1,10 +1,13 @@
-{ config, pkgs, ... }:
+{ config, pkgs, inputs, ... }:
 
 {
   # List packages installed in system profile. To search by name, run:
   # $ nix-env -qaP | grep wget
-  environment.systemPackages =
-    [ pkgs.vim ];
+  environment.systemPackages = [
+    pkgs.vim
+    # Test unstable overlay - uncomment to test unstable packages
+    # pkgs.unstable.neovim  # Example: Use unstable neovim
+  ];
 
   users.users.bdsqqq = {
     home = "/Users/bdsqqq";
@@ -30,4 +33,17 @@
 
   # Allow unfree packages
   nixpkgs.config.allowUnfree = true;
+
+  # Configure overlays for unstable packages access
+  # Provides pkgs.unstable.packageName for bleeding edge packages
+  # Default pkgs.packageName remains stable
+  nixpkgs.overlays = [
+    # Unstable packages overlay - provides pkgs.unstable.packageName
+    (final: prev: {
+      unstable = import inputs.nixpkgs-unstable {
+        inherit (final) system;
+        config.allowUnfree = true;
+      };
+    })
+  ];
 }
