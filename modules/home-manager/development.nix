@@ -89,9 +89,7 @@
     git-filter-repo # Advanced git repository rewriting
 
     # Media tools
-    mpv
     exiftool # Read and write metadata in files
-    # jp2a # Convert images to ASCII art - currently broken in nixpkgs
 
     # Security/secrets
     sops
@@ -102,34 +100,13 @@
     fnm # nix-managed fnm for Node.js version management
     oh-my-zsh
     amp-cli
+    claude-code
 
     # Node.js development tools
     # NOTE: nodejs removed - fnm will manage Node.js versions
     # Global Node.js tools installed per-project or via fnm
     pnpm # Fast, disk space efficient package manager  
     bun # Fast all-in-one JavaScript runtime
-
-    # Python development tools
-    python312 # Python 3.12 (current stable, default)
-    python312Packages.pip # Package installer  
-    python312Packages.virtualenv # Virtual environment creation
-    pipenv # Higher-level venv/pip workflow (standalone package)
-    poetry # Modern dependency management (standalone package)
-
-    # Python development tools
-    python312Packages.black # Code formatter
-    python312Packages.isort # Import sorter
-    python312Packages.mypy # Static type checker
-    ruff # Fast Python linter/formatter (rust-based)
-    python312Packages.pytest # Testing framework
-    python312Packages.ipython # Enhanced interactive shell
-    python312Packages.certifi # SSL certificates bundle
-    python312Packages.packaging # Core utilities for Python packages
-
-    # Alternative Python versions (available on-demand)
-    # python39   # Use when needed for legacy projects
-    # python311  # Use when needed for compatibility
-    # python313  # Use unstable for bleeding-edge: pkgs.unstable.python313
 
     # Go development tools
     go # Latest stable Go version
@@ -147,54 +124,30 @@
     bat
     eza
     btop
+    ctop
+    lazydocker
     curl
     wget
     jq
     yq # YAML processor (jq for YAML)
     tree
-    tailscale
-    
-    # System utilities (Tier 2)
+    tailscale    
     p7zip # 7-Zip archiver
     cloc # Count lines of code
     stow # Symlink farm manager
-    neofetch # System information display
+    yazi # File manager
     
     # Terminal management
     tmux # Terminal multiplexer
-
-    # Fun stuff
-    asciiquarium-transparent
-    fastfetch
-
-    # Tier 3 CLI Tools - Complex migration candidates
-    # Container & Docker management tools
-    lazydocker # Docker management TUI (replacement for GUI Docker Desktop features)
-    
-    # Development CLI tools
-    swagger-codegen # OpenAPI/Swagger code generation
-    swagger-cli # Swagger/OpenAPI validation and bundling
-    go-swagger # More powerful Swagger toolkit for Go
     
     # Media processing tools
     ffmpeg # Video/audio processing (consolidates multiple homebrew media tools)
     
-    # Database & backend development tools  
-    supabase-cli # Supabase project management and development
-    
-    # Cloud & Infrastructure tools
-    awscli2 # AWS command line interface (v2)
-    azure-cli # Microsoft Azure command line interface
-    
     # HTTP/API testing tools
     httpie # Modern curl replacement with JSON support
     
-    # System monitoring and container tools
-    htop # Interactive process viewer (better than top)
-    dive # Tool for exploring Docker images
-    ctop # Container monitoring tool
-    
-    # DevOps and automation tools
-    ansible # Infrastructure automation platform
+    # Fun stuff
+    asciiquarium-transparent
+    fastfetch
   ];
 }
