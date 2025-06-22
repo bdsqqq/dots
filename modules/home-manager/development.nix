@@ -104,5 +104,6 @@
     httpie
     asciiquarium-transparent
     fastfetch
+    claude-code
   ];
 }
