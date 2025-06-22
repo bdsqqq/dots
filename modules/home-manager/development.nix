@@ -16,11 +16,6 @@
       };
     };
 
-    claude-code = {
-      enable = true;
-      apiKeyFile = config.sops.secrets.anthropic_api_key.path;
-    };
-
     yt-dlp = {
       enable = true;
       settings = {
