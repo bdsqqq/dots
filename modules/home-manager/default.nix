@@ -25,7 +25,6 @@
     secrets = {
       # api keys
       anthropic_api_key = { };
-      copilot_token = { };
     };
   };
 
