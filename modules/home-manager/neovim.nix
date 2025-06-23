@@ -302,6 +302,10 @@
               group = "git [h]unk";
               mode = [ "n" "v" ];
             }
+            {
+              __unkeyed-1 = "<leader>l";
+              group = "[l]sp";
+            }
           ];
         };
       };
@@ -429,20 +433,49 @@
               action.__raw = "require('telescope.builtin').lsp_dynamic_workspace_symbols";
               options.desc = "lsp: open workspace symbols";
             }
+            # lsp namespace - duplicates of g shortcuts for discoverability
+            {
+              mode = "n";
+              key = "<leader>ld";
+              action.__raw = "require('telescope.builtin').lsp_definitions";
+              options.desc = "lsp: goto [d]efinition";
+            }
+            {
+              mode = "n";
+              key = "<leader>lr";
+              action.__raw = "require('telescope.builtin').lsp_references";
+              options.desc = "lsp: goto [r]eferences (find usages)";
+            }
+            {
+              mode = "n";
+              key = "<leader>li";
+              action.__raw = "require('telescope.builtin').lsp_implementations";
+              options.desc = "lsp: goto [i]mplementation";
+            }
+            {
+              mode = "n";
+              key = "<leader>lt";
+              action.__raw = "require('telescope.builtin').lsp_type_definitions";
+              options.desc = "lsp: goto [t]ype definition";
+            }
           ];
           lspBuf = {
-            "grn" = {
+            "<leader>ln" = {
               action = "rename";
-              desc = "lsp: [r]e[n]ame";
+              desc = "lsp: re[n]ame symbol";
             };
-            "gra" = {
+            "<leader>la" = {
               mode = [ "n" "x" ];
               action = "code_action";
-              desc = "lsp: [g]oto code [a]ction";
+              desc = "lsp: code [a]ctions";
             };
-            "grD" = {
+            "<leader>lD" = {
               action = "declaration";
-              desc = "lsp: [g]oto [D]eclaration";
+              desc = "lsp: goto [D]eclaration";
+            };
+            "<leader>lh" = {
+              action = "hover";
+              desc = "lsp: [h]over documentation";
             };
             "K" = {
               action = "hover";
