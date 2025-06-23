@@ -88,7 +88,7 @@
     jq
     yq
     tree
-    tailscale    
+    tailscale
     p7zip
     cloc
     stow
