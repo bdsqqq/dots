@@ -64,6 +64,7 @@
       "figma"                # Design tool
       "iina"                 # Video player
       "obs"                  # Streaming software
+      "transmission"         # Torrent client
       
       # Productivity applications
       "linear-linear"        # Project management
@@ -75,12 +76,11 @@
       "spotify"              # Music streaming
       "steam"                # Gaming platform
       
-      # Utilities
-      "transmission"         # BitTorrent client
-      
       # Browsers
       # Note: zen-browser not yet available in homebrew
       # Manual install required for now
+      "qutebrowser"
+      "chromium"
     ];
     
     # Clean up orphaned applications
@@ -179,6 +179,9 @@
       # Interface style
       AppleInterfaceStyleSwitchesAutomatically = false;
       AppleInterfaceStyle = "Dark";  # Dark mode enabled
+
+      NSWindowShouldDragOnGesture = true; # Move windows with cursor anywhere while holding ctrl+cmd
+      AppleShowAllFiles = true; # Show hidden files
     };
 
     # Trackpad Configuration - Basic clicking and gestures
