@@ -56,10 +56,11 @@
       list = true;
       listchars.__raw = "{ tab = '» ', trail = '·', nbsp = '␣' }";
       inccommand = "split";
-      cursorline = true;
+      cursorline = false;
       scrolloff = 10;
       confirm = true;
       hlsearch = true;
+      relativenumber = true;
     };
 
     # global keymaps (truly global + plugins without keymap support)
@@ -194,10 +195,10 @@
         };
         underline.severity = [ "ERROR" ];
         signs.text = {
-          ERROR = "󰅚 ";
-          WARN = "󰀪 ";
-          INFO = "󰋽 ";
-          HINT = "󰌶 ";
+          ERROR = "✘";
+          WARN = "⚠";
+          INFO = "ℹ";
+          HINT = "⚑";
         };
         virtual_text = {
           source = "if_many";
@@ -208,6 +209,8 @@
 
     extraPackages = with pkgs; [
       stylua
+      nodePackages.prettier
+      go
     ];
 
     plugins = {
@@ -375,6 +378,8 @@
               completion.callSnippet = "Replace";
             };
           };
+          ts_ls.enable = true;
+          gopls.enable = true;
         };
         keymaps = {
           diagnostic = {
@@ -384,28 +389,31 @@
               desc = "open diagnostic [q]uickfix list";
             };
           };
+          # override vim's weak built-in goto commands with superior lsp versions
+          # gd/gD were just glorified text search, gi was "go to last insert" (meh)
+          # gt was tab navigation but buffers > tabs anyway
           extra = [
             {
               mode = "n";
-              key = "grd";
+              key = "gd";
               action.__raw = "require('telescope.builtin').lsp_definitions";
               options.desc = "lsp: [g]oto [d]efinition";
             }
             {
               mode = "n";
-              key = "grr";
+              key = "gr";
               action.__raw = "require('telescope.builtin').lsp_references";
               options.desc = "lsp: [g]oto [r]eferences";
             }
             {
               mode = "n";
-              key = "gri";
+              key = "gi";
               action.__raw = "require('telescope.builtin').lsp_implementations";
               options.desc = "lsp: [g]oto [i]mplementation";
             }
             {
               mode = "n";
-              key = "grt";
+              key = "gt";
               action.__raw = "require('telescope.builtin').lsp_type_definitions";
               options.desc = "lsp: [g]oto [t]ype definition";
             }
@@ -459,6 +467,12 @@
           '';
           formatters_by_ft = {
             lua = [ "stylua" ];
+            javascript = [ "prettier" ];
+            typescript = [ "prettier" ];
+            javascriptreact = [ "prettier" ];
+            typescriptreact = [ "prettier" ];
+            json = [ "prettier" ];
+            go = [ "gofmt" ];
           };
         };
       };
@@ -547,6 +561,7 @@
             "jsonc"
             "python"
             "regex"
+            "go"
           ];
           highlight = {
             enable = true;
