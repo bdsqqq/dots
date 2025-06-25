@@ -166,6 +166,84 @@
         '';
         options.desc = "[s]earch [n]eovim files";
       }
+      # mini.files and undotree toggles
+      {
+        mode = "n";
+        key = "<leader>tf";
+        action.__raw = ''
+          function()
+            local ok, mini_files = pcall(require, 'mini.files')
+            if ok then
+              mini_files.open()
+            else
+              vim.cmd('Explore')
+            end
+          end
+        '';
+        options.desc = "[t]oggle [f]iles";
+      }
+      {
+        mode = "n";
+        key = "<leader>tu";
+        action = "<cmd>UndotreeToggle<CR>";
+        options.desc = "[t]oggle [u]ndo tree";
+      }
+      # additional consistency keybindings
+      {
+        mode = "n";
+        key = "<leader>ta";
+        action.__raw = ''
+          function()
+            local ok, avante_api = pcall(require, 'avante.api')
+            if ok and avante_api.toggle then
+              avante_api.toggle.sidebar()
+            else
+              vim.notify('Avante not available', vim.log.levels.WARN)
+            end
+          end
+        '';
+        options.desc = "[t]oggle [a]vante";
+      }
+      {
+        mode = "n";
+        key = "<leader>sb";
+        action.__raw = ''
+          function()
+            require('telescope.builtin').buffers()
+          end
+        '';
+        options.desc = "[s]earch [b]uffers";
+      }
+      {
+        mode = "n";
+        key = "<leader>tw";
+        action = "<cmd>set wrap!<CR>";
+        options.desc = "[t]oggle [w]ord wrap";
+      }
+      {
+        mode = "n";
+        key = "<leader>tl";
+        action.__raw = ''
+          function()
+            local enabled = vim.diagnostic.is_enabled()
+            vim.diagnostic.enable(not enabled)
+            vim.notify("Diagnostics " .. (enabled and "disabled" or "enabled"))
+          end
+        '';
+        options.desc = "[t]oggle [l]sp diagnostics";
+      }
+      {
+        mode = "n";
+        key = "<leader>tn";
+        action = "<cmd>set nu!<CR>";
+        options.desc = "[t]oggle line [n]umbers";
+      }
+      {
+        mode = "n";
+        key = "<leader>tr";
+        action = "<cmd>set rnu!<CR>";
+        options.desc = "[t]oggle [r]elative numbers";
+      }
     ];
 
     autoGroups = {
@@ -267,6 +345,22 @@
               end, { desc = 'jump to previous git [c]hange' })
               
               -- actions
+              map('n', '<leader>hn', function()
+                if vim.wo.diff then
+                  vim.cmd.normal({']c', bang = true})
+                else
+                  gitsigns.nav_hunk('next')
+                end
+              end, { desc = 'git [h]unk [n]ext' })
+              
+              map('n', '<leader>hN', function()
+                if vim.wo.diff then
+                  vim.cmd.normal({'[c', bang = true})
+                else
+                  gitsigns.nav_hunk('prev')
+                end
+              end, { desc = 'git [h]unk previous' })
+              
               map('n', '<leader>hs', gitsigns.stage_hunk, { desc = 'git [s]tage hunk' })
               map('n', '<leader>hr', gitsigns.reset_hunk, { desc = 'git [r]eset hunk' })
               map('v', '<leader>hs', function() gitsigns.stage_hunk {vim.fn.line('.'), vim.fn.line('v')} end, { desc = 'git [s]tage hunk' })
@@ -386,39 +480,69 @@
           gopls.enable = true;
         };
         keymaps = {
-          diagnostic = {
-            "<leader>q" = {
-              mode = "n";
-              action = "setloclist";
-              desc = "open diagnostic [q]uickfix list";
-            };
-          };
-          # override vim's weak built-in goto commands with superior lsp versions
-          # gd/gD were just glorified text search, gi was "go to last insert" (meh)
-          # gt was tab navigation but buffers > tabs anyway
+          diagnostic = { };
+          # deliberately override vim's built-in goto commands with lsp versions
+          # this is intentional - we want lsp-powered navigation, not vim's text search
+          # fallback to vim.lsp.buf if telescope fails to load
           extra = [
             {
               mode = "n";
               key = "gd";
-              action.__raw = "require('telescope.builtin').lsp_definitions";
+              action.__raw = ''
+                function()
+                  local ok, telescope = pcall(require, 'telescope.builtin')
+                  if ok then
+                    telescope.lsp_definitions()
+                  else
+                    vim.lsp.buf.definition()
+                  end
+                end
+              '';
               options.desc = "lsp: [g]oto [d]efinition";
             }
             {
               mode = "n";
               key = "gr";
-              action.__raw = "require('telescope.builtin').lsp_references";
+              action.__raw = ''
+                function()
+                  local ok, telescope = pcall(require, 'telescope.builtin')
+                  if ok then
+                    telescope.lsp_references()
+                  else
+                    vim.lsp.buf.references()
+                  end
+                end
+              '';
               options.desc = "lsp: [g]oto [r]eferences";
             }
             {
               mode = "n";
               key = "gi";
-              action.__raw = "require('telescope.builtin').lsp_implementations";
+              action.__raw = ''
+                function()
+                  local ok, telescope = pcall(require, 'telescope.builtin')
+                  if ok then
+                    telescope.lsp_implementations()
+                  else
+                    vim.lsp.buf.implementation()
+                  end
+                end
+              '';
               options.desc = "lsp: [g]oto [i]mplementation";
             }
             {
               mode = "n";
               key = "gt";
-              action.__raw = "require('telescope.builtin').lsp_type_definitions";
+              action.__raw = ''
+                function()
+                  local ok, telescope = pcall(require, 'telescope.builtin')
+                  if ok then
+                    telescope.lsp_type_definitions()
+                  else
+                    vim.lsp.buf.type_definition()
+                  end
+                end
+              '';
               options.desc = "lsp: [g]oto [t]ype definition";
             }
             {
@@ -458,6 +582,12 @@
               action.__raw = "require('telescope.builtin').lsp_type_definitions";
               options.desc = "lsp: goto [t]ype definition";
             }
+            {
+              mode = "n";
+              key = "<leader>ls";
+              action.__raw = "require('telescope.builtin').lsp_dynamic_workspace_symbols";
+              options.desc = "lsp: workspace [s]ymbols";
+            }
           ];
           lspBuf = {
             "<leader>ln" = {
@@ -472,6 +602,10 @@
             "<leader>lD" = {
               action = "declaration";
               desc = "lsp: goto [D]eclaration";
+            };
+            "<leader>lq" = {
+              action = "setloclist";
+              desc = "lsp: diagnostic [q]uickfix list";
             };
             "<leader>lh" = {
               action = "hover";
@@ -494,10 +628,29 @@
               local disable_filetypes = { c = true, cpp = true }
               return {
                 timeout_ms = 500,
-                lsp_fallback = not disable_filetypes[vim.bo[bufnr].filetype]
+                lsp_fallback = not disable_filetypes[vim.bo[bufnr].filetype],
+                -- gracefully handle missing formatters
+                quiet = true
               }
             end
           '';
+          # custom formatter conditions to check availability
+          formatters = {
+            prettier = {
+              condition = ''
+                function()
+                  return vim.fn.executable("prettier") == 1
+                end
+              '';
+            };
+            gofmt = {
+              condition = ''
+                function()
+                  return vim.fn.executable("gofmt") == 1
+                end
+              '';
+            };
+          };
           formatters_by_ft = {
             lua = [ "stylua" ];
             javascript = [ "prettier" ];
@@ -554,6 +707,7 @@
           surround = { };
           statusline.use_icons.__raw = "vim.g.have_nerd_font";
           comment = { };
+          files = { };
           map = {
             symbols = {
               scroll_line = "█";
@@ -567,6 +721,14 @@
               show_integration_count = true;
             };
           };
+        };
+      };
+
+      undotree = {
+        enable = true;
+        settings = {
+          FocusOnToggle = true;
+          WindowLayout = 2;
         };
       };
 
