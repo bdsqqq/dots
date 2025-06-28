@@ -19,6 +19,13 @@
 
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
+
+    # niri window manager
+    niri.url = "github:sodiboo/niri-flake";
+    niri.inputs.nixpkgs.follows = "nixpkgs";
+
+    # NixOS hardware modules
+    nixos-hardware.url = "github:NixOS/nixos-hardware/master";
   };
 
   outputs = inputs@{ flake-parts, ... }:
@@ -45,7 +52,9 @@
             # Darwin-specific development tools
             inputs.nix-darwin.packages.${system}.darwin-rebuild
           ] else [
-            # Linux-specific development tools (for future NixOS support)
+            # NixOS development tools
+            nixos-rebuild
+            nixos-generators
           ]);
 
           shellHook = ''
@@ -60,7 +69,8 @@
             ${if pkgs.stdenv.isDarwin then ''
               echo "  - darwin-rebuild: System configuration management"
             '' else ''
-              echo "  - Future NixOS tools will appear here"
+              echo "  - nixos-rebuild: NixOS system management"
+              echo "  - nixos-generators: ISO/VM image generation"
             ''}
           '';
         };
@@ -124,24 +134,95 @@
           # };
         };
 
-        # Future: NixOS configurations using the same foundation
-        # nixosConfigurations = {
-        #   "server" = inputs.nixpkgs.lib.nixosSystem {
-        #     system = "x86_64-linux";
-        #     specialArgs = { 
-        #       inherit inputs;
-        #       inherit (inputs.nixpkgs.lib) systems;
-        #       pkgsFor = system: import inputs.nixpkgs {
-        #         inherit system; 
-        #         config.allowUnfree = true;
-        #       };
-        #     };
-        #     modules = [
-        #       ./hosts/server/default.nix
-        #       { _module.args = { inherit inputs; }; }
-        #     ];
-        #   };
-        # };
+        # NixOS configurations using the same foundation
+        nixosConfigurations = {
+          "windows-pc" = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = { 
+              inherit inputs;
+              inherit (inputs.nixpkgs.lib) systems;
+              pkgsFor = system: import inputs.nixpkgs {
+                inherit system; 
+                config.allowUnfree = true;
+                overlays = [ 
+                  (import ./overlays/unstable.nix inputs)
+                  inputs.niri.overlays.niri
+                ];
+              };
+            };
+            modules = [
+              # Apply overlays to the main system packages
+              {
+                nixpkgs = {
+                  config.allowUnfree = true;
+                  overlays = [ 
+                    (import ./overlays/unstable.nix inputs)
+                    inputs.niri.overlays.niri
+                  ];
+                };
+              }
+              
+              # Hardware-specific modules
+              inputs.nixos-hardware.nixosModules.common-pc-ssd
+              inputs.nixos-hardware.nixosModules.common-cpu-amd
+              inputs.nixos-hardware.nixosModules.common-gpu-nvidia-nonprime
+              
+              # niri module
+              inputs.niri.nixosModules.niri
+              
+              # Host-specific configuration
+              ./hosts/windows-pc/default.nix
+              
+              # Home Manager integration
+              inputs.home-manager.nixosModules.home-manager
+              
+              # Shared modules with enhanced specialArgs
+              {
+                _module.args = { inherit inputs; };
+              }
+            ];
+          };
+
+          # ISO image for installation
+          "windows-pc-iso" = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = { 
+              inherit inputs;
+              inherit (inputs.nixpkgs.lib) systems;
+              pkgsFor = system: import inputs.nixpkgs {
+                inherit system; 
+                config.allowUnfree = true;
+                overlays = [ 
+                  (import ./overlays/unstable.nix inputs)
+                  inputs.niri.overlays.niri
+                ];
+              };
+            };
+            modules = [
+              # Apply overlays
+              {
+                nixpkgs = {
+                  config.allowUnfree = true;
+                  overlays = [ 
+                    (import ./overlays/unstable.nix inputs)
+                    inputs.niri.overlays.niri
+                  ];
+                };
+              }
+              
+              # niri module
+              inputs.niri.nixosModules.niri
+              
+              # ISO configuration
+              ./hosts/windows-pc/iso.nix
+              
+              # Shared modules with enhanced specialArgs
+              {
+                _module.args = { inherit inputs; };
+              }
+            ];
+          };
+        };
       };
     };
 }
