@@ -6,6 +6,7 @@
     ./development.nix
     ./neovim.nix
     ./applications.nix
+    ./claude.nix
   ];
 
   # Home Manager needs a bit of information about you and the

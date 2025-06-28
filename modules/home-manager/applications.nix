@@ -15,6 +15,7 @@
     spicetify-cli
     spotify-player
     transmission_4
+    rclone
 
     # Note: Apps not available or broken on current nixpkgs:
     # - ghostty (marked as broken)

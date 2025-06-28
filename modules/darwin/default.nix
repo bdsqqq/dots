@@ -48,6 +48,7 @@
       "1password-cli"
       
       # System utilities (Mac-specific)
+      "superwhisper"         # Audio transcribing
       "blackhole-2ch"        # Audio routing
       "cleanshot"            # Screenshot tool  
       "karabiner-elements"   # Keyboard customization
@@ -79,7 +80,6 @@
       # Browsers
       # Note: zen-browser not yet available in homebrew
       # Manual install required for now
-      "qutebrowser"
       "chromium"
     ];
     
