@@ -1,4 +1,4 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, isDarwin ? false, ... }:
 
 {
   imports = [
@@ -12,12 +12,14 @@
   # Home Manager needs a bit of information about you and the
   # paths it should manage.
   home.username = "bdsqqq";
-  home.homeDirectory = "/Users/bdsqqq";
+  home.homeDirectory = if isDarwin then "/Users/bdsqqq" else "/home/bdsqqq";
 
   # sops-nix configuration for secrets management (optional)
   sops = lib.mkIf (builtins.pathExists ../../secrets.yaml) {
     # age key file location (never commit this!)
-    age.keyFile = "/Users/bdsqqq/.config/sops/age/keys.txt";
+    age.keyFile = if isDarwin 
+      then "/Users/bdsqqq/.config/sops/age/keys.txt"
+      else "/home/bdsqqq/.config/sops/age/keys.txt";
 
     # default secrets file location
     defaultSopsFile = ../../secrets.yaml;
