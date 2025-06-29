@@ -11,7 +11,7 @@
     modesetting.enable = true;
     powerManagement.enable = false;
     nvidiaSettings = true;
-    open = false;
+    open = true;  # Required for driver >= 560, RTX 3060 supports it
   };
 
   # Graphics hardware acceleration

@@ -20,7 +20,7 @@
     iina
   ] ++ lib.optionals (!isDarwin) [
     # Linux alternatives
-    dbeaver  # Alternative to TablePlus
+    dbeaver-bin  # Alternative to TablePlus
     vlc      # Alternative to iina
   ];
 }
