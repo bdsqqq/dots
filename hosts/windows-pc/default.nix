@@ -243,14 +243,14 @@
 
   # Virtualization support
   virtualisation = {
-    docker = {
-      enable = true;
-      enableNvidia = true;  # GPU support in containers
-    };
+    docker.enable = true;
     
     # KVM/QEMU support
     libvirtd.enable = true;
   };
+  
+  # NVIDIA container support
+  hardware.nvidia-container-toolkit.enable = true;
 
   # Home Manager integration
   home-manager = {

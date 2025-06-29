@@ -20,8 +20,7 @@
         theme = pkgs.nixos-grub2-theme;
         splashImage = null;  # Use theme background
         
-        # Timeout for boot menu
-        timeout = 10;
+        # Timeout for boot menu (moved to boot.loader.timeout)
         
         # Default boot entry (0 = first entry, usually NixOS)
         default = 0;
@@ -54,6 +53,9 @@
         canTouchEfiVariables = true;
         efiSysMountPoint = "/boot";
       };
+      
+      # Boot timeout
+      timeout = 10;
     };
     
     # Kernel parameters

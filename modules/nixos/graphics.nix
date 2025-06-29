@@ -30,7 +30,6 @@
 
   # Additional packages for GPU monitoring
   environment.systemPackages = with pkgs; [
-    nvidia-smi
-    nvtop
+    nvtopPackages.nvidia
   ];
 }

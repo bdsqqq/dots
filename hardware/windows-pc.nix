@@ -60,8 +60,7 @@
       powerOnBoot = true;
     };
     
-    # Audio support
-    pulseaudio.enable = false; # Using PipeWire instead
+    # Audio support - moved to services
   };
 
   # Networking
@@ -90,5 +89,8 @@
     
     # Thermal management
     thermald.enable = true;
+    
+    # Audio support
+    pulseaudio.enable = false; # Using PipeWire instead
   };
 }

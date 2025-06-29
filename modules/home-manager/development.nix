@@ -52,7 +52,10 @@
         
         export POETRY_VENV_IN_PROJECT=true
         
-        export ANTHROPIC_API_KEY="$(cat ${config.sops.secrets.anthropic_api_key.path} 2>/dev/null || echo "$ANTHROPIC_API_KEY")"
+        # Sops secrets are optional
+        ${lib.optionalString (config ? sops && config.sops ? secrets && config.sops.secrets ? anthropic_api_key) ''
+          export ANTHROPIC_API_KEY="$(cat ${config.sops.secrets.anthropic_api_key.path} 2>/dev/null || echo "$ANTHROPIC_API_KEY")"
+        ''}
       '';
     };
   };
