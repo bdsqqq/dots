@@ -266,7 +266,7 @@
       ];
       
       # Home Manager state version
-      home.stateVersion = "24.05";
+      home.stateVersion = "25.05";
     };
     
     extraSpecialArgs = {
@@ -313,5 +313,5 @@
   nixpkgs.config.allowUnfree = true;
 
   # System state version
-  system.stateVersion = "24.05";
+  system.stateVersion = "25.05";
 }
