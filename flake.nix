@@ -136,60 +136,13 @@
 
         # NixOS configurations using the same foundation
         nixosConfigurations = {
-          "windows-pc-minimal" = inputs.nixpkgs.lib.nixosSystem {
+          "windows-pc" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = { inherit inputs; };
             modules = [
               inputs.niri.nixosModules.niri
               inputs.home-manager.nixosModules.home-manager
-              ./hosts/windows-pc/minimal.nix
-            ];
-          };
-          
-          "windows-pc" = inputs.nixpkgs.lib.nixosSystem {
-            system = "x86_64-linux";
-            specialArgs = { 
-              inherit inputs;
-              inherit (inputs.nixpkgs.lib) systems;
-              pkgsFor = system: import inputs.nixpkgs {
-                inherit system; 
-                config.allowUnfree = true;
-                overlays = [ 
-                  (import ./overlays/unstable.nix inputs)
-                  inputs.niri.overlays.niri
-                ];
-              };
-            };
-            modules = [
-              # Apply overlays to the main system packages
-              {
-                nixpkgs = {
-                  config.allowUnfree = true;
-                  overlays = [ 
-                    (import ./overlays/unstable.nix inputs)
-                    inputs.niri.overlays.niri
-                  ];
-                };
-              }
-              
-              # Hardware-specific modules
-              inputs.nixos-hardware.nixosModules.common-pc-ssd
-              inputs.nixos-hardware.nixosModules.common-cpu-amd
-              inputs.nixos-hardware.nixosModules.common-gpu-nvidia-nonprime
-              
-              # niri module
-              inputs.niri.nixosModules.niri
-              
-              # Host-specific configuration
-              ./hosts/windows-pc/default.nix
-              
-              # Home Manager integration
-              inputs.home-manager.nixosModules.home-manager
-              
-              # Shared modules with enhanced specialArgs
-              {
-                _module.args = { inherit inputs; };
-              }
+              ./hosts/windows-pc/ultra-minimal.nix
             ];
           };
 

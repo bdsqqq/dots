@@ -1,4 +1,4 @@
-# Minimal NixOS configuration focused on getting niri working
+# Ultra-minimal NixOS configuration - just niri, no extras
 { pkgs, inputs, lib, config, ... }:
 
 {
@@ -9,9 +9,6 @@
     # Minimal boot and graphics
     ../../modules/nixos/boot-minimal.nix
     ../../modules/nixos/graphics-minimal.nix
-    
-    # Shared tools from your macOS setup
-    ../../modules/shared/default.nix
   ];
 
   # Basic system settings
@@ -44,37 +41,69 @@
   users.users.bdsqqq = {
     isNormalUser = true;
     extraGroups = [ "wheel" "networkmanager" ];
-    shell = pkgs.zsh;
+    shell = pkgs.bash;  # Use bash for now
   };
 
-  programs.zsh.enable = true;
-
-  # Home Manager
+  # Minimal home-manager setup
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
     
     users.bdsqqq = {
-      imports = [
-        inputs.nixvim.homeManagerModules.nixvim
-        ../../modules/home-manager/shell.nix
-        ../../modules/home-manager/development.nix
-        ../../modules/home-manager/neovim.nix
-        ../../modules/home-manager/profiles/niri.nix
-      ];
-      
       home = {
         username = "bdsqqq";
         homeDirectory = "/home/bdsqqq";
         stateVersion = "25.05";
+        
+        # Just the niri config
+        file.".config/niri/config.kdl".text = ''
+          input {
+              keyboard {
+                  xkb {
+                      layout "us"
+                  }
+              }
+          }
+          
+          layout {
+              gaps 16
+              
+              border {
+                  width 2
+              }
+          }
+          
+          binds {
+              Mod+Return { spawn "foot"; }
+              Mod+D { spawn "fuzzel"; }
+              Mod+Q { close-window; }
+              
+              Mod+H { focus-column-left; }
+              Mod+L { focus-column-right; }
+              Mod+J { focus-window-down; }
+              Mod+K { focus-window-up; }
+              
+              Mod+1 { focus-workspace 1; }
+              Mod+2 { focus-workspace 2; }
+              Mod+3 { focus-workspace 3; }
+              Mod+4 { focus-workspace 4; }
+              Mod+5 { focus-workspace 5; }
+          }
+          
+          spawn-at-startup "waybar"
+          spawn-at-startup "mako"
+        '';
+        
+        packages = with pkgs; [
+          foot
+          fuzzel
+          waybar
+          mako
+        ];
       };
     };
     
-    extraSpecialArgs = {
-      inherit inputs;
-      isNixOS = true;
-      isDarwin = false;
-    };
+    extraSpecialArgs = { inherit inputs; };
   };
 
   # Essential packages only
