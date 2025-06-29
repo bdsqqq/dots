@@ -39,32 +39,21 @@
     ];
   };
 
-  # File systems (template - will need actual UUIDs after installation)
+  # File systems
   fileSystems = {
     "/" = {
-      device = "/dev/disk/by-uuid/ROOT-UUID-HERE";
+      device = "/dev/disk/by-uuid/145260f4-1e30-4447-bd6c-2d2e373de10f";
       fsType = "ext4";
     };
 
     "/boot" = {
-      device = "/dev/disk/by-uuid/BOOT-UUID-HERE";
+      device = "/dev/disk/by-uuid/C45A-64F1";
       fsType = "vfat";
-    };
-
-    # Optional: mount point for the 1TB HDD
-    "/mnt/storage" = {
-      device = "/dev/disk/by-uuid/STORAGE-UUID-HERE";
-      fsType = "ext4";
-      options = [ "defaults" "user" "rw" ];
     };
   };
 
-  # Swap configuration
-  swapDevices = [
-    {
-      device = "/dev/disk/by-uuid/SWAP-UUID-HERE";
-    }
-  ];
+  # No swap configured
+  swapDevices = [ ];
 
   # Hardware-specific settings
   hardware = {
