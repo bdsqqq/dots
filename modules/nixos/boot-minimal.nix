@@ -4,14 +4,10 @@
 {
   boot = {
     loader = {
-      systemd-boot.enable = false;
-      grub = {
-        enable = true;
-        device = "nodev";
-        efiSupport = true;
-        useOSProber = true;
-      };
+      systemd-boot.enable = true;
+      systemd-boot.configurationLimit = 2; # Only keep 2 generations to save space
       efi.canTouchEfiVariables = true;
+      efi.efiSysMountPoint = "/boot";
     };
     
     kernelPackages = pkgs.linuxPackages_latest;
