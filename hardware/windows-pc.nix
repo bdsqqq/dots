@@ -10,34 +10,7 @@
 {
   imports = [ (modulesPath + "/installer/scan/not-detected.nix") ];
 
-  # Boot configuration
-  boot = {
-    initrd = {
-      availableKernelModules = [ 
-        "nvme" "xhci_pci" "ahci" "usbhid" "usb_storage" "sd_mod" 
-        "rtsx_pci_sdmmc" 
-      ];
-      kernelModules = [ ];
-    };
-    
-    kernelModules = [ "kvm-amd" ];
-    extraModulePackages = [ ];
-    
-    # Use stable kernel for compatibility
-    kernelPackages = pkgs.linuxPackages_6_6;
-    
-    # Enable IOMMU for AMD
-    kernelParams = [
-      "amd_iommu=on"
-      "iommu=pt"
-      # Quiet boot
-      "quiet"
-      "splash"
-      # NVIDIA-related parameters
-      "nvidia-drm.modeset=1"
-      "nvidia.NVreg_PreserveVideoMemoryAllocations=1"
-    ];
-  };
+  # Boot configuration is handled in modules/nixos/boot.nix
 
   # File systems
   fileSystems = {
