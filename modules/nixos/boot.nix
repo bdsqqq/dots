@@ -182,13 +182,5 @@
   boot.supportedFilesystems = [ "ntfs" "exfat" ];
 
   # Security considerations for dual-boot
-  security = {
-    # Allow mounting NTFS partitions
-    wrappers = {
-      mount = {
-        source = "${pkgs.util-linux}/bin/mount";
-        capabilities = "cap_dac_override,cap_sys_admin+ep";
-      };
-    };
-  };
+  # Note: mount wrapper removed due to conflicts
 }
