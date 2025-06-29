@@ -38,7 +38,7 @@
         PYTHONDONTWRITEBYTECODE = "1";
         PYTHONUNBUFFERED = "1";
       };
-      initExtra = ''
+      initContent = ''
         eval "$(/opt/homebrew/bin/brew shellenv)"
         eval "$(fnm env --use-on-cd)"
         [[ -s "$HOME/.bun/_bun" ]] && source "$HOME/.bun/_bun"

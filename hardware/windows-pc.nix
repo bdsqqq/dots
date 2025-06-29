@@ -44,7 +44,7 @@
       extraPackages = with pkgs; [
         # AMD integrated graphics support
         amdvlk
-        mesa.drivers
+        mesa
         # VAAPI support
         libvdpau-va-gl
         vaapiVdpau

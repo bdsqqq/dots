@@ -57,11 +57,17 @@
     users.bdsqqq = {
       imports = [
         inputs.nixvim.homeManagerModules.nixvim
-        ../../modules/home-manager/default.nix
+        ../../modules/home-manager/shell.nix
+        ../../modules/home-manager/development.nix
+        ../../modules/home-manager/neovim.nix
         ../../modules/home-manager/profiles/niri.nix
       ];
       
-      home.stateVersion = "25.05";
+      home = {
+        username = "bdsqqq";
+        homeDirectory = "/home/bdsqqq";
+        stateVersion = "25.05";
+      };
     };
     
     extraSpecialArgs = {

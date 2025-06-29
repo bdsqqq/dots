@@ -1,4 +1,4 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, isDarwin ? false, ... }:
 
 {
   home.packages = with pkgs; [
@@ -7,20 +7,20 @@
 
     docker
     blockbench
-    tableplus
 
-    iina
     obsidian
     prismlauncher
     spicetify-cli
     spotify-player
     transmission_4
     rclone
-
-    # Note: Apps not available or broken on current nixpkgs:
-    # - ghostty (marked as broken)
-    # - obs-studio (not available on macOS in nixpkgs)
-    # - figma-linux (Linux-specific)
-    # - linear-linear, notion-calendar (not found in nixpkgs)
+  ] ++ lib.optionals isDarwin [
+    # macOS-only apps
+    tableplus
+    iina
+  ] ++ lib.optionals (!isDarwin) [
+    # Linux alternatives
+    dbeaver  # Alternative to TablePlus
+    vlc      # Alternative to iina
   ];
 }

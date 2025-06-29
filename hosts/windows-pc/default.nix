@@ -278,6 +278,14 @@
       isDesktop = true;
       hasNvidia = true;
     };
+    
+    sharedModules = [
+      {
+        _module.args = {
+          isDarwin = false;
+        };
+      }
+    ];
   };
 
   # Nix configuration
