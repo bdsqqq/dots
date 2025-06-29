@@ -136,8 +136,8 @@
 
         # NixOS configurations using the same foundation
         nixosConfigurations = {
-          \"windows-pc-minimal\" = inputs.nixpkgs.lib.nixosSystem {
-            system = \"x86_64-linux\";
+          "windows-pc-minimal" = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
             specialArgs = { inherit inputs; };
             modules = [
               inputs.niri.nixosModules.niri
@@ -146,7 +146,7 @@
             ];
           };
           
-          \"windows-pc\" = inputs.nixpkgs.lib.nixosSystem {
+          "windows-pc" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = { 
               inherit inputs;
