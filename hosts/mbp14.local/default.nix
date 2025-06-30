@@ -21,6 +21,7 @@
     # Pass all enhanced specialArgs to home-manager modules
     extraSpecialArgs = {
       inherit inputs systems pkgsFor;
+      isDarwin = true;
     };
   };
 

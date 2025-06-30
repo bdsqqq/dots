@@ -111,7 +111,7 @@
               # Shared darwin modules (automatically available to all darwin hosts)
               {
                 # Ensure all modules receive enhanced specialArgs
-                _module.args = { inherit inputs; };
+                _module.args = { inherit inputs; isDarwin = true; };
               }
             ];
           };
@@ -146,45 +146,7 @@
             ];
           };
 
-          # ISO image for installation
-          "windows-pc-iso" = inputs.nixpkgs.lib.nixosSystem {
-            system = "x86_64-linux";
-            specialArgs = { 
-              inherit inputs;
-              inherit (inputs.nixpkgs.lib) systems;
-              pkgsFor = system: import inputs.nixpkgs {
-                inherit system; 
-                config.allowUnfree = true;
-                overlays = [ 
-                  (import ./overlays/unstable.nix inputs)
-                  inputs.niri.overlays.niri
-                ];
-              };
-            };
-            modules = [
-              # Apply overlays
-              {
-                nixpkgs = {
-                  config.allowUnfree = true;
-                  overlays = [ 
-                    (import ./overlays/unstable.nix inputs)
-                    inputs.niri.overlays.niri
-                  ];
-                };
-              }
-              
-              # niri module
-              inputs.niri.nixosModules.niri
-              
-              # ISO configuration
-              ./hosts/windows-pc/iso.nix
-              
-              # Shared modules with enhanced specialArgs
-              {
-                _module.args = { inherit inputs; };
-              }
-            ];
-          };
+
         };
       };
     };
