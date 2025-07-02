@@ -38,6 +38,14 @@
       enable = true;
       enableZshIntegration = true;
     };
+
+    zoxide = {
+      enable = true;
+      enableZshIntegration = true;
+      options = [
+        "--cmd cd"  # Replace cd with zoxide's z command
+      ];
+    };
   };
 
   # Custom files
