@@ -62,6 +62,7 @@
 
   home.packages = with pkgs; [
     lazygit
+    gh
     graphite-cli
     git-filter-repo
     exiftool
