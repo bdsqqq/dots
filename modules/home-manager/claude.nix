@@ -21,6 +21,7 @@ let
         url = "${agentGuidesCommands}/${name}";
         sha256 = hash;
       };
+      force = true;
     }
   ) claudeCommands;
 
