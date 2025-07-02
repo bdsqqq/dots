@@ -3,7 +3,6 @@
 {
   imports = [
     ./karabiner.nix
-    ./nushell.nix
   ];
   # List packages installed in system profile. To search by name, run:
   # $ nix-env -qaP | grep wget
@@ -26,7 +25,7 @@
   nix.settings.experimental-features = "nix-command flakes";
 
   # Enable alternative shell support in nix-darwin.
-  programs.nushell.enable = true;
+  # programs.fish.enable = true;
 
   # Set Git commit hash for darwin-version.
   # system.configurationRevision = self.rev or self.dirtyRev or null;
@@ -56,7 +55,7 @@
       "raycast"              # Launcher/productivity
       
       # Development tools
-      "docker"               # Container runtime
+      # "docker"               # Container runtime - has installation conflicts
       "orbstack"             # Docker alternative
       "tableplus"            # Database GUI
       "ghostty"              # Terminal
