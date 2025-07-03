@@ -44,6 +44,10 @@
       number = true;
       mouse = "a";
       showmode = false;
+      laststatus = 0;
+      ruler = false;
+      cmdheight = 0;
+      statusline = "";
       breakindent = true;
       undofile = true;
       ignorecase = true;
@@ -196,7 +200,7 @@
           function()
             local ok, avante_api = pcall(require, 'avante.api')
             if ok and avante_api.toggle then
-              avante_api.toggle.sidebar()
+              avante_api.toggle()
             else
               vim.notify('Avante not available', vim.log.levels.WARN)
             end
@@ -480,7 +484,6 @@
           gopls.enable = true;
         };
         keymaps = {
-          diagnostic = { };
           # deliberately override vim's built-in goto commands with lsp versions
           # this is intentional - we want lsp-powered navigation, not vim's text search
           # fallback to vim.lsp.buf if telescope fails to load
@@ -548,49 +551,113 @@
             {
               mode = "n";
               key = "gO";
-              action.__raw = "require('telescope.builtin').lsp_document_symbols";
+              action.__raw = ''
+                function()
+                  local ok, telescope = pcall(require, 'telescope.builtin')
+                  if ok then
+                    telescope.lsp_document_symbols()
+                  else
+                    vim.lsp.buf.document_symbol()
+                  end
+                end
+              '';
               options.desc = "lsp: open document symbols";
             }
             {
               mode = "n";
               key = "gW";
-              action.__raw = "require('telescope.builtin').lsp_dynamic_workspace_symbols";
+              action.__raw = ''
+                function()
+                  local ok, telescope = pcall(require, 'telescope.builtin')
+                  if ok then
+                    telescope.lsp_dynamic_workspace_symbols()
+                  else
+                    vim.lsp.buf.workspace_symbol()
+                  end
+                end
+              '';
               options.desc = "lsp: open workspace symbols";
             }
             # lsp namespace - duplicates of g shortcuts for discoverability
             {
               mode = "n";
               key = "<leader>ld";
-              action.__raw = "require('telescope.builtin').lsp_definitions";
+              action.__raw = ''
+                function()
+                  local ok, telescope = pcall(require, 'telescope.builtin')
+                  if ok then
+                    telescope.lsp_definitions()
+                  else
+                    vim.lsp.buf.definition()
+                  end
+                end
+              '';
               options.desc = "lsp: goto [d]efinition";
             }
             {
               mode = "n";
               key = "<leader>lr";
-              action.__raw = "require('telescope.builtin').lsp_references";
+              action.__raw = ''
+                function()
+                  local ok, telescope = pcall(require, 'telescope.builtin')
+                  if ok then
+                    telescope.lsp_references()
+                  else
+                    vim.lsp.buf.references()
+                  end
+                end
+              '';
               options.desc = "lsp: goto [r]eferences (find usages)";
             }
             {
               mode = "n";
               key = "<leader>li";
-              action.__raw = "require('telescope.builtin').lsp_implementations";
+              action.__raw = ''
+                function()
+                  local ok, telescope = pcall(require, 'telescope.builtin')
+                  if ok then
+                    telescope.lsp_implementations()
+                  else
+                    vim.lsp.buf.implementation()
+                  end
+                end
+              '';
               options.desc = "lsp: goto [i]mplementation";
             }
             {
               mode = "n";
               key = "<leader>lt";
-              action.__raw = "require('telescope.builtin').lsp_type_definitions";
+              action.__raw = ''
+                function()
+                  local ok, telescope = pcall(require, 'telescope.builtin')
+                  if ok then
+                    telescope.lsp_type_definitions()
+                  else
+                    vim.lsp.buf.type_definition()
+                  end
+                end
+              '';
               options.desc = "lsp: goto [t]ype definition";
             }
             {
               mode = "n";
               key = "<leader>ls";
-              action.__raw = "require('telescope.builtin').lsp_dynamic_workspace_symbols";
+              action.__raw = ''
+                function()
+                  local ok, telescope = pcall(require, 'telescope.builtin')
+                  if ok then
+                    telescope.lsp_dynamic_workspace_symbols()
+                  else
+                    vim.lsp.buf.workspace_symbol()
+                  end
+                end
+              '';
               options.desc = "lsp: workspace [s]ymbols";
             }
           ];
           lspBuf = {
             "<leader>ln" = {
+              mode = "n";
               action = "rename";
               desc = "lsp: re[n]ame symbol";
             };
@@ -600,18 +667,22 @@
               desc = "lsp: code [a]ctions";
             };
             "<leader>lD" = {
+              mode = "n";
               action = "declaration";
               desc = "lsp: goto [D]eclaration";
             };
             "<leader>lq" = {
+              mode = "n";
               action = "setloclist";
               desc = "lsp: diagnostic [q]uickfix list";
             };
             "<leader>lh" = {
+              mode = "n";
               action = "hover";
               desc = "lsp: [h]over documentation";
             };
             "K" = {
+              mode = "n";
               action = "hover";
               desc = "hover documentation";
             };
@@ -637,14 +708,14 @@
           # custom formatter conditions to check availability
           formatters = {
             prettier = {
-              condition = ''
+              condition.__raw = ''
                 function()
                   return vim.fn.executable("prettier") == 1
                 end
               '';
             };
             gofmt = {
-              condition = ''
+              condition.__raw = ''
                 function()
                   return vim.fn.executable("gofmt") == 1
                 end
@@ -670,6 +741,10 @@
             preset = "default";
             "<Tab>" = [ "snippet_forward" "fallback" ];
             "<S-Tab>" = [ "snippet_backward" "fallback" ];
+            "<CR>" = [ "accept" "fallback" ];
+            "<Down>" = [ "select_next" "fallback" ];
+            "<Up>" = [ "select_prev" "fallback" ];
+            "<Esc>" = [ "hide" "fallback" ];
           };
           appearance.nerd_font_variant = "mono";
           completion = {
@@ -681,7 +756,6 @@
             menu = {
               auto_show = true;
               draw.treesitter = [ "lsp" ];
-              max_items = 200;
             };
           };
           sources = {
@@ -695,7 +769,6 @@
             };
           };
           snippets.preset = "default";
-          fuzzy.use_fzf = true;
           signature.enabled = true;
         };
       };
@@ -705,7 +778,6 @@
         modules = {
           ai.n_lines = 500;
           surround = { };
-          statusline.use_icons.__raw = "vim.g.have_nerd_font";
           comment = { };
           files = { };
           map = {
@@ -853,12 +925,5 @@
         };
       };
     };
-
-    extraConfigLua = ''
-      -- mini.statusline cursor location format
-      require('mini.statusline').section_location = function()
-        return '%2l:%-2v'
-      end
-    '';
   };
 }
