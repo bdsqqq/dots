@@ -14,6 +14,8 @@
     spotify-player
     transmission_4
     rclone
+    ghostty
+    opencode
   ] ++ lib.optionals isDarwin [
     # macOS-only apps
     tableplus
