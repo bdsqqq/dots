@@ -80,6 +80,9 @@
 
   # Security
   security.rtkit.enable = true;
+  
+  # Enable dconf for theme settings
+  programs.dconf.enable = true;
 
   # Your user
   users.users.bdsqqq = {
@@ -122,11 +125,23 @@
     # Additional desktop tools
     tree
     unzip
+    
+    # Theme tools
+    dconf
+    gsettings-desktop-schemas
   ];
 
   # Enable unfree packages
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
+  
+  # Set dark theme system-wide
+  environment.sessionVariables = {
+    # Force dark theme for GTK applications
+    GTK_THEME = "Adwaita:dark";
+    # Set color scheme preference
+    COLOR_SCHEME = "prefer-dark";
+  };
   
   # Automatic garbage collection
   nix.gc = {
