@@ -55,16 +55,11 @@
     # Target applications - you can disable specific apps if needed
     targets = {
       # Terminal applications
-      alacritty.enable = true;
       foot.enable = true;
       
       # Editors
       vim.enable = true;
       neovim.enable = true;
-      
-      # Desktop environments (NixOS only)
-      gnome.enable = lib.mkDefault false;
-      kde.enable = lib.mkDefault false;
       
       # Browsers
       firefox.enable = true;
