@@ -121,13 +121,12 @@
       scrolloff = 10;
       confirm = true;
       hlsearch = true;
-      relativenumber = true;
       # folding settings for nvim-ufo
       foldcolumn = "0";
       foldlevel = 99;
       foldlevelstart = 99;
       foldenable = true;
-      statuscolumn = "%{foldclosed(v:lnum) > 0 ? '>  ' : v:lnum . ' '}";
+      statuscolumn = "%{foldclosed(v:lnum) > 0 ? '>  ' : ''}%{foldclosed(v:lnum) == -1 ? v:lnum . ' ' : ''}"; # replace line number with ">" to signify closed fold.
     };
 
     # global keymaps (truly global + plugins without keymap support)
@@ -899,10 +898,12 @@
       mini = {
         enable = true;
         modules = {
+          icons = {};
           surround = { };
           comment = { };
           files = { };
         };
+        mockDevIcons = true;
       };
 
       undotree = {
