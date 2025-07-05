@@ -3,27 +3,12 @@
     enable = true;
 
     extraPlugins = [
-      (pkgs.vimUtils.buildVimPlugin {
-        name = "vesper.nvim";
-        src = pkgs.fetchFromGitHub {
-          owner = "datsfilipe";
-          repo = "vesper.nvim";
-          rev = "a9b6893e4aa2f37b85ac17a2e58a0b37d1bb3db3";
-          sha256 = "sha256-Tx621yTfTu3dLctXKPaJy6rZn2YvWP8eFAJoVvEeR/c=";
-        };
-        doCheck = false;
-      })
+      # vesper theme removed due to 404 error
     ];
 
     extraConfigLuaPre = ''
-      -- vesper colorscheme setup
-      require('vesper').setup {
-        transparent = true,
-        styles = {
-          comments = { italic = false },
-        },
-      }
-      vim.cmd.colorscheme('vesper')
+      -- use default colorscheme for now
+      vim.cmd.colorscheme('default')
 
       -- floating terminal function
       local function open_floating_term(cmd)
