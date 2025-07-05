@@ -110,6 +110,9 @@
                   overlays = [ (import ./overlays/unstable.nix inputs) ];
                 };
               }
+              # Stylix theming
+              stylix.darwinModules.stylix
+              
               # Host-specific configuration
               ./hosts/mbp14.local/default.nix
 

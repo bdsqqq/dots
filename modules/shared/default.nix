@@ -2,6 +2,9 @@
 { config, pkgs, lib, ... }:
 
 {
+  imports = [
+    ./stylix.nix
+  ];
   # Common Nix settings
   nix = {
     settings = {
