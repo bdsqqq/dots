@@ -24,11 +24,16 @@
     niri.url = "github:sodiboo/niri-flake";
     niri.inputs.nixpkgs.follows = "nixpkgs";
 
+    stylix = {
+      url = "github:danth/stylix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # NixOS hardware modules
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
   };
 
-  outputs = inputs@{ flake-parts, ... }:
+  outputs = inputs@{ flake-parts, stylix, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       # Multi-system support for cross-platform compatibility
       systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
@@ -140,6 +145,7 @@
             system = "x86_64-linux";
             specialArgs = { inherit inputs; };
             modules = [
+              stylix.nixosModules.stylix
               inputs.niri.nixosModules.niri
               inputs.home-manager.nixosModules.home-manager
               ./hosts/desktop/default.nix
