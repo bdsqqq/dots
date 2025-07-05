@@ -4,6 +4,7 @@
 {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
+    ../../modules/shared/default.nix
   ];
 
   # Hardware configuration (inline)
@@ -97,43 +98,33 @@
     
     users.bdsqqq = {
       imports = [
+        inputs.nixvim.homeManagerModules.nixvim
+        inputs.sops-nix.homeManagerModules.sops
+        ../../modules/home-manager/default.nix
         ../../modules/home-manager/profiles/niri.nix
-        ../../modules/home-manager/applications.nix
-        ../../modules/home-manager/development.nix
-        ../../modules/home-manager/neovim.nix
-        ../../modules/home-manager/shell.nix
       ];
-      
-      home = {
-        username = "bdsqqq";
-        homeDirectory = "/home/bdsqqq";
-        stateVersion = "25.05";
-      };
     };
     
-    extraSpecialArgs = { inherit inputs; };
+    extraSpecialArgs = { 
+      inherit inputs; 
+      isDarwin = false;
+    };
   };
 
-  # System packages
+  # Additional system packages specific to desktop
   environment.systemPackages = with pkgs; [
-    # Essential tools
-    vim
-    git
-    curl
-    wget
-    htop
-    tree
-    unzip
-    
     # Network tools
     networkmanagerapplet
     
     # File manager
     nautilus
+    
+    # Additional desktop tools
+    tree
+    unzip
   ];
 
-  # Enable flakes and unfree packages
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  # Enable unfree packages
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
   
