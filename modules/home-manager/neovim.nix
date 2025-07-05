@@ -62,9 +62,26 @@
         vim.cmd("startinsert")
       end
 
-      -- make function globally available
-      _G.open_floating_term = open_floating_term
-    '';
+       -- make function globally available
+       _G.open_floating_term = open_floating_term
+       
+       -- custom fold column to show only simple indicators
+       _G.MyFoldText = function()
+         return vim.fn.foldtext()
+       end
+       
+       -- set muted color for fold column using comment color
+       vim.api.nvim_create_autocmd('ColorScheme', {
+         callback = function()
+           local comment_hl = vim.api.nvim_get_hl(0, { name = 'Comment' })
+           vim.api.nvim_set_hl(0, 'FoldColumn', { fg = comment_hl.fg })
+         end
+       })
+       -- set initial color
+       vim.defer_fn(function()
+         local comment_hl = vim.api.nvim_get_hl(0, { name = 'Comment' })
+         vim.api.nvim_set_hl(0, 'FoldColumn', { fg = comment_hl.fg })
+       end, 100)    '';
 
     globals = {
       mapleader = " ";
@@ -98,13 +115,19 @@
       splitright = true;
       splitbelow = true;
       list = true;
-      listchars.__raw = "{ tab = '» ', trail = '·', nbsp = '␣' }";
+      listchars.__raw = "{ tab = '» ', trail = '·', nbsp = '␣',   }";
       inccommand = "split";
       cursorline = false;
       scrolloff = 10;
       confirm = true;
       hlsearch = true;
       relativenumber = true;
+      # folding settings for nvim-ufo
+      foldcolumn = "0";
+      foldlevel = 99;
+      foldlevelstart = 99;
+      foldenable = true;
+      statuscolumn = "%{foldclosed(v:lnum) > 0 ? '>  ' : v:lnum . ' '}";
     };
 
     # global keymaps (truly global + plugins without keymap support)
@@ -157,17 +180,6 @@
           end
         '';
         options.desc = "[f]ormat buffer";
-      }
-      # mini.map toggle (no built-in keymap support)
-      {
-        mode = "n";
-        key = "<leader>tm";
-        action.__raw = ''
-          function()
-            require('mini.map').toggle()
-          end
-        '';
-        options.desc = "[t]oggle [m]inimap";
       }
       # custom telescope keymaps (require __raw)
       {
@@ -288,18 +300,47 @@
         action = "<cmd>set rnu!<CR>";
         options.desc = "[t]oggle [r]elative numbers";
       }
-      # floating lazygit terminal
-      {
-        mode = "n";
-        key = "<leader>tg";
-        action.__raw = ''
-          function()
-            _G.open_floating_term('lazygit')
-          end
-        '';
-        options.desc = "[t]oggle [g]it (lazygit)";
-      }
-    ];
+       # floating lazygit terminal
+       {
+         mode = "n";
+         key = "<leader>tg";
+         action.__raw = ''
+           function()
+             _G.open_floating_term('lazygit')
+           end
+         '';
+         options.desc = "[t]oggle [g]it (lazygit)";
+       }
+       # fold toggle when pressing left at first column
+       {
+         mode = "n";
+         key = "<Left>";
+         action.__raw = ''
+           function()
+             if vim.fn.col('.') == 1 then
+               vim.cmd('normal! za')
+             else
+               vim.cmd('normal! h')
+             end
+           end
+         '';
+         options.desc = "toggle fold at first column, otherwise move left";
+       }
+       # fold toggle when pressing h at first column
+       {
+         mode = "n";
+         key = "h";
+         action.__raw = ''
+           function()
+             if vim.fn.col('.') == 1 then
+               vim.cmd('normal! za')
+             else
+               vim.cmd('normal! h')
+             end
+           end
+         '';
+         options.desc = "toggle fold at first column, otherwise move left";
+       }    ];
 
     autoGroups = {
       kickstart-highlight-yank.clear = true;
@@ -348,9 +389,39 @@
     ];
 
     plugins = {
-      web-devicons.enable = true;
-      sleuth.enable = true;
-      fidget.enable = true;
+      nvim-ufo = {
+        enable = true;
+        settings = {
+          provider_selector = ''
+            function(bufnr, filetype, buftype)
+              return {'treesitter', 'indent'}
+            end
+          '';
+          fold_virt_text_handler = ''
+            function(virtText, lnum, endLnum, width, truncate)
+              local newVirtText = {}
+              local curWidth = 0
+              for _, chunk in ipairs(virtText) do
+                local chunkText = chunk[1]
+                local chunkWidth = vim.fn.strdisplaywidth(chunkText)
+                if width > curWidth + chunkWidth then
+                  table.insert(newVirtText, chunk)
+                else
+                  chunkText = truncate(chunkText, width - curWidth)
+                  local hlGroup = chunk[2]
+                  table.insert(newVirtText, {chunkText, hlGroup})
+                  break
+                end
+                curWidth = curWidth + chunkWidth
+              end
+              return newVirtText
+            end
+          '';
+        };
+      };
+      sleuth.enable = true;     # automatic tab-width based on heuristics.
+      fidget.enable = true;     # notifications
+      autoclose.enable = true;  # autopairs brackets and such
       lazydev = {
         enable = true;
         settings = {
@@ -828,31 +899,17 @@
       mini = {
         enable = true;
         modules = {
-          ai.n_lines = 500;
           surround = { };
           comment = { };
           files = { };
-          map = {
-            symbols = {
-              scroll_line = "█";
-              scroll_view = "┃";
-            };
-            window = {
-              focusable = false;
-              side = "right";
-              width = 10;
-              winblend = 25;
-              show_integration_count = true;
-            };
-          };
         };
       };
 
       undotree = {
         enable = true;
         settings = {
+          FloatDiff = true;
           FocusOnToggle = true;
-          WindowLayout = 2;
         };
       };
 
@@ -906,17 +963,9 @@
                 max_tokens = 4096;
               };
             };
-            openai = {
-              endpoint = "https://api.openai.com/v1";
-              model = "gpt-4o";
-              extra_request_body = {
-                temperature = 0;
-                max_tokens = 4096;
-              };
-            };
           };
           behaviour = {
-            auto_suggestions = false;
+            auto_suggestions = true;
             auto_set_highlight_group = true;
             auto_set_keymaps = true;
             auto_apply_diff_after_generation = false;
