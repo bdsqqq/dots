@@ -104,5 +104,7 @@
     asciiquarium-transparent
     fastfetch
     claude-code
+    opencode
+    ghostty
   ];
 }
