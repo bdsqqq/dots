@@ -136,7 +136,15 @@
 
         # NixOS configurations using the same foundation
         nixosConfigurations = {
-          # Add your NixOS configurations here
+          "desktop" = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = { inherit inputs; };
+            modules = [
+              inputs.niri.nixosModules.niri
+              inputs.home-manager.nixosModules.home-manager
+              ./hosts/desktop/default.nix
+            ];
+          };
         };
       };
     };
