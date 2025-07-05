@@ -16,6 +16,7 @@
     rclone
     ghostty
     opencode
+    firefox
   ] ++ lib.optionals isDarwin [
     # macOS-only apps
     tableplus
