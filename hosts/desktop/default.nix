@@ -12,6 +12,10 @@
   boot.initrd.kernelModules = [ ];
   boot.kernelModules = [ "kvm-amd" ];
   boot.extraModulePackages = [ ];
+  
+  # NVIDIA kernel modules
+  boot.kernelParams = [ "nvidia-drm.modeset=1" ];
+  boot.blacklistedKernelModules = [ "nouveau" ];
 
   fileSystems."/" = {
     device = "/dev/disk/by-uuid/3deeb152-c556-4483-ac8b-c063b46065b7";
@@ -50,6 +54,19 @@
     graphics = {
       enable = true;
       enable32Bit = true;
+      extraPackages = with pkgs; [
+        nvidia-vaapi-driver
+        vaapiVdpau
+        libvdpau-va-gl
+      ];
+    };
+    nvidia = {
+      modesetting.enable = true;
+      powerManagement.enable = false;
+      powerManagement.finegrained = false;
+      open = false;
+      nvidiaSettings = true;
+      package = config.boot.kernelPackages.nvidiaPackages.stable;
     };
     bluetooth = {
       enable = true;
@@ -83,6 +100,9 @@
   
   # Enable dconf for theme settings
   programs.dconf.enable = true;
+  
+  # NVIDIA services
+  services.xserver.videoDrivers = [ "nvidia" ];
 
   # Your user
   users.users.bdsqqq = {
@@ -129,18 +149,34 @@
     # Theme tools
     dconf
     gsettings-desktop-schemas
+    
+    # NVIDIA tools
+    nvidia-settings
+    nvtopPackages.nvidia
+    
+    # Graphics and gaming support
+    vulkan-tools
+    vulkan-loader
+    vulkan-validation-layers
+    mesa
   ];
 
   # Enable unfree packages
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
   
-  # Set dark theme system-wide
+  # Set dark theme system-wide and NVIDIA variables
   environment.sessionVariables = {
     # Force dark theme for GTK applications
     GTK_THEME = "Adwaita:dark";
     # Set color scheme preference
     COLOR_SCHEME = "prefer-dark";
+    # NVIDIA Wayland support
+    LIBVA_DRIVER_NAME = "nvidia";
+    XDG_SESSION_TYPE = "wayland";
+    GBM_BACKEND = "nvidia-drm";
+    __GLX_VENDOR_LIBRARY_NAME = "nvidia";
+    WLR_NO_HARDWARE_CURSORS = "1";
   };
   
   # Automatic garbage collection
