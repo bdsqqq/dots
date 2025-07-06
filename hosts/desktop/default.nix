@@ -105,7 +105,7 @@
   services.xserver = {
     enable = true;
     videoDrivers = [ "nvidia" ];
-    displayManager.startx.enable = true;
+    # Don't enable display manager - we use greetd for niri
   };
 
   # Your user
@@ -163,6 +163,13 @@
     # Display management
     wdisplays  # Wayland display configurator
     wlr-randr  # Command-line display management for wlroots
+  ];
+
+  # Fonts
+  fonts.packages = with pkgs; [
+    nerd-fonts.jetbrains-mono
+    nerd-fonts.fira-code
+    nerd-fonts.iosevka
   ];
 
   # Enable unfree packages
