@@ -105,6 +105,7 @@
   services.xserver = {
     enable = true;
     videoDrivers = [ "nvidia" ];
+    displayManager.startx.enable = true;
   };
 
   # Your user
@@ -180,6 +181,8 @@
     GBM_BACKEND = "nvidia-drm";
     __GLX_VENDOR_LIBRARY_NAME = "nvidia";
     WLR_NO_HARDWARE_CURSORS = "1";
+    # X11 display for applications that need it
+    DISPLAY = ":0";
   };
   
   # Automatic garbage collection
