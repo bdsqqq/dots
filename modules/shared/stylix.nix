@@ -5,21 +5,21 @@
   stylix = {
     enable = true;
     
-    # Base16 color scheme - you can change this to any base16 scheme
-    base16Scheme = "${pkgs.base16-schemes}/share/themes/gruvbox-dark-medium.yaml";
+    # E-ink color scheme - minimal grayscale theme
+    base16Scheme = ./e-ink-scheme.yaml;  # Change to ./e-ink-light-scheme.yaml for light theme
     
     # You can also use a custom image to generate colors
     # image = ./path/to/your/wallpaper.jpg;
     
-    # Opacity settings
+    # Opacity settings - reduced for e-ink aesthetic
     opacity = {
       applications = 1.0;
-      terminal = 0.9;
+      terminal = 1.0;  # Solid background for e-ink look
       desktop = 1.0;
       popups = 1.0;
     };
     
     # Polarity (dark/light theme)
-    polarity = "dark";
+    polarity = "dark";  # Change to "light" if using e-ink-light-scheme.yaml
   };
 }

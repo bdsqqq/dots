@@ -1,0 +1,18 @@
+scheme: "E-ink Light"
+author: "e-ink-colorscheme (adapted for Stylix)"
+base00: "CCCCCC" # Default Background (light)
+base01: "C2C2C2" # Lighter Background (for status bars, line numbers)
+base02: "B8B8B8" # Selection Background
+base03: "AEAEAE" # Comments, Invisibles, Line Highlighting
+base04: "9A9A9A" # Dark Foreground (for status bars)
+base05: "868686" # Default Foreground, Caret, Delimiters, Operators
+base06: "5E5E5E" # Light Foreground
+base07: "333333" # Light Background
+base08: "4A4A4A" # Variables, XML Tags, Markup Link Text
+base09: "5E5E5E" # Integers, Boolean, Constants, XML Attributes
+base0A: "727272" # Classes, Markup Bold, Search Text Background
+base0B: "7C7C7C" # Strings, Inherited Class, Markup Code
+base0C: "868686" # Support, Regular Expressions, Escape Characters
+base0D: "9A9A9A" # Functions, Methods, Attribute IDs, Headings
+base0E: "AEAEAE" # Keywords, Storage, Selector, Markup Italic
+base0F: "B8B8B8" # Deprecated, Opening/Closing Embedded Language Tags
