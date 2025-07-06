@@ -62,7 +62,7 @@
     };
     nvidia = {
       modesetting.enable = true;
-      powerManagement.enable = false;
+      powerManagement.enable = true;
       powerManagement.finegrained = false;
       open = false;
       nvidiaSettings = true;
@@ -168,7 +168,7 @@
   # Enable unfree packages
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
-  
+
   # Set dark theme system-wide and NVIDIA variables
   environment.sessionVariables = {
     # Force dark theme for GTK applications
