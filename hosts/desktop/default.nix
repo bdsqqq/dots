@@ -101,8 +101,11 @@
   # Enable dconf for theme settings
   programs.dconf.enable = true;
   
-  # NVIDIA services
-  services.xserver.videoDrivers = [ "nvidia" ];
+  # X server configuration (needed for Steam and some applications)
+  services.xserver = {
+    enable = true;
+    videoDrivers = [ "nvidia" ];
+  };
 
   # Your user
   users.users.bdsqqq = {
@@ -155,6 +158,11 @@
     vulkan-loader
     vulkan-validation-layers
     mesa
+    
+    # Display management
+    wdisplays  # Wayland display configurator
+    wlr-randr  # Command-line display management for wlroots
+    nvidia-settings  # NVIDIA control panel
   ];
 
   # Enable unfree packages
