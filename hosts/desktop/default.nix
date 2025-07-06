@@ -150,10 +150,6 @@
     dconf
     gsettings-desktop-schemas
     
-    # NVIDIA tools
-    nvidia-settings
-    nvtopPackages.nvidia
-    
     # Graphics and gaming support
     vulkan-tools
     vulkan-loader
