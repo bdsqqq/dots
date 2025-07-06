@@ -567,7 +567,8 @@
         "nixpkgs-unstable": "nixpkgs-unstable",
         "nixvim": "nixvim",
         "sops-nix": "sops-nix",
-        "stylix": "stylix"
+        "stylix": "stylix",
+        "textfox": "textfox"
       }
     },
     "sops-nix": {
@@ -669,6 +670,22 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
+        "type": "github"
+      }
+    },
+    "textfox": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1751562345,
+        "narHash": "sha256-6PiU3y2JniuAkHNsLdUgZGTq5LpgkxCGS/1ehr+ZMjc=",
+        "owner": "adriankarlen",
+        "repo": "textfox",
+        "rev": "b981cdb7f8c38d082ca1646855ec4192c9e1d5dd",
+        "type": "github"
+      },
+      "original": {
+        "owner": "adriankarlen",
+        "repo": "textfox",
         "type": "github"
       }
     },

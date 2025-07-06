@@ -1,6 +1,32 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, inputs, ... }:
 
 {
+  # Copy textfox CSS files to Firefox profile
+  home.file = {
+    ".mozilla/firefox/default/chrome/browser.css".source = "${inputs.textfox}/chrome/browser.css";
+    ".mozilla/firefox/default/chrome/findbar.css".source = "${inputs.textfox}/chrome/findbar.css";
+    ".mozilla/firefox/default/chrome/icons.css".source = "${inputs.textfox}/chrome/icons.css";
+    ".mozilla/firefox/default/chrome/menus.css".source = "${inputs.textfox}/chrome/menus.css";
+    ".mozilla/firefox/default/chrome/navbar.css".source = "${inputs.textfox}/chrome/navbar.css";
+    ".mozilla/firefox/default/chrome/overwrites.css".source = "${inputs.textfox}/chrome/overwrites.css";
+    ".mozilla/firefox/default/chrome/sidebar.css".source = "${inputs.textfox}/chrome/sidebar.css";
+    ".mozilla/firefox/default/chrome/tabs.css".source = "${inputs.textfox}/chrome/tabs.css";
+    ".mozilla/firefox/default/chrome/urlbar.css".source = "${inputs.textfox}/chrome/urlbar.css";
+    ".mozilla/firefox/default/chrome/defaults.css".source = "${inputs.textfox}/chrome/defaults.css";
+    ".mozilla/firefox/default/chrome/config.css".text = ''
+      /* E-ink theme config */
+      :root {
+        --tf-font-family: "Inter", system-ui, sans-serif;
+        --tf-font-size: 13px;
+        --tf-text-transform: lowercase;
+        --tf-display-titles: none; /* Hide section titles like "navbar", "main" etc. */
+        --tf-border-width: 0px; /* Remove all borders */
+        --tf-border: transparent; /* Make borders transparent */
+        --tf-rounding: 4px; /* Keep slight rounding for aesthetics */
+      }
+    '';
+  };
+
   programs.firefox = {
     enable = true;
     profiles.default = {
@@ -8,9 +34,7 @@
       isDefault = true;
       
       # Textfox theme with e-ink colors
-      userChrome = ''
-        /* Import textfox theme */
-        @import url("https://raw.githubusercontent.com/adriankarlen/textfox/main/chrome/userChrome.css");
+      userChrome = builtins.readFile "${inputs.textfox}/chrome/userChrome.css" + ''
         
         /* E-ink color scheme overrides */
         :root {
@@ -39,14 +63,33 @@
         }
         
         #urlbar {
-          border: 1px solid var(--tf-border) !important;
+          border: none !important;
           border-radius: 4px !important;
+        }
+        
+        /* Hide section borders and labels */
+        .section-header,
+        .section-name,
+        .section-title,
+        .preferences-pane-header,
+        .pane-header,
+        h1, h2, h3, h4, h5, h6 {
+          display: none !important;
+        }
+        
+        /* Hide category labels in preferences */
+        #categories .category[data-category] > .category-name,
+        .category-name,
+        .subcategory > h2,
+        .subcategory > label,
+        .groupbox-title,
+        .groupbox > caption {
+          display: none !important;
         }
       '';
       
-      userContent = ''
-        /* Import textfox content styles */
-        @import url("https://raw.githubusercontent.com/adriankarlen/textfox/main/chrome/userContent.css");
+      
+      userContent = builtins.readFile "${inputs.textfox}/chrome/userContent.css" + ''
         
         /* Apply e-ink colors to web content backgrounds */
         @-moz-document url-prefix(about:) {
@@ -58,6 +101,9 @@
       '';
       
       settings = {
+        # Enable userChrome.css
+        "toolkit.legacyUserProfileCustomizations.stylesheets" = true;
+        
         # Privacy and performance
         "privacy.trackingprotection.enabled" = true;
         "privacy.donottrackheader.enabled" = true;

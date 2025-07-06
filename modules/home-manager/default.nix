@@ -10,6 +10,7 @@
     ./waybar.nix
     ./notifications.nix
     ./launcher.nix
+    ./firefox.nix
     ./claude.nix
   ];
 

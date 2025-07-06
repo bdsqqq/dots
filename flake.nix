@@ -20,6 +20,9 @@
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
 
+    textfox.url = "github:adriankarlen/textfox";
+    textfox.flake = false;
+
     # niri window manager
     niri.url = "github:sodiboo/niri-flake";
     niri.inputs.nixpkgs.follows = "nixpkgs";

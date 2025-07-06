@@ -1,0 +1,32 @@
+/*    __            __  ____            */
+/*   / /____  _  __/ /_/ __/___  _  __  */
+/*  / __/ _ \| |/_/ __/ /_/ __ \| |/_/  */
+/* / /_/  __/>  </ /_/ __/ /_/ />  <    */
+/* \__/\___/_/|_|\__/_/  \____/_/|_|    */
+
+@import url("browser.css");
+@import url("findbar.css");
+@import url("icons.css");
+@import url("menus.css");
+@import url("navbar.css");
+@import url("overwrites.css");
+@import url("sidebar.css");
+@import url("tabs.css");
+@import url("urlbar.css");
+
+/* configurations - DO NOT CHANGE ORDER */
+@import url("defaults.css");
+@import url("config.css");
+
+* {
+  font-family: var(--tf-font-family);
+  font-size: var(--tf-font-size);
+}
+
+body {
+  background-color: var(--tf-bg);
+}
+
+::placeholder {
+  text-transform: var(--tf-text-transform);
+}

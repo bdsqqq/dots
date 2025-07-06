@@ -33,12 +33,13 @@
       window-rules = [
         {
           # All windows: no decorations, rounded corners
-          geometry-corner-radius = let r = 4.0; in {
-            top-left = r;
-            top-right = r; 
-            bottom-left = r;
-            bottom-right = r;
+          geometry-corner-radius = {
+            top-left = 8.0;
+            top-right = 8.0;
+            bottom-left = 8.0;
+            bottom-right = 8.0;
           };
+          clip-to-geometry = true;
           opacity = 0.95;  # Subtle transparency
         }
         {
@@ -80,7 +81,6 @@
       };
       
       spawn-at-startup = [
-        { command = [ "waybar" ]; }
         { command = [ "mako" ]; }
       ];
     };

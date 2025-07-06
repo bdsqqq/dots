@@ -76,6 +76,9 @@
 
   # Enable niri window manager
   programs.niri.enable = true;
+  
+  # Enable Tailscale VPN
+  services.tailscale.enable = true;
 
   # Display manager
   services.greetd = {
