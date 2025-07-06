@@ -17,6 +17,7 @@
     ghostty
     opencode
     firefox
+    steam
   ] ++ lib.optionals isDarwin [
     # macOS-only apps
     tableplus
