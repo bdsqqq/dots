@@ -1,6 +1,6 @@
 scheme: "E-ink"
 author: "e-ink-colorscheme (adapted for Stylix)"
-base00: "333333" # Default Background (dark)
+base00: "101010" # Default Background (dark)
 base01: "3D3D3D" # Lighter Background (for status bars, line numbers)
 base02: "4A4A4A" # Selection Background
 base03: "5E5E5E" # Comments, Invisibles, Line Highlighting

@@ -1,3 +1,6 @@
 [submodule "config/karabiner"]
 	path = config/karabiner
 	url = git@github.com:bdsqqq/karabiner.git
+[submodule "config/textfox"]
+	path = config/textfox
+	url = https://github.com/adriankarlen/textfox.git

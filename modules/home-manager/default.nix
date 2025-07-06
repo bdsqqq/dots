@@ -6,6 +6,10 @@
     ./development.nix
     ./neovim.nix
     ./applications.nix
+    ./terminals.nix
+    ./waybar.nix
+    ./notifications.nix
+    ./launcher.nix
     ./claude.nix
   ];
 
