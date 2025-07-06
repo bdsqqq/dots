@@ -162,7 +162,6 @@
     # Display management
     wdisplays  # Wayland display configurator
     wlr-randr  # Command-line display management for wlroots
-    nvidia-settings  # NVIDIA control panel
   ];
 
   # Enable unfree packages
