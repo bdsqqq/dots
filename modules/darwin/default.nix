@@ -3,6 +3,7 @@
 {
   imports = [
     ./karabiner.nix
+    ../shared/default.nix
   ];
   # List packages installed in system profile. To search by name, run:
   # $ nix-env -qaP | grep wget
@@ -58,7 +59,7 @@
       # "docker"               # Container runtime - has installation conflicts
       "orbstack"             # Docker alternative
       "tableplus"            # Database GUI
-      "ghostty"              # Terminal
+      "ghostty"              # Terminal - nixpkgs version broken on Darwin
       
       # Creative/Media tools
       "blockbench"           # 3D model editor

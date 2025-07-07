@@ -11,7 +11,7 @@
     obsidian
     prismlauncher
     spicetify-cli
-    spotify-player
+    # spotify-player # Configured in development.nix via programs.spotify-player
     transmission_4
     rclone
     opencode
@@ -20,10 +20,10 @@
     # macOS-only apps
     tableplus
     iina
-    # Use macOS native Terminal.app or iTerm2 instead of ghostty on Darwin
+    # ghostty unavailable on Darwin in nixpkgs - use homebrew version
   ] ++ lib.optionals (!isDarwin) [
     # Linux-specific apps
-    ghostty  # Terminal emulator (broken on Darwin)
+    ghostty  # Terminal emulator
     steam    # Gaming platform (Linux-specific in nixpkgs)
     dbeaver-bin  # Alternative to TablePlus
     vlc      # Alternative to iina

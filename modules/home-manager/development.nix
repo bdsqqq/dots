@@ -105,7 +105,6 @@
     fastfetch
     claude-code
     opencode
-  ] ++ lib.optionals (!isDarwin) [
-    ghostty  # Terminal emulator (broken on Darwin)
   ];
+  # Note: ghostty is now configured in applications.nix for both platforms
 }
