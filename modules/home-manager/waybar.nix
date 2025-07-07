@@ -17,9 +17,9 @@
         margin-right = 8;
         
         # Modules layout - Nothing/Bauhaus inspired simplicity
-        modules-left = [ "custom/launcher" "niri/workspaces" ];
+        modules-left = [ "custom/launcher" "niri/workspaces" "custom/system-monitor" ];
         modules-center = [ "niri/window" ];
-        modules-right = [ "pulseaudio" "network" "battery" "clock" "custom/power" ];
+        modules-right = [ "custom/bluetooth" "pulseaudio" "network" "battery" "custom/notification" "clock" "custom/power" ];
         
         # Module configurations
         "custom/launcher" = {
@@ -71,8 +71,9 @@
             car = "";
             default = [ "󰕿" "󰖀" "󰕾" ];
           };
-          tooltip-format = "{desc}";
+          tooltip-format = "{desc} • Right-click for output menu";
           on-click = "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle";
+          on-click-right = "~/.config/waybar/scripts/audio-menu.sh";
           on-scroll-up = "wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%+";
           on-scroll-down = "wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%-";
         };
@@ -107,7 +108,36 @@
         "custom/power" = {
           format = "⏻";
           tooltip-format = "Power Menu";
-          on-click = "fuzzel"; # Replace with power menu later
+          on-click = "~/.config/waybar/scripts/power-menu.sh";
+        };
+        
+        # Bluetooth widget - elegant device management
+        "custom/bluetooth" = {
+          format = "{}";
+          interval = 5;
+          exec = "~/.config/waybar/scripts/bluetooth.sh";
+          tooltip-format = "Bluetooth: Click to toggle";
+          on-click = "~/.config/waybar/scripts/bluetooth-toggle.sh";
+          on-click-right = "~/.config/waybar/scripts/bluetooth-menu.sh";
+        };
+        
+        # Enhanced notification widget
+        "custom/notification" = {
+          format = "{}";
+          interval = 1;
+          exec = "~/.config/waybar/scripts/notifications.sh";
+          tooltip-format = "Notifications: {} active";
+          on-click = "makoctl dismiss --all";
+          on-click-right = "makoctl restore";
+        };
+        
+        # System monitor widget - CPU, Memory, Temperature
+        "custom/system-monitor" = {
+          format = "{}";
+          interval = 2;
+          exec = "~/.config/waybar/scripts/system-monitor.sh";
+          tooltip-format = "System: Click for details";
+          on-click = "~/.config/waybar/scripts/system-details.sh";
         };
       };
     };
@@ -158,10 +188,13 @@
       /* Individual modules */
       #custom-launcher,
       #workspaces,
+      #custom-system-monitor,
       #window,
+      #custom-bluetooth,
       #pulseaudio,
       #network,
       #battery,
+      #custom-notification,
       #clock,
       #custom-power {
         padding: 6px 8px;
@@ -216,12 +249,48 @@
       }
       
       /* System modules */
+      #custom-bluetooth,
       #pulseaudio,
       #network,
-      #battery {
+      #battery,
+      #custom-notification {
         font-size: 10px;
         color: #868686;
         min-width: 24px;
+      }
+      
+      /* Bluetooth widget */
+      #custom-bluetooth {
+        color: #868686;
+      }
+      
+      #custom-bluetooth.connected {
+        color: #c2c2c2;
+      }
+      
+      #custom-bluetooth.disconnected {
+        color: #5e5e5e;
+      }
+      
+      /* Notification widget */
+      #custom-notification {
+        color: #868686;
+      }
+      
+      #custom-notification.has-notifications {
+        color: #c2c2c2;
+      }
+      
+      /* System monitor widget */
+      #custom-system-monitor {
+        color: #868686;
+        font-size: 9px;
+        padding: 6px 12px;
+        letter-spacing: 0.5px;
+      }
+      
+      #custom-system-monitor.high-usage {
+        color: #c2c2c2;
       }
       
       #pulseaudio.muted {
@@ -262,9 +331,12 @@
       }
       
       /* Hover effects for all interactive elements */
+      #custom-system-monitor:hover,
+      #custom-bluetooth:hover,
       #pulseaudio:hover,
       #network:hover,
-      #battery:hover {
+      #battery:hover,
+      #custom-notification:hover {
         color: #aeaeae;
         transition: color 150ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
       }

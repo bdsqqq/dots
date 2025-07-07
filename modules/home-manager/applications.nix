@@ -26,5 +26,6 @@
     # Linux alternatives
     dbeaver-bin  # Alternative to TablePlus
     vlc      # Alternative to iina
+    xwayland-satellite  # For running X11 apps like Steam on Niri
   ];
 }

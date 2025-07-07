@@ -82,7 +82,13 @@
       
       spawn-at-startup = [
         { command = [ "mako" ]; }
+        { command = [ "xwayland-satellite" ]; }
       ];
+      
+      # Environment variables for X11 applications
+      environment = {
+        DISPLAY = ":0";
+      };
     };
   };
 

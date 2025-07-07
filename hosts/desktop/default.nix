@@ -28,6 +28,12 @@
     options = [ "fmask=0077" "dmask=0077" ];
   };
 
+  fileSystems."/mnt/ssd" = {
+    device = "/dev/disk/by-uuid/32794d46-d4a7-458b-ae80-cec556733579";
+    fsType = "ext4";
+    options = [ "defaults" ];
+  };
+
   swapDevices = [
     { device = "/dev/disk/by-uuid/46c2bd54-4bf5-4e24-b059-bded425c02b9"; }
   ];
@@ -135,6 +141,9 @@
     videoDrivers = [ "nvidia" ];
     # Don't enable display manager - we use greetd for niri
   };
+  
+  # Enable XWayland for X11 apps like Steam
+  programs.xwayland.enable = true;
 
   # Your user
   users.users.bdsqqq = {
