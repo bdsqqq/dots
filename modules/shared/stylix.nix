@@ -21,5 +21,13 @@
     
     # Polarity (dark/light theme)
     polarity = "dark";  # Change to "light" if using e-ink-light-scheme.yaml
+    
+    # Enable targets for applications that need explicit theming
+    targets = {
+      btop.enable = true;
+      lazygit.enable = true;
+      bat.enable = true;
+      fzf.enable = true;
+    };
   };
 }
