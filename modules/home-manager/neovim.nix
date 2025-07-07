@@ -7,7 +7,7 @@
     ];
 
     extraConfigLuaPre = ''
-      -- use default colorscheme for now
+      -- use default colorscheme (vesper completely removed)
       vim.cmd.colorscheme('default')
 
       -- floating terminal function
@@ -228,6 +228,16 @@
         action = "<cmd>UndotreeToggle<CR>";
         options.desc = "[t]oggle [u]ndo tree";
       }
+      {
+        mode = "n";
+        key = "<leader>to";
+        action.__raw = ''
+          function()
+            require('oil').open()
+          end
+        '';
+        options.desc = "[t]oggle [o]il";
+      }
       # additional consistency keybindings
       {
         mode = "n";
@@ -373,6 +383,15 @@
     ];
 
     plugins = {
+      oil = {
+        enable = true;
+        settings = {
+          default_file_explorer = true;
+          delete_to_trash = true;
+          skip_confirm_for_simple_edits = true;
+        };
+      };
+      
       nvim-ufo = {
         enable = true;
         settings = {

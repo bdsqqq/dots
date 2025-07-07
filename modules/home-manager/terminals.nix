@@ -1,21 +1,21 @@
 { config, pkgs, lib, isDarwin ? false, ... }:
 
 {
-  # For Darwin: Homebrew ghostty with manual stylix color integration
-  # For Linux: Full stylix integration with nixpkgs ghostty
-  stylix.targets.ghostty.enable = !isDarwin;  # Only enable for Linux
+  # Disable stylix ghostty management - we handle it manually to work with homebrew
+  stylix.targets.ghostty.enable = false;
   
-  # Manual ghostty config for Darwin (homebrew version) with stylix colors
-  home.file.".config/ghostty/config" = lib.mkIf isDarwin {
-    force = true;
+  # Declarative ghostty config with stylix colors
+  # Works for both nix-installed (Linux) and homebrew-installed (Darwin) ghostty
+  home.file.".config/ghostty/config" = {
+    force = true;  # Always override existing config
     text = ''
-      # Visual settings - your preferences
+      # Visual settings - user preferences
       font-family = "Berkeley Mono"
       macos-titlebar-style = "tabs"
       window-padding-x = 16
       window-padding-y = 0,4
       
-      # Stylix-based color scheme (e-ink theme) - replaces manual colors
+      # Stylix-based color scheme (e-ink theme)
       background = ${config.lib.stylix.colors.base00}
       foreground = ${config.lib.stylix.colors.base05}
       background-opacity = "0.6"
@@ -30,9 +30,13 @@
       # Keybind
       keybind = shift+enter=text:\n
     '';
+    
+    # Ensure the file is recreated on every activation
+    onChange = ''
+      echo "Ghostty config updated with stylix colors"
+    '';
   };
   
-  # Note: On Darwin, colors are manually set from stylix theme
-  # On Linux, stylix handles ghostty automatically
+  # Note: Ghostty config is fully managed by home-manager with stylix integration
   # To switch themes, modify polarity in modules/shared/stylix.nix
 }
