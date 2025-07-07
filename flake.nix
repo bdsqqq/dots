@@ -34,6 +34,9 @@
 
     # NixOS hardware modules
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
+    
+    # Declarative Flatpak management
+    nix-flatpak.url = "github:gmodena/nix-flatpak";
   };
 
   outputs = inputs@{ flake-parts, stylix, ... }:

@@ -85,6 +85,9 @@
   
   # Enable Tailscale VPN
   services.tailscale.enable = true;
+  
+  # Enable Flatpak
+  services.flatpak.enable = true;
 
   # Display manager
   services.greetd = {
@@ -164,8 +167,10 @@
       imports = [
         inputs.nixvim.homeManagerModules.nixvim
         inputs.sops-nix.homeManagerModules.sops
+        inputs.nix-flatpak.homeManagerModules.nix-flatpak
         ../../modules/home-manager/default.nix
         ../../modules/home-manager/profiles/niri.nix
+        ../../modules/home-manager/flatpak.nix
       ];
     };
     

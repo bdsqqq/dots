@@ -1,4 +1,4 @@
-# Waybar scripts for enhanced widgets
+# Simple waybar scripts 
 { config, pkgs, lib, ... }:
 
 let
@@ -6,25 +6,20 @@ let
   bluetoothScript = pkgs.writeShellScript "bluetooth-status" ''
     #!/bin/bash
     
-    # Check if bluetooth is enabled
     if ! systemctl is-active --quiet bluetooth; then
-        echo '{"text": "󰂲", "class": "disabled", "tooltip": "Bluetooth disabled"}'
+        echo "󰂲"
         exit 0
     fi
     
-    # Check bluetooth status
     if bluetoothctl show | grep -q "Powered: yes"; then
-        # Check for connected devices
         connected=$(bluetoothctl devices Connected | wc -l)
         if [ "$connected" -gt 0 ]; then
-            # Get device names
-            devices=$(bluetoothctl devices Connected | cut -d' ' -f3- | tr '\n' ', ' | sed 's/, $//')
-            echo "{\"text\": \"󰂯\", \"class\": \"connected\", \"tooltip\": \"Connected: $devices\"}"
+            echo "󰂯"
         else
-            echo '{"text": "󰂯", "class": "disconnected", "tooltip": "Bluetooth on, no devices connected"}'
+            echo "󰂯"
         fi
     else
-        echo '{"text": "󰂲", "class": "disabled", "tooltip": "Bluetooth disabled"}'
+        echo "󰂲"
     fi
   '';
 
@@ -124,152 +119,18 @@ let
   notificationScript = pkgs.writeShellScript "notification-status" ''
     #!/bin/bash
     
-    # Check if mako is running
     if ! pgrep -x "mako" > /dev/null; then
-        echo '{"text": "󰂚", "class": "disabled", "tooltip": "Notifications disabled"}'
+        echo "󰂚"
         exit 0
     fi
     
-    # Get notification count from mako
     count=$(makoctl list | jq '.data[0] | length' 2>/dev/null || echo "0")
     
     if [ "$count" -gt 0 ]; then
-        echo "{\"text\": \"󰂚 $count\", \"class\": \"has-notifications\", \"tooltip\": \"$count notifications\"}"
+        echo "󰂚"
     else
-        echo '{"text": "󰂚", "class": "empty", "tooltip": "No notifications"}'
+        echo "󰂚"
     fi
-  '';
-
-  # System monitor script
-  systemMonitorScript = pkgs.writeShellScript "system-monitor" ''
-    #!/bin/bash
-    
-    # Get CPU usage
-    cpu_usage=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
-    cpu_usage_int=$(printf "%.0f" "$cpu_usage")
-    
-    # Get memory usage
-    mem_info=$(free | grep Mem)
-    mem_total=$(echo $mem_info | awk '{print $2}')
-    mem_used=$(echo $mem_info | awk '{print $3}')
-    mem_usage=$(awk "BEGIN {printf \"%.0f\", $mem_used/$mem_total*100}")
-    
-    # Get temperature (try different sources)
-    temp="--"
-    if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
-        temp_raw=$(cat /sys/class/thermal/thermal_zone0/temp)
-        temp=$(($temp_raw / 1000))
-    elif command -v sensors >/dev/null 2>&1; then
-        temp=$(sensors 2>/dev/null | grep -oP 'Package id 0:\s+\+\K[0-9]+' | head -1)
-        [ -z "$temp" ] && temp=$(sensors 2>/dev/null | grep -oP 'Core 0:\s+\+\K[0-9]+' | head -1)
-    fi
-    
-    # Determine class based on usage
-    class="normal"
-    if [ "$cpu_usage_int" -gt 80 ] || [ "$mem_usage" -gt 80 ]; then
-        class="high-usage"
-    fi
-    
-    # Format output
-    if [ "$temp" != "--" ]; then
-        text="󰍛 $cpu_usage_int% 󰘚 $mem_usage% 󰔏 $temp°C"
-        tooltip="CPU: $cpu_usage_int% | Memory: $mem_usage% | Temperature: $temp°C"
-    else
-        text="󰍛 $cpu_usage_int% 󰘚 $mem_usage%"
-        tooltip="CPU: $cpu_usage_int% | Memory: $mem_usage%"
-    fi
-    
-    echo "{\"text\": \"$text\", \"class\": \"$class\", \"tooltip\": \"$tooltip\"}"
-  '';
-
-  # System details script
-  systemDetailsScript = pkgs.writeShellScript "system-details" ''
-    #!/bin/bash
-    
-    # Get detailed system information
-    uptime_info=$(uptime -p)
-    load_avg=$(uptime | grep -o "load average:.*" | cut -d' ' -f3- | sed 's/,//g')
-    
-    # CPU info
-    cpu_model=$(grep "model name" /proc/cpuinfo | head -1 | cut -d':' -f2 | sed 's/^ *//')
-    cpu_cores=$(nproc)
-    
-    # Memory info
-    mem_info=$(free -h | grep Mem)
-    mem_total=$(echo $mem_info | awk '{print $2}')
-    mem_used=$(echo $mem_info | awk '{print $3}')
-    mem_free=$(echo $mem_info | awk '{print $4}')
-    
-    # Disk info
-    disk_info=$(df -h / | tail -1)
-    disk_used=$(echo $disk_info | awk '{print $3}')
-    disk_total=$(echo $disk_info | awk '{print $2}')
-    disk_percent=$(echo $disk_info | awk '{print $5}')
-    
-    # Create detailed info
-    details="System Information
-    
-    Uptime: $uptime_info
-    Load Average: $load_avg
-    
-    CPU: $cpu_model
-    Cores: $cpu_cores
-    
-    Memory: $mem_used / $mem_total ($mem_free free)
-    
-    Disk: $disk_used / $disk_total ($disk_percent used)"
-    
-    # Show in terminal or notification
-    if command -v fuzzel >/dev/null 2>&1; then
-        echo "$details" | fuzzel --dmenu --prompt "System Info: " --lines 12 --no-actions
-    else
-        notify-send -i computer "System Information" "$details" -t 10000
-    fi
-  '';
-
-  # Power menu script
-  powerMenuScript = pkgs.writeShellScript "power-menu" ''
-    #!/bin/bash
-    
-    # Power menu options
-    options="⏻ Shutdown
-    ⏾ Reboot
-    ⏯ Suspend
-    ⏸ Lock
-    ⏹ Logout
-    ⏺ Hibernate"
-    
-    # Show menu
-    selected=$(echo "$options" | fuzzel --dmenu --prompt "Power: " --lines 6)
-    
-    case "$selected" in
-        "⏻ Shutdown")
-            systemctl poweroff
-            ;;
-        "⏾ Reboot")
-            systemctl reboot
-            ;;
-        "⏯ Suspend")
-            systemctl suspend
-            ;;
-        "⏸ Lock")
-            # Try different lock commands
-            if command -v swaylock >/dev/null 2>&1; then
-                swaylock -f
-            elif command -v gtklock >/dev/null 2>&1; then
-                gtklock -d
-            else
-                notify-send "Lock" "No lock screen available" -t 3000
-            fi
-            ;;
-        "⏹ Logout")
-            # Logout from niri
-            niri msg action quit
-            ;;
-        "⏺ Hibernate")
-            systemctl hibernate
-            ;;
-    esac
   '';
 
 in
@@ -298,21 +159,6 @@ in
     
     ".config/waybar/scripts/notifications.sh" = {
       source = notificationScript;
-      executable = true;
-    };
-    
-    ".config/waybar/scripts/system-monitor.sh" = {
-      source = systemMonitorScript;
-      executable = true;
-    };
-    
-    ".config/waybar/scripts/system-details.sh" = {
-      source = systemDetailsScript;
-      executable = true;
-    };
-    
-    ".config/waybar/scripts/power-menu.sh" = {
-      source = powerMenuScript;
       executable = true;
     };
   };
