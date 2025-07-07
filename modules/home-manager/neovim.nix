@@ -1,4 +1,4 @@
-{ pkgs, inputs, lib, ... }: {
+ pkgs, inputs, lib, ... }: {
   programs.nixvim = {
     enable = true;
 
@@ -66,6 +66,21 @@
        vim.defer_fn(function()
          local comment_hl = vim.api.nvim_get_hl(0, { name = 'Comment' })
          vim.api.nvim_set_hl(0, 'FoldColumn', { fg = comment_hl.fg })
+         
+         -- make editor and UI elements transparent
+         vim.api.nvim_set_hl(0, 'Normal', { bg = 'NONE', ctermbg = 'NONE' })
+         vim.api.nvim_set_hl(0, 'NormalFloat', { bg = 'NONE', ctermbg = 'NONE' })
+         vim.api.nvim_set_hl(0, 'SignColumn', { bg = 'NONE', ctermbg = 'NONE' })
+         vim.api.nvim_set_hl(0, 'LineNr', { bg = 'NONE', ctermbg = 'NONE' })
+         vim.api.nvim_set_hl(0, 'NonText', { bg = 'NONE', ctermbg = 'NONE' })
+         vim.api.nvim_set_hl(0, 'EndOfBuffer', { bg = 'NONE', ctermbg = 'NONE' })
+         
+         -- Set window-local transparency
+         vim.opt.winblend = 0  -- 0-100, where 0 is fully opaque and 100 is fully transparent
+         vim.opt.pumblend = 0  -- Same for popup menus
+         
+         -- Ensure terminal background is also transparent
+         vim.api.nvim_set_hl(0, 'Terminal', { bg = 'NONE', ctermbg = 'NONE' })
        end, 100)    '';
 
     globals = {
