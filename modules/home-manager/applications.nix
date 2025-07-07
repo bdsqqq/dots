@@ -14,16 +14,17 @@
     spotify-player
     transmission_4
     rclone
-    ghostty
     opencode
     firefox
-    steam
   ] ++ lib.optionals isDarwin [
     # macOS-only apps
     tableplus
     iina
+    # Use macOS native Terminal.app or iTerm2 instead of ghostty on Darwin
   ] ++ lib.optionals (!isDarwin) [
-    # Linux alternatives
+    # Linux-specific apps
+    ghostty  # Terminal emulator (broken on Darwin)
+    steam    # Gaming platform (Linux-specific in nixpkgs)
     dbeaver-bin  # Alternative to TablePlus
     vlc      # Alternative to iina
     xwayland-satellite  # For running X11 apps like Steam on Niri

@@ -1,8 +1,8 @@
 { config, pkgs, lib, isDarwin ? false, ... }:
 
 {
-  # Ghostty terminal configuration
-  home.file.".config/ghostty/config" = {
+  # Ghostty terminal configuration (Linux only)
+  home.file.".config/ghostty/config" = lib.mkIf (!isDarwin) {
     force = true;  # Force overwrite existing file
     text = ''
       # E-ink color scheme for Ghostty

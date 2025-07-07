@@ -1,4 +1,4 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, isDarwin ? false, ... }:
 
 {
   programs = {
@@ -105,6 +105,7 @@
     fastfetch
     claude-code
     opencode
-    ghostty
+  ] ++ lib.optionals (!isDarwin) [
+    ghostty  # Terminal emulator (broken on Darwin)
   ];
 }

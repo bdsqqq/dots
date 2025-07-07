@@ -4,21 +4,23 @@
   services.mako = {
     enable = true;
     
-    # Geometry - minimal, clean
-    width = 320;
-    height = 100;
-    margin = "8";
-    padding = "12";
-    borderRadius = 4;
-    
-    # Behavior
-    defaultTimeout = 5000;
-    
-    # Positioning
-    anchor = "top-right";
-    
-    # Icon settings
-    maxIconSize = 24;
+    settings = {
+      # Geometry - minimal, clean
+      width = 320;
+      height = 100;
+      margin = "8";
+      padding = "12";
+      border-radius = 4;
+      
+      # Behavior
+      default-timeout = 5000;
+      
+      # Positioning
+      anchor = "top-right";
+      
+      # Icon settings
+      max-icon-size = 24;
+    };
     
     # Extra styling for specific notification types
     extraConfig = ''
