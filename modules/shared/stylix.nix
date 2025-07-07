@@ -5,6 +5,9 @@
   stylix = {
     enable = true;
     
+    # Enable automatic detection and theming of supported applications
+    autoEnable = true;  # This is the default, but making it explicit
+    
     # E-ink color scheme - minimal grayscale theme
     base16Scheme = ./e-ink-scheme.yaml;  # Change to ./e-ink-light-scheme.yaml for light theme
     
@@ -21,13 +24,5 @@
     
     # Polarity (dark/light theme)
     polarity = "dark";  # Change to "light" if using e-ink-light-scheme.yaml
-    
-    # Enable targets for applications that need explicit theming
-    targets = {
-      btop.enable = true;
-      lazygit.enable = true;
-      bat.enable = true;
-      fzf.enable = true;
-    };
   };
 }
