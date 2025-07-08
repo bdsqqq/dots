@@ -270,6 +270,14 @@
     nerd-fonts.fira-code
     nerd-fonts.iosevka
   ];
+  
+  # Font configuration - set Berkeley Mono as default monospace
+  fonts.fontconfig = {
+    enable = true;
+    defaultFonts = {
+      monospace = [ "Berkeley Mono" "JetBrainsMono Nerd Font" "DejaVu Sans Mono" ];
+    };
+  };
 
   # Enable unfree packages
   nixpkgs.config.allowUnfree = true;
