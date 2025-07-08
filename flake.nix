@@ -22,6 +22,13 @@
 
     textfox.url = "github:adriankarlen/textfox";
     textfox.flake = false;
+    
+    # Loupe wallpapers
+    loupe-dark.url = "path:./modules/shared/loupe-mono-dark.jpg";
+    loupe-dark.flake = false;
+    
+    loupe-light.url = "path:./modules/shared/loupe-mono-light.jpg";
+    loupe-light.flake = false;
 
     # niri window manager
     niri.url = "github:sodiboo/niri-flake";

@@ -7,15 +7,12 @@
     
     settings = {
       # Monitor configuration
-      monitor = [
-        ",preferred,auto,1"
-      ];
+      monitor = [ ",preferred,auto,1" ];
       
-      # Environment variables
+      # Environment variables for NVIDIA
       env = [
         "XCURSOR_SIZE,24"
         "HYPRCURSOR_SIZE,24"
-        # NVIDIA specific
         "LIBVA_DRIVER_NAME,nvidia"
         "XDG_SESSION_TYPE,wayland"
         "GBM_BACKEND,nvidia-drm"
@@ -26,19 +23,14 @@
       # Startup applications
       exec-once = [
         "waybar"
-        "hyprpaper"
         "mako"
         "nm-applet"
-        # "hypridle"
       ];
       
       # Input configuration
       input = {
         kb_layout = "us";
         follow_mouse = 1;
-        touchpad = {
-          natural_scroll = false;
-        };
         sensitivity = 0;
       };
       
@@ -47,31 +39,19 @@
         gaps_in = 5;
         gaps_out = 20;
         border_size = 2;
-        # Use stylix colors for borders
-        "col.active_border" = "rgba(33ccffee) rgba(00ff99ee) 45deg";
-        "col.inactive_border" = "rgba(595959aa)";
-        resize_on_border = false;
-        allow_tearing = false;
         layout = "dwindle";
       };
       
-      # Decoration settings
+      # Decoration settings with working syntax
       decoration = {
         rounding = 10;
-        active_opacity = 0.65;
-        inactive_opacity = 0.65;
+        active_opacity = lib.mkForce 0.65;
+        inactive_opacity = lib.mkForce 0.65;
         
-        drop_shadow = true;
-        shadow_range = 4;
-        shadow_render_power = 3;
-        "col.shadow" = "rgba(1a1a1aee)";
-        
-        # Blur settings
         blur = {
           enabled = true;
           size = 8;
           passes = 1;
-          vibrancy = 0.1696;
         };
       };
       
@@ -83,7 +63,6 @@
           "windows, 1, 7, myBezier"
           "windowsOut, 1, 7, default, popin 80%"
           "border, 1, 10, default"
-          "borderangle, 1, 8, default"
           "fade, 1, 7, default"
           "workspaces, 1, 6, default"
         ];
@@ -95,48 +74,26 @@
         preserve_split = true;
       };
       
-      master = {
-        new_is_master = true;
-      };
-      
-      # Gestures
-      gestures = {
-        workspace_swipe = false;
-      };
-      
-      # Miscellaneous
-      misc = {
-        force_default_wallpaper = -1;
-        disable_hyprland_logo = false;
-      };
-      
       # Key bindings
       "$mod" = "SUPER";
       
       bind = [
-        # Application shortcuts
+        # Basic shortcuts
         "$mod, Q, exec, ghostty"
         "$mod, C, killactive"
         "$mod, M, exit"
         "$mod, E, exec, nautilus"
         "$mod, V, togglefloating"
         "$mod, R, exec, wofi --show drun"
-        "$mod, P, pseudo"
         "$mod, J, togglesplit"
         
-        # Move focus
+        # Movement
         "$mod, left, movefocus, l"
         "$mod, right, movefocus, r"
         "$mod, up, movefocus, u"
         "$mod, down, movefocus, d"
         
-        # Move windows
-        "$mod SHIFT, left, movewindow, l"
-        "$mod SHIFT, right, movewindow, r"
-        "$mod SHIFT, up, movewindow, u"
-        "$mod SHIFT, down, movewindow, d"
-        
-        # Workspace navigation
+        # Workspaces
         "$mod, 1, workspace, 1"
         "$mod, 2, workspace, 2"
         "$mod, 3, workspace, 3"
@@ -148,7 +105,7 @@
         "$mod, 9, workspace, 9"
         "$mod, 0, workspace, 10"
         
-        # Move windows to workspace
+        # Move to workspaces
         "$mod SHIFT, 1, movetoworkspace, 1"
         "$mod SHIFT, 2, movetoworkspace, 2"
         "$mod SHIFT, 3, movetoworkspace, 3"
@@ -164,22 +121,14 @@
         "$mod, S, togglespecialworkspace, magic"
         "$mod SHIFT, S, movetoworkspace, special:magic"
         
-        # Scroll through workspaces
-        "$mod, mouse_down, workspace, e+1"
-        "$mod, mouse_up, workspace, e-1"
-        
-        # Screenshot
+        # Screenshots
         ", Print, exec, grim -g \"$(slurp)\" - | wl-copy"
         "SHIFT, Print, exec, grim - | wl-copy"
         
-        # Volume controls
+        # Media keys
         ", XF86AudioRaiseVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"
         ", XF86AudioLowerVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"
         ", XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
-        
-        # Brightness controls
-        ", XF86MonBrightnessUp, exec, brightnessctl set +10%"
-        ", XF86MonBrightnessDown, exec, brightnessctl set 10%-"
       ];
       
       # Mouse bindings
@@ -188,76 +137,22 @@
         "$mod, mouse:273, resizewindow"
       ];
       
-      # Window rules
-      windowrule = [
-        "float, ^(pavucontrol)$"
-        "float, ^(nm-connection-editor)$"
-        "float, ^(blueman-manager)$"
-        "float, ^(org.gnome.Settings)$"
-        "float, ^(org.gnome.design.Contrast)$"
-        "float, ^(color-picker)$"
-        "float, ^(Network)$"
-        "float, ^(xdg-desktop-portal)$"
-        "float, ^(xdg-desktop-portal-gnome)$"
-        "float, ^(transmission-gtk)$"
-        "opacity 0.80 0.80,^(ghostty)$"
-        "opacity 0.80 0.80,^(code)$"
-      ];
-      
-      # Workspace rules
-      workspace = [
-        "1, monitor:DP-1"
-        "2, monitor:DP-1"
-        "3, monitor:DP-1"
-        "4, monitor:DP-1"
-        "5, monitor:DP-1"
+      # Window rules using correct v2 syntax
+      windowrulev2 = [
+        "float, class:^(pavucontrol)$"
+        "float, class:^(nm-connection-editor)$"
+        "float, class:^(blueman-manager)$"
       ];
     };
   };
   
-  # Additional packages for Hyprland
+  # Essential packages
   home.packages = with pkgs; [
-    # Wallpaper
-    hyprpaper
-    
-    # Screenshot tools
     grim
     slurp
-    
-    # Application launcher
     wofi
-    
-    # Clipboard
     wl-clipboard
-    
-    # Brightness control
-    brightnessctl
-    
-    # Audio control
-    pwvucontrol
-    
-    # Network manager applet
     networkmanagerapplet
-    
-    # Bluetooth manager
     blueman
   ];
-  
-  # Hyprpaper configuration
-  services.hyprpaper = {
-    enable = true;
-    settings = {
-      ipc = "on";
-      splash = false;
-      splash_offset = 2.0;
-      
-      preload = [
-        "~/.config/wallpaper.jpg"
-      ];
-      
-      wallpaper = [
-        ",~/.config/wallpaper.jpg"
-      ];
-    };
-  };
 }

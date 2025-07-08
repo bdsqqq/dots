@@ -89,6 +89,28 @@
   # Enable Tailscale VPN
   services.tailscale.enable = true;
   
+  # Enable Syncthing
+  services.syncthing = {
+    enable = true;
+    user = "bdsqqq";
+    dataDir = "/home/bdsqqq/commonplace";
+    configDir = "/home/bdsqqq/.config/syncthing";
+    openDefaultPorts = true;
+    guiAddress = "0.0.0.0:8384";
+    settings = {
+      gui = {
+        user = "bdsqqq";
+        insecureAdminAccess = false;
+      };
+      options = {
+        urAccepted = -1;  # Disable usage reporting
+        globalAnnounceEnabled = false;  # Use only local discovery with Tailscale
+        localAnnounceEnabled = true;
+        relaysEnabled = false;  # Don't use public relays, use Tailscale
+      };
+    };
+  };
+  
   # Enable Flatpak
   services.flatpak.enable = true;
 
