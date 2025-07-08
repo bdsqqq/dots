@@ -29,6 +29,10 @@
     
     loupe-light.url = "path:./modules/shared/loupe-mono-light.jpg";
     loupe-light.flake = false;
+    
+    # Berkeley Mono font family
+    berkeley-mono.url = "path:./modules/shared/berkeley-mono";
+    berkeley-mono.flake = false;
 
     # niri window manager
     niri.url = "github:sodiboo/niri-flake";

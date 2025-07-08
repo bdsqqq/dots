@@ -100,6 +100,18 @@
         "type": "github"
       }
     },
+    "berkeley-mono": {
+      "flake": false,
+      "locked": {
+        "path": "./modules/shared/berkeley-mono",
+        "type": "path"
+      },
+      "original": {
+        "path": "./modules/shared/berkeley-mono",
+        "type": "path"
+      },
+      "parent": []
+    },
     "firefox-gnome-theme": {
       "flake": false,
       "locked": {
@@ -952,6 +964,7 @@
     },
     "root": {
       "inputs": {
+        "berkeley-mono": "berkeley-mono",
         "flake-parts": "flake-parts",
         "home-manager": "home-manager",
         "hyprland": "hyprland",
