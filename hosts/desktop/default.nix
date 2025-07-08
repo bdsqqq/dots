@@ -263,8 +263,8 @@
     wdisplays  # Wayland display configurator
     wlr-randr  # Command-line display management for wlroots
     
-    # Cursor theme (2024-2025 best practice)
-    bibata-cursors  # Modern cursor theme with hyprcursor support
+    # Cursor theme (traditional macOS-style)
+    apple-cursor  # Traditional macOS-style cursor theme
   ];
 
   # Fonts

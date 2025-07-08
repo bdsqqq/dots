@@ -43,12 +43,12 @@
     };
   };
   
-  # Cursor theme configuration (2024-2025 best practice)
+  # Cursor theme configuration (traditional macOS-style cursor)
   home.pointerCursor = lib.mkIf (!isDarwin) {
     gtk.enable = true;
-    hyprcursor.enable = true;  # Modern hyprcursor format
-    package = pkgs.bibata-cursors;  # Most recommended cursor theme
-    name = "Bibata-Modern-Classic";
+    hyprcursor.enable = true;
+    package = pkgs.apple-cursor;  # Traditional macOS-style cursor
+    name = "macOS";
     size = 24;
   };
 
