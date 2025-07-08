@@ -80,8 +80,11 @@
     };
   };
 
-  # Enable niri window manager
-  programs.niri.enable = true;
+  # Enable niri window manager (kept for reference)
+  programs.niri.enable = false;
+  
+  # Enable Hyprland window manager
+  programs.hyprland.enable = true;
   
   # Enable Tailscale VPN
   services.tailscale.enable = true;
@@ -93,7 +96,7 @@
   services.greetd = {
     enable = true;
     settings.default_session = {
-      command = "${pkgs.greetd.tuigreet}/bin/tuigreet --cmd niri-session";
+      command = "${pkgs.greetd.tuigreet}/bin/tuigreet --cmd Hyprland";
       user = "greeter";
     };
   };
@@ -142,7 +145,7 @@
   services.xserver = {
     enable = true;
     videoDrivers = [ "nvidia" ];
-    # Don't enable display manager - we use greetd for niri
+    # Don't enable display manager - we use greetd for Hyprland
   };
   
   # Enable XWayland for X11 apps like Steam
@@ -169,7 +172,7 @@
         inputs.sops-nix.homeManagerModules.sops
         inputs.nix-flatpak.homeManagerModules.nix-flatpak
         ../../modules/home-manager/default.nix
-        ../../modules/home-manager/profiles/niri.nix
+        ../../modules/home-manager/profiles/hyprland.nix
         ../../modules/home-manager/flatpak.nix
       ];
     };

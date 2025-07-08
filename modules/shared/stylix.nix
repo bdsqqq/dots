@@ -14,12 +14,12 @@
     # You can also use a custom image to generate colors
     # image = ./path/to/your/wallpaper.jpg;
     
-    # Opacity settings - reduced for e-ink aesthetic
+    # Opacity settings - translucent
     opacity = {
-      applications = 1.0;
-      terminal = 1.0;  # Solid background for e-ink look
-      desktop = 1.0;
-      popups = 1.0;
+      applications = 0.65;
+      terminal = 0.65;
+      desktop = 0.65;
+      popups = 0.65;
     };
     
     # Polarity (dark/light theme)
