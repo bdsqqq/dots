@@ -25,9 +25,9 @@
       # Fallback fonts
       pkgs.nerd-fonts.jetbrains-mono
     ];
-    
-    # Font configuration (Linux only - macOS handles this differently)
-    fontconfig = lib.mkIf (!pkgs.stdenv.isDarwin) {
+  } // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
+    # Font configuration (Linux only - macOS uses different system)
+    fontconfig = {
       enable = true;
       defaultFonts = {
         monospace = [ "Berkeley Mono" "JetBrainsMono Nerd Font" "DejaVu Sans Mono" ];
@@ -36,7 +36,18 @@
         <?xml version="1.0"?>
         <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
         <fontconfig>
-          <alias>
+          <!-- Force Berkeley Mono as the primary monospace font with strong binding -->
+          <match target="pattern">
+            <test qual="any" name="family">
+              <string>monospace</string>
+            </test>
+            <edit name="family" mode="assign" binding="strong">
+              <string>Berkeley Mono</string>
+            </edit>
+          </match>
+          
+          <!-- Override any existing monospace aliases -->
+          <alias binding="strong">
             <family>monospace</family>
             <prefer>
               <family>Berkeley Mono</family>
@@ -44,6 +55,16 @@
               <family>DejaVu Sans Mono</family>
             </prefer>
           </alias>
+          
+          <!-- Directly match common monospace font requests -->
+          <match target="pattern">
+            <test qual="any" name="family">
+              <string>mono</string>
+            </test>
+            <edit name="family" mode="assign" binding="strong">
+              <string>Berkeley Mono</string>
+            </edit>
+          </match>
         </fontconfig>
       '';
     };
