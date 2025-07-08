@@ -107,6 +107,11 @@
         globalAnnounceEnabled = false;  # Use only local discovery with Tailscale
         localAnnounceEnabled = true;
         relaysEnabled = false;  # Don't use public relays, use Tailscale
+        # Disable NAT traversal - use Tailscale instead
+        natEnabled = false;
+        upnpEnabled = false;
+        # Only listen on Tailscale interface
+        listenAddress = "tcp://100.94.68.111:22000";
       };
       
       # Define devices declaratively so they persist across rebuilds
@@ -114,28 +119,18 @@
         "mbp14" = {
           id = "BQRNC7S-3O6EQPK-5ZEDX6Q-KUSMJHQ-6HXJHYY-AHDBJNO-4C27WBW-XG6CCQR";
           introducer = true;
-          autoAcceptFolders = true;
+          autoAcceptFolders = false;
+          addresses = [ "tcp://100.87.59.2:22000" "quic://100.87.59.2:22000" ];
         };
         "iph16" = {
           id = "L2PJ4F3-BZUZ4RX-3BCPIYB-V544M22-P3WDZBF-ZEVYT5A-GPTX5ZF-ZM5KTQK";
           introducer = false;
+          addresses = [ "tcp://100.123.116.27:22000" "quic://100.123.116.27:22000" ];
         };
       };
       
-      # Define folders that should be synced
-      folders = {
-        "commonplace" = {
-          path = "/home/bdsqqq/commonplace";
-          devices = [ "mbp14" "iph16" ];
-          versioning = {
-            type = "simple";
-            params.keep = "10";  # Keep 10 versions for safety
-          };
-          # Accept metadata and ownership
-          ignorePerms = false;
-          ignoreOwnership = false;
-        };
-      };
+      # Folders will be manually configured through GUI to choose proper paths
+      folders = { };
     };
   };
   

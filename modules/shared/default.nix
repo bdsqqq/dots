@@ -4,6 +4,7 @@
 {
   imports = [
     ./stylix.nix
+    ./fonts.nix
   ];
   
   # Pass inputs to all imported modules
