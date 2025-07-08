@@ -266,16 +266,48 @@
 
   # Fonts
   fonts.packages = with pkgs; [
-    nerd-fonts.jetbrains-mono
-    nerd-fonts.fira-code
-    nerd-fonts.iosevka
+    nerd-fonts.jetbrains-mono  # Keep for icons only
+    # Essential fonts since we disabled enableDefaultPackages
+    liberation_ttf  # For serif/sans-serif
+    noto-fonts-emoji
   ];
   
   # Font configuration - set Berkeley Mono as default monospace
-  fonts.fontconfig = {
-    enable = true;
-    defaultFonts = {
-      monospace = [ "Berkeley Mono" "JetBrainsMono Nerd Font" "DejaVu Sans Mono" ];
+  fonts = {
+    enableDefaultPackages = false;  # Disable default DejaVu fonts
+    fontconfig = {
+      enable = true;
+      defaultFonts = {
+        serif = [ "Liberation Serif" ];
+        sansSerif = [ "Liberation Sans" ];
+        monospace = [ "Berkeley Mono" ];
+        emoji = [ "Noto Color Emoji" ];
+      };
+      # Override fontconfig defaults with higher priority
+      localConf = ''
+        <?xml version="1.0"?>
+        <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+        <fontconfig>
+          <!-- Override monospace preference with highest priority -->
+          <alias binding="strong">
+            <family>monospace</family>
+            <prefer>
+              <family>Berkeley Mono</family>
+            </prefer>
+          </alias>
+          
+          <!-- Block DejaVu Sans Mono explicitly -->
+          <selectfont>
+            <rejectfont>
+              <pattern>
+                <patelt name="family">
+                  <string>DejaVu Sans Mono</string>
+                </patelt>
+              </pattern>
+            </rejectfont>
+          </selectfont>
+        </fontconfig>
+      '';
     };
   };
 
