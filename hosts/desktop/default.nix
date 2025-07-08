@@ -93,7 +93,7 @@
   services.syncthing = {
     enable = true;
     user = "bdsqqq";
-    dataDir = "/home/bdsqqq/commonplace";
+    dataDir = "/home/bdsqqq";
     configDir = "/home/bdsqqq/.config/syncthing";
     openDefaultPorts = true;
     guiAddress = "0.0.0.0:8384";
@@ -107,6 +107,34 @@
         globalAnnounceEnabled = false;  # Use only local discovery with Tailscale
         localAnnounceEnabled = true;
         relaysEnabled = false;  # Don't use public relays, use Tailscale
+      };
+      
+      # Define devices declaratively so they persist across rebuilds
+      devices = {
+        "mbp14" = {
+          id = "BQRNC7S-3O6EQPK-5ZEDX6Q-KUSMJHQ-6HXJHYY-AHDBJNO-4C27WBW-XG6CCQR";
+          introducer = true;
+          autoAcceptFolders = true;
+        };
+        "iph16" = {
+          id = "L2PJ4F3-BZUZ4RX-3BCPIYB-V544M22-P3WDZBF-ZEVYT5A-GPTX5ZF-ZM5KTQK";
+          introducer = false;
+        };
+      };
+      
+      # Define folders that should be synced
+      folders = {
+        "commonplace" = {
+          path = "/home/bdsqqq/commonplace";
+          devices = [ "mbp14" "iph16" ];
+          versioning = {
+            type = "simple";
+            params.keep = "10";  # Keep 10 versions for safety
+          };
+          # Accept metadata and ownership
+          ignorePerms = false;
+          ignoreOwnership = false;
+        };
       };
     };
   };
@@ -159,6 +187,15 @@
 
   # Security
   security.rtkit.enable = true;
+  
+  # Enable SSH
+  services.openssh = {
+    enable = true;
+    settings = {
+      PasswordAuthentication = true;
+      PermitRootLogin = "no";
+    };
+  };
   
   # Enable dconf for theme settings
   programs.dconf.enable = true;
