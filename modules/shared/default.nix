@@ -1,10 +1,13 @@
 # Shared configuration between Darwin and NixOS
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, inputs ? null, ... }:
 
 {
   imports = [
     ./stylix.nix
   ];
+  
+  # Pass inputs to all imported modules
+  _module.args = lib.mkIf (inputs != null) { inherit inputs; };
   # Common Nix settings
   nix = {
     settings = {
