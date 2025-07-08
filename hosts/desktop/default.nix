@@ -268,7 +268,8 @@
   fonts.packages = with pkgs; [
     nerd-fonts.jetbrains-mono  # Keep for icons only
     # Essential fonts since we disabled enableDefaultPackages
-    liberation_ttf  # For serif/sans-serif
+    liberation_ttf  # For serif only
+    inter  # Sans-serif font
     noto-fonts-emoji
   ];
   
@@ -279,7 +280,7 @@
       enable = true;
       defaultFonts = {
         serif = [ "Liberation Serif" ];
-        sansSerif = [ "Liberation Sans" ];
+        sansSerif = [ "Inter" ];
         monospace = [ "Berkeley Mono" ];
         emoji = [ "Noto Color Emoji" ];
       };
@@ -296,12 +297,34 @@
             </prefer>
           </alias>
           
-          <!-- Block DejaVu Sans Mono explicitly -->
+          <!-- Override sans-serif preference with highest priority -->
+          <alias binding="strong">
+            <family>sans-serif</family>
+            <prefer>
+              <family>Inter</family>
+            </prefer>
+          </alias>
+          
+          <!-- Block DejaVu fonts explicitly -->
           <selectfont>
             <rejectfont>
               <pattern>
                 <patelt name="family">
                   <string>DejaVu Sans Mono</string>
+                </patelt>
+              </pattern>
+            </rejectfont>
+            <rejectfont>
+              <pattern>
+                <patelt name="family">
+                  <string>DejaVu Sans</string>
+                </patelt>
+              </pattern>
+            </rejectfont>
+            <rejectfont>
+              <pattern>
+                <patelt name="family">
+                  <string>Liberation Sans</string>
                 </patelt>
               </pattern>
             </rejectfont>
