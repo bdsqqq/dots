@@ -11,10 +11,10 @@
       
       # Environment variables for NVIDIA and cursor theme
       env = [
-        # Cursor theme (2024-2025 best practice)
-        "HYPRCURSOR_THEME,Bibata-Modern-Classic"
+        # Cursor theme (traditional macOS-style)
+        "HYPRCURSOR_THEME,macOS"
         "HYPRCURSOR_SIZE,24"
-        "XCURSOR_THEME,Bibata-Modern-Classic"
+        "XCURSOR_THEME,macOS"
         "XCURSOR_SIZE,24"
         # NVIDIA
         "LIBVA_DRIVER_NAME,nvidia"
@@ -35,8 +35,8 @@
         "mako"
         "nm-applet"
         # Cursor theme setup (ensures proper application)
-        "hyprctl setcursor Bibata-Modern-Classic 24"
-        "gsettings set org.gnome.desktop.interface cursor-theme 'Bibata-Modern-Classic'"
+        "hyprctl setcursor macOS 24"
+        "gsettings set org.gnome.desktop.interface cursor-theme 'macOS'"
         "gsettings set org.gnome.desktop.interface cursor-size 24"
       ];
       
