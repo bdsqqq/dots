@@ -9,10 +9,14 @@
       # Monitor configuration
       monitor = [ ",preferred,auto,1" ];
       
-      # Environment variables for NVIDIA
+      # Environment variables for NVIDIA and cursor theme
       env = [
-        "XCURSOR_SIZE,24"
+        # Cursor theme (2024-2025 best practice)
+        "HYPRCURSOR_THEME,Bibata-Modern-Classic"
         "HYPRCURSOR_SIZE,24"
+        "XCURSOR_THEME,Bibata-Modern-Classic"
+        "XCURSOR_SIZE,24"
+        # NVIDIA
         "LIBVA_DRIVER_NAME,nvidia"
         "XDG_SESSION_TYPE,wayland"
         "GBM_BACKEND,nvidia-drm"
@@ -20,11 +24,20 @@
         "WLR_NO_HARDWARE_CURSORS,1"
       ];
       
+      # Cursor configuration (2024-2025 best practice)
+      cursor = {
+        enable_hyprcursor = true;
+      };
+      
       # Startup applications
       exec-once = [
         "waybar"
         "mako"
         "nm-applet"
+        # Cursor theme setup (ensures proper application)
+        "hyprctl setcursor Bibata-Modern-Classic 24"
+        "gsettings set org.gnome.desktop.interface cursor-theme 'Bibata-Modern-Classic'"
+        "gsettings set org.gnome.desktop.interface cursor-size 24"
       ];
       
       # Input configuration

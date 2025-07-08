@@ -42,6 +42,15 @@
       publicShare = "${config.home.homeDirectory}/Public";
     };
   };
+  
+  # Cursor theme configuration (2024-2025 best practice)
+  home.pointerCursor = lib.mkIf (!isDarwin) {
+    gtk.enable = true;
+    hyprcursor.enable = true;  # Modern hyprcursor format
+    package = pkgs.bibata-cursors;  # Most recommended cursor theme
+    name = "Bibata-Modern-Classic";
+    size = 24;
+  };
 
   # sops-nix configuration for secrets management (optional)
   sops = lib.mkIf (builtins.pathExists ../../secrets.yaml) {
