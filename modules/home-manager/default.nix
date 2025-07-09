@@ -27,7 +27,7 @@
   # Route everything to inbox for processing into your organized system
   xdg = {
     enable = true;
-    userDirs = {
+    userDirs = lib.mkIf (!isDarwin) {
       enable = true;
       createDirectories = true;
       # Everything goes to inbox for processing
