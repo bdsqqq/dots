@@ -14,7 +14,6 @@
     # spotify-player # Configured in development.nix via programs.spotify-player
     transmission_4
     rclone
-    opencode
     firefox
   ] ++ lib.optionals isDarwin [
     # macOS-only apps
