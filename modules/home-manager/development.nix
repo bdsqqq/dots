@@ -71,7 +71,7 @@
     ssh-to-age
     fnm
     oh-my-zsh
-    amp-cli
+
     pnpm
     bun
     go
@@ -103,6 +103,8 @@
     httpie
     asciiquarium-transparent
     fastfetch
+    
+    amp-cli
     claude-code
     opencode
   ];
