@@ -1,0 +1,51 @@
+;; Kanata config equivalent to Karabiner homerow mods + symnav layer
+;; 100ms tap-hold timing to match current setup
+
+(defsrc
+  caps a s d f j k l ; 
+  q w e r t y u i o p
+  h g c v b n m
+  lctl lalt lmet rmet ralt rctl
+)
+
+(defalias
+  ;; Homerow mods - matching ASDF/JKL; setup from Karabiner
+  a (tap-hold-press 100 100 a lsft)    ;; A = tap a, hold Left Shift
+  s (tap-hold-press 100 100 s lctl)    ;; S = tap s, hold Left Control  
+  d (tap-hold-press 100 100 d lalt)    ;; D = tap d, hold Left Option
+  f (tap-hold-press 100 100 f lmet)    ;; F = tap f, hold Left Command
+  
+  j (tap-hold-press 100 100 j rmet)    ;; J = tap j, hold Right Command
+  k (tap-hold-press 100 100 k ralt)    ;; K = tap k, hold Right Option
+  l (tap-hold-press 100 100 l rctl)    ;; L = tap l, hold Right Control
+  ; (tap-hold-press 100 100 ; rsft)    ;; ; = tap ;, hold Right Shift
+  
+  ;; Caps as Hyper key (all modifiers) + escape tap
+  hyp (tap-hold-press 100 100 esc (multi lsft lctl lalt lmet))
+  
+  ;; Layer toggles - Right Command activates, Left Command deactivates
+  rcmd (tap-hold-press 100 100 rmet (layer-toggle symnav))
+  lcmd (tap-hold-press 100 100 lmet (layer-toggle symnav))
+)
+
+(deflayer base
+  @hyp @a @s @d @f @j @k @l @;
+  q w e r t y u i o p
+  h g c v b n m
+  lctl lalt @lcmd @rcmd ralt rctl
+)
+
+(deflayer symnav
+  @hyp (tap-hold-press 100 100 ~ lsft)     ;; A = ~ in layer
+       (tap-hold-press 100 100 _ lctl)     ;; S = hold only in layer
+       (tap-hold-press 100 100 [ lalt)     ;; D = [ in layer
+       (tap-hold-press 100 100 ] lmet)     ;; F = ] in layer
+       (tap-hold-press 100 100 down rmet)  ;; J = down in layer
+       (tap-hold-press 100 100 up ralt)    ;; K = up in layer  
+       (tap-hold-press 100 100 right rctl) ;; L = right in layer
+       (tap-hold-press 100 100 ' rsft)     ;; ; = ' in layer
+       
+  1 2 3 4 5 6 7 8 9 0                     ;; Numbers on QWERTY row
+  left = S9 S0 \ - m                       ;; H=left, G==, C=(, V=), B=\, N=-
+  lctl lalt @lcmd @rcmd ralt rctl
+)

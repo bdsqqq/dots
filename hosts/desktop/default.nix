@@ -89,6 +89,17 @@
   # Enable Tailscale VPN
   services.tailscale.enable = true;
   
+  # Enable Kanata for homerow mods and layers
+  services.kanata = {
+    enable = true;
+    keyboards.default = {
+      devices = [
+        "/dev/input/by-id/usb-*-kbd"  # Adjust to your keyboard
+      ];
+      configFile = ../../modules/shared/kanata.kbd;
+    };
+  };
+  
   # Enable Syncthing
   services.syncthing = {
     enable = true;

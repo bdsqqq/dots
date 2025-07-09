@@ -32,6 +32,9 @@
 
   # Enable Karabiner Elements configuration management
   custom.karabiner.enable = true;
+  
+  # Enable Kanata for unified keyboard configuration
+  # custom.kanata.enable = true;
 
   # Example of using enhanced specialArgs for conditional configuration
   # This demonstrates how modules can access system information
