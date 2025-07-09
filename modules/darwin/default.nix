@@ -3,6 +3,7 @@
 {
   imports = [
     ./karabiner.nix
+    ./kanata.nix
     ../shared/default.nix
   ];
   # List packages installed in system profile. To search by name, run:
