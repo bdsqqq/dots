@@ -1,5 +1,13 @@
 ;; Kanata config equivalent to Karabiner homerow mods + symnav layer
-;; 100ms tap-hold timing to match current setup
+;; Using smart typing detection to prevent accidental homerow mod triggers
+;; Timings match Karabiner: 150ms alone timeout, 100ms hold threshold
+;;
+;; Fast typing detection template source:
+;; https://github.com/jtroo/kanata/discussions/1455
+
+(defcfg
+  process-unmapped-keys yes
+)
 
 (defsrc
   caps a s d f j k l ; 
@@ -8,44 +16,54 @@
   lctl lalt lmet rmet ralt rctl
 )
 
+;; Smart homerow mod template that disables mods during fast typing
+(deftemplate charmod (char mod)
+  (switch 
+    ((key-timing 3 less-than 250)) $char break
+    () (tap-hold-release-timeout 150 250 $char $mod $char) break
+  )
+)
+
 (defalias
-  ;; Homerow mods - matching ASDF/JKL; setup from Karabiner
-  a (tap-hold-press 100 100 a lsft)    ;; A = tap a, hold Left Shift
-  s (tap-hold-press 100 100 s lctl)    ;; S = tap s, hold Left Control  
-  d (tap-hold-press 100 100 d lalt)    ;; D = tap d, hold Left Option
-  f (tap-hold-press 100 100 f lmet)    ;; F = tap f, hold Left Command
+  ;; Smart homerow mods - disabled during fast typing (250ms window)
+  ;; Using 150ms tap timeout to match Karabiner's to_if_alone_timeout_milliseconds
+  a (t! charmod a lsft)    ;; A = tap a, hold Left Shift (when not typing fast)
+  s (t! charmod s lctl)    ;; S = tap s, hold Left Control
+  d (t! charmod d lalt)    ;; D = tap d, hold Left Option
+  f (t! charmod f lmet)    ;; F = tap f, hold Left Command
   
-  j (tap-hold-press 100 100 j rmet)    ;; J = tap j, hold Right Command
-  k (tap-hold-press 100 100 k ralt)    ;; K = tap k, hold Right Option
-  l (tap-hold-press 100 100 l rctl)    ;; L = tap l, hold Right Control
-  ; (tap-hold-press 100 100 ; rsft)    ;; ; = tap ;, hold Right Shift
+  j (t! charmod j rmet)    ;; J = tap j, hold Right Command
+  k (t! charmod k ralt)    ;; K = tap k, hold Right Option
+  l (t! charmod l rctl)    ;; L = tap l, hold Right Control
+  ; (t! charmod ; rsft)    ;; ; = tap ;, hold Right Shift
   
   ;; Caps as Hyper key (all modifiers) + escape tap
-  hyp (tap-hold-press 100 100 esc (multi lsft lctl lalt lmet))
+  hyp (tap-hold-press 150 250 esc (multi lsft lctl lalt lmet))
   
-  ;; Layer toggles - Right Command activates, Left Command deactivates
-  rcmd (tap-hold-press 100 100 rmet (layer-toggle symnav))
-  lcmd (tap-hold-press 100 100 lmet (layer-toggle symnav))
+  ;; Layer switching - Right Command activates symnav, Left Command context-dependent
+  rcmd (tap-hold-press 150 250 rmet (layer-switch symnav))  ;; Always switch to symnav
+  lcmd-base (tap-hold-press 150 250 esc lmet)              ;; In base: escape
+  lcmd-sym (tap-hold-press 150 250 (layer-switch base) lmet) ;; In symnav: switch to base
 )
 
 (deflayer base
   @hyp @a @s @d @f @j @k @l @;
   q w e r t y u i o p
   h g c v b n m
-  lctl lalt @lcmd @rcmd ralt rctl
+  lctl lalt @lcmd-base @rcmd ralt rctl
 )
 
 (deflayer symnav
-  @hyp (tap-hold-press 100 100 S-grv lsft)  ;; A = ~ in layer
-       (tap-hold-press 100 100 S-- lctl)     ;; S = _ in layer
-       (tap-hold-press 100 100 [ lalt)     ;; D = [ in layer
-       (tap-hold-press 100 100 ] lmet)     ;; F = ] in layer
-       (tap-hold-press 100 100 down rmet)  ;; J = down in layer
-       (tap-hold-press 100 100 up ralt)    ;; K = up in layer  
-       (tap-hold-press 100 100 right rctl) ;; L = right in layer
-       (tap-hold-press 100 100 ' rsft)     ;; ; = ' in layer
+  @hyp (tap-hold-press 150 250 S-grv lsft)  ;; A = ~ in layer
+       (tap-hold-press 150 250 S-- lctl)     ;; S = _ in layer
+       (tap-hold-press 150 250 [ lalt)       ;; D = [ in layer
+       (tap-hold-press 150 250 ] lmet)       ;; F = ] in layer
+       (tap-hold-press 150 250 down rmet)    ;; J = down in layer
+       (tap-hold-press 150 250 up ralt)      ;; K = up in layer  
+       (tap-hold-press 150 250 right rctl)   ;; L = right in layer
+       (tap-hold-press 150 250 ' rsft)       ;; ; = ' in layer
        
-  1 2 3 4 5 6 7 8 9 0                     ;; Numbers on QWERTY row
-  left = S-9 S-0 \ - m                     ;; H=left, G==, C=(, V=), B=\, N=-
-  lctl lalt @lcmd @rcmd ralt rctl
+  1 2 3 4 5 6 7 8 9 0                       ;; Numbers on QWERTY row
+  left = S-9 S-0 \ - m                       ;; H=left, G==, C=(, V=), B=\, N=-
+  lctl lalt @lcmd-sym @rcmd ralt rctl
 )
