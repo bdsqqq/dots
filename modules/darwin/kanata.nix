@@ -10,7 +10,7 @@ in
 
   config = lib.mkIf cfg.enable {
     # Install kanata via homebrew (easier on macOS)
-    homebrew.casks = [ "kanata" ];
+    homebrew.casks = [ "kanata-app" ];
     
     # Create kanata configuration directory
     system.activationScripts.kanata = {
@@ -26,7 +26,7 @@ in
       serviceConfig = {
         Label = "com.bdsqqq.kanata";
         ProgramArguments = [
-          "/opt/homebrew/bin/kanata"
+          "/Applications/Kanata.app/Contents/MacOS/kanata"
           "--config-file"
           "/Users/bdsqqq/.config/kanata/kanata.kbd"
         ];

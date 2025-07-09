@@ -36,8 +36,8 @@
 )
 
 (deflayer symnav
-  @hyp (tap-hold-press 100 100 ~ lsft)     ;; A = ~ in layer
-       (tap-hold-press 100 100 _ lctl)     ;; S = hold only in layer
+  @hyp (tap-hold-press 100 100 S-grv lsft)  ;; A = ~ in layer
+       (tap-hold-press 100 100 S-- lctl)     ;; S = _ in layer
        (tap-hold-press 100 100 [ lalt)     ;; D = [ in layer
        (tap-hold-press 100 100 ] lmet)     ;; F = ] in layer
        (tap-hold-press 100 100 down rmet)  ;; J = down in layer
@@ -46,6 +46,6 @@
        (tap-hold-press 100 100 ' rsft)     ;; ; = ' in layer
        
   1 2 3 4 5 6 7 8 9 0                     ;; Numbers on QWERTY row
-  left = S9 S0 \ - m                       ;; H=left, G==, C=(, V=), B=\, N=-
+  left = S-9 S-0 \ - m                     ;; H=left, G==, C=(, V=), B=\, N=-
   lctl lalt @lcmd @rcmd ralt rctl
 )
