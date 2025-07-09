@@ -8,7 +8,6 @@
     ./neovim.nix
     ./applications.nix
     ./terminals.nix
-    ./firefox.nix
     ./claude.nix
   ] ++ lib.optionals (!isDarwin) [
     # Linux-specific modules (Wayland/X11 desktop environment)
