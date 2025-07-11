@@ -74,6 +74,7 @@
 
     pnpm
     bun
+    pscale
     go
     gofumpt
     golangci-lint
