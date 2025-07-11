@@ -53,7 +53,7 @@
       "superwhisper"         # Audio transcribing
       "blackhole-2ch"        # Audio routing
       "cleanshot"            # Screenshot tool  
-      "karabiner-elements"   # Keyboard customization
+      # "karabiner-elements"   # Keyboard customization - disabled for kanata
       "raycast"              # Launcher/productivity
       
       # Development tools
