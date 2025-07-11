@@ -54,7 +54,7 @@
 )
 
 (deflayer symnav
-  @hyp (tap-hold-press 150 250 S-grv lsft)  ;; A = ~ in layer
+  @hyp (tap-hold-press 150 250 grv lsft)    ;; A = ` in layer (~ with shift)
        (tap-hold-press 150 250 S-- lctl)     ;; S = _ in layer
        (tap-hold-press 150 250 [ lalt)       ;; D = [ in layer
        (tap-hold-press 150 250 ] lmet)       ;; F = ] in layer
