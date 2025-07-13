@@ -34,6 +34,7 @@
         "waybar"
         "mako"
         "nm-applet"
+        "blueman-applet"
         # Cursor theme setup (ensures proper application)
         "hyprctl setcursor macOS 24"
         "gsettings set org.gnome.desktop.interface cursor-theme 'macOS'"
@@ -53,6 +54,10 @@
         gaps_out = 20;
         border_size = 2;
         layout = "dwindle";
+        
+        # Resize behavior
+        resize_on_border = true;
+        extend_border_grab_area = 15;
       };
       
       # Decoration settings with working syntax
@@ -91,20 +96,46 @@
       "$mod" = "SUPER";
       
       bind = [
+        # macOS-style window layout shortcuts (Hyper = Super + Shift + Ctrl + Alt)
+        "SUPER SHIFT CTRL ALT, H, exec, hyprctl dispatch togglefloating active off && hyprctl dispatch movewindow l"  # Tile left
+        "SUPER SHIFT CTRL ALT, J, exec, hyprctl dispatch togglefloating active on && hyprctl dispatch resizewindowpixel exact 60% 60% && hyprctl dispatch centerwindow"  # Float 60% centered
+        "SUPER SHIFT CTRL ALT, K, exec, hyprctl dispatch togglefloating active on && hyprctl dispatch resizewindowpixel exact 95% 95% && hyprctl dispatch centerwindow"  # Float full size centered
+        "SUPER SHIFT CTRL ALT, L, exec, hyprctl dispatch togglefloating active off && hyprctl dispatch movewindow r"  # Tile right
+        
+        # macOS-style application management
+        "$mod, Q, killactive"  # Quit application (like Cmd+Q)
+        
         # Basic shortcuts
-        "$mod, Q, exec, ghostty"
-        "$mod, C, killactive"
-        "$mod, M, exit"
+        "$mod, T, exec, ghostty"  # New terminal (like Cmd+T)
+        "$mod, C, killactive"  # Close window (duplicate for now)
+        "$mod, M, exit"  # Exit Hyprland
         "$mod, E, exec, nautilus"
         "$mod, V, togglefloating"
-        "$mod, R, exec, wofi --show drun"
         "$mod, J, togglesplit"
+        
+        # Meta-launcher (fuzzel-based command palette)  
+        "$mod, SPACE, exec, /home/bdsqqq/commonplace/01_files/scripts/fuzzel-launcher"
+        
+        # macOS-style system shortcuts (Super-centered like macOS)
+        "$mod, W, killactive"  # Close window (like Cmd+W)
+        "$mod, N, exec, ghostty"  # New window (like Cmd+N)
+        "$mod, F, exec, echo 'Find in app not implemented'"  # Placeholder for find
+        "$mod, A, exec, hyprctl dispatch focusurgentorlast"  # Select all / focus urgent
         
         # Movement
         "$mod, left, movefocus, l"
         "$mod, right, movefocus, r"
         "$mod, up, movefocus, u"
         "$mod, down, movefocus, d"
+        
+        # Resize mode keybindings
+        "$mod, R, submap, resize"
+        
+        # Window resizing with keyboard
+        "$mod SHIFT, left, resizeactive, -50 0"
+        "$mod SHIFT, right, resizeactive, 50 0"
+        "$mod SHIFT, up, resizeactive, 0 -50"
+        "$mod SHIFT, down, resizeactive, 0 50"
         
         # Workspaces
         "$mod, 1, workspace, 1"
@@ -144,6 +175,16 @@
         ", XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
       ];
       
+      # Resize submap for visual feedback during resizing
+      submap = [
+        "resize,left,resizeactive,-50 0"
+        "resize,right,resizeactive,50 0"
+        "resize,up,resizeactive,0 -50"
+        "resize,down,resizeactive,0 50"
+        "resize,escape,submap,reset"
+        "resize,return,submap,reset"
+      ];
+      
       # Mouse bindings
       bindm = [
         "$mod, mouse:272, movewindow"
@@ -152,9 +193,23 @@
       
       # Window rules using correct v2 syntax
       windowrulev2 = [
+        # System control windows
         "float, class:^(pavucontrol)$"
         "float, class:^(nm-connection-editor)$"
         "float, class:^(blueman-manager)$"
+        
+        # Meta-launcher floating terminal
+        "float, class:^(meta-launcher)$"
+        "size 60% 70%, class:^(meta-launcher)$"
+        "center, class:^(meta-launcher)$"
+        "animation popin 80%, class:^(meta-launcher)$"
+        "rounding 10, class:^(meta-launcher)$"
+        "dimaround, class:^(meta-launcher)$"
+        
+        # Make fuzzel float properly
+        "float, class:^(fuzzel)$"
+        "center, class:^(fuzzel)$"
+        "dimaround, class:^(fuzzel)$"
       ];
     };
   };
