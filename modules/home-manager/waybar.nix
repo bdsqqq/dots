@@ -1,6 +1,14 @@
 { config, pkgs, lib, ... }:
 
 {
+  # Waybar dependencies and utilities
+  home.packages = with pkgs; [
+    jq         # JSON processor for notification scripts
+    socat      # Socket communication utilities  
+    fzf        # Fuzzy finder for interactive menus
+    wireplumber # Audio session manager (ensures wpctl availability)
+  ];
+
   programs.waybar = {
     enable = true;
     package = pkgs.waybar;
