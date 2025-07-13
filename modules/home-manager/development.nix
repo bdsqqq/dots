@@ -108,12 +108,6 @@
     amp-cli
     claude-code
     opencode
-    
-    # System utilities needed by Waybar scripts
-    jq         # JSON processor for notification scripts
-    socat      # Socket communication utilities  
-    wireplumber # Audio session manager (ensures wpctl availability)
-    fzf        # Fuzzy finder for meta-launcher interactive mode
   ];
   # Note: ghostty is now configured in applications.nix for both platforms
 }
