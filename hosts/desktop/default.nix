@@ -215,6 +215,9 @@
   
   # Enable XWayland for X11 apps like Steam
   programs.xwayland.enable = true;
+  
+  # Enable Steam hardware support for controllers
+  hardware.steam-hardware.enable = true;
 
   # Your user
   users.users.bdsqqq = {
@@ -259,6 +262,7 @@
     # Additional desktop tools
     tree
     unzip
+    usbutils  # For lsusb command
     
     # Theme tools
     dconf
