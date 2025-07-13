@@ -26,8 +26,8 @@
           format = "{}";
           interval = 5;
           exec = "~/.config/waybar/scripts/bluetooth.sh";
-          on-click = "~/.config/waybar/scripts/bluetooth-toggle.sh";
-          on-click-right = "~/.config/waybar/scripts/bluetooth-menu.sh";
+          on-click = "blueman-manager";
+          on-click-right = "blueman-manager";
         };
         
         # Audio control
@@ -48,7 +48,7 @@
           format-wifi = "󰖩";
           format-ethernet = "󰈀";
           format-disconnected = "󰖪";
-          on-click = "nm-connection-editor";
+          on-click = "networkmanager_dmenu";
         };
         
         # Notifications

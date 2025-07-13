@@ -43,7 +43,7 @@
         eval "$(fnm env --use-on-cd)"
         [[ -s "$HOME/.bun/_bun" ]] && source "$HOME/.bun/_bun"
         [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
-        export PATH="/etc/profiles/per-user/bdsqqq/bin:$HOME/.nix-profile/bin:$GOPATH/bin:$HOME/.scripts:$PNPM_HOME:$BUN_INSTALL/bin:$HOME/.local/bin:$PATH"
+        export PATH="/etc/profiles/per-user/bdsqqq/bin:$HOME/.nix-profile/bin:$GOPATH/bin:$HOME/.scripts:$PNPM_HOME:$BUN_INSTALL/bin:$HOME/.local/bin:$HOME/commonplace/01_files/scripts:$PATH"
         
         alias venv='python3 -m venv'
         alias activate='source venv/bin/activate'
@@ -108,6 +108,12 @@
     amp-cli
     claude-code
     opencode
+    
+    # System utilities needed by Waybar scripts
+    jq         # JSON processor for notification scripts
+    socat      # Socket communication utilities  
+    wireplumber # Audio session manager (ensures wpctl availability)
+    fzf        # Fuzzy finder for meta-launcher interactive mode
   ];
   # Note: ghostty is now configured in applications.nix for both platforms
 }
