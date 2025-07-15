@@ -173,6 +173,9 @@
         ", XF86AudioRaiseVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"
         ", XF86AudioLowerVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"
         ", XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+        
+        # Fix keybinds after rebuild
+        "$mod SHIFT CTRL ALT, R, exec, sudo systemctl restart kanata-default.service"
       ];
       
       # Resize submap for visual feedback during resizing
