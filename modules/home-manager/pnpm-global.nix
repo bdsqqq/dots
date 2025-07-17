@@ -83,6 +83,10 @@ let
     ${pkgs.pnpm}/bin/pnpm config set global-dir "$PNPM_HOME"
     ${pkgs.pnpm}/bin/pnpm config set global-bin-dir "$PNPM_HOME"
     
+    # Approve all build scripts globally to avoid warnings
+    ${pkgs.pnpm}/bin/pnpm config set enable-pre-post-scripts true
+    echo "y" | ${pkgs.pnpm}/bin/pnpm approve-builds -g || true
+    
     # Install each package
     ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: version: 
       "${pkgs.pnpm}/bin/pnpm add -g ${name}@${version}"
