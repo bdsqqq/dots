@@ -2,21 +2,19 @@
 # Add packages you want available globally here
 {
   # Development tools
-  typescript = "^5.0.0";
-  prettier = "^3.0.0";
-  eslint = "^8.0.0";
+  typescript = "5.0.4";
+  prettier = "2.8.8";
   
   # Build tools
-  vite = "^5.0.0";
-  
-  # Utilities
-  nodemon = "^3.0.0";
+  turbo = "2.0.14";
+  vercel = "41.4.1";
   
   # Package managers and tools
-  npm-check-updates = "^16.0.0";
+  npm = "11.4.2";
+  pnpm = "10.11.0";
+  bun = "1.2.15";
   
-  # Example of how to add more packages:
-  # "package-name" = "version-spec";
-  # turbo = "^1.0.0";
-  # "@types/node" = "^20.0.0";
+  # AI/Code tools
+  "@sourcegraph/amp" = "0.0.1748506378-g0b2c07";
+  opencode-ai = "0.2.23";
 }

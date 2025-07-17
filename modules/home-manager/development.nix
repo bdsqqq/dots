@@ -41,6 +41,13 @@
       initContent = ''
         eval "$(/opt/homebrew/bin/brew shellenv)"
         eval "$(fnm env --use-on-cd)"
+        
+        # Install and use Node.js v22 LTS by default
+        if ! fnm ls | grep -q "v22"; then
+          fnm install 22
+        fi
+        fnm default 22
+        
         [[ -s "$HOME/.bun/_bun" ]] && source "$HOME/.bun/_bun"
         [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
         export PATH="/etc/profiles/per-user/bdsqqq/bin:$HOME/.nix-profile/bin:$GOPATH/bin:$HOME/.scripts:$PNPM_HOME:$BUN_INSTALL/bin:$HOME/.local/bin:$HOME/commonplace/01_files/scripts:$PATH"
@@ -73,7 +80,6 @@
     oh-my-zsh
 
     pnpm
-    bun
     pscale
     go
     gofumpt
@@ -105,9 +111,6 @@
     asciiquarium-transparent
     fastfetch
     
-    amp-cli
-    claude-code
-    opencode
   ];
   # Note: ghostty is now configured in applications.nix for both platforms
 }
