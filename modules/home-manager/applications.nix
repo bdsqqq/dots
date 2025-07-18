@@ -7,9 +7,10 @@
 
     docker
     blockbench
+    
+    blender
 
     obsidian
-    prismlauncher
     spicetify-cli
     # spotify-player # Configured in development.nix via programs.spotify-player
     transmission_4
