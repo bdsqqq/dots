@@ -13,6 +13,13 @@
           remote = "origin";
           username = "bdsqqq";
         };
+        core.pager = "delta";
+        interactive.diffFilter = "delta --color-only";
+        delta = {
+          navigate = true;  # use n and N to move between diff sections
+          dark = true;      # or light = true, or omit for auto-detection
+        };
+        merge.conflictstyle = "zdiff3";
       };
     };
 
@@ -69,6 +76,7 @@
 
   home.packages = with pkgs; [
     lazygit
+    delta
     gh
     graphite-cli
     git-filter-repo
@@ -82,6 +90,8 @@
     pnpm
     pscale
     go
+    python3
+    uv
     gofumpt
     golangci-lint
     gotools
@@ -110,7 +120,6 @@
     httpie
     asciiquarium-transparent
     fastfetch
-    
   ];
   # Note: ghostty is now configured in applications.nix for both platforms
 }
