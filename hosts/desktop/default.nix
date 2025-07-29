@@ -94,8 +94,16 @@
     enable = true;
     keyboards.default = {
       devices = [
-        "/dev/input/by-id/usb-*-kbd"  # Adjust to your keyboard
+        # Apply to all USB keyboards EXCEPT Corne and Moonlander
+        "/dev/input/by-id/usb-*-kbd"
       ];
+      # Exclude specific keyboards by device name patterns
+      extraDefCfg = ''
+        linux-dev-names-exclude (
+          "Corne Choc Pro"
+          "Moonlander Mark I"
+        )
+      '';
       configFile = ../../modules/shared/kanata.kbd;
     };
   };
