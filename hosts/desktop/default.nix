@@ -224,7 +224,8 @@
   # Enable XWayland for X11 apps like Steam
   programs.xwayland.enable = true;
   
-  # Enable Steam hardware support for controllers
+  # Enable Steam with hardware support for controllers
+  programs.steam.enable = true;
   hardware.steam-hardware.enable = true;
 
   # Your user
@@ -400,6 +401,8 @@
     WLR_NO_HARDWARE_CURSORS = "1";
     # X11 display for applications that need it
     DISPLAY = ":0";
+    # Fix PS5 controller bluetooth compatibility with Steam
+    SDL_JOYSTICK_HIDAPI_PS5_RUMBLE = "0";
   };
   
   # Automatic garbage collection
