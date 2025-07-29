@@ -7,6 +7,11 @@
 
 (defcfg
   process-unmapped-keys yes
+  ;; Exclude Corne and Moonlander keyboards from kanata processing
+  macos-dev-names-exclude (
+    "Corne Choc Pro"
+    "Moonlander Mark I"
+  )
 )
 
 (defsrc
