@@ -3,7 +3,6 @@
 {
   # Development tools
   typescript = "latest";
-  prettier = "2.8.8";
   
   # Build tools
   turbo = "latest";
