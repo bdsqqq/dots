@@ -120,6 +120,11 @@
     httpie
     asciiquarium-transparent
     fastfetch
+  ] ++ lib.optionals isDarwin [
+    # macOS system monitoring (includes GPU info)
+    istat-menus
+  ] ++ lib.optionals (!isDarwin) [
+    nvtopPackages.nvidia
   ];
   # Note: ghostty is now configured in applications.nix for both platforms
 }
