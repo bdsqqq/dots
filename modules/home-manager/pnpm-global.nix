@@ -70,14 +70,14 @@ let
     };
   };
   
-  # Alternative simpler approach: just use pnpm directly in a script
+  # Declarative pnpm global package manager - ensures 1:1 mapping with config
   pnpmGlobalInstaller = pkgs.writeShellScriptBin "install-pnpm-globals" ''
     set -e
     
     export PNPM_HOME="$HOME/Library/pnpm"
     export PATH="$PNPM_HOME:$PATH"
     
-    echo "Installing global pnpm packages..."
+    echo "Managing global pnpm packages declaratively..."
     
     # Configure pnpm global directories
     ${pkgs.pnpm}/bin/pnpm config set global-dir "$PNPM_HOME"
@@ -87,12 +87,45 @@ let
     ${pkgs.pnpm}/bin/pnpm config set enable-pre-post-scripts true
     echo "y" | ${pkgs.pnpm}/bin/pnpm approve-builds -g || true
     
-    # Install each package
+    # Get list of packages we want (from nix config)
+    declare -A desired_packages
     ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: version: 
-      "${pkgs.pnpm}/bin/pnpm add -g ${name}@${version}"
+      "desired_packages[\"${name}\"]=\"${version}\""
     ) globalPackages)}
     
-    echo "Global pnpm packages installed successfully!"
+    # Get currently installed global packages
+    echo "Checking current global packages..."
+    current_packages=()
+    if [ -d "$PNPM_HOME" ]; then
+      # Parse pnpm list output, excluding the base directory and extracting package names
+      while IFS= read -r line; do
+        if [[ "$line" == *"$PNPM_HOME"* && "$line" != "$PNPM_HOME" ]]; then
+          # Extract package name from path like /Users/user/Library/pnpm/package-name
+          pkg_name=$(basename "$line")
+          # Skip if it looks like a version directory or other metadata
+          if [[ ! "$pkg_name" =~ ^[0-9] && "$pkg_name" != "node_modules" ]]; then
+            current_packages+=("$pkg_name")
+          fi
+        fi
+      done < <(${pkgs.pnpm}/bin/pnpm list -g --depth=0 --parseable 2>/dev/null || true)
+    fi
+    
+    # Remove packages not in our desired list
+    for pkg in "''${current_packages[@]}"; do
+      if [[ ! "''${desired_packages[$pkg]+_}" ]]; then
+        echo "Removing unwanted package: $pkg"
+        ${pkgs.pnpm}/bin/pnpm remove -g "$pkg" || true
+      fi
+    done
+    
+    # Install/update packages from config
+    for pkg_name in "''${!desired_packages[@]}"; do
+      pkg_version="''${desired_packages[$pkg_name]}"
+      echo "Installing/updating: $pkg_name@$pkg_version"
+      ${pkgs.pnpm}/bin/pnpm add -g "$pkg_name@$pkg_version"
+    done
+    
+    echo "Global pnpm packages synchronized successfully!"
   '';
   
 in
