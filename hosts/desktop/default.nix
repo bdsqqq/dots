@@ -155,6 +155,9 @@
   
   # Enable Flatpak
   services.flatpak.enable = true;
+  
+  # Bluetooth management
+  services.blueman.enable = true;
 
   # Display manager
   services.greetd = {
@@ -214,6 +217,18 @@
   # Enable dconf for theme settings
   programs.dconf.enable = true;
   
+  # Udev rules for DualSense controller support
+  services.udev.extraRules = ''
+    # DualSense PS5 controller - Bluetooth
+    KERNEL=="hidraw*", KERNELS=="*054C:0CE6*", MODE="0660", TAG+="uaccess"
+    # DualSense PS5 controller - USB  
+    KERNEL=="hidraw*", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="0ce6", MODE="0660", TAG+="uaccess"
+    # DualSense Edge PS5 controller - Bluetooth
+    KERNEL=="hidraw*", KERNELS=="*054C:0DF2*", MODE="0660", TAG+="uaccess"
+    # DualSense Edge PS5 controller - USB
+    KERNEL=="hidraw*", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="0df2", MODE="0660", TAG+="uaccess"
+  '';
+  
   # X server configuration (needed for Steam and some applications)
   services.xserver = {
     enable = true;
@@ -231,7 +246,7 @@
   # Your user
   users.users.bdsqqq = {
     isNormalUser = true;
-    extraGroups = [ "wheel" "networkmanager" "audio" "video" ];
+    extraGroups = [ "wheel" "networkmanager" "audio" "video" "input" ];
     shell = pkgs.zsh;
   };
 
@@ -286,6 +301,10 @@
     # Display management
     wdisplays  # Wayland display configurator
     wlr-randr  # Command-line display management for wlroots
+    
+    # Controller support
+    dualsensectl  # PS5 DualSense controller support
+    hidapi  # HID API library for controller communication
     
     # Cursor theme (traditional macOS-style)
     apple-cursor  # Traditional macOS-style cursor theme
