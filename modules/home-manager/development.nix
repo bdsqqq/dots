@@ -47,13 +47,14 @@
       };
       initContent = ''
         eval "$(/opt/homebrew/bin/brew shellenv)"
-        eval "$(fnm env --use-on-cd)"
+        # Use nix-managed nodejs instead of fnm to avoid dynamic linking issues on nixos
+        # eval "$(fnm env --use-on-cd)"
         
         # Install and use Node.js v22 LTS by default
-        if ! fnm ls | grep -q "v22"; then
-          fnm install 22
-        fi
-        fnm default 22
+        # if ! fnm ls | grep -q "v22"; then
+        #   fnm install 22
+        # fi
+        # fnm default 22
         
         [[ -s "$HOME/.bun/_bun" ]] && source "$HOME/.bun/_bun"
         [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
@@ -86,6 +87,7 @@
     ssh-to-age
     fnm
     oh-my-zsh
+    nodejs_22
 
     pnpm
     pscale
