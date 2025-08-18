@@ -29,6 +29,10 @@
           };
         }
       ];
+      initExtra = ''
+        # Show hidden files by default in shell globbing
+        setopt GLOB_DOTS
+      '';
       shellAliases = {
         # Add your custom aliases here
       };

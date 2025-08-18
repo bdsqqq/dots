@@ -404,6 +404,9 @@
           default_file_explorer = true;
           delete_to_trash = true;
           skip_confirm_for_simple_edits = true;
+          view_options = {
+            show_hidden = true;
+          };
         };
       };
       
@@ -608,6 +611,15 @@
           };
         };
         settings = {
+          defaults = {
+            file_ignore_patterns = {};
+            hidden = true;
+          };
+          pickers = {
+            find_files = {
+              hidden = true;
+            };
+          };
           extensions.__raw = "{ ['ui-select'] = { require('telescope.themes').get_dropdown() } }";
         };
       };
@@ -920,7 +932,19 @@
           icons = {};
           surround = { };
           comment = { };
-          files = { };
+          files = {
+            options = {
+              permanent_delete = true;
+              use_as_default_explorer = true;
+            };
+            content = {
+              filter.__raw = ''
+                function(fs_entry)
+                  return true  -- show all files including hidden
+                end
+              '';
+            };
+          };
         };
         mockDevIcons = true;
       };
