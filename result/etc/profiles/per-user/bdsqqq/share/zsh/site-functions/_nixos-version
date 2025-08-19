@@ -1,0 +1,9 @@
+#compdef nixos-version
+#autoload
+
+_nix-common-options
+
+_arguments \
+  '(- *)'{--hash,--revision}'[Show the full SHA1 hash of the Git commit from which this configuration was built.]'\
+  '--configuration-revision[Show the configuration revision if available.]'\
+  '--json[Print a JSON representation of the versions of NixOS and the top-level configuration flake.]'

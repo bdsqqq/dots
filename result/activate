@@ -1,0 +1,2675 @@
+#!/usr/bin/env -i /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash
+# shellcheck shell=bash
+# shellcheck disable=SC2096
+
+set -e
+set -o pipefail
+
+PATH="/nix/store/lxdrljxbda4gh4i93kp861ljrl0jixvg-gnugrep-3.12/bin:/nix/store/bcdc67d3d3jkbl35ccxmvyan5kmic9lc-coreutils-9.7/bin:/nix/store/zln77pckyb4ky96vb4vqq6flgiifvbcy-nix-2.28.3/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+export PATH
+export USER=root
+export LOGNAME=root
+export HOME=~root
+export MAIL=/var/mail/root
+export SHELL=$BASH
+export LANG=C
+export LC_CTYPE=UTF-8
+
+systemConfig=/nix/store/92wji49qsmgmdv1p8sbs6c4i7fz9ibqp-darwin-system-25.11.0d71cbf
+
+# Ensure a consistent umask.
+umask 0022
+
+cd /
+
+if [[ $(id -u) -ne 0 ]]; then
+  printf >&2 '\e[1;31merror: `activate` must be run as root\e[0m\n'
+  exit 2
+fi
+
+rm -rf /var/lib/linux-builder
+
+
+IFS=. read -ra osVersion <<<"$(sw_vers -productVersion)"
+if (( osVersion[0] < 11 || (osVersion[0] == 11 && osVersion[1] < 3) )); then
+  printf >&2 '\e[1;31merror: macOS version is less than 11.3, aborting activation\e[0m\n'
+  printf >&2 'Nixpkgs 25.05 requires macOS Big Sur 11.3 or newer, and 25.11 will\n'
+  printf >&2 'require macOS Sonoma 14.\n'
+  printf >&2 '\n'
+  printf >&2 'For more information on your options going forward, see the 25.05\n'
+  printf >&2 'release notes:\n'
+  printf >&2 '<https://nixos.org/manual/nixos/unstable/release-notes#sec-release-25.05>\n'
+  printf >&2 '\n'
+  printf >&2 'Nixpkgs 24.11 and nix-darwin 24.11 continue to support down to macOS\n'
+  printf >&2 'Sierra 10.12, and will be supported through June 2025.\n'
+  printf >&2 '\n'
+  printf >&2 'You can override this check by setting:\n'
+  printf >&2 '\n'
+  printf >&2 '    system.checks.verifyMacOSVersion = false;\n'
+  printf >&2 '\n'
+  printf >&2 'However, we are unable to provide support if you do so.\n'
+  exit 2
+fi
+
+# shellcheck disable=SC2209
+primaryUser=bdsqqq
+if ! id -- "$primaryUser" >/dev/null 2>&1; then
+  printf >&2 '\e[1;31merror: primary user `%s` does not exist, aborting activation\e[0m\n' \
+    "$primaryUser"
+  printf >&2 'Please ensure that `system.primaryUser` is set to the name of an\n'
+  printf >&2 'existing user. Usually this should be the user you have been using to\n'
+  printf >&2 'run `darwin-rebuild`.\n'
+  exit 2
+fi
+
+if [[ -e /usr/local/bin/determinate-nixd ]]; then
+  printf >&2 '\e[1;31merror: Determinate detected, aborting activation\e[0m\n'
+  printf >&2 'Determinate uses its own daemon to manage the Nix installation that\n'
+  printf >&2 'conflicts with nix-darwin’s native Nix management.\n'
+  printf >&2 '\n'
+  printf >&2 'To turn off nix-darwin’s management of the Nix installation, set:\n'
+  printf >&2 '\n'
+  printf >&2 '    nix.enable = false;\n'
+  printf >&2 '\n'
+  printf >&2 'This will allow you to use nix-darwin with Determinate. Some nix-darwin\n'
+  printf >&2 'functionality that relies on managing the Nix installation, like the\n'
+  printf >&2 '`nix.*` options to adjust Nix settings or configure a Linux builder,\n'
+  printf >&2 'will be unavailable.\n'
+  exit 2
+fi
+
+firstBuildUserID=$(dscl . -read /Users/_nixbld1 UniqueID | awk '{print $2}')
+if
+  # Don’t complain when we’re about to migrate old‐style build users…
+  [[ $firstBuildUserID != 351 ]] \
+  && ! dscl . -list /Users | grep -q '^nixbld'
+then
+    printf >&2 '\e[1;31merror: Build users have unexpected UIDs, aborting activation\e[0m\n'
+    printf >&2 'The default Nix build user ID range has been adjusted for\n'
+    printf >&2 'compatibility with macOS Sequoia 15. Your _nixbld1 user currently has\n'
+    printf >&2 'UID %d rather than the new default of 351.\n' "$firstBuildUserID"
+    printf >&2 '\n'
+    printf >&2 'You can automatically migrate the users with the following command:\n'
+    printf >&2 '\n'
+    if [[ -e /nix/receipt.json ]]; then
+        if
+            /nix/store/04gj0cpc6mv0pkyz114p23fq65zx8mbx-jq-1.8.0-bin/bin/jq --exit-status \
+            'try(.planner.settings | has("enable_flakes"))' \
+            /nix/receipt.json \
+            >/dev/null
+        then
+            installerUrl="https://install.lix.systems/lix"
+        else
+            installerUrl="https://install.determinate.systems/nix"
+        fi
+        printf >&2 "    curl --proto '=https' --tlsv1.2 -sSf -L %s | sh -s -- repair sequoia --move-existing-users\n" \
+            "$installerUrl"
+    else
+        printf >&2 "    curl --proto '=https' --tlsv1.2 -sSf -L https://github.com/NixOS/nix/raw/master/scripts/sequoia-nixbld-user-migration.sh | bash -\n"
+    fi
+    printf >&2 '\n'
+    printf >&2 'If you have no intention of upgrading to macOS Sequoia 15, or already\n'
+    printf >&2 'have a custom UID range that you know is compatible with Sequoia, you\n'
+    printf >&2 'can disable this check by setting:\n'
+    printf >&2 '\n'
+    printf >&2 '    ids.uids.nixbld = %d;\n' "$((firstBuildUserID - 1))"
+    printf >&2 '\n'
+    exit 2
+fi
+
+buildGroupID=$(dscl . -read /Groups/nixbld PrimaryGroupID | awk '{print $2}')
+expectedBuildGroupID=350
+if [[ $buildGroupID != "$expectedBuildGroupID" ]]; then
+    printf >&2 '\e[1;31merror: Build user group has mismatching GID, aborting activation\e[0m\n'
+    printf >&2 'The default Nix build user group ID was changed from 30000 to 350.\n'
+    printf >&2 'You are currently managing Nix build users with nix-darwin, but your\n'
+    printf >&2 'nixbld group has GID %d, whereas we expected %d.\n' \
+      "$buildGroupID" "$expectedBuildGroupID"
+    printf >&2 '\n'
+    printf >&2 'Possible causes include setting up a new Nix installation with an\n'
+    printf >&2 'existing nix-darwin configuration, setting up a new nix-darwin\n'
+    printf >&2 'installation with an existing Nix installation, or manually increasing\n'
+    printf >&2 'your `system.stateVersion` setting.\n'
+    printf >&2 '\n'
+    printf >&2 'You can set the configured group ID to match the actual value:\n'
+    printf >&2 '\n'
+    printf >&2 '    ids.gids.nixbld = %d;\n' "$buildGroupID"
+    printf >&2 '\n'
+    printf >&2 'We do not recommend trying to change the group ID with macOS user\n'
+    printf >&2 'management tools without a complete uninstallation and reinstallation\n'
+    printf >&2 'of Nix.\n'
+    exit 2
+fi
+
+if [[ "$(stat --format='%u' /nix)" != 0 ]]; then
+  printf >&2 '[1;31merror: single‐user install detected, aborting activation[0m\n'
+  printf >&2 'nix-darwin now only supports managing multi‐user daemon installations\n'
+  printf >&2 'of Nix. You can uninstall nix-darwin and Nix and then reinstall both to\n'
+  printf >&2 'fix this.\n'
+  printf >&2 '\n'
+  printf >&2 'If you don’t want to do that, you can disable management of the Nix\n'
+  printf >&2 'installation with:\n'
+  printf >&2 '\n'
+  printf >&2 '    nix.enable = false;\n'
+  printf >&2 '\n'
+  printf >&2 'See the `nix.enable` option documentation for caveats.\n'
+  exit 2
+fi
+
+if grep -q 'etc/profile.d/nix-daemon.sh' /etc/profile; then
+    echo "[1;31merror: Found nix-daemon.sh reference in /etc/profile, aborting activation[0m" >&2
+    echo "This will override options like nix.nixPath because it runs later," >&2
+    echo "remove this snippet from /etc/profile:" >&2
+    echo >&2
+    echo "    # Nix" >&2
+    echo "    if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then" >&2
+    echo "      . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'" >&2
+    echo "    fi" >&2
+    echo "    # End Nix" >&2
+    echo >&2
+    exit 2
+fi
+
+if [[ -d /etc/ssh/authorized_keys.d ]]; then
+    printf >&2 '\e[1;31merror: /etc/ssh/authorized_keys.d exists, aborting activation\e[0m\n'
+    printf >&2 'SECURITY NOTICE: The previous implementation of the\n'
+    printf >&2 '`users.users.<name>.openssh.authorizedKeys.*` options would not delete\n'
+    printf >&2 'authorized keys files when the setting for a given user was removed.\n'
+    printf >&2 '\n'
+    printf >&2 "This means that if you previously stopped managing a user's authorized\n"
+    printf >&2 'SSH keys with nix-darwin, or intended to revoke their access by\n'
+    printf >&2 'removing the option, the previous set of keys could still be used to\n'
+    printf >&2 'log in as that user.\n'
+    printf >&2 '\n'
+    printf >&2 'You can check the /etc/ssh/authorized_keys.d directory to see which\n'
+    printf >&2 'keys were permitted; afterwards, please remove the directory and\n'
+    printf >&2 're-run activation. The options continue to be supported and will now\n'
+    printf >&2 'correctly permit only the keys in your current system configuration.\n'
+    exit 2
+fi
+
+ensurePerms() {
+  homeDirectory=$(dscl . -read /Users/nobody NFSHomeDirectory)
+  homeDirectory=${homeDirectory#NFSHomeDirectory: }
+
+  if ! dscl . -change /Users/nobody NFSHomeDirectory "$homeDirectory" "$homeDirectory" &> /dev/null; then
+    if [[ "$(launchctl managername)" != Aqua ]]; then
+      printf >&2 '\e[1;31merror: users cannot be %s over SSH without Full Disk Access, aborting activation\e[0m\n' "$2"
+      printf >&2 'The user %s could not be %s as `darwin-rebuild` was not executed with Full Disk Access over SSH.\n' "$1" "$2"
+      printf >&2 'You can either:\n'
+      printf >&2 '\n'
+      printf >&2 '  grant Full Disk Access to all programs run over SSH\n'
+      printf >&2 '\n'
+      printf >&2 'or\n'
+      printf >&2 '\n'
+      printf >&2 '  run `darwin-rebuild` in a graphical session.\n'
+      printf >&2 '\n'
+      printf >&2 'The option "Allow full disk access for remote users" can be found by\n'
+      printf >&2 'navigating to System Settings > General > Sharing > Remote Login\n'
+      printf >&2 'and then pressing on the i icon next to the switch.\n'
+      exit 1
+    else
+      # The TCC service required to change home directories is `kTCCServiceSystemPolicySysAdminFiles`
+      # and we can reset it to ensure the user gets another prompt
+      tccutil reset SystemPolicySysAdminFiles > /dev/null
+
+      if ! dscl . -change /Users/nobody NFSHomeDirectory "$homeDirectory" "$homeDirectory" &> /dev/null; then
+        printf >&2 '\e[1;31merror: permission denied when trying to %s user %s, aborting activation\e[0m\n' "$2" "$1"
+        printf >&2 '`darwin-rebuild` requires permissions to administrate your computer,\n'
+        printf >&2 'please accept the dialog that pops up.\n'
+        printf >&2 '\n'
+        printf >&2 'If you do not wish to be prompted every time `darwin-rebuild` updates your users,\n'
+        printf >&2 'you can grant Full Disk Access to your terminal emulator in System Settings.\n'
+        printf >&2 '\n'
+        printf >&2 'This can be found in System Settings > Privacy & Security > Full Disk Access.\n'
+        exit 1
+      fi
+    fi
+
+  fi
+}
+
+u=$(id -u _nixbld1 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "351" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld1 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld2 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "352" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld2 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld3 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "353" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld3 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld4 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "354" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld4 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld5 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "355" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld5 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld6 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "356" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld6 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld7 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "357" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld7 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld8 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "358" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld8 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld9 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "359" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld9 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld10 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "360" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld10 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld11 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "361" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld11 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld12 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "362" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld12 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld13 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "363" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld13 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld14 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "364" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld14 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld15 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "365" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld15 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld16 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "366" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld16 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld17 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "367" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld17 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld18 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "368" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld18 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld19 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "369" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld19 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld20 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "370" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld20 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld21 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "371" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld21 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld22 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "372" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld22 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld23 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "373" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld23 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld24 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "374" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld24 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld25 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "375" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld25 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld26 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "376" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld26 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld27 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "377" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld27 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld28 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "378" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld28 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld29 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "379" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld29 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld30 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "380" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld30 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld31 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "381" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld31 create
+
+    
+  fi
+fi
+
+u=$(id -u _nixbld32 2> /dev/null) || true
+if ! [[ -n "$u" && "$u" -ne "382" ]]; then
+  if [ -z "$u" ]; then
+    ensurePerms _nixbld32 create
+
+    
+  fi
+fi
+
+
+u=$(id -u nixbld1 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld1 delete
+  fi
+fi
+
+u=$(id -u nixbld10 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld10 delete
+  fi
+fi
+
+u=$(id -u nixbld11 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld11 delete
+  fi
+fi
+
+u=$(id -u nixbld12 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld12 delete
+  fi
+fi
+
+u=$(id -u nixbld13 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld13 delete
+  fi
+fi
+
+u=$(id -u nixbld14 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld14 delete
+  fi
+fi
+
+u=$(id -u nixbld15 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld15 delete
+  fi
+fi
+
+u=$(id -u nixbld16 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld16 delete
+  fi
+fi
+
+u=$(id -u nixbld17 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld17 delete
+  fi
+fi
+
+u=$(id -u nixbld18 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld18 delete
+  fi
+fi
+
+u=$(id -u nixbld19 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld19 delete
+  fi
+fi
+
+u=$(id -u nixbld2 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld2 delete
+  fi
+fi
+
+u=$(id -u nixbld20 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld20 delete
+  fi
+fi
+
+u=$(id -u nixbld21 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld21 delete
+  fi
+fi
+
+u=$(id -u nixbld22 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld22 delete
+  fi
+fi
+
+u=$(id -u nixbld23 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld23 delete
+  fi
+fi
+
+u=$(id -u nixbld24 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld24 delete
+  fi
+fi
+
+u=$(id -u nixbld25 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld25 delete
+  fi
+fi
+
+u=$(id -u nixbld26 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld26 delete
+  fi
+fi
+
+u=$(id -u nixbld27 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld27 delete
+  fi
+fi
+
+u=$(id -u nixbld28 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld28 delete
+  fi
+fi
+
+u=$(id -u nixbld29 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld29 delete
+  fi
+fi
+
+u=$(id -u nixbld3 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld3 delete
+  fi
+fi
+
+u=$(id -u nixbld30 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld30 delete
+  fi
+fi
+
+u=$(id -u nixbld31 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld31 delete
+  fi
+fi
+
+u=$(id -u nixbld32 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld32 delete
+  fi
+fi
+
+u=$(id -u nixbld4 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld4 delete
+  fi
+fi
+
+u=$(id -u nixbld5 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld5 delete
+  fi
+fi
+
+u=$(id -u nixbld6 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld6 delete
+  fi
+fi
+
+u=$(id -u nixbld7 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld7 delete
+  fi
+fi
+
+u=$(id -u nixbld8 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld8 delete
+  fi
+fi
+
+u=$(id -u nixbld9 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    ensurePerms nixbld9 delete
+  fi
+fi
+
+
+
+if [[ "${checkActivation:-0}" -eq 1 ]]; then
+  echo "ok" >&2
+  exit 0
+fi
+
+declare -A etcSha256Hashes=(
+  [bashrc]='444c716ac2ccd9e1e3347858cb08a00d2ea38e8c12fdc5798380dc261e32e9ef 617b39e36fa69270ddbee19ddc072497dbe7ead840cbd442d9f7c22924f116f4 6be16cf7c24a3c6f7ae535c913347a3be39508b3426f5ecd413e636e21031e66 08ffbf991a9e25839d38b80a0d3bce3b5a6c84b9be53a4b68949df4e7e487bb7'
+  [nix/nix.conf]='7c2d80499b39256b03ee9abd3d6258343718306aca8d472c26ac32c9b0949093 19299897fa312d9d32b3c968c2872dd143085aa727140cec51f57c59083e93b9 c4ecc3d541c163c8fcc954ccae6b8cab28c973dc283fea5995c69aaabcdf785f ef78f401a9b5a42fd15e967c50da384f99ec62f9dbc66ea38f1390b46b63e1ff c06b0c6080dd1d62e61a30cfad100c0cfed2d3bcd378e296632dc3b28b31dc69 ff08c12813680da98c4240328f828647b67a65ba7aa89c022bd8072cba862cf1 f3e03d851c240c1aa7daccd144ee929f0f5971982424c868c434eb6030e961d4 c6080216f2a170611e339c3f46e4e1d61aaf0d8b417ad93ade8d647da1382c11 97f4135d262ca22d65c9554aad795c10a4491fa61b67d9c2430f4d82bbfec9a2 5d23e6d7015756c6f300f8cd558ec4d9234ca61deefd4f2478e91a49760b0747 e4974acb79c56148cb8e92137fa4f2de9b7356e897b332fc4e6769e8c0b83e18 966d22ef5bb9b56d481e8e0d5f7ca2deaf4d24c0f0fc969b2eeaa7ae0aa42907 53712b4335030e2dbfb46bb235f8cffcac83fea404bd32dc99417ac89e2dd7c5 6bb8d6b0dd16b44ee793a9b8382dac76c926e4c16ffb8ddd2bb4884d1ca3f811 24797ac05542ff8b52910efc77870faa5f9e3275097227ea4e50c430a5f72916 b027b5cad320b5b8123d9d0db9f815c3f3921596c26dc3c471457098e4d3cc40'
+  [nix/registry.json]=''
+  [pam.d/sudo_local]=''
+  [profiles/per-user/bdsqqq]=''
+  [ssh/ssh_config.d/100-nix-darwin.conf]=''
+  [ssh/sshd_config.d/100-nix-darwin.conf]=''
+  [ssh/sshd_config.d/101-authorized-keys.conf]=5a5dc1e20e8abc162ad1cc0259bfd1dbb77981013d87625f97d9bd215175fc0a
+  [ssl/certs/ca-certificates.crt]=''
+  [sudoers.d/10-nix-darwin-extra-config]=''
+  [terminfo]=''
+  [zprofile]='db8422f92d8cff684e418f2dcffbb98c10fe544b5e8cd588b2009c7fa89559c5 0235d3c1b6cf21e7043fbc98e239ee4bc648048aafaf6be1a94a576300584ef2 f320016e2cf13573731fbee34f9fe97ba867dd2a31f24893d3120154e9306e92'
+  [zshenv]=d07015be6875f134976fce84c6c7a77b512079c1c5f9594dfa65c70b7968b65f
+  [zshrc]='19a2d673ffd47b8bed71c5218ff6617dfc5e8533b240b9ba79142a45f8823c23 fb5827cb4712b7e7932d438067ec4852c8955a9ff0f55e282473684623ebdfa1 4d1ab5704f9d167a042fecac0d056c8a79a8ebd71e032d3489536c8db9ffe3e0 c5a00c072c920f46216454978c44df044b2ec6d03409dc492c7bdcd92c94a110 40b0d8751adae5b0100a4f863be5b75613a49f62706427e92604f7e04d2e2261 bf76c5ed8e65e616f4329eccf662ee91be33b8bfd33713ce9946f2fe94fea7fa 2af1b563e389d11b76a651b446e858116d7a20370d9120a7e9f78991f3e5f336 27274e44b88a1174787f9a3d437d3387edc4f9aaaf40356054130797f5dc7912'
+)
+
+declare -a etcProblems=()
+
+while IFS= read -r -d "" configFile; do
+  subPath=${configFile#"$systemConfig"/etc/}
+  etcStaticFile=/etc/static/$subPath
+  etcFile=/etc/$subPath
+
+  # We need to check files that exist and aren't already links to
+  # $etcStaticFile for known hashes.
+  if [[
+    -e $etcFile
+    && $(readlink "$etcFile") != "$etcStaticFile"
+  ]]; then
+    # Only check hashes of paths that resolve to regular files;
+    # everything else (e.g. directories) we complain about
+    # unconditionally.
+    if [[ -f $(readlink -f "$etcFile") ]]; then
+      etcFileSha256Output=$(shasum -a 256 "$etcFile")
+      etcFileSha256Hash=${etcFileSha256Output%% *}
+      for knownSha256Hash in ${etcSha256Hashes[$subPath]}; do
+        if [[ $etcFileSha256Hash == "$knownSha256Hash" ]]; then
+          # Hash matches, OK to overwrite; go to the next file.
+          continue 2
+        fi
+      done
+    fi
+    etcProblems+=("$etcFile")
+  fi
+done < <(find -H "$systemConfig/etc" -type l -print0)
+
+if (( ${#etcProblems[@]} )); then
+  printf >&2 '\x1B[1;31merror: Unexpected files in /etc, aborting '
+  printf >&2 'activation\x1B[0m\n'
+  printf >&2 'The following files have unrecognized content and would be '
+  printf >&2 'overwritten:\n\n'
+  printf >&2 '  %s\n' "${etcProblems[@]}"
+  printf >&2 '\nPlease check there is nothing critical in these files, '
+  printf >&2 'rename them by adding .before-nix-darwin to the end, and '
+  printf >&2 'then try again.\n'
+  exit 2
+fi
+
+nixCustomConfKnownSha256Hashes=(
+  # v0.33.0
+  6787fade1cf934f82db554e78e1fc788705c2c5257fddf9b59bdd963ca6fec63
+  # v0.34.0
+  3bd68ef979a42070a44f8d82c205cfd8e8cca425d91253ec2c10a88179bb34aa
+)
+if [[ -e /etc/nix/nix.custom.conf ]]; then
+  nixCustomConfSha256Output=$(shasum -a 256 /etc/nix/nix.custom.conf)
+  nixCustomConfSha256Hash=${nixCustomConfSha256Output%% *}
+  nixCustomConfIsKnown=
+  for nixCustomConfKnownSha256Hash
+    in "${nixCustomConfKnownSha256Hashes[@]}"
+  do
+    if
+      [[ $nixCustomConfSha256Hash == "$nixCustomConfKnownSha256Hash" ]]
+    then
+      nixCustomConfIsKnown=1
+      break
+    fi
+  done
+  if [[ ! $nixCustomConfIsKnown ]]; then
+    printf >&2 '\e[1;31merror: custom settings in `/etc/nix/nix.custom.conf`, aborting activation\e[0m\n'
+    printf >&2 'You will need to migrate these to nix-darwin `nix.*` settings if you\n'
+    printf >&2 'wish to keep them. Check the manual for the appropriate settings and\n'
+    printf >&2 'add them to your system configuration, then run:\n'
+    printf >&2 '\n'
+    printf >&2 '  $ sudo mv /etc/nix/nix.custom.conf{,.before-nix-darwin}\n'
+    printf >&2 '\n'
+    printf >&2 'and activate your system again.\n'
+    exit 2
+  fi
+fi
+
+if [[ $(stat -c '%a' /etc/synthetic.conf) != "644" ]]; then
+  echo "fixing permissions on /etc/synthetic.conf..."
+  chmod 644 /etc/synthetic.conf
+fi
+
+if [[ $(grep -c '^run\b' /etc/synthetic.conf) -gt 1 ]]; then
+  echo "found duplicate run entries in /etc/synthetic.conf, removing..."
+  sed -i "" -e '/^run\tprivate\/var\/run$/d' /etc/synthetic.conf
+fi
+
+if ! grep -q '^run\b' /etc/synthetic.conf 2>/dev/null; then
+  echo "setting up /run via /etc/synthetic.conf..."
+  printf 'run\tprivate/var/run\n' | tee -a /etc/synthetic.conf >/dev/null
+fi
+
+/System/Library/Filesystems/apfs.fs/Contents/Resources/apfs.util -t || true
+
+if [[ ! -L /run ]]; then
+  printf >&2 '[1;31merror: apfs.util failed to symlink /run, aborting activation[0m\n'
+  printf >&2 'To create a symlink from /run to /var/run, please run:\n'
+  printf >&2 '\n'
+  printf >&2 "$ printf 'run\tprivate/var/run\n' | tee -a /etc/synthetic.conf\n"
+  printf >&2 '$ sudo /System/Library/Filesystems/apfs.fs/Contents/Resources/apfs.util -t\n'
+  printf >&2 '\n'
+  printf >&2 'The current contents of /etc/synthetic.conf is:\n'
+  printf >&2 '\n'
+  sed 's/^/    /' /etc/synthetic.conf >&2
+  printf >&2 '\n'
+  exit 1
+fi
+
+
+echo "setting up groups..." >&2
+
+g=$(dscl . -read /Groups/nixbld PrimaryGroupID 2> /dev/null) || true
+g=${g#PrimaryGroupID: }
+if [ -z "$g" ]; then
+  echo "creating group nixbld..." >&2
+  dscl . -create /Groups/nixbld PrimaryGroupID 350
+  dscl . -create /Groups/nixbld RealName 'Nix build group for nix-daemon'
+  g=350
+fi
+
+if [ "$g" -eq 350 ]; then
+  g=$(dscl . -read /Groups/nixbld GroupMembership 2> /dev/null) || true
+  if [ "$g" != 'GroupMembership: _nixbld1 _nixbld10 _nixbld11 _nixbld12 _nixbld13 _nixbld14 _nixbld15 _nixbld16 _nixbld17 _nixbld18 _nixbld19 _nixbld2 _nixbld20 _nixbld21 _nixbld22 _nixbld23 _nixbld24 _nixbld25 _nixbld26 _nixbld27 _nixbld28 _nixbld29 _nixbld3 _nixbld30 _nixbld31 _nixbld32 _nixbld4 _nixbld5 _nixbld6 _nixbld7 _nixbld8 _nixbld9' ]; then
+    echo "updating group members nixbld..." >&2
+    dscl . -create /Groups/nixbld GroupMembership _nixbld1 _nixbld10 _nixbld11 _nixbld12 _nixbld13 _nixbld14 _nixbld15 _nixbld16 _nixbld17 _nixbld18 _nixbld19 _nixbld2 _nixbld20 _nixbld21 _nixbld22 _nixbld23 _nixbld24 _nixbld25 _nixbld26 _nixbld27 _nixbld28 _nixbld29 _nixbld3 _nixbld30 _nixbld31 _nixbld32 _nixbld4 _nixbld5 _nixbld6 _nixbld7 _nixbld8 _nixbld9
+  fi
+else
+  echo "[1;31mwarning: existing group 'nixbld' has unexpected gid $g, skipping...[0m" >&2
+fi
+
+
+
+
+echo "setting up users..." >&2
+
+u=$(id -u _nixbld1 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "351" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld1' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld1..." >&2
+
+    sysadminctl -addUser _nixbld1 -UID 351 -GID 350 -fullName 'Nix build user 1' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld1 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld1
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld1 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld1 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld1 RealName 'Nix build user 1'
+  
+fi
+
+u=$(id -u _nixbld2 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "352" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld2' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld2..." >&2
+
+    sysadminctl -addUser _nixbld2 -UID 352 -GID 350 -fullName 'Nix build user 2' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld2 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld2
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld2 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld2 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld2 RealName 'Nix build user 2'
+  
+fi
+
+u=$(id -u _nixbld3 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "353" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld3' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld3..." >&2
+
+    sysadminctl -addUser _nixbld3 -UID 353 -GID 350 -fullName 'Nix build user 3' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld3 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld3
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld3 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld3 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld3 RealName 'Nix build user 3'
+  
+fi
+
+u=$(id -u _nixbld4 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "354" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld4' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld4..." >&2
+
+    sysadminctl -addUser _nixbld4 -UID 354 -GID 350 -fullName 'Nix build user 4' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld4 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld4
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld4 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld4 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld4 RealName 'Nix build user 4'
+  
+fi
+
+u=$(id -u _nixbld5 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "355" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld5' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld5..." >&2
+
+    sysadminctl -addUser _nixbld5 -UID 355 -GID 350 -fullName 'Nix build user 5' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld5 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld5
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld5 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld5 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld5 RealName 'Nix build user 5'
+  
+fi
+
+u=$(id -u _nixbld6 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "356" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld6' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld6..." >&2
+
+    sysadminctl -addUser _nixbld6 -UID 356 -GID 350 -fullName 'Nix build user 6' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld6 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld6
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld6 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld6 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld6 RealName 'Nix build user 6'
+  
+fi
+
+u=$(id -u _nixbld7 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "357" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld7' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld7..." >&2
+
+    sysadminctl -addUser _nixbld7 -UID 357 -GID 350 -fullName 'Nix build user 7' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld7 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld7
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld7 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld7 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld7 RealName 'Nix build user 7'
+  
+fi
+
+u=$(id -u _nixbld8 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "358" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld8' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld8..." >&2
+
+    sysadminctl -addUser _nixbld8 -UID 358 -GID 350 -fullName 'Nix build user 8' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld8 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld8
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld8 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld8 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld8 RealName 'Nix build user 8'
+  
+fi
+
+u=$(id -u _nixbld9 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "359" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld9' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld9..." >&2
+
+    sysadminctl -addUser _nixbld9 -UID 359 -GID 350 -fullName 'Nix build user 9' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld9 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld9
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld9 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld9 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld9 RealName 'Nix build user 9'
+  
+fi
+
+u=$(id -u _nixbld10 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "360" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld10' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld10..." >&2
+
+    sysadminctl -addUser _nixbld10 -UID 360 -GID 350 -fullName 'Nix build user 10' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld10 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld10
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld10 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld10 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld10 RealName 'Nix build user 10'
+  
+fi
+
+u=$(id -u _nixbld11 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "361" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld11' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld11..." >&2
+
+    sysadminctl -addUser _nixbld11 -UID 361 -GID 350 -fullName 'Nix build user 11' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld11 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld11
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld11 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld11 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld11 RealName 'Nix build user 11'
+  
+fi
+
+u=$(id -u _nixbld12 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "362" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld12' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld12..." >&2
+
+    sysadminctl -addUser _nixbld12 -UID 362 -GID 350 -fullName 'Nix build user 12' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld12 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld12
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld12 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld12 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld12 RealName 'Nix build user 12'
+  
+fi
+
+u=$(id -u _nixbld13 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "363" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld13' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld13..." >&2
+
+    sysadminctl -addUser _nixbld13 -UID 363 -GID 350 -fullName 'Nix build user 13' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld13 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld13
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld13 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld13 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld13 RealName 'Nix build user 13'
+  
+fi
+
+u=$(id -u _nixbld14 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "364" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld14' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld14..." >&2
+
+    sysadminctl -addUser _nixbld14 -UID 364 -GID 350 -fullName 'Nix build user 14' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld14 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld14
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld14 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld14 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld14 RealName 'Nix build user 14'
+  
+fi
+
+u=$(id -u _nixbld15 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "365" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld15' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld15..." >&2
+
+    sysadminctl -addUser _nixbld15 -UID 365 -GID 350 -fullName 'Nix build user 15' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld15 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld15
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld15 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld15 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld15 RealName 'Nix build user 15'
+  
+fi
+
+u=$(id -u _nixbld16 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "366" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld16' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld16..." >&2
+
+    sysadminctl -addUser _nixbld16 -UID 366 -GID 350 -fullName 'Nix build user 16' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld16 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld16
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld16 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld16 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld16 RealName 'Nix build user 16'
+  
+fi
+
+u=$(id -u _nixbld17 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "367" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld17' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld17..." >&2
+
+    sysadminctl -addUser _nixbld17 -UID 367 -GID 350 -fullName 'Nix build user 17' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld17 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld17
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld17 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld17 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld17 RealName 'Nix build user 17'
+  
+fi
+
+u=$(id -u _nixbld18 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "368" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld18' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld18..." >&2
+
+    sysadminctl -addUser _nixbld18 -UID 368 -GID 350 -fullName 'Nix build user 18' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld18 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld18
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld18 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld18 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld18 RealName 'Nix build user 18'
+  
+fi
+
+u=$(id -u _nixbld19 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "369" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld19' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld19..." >&2
+
+    sysadminctl -addUser _nixbld19 -UID 369 -GID 350 -fullName 'Nix build user 19' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld19 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld19
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld19 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld19 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld19 RealName 'Nix build user 19'
+  
+fi
+
+u=$(id -u _nixbld20 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "370" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld20' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld20..." >&2
+
+    sysadminctl -addUser _nixbld20 -UID 370 -GID 350 -fullName 'Nix build user 20' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld20 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld20
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld20 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld20 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld20 RealName 'Nix build user 20'
+  
+fi
+
+u=$(id -u _nixbld21 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "371" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld21' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld21..." >&2
+
+    sysadminctl -addUser _nixbld21 -UID 371 -GID 350 -fullName 'Nix build user 21' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld21 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld21
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld21 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld21 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld21 RealName 'Nix build user 21'
+  
+fi
+
+u=$(id -u _nixbld22 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "372" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld22' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld22..." >&2
+
+    sysadminctl -addUser _nixbld22 -UID 372 -GID 350 -fullName 'Nix build user 22' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld22 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld22
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld22 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld22 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld22 RealName 'Nix build user 22'
+  
+fi
+
+u=$(id -u _nixbld23 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "373" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld23' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld23..." >&2
+
+    sysadminctl -addUser _nixbld23 -UID 373 -GID 350 -fullName 'Nix build user 23' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld23 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld23
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld23 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld23 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld23 RealName 'Nix build user 23'
+  
+fi
+
+u=$(id -u _nixbld24 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "374" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld24' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld24..." >&2
+
+    sysadminctl -addUser _nixbld24 -UID 374 -GID 350 -fullName 'Nix build user 24' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld24 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld24
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld24 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld24 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld24 RealName 'Nix build user 24'
+  
+fi
+
+u=$(id -u _nixbld25 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "375" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld25' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld25..." >&2
+
+    sysadminctl -addUser _nixbld25 -UID 375 -GID 350 -fullName 'Nix build user 25' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld25 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld25
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld25 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld25 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld25 RealName 'Nix build user 25'
+  
+fi
+
+u=$(id -u _nixbld26 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "376" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld26' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld26..." >&2
+
+    sysadminctl -addUser _nixbld26 -UID 376 -GID 350 -fullName 'Nix build user 26' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld26 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld26
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld26 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld26 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld26 RealName 'Nix build user 26'
+  
+fi
+
+u=$(id -u _nixbld27 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "377" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld27' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld27..." >&2
+
+    sysadminctl -addUser _nixbld27 -UID 377 -GID 350 -fullName 'Nix build user 27' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld27 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld27
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld27 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld27 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld27 RealName 'Nix build user 27'
+  
+fi
+
+u=$(id -u _nixbld28 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "378" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld28' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld28..." >&2
+
+    sysadminctl -addUser _nixbld28 -UID 378 -GID 350 -fullName 'Nix build user 28' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld28 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld28
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld28 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld28 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld28 RealName 'Nix build user 28'
+  
+fi
+
+u=$(id -u _nixbld29 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "379" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld29' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld29..." >&2
+
+    sysadminctl -addUser _nixbld29 -UID 379 -GID 350 -fullName 'Nix build user 29' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld29 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld29
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld29 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld29 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld29 RealName 'Nix build user 29'
+  
+fi
+
+u=$(id -u _nixbld30 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "380" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld30' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld30..." >&2
+
+    sysadminctl -addUser _nixbld30 -UID 380 -GID 350 -fullName 'Nix build user 30' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld30 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld30
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld30 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld30 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld30 RealName 'Nix build user 30'
+  
+fi
+
+u=$(id -u _nixbld31 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "381" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld31' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld31..." >&2
+
+    sysadminctl -addUser _nixbld31 -UID 381 -GID 350 -fullName 'Nix build user 31' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld31 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld31
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld31 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld31 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld31 RealName 'Nix build user 31'
+  
+fi
+
+u=$(id -u _nixbld32 2> /dev/null) || true
+if [[ -n "$u" && "$u" -ne "382" ]]; then
+  echo "[1;31mwarning: existing user '_nixbld32' has unexpected uid $u, skipping...[0m" >&2
+else
+  if [ -z "$u" ]; then
+    echo "creating user _nixbld32..." >&2
+
+    sysadminctl -addUser _nixbld32 -UID 382 -GID 350 -fullName 'Nix build user 32' -home /var/empty -shell /usr/bin/false 2> /dev/null
+
+    # We need to check as `sysadminctl -addUser` still exits with exit code 0 when there's an error
+    if ! id _nixbld32 &> /dev/null; then
+      printf >&2 '\e[1;31merror: failed to create user %s, aborting activation\e[0m\n' _nixbld32
+      exit 1
+    fi
+
+    dscl . -create /Users/_nixbld32 IsHidden 1
+
+    # `sysadminctl -addUser` won't create the home directory if we use the `-home`
+    # flag so we need to do it ourselves
+    
+  fi
+
+  # Update properties on known users to keep them inline with configuration
+  dscl . -create /Users/_nixbld32 PrimaryGroupID 350
+  dscl . -create /Users/_nixbld32 RealName 'Nix build user 32'
+  
+fi
+
+
+u=$(id -u nixbld1 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld1..." >&2
+    dscl . -delete /Users/nixbld1
+  else
+    echo "[1;31mwarning: existing user 'nixbld1' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld10 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld10..." >&2
+    dscl . -delete /Users/nixbld10
+  else
+    echo "[1;31mwarning: existing user 'nixbld10' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld11 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld11..." >&2
+    dscl . -delete /Users/nixbld11
+  else
+    echo "[1;31mwarning: existing user 'nixbld11' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld12 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld12..." >&2
+    dscl . -delete /Users/nixbld12
+  else
+    echo "[1;31mwarning: existing user 'nixbld12' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld13 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld13..." >&2
+    dscl . -delete /Users/nixbld13
+  else
+    echo "[1;31mwarning: existing user 'nixbld13' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld14 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld14..." >&2
+    dscl . -delete /Users/nixbld14
+  else
+    echo "[1;31mwarning: existing user 'nixbld14' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld15 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld15..." >&2
+    dscl . -delete /Users/nixbld15
+  else
+    echo "[1;31mwarning: existing user 'nixbld15' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld16 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld16..." >&2
+    dscl . -delete /Users/nixbld16
+  else
+    echo "[1;31mwarning: existing user 'nixbld16' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld17 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld17..." >&2
+    dscl . -delete /Users/nixbld17
+  else
+    echo "[1;31mwarning: existing user 'nixbld17' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld18 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld18..." >&2
+    dscl . -delete /Users/nixbld18
+  else
+    echo "[1;31mwarning: existing user 'nixbld18' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld19 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld19..." >&2
+    dscl . -delete /Users/nixbld19
+  else
+    echo "[1;31mwarning: existing user 'nixbld19' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld2 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld2..." >&2
+    dscl . -delete /Users/nixbld2
+  else
+    echo "[1;31mwarning: existing user 'nixbld2' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld20 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld20..." >&2
+    dscl . -delete /Users/nixbld20
+  else
+    echo "[1;31mwarning: existing user 'nixbld20' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld21 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld21..." >&2
+    dscl . -delete /Users/nixbld21
+  else
+    echo "[1;31mwarning: existing user 'nixbld21' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld22 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld22..." >&2
+    dscl . -delete /Users/nixbld22
+  else
+    echo "[1;31mwarning: existing user 'nixbld22' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld23 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld23..." >&2
+    dscl . -delete /Users/nixbld23
+  else
+    echo "[1;31mwarning: existing user 'nixbld23' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld24 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld24..." >&2
+    dscl . -delete /Users/nixbld24
+  else
+    echo "[1;31mwarning: existing user 'nixbld24' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld25 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld25..." >&2
+    dscl . -delete /Users/nixbld25
+  else
+    echo "[1;31mwarning: existing user 'nixbld25' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld26 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld26..." >&2
+    dscl . -delete /Users/nixbld26
+  else
+    echo "[1;31mwarning: existing user 'nixbld26' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld27 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld27..." >&2
+    dscl . -delete /Users/nixbld27
+  else
+    echo "[1;31mwarning: existing user 'nixbld27' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld28 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld28..." >&2
+    dscl . -delete /Users/nixbld28
+  else
+    echo "[1;31mwarning: existing user 'nixbld28' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld29 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld29..." >&2
+    dscl . -delete /Users/nixbld29
+  else
+    echo "[1;31mwarning: existing user 'nixbld29' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld3 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld3..." >&2
+    dscl . -delete /Users/nixbld3
+  else
+    echo "[1;31mwarning: existing user 'nixbld3' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld30 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld30..." >&2
+    dscl . -delete /Users/nixbld30
+  else
+    echo "[1;31mwarning: existing user 'nixbld30' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld31 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld31..." >&2
+    dscl . -delete /Users/nixbld31
+  else
+    echo "[1;31mwarning: existing user 'nixbld31' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld32 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld32..." >&2
+    dscl . -delete /Users/nixbld32
+  else
+    echo "[1;31mwarning: existing user 'nixbld32' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld4 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld4..." >&2
+    dscl . -delete /Users/nixbld4
+  else
+    echo "[1;31mwarning: existing user 'nixbld4' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld5 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld5..." >&2
+    dscl . -delete /Users/nixbld5
+  else
+    echo "[1;31mwarning: existing user 'nixbld5' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld6 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld6..." >&2
+    dscl . -delete /Users/nixbld6
+  else
+    echo "[1;31mwarning: existing user 'nixbld6' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld7 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld7..." >&2
+    dscl . -delete /Users/nixbld7
+  else
+    echo "[1;31mwarning: existing user 'nixbld7' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld8 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld8..." >&2
+    dscl . -delete /Users/nixbld8
+  else
+    echo "[1;31mwarning: existing user 'nixbld8' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+u=$(id -u nixbld9 2> /dev/null) || true
+if [ -n "$u" ]; then
+  if [ "$u" -gt 501 ]; then
+    echo "deleting user nixbld9..." >&2
+    dscl . -delete /Users/nixbld9
+  else
+    echo "[1;31mwarning: existing user 'nixbld9' has unexpected uid $u, skipping...[0m" >&2
+  fi
+fi
+
+
+# Set up applications.
+echo "setting up /Applications/Nix Apps..." >&2
+
+ourLink () {
+  local link
+  link=$(readlink "$1")
+  [ -L "$1" ] && [ "${link#*-}" = 'system-applications/Applications' ]
+}
+
+# Clean up for links created at the old location in HOME
+# TODO: Remove this in 25.11.
+if ourLink ~bdsqqq/Applications; then
+  rm ~bdsqqq/Applications
+elif ourLink ~bdsqqq/Applications/'Nix Apps'; then
+  rm ~bdsqqq/Applications/'Nix Apps'
+fi
+
+
+if [ ! -e '/Applications/Nix Apps' ] \
+   || ourLink '/Applications/Nix Apps'; then
+  ln -sfn /nix/store/dc6vnfa9yx2r0bzb3lc4wxnr97ikinra-system-applications/Applications '/Applications/Nix Apps'
+else
+  echo "warning: /Applications/Nix Apps is not owned by nix-darwin, skipping App linking..." >&2
+fi
+
+# PAM settings
+echo >&2 "setting up pam..."
+
+# REMOVEME when macOS 13 no longer supported as macOS automatically
+# nukes this file on system upgrade
+# Always clear out older implementation if it is present
+if grep 'security.pam.enableSudoTouchIdAuth' /etc/pam.d/sudo > /dev/null; then
+  /nix/store/s61pik234nad4ijzlk6y2681xlcxnln7-gnused-4.9/bin/sed -i '/security.pam.enableSudoTouchIdAuth/d' /etc/pam.d/sudo
+fi
+
+# REMOVEME when macOS 13 no longer supported
+# `sudo_local` is automatically included after macOS 14
+if ! grep 'sudo_local' /etc/pam.d/sudo > /dev/null; then
+  /nix/store/s61pik234nad4ijzlk6y2681xlcxnln7-gnused-4.9/bin/sed -i '2iauth       include        sudo_local # nix-darwin: security.pam.services.sudo_local' /etc/pam.d/sudo
+fi
+
+
+# Applying patches to /.
+echo "applying patches..." >&2
+
+for f in /run/current-system/patches/*; do
+  [[ -e "$f" ]] || break  # handle when directory is empty
+  f=${f#/run/current-system/patches/}
+
+  if [[ ! -e "/nix/store/8q3zavf1f916507kzv76kv4m8fzhl3hi-patches/patches/$f" ]]; then
+    patch --force --reverse --backup -d / -p1 < "/run/current-system/patches/$f" || true
+  fi
+done
+
+
+
+# Set up the statically computed bits of /etc.
+printf >&2 'setting up /etc...\n'
+
+ln -sfn "$(readlink -f "$systemConfig/etc")" /etc/static
+
+while IFS= read -r -d "" etcStaticFile; do
+  etcFile=/etc/${etcStaticFile#/etc/static/}
+  etcDir=${etcFile%/*}
+
+  if [[ ! -d $etcDir ]]; then
+    mkdir -p "$etcDir"
+  fi
+
+  if [[ -e $etcFile ]]; then
+    if [[ $(readlink -- "$etcFile") == "$etcStaticFile" ]]; then
+      continue
+    else
+      mv "$etcFile" "$etcFile.before-nix-darwin"
+    fi
+  fi
+
+  ln -s "$etcStaticFile" "$etcFile"
+done < <(find -H /etc/static -type l -print0)
+
+while IFS= read -r -d "" etcFile; do
+  etcStaticFile=/etc/static/${etcFile#/etc/}
+
+  # Delete stale links into /etc/static.
+  if [[
+    $(readlink -- "$etcFile") == "$etcStaticFile"
+    && ! -e $etcStaticFile
+  ]]; then
+    rm "$etcFile"
+  fi
+done < <(find -H /etc -type l -print0)
+
+# Clean up .before-nix-darwin file left over from using knownSha256Hashes
+auth_keys_orig=/etc/ssh/sshd_config.d/101-authorized-keys.conf.before-nix-darwin
+
+if [ -e "$auth_keys_orig" ] && [ "$(shasum -a 256 $auth_keys_orig | cut -d ' ' -f 1)" = "5a5dc1e20e8abc162ad1cc0259bfd1dbb77981013d87625f97d9bd215175fc0a" ]; then
+  rm "$auth_keys_orig"
+fi
+
+# Set defaults
+echo >&2 "system defaults..."
+
+defaults write /Library/Preferences/com.apple.loginwindow 'GuestEnabled' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<false/>
+</plist>'
+defaults write /Library/Preferences/com.apple.loginwindow 'SHOWFULLNAME' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<false/>
+</plist>'
+
+
+
+
+# Set defaults
+echo >&2 "user defaults..."
+
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write -g 'AppleInterfaceStyle' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<string>Dark</string>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write -g 'AppleInterfaceStyleSwitchesAutomatically' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<false/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write -g 'AppleShowScrollBars' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<string>WhenScrolling</string>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write -g 'InitialKeyRepeat' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>25</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write -g 'KeyRepeat' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>2</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write -g 'com.apple.swipescrolldirection' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+
+
+
+
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'autohide' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'autohide-delay' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<real>0.000000</real>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'autohide-time-modifier' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<real>0.200000</real>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'expose-animation-duration' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<real>0.100000</real>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'magnification' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<false/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'minimize-to-application' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'orientation' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<string>bottom</string>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'persistent-apps' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+
+</array>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'show-recents' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<false/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'tilesize' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>56</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'wvous-bl-corner' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>1</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'wvous-br-corner' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>1</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'wvous-tl-corner' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>1</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.dock 'wvous-tr-corner' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>1</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.finder 'AppleShowAllExtensions' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.finder 'FXDefaultSearchScope' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<string>SCcf</string>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.finder 'FXEnableExtensionChangeWarning' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<false/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.finder 'FXPreferredViewStyle' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<string>Nlsv</string>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.finder 'ShowExternalHardDrivesOnDesktop' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.finder 'ShowHardDrivesOnDesktop' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.finder 'ShowMountedServersOnDesktop' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.finder 'ShowPathbar' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.finder 'ShowRemovableMediaOnDesktop' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.finder 'ShowStatusBar' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<false/>
+</plist>'
+
+
+
+
+
+
+
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.AppleMultitouchTrackpad 'ActuationStrength' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>1</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.AppleMultitouchTrackpad 'Clicking' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.AppleMultitouchTrackpad 'Dragging' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<false/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.AppleMultitouchTrackpad 'FirstClickThreshold' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>1</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.AppleMultitouchTrackpad 'SecondClickThreshold' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>1</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.AppleMultitouchTrackpad 'TrackpadRightClick' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.AppleMultitouchTrackpad 'TrackpadThreeFingerDrag' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<false/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.AppleMultitouchTrackpad 'TrackpadThreeFingerTapGesture' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>2</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad 'ActuationStrength' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>1</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad 'Clicking' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad 'Dragging' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<false/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad 'FirstClickThreshold' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>1</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad 'SecondClickThreshold' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>1</integer>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad 'TrackpadRightClick' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<true/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad 'TrackpadThreeFingerDrag' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<false/>
+</plist>'
+launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad 'TrackpadThreeFingerTapGesture' $'<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<integer>2</integer>
+</plist>'
+
+
+
+
+
+
+echo >&2 "restarting Dock..."
+killall -qu bdsqqq Dock || true
+
+
+# Set up launchd services in /Library/LaunchAgents and /Library/LaunchDaemons
+echo "setting up launchd services..." >&2
+
+
+
+
+if ! diff '/nix/store/l620jyf5fwzx2dddx4z1qhdbzf1qqfay-launchd/Library/LaunchDaemons/org.nixos.activate-system.plist' '/Library/LaunchDaemons/org.nixos.activate-system.plist' &> /dev/null; then
+  if test -f '/Library/LaunchDaemons/org.nixos.activate-system.plist'; then
+    echo "reloading service $(basename org.nixos.activate-system.plist .plist)" >&2
+    launchctl unload '/Library/LaunchDaemons/org.nixos.activate-system.plist' || true
+  else
+    echo "creating service $(basename org.nixos.activate-system.plist .plist)" >&2
+  fi
+  if test -L '/Library/LaunchDaemons/org.nixos.activate-system.plist'; then
+    rm '/Library/LaunchDaemons/org.nixos.activate-system.plist'
+  fi
+  cp -f '/nix/store/l620jyf5fwzx2dddx4z1qhdbzf1qqfay-launchd/Library/LaunchDaemons/org.nixos.activate-system.plist' '/Library/LaunchDaemons/org.nixos.activate-system.plist'
+  launchctl load -w '/Library/LaunchDaemons/org.nixos.activate-system.plist'
+fi
+
+if ! diff '/nix/store/l620jyf5fwzx2dddx4z1qhdbzf1qqfay-launchd/Library/LaunchDaemons/org.nixos.nix-daemon.plist' '/Library/LaunchDaemons/org.nixos.nix-daemon.plist' &> /dev/null; then
+  if test -f '/Library/LaunchDaemons/org.nixos.nix-daemon.plist'; then
+    echo "reloading service $(basename org.nixos.nix-daemon.plist .plist)" >&2
+    launchctl unload '/Library/LaunchDaemons/org.nixos.nix-daemon.plist' || true
+  else
+    echo "creating service $(basename org.nixos.nix-daemon.plist .plist)" >&2
+  fi
+  if test -L '/Library/LaunchDaemons/org.nixos.nix-daemon.plist'; then
+    rm '/Library/LaunchDaemons/org.nixos.nix-daemon.plist'
+  fi
+  cp -f '/nix/store/l620jyf5fwzx2dddx4z1qhdbzf1qqfay-launchd/Library/LaunchDaemons/org.nixos.nix-daemon.plist' '/Library/LaunchDaemons/org.nixos.nix-daemon.plist'
+  launchctl load -w '/Library/LaunchDaemons/org.nixos.nix-daemon.plist'
+fi
+
+
+for f in /run/current-system/Library/LaunchAgents/*; do
+  [[ -e "$f" ]] || break  # handle when directory is empty
+  f=${f#/run/current-system/Library/LaunchAgents/}
+
+  if [[ ! -e "/nix/store/l620jyf5fwzx2dddx4z1qhdbzf1qqfay-launchd/Library/LaunchAgents/$f" ]]; then
+    echo "removing service $(basename "$f" .plist)" >&2
+    launchctl unload "/Library/LaunchAgents/$f" || true
+    if [[ -e "/Library/LaunchAgents/$f" ]]; then
+      rm -f "/Library/LaunchAgents/$f"
+    fi
+  fi
+done
+
+for f in /run/current-system/Library/LaunchDaemons/*; do
+  [[ -e "$f" ]] || break  # handle when directory is empty
+  f=${f#/run/current-system/Library/LaunchDaemons/}
+
+  if [[ ! -e "/nix/store/l620jyf5fwzx2dddx4z1qhdbzf1qqfay-launchd/Library/LaunchDaemons/$f" ]]; then
+    echo "removing service $(basename "$f" .plist)" >&2
+    launchctl unload "/Library/LaunchDaemons/$f" || true
+    if [[ -e "/Library/LaunchDaemons/$f" ]]; then
+      rm -f "/Library/LaunchDaemons/$f"
+    fi
+  fi
+done
+
+# Set up user launchd services in ~/Library/LaunchAgents
+echo "setting up user launchd services..."
+
+
+
+sudo --user=bdsqqq -- mkdir -p ~bdsqqq/Library/LaunchAgents
+
+if ! diff /nix/store/l620jyf5fwzx2dddx4z1qhdbzf1qqfay-launchd/user/Library/LaunchAgents/com.bdsqqq.karabiner-build.plist ~bdsqqq/Library/LaunchAgents/com.bdsqqq.karabiner-build.plist &> /dev/null; then
+  if test -f ~bdsqqq/Library/LaunchAgents/com.bdsqqq.karabiner-build.plist; then
+    echo "reloading user service $(basename com.bdsqqq.karabiner-build.plist .plist)" >&2
+    launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- launchctl unload ~bdsqqq/Library/LaunchAgents/com.bdsqqq.karabiner-build.plist || true
+  else
+    echo "creating user service $(basename com.bdsqqq.karabiner-build.plist .plist)" >&2
+  fi
+  if test -L ~bdsqqq/Library/LaunchAgents/com.bdsqqq.karabiner-build.plist; then
+    sudo --user=bdsqqq -- rm ~bdsqqq/Library/LaunchAgents/com.bdsqqq.karabiner-build.plist
+  fi
+  sudo --user=bdsqqq -- cp -f '/nix/store/l620jyf5fwzx2dddx4z1qhdbzf1qqfay-launchd/user/Library/LaunchAgents/com.bdsqqq.karabiner-build.plist' ~bdsqqq/Library/LaunchAgents/com.bdsqqq.karabiner-build.plist
+  launchctl asuser "$(id -u -- bdsqqq)" sudo --user=bdsqqq -- launchctl load -w ~bdsqqq/Library/LaunchAgents/com.bdsqqq.karabiner-build.plist
+fi
+
+
+for f in /run/current-system/user/Library/LaunchAgents/*; do
+  [[ -e "$f" ]] || break  # handle when directory is empty
+  f=${f#/run/current-system/user/Library/LaunchAgents/}
+
+  if [[ ! -e "/nix/store/l620jyf5fwzx2dddx4z1qhdbzf1qqfay-launchd/user/Library/LaunchAgents/$f" ]]; then
+    echo "removing user service $(basename "$f" .plist)" >&2
+    sudo --user=bdsqqq -- launchctl unload ~bdsqqq/Library/LaunchAgents/"$f" || true
+    if [[ -e ~bdsqqq/Library/LaunchAgents/"$f" ]]; then
+      sudo --user=bdsqqq -- rm -f ~bdsqqq/Library/LaunchAgents/"$f"
+    fi
+  fi
+done
+
+# Follow up on the `/etc/nix/nix.custom.conf` check.
+# TODO: Use a more generalized file placement mechanism for this.
+if [[ -e /etc/nix/nix.custom.conf ]]; then
+  mv /etc/nix/nix.custom.conf{,.before-nix-darwin}
+fi
+
+if ! diff /etc/nix/nix.conf /run/current-system/etc/nix/nix.conf &> /dev/null || ! diff /etc/nix/machines /run/current-system/etc/nix/machines &> /dev/null; then
+    echo "reloading nix-daemon..." >&2
+    launchctl kill HUP system/org.nixos.nix-daemon
+fi
+while ! nix-store --store daemon -q --hash /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash &>/dev/null; do
+    echo "waiting for nix-daemon" >&2
+    launchctl kickstart system/org.nixos.nix-daemon
+done
+
+
+echo "configuring networking..." >&2
+
+scutil --set ComputerName mbp14
+
+scutil --set HostName mbp14.local
+
+scutil --set LocalHostName mbp14
+
+
+
+
+
+
+if [ -e /etc/hosts.before-nix-darwin ]; then
+  echo "restoring /etc/hosts..." >&2
+  sudo mv /etc/hosts{.before-nix-darwin,}
+fi
+
+echo "configuring power..." >&2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+printf >&2 'setting up /Library/Fonts/Nix Fonts...\n'
+
+# rsync uses the mtime + size of files to determine whether they
+# need to be copied by default. This is inadequate for Nix store
+# paths, but we don't want to use `--checksum` as it makes
+# activation consistently slow when you have large fonts
+# installed. Instead, we ensure that fonts are linked according to
+# their full store paths in `system.build.fonts`, so that any
+# given font path should only ever have one possible content.
+/nix/store/wmhjryqsiqkxn5vqk99vshyqjgvkiarm-rsync-3.4.1/bin/rsync \
+  --archive \
+  --copy-links \
+  --delete-during \
+  --delete-missing-args \
+  "$systemConfig/Library/Fonts/Nix Fonts" \
+  '/Library/Fonts/'
+
+echo "setting nvram variables..." >&2
+
+
+
+
+
+echo Activating home-manager configuration for bdsqqq
+launchctl asuser "$(id -u bdsqqq)" sudo -u bdsqqq --set-home /nix/store/g14bkcb6r6hhg9pd5jm0m35g0pjxh7mn-activation-bdsqqq
+
+
+# Make this configuration the current configuration.
+# The readlink is there to ensure that when $systemConfig = /system
+# (which is a symlink to the store), /run/current-system is still
+# used as a garbage collection root.
+ln -sfn "$(readlink -f "$systemConfig")" /run/current-system
+
+# Prevent the current configuration from being garbage-collected.
+if [[ -d /nix/var/nix/gcroots ]]; then
+  ln -sfn /run/current-system /nix/var/nix/gcroots/current-system
+fi
+

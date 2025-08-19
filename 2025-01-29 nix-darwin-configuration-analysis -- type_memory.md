@@ -1,7 +1,7 @@
 ---
 title: 2025-01-29 nix-darwin-configuration-analysis
 type: note
-permalink: type-memory/2025-01-29-nix-darwin-configuration-analysis
+permalink: type-memory/2025-01-29-nix-darwin-configuration-analysis-1
 ---
 
 # nix-darwin configuration analysis

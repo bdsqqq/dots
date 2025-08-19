@@ -1,0 +1,2 @@
+#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
+exec "/nix/store/abxz7wpw5kwaijzzmf8rl4ga981vk8pc-nodejs-22.16.0/bin/node"  /nix/store/b2gjbp63pllxhwqkw5kjyczs2jxwrpzb-swagger-cli-4.0.4/lib/node_modules/@apidevtools/swagger-cli/bin/swagger-cli.js "$@" 

@@ -1,0 +1,8 @@
+#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
+PATH=${PATH:+':'$PATH':'}
+PATH=${PATH/':''/nix/store/c6z1wi5mjqwhj3bkv0iwy2ab3z8gpr3g-lsof-4.99.4/bin'':'/':'}
+PATH='/nix/store/c6z1wi5mjqwhj3bkv0iwy2ab3z8gpr3g-lsof-4.99.4/bin'$PATH
+PATH=${PATH#':'}
+PATH=${PATH%':'}
+export PATH
+exec -a "$0" "/nix/store/ys7qpvnq6d7v85d2vcd5kpsagp2ql6lx-tailscale-1.84.2/bin/.tailscaled-wrapped"  "$@" 

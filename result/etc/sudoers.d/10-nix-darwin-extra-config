@@ -1,0 +1,4 @@
+
+# Keep terminfo database for root and %admin.
+Defaults:root,%admin env_keep+=TERMINFO_DIRS
+Defaults:root,%admin env_keep+=TERMINFO

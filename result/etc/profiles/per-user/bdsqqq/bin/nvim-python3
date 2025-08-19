@@ -1,0 +1,4 @@
+#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
+unset PYTHONPATH
+unset PYTHONSAFEPATH
+exec "/nix/store/1vx87mnrakginw85b2y2knwj67qhbg6p-python3-3.13.4-env/bin/python3.13"  "$@" 

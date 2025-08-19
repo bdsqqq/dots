@@ -1,0 +1,8 @@
+#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
+disableHardening=${disableHardening:+' '$disableHardening' '}
+disableHardening=${disableHardening/' ''fortify'' '/' '}
+disableHardening='fortify'$disableHardening
+disableHardening=${disableHardening#' '}
+disableHardening=${disableHardening%' '}
+export disableHardening
+exec -a "$0" "/nix/store/56g8dcrb58ymk6ia7bhixhmix4wk7cd0-delve-1.25.0/bin/.dlv-wrapped"  "$@" 

@@ -1,0 +1,115 @@
+#compdef bat
+
+local curcontext="$curcontext" ret=1
+local -a state state_descr line
+typeset -A opt_args
+
+(( $+functions[_bat_cache_subcommand] )) ||
+_bat_cache_subcommand() {
+    local -a args
+    args=(
+        '(-b --build -c --clear)'{-b,--build}'[initialize or update the syntax/theme cache]'
+        '(-b --build -c --clear)'{-c,--clear}'[remove the cached syntax definitions and themes]'
+        --source='[specify directory to load syntaxes and themes from]:directory:_files -/'
+        --target='[specify directory to store the cached syntax and theme set in]:directory:_files -/'
+        --blank'[create completely new syntax and theme sets]'
+        --acknowledgements'[build acknowledgements.bin]'
+        '(: -)'{-h,--help}'[show help information]'
+    )
+
+    _arguments -S -s $args
+}
+
+(( $+functions[_bat_main] )) ||
+_bat_main() {
+    local -a args
+    args=(
+        '(-A --show-all)'{-A,--show-all}'[show non-printable characters (space, tab, newline, ..)]'
+        --nonprintable-notation='[specify how to display non-printable characters when using --show-all]:notation:(caret unicode)'
+        \*{-p,--plain}'[show plain style (alias for `--style=plain`), repeat twice to disable automatic paging (alias for `--paging=never`)]'
+        '(-l --language)'{-l+,--language=}'[set the language for syntax highlighting]:language:->languages'
+        \*{-H+,--highlight-line=}'[highlight specified block of lines]:start\:end'
+        \*--file-name='[specify the name to display for a file]:name:_files'
+        '(-d --diff)'--diff'[only show lines that have been added/removed/modified]'
+        --diff-context='[specify lines of context around added/removed/modified lines when using `--diff`]:lines'
+        --tabs='[set the tab width]:tab width [4]'
+        --wrap='[specify the text-wrapping mode]:mode [auto]:(auto never character)'
+        '!(--wrap)'{-S,--chop-long-lines}
+        --terminal-width='[explicitly set the width of the terminal instead of determining it automatically]:width'
+        '(-n --number --diff --diff-context)'{-n,--number}'[show line numbers]'
+        --color='[specify when to use colors]:when:(auto never always)'
+        --italic-text='[use italics in output]:when:(always never)'
+        --decorations='[specify when to show the decorations]:when:(auto never always)'
+        --paging='[specify when to use the pager]:when:(auto never always)'
+        '(-m --map-syntax)'{-m+,--map-syntax=}'[map a glob pattern to an existing syntax name]: :->syntax-maps'
+        '(--theme)'--theme='[set the color theme for syntax highlighting]:theme:->theme_preferences'
+        '(--theme-dark)'--theme-dark='[set the color theme for syntax highlighting for dark backgrounds]:theme:->themes'
+        '(--theme-light)'--theme-light='[set the color theme for syntax highlighting for light backgrounds]:theme:->themes'
+        '(: --list-themes --list-languages -L)'--list-themes'[show all supported highlighting themes]'
+        --style='[comma-separated list of style elements to display]: : _values "style [default]"
+            default auto full plain changes header header-filename header-filesize grid rule numbers snip'
+        \*{-r+,--line-range=}'[only print the specified line range]:start\:end'
+        '(* -)'{-L,--list-languages}'[display all supported languages]'
+        -P'[disable paging]'
+        "--no-config[don't use the configuration file]"
+        "--no-custom-assets[don't load custom assets]"
+        '(--no-lessopen)'--lessopen'[enable the $LESSOPEN preprocessor]'
+        '(--lessopen)'--no-lessopen'[disable the $LESSOPEN preprocessor if enabled (overrides --lessopen)]'
+        '(* -)'--config-dir"[show bat's configuration directory]"
+        '(* -)'--config-file'[show path to the configuration file]'
+        '(* -)'--generate-config-file'[generate a default configuration file]'
+        '(* -)'--cache-dir"[show bat's cache directory]"
+        '(* -)'{-h,--help}'[show help information]'
+        '(* -)'{-V,--version}'[show version information]'
+        '*: :{ _files || compadd cache }'
+    )
+
+    _arguments -S -s $args && ret=0
+
+    case "$state" in
+        syntax-maps)
+          if ! compset -P '*:'; then
+            _message -e patterns 'glob pattern:language'
+            return
+          fi
+        ;& # fall-through
+
+        languages)
+            local IFS=$'\n'
+            local -a languages
+            languages=( $(bat --list-languages | awk -F':|,' '{ for (i = 1; i <= NF; ++i) printf("%s:%s\n", $i, $1) }') )
+
+            _describe 'language' languages && ret=0
+        ;;
+
+        themes)
+            local -a themes expl
+            themes=(${(f)"$(_call_program themes bat --list-themes)"} )
+
+            _wanted themes expl 'theme' compadd -a themes && ret=0
+        ;;
+        theme_preferences)
+            local -a themes expl
+            themes=(auto dark light auto:always auto:system ${(f)"$(_call_program themes bat --list-themes)"} )
+
+            _wanted themes expl 'theme' compadd -a themes && ret=0
+        ;;
+    esac
+
+    return ret
+}
+
+case $words[2] in
+    cache)
+        ## Completion of the 'cache' command itself is removed for better UX
+        ## See https://github.com/sharkdp/bat/issues/2085#issuecomment-1271646802
+        shift words
+        (( CURRENT-- ))
+        curcontext="${curcontext%:*}-${words[1]}:"
+        _bat_cache_subcommand
+    ;;
+
+    *)
+        _bat_main
+    ;;
+esac

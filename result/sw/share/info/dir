@@ -1,0 +1,46 @@
+This is the file .../info/dir, which contains the
+topmost node of the Info hierarchy, called (dir)Top.
+The first time you invoke Info you start off looking at this node.
+
+File: dir,	Node: Top	This is the top of the INFO tree
+
+  This (the Directory node) gives a menu of major topics.
+  Typing "q" exits, "H" lists all Info commands, "d" returns here,
+  "h" gives a primer for first-timers,
+  "mEmacs<Return>" visits the Emacs manual, etc.
+
+  In Emacs, you can click mouse button 2 on a menu item or cross reference
+  to select it.
+
+* Menu:
+
+Basics
+* Bash: (bash).                 The GNU Bourne-Again SHell.
+
+Texinfo documentation system
+* Texinfo: (texinfo).           The GNU documentation format.
+* info stand-alone: (info-stnd).
+                                Read Info documents without Emacs.
+* install-info: (texinfo)Invoking install-info.
+                                Update info/dir entries.
+* makeinfo: (texinfo)Invoking texi2any.
+                                Translate Texinfo source.
+* pdftexi2dvi: (texinfo)PDF Output.
+                                PDF output for Texinfo.
+* pod2texi: (pod2texi)Invoking pod2texi.
+                                Translate Perl Pod to Texinfo.
+* texi2any: (texinfo)Invoking texi2any.
+                                Translate Texinfo source.
+* texi2dvi: (texinfo)Format with texi2dvi.
+                                Print Texinfo documents.
+* texi2pdf: (texinfo)PDF Output.
+                                PDF output for Texinfo.
+* texi2any customization: (texi2any_api).
+                                Customizing texi2any output
+* texi2any modules: (texi2any_internals).
+                                Texinfo Perl modules used in texi2any
+* texindex: (texinfo)Format with tex/texindex.
+                                Sort Texinfo index files.
+
+Utilities
+* ZSH: (zsh).                   The Z Shell Manual.

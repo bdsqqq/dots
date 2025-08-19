@@ -1,0 +1,2 @@
+#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
+exec "/nix/store/2i9y1fw99jccl8r04jky9mwlpi8sshhl-blockbench-4.12.5/Applications/Blockbench.app/Contents/MacOS/Blockbench"  "$@" 

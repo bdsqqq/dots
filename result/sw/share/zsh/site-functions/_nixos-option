@@ -1,0 +1,23 @@
+#compdef nixos-option
+#autoload
+_nix-common-options # import _nix_attr_paths etc.
+
+_nixos-option-opts() {
+    local mods=
+    if [[ -n "$NIX_PATH" && "$NIX_PATH" =~ "nixos-config=" ]]; then
+        mods="(import <nixos-config>)"
+    fi
+    local options='
+      with import <nixpkgs/lib>;
+      (evalModules {
+        modules = import <nixpkgs/nixos/modules/module-list.nix> ++ [ '"$mods"' ];
+      }).config
+    '
+
+    _nix_attr_paths $options
+}
+
+_arguments \
+    $__nix_search_path_args \
+    '--all[Print the values of all options.]' \
+    ':NixOS module options:_nixos-option-opts'

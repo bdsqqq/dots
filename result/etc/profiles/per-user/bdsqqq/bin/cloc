@@ -1,0 +1,56 @@
+#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
+PERL5LIB=${PERL5LIB:+':'$PERL5LIB':'}
+PERL5LIB=${PERL5LIB/':''/nix/store/pdkpxskjw1bilxkfqn9ncfhq1xhyb7g2-perl5.40.0-Regexp-Common-2017060201/lib/perl5/site_perl'':'/':'}
+PERL5LIB='/nix/store/pdkpxskjw1bilxkfqn9ncfhq1xhyb7g2-perl5.40.0-Regexp-Common-2017060201/lib/perl5/site_perl'$PERL5LIB
+PERL5LIB=${PERL5LIB#':'}
+PERL5LIB=${PERL5LIB%':'}
+export PERL5LIB
+PERL5LIB=${PERL5LIB:+':'$PERL5LIB':'}
+PERL5LIB=${PERL5LIB/':''/nix/store/60lc80ww7xvmp5liacwl7zmi1qi0pmw4-perl5.40.0-Sub-Quote-2.006008/lib/perl5/site_perl'':'/':'}
+PERL5LIB='/nix/store/60lc80ww7xvmp5liacwl7zmi1qi0pmw4-perl5.40.0-Sub-Quote-2.006008/lib/perl5/site_perl'$PERL5LIB
+PERL5LIB=${PERL5LIB#':'}
+PERL5LIB=${PERL5LIB%':'}
+export PERL5LIB
+PERL5LIB=${PERL5LIB:+':'$PERL5LIB':'}
+PERL5LIB=${PERL5LIB/':''/nix/store/0fbsr1zij1gnq92gzdjw1jrsqfyaa8fj-perl5.40.0-Role-Tiny-2.002004/lib/perl5/site_perl'':'/':'}
+PERL5LIB='/nix/store/0fbsr1zij1gnq92gzdjw1jrsqfyaa8fj-perl5.40.0-Role-Tiny-2.002004/lib/perl5/site_perl'$PERL5LIB
+PERL5LIB=${PERL5LIB#':'}
+PERL5LIB=${PERL5LIB%':'}
+export PERL5LIB
+PERL5LIB=${PERL5LIB:+':'$PERL5LIB':'}
+PERL5LIB=${PERL5LIB/':''/nix/store/7zi64l0zn885126id82vh8vyh4j5apcg-perl5.40.0-Module-Runtime-0.016/lib/perl5/site_perl'':'/':'}
+PERL5LIB='/nix/store/7zi64l0zn885126id82vh8vyh4j5apcg-perl5.40.0-Module-Runtime-0.016/lib/perl5/site_perl'$PERL5LIB
+PERL5LIB=${PERL5LIB#':'}
+PERL5LIB=${PERL5LIB%':'}
+export PERL5LIB
+PERL5LIB=${PERL5LIB:+':'$PERL5LIB':'}
+PERL5LIB=${PERL5LIB/':''/nix/store/fjv2djrxxdx596qwdrzdmxs0lps2lky2-perl5.40.0-Class-Method-Modifiers-2.15/lib/perl5/site_perl'':'/':'}
+PERL5LIB='/nix/store/fjv2djrxxdx596qwdrzdmxs0lps2lky2-perl5.40.0-Class-Method-Modifiers-2.15/lib/perl5/site_perl'$PERL5LIB
+PERL5LIB=${PERL5LIB#':'}
+PERL5LIB=${PERL5LIB%':'}
+export PERL5LIB
+PERL5LIB=${PERL5LIB:+':'$PERL5LIB':'}
+PERL5LIB=${PERL5LIB/':''/nix/store/6lspn7mrb6id8ca8zx8r58ybqjg9i202-perl5.40.0-Moo-2.005005/lib/perl5/site_perl'':'/':'}
+PERL5LIB='/nix/store/6lspn7mrb6id8ca8zx8r58ybqjg9i202-perl5.40.0-Moo-2.005005/lib/perl5/site_perl'$PERL5LIB
+PERL5LIB=${PERL5LIB#':'}
+PERL5LIB=${PERL5LIB%':'}
+export PERL5LIB
+PERL5LIB=${PERL5LIB:+':'$PERL5LIB':'}
+PERL5LIB=${PERL5LIB/':''/nix/store/5y87hhplpj29xljhm6zb34nn9rlxrb3g-perl5.40.0-Parallel-ForkManager-2.02/lib/perl5/site_perl'':'/':'}
+PERL5LIB='/nix/store/5y87hhplpj29xljhm6zb34nn9rlxrb3g-perl5.40.0-Parallel-ForkManager-2.02/lib/perl5/site_perl'$PERL5LIB
+PERL5LIB=${PERL5LIB#':'}
+PERL5LIB=${PERL5LIB%':'}
+export PERL5LIB
+PERL5LIB=${PERL5LIB:+':'$PERL5LIB':'}
+PERL5LIB=${PERL5LIB/':''/nix/store/868bjqms7mb6ng4823wfmnyshmpamhci-perl5.40.0-Algorithm-Diff-1.1903/lib/perl5/site_perl'':'/':'}
+PERL5LIB='/nix/store/868bjqms7mb6ng4823wfmnyshmpamhci-perl5.40.0-Algorithm-Diff-1.1903/lib/perl5/site_perl'$PERL5LIB
+PERL5LIB=${PERL5LIB#':'}
+PERL5LIB=${PERL5LIB%':'}
+export PERL5LIB
+PERL5LIB=${PERL5LIB:+':'$PERL5LIB':'}
+PERL5LIB=${PERL5LIB/':''/nix/store/gsgrv076sl8gkq6pmr8q3x77kk41ygbw-perl-5.40.0/lib/perl5/site_perl'':'/':'}
+PERL5LIB='/nix/store/gsgrv076sl8gkq6pmr8q3x77kk41ygbw-perl-5.40.0/lib/perl5/site_perl'$PERL5LIB
+PERL5LIB=${PERL5LIB#':'}
+PERL5LIB=${PERL5LIB%':'}
+export PERL5LIB
+exec -a "$0" "/nix/store/467nc4gh78y4yyn3c2bfz2hhrgmx3k7z-cloc-2.04/bin/.cloc-wrapped"  "$@" 

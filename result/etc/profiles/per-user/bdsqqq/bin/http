@@ -1,0 +1,33 @@
+#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
+PATH=${PATH:+':'$PATH':'}
+PATH=${PATH/':''/nix/store/aryaffmf6w5jybnm3jbir2z9i5s6wqi8-python3.13-markdown-it-py-3.0.0/bin'':'/':'}
+PATH='/nix/store/aryaffmf6w5jybnm3jbir2z9i5s6wqi8-python3.13-markdown-it-py-3.0.0/bin'$PATH
+PATH=${PATH#':'}
+PATH=${PATH%':'}
+export PATH
+PATH=${PATH:+':'$PATH':'}
+PATH=${PATH/':''/nix/store/091981vb0l15rfsm4rd7dbznxxbiw6s0-python3.13-pygments-2.19.1/bin'':'/':'}
+PATH='/nix/store/091981vb0l15rfsm4rd7dbznxxbiw6s0-python3.13-pygments-2.19.1/bin'$PATH
+PATH=${PATH#':'}
+PATH=${PATH%':'}
+export PATH
+PATH=${PATH:+':'$PATH':'}
+PATH=${PATH/':''/nix/store/abapp2n1bw5lq117dy10mp396kynaxyh-python3.13-charset-normalizer-3.4.2/bin'':'/':'}
+PATH='/nix/store/abapp2n1bw5lq117dy10mp396kynaxyh-python3.13-charset-normalizer-3.4.2/bin'$PATH
+PATH=${PATH#':'}
+PATH=${PATH%':'}
+export PATH
+PATH=${PATH:+':'$PATH':'}
+PATH=${PATH/':''/nix/store/gj40gmv0y5i479iiy9rm69j8bkxvjgk1-python3.13-httpie-3.2.4/bin'':'/':'}
+PATH='/nix/store/gj40gmv0y5i479iiy9rm69j8bkxvjgk1-python3.13-httpie-3.2.4/bin'$PATH
+PATH=${PATH#':'}
+PATH=${PATH%':'}
+export PATH
+PATH=${PATH:+':'$PATH':'}
+PATH=${PATH/':''/nix/store/j1spz18w5a10r9nj4wpkyh0cx730rs4z-python3-3.13.4/bin'':'/':'}
+PATH='/nix/store/j1spz18w5a10r9nj4wpkyh0cx730rs4z-python3-3.13.4/bin'$PATH
+PATH=${PATH#':'}
+PATH=${PATH%':'}
+export PATH
+export PYTHONNOUSERSITE='true'
+exec -a "$0" "/nix/store/gj40gmv0y5i479iiy9rm69j8bkxvjgk1-python3.13-httpie-3.2.4/bin/.http-wrapped"  "$@" 

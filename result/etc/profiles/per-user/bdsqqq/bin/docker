@@ -1,0 +1,8 @@
+#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
+PATH=${PATH:+':'$PATH':'}
+PATH=${PATH/':''/nix/store/c84xzk51zy4wl42gjm3xwdj3ryxbyj3s-docker-28.2.2/libexec/docker'':'/':'}
+PATH='/nix/store/c84xzk51zy4wl42gjm3xwdj3ryxbyj3s-docker-28.2.2/libexec/docker'$PATH
+PATH=${PATH#':'}
+PATH=${PATH%':'}
+export PATH
+exec "/nix/store/c84xzk51zy4wl42gjm3xwdj3ryxbyj3s-docker-28.2.2/libexec/docker/docker"  "$@" 

@@ -1,0 +1,17 @@
+# /etc/zprofile: DO NOT EDIT -- this file has been generated automatically.
+# This file is read for login shells.
+
+# Only execute this file once per shell.
+if [ -n "${__ETC_ZPROFILE_SOURCED-}" ]; then return; fi
+__ETC_ZPROFILE_SOURCED=1
+
+
+
+
+
+
+
+# Read system-wide modifications.
+if test -f /etc/zprofile.local; then
+  source /etc/zprofile.local
+fi

@@ -1,0 +1,5 @@
+#!/nix/store/abxz7wpw5kwaijzzmf8rl4ga981vk8pc-nodejs-22.16.0/bin/node
+
+process.argv = [...process.argv.slice(0, 2), 'dlx', ...process.argv.slice(2)]
+
+require('./pnpm.cjs')
