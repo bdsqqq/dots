@@ -15,7 +15,8 @@
     ./waybar.nix
     ./notifications.nix
     ./launcher.nix
-    ./waybar-scripts.nix
+    ./pyprland.nix
+    # Removed waybar-scripts.nix - replaced with native modules + pyprland
   ];
 
   # Home Manager needs a bit of information about you and the

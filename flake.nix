@@ -34,10 +34,6 @@
     berkeley-mono.url = "path:./modules/shared/berkeley-mono";
     berkeley-mono.flake = false;
 
-    # niri window manager
-    niri.url = "github:sodiboo/niri-flake";
-    niri.inputs.nixpkgs.follows = "nixpkgs";
-    
     # hyprland window manager
     hyprland.url = "github:hyprwm/Hyprland";
     hyprland.inputs.nixpkgs.follows = "nixpkgs";
@@ -170,7 +166,6 @@
             specialArgs = { inherit inputs; };
             modules = [
               stylix.nixosModules.stylix
-              inputs.niri.nixosModules.niri
               inputs.hyprland.nixosModules.default
               inputs.home-manager.nixosModules.home-manager
               ./hosts/desktop/default.nix

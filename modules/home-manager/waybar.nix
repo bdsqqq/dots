@@ -24,21 +24,68 @@
         margin-right = 8;
         exclusive = false;
         
-        # Only essential widgets on the right
+        # System monitoring and essential widgets
         modules-left = [ ];
         modules-center = [ ];
-        modules-right = [ "custom/bluetooth" "pulseaudio" "network" "custom/notification" "clock" ];
+        modules-right = [ 
+          "cpu" 
+          "memory" 
+          "temperature" 
+          "custom/system"
+          "bluetooth" 
+          "custom/audio" 
+          "network" 
+          "custom/logs"
+          "clock" 
+        ];
         
-        # Bluetooth widget
-        "custom/bluetooth" = {
-          format = "{}";
-          interval = 5;
-          exec = "~/.config/waybar/scripts/bluetooth.sh";
-          on-click = "blueman-manager";
-          on-click-right = "blueman-manager";
+        # System monitoring scratchpad
+        "custom/system" = {
+          format = "󰔟";
+          tooltip-text = "System Management";
+          on-click = "pypr toggle system-popup";
         };
         
-        # Audio control
+        # CPU monitoring
+        cpu = {
+          format = "󰻠 {usage}%";
+          interval = 2;
+          on-click = "pypr toggle btop-popup";
+        };
+        
+        # Memory monitoring  
+        memory = {
+          format = "󰍛 {percentage}%";
+          interval = 2;
+          on-click = "pypr toggle btop-popup";
+        };
+        
+        # Temperature monitoring
+        temperature = {
+          thermal-zone = 0;
+          format = "󰔏 {temperatureC}°C";
+          critical-threshold = 80;
+          format-critical = "󱃂 {temperatureC}°C";
+          on-click = "pypr toggle btop-popup";
+        };
+        
+        # Native Bluetooth widget (replaces custom script)
+        bluetooth = {
+          format = "󰂯 {status}";
+          format-connected = "󰂯 {num_connections}";
+          format-disabled = "󰂲";
+          on-click = "pypr toggle bluetuith-popup";
+          tooltip-format = "{controller_alias}\t{controller_address}";
+        };
+        
+        # Audio control scratchpad
+        "custom/audio" = {
+          format = "󰕾";
+          tooltip-text = "Audio Control";
+          on-click = "pypr toggle audio-popup";
+        };
+        
+        # Keep native pulseaudio for scroll volume control
         pulseaudio = {
           format = "{icon}";
           format-muted = "󰝟";
@@ -46,24 +93,34 @@
             default = [ "󰕿" "󰖀" "󰕾" ];
           };
           on-click = "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle";
-          on-click-right = "~/.config/waybar/scripts/audio-menu.sh";
           on-scroll-up = "wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%+";
           on-scroll-down = "wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%-";
+          states = {
+            warning = 85;
+          };
         };
         
-        # Network
+        # Network management
         network = {
           format-wifi = "󰖩";
           format-ethernet = "󰈀";
           format-disconnected = "󰖪";
-          on-click = "networkmanager_dmenu";
+          on-click = "pypr toggle network-popup";
+          tooltip-format-wifi = "{essid} ({signalStrength}%)";
+          tooltip-format-ethernet = "{ipaddr}/{cidr}";
         };
         
-        # Notifications
+        # System logs scratchpad
+        "custom/logs" = {
+          format = "󰌪";
+          tooltip-text = "System Logs";
+          on-click = "pypr toggle logs-popup";
+        };
+        
+        # Notifications (simplified - no custom script)
         "custom/notification" = {
-          format = "{}";
-          interval = 1;
-          exec = "~/.config/waybar/scripts/notifications.sh";
+          format = "󰂚";
+          tooltip-text = "Notifications";
           on-click = "makoctl dismiss --all";
           on-click-right = "makoctl restore";
         };
@@ -103,15 +160,36 @@
       }
       
       /* All widgets visible */
-      #custom-bluetooth,
+      #cpu,
+      #memory, 
+      #temperature,
+      #custom-system,
+      #bluetooth,
+      #custom-audio,
       #pulseaudio,
       #network,
+      #custom-logs,
       #custom-notification,
       #clock {
         padding: 6px 8px;
         color: #868686;
         font-size: 10px;
         min-width: 24px;
+      }
+      
+      /* System monitoring widgets */
+      #cpu,
+      #memory,
+      #temperature {
+        color: #7aa2f7;
+        font-weight: 500;
+      }
+      
+      /* Warning states */
+      #cpu.warning,
+      #memory.warning,
+      #temperature.critical {
+        color: #f7768e;
       }
       
       /* Clock styling */
@@ -123,9 +201,15 @@
       }
       
       /* Hover effects for individual widgets */
-      #custom-bluetooth:hover,
+      #cpu:hover,
+      #memory:hover,
+      #temperature:hover,
+      #custom-system:hover,
+      #bluetooth:hover,
+      #custom-audio:hover,
       #pulseaudio:hover,
       #network:hover,
+      #custom-logs:hover,
       #custom-notification:hover {
         color: #c2c2c2;
         transition: color 150ms ease;
@@ -137,6 +221,10 @@
       }
       
       #network.disconnected {
+        color: #5e5e5e;
+      }
+      
+      #bluetooth.disabled {
         color: #5e5e5e;
       }
     '';

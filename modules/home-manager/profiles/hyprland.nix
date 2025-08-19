@@ -35,6 +35,7 @@
         "mako"
         "nm-applet"
         "blueman-applet"
+        "pypr"  # Start pyprland for scratchpad management
         # Cursor theme setup (ensures proper application)
         "hyprctl setcursor macOS 24"
         "gsettings set org.gnome.desktop.interface cursor-theme 'macOS'"
@@ -213,6 +214,55 @@
         "float, class:^(fuzzel)$"
         "center, class:^(fuzzel)$"
         "dimaround, class:^(fuzzel)$"
+        
+        # Pyprland scratchpad windows
+        # System monitoring with btop
+        "float, class:^(btop-popup)$"
+        "workspace special:btop silent, class:^(btop-popup)$"
+        "size 60% 70%, class:^(btop-popup)$"
+        "center, class:^(btop-popup)$"
+        
+        # Bluetooth management
+        "float, class:^(bluetuith-popup)$"
+        "workspace special:bluetooth silent, class:^(bluetuith-popup)$"
+        "size 50% 60%, class:^(bluetuith-popup)$"
+        "center, class:^(bluetuith-popup)$"
+        
+        # Audio control
+        "float, class:^(audio-popup)$"
+        "workspace special:audio silent, class:^(audio-popup)$"
+        "size 40% 50%, class:^(audio-popup)$"
+        "center, class:^(audio-popup)$"
+        
+        # Network management
+        "float, class:^(network-popup)$"
+        "workspace special:network silent, class:^(network-popup)$"
+        "size 50% 60%, class:^(network-popup)$"
+        "center, class:^(network-popup)$"
+        
+        # System logs
+        "float, class:^(logs-popup)$"
+        "workspace special:logs silent, class:^(logs-popup)$"
+        "size 70% 80%, class:^(logs-popup)$"
+        "center, class:^(logs-popup)$"
+        
+        # System management
+        "float, class:^(system-popup)$"
+        "workspace special:system silent, class:^(system-popup)$"
+        "size 60% 70%, class:^(system-popup)$"
+        "center, class:^(system-popup)$"
+        
+        # Network bandwidth monitoring
+        "float, class:^(bandwidth-popup)$"
+        "workspace special:bandwidth silent, class:^(bandwidth-popup)$"
+        "size 50% 60%, class:^(bandwidth-popup)$"
+        "center, class:^(bandwidth-popup)$"
+        
+        # Disk I/O monitoring
+        "float, class:^(disk-popup)$"
+        "workspace special:disk silent, class:^(disk-popup)$"
+        "size 60% 70%, class:^(disk-popup)$"
+        "center, class:^(disk-popup)$"
       ];
     };
   };
