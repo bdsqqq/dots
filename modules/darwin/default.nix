@@ -2,7 +2,6 @@
 
 {
   imports = [
-    ./karabiner.nix
     ./kanata.nix
     ../shared/default.nix
   ];
