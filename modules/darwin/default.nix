@@ -20,8 +20,6 @@
   # Set primary user for system-wide defaults
   system.primaryUser = "bdsqqq";
 
-  environment.darwinConfig = "$HOME/.config/nix-darwin/configuration.nix";
-
   # Necessary for using flakes on this system.
   nix.settings.experimental-features = "nix-command flakes";
 

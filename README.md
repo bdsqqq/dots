@@ -12,8 +12,8 @@ Personal macOS setup. Declarative system management through nix-darwin + home-ma
 ### 1. Clone the Repository
 
 ```bash
-git clone <repo-url> /private/etc/nix-darwin
-cd /private/etc/nix-darwin
+git clone <repo-url> ~/commonplace/01_files/nix
+cd ~/commonplace/01_files/nix
 ```
 
 ### 2. Install nix-darwin (if not already installed)

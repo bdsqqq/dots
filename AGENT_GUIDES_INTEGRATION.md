@@ -1,17 +1,18 @@
 ---
 type:
-  - "type/documentation"
-area: "nix-configuration"
+- type/documentation
+area: nix-configuration
 keywords:
-  - "claude-code"
-  - "agent-guides"
-  - "nix-darwin"
-  - "home-manager"
+- claude-code
+- agent-guides
+- nix-darwin
+- home-manager
 status:
-  - "status/complete"
+- status/complete
 created: 2025-06-26
 author:
-  - "opencode"
+- opencode
+permalink: 01-files/nix/agent-guides-integration
 ---
 
 # Agent-Guides Integration with Nix Configuration
@@ -60,10 +61,10 @@ To apply the new configuration:
 
 ```bash
 # Build and switch to new configuration
-sudo darwin-rebuild switch --flake /private/etc/nix-darwin
+sudo darwin-rebuild switch --flake ~/commonplace/01_files/nix
 
 # Or build without switching for testing
-darwin-rebuild build --flake /private/etc/nix-darwin
+darwin-rebuild build --flake ~/commonplace/01_files/nix
 ```
 
 ## Command Usage
@@ -98,7 +99,7 @@ When the agent-guides repository updates, command hashes require updating:
 nix-prefetch-url https://raw.githubusercontent.com/tokenbender/agent-guides/main/claude-commands/search-prompts.md
 
 # Update the hash in claude.nix, then rebuild
-sudo darwin-rebuild switch --flake /private/etc/nix-darwin
+sudo darwin-rebuild switch --flake ~/commonplace/01_files/nix
 ```
 
 ### Adding New Commands
