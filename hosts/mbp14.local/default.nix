@@ -36,6 +36,9 @@
   # Enable Kanata for unified keyboard configuration
   custom.kanata.enable = true;
   
+  # Enable Syncthing automerge service
+  custom.syncthing-automerge.enable = true;
+  
   # Example of using enhanced specialArgs for conditional configuration
   # This demonstrates how modules can access system information
   # assertions = [
