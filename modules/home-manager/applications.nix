@@ -15,6 +15,7 @@
     # spotify-player # Configured in development.nix via programs.spotify-player
     transmission_4
     rclone
+    qpdf
   ] ++ lib.optionals isDarwin [
     # macOS-only apps
     tableplus
