@@ -30,6 +30,10 @@
       };
     };
 
+    gallery-dl = {
+      enable = true;
+    };
+
     spotify-player = {
       enable = true;
     };
