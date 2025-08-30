@@ -8,7 +8,7 @@
   # Boot configuration
   boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "nvme" "usbhid" "sd_mod" ];
   boot.initrd.kernelModules = [ ];
-  boot.kernelModules = [ "kvm-amd" ];
+  boot.kernelModules = [ "kvm-amd" "hid_sony" "hid_playstation" "uinput" ];
   boot.extraModulePackages = [ ];
 
   # File systems
@@ -53,6 +53,12 @@
     bluetooth = {
       enable = true;
       powerOnBoot = true;
+      settings = {
+        General = {
+          Enable = "Source,Sink,Media,Socket";
+          Experimental = true;
+        };
+      };
     };
   };
 

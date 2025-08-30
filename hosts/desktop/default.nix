@@ -146,6 +146,18 @@
   
   # Bluetooth management
   services.blueman.enable = true;
+  
+  # Auto-trust paired devices for better persistence
+  systemd.services.bluetooth-auto-trust = {
+    description = "Auto-trust Bluetooth devices";
+    after = [ "bluetooth.service" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${pkgs.bash}/bin/bash -c '${pkgs.bluez}/bin/bluetoothctl trust E6:D2:2B:50:5B:64 || true'";
+    };
+  };
 
   # Display manager
   services.greetd = {
@@ -292,6 +304,7 @@
     # Controller support
     dualsensectl  # PS5 DualSense controller support
     hidapi  # HID API library for controller communication
+    linuxConsoleTools  # JS utilities for testing controllers
     
     # Cursor theme (traditional macOS-style)
     apple-cursor  # Traditional macOS-style cursor theme
