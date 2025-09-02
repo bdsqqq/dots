@@ -1,4 +1,4 @@
-# Hardware configuration for NixOS desktop
+# Hardware configuration for r56 (Ryzen desktop)
 # Generated from nixos-generate-config output
 { config, lib, pkgs, modulesPath, ... }:
 

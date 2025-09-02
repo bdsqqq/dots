@@ -37,7 +37,7 @@ The waybar configuration has been updated to replace custom bluetooth scripts wi
 **Architecture Cleanup**
 - Removed waybar-scripts.nix module completely from home-manager imports
 - Removed niri input references from flake.nix
-- Removed niri nixosModule references from desktop configuration
+- Removed niri nixosModule references from r56 configuration
 - Created dedicated pyprland.nix module with conditional linux-only loading
 
 ## Menubar Layout
