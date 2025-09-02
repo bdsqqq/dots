@@ -161,14 +161,14 @@
 
         # NixOS configurations using the same foundation
         nixosConfigurations = {
-          "r56" = inputs.nixpkgs.lib.nixosSystem {
+          "desktop" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = { inherit inputs; };
             modules = [
               stylix.nixosModules.stylix
               inputs.hyprland.nixosModules.default
               inputs.home-manager.nixosModules.home-manager
-              ./hosts/r56/default.nix
+              ./hosts/desktop/default.nix
             ];
           };
         };

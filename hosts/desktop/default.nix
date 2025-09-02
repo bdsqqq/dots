@@ -1,4 +1,4 @@
-# NixOS configuration for r56 (Ryzen desktop)
+# Simple NixOS desktop configuration
 { pkgs, inputs, lib, config, modulesPath, ... }:
 
 {
@@ -45,7 +45,7 @@
   };
 
   # Basic system settings
-  networking.hostName = "r56";
+  networking.hostName = "desktop";
   networking.networkmanager.enable = true;
   networking.useDHCP = lib.mkDefault true;
   
@@ -272,7 +272,7 @@
     };
   };
 
-  # Additional system packages specific to r56
+  # Additional system packages specific to desktop
   environment.systemPackages = with pkgs; [
     # Network tools
     networkmanagerapplet
@@ -280,7 +280,7 @@
     # File manager
     nautilus
     
-    # Additional r56 tools
+    # Additional desktop tools
     tree
     unzip
     usbutils  # For lsusb command
