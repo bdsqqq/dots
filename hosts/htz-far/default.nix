@@ -6,6 +6,7 @@
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     ../../modules/shared/default.nix
+    # ../../modules/nixos/ufw.nix # temporarily disabled for testing
   ];
 
   # Boot configuration
@@ -56,12 +57,8 @@
     guiAddress = "0.0.0.0:8384";
   };
 
-  # Firewall - allow SSH and Syncthing
-  networking.firewall = {
-    enable = true;
-    allowedTCPPorts = [ 22 8384 22000 ];
-    allowedUDPPorts = [ 22000 21027 ];
-  };
+  # Firewall - use ufw for easier tailscale management
+  networking.firewall.enable = false; # disable nixos firewall in favor of ufw
 
   # Your user
   users.users.bdsqqq = {
@@ -88,6 +85,7 @@
     extraSpecialArgs = {
       inherit inputs;
       isDarwin = false;
+      isServer = true;
     };
   };
 
