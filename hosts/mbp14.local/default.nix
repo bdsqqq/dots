@@ -14,8 +14,8 @@
     backupFileExtension = "backup";  # Backup existing files instead of failing
     users.bdsqqq = {
       imports = [
-        inputs.nixvim.homeManagerModules.nixvim
-        inputs.sops-nix.homeManagerModules.sops
+        # inputs.nixvim.homeManagerModules.nixvim  # Temporarily disabled
+        # inputs.sops-nix.homeManagerModules.sops  # Temporarily disabled
         ../../modules/home-manager/default.nix
       ];
     };
