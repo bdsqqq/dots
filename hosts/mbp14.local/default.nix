@@ -22,6 +22,7 @@
     extraSpecialArgs = {
       inherit inputs systems pkgsFor;
       isDarwin = true;
+      isServer = false;
     };
   };
 
