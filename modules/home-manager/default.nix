@@ -6,6 +6,7 @@
     ./shell.nix
     ./essentials.nix
     ./neovim.nix
+    ./terminals.nix
     ./claude.nix
     ./pnpm-global.nix
   ] ++ lib.optionals (!isDarwin) [
@@ -20,7 +21,22 @@
   
 
 
+  # sops-nix configuration for secrets management (optional)
+  sops = lib.mkIf (builtins.pathExists ../../secrets.yaml) {
+    # age key file location (never commit this!)
+    age.keyFile = if isDarwin 
+      then "/Users/bdsqqq/.config/sops/age/keys.txt"
+      else "/home/bdsqqq/.config/sops/age/keys.txt";
 
+    # default secrets file location
+    defaultSopsFile = ../../secrets.yaml;
+
+    # secrets definitions go here
+    secrets = {
+      # api keys
+      anthropic_api_key = { };
+    };
+  };
 
   # This value determines the Home Manager release that your
   # configuration is compatible with. This helps avoid breakage

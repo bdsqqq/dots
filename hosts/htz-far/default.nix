@@ -14,12 +14,6 @@
   boot.kernelModules = [ ];
   boot.extraModulePackages = [ ];
 
-  # File systems (will be configured during installation)
-  fileSystems."/" = {
-    device = "/dev/sda1";  # Placeholder - will be updated during installation
-    fsType = "ext4";
-  };
-
   boot.loader = {
     systemd-boot.enable = true;
     efi.canTouchEfiVariables = true;

@@ -1,18 +1,31 @@
 # Shared Stylix configuration for both Darwin and NixOS
-{ config, lib, ... }:
+{ config, pkgs, lib, inputs, ... }:
 
-# Only enable stylix if it's available (i.e., if the stylix nixos module is imported)
-lib.mkIf (config ? stylix) {
+let
+  # Define polarity - change this to "light" to switch to light theme
+  polarity = "dark";
+  
+  # Select wallpaper based on polarity
+  wallpaperImage = if polarity == "dark" 
+    then inputs.loupe-dark
+    else inputs.loupe-light;
+    
+  # Select color scheme based on polarity
+  colorScheme = if polarity == "dark"
+    then ./e-ink-scheme.yaml
+    else ./e-ink-light-scheme.yaml;
+in
+{
   stylix = {
     enable = true;
-
+    
     # Enable automatic detection and theming of supported applications
     autoEnable = true;
-
+    
     # Keep e-ink color scheme but use loupe wallpaper
-    base16Scheme = ./e-ink-scheme.yaml;
-    image = ../../../modules/shared/loupe-mono-dark.jpg;
-
+    base16Scheme = colorScheme;
+    image = wallpaperImage;
+    
     # Opacity settings - translucent
     opacity = {
       applications = 0.65;
@@ -20,8 +33,8 @@ lib.mkIf (config ? stylix) {
       desktop = 0.65;
       popups = 0.65;
     };
-
+    
     # Set polarity based on selected theme
-    polarity = "dark";
+    polarity = polarity;
   };
 }

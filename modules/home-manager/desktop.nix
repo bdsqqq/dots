@@ -7,10 +7,10 @@
     ./notifications.nix
     ./launcher.nix
     ./pyprland.nix
+    ./terminals.nix  # Ghostty config
   ] ++ lib.optionals (!isDarwin) [
     # Desktop-specific GUI applications
     ./applications.nix  # GUI apps like fuzzel, blueman, pavucontrol
-    ./terminals.nix  # Ghostty config (stylix-dependent)
   ];
 
   # XDG user directories (Linux desktop feature)
