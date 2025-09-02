@@ -14,8 +14,7 @@
     backupFileExtension = "backup";  # Backup existing files instead of failing
     users.bdsqqq = {
       imports = [
-        # inputs.nixvim.homeManagerModules.nixvim  # Temporarily disabled
-        # inputs.sops-nix.homeManagerModules.sops  # Temporarily disabled
+        # inputs.nixvim.homeManagerModules.nixvim  # Disabled due to wayland build issues on macOS
         ../../modules/home-manager/default.nix
       ];
     };
