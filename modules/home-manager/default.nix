@@ -5,11 +5,9 @@
     # core modules for all machines
     ./base.nix
     ./shell.nix
+    ./neovim.nix
     ./claude.nix
     ./pnpm-global.nix
-  ] ++ lib.optionals (!isDarwin && !isServer) [
-    # nixvim only on linux non-server machines
-    ./neovim.nix
   ] ++ lib.optionals (!isServer) [
     # workbench tools for non-server machines
     ./workbench.nix

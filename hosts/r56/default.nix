@@ -269,7 +269,6 @@
     extraSpecialArgs = { 
       inherit inputs; 
       isDarwin = false;
-      isServer = false;
     };
   };
 
