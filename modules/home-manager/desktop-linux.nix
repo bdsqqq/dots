@@ -9,7 +9,7 @@
     ./launcher.nix
     ./pyprland.nix
     ./terminals.nix  # Ghostty config (stylix-dependent)
-    ./applications-linux.nix  # GUI apps for Linux
+    ./applications.nix  # GUI apps for Linux
   ];
 
   # XDG user directories (Linux desktop feature)

@@ -2,12 +2,6 @@
   programs.nixvim = {
     enable = true;
 
-    # Disable wayland support to avoid build issues on macOS
-    extraConfigLua = ''
-      vim.g.loaded_clipboard_provider = 0
-      vim.g.clipboard = nil
-    '';
-
     extraPlugins = [
       # vesper theme removed due to 404 error
     ];
