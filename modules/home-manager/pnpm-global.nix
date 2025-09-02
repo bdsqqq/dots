@@ -141,7 +141,7 @@ in
     '';
   };
   
-  # Ensure the pnpm global directory is in PATH (already done in workbench.nix)
+  # Ensure the pnpm global directory is in PATH (already done in development.nix)
   # but we can add a check here
   home.sessionVariables = {
     PNPM_HOME = "$HOME/Library/pnpm";

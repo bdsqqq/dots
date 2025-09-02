@@ -1,28 +1,19 @@
-{ config, pkgs, lib, isDarwin ? false, isServer ? false, ... }:
+{ config, pkgs, lib, isDarwin ? false, ... }:
 
 {
   imports = [
-    # core modules for all machines
-    ./base.nix
+    # Core modules (cross-platform)
     ./shell.nix
+    ./essentials.nix
     ./neovim.nix
     ./claude.nix
     ./pnpm-global.nix
-  ] ++ lib.optionals (!isServer) [
-    # workbench tools for non-server machines
-    ./workbench.nix
-  ] ++ lib.optionals (isDarwin && !isServer) [
-    # macos desktop features
+  ] ++ lib.optionals isDarwin [
+    # macOS desktop features
     ./desktop-darwin.nix
-    ./platform-darwin.nix
-  ] ++ lib.optionals (!isDarwin && !isServer) [
-    # linux desktop features
+  ] ++ lib.optionals (!isDarwin) [
+    # Linux desktop features
     ./desktop-linux.nix
-    ./platform-linux.nix
-  ] ++ lib.optionals (!isDarwin && isServer) [
-    # linux server-specific
-    ./platform-linux.nix
-    ./server.nix
   ];
 
   # Home Manager needs a bit of information about you and the

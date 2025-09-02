@@ -1,13 +1,52 @@
 { config, pkgs, lib, isDarwin ? false, ... }:
 
-{
+lib.mkIf (!isDarwin) {
   home.packages = with pkgs; [
-    # Cross-platform applications
+    # Cross-platform CLI applications
     _1password-cli
     docker
     rclone
     qpdf
-    # spotify-player # Configured in workbench.nix via programs.spotify-player
+
+    # Linux-only applications
+    _1password-gui
+    blockbench
+    blender
+    obsidian
+    spicetify-cli
+    transmission_4
+    ghostty
+    dbeaver-bin
+    vlc
+    xwayland-satellite
+
+    # System tray and menu functionality
+    fuzzel
+    blueman
+    pavucontrol
+
+    # Additional system utilities for daily use
+    playerctl
+    brightnessctl
+
+    # Network management
+    networkmanager_dmenu
+  ];
+}
+    _1password-gui
+    _1password-cli
+
+    docker
+    blockbench
+    
+    blender
+
+    obsidian
+    spicetify-cli
+    # spotify-player # Configured in development.nix via programs.spotify-player
+    transmission_4
+    rclone
+    qpdf
   ] ++ lib.optionals isDarwin [
     # macOS-only apps
     tableplus
@@ -15,12 +54,6 @@
     # ghostty unavailable on Darwin in nixpkgs - use homebrew version
   ] ++ lib.optionals (!isDarwin) [
     # Linux-specific apps
-    _1password-gui
-    blockbench
-    blender
-    obsidian
-    spicetify-cli
-    transmission_4
     ghostty  # Terminal emulator
     dbeaver-bin  # Alternative to TablePlus
     vlc      # Alternative to iina
