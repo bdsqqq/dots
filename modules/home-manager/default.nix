@@ -8,12 +8,9 @@
     ./neovim.nix
     ./claude.nix
     ./pnpm-global.nix
-  ] ++ lib.optionals isDarwin [
-    # macOS desktop features
-    ./desktop-darwin.nix
   ] ++ lib.optionals (!isDarwin) [
-    # Linux desktop features
-    ./desktop-linux.nix
+    # Desktop environment (GUI applications and desktop-specific modules)
+    ./desktop.nix
   ];
 
   # Home Manager needs a bit of information about you and the

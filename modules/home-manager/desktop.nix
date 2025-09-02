@@ -1,5 +1,4 @@
-# Linux-specific desktop features
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, isDarwin ? false, ... }:
 
 {
   imports = [
@@ -8,14 +7,16 @@
     ./notifications.nix
     ./launcher.nix
     ./pyprland.nix
+  ] ++ lib.optionals (!isDarwin) [
+    # Desktop-specific GUI applications
+    ./applications.nix  # GUI apps like fuzzel, blueman, pavucontrol
     ./terminals.nix  # Ghostty config (stylix-dependent)
-    ./applications.nix  # GUI apps for Linux
   ];
 
   # XDG user directories (Linux desktop feature)
   xdg = {
     enable = true;
-    userDirs = {
+    userDirs = lib.mkIf (!isDarwin) {
       enable = true;
       createDirectories = true;
       download = "${config.home.homeDirectory}/commonplace/00_inbox";
@@ -29,46 +30,12 @@
     };
   };
 
-  # Cursor theme (Linux desktop-only)
-  home.pointerCursor = {
+  # Cursor theme (desktop-only)
+  home.pointerCursor = lib.mkIf (!isDarwin) {
     gtk.enable = true;
     hyprcursor.enable = true;
     package = pkgs.apple-cursor;
     name = "macOS";
     size = 24;
   };
-
-  # Linux-specific desktop packages
-  home.packages = with pkgs; [
-    # Coding tools
-    nodejs_22
-    pnpm
-    pscale
-    go
-    gofumpt
-    golangci-lint
-    gotools
-    gopls
-    gotests
-    delve
-    python3
-    uv
-    fnm
-    oh-my-zsh
-    cloc
-    yazi
-    httpie
-    git-filter-repo
-    graphite-cli
-
-    # Media tools
-    yt-dlp
-    gallery-dl
-    spotify-player
-    ffmpeg
-    exiftool
-    fastfetch
-    asciiquarium-transparent
-    ctop
-  ];
 }

@@ -1,38 +1,7 @@
 { config, pkgs, lib, isDarwin ? false, ... }:
 
-lib.mkIf (!isDarwin) {
+{
   home.packages = with pkgs; [
-    # Cross-platform CLI applications
-    _1password-cli
-    docker
-    rclone
-    qpdf
-
-    # Linux-only applications
-    _1password-gui
-    blockbench
-    blender
-    obsidian
-    spicetify-cli
-    transmission_4
-    ghostty
-    dbeaver-bin
-    vlc
-    xwayland-satellite
-
-    # System tray and menu functionality
-    fuzzel
-    blueman
-    pavucontrol
-
-    # Additional system utilities for daily use
-    playerctl
-    brightnessctl
-
-    # Network management
-    networkmanager_dmenu
-  ];
-}
     _1password-gui
     _1password-cli
 

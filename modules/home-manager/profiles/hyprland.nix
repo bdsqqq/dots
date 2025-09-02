@@ -1,6 +1,6 @@
 { config, pkgs, lib, inputs, ... }:
 
-lib.mkIf (pkgs.stdenv.isLinux) {
+{
   wayland.windowManager.hyprland = {
     enable = true;
     package = inputs.hyprland.packages.${pkgs.system}.hyprland;
@@ -276,4 +276,4 @@ lib.mkIf (pkgs.stdenv.isLinux) {
     networkmanagerapplet
     blueman
   ];
-}}
+}
