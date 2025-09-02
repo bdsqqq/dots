@@ -171,6 +171,15 @@
               ./hosts/r56/default.nix
             ];
           };
+
+          "htz-far" = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = { inherit inputs; };
+            modules = [
+              inputs.home-manager.nixosModules.home-manager
+              ./hosts/htz-far/default.nix
+            ];
+          };
         };
       };
     };
