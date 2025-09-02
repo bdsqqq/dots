@@ -6,7 +6,7 @@
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     ../../modules/shared/default.nix
-    # ../../modules/nixos/ufw.nix # temporarily disabled for testing
+    ../../modules/nixos/ufw.nix
   ];
 
   # Boot configuration
@@ -57,8 +57,7 @@
     guiAddress = "0.0.0.0:8384";
   };
 
-  # Firewall - use ufw for easier tailscale management
-  networking.firewall.enable = false; # disable nixos firewall in favor of ufw
+  # Firewall configuration is handled by the ufw module
 
   # Your user
   users.users.bdsqqq = {

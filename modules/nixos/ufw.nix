@@ -1,37 +1,38 @@
-# ufw configuration for tailscale access
+# tailscale firewall configuration using native nixos firewall
 { config, pkgs, lib, ... }:
 
 {
-  # Install ufw
-  environment.systemPackages = with pkgs; [ ufw ];
-  
-  # Create systemd service to configure ufw on boot
-  systemd.services.ufw-tailscale-setup = {
-    description = "Configure UFW for Tailscale";
-    after = [ "network-online.target" ];
-    wants = [ "network-online.target" ];
-    wantedBy = [ "multi-user.target" ];
+  # re-enable nixos firewall with tailscale-friendly configuration
+  networking.firewall = {
+    enable = true;
     
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-    };
+    # allow ssh
+    allowedTCPPorts = [ 22 ];
     
-    script = ''
-      # enable ufw
-      ${pkgs.ufw}/bin/ufw --force enable
-      
-      # allow ssh
-      ${pkgs.ufw}/bin/ufw allow 22
-      
-      # allow all traffic on tailscale interface
-      ${pkgs.ufw}/bin/ufw allow in on tailscale0
-      ${pkgs.ufw}/bin/ufw allow out on tailscale0
-      
-      # allow syncthing ports
-      ${pkgs.ufw}/bin/ufw allow 22000
-      ${pkgs.ufw}/bin/ufw allow 21027/udp
-      ${pkgs.ufw}/bin/ufw allow 8384
+    # allow syncthing ports
+    allowedTCPPortRanges = [
+      { from = 22000; to = 22000; }   # syncthing
+      { from = 8384; to = 8384; }     # syncthing web ui
+    ];
+    allowedUDPPorts = [ 21027 22000 ];  # syncthing discovery and transfers
+    
+    # allow all traffic on tailscale interface
+    trustedInterfaces = [ "tailscale0" ];
+    
+    # allow tailscale traffic
+    checkReversePath = "loose";  # required for tailscale
+    
+    # additional tailscale-specific rules
+    extraCommands = ''
+      # allow tailscale subnet routing if needed
+      iptables -A INPUT -i tailscale0 -j ACCEPT
+      iptables -A OUTPUT -o tailscale0 -j ACCEPT
+    '';
+    
+    extraStopCommands = ''
+      # cleanup tailscale rules on firewall stop
+      iptables -D INPUT -i tailscale0 -j ACCEPT 2>/dev/null || true
+      iptables -D OUTPUT -o tailscale0 -j ACCEPT 2>/dev/null || true
     '';
   };
 }
