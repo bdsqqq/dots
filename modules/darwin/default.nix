@@ -43,34 +43,26 @@
     
     # Applications to install via homebrew casks
     casks = [
-      # Password management
-      "1password"
-      "1password-cli"
-      
       # System utilities (Mac-specific)
       "superwhisper"         # Audio transcribing
       "blackhole-2ch"        # Audio routing
       "cleanshot"            # Screenshot tool  
       # "karabiner-elements"   # Keyboard customization - disabled for kanata
       "raycast"              # Launcher/productivity
-      
+      "bitwarden"            # password manager
+
       # Development tools
-      # "docker"               # Container runtime - has installation conflicts
       "orbstack"             # Docker alternative
       "tableplus"            # Database GUI
       "ghostty"              # Terminal - nixpkgs version broken on Darwin
       
       # Creative/Media tools
-      "blockbench"           # 3D model editor
       "figma"                # Design tool
-      "iina"                 # Video player
       "obs"                  # Streaming software
-      "transmission"         # Torrent client
       
       # Productivity applications
       "linear-linear"        # Project management
       "notion-calendar"      # Calendar app
-      "obsidian"             # Note-taking
       
       # Entertainment/Gaming
       "prismlauncher"        # Minecraft launcher

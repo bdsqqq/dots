@@ -253,22 +253,6 @@
         '';
         options.desc = "[t]oggle [o]il";
       }
-      # additional consistency keybindings
-      {
-        mode = "n";
-        key = "<leader>ta";
-        action.__raw = ''
-          function()
-            local ok, avante_api = pcall(require, 'avante.api')
-            if ok and avante_api.toggle then
-              avante_api.toggle()
-            else
-              vim.notify('Avante not available', vim.log.levels.WARN)
-            end
-          end
-        '';
-        options.desc = "[t]oggle [a]vante";
-      }
       {
         mode = "n";
         key = "<leader>sb";
@@ -392,7 +376,6 @@
 
     extraPackages = with pkgs; [
       stylua
-      nodePackages.prettier
       go
       lazygit
     ];
@@ -860,10 +843,10 @@
           '';
           # custom formatter conditions to check availability
           formatters = {
-            prettier = {
+            biome = {
               condition.__raw = ''
                 function()
-                  return vim.fn.executable("prettier") == 1
+                  return vim.fn.executable("biome") == 1
                 end
               '';
             };
@@ -877,11 +860,11 @@
           };
           formatters_by_ft = {
             lua = [ "stylua" ];
-            javascript = [ "prettier" ];
-            typescript = [ "prettier" ];
-            javascriptreact = [ "prettier" ];
-            typescriptreact = [ "prettier" ];
-            json = [ "prettier" ];
+            javascript = [ "biome" ];
+            typescript = [ "biome" ];
+            javascriptreact = [ "biome" ];
+            typescriptreact = [ "biome" ];
+            json = [ "biome" ];
             go = [ "gofmt" ];
           };
         };
@@ -962,7 +945,6 @@
         settings = {
           ensureInstalled = [
             "bash"
-            "c"
             "diff"
             "html"
             "lua"
@@ -990,82 +972,6 @@
           indent = {
             enable = true;
             disable = [ "ruby" ];
-          };
-        };
-      };
-
-      avante = {
-        enable = true;
-        settings = {
-          provider = "claude";
-          providers = {
-            claude = {
-              endpoint = "https://api.anthropic.com";
-              model = "claude-3-5-sonnet-20241022";
-              extra_request_body = {
-                temperature = 0;
-                max_tokens = 4096;
-              };
-            };
-          };
-          behaviour = {
-            auto_suggestions = true;
-            auto_set_highlight_group = true;
-            auto_set_keymaps = true;
-            auto_apply_diff_after_generation = false;
-            support_paste_from_clipboard = false;
-          };
-          mappings = {
-            ask = "<leader>aa";
-            edit = "<leader>ae";
-            refresh = "<leader>ar";
-            diff = {
-              ours = "co";
-              theirs = "ct";
-              all_theirs = "ca";
-              both = "cb";
-              cursor = "cc";
-              next = "]x";
-              prev = "[x";
-            };
-            suggestion = {
-              accept = "<M-l>";
-              next = "<M-]>";
-              prev = "<M-[>";
-              dismiss = "<C-]>";
-            };
-            jump = {
-              next = "]]";
-              prev = "[[";
-            };
-            submit = {
-              normal = "<CR>";
-              insert = "<C-s>";
-            };
-            sidebar = {
-              apply_all = "A";
-              apply_cursor = "a";
-              switch_windows = "<Tab>";
-              reverse_switch_windows = "<S-Tab>";
-            };
-          };
-          hints.enabled = true;
-          windows = {
-            position = "right";
-            wrap = true;
-            width = 30;
-            sidebar_header = {
-              align = "center";
-              rounded = true;
-            };
-          };
-          file_selector.provider = "telescope";
-          dual_boost = {
-            enabled = false;
-            first_provider = "openai";
-            second_provider = "claude";
-            prompt = "based on the two reference outputs below, write a response that incorporates the best aspects of both:";
-            timeout = 60000;
           };
         };
       };

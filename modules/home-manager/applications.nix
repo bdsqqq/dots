@@ -7,7 +7,8 @@
 
     docker
     blockbench
-    
+    vscode
+
     blender
 
     obsidian
@@ -20,10 +21,8 @@
     # macOS-only apps
     tableplus
     iina
-    # ghostty unavailable on Darwin in nixpkgs - use homebrew version
   ] ++ lib.optionals (!isDarwin) [
     # Linux-specific apps
-    ghostty  # Terminal emulator
     dbeaver-bin  # Alternative to TablePlus
     vlc      # Alternative to iina
     xwayland-satellite  # For running X11 apps like Steam on Niri
