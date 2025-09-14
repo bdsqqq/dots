@@ -3,10 +3,9 @@
 {
   # Ensure home directory structure exists (without overriding existing content)
   home.file = {
-    "00_inbox/.keep".text = "";
-    "01_files/.keep".text = "";
-    "02_work/.keep".text = "";
-    "03_temp/.keep".text = "";
+    "commonplace/00_inbox/.keep".text = "";
+    "commonplace/01_files/.keep".text = "";
+    "commonplace/02_temp/.keep".text = "";
   };
 
   programs = {
