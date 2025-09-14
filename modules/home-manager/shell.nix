@@ -6,6 +6,133 @@
     "commonplace/00_inbox/.keep".text = "";
     "commonplace/01_files/.keep".text = "";
     "commonplace/02_temp/.keep".text = "";
+    
+    # Global ripgrep ignore patterns for fzf integration
+    ".rgignore".text = ''
+      # Version control systems
+      **/.git/
+      **/.github/
+      **/.svn/
+      **/.hg/
+      **/.gitmodules
+      
+      # Package managers and dependencies  
+      **/node_modules/
+      **/.pnpm/
+      **/.pnpm-store/
+      **/.yarn/
+      **/.npm/
+      **/bun/
+      **/.bun/
+      **/go/pkg/
+      **/go/bin/
+      **/.cargo/
+      **/target/
+      **/.stack/
+      **/.gradle/
+      
+      # Build outputs and caches
+      **/dist/
+      **/build/
+      **/out/
+      **/coverage/
+      **/.next/
+      **/.nuxt/
+      **/.astro/
+      **/.vite/
+      **/.parcel-cache/
+      **/.cache/
+      **/cache/
+      **/.turbo/
+      **/.vercel/
+      **/.netlify/
+      **/.million/
+      **/generated/
+      
+      # Development tools and editors
+      **/.vscode/
+      **/.idea/
+      **/.changeset/
+      **/.storybook/
+      **/.svelte-kit/
+      **/.pytest_cache/
+      **/.mypy_cache/
+      **/.tox/
+      **/.venv/
+      **/.direnv/
+      **/.expo/
+      **/.angular/
+      
+      # OS-specific files
+      **/.DS_Store
+      **/Thumbs.db
+      **/desktop.ini
+      **/.Spotlight-V100/
+      **/.Trashes/
+      **/.fseventsd/
+      
+      # Temporary and log files
+      **/tmp/
+      **/temp/
+      **/*.tmp
+      **/*.temp
+      **/*.log
+      *.log
+      **/*.swp
+      **/*.swo
+      **/*~
+      
+      # Build artifacts and binaries
+      **/*.o
+      **/*.obj
+      **/*.exe
+      **/*.dll
+      **/*.so
+      **/*.dylib
+      **/*.a
+      **/*.woff
+      **/*.woff2
+      **/*.otf
+      **/*.ttf
+      **/*.eot
+      
+      # Minified files and source maps
+      **/*.min.js
+      **/*.min.css
+      **/*.map
+      
+      # Lock files
+      **/package-lock.json
+      **/yarn.lock
+      **/pnpm-lock.yaml
+      **/Cargo.lock
+      **/go.sum
+      **/*.lock
+      
+      # Binary/media files (performance)
+      **/*.vst
+      **/*.vst3
+      **/*.component
+      **/*.mcmeta
+      
+      # Syncthing and backup files
+      **/.stfolder/
+      **/.stversions/
+      **/.stignore
+      **/rclone_*.log
+      **/rclone_*.txt
+      
+      # Obsidian vault internals
+      **/.obsidian/
+      
+      # Nix build artifacts
+      **/result/
+      **/result-*
+      
+      # Project-specific patterns (from your commonplace setup)
+      pack-toolbox/temp/
+      */assets/minecraft/textures/
+    '';
   };
 
   programs = {
@@ -31,6 +158,11 @@
       initExtra = ''
         # Show hidden files by default in shell globbing
         setopt GLOB_DOTS
+        
+        # Configure fzf to use ripgrep with our ignore file
+        export FZF_DEFAULT_COMMAND='rg --files --hidden --follow'
+        export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+        export FZF_DEFAULT_OPTS='--height=40% --layout=reverse --border'
       '';
       shellAliases = {
         # Add your custom aliases here
