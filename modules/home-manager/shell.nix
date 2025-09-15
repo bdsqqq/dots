@@ -173,7 +173,10 @@
  %{$fg[white]%}└ %{$reset_color%}'
       '';
       shellAliases = {
-        # Add your custom aliases here
+        l = "ls -lah";
+        ll = "ls -l";
+        cd = "z";
+        c = "clear";
       };
     };
 
@@ -185,11 +188,7 @@
     zoxide = {
       enable = true;
       enableZshIntegration = true;
-      options = [
-        "--cmd cd"  # Replace cd with zoxide's z command
-      ];
-    };
-    
+    }; 
   };
 
 }
