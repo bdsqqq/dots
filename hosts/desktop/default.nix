@@ -1,4 +1,3 @@
-# Simple NixOS desktop configuration
 { pkgs, inputs, lib, config, modulesPath, ... }:
 
 {
@@ -7,13 +6,11 @@
     ../../modules/shared/default.nix
   ];
 
-  # Hardware configuration (inline)
   boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "nvme" "usbhid" "sd_mod" ];
   boot.initrd.kernelModules = [ ];
   boot.kernelModules = [ "kvm-amd" ];
   boot.extraModulePackages = [ ];
   
-  # NVIDIA kernel modules
   boot.kernelParams = [ "nvidia-drm.modeset=1" ];
   boot.blacklistedKernelModules = [ "nouveau" ];
 
@@ -38,21 +35,18 @@
     { device = "/dev/disk/by-uuid/46c2bd54-4bf5-4e24-b059-bded425c02b9"; }
   ];
 
-  # Boot configuration
   boot.loader = {
     systemd-boot.enable = true;
     efi.canTouchEfiVariables = true;
   };
 
-  # Basic system settings
-  networking.hostName = "desktop";
+  networking.hostName = "r56";
   networking.networkmanager.enable = true;
   networking.useDHCP = lib.mkDefault true;
   
   time.timeZone = "Europe/London";
   i18n.defaultLocale = "en_US.UTF-8";
 
-  # Hardware
   hardware = {
     enableRedistributableFirmware = true;
     enableAllFirmware = true;
@@ -80,10 +74,7 @@
     };
   };
 
-  # Enable Hyprland window manager
   programs.hyprland.enable = true;
-  
-  # Enable Tailscale VPN
   services.tailscale.enable = true;
   
   # Enable Kanata for homerow mods and layers
@@ -272,7 +263,6 @@
     };
   };
 
-  # Additional system packages specific to desktop
   environment.systemPackages = with pkgs; [
     # Network tools
     networkmanagerapplet
@@ -322,14 +312,12 @@
 
   # Fonts
   fonts.packages = with pkgs; [
-    nerd-fonts.jetbrains-mono  # Keep for icons only
-    # Essential fonts since we disabled enableDefaultPackages
-    ibm-plex  # Serif font
-    inter  # Sans-serif font
+    nerd-fonts.jetbrains-mono
+    ibm-plex
+    inter
     noto-fonts-emoji
   ];
   
-  # Font configuration - set Berkeley Mono as default monospace
   fonts = {
     enableDefaultPackages = false;  # Disable default DejaVu fonts
     fontconfig = {
@@ -412,7 +400,6 @@
     };
   };
 
-  # Enable unfree packages
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
