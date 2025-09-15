@@ -6,7 +6,7 @@
     "commonplace/00_inbox/.keep".text = "";
     "commonplace/01_files/.keep".text = "";
     "commonplace/02_temp/.keep".text = "";
-    
+
     # Global ripgrep ignore patterns for fzf integration
     ".rgignore".text = ''
       # Version control systems
@@ -138,25 +138,7 @@
   programs = {
     zsh = {
       enable = true;
-      # oh-my-zsh = {
-      #   enable = true;
-      #   theme = "vercel";
-      #   plugins = [ "git" ];
-      #   custom = "$HOME/.config/zsh/oh-my-zsh-custom";
-      # };
-      # plugins = [
-      #   {
-      #     name = "zsh-autosuggestions";
-      #     src = pkgs.fetchFromGitHub {
-      #       owner = "zsh-users";
-      #       repo = "zsh-autosuggestions";
-      #       rev = "v0.7.0";
-      #       sha256 = "1g3pij5qn2j7v7jjac2a63lxd97mcsgw6xq6k5p7835q9fjiid98";
-      #     };
-      #   }
-      # ];
-      initExtra = ''
-        # Lazy load completions (major performance win)
+      initContent = ''
         autoload -Uz compinit
         () {
           if [[ $# -gt 0 ]]; then
@@ -178,13 +160,17 @@
         autoload -U colors && colors
         setopt PROMPT_SUBST
         
-        # Git branch function (much faster than oh-my-zsh version)
         git_branch() {
-          git symbolic-ref --short HEAD 2>/dev/null | sed 's/^/[/' | sed 's/$/]/'
+          local b dirty=""
+          b=$(git symbolic-ref --short HEAD 2>/dev/null) || b=$(git rev-parse --short HEAD 2>/dev/null) || return
+          if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+            dirty="$fg[white]*%f"
+          fi
+          print -r -- "[$b]$dirty"
         }
         
-        PROMPT='%{$fg_bold[white]%}△ %c%{$reset_color%}$(git_branch)
- %{$fg_bold[white]%}↳ %{$reset_color%}'
+        PROMPT='%{$fg_bold[white]%}⁂ %c%{$reset_color%}$(git_branch)
+ %{$fg[white]%}└ %{$reset_color%}'
       '';
       shellAliases = {
         # Add your custom aliases here
