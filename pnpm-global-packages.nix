@@ -3,6 +3,7 @@
 {
   # Development tools
   typescript = "latest";
+  biome = "latest";
   
   # Build tools
   turbo = "latest";
