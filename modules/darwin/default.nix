@@ -6,12 +6,7 @@
     ./syncthing-automerge.nix
     ../shared/default.nix
   ];
-  # List packages installed in system profile. To search by name, run:
-  # $ nix-env -qaP | grep wget
   environment.systemPackages = [
-    pkgs.vim
-    # Test unstable overlay - uncomment to test unstable packages
-    # pkgs.unstable.neovim  # Example: Use unstable neovim
   ];
 
   users.users.bdsqqq = {
@@ -21,20 +16,12 @@
   # Set primary user for system-wide defaults
   system.primaryUser = "bdsqqq";
 
-  # Necessary for using flakes on this system.
   nix.settings.experimental-features = "nix-command flakes";
 
-  # Enable alternative shell support in nix-darwin.
-  # programs.fish.enable = true;
-
-  # Set Git commit hash for darwin-version.
-  # system.configurationRevision = self.rev or self.dirtyRev or null;
-
-  # Networking configuration
   networking = {
-    computerName = lib.mkDefault "mbp14";
-    localHostName = lib.mkDefault "mbp14";
-    hostName = lib.mkDefault "mbp14";
+    computerName = lib.mkDefault "mbp";
+    localHostName = lib.mkDefault "mbp";
+    hostName = lib.mkDefault "mbp";
   };
 
   # Homebrew integration - declarative cask management
@@ -43,11 +30,10 @@
     
     # Applications to install via homebrew casks
     casks = [
-      # System utilities (Mac-specific)
+      # System utilities
       "superwhisper"         # Audio transcribing
       "blackhole-2ch"        # Audio routing
       "cleanshot"            # Screenshot tool  
-      # "karabiner-elements"   # Keyboard customization - disabled for kanata
       "raycast"              # Launcher/productivity
       "bitwarden"            # password manager
 
@@ -86,10 +72,7 @@
   # $ darwin-rebuild changelog
   system.stateVersion = 6;
 
-  # The platform the configuration will be used on.
   nixpkgs.hostPlatform = "aarch64-darwin";
-
-  # Allow unfree packages
   nixpkgs.config.allowUnfree = true;
 
   # Configure overlays for unstable packages access
