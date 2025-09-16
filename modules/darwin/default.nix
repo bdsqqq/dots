@@ -47,6 +47,8 @@
       "obs"                  # Streaming software
       
       # Productivity applications
+      "1password"
+      "1password-cli"
       "linear-linear"        # Project management
       "notion-calendar"      # Calendar app
       
