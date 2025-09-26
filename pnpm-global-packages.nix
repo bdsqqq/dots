@@ -16,8 +16,6 @@
   
   # AI/Code tools
   "@sourcegraph/amp" = "latest";
-  opencode-ai = "latest";
-  "@anthropic-ai/claude-code" = "latest";
 }
 
 
