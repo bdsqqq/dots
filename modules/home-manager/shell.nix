@@ -140,46 +140,33 @@ in
     '';
   };
 
-  home.activation = lib.mkMerge [
-    (lib.mkIf true {
-      installPnpmGlobals = lib.hm.dag.entryAfter ["writeBoundary"] ''
-        echo "Setting up global pnpm packages..."
-        set -euo pipefail
+  home.activation.installPnpmGlobals = lib.hm.dag.entryAfter ["writeBoundary"] ''
+    echo "Setting up global pnpm packages..."
+    set -euo pipefail
 
-        PNPM_HOME="${pnpmHomeAbsolute}"
-        export PNPM_HOME
-        export PATH="$PNPM_HOME:$PATH"
+    PNPM_HOME="${pnpmHomeAbsolute}"
+    export PNPM_HOME
+    export PATH="$PNPM_HOME:$PATH"
 
-        MANIFEST="${pnpmManifest}"
-        if [ ! -f "$MANIFEST" ]; then
-          echo "pnpm global manifest not found: $MANIFEST" >&2
-          exit 0
-        fi
+    MANIFEST="${pnpmManifest}"
+    if [ ! -f "$MANIFEST" ]; then
+      echo "pnpm global manifest not found: $MANIFEST" >&2
+      exit 0
+    fi
 
-        MANIFEST_DIR=$(dirname "$MANIFEST")
+    MANIFEST_DIR=$(dirname "$MANIFEST")
 
-        ${pkgs.pnpm}/bin/pnpm install \
-          --global \
-          --global-dir "$PNPM_HOME" \
-          --global-bin-dir "$PNPM_HOME" \
-          --dir "$MANIFEST_DIR" \
-          --config.allow-scripts=read \
-          --reporter append-only
+    ${pkgs.pnpm}/bin/pnpm install \
+      --global \
+      --global-dir "$PNPM_HOME" \
+      --dir "$MANIFEST_DIR" \
+      --config.allow-scripts=read \
+      --reporter append-only
+  '';
 
-        ${pkgs.pnpm}/bin/pnpm prune \
-          --global \
-          --global-dir "$PNPM_HOME" \
-          --global-bin-dir "$PNPM_HOME" \
-          --reporter append-only
-      '';
-    })
-  ];
+  programs.zsh.sessionVariables.PNPM_HOME = "${pnpmHomeAbsolute}";
 
-  programs.zsh.sessionVariables = (programs.zsh.sessionVariables or {}) // {
-    PNPM_HOME = "$HOME${pnpmHomeRelative}";
-  };
-
-  home.sessionPath = lib.mkBefore ([ "$PNPM_HOME" ] ++ (home.sessionPath or []));
+  home.sessionPath = lib.mkBefore [ "${pnpmHomeAbsolute}" ];
 
   programs = {
     zsh = {
