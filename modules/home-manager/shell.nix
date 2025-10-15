@@ -1,5 +1,10 @@
 { config, pkgs, lib, ... }:
 
+let
+  pnpmHomeRelative = if pkgs.stdenv.isDarwin then "/Library/pnpm" else "/.local/share/pnpm";
+  pnpmHomeAbsolute = "${config.home.homeDirectory}${pnpmHomeRelative}";
+  pnpmManifest = "${config.home.homeDirectory}/commonplace/01_files/nix/pnpm-global-package.json";
+in
 {
   # Ensure home directory structure exists (without overriding existing content)
   home.file = {
@@ -134,6 +139,47 @@
       */assets/minecraft/textures/
     '';
   };
+
+  home.activation = lib.mkMerge [
+    (lib.mkIf true {
+      installPnpmGlobals = lib.hm.dag.entryAfter ["writeBoundary"] ''
+        echo "Setting up global pnpm packages..."
+        set -euo pipefail
+
+        PNPM_HOME="${pnpmHomeAbsolute}"
+        export PNPM_HOME
+        export PATH="$PNPM_HOME:$PATH"
+
+        MANIFEST="${pnpmManifest}"
+        if [ ! -f "$MANIFEST" ]; then
+          echo "pnpm global manifest not found: $MANIFEST" >&2
+          exit 0
+        fi
+
+        MANIFEST_DIR=$(dirname "$MANIFEST")
+
+        ${pkgs.pnpm}/bin/pnpm install \
+          --global \
+          --global-dir "$PNPM_HOME" \
+          --global-bin-dir "$PNPM_HOME" \
+          --dir "$MANIFEST_DIR" \
+          --config.allow-scripts=read \
+          --reporter append-only
+
+        ${pkgs.pnpm}/bin/pnpm prune \
+          --global \
+          --global-dir "$PNPM_HOME" \
+          --global-bin-dir "$PNPM_HOME" \
+          --reporter append-only
+      '';
+    })
+  ];
+
+  programs.zsh.sessionVariables = (programs.zsh.sessionVariables or {}) // {
+    PNPM_HOME = "$HOME${pnpmHomeRelative}";
+  };
+
+  home.sessionPath = lib.mkBefore ([ "$PNPM_HOME" ] ++ (home.sessionPath or []));
 
   programs = {
     zsh = {

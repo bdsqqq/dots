@@ -1,5 +1,8 @@
 { config, pkgs, lib, isDarwin ? false, ... }:
 
+let
+  pnpmGlobalManifest = builtins.fromJSON (builtins.readFile ../pnpm-global-package.json);
+in
 {
   programs = {
     git = {

@@ -1,0 +1,15 @@
+{
+  "name": "global",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@sourcegraph/amp": "latest",
+    "biome": "latest",
+    "bun": "latest",
+    "npm": "latest",
+    "turbo": "latest",
+    "typescript": "latest",
+    "vercel": "latest"
+  }
+}
+

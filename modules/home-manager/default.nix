@@ -9,7 +9,6 @@
     ./applications.nix
     ./terminals.nix
     ./claude.nix
-    ./pnpm-global.nix
   ] ++ lib.optionals (!isDarwin) [
     # Linux-specific modules (Wayland/X11 desktop environment)
     ./waybar.nix
