@@ -95,32 +95,24 @@
       
       # Key bindings
       "$mod" = "SUPER";
-      
+      "$hyper" = "SUPER SHIFT CTRL ALT";
+
       bind = [
         # macOS-style window layout shortcuts (Hyper = Super + Shift + Ctrl + Alt)
-        "SUPER SHIFT CTRL ALT, H, exec, hyprctl dispatch togglefloating active off && hyprctl dispatch movewindow l"  # Tile left
-        "SUPER SHIFT CTRL ALT, J, exec, hyprctl dispatch togglefloating active on && hyprctl dispatch resizewindowpixel exact 60% 60% && hyprctl dispatch centerwindow"  # Float 60% centered
-        "SUPER SHIFT CTRL ALT, K, exec, hyprctl dispatch togglefloating active on && hyprctl dispatch resizewindowpixel exact 95% 95% && hyprctl dispatch centerwindow"  # Float full size centered
-        "SUPER SHIFT CTRL ALT, L, exec, hyprctl dispatch togglefloating active off && hyprctl dispatch movewindow r"  # Tile right
+        "$hyper, H, exec, hyprctl dispatch togglefloating active off && hyprctl dispatch movewindow l"  # Tile left
+        "$hyper, J, exec, hyprctl dispatch togglefloating active on && hyprctl dispatch resizewindowpixel exact 60% 60% && hyprctl dispatch centerwindow"  # Float 60% centered
+        "$hyper, K, exec, hyprctl dispatch togglefloating active on && hyprctl dispatch resizewindowpixel exact 95% 95% && hyprctl dispatch centerwindow"  # Float full size centered
+        "$hyper, L, exec, hyprctl dispatch togglefloating active off && hyprctl dispatch movewindow r"  # Tile right
         
         # macOS-style application management
         "$mod, Q, killactive"  # Quit application (like Cmd+Q)
         
-        # Basic shortcuts
-        "$mod, T, exec, ghostty"  # New terminal (like Cmd+T)
-        "$mod, C, killactive"  # Close window (duplicate for now)
-        "$mod, M, exit"  # Exit Hyprland
-        "$mod, E, exec, nautilus"
-        "$mod, V, togglefloating"
-        "$mod, J, togglesplit"
+        "$hyper, V, togglefloating"
+        "$hyper, C, togglesplit"
         
         # Meta-launcher (fuzzel-based command palette)  
         "$mod, SPACE, exec, /home/bdsqqq/commonplace/01_files/scripts/fuzzel-launcher"
         
-        # macOS-style system shortcuts (Super-centered like macOS)
-        "$mod, W, killactive"  # Close window (like Cmd+W)
-        "$mod, N, exec, ghostty"  # New window (like Cmd+N)
-        "$mod, F, exec, echo 'Find in app not implemented'"  # Placeholder for find
         "$mod, A, exec, hyprctl dispatch focusurgentorlast"  # Select all / focus urgent
         
         # Movement
@@ -130,7 +122,7 @@
         "$mod, down, movefocus, d"
         
         # Resize mode keybindings
-        "$mod, R, submap, resize"
+        "$hyper, R, submap, resize"
         
         # Window resizing with keyboard
         "$mod SHIFT, left, resizeactive, -50 0"
@@ -176,7 +168,7 @@
         ", XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
         
         # Fix keybinds after rebuild
-        "$mod SHIFT CTRL ALT, R, exec, sudo systemctl restart kanata-default.service"
+        "$hyper, R, exec, sudo systemctl restart kanata-default.service"
       ];
       
       # Resize submap for visual feedback during resizing

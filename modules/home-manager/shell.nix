@@ -3,7 +3,11 @@
 let
   pnpmHomeRelative = if pkgs.stdenv.isDarwin then "/Library/pnpm" else "/.local/share/pnpm";
   pnpmHomeAbsolute = "${config.home.homeDirectory}${pnpmHomeRelative}";
-  pnpmManifest = "${config.home.homeDirectory}/commonplace/01_files/nix/pnpm-global-package.json";
+  pnpmManifestFile = ../pnpm-global-package.json;
+  pnpmManifestPath = "${config.home.homeDirectory}/commonplace/01_files/nix/pnpm-global-package.json";
+  pnpmLockPath = "${config.home.homeDirectory}/commonplace/01_files/nix/pnpm-global-lock.yaml";
+  pnpmGlobalRoot = "${pnpmHomeAbsolute}/global";
+  pnpmGlobalDir = "${pnpmGlobalRoot}/5";
 in
 {
   # Ensure home directory structure exists (without overriding existing content)
@@ -141,27 +145,31 @@ in
   };
 
   home.activation.installPnpmGlobals = lib.hm.dag.entryAfter ["writeBoundary"] ''
-    echo "Setting up global pnpm packages..."
+    echo "linking pnpm globals file ${pnpmManifestPath} to ${pnpmGlobalDir}/package.json"
     set -euo pipefail
 
     PNPM_HOME="${pnpmHomeAbsolute}"
     export PNPM_HOME
     export PATH="$PNPM_HOME:$PATH"
 
-    MANIFEST="${pnpmManifest}"
+    MANIFEST="${pnpmManifestPath}"
+    LOCKFILE="${pnpmLockPath}"
+    GLOBAL_ROOT="${pnpmGlobalRoot}"
+    GLOBAL_DIR="${pnpmGlobalDir}"
+
     if [ ! -f "$MANIFEST" ]; then
       echo "pnpm global manifest not found: $MANIFEST" >&2
       exit 0
     fi
 
-    MANIFEST_DIR=$(dirname "$MANIFEST")
+    mkdir -p "$GLOBAL_DIR"
 
-    ${pkgs.pnpm}/bin/pnpm install \
-      --global \
-      --global-dir "$PNPM_HOME" \
-      --dir "$MANIFEST_DIR" \
-      --config.allow-scripts=read \
-      --reporter append-only
+    ln -sf "$MANIFEST" "$GLOBAL_DIR/package.json"
+    if [ -f "$LOCKFILE" ]; then
+      ln -sf "$LOCKFILE" "$GLOBAL_DIR/pnpm-lock.yaml"
+    fi
+
+    ln -sfn "$GLOBAL_DIR" "$PNPM_HOME/5"
   '';
 
   programs.zsh.sessionVariables.PNPM_HOME = "${pnpmHomeAbsolute}";
@@ -223,5 +231,4 @@ in
       enableZshIntegration = true;
     }; 
   };
-
 }
