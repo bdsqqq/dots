@@ -1,11 +1,13 @@
-{ lib, config, pkgs, ... }:
+{ lib, pkgs, ... }:
 {
-  # OpenSSH is configured on Linux; darwin uses different service semantics
-  services.openssh = lib.mkIf pkgs.stdenv.isLinux {
-    enable = true;
-    settings = {
-      PermitRootLogin = "no";
-      PasswordAuthentication = lib.mkDefault false;
+  # define ssh only on linux; avoid creating the 'services.openssh.settings' path on darwin entirely
+  services = lib.optionalAttrs pkgs.stdenv.isLinux {
+    openssh = {
+      enable = true;
+      settings = {
+        PermitRootLogin = "no";
+        PasswordAuthentication = lib.mkDefault false;
+      };
     };
   };
 }

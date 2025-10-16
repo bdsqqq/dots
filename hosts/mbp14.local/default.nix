@@ -17,7 +17,14 @@
       inherit inputs systems pkgsFor;
       isDarwin = true;
     };
+    users.bdsqqq = {
+      home.username = "bdsqqq";
+      home.homeDirectory = builtins.toPath "/Users/bdsqqq";
+      home.stateVersion = "25.05";
+    };
   };
+
+  
 
   # Host-specific settings
   # System identification for multi-host setups

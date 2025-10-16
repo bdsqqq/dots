@@ -2,7 +2,7 @@
 {
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
     home.username = "bdsqqq";
-    home.homeDirectory = if pkgs.stdenv.isDarwin then "/Users/bdsqqq" else "/home/bdsqqq";
+    home.homeDirectory = if pkgs.stdenv.isDarwin then (builtins.toPath "/Users/bdsqqq") else (builtins.toPath "/home/bdsqqq");
     home.stateVersion = "25.05";
     programs.home-manager.enable = true;
 
