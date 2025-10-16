@@ -1,7 +1,9 @@
-{ lib, config, pkgs, ... }:
+{ lib, pkgs, ... }:
 {
-  # Linux desktop bluetooth manager; no-op on darwin
-  services.blueman.enable = lib.mkIf pkgs.stdenv.isLinux true;
+  # Linux-only: define the entire subtree conditionally so darwin never sees the option
+  services = lib.optionalAttrs pkgs.stdenv.isLinux {
+    blueman.enable = true;
+  };
 }
 
 

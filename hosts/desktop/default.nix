@@ -9,6 +9,7 @@
     ../../bundles/dev.nix
     ../../bundles/headless.nix
     ../../bundles/wm/hyprland.nix
+    ../../system/sops.nix
   ];
 
   networking.hostName = "r56";
