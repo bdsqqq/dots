@@ -5,22 +5,14 @@
     inputs.home-manager.darwinModules.home-manager
     ../../bundles/base.nix
     ../../bundles/headless.nix
+    ../../modules/darwin/kanata.nix
     ../../modules/darwin/syncthing-automerge.nix
   ];
 
-  # Configure Home Manager with enhanced input passing
+  # home-manager module enabled at flake level; user-layer provided via bundles
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
-    backupFileExtension = "backup";  # Backup existing files instead of failing
-    users.bdsqqq = {
-      imports = [
-        inputs.nixvim.homeManagerModules.nixvim
-        inputs.sops-nix.homeManagerModules.sops
-        ../../modules/home-manager/default.nix
-      ];
-    };
-    # Pass all enhanced specialArgs to home-manager modules
     extraSpecialArgs = {
       inherit inputs systems pkgsFor;
       isDarwin = true;
