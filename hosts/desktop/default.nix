@@ -2,43 +2,9 @@
 
 {
   imports = [
-    (modulesPath + "/installer/scan/not-detected.nix")
+    ./hardware.nix
     ../../modules/shared/default.nix
   ];
-
-  boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "nvme" "usbhid" "sd_mod" ];
-  boot.initrd.kernelModules = [ ];
-  boot.kernelModules = [ "kvm-amd" ];
-  boot.extraModulePackages = [ ];
-  
-  boot.kernelParams = [ "nvidia-drm.modeset=1" ];
-  boot.blacklistedKernelModules = [ "nouveau" ];
-
-  fileSystems."/" = {
-    device = "/dev/disk/by-uuid/3deeb152-c556-4483-ac8b-c063b46065b7";
-    fsType = "ext4";
-  };
-
-  fileSystems."/boot" = {
-    device = "/dev/disk/by-uuid/58F5-055B";
-    fsType = "vfat";
-    options = [ "fmask=0077" "dmask=0077" ];
-  };
-
-  fileSystems."/mnt/ssd" = {
-    device = "/dev/disk/by-uuid/32794d46-d4a7-458b-ae80-cec556733579";
-    fsType = "ext4";
-    options = [ "defaults" ];
-  };
-
-  swapDevices = [
-    { device = "/dev/disk/by-uuid/46c2bd54-4bf5-4e24-b059-bded425c02b9"; }
-  ];
-
-  boot.loader = {
-    systemd-boot.enable = true;
-    efi.canTouchEfiVariables = true;
-  };
 
   networking.hostName = "r56";
   networking.networkmanager.enable = true;
@@ -46,33 +12,6 @@
   
   time.timeZone = "Europe/London";
   i18n.defaultLocale = "en_US.UTF-8";
-
-  hardware = {
-    enableRedistributableFirmware = true;
-    enableAllFirmware = true;
-    cpu.amd.updateMicrocode = lib.mkDefault config.hardware.enableRedistributableFirmware;
-    graphics = {
-      enable = true;
-      enable32Bit = true;
-      extraPackages = with pkgs; [
-        nvidia-vaapi-driver
-        vaapiVdpau
-        libvdpau-va-gl
-      ];
-    };
-    nvidia = {
-      modesetting.enable = true;
-      powerManagement.enable = true;
-      powerManagement.finegrained = false;
-      open = false;
-      nvidiaSettings = true;
-      package = config.boot.kernelPackages.nvidiaPackages.stable;
-    };
-    bluetooth = {
-      enable = true;
-      powerOnBoot = true;
-    };
-  };
 
   programs.hyprland.enable = true;
   services.tailscale.enable = true;
