@@ -108,6 +108,7 @@ in
     gotests
     delve
     ripgrep
+    ast-grep
     fd
     bat
     eza
