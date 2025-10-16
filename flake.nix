@@ -168,6 +168,7 @@
               stylix.nixosModules.stylix
               inputs.hyprland.nixosModules.default
               inputs.home-manager.nixosModules.home-manager
+              inputs.nix-flatpak.nixosModules.nix-flatpak
               ./hosts/desktop/default.nix
             ];
           };
@@ -176,6 +177,9 @@
             system = "x86_64-linux";
             specialArgs = { inherit inputs; };
             modules = [
+              stylix.nixosModules.stylix
+              inputs.nix-flatpak.nixosModules.nix-flatpak
+              inputs.home-manager.nixosModules.home-manager
               ./hosts/htz-relay/default.nix
             ];
           };

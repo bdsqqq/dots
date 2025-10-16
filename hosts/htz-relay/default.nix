@@ -7,11 +7,13 @@
 }:
 
 {
-  imports = [
-    # this will be generated on the hetzner install then copied here
-    ./hardware-configuration.nix
-    ../../modules/shared/default.nix
-  ];
+  imports = (
+    [
+      ../../modules/shared/default.nix
+      ../../bundles/base.nix
+      ../../bundles/headless.nix
+    ]
+  ) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [ ./hardware-configuration.nix ];
 
   networking.hostName = "htz-relay";
   networking.useDHCP = lib.mkDefault true;
@@ -28,41 +30,17 @@
     checkReversePath = "loose";
   };
 
-  services.openssh = {
-    enable = true;
-    settings = {
-      PasswordAuthentication = false;
-      KbdInteractiveAuthentication = false;
-      PermitRootLogin = "no";
-    };
-  };
+  # ssh provided by base bundle
 
-  services.tailscale = {
-    enable = true;
-    useRoutingFeatures = "client";
-    extraUpFlags = [ "--ssh" "--accept-dns=false" ];
-  };
+  # tailscale provided by base bundle; host-specific flags preserved
+  services.tailscale.useRoutingFeatures = "client";
+  services.tailscale.extraUpFlags = [ "--ssh" "--accept-dns=false" ];
 
+  # syncthing provided by headless bundle; keep host-specific ports
   services.syncthing = {
-    enable = true;
-    user = "bdsqqq";
-    dataDir = "/home/bdsqqq";
-    configDir = "/home/bdsqqq/.config/syncthing";
     openDefaultPorts = false;
     guiAddress = "127.0.0.1:8384";
-    settings = {
-      options = {
-        urAccepted = -1;
-        globalAnnounceEnabled = false;
-        localAnnounceEnabled = true;
-        relaysEnabled = false;
-        natEnabled = false;
-        upnpEnabled = false;
-        listenAddress = "tcp://0.0.0.0:22000,quic://0.0.0.0:22000";
-      };
-      devices = { };
-      folders = { };
-    };
+    settings.options.listenAddress = "tcp://0.0.0.0:22000,quic://0.0.0.0:22000";
   };
 
   users.users.bdsqqq = {

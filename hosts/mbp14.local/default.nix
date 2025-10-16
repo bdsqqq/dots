@@ -2,9 +2,10 @@
 # Enhanced host configuration with improved input handling
 { pkgs, inputs, systems ? [ ], pkgsFor ? null, ... }: {
   imports = [
-    # Import all the modular components
-    ../../modules/darwin/default.nix
     inputs.home-manager.darwinModules.home-manager
+    ../../bundles/base.nix
+    ../../bundles/headless.nix
+    ../../modules/darwin/syncthing-automerge.nix
   ];
 
   # Configure Home Manager with enhanced input passing
@@ -33,10 +34,10 @@
   # Enable Karabiner Elements configuration management
   # custom.karabiner.enable = true;
   
-  # Enable Kanata for unified keyboard configuration
+  # Enable Kanata (host-specific module kept)
   custom.kanata.enable = true;
-  
-  # Enable Syncthing automerge service
+
+  # Host-only syncthing automerge
   custom.syncthing-automerge.enable = true;
   
   # Example of using enhanced specialArgs for conditional configuration

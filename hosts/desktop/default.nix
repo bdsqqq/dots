@@ -4,6 +4,11 @@
   imports = [
     ./hardware.nix
     ../../modules/shared/default.nix
+    ../../bundles/base.nix
+    ../../bundles/desktop.nix
+    ../../bundles/dev.nix
+    ../../bundles/headless.nix
+    ../../bundles/wm/hyprland.nix
   ];
 
   networking.hostName = "r56";
@@ -14,7 +19,7 @@
   i18n.defaultLocale = "en_US.UTF-8";
 
   programs.hyprland.enable = true;
-  services.tailscale.enable = true;
+  # tailscale provided by base bundle
   
   # Enable Kanata for homerow mods and layers
   services.kanata = {
@@ -35,56 +40,11 @@
     };
   };
   
-  # Enable Syncthing
-  services.syncthing = {
-    enable = true;
-    user = "bdsqqq";
-    dataDir = "/home/bdsqqq";
-    configDir = "/home/bdsqqq/.config/syncthing";
-    openDefaultPorts = true;
-    guiAddress = "0.0.0.0:8384";
-    settings = {
-      gui = {
-        user = "bdsqqq";
-        insecureAdminAccess = false;
-      };
-      options = {
-        urAccepted = -1;  # Disable usage reporting
-        globalAnnounceEnabled = false;  # Use only local discovery with Tailscale
-        localAnnounceEnabled = true;
-        relaysEnabled = false;  # Don't use public relays, use Tailscale
-        # Disable NAT traversal - use Tailscale instead
-        natEnabled = false;
-        upnpEnabled = false;
-        # Only listen on Tailscale interface
-        listenAddress = "tcp://100.94.68.111:22000";
-      };
-      
-      # Define devices declaratively so they persist across rebuilds
-      devices = {
-        "mbp14" = {
-          id = "BQRNC7S-3O6EQPK-5ZEDX6Q-KUSMJHQ-6HXJHYY-AHDBJNO-4C27WBW-XG6CCQR";
-          introducer = true;
-          autoAcceptFolders = false;
-          addresses = [ "tcp://100.87.59.2:22000" "quic://100.87.59.2:22000" ];
-        };
-        "iph16" = {
-          id = "L2PJ4F3-BZUZ4RX-3BCPIYB-V544M22-P3WDZBF-ZEVYT5A-GPTX5ZF-ZM5KTQK";
-          introducer = false;
-          addresses = [ "tcp://100.123.116.27:22000" "quic://100.123.116.27:22000" ];
-        };
-      };
-      
-      # Folders will be manually configured through GUI to choose proper paths
-      folders = { };
-    };
-  };
+  # syncthing moved to headless bundle for servers; keep off here unless needed
   
-  # Enable Flatpak
-  services.flatpak.enable = true;
+  # flatpak service provided by headless bundle if desired
   
-  # Bluetooth management
-  services.blueman.enable = true;
+  # bluetooth handled in desktop bundle
   
   # Auto-trust paired devices for better persistence
   systemd.services.bluetooth-auto-trust = {
@@ -192,26 +152,11 @@
   # Enable zsh
   programs.zsh.enable = true;
 
-  # Home-manager setup
+  # home-manager module is enabled at flake level; user-layer is provided via bundles
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
-    
-    users.bdsqqq = {
-      imports = [
-        inputs.nixvim.homeManagerModules.nixvim
-        inputs.sops-nix.homeManagerModules.sops
-        inputs.nix-flatpak.homeManagerModules.nix-flatpak
-        ../../modules/home-manager/default.nix
-        ../../modules/home-manager/profiles/hyprland.nix
-        ../../modules/home-manager/flatpak.nix
-      ];
-    };
-    
-    extraSpecialArgs = { 
-      inherit inputs; 
-      isDarwin = false;
-    };
+    extraSpecialArgs = { inherit inputs; isDarwin = false; };
   };
 
   environment.systemPackages = with pkgs; [
