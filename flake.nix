@@ -120,6 +120,7 @@
               };
             };
             modules = [
+              inputs.sops-nix.darwinModules.sops
               # Apply overlays to the main system packages
               {
                 nixpkgs = {
@@ -165,6 +166,7 @@
             system = "x86_64-linux";
             specialArgs = { inherit inputs; };
             modules = [
+              inputs.sops-nix.nixosModules.sops
               stylix.nixosModules.stylix
               inputs.hyprland.nixosModules.default
               inputs.home-manager.nixosModules.home-manager
@@ -177,6 +179,7 @@
             system = "x86_64-linux";
             specialArgs = { inherit inputs; };
             modules = [
+              inputs.sops-nix.nixosModules.sops
               stylix.nixosModules.stylix
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.home-manager.nixosModules.home-manager
