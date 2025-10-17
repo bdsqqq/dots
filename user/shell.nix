@@ -151,6 +151,25 @@
       zsh = {
         enable = true;
         initContent = ''
+          # homebrew shellenv (darwin only)
+          if [[ "$(uname)" == "Darwin" ]]; then
+            if command -v brew >/dev/null 2>&1; then
+              eval "$(/opt/homebrew/bin/brew shellenv)"
+            fi
+          fi
+
+          # bun (if installed)
+          if command -v bun >/dev/null 2>&1; then
+            export BUN_INSTALL="$HOME/.bun"
+            export PATH="$BUN_INSTALL/bin:$PATH"
+          fi
+
+          # sdkman (if installed)
+          if [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]]; then
+            export SDKMAN_DIR="$HOME/.sdkman"
+            source "$HOME/.sdkman/bin/sdkman-init.sh"
+          fi
+
           autoload -Uz compinit
           () {
             if [[ $# -gt 0 ]]; then

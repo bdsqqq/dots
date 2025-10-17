@@ -11,6 +11,10 @@
       sops
       age
       ssh-to-age
+      # media tools parity
+      yt-dlp
+      gallery-dl
+      spotify-player
       fnm
       oh-my-zsh
       nodejs_22
