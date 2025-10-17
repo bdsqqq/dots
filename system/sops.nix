@@ -7,6 +7,12 @@
     } else {
       keyFile = "/var/lib/sops-nix/key.txt";
     };
+
+    # default encrypted file and concrete secrets mapping
+    defaultSopsFile = ../../secrets.yaml;
+    secrets = {
+      anthropic_api_key = { };
+    };
   };
 }
 

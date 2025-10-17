@@ -1,6 +1,14 @@
 { lib, config, pkgs, ... }:
 {
   home-manager.users.bdsqqq = { pkgs, lib, ... }: {
+    programs = {
+      yt-dlp = {
+        enable = true;
+        settings = { sub-lang = "en.*"; };
+      };
+      gallery-dl.enable = true;
+      spotify-player.enable = true;
+    };
     home.packages = with pkgs; [
       lazygit
       delta
@@ -11,10 +19,6 @@
       sops
       age
       ssh-to-age
-      # media tools parity
-      yt-dlp
-      gallery-dl
-      spotify-player
       fnm
       oh-my-zsh
       nodejs_22

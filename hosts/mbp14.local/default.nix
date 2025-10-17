@@ -9,6 +9,7 @@
     ../../bundles/headless.nix
     ../../system/sops.nix
     ../../system/homebrew.nix
+    ../../system/macos-defaults.nix
     ../../modules/darwin/kanata.nix
     ../../modules/darwin/syncthing-automerge.nix
   ];
