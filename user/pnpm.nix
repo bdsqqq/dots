@@ -1,6 +1,7 @@
-{ inputs, lib, config, pkgs, ... }:
+{ inputs, lib, hostSystem ? null, ... }:
 let
-  pnpmHomeRelative = if pkgs.stdenv.isDarwin then "/Library/pnpm" else "/.local/share/pnpm";
+  isDarwin = lib.hasInfix "darwin" hostSystem;
+  pnpmHomeRelative = if isDarwin then "/Library/pnpm" else "/.local/share/pnpm";
 in
 {
   home-manager.users.bdsqqq = { inputs, config, pkgs, lib, ... }: let

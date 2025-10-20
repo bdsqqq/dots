@@ -7,7 +7,7 @@ let
     font-family = "Berkeley Mono"
     macos-titlebar-style = "tabs"
     window-padding-x = 16
-    window-padding-y = 0,4
+    window-padding-y = 4
     background = #101010
     foreground = #c2c2c2
     background-opacity = "0.6"
