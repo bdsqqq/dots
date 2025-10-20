@@ -10,8 +10,8 @@
     ../../system/sops.nix
     ../../system/homebrew.nix
     ../../system/macos-defaults.nix
-    ../../modules/darwin/kanata.nix
-    ../../modules/darwin/syncthing-automerge.nix
+    ../../system/kanata.nix
+    ../../system/syncthing-automerge.nix
   ];
 
   # home-manager module enabled at flake level; user-layer provided via bundles
