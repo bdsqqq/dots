@@ -1,9 +1,10 @@
-{ lib, config, pkgs, ... }:
-{
-  # NVIDIA graphics setup (Linux only)
-  services.xserver.videoDrivers = lib.mkIf pkgs.stdenv.isLinux [ "nvidia" ];
+{ lib, config, pkgs, hostSystem ? null, ... }:
 
-  hardware.nvidia = lib.mkIf pkgs.stdenv.isLinux {
+if !(lib.hasInfix "linux" hostSystem) then {} else {
+  # NVIDIA graphics setup (Linux only)
+  services.xserver.videoDrivers = [ "nvidia" ];
+
+  hardware.nvidia = {
     package = config.boot.kernelPackages.nvidiaPackages.production;
     modesetting.enable = true;
     powerManagement.enable = false;
@@ -11,21 +12,21 @@
     open = true;
   };
 
-  hardware.graphics = lib.mkIf pkgs.stdenv.isLinux {
+  hardware.graphics = {
     enable = true;
     enable32Bit = true;
   };
 
-  environment.sessionVariables = lib.mkIf pkgs.stdenv.isLinux {
+  environment.sessionVariables = {
     LIBVA_DRIVER_NAME = "nvidia";
     GBM_BACKEND = "nvidia-drm";
     __GLX_VENDOR_LIBRARY_NAME = "nvidia";
     WLR_NO_HARDWARE_CURSORS = "1";
   };
 
-  environment.systemPackages = lib.mkIf pkgs.stdenv.isLinux (with pkgs; [
+  environment.systemPackages = with pkgs; [
     nvtopPackages.nvidia
-  ]);
+  ];
 }
 
 

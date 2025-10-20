@@ -1,6 +1,7 @@
-{ lib, pkgs, ... }:
-{
-  system.defaults = lib.mkIf pkgs.stdenv.isDarwin {
+{ lib, hostSystem ? null, ... }:
+
+if !(lib.hasInfix "darwin" hostSystem) then {} else {
+  system.defaults = {
     dock = {
       autohide = true;
       autohide-delay = 0.0;

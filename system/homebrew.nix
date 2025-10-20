@@ -1,7 +1,7 @@
-{ lib, pkgs, ... }:
-{
-  # enable Homebrew and casks on darwin only
-  homebrew = lib.mkIf pkgs.stdenv.isDarwin {
+{ lib, hostSystem ? null, ... }:
+
+if !(lib.hasInfix "darwin" hostSystem) then {} else {
+  homebrew = {
     enable = true;
 
     casks = [
