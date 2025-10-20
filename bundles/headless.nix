@@ -1,8 +1,7 @@
 { ... }:
 {
   imports = [
-    ./headless-linux.nix
-    ./headless-darwin.nix
+    ../system/syncthing.nix
   ];
 }
 
