@@ -51,12 +51,12 @@
       ];
     };
     nvidia = {
-      modesetting.enable = true;
-      powerManagement.enable = true;
-      powerManagement.finegrained = false;
-      open = false;
-      nvidiaSettings = true;
-      package = config.boot.kernelPackages.nvidiaPackages.stable;
+      modesetting.enable = lib.mkForce true;
+      powerManagement.enable = lib.mkForce true;
+      powerManagement.finegrained = lib.mkForce false;
+      open = lib.mkForce false;
+      nvidiaSettings = lib.mkForce true;
+      package = lib.mkForce config.boot.kernelPackages.nvidiaPackages.stable;
     };
   };
 
