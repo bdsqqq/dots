@@ -1,11 +1,12 @@
 { lib, config, pkgs, ... }:
 {
   imports = [
+    ../../user/hyprland.nix
   ];
 
   home-manager.users.bdsqqq = { config, pkgs, lib, inputs, ... }: {
     imports = [
-      ../../modules/home-manager/profiles/hyprland.nix
+      ../../user/hyprland.nix
     ];
   };
 }
