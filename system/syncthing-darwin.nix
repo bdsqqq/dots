@@ -1,5 +1,5 @@
 { lib, pkgs, ... }:
-lib.mkIf pkgs.stdenv.isDarwin {
+lib.optionalAttrs pkgs.stdenv.isDarwin {
   launchd.user.agents.syncthing = {
     serviceConfig = {
       Label = "com.bdsqqq.syncthing";

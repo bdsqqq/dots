@@ -1,5 +1,5 @@
 { lib, pkgs, ... }:
-lib.mkIf pkgs.stdenv.isLinux {
+lib.optionalAttrs pkgs.stdenv.isLinux {
   services.syncthing = {
     enable = true;
     user = "bdsqqq";
