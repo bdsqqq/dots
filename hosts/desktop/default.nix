@@ -3,7 +3,6 @@
 {
   imports = [
     ./hardware.nix
-    ../../modules/shared/default.nix
     ../../bundles/base.nix
     ../../bundles/desktop.nix
     ../../bundles/dev.nix
