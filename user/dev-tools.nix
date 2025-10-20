@@ -1,6 +1,9 @@
-{ lib, config, pkgs, ... }:
+{ lib, hostSystem ? null, ... }:
+let
+  isDarwin = lib.hasInfix "darwin" hostSystem;
+in
 {
-  home-manager.users.bdsqqq = { pkgs, lib, ... }: {
+  home-manager.users.bdsqqq = { pkgs, ... }: {
     programs = {
       yt-dlp = {
         enable = true;

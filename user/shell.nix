@@ -1,8 +1,11 @@
-{ lib, config, pkgs, ... }:
+{ lib, hostSystem ? null, ... }:
+let
+  isDarwin = lib.hasInfix "darwin" hostSystem;
+in
 {
-  home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
+  home-manager.users.bdsqqq = { config, ... }: {
     xdg.enable = true;
-    xdg.userDirs = lib.mkIf (!pkgs.stdenv.isDarwin) {
+    xdg.userDirs = if isDarwin then {} else {
       enable = true;
       createDirectories = true;
       download = "${config.home.homeDirectory}/commonplace/00_inbox";
