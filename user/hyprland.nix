@@ -1,6 +1,6 @@
-{ config, pkgs, lib, inputs, ... }:
+{ lib, inputs, hostSystem ? null, ... }:
 
-lib.mkIf pkgs.stdenv.isLinux {
+if !(lib.hasInfix "linux" hostSystem) then {} else {
   wayland.windowManager.hyprland = {
     enable = true;
     package = inputs.hyprland.packages.${pkgs.system}.hyprland;

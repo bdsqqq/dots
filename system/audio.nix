@@ -1,6 +1,6 @@
-{ lib, config, pkgs, ... }:
+{ lib, hostSystem ? null, ... }:
 
-lib.mkIf pkgs.stdenv.isLinux {
+if !(lib.hasInfix "linux" hostSystem) then {} else {
   # Audio with PipeWire
   services.pipewire = {
     enable = true;

@@ -1,6 +1,7 @@
-{ lib, config, pkgs, ... }:
-{
-  services.flatpak = lib.mkIf pkgs.stdenv.isLinux {
+{ lib, hostSystem ? null, ... }:
+
+if !(lib.hasInfix "linux" hostSystem) then {} else {
+  services.flatpak = {
     enable = true;
     uninstallUnmanaged = true;
     remotes = [
