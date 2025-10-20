@@ -58,10 +58,6 @@
       nvidiaSettings = true;
       package = config.boot.kernelPackages.nvidiaPackages.stable;
     };
-    bluetooth = {
-      enable = true;
-      powerOnBoot = true;
-    };
   };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
