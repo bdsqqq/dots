@@ -1,6 +1,6 @@
-{ lib, pkgs, ... }:
+{ lib, pkgs, hostSystem ? null, ... }:
 let
-  system = builtins.currentSystem;
+  system = hostSystem;
   isLinux = lib.hasInfix "linux" system;
   isDarwin = lib.hasInfix "darwin" system;
 in

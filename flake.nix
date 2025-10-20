@@ -110,6 +110,7 @@
             # Enhanced specialArgs: pass all inputs, system info, and utilities
             specialArgs = {
               inherit inputs;
+              hostSystem = "aarch64-darwin";
               # Make system architecture available for conditional logic
               inherit (inputs.nixpkgs.lib) systems;
               # Helper function to get packages for different systems
@@ -162,7 +163,7 @@
         nixosConfigurations = {
           "desktop" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
-            specialArgs = { inherit inputs; };
+            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; };
             modules = [
               inputs.sops-nix.nixosModules.sops
               stylix.nixosModules.stylix
@@ -175,7 +176,7 @@
 
           "htz-relay" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
-            specialArgs = { inherit inputs; };
+            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; };
             modules = [
               inputs.sops-nix.nixosModules.sops
               stylix.nixosModules.stylix
