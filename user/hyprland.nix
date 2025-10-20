@@ -1,4 +1,4 @@
-{ lib, inputs, hostSystem ? null, ... }:
+{ pkgs, lib, inputs, hostSystem ? null, ... }:
 
 if !(lib.hasInfix "linux" hostSystem) then {} else {
   wayland.windowManager.hyprland = {

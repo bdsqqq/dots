@@ -1,4 +1,4 @@
-{ lib, hostSystem ? null, ... }:
+{ pkgs, lib, hostSystem ? null, ... }:
 
 if !(lib.hasInfix "linux" hostSystem) then {} else {
   # Display manager
