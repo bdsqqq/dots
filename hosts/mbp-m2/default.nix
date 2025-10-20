@@ -45,10 +45,10 @@
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
 
-  # required by nix-darwin; replace value previously defined in modules/darwin/default.nix
+  # required by nix-darwin
   system.stateVersion = 6;
 
-  # minimal darwin baselines that used to live in modules/darwin/default.nix
+  # darwin baselines
   nix.settings.experimental-features = "nix-command flakes";
   nixpkgs = {
     hostPlatform = "aarch64-darwin";

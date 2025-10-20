@@ -47,7 +47,7 @@
     extraGroups = [ "wheel" ];
     shell = pkgs.zsh;
     openssh.authorizedKeys.keys = [
-      (builtins.readFile ../../config/ssh-keys/mbp14.pub)
+      (builtins.readFile ../../config/ssh-keys/mbp-m2.pub)
     ];
   };
 

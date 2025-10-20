@@ -48,7 +48,6 @@ in
       "${pkgs.pnpm}/bin/pnpm" install \
         --global \
         --global-dir "$GLOBAL_ROOT" \
-        --config.only-built-dependencies="$ALLOW_SCRIPTS" \
         --reporter append-only || true
 
       # shims are available via PATH entry to "$GLOBAL_DIR/node_modules/.bin"
