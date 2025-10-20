@@ -58,11 +58,11 @@ in
       ffmpeg
       httpie
       fastfetch
-    ] ++ lib.optionals pkgs.stdenv.isDarwin [
-      istat-menus
-    ] ++ lib.optionals (!pkgs.stdenv.isDarwin) [
-      nvtopPackages.nvidia
-    ];
+    ] ++ lib.optionals isDarwin [
+    istat-menus
+] ++ lib.optionals (!isDarwin) [
+    nvtopPackages.nvidia
+];
   };
 }
 

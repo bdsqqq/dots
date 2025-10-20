@@ -5,8 +5,6 @@ in
 {
   home-manager.users.bdsqqq = { pkgs, ... }: {
     home.packages = with pkgs; [
-      _1password-gui
-      _1password-cli
       docker
       blockbench
       vscode
@@ -17,9 +15,10 @@ in
       rclone
       qpdf
     ] ++ lib.optionals isDarwin [
-      tableplus
       iina
     ] ++ lib.optionals (!isDarwin) [
+      _1password-gui
+      _1password-cli
       dbeaver-bin
       vlc
       xwayland-satellite

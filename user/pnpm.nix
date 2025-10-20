@@ -41,9 +41,6 @@ in
       # ensure versioned dir link (pnpm expects $PNPM_HOME/5)
       ln -sfn "$GLOBAL_DIR" "$PNPM_HOME/5"
 
-      # compute allow-scripts from manifest at activation time
-      ALLOW_SCRIPTS=$(${pkgs.jq}/bin/jq -r '(.dependencies // {}) | keys | join(",")' "$MANIFEST")
-
       # run a non-interactive global install against the linked manifest
       "${pkgs.pnpm}/bin/pnpm" install \
         --global \
