@@ -26,6 +26,17 @@
       playerctl
       brightnessctl
       networkmanager_dmenu
+      
+      # TUI utilities for desktop
+      bluetuith
+      pulsemixer
+      lnav
+      bandwhich
+      iotop
+      systemctl-tui
+      dust
+      procs
+      pyprland
     ];
   };
 }

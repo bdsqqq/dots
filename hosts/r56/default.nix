@@ -141,19 +141,6 @@
     
     # Cursor theme (traditional macOS-style)
     apple-cursor  # Traditional macOS-style cursor theme
-    
-    # Scratchpad management
-    pyprland  # Hyprland scratchpad manager for popup terminals
-    
-    # TUI Applications for scratchpads
-    bluetuith    # Bluetooth TUI manager
-    pulsemixer   # Audio/PipeWire TUI control
-    lnav         # Advanced log file viewer
-    bandwhich    # Network bandwidth monitor
-    iotop        # Disk I/O monitor
-    systemctl-tui # Systemd service manager
-    dust         # Disk usage analyzer
-    procs        # Modern process viewer
   ];
 
   # Fonts - extended packages + fontconfig for DejaVu blocking (host-specific)
