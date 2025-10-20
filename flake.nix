@@ -20,16 +20,6 @@
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
 
-    textfox.url = "github:adriankarlen/textfox";
-    textfox.flake = false;
-    
-    # Loupe wallpapers
-    loupe-dark.url = "path:./modules/shared/loupe-mono-dark.jpg";
-    loupe-dark.flake = false;
-    
-    loupe-light.url = "path:./modules/shared/loupe-mono-light.jpg";
-    loupe-light.flake = false;
-    
     # Berkeley Mono font family
     berkeley-mono.url = "path:./modules/shared/berkeley-mono";
     berkeley-mono.flake = false;
