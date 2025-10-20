@@ -20,5 +20,20 @@ quick decision tree:
 
 notes:
 - pnpm globals are managed via `user/pnpm.nix` using PNPM_HOME symlinks; `pnpm add -g` writes to `01_files/nix/pnpm-global-package.json`.
-- prefer inline `lib.mkIf pkgs.stdenv.isDarwin` / `isLinux` for small divergences.
 - flatpak/zen-browser provided via `system/flatpak.nix` imported in `desktop.nix`.
+
+## platform-specific modules
+
+for modules with platform-specific options (e.g., launchd on darwin, services.* on linux):
+
+```nix
+{ lib, hostSystem ? null, ... }:
+if !(lib.hasInfix "linux" hostSystem) then {} else {
+  # linux-only config
+}
+```
+
+- `hostSystem` is passed via `specialArgs` at flake level (both system and home-manager contexts)
+- use top-level `if-else` to return empty attrset for wrong platform
+- avoids `pkgs.stdenv` recursion and `mkIf` structure evaluation issues
+- examples: `system/syncthing.nix`, `system/audio.nix`, `user/hyprland.nix`
