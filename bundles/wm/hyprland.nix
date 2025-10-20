@@ -2,7 +2,6 @@
 {
   imports = [
     ../../system/login.nix
-    ../../user/hyprland.nix
   ];
 
   home-manager.users.bdsqqq = { config, pkgs, lib, inputs, ... }: {
