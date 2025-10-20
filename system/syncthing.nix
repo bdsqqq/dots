@@ -1,6 +1,6 @@
 { lib, pkgs, ... }:
 {
-  services = lib.optionalAttrs pkgs.stdenv.isLinux {
+  services = lib.mkIf pkgs.stdenv.isLinux {
     syncthing = {
       enable = true;
       user = "bdsqqq";
@@ -9,8 +9,8 @@
     };
   };
 
-  launchd.user.agents = lib.optionalAttrs pkgs.stdenv.isDarwin {
-    syncthing = {
+  launchd = lib.mkIf pkgs.stdenv.isDarwin {
+    user.agents.syncthing = {
       serviceConfig = {
         Label = "com.bdsqqq.syncthing";
         ProgramArguments = [
