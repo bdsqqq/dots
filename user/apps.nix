@@ -1,6 +1,9 @@
-{ lib, config, pkgs, ... }:
+{ lib, hostSystem ? null, ... }:
+let
+  isDarwin = lib.hasInfix "darwin" hostSystem;
+in
 {
-  home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
+  home-manager.users.bdsqqq = { pkgs, ... }: {
     home.packages = with pkgs; [
       _1password-gui
       _1password-cli
@@ -13,10 +16,10 @@
       transmission_4
       rclone
       qpdf
-    ] ++ lib.optionals pkgs.stdenv.isDarwin [
+    ] ++ lib.optionals isDarwin [
       tableplus
       iina
-    ] ++ lib.optionals (!pkgs.stdenv.isDarwin) [
+    ] ++ lib.optionals (!isDarwin) [
       dbeaver-bin
       vlc
       xwayland-satellite

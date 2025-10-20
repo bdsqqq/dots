@@ -1,8 +1,8 @@
-{ lib, pkgs, inputs, ... }:
+{ lib, inputs, hostSystem ? null, ... }:
 {
   # common sops-nix settings; key location differs per OS
   sops = {
-    age = if pkgs.stdenv.isDarwin then {
+    age = if lib.hasInfix "darwin" hostSystem then {
       keyFile = "/Users/bdsqqq/.config/sops/age/keys.txt";
     } else {
       keyFile = "/var/lib/sops-nix/key.txt";
