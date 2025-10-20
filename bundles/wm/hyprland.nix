@@ -1,6 +1,7 @@
 { lib, config, pkgs, ... }:
 {
   imports = [
+    ../../system/login.nix
     ../../user/hyprland.nix
   ];
 

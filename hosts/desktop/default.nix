@@ -41,13 +41,9 @@
     };
   };
   
-  # syncthing moved to headless bundle for servers; keep off here unless needed
+  # syncthing, flatpak, bluetooth, audio, login provided by bundles
   
-  # flatpak service provided by headless bundle if desired
-  
-  # bluetooth handled in desktop bundle
-  
-  # Auto-trust paired devices for better persistence
+  # Auto-trust paired devices for better persistence (host-specific MAC address)
   systemd.services.bluetooth-auto-trust = {
     description = "Auto-trust Bluetooth devices";
     after = [ "bluetooth.service" ];
@@ -58,61 +54,8 @@
       ExecStart = "${pkgs.bash}/bin/bash -c '${pkgs.bluez}/bin/bluetoothctl trust E6:D2:2B:50:5B:64 || true'";
     };
   };
-
-  # Display manager
-  services.greetd = {
-    enable = true;
-    settings.default_session = {
-      command = "${pkgs.greetd.tuigreet}/bin/tuigreet --cmd Hyprland";
-      user = "greeter";
-    };
-  };
-
-  # Audio with PipeWire
-  services.pipewire = {
-    enable = true;
-    alsa.enable = true;
-    alsa.support32Bit = true;
-    pulse.enable = true;
-    jack.enable = true;
-    
-    # WirePlumber configuration for default HDMI audio
-    wireplumber = {
-      enable = true;
-      configPackages = [
-        (pkgs.writeTextDir "share/wireplumber/wireplumber.conf.d/51-hdmi-default.conf" ''
-          monitor.alsa.rules = [
-            {
-              matches = [
-                {
-                  device.name = "~alsa_card.pci-0000_*_00.1"
-                }
-              ]
-              actions = {
-                update-props = {
-                  api.alsa.use-acp = true
-                  device.profile.switch = true
-                  device.profile = "output:hdmi-stereo"
-                }
-              }
-            }
-          ]
-        '')
-      ];
-    };
-  };
-
-  # Security
-  security.rtkit.enable = true;
   
-  # Enable SSH
-  services.openssh = {
-    enable = true;
-    settings = {
-      PasswordAuthentication = true;
-      PermitRootLogin = "no";
-    };
-  };
+  # SSH provided by base bundle
   
   # Enable dconf for theme settings
   programs.dconf.enable = true;
@@ -208,9 +151,8 @@
     procs        # Modern process viewer
   ];
 
-  # Fonts
+  # Fonts - extended packages + fontconfig for DejaVu blocking (host-specific)
   fonts.packages = with pkgs; [
-    nerd-fonts.jetbrains-mono
     ibm-plex
     inter
     noto-fonts-emoji

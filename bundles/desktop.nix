@@ -1,8 +1,10 @@
 { lib, config, pkgs, ... }:
 {
   imports = [
-    ../user/ghostty.nix
+    ../system/audio.nix
     ../system/bluetooth.nix
+    ../system/flatpak.nix
+    ../user/ghostty.nix
     ../user/apps.nix
   ];
 }
