@@ -110,9 +110,6 @@
   };
 
   environment.systemPackages = with pkgs; [
-    # Network tools
-    networkmanagerapplet
-    
     # File manager
     nautilus
     
