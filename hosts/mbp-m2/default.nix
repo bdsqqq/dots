@@ -58,11 +58,7 @@
   # let nix-darwin own and link GUI apps into this directory
   environment.darwinConfig.applicationsDir = "/Applications/Nix Apps";
 
-  # Enable Karabiner Elements configuration management
-  # custom.karabiner.enable = true;
-  
-  # Enable Kanata
-  custom.kanata.enable = true;
+  # Kanata always enabled when module imported
   
   # Example of using enhanced specialArgs for conditional configuration
   # This demonstrates how modules can access system information
