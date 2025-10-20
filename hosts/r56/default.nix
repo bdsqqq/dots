@@ -36,7 +36,7 @@
           "Moonlander Mark I"
         )
       '';
-      configFile = ../../modules/shared/kanata.kbd;
+      configFile = ../../assets/kanata.kbd;
     };
   };
   

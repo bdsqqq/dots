@@ -62,7 +62,7 @@ if isDarwin then {
     '')
   ];
   
-  environment.etc."kanata/kanata.kbd".source = ../modules/shared/kanata.kbd;
+  environment.etc."kanata/kanata.kbd".source = ../assets/kanata.kbd;
   
   system.activationScripts.extraActivation.text = ''
     if [ ! -d "/Applications/.Karabiner-VirtualHIDDevice-Manager.app" ]; then
@@ -105,5 +105,5 @@ if isDarwin then {
 } else if isLinux then {
   # Linux implementation (services.kanata provided by host config)
   environment.systemPackages = [ pkgs.kanata ];
-  environment.etc."kanata/kanata.kbd".source = ../modules/shared/kanata.kbd;
+  environment.etc."kanata/kanata.kbd".source = ../assets/kanata.kbd;
 } else {}
