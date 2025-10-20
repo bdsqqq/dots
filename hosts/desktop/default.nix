@@ -100,6 +100,12 @@
     useGlobalPkgs = true;
     useUserPackages = true;
     extraSpecialArgs = { inherit inputs; isDarwin = false; };
+    users.bdsqqq = {
+      home.username = "bdsqqq";
+      home.homeDirectory = "/home/bdsqqq";
+      home.stateVersion = "25.05";
+      programs.home-manager.enable = true;
+    };
   };
 
   environment.systemPackages = with pkgs; [
