@@ -1,6 +1,6 @@
-{ lib, config, pkgs, ... }:
+{ lib, pkgs, ... }:
 let
-  system = config.nixpkgs.hostPlatform.system or builtins.currentSystem;
+  system = builtins.currentSystem;
   isLinux = lib.hasInfix "linux" system;
   isDarwin = lib.hasInfix "darwin" system;
 in
