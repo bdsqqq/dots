@@ -22,6 +22,7 @@ in
       set -euo pipefail
       PNPM_HOME="${pnpmHomeAbsolute}"
       export PNPM_HOME
+      export PATH="$PNPM_HOME:$PATH"
 
       GLOBAL_ROOT="${pnpmGlobalRoot}"
       GLOBAL_DIR="${pnpmGlobalDir}"
