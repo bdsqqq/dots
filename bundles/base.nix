@@ -4,7 +4,7 @@
     ../system/ssh.nix
     ../system/tailscale.nix
     ../user/shell.nix
-    ../modules/shared/fonts.nix
+    ../system/fonts.nix
   ];
 }
 
