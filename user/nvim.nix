@@ -150,7 +150,7 @@
         '';
 
         sleuth.enable = true; fidget.enable = true; autoclose.enable = true;
-        lazydev.enable = true; lazydev.settings.library = [{ path = "${3rd}/luv/library"; words = [ "vim%.uv" ]; }];
+        lazydev.enable = true; lazydev.settings.library = [{ path = "\${3rd}/luv/library"; words = [ "vim%.uv" ]; }];
 
         gitsigns.enable = true;
         gitsigns.settings = {
