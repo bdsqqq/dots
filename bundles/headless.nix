@@ -1,8 +1,8 @@
-{ lib, config, pkgs, ... }:
+{ ... }:
 {
   imports = [
-    ../system/syncthing-linux.nix
-    ../system/syncthing-darwin.nix
+    ./headless-linux.nix
+    ./headless-darwin.nix
   ];
 }
 
