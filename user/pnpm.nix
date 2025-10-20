@@ -1,4 +1,4 @@
-{ lib, config, pkgs, ... }:
+{ inputs, lib, config, pkgs, ... }:
 let
   pnpmHomeRelative = if pkgs.stdenv.isDarwin then "/Library/pnpm" else "/.local/share/pnpm";
   manifestRepoPath = ../pnpm-global-package.json;
@@ -7,12 +7,12 @@ let
   allowScripts = lib.concatStringsSep "," (builtins.attrNames (manifestJson.dependencies or {}));
 in
 {
-  home-manager.users.bdsqqq = { config, pkgs, lib, ... }: let
+  home-manager.users.bdsqqq = { inputs, config, pkgs, lib, ... }: let
     pnpmHomeAbsolute = "${config.home.homeDirectory}${pnpmHomeRelative}";
     pnpmGlobalRoot = "${pnpmHomeAbsolute}/global";
     pnpmGlobalDir = "${pnpmGlobalRoot}/5";
-    manifestPath = "${config.home.homeDirectory}/commonplace/01_files/nix/pnpm-global-package.json";
-    lockPath = "${config.home.homeDirectory}/commonplace/01_files/nix/pnpm-global-lock.yaml";
+    manifestPath = "${inputs.self}/pnpm-global-package.json";
+    lockPath = "${inputs.self}/pnpm-global-lock.yaml";
   in {
     # expose PNPM_HOME for all shells
     home.sessionVariables.PNPM_HOME = pnpmHomeAbsolute;
