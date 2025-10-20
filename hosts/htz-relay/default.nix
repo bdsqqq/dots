@@ -53,6 +53,19 @@
 
   programs.zsh.enable = true;
 
+  # home-manager configuration
+  home-manager = {
+    useGlobalPkgs = true;
+    useUserPackages = true;
+    extraSpecialArgs = { inherit inputs; isDarwin = false; };
+    users.bdsqqq = {
+      home.username = "bdsqqq";
+      home.homeDirectory = "/home/bdsqqq";
+      home.stateVersion = "25.05";
+      programs.home-manager.enable = true;
+    };
+  };
+
   time.timeZone = "Europe/London";
   i18n.defaultLocale = "en_US.UTF-8";
 
