@@ -1,6 +1,17 @@
-{ lib, config, pkgs, ... }:
+{ lib, hostSystem ? null, ... }:
+let
+  isDarwin = lib.hasInfix "darwin" hostSystem;
+in
 {
-  home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
+  # darwin: ghostty pkg is marked broken in nixpkgs, use homebrew cask instead
+  homebrew = if !isDarwin then {} else {
+    casks = [ "ghostty" ];
+  };
+  
+  home-manager.users.bdsqqq = { pkgs, ... }: {
+    # linux: use nix package
+    home.packages = if isDarwin then [] else [ pkgs.ghostty ];
+    
     home.file.".config/ghostty/config" = {
       force = true;
       text = ''

@@ -16,7 +16,6 @@ in
       transmission_4
       rclone
       qpdf
-      ghostty
     ] ++ lib.optionals isDarwin [
       tableplus
       iina
