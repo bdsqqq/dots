@@ -102,10 +102,9 @@
       };
 
       flake = {
-        # Darwin configurations with enhanced specialArgs
+        # Darwin configurations
         darwinConfigurations = {
-          # Primary development machine
-          "mbp14" = inputs.nix-darwin.lib.darwinSystem {
+          "mbp-m2" = inputs.nix-darwin.lib.darwinSystem {
             system = "aarch64-darwin";
             # Enhanced specialArgs: pass all inputs, system info, and utilities
             specialArgs = {
@@ -131,7 +130,7 @@
               }
               
               # Host-specific configuration
-              ./hosts/mbp14.local/default.nix
+              ./hosts/mbp-m2/default.nix
 
               # Shared darwin modules (automatically available to all darwin hosts)
               {
@@ -159,9 +158,9 @@
           # };
         };
 
-        # NixOS configurations using the same foundation
+        # NixOS configurations
         nixosConfigurations = {
-          "desktop" = inputs.nixpkgs.lib.nixosSystem {
+          "r56" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; };
             modules = [
@@ -170,11 +169,11 @@
               inputs.hyprland.nixosModules.default
               inputs.home-manager.nixosModules.home-manager
               inputs.nix-flatpak.nixosModules.nix-flatpak
-              ./hosts/desktop/default.nix
+              ./hosts/r56/default.nix
             ];
           };
 
-          "htz-relay" = inputs.nixpkgs.lib.nixosSystem {
+          "htz-far" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; };
             modules = [
@@ -182,7 +181,7 @@
               stylix.nixosModules.stylix
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.home-manager.nixosModules.home-manager
-              ./hosts/htz-relay/default.nix
+              ./hosts/htz-far/default.nix
             ];
           };
         };
