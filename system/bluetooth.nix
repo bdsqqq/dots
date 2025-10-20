@@ -1,8 +1,10 @@
-{ lib, pkgs, ... }:
-{
-  # Linux-only: define the entire subtree conditionally so darwin never sees the option
-  services = lib.optionalAttrs pkgs.stdenv.isLinux {
-    blueman.enable = true;
+{ lib, hostSystem ? null, ... }:
+
+if !(lib.hasInfix "linux" hostSystem) then {} else {
+  services.blueman.enable = true;
+  hardware.bluetooth = {
+    enable = true;
+    powerOnBoot = true;
   };
 }
 
