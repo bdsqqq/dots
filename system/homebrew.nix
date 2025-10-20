@@ -15,7 +15,6 @@ if !(lib.hasInfix "darwin" hostSystem) then {} else {
       # Development tools
       "orbstack"
       "tableplus"
-      "ghostty"
 
       # Creative/Media tools
       "figma"
