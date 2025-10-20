@@ -1,4 +1,4 @@
-{ config, options, lib, pkgs, ... }:
+{ lib, pkgs, ... }:
 {
   config = lib.mkIf pkgs.stdenv.isLinux {
     services.syncthing = {
@@ -8,7 +8,7 @@
       configDir = "/home/bdsqqq/.config/syncthing";
     };
   }
-  // lib.optionalAttrs (pkgs.stdenv.isDarwin && (options ? launchd)) {
+  // lib.optionalAttrs pkgs.stdenv.isDarwin {
     launchd.user.agents.syncthing = {
       serviceConfig = {
         Label = "com.bdsqqq.syncthing";
