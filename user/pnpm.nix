@@ -17,7 +17,7 @@ in
   in {
     # expose PNPM_HOME for all shells
     home.sessionVariables.PNPM_HOME = pnpmHomeAbsolute;
-    home.sessionPath = lib.mkBefore [ pnpmHomeAbsolute ];
+    home.sessionPath = lib.mkBefore [ pnpmHomeAbsolute "${pnpmGlobalDir}/node_modules/.bin" ];
 
     # ensure pnpm is installed for user
     home.packages = [ pkgs.pnpm ];
@@ -42,14 +42,6 @@ in
       fi
 
       # ensure versioned dir link (pnpm expects $PNPM_HOME/5)
-      # if a plain directory exists (from a previous run), replace it with a symlink
-      if [ -d "$PNPM_HOME/5" ] && [ ! -L "$PNPM_HOME/5" ]; then
-        # handle bad state where a nested symlink was created at $PNPM_HOME/5/5
-        if [ -L "$PNPM_HOME/5/5" ]; then
-          rm -f "$PNPM_HOME/5/5" || true
-        fi
-        rmdir "$PNPM_HOME/5" 2>/dev/null || true
-      fi
       ln -sfn "$GLOBAL_DIR" "$PNPM_HOME/5"
 
       # compute allow-scripts from manifest at activation time
@@ -63,14 +55,7 @@ in
         --config.only-built-dependencies="$ALLOW_SCRIPTS" \
         --reporter append-only || true
 
-      # ensure shims are reachable on PATH: link executables to $PNPM_HOME
-      BIN_SRC="$GLOBAL_ROOT/node_modules/.bin"
-      if [ -d "$BIN_SRC" ]; then
-        for exe in "$BIN_SRC"/*; do
-          name="$(basename "$exe")"
-          ln -sfn "$exe" "$PNPM_HOME/$name"
-        done
-      fi
+      # shims are available via PATH entry to "$GLOBAL_DIR/node_modules/.bin"
     '';
   };
 }
