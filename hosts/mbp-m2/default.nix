@@ -36,9 +36,9 @@
   # Host-specific settings
   # System identification for multi-host setups
   networking = {
-    hostName = "mbp14.local";      # FQDN is fine for HostName
-    localHostName = "mbp14";       # must NOT contain dots (mDNS)
-    computerName = "mbp14";        # UI name
+    hostName = "mbp-m2.local";     # FQDN is fine for HostName
+    localHostName = "mbp-m2";      # must NOT contain dots (mDNS)
+    computerName = "mbp-m2";       # UI name
   };
 
   # ensure darwin user exists with a concrete home path so HM can derive paths
