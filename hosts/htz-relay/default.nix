@@ -9,7 +9,6 @@
 {
   imports = (
     [
-      ../../modules/shared/default.nix
       ../../bundles/base.nix
       ../../bundles/headless.nix
     ]
