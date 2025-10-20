@@ -8,6 +8,7 @@
     ../../bundles/dev.nix
     ../../bundles/headless.nix
     ../../bundles/wm/hyprland.nix
+    ../../system/nvidia.nix
     ../../system/sops.nix
   ];
 
@@ -235,18 +236,14 @@
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
-  # Set dark theme system-wide and NVIDIA variables
+  # Set dark theme system-wide (NVIDIA vars provided by system/nvidia.nix)
   environment.sessionVariables = {
     # Force dark theme for GTK applications
     GTK_THEME = "Adwaita:dark";
     # Set color scheme preference
     COLOR_SCHEME = "prefer-dark";
-    # NVIDIA Wayland support
-    LIBVA_DRIVER_NAME = "nvidia";
+    # Wayland session type
     XDG_SESSION_TYPE = "wayland";
-    GBM_BACKEND = "nvidia-drm";
-    __GLX_VENDOR_LIBRARY_NAME = "nvidia";
-    WLR_NO_HARDWARE_CURSORS = "1";
     # X11 display for applications that need it
     DISPLAY = ":0";
     # Fix PS5 controller bluetooth compatibility with Steam

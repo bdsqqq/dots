@@ -9,19 +9,13 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       # Monitor configuration
       monitor = [ ",preferred,auto,1" ];
       
-      # Environment variables for NVIDIA and cursor theme
+      # Environment variables for cursor theme (NVIDIA vars provided by system/nvidia.nix)
       env = [
         # Cursor theme (traditional macOS-style)
         "HYPRCURSOR_THEME,macOS"
         "HYPRCURSOR_SIZE,24"
         "XCURSOR_THEME,macOS"
         "XCURSOR_SIZE,24"
-        # NVIDIA
-        "LIBVA_DRIVER_NAME,nvidia"
-        "XDG_SESSION_TYPE,wayland"
-        "GBM_BACKEND,nvidia-drm"
-        "__GLX_VENDOR_LIBRARY_NAME,nvidia"
-        "WLR_NO_HARDWARE_CURSORS,1"
       ];
       
       # Cursor configuration (2024-2025 best practice)
