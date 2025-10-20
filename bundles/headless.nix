@@ -1,7 +1,8 @@
 { lib, config, pkgs, ... }:
 {
   imports = [
-    (if pkgs.stdenv.isLinux then ../system/syncthing-linux.nix else ../system/syncthing-darwin.nix)
+    ../system/syncthing-linux.nix
+    ../system/syncthing-darwin.nix
   ];
 }
 
