@@ -1,10 +1,6 @@
 { inputs, lib, config, pkgs, ... }:
 let
   pnpmHomeRelative = if pkgs.stdenv.isDarwin then "/Library/pnpm" else "/.local/share/pnpm";
-  manifestRepoPath = ../pnpm-global-package.json;
-  lockRepoPath = ../pnpm-global-lock.yaml; # optional
-  manifestJson = builtins.fromJSON (builtins.readFile manifestRepoPath);
-  allowScripts = lib.concatStringsSep "," (builtins.attrNames (manifestJson.dependencies or {}));
 in
 {
   home-manager.users.bdsqqq = { inputs, config, pkgs, lib, ... }: let
@@ -26,7 +22,6 @@ in
       set -euo pipefail
       PNPM_HOME="${pnpmHomeAbsolute}"
       export PNPM_HOME
-      export PATH="$PNPM_HOME:$PATH"
 
       GLOBAL_ROOT="${pnpmGlobalRoot}"
       GLOBAL_DIR="${pnpmGlobalDir}"
@@ -45,8 +40,7 @@ in
       ln -sfn "$GLOBAL_DIR" "$PNPM_HOME/5"
 
       # compute allow-scripts from manifest at activation time
-      JQ_BIN="${pkgs.jq}/bin/jq"
-      ALLOW_SCRIPTS=$("$JQ_BIN" -r '(.dependencies // {}) | keys | join(",")' "$MANIFEST")
+      ALLOW_SCRIPTS=$(${pkgs.jq}/bin/jq -r '(.dependencies // {}) | keys | join(",")' "$MANIFEST")
 
       # run a non-interactive global install against the linked manifest
       "${pkgs.pnpm}/bin/pnpm" install \
