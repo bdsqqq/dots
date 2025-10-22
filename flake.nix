@@ -20,16 +20,6 @@
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
 
-    textfox.url = "github:adriankarlen/textfox";
-    textfox.flake = false;
-    
-    # Loupe wallpapers
-    loupe-dark.url = "path:./modules/shared/loupe-mono-dark.jpg";
-    loupe-dark.flake = false;
-    
-    loupe-light.url = "path:./modules/shared/loupe-mono-light.jpg";
-    loupe-light.flake = false;
-    
     # Berkeley Mono font family
     berkeley-mono.url = "path:./modules/shared/berkeley-mono";
     berkeley-mono.flake = false;
@@ -102,14 +92,14 @@
       };
 
       flake = {
-        # Darwin configurations with enhanced specialArgs
+        # Darwin configurations
         darwinConfigurations = {
-          # Primary development machine
-          "mbp14" = inputs.nix-darwin.lib.darwinSystem {
+          "mbp-m2" = inputs.nix-darwin.lib.darwinSystem {
             system = "aarch64-darwin";
             # Enhanced specialArgs: pass all inputs, system info, and utilities
             specialArgs = {
               inherit inputs;
+              hostSystem = "aarch64-darwin";
               # Make system architecture available for conditional logic
               inherit (inputs.nixpkgs.lib) systems;
               # Helper function to get packages for different systems
@@ -120,6 +110,7 @@
               };
             };
             modules = [
+              inputs.sops-nix.darwinModules.sops
               # Apply overlays to the main system packages
               {
                 nixpkgs = {
@@ -127,11 +118,9 @@
                   overlays = [ (import ./overlays/unstable.nix inputs) ];
                 };
               }
-              # Stylix theming
-              stylix.darwinModules.stylix
               
               # Host-specific configuration
-              ./hosts/mbp14.local/default.nix
+              ./hosts/mbp-m2/default.nix
 
               # Shared darwin modules (automatically available to all darwin hosts)
               {
@@ -159,23 +148,29 @@
           # };
         };
 
-        # NixOS configurations using the same foundation
+        # NixOS configurations
         nixosConfigurations = {
-          "desktop" = inputs.nixpkgs.lib.nixosSystem {
+          "r56" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
-            specialArgs = { inherit inputs; };
+            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; };
             modules = [
+              inputs.sops-nix.nixosModules.sops
               stylix.nixosModules.stylix
               inputs.hyprland.nixosModules.default
               inputs.home-manager.nixosModules.home-manager
-              ./hosts/desktop/default.nix
+              inputs.nix-flatpak.nixosModules.nix-flatpak
+              ./hosts/r56/default.nix
             ];
           };
 
           "htz-relay" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
-            specialArgs = { inherit inputs; };
+            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; };
             modules = [
+              inputs.sops-nix.nixosModules.sops
+              stylix.nixosModules.stylix
+              inputs.nix-flatpak.nixosModules.nix-flatpak
+              inputs.home-manager.nixosModules.home-manager
               ./hosts/htz-relay/default.nix
             ];
           };
