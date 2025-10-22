@@ -670,30 +670,6 @@
         "type": "github"
       }
     },
-    "loupe-dark": {
-      "flake": false,
-      "locked": {
-        "path": "./modules/shared/loupe-mono-dark.jpg",
-        "type": "path"
-      },
-      "original": {
-        "path": "./modules/shared/loupe-mono-dark.jpg",
-        "type": "path"
-      },
-      "parent": []
-    },
-    "loupe-light": {
-      "flake": false,
-      "locked": {
-        "path": "./modules/shared/loupe-mono-light.jpg",
-        "type": "path"
-      },
-      "original": {
-        "path": "./modules/shared/loupe-mono-light.jpg",
-        "type": "path"
-      },
-      "parent": []
-    },
     "nix-darwin": {
       "inputs": {
         "nixpkgs": [
@@ -894,8 +870,6 @@
         "flake-parts": "flake-parts",
         "home-manager": "home-manager",
         "hyprland": "hyprland",
-        "loupe-dark": "loupe-dark",
-        "loupe-light": "loupe-light",
         "nix-darwin": "nix-darwin",
         "nix-flatpak": "nix-flatpak",
         "nixos-hardware": "nixos-hardware",
@@ -903,8 +877,7 @@
         "nixpkgs-unstable": "nixpkgs-unstable",
         "nixvim": "nixvim",
         "sops-nix": "sops-nix",
-        "stylix": "stylix",
-        "textfox": "textfox"
+        "stylix": "stylix"
       }
     },
     "sops-nix": {
@@ -1021,22 +994,6 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
-        "type": "github"
-      }
-    },
-    "textfox": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1751562345,
-        "narHash": "sha256-6PiU3y2JniuAkHNsLdUgZGTq5LpgkxCGS/1ehr+ZMjc=",
-        "owner": "adriankarlen",
-        "repo": "textfox",
-        "rev": "b981cdb7f8c38d082ca1646855ec4192c9e1d5dd",
-        "type": "github"
-      },
-      "original": {
-        "owner": "adriankarlen",
-        "repo": "textfox",
         "type": "github"
       }
     },
