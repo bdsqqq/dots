@@ -41,7 +41,14 @@ in
       # ensure versioned dir link (pnpm expects $PNPM_HOME/5)
       ln -sfn "$GLOBAL_DIR" "$PNPM_HOME/5"
 
+      # purge stale shims so pnpm regenerates them pointing to current versions
+      # pnpm doesn't rewrite shims if they already exist, leading to stale references
+      if [ -d "$PNPM_HOME" ]; then
+        find "$PNPM_HOME" -maxdepth 1 -type f -print -delete
+      fi
+
       # run a non-interactive global install against the linked manifest
+      # this operates on the symlinked package.json/lock, keeping them as source of truth
       "${pkgs.pnpm}/bin/pnpm" install \
         --global \
         --global-dir "$GLOBAL_ROOT" \
