@@ -23,6 +23,11 @@ in
       "commonplace/01_files/.keep".text = "";
       "commonplace/02_temp/.keep".text = "";
 
+      # ai coding agent configurations (symlinked from nix config)
+      "commonplace/AGENTS.md".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/AGENTS.md";
+      ".config/amp/AGENTS.md".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/AGENTS.md";
+      ".claude/CLAUDE.md".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/AGENTS.md";
+
       ".rgignore".text = ''
         # version control systems
         **/.git/
