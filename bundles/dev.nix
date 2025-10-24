@@ -4,6 +4,7 @@
     ../user/nvim.nix
     ../user/pnpm.nix
     ../user/dev-tools.nix
+    ../user/tmux.nix
   ];
 }
 
