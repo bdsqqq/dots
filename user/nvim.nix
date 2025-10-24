@@ -119,6 +119,7 @@
       extraPackages = with pkgs; [ stylua go lazygit ];
 
       plugins = {
+        tmux-navigator.enable = true;
         oil.enable = true;
         oil.settings = { default_file_explorer = true; delete_to_trash = true; skip_confirm_for_simple_edits = true; view_options.show_hidden = true; };
 
