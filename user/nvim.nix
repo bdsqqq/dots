@@ -85,10 +85,11 @@
       keymaps = [
         { mode = "n"; key = "<Esc>"; action = "<cmd>nohlsearch<CR>"; }
         { mode = "t"; key = "<Esc><Esc>"; action = "<C-\\><C-n>"; options.desc = "exit terminal mode"; }
-        { mode = "n"; key = "<C-h>"; action = "<C-w><C-h>"; options.desc = "move focus to left window"; }
-        { mode = "n"; key = "<C-l>"; action = "<C-w><C-l>"; options.desc = "move focus to right window"; }
-        { mode = "n"; key = "<C-j>"; action = "<C-w><C-j>"; options.desc = "move focus to lower window"; }
-        { mode = "n"; key = "<C-k>"; action = "<C-w><C-k>"; options.desc = "move focus to upper window"; }
+        { mode = "n"; key = "<C-h>"; action = "<cmd>TmuxNavigateLeft<CR>";  options.desc = "move pane focus left"; }
+        { mode = "n"; key = "<C-l>"; action = "<cmd>TmuxNavigateRight<CR>"; options.desc = "move pane focus right"; }
+        { mode = "n"; key = "<C-j>"; action = "<cmd>TmuxNavigateDown<CR>";  options.desc = "move pane focus down"; }
+        { mode = "n"; key = "<C-k>"; action = "<cmd>TmuxNavigateUp<CR>";    options.desc = "move pane focus up"; }
+        { mode = "n"; key = "<C-\\>"; action = "<cmd>TmuxNavigatePrevious<CR>"; options.desc = "move pane focus previous"; }
         { mode = ""; key = "<leader>f"; action.__raw = ''function() require('conform').format { async = true, lsp_fallback = true } end''; options.desc = "[f]ormat buffer"; }
         { mode = "n"; key = "<leader>/"; action.__raw = ''function() require('telescope.builtin').current_buffer_fuzzy_find(require('telescope.themes').get_dropdown { winblend = 10, previewer = false }) end''; options.desc = "[/] fuzzily search in current buffer"; }
         { mode = "n"; key = "<leader>s/"; action.__raw = ''function() require('telescope.builtin').live_grep { grep_open_files = true, prompt_title = 'Live Grep in Open Files' } end''; options.desc = "[s]earch [/] in open files"; }
