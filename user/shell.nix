@@ -17,6 +17,12 @@ in
       templates = "${config.home.homeDirectory}/Templates";
       publicShare = "${config.home.homeDirectory}/Public";
     };
+
+    home.sessionVariables = {
+      EDITOR = "${pkgs.neovim}/bin/nvim";
+      VISUAL = "${pkgs.neovim}/bin/nvim";
+    };
+
     # directory scaffolding and global ripgrep ignore
     home.file = {
       "commonplace/00_inbox/.keep".text = "";
