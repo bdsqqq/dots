@@ -3,7 +3,7 @@ let
   isDarwin = lib.hasInfix "darwin" hostSystem;
 in
 {
-  home-manager.users.bdsqqq = { config, ... }: {
+  home-manager.users.bdsqqq = { config, pkgs, ... }: {
     xdg.enable = true;
     xdg.userDirs = if isDarwin then {} else {
       enable = true;
