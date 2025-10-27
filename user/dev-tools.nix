@@ -16,15 +16,12 @@ in
       lazygit
       delta
       gh
-      graphite-cli
       git-filter-repo
       exiftool
       sops
       age
       ssh-to-age
       fnm
-      oh-my-zsh
-      nodejs_22
       pnpm
       pscale
       go
