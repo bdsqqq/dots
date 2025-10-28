@@ -1,2 +1,0 @@
-#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
-exec "/nix/store/grk18frmkshz2ic1r2n0sd7mwscgz8hp-zulu-ca-jdk-21.0.4/bin/java"  -jar /nix/store/vcq14xi9j200cl55j4vw9b4ks93jbilh-swagger-codegen-2.4.38/share/java/swagger-codegen-cli-2.4.38.jar "$@" 

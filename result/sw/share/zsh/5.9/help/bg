@@ -1,4 +1,0 @@
-bg [ job ... ]
-job ... &
-       Put each specified job in the background, or the current job  if
-       none is specified.

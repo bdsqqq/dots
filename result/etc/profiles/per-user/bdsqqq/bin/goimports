@@ -1,9 +1,0 @@
-#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
-PATH=${PATH:+':'$PATH':'}
-if [[ $PATH != *':''/nix/store/rq7irijkj3nhapmjcv9d96xgkisj55x2-go-1.24.4/bin'':'* ]]; then
-    PATH=$PATH'/nix/store/rq7irijkj3nhapmjcv9d96xgkisj55x2-go-1.24.4/bin'
-fi
-PATH=${PATH#':'}
-PATH=${PATH%':'}
-export PATH
-exec -a "$0" "/nix/store/sil2z311kv30dz4v9rc1q413vcrmprb5-gotools-0.34.0/bin/.goimports-wrapped"  "$@" 

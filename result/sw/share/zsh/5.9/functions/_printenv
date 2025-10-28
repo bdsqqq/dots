@@ -1,5 +1,0 @@
-#compdef printenv gprintenv
-
-local expl
-
-_wanted parameters expl 'environment variable' _parameters -g '*export*'

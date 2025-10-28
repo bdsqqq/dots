@@ -1,2 +1,0 @@
-false [ arg ... ]
-       Do nothing and return an exit status of 1.

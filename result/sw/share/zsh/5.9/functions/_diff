@@ -1,3 +1,0 @@
-#compdef diff gdiff
-
-_diff_options "$words[1]" ':original file:_files' ':new file:_files'

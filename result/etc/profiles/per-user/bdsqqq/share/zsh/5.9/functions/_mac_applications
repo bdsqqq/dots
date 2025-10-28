@@ -1,7 +1,0 @@
-#autoload
-
-_retrieve_mac_apps
-
-local expl
-_wanted commands expl 'macOS application' \
-    compadd "$@" - "${(@)${_mac_apps[@]:t}%.app}"

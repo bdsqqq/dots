@@ -1,6 +1,0 @@
-#autoload
-
-local expl
-
-_description architectures expl 'architecture'
-compadd "$@" "$expl[@]" amd64 arm arm64 i386 mips powerpc riscv sparc64

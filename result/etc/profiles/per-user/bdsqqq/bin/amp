@@ -1,8 +1,0 @@
-#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
-PATH=${PATH:+':'$PATH':'}
-PATH=${PATH/':''/nix/store/xygyyr4jqazmdmqf9x5pqkxnkcp9w0h8-ripgrep-14.1.1/bin'':'/':'}
-PATH='/nix/store/xygyyr4jqazmdmqf9x5pqkxnkcp9w0h8-ripgrep-14.1.1/bin'$PATH
-PATH=${PATH#':'}
-PATH=${PATH%':'}
-export PATH
-exec -a "$0" "/nix/store/av4xn039ws4zhylhiiqygvq629il1s6l-amp-cli-0.0.1750147289-g2a47fe/bin/.amp-wrapped"  "$@" 

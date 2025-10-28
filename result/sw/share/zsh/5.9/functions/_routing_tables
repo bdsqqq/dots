@@ -1,6 +1,0 @@
-#autoload
-
-local expl
-
-_description routing-tables expl 'routing table'
-compadd "$@" "$expl[@]" -  ${(s: :)${${(M)${(f)"$(_call_program routing-tables netstat -R)"}:#  Routing tables#: *}#*: }}

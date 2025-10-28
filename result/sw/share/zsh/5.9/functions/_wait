@@ -1,3 +1,0 @@
-#compdef wait
-
-_alternative 'processes:: _pids' 'jobs:: _jobs -t'

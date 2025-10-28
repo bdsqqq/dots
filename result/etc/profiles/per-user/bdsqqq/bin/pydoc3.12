@@ -1,5 +1,0 @@
-#!/nix/store/q54d9qqlb27g2nf9ja4zsa89gl7b3yvm-python3-3.12.11/bin/python3.12
-
-import pydoc
-if __name__ == '__main__':
-    pydoc.cli()

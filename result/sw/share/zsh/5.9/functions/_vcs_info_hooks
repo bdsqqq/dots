@@ -1,2 +1,0 @@
-#autoload
-compadd - ${functions[(I)+vi-*]#+vi-}

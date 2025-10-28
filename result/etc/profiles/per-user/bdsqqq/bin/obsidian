@@ -1,2 +1,0 @@
-#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
-exec "/nix/store/8ccclp36gmyzipwdwpga5220w135k4sd-obsidian-1.8.10/Applications/Obsidian.app/Contents/MacOS/Obsidian"  "$@" 

@@ -1,9 +1,0 @@
-#autoload
-
-local expl pattern
-
-pattern=( -g \* )
-zparseopts -D -K -E g:=pattern
-
-_description widgets expl widget
-compadd "$@" "$expl[@]" -M 'r:|-=* r:|=*' - "${(@k)widgets[(R)${pattern[2]}]}"

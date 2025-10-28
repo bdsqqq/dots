@@ -1,3 +1,0 @@
-#compdef -value-,DISPLAY,-default-
-
-_tags displays && _hosts -S ':0 ' -r :
