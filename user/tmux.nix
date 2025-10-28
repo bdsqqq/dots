@@ -12,6 +12,10 @@
         vim-tmux-navigator
       ];
       extraConfig = ''
+        # ensure tmux uses zsh (login) instead of sh/bash
+        set-option -g default-shell "/bin/zsh"
+        set-option -g default-command "/bin/zsh -l"
+
         # reload config with <prefix> r
         bind r source-file ~/.tmux.conf \; display-message "tmux reloaded"
 
