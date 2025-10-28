@@ -1,5 +1,0 @@
-#compdef -command-
-
-_command_names
-local ret=$?
-[[ -o autocd ]] && _cd || return ret

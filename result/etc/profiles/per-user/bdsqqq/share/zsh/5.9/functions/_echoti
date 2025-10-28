@@ -1,5 +1,0 @@
-#compdef echoti
-
-local expl
-
-_wanted arguments expl 'terminal capability' compadd -k terminfo

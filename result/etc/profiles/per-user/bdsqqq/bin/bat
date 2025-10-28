@@ -1,8 +1,0 @@
-#! /nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash -e
-PATH=${PATH:+':'$PATH':'}
-PATH=${PATH/':''/nix/store/s8ycvxnd5qnz1d12mgwc97fifir6b8bd-less-668/bin'':'/':'}
-PATH='/nix/store/s8ycvxnd5qnz1d12mgwc97fifir6b8bd-less-668/bin'$PATH
-PATH=${PATH#':'}
-PATH=${PATH%':'}
-export PATH
-exec -a "$0" "/nix/store/nqzkm1y51skwp082vr8nraw36k8qzbja-bat-0.25.0/bin/.bat-wrapped"  "$@" 

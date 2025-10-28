@@ -1,7 +1,0 @@
-#autoload
-
-local -a setypes expl
-
-setypes=( ${(f)"$(_call_program selinux-types seinfo --flat -t)"} )
-_description selinux-types expl "selinux type"
-compadd "$@" "$expl[@]" -a setypes

@@ -1,4 +1,0 @@
-#!/nix/store/nravshvfviv75plf26nwfwzg8ldl3z8s-bash-5.2p37/bin/bash
-echo "Rebuilding karabiner configuration..."
-/nix/store/gyzbq6xfb0k6vb9micgagvp8ch7b8gvs-karabiner-build
-

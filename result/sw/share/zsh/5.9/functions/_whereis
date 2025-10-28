@@ -1,3 +1,0 @@
-#compdef whereis
-
-_command_names -e

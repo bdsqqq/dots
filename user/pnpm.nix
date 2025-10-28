@@ -14,7 +14,12 @@ in
   in {
     # expose PNPM_HOME for all shells
     home.sessionVariables.PNPM_HOME = pnpmHomeAbsolute;
-    home.sessionPath = lib.mkBefore [ pnpmHomeAbsolute "${pnpmGlobalDir}/node_modules/.bin" ];
+
+    # contribute to central path ordering (low order = early in PATH = wins)
+    custom.path.segments = [
+      { order = 100; value = pnpmHomeAbsolute; }
+      { order = 110; value = "${pnpmGlobalDir}/node_modules/.bin"; }
+    ];
 
     # ensure pnpm is installed for user
     home.packages = [ pkgs.pnpm ];
@@ -55,6 +60,19 @@ in
         --reporter append-only || true
 
       # shims are available via PATH entry to "$GLOBAL_DIR/node_modules/.bin"
+    '';
+
+    # zsh-specific: re-assert pnpm precedence after fnm's dynamic PATH prepend
+    programs.zsh.initContent = ''
+      # fnm prepends at runtime; ensure pnpm wins by re-prepending after shell init
+      if [[ -n "$PNPM_HOME" ]]; then
+        typeset -U path  # enable deduplication
+        path=(
+          "$PNPM_HOME"
+          "$PNPM_HOME/5/node_modules/.bin"
+          ''${path[@]}
+        )
+      fi
     '';
   };
 }
