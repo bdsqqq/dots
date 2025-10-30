@@ -1,6 +1,8 @@
-{ lib, hostSystem ? null, ... }:
+{ lib, hostSystem ? null, config, ... }:
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
+  # homebrew prefix varies by architecture
+  brewPrefix = if isDarwin then config.homebrew.brewPrefix or "/opt/homebrew" else "";
 in
 {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
@@ -167,9 +169,7 @@ in
         initContent = ''
           # homebrew shellenv (darwin only)
           if [[ "$(uname)" == "Darwin" ]]; then
-            if command -v brew >/dev/null 2>&1; then
-              eval "$(/opt/homebrew/bin/brew shellenv)"
-            fi
+            eval "$(${brewPrefix}/bin/brew shellenv)"
           fi
 
           # bun (if installed)
