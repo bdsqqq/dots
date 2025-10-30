@@ -169,7 +169,7 @@ in
         initContent = ''
           # homebrew shellenv (darwin only)
           if [[ "$(uname)" == "Darwin" ]]; then
-            eval "$(${brewPrefix}/bin/brew shellenv)"
+            eval "$(${brewPrefix}/brew shellenv)"
           fi
 
           # bun (if installed)
