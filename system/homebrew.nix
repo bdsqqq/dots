@@ -37,7 +37,7 @@ if !(lib.hasInfix "darwin" hostSystem) then {} else {
 
     onActivation = {
       autoUpdate = true;
-      cleanup = "zap";
+      cleanup = "uninstall";
     };
   };
 }
