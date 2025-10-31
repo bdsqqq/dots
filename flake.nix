@@ -38,6 +38,10 @@
     
     # Declarative Flatpak management
     nix-flatpak.url = "github:gmodena/nix-flatpak";
+
+    # Declarative Spicetify configuration
+    spicetify-nix.url = "github:Gerg-L/spicetify-nix";
+    spicetify-nix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs@{ flake-parts, stylix, ... }:

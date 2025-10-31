@@ -10,7 +10,6 @@ in
       vscode
       blender
       obsidian
-      spicetify-cli
       transmission_4
       rclone
       qpdf

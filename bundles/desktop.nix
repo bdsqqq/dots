@@ -6,6 +6,7 @@
     ../system/flatpak.nix
     ../user/ghostty.nix
     ../user/apps.nix
+    ../user/spicetify.nix
   ];
 }
 
