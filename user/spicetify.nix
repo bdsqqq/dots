@@ -3,13 +3,14 @@ let
   spicePkgs = inputs.spicetify-nix.legacyPackages.${pkgs.stdenv.system};
 in
 {
-  imports = [ inputs.spicetify-nix.homeManagerModules.default ];
+  home-manager.users.bdsqqq = { pkgs, ... }: {
+    imports = [ inputs.spicetify-nix.homeManagerModules.default ];
 
-  nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
-    "spotify"
-  ];
+    nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
+      "spotify"
+    ];
 
-  programs.spicetify = {
+    programs.spicetify = {
     enable = true;
 
     # Custom Vesper theme
@@ -27,33 +28,9 @@ in
       overwriteAssets = false;
       sidebarConfig = true;
       homeConfig = true;
-    };
 
-    # Vesper color scheme
-    colorScheme = "vesper";
-    customColorScheme = {
-      text = "FFFFFF";
-      subtext = "A0A0A0";
-      main = "101010";
-      main-elevated = "101010";
-      highlight = "161616";
-      highlight-elevated = "161616";
-      sidebar = "101010";
-      player = "101010";
-      card = "161616";
-      shadow = "101010";
-      selected-row = "FFFFFF";
-      button = "A0A0A0";
-      button-active = "FFC799";
-      button-disabled = "505050";
-      tab-active = "161616";
-      notification = "101010";
-      notification-error = "B54548";
-      misc = "505050";
-    };
-
-    # Geist Mono font + custom CSS from user.css + hover panel
-    customCSS = ''
+      # Geist Mono font + custom CSS from user.css
+      additionalCss = ''
       @import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&display=swap");
 
       * {
@@ -117,7 +94,31 @@ in
       .search-modal-keyboard-accessibility-bar {
         display: none;
       }
-    '';
+      '';
+    };
+
+    # Vesper color scheme
+    colorScheme = "vesper";
+    customColorScheme = {
+      text = "FFFFFF";
+      subtext = "A0A0A0";
+      main = "101010";
+      main-elevated = "101010";
+      highlight = "161616";
+      highlight-elevated = "161616";
+      sidebar = "101010";
+      player = "101010";
+      card = "161616";
+      shadow = "101010";
+      selected-row = "FFFFFF";
+      button = "A0A0A0";
+      button-active = "FFC799";
+      button-disabled = "505050";
+      tab-active = "161616";
+      notification = "101010";
+      notification-error = "B54548";
+      misc = "505050";
+    };
 
     # Snippets
     enabledSnippets = with spicePkgs.snippets; [
@@ -168,5 +169,6 @@ in
     enabledCustomApps = with spicePkgs.apps; [
       marketplace
     ];
+    };
   };
 }
