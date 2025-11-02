@@ -86,9 +86,18 @@ if isDarwin then {
     home.packages = [ pkgs.spicetify-cli ];
 
     home.file = {
-      ".config/spicetify/Themes/Vesper/color.ini".text = vesperColorIni;
-      ".config/spicetify/Themes/Vesper/user.css".text = vesperUserCss + "\n\n" + hoverCss;
-      ".config/spicetify/Themes/Vesper/manifest.json".text = vesperManifest;
+      ".config/spicetify/Themes/Vesper/color.ini" = {
+        force = true;
+        text = vesperColorIni;
+      };
+      ".config/spicetify/Themes/Vesper/user.css" = {
+        force = true;
+        text = vesperUserCss + "\n\n" + hoverCss;
+      };
+      ".config/spicetify/Themes/Vesper/manifest.json" = {
+        force = true;
+        text = vesperManifest;
+      };
     };
 
     home.activation.spicetify = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
