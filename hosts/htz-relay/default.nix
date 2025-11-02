@@ -6,7 +6,9 @@
 , ...
 }:
 
-{
+let
+  mbpPubKey = lib.removeSuffix "\n" (builtins.readFile ../../config/ssh-keys/mbp-m2.pub);
+in {
   imports = (
     [
       ../../bundles/base.nix
@@ -46,9 +48,7 @@
     isNormalUser = true;
     extraGroups = [ "wheel" ];
     shell = pkgs.zsh;
-    openssh.authorizedKeys.keys = [
-      (builtins.readFile ../../config/ssh-keys/mbp-m2.pub)
-    ];
+    openssh.authorizedKeys.keys = [ mbpPubKey ];
   };
 
   programs.zsh.enable = true;
