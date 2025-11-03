@@ -3,6 +3,7 @@
 {
   # Common Nix settings
   nix = {
+    package = pkgs.nixVersions.latest;
     settings = {
       # Binary caches
       substituters = [
