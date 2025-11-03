@@ -24,10 +24,6 @@
     berkeley-mono.url = "path:./modules/shared/berkeley-mono";
     berkeley-mono.flake = false;
 
-    # hyprland window manager
-    hyprland.url = "github:hyprwm/Hyprland";
-    hyprland.inputs.nixpkgs.follows = "nixpkgs";
-
     stylix = {
       url = "github:danth/stylix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -160,7 +156,6 @@
             modules = [
               inputs.sops-nix.nixosModules.sops
               stylix.nixosModules.stylix
-              inputs.hyprland.nixosModules.default
               inputs.home-manager.nixosModules.home-manager
               inputs.nix-flatpak.nixosModules.nix-flatpak
               ./hosts/r56/default.nix
