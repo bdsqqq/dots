@@ -1,9 +1,9 @@
-{ pkgs, lib, inputs, hostSystem ? null, ... }:
+{ pkgs, lib, hostSystem ? null, ... }:
 
 if !(lib.hasInfix "linux" hostSystem) then {} else {
   wayland.windowManager.hyprland = {
     enable = true;
-    package = inputs.hyprland.packages.${pkgs.system}.hyprland;
+    package = pkgs.hyprland;
     
     settings = {
       # Monitor configuration
