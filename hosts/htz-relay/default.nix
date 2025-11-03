@@ -34,13 +34,14 @@ in {
   # ssh provided by base bundle
 
   # tailscale provided by base bundle; host-specific flags preserved
+  services.tailscale.enable = true;
   services.tailscale.useRoutingFeatures = "client";
   services.tailscale.extraUpFlags = [ "--ssh" "--accept-dns=false" ];
 
   # syncthing provided by headless bundle; keep host-specific ports
   services.syncthing = {
     openDefaultPorts = false;
-    guiAddress = "127.0.0.1:8384";
+    guiAddress = "0.0.0.0:8384";
     settings.options.listenAddress = "tcp://0.0.0.0:22000,quic://0.0.0.0:22000";
   };
 
@@ -49,6 +50,12 @@ in {
     extraGroups = [ "wheel" ];
     shell = pkgs.zsh;
     openssh.authorizedKeys.keys = [ mbpPubKey ];
+    hashedPassword = "$6$LeozgmV9I6N0QYNf$3BeytD3X/gFNzBJAeWYqFPqD7m9Qz4gn8vORyFtrJopplmZ/pgLZzcktymHLU9CVbR.SkFPg9MAbYNKWLzvaT0";
+  };
+
+  security.sudo = {
+    enable = true;
+    wheelNeedsPassword = true;
   };
 
   programs.zsh.enable = true;
@@ -71,7 +78,6 @@ in {
 
   boot.loader.grub = {
     enable = true;
-    efiSupport = true;
     device = "/dev/sda";
   };
 
@@ -81,6 +87,8 @@ in {
     htop
     tree
   ];
+
+  services.qemuGuest.enable = true;
 
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
