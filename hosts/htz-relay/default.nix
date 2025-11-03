@@ -34,9 +34,12 @@ in {
   # ssh provided by base bundle
 
   # tailscale provided by base bundle; host-specific flags preserved
-  services.tailscale.enable = true;
-  services.tailscale.useRoutingFeatures = "client";
-  services.tailscale.extraUpFlags = [ "--ssh" "--accept-dns=false" ];
+  services.tailscale = {
+    enable = true;
+    useRoutingFeatures = "client";
+    extraUpFlags = [ "--ssh" "--accept-dns=false" ];
+    authKeyFile = config.sops.secrets.tailscale_auth_key.path;
+  };
 
   # syncthing provided by headless bundle; keep host-specific ports
   services.syncthing = {
