@@ -55,6 +55,7 @@ in
       ffmpeg
       httpie
       fastfetch
+      ollama
     ] ++ lib.optionals isDarwin [
     istat-menus
 ] ++ lib.optionals (!isDarwin) [
