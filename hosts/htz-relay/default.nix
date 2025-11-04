@@ -91,7 +91,7 @@ in {
       folders = {
         commonplace = {
           enable = true;
-          id = "commonplace";
+          id = "sqz7z-a6tfg";
           label = "commonplace";
           path = "/home/bdsqqq/commonplace";
           type = "sendreceive";
