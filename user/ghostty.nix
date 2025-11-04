@@ -1,4 +1,5 @@
-{ lib, hostSystem ? null, ... }:
+{ lib, headMode ? "graphical", hostSystem ? null, ... }:
+lib.mkIf (headMode == "graphical") (
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isLinux = lib.hasInfix "linux" hostSystem;
@@ -101,5 +102,6 @@ if isDarwin then {
     home.packages = [ pkgs.ghostty ];
   };
 } else {}
+)
 
 

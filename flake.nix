@@ -100,6 +100,7 @@
             specialArgs = {
               inherit inputs;
               hostSystem = "aarch64-darwin";
+              headMode = "graphical";
               # Make system architecture available for conditional logic
               inherit (inputs.nixpkgs.lib) systems;
               # Helper function to get packages for different systems
@@ -125,7 +126,7 @@
               # Shared darwin modules (automatically available to all darwin hosts)
               {
                 # Ensure all modules receive enhanced specialArgs
-                _module.args = { inherit inputs; isDarwin = true; };
+                _module.args = { inherit inputs; isDarwin = true; headMode = "graphical"; };
               }
             ];
           };
@@ -152,7 +153,7 @@
         nixosConfigurations = {
           "r56" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
-            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; };
+            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "graphical"; };
             modules = [
               inputs.sops-nix.nixosModules.sops
               stylix.nixosModules.stylix
@@ -164,7 +165,7 @@
 
           "htz-relay" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
-            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; };
+            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "headless"; };
             modules = [
               inputs.sops-nix.nixosModules.sops
               stylix.nixosModules.stylix

@@ -100,7 +100,7 @@
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
-    extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; };
+    extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "graphical"; };
     users.bdsqqq = {
       home.username = "bdsqqq";
       home.homeDirectory = "/home/bdsqqq";

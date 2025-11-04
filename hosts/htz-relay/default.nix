@@ -13,6 +13,7 @@ in {
     [
       ../../bundles/base.nix
       ../../bundles/headless.nix
+      ../../bundles/dev.nix
     ]
   ) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [ ./hardware-configuration.nix ];
 
@@ -125,7 +126,7 @@ in {
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
-    extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; };
+    extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "headless"; };
     users.bdsqqq = {
       home.username = "bdsqqq";
       home.homeDirectory = "/home/bdsqqq";

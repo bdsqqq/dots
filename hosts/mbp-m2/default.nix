@@ -22,6 +22,7 @@
       inherit inputs systems pkgsFor;
       isDarwin = true;
       hostSystem = "aarch64-darwin";
+      headMode = "graphical";
     };
     users.bdsqqq = {
       home.username = "bdsqqq";
