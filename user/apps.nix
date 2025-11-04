@@ -1,8 +1,8 @@
-{ lib, hostSystem ? null, ... }:
+{ lib, hostSystem ? null, headMode ? "graphical", ... }:
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
 in
-{
+lib.mkIf (headMode == "graphical") {
   home-manager.users.bdsqqq = { pkgs, ... }: {
     home.packages = with pkgs; [
       docker
