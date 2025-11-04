@@ -41,11 +41,69 @@ in {
     authKeyFile = config.sops.secrets.tailscale_auth_key.path;
   };
 
-  # syncthing provided by headless bundle; keep host-specific ports
+  # syncthing provided by headless bundle; declarative mesh settings live here
   services.syncthing = {
     openDefaultPorts = false;
     guiAddress = "0.0.0.0:8384";
-    settings.options.listenAddress = "tcp://0.0.0.0:22000,quic://0.0.0.0:22000";
+    settings = {
+      options = {
+        listenAddress = [
+          "tcp://0.0.0.0:22000"
+          "quic://0.0.0.0:22000"
+        ];
+        globalAnnounceEnabled = false;
+        localAnnounceEnabled = false;
+        relaysEnabled = false;
+        natEnabled = false;
+        maxSendKbps = 0;
+        maxRecvKbps = 0;
+        connectionLimitEnough = 0;
+        connectionLimitMax = 0;
+      };
+
+      devices = {
+        "mbp-m2" = {
+          id = "BQRNC7S-3O6EQPK-5ZEDX6Q-KUSMJHQ-6HXJHYY-AHDBJNO-4C27WBW-XG6CCQR";
+          addresses = [
+            "tcp://100.87.59.2:22000"
+            "quic://100.87.59.2:22000"
+          ];
+          introducer = true;
+        };
+
+        ipd = {
+          id = "YORN2Q5-DWT444V-65WLF77-JHDHP5X-HHZEEFO-NKTLTYZ-M777AXS-X2KX6AF";
+          addresses = [
+            "tcp://100.70.110.116:22000"
+            "quic://100.70.110.116:22000"
+          ];
+        };
+
+        iph16 = {
+          id = "L2PJ4F3-BZUZ4RX-3BCPIYB-V544M22-P3WDZBF-ZEVYT5A-GPTX5ZF-ZM5KTQK";
+          addresses = [
+            "tcp://100.123.116.27:22000"
+            "quic://100.123.116.27:22000"
+          ];
+        };
+      };
+
+      folders = {
+        commonplace = {
+          enable = true;
+          id = "commonplace";
+          label = "commonplace";
+          path = "/home/bdsqqq/commonplace";
+          type = "sendreceive";
+          rescanIntervalS = 3600;
+          devices = [ "mbp-m2" "ipd" "iph16" ];
+          versioning = {
+            type = "trashcan";
+            params.cleanoutDays = "0";
+          };
+        };
+      };
+    };
   };
 
   users.users.bdsqqq = {
