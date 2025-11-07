@@ -227,6 +227,10 @@ in
           ll = "ls -l";
           cd = "z";
           c = "clear";
+          g = "lazygit";
+          b = "btop";
+          v = "nvim";
+          f = "fastfetch";
         };
       };
 
