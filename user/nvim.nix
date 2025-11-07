@@ -151,8 +151,11 @@
           end
         '';
 
-        sleuth.enable = true; fidget.enable = true; autoclose.enable = true;
-        lazydev.enable = true; lazydev.settings.library = [{ path = "\${3rd}/luv/library"; words = [ "vim%.uv" ]; }];
+        sleuth.enable = true;
+        fidget.enable = true;
+        autoclose.enable = true;
+        lazydev.enable = true;
+        lazydev.settings.library = [{ path = "\${3rd}/luv/library"; words = [ "vim%.uv" ]; }];
 
         gitsigns.enable = true;
         gitsigns.settings = {
@@ -183,7 +186,25 @@
         };
 
         which-key.enable = true;
-        which-key.settings.spec = [ { __unkeyed-1 = "<leader>s"; group = "[s]earch"; } { __unkeyed-1 = "<leader>t"; group = "[t]oggle"; } { __unkeyed-1 = "<leader>h"; group = "git [h]unk"; mode = [ "n" "v" ]; } { __unkeyed-1 = "<leader>l"; group = "[l]sp"; } ];
+        which-key.settings.spec = [
+          {
+            __unkeyed-1 = "<leader>s";
+            group = "[s]earch";
+          }
+          {
+            __unkeyed-1 = "<leader>t";
+            group = "[t]oggle";
+          }
+          {
+            __unkeyed-1 = "<leader>h";
+            group = "git [h]unk";
+            mode = [ "n" "v" ];
+          }
+          {
+            __unkeyed-1 = "<leader>l";
+            group = "[l]sp";
+          }
+        ];
 
         telescope.enable = true;
         telescope.extensions.fzf-native.enable = true; telescope.extensions.ui-select.enable = true;
