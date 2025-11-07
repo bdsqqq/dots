@@ -24,6 +24,10 @@
         bind j select-pane -D
         bind k select-pane -U
         bind l select-pane -R
+        bind-key Tab next-window
+        bind-key -r S-Tab previous-window
+        unbind-key c
+        unbind-key &
 
         # minimal statusline tuned for vim-tpipeline interop
         set-option -g base-index 1
@@ -58,6 +62,7 @@
         bind-key 7 if-shell -F "#{<=:7,#{session_windows}}" "select-window -t :7" "select-window -t :#{session_windows}"
         bind-key 8 if-shell -F "#{<=:8,#{session_windows}}" "select-window -t :8" "select-window -t :#{session_windows}"
         bind-key 9 if-shell -F "#{<=:9,#{session_windows}}" "select-window -t :9" "select-window -t :#{session_windows}"
+        bind-key t new-window -c "#{pane_current_path}"
 
         # session/window lifecycle shortcuts
         bind-key w confirm-before -p "Kill window #I (#W)? (y/n)" kill-window
