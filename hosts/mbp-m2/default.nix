@@ -12,6 +12,7 @@
     ../../system/macos-defaults.nix
     ../../system/kanata.nix
     ../../system/syncthing-automerge.nix
+    ../../system/code-server.nix
   ];
 
   # home-manager module enabled at flake level; user-layer provided via bundles
