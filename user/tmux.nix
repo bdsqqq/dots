@@ -28,6 +28,7 @@
         bind-key -r S-Tab previous-window
         unbind-key c
         unbind-key &
+        set-option -g focus-events on
 
         # minimal statusline tuned for vim-tpipeline interop
         set-option -g base-index 1
@@ -36,16 +37,17 @@
         set-option -g status-position top
         set-option -g status-style "bg=default,fg=colour7"
         set-option -g status-interval 0
-        set-option -g status-left-length 0
-        set-option -g status-right-length 0
+        set-option -g status-left-length 99
+        set-option -g status-right-length 99
         set-option -g status-left ""
         set-option -g status-right ""
         set-option -g status-justify right
+        set-option -g window-status-separator " "
 
         set-option -g window-status-style "bg=default,fg=colour6"
         set-option -g window-status-current-style "bg=default,fg=colour15,bold"
-        set-option -g window-status-format " #[fg=colour6][#I #W]#[default] "
-        set-option -g window-status-current-format " #[fg=colour13,bold][#I #W]#[default] "
+        set-option -g window-status-format "#[fg=colour6][#I #W]#[default]"
+        set-option -g window-status-current-format "#[fg=colour13,bold][#I #W]#[default]"
 
         set-option -g pane-border-style "fg=colour8"
         set-option -g pane-active-border-style "fg=colour7"

@@ -69,12 +69,31 @@
           vim.opt.pumblend = 0
           vim.api.nvim_set_hl(0, 'Terminal', { bg = 'NONE', ctermbg = 'NONE' })
         end, 100)
+
+        _G.Statusline = function()
+          local file = vim.fn.expand("%:t")
+          if file == "" then
+            file = "[No Name]"
+          end
+
+          local branch = ""
+          local git = vim.b.gitsigns_status_dict
+          if git and git.head and git.head ~= "" then
+            branch = string.format("[%s]", git.head)
+          end
+
+          local dirty = vim.bo.modified and "*" or ""
+          return string.format("%s%s%s", branch, file, dirty)
+        end
+
+        vim.o.laststatus = 3
+        vim.o.statusline = "%{%v:lua.Statusline()%}"
       '';
 
       globals = { mapleader = " "; maplocalleader = " "; have_nerd_font = true; };
       clipboard = { providers = { wl-copy.enable = true; xsel.enable = true; }; register = "unnamedplus"; };
       opts = {
-        number = true; mouse = "a"; showmode = false; laststatus = 0; ruler = false; cmdheight = 0; statusline = "";
+        number = true; mouse = "a"; showmode = false; laststatus = 3; ruler = false; cmdheight = 0; statusline = "%{%v:lua.Statusline()%}";
         breakindent = true; undofile = true; ignorecase = true; smartcase = true; signcolumn = "yes"; updatetime = 250;
         timeoutlen = 300; splitright = true; splitbelow = true; list = true; listchars.__raw = "{ tab = '» ', trail = '·', nbsp = '␣',   }";
         inccommand = "split"; cursorline = false; scrolloff = 10; confirm = true; hlsearch = true;
