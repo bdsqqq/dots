@@ -12,22 +12,23 @@ if isLinux then {
     auth = "password";
   };
 } else if isDarwin then {
-  environment.systemPackages = [ pkgs.code-server ];
+  environment.systemPackages = [ pkgs.openvscode-server ];
   
-  launchd.user.agents.code-server = {
+  launchd.user.agents.openvscode-server = {
     serviceConfig = {
-      Label = "com.bdsqqq.code-server";
+      Label = "com.bdsqqq.openvscode-server";
       ProgramArguments = [
-        "${pkgs.code-server}/bin/code-server"
-        "--bind-addr"
-        "127.0.0.1:8080"
-        "--auth"
-        "password"
+        "${pkgs.openvscode-server}/bin/openvscode-server"
+        "--host"
+        "0.0.0.0"
+        "--port"
+        "8080"
+        "--without-connection-token"
       ];
       RunAtLoad = true;
       KeepAlive = true;
-      StandardOutPath = "/Users/bdsqqq/Library/Logs/code-server.log";
-      StandardErrorPath = "/Users/bdsqqq/Library/Logs/code-server-error.log";
+      StandardOutPath = "/Users/bdsqqq/Library/Logs/openvscode-server.log";
+      StandardErrorPath = "/Users/bdsqqq/Library/Logs/openvscode-server-error.log";
     };
   };
 } else {}
