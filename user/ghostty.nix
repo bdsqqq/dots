@@ -66,7 +66,7 @@ palette = 15=#7C7C7C
 
   ghosttyConfig = ''
     font-family = "Berkeley Mono"
-    macos-titlebar-style = "tabs"
+    macos-titlebar-style = "hidden"
     window-padding-x = 16
     window-padding-y = 4
     background-opacity = "0.7"
