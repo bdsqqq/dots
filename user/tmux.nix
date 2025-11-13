@@ -25,7 +25,9 @@
         bind k select-pane -U
         bind l select-pane -R
         bind-key Tab next-window
+        bind-key -n C-Tab next-window
         bind-key -r S-Tab previous-window
+        bind-key -n C-S-Tab previous-window
         unbind-key c
         unbind-key &
         set-option -g focus-events on
@@ -56,19 +58,31 @@
 
         # window selection helpers with graceful fallback
         bind-key 1 if-shell -F "#{<=:1,#{session_windows}}" "select-window -t :1" "select-window -t :#{session_windows}"
+        bind-key -n C-1 select-window -t :1
         bind-key 2 if-shell -F "#{<=:2,#{session_windows}}" "select-window -t :2" "select-window -t :#{session_windows}"
+        bind-key -n C-2 select-window -t :2
         bind-key 3 if-shell -F "#{<=:3,#{session_windows}}" "select-window -t :3" "select-window -t :#{session_windows}"
+        bind-key -n C-3 select-window -t :3
         bind-key 4 if-shell -F "#{<=:4,#{session_windows}}" "select-window -t :4" "select-window -t :#{session_windows}"
+        bind-key -n C-4 select-window -t :4
         bind-key 5 if-shell -F "#{<=:5,#{session_windows}}" "select-window -t :5" "select-window -t :#{session_windows}"
+        bind-key -n C-5 select-window -t :5
         bind-key 6 if-shell -F "#{<=:6,#{session_windows}}" "select-window -t :6" "select-window -t :#{session_windows}"
+        bind-key -n C-6 select-window -t :6
         bind-key 7 if-shell -F "#{<=:7,#{session_windows}}" "select-window -t :7" "select-window -t :#{session_windows}"
+        bind-key -n C-7 select-window -t :7
         bind-key 8 if-shell -F "#{<=:8,#{session_windows}}" "select-window -t :8" "select-window -t :#{session_windows}"
+        bind-key -n C-8 select-window -t :8
         bind-key 9 if-shell -F "#{<=:9,#{session_windows}}" "select-window -t :9" "select-window -t :#{session_windows}"
+        bind-key -n C-9 select-window -t :9
         bind-key t new-window -c "#{pane_current_path}"
+        bind-key -n C-t new-window -c "#{pane_current_path}"
 
         # session/window lifecycle shortcuts
         bind-key w confirm-before -p "Kill window #I (#W)? (y/n)" kill-window
+        bind-key -n C-w confirm-before -p "Kill window #I (#W)? (y/n)" kill-window
         bind-key W confirm-before -p "Kill session #S? (y/n)" kill-session
+        bind-key -n C-S-w confirm-before -p "Kill session #S? (y/n)" kill-session
         bind-key q confirm-before -p "Kill the tmux server? (y/n)" kill-server
       '';
     };

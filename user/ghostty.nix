@@ -75,6 +75,19 @@ palette = 15=#7C7C7C
     theme = light:vesper-light,dark:vesper-dark
 
     keybind = shift+enter=text:\n
+    
+    # unbind ctrl+tab/digits so tmux can receive them
+    keybind = ctrl+tab=unbind
+    keybind = ctrl+shift+tab=unbind
+    keybind = ctrl+one=unbind
+    keybind = ctrl+two=unbind
+    keybind = ctrl+three=unbind
+    keybind = ctrl+four=unbind
+    keybind = ctrl+five=unbind
+    keybind = ctrl+six=unbind
+    keybind = ctrl+seven=unbind
+    keybind = ctrl+eight=unbind
+    keybind = ctrl+nine=unbind
   '';
 
   sharedHomeConfig = {
