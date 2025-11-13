@@ -7,6 +7,7 @@
     ../system/sops.nix
     ../user/path-order.nix
     ../user/shell.nix
+    ../user/zellij.nix
     ../system/fonts.nix
   ];
 }

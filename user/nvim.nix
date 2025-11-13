@@ -143,6 +143,8 @@
 
       plugins = {
         tmux-navigator.enable = true;
+        # zellij-nav for seamless nvim+zellij navigation (alternative to tmux-navigator)
+        # tmux-navigator also works with zellij via MoveFocusOrTab
         oil.enable = true;
         oil.settings = { default_file_explorer = true; delete_to_trash = true; skip_confirm_for_simple_edits = true; view_options.show_hidden = true; };
 
