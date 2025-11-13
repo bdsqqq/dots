@@ -109,6 +109,9 @@
         { mode = "n"; key = "<C-j>"; action = "<cmd>TmuxNavigateDown<CR>";  options.desc = "move pane focus down"; }
         { mode = "n"; key = "<C-k>"; action = "<cmd>TmuxNavigateUp<CR>";    options.desc = "move pane focus up"; }
         { mode = "n"; key = "<C-\\>"; action = "<cmd>TmuxNavigatePrevious<CR>"; options.desc = "move pane focus previous"; }
+        # ctrl+/ sends 0x1F (ctrl+_) in terminals — legacy encoding quirk
+        { mode = "n"; key = "<C-_>"; action = "gcc"; options.desc = "toggle comment"; options.remap = true; }
+        { mode = "v"; key = "<C-_>"; action = "gcgv"; options.desc = "toggle comment"; options.remap = true; }
         { mode = ""; key = "<leader>f"; action.__raw = ''function() require('conform').format { async = true, lsp_fallback = true } end''; options.desc = "[f]ormat buffer"; }
         { mode = "n"; key = "<leader>/"; action.__raw = ''function() require('telescope.builtin').current_buffer_fuzzy_find(require('telescope.themes').get_dropdown { winblend = 10, previewer = false }) end''; options.desc = "[/] fuzzily search in current buffer"; }
         { mode = "n"; key = "<leader>s/"; action.__raw = ''function() require('telescope.builtin').live_grep { grep_open_files = true, prompt_title = 'Live Grep in Open Files' } end''; options.desc = "[s]earch [/] in open files"; }
