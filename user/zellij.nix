@@ -37,8 +37,8 @@ let
             mode_prompt        ""
             mode_tmux          ""
 
-            tab_normal              "#[fg=#6b7280][{index} {name}]#[default] "
-            tab_active              "#[fg=#d1d5db,bold][{index} {name}]#[default] "
+            tab_normal              "#[fg=#6b7280][{name}]#[default] "
+            tab_active              "#[fg=#d1d5db,bold][{name}]#[default] "
             tab_separator           ""
           }
         }
