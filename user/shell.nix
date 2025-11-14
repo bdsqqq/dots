@@ -221,6 +221,38 @@ in
 
           PROMPT='%{$fg_bold[white]%}⁂ %c%{$reset_color%}$(git_branch)
    %{$fg[white]%}└ %{$reset_color%}'
+
+          # zellij automatic tab renaming
+          if [[ -n $ZELLIJ ]]; then
+            function current_dir() {
+              local current_dir=$PWD
+              if [[ $current_dir == $HOME ]]; then
+                current_dir="~"
+              else
+                current_dir=''${current_dir##*/}
+              fi
+              echo $current_dir
+            }
+
+            function change_tab_title() {
+              local title=$1
+              command nohup zellij action rename-tab $title >/dev/null 2>&1
+            }
+
+            function set_tab_to_working_dir() {
+              local title=$(current_dir)
+              change_tab_title $title
+            }
+
+            function set_tab_to_command_line() {
+              local cmdline=$1
+              change_tab_title $cmdline
+            }
+
+            autoload -Uz add-zsh-hook
+            add-zsh-hook precmd set_tab_to_working_dir
+            add-zsh-hook preexec set_tab_to_command_line
+          fi
         '';
         shellAliases = {
           l = "ls -lah";
