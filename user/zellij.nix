@@ -75,9 +75,6 @@
             
             // enter leader mode (tmux prefix equivalent: ctrl+space)
             bind "Ctrl Space" { SwitchToMode "tmux"; }
-            
-            // escape
-            bind "Esc" { SwitchToMode "Normal"; }
           }
           
           // tmux prefix mode (ctrl+space then command)
@@ -118,12 +115,6 @@
             
             // kill server equivalent
             bind "q" { Quit; }
-            
-            // reload config (tmux prefix+r)
-            bind "r" { 
-              WriteChars "\u{001b}:source ~/.config/zellij/config.kdl\n";
-              SwitchToMode "Normal";
-            }
             
             // split panes (bonus features)
             bind "|" { NewPane "Right"; SwitchToMode "Normal"; }
