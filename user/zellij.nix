@@ -1,14 +1,53 @@
 { lib, hostSystem ? null, ... }:
-{
-  home-manager.users.bdsqqq = { pkgs, ... }: {
-    programs.zellij = {
-      enable = true;
-      enableZshIntegration = true;
-    };
+let
+  isDarwin = lib.hasInfix "darwin" hostSystem;
+  isLinux = lib.hasInfix "linux" hostSystem;
+  
+  copyCommand = if isDarwin then "pbcopy" else "wl-copy";
+  
+  zellijLayoutConfig = ''
+    layout {
+      default_tab_template {
+        pane size=1 borderless=true {
+          plugin location="https://github.com/dj95/zjstatus/releases/download/v0.21.0/zjstatus.wasm" {
+            format_left   ""
+            format_right  "{tabs}"
+            format_space  ""
+            format_precedence "lrc"
+            
+            border_enabled  "false"
+            border_char     "─"
+            border_format   "#[fg=#6C7086]{char}"
+            border_position "top"
 
-    home.file.".config/zellij/config.kdl" = {
-      force = true;
-      text = ''
+            hide_frame_for_single_pane "false"
+
+            mode_normal        ""
+            mode_locked        ""
+            mode_resize        ""
+            mode_pane          ""
+            mode_tab           ""
+            mode_scroll        ""
+            mode_enter_search  ""
+            mode_search        ""
+            mode_rename_tab    ""
+            mode_rename_pane   ""
+            mode_session       ""
+            mode_move          ""
+            mode_prompt        ""
+            mode_tmux          ""
+
+            tab_normal              "#[fg=#6b7280][{index} {name}]#[default] "
+            tab_active              "#[fg=#d1d5db,bold][{index} {name}]#[default] "
+            tab_separator           ""
+          }
+        }
+        children
+      }
+    }
+  '';
+  
+  zellijConfig = ''
         // zellij config matching tmux setup
         
         // theme
@@ -32,13 +71,13 @@
         // ui
         simplified_ui true
         pane_frames false
-        default_layout "compact"
+        default_layout "minimal"
         
         // mouse
         mouse_mode true
         
         // copy mode (vim-like)
-        copy_command "pbcopy"  // macos clipboard
+        copy_command "${copyCommand}"
         
         keybinds clear-defaults=true {
           // leader key mode (like tmux prefix)
@@ -131,6 +170,22 @@
           }
         }
       '';
+in
+{
+  home-manager.users.bdsqqq = { pkgs, ... }: {
+    programs.zellij = {
+      enable = true;
+      enableZshIntegration = true;
+    };
+
+    home.file.".config/zellij/config.kdl" = {
+      force = true;
+      text = zellijConfig;
+    };
+    
+    home.file.".config/zellij/layouts/minimal.kdl" = {
+      force = true;
+      text = zellijLayoutConfig;
     };
   };
 }
