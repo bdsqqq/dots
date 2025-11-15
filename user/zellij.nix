@@ -177,7 +177,7 @@ in
   home-manager.users.bdsqqq = { pkgs, ... }: {
     programs.zellij = {
       enable = true;
-      enableZshIntegration = true;
+      enableZshIntegration = false;
     };
 
     home.file.".config/zellij/config.kdl" = {
