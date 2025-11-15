@@ -10,7 +10,7 @@ let
       default_tab_template {
         pane size=1 borderless=true {
           plugin location="https://github.com/dj95/zjstatus/releases/download/v0.21.0/zjstatus.wasm" {
-            format_left   ""
+            format_left   "{pipe_nvim_status}"
             format_right  "{tabs}"
             format_space  ""
             format_precedence "lrc"
@@ -40,6 +40,8 @@ let
             tab_normal              "#[fg=#6b7280][{name}]#[default] "
             tab_active              "#[fg=#d1d5db,bold][{name}]#[default] "
             tab_separator           ""
+
+            pipe_nvim_status_format "#[fg=#d1d5db]{output}"
           }
         }
         children

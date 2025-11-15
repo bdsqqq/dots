@@ -86,14 +86,14 @@
           return string.format("%s%s%s", branch, file, dirty)
         end
 
-        vim.o.laststatus = 3
-        vim.o.statusline = "%{%v:lua.Statusline()%}"
+        -- statusline sent to zellij, not shown in nvim
+        vim.o.laststatus = 0
       '';
 
       globals = { mapleader = " "; maplocalleader = " "; have_nerd_font = true; };
       clipboard = { providers = { wl-copy.enable = true; xsel.enable = true; }; register = "unnamedplus"; };
       opts = {
-        number = true; mouse = "a"; showmode = false; laststatus = 3; ruler = false; cmdheight = 0; statusline = "%{%v:lua.Statusline()%}";
+        number = true; mouse = "a"; showmode = false; laststatus = 0; ruler = false; cmdheight = 0;
         breakindent = true; undofile = true; ignorecase = true; smartcase = true; signcolumn = "yes"; updatetime = 250;
         timeoutlen = 300; splitright = true; splitbelow = true; list = true; listchars.__raw = "{ tab = '» ', trail = '·', nbsp = '␣',   }";
         inccommand = "split"; cursorline = false; scrolloff = 10; confirm = true; hlsearch = true;
@@ -129,8 +129,23 @@
         { mode = "n"; key = "h"; action.__raw = ''function() if vim.fn.col('.') == 1 then vim.cmd('normal! za') else vim.cmd('normal! h') end end''; options.desc = "toggle fold at first column, otherwise move left"; }
       ];
 
-      autoGroups = { kickstart-highlight-yank.clear = true; kickstart-lsp-attach.clear = true; };
-      autoCmd = [{ event = [ "TextYankPost" ]; desc = "highlight when yanking (copying) text"; group = "kickstart-highlight-yank"; callback.__raw = ''function() vim.highlight.on_yank() end''; }];
+      autoGroups = { kickstart-highlight-yank.clear = true; kickstart-lsp-attach.clear = true; zellij-statusline.clear = true; };
+      autoCmd = [
+        { event = [ "TextYankPost" ]; desc = "highlight when yanking (copying) text"; group = "kickstart-highlight-yank"; callback.__raw = ''function() vim.highlight.on_yank() end''; }
+        { 
+          event = [ "BufEnter" "BufWritePost" "TextChanged" "TextChangedI" ]; 
+          desc = "send statusline to zellij"; 
+          group = "zellij-statusline"; 
+          callback.__raw = ''
+            function()
+              if vim.env.ZELLIJ then
+                local status = Statusline()
+                vim.fn.system("zellij pipe 'zjstatus::pipe::pipe_nvim_status::" .. status .. "'")
+              end
+            end
+          ''; 
+        }
+      ];
 
       diagnostic.settings = {
         severity_sort = true; float = { border = "rounded"; source = "if_many"; };
