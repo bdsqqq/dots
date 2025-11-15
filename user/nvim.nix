@@ -145,6 +145,18 @@
             end
           ''; 
         }
+        {
+          event = [ "VimLeavePre" ];
+          desc = "clear zellij statusline on nvim exit";
+          group = "zellij-statusline";
+          callback.__raw = ''
+            function()
+              if vim.env.ZELLIJ then
+                vim.fn.system("zellij pipe 'zjstatus::pipe::pipe_nvim_status::'")
+              end
+            end
+          '';
+        }
       ];
 
       diagnostic.settings = {
