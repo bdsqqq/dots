@@ -245,8 +245,10 @@ in
             }
 
             function set_tab_to_command_line() {
-              local cmdline=$1
-              change_tab_title $cmdline
+              setopt localoptions extended_glob
+              local cmd=''${1[(wr)^(*=*|sudo|ssh|mosh|-*)]:t}
+              [[ -z "$cmd" ]] && return
+              change_tab_title $cmd
             }
 
             autoload -Uz add-zsh-hook
