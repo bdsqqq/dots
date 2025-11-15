@@ -178,15 +178,24 @@ in
             export PATH="$BUN_INSTALL/bin:$PATH"
           fi
 
-          # sdkman (if installed)
+          # sdkman (lazy-load on first use)
           if [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]]; then
             export SDKMAN_DIR="$HOME/.sdkman"
-            source "$HOME/.sdkman/bin/sdkman-init.sh"
+            sdk() {
+              unfunction sdk
+              source "$HOME/.sdkman/bin/sdkman-init.sh"
+              sdk "$@"
+            }
           fi
 
           # fnm
           if command -v fnm >/dev/null 2>&1; then
             eval "$(fnm env --use-on-cd --shell zsh)"
+          fi
+
+          # zellij auto-attach (avoid multiple sessions)
+          if [[ -z "$ZELLIJ" ]] && command -v zellij >/dev/null 2>&1; then
+            exec zellij attach -c main
           fi
 
           autoload -Uz compinit
@@ -206,20 +215,43 @@ in
           export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
           export FZF_DEFAULT_OPTS='--height=40% --layout=reverse --border'
 
-          # prompt (minimal)
+          # prompt (minimal with async git)
           autoload -U colors && colors
           setopt PROMPT_SUBST
 
-          git_branch() {
-            local b dirty=""
-            b=$(git symbolic-ref --short HEAD 2>/dev/null) || b=$(git rev-parse --short HEAD 2>/dev/null) || return
-            if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
-              dirty="$fg[white]*%f"
-            fi
-            print -r -- "[$b]$dirty"
+          typeset -g _git_prompt_info=""
+          typeset -g _git_prompt_fd=0
+
+          _git_prompt_done() {
+            local fd=$1
+            _git_prompt_info="$(<&$fd)"
+            zle -F $fd
+            exec {fd}>&-
+            _git_prompt_fd=0
+            zle && zle reset-prompt
           }
 
-          PROMPT='%{$fg_bold[white]%}⁂ %c%{$reset_color%}$(git_branch)
+          _async_git_prompt() {
+            # close previous fd if still open
+            (( _git_prompt_fd )) && { zle -F $_git_prompt_fd; exec {_git_prompt_fd}>&-; }
+            
+            # start async job, open fd to read output
+            exec {_git_prompt_fd}< <(
+              local b dirty=""
+              b=$(git symbolic-ref --short HEAD 2>/dev/null) || b=$(git rev-parse --short HEAD 2>/dev/null) || exit 0
+              if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+                dirty="*"
+              fi
+              print -r -- "[$b]$dirty"
+            )
+            
+            # register callback for when data is ready
+            zle -F $_git_prompt_fd _git_prompt_done
+          }
+
+          precmd_functions+=(_async_git_prompt)
+
+          PROMPT='%{$fg_bold[white]%}⁂ %c%{$reset_color%}$_git_prompt_info
    %{$fg[white]%}└ %{$reset_color%}'
 
           # zellij automatic tab renaming
