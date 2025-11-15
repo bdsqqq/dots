@@ -288,12 +288,12 @@
           { mode = "n"; key = "<leader>li"; action.__raw = ''function() local ok, t = pcall(require, 'telescope.builtin'); if ok then t.lsp_implementations() else vim.lsp.buf.implementation() end end''; options.desc = "lsp: goto [i]mplementation"; }
           { mode = "n"; key = "<leader>lt"; action.__raw = ''function() local ok, t = pcall(require, 'telescope.builtin'); if ok then t.lsp_type_definitions() else vim.lsp.buf.type_definition() end end''; options.desc = "lsp: goto [t]ype definition"; }
           { mode = "n"; key = "<leader>ls"; action.__raw = ''function() local ok, t = pcall(require, 'telescope.builtin'); if ok then t.lsp_dynamic_workspace_symbols() else vim.lsp.buf.workspace_symbol() end end''; options.desc = "lsp: workspace [s]ymbols"; }
+          { mode = "n"; key = "<leader>lq"; action.__raw = "vim.diagnostic.setloclist"; options.desc = "lsp: diagnostic [q]uickfix list"; }
         ];
         lsp.keymaps.lspBuf = {
           "<leader>ln" = { mode = "n"; action = "rename"; desc = "lsp: re[n]ame symbol"; };
           "<leader>la" = { mode = [ "n" "x" ]; action = "code_action"; desc = "lsp: code [a]ctions"; };
           "<leader>lD" = { mode = "n"; action = "declaration"; desc = "lsp: goto [D]eclaration"; };
-          "<leader>lq" = { mode = "n"; action = "setloclist"; desc = "lsp: diagnostic [q]uickfix list"; };
           "<leader>lh" = { mode = "n"; action = "hover"; desc = "lsp: [h]over documentation"; };
           "K" = { mode = "n"; action = "hover"; desc = "hover documentation"; };
         };
