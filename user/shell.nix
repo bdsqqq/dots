@@ -193,9 +193,9 @@ in
             eval "$(fnm env --use-on-cd --shell zsh)"
           fi
 
-          # zellij auto-attach (avoid multiple sessions)
+          # zellij auto-attach (attach to existing or create new)
           if [[ -z "$ZELLIJ" ]] && command -v zellij >/dev/null 2>&1; then
-            exec zellij attach -c main
+            zellij attach -c
           fi
 
           autoload -Uz compinit
