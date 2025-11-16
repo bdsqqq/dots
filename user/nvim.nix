@@ -1,10 +1,21 @@
 { lib, config, pkgs, inputs, ... }:
+let
+  ts-error-translator = pkgs.vimUtils.buildVimPlugin {
+    name = "ts-error-translator";
+    src = pkgs.fetchFromGitHub {
+      owner = "dmmulroy";
+      repo = "ts-error-translator.nvim";
+      rev = "17ec46d9827e39ee5fab23ad6346ac7ab0fff9e4";
+      hash = "sha256-jPV2DFq3rSEWzUEXqQyGRGQEmYBJPxjAoiawvwVR6LM=";
+    };
+  };
+in
 {
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
     imports = [ inputs.nixvim.homeManagerModules.nixvim ];
     programs.nixvim = {
       enable = true;
-      extraPlugins = [ ];
+      extraPlugins = [ ts-error-translator ];
       extraConfigLuaPre = ''
         -- use default colorscheme (vesper completely removed)
         vim.cmd.colorscheme('default')
@@ -88,6 +99,12 @@
 
         -- statusline sent to zellij, not shown in nvim
         vim.o.laststatus = 0
+
+        -- ts-error-translator setup
+        require("ts-error-translator").setup({
+          auto_attach = true,
+          servers = { "ts_ls" },
+        })
       '';
 
       globals = { mapleader = " "; maplocalleader = " "; have_nerd_font = true; };
