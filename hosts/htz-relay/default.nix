@@ -39,7 +39,7 @@ in {
     enable = true;
     useRoutingFeatures = "client";
     extraUpFlags = [ "--ssh" "--accept-dns=false" ];
-    authKeyFile = config.sops.secrets.tailscale_auth_key.path;
+    authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key) config.sops.secrets.tailscale_auth_key.path;
   };
 
   # syncthing provided by headless bundle; declarative mesh settings live here
