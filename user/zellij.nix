@@ -76,7 +76,7 @@ let
         default_layout "minimal"
         
         // mouse
-        mouse_mode true
+        mouse_mode false
         
         // copy mode (vim-like)
         copy_command "${copyCommand}"
