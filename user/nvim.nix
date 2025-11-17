@@ -1,4 +1,34 @@
 { lib, config, pkgs, inputs, ... }:
+/*
+## nixvim plugin loading order
+
+plugins in extraPlugins are added to neovim's runtimepath before any lua config runs.
+they're available in all three config sections:
+
+- **extraConfigLuaPre**: vim options, highlights, diagnostics. runs first.
+- **extraConfigLua**: plugin setup() calls. standard location.
+- **extraConfigLuaPost**: autocommands, post-setup config. runs last.
+
+use extraConfigLua for setup() calls, not extraConfigLuaPre.
+
+## adding plugins not in nixpkgs
+
+```nix
+extraPlugins = [(pkgs.vimUtils.buildVimPlugin {
+  name = "plugin-name";
+  src = pkgs.fetchFromGitHub {
+    owner = "user";
+    repo = "repo.nvim";
+    rev = "commit-hash";
+    hash = "sha256-...";  # use fake hash, build will show correct one
+  };
+})];
+
+extraConfigLua = ''
+  require('plugin-name').setup({})
+'';
+```
+*/
 let
   ts-error-translator = pkgs.vimUtils.buildVimPlugin {
     name = "ts-error-translator";
@@ -99,7 +129,9 @@ in
 
         -- statusline sent to zellij, not shown in nvim
         vim.o.laststatus = 0
-
+      '';
+      
+      extraConfigLua = ''
         -- ts-error-translator setup
         require("ts-error-translator").setup({
           auto_attach = true,
