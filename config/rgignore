@@ -1,0 +1,123 @@
+# version control systems
+**/.git/
+**/.github/
+**/.svn/
+**/.hg/
+**/.gitmodules
+
+# package managers and dependencies
+**/node_modules/
+**/.pnpm/
+**/.pnpm-store/
+**/.yarn/
+**/.npm/
+**/bun/
+**/.bun/
+**/go/pkg/
+**/go/bin/
+**/.cargo/
+**/target/
+**/.stack/
+**/.gradle/
+
+# build outputs and caches
+**/dist/
+**/build/
+**/out/
+**/coverage/
+**/.next/
+**/.nuxt/
+**/.astro/
+**/.vite/
+**/.parcel-cache/
+**/.cache/
+**/cache/
+**/.turbo/
+**/.vercel/
+**/.netlify/
+**/.million/
+**/generated/
+
+# development tools and editors
+**/.vscode/
+**/.idea/
+**/.changeset/
+**/.storybook/
+**/.svelte-kit/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.tox/
+**/.venv/
+**/.direnv/
+**/.expo/
+**/.angular/
+
+# os-specific files
+**/.DS_Store
+**/Thumbs.db
+**/desktop.ini
+**/.Spotlight-V100/
+**/.Trashes/
+**/.fseventsd/
+
+# temporary and log files
+**/tmp/
+**/temp/
+**/*.tmp
+**/*.temp
+**/*.log
+*.log
+**/*.swp
+**/*.swo
+**/*~
+
+# build artifacts and binaries
+**/*.o
+**/*.obj
+**/*.exe
+**/*.dll
+**/*.so
+**/*.dylib
+**/*.a
+**/*.woff
+**/*.woff2
+**/*.otf
+**/*.ttf
+**/*.eot
+
+# minified files and source maps
+**/*.min.js
+**/*.min.css
+**/*.map
+
+# lock files
+**/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+**/Cargo.lock
+**/go.sum
+**/*.lock
+
+# binary/media files (performance)
+**/*.vst
+**/*.vst3
+**/*.component
+**/*.mcmeta
+
+# syncthing and backup files
+**/.stfolder/
+**/.stversions/
+**/.stignore
+**/rclone_*.log
+**/rclone_*.txt
+
+# obsidian vault internals
+**/.obsidian/
+
+# nix build artifacts
+**/result/
+**/result-*
+
+# project-specific patterns (from commonplace setup)
+pack-toolbox/temp/
+*/assets/minecraft/textures/
