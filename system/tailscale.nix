@@ -2,13 +2,13 @@
 let
   isLinux = hostSystem != null && lib.hasInfix "linux" hostSystem;
 in
-{
-  # enable tailscale on all platforms
+if isLinux then {
+  services.tailscale = {
+    enable = true;
+    extraUpFlags = lib.mkDefault [ "--ssh" ];
+  };
+} else {
   services.tailscale.enable = true;
 }
-// (if isLinux then {
-  # linux-only: default to enabling tailscale ssh
-  services.tailscale.extraUpFlags = lib.mkDefault [ "--ssh" ];
-} else {})
 
 
