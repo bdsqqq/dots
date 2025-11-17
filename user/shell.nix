@@ -89,16 +89,13 @@
           PROMPT='%{$fg_bold[white]%}⁂ %c%{$reset_color%}$_git_prompt_info
    %{$fg[white]%}└ %{$reset_color%}'
         '';
-        shellAliases = {
-          l = "ls -lah";
-          ll = "ls -l";
-          c = "clear";
-          g = "lazygit";
-          b = "btop";
-          v = "nvim";
-          f = "fastfetch";
-        };
       };
+    };
+
+    home.shellAliases = {
+      l = "ls -lah";
+      ll = "ls -l";
+      c = "clear";
     };
   };
 }

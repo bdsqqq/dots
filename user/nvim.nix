@@ -387,6 +387,8 @@ in
         treesitter.settings.indent.enable = true; treesitter.settings.indent.disable = [ "ruby" ];
       };
     };
+
+    home.shellAliases.v = "nvim";
   };
 }
 

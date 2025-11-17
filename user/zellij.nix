@@ -177,7 +177,10 @@ in
   home-manager.users.bdsqqq = { pkgs, ... }: {
     programs.zellij = {
       enable = true;
+      # disable auto shell integration for all shells - using manual alias + tab renaming
+      enableBashIntegration = false;
       enableZshIntegration = false;
+      enableFishIntegration = false;
     };
 
     home.file.".config/zellij/config.kdl" = {
@@ -190,10 +193,9 @@ in
       text = zellijLayoutConfig;
     };
 
-    programs.zsh = {
-      shellAliases.zj = "zellij attach $(basename $PWD | tr . _) -c";
-      
-      initExtra = ''
+    home.shellAliases.zj = "zellij attach $(basename $PWD | tr . _) -c";
+
+    programs.zsh.initExtra = ''
         # zellij automatic tab renaming
         if [[ -n $ZELLIJ ]]; then
           function current_dir() {
@@ -228,6 +230,5 @@ in
           add-zsh-hook preexec set_tab_to_command_line
         fi
       '';
-    };
   };
 }
