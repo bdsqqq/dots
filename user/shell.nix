@@ -193,11 +193,6 @@ in
             eval "$(fnm env --use-on-cd --shell zsh)"
           fi
 
-          # zellij auto-attach (attach to existing or create new)
-          if [[ -z "$ZELLIJ" ]] && command -v zellij >/dev/null 2>&1; then
-            zellij attach -c
-          fi
-
           autoload -Uz compinit
           () {
             if [[ $# -gt 0 ]]; then
@@ -297,6 +292,7 @@ in
           b = "btop";
           v = "nvim";
           f = "fastfetch";
+          zj = "zellij attach $(basename $PWD | tr . _) -c";
         };
       };
 
