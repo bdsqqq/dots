@@ -1,5 +1,5 @@
 keys:
-  - &user_bdsqqq age1wzdqusx4v0wpn7lgda4x4tw3qkd4jlcyy89pxrh4g679m0ajadtsh49e6t
+  - &user_bdsqqq age1j2lyxxhxj0g2fw05h8c856fjxy2f0salxlk78pwglpv2nxjm3ptsgxcce4
 creation_rules:
   - path_regex: secrets\.yaml$
     key_groups:
