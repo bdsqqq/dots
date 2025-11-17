@@ -153,7 +153,7 @@
         nixosConfigurations = {
           "r56" = inputs.nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
-            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "graphical"; };
+            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "headless"; };
             modules = [
               inputs.sops-nix.nixosModules.sops
               stylix.nixosModules.stylix
