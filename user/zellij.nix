@@ -173,11 +173,17 @@ let
         }
       '';
 in
+/*
+## zellij shell integration disabled
+
+zellij's auto-start runs `zellij attach -c` without session name.
+can't customize to use directory-based naming like our alias.
+manual alias + tab renaming gives better control over sessions.
+*/
 {
   home-manager.users.bdsqqq = { pkgs, ... }: {
     programs.zellij = {
       enable = true;
-      # disable auto shell integration for all shells - using manual alias + tab renaming
       enableBashIntegration = false;
       enableZshIntegration = false;
       enableFishIntegration = false;
