@@ -62,6 +62,12 @@ in
 ] ++ lib.optionals (!isDarwin) [
     nvtopPackages.nvidia
 ];
+
+    home.shellAliases = {
+      g = "lazygit";
+      b = "btop";
+      f = "fastfetch";
+    };
   };
 }
 

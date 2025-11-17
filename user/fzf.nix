@@ -9,7 +9,6 @@
 
     programs.fzf = {
       enable = true;
-      enableZshIntegration = true;
       defaultCommand = "rg --files --hidden --follow";
       defaultOptions = [
         "--height=40%"
