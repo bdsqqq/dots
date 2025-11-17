@@ -1,13 +1,8 @@
-{ lib, hostSystem ? null, config, ... }:
-let
-  isDarwin = lib.hasInfix "darwin" hostSystem;
-  # homebrew prefix varies by architecture
-  brewPrefix = if isDarwin then config.homebrew.brewPrefix or "/opt/homebrew" else "";
-in
+{ lib, config, ... }:
 {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
     xdg.enable = true;
-    xdg.userDirs = if isDarwin then {} else {
+    xdg.userDirs = if pkgs.stdenv.isDarwin then {} else {
       enable = true;
       createDirectories = true;
       download = "${config.home.homeDirectory}/commonplace/00_inbox";
@@ -36,163 +31,13 @@ in
       ".config/amp/AGENTS.md".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/AGENTS.md";
       ".claude/CLAUDE.md".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/AGENTS.md";
 
-      ".rgignore".text = ''
-        # version control systems
-        **/.git/
-        **/.github/
-        **/.svn/
-        **/.hg/
-        **/.gitmodules
-
-        # package managers and dependencies
-        **/node_modules/
-        **/.pnpm/
-        **/.pnpm-store/
-        **/.yarn/
-        **/.npm/
-        **/bun/
-        **/.bun/
-        **/go/pkg/
-        **/go/bin/
-        **/.cargo/
-        **/target/
-        **/.stack/
-        **/.gradle/
-
-        # build outputs and caches
-        **/dist/
-        **/build/
-        **/out/
-        **/coverage/
-        **/.next/
-        **/.nuxt/
-        **/.astro/
-        **/.vite/
-        **/.parcel-cache/
-        **/.cache/
-        **/cache/
-        **/.turbo/
-        **/.vercel/
-        **/.netlify/
-        **/.million/
-        **/generated/
-
-        # development tools and editors
-        **/.vscode/
-        **/.idea/
-        **/.changeset/
-        **/.storybook/
-        **/.svelte-kit/
-        **/.pytest_cache/
-        **/.mypy_cache/
-        **/.tox/
-        **/.venv/
-        **/.direnv/
-        **/.expo/
-        **/.angular/
-
-        # os-specific files
-        **/.DS_Store
-        **/Thumbs.db
-        **/desktop.ini
-        **/.Spotlight-V100/
-        **/.Trashes/
-        **/.fseventsd/
-
-        # temporary and log files
-        **/tmp/
-        **/temp/
-        **/*.tmp
-        **/*.temp
-        **/*.log
-        *.log
-        **/*.swp
-        **/*.swo
-        **/*~
-
-        # build artifacts and binaries
-        **/*.o
-        **/*.obj
-        **/*.exe
-        **/*.dll
-        **/*.so
-        **/*.dylib
-        **/*.a
-        **/*.woff
-        **/*.woff2
-        **/*.otf
-        **/*.ttf
-        **/*.eot
-
-        # minified files and source maps
-        **/*.min.js
-        **/*.min.css
-        **/*.map
-
-        # lock files
-        **/package-lock.json
-        **/yarn.lock
-        **/pnpm-lock.yaml
-        **/Cargo.lock
-        **/go.sum
-        **/*.lock
-
-        # binary/media files (performance)
-        **/*.vst
-        **/*.vst3
-        **/*.component
-        **/*.mcmeta
-
-        # syncthing and backup files
-        **/.stfolder/
-        **/.stversions/
-        **/.stignore
-        **/rclone_*.log
-        **/rclone_*.txt
-
-        # obsidian vault internals
-        **/.obsidian/
-
-        # nix build artifacts
-        **/result/
-        **/result-*
-
-        # project-specific patterns (from commonplace setup)
-        pack-toolbox/temp/
-        */assets/minecraft/textures/
-      '';
+      ".rgignore".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/rgignore";
     };
 
     programs = {
       zsh = {
         enable = true;
         initContent = ''
-          # homebrew shellenv (darwin only)
-          if [[ "$(uname)" == "Darwin" ]]; then
-            eval "$(${brewPrefix}/brew shellenv)"
-          fi
-
-          # bun (if installed)
-          if command -v bun >/dev/null 2>&1; then
-            export BUN_INSTALL="$HOME/.bun"
-            export PATH="$BUN_INSTALL/bin:$PATH"
-          fi
-
-          # sdkman (lazy-load on first use)
-          if [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]]; then
-            export SDKMAN_DIR="$HOME/.sdkman"
-            sdk() {
-              unfunction sdk
-              source "$HOME/.sdkman/bin/sdkman-init.sh"
-              sdk "$@"
-            }
-          fi
-
-          # fnm
-          if command -v fnm >/dev/null 2>&1; then
-            eval "$(fnm env --use-on-cd --shell zsh)"
-          fi
-
           autoload -Uz compinit
           () {
             if [[ $# -gt 0 ]]; then
@@ -204,11 +49,6 @@ in
 
           # show hidden files in globbing
           setopt GLOB_DOTS
-
-          # fzf defaults
-          export FZF_DEFAULT_COMMAND='rg --files --hidden --follow'
-          export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
-          export FZF_DEFAULT_OPTS='--height=40% --layout=reverse --border'
 
           # prompt (minimal with async git)
           autoload -U colors && colors
@@ -248,62 +88,16 @@ in
 
           PROMPT='%{$fg_bold[white]%}⁂ %c%{$reset_color%}$_git_prompt_info
    %{$fg[white]%}└ %{$reset_color%}'
-
-          # zellij automatic tab renaming
-          if [[ -n $ZELLIJ ]]; then
-            function current_dir() {
-              local current_dir=$PWD
-              if [[ $current_dir == $HOME ]]; then
-                current_dir="~"
-              else
-                current_dir=''${current_dir##*/}
-              fi
-              echo $current_dir
-            }
-
-            function change_tab_title() {
-              local title=$1
-              command nohup zellij action rename-tab $title >/dev/null 2>&1
-            }
-
-            function set_tab_to_working_dir() {
-              local title=$(current_dir)
-              change_tab_title $title
-            }
-
-            function set_tab_to_command_line() {
-              setopt localoptions extended_glob
-              local cmd=''${1[(wr)^(*=*|sudo|ssh|mosh|-*)]:t}
-              [[ -z "$cmd" ]] && return
-              change_tab_title $cmd
-            }
-
-            autoload -Uz add-zsh-hook
-            add-zsh-hook precmd set_tab_to_working_dir
-            add-zsh-hook preexec set_tab_to_command_line
-          fi
         '';
         shellAliases = {
           l = "ls -lah";
           ll = "ls -l";
-          cd = "z";
           c = "clear";
           g = "lazygit";
           b = "btop";
           v = "nvim";
           f = "fastfetch";
-          zj = "zellij attach $(basename $PWD | tr . _) -c";
         };
-      };
-
-      fzf = {
-        enable = true;
-        enableZshIntegration = true;
-      };
-
-      zoxide = {
-        enable = true;
-        enableZshIntegration = true;
       };
     };
   };
