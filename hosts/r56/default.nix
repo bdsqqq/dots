@@ -1,8 +1,5 @@
 { pkgs, inputs, lib, config, modulesPath, ... }:
 
-let
-  mbpPubKey = lib.removeSuffix "\n" (builtins.readFile ../../config/ssh-keys/mbp-m2.pub);
-in
 {
   imports = [
     ./hardware.nix
@@ -28,7 +25,6 @@ in
     isNormalUser = true;
     extraGroups = [ "wheel" "networkmanager" "audio" "video" "input" ];
     shell = pkgs.zsh;
-    openssh.authorizedKeys.keys = [ mbpPubKey ];
   };
 
   # Enable zsh
