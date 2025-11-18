@@ -51,7 +51,6 @@
   system.stateVersion = 6;
 
   # darwin baselines
-  nix.settings.experimental-features = "nix-command flakes";
   nixpkgs = {
     hostPlatform = "aarch64-darwin";
     config.allowUnfree = true;
