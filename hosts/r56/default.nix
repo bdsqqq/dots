@@ -8,6 +8,7 @@
     ../../bundles/dev.nix
     ../../system/nvidia.nix
     ../../system/bluetooth.nix
+    ../../system/fan-control.nix
   ];
 
   networking.hostName = "r56";
