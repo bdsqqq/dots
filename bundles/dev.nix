@@ -5,7 +5,7 @@ in
 {
   imports =
     [
-      ../user/nvim.nix
+      ../user/nvim
       ../user/pnpm.nix
       ../user/dev-tools.nix
       ../user/zellij.nix
