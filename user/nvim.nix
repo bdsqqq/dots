@@ -206,6 +206,18 @@ in
             end
           '';
         }
+        {
+          event = [ "FocusLost" ];
+          desc = "clear zellij statusline when nvim loses focus";
+          group = "zellij-statusline";
+          callback.__raw = ''
+            function()
+              if vim.env.ZELLIJ then
+                vim.fn.system("zellij pipe 'zjstatus::pipe::pipe_nvim_status::'")
+              end
+            end
+          '';
+        }
       ];
 
       diagnostic.settings = {
