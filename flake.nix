@@ -176,6 +176,9 @@
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.home-manager.nixosModules.home-manager
               inputs.copyparty.nixosModules.default
+              ({ pkgs, ... }: {
+                nixpkgs.overlays = [ inputs.copyparty.overlays.default ];
+              })
               ./hosts/htz-relay/default.nix
             ];
           };
