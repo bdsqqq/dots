@@ -1,7 +1,9 @@
 keys:
   - &user_bdsqqq age1j2lyxxhxj0g2fw05h8c856fjxy2f0salxlk78pwglpv2nxjm3ptsgxcce4
+  - &host_htz_relay age14vhzajp8xemrjzqh9gzf6rpy0sckf3sa4vfdf5u60xgrktnfxc0sx85uj6
 creation_rules:
   - path_regex: secrets\.yaml$
     key_groups:
       - age:
           - *user_bdsqqq
+          - *host_htz_relay
