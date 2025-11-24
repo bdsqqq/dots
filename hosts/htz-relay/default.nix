@@ -172,20 +172,34 @@ in {
   services.qemuGuest.enable = true;
 
   # Observability: Ship journal logs to Axiom via Vector
-  services.vector = {
-    enable = true;
-    journaldAccess = true;
-    validateConfig = false; # We use runtime secrets (env vars) so build-time validation fails
-    settings = {
-      sources.journal_logs = {
-        type = "journald";
-      };
-      sinks.axiom = {
-        type = "axiom";
-        inputs = [ "journal_logs" ];
-        token = "\${AXIOM_TOKEN}";
-        dataset = "papertrail";
-      };
+  # Note: We define this manually to bypass build-time validation which fails on secret env vars
+  environment.systemPackages = [ pkgs.vector ];
+
+  environment.etc."vector/vector.toml".source = (pkgs.formats.toml {}).generate "vector.toml" {
+    sources.journal_logs = {
+      type = "journald";
+    };
+    sinks.axiom = {
+      type = "axiom";
+      inputs = [ "journal_logs" ];
+      token = "\${AXIOM_TOKEN}";
+      dataset = "papertrail";
+    };
+  };
+
+  systemd.services.vector = {
+    description = "Vector Event Router";
+    documentation = [ "https://vector.dev" ];
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-online.target" ];
+    requires = [ "network-online.target" ];
+    
+    serviceConfig = {
+      ExecStart = "${pkgs.vector}/bin/vector --config /etc/vector/vector.toml";
+      EnvironmentFile = [ config.sops.templates."vector.env".path ];
+      DynamicUser = true;
+      StateDirectory = "vector";
+      SupplementaryGroups = [ "systemd-journal" ]; # Required for reading journal
     };
   };
 
@@ -195,8 +209,6 @@ in {
   sops.templates."vector.env".content = ''
     AXIOM_TOKEN=${config.sops.placeholder.axiom_token}
   '';
-
-  systemd.services.vector.serviceConfig.EnvironmentFile = [ config.sops.templates."vector.env".path ];
 
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
