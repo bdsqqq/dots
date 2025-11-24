@@ -7,7 +7,7 @@
 }:
 
 let
-  mbpPubKey = lib.removeSuffix "\n" (builtins.readFile ../../config/ssh-keys/mbp-m2.pub);
+  mbpPubKey = lib.removeSuffix "\n" (builtins.readFile ../../system/ssh-keys/mbp-m2.pub);
 in {
   imports = (
     [
