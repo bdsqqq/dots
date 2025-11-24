@@ -38,6 +38,10 @@
     # Declarative Spicetify configuration
     spicetify-nix.url = "github:Gerg-L/spicetify-nix";
     spicetify-nix.inputs.nixpkgs.follows = "nixpkgs";
+
+    # File server
+    copyparty.url = "github:9001/copyparty";
+    copyparty.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs@{ flake-parts, stylix, ... }:
@@ -171,6 +175,7 @@
               stylix.nixosModules.stylix
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.home-manager.nixosModules.home-manager
+              inputs.copyparty.nixosModules.default
               ./hosts/htz-relay/default.nix
             ];
           };
