@@ -27,7 +27,7 @@ in {
     trustedInterfaces = [ "tailscale0" ];
     allowedTCPPorts = [ ];
     allowedUDPPorts = [ ];
-    interfaces.tailscale0.allowedTCPPorts = [ 22000 8384 ];
+    interfaces.tailscale0.allowedTCPPorts = [ 22000 8384 3923 ];
     interfaces.tailscale0.allowedUDPPorts = [ 22000 ];
     checkReversePath = "loose";
   };
@@ -40,6 +40,19 @@ in {
     useRoutingFeatures = "client";
     extraUpFlags = [ "--ssh" "--accept-dns=false" ];
     authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key) config.sops.secrets.tailscale_auth_key.path;
+  };
+
+  # copyparty file server
+  services.copyparty = {
+    enable = true;
+    user = "bdsqqq";
+    group = "users";
+    settings = {
+      i = "0.0.0.0";
+      p = [ 3923 ];
+      v = [ "/mnt/storage-01/commonplace:/commonplace:r" ]; # read-only for everyone (on tailscale)
+      q = true; # quiet mode
+    };
   };
 
   # syncthing provided by headless bundle; declarative mesh settings live here
