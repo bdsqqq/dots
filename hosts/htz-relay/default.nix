@@ -94,7 +94,7 @@ in {
           enable = true;
           id = "sqz7z-a6tfg";
           label = "commonplace";
-          path = "/home/bdsqqq/commonplace";
+          path = "/mnt/storage-01/commonplace";
           type = "sendreceive";
           rescanIntervalS = 3600;
           devices = [ "mbp-m2" "ipd" "iph16" ];
@@ -106,6 +106,10 @@ in {
       };
     };
   };
+
+  systemd.tmpfiles.rules = [
+    "d /mnt/storage-01/commonplace 0700 bdsqqq users -"
+  ];
 
   users.users.bdsqqq = {
     isNormalUser = true;
