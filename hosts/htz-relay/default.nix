@@ -192,7 +192,7 @@ in {
   sops.secrets.axiom_token = {};
   
   sops.templates."vector.env".content = ''
-    AXIOM_TOKEN=${config.sops.secrets.axiom_token.placeholder}
+    AXIOM_TOKEN=${config.sops.secrets.axiom_token}
   '';
 
   systemd.services.vector.serviceConfig.EnvironmentFile = [ config.sops.templates."vector.env".path ];
