@@ -175,6 +175,7 @@ in {
   services.vector = {
     enable = true;
     journaldAccess = true;
+    validateConfig = false; # We use runtime secrets (env vars) so build-time validation fails
     settings = {
       sources.journal_logs = {
         type = "journald";
