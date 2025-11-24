@@ -171,6 +171,32 @@ in {
 
   services.qemuGuest.enable = true;
 
+  # Observability: Ship journal logs to Axiom via Vector
+  services.vector = {
+    enable = true;
+    journaldAccess = true;
+    settings = {
+      sources.journal_logs = {
+        type = "journald";
+      };
+      sinks.axiom = {
+        type = "axiom";
+        inputs = [ "journal_logs" ];
+        token = "\${AXIOM_TOKEN}";
+        dataset = "system-logs"; # Note: Ensure this dataset exists in Axiom
+      };
+    };
+  };
+
+  # Secrets for Vector (Axiom Token)
+  sops.secrets.axiom_token = {};
+  
+  sops.templates."vector.env".content = ''
+    AXIOM_TOKEN=${config.sops.secrets.axiom_token.placeholder}
+  '';
+
+  systemd.services.vector.serviceConfig.EnvironmentFile = [ config.sops.templates."vector.env".path ];
+
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
