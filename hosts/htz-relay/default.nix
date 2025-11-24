@@ -55,6 +55,8 @@ in {
     };
   };
 
+  systemd.services.copyparty.serviceConfig.BindPaths = [ "/mnt/storage-01/commonplace" ];
+
   # syncthing provided by headless bundle; declarative mesh settings live here
   services.syncthing = {
     openDefaultPorts = false;
