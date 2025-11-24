@@ -136,7 +136,7 @@ in {
 
   security.sudo = {
     enable = true;
-    wheelNeedsPassword = true;
+    wheelNeedsPassword = false;
   };
 
   programs.zsh.enable = true;
