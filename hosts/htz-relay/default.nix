@@ -167,13 +167,14 @@ in {
     curl
     htop
     tree
+    vector
   ];
 
   services.qemuGuest.enable = true;
 
   # Observability: Ship journal logs to Axiom via Vector
   # Note: We define this manually to bypass build-time validation which fails on secret env vars
-  environment.systemPackages = [ pkgs.vector ];
+  # environment.systemPackages included above
 
   environment.etc."vector/vector.toml".source = (pkgs.formats.toml {}).generate "vector.toml" {
     sources.journal_logs = {
