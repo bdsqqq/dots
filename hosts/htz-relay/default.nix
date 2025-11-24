@@ -183,7 +183,7 @@ in {
         type = "axiom";
         inputs = [ "journal_logs" ];
         token = "\${AXIOM_TOKEN}";
-        dataset = "system-logs"; # Note: Ensure this dataset exists in Axiom
+        dataset = "papertrail";
       };
     };
   };
