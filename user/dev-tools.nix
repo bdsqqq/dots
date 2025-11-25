@@ -57,6 +57,7 @@ in
       httpie
       fastfetch
       ollama
+      mkcert
     ] ++ lib.optionals isDarwin [
     istat-menus
 ] ++ lib.optionals (!isDarwin) [

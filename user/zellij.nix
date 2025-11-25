@@ -19,7 +19,7 @@ let
             border_char     "─"
             border_format   "#[fg=#6C7086]{char}"
             border_position "top"
-
+            
             hide_frame_for_single_pane "false"
 
             mode_normal        ""
@@ -48,8 +48,18 @@ let
       }
     }
   '';
-  
-  zellijConfig = ''
+in
+/*
+## zellij shell integration disabled
+
+zellij's auto-start runs `zellij attach -c` without session name.
+can't customize to use directory-based naming like our alias.
+manual alias + tab renaming gives better control over sessions.
+*/
+{
+  home-manager.users.bdsqqq = { pkgs, config, ... }: 
+  let
+    zellijConfig = ''
         // zellij config matching tmux setup
         
         // theme
@@ -76,7 +86,14 @@ let
         default_layout "minimal"
         
         // mouse
-        mouse_mode false
+        mouse_mode true
+
+        // web server
+        web_server true
+        web_server_bind "0.0.0.0"
+        web_server_port 8082
+        web_server_cert "${config.home.homeDirectory}/.config/zellij/certs/zellij-cert.pem"
+        web_server_key "${config.home.homeDirectory}/.config/zellij/certs/zellij-key.pem"
         
         // copy mode (vim-like)
         copy_command "${copyCommand}"
@@ -172,16 +189,7 @@ let
           }
         }
       '';
-in
-/*
-## zellij shell integration disabled
-
-zellij's auto-start runs `zellij attach -c` without session name.
-can't customize to use directory-based naming like our alias.
-manual alias + tab renaming gives better control over sessions.
-*/
-{
-  home-manager.users.bdsqqq = { pkgs, ... }: {
+  in {
     programs.zellij = {
       enable = true;
       enableBashIntegration = false;
