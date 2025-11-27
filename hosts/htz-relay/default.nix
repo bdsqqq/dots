@@ -180,9 +180,17 @@ in {
     sources.journal_logs = {
       type = "journald";
     };
+    transforms.remap_timestamp = {
+      type = "remap";
+      inputs = [ "journal_logs" ];
+      source = ''
+        ._time = .timestamp
+        del(.timestamp)
+      '';
+    };
     sinks.axiom = {
       type = "axiom";
-      inputs = [ "journal_logs" ];
+      inputs = [ "remap_timestamp" ];
       token = "\${AXIOM_TOKEN}";
       dataset = "papertrail";
     };
