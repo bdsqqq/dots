@@ -163,6 +163,9 @@
               stylix.nixosModules.stylix
               inputs.home-manager.nixosModules.home-manager
               inputs.nix-flatpak.nixosModules.nix-flatpak
+              ({ pkgs, ... }: {
+                nixpkgs.overlays = [ (import ./overlays/unstable.nix inputs) ];
+              })
               ./hosts/r56/default.nix
             ];
           };
@@ -177,7 +180,10 @@
               inputs.home-manager.nixosModules.home-manager
               inputs.copyparty.nixosModules.default
               ({ pkgs, ... }: {
-                nixpkgs.overlays = [ inputs.copyparty.overlays.default ];
+                nixpkgs.overlays = [ 
+                  inputs.copyparty.overlays.default 
+                  (import ./overlays/unstable.nix inputs)
+                ];
               })
               ./hosts/htz-relay/default.nix
             ];
