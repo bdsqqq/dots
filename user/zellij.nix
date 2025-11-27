@@ -192,6 +192,7 @@ manual alias + tab renaming gives better control over sessions.
   in {
     programs.zellij = {
       enable = true;
+      package = pkgs.unstable.zellij;
       enableBashIntegration = false;
       enableZshIntegration = false;
       enableFishIntegration = false;
