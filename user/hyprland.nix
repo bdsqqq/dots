@@ -13,6 +13,12 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "HYPRCURSOR_SIZE,24"
         "XCURSOR_THEME,macOS"
         "XCURSOR_SIZE,24"
+        # wayland/electron font rendering
+        "ELECTRON_OZONE_PLATFORM_HINT,wayland"
+        "GDK_SCALE,1"
+        "GDK_DPI_SCALE,1.5"
+        "QT_QPA_PLATFORM,wayland"
+        "QT_AUTO_SCREEN_SCALE_FACTOR,1"
       ];
       
       cursor = {
