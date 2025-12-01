@@ -126,6 +126,31 @@ in
       stylix.targets.hyprland.enable = false;
       stylix.targets.ghostty.enable = false;
       
+      # fontconfig for crisp font rendering at 1.5x
+      fonts.fontconfig = {
+        enable = true;
+        defaultFonts = {
+          monospace = [ "Berkeley Mono" ];
+          sansSerif = [ "Inter" ];
+          serif = [ "DejaVu Serif" ];
+        };
+      };
+      
+      gtk = {
+        enable = true;
+        gtk3.extraConfig = {
+          gtk-xft-antialias = 1;
+          gtk-xft-hinting = 1;
+          gtk-xft-hintstyle = "hintslight";
+          gtk-xft-rgba = "rgb";
+        };
+        gtk4.extraConfig = {
+          gtk-xft-antialias = 1;
+          gtk-xft-hinting = 1;
+          gtk-xft-hintstyle = "hintslight";
+        };
+      };
+      
       services.vicinae = {
         enable = true;
         autoStart = true;
