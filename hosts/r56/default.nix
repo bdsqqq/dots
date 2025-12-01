@@ -122,8 +122,9 @@ in
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
       
-      # disable stylix hyprland target - we manage it manually
+      # disable stylix targets we manage manually
       stylix.targets.hyprland.enable = false;
+      stylix.targets.ghostty.enable = false;
       
       services.vicinae = {
         enable = true;
