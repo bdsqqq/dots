@@ -38,6 +38,19 @@
   # Steam
   programs.steam.enable = true;
 
+  # Flatpak apps
+  services.flatpak = {
+    enable = true;
+    uninstallUnmanaged = true;
+    remotes = [{
+      name = "flathub";
+      location = "https://dl.flathub.org/repo/flathub.flatpakrepo";
+    }];
+    packages = [
+      "app.zen_browser.zen"
+    ];
+  };
+
   # home-manager module is enabled at flake level; user-layer is provided via bundles
   home-manager = {
     useGlobalPkgs = true;
