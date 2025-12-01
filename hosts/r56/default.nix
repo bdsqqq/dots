@@ -1,6 +1,61 @@
 { pkgs, inputs, lib, config, modulesPath, ... }:
 
+let
+  berkeleyMono = pkgs.stdenv.mkDerivation {
+    pname = "berkeley-mono";
+    version = "1.0.0";
+    src = inputs.berkeley-mono;
+    dontConfigure = true;
+    dontBuild = true;
+    installPhase = ''
+      runHook preInstall
+      mkdir -p $out/share/fonts/opentype/berkeley-mono
+      for file in "$src"/*.otf; do
+        install -m644 "$file" $out/share/fonts/opentype/berkeley-mono/
+      done
+      runHook postInstall
+    '';
+  };
+in
 {
+  stylix = {
+    enable = true;
+    image = ../../assets/wallpaper.jpg;
+    base16Scheme = ../../modules/shared/e-ink-scheme.yaml;
+    polarity = "dark";
+    
+    fonts = {
+      monospace = {
+        package = berkeleyMono;
+        name = "Berkeley Mono";
+      };
+      sansSerif = {
+        package = pkgs.inter;
+        name = "Inter";
+      };
+      serif = {
+        package = pkgs.dejavu_fonts;
+        name = "DejaVu Serif";
+      };
+      sizes = {
+        terminal = 14;
+        applications = 12;
+        desktop = 12;
+      };
+    };
+    
+    cursor = {
+      package = pkgs.apple-cursor;
+      name = "macOS";
+      size = 24;
+    };
+    
+    opacity = {
+      terminal = 0.7;
+    };
+    
+  };
+
   imports = [
     ./hardware.nix
     ../../bundles/base.nix
@@ -64,6 +119,9 @@
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
+      
+      # disable stylix hyprland target - we manage it manually
+      stylix.targets.hyprland.enable = false;
       
       services.vicinae = {
         enable = true;
