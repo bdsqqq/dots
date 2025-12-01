@@ -12,5 +12,14 @@
     imports = [
       ../../user/hyprland.nix
     ];
+    
+    # install a cursor theme (apple_cursor is macOS-style)
+    home.pointerCursor = {
+      name = "macOS";
+      package = pkgs.apple-cursor;
+      size = 24;
+      gtk.enable = true;
+      x11.enable = true;
+    };
   };
 }
