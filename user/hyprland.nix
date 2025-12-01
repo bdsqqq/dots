@@ -25,6 +25,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "gsettings set org.gnome.desktop.interface cursor-theme 'macOS'"
         "gsettings set org.gnome.desktop.interface cursor-size 24"
         "vicinae server"
+        "waybar"
       ];
       
       layerrule = [
