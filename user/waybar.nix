@@ -6,7 +6,7 @@ let
   waybarConfig = {
     layer = "top";
     position = "top";
-    height = 60;
+    height = 30;
     
     modules-left = [ "custom/logo" ];
     modules-right = [ "clock" ];
@@ -25,7 +25,7 @@ let
   waybarStyle = ''
     * {
       font-family: "Berkeley Mono", monospace;
-      font-size: 32px;
+      font-size: 16px;
     }
     
     window#waybar {
@@ -34,11 +34,11 @@ let
     }
     
     #custom-logo {
-      padding: 0 16px;
+      padding: 0 8px;
     }
     
     #clock {
-      padding: 0 16px;
+      padding: 0 8px;
     }
   '';
 
