@@ -6,9 +6,12 @@
     ../../bundles/base.nix
     ../../bundles/headless.nix
     ../../bundles/dev.nix
+    ../../bundles/wm/hyprland.nix
     ../../system/nvidia.nix
     ../../system/bluetooth.nix
     ../../system/fan-control.nix
+    ../../system/audio.nix
+    ../../user/ghostty.nix
   ];
 
   networking.hostName = "r56";
@@ -35,7 +38,7 @@
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
-    extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "headless"; };
+    extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "graphical"; };
     users.bdsqqq = {
       home.username = "bdsqqq";
       home.homeDirectory = "/home/bdsqqq";
