@@ -42,6 +42,9 @@
     # File server
     copyparty.url = "github:9001/copyparty";
     copyparty.inputs.nixpkgs.follows = "nixpkgs";
+
+    # Vicinae launcher (no nixpkgs.follows to preserve cachix cache hits)
+    vicinae.url = "github:vicinaehq/vicinae";
   };
 
   outputs = inputs@{ flake-parts, stylix, ... }:

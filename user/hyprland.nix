@@ -24,6 +24,13 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "hyprctl setcursor macOS 24"
         "gsettings set org.gnome.desktop.interface cursor-theme 'macOS'"
         "gsettings set org.gnome.desktop.interface cursor-size 24"
+        "vicinae server"
+      ];
+      
+      layerrule = [
+        "blur, vicinae"
+        "ignorealpha 0, vicinae"
+        "noanim, vicinae"
       ];
       
       input = {
@@ -59,7 +66,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       bind = [
         "$mod, Q, killactive"
         "$mod, Return, exec, ghostty"
-        "$mod, Space, exec, wofi --show drun"
+        "$mod, Space, exec, vicinae toggle"
         
         "$mod, V, togglefloating"
         "$mod, F, fullscreen"
@@ -118,7 +125,6 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
   
   home.packages = with pkgs; [
     swaybg
-    wofi
     wl-clipboard
   ];
 }
