@@ -6,7 +6,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     package = pkgs.hyprland;
     
     settings = {
-      monitor = [ ",preferred,auto,1" ];
+      monitor = [ ",preferred,auto,2" ];
       
       env = [
         "HYPRCURSOR_THEME,macOS"
