@@ -39,12 +39,34 @@
     useGlobalPkgs = true;
     useUserPackages = true;
     extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "graphical"; };
+    sharedModules = [
+      inputs.vicinae.homeManagerModules.default
+    ];
     users.bdsqqq = {
       home.username = "bdsqqq";
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
+      
+      services.vicinae = {
+        enable = true;
+        autoStart = true;
+        settings = {
+          theme.name = "vicinae-dark";
+          window = {
+            csd = true;
+            opacity = 0.95;
+            rounding = 0;
+          };
+        };
+      };
     };
+  };
+  
+  # vicinae cachix binary cache
+  nix.settings = {
+    extra-substituters = [ "https://vicinae.cachix.org" ];
+    extra-trusted-public-keys = [ "vicinae.cachix.org-1:1kDrfienkGHPYbkpNj1mWTr7Fm1+zcenzgTizIcI3oc=" ];
   };
 
   environment.systemPackages = with pkgs; [
