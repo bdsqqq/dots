@@ -44,8 +44,10 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         gaps_in = 4;
         gaps_out = 8;
         border_size = 0;
+        "col.active_border" = "rgba(00000000)";
+        "col.inactive_border" = "rgba(00000000)";
         layout = "dwindle";
-        resize_on_border = true;
+        resize_on_border = false;
       };
       
       decoration = {
