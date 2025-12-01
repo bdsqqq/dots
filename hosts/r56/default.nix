@@ -35,6 +35,9 @@
   # Enable zsh
   programs.zsh.enable = true;
 
+  # Steam
+  programs.steam.enable = true;
+
   # home-manager module is enabled at flake level; user-layer is provided via bundles
   home-manager = {
     useGlobalPkgs = true;
