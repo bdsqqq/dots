@@ -8,12 +8,18 @@ let
     position = "top";
     height = 30;
     
-    modules-left = [ "custom/logo" ];
+    modules-left = [ "custom/logo" "hyprland/workspaces" ];
     modules-right = [ "clock" ];
     
     "custom/logo" = {
       format = "∗";
       tooltip = false;
+    };
+    
+    "hyprland/workspaces" = {
+      format = "[{name}]";
+      on-click = "activate";
+      sort-by-number = true;
     };
     
     clock = {
@@ -35,6 +41,23 @@ let
     
     #custom-logo {
       padding: 0 8px;
+    }
+    
+    #workspaces {
+      padding: 0;
+    }
+    
+    #workspaces button {
+      padding: 0 4px;
+      color: #6b7280;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+    }
+    
+    #workspaces button.active {
+      color: #d1d5db;
+      font-weight: bold;
     }
     
     #clock {
