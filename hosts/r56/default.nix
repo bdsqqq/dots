@@ -12,6 +12,7 @@
     ../../system/fan-control.nix
     ../../system/audio.nix
     ../../user/ghostty.nix
+    ../../user/waybar.nix
   ];
 
   networking.hostName = "r56";
