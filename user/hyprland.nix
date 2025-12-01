@@ -47,7 +47,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "col.active_border" = "rgba(00000000)";
         "col.inactive_border" = "rgba(00000000)";
         layout = "dwindle";
-        resize_on_border = false;
+        resize_on_border = true;
       };
       
       decoration = {
@@ -56,7 +56,22 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       };
       
       animations = {
-        enabled = false;
+        enabled = true;
+        
+        # ease-out-quint: responsive, user-initiated feel
+        bezier = [
+          "easeOutQuint, 0.23, 1, 0.32, 1"
+          "easeInOutQuart, 0.77, 0, 0.175, 1"
+        ];
+        
+        animation = [
+          # windows: ease-out, ~150ms - responsive for open/close
+          "windows, 1, 3, easeOutQuint, popin 80%"
+          # fade: quick, subtle
+          "fade, 1, 2, easeOutQuint"
+          # workspaces: ease-in-out, adds weight to the movement
+          "workspaces, 1, 3, easeInOutQuart, slide"
+        ];
       };
       
       dwindle = {
