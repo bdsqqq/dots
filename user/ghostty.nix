@@ -1,5 +1,5 @@
-{ lib, headMode ? "graphical", hostSystem ? null, ... }:
-lib.mkIf (headMode == "graphical") (
+{ lib, pkgs, headMode ? "graphical", hostSystem ? null, ... }:
+
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isLinux = lib.hasInfix "linux" hostSystem;
@@ -62,59 +62,55 @@ palette = 12=#727272
 palette = 13=#FFC799
 palette = 14=#4A4A4A
 palette = 15=#7C7C7C
-  '';
+'';
 
   ghosttyConfig = ''
-    font-family = "Berkeley Mono"
-    macos-titlebar-style = "hidden"
-    window-padding-x = 16
-    window-padding-y = 4
-    background-opacity = "0.7"
-    background-blur = "8"
+font-family = "Berkeley Mono"
+macos-titlebar-style = "hidden"
+window-padding-x = 16
+window-padding-y = 4
+background-opacity = 0.7
+background-blur-radius = 8
 
-    theme = light:vesper-light,dark:vesper-dark
+theme = light:vesper-light,dark:vesper-dark
 
-    keybind = shift+enter=text:\n
-    
-    # unbind ctrl+tab/digits so tmux can receive them
-    keybind = ctrl+tab=unbind
-    keybind = ctrl+shift+tab=unbind
-    keybind = ctrl+one=unbind
-    keybind = ctrl+two=unbind
-    keybind = ctrl+three=unbind
-    keybind = ctrl+four=unbind
-    keybind = ctrl+five=unbind
-    keybind = ctrl+six=unbind
-    keybind = ctrl+seven=unbind
-    keybind = ctrl+eight=unbind
-    keybind = ctrl+nine=unbind
-  '';
+keybind = shift+enter=text:\n
 
-  sharedHomeConfig = {
-    home.file.".config/ghostty/config" = {
+# unbind ctrl+tab/digits so tmux can receive them
+keybind = ctrl+tab=unbind
+keybind = ctrl+shift+tab=unbind
+keybind = ctrl+one=unbind
+keybind = ctrl+two=unbind
+keybind = ctrl+three=unbind
+keybind = ctrl+four=unbind
+keybind = ctrl+five=unbind
+keybind = ctrl+six=unbind
+keybind = ctrl+seven=unbind
+keybind = ctrl+eight=unbind
+keybind = ctrl+nine=unbind
+'';
+
+  ghosttyFiles = {
+    "ghostty/config" = {
       force = true;
       text = ghosttyConfig;
     };
-    home.file.".config/ghostty/themes/vesper-light" = {
+    "ghostty/themes/vesper-light" = {
       force = true;
       text = vesperLightTheme;
     };
-    home.file.".config/ghostty/themes/vesper-dark" = {
+    "ghostty/themes/vesper-dark" = {
       force = true;
       text = vesperDarkTheme;
     };
   };
-in
-if isDarwin then {
-  # darwin: ghostty pkg marked broken in nixpkgs, use homebrew cask
-  homebrew.casks = [ "ghostty" ];
-  home-manager.users.bdsqqq = { ... }: sharedHomeConfig;
-} else if isLinux then {
-  # linux: use nix package
-  home-manager.users.bdsqqq = { pkgs, ... }: sharedHomeConfig // {
-    home.packages = [ pkgs.ghostty ];
-  };
-} else {}
+
+in lib.mkIf (headMode == "graphical") (
+  if isDarwin then {
+    homebrew.casks = [ "ghostty" ];
+    home-manager.users.bdsqqq.xdg.configFile = ghosttyFiles;
+  } else if isLinux then {
+    home-manager.users.bdsqqq.home.packages = [ pkgs.ghostty ];
+    home-manager.users.bdsqqq.xdg.configFile = ghosttyFiles;
+  } else {}
 )
-
-
