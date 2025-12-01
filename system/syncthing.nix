@@ -10,7 +10,11 @@ if isLinux then {
     user = "bdsqqq";
     dataDir = "/home/bdsqqq";
     configDir = "/home/bdsqqq/.config/syncthing";
+    guiAddress = "0.0.0.0:8384";
   };
+  
+  networking.firewall.interfaces."tailscale0".allowedTCPPorts = [ 8384 22000 ];
+  networking.firewall.interfaces."tailscale0".allowedUDPPorts = [ 22000 21027 ];
 } else if isDarwin then {
   launchd.user.agents.syncthing = {
     serviceConfig = {
