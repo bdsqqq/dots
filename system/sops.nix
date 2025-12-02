@@ -15,6 +15,7 @@ in
     secrets = {
       anthropic_api_key = { };
       tailscale_auth_key = { };
+      syncthing_gui_password = { };
     };
   };
 }

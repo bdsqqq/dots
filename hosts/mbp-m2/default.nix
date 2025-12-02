@@ -26,7 +26,7 @@
       hostSystem = "aarch64-darwin";
       headMode = "graphical";
     };
-    users.bdsqqq = {
+    users.bdsqqq = { lib, pkgs, ... }: {
       home.username = "bdsqqq";
       home.homeDirectory = "/Users/bdsqqq";
       home.stateVersion = "25.05";
@@ -41,7 +41,11 @@
         extraOptions = [ "-gui-address=0.0.0.0:8384" ];
         
         settings = {
-          gui.address = "0.0.0.0:8384";
+          gui = {
+            address = "0.0.0.0:8384";
+            user = "bdsqqq";
+            # password set via activation script from sops secret
+          };
           options = {
             globalAnnounceEnabled = false;
             localAnnounceEnabled = false;
@@ -89,6 +93,55 @@
       # fix: home-manager syncthing doesn't set RunAtLoad, so manually override
       launchd.agents.syncthing.config.RunAtLoad = true;
       launchd.agents.syncthing-init.config.RunAtLoad = true;
+      
+      # set syncthing GUI password from sops secret via REST API
+      home.activation.syncthingGuiPassword = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        set -euo pipefail
+        
+        SECRET_FILE="/run/secrets/syncthing_gui_password"
+        if [ ! -f "$SECRET_FILE" ]; then
+          echo "syncthingGuiPassword: secret not found, skipping"
+          exit 0
+        fi
+        
+        PASSWORD="$(cat "$SECRET_FILE")"
+        CFG_DIR="$HOME/Library/Application Support/Syncthing"
+        CFG_FILE="$CFG_DIR/config.xml"
+        
+        if [ ! -f "$CFG_FILE" ]; then
+          echo "syncthingGuiPassword: config.xml not found, skipping"
+          exit 0
+        fi
+        
+        # extract API key
+        API_KEY="$(${pkgs.libxml2}/bin/xmllint --xpath 'string(/configuration/gui/apikey)' "$CFG_FILE" 2>/dev/null || true)"
+        if [ -z "$API_KEY" ]; then
+          echo "syncthingGuiPassword: no API key found, skipping"
+          exit 0
+        fi
+        
+        # wait for syncthing to be ready
+        for i in $(seq 1 30); do
+          if ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:8384/rest/system/ping" >/dev/null 2>&1; then
+            break
+          fi
+          sleep 1
+        done
+        
+        if ! ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:8384/rest/system/ping" >/dev/null 2>&1; then
+          echo "syncthingGuiPassword: syncthing not reachable, skipping"
+          exit 0
+        fi
+        
+        # set password via REST API
+        ${pkgs.curl}/bin/curl -fsS -X PATCH \
+          -H "X-API-Key: $API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "{\"gui\":{\"password\":\"$PASSWORD\"}}" \
+          "http://127.0.0.1:8384/rest/config" >/dev/null
+        
+        echo "syncthingGuiPassword: password updated"
+      '';
     };
   };
 
