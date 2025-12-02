@@ -34,23 +34,12 @@ let
     [transforms.parse_logs]
     type = "remap"
     inputs = ["log_files"]
-    source = '''
-      # map timestamp to axiom's _time field
-      ._time = .timestamp
-      del(.timestamp)
-      
-      # extract filename for easier filtering
-      .source_file = .file
-    '''
+    source = "._time = .timestamp; del(.timestamp); .source_file = .file"
     
     [transforms.enrich_metrics]
     type = "remap"
     inputs = ["host_metrics"]
-    source = '''
-      ._time = .timestamp
-      del(.timestamp)
-      .host_type = "darwin"
-    '''
+    source = "._time = .timestamp; del(.timestamp); .host_type = \"darwin\""
     
     [sinks.axiom_logs]
     type = "axiom"
@@ -78,20 +67,12 @@ let
     [transforms.parse_logs]
     type = "remap"
     inputs = ["journald"]
-    source = '''
-      # map timestamp to axiom's _time field
-      ._time = .timestamp
-      del(.timestamp)
-    '''
+    source = "._time = .timestamp; del(.timestamp)"
     
     [transforms.enrich_metrics]
     type = "remap"
     inputs = ["host_metrics"]
-    source = '''
-      ._time = .timestamp
-      del(.timestamp)
-      .host_type = "linux"
-    '''
+    source = "._time = .timestamp; del(.timestamp); .host_type = \"linux\""
     
     [sinks.axiom_logs]
     type = "axiom"
