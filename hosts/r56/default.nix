@@ -242,10 +242,14 @@ in
   # System state version
   system.stateVersion = "25.05";
   
-  # Observability: Ship journal logs to Axiom via Vector
+  # Observability: Ship journal logs and host metrics to Axiom via Vector
   environment.etc."vector/vector.toml".source = (pkgs.formats.toml {}).generate "vector.toml" {
     sources.journal_logs = {
       type = "journald";
+    };
+    sources.host_metrics = {
+      type = "host_metrics";
+      scrape_interval_secs = 30;
     };
     transforms.remap_timestamp = {
       type = "remap";
@@ -260,6 +264,21 @@ in
       inputs = [ "remap_timestamp" ];
       token = "\${AXIOM_TOKEN}";
       dataset = "papertrail";
+    };
+    sinks.axiom_metrics = {
+      type = "opentelemetry";
+      inputs = [ "host_metrics" ];
+      protocol = {
+        type = "http";
+        uri = "https://api.axiom.co/v1/metrics";
+        auth = {
+          strategy = "bearer";
+          token = "\${AXIOM_TOKEN}";
+        };
+        headers = {
+          "x-axiom-metrics-dataset" = "host-metrics";
+        };
+      };
     };
   };
 
