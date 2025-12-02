@@ -113,7 +113,7 @@ in
         };
       };
     };
-  }
+  };
 
   # Your user
   users.users.bdsqqq = {
