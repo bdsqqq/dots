@@ -232,28 +232,28 @@ in
   # System state version
   system.stateVersion = "25.05";
   
-  # set syncthing GUI password from sops secret
+  # set syncthing GUI password hash from sops secret (writes directly to config.xml)
   systemd.services.syncthing-gui-password = {
-    description = "Set Syncthing GUI password from sops secret";
-    after = [ "syncthing.service" "sops-install-secrets.service" ];
-    wants = [ "syncthing.service" ];
+    description = "Set Syncthing GUI password hash from sops secret";
+    after = [ "syncthing-init.service" "sops-install-secrets.service" ];
+    before = [ "syncthing.service" ];
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Type = "oneshot";
       User = "bdsqqq";
       RemainAfterExit = true;
     };
-    path = [ pkgs.curl pkgs.libxml2 pkgs.coreutils ];
+    path = [ pkgs.gnused pkgs.coreutils ];
     script = ''
       set -euo pipefail
       
-      SECRET_FILE="/run/secrets/syncthing_gui_password"
+      SECRET_FILE="/run/secrets/syncthing_gui_password_hash"
       if [ ! -f "$SECRET_FILE" ]; then
         echo "syncthing-gui-password: secret not found, skipping"
         exit 0
       fi
       
-      PASSWORD="$(cat "$SECRET_FILE")"
+      HASH="$(cat "$SECRET_FILE")"
       CFG_FILE="/home/bdsqqq/.config/syncthing/config.xml"
       
       if [ ! -f "$CFG_FILE" ]; then
@@ -261,34 +261,10 @@ in
         exit 0
       fi
       
-      # extract API key
-      API_KEY="$(xmllint --xpath 'string(/configuration/gui/apikey)' "$CFG_FILE" 2>/dev/null || true)"
-      if [ -z "$API_KEY" ]; then
-        echo "syncthing-gui-password: no API key found, skipping"
-        exit 0
-      fi
+      # update password hash in config.xml
+      sed -i "s|<password>.*</password>|<password>$HASH</password>|" "$CFG_FILE"
       
-      # wait for syncthing to be ready
-      for i in $(seq 1 30); do
-        if curl -fsS "http://127.0.0.1:8384/rest/system/ping" >/dev/null 2>&1; then
-          break
-        fi
-        sleep 1
-      done
-      
-      if ! curl -fsS "http://127.0.0.1:8384/rest/system/ping" >/dev/null 2>&1; then
-        echo "syncthing-gui-password: syncthing not reachable, skipping"
-        exit 0
-      fi
-      
-      # set password via REST API
-      curl -fsS -X PATCH \
-        -H "X-API-Key: $API_KEY" \
-        -H "Content-Type: application/json" \
-        -d "{\"gui\":{\"password\":\"$PASSWORD\"}}" \
-        "http://127.0.0.1:8384/rest/config" >/dev/null
-      
-      echo "syncthing-gui-password: password updated"
+      echo "syncthing-gui-password: hash updated in config.xml"
     '';
   };
 }
