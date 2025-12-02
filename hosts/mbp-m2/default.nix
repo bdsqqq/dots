@@ -85,6 +85,10 @@
           };
         };
       };
+      
+      # fix: home-manager syncthing doesn't set RunAtLoad, so manually override
+      launchd.agents.syncthing.config.RunAtLoad = true;
+      launchd.agents.syncthing-init.config.RunAtLoad = true;
     };
   };
 
