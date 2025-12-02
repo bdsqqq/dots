@@ -217,12 +217,12 @@ in {
       protocol = {
         type = "http";
         uri = "https://api.axiom.co/v1/metrics";
-        encoding = { codec = "json"; };
+        encoding = { codec = "otlp"; };
         auth = {
           strategy = "bearer";
           token = "\${AXIOM_TOKEN}";
         };
-        headers = {
+        request.headers = {
           "x-axiom-metrics-dataset" = "host-metrics";
         };
       };
