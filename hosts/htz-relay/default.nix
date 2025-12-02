@@ -254,7 +254,7 @@ in {
     requires = [ "network-online.target" ];
     
     serviceConfig = {
-      ExecStart = "${pkgs.opentelemetry-collector-contrib}/bin/otelcontribcol --config /etc/otelcol/config.yaml";
+      ExecStart = "${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config /etc/otelcol/config.yaml";
       EnvironmentFile = [ config.sops.templates."vector.env".path ];
       DynamicUser = true;
       StateDirectory = "otelcol";
