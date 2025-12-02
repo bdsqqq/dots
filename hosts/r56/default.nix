@@ -79,7 +79,41 @@ in
   i18n.defaultLocale = "en_US.UTF-8";
 
   # tailscale and ssh provided by base bundle
-  # syncthing provided by headless bundle
+  # syncthing provided by headless bundle; declarative mesh settings here
+  services.syncthing = {
+    settings = {
+      options = {
+        globalAnnounceEnabled = false;
+        localAnnounceEnabled = false;
+        relaysEnabled = false;
+        natEnabled = false;
+      };
+
+      devices = {
+        "mbp-m2" = {
+          id = "BQRNC7S-3O6EQPK-5ZEDX6Q-KUSMJHQ-6HXJHYY-AHDBJNO-4C27WBW-XG6CCQR";
+          addresses = [ "tcp://100.87.59.2:22000" "quic://100.87.59.2:22000" ];
+          introducer = true;
+        };
+      };
+
+      folders = {
+        commonplace = {
+          enable = true;
+          id = "sqz7z-a6tfg";
+          label = "commonplace";
+          path = "/home/bdsqqq/commonplace";
+          type = "sendreceive";
+          rescanIntervalS = 60;
+          devices = [ "mbp-m2" ];
+          versioning = {
+            type = "trashcan";
+            params.cleanoutDays = "0";
+          };
+        };
+      };
+    };
+  }
 
   # Your user
   users.users.bdsqqq = {
