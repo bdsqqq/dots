@@ -15,7 +15,10 @@ in
     secrets = {
       anthropic_api_key = { };
       tailscale_auth_key = { };
-      syncthing_gui_password_hash = { };
+      syncthing_gui_password_hash = {
+        owner = "bdsqqq";
+        mode = "0400";
+      };
     };
   };
 }
