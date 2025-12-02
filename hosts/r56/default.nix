@@ -78,7 +78,11 @@ in
   time.timeZone = "Europe/London";
   i18n.defaultLocale = "en_US.UTF-8";
 
-  # tailscale and ssh provided by base bundle
+  # tailscale and ssh provided by base bundle; auth key for headless auth
+  services.tailscale = {
+    authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key) config.sops.secrets.tailscale_auth_key.path;
+  };
+  
   # syncthing provided by headless bundle; declarative mesh settings here
   services.syncthing = {
     settings = {
