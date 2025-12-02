@@ -9,7 +9,7 @@ let
   
   homeDir = if isDarwin then "/Users/bdsqqq" else "/home/bdsqqq";
   logsDir = if isDarwin then "${homeDir}/Library/Logs" else "/var/log";
-  dataDir = if isDarwin then "/var/lib/vector" else "/var/lib/vector";
+  dataDir = if isDarwin then "${homeDir}/Library/Application Support/Vector" else "/var/lib/vector";
   
   # darwin uses file source for logs; linux uses journald
   vectorConfig = if isDarwin then ''
@@ -93,18 +93,18 @@ if isDarwin then {
   environment.etc."vector/vector.toml".text = vectorConfig;
   
   launchd.daemons.vector = {
+    script = ''
+      export AXIOM_TOKEN="$(cat ${config.sops.secrets.axiom_token.path})"
+      exec ${pkgs.vector}/bin/vector --config /etc/vector/vector.toml
+    '';
     serviceConfig = {
       Label = "dev.vector.vector";
-      ProgramArguments = [
-        "/bin/sh"
-        "-c"
-        ''
-          export AXIOM_TOKEN="$(cat /run/secrets/axiom_token)"
-          exec ${pkgs.vector}/bin/vector --config /etc/vector/vector.toml
-        ''
-      ];
       RunAtLoad = true;
-      KeepAlive = true;
+      KeepAlive = {
+        PathState = {
+          "${config.sops.secrets.axiom_token.path}" = true;
+        };
+      };
       StandardOutPath = "${logsDir}/vector.log";
       StandardErrorPath = "${logsDir}/vector-error.log";
       UserName = "root";
