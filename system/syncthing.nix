@@ -17,6 +17,6 @@ if isLinux then {
   networking.firewall.interfaces."tailscale0".allowedTCPPorts = [ 8384 22000 ];
   networking.firewall.interfaces."tailscale0".allowedUDPPorts = [ 22000 21027 ];
 } else if isDarwin then {
-  # darwin: syncthing managed via home-manager's services.syncthing in host config
-  # (home-manager creates launchd agent automatically)
+  # darwin: syncthing managed entirely by home-manager's services.syncthing
+  # (creates launchd agents for both daemon and config init)
 } else {}
