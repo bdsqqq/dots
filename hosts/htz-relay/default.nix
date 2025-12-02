@@ -193,10 +193,6 @@ in {
     sources.journal_logs = {
       type = "journald";
     };
-    sources.host_metrics = {
-      type = "host_metrics";
-      scrape_interval_secs = 30;
-    };
     transforms.remap_timestamp = {
       type = "remap";
       inputs = [ "journal_logs" ];
@@ -211,21 +207,57 @@ in {
       token = "\${AXIOM_TOKEN}";
       dataset = "papertrail";
     };
-    sinks.axiom_metrics = {
-      type = "opentelemetry";
-      inputs = [ "host_metrics" ];
-      protocol = {
-        type = "http";
-        uri = "https://api.axiom.co/v1/metrics";
-        encoding = { codec = "otlp"; };
-        auth = {
-          strategy = "bearer";
-          token = "\${AXIOM_TOKEN}";
-        };
-        request.headers = {
-          "x-axiom-metrics-dataset" = "host-metrics";
-        };
-      };
+  };
+
+  # OpenTelemetry Collector for host metrics → Axiom MetricsDB
+  environment.etc."otelcol/config.yaml".text = ''
+    receivers:
+      hostmetrics:
+        collection_interval: 30s
+        scrapers:
+          cpu:
+          memory:
+          disk:
+          filesystem:
+          load:
+          network:
+
+    processors:
+      batch:
+        send_batch_size: 1000
+        timeout: 10s
+      resourcedetection:
+        detectors: [system]
+        system:
+          hostname_sources: ["os"]
+
+    exporters:
+      otlphttp:
+        endpoint: https://api.axiom.co
+        compression: zstd
+        headers:
+          authorization: "Bearer ''${AXIOM_TOKEN}"
+          x-axiom-metrics-dataset: "host-metrics"
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [hostmetrics]
+          processors: [resourcedetection, batch]
+          exporters: [otlphttp]
+  '';
+
+  systemd.services.otelcol = {
+    description = "OpenTelemetry Collector";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-online.target" ];
+    requires = [ "network-online.target" ];
+    
+    serviceConfig = {
+      ExecStart = "${pkgs.opentelemetry-collector-contrib}/bin/otelcontribcol --config /etc/otelcol/config.yaml";
+      EnvironmentFile = [ config.sops.templates."vector.env".path ];
+      DynamicUser = true;
+      StateDirectory = "otelcol";
     };
   };
 
