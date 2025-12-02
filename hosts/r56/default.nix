@@ -91,7 +91,7 @@ in
 
       devices = {
         "mbp-m2" = {
-          id = "BQRNC7S-3O6EQPK-5ZEDX6Q-KUSMJHQ-6HXJHYY-AHDBJNO-4C27WBW-XG6CCQR";
+          id = "6QPGO5Z-ZBZZVDW-MCYFBKB-MGZQO47-GITV6C5-5YGBXLT-VWHNAQ4-5XMKDAG";
           addresses = [ "tcp://100.87.59.2:22000" "quic://100.87.59.2:22000" ];
           introducer = true;
         };
