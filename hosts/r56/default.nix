@@ -224,7 +224,6 @@ in
     tree
     unzip
     usbutils
-    vector
   ];
 
   # fonts provided by base bundle
@@ -242,30 +241,12 @@ in
   # System state version
   system.stateVersion = "25.05";
   
-  # Observability: Ship journal logs to Axiom via Vector
-  environment.etc."vector/vector.toml".source = (pkgs.formats.toml {}).generate "vector.toml" {
-    sources.journal_logs = {
-      type = "journald";
-    };
-    transforms.remap_timestamp = {
-      type = "remap";
-      inputs = [ "journal_logs" ];
-      source = ''
-        ._time = .timestamp
-        del(.timestamp)
-      '';
-    };
-    sinks.axiom = {
-      type = "axiom";
-      inputs = [ "remap_timestamp" ];
-      token = "\${AXIOM_TOKEN}";
-      dataset = "papertrail";
-    };
-  };
-
-  # OpenTelemetry Collector for host metrics → Axiom MetricsDB
+  # OpenTelemetry Collector: logs, metrics, traces → Axiom
   environment.etc."otelcol/config.yaml".text = ''
     receivers:
+      journald:
+        directory: /var/log/journal
+        priority: info
       hostmetrics:
         collection_interval: 30s
         scrapers:
@@ -275,6 +256,12 @@ in
           filesystem:
           load:
           network:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
 
     processors:
       batch:
@@ -286,19 +273,39 @@ in
           hostname_sources: ["os"]
 
     exporters:
-      otlphttp:
+      otlphttp/logs:
+        endpoint: https://api.axiom.co
+        compression: zstd
+        headers:
+          authorization: "Bearer ''${AXIOM_TOKEN}"
+          x-axiom-dataset: "papertrail"
+      otlphttp/metrics:
         endpoint: https://api.axiom.co
         compression: zstd
         headers:
           authorization: "Bearer ''${AXIOM_TOKEN}"
           x-axiom-metrics-dataset: "host-metrics"
+      otlphttp/traces:
+        endpoint: https://api.axiom.co
+        compression: zstd
+        headers:
+          authorization: "Bearer ''${AXIOM_TOKEN}"
+          x-axiom-dataset: "papertrail-traces"
 
     service:
       pipelines:
+        logs:
+          receivers: [journald]
+          processors: [resourcedetection, batch]
+          exporters: [otlphttp/logs]
         metrics:
           receivers: [hostmetrics]
           processors: [resourcedetection, batch]
-          exporters: [otlphttp]
+          exporters: [otlphttp/metrics]
+        traces:
+          receivers: [otlp]
+          processors: [resourcedetection, batch]
+          exporters: [otlphttp/traces]
   '';
 
   systemd.services.otelcol = {
@@ -309,32 +316,17 @@ in
     
     serviceConfig = {
       ExecStart = "${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config /etc/otelcol/config.yaml";
-      EnvironmentFile = [ config.sops.templates."vector.env".path ];
+      EnvironmentFile = [ config.sops.templates."otelcol.env".path ];
       DynamicUser = true;
       StateDirectory = "otelcol";
-    };
-  };
-
-  systemd.services.vector = {
-    description = "Vector Event Router";
-    documentation = [ "https://vector.dev" ];
-    wantedBy = [ "multi-user.target" ];
-    after = [ "network-online.target" ];
-    requires = [ "network-online.target" ];
-    
-    serviceConfig = {
-      ExecStart = "${pkgs.vector}/bin/vector --config /etc/vector/vector.toml";
-      EnvironmentFile = [ config.sops.templates."vector.env".path ];
-      DynamicUser = true;
-      StateDirectory = "vector";
       SupplementaryGroups = [ "systemd-journal" ];
     };
   };
 
-  # Secrets for Vector (Axiom Token)
+  # Secrets for OpenTelemetry Collector
   sops.secrets.axiom_token = {};
   
-  sops.templates."vector.env".content = ''
+  sops.templates."otelcol.env".content = ''
     AXIOM_TOKEN=${config.sops.placeholder.axiom_token}
   '';
 
