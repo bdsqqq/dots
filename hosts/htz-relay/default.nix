@@ -102,6 +102,14 @@ in {
             "quic://100.123.116.27:22000"
           ];
         };
+        
+        r56 = {
+          id = "JOWDMTJ-LQKWV6K-5V37UTD-EKJBBHS-3FJPKWD-HRONTJC-F4NZGJN-VKJTZAQ";
+          addresses = [
+            "tcp://100.94.68.111:22000"
+            "quic://100.94.68.111:22000"
+          ];
+        };
       };
 
       folders = {
@@ -112,7 +120,7 @@ in {
           path = "/mnt/storage-01/commonplace";
           type = "sendreceive";
           rescanIntervalS = 3600;
-          devices = [ "mbp-m2" "ipd" "iph16" ];
+          devices = [ "mbp-m2" "ipd" "iph16" "r56" ];
           versioning = {
             type = "trashcan";
             params.cleanoutDays = "0";

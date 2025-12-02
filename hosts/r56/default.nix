@@ -103,6 +103,10 @@ in
           addresses = [ "tcp://100.87.59.2:22000" "quic://100.87.59.2:22000" ];
           introducer = true;
         };
+        "htz-relay" = {
+          id = "HPMO7GH-P5UX4LC-OYSWWVP-XTMOUWL-QXUDAYH-ZJXXQDJ-QN677MY-QNQACQH";
+          addresses = [ "tcp://100.101.195.56:22000" "quic://100.101.195.56:22000" ];
+        };
       };
 
       folders = {
@@ -113,7 +117,7 @@ in
           path = "/home/bdsqqq/commonplace";
           type = "sendreceive";
           rescanIntervalS = 60;
-          devices = [ "mbp-m2" ];
+          devices = [ "mbp-m2" "htz-relay" ];
           versioning = {
             type = "trashcan";
             params.cleanoutDays = "0";
