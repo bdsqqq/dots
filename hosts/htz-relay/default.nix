@@ -217,6 +217,7 @@ in {
       protocol = {
         type = "http";
         uri = "https://api.axiom.co/v1/metrics";
+        encoding = { codec = "json"; };
         auth = {
           strategy = "bearer";
           token = "\${AXIOM_TOKEN}";
