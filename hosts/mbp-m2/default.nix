@@ -31,6 +31,57 @@
       home.homeDirectory = "/Users/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
+      
+      # declarative syncthing settings (daemon managed by launchd in system/syncthing.nix)
+      services.syncthing = {
+        enable = true;
+        overrideFolders = true;
+        overrideDevices = true;
+        
+        settings = {
+          options = {
+            globalAnnounceEnabled = false;
+            localAnnounceEnabled = false;
+            relaysEnabled = false;
+            natEnabled = false;
+          };
+          
+          devices = {
+            "htz-relay" = {
+              id = "HPMO7GH-P5UX4LC-OYSWWVP-XTMOUWL-QXUDAYH-ZJXXQDJ-QN677MY-QNQACQH";
+              addresses = [ "tcp://100.101.195.56:22000" "quic://100.101.195.56:22000" ];
+            };
+            "r56" = {
+              id = "JOWDMTJ-LQKWV6K-5V37UTD-EKJBBHS-3FJPKWD-HRONTJC-F4NZGJN-VKJTZAQ";
+              addresses = [ "tcp://100.94.68.111:22000" "quic://100.94.68.111:22000" ];
+            };
+            "iph16" = {
+              id = "L2PJ4F3-BZUZ4RX-3BCPIYB-V544M22-P3WDZBF-ZEVYT5A-GPTX5ZF-ZM5KTQK";
+              addresses = [ "dynamic" ];
+            };
+            "ipd" = {
+              id = "YORN2Q5-DWT444V-65WLF77-JHDHP5X-HHZEEFO-NKTLTYZ-M777AXS-X2KX6AF";
+              addresses = [ "tcp://100.70.110.116:22000" "quic://100.70.110.116:22000" ];
+            };
+          };
+          
+          folders = {
+            commonplace = {
+              enable = true;
+              id = "sqz7z-a6tfg";
+              label = "commonplace";
+              path = "/Users/bdsqqq/commonplace";
+              type = "sendreceive";
+              rescanIntervalS = 60;
+              devices = [ "htz-relay" "r56" "iph16" "ipd" ];
+              versioning = {
+                type = "trashcan";
+                params.cleanoutDays = "0";
+              };
+            };
+          };
+        };
+      };
     };
   };
 

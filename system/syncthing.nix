@@ -5,6 +5,7 @@ let
   isDarwin = lib.hasInfix "darwin" system;
 in
 if isLinux then {
+  # NixOS uses system service; declarative folder/device config in host files
   services.syncthing = {
     enable = true;
     user = "bdsqqq";
@@ -16,20 +17,6 @@ if isLinux then {
   networking.firewall.interfaces."tailscale0".allowedTCPPorts = [ 8384 22000 ];
   networking.firewall.interfaces."tailscale0".allowedUDPPorts = [ 22000 21027 ];
 } else if isDarwin then {
-  launchd.user.agents.syncthing = {
-    serviceConfig = {
-      Label = "com.bdsqqq.syncthing";
-      ProgramArguments = [
-        "${pkgs.syncthing}/bin/syncthing"
-        "-no-browser"
-        "-home"
-        "/Users/bdsqqq/.config/syncthing"
-      ];
-      WorkingDirectory = "/Users/bdsqqq";
-      RunAtLoad = true;
-      KeepAlive = true;
-      StandardOutPath = "/Users/bdsqqq/Library/Logs/syncthing.log";
-      StandardErrorPath = "/Users/bdsqqq/Library/Logs/syncthing.log";
-    };
-  };
+  # darwin: syncthing managed via home-manager's services.syncthing in host config
+  # (home-manager creates launchd agent automatically)
 } else {}
