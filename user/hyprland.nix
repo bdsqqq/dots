@@ -30,6 +30,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "hyprctl setcursor macOS 24"
         "gsettings set org.gnome.desktop.interface cursor-theme 'macOS'"
         "gsettings set org.gnome.desktop.interface cursor-size 24"
+        "gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'"
         "vicinae server"
         "waybar"
       ];
@@ -91,6 +92,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "$mod, Q, killactive"
         "$mod, Return, exec, ghostty"
         "$mod, Space, exec, vicinae toggle"
+        "$mod, T, exec, sh -c 'if [ \"$(gsettings get org.gnome.desktop.interface color-scheme)\" = \"'\\''prefer-dark'\\''\" ]; then gsettings set org.gnome.desktop.interface color-scheme prefer-light; else gsettings set org.gnome.desktop.interface color-scheme prefer-dark; fi'"
         
         "$mod, V, togglefloating"
         "$mod, F, fullscreen"

@@ -44,7 +44,7 @@
           gui = {
             address = "0.0.0.0:8384";
             user = "bdsqqq";
-            # password set via activation script from sops secret
+            password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
           };
           options = {
             globalAnnounceEnabled = false;
@@ -93,31 +93,6 @@
       # fix: home-manager syncthing doesn't set RunAtLoad, so manually override
       launchd.agents.syncthing.config.RunAtLoad = true;
       launchd.agents.syncthing-init.config.RunAtLoad = true;
-      
-      # set syncthing GUI password hash from sops secret (writes directly to config.xml)
-      home.activation.syncthingGuiPassword = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        set -euo pipefail
-        
-        SECRET_FILE="/run/secrets/syncthing_gui_password_hash"
-        if [ ! -f "$SECRET_FILE" ]; then
-          echo "syncthingGuiPassword: secret not found, skipping"
-          exit 0
-        fi
-        
-        HASH="$(cat "$SECRET_FILE")"
-        CFG_FILE="$HOME/Library/Application Support/Syncthing/config.xml"
-        
-        if [ ! -f "$CFG_FILE" ]; then
-          echo "syncthingGuiPassword: config.xml not found, skipping"
-          exit 0
-        fi
-        
-        # update password hash in config.xml using sed
-        ${pkgs.gnused}/bin/sed -i.bak "s|<password>.*</password>|<password>$HASH</password>|" "$CFG_FILE"
-        rm -f "$CFG_FILE.bak"
-        
-        echo "syncthingGuiPassword: hash updated in config.xml"
-      '';
     };
   };
 
