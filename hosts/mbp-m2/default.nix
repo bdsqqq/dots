@@ -47,6 +47,7 @@
             password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
           };
           options = {
+            urAccepted = -1;
             globalAnnounceEnabled = false;
             localAnnounceEnabled = false;
             relaysEnabled = false;
