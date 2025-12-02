@@ -224,6 +224,7 @@ in
     tree
     unzip
     usbutils
+    vector
   ];
 
   # fonts provided by base bundle
@@ -241,6 +242,50 @@ in
   # System state version
   system.stateVersion = "25.05";
   
+  # Observability: Ship journal logs to Axiom via Vector
+  environment.etc."vector/vector.toml".source = (pkgs.formats.toml {}).generate "vector.toml" {
+    sources.journal_logs = {
+      type = "journald";
+    };
+    transforms.remap_timestamp = {
+      type = "remap";
+      inputs = [ "journal_logs" ];
+      source = ''
+        ._time = .timestamp
+        del(.timestamp)
+      '';
+    };
+    sinks.axiom = {
+      type = "axiom";
+      inputs = [ "remap_timestamp" ];
+      token = "\${AXIOM_TOKEN}";
+      dataset = "papertrail";
+    };
+  };
+
+  systemd.services.vector = {
+    description = "Vector Event Router";
+    documentation = [ "https://vector.dev" ];
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-online.target" ];
+    requires = [ "network-online.target" ];
+    
+    serviceConfig = {
+      ExecStart = "${pkgs.vector}/bin/vector --config /etc/vector/vector.toml";
+      EnvironmentFile = [ config.sops.templates."vector.env".path ];
+      DynamicUser = true;
+      StateDirectory = "vector";
+      SupplementaryGroups = [ "systemd-journal" ];
+    };
+  };
+
+  # Secrets for Vector (Axiom Token)
+  sops.secrets.axiom_token = {};
+  
+  sops.templates."vector.env".content = ''
+    AXIOM_TOKEN=${config.sops.placeholder.axiom_token}
+  '';
+
   # set syncthing GUI password hash from sops secret (writes directly to config.xml)
   systemd.services.syncthing-gui-password = {
     description = "Set Syncthing GUI password hash from sops secret";
