@@ -38,7 +38,10 @@
         overrideFolders = true;
         overrideDevices = true;
         
+        extraOptions = [ "-gui-address=0.0.0.0:8384" ];
+        
         settings = {
+          gui.address = "0.0.0.0:8384";
           options = {
             globalAnnounceEnabled = false;
             localAnnounceEnabled = false;
