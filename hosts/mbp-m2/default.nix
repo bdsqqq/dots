@@ -13,6 +13,7 @@
     ../../system/kanata.nix
     ../../system/syncthing-automerge.nix
     ../../system/code-server.nix
+    ../../system/vector.nix
     ../../user/gaming.nix
   ];
 
