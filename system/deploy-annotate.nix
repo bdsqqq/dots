@@ -45,16 +45,26 @@ let
     HOSTNAME="$(${pkgs.nettools}/bin/hostname -s)"
     TIMESTAMP="$(${pkgs.coreutils}/bin/date -u +"%Y-%m-%dT%H:%M:%SZ")"
     STORE_PATH="$(${pkgs.coreutils}/bin/readlink -f "$PROFILE_PATH")"
+    
+    # get git revision from system configuration
+    GIT_REV=""
+    if [[ -f "/run/current-system/configuration-revision" ]]; then
+      GIT_REV="$(${pkgs.coreutils}/bin/cat /run/current-system/configuration-revision)"
+    elif [[ -f "$PROFILE_PATH/configuration-revision" ]]; then
+      GIT_REV="$(${pkgs.coreutils}/bin/cat "$PROFILE_PATH/configuration-revision")"
+    fi
+    GIT_REV_SHORT="''${GIT_REV:0:7}"
 
-    echo "nix-deploy-annotate: creating annotation for $HOSTNAME gen $CURRENT_GEN..."
+    echo "nix-deploy-annotate: creating annotation for $HOSTNAME gen $CURRENT_GEN ($GIT_REV_SHORT)..."
 
     PAYLOAD=$(${pkgs.coreutils}/bin/cat <<EOF
 {
   "time": "$TIMESTAMP",
   "type": "nix-deploy",
   "datasets": ["papertrail", "host-metrics"],
-  "title": "$HOSTNAME gen $CURRENT_GEN",
-  "description": "nix generation $CURRENT_GEN deployed to $HOSTNAME\n\nstore path: $STORE_PATH"
+  "title": "$HOSTNAME gen $CURRENT_GEN''${GIT_REV_SHORT:+ ($GIT_REV_SHORT)}",
+  "description": "nix generation $CURRENT_GEN deployed to $HOSTNAME\n\ncommit: $GIT_REV\nstore path: $STORE_PATH",
+  "url": "https://github.com/bdsqqq/dots/commit/$GIT_REV"
 }
 EOF
     )
