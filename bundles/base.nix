@@ -6,6 +6,7 @@
     ../system/tailscale.nix
     ../system/sops.nix
     ../system/authorized-keys.nix
+    ../system/deploy-annotate.nix
     ../user/path-order.nix
     ../user/shell.nix
     ../user/homebrew.nix
