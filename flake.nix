@@ -47,7 +47,11 @@
     vicinae.url = "github:vicinaehq/vicinae";
   };
 
-  outputs = inputs@{ flake-parts, stylix, ... }:
+  outputs = inputs@{ self, flake-parts, stylix, ... }:
+    let
+      # get git revision for configuration tracking
+      flakeRevision = self.rev or self.dirtyRev or "unknown";
+    in
     flake-parts.lib.mkFlake { inherit inputs; } {
       # Multi-system support for cross-platform compatibility
       systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
@@ -125,6 +129,8 @@
                   config.allowUnfree = true;
                   overlays = [ (import ./overlays/unstable.nix inputs) ];
                 };
+                # track git revision for deploy annotations
+                system.configurationRevision = flakeRevision;
               }
               
               # Host-specific configuration
@@ -168,6 +174,7 @@
               inputs.nix-flatpak.nixosModules.nix-flatpak
               ({ pkgs, ... }: {
                 nixpkgs.overlays = [ (import ./overlays/unstable.nix inputs) ];
+                system.configurationRevision = flakeRevision;
               })
               ./hosts/r56/default.nix
             ];
@@ -187,6 +194,7 @@
                   inputs.copyparty.overlays.default 
                   (import ./overlays/unstable.nix inputs)
                 ];
+                system.configurationRevision = flakeRevision;
               })
               ./hosts/htz-relay/default.nix
             ];

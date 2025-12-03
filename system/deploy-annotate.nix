@@ -48,11 +48,15 @@ let
     
     # get git revision from system configuration
     GIT_REV=""
-    if [[ -f "/run/current-system/configuration-revision" ]]; then
+    if [[ -f "/run/current-system/darwin-version.json" ]]; then
+      # darwin: read from darwin-version.json
+      GIT_REV="$(${pkgs.jq}/bin/jq -r '.configurationRevision // empty' /run/current-system/darwin-version.json)"
+    elif [[ -f "/run/current-system/configuration-revision" ]]; then
+      # nixos: read from configuration-revision file
       GIT_REV="$(${pkgs.coreutils}/bin/cat /run/current-system/configuration-revision)"
-    elif [[ -f "$PROFILE_PATH/configuration-revision" ]]; then
-      GIT_REV="$(${pkgs.coreutils}/bin/cat "$PROFILE_PATH/configuration-revision")"
     fi
+    # strip -dirty suffix for clean commit hash
+    GIT_REV="''${GIT_REV%-dirty}"
     GIT_REV_SHORT="''${GIT_REV:0:7}"
 
     echo "nix-deploy-annotate: creating annotation for $HOSTNAME gen $CURRENT_GEN ($GIT_REV_SHORT)..."
