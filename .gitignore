@@ -1,6 +1,3 @@
 .DS_Store
 result
 result-*
-
-# syncthing conflict files
-*.sync-conflict-*
