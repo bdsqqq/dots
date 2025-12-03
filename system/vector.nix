@@ -36,11 +36,6 @@ let
     inputs = ["log_files"]
     source = "._time = .timestamp; del(.timestamp); .source_file = .file"
     
-    [transforms.enrich_metrics]
-    type = "remap"
-    inputs = ["host_metrics"]
-    source = "._time = .timestamp; del(.timestamp); .host_type = \"darwin\""
-    
     [sinks.axiom_logs]
     type = "axiom"
     inputs = ["parse_logs"]
@@ -49,7 +44,7 @@ let
     
     [sinks.axiom_metrics]
     type = "axiom"
-    inputs = ["enrich_metrics"]
+    inputs = ["host_metrics"]
     dataset = "host-metrics"
     token = "''${AXIOM_TOKEN}"
   '' else ''
@@ -69,11 +64,6 @@ let
     inputs = ["journald"]
     source = "._time = .timestamp; del(.timestamp)"
     
-    [transforms.enrich_metrics]
-    type = "remap"
-    inputs = ["host_metrics"]
-    source = "._time = .timestamp; del(.timestamp); .host_type = \"linux\""
-    
     [sinks.axiom_logs]
     type = "axiom"
     inputs = ["parse_logs"]
@@ -82,7 +72,7 @@ let
     
     [sinks.axiom_metrics]
     type = "axiom"
-    inputs = ["enrich_metrics"]
+    inputs = ["host_metrics"]
     dataset = "host-metrics"
     token = "''${AXIOM_TOKEN}"
   '';
