@@ -16,7 +16,7 @@ let
     STATE_DIR="${stateDir}"
     STATE_FILE="$STATE_DIR/last-generation"
 
-    mkdir -p "$STATE_DIR"
+    ${pkgs.coreutils}/bin/mkdir -p "$STATE_DIR"
 
     if [[ ! -f "$AXIOM_TOKEN_PATH" ]]; then
       echo "nix-deploy-annotate: axiom token not found, skipping"
@@ -30,25 +30,25 @@ let
       exit 0
     fi
 
-    CURRENT_GEN="$(readlink "$PROFILE_PATH" | grep -oE '[0-9]+' | tail -1)"
+    CURRENT_GEN="$(${pkgs.coreutils}/bin/readlink "$PROFILE_PATH" | ${pkgs.gnugrep}/bin/grep -oE '[0-9]+' | ${pkgs.coreutils}/bin/tail -1)"
     
     # skip if we already annotated this generation
     if [[ -f "$STATE_FILE" ]]; then
-      LAST_GEN="$(cat "$STATE_FILE")"
+      LAST_GEN="$(${pkgs.coreutils}/bin/cat "$STATE_FILE")"
       if [[ "$CURRENT_GEN" == "$LAST_GEN" ]]; then
         echo "nix-deploy-annotate: gen $CURRENT_GEN already annotated, skipping"
         exit 0
       fi
     fi
 
-    AXIOM_TOKEN="$(cat "$AXIOM_TOKEN_PATH")"
-    HOSTNAME="$(hostname -s)"
-    TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-    STORE_PATH="$(readlink -f "$PROFILE_PATH")"
+    AXIOM_TOKEN="$(${pkgs.coreutils}/bin/cat "$AXIOM_TOKEN_PATH")"
+    HOSTNAME="$(${pkgs.nettools}/bin/hostname -s)"
+    TIMESTAMP="$(${pkgs.coreutils}/bin/date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    STORE_PATH="$(${pkgs.coreutils}/bin/readlink -f "$PROFILE_PATH")"
 
     echo "nix-deploy-annotate: creating annotation for $HOSTNAME gen $CURRENT_GEN..."
 
-    PAYLOAD=$(cat <<EOF
+    PAYLOAD=$(${pkgs.coreutils}/bin/cat <<EOF
 {
   "time": "$TIMESTAMP",
   "type": "nix-deploy",
