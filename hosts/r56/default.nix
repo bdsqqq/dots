@@ -199,6 +199,9 @@ in
         };
       };
       
+      # dconf for gsettings persistence (portal-gtk reads this for theme preference)
+      dconf.enable = true;
+      
       services.vicinae = {
         enable = true;
         autoStart = true;
