@@ -98,8 +98,8 @@ if isDarwin then {
   
   # run annotation script after every activation (rebuild switch)
   system.activationScripts.postActivation.text = ''
-    # run in background so it doesn't block activation if network is slow
-    (
+    # run in background with nohup so it survives activation exit
+    /usr/bin/nohup /bin/bash -c '
       # wait for activation to complete and symlink to update
       sleep 5
       # wait for sops secrets to be available
@@ -107,8 +107,8 @@ if isDarwin then {
         [ -f /run/secrets/axiom_token ] && break
         sleep 1
       done
-      ${annotateScript} >> /var/log/nix-deploy-annotate.log 2>&1
-    ) &
+      ${annotateScript}
+    ' >> /var/log/nix-deploy-annotate.log 2>&1 &
   '';
   
 } else if isLinux then {
@@ -117,8 +117,8 @@ if isDarwin then {
   # run annotation script after every activation (rebuild switch)
   system.activationScripts.deployAnnotate = {
     text = ''
-      # run in background so it doesn't block activation if network is slow
-      (
+      # run in background with nohup so it survives activation exit
+      ${pkgs.coreutils}/bin/nohup ${pkgs.bash}/bin/bash -c '
         # wait for activation to complete and symlink to update
         sleep 5
         # wait for sops secrets to be available
@@ -127,7 +127,7 @@ if isDarwin then {
           sleep 1
         done
         ${annotateScript}
-      ) &
+      ' >> /var/log/nix-deploy-annotate.log 2>&1 &
     '';
     deps = [ ];
   };
