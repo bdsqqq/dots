@@ -116,7 +116,7 @@ if isDarwin then {
   system.activationScripts.deployAnnotate = {
     text = ''
       ${pkgs.systemd}/bin/systemd-run --unit=nix-deploy-annotate-run --no-block \
-        --setenv=PATH=${pkgs.coreutils}/bin:${pkgs.gnugrep}/bin:${pkgs.curl}/bin:${pkgs.jq}/bin:${pkgs.nettools}/bin \
+        --setenv=PATH=${pkgs.coreutils}/bin:${pkgs.gnugrep}/bin:${pkgs.curl}/bin:${pkgs.jq}/bin:${pkgs.nettools}/bin:/run/current-system/sw/bin \
         ${pkgs.bash}/bin/bash -c '
           sleep 5
           for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
