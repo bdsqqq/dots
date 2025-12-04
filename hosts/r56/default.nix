@@ -230,7 +230,10 @@ in
     usbutils
     
     # AI tools - whisper-cpp with CUDA for GPU acceleration
-    (whisper-cpp.override { cudaSupport = true; })
+    (whisper-cpp.override { 
+      cudaSupport = true; 
+      cudaPackages = pkgs.cudaPackages;
+    })
   ];
 
   # fonts provided by base bundle
