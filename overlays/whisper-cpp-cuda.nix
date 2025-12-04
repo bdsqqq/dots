@@ -6,6 +6,8 @@ let
   lib = super.lib;
 in {
   whisper-cpp = super.whisper-cpp.overrideAttrs (old: {
+    nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ self.patchelf ];
+
     # Tell ggml where to find backend .so files at runtime
     cmakeFlags = (old.cmakeFlags or []) ++ [
       (lib.cmakeFeature "GGML_BACKEND_DIR" "${placeholder "out"}/lib/ggml")
@@ -22,6 +24,12 @@ in {
         for so in $backends; do
           echo "  $so -> $out/lib/ggml/"
           cp -v "$so" "$out/lib/ggml/"
+        done
+
+        # Fix RPATH to remove /build/ references
+        for so in "$out/lib/ggml"/*.so; do
+          echo "Fixing RPATH for $so"
+          patchelf --set-rpath "$out/lib:$out/lib/ggml" "$so" || true
         done
       else
         echo "No ggml backend modules found"
