@@ -239,6 +239,7 @@ in
   # fonts provided by base bundle
 
   nixpkgs.config.allowUnfree = true;
+  nixpkgs.config.cudaSupport = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
   
   # Automatic garbage collection
