@@ -229,8 +229,8 @@ in
     unzip
     usbutils
     
-    # AI tools
-    openai-whisper
+    # AI tools - whisper-cpp with CUDA for GPU acceleration
+    (whisper-cpp.override { cudaSupport = true; })
   ];
 
   # fonts provided by base bundle
