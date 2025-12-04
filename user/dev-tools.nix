@@ -61,9 +61,8 @@ in
     ] ++ lib.optionals isDarwin [
     istat-menus
 ] ++ lib.optionals (!isDarwin) [
-    nvtopPackages.nvidia
-    nvtopPackages.amd  # for ryzen igpu monitoring
-    radeontop          # detailed amd gpu stats
+    nvtopPackages.full  # supports nvidia + amd + intel
+    radeontop           # detailed amd gpu stats
 ];
 
     home.shellAliases = {
