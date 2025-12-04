@@ -228,6 +228,9 @@ in
     tree
     unzip
     usbutils
+    
+    # AI tools
+    openai-whisper
   ];
 
   # fonts provided by base bundle
