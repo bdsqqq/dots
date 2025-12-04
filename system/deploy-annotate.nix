@@ -51,9 +51,9 @@ let
     if [[ -f "/run/current-system/darwin-version.json" ]]; then
       # darwin: read from darwin-version.json
       GIT_REV="$(${pkgs.jq}/bin/jq -r '.configurationRevision // empty' /run/current-system/darwin-version.json)"
-    elif [[ -f "/run/current-system/configuration-revision" ]]; then
-      # nixos: read from configuration-revision file
-      GIT_REV="$(${pkgs.coreutils}/bin/cat /run/current-system/configuration-revision)"
+    elif command -v nixos-version &>/dev/null; then
+      # nixos: use nixos-version command
+      GIT_REV="$(nixos-version --configuration-revision 2>/dev/null)" || true
     fi
     # strip -dirty suffix for clean commit hash
     GIT_REV="''${GIT_REV%-dirty}"
