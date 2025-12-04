@@ -96,33 +96,36 @@ in
 if isDarwin then {
   environment.systemPackages = [ deployAnnotateCli ];
   
-  launchd.daemons.nix-deploy-annotate = {
-    script = ''
-      exec ${annotateScript}
-    '';
-    serviceConfig = {
-      Label = "dev.bdsqqq.nix-deploy-annotate";
-      RunAtLoad = true;
-      KeepAlive = false;
-      StandardOutPath = "/var/log/nix-deploy-annotate.log";
-      StandardErrorPath = "/var/log/nix-deploy-annotate.log";
-    };
-  };
+  # run annotation script after every activation (rebuild switch)
+  system.activationScripts.postActivation.text = ''
+    # run in background so it doesn't block activation if network is slow
+    (
+      # wait for sops secrets to be available
+      for i in $(seq 1 30); do
+        [ -f /run/secrets/axiom_token ] && break
+        sleep 1
+      done
+      ${annotateScript} >> /var/log/nix-deploy-annotate.log 2>&1
+    ) &
+  '';
   
 } else if isLinux then {
   environment.systemPackages = [ deployAnnotateCli ];
   
-  systemd.services.nix-deploy-annotate = {
-    description = "Create Axiom annotation for nix deployment";
-    wantedBy = [ "multi-user.target" ];
-    after = [ "network-online.target" "sops-install-secrets.service" ];
-    wants = [ "network-online.target" ];
-    
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = annotateScript;
-      RemainAfterExit = true;
-    };
+  # run annotation script after every activation (rebuild switch)
+  system.activationScripts.deployAnnotate = {
+    text = ''
+      # run in background so it doesn't block activation if network is slow
+      (
+        # wait for sops secrets to be available
+        for i in $(seq 1 30); do
+          [ -f /run/secrets/axiom_token ] && break
+          sleep 1
+        done
+        ${annotateScript}
+      ) &
+    '';
+    deps = [ ];
   };
   
 } else { }
