@@ -1,12 +1,13 @@
 # system/deploy-annotate.nix
 # automatically creates an axiom annotation after every nix rebuild
+# uses restartTriggers pattern so service restarts AFTER activation completes
 { lib, pkgs, config, hostSystem ? null, ... }:
 
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isLinux = lib.hasInfix "linux" hostSystem;
   
-  stateDir = if isDarwin then "/var/lib/nix-deploy-annotate" else "/var/lib/nix-deploy-annotate";
+  stateDir = "/var/lib/nix-deploy-annotate";
   
   annotateScript = pkgs.writeShellScript "nix-deploy-annotate" ''
     set -euo pipefail
@@ -16,7 +17,7 @@ let
     STATE_DIR="${stateDir}"
     STATE_FILE="$STATE_DIR/last-generation"
 
-    ${pkgs.coreutils}/bin/mkdir -p "$STATE_DIR"
+    mkdir -p "$STATE_DIR"
 
     if [[ ! -f "$AXIOM_TOKEN_PATH" ]]; then
       echo "nix-deploy-annotate: axiom token not found, skipping"
@@ -30,30 +31,30 @@ let
       exit 0
     fi
 
-    CURRENT_GEN="$(${pkgs.coreutils}/bin/readlink "$PROFILE_PATH" | ${pkgs.gnugrep}/bin/grep -oE '[0-9]+' | ${pkgs.coreutils}/bin/tail -1)"
+    CURRENT_GEN="$(readlink "$PROFILE_PATH" | grep -oE '[0-9]+' | tail -1)"
     
     # skip if we already annotated this generation
     if [[ -f "$STATE_FILE" ]]; then
-      LAST_GEN="$(${pkgs.coreutils}/bin/cat "$STATE_FILE")"
+      LAST_GEN="$(cat "$STATE_FILE")"
       if [[ "$CURRENT_GEN" == "$LAST_GEN" ]]; then
         echo "nix-deploy-annotate: gen $CURRENT_GEN already annotated, skipping"
         exit 0
       fi
     fi
 
-    AXIOM_TOKEN="$(${pkgs.coreutils}/bin/cat "$AXIOM_TOKEN_PATH")"
-    HOSTNAME="$(${pkgs.nettools}/bin/hostname -s)"
-    TIMESTAMP="$(${pkgs.coreutils}/bin/date -u +"%Y-%m-%dT%H:%M:%SZ")"
-    STORE_PATH="$(${pkgs.coreutils}/bin/readlink -f "$PROFILE_PATH")"
+    AXIOM_TOKEN="$(cat "$AXIOM_TOKEN_PATH")"
+    HOSTNAME="$(hostname -s)"
+    TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    STORE_PATH="$(readlink -f "$PROFILE_PATH")"
     
     # get git revision from system configuration
     GIT_REV=""
     if [[ -f "/run/current-system/darwin-version.json" ]]; then
       # darwin: read from darwin-version.json
-      GIT_REV="$(${pkgs.jq}/bin/jq -r '.configurationRevision // empty' /run/current-system/darwin-version.json)"
-    elif command -v nixos-version &>/dev/null; then
-      # nixos: use nixos-version command
-      GIT_REV="$(nixos-version --configuration-revision 2>/dev/null)" || true
+      GIT_REV="$(jq -r '.configurationRevision // empty' /run/current-system/darwin-version.json)"
+    elif [[ -x "/run/current-system/sw/bin/nixos-version" ]]; then
+      # nixos: use nixos-version from the NEW system (after switch)
+      GIT_REV="$(/run/current-system/sw/bin/nixos-version --configuration-revision 2>/dev/null)" || true
     fi
     # strip -dirty suffix for clean commit hash
     GIT_REV="''${GIT_REV%-dirty}"
@@ -61,7 +62,7 @@ let
 
     echo "nix-deploy-annotate: creating annotation for $HOSTNAME gen $CURRENT_GEN ($GIT_REV_SHORT)..."
 
-    PAYLOAD=$(${pkgs.coreutils}/bin/cat <<EOF
+    PAYLOAD=$(cat <<EOF
 {
   "time": "$TIMESTAMP",
   "type": "nix-deploy",
@@ -73,7 +74,7 @@ let
 EOF
     )
 
-    RESPONSE=$(${pkgs.curl}/bin/curl -s -w "\n%{http_code}" -X POST "$AXIOM_API" \
+    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$AXIOM_API" \
       -H "Authorization: Bearer $AXIOM_TOKEN" \
       -H "Content-Type: application/json" \
       -d "$PAYLOAD" 2>&1) || true
@@ -96,37 +97,54 @@ in
 if isDarwin then {
   environment.systemPackages = [ deployAnnotateCli ];
   
-  # run annotation script after every activation (rebuild switch)
-  system.activationScripts.postActivation.text = ''
-    # run in background - use setsid to fully detach from controlling terminal
-    /usr/bin/setsid /bin/bash -c '
-      sleep 5
-      for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+  # darwin: use launchd with RunAtLoad - gets reloaded on every switch
+  # because the plist changes when the script store path changes
+  launchd.daemons.nix-deploy-annotate = {
+    script = ''
+      # wait for sops secrets
+      for i in $(seq 1 30); do
         [ -f /run/secrets/axiom_token ] && break
         sleep 1
       done
-      ${annotateScript} >> /var/log/nix-deploy-annotate.log 2>&1
-    ' &
-  '';
+      exec ${annotateScript}
+    '';
+    serviceConfig = {
+      Label = "dev.bdsqqq.nix-deploy-annotate";
+      RunAtLoad = true;
+      KeepAlive = false;
+      StandardOutPath = "/var/log/nix-deploy-annotate.log";
+      StandardErrorPath = "/var/log/nix-deploy-annotate.log";
+    };
+  };
   
 } else if isLinux then {
   environment.systemPackages = [ deployAnnotateCli ];
   
-  # use systemd-run to spawn a transient service that survives activation
-  system.activationScripts.deployAnnotate = {
-    text = ''
-      ${pkgs.systemd}/bin/systemd-run --unit=nix-deploy-annotate-run --no-block \
-        --setenv=PATH=${pkgs.coreutils}/bin:${pkgs.gnugrep}/bin:${pkgs.curl}/bin:${pkgs.jq}/bin:${pkgs.nettools}/bin:/run/current-system/sw/bin \
-        ${pkgs.bash}/bin/bash -c '
-          sleep 5
-          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
-            [ -f /run/secrets/axiom_token ] && break
-            sleep 1
-          done
-          ${annotateScript}
-        ' || true
-    '';
-    deps = [ ];
+  # use restartTriggers so service restarts AFTER activation completes
+  # at that point /run/current-system points to the NEW system
+  systemd.services.nix-deploy-annotate = {
+    description = "Create Axiom annotation after NixOS rebuild";
+    wantedBy = [ "multi-user.target" ];
+    
+    # restart when config revision changes (i.e., on every new commit)
+    # note: can't use config.system.build.toplevel as it causes infinite recursion
+    restartTriggers = [ config.system.configurationRevision ];
+    
+    # ensure secrets and network are available
+    after = [ "network-online.target" "sops-nix.service" ];
+    wants = [ "network-online.target" ];
+    
+    # PATH for the script
+    path = with pkgs; [ coreutils gnugrep curl jq nettools ];
+    
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = annotateScript;
+      
+      # state directory for generation tracking
+      StateDirectory = "nix-deploy-annotate";
+    };
   };
   
 } else { }
