@@ -174,6 +174,7 @@
               inputs.nix-flatpak.nixosModules.nix-flatpak
               ({ pkgs, ... }: {
                 nixpkgs.overlays = [ (import ./overlays/unstable.nix inputs) ];
+                nixpkgs.config.cudaSupport = true;
                 system.configurationRevision = flakeRevision;
               })
               ./hosts/r56/default.nix
