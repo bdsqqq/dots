@@ -100,6 +100,8 @@ if isDarwin then {
   system.activationScripts.postActivation.text = ''
     # run in background so it doesn't block activation if network is slow
     (
+      # wait for activation to complete and symlink to update
+      sleep 5
       # wait for sops secrets to be available
       for i in $(seq 1 30); do
         [ -f /run/secrets/axiom_token ] && break
@@ -117,6 +119,8 @@ if isDarwin then {
     text = ''
       # run in background so it doesn't block activation if network is slow
       (
+        # wait for activation to complete and symlink to update
+        sleep 5
         # wait for sops secrets to be available
         for i in $(seq 1 30); do
           [ -f /run/secrets/axiom_token ] && break
