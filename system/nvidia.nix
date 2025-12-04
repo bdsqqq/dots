@@ -25,7 +25,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
   };
 
   environment.systemPackages = with pkgs; [
-    nvtopPackages.nvidia
+    # nvtop provided by user/dev-tools.nix with full gpu support
   ];
 }
 
