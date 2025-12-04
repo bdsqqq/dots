@@ -98,17 +98,15 @@ if isDarwin then {
   
   # run annotation script after every activation (rebuild switch)
   system.activationScripts.postActivation.text = ''
-    # run in background with nohup so it survives activation exit
-    /usr/bin/nohup /bin/bash -c '
-      # wait for activation to complete and symlink to update
+    # run in background - use setsid to fully detach from controlling terminal
+    /usr/bin/setsid /bin/bash -c '
       sleep 5
-      # wait for sops secrets to be available
-      for i in $(seq 1 30); do
+      for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
         [ -f /run/secrets/axiom_token ] && break
         sleep 1
       done
-      ${annotateScript}
-    ' >> /var/log/nix-deploy-annotate.log 2>&1 &
+      ${annotateScript} >> /var/log/nix-deploy-annotate.log 2>&1
+    ' &
   '';
   
 } else if isLinux then {
@@ -117,17 +115,15 @@ if isDarwin then {
   # run annotation script after every activation (rebuild switch)
   system.activationScripts.deployAnnotate = {
     text = ''
-      # run in background with nohup so it survives activation exit
-      ${pkgs.coreutils}/bin/nohup ${pkgs.bash}/bin/bash -c '
-        # wait for activation to complete and symlink to update
+      # run in background - use setsid to fully detach from controlling terminal
+      ${pkgs.util-linux}/bin/setsid ${pkgs.bash}/bin/bash -c '
         sleep 5
-        # wait for sops secrets to be available
-        for i in $(seq 1 30); do
+        for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
           [ -f /run/secrets/axiom_token ] && break
           sleep 1
         done
-        ${annotateScript}
-      ' >> /var/log/nix-deploy-annotate.log 2>&1 &
+        ${annotateScript} >> /var/log/nix-deploy-annotate.log 2>&1
+      ' &
     '';
     deps = [ ];
   };
