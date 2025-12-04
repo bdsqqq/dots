@@ -112,18 +112,18 @@ if isDarwin then {
 } else if isLinux then {
   environment.systemPackages = [ deployAnnotateCli ];
   
-  # run annotation script after every activation (rebuild switch)
+  # use systemd-run to spawn a transient service that survives activation
   system.activationScripts.deployAnnotate = {
     text = ''
-      # run in background - use setsid to fully detach from controlling terminal
-      ${pkgs.util-linux}/bin/setsid ${pkgs.bash}/bin/bash -c '
-        sleep 5
-        for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
-          [ -f /run/secrets/axiom_token ] && break
-          sleep 1
-        done
-        ${annotateScript} >> /var/log/nix-deploy-annotate.log 2>&1
-      ' &
+      ${pkgs.systemd}/bin/systemd-run --unit=nix-deploy-annotate-run --no-block \
+        ${pkgs.bash}/bin/bash -c '
+          sleep 5
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+            [ -f /run/secrets/axiom_token ] && break
+            sleep 1
+          done
+          ${annotateScript}
+        ' || true
     '';
     deps = [ ];
   };
