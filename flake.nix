@@ -173,7 +173,10 @@
               inputs.home-manager.nixosModules.home-manager
               inputs.nix-flatpak.nixosModules.nix-flatpak
               ({ pkgs, ... }: {
-                nixpkgs.overlays = [ (import ./overlays/unstable.nix inputs) ];
+                nixpkgs.overlays = [ 
+                  (import ./overlays/unstable.nix inputs)
+                  (import ./overlays/whisper-cpp-cuda.nix)
+                ];
                 nixpkgs.config.cudaSupport = true;
                 system.configurationRevision = flakeRevision;
               })

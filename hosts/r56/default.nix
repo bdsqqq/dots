@@ -229,9 +229,8 @@ in
     unzip
     usbutils
     
-    # AI tools - whisper-cpp with Vulkan for GPU acceleration
-    # (cuda backend has install bug in nixpkgs - libggml-cuda.so not installed)
-    (whisper-cpp.override { vulkanSupport = true; })
+    # AI tools - whisper-cpp with CUDA (fixed via overlay)
+    whisper-cpp
   ];
 
   # fonts provided by base bundle
