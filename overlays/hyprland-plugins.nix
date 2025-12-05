@@ -1,7 +1,7 @@
 # overlays/hyprland-plugins.nix
-# Use Hyprland and plugins from upstream flakes for version alignment
+# Use Hyprland 0.52.1 from upstream flake for plugin compatibility
 inputs: final: prev: {
-  # Override hyprland with the flake version
+  # Override hyprland with the flake version (pinned to 0.52.1)
   hyprland = inputs.hyprland.packages.${prev.system}.hyprland;
   
   # Use plugin packages from their respective flakes

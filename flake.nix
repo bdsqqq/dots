@@ -50,10 +50,11 @@
     axiom-deploy-annotation.url = "github:bdsqqq/axiom-deploy-annotation";
     axiom-deploy-annotation.inputs.nixpkgs.follows = "nixpkgs";
 
-    # Hyprland from upstream flake for latest version
+    # Hyprland pinned to 0.52.1 for plugin compatibility
     hyprland = {
       type = "git";
       url = "https://github.com/hyprwm/Hyprland";
+      ref = "refs/tags/v0.52.1";
       submodules = true;
     };
     

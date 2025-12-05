@@ -118,30 +118,6 @@
 **/result/
 **/result-*
 
-# steam/flatpak runtime symlink hellscapes
-**/.steam/
-**/.steampath
-**/.local/share/Steam/
-**/.local/share/flatpak/
-**/.var/
-
-# nix profile symlinks (can cause loops)
-**/.nix-profile
-**/.nix-defexpr/
-
-# browser/electron lock files and sockets
-**/.mozilla/**/lock
-**/.zen/**/lock
-**/SingletonSocket
-**/SingletonCookie
-**/SingletonLock
-
-# sops-nix secrets (symlinks to /run/secrets)
-**/.config/sops-nix/
-
-# syncthing trash versioning
-**/.Trash/
-
 # project-specific patterns (from commonplace setup)
 pack-toolbox/temp/
 */assets/minecraft/textures/
