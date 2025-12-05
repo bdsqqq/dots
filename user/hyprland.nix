@@ -149,5 +149,6 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
   home.packages = with pkgs; [
     swaybg
     wl-clipboard
+    glib  # provides gsettings, gdbus for theme toggling
   ];
 }
