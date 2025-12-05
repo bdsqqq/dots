@@ -1,5 +1,16 @@
 { pkgs, lib, hostSystem ? null, ... }:
 
+let
+  toggleTheme = pkgs.writeShellScriptBin "toggle-theme" ''
+    current=$(gsettings get org.gnome.desktop.interface color-scheme)
+    if [ "$current" = "'prefer-dark'" ]; then
+      gsettings set org.gnome.desktop.interface color-scheme prefer-light
+    else
+      gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+    fi
+  '';
+in
+
 if !(lib.hasInfix "linux" hostSystem) then {} else {
   wayland.windowManager.hyprland = {
     enable = true;
@@ -89,7 +100,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "$mod, Q, killactive"
         "$mod, Return, exec, ghostty"
         "$mod, Space, exec, vicinae toggle"
-        "$mod, T, exec, sh -c 'if [ \"$(gsettings get org.gnome.desktop.interface color-scheme)\" = \"'\"'\"'prefer-dark'\"'\"'\" ]; then gsettings set org.gnome.desktop.interface color-scheme prefer-light; else gsettings set org.gnome.desktop.interface color-scheme prefer-dark; fi'"
+        "$mod, T, exec, toggle-theme"
         
         "$mod, V, togglefloating"
         "$mod, F, fullscreen"
@@ -151,5 +162,6 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     wl-clipboard
     glib  # provides gsettings, gdbus for theme toggling
     xdg-desktop-portal-gtk  # must be in same search path as hyprland portal
+    toggleTheme
   ];
 }
