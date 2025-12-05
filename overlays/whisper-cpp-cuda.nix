@@ -10,6 +10,7 @@
 self: super:
 let
   lib = super.lib;
+  cudaPackages = self.cudaPackages;
 in {
   whisper-cpp = super.whisper-cpp.overrideAttrs (old: {
     nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ self.patchelf ];
@@ -26,10 +27,12 @@ in {
           cp -v "$so" "$out/bin/"
         done
 
-        # Fix RPATH to remove /build/ references
+        # Fix RPATH - need cuda libs, gcc libs, and our own libs
+        CUDA_RPATH="${cudaPackages.cuda_cudart.lib}/lib:${cudaPackages.libcublas.lib}/lib"
+        GCC_RPATH="${self.stdenv.cc.cc.lib}/lib"
         for so in "$out/bin"/libggml-*.so; do
           echo "Fixing RPATH for $so"
-          patchelf --set-rpath "$out/lib" "$so" || true
+          patchelf --set-rpath "$out/lib:$CUDA_RPATH:$GCC_RPATH" "$so" || true
         done
       else
         echo "No ggml backend modules found"
