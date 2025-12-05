@@ -28,9 +28,6 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       exec-once = [
         "swaybg -i /etc/wallpaper.jpg -m fill"
         "hyprctl setcursor macOS 24"
-        "gsettings set org.gnome.desktop.interface cursor-theme 'macOS'"
-        "gsettings set org.gnome.desktop.interface cursor-size 24"
-        "gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'"
         "vicinae server"
         "waybar"
       ];
