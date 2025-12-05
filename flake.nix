@@ -45,6 +45,10 @@
 
     # Vicinae launcher (no nixpkgs.follows to preserve cachix cache hits)
     vicinae.url = "github:vicinaehq/vicinae";
+    
+    # Axiom deploy annotations
+    axiom-deploy-annotation.url = "github:bdsqqq/axiom-deploy-annotation";
+    axiom-deploy-annotation.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
@@ -123,6 +127,7 @@
             };
             modules = [
               inputs.sops-nix.darwinModules.sops
+              inputs.axiom-deploy-annotation.darwinModules.default
               # Apply overlays to the main system packages
               {
                 nixpkgs = {
@@ -131,6 +136,13 @@
                 };
                 # track git revision for deploy annotations
                 system.configurationRevision = flakeRevision;
+                
+                # axiom deploy annotations
+                services.axiom-deploy-annotation = {
+                  enable = true;
+                  datasets = [ "papertrail" "host-metrics" ];
+                  repositoryUrl = "https://github.com/bdsqqq/dots";
+                };
               }
               
               # Host-specific configuration
@@ -169,6 +181,7 @@
             specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "graphical"; };
             modules = [
               inputs.sops-nix.nixosModules.sops
+              inputs.axiom-deploy-annotation.nixosModules.default
               stylix.nixosModules.stylix
               inputs.home-manager.nixosModules.home-manager
               inputs.nix-flatpak.nixosModules.nix-flatpak
@@ -179,6 +192,12 @@
                 ];
                 nixpkgs.config.cudaSupport = true;
                 system.configurationRevision = flakeRevision;
+                
+                services.axiom-deploy-annotation = {
+                  enable = true;
+                  datasets = [ "papertrail" "host-metrics" ];
+                  repositoryUrl = "https://github.com/bdsqqq/dots";
+                };
               })
               ./hosts/r56/default.nix
             ];
@@ -189,6 +208,7 @@
             specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "headless"; };
             modules = [
               inputs.sops-nix.nixosModules.sops
+              inputs.axiom-deploy-annotation.nixosModules.default
               stylix.nixosModules.stylix
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.home-manager.nixosModules.home-manager
@@ -199,6 +219,12 @@
                   (import ./overlays/unstable.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
+                
+                services.axiom-deploy-annotation = {
+                  enable = true;
+                  datasets = [ "papertrail" "host-metrics" ];
+                  repositoryUrl = "https://github.com/bdsqqq/dots";
+                };
               })
               ./hosts/htz-relay/default.nix
             ];

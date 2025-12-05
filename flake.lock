@@ -1,5 +1,25 @@
 {
   "nodes": {
+    "axiom-deploy-annotation": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1764932415,
+        "narHash": "sha256-ugAflc++Jts3OBo/4ffNEafGw+f9dJUQIUUbHUgEhk0=",
+        "owner": "bdsqqq",
+        "repo": "axiom-deploy-annotation",
+        "rev": "04388a06292e78362bf62d1b4b6ae986727d6d18",
+        "type": "github"
+      },
+      "original": {
+        "owner": "bdsqqq",
+        "repo": "axiom-deploy-annotation",
+        "type": "github"
+      }
+    },
     "base16": {
       "inputs": {
         "fromYaml": "fromYaml"
@@ -564,6 +584,7 @@
     },
     "root": {
       "inputs": {
+        "axiom-deploy-annotation": "axiom-deploy-annotation",
         "berkeley-mono": "berkeley-mono",
         "copyparty": "copyparty",
         "flake-parts": "flake-parts",
