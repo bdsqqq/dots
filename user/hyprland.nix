@@ -150,5 +150,6 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     swaybg
     wl-clipboard
     glib  # provides gsettings, gdbus for theme toggling
+    xdg-desktop-portal-gtk  # must be in same search path as hyprland portal
   ];
 }
