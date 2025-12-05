@@ -2,6 +2,7 @@
 {
   imports = [
     ../system/nix.nix
+    ../system/nix-ld.nix
     ../system/ssh.nix
     ../system/tailscale.nix
     ../system/sops.nix
