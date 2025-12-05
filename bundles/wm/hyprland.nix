@@ -5,13 +5,25 @@
   ];
 
   programs.hyprland.enable = true;
+  programs.dconf.enable = true;
   
-  # portal-gtk provides Settings/Appearance interface for theme detection
-  # (ghostty, electron apps, etc. query this for light/dark preference)
+  # portal setup for theme detection (apps query org.freedesktop.portal.Settings)
   xdg.portal = {
     enable = true;
-    extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
+    xdgOpenUsePortal = true;
+    extraPortals = [
+      pkgs.xdg-desktop-portal-hyprland
+      pkgs.xdg-desktop-portal-gtk
+    ];
+    config = {
+      common = {
+        default = [ "hyprland" "gtk" ];
+        "org.freedesktop.impl.portal.Settings" = [ "gtk" ];
+      };
+    };
   };
+  
+  environment.sessionVariables.XDG_CURRENT_DESKTOP = "Hyprland";
 
   environment.etc."wallpaper.jpg".source = ../../assets/wallpaper.jpg;
 
