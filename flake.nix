@@ -49,6 +49,9 @@
     # Axiom deploy annotations
     axiom-deploy-annotation.url = "github:bdsqqq/axiom-deploy-annotation";
     axiom-deploy-annotation.inputs.nixpkgs.follows = "nixpkgs";
+
+    # Niri scrolling window manager
+    niri.url = "github:sodiboo/niri-flake";
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
@@ -185,11 +188,13 @@
               stylix.nixosModules.stylix
               inputs.home-manager.nixosModules.home-manager
               inputs.nix-flatpak.nixosModules.nix-flatpak
+              inputs.niri.nixosModules.niri
               ({ pkgs, ... }: {
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
                   (import ./overlays/whisper-cpp-cuda.nix)
                   (import ./overlays/hyprland-plugins.nix inputs)
+                  inputs.niri.overlays.niri
                 ];
                 nixpkgs.config.cudaSupport = true;
                 system.configurationRevision = flakeRevision;
