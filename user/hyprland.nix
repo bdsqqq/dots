@@ -166,4 +166,14 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     xdg-desktop-portal-gtk  # must be in same search path as hyprland portal
     toggleTheme
   ];
+  
+  # dconf settings for portal theme detection (portal-gtk reads these)
+  dconf.enable = true;
+  dconf.settings = {
+    "org/gnome/desktop/interface" = {
+      color-scheme = "prefer-dark";
+      cursor-theme = "macOS";
+      cursor-size = 24;
+    };
+  };
 }

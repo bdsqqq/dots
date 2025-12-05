@@ -199,16 +199,6 @@ in
         };
       };
       
-      # dconf for gsettings persistence (portal-gtk reads this for theme preference)
-      dconf.enable = true;
-      dconf.settings = {
-        "org/gnome/desktop/interface" = {
-          color-scheme = "prefer-dark";
-          cursor-theme = "macOS";
-          cursor-size = 24;
-        };
-      };
-      
       services.vicinae = {
         enable = true;
         autoStart = true;
