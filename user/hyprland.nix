@@ -100,7 +100,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "$mod, Q, killactive"
         "$mod, Return, exec, ghostty"
         "$mod, Space, exec, vicinae toggle"
-        "$mod, T, exec, toggle-theme"
+        "$mod, T, exec, ${toggleTheme}/bin/toggle-theme"
         
         "$mod, V, togglefloating"
         "$mod, F, fullscreen"
