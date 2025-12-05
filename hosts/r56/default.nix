@@ -201,7 +201,14 @@ in
       
       services.vicinae = {
         enable = true;
-        autoStart = true;
+        autoStart = false; # started via hyprland exec-once with env var
+        extensions = [
+          (inputs.vicinae.packages.x86_64-linux.mkVicinaeExtension {
+            pname = "toggle-theme";
+            version = "1.0.0";
+            src = ../../user/vicinae/toggle-theme/extension;
+          })
+        ];
         settings = {
           theme.name = "vicinae-dark";
           window = {

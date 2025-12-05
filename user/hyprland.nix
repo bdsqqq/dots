@@ -1,26 +1,22 @@
 { pkgs, lib, hostSystem ? null, ... }:
 
 let
-  # hyprland's exec dispatcher spawns commands without the user's full session
-  # environment. gsettings requires DBUS_SESSION_BUS_ADDRESS for dbus access
-  # and XDG_DATA_DIRS to locate schema files. without these, gsettings fails
-  # silently with "No schemas installed".
-  toggleTheme = pkgs.writeShellScriptBin "toggle-theme" ''
-    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
-    export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
-    current=$(${pkgs.glib}/bin/gsettings get org.gnome.desktop.interface color-scheme)
-    if [ "$current" = "'prefer-dark'" ]; then
-      ${pkgs.glib}/bin/gsettings set org.gnome.desktop.interface color-scheme prefer-light
-    else
-      ${pkgs.glib}/bin/gsettings set org.gnome.desktop.interface color-scheme prefer-dark
-    fi
-  '';
+  # shared scripts
+  toggleTheme = import ./scripts/toggle-theme.nix { inherit pkgs; };
+  
+  # vicinae integration (provides env var for extension)
+  toggleThemePkg = import ./vicinae/toggle-theme { inherit pkgs; };
 in
 
 if !(lib.hasInfix "linux" hostSystem) then {} else {
   wayland.windowManager.hyprland = {
     enable = true;
     package = pkgs.hyprland;
+    
+    plugins = [
+      pkgs.hyprlandPlugins.hyprspace
+      pkgs.hyprlandPlugins.hyprscrolling
+    ];
     
     settings = {
       monitor = [ ",preferred,auto,1.5" ];
@@ -45,7 +41,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       exec-once = [
         "swaybg -i /etc/wallpaper.jpg -m fill"
         "hyprctl setcursor macOS 24"
-        "vicinae server"
+        "${toggleThemePkg.vicinaeEnv} vicinae server"
         "waybar"
       ];
       
@@ -67,8 +63,9 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         border_size = 0;
         "col.active_border" = "rgba(00000000)";
         "col.inactive_border" = "rgba(00000000)";
-        layout = "dwindle";
+        layout = "scrolling";
         resize_on_border = true;
+        extend_border_grab_area = 4; # match gaps_in
       };
       
       decoration = {
@@ -100,6 +97,32 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         preserve_split = true;
       };
       
+      # hyprscrolling layout config (switch to it with general:layout = "scrolling")
+      "plugin:hyprscrolling" = {
+        column_width = 0.5;
+        fullscreen_on_one_column = false;
+        focus_fit_method = 0; # 0 = center, 1 = fit
+        follow_focus = true;
+      };
+      
+      # hyprspace overview config
+      "plugin:overview" = {
+        panelHeight = 180;
+        panelBorderWidth = 2;
+        workspaceMargin = 8;
+        workspaceBorderSize = 2;
+        centerAligned = true;
+        showNewWorkspace = true;
+        showEmptyWorkspace = true;
+        exitOnClick = true;
+        exitOnSwitch = true;
+        drawActiveWorkspace = true;
+        hideBackgroundLayers = false;
+        hideTopLayers = false;
+        disableBlur = false;
+        affectStrut = false;
+      };
+      
       "$mod" = "SUPER";
 
       bind = [
@@ -110,6 +133,15 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         
         "$mod, V, togglefloating"
         "$mod, F, fullscreen"
+        
+        # hyprspace overview
+        "$mod, Tab, overview:toggle"
+        
+        # hyprscrolling layout messages (when using scrolling layout)
+        "$mod, bracketleft, layoutmsg, colresize -conf"
+        "$mod, bracketright, layoutmsg, colresize +conf"
+        "$mod, C, layoutmsg, fit active"
+        "$mod SHIFT, C, layoutmsg, fit visible"
         
         "$mod, left, movefocus, l"
         "$mod, right, movefocus, r"
