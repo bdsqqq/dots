@@ -63,8 +63,9 @@
       url = "github:KZDKM/Hyprspace";
       inputs.hyprland.follows = "hyprland";
     };
+    # pinned to a75241d (0.52.0 compatible, before FocusState API changes)
     hyprland-plugins = {
-      url = "github:hyprwm/hyprland-plugins";
+      url = "github:hyprwm/hyprland-plugins/a75241d";
       inputs.hyprland.follows = "hyprland";
     };
   };
