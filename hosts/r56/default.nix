@@ -62,6 +62,7 @@ in
     ../../bundles/headless.nix
     ../../bundles/dev.nix
     ../../bundles/wm/hyprland.nix
+    ../../bundles/wm/niri.nix
     ../../system/nvidia.nix
     ../../system/bluetooth.nix
     ../../system/fan-control.nix
