@@ -18,9 +18,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     enable = true;
     package = pkgs.hyprland;
     
-    plugins = [
-      pkgs.hyprlandPlugins.hyprscrolling
-    ];
+
     
     settings = {
       monitor = [ ",preferred,auto,1.5" ];
@@ -67,7 +65,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         border_size = 0;
         "col.active_border" = "rgba(00000000)";
         "col.inactive_border" = "rgba(00000000)";
-        layout = "scrolling";
+        layout = "dwindle";
         resize_on_border = true;
       };
       
