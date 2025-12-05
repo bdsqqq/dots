@@ -50,24 +50,9 @@
     axiom-deploy-annotation.url = "github:bdsqqq/axiom-deploy-annotation";
     axiom-deploy-annotation.inputs.nixpkgs.follows = "nixpkgs";
 
-    # Hyprland pinned to 0.52.1 for plugin compatibility
-    hyprland = {
-      type = "git";
-      url = "https://github.com/hyprwm/Hyprland";
-      ref = "refs/tags/v0.52.1";
-      submodules = true;
-    };
-    
-    # Hyprland plugins - follows hyprland to stay in sync
-    hyprspace = {
-      url = "github:KZDKM/Hyprspace";
-      inputs.hyprland.follows = "hyprland";
-    };
-    # pinned to a75241d (0.52.0 compatible, before FocusState API changes)
-    hyprland-plugins = {
-      url = "github:hyprwm/hyprland-plugins/a75241d";
-      inputs.hyprland.follows = "hyprland";
-    };
+    # Let hyprland-plugins control the hyprland version (no .follows)
+    # This ensures plugin code matches the hyprland it was written for
+    hyprland-plugins.url = "github:hyprwm/hyprland-plugins";
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
