@@ -49,6 +49,23 @@
     # Axiom deploy annotations
     axiom-deploy-annotation.url = "github:bdsqqq/axiom-deploy-annotation";
     axiom-deploy-annotation.inputs.nixpkgs.follows = "nixpkgs";
+
+    # Hyprland from upstream flake for latest version
+    hyprland = {
+      type = "git";
+      url = "https://github.com/hyprwm/Hyprland";
+      submodules = true;
+    };
+    
+    # Hyprland plugins - follows hyprland to stay in sync
+    hyprspace = {
+      url = "github:KZDKM/Hyprspace";
+      inputs.hyprland.follows = "hyprland";
+    };
+    hyprland-plugins = {
+      url = "github:hyprwm/hyprland-plugins";
+      inputs.hyprland.follows = "hyprland";
+    };
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
@@ -189,6 +206,7 @@
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
                   (import ./overlays/whisper-cpp-cuda.nix)
+                  (import ./overlays/hyprland-plugins.nix inputs)
                 ];
                 nixpkgs.config.cudaSupport = true;
                 system.configurationRevision = flakeRevision;
