@@ -49,10 +49,6 @@
     # Axiom deploy annotations
     axiom-deploy-annotation.url = "github:bdsqqq/axiom-deploy-annotation";
     axiom-deploy-annotation.inputs.nixpkgs.follows = "nixpkgs";
-
-    # Let hyprland-plugins control the hyprland version (no .follows)
-    # This ensures plugin code matches the hyprland it was written for
-    hyprland-plugins.url = "github:hyprwm/hyprland-plugins";
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
