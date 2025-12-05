@@ -2,11 +2,12 @@
 
 let
   toggleTheme = pkgs.writeShellScriptBin "toggle-theme" ''
-    current=$(gsettings get org.gnome.desktop.interface color-scheme)
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+    current=$(${pkgs.glib}/bin/gsettings get org.gnome.desktop.interface color-scheme)
     if [ "$current" = "'prefer-dark'" ]; then
-      gsettings set org.gnome.desktop.interface color-scheme prefer-light
+      ${pkgs.glib}/bin/gsettings set org.gnome.desktop.interface color-scheme prefer-light
     else
-      gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+      ${pkgs.glib}/bin/gsettings set org.gnome.desktop.interface color-scheme prefer-dark
     fi
   '';
 in
