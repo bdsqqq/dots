@@ -1,6 +1,10 @@
 { pkgs, lib, hostSystem ? null, ... }:
 
 let
+  # hyprland's exec dispatcher spawns commands without the user's full session
+  # environment. gsettings requires DBUS_SESSION_BUS_ADDRESS for dbus access
+  # and XDG_DATA_DIRS to locate schema files. without these, gsettings fails
+  # silently with "No schemas installed".
   toggleTheme = pkgs.writeShellScriptBin "toggle-theme" ''
     export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
     export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
@@ -162,12 +166,19 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
   home.packages = with pkgs; [
     swaybg
     wl-clipboard
-    glib  # provides gsettings, gdbus for theme toggling
-    xdg-desktop-portal-gtk  # must be in same search path as hyprland portal
+    glib
+    # xdg-desktop-portal searches XDG_DATA_DIRS for .portal files. on NixOS,
+    # the user profile path comes before the system path. if hyprland.portal
+    # is in the user profile but gtk.portal is only at system level, the portal
+    # daemon finds hyprland but reports "gtk.portal is unrecognized" and won't
+    # expose the Settings interface. placing both in the user profile fixes this.
+    xdg-desktop-portal-gtk
     toggleTheme
   ];
   
-  # dconf settings for portal theme detection (portal-gtk reads these)
+  # portal-gtk reads org.gnome.desktop.interface via dconf to answer
+  # portal Settings queries. apps like ghostty query org.freedesktop.appearance
+  # color-scheme through the portal, which maps to this dconf key.
   dconf.enable = true;
   dconf.settings = {
     "org/gnome/desktop/interface" = {
