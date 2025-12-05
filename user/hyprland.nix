@@ -20,7 +20,6 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     
     plugins = [
       pkgs.hyprlandPlugins.hyprscrolling
-      pkgs.hyprlandPlugins.hyprspace
     ];
     
     settings = {
