@@ -1,22 +1,22 @@
 { pkgs, lib, hostSystem ? null, ... }:
 
 let
-  # shared scripts
-  toggleTheme = import ./scripts/toggle-theme.nix { inherit pkgs; };
-  
-  # vicinae integration (provides env var for extension)
-  toggleThemePkg = import ./vicinae/toggle-theme { inherit pkgs; };
+  toggleTheme = pkgs.writeShellScriptBin "toggle-theme" ''
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+    export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+    current=$(${pkgs.glib}/bin/gsettings get org.gnome.desktop.interface color-scheme)
+    if [ "$current" = "'prefer-dark'" ]; then
+      ${pkgs.glib}/bin/gsettings set org.gnome.desktop.interface color-scheme prefer-light
+    else
+      ${pkgs.glib}/bin/gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+    fi
+  '';
 in
 
 if !(lib.hasInfix "linux" hostSystem) then {} else {
   wayland.windowManager.hyprland = {
     enable = true;
     package = pkgs.hyprland;
-    
-    plugins = [
-      pkgs.hyprlandPlugins.hyprspace
-      pkgs.hyprlandPlugins.hyprscrolling
-    ];
     
     settings = {
       monitor = [ ",preferred,auto,1.5" ];
@@ -41,7 +41,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       exec-once = [
         "swaybg -i /etc/wallpaper.jpg -m fill"
         "hyprctl setcursor macOS 24"
-        "${toggleThemePkg.vicinaeEnv} vicinae server"
+        "vicinae server"
         "waybar"
       ];
       
@@ -63,9 +63,8 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         border_size = 0;
         "col.active_border" = "rgba(00000000)";
         "col.inactive_border" = "rgba(00000000)";
-        layout = "scrolling";
+        layout = "dwindle";
         resize_on_border = true;
-        extend_border_grab_area = 4; # match gaps_in
       };
       
       decoration = {
@@ -97,32 +96,6 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         preserve_split = true;
       };
       
-      # hyprscrolling layout config (switch to it with general:layout = "scrolling")
-      "plugin:hyprscrolling" = {
-        column_width = 0.5;
-        fullscreen_on_one_column = false;
-        focus_fit_method = 0; # 0 = center, 1 = fit
-        follow_focus = true;
-      };
-      
-      # hyprspace overview config
-      "plugin:overview" = {
-        panelHeight = 180;
-        panelBorderWidth = 2;
-        workspaceMargin = 8;
-        workspaceBorderSize = 2;
-        centerAligned = true;
-        showNewWorkspace = true;
-        showEmptyWorkspace = true;
-        exitOnClick = true;
-        exitOnSwitch = true;
-        drawActiveWorkspace = true;
-        hideBackgroundLayers = false;
-        hideTopLayers = false;
-        disableBlur = false;
-        affectStrut = false;
-      };
-      
       "$mod" = "SUPER";
 
       bind = [
@@ -133,15 +106,6 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         
         "$mod, V, togglefloating"
         "$mod, F, fullscreen"
-        
-        # hyprspace overview
-        "$mod, Tab, overview:toggle"
-        
-        # hyprscrolling layout messages (when using scrolling layout)
-        "$mod, bracketleft, layoutmsg, colresize -conf"
-        "$mod, bracketright, layoutmsg, colresize +conf"
-        "$mod, C, layoutmsg, fit active"
-        "$mod SHIFT, C, layoutmsg, fit visible"
         
         "$mod, left, movefocus, l"
         "$mod, right, movefocus, r"
@@ -198,19 +162,12 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
   home.packages = with pkgs; [
     swaybg
     wl-clipboard
-    glib
-    # xdg-desktop-portal searches XDG_DATA_DIRS for .portal files. on NixOS,
-    # the user profile path comes before the system path. if hyprland.portal
-    # is in the user profile but gtk.portal is only at system level, the portal
-    # daemon finds hyprland but reports "gtk.portal is unrecognized" and won't
-    # expose the Settings interface. placing both in the user profile fixes this.
-    xdg-desktop-portal-gtk
+    glib  # provides gsettings, gdbus for theme toggling
+    xdg-desktop-portal-gtk  # must be in same search path as hyprland portal
     toggleTheme
   ];
   
-  # portal-gtk reads org.gnome.desktop.interface via dconf to answer
-  # portal Settings queries. apps like ghostty query org.freedesktop.appearance
-  # color-scheme through the portal, which maps to this dconf key.
+  # dconf settings for portal theme detection (portal-gtk reads these)
   dconf.enable = true;
   dconf.settings = {
     "org/gnome/desktop/interface" = {
