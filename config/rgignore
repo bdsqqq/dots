@@ -118,6 +118,11 @@
 **/result/
 **/result-*
 
+# steam/flatpak runtime symlink hellscapes
+**/.steam/
+**/.local/share/Steam/
+**/.local/share/flatpak/
+
 # project-specific patterns (from commonplace setup)
 pack-toolbox/temp/
 */assets/minecraft/textures/
