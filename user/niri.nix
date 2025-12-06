@@ -91,28 +91,36 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         }
       ];
 
-      # Animations - matching hyprland's easeOutQuint feel
+      # Animations - matching hyprland's easeOutQuint feel (using ease-out-expo, closest available)
       animations = {
         slowdown = 1.0;
         
-        window-open = {
-          duration-ms = 150;
-          curve = "ease-out-quint";
+        window-open.kind = {
+          easing = {
+            duration-ms = 150;
+            curve = "ease-out-expo";
+          };
         };
         
-        window-close = {
-          duration-ms = 150;
-          curve = "ease-out-quint";
+        window-close.kind = {
+          easing = {
+            duration-ms = 150;
+            curve = "ease-out-expo";
+          };
         };
         
-        horizontal-view-movement = {
-          duration-ms = 150;
-          curve = "ease-out-quint";
+        horizontal-view-movement.kind = {
+          easing = {
+            duration-ms = 150;
+            curve = "ease-out-expo";
+          };
         };
         
-        workspace-switch = {
-          duration-ms = 200;
-          curve = "ease-out-quint";
+        workspace-switch.kind = {
+          easing = {
+            duration-ms = 200;
+            curve = "ease-out-expo";
+          };
         };
       };
 
