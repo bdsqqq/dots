@@ -7,7 +7,7 @@
   programs.hyprland.enable = true;
   programs.dconf.enable = true;
   
-  # portal setup for theme detection (apps query org.freedesktop.portal.Settings)
+  # portal setup for Hyprland session (config is per-desktop, not global)
   xdg.portal = {
     enable = true;
     xdgOpenUsePortal = true;
@@ -16,14 +16,14 @@
       pkgs.xdg-desktop-portal-gtk
     ];
     config = {
-      common = {
+      Hyprland = {
         default = [ "hyprland" "gtk" ];
         "org.freedesktop.impl.portal.Settings" = [ "gtk" ];
       };
     };
   };
   
-  environment.sessionVariables.XDG_CURRENT_DESKTOP = "Hyprland";
+  # XDG_CURRENT_DESKTOP is set by the session desktop file when Hyprland starts
 
   environment.etc."wallpaper.jpg".source = ../../assets/wallpaper.jpg;
 

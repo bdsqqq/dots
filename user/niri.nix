@@ -178,17 +178,8 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "Mod+9".action = focus-workspace 9;
         "Mod+0".action = focus-workspace 10;
         
-        # Move to workspace
-        "Mod+Shift+1".action = move-window-to-workspace 1;
-        "Mod+Shift+2".action = move-window-to-workspace 2;
-        "Mod+Shift+3".action = move-window-to-workspace 3;
-        "Mod+Shift+4".action = move-window-to-workspace 4;
-        "Mod+Shift+5".action = move-window-to-workspace 5;
-        "Mod+Shift+6".action = move-window-to-workspace 6;
-        "Mod+Shift+7".action = move-window-to-workspace 7;
-        "Mod+Shift+8".action = move-window-to-workspace 8;
-        "Mod+Shift+9".action = move-window-to-workspace 9;
-        "Mod+Shift+0".action = move-window-to-workspace 10;
+        # Move to workspace (niri only supports relative movement, not absolute indices)
+        # Use Mod+Shift+Up/Down/K/J for moving windows between workspaces
         
         # Volume controls
         "XF86AudioRaiseVolume".action = spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%+";

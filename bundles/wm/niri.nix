@@ -7,7 +7,7 @@
   programs.niri.enable = true;
   programs.dconf.enable = true;
   
-  # portal setup for theme detection
+  # portal setup for niri session (config is per-desktop, not global)
   xdg.portal = {
     enable = true;
     xdgOpenUsePortal = true;
@@ -16,14 +16,14 @@
       pkgs.xdg-desktop-portal-gtk
     ];
     config = {
-      common = {
+      niri = {
         default = [ "gnome" "gtk" ];
         "org.freedesktop.impl.portal.Settings" = [ "gtk" ];
       };
     };
   };
   
-  environment.sessionVariables.XDG_CURRENT_DESKTOP = "niri";
+  # XDG_CURRENT_DESKTOP is set by the session desktop file when niri starts
 
   environment.etc."wallpaper.jpg".source = ../../assets/wallpaper.jpg;
 
