@@ -5,6 +5,8 @@
   ];
 
   programs.niri.enable = true;
+  # use nixpkgs niri to avoid build issues with niri-flake's unstable version
+  programs.niri.package = pkgs.niri;
   programs.dconf.enable = true;
   
   # portal setup for niri session (config is per-desktop, not global)

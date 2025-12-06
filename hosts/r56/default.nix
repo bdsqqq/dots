@@ -215,15 +215,13 @@ in
     };
   };
   
-  # binary caches
+  # binary caches (niri cache auto-enabled by niri-flake module)
   nix.settings = {
     extra-substituters = [ 
       "https://vicinae.cachix.org"
-      "https://niri.cachix.org"
     ];
     extra-trusted-public-keys = [ 
       "vicinae.cachix.org-1:1kDrfienkGHPYbkpNj1mWTr7Fm1+zcenzgTizIcI3oc="
-      "niri.cachix.org-1:Wv0OmO7PsuocRKzfDoJ3mulSl7Z6oezYhGhR+3W2964="
     ];
   };
 
