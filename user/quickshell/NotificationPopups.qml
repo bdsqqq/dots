@@ -18,6 +18,9 @@ PanelWindow {
 
     property int maxHeight: screen.height - barHeight - (wmGap * 2)
 
+    property list<Notification> notifications: []
+    readonly property int notificationCount: notifications.length
+
     anchors {
         top: true
         right: true
@@ -36,10 +39,18 @@ PanelWindow {
     exclusiveZone: 0
 
     mask: Region {
-        item: Item {}
+        item: contentMask
     }
 
-    visible: notifServer.trackedNotifications.count > 0
+    Item {
+        id: contentMask
+        x: 0
+        y: 0
+        width: popup.implicitWidth
+        height: popup.implicitHeight
+    }
+
+    visible: notificationCount > 0
 
     NotificationServer {
         id: notifServer
@@ -48,10 +59,15 @@ PanelWindow {
         imageSupported: true
 
         onNotification: notification => {
-            console.log("GOT NOTIFICATION:", notification.summary, notification.body, "timeout:", notification.expireTimeout)
+            console.log("GOT NOTIFICATION:", notification.summary, notification.body)
             notification.tracked = true
-            console.log("TRACKED COUNT:", trackedNotifications.count)
+            popup.notifications = [notification, ...popup.notifications]
+            console.log("NOTIFICATION COUNT:", popup.notificationCount)
         }
+    }
+
+    function removeNotification(notification: Notification): void {
+        popup.notifications = popup.notifications.filter(n => n !== notification)
     }
 
     Shape {
@@ -108,17 +124,19 @@ PanelWindow {
                 clip: true
 
                 Repeater {
-                    model: notifServer.trackedNotifications
+                    model: popup.notifications
 
                     NotificationItem {
                         required property int index
                         required property Notification modelData
                         notification: modelData
                         width: notificationColumn.width
-                        isLast: index === notifServer.trackedNotifications.count - 1
+                        isLast: index === popup.notificationCount - 1
+
+                        onDismissed: popup.removeNotification(modelData)
+                        onExpired: popup.removeNotification(modelData)
 
                         opacity: 1
-                        transform: Translate { id: itemTranslate; y: 0 }
 
                         Behavior on opacity {
                             NumberAnimation {
