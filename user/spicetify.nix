@@ -138,12 +138,12 @@ if isDarwin then {
     programs.spicetify = {
       enable = true;
 
-      theme = {
+      theme = lib.mkForce {
         name = "Vesper";
         src = vesperThemeDir;
       };
 
-      colorScheme = "Vesper";
+      colorScheme = lib.mkForce "Vesper";
       customColorScheme = {
         text = "FFFFFF";
         subtext = "A0A0A0";

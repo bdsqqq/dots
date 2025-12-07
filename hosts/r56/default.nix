@@ -61,6 +61,7 @@ in
     ../../bundles/base.nix
     ../../bundles/headless.nix
     ../../bundles/dev.nix
+    ../../bundles/desktop.nix
     ../../bundles/wm/hyprland.nix
     ../../bundles/wm/niri.nix
     ../../system/nvidia.nix
