@@ -8,7 +8,7 @@ Item {
     required property Notification notification
     required property bool isLast
 
-    property int padding: 12
+    property int padding: 16
 
     signal dismissed()
     signal expired()
@@ -18,7 +18,14 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        anchors.bottomMargin: root.isLast ? 0 : 1
+        color: "#000000"
+    }
+
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 1
         color: "#1a1a1a"
         visible: !root.isLast
     }
@@ -27,17 +34,18 @@ Item {
         id: contentLayout
         anchors.fill: parent
         anchors.margins: root.padding
-        spacing: 4
+        spacing: 8
 
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
 
             Text {
-                text: root.notification.appName || "notification"
-                color: "#6b7280"
+                text: root.notification.summary || "notification"
+                color: "#ffffff"
                 font.family: "Berkeley Mono"
-                font.pixelSize: 12
+                font.pixelSize: 14
+                font.weight: Font.Medium
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
@@ -45,9 +53,10 @@ Item {
             Text {
                 id: dismissButton
                 text: "×"
-                color: dismissMouse.containsMouse ? "#ffffff" : "#6b7280"
+                color: dismissMouse.containsMouse ? "#ffffff" : "#4b5563"
                 font.family: "Berkeley Mono"
-                font.pixelSize: 14
+                font.pixelSize: 16
+                font.weight: Font.Normal
 
                 Behavior on color {
                     ColorAnimation { duration: 150; easing.type: Easing.OutQuint }
@@ -56,6 +65,7 @@ Item {
                 MouseArea {
                     id: dismissMouse
                     anchors.fill: parent
+                    anchors.margins: -4
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
@@ -67,26 +77,28 @@ Item {
         }
 
         Text {
-            text: root.notification.summary
-            color: "#ffffff"
+            text: root.notification.body
+            color: "#9ca3af"
             font.family: "Berkeley Mono"
-            font.pixelSize: 14
-            font.bold: true
+            font.pixelSize: 12
+            font.weight: Font.Normal
             wrapMode: Text.WordWrap
+            lineHeight: 1.4
             Layout.fillWidth: true
             visible: text.length > 0
+            maximumLineCount: 3
+            elide: Text.ElideRight
         }
 
         Text {
-            text: root.notification.body
-            color: "#d1d5db"
+            text: root.notification.appName
+            color: "#4b5563"
             font.family: "Berkeley Mono"
-            font.pixelSize: 13
-            wrapMode: Text.WordWrap
+            font.pixelSize: 11
+            font.weight: Font.Normal
+            elide: Text.ElideRight
             Layout.fillWidth: true
             visible: text.length > 0
-            maximumLineCount: 4
-            elide: Text.ElideRight
         }
 
         RowLayout {
@@ -101,12 +113,18 @@ Item {
                 Rectangle {
                     required property NotificationAction modelData
 
-                    implicitWidth: actionText.implicitWidth + 16
-                    implicitHeight: actionText.implicitHeight + 8
-                    color: actionMouse.containsMouse ? "#333333" : "#1a1a1a"
+                    implicitWidth: actionText.implicitWidth + 12
+                    implicitHeight: actionText.implicitHeight + 6
+                    color: actionMouse.containsMouse ? "#1f2937" : "transparent"
+                    border.width: 1
+                    border.color: actionMouse.containsMouse ? "#374151" : "#1f2937"
                     radius: 4
 
                     Behavior on color {
+                        ColorAnimation { duration: 150; easing.type: Easing.OutQuint }
+                    }
+
+                    Behavior on border.color {
                         ColorAnimation { duration: 150; easing.type: Easing.OutQuint }
                     }
 
@@ -114,9 +132,9 @@ Item {
                         id: actionText
                         anchors.centerIn: parent
                         text: modelData.text
-                        color: "#d1d5db"
+                        color: "#9ca3af"
                         font.family: "Berkeley Mono"
-                        font.pixelSize: 12
+                        font.pixelSize: 11
                     }
 
                     MouseArea {
