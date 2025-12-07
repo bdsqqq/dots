@@ -40,13 +40,20 @@ Item {
             }
 
             Text {
+                id: dismissButton
                 text: "×"
-                color: "#6b7280"
+                color: dismissMouse.containsMouse ? "#ffffff" : "#6b7280"
                 font.family: "Berkeley Mono"
                 font.pixelSize: 14
 
+                Behavior on color {
+                    ColorAnimation { duration: 150; easing.type: Easing.OutQuint }
+                }
+
                 MouseArea {
+                    id: dismissMouse
                     anchors.fill: parent
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.notification.dismiss()
                 }
@@ -92,6 +99,10 @@ Item {
                     implicitHeight: actionText.implicitHeight + 8
                     color: actionMouse.containsMouse ? "#333333" : "#1a1a1a"
                     radius: 4
+
+                    Behavior on color {
+                        ColorAnimation { duration: 150; easing.type: Easing.OutQuint }
+                    }
 
                     Text {
                         id: actionText
