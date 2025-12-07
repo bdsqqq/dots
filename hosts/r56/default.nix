@@ -20,7 +20,7 @@ in
 {
   stylix = {
     enable = true;
-    image = ../../assets/wallpaper.jpg;
+    image = ../../assets/wallpaper_without_mask.jpg;
     base16Scheme = ../../modules/shared/e-ink-scheme.yaml;
     polarity = "dark";
     
@@ -69,7 +69,7 @@ in
     ../../system/audio.nix
     ../../system/vector.nix
     ../../user/ghostty.nix
-    ../../user/waybar.nix
+    ../../user/quickshell.nix
     ../../user/gaming.nix
   ];
 

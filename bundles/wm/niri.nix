@@ -27,7 +27,7 @@
   
   # XDG_CURRENT_DESKTOP is set by the session desktop file when niri starts
 
-  environment.etc."wallpaper.jpg".source = ../../assets/wallpaper.jpg;
+  environment.etc."wallpaper.jpg".source = ../../assets/wallpaper_without_mask.jpg;
 
   home-manager.users.bdsqqq = { config, pkgs, lib, inputs, ... }: {
     imports = [
