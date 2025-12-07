@@ -49,13 +49,9 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         };
       };
 
-      # Output/monitor config - scale 1.5 for all common outputs
-      # niri doesn't support wildcards, so list outputs explicitly
-      # run `niri msg outputs` to find connected output names
-      outputs."HDMI-A-1".scale = 1.5;
-      outputs."DP-1".scale = 1.5;
-      outputs."DP-2".scale = 1.5;
-      outputs."eDP-1".scale = 1.5;
+      # Output/monitor config
+      # scale is auto-detected from EDID physical dimensions (since 0.1.6)
+      # only add explicit output blocks if auto-detection doesn't work for your monitor
 
       # Cursor
       cursor = {
