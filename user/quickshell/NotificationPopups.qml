@@ -18,8 +18,9 @@ PanelWindow {
 
     property int maxHeight: screen.height - barHeight - (wmGap * 2)
 
-    property list<Notification> notifications: []
-    readonly property int notificationCount: notifications.length
+    property list<QtObject> notifications: []
+    readonly property list<QtObject> visibleNotifications: notifications.filter(n => !n.closing)
+    readonly property int notificationCount: visibleNotifications.length
 
     anchors {
         top: true
@@ -34,7 +35,7 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "quickshell-notifications"
 
-    margins.top: barHeight
+    margins.top: 0
 
     exclusiveZone: 0
 
@@ -52,6 +53,11 @@ PanelWindow {
 
     visible: notificationCount > 0
 
+    component NotifWrapper: QtObject {
+        required property Notification notification
+        property bool closing: false
+    }
+
     NotificationServer {
         id: notifServer
         bodySupported: true
@@ -61,18 +67,40 @@ PanelWindow {
         onNotification: notification => {
             console.log("GOT NOTIFICATION:", notification.summary, notification.body)
             notification.tracked = true
-            popup.notifications = [notification, ...popup.notifications]
+            
+            const wrapper = wrapperComponent.createObject(popup, { notification: notification })
+            popup.notifications = [wrapper, ...popup.notifications]
             console.log("NOTIFICATION COUNT:", popup.notificationCount)
         }
     }
 
-    function removeNotification(notification: Notification): void {
-        popup.notifications = popup.notifications.filter(n => n !== notification)
+    Component {
+        id: wrapperComponent
+        NotifWrapper {}
+    }
+
+    function removeNotification(wrapper: QtObject): void {
+        wrapper.closing = true
+        removeTimer.wrapper = wrapper
+        removeTimer.start()
+    }
+
+    Timer {
+        id: removeTimer
+        property QtObject wrapper: null
+        interval: popup.exitDuration
+        onTriggered: {
+            if (wrapper) {
+                popup.notifications = popup.notifications.filter(n => n !== wrapper)
+                wrapper.notification.dismiss()
+                wrapper.destroy()
+            }
+        }
     }
 
     Shape {
         id: connectorShape
-        anchors.top: parent.top
+        y: barHeight
         anchors.right: parent.right
         width: cornerRadius
         height: cornerRadius
@@ -124,26 +152,17 @@ PanelWindow {
                 clip: true
 
                 Repeater {
-                    model: popup.notifications
+                    model: popup.visibleNotifications
 
                     NotificationItem {
                         required property int index
-                        required property Notification modelData
-                        notification: modelData
+                        required property QtObject modelData
+                        notification: modelData.notification
                         width: notificationColumn.width
                         isLast: index === popup.notificationCount - 1
 
                         onDismissed: popup.removeNotification(modelData)
                         onExpired: popup.removeNotification(modelData)
-
-                        opacity: 1
-
-                        Behavior on opacity {
-                            NumberAnimation {
-                                duration: popup.exitDuration
-                                easing.type: Easing.OutQuint
-                            }
-                        }
                     }
                 }
 
