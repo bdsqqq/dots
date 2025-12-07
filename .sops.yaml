@@ -1,7 +1,7 @@
 keys:
   - &user_bdsqqq age1j2lyxxhxj0g2fw05h8c856fjxy2f0salxlk78pwglpv2nxjm3ptsgxcce4
   - &host_htz_relay age14vhzajp8xemrjzqh9gzf6rpy0sckf3sa4vfdf5u60xgrktnfxc0sx85uj6
-  - &host_r56 age15udufnrnw630p95u3gv8907mrnrue74ue235zsxya59l8gvvlgnquemgtl
+  - &host_r56 age1wzdqusx4v0wpn7lgda4x4tw3qkd4jlcyy89pxrh4g679m0ajadtsh49e6t
 creation_rules:
   - path_regex: secrets\.yaml$
     key_groups:
