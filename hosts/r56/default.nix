@@ -243,6 +243,7 @@ in
     tree
     unzip
     usbutils
+    libnotify
     
     # AI tools - whisper-cpp with CUDA (fixed via overlay)
     whisper-cpp
