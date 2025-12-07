@@ -6,7 +6,6 @@ PanelWindow {
     id: corners
 
     property int cornerRadius: 8
-    property int barHeight: 30
     property color cornerColor: "#000000"
 
     anchors {
@@ -26,7 +25,7 @@ PanelWindow {
     Canvas {
         id: topLeftCorner
         x: 0
-        y: barHeight
+        y: 0
         width: cornerRadius
         height: cornerRadius
 
@@ -48,7 +47,7 @@ PanelWindow {
     Canvas {
         id: topRightCorner
         x: parent.width - cornerRadius
-        y: barHeight
+        y: 0
         width: cornerRadius
         height: cornerRadius
 

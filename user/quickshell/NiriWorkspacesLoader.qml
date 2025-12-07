@@ -89,7 +89,7 @@ Item {
                 text: "[" + (ws ? ws.idx : "") + "]"
                 color: ws && ws.isFocused ? "#d1d5db" : "#6b7280"
                 font.family: "Berkeley Mono"
-                font.pixelSize: 16
+                font.pixelSize: 24
                 font.bold: ws ? ws.isFocused : false
 
                 MouseArea {
