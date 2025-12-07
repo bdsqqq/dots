@@ -123,11 +123,11 @@ PanelWindow {
                     ctx.clearRect(0, 0, width, height)
                     ctx.fillStyle = "#000000"
                     ctx.beginPath()
-                    ctx.moveTo(width, height)
+                    ctx.moveTo(width, 0)
+                    ctx.arcTo(0, 0, 0, height, cornerRadius)
                     ctx.lineTo(0, height)
-                    ctx.lineTo(0, 0)
-                    ctx.arcTo(width, 0, width, height, cornerRadius)
                     ctx.lineTo(width, height)
+                    ctx.lineTo(width, 0)
                     ctx.fill()
                 }
 
