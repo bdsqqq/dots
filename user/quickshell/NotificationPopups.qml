@@ -27,8 +27,10 @@ PanelWindow {
         right: true
     }
 
-    implicitWidth: popupWidth + cornerRadius
-    implicitHeight: Math.min(surfaceColumn.implicitHeight + cornerRadius, maxHeight)
+    readonly property bool hasNotifications: notificationCount > 0
+
+    implicitWidth: hasNotifications ? popupWidth + cornerRadius : 1
+    implicitHeight: hasNotifications ? Math.min(surfaceColumn.implicitHeight + cornerRadius, maxHeight) : 1
 
     color: "transparent"
 
@@ -40,7 +42,13 @@ PanelWindow {
     exclusiveZone: 0
 
     mask: Region {
-        item: contentMask
+        item: hasNotifications ? contentMask : emptyMask
+    }
+
+    Item {
+        id: emptyMask
+        width: 0
+        height: 0
     }
 
     Item {
@@ -51,7 +59,7 @@ PanelWindow {
         height: popup.implicitHeight
     }
 
-    visible: notificationCount > 0
+    visible: true
 
     component NotifWrapper: QtObject {
         required property Notification notification
@@ -100,7 +108,8 @@ PanelWindow {
 
     Shape {
         id: connectorShape
-        y: barHeight
+        visible: popup.hasNotifications
+        y: 0
         anchors.right: parent.right
         width: cornerRadius
         height: cornerRadius
@@ -126,6 +135,7 @@ PanelWindow {
 
     Column {
         id: surfaceColumn
+        visible: popup.hasNotifications
         anchors.top: connectorShape.bottom
         anchors.right: parent.right
         width: popupWidth + cornerRadius
