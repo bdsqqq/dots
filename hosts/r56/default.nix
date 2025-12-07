@@ -81,6 +81,9 @@ in
   time.timeZone = "Europe/London";
   i18n.defaultLocale = "en_US.UTF-8";
 
+  # ensure DISPLAY is set for xwayland-satellite (spawned as :0 by niri/hyprland)
+  environment.sessionVariables.DISPLAY = ":0";
+
   # tailscale and ssh provided by base bundle; auth key for headless auth
   services.tailscale = {
     authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key) config.sops.secrets.tailscale_auth_key.path;
