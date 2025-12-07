@@ -122,13 +122,6 @@ PanelWindow {
         anchors.right: parent.right
         width: popupWidth + cornerRadius
 
-        Behavior on implicitHeight {
-            NumberAnimation {
-                duration: popup.exitDuration
-                easing.type: Easing.OutQuint
-            }
-        }
-
         Row {
             id: topRow
             width: parent.width
