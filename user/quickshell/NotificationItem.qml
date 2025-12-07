@@ -2,19 +2,23 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell.Services.Notifications
 
-Rectangle {
+Item {
     id: root
 
     required property Notification notification
+    required property bool isLast
 
     property int padding: 12
-    property int rounding: 8
 
-    implicitWidth: 320
+    implicitWidth: parent.width
     implicitHeight: contentLayout.implicitHeight + padding * 2
 
-    color: notification.urgency === NotificationUrgency.Critical ? "#1a1a1a" : "#0a0a0a"
-    radius: rounding
+    Rectangle {
+        anchors.fill: parent
+        anchors.bottomMargin: root.isLast ? 0 : 1
+        color: "#1a1a1a"
+        visible: !root.isLast
+    }
 
     ColumnLayout {
         id: contentLayout
