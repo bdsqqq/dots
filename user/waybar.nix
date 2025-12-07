@@ -8,7 +8,7 @@ let
     position = "top";
     height = 30;
     
-    modules-left = [ "custom/logo" "hyprland/workspaces" ];
+    modules-left = [ "custom/logo" "hyprland/workspaces" "niri/workspaces" ];
     modules-right = [ "clock" ];
     
     "custom/logo" = {
@@ -20,6 +20,10 @@ let
       format = "[{name}]";
       on-click = "activate";
       sort-by-number = true;
+    };
+    
+    "niri/workspaces" = {
+      format = "[{index}]";
     };
     
     clock = {

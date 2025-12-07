@@ -21,18 +21,20 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         { argv = [ "swaybg" "-i" "/etc/wallpaper.jpg" "-m" "fill" ]; }
         { argv = [ "waybar" ]; }
         { argv = [ "vicinae" "server" ]; }
+        { argv = [ "xwayland-satellite" ]; }
       ];
 
       # Environment variables
+      # note: GDK_SCALE/GDK_DPI_SCALE removed - niri handles fractional scaling natively
+      # adding those would double-scale GTK apps including waybar
       environment = {
         XCURSOR_THEME = "macOS";
         XCURSOR_SIZE = "24";
         ELECTRON_OZONE_PLATFORM_HINT = "wayland";
         NIXOS_OZONE_WL = "1";
-        GDK_SCALE = "1";
-        GDK_DPI_SCALE = "1.5";
         QT_QPA_PLATFORM = "wayland";
         QT_AUTO_SCREEN_SCALE_FACTOR = "1";
+        DISPLAY = ":0";
       };
 
       # Input configuration
