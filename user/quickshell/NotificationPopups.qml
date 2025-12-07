@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Services.Notifications
@@ -113,25 +114,37 @@ PanelWindow {
             width: parent.width
             height: cornerRadius
 
-            Canvas {
-                id: connectorCorner
+            Shape {
+                id: concaveTopLeft
                 width: cornerRadius
                 height: cornerRadius
 
-                onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.clearRect(0, 0, width, height)
-                    ctx.fillStyle = "#000000"
-                    ctx.beginPath()
-                    ctx.moveTo(width, 0)
-                    ctx.arcTo(0, 0, 0, height, cornerRadius)
-                    ctx.lineTo(0, height)
-                    ctx.lineTo(width, height)
-                    ctx.lineTo(width, 0)
-                    ctx.fill()
-                }
+                ShapePath {
+                    strokeWidth: 0
+                    fillColor: "#000000"
+                    fillRule: ShapePath.OddEvenFill
 
-                Component.onCompleted: requestPaint()
+                    startX: 0
+                    startY: 0
+
+                    PathLine { x: cornerRadius; y: 0 }
+                    PathLine { x: cornerRadius; y: cornerRadius }
+                    PathLine { x: 0; y: cornerRadius }
+                    PathLine { x: 0; y: 0 }
+
+                    PathMove { x: 0; y: 0 }
+                    PathLine { x: cornerRadius; y: 0 }
+
+                    PathArc {
+                        x: 0
+                        y: cornerRadius
+                        radiusX: cornerRadius
+                        radiusY: cornerRadius
+                        direction: PathArc.Counterclockwise
+                    }
+
+                    PathLine { x: 0; y: 0 }
+                }
             }
 
             Rectangle {
@@ -201,24 +214,30 @@ PanelWindow {
             width: parent.width
             height: cornerRadius
 
-            Canvas {
-                id: bottomLeftCorner
+            Shape {
+                id: convexBottomLeft
                 width: cornerRadius
                 height: cornerRadius
 
-                onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.clearRect(0, 0, width, height)
-                    ctx.fillStyle = "#000000"
-                    ctx.beginPath()
-                    ctx.moveTo(0, 0)
-                    ctx.lineTo(width, 0)
-                    ctx.arcTo(0, 0, 0, height, cornerRadius)
-                    ctx.lineTo(0, 0)
-                    ctx.fill()
-                }
+                ShapePath {
+                    strokeWidth: 0
+                    fillColor: "#000000"
 
-                Component.onCompleted: requestPaint()
+                    startX: 0
+                    startY: cornerRadius
+
+                    PathLine { x: 0; y: 0 }
+
+                    PathArc {
+                        x: cornerRadius
+                        y: cornerRadius
+                        radiusX: cornerRadius
+                        radiusY: cornerRadius
+                        direction: PathArc.Counterclockwise
+                    }
+
+                    PathLine { x: 0; y: cornerRadius }
+                }
             }
 
             Rectangle {
