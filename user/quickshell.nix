@@ -18,6 +18,12 @@ let
     "quickshell/NiriWorkspacesLoader.qml" = {
       source = ./quickshell/NiriWorkspacesLoader.qml;
     };
+    "quickshell/NotificationItem.qml" = {
+      source = ./quickshell/NotificationItem.qml;
+    };
+    "quickshell/NotificationPopups.qml" = {
+      source = ./quickshell/NotificationPopups.qml;
+    };
   };
 
 in
