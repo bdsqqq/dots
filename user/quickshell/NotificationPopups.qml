@@ -19,8 +19,8 @@ PanelWindow {
     property int maxHeight: screen.height - barHeight - (wmGap * 2)
 
     property list<QtObject> notifications: []
-    readonly property list<QtObject> visibleNotifications: notifications.filter(n => !n.closing)
-    readonly property int notificationCount: visibleNotifications.length
+    readonly property list<QtObject> activeNotifications: notifications.filter(n => !n.closed)
+    readonly property int notificationCount: activeNotifications.length
     readonly property bool hasNotifications: notificationCount > 0
 
     anchors {
@@ -62,7 +62,39 @@ PanelWindow {
 
     component NotifWrapper: QtObject {
         required property Notification notification
-        property bool closing: false
+        property bool closed: false
+        property var locks: ({})
+        property int lockCount: 0
+
+        function lock(item: Item): void {
+            if (!locks[item]) {
+                locks[item] = true
+                lockCount++
+            }
+        }
+
+        function unlock(item: Item): void {
+            if (locks[item]) {
+                delete locks[item]
+                lockCount--
+                if (closed && lockCount === 0) {
+                    actuallyRemove()
+                }
+            }
+        }
+
+        function close(): void {
+            closed = true
+            if (lockCount === 0) {
+                actuallyRemove()
+            }
+        }
+
+        function actuallyRemove(): void {
+            popup.notifications = popup.notifications.filter(n => n !== this)
+            notification.dismiss()
+            destroy()
+        }
     }
 
     NotificationServer {
@@ -83,25 +115,6 @@ PanelWindow {
         NotifWrapper {}
     }
 
-    function removeNotification(wrapper: QtObject): void {
-        wrapper.closing = true
-        removeTimer.wrapper = wrapper
-        removeTimer.start()
-    }
-
-    Timer {
-        id: removeTimer
-        property QtObject wrapper: null
-        interval: popup.exitDuration
-        onTriggered: {
-            if (wrapper) {
-                popup.notifications = popup.notifications.filter(n => n !== wrapper)
-                wrapper.notification.dismiss()
-                wrapper.destroy()
-            }
-        }
-    }
-
     Column {
         id: contentColumn
         visible: popup.hasNotifications
@@ -109,41 +122,34 @@ PanelWindow {
         anchors.right: parent.right
         width: popupWidth + cornerRadius
 
+        Behavior on implicitHeight {
+            NumberAnimation {
+                duration: popup.exitDuration
+                easing.type: Easing.OutQuint
+            }
+        }
+
         Row {
             id: topRow
             width: parent.width
             height: cornerRadius
 
-            Shape {
-                id: concaveTopLeft
+            Item {
                 width: cornerRadius
                 height: cornerRadius
 
-                ShapePath {
-                    strokeWidth: 0
-                    fillColor: "#000000"
-                    fillRule: ShapePath.OddEvenFill
-
-                    startX: 0
-                    startY: 0
-
-                    PathLine { x: cornerRadius; y: 0 }
-                    PathLine { x: cornerRadius; y: cornerRadius }
-                    PathLine { x: 0; y: cornerRadius }
-                    PathLine { x: 0; y: 0 }
-
-                    PathMove { x: 0; y: 0 }
-                    PathLine { x: cornerRadius; y: 0 }
-
-                    PathArc {
-                        x: 0
-                        y: cornerRadius
-                        radiusX: cornerRadius
-                        radiusY: cornerRadius
-                        direction: PathArc.Counterclockwise
+                Canvas {
+                    anchors.fill: parent
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.fillStyle = "#000000"
+                        ctx.beginPath()
+                        ctx.rect(0, 0, width, height)
+                        ctx.arc(0, 0, cornerRadius, 0, Math.PI / 2, false)
+                        ctx.fill("evenodd")
                     }
-
-                    PathLine { x: 0; y: 0 }
+                    Component.onCompleted: requestPaint()
                 }
             }
 
@@ -157,8 +163,9 @@ PanelWindow {
         Rectangle {
             id: surface
             width: parent.width
-            height: Math.min(notificationColumn.implicitHeight, popup.maxHeight - popup.cornerRadius * 2)
+            height: notificationList.contentHeight > 0 ? Math.min(notificationList.contentHeight, popup.maxHeight - popup.cornerRadius * 2) : 0
             color: "#000000"
+            clip: true
 
             Behavior on height {
                 NumberAnimation {
@@ -167,41 +174,100 @@ PanelWindow {
                 }
             }
 
-            Column {
-                id: notificationColumn
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                clip: true
+            ListView {
+                id: notificationList
+                anchors.fill: parent
+                model: popup.activeNotifications
+                spacing: 0
+                interactive: false
 
-                Repeater {
-                    model: popup.visibleNotifications
+                delegate: Item {
+                    id: delegateWrapper
+                    required property QtObject modelData
+                    required property int index
+
+                    width: notificationList.width
+                    height: notifItem.height
+                    opacity: 1
+                    x: 0
+
+                    Component.onCompleted: {
+                        modelData.lock(this)
+                    }
+
+                    Component.onDestruction: {
+                        modelData.unlock(this)
+                    }
+
+                    ListView.onRemove: SequentialAnimation {
+                        PropertyAction {
+                            target: delegateWrapper
+                            property: "ListView.delayRemove"
+                            value: true
+                        }
+                        ParallelAnimation {
+                            NumberAnimation {
+                                target: delegateWrapper
+                                property: "opacity"
+                                to: 0
+                                duration: popup.exitDuration
+                                easing.type: Easing.OutQuint
+                            }
+                            NumberAnimation {
+                                target: delegateWrapper
+                                property: "x"
+                                to: popup.popupWidth
+                                duration: popup.exitDuration
+                                easing.type: Easing.OutQuint
+                            }
+                            NumberAnimation {
+                                target: delegateWrapper
+                                property: "height"
+                                to: 0
+                                duration: popup.exitDuration
+                                easing.type: Easing.OutQuint
+                            }
+                        }
+                        PropertyAction {
+                            target: delegateWrapper
+                            property: "ListView.delayRemove"
+                            value: false
+                        }
+                    }
 
                     NotificationItem {
-                        required property int index
-                        required property QtObject modelData
-                        notification: modelData.notification
-                        width: notificationColumn.width
-                        isLast: index === popup.notificationCount - 1
+                        id: notifItem
+                        notification: delegateWrapper.modelData.notification
+                        width: parent.width
+                        isLast: delegateWrapper.index === popup.notificationCount - 1
 
-                        onDismissed: popup.removeNotification(modelData)
-                        onExpired: popup.removeNotification(modelData)
+                        onDismissed: delegateWrapper.modelData.close()
+                        onExpired: delegateWrapper.modelData.close()
                     }
                 }
 
                 add: Transition {
-                    NumberAnimation {
-                        property: "opacity"
-                        from: 0
-                        to: 1
-                        duration: popup.enterDuration
-                        easing.type: Easing.OutQuint
+                    ParallelAnimation {
+                        NumberAnimation {
+                            property: "opacity"
+                            from: 0
+                            to: 1
+                            duration: popup.enterDuration
+                            easing.type: Easing.OutQuint
+                        }
+                        NumberAnimation {
+                            property: "x"
+                            from: popup.popupWidth
+                            to: 0
+                            duration: popup.enterDuration
+                            easing.type: Easing.OutQuint
+                        }
                     }
                 }
 
-                move: Transition {
+                displaced: Transition {
                     NumberAnimation {
-                        properties: "y"
+                        property: "y"
                         duration: popup.exitDuration
                         easing.type: Easing.OutQuint
                     }
@@ -214,29 +280,25 @@ PanelWindow {
             width: parent.width
             height: cornerRadius
 
-            Shape {
-                id: convexBottomLeft
+            Item {
                 width: cornerRadius
                 height: cornerRadius
 
-                ShapePath {
-                    strokeWidth: 0
-                    fillColor: "#000000"
-
-                    startX: 0
-                    startY: cornerRadius
-
-                    PathLine { x: 0; y: 0 }
-
-                    PathArc {
-                        x: cornerRadius
-                        y: cornerRadius
-                        radiusX: cornerRadius
-                        radiusY: cornerRadius
-                        direction: PathArc.Counterclockwise
+                Canvas {
+                    anchors.fill: parent
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.fillStyle = "#000000"
+                        ctx.beginPath()
+                        ctx.moveTo(0, 0)
+                        ctx.lineTo(0, height)
+                        ctx.arc(0, height, cornerRadius, -Math.PI / 2, 0, false)
+                        ctx.lineTo(cornerRadius, 0)
+                        ctx.closePath()
+                        ctx.fill()
                     }
-
-                    PathLine { x: 0; y: cornerRadius }
+                    Component.onCompleted: requestPaint()
                 }
             }
 
