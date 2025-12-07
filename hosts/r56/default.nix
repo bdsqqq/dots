@@ -145,6 +145,11 @@ in
     enable = true;
     remotePlay.openFirewall = true;
     dedicatedServer.openFirewall = true;
+    package = pkgs.steam.override {
+      extraEnv = {
+        STEAM_FORCE_DESKTOPUI_SCALING = "1.5";
+      };
+    };
   };
   
   # udev rules for PS5 DualSense and other controllers

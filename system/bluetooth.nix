@@ -5,7 +5,15 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
   hardware.bluetooth = {
     enable = true;
     powerOnBoot = true;
+    settings = {
+      General = {
+        Experimental = true;
+        ClassicBondedOnly = false;
+      };
+    };
   };
+  
+  boot.kernelModules = [ "hid_playstation" ];
 }
 
 
