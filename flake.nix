@@ -52,6 +52,12 @@
 
     # Niri scrolling window manager
     niri.url = "github:sodiboo/niri-flake";
+
+    # Quickshell - QtQuick-based shell toolkit (git version for latest features)
+    quickshell = {
+      url = "git+https://git.outfoxxed.me/outfoxxed/quickshell";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
