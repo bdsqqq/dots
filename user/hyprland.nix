@@ -34,6 +34,8 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "GDK_DPI_SCALE,1.5"
         "QT_QPA_PLATFORM,wayland"
         "QT_AUTO_SCREEN_SCALE_FACTOR,1"
+        # steam UI scaling on wayland (1.5 matches monitor scale)
+        "STEAM_FORCE_DESKTOPUI_SCALING,1.5"
       ];
       
       cursor = {
@@ -44,7 +46,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "swaybg -i /etc/wallpaper.jpg -m fill"
         "hyprctl setcursor macOS 24"
         "vicinae server"
-        "waybar"
+        "quickshell"
       ];
       
       layerrule = [
