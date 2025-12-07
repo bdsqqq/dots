@@ -19,7 +19,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       # Startup applications - same as hyprland
       spawn-at-startup = [
         { argv = [ "swaybg" "-i" "/etc/wallpaper.jpg" "-m" "fill" ]; }
-        { argv = [ "waybar" ]; }
+        { argv = [ "quickshell" ]; }
         { argv = [ "vicinae" "server" ]; }
         { argv = [ "xwayland-satellite" ":0" ]; }
       ];
@@ -37,6 +37,8 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         DISPLAY = ":0";
         GDK_SCALE = null;
         GDK_DPI_SCALE = null;
+        # steam UI scaling (niri handles fractional scaling natively, steam needs this separately)
+        STEAM_FORCE_DESKTOPUI_SCALING = "1.5";
       };
 
       # Input configuration

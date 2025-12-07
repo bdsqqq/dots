@@ -140,8 +140,15 @@ in
   # Enable zsh
   programs.zsh.enable = true;
 
-  # Steam
-  programs.steam.enable = true;
+  # Steam with controller support and proper wayland scaling
+  programs.steam = {
+    enable = true;
+    remotePlay.openFirewall = true;
+    dedicatedServer.openFirewall = true;
+  };
+  
+  # udev rules for PS5 DualSense and other controllers
+  hardware.steam-hardware.enable = true;
 
   # Flatpak apps
   services.flatpak = {
