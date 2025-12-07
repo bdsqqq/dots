@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Services.Notifications
@@ -21,16 +20,15 @@ PanelWindow {
     property list<QtObject> notifications: []
     readonly property list<QtObject> visibleNotifications: notifications.filter(n => !n.closing)
     readonly property int notificationCount: visibleNotifications.length
+    readonly property bool hasNotifications: notificationCount > 0
 
     anchors {
         top: true
         right: true
     }
 
-    readonly property bool hasNotifications: notificationCount > 0
-
     implicitWidth: hasNotifications ? popupWidth + cornerRadius : 1
-    implicitHeight: hasNotifications ? Math.min(surfaceColumn.implicitHeight + cornerRadius, maxHeight) : 1
+    implicitHeight: hasNotifications ? Math.min(contentColumn.implicitHeight, maxHeight) : 1
 
     color: "transparent"
 
@@ -73,12 +71,9 @@ PanelWindow {
         imageSupported: true
 
         onNotification: notification => {
-            console.log("GOT NOTIFICATION:", notification.summary, notification.body)
             notification.tracked = true
-            
             const wrapper = wrapperComponent.createObject(popup, { notification: notification })
             popup.notifications = [wrapper, ...popup.notifications]
-            console.log("NOTIFICATION COUNT:", popup.notificationCount)
         }
     }
 
@@ -106,39 +101,45 @@ PanelWindow {
         }
     }
 
-    Shape {
-        id: connectorShape
-        visible: popup.hasNotifications
-        y: 0
-        anchors.right: parent.right
-        width: cornerRadius
-        height: cornerRadius
-
-        ShapePath {
-            fillColor: "#000000"
-            strokeWidth: -1
-
-            startX: connectorShape.width
-            startY: 0
-
-            PathLine { x: 0; y: 0 }
-            PathArc {
-                x: connectorShape.width
-                y: connectorShape.height
-                radiusX: popup.cornerRadius
-                radiusY: popup.cornerRadius
-                direction: PathArc.Counterclockwise
-            }
-            PathLine { x: connectorShape.width; y: 0 }
-        }
-    }
-
     Column {
-        id: surfaceColumn
+        id: contentColumn
         visible: popup.hasNotifications
-        anchors.top: connectorShape.bottom
+        anchors.top: parent.top
         anchors.right: parent.right
         width: popupWidth + cornerRadius
+
+        Row {
+            id: topRow
+            width: parent.width
+            height: cornerRadius
+
+            Canvas {
+                id: connectorCorner
+                width: cornerRadius
+                height: cornerRadius
+
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.clearRect(0, 0, width, height)
+                    ctx.fillStyle = "#000000"
+                    ctx.beginPath()
+                    ctx.moveTo(width, height)
+                    ctx.lineTo(0, height)
+                    ctx.lineTo(0, 0)
+                    ctx.arcTo(width, 0, width, height, cornerRadius)
+                    ctx.lineTo(width, height)
+                    ctx.fill()
+                }
+
+                Component.onCompleted: requestPaint()
+            }
+
+            Rectangle {
+                width: parent.width - cornerRadius
+                height: cornerRadius
+                color: "#000000"
+            }
+        }
 
         Rectangle {
             id: surface
@@ -158,7 +159,6 @@ PanelWindow {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.rightMargin: popup.cornerRadius
                 clip: true
 
                 Repeater {
@@ -196,24 +196,36 @@ PanelWindow {
             }
         }
 
-        Canvas {
-            id: bottomLeftCorner
-            width: cornerRadius
+        Row {
+            id: bottomRow
+            width: parent.width
             height: cornerRadius
 
-            onPaint: {
-                var ctx = getContext("2d")
-                ctx.clearRect(0, 0, width, height)
-                ctx.fillStyle = "#000000"
-                ctx.beginPath()
-                ctx.moveTo(0, 0)
-                ctx.lineTo(0, height)
-                ctx.arcTo(0, 0, width, 0, cornerRadius)
-                ctx.lineTo(0, 0)
-                ctx.fill()
+            Canvas {
+                id: bottomLeftCorner
+                width: cornerRadius
+                height: cornerRadius
+
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.clearRect(0, 0, width, height)
+                    ctx.fillStyle = "#000000"
+                    ctx.beginPath()
+                    ctx.moveTo(0, 0)
+                    ctx.lineTo(width, 0)
+                    ctx.arcTo(0, 0, 0, height, cornerRadius)
+                    ctx.lineTo(0, 0)
+                    ctx.fill()
+                }
+
+                Component.onCompleted: requestPaint()
             }
 
-            Component.onCompleted: requestPaint()
+            Rectangle {
+                width: parent.width - cornerRadius
+                height: cornerRadius
+                color: "#000000"
+            }
         }
     }
 }
