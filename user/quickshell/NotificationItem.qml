@@ -10,6 +10,9 @@ Item {
 
     property int padding: 12
 
+    signal dismissed()
+    signal expired()
+
     implicitWidth: parent.width
     implicitHeight: contentLayout.implicitHeight + padding * 2
 
@@ -55,7 +58,10 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.notification.dismiss()
+                    onClicked: {
+                        root.notification.dismiss()
+                        root.dismissed()
+                    }
                 }
             }
         }
@@ -126,8 +132,11 @@ Item {
     }
 
     Timer {
-        interval: root.notification.expireTimeout > 0 ? root.notification.expireTimeout * 1000 : 5000
+        interval: root.notification.expireTimeout > 0 ? root.notification.expireTimeout : 5000
         running: true
-        onTriggered: root.notification.expire()
+        onTriggered: {
+            root.notification.expire()
+            root.expired()
+        }
     }
 }
