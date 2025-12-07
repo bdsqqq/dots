@@ -140,8 +140,8 @@ PanelWindow {
                         ctx.fillStyle = "#000000"
                         ctx.beginPath()
                         ctx.rect(0, 0, width, height)
-                        ctx.moveTo(width, height)
-                        ctx.arc(width, height, cornerRadius, Math.PI, 1.5 * Math.PI, false)
+                        ctx.moveTo(0, 0)
+                        ctx.arc(0, 0, cornerRadius, 0, Math.PI / 2, false)
                         ctx.closePath()
                         ctx.fill("evenodd")
                     }
