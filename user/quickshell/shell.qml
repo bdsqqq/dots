@@ -22,4 +22,13 @@ ShellRoot {
             screen: modelData
         }
     }
+
+    Variants {
+        model: Quickshell.screens
+
+        NotificationPopups {
+            required property var modelData
+            screen: modelData
+        }
+    }
 }

@@ -1,4 +1,4 @@
-# quickshell bar + screen corners
+# quickshell bar + screen corners + notifications
 
 replacing waybar with quickshell for system-wide UI.
 
@@ -9,9 +9,12 @@ replacing waybar with quickshell for system-wide UI.
   - [x] shell.qml (entry point)
   - [x] Bar.qml (top bar with logo, workspaces, clock)
   - [x] ScreenCorners.qml (8px rounded corners overlay)
+  - [x] NotificationItem.qml (individual notification card)
+  - [x] NotificationPopups.qml (popup container with connector shape)
 - [x] update niri.nix spawn-at-startup
 - [x] update hyprland.nix exec-once
 - [x] test build on r56 (build succeeded)
+- [ ] test notifications on r56
 
 ## design decisions
 
@@ -38,7 +41,16 @@ replacing waybar with quickshell for system-wide UI.
   - approach copied from noctalia-shell's NiriService.qml
 
 ### layer ordering (wayland layer-shell)
-1. Overlay - bar
-2. Top - screen corners, normal panels
+1. Overlay - screen corners, notifications
+2. Top - bar
 3. Bottom - below windows
 4. Background - wallpaper layer
+
+### notifications
+- positioned top-right, below bar (margin-top: barHeight)
+- uses NotificationServer from Quickshell.Services.Notifications
+- "connector" shape: concave quarter-circle connecting bar edge to notification
+- rendered with ShapePath using PathArc counterclockwise
+- bottom-left corner of notification list: convex quarter-circle via Canvas
+- individual NotificationItem cards with dismiss, actions, auto-expire
+- max 5 visible popups, oldest expires first
