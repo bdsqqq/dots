@@ -50,8 +50,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       };
 
       # Output/monitor config (use `niri msg outputs` to find names)
-      # TODO: update output name for your actual monitor
-      outputs."eDP-1" = {
+      outputs."HDMI-A-1" = {
         scale = 1.5;
       };
 
