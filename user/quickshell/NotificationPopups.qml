@@ -10,17 +10,18 @@ PanelWindow {
     required property var screen
     property int barHeight: 45
     property int popupWidth: 320
-    property int popupPadding: 8
     property int cornerRadius: 8
-    property int maxPopups: 5
+    property int wmGap: 8
+
+    property int maxHeight: screen.height - barHeight - (wmGap * 2)
 
     anchors {
         top: true
         right: true
     }
 
-    implicitWidth: popupWidth + popupPadding * 2 + cornerRadius
-    implicitHeight: Math.min(notificationColumn.implicitHeight + popupPadding + cornerRadius, screen.height - barHeight)
+    implicitWidth: popupWidth + cornerRadius
+    implicitHeight: Math.min(surfaceColumn.implicitHeight + cornerRadius, maxHeight)
 
     color: "transparent"
 
@@ -34,6 +35,8 @@ PanelWindow {
     mask: Region {
         item: Item {}
     }
+
+    visible: notifServer.trackedNotifications.count > 0
 
     NotificationServer {
         id: notifServer
@@ -52,7 +55,6 @@ PanelWindow {
         anchors.right: parent.right
         width: cornerRadius
         height: cornerRadius
-        visible: notifServer.trackedNotifications.count > 0
 
         ShapePath {
             fillColor: "#000000"
@@ -74,68 +76,57 @@ PanelWindow {
     }
 
     Column {
-        id: notificationColumn
+        id: surfaceColumn
         anchors.top: connectorShape.bottom
         anchors.right: parent.right
-        anchors.rightMargin: popupPadding
-        width: popupWidth
-        spacing: 8
+        width: popupWidth + cornerRadius
 
-        Repeater {
-            model: {
-                const tracked = notifServer.trackedNotifications
-                const count = Math.min(tracked.count, popup.maxPopups)
-                const result = []
-                for (let i = 0; i < count; i++) {
-                    result.push(tracked.get(i))
+        Rectangle {
+            id: surface
+            width: parent.width
+            height: Math.min(notificationColumn.implicitHeight, popup.maxHeight - popup.cornerRadius * 2)
+            color: "#000000"
+
+            Column {
+                id: notificationColumn
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.rightMargin: popup.cornerRadius
+                clip: true
+
+                Repeater {
+                    model: notifServer.trackedNotifications
+
+                    NotificationItem {
+                        required property int index
+                        required property Notification modelData
+                        notification: modelData
+                        width: notificationColumn.width
+                        isLast: index === notifServer.trackedNotifications.count - 1
+                    }
                 }
-                return result
+            }
+        }
+
+        Canvas {
+            id: bottomLeftCorner
+            width: cornerRadius
+            height: cornerRadius
+
+            onPaint: {
+                var ctx = getContext("2d")
+                ctx.clearRect(0, 0, width, height)
+                ctx.fillStyle = "#000000"
+                ctx.beginPath()
+                ctx.moveTo(0, 0)
+                ctx.lineTo(0, height)
+                ctx.arcTo(0, 0, width, 0, cornerRadius)
+                ctx.lineTo(0, 0)
+                ctx.fill()
             }
 
-            NotificationItem {
-                required property Notification modelData
-                notification: modelData
-                width: popup.popupWidth
-
-                opacity: 1
-
-                Behavior on opacity {
-                    NumberAnimation { duration: 150 }
-                }
-            }
+            Component.onCompleted: requestPaint()
         }
-
-        add: Transition {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 150 }
-            NumberAnimation { property: "y"; from: -20; duration: 150; easing.type: Easing.OutQuad }
-        }
-
-        move: Transition {
-            NumberAnimation { properties: "y"; duration: 150; easing.type: Easing.OutQuad }
-        }
-    }
-
-    Canvas {
-        id: bottomLeftCorner
-        anchors.top: notificationColumn.bottom
-        anchors.right: notificationColumn.right
-        anchors.rightMargin: -cornerRadius
-        width: cornerRadius
-        height: cornerRadius
-        visible: notifServer.trackedNotifications.count > 0
-
-        onPaint: {
-            var ctx = getContext("2d")
-            ctx.clearRect(0, 0, width, height)
-            ctx.fillStyle = "#000000"
-            ctx.beginPath()
-            ctx.moveTo(0, 0)
-            ctx.lineTo(0, height)
-            ctx.arcTo(0, 0, width, 0, cornerRadius)
-            ctx.lineTo(0, 0)
-            ctx.fill()
-        }
-
-        Component.onCompleted: requestPaint()
     }
 }
