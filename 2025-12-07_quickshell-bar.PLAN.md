@@ -32,9 +32,10 @@ replacing waybar with quickshell for system-wide UI.
 
 ### workspace display
 - hyprland: use Quickshell.Hyprland module
-- niri: use qml-niri plugin (packaged as overlays/qml-niri.nix)
-  - wrapper script sets QML_IMPORT_PATH to include qml-niri
-  - NiriWorkspacesLoader.qml handles niri workspace display
+- niri: use quickshell's native Socket type to talk to NIRI_SOCKET directly
+  - no C++ plugin needed (qml-niri removed)
+  - NiriWorkspacesLoader.qml connects to niri IPC, sends JSON commands, parses responses
+  - approach copied from noctalia-shell's NiriService.qml
 
 ### layer ordering (wayland layer-shell)
 1. Overlay - bar
