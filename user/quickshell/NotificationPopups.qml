@@ -19,8 +19,7 @@ PanelWindow {
     property int maxHeight: screen.height - barHeight - (wmGap * 2)
 
     property list<QtObject> notifications: []
-    readonly property list<QtObject> activeNotifications: notifications.filter(n => !n.closed)
-    readonly property int notificationCount: activeNotifications.length
+    readonly property int notificationCount: notifications.filter(n => !n.closed).length
     readonly property bool hasNotifications: notificationCount > 0
 
     anchors {
@@ -92,7 +91,9 @@ PanelWindow {
 
         function actuallyRemove(): void {
             popup.notifications = popup.notifications.filter(n => n !== this)
-            notification.dismiss()
+            if (notification) {
+                notification.dismiss()
+            }
             destroy()
         }
     }
@@ -170,7 +171,7 @@ PanelWindow {
             ListView {
                 id: notificationList
                 anchors.fill: parent
-                model: popup.activeNotifications
+                model: popup.notifications.filter(n => !n.closed)
                 spacing: 0
                 interactive: false
 
@@ -192,7 +193,11 @@ PanelWindow {
                         modelData.unlock(this)
                     }
 
-                    ListView.onRemove: SequentialAnimation {
+                    ListView.onRemove: removeAnim.start()
+
+                    SequentialAnimation {
+                        id: removeAnim
+
                         PropertyAction {
                             target: delegateWrapper
                             property: "ListView.delayRemove"
