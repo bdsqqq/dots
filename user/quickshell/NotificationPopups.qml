@@ -13,6 +13,9 @@ PanelWindow {
     property int cornerRadius: 8
     property int wmGap: 8
 
+    property int enterDuration: 200
+    property int exitDuration: 150
+
     property int maxHeight: screen.height - barHeight - (wmGap * 2)
 
     anchors {
@@ -87,6 +90,13 @@ PanelWindow {
             height: Math.min(notificationColumn.implicitHeight, popup.maxHeight - popup.cornerRadius * 2)
             color: "#000000"
 
+            Behavior on height {
+                NumberAnimation {
+                    duration: popup.exitDuration
+                    easing.type: Easing.OutQuint
+                }
+            }
+
             Column {
                 id: notificationColumn
                 anchors.top: parent.top
@@ -104,6 +114,34 @@ PanelWindow {
                         notification: modelData
                         width: notificationColumn.width
                         isLast: index === notifServer.trackedNotifications.count - 1
+
+                        opacity: 1
+                        transform: Translate { id: itemTranslate; y: 0 }
+
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: popup.exitDuration
+                                easing.type: Easing.OutQuint
+                            }
+                        }
+                    }
+                }
+
+                add: Transition {
+                    NumberAnimation {
+                        property: "opacity"
+                        from: 0
+                        to: 1
+                        duration: popup.enterDuration
+                        easing.type: Easing.OutQuint
+                    }
+                }
+
+                move: Transition {
+                    NumberAnimation {
+                        properties: "y"
+                        duration: popup.exitDuration
+                        easing.type: Easing.OutQuint
                     }
                 }
             }
