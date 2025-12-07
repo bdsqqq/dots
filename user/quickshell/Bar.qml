@@ -7,7 +7,7 @@ import QtQuick.Layouts
 PanelWindow {
     id: bar
 
-    property int barHeight: 30
+    property int barHeight: 45
     property bool hyprlandAvailable: typeof Hyprland !== "undefined"
     property bool isHyprland: hyprlandAvailable && Hyprland.workspaces.count > 0
 
@@ -36,7 +36,7 @@ PanelWindow {
             text: "∗"
             color: "#ffffff"
             font.family: "Berkeley Mono"
-            font.pixelSize: 16
+            font.pixelSize: 24
             Layout.alignment: Qt.AlignVCenter
         }
 
@@ -54,7 +54,7 @@ PanelWindow {
             id: clock
             color: "#ffffff"
             font.family: "Berkeley Mono"
-            font.pixelSize: 16
+            font.pixelSize: 24
             Layout.alignment: Qt.AlignVCenter
 
             property date currentTime: new Date()
@@ -85,7 +85,7 @@ PanelWindow {
                     text: "[" + modelData.id + "]"
                     color: modelData.id === Hyprland.focusedWorkspace?.id ? "#d1d5db" : "#6b7280"
                     font.family: "Berkeley Mono"
-                    font.pixelSize: 16
+                    font.pixelSize: 24
                     font.bold: modelData.id === Hyprland.focusedWorkspace?.id
 
                     MouseArea {
