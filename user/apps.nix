@@ -8,7 +8,7 @@ lib.mkIf (headMode == "graphical") {
       docker
       blockbench
       vscode
-      blender
+      # blender  # disabled: triggers OpenUSD compile with cudaSupport
       obsidian
       transmission_4
       rclone
