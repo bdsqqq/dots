@@ -48,7 +48,9 @@ PanelWindow {
         imageSupported: true
 
         onNotification: notification => {
+            console.log("GOT NOTIFICATION:", notification.summary, notification.body, "timeout:", notification.expireTimeout)
             notification.tracked = true
+            console.log("TRACKED COUNT:", trackedNotifications.count)
         }
     }
 
