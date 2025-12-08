@@ -128,25 +128,26 @@ PanelWindow {
             width: parent.width
             height: cornerRadius
 
-            Item {
+            Shape {
                 width: cornerRadius
                 height: cornerRadius
 
-                Canvas {
-                    anchors.fill: parent
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.clearRect(0, 0, width, height)
-                        ctx.fillStyle = "#000000"
-                        ctx.beginPath()
-                        ctx.moveTo(width, 0)
-                        ctx.lineTo(width, height)
-                        ctx.lineTo(0, height)
-                        ctx.arc(0, 0, cornerRadius, Math.PI / 2, 0, false)
-                        ctx.closePath()
-                        ctx.fill()
+                ShapePath {
+                    strokeWidth: -1
+                    fillColor: "#000000"
+
+                    startX: cornerRadius
+                    startY: 0
+
+                    PathLine { x: cornerRadius; y: cornerRadius }
+                    PathLine { x: 0; y: cornerRadius }
+                    PathArc {
+                        x: cornerRadius
+                        y: 0
+                        radiusX: cornerRadius
+                        radiusY: cornerRadius
+                        direction: PathArc.Counterclockwise
                     }
-                    Component.onCompleted: requestPaint()
                 }
             }
 
@@ -281,23 +282,26 @@ PanelWindow {
             width: parent.width
             height: cornerRadius
 
-            Item {
+            Shape {
                 width: cornerRadius
                 height: cornerRadius
 
-                Canvas {
-                    anchors.fill: parent
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.clearRect(0, 0, width, height)
-                        ctx.fillStyle = "#000000"
-                        ctx.beginPath()
-                        ctx.moveTo(width, 0)
-                        ctx.arc(width, 0, cornerRadius, Math.PI / 2, Math.PI, false)
-                        ctx.closePath()
-                        ctx.fill()
+                ShapePath {
+                    strokeWidth: -1
+                    fillColor: "#000000"
+
+                    startX: cornerRadius
+                    startY: 0
+
+                    PathArc {
+                        x: 0
+                        y: cornerRadius
+                        radiusX: cornerRadius
+                        radiusY: cornerRadius
+                        direction: PathArc.Counterclockwise
                     }
-                    Component.onCompleted: requestPaint()
+                    PathLine { x: cornerRadius; y: cornerRadius }
+                    PathLine { x: cornerRadius; y: 0 }
                 }
             }
 
