@@ -8,7 +8,7 @@ PanelWindow {
     id: popup
 
     required property var screen
-    property int barHeight: 45
+    property int barHeight: 30
     property int popupWidth: 320
     property int cornerRadius: 8
     property int wmGap: 8
@@ -16,7 +16,7 @@ PanelWindow {
     property int enterDuration: 200
     property int exitDuration: 150
 
-    property int maxHeight: screen.height - barHeight - (wmGap * 2)
+    property int maxHeight: screen.height - barHeight - wmGap - cornerRadius 
 
     property list<QtObject> notifications: []
     readonly property int notificationCount: notifications.length
@@ -28,7 +28,7 @@ PanelWindow {
     }
 
     implicitWidth: hasNotifications ? popupWidth + cornerRadius : 1
-    implicitHeight: hasNotifications ? Math.min(contentContainer.height, maxHeight) : 1
+    implicitHeight: hasNotifications ? Math.min(contentContainer.height + cornerRadius, maxHeight) : 1
 
     color: "transparent"
 
@@ -141,8 +141,8 @@ PanelWindow {
                 strokeWidth: -1
                 fillColor: "#000000"
 
-                startX: popupWidth
-                startY: surfaceHeight
+                startX: popupWidth + cornerRadius - 1
+                startY: surface.height
 
                 PathLine { relativeX: 0; relativeY: cornerRadius }
 
@@ -162,10 +162,10 @@ PanelWindow {
             x: cornerRadius
             y: 0
             width: popupWidth
-            height: notificationList.contentHeight > 0 ? Math.min(notificationList.contentHeight, popup.maxHeight - popup.cornerRadius) : 0
+            height: notificationList.contentHeight > 0 ? Math.min(notificationList.contentHeight - popup.cornerRadius, popup.maxHeight - popup.cornerRadius) : 0
             color: "#000000"
             clip: true
-            bottomRightRadius: cornerRadius
+            bottomLeftRadius: cornerRadius
 
             Behavior on height {
                 NumberAnimation {
