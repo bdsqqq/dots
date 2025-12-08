@@ -107,8 +107,8 @@ PanelWindow {
             width: parent.width
             height: cornerRadius
 
+            // Concave connector: transitions FROM bar edge INTO notification panel
             Shape {
-                x: -cornerRadius
                 width: cornerRadius
                 height: cornerRadius
 
@@ -116,23 +116,29 @@ PanelWindow {
                     strokeWidth: -1
                     fillColor: "#000000"
 
-                    startX: 0
+                    // Start at right edge of corner patch
+                    startX: cornerRadius
                     startY: 0
 
-                    PathLine { x: 0; y: cornerRadius }
-                    PathLine { x: cornerRadius; y: cornerRadius }
+                    // 1) Move LEFT along the bar's bottom edge
+                    PathLine { relativeX: -cornerRadius; relativeY: 0 }
+
+                    // 2) Move DOWN along the notification's left edge
+                    PathLine { relativeX: 0; relativeY: cornerRadius }
+
+                    // 3) Concave quarter-arc back to start
                     PathArc {
-                        x: 0
-                        y: 0
+                        relativeX: cornerRadius
+                        relativeY: -cornerRadius
                         radiusX: cornerRadius
                         radiusY: cornerRadius
-                        direction: PathArc.Clockwise
+                        direction: PathArc.Counterclockwise
                     }
                 }
             }
 
             Rectangle {
-                width: parent.width
+                width: parent.width - cornerRadius
                 height: cornerRadius
                 color: "#000000"
             }
@@ -257,6 +263,7 @@ PanelWindow {
             width: parent.width
             height: cornerRadius
 
+            // Convex corner: standard rounded └ at bottom-left
             Shape {
                 width: cornerRadius
                 height: cornerRadius
@@ -265,16 +272,20 @@ PanelWindow {
                     strokeWidth: -1
                     fillColor: "#000000"
 
-                    startX: 0
+                    // Start at right edge of corner patch (top-right)
+                    startX: cornerRadius
                     startY: 0
 
-                    PathLine { x: 0; y: cornerRadius }
+                    // 1) Move DOWN along the right edge
+                    PathLine { relativeX: 0; relativeY: cornerRadius }
+
+                    // 2) Convex quarter-arc to top-left
                     PathArc {
-                        x: cornerRadius
-                        y: 0
+                        relativeX: -cornerRadius
+                        relativeY: -cornerRadius
                         radiusX: cornerRadius
                         radiusY: cornerRadius
-                        direction: PathArc.Clockwise
+                        direction: PathArc.Counterclockwise
                     }
                 }
             }
