@@ -139,11 +139,11 @@ PanelWindow {
                         ctx.clearRect(0, 0, width, height)
                         ctx.fillStyle = "#000000"
                         ctx.beginPath()
-                        ctx.rect(0, 0, width, height)
-                        ctx.moveTo(0, 0)
-                        ctx.arc(0, 0, cornerRadius, 0, Math.PI / 2, false)
+                        ctx.moveTo(width, 0)
+                        ctx.lineTo(width, height)
+                        ctx.lineTo(0, height)
+                        ctx.arc(0, 0, cornerRadius, Math.PI / 2, 0, true)
                         ctx.closePath()
-                        ctx.fillRule = Qt.OddEvenFill
                         ctx.fill()
                     }
                     Component.onCompleted: requestPaint()
