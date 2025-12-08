@@ -143,7 +143,8 @@ PanelWindow {
                         ctx.moveTo(0, 0)
                         ctx.arc(0, 0, cornerRadius, 0, Math.PI / 2, false)
                         ctx.closePath()
-                        ctx.fill("evenodd")
+                        ctx.fillRule = Qt.OddEvenFill
+                        ctx.fill()
                     }
                     Component.onCompleted: requestPaint()
                 }
