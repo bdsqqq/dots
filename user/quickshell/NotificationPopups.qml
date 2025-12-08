@@ -125,7 +125,7 @@ PanelWindow {
                         y: 0
                         radiusX: cornerRadius
                         radiusY: cornerRadius
-                        direction: PathArc.Counterclockwise
+                        direction: PathArc.Clockwise
                     }
                 }
             }
