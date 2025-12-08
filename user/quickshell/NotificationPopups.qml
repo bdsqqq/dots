@@ -108,6 +108,7 @@ PanelWindow {
             height: cornerRadius
 
             Shape {
+                x: -cornerRadius
                 width: cornerRadius
                 height: cornerRadius
 
@@ -131,7 +132,7 @@ PanelWindow {
             }
 
             Rectangle {
-                width: parent.width - cornerRadius
+                width: parent.width
                 height: cornerRadius
                 color: "#000000"
             }
