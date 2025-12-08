@@ -18,18 +18,20 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: "#000000"
+        color: "transparent"
+        bottomLeftRadius: 8
+        clip: true
     }
 
     ColumnLayout {
         id: contentLayout
         anchors.fill: parent
         anchors.margins: root.padding
-        spacing: 8
+        spacing: 0
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: 0
 
             Text {
                 text: root.notification.summary || "notification"
