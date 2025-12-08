@@ -139,6 +139,7 @@ PanelWindow {
             height: notificationList.contentHeight > 0 ? Math.min(notificationList.contentHeight, popup.maxHeight - popup.cornerRadius) : 0
             color: "#000000"
             clip: true
+            bottomRightRadius: cornerRadius
 
             Behavior on height {
                 NumberAnimation {
@@ -243,33 +244,6 @@ PanelWindow {
                         duration: popup.exitDuration
                         easing.type: Easing.OutQuint
                     }
-                }
-            }
-        }
-
-        // Bottom-left corner: convex rounded └
-        Shape {
-            id: bottomLeftCorner
-            x: 0
-            y: surface.height
-            width: cornerRadius - cornerRadius
-            height: cornerRadius
-
-            ShapePath {
-                strokeWidth: -1
-                fillColor: "#000000"
-
-                startX: cornerRadius
-                startY: 0
-
-                PathLine { relativeX: 0; relativeY: cornerRadius }
-
-                PathArc {
-                    relativeX: -cornerRadius
-                    relativeY: cornerRadius
-                    radiusX: cornerRadius
-                    radiusY: cornerRadius
-                    direction: PathArc.Clockwise
                 }
             }
         }
