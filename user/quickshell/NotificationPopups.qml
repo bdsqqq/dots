@@ -103,7 +103,7 @@ PanelWindow {
         width: popupWidth + cornerRadius
         height: surface.height + cornerRadius
 
-        // Top-left corner: convex rounded ┌ beside the notification surface
+        // Top-left corner: concave rounded ┐
         Shape {
             id: topLeftCorner
             x: 0
@@ -117,6 +117,32 @@ PanelWindow {
 
                 startX: cornerRadius
                 startY: 0
+
+                PathLine { relativeX: 0; relativeY: cornerRadius }
+
+                PathArc {
+                    relativeX: -cornerRadius
+                    relativeY: -cornerRadius
+                    radiusX: cornerRadius
+                    radiusY: cornerRadius
+                    direction: PathArc.Counterclockwise
+                }
+            }
+        }
+        // bottom-right corner: concave rounded ┐
+        Shape {
+            id: bottomRightCorner
+            x: 0
+            y: 0
+            width: cornerRadius
+            height: cornerRadius
+
+            ShapePath {
+                strokeWidth: -1
+                fillColor: "#000000"
+
+                startX: popupWidth
+                startY: surfaceHeight
 
                 PathLine { relativeX: 0; relativeY: cornerRadius }
 
