@@ -27,8 +27,8 @@ PanelWindow {
         right: true
     }
 
-    implicitWidth: hasNotifications ? popupWidth + cornerRadius * 2 : 1
-    implicitHeight: hasNotifications ? Math.min(contentColumn.implicitHeight, maxHeight) : 1
+    implicitWidth: hasNotifications ? popupWidth + cornerRadius : 1
+    implicitHeight: hasNotifications ? Math.min(contentContainer.height, maxHeight) : 1
 
     color: "transparent"
 
@@ -95,56 +95,48 @@ PanelWindow {
         NotifWrapper {}
     }
 
-    Column {
-        id: contentColumn
+    Item {
+        id: contentContainer
         visible: popup.hasNotifications
         anchors.top: parent.top
         anchors.right: parent.right
-        width: popupWidth + cornerRadius * 2
+        width: popupWidth + cornerRadius
+        height: surface.height + cornerRadius
 
-        Row {
-            id: topRow
-            width: parent.width
+        // Top-left corner: convex rounded ┌ beside the notification surface
+        Shape {
+            id: topLeftCorner
+            x: 0
+            y: 0
+            width: cornerRadius
             height: cornerRadius
 
-            // Convex corner: smooth rounded ┌ transition from bar into notification
-            Shape {
-                width: cornerRadius
-                height: cornerRadius
+            ShapePath {
+                strokeWidth: -1
+                fillColor: "#000000"
 
-                ShapePath {
-                    strokeWidth: -1
-                    fillColor: "#000000"
+                startX: cornerRadius
+                startY: 0
 
-                    // Start at top-right of corner patch
-                    startX: cornerRadius
-                    startY: 0
+                PathLine { relativeX: 0; relativeY: cornerRadius }
 
-                    // 1) Move DOWN along the right edge
-                    PathLine { relativeX: 0; relativeY: cornerRadius }
-
-                    // 2) Convex quarter-arc to top-left
-                    PathArc {
-                        relativeX: -cornerRadius
-                        relativeY: -cornerRadius
-                        radiusX: cornerRadius
-                        radiusY: cornerRadius
-                        direction: PathArc.Counterclockwise
-                    }
+                PathArc {
+                    relativeX: -cornerRadius
+                    relativeY: -cornerRadius
+                    radiusX: cornerRadius
+                    radiusY: cornerRadius
+                    direction: PathArc.Counterclockwise
                 }
-            }
-
-            Rectangle {
-                width: parent.width - cornerRadius
-                height: cornerRadius
-                color: "#000000"
             }
         }
 
+        // Main notification surface
         Rectangle {
             id: surface
-            width: parent.width
-            height: notificationList.contentHeight > 0 ? Math.min(notificationList.contentHeight, popup.maxHeight - popup.cornerRadius * 2) : 0
+            x: cornerRadius
+            y: 0
+            width: popupWidth
+            height: notificationList.contentHeight > 0 ? Math.min(notificationList.contentHeight, popup.maxHeight - popup.cornerRadius) : 0
             color: "#000000"
             clip: true
 
@@ -255,46 +247,41 @@ PanelWindow {
             }
         }
 
-        Row {
-            id: bottomRow
-            width: parent.width
+        // Bottom-left corner: concave curves inward
+        Shape {
+            id: bottomLeftCorner
+            x: 0
+            y: surface.height
+            width: cornerRadius
             height: cornerRadius
 
-            // Concave connector: curves inward at bottom-left
-            Shape {
-                width: cornerRadius
-                height: cornerRadius
+            ShapePath {
+                strokeWidth: -1
+                fillColor: "#000000"
 
-                ShapePath {
-                    strokeWidth: -1
-                    fillColor: "#000000"
+                startX: cornerRadius
+                startY: 0
 
-                    // Start at right edge of corner patch
-                    startX: cornerRadius
-                    startY: 0
+                PathLine { relativeX: -cornerRadius; relativeY: 0 }
+                PathLine { relativeX: 0; relativeY: cornerRadius }
 
-                    // 1) Move LEFT along the top edge
-                    PathLine { relativeX: -cornerRadius; relativeY: 0 }
-
-                    // 2) Move DOWN along the left edge
-                    PathLine { relativeX: 0; relativeY: cornerRadius }
-
-                    // 3) Concave quarter-arc back to start
-                    PathArc {
-                        relativeX: cornerRadius
-                        relativeY: -cornerRadius
-                        radiusX: cornerRadius
-                        radiusY: cornerRadius
-                        direction: PathArc.Counterclockwise
-                    }
+                PathArc {
+                    relativeX: cornerRadius
+                    relativeY: -cornerRadius
+                    radiusX: cornerRadius
+                    radiusY: cornerRadius
+                    direction: PathArc.Counterclockwise
                 }
             }
+        }
 
-            Rectangle {
-                width: parent.width - cornerRadius
-                height: cornerRadius
-                color: "#000000"
-            }
+        // Bottom strip extending from corner to right edge
+        Rectangle {
+            x: cornerRadius
+            y: surface.height
+            width: popupWidth
+            height: cornerRadius
+            color: "#000000"
         }
     }
 }
