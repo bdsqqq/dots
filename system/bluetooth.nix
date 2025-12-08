@@ -1,9 +1,6 @@
 { lib, hostSystem ? null, ... }:
 
-let
-  isLinuxHost = hostSystem == null || lib.hasInfix "linux" hostSystem;
-in
-lib.mkIf isLinuxHost {
+if !(lib.hasInfix "linux" hostSystem) then {} else {
   services.blueman.enable = true;
   hardware.bluetooth = {
     enable = true;
