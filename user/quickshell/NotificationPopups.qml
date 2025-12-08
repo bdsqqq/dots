@@ -115,13 +115,13 @@ PanelWindow {
                     strokeWidth: -1
                     fillColor: "#000000"
 
-                    startX: cornerRadius
+                    startX: 0
                     startY: 0
 
-                    PathLine { x: cornerRadius; y: cornerRadius }
                     PathLine { x: 0; y: cornerRadius }
+                    PathLine { x: cornerRadius; y: cornerRadius }
                     PathArc {
-                        x: cornerRadius
+                        x: 0
                         y: 0
                         radiusX: cornerRadius
                         radiusY: cornerRadius
