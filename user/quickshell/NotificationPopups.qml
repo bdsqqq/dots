@@ -247,7 +247,7 @@ PanelWindow {
             }
         }
 
-        // Bottom-left corner: concave curves inward
+        // Bottom-left corner: convex rounded └
         Shape {
             id: bottomLeftCorner
             x: 0
@@ -262,11 +262,10 @@ PanelWindow {
                 startX: cornerRadius
                 startY: 0
 
-                PathLine { relativeX: -cornerRadius; relativeY: 0 }
                 PathLine { relativeX: 0; relativeY: cornerRadius }
 
                 PathArc {
-                    relativeX: cornerRadius
+                    relativeX: -cornerRadius
                     relativeY: -cornerRadius
                     radiusX: cornerRadius
                     radiusY: cornerRadius
