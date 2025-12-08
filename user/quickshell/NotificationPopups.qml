@@ -125,7 +125,7 @@ PanelWindow {
                         y: 0
                         radiusX: cornerRadius
                         radiusY: cornerRadius
-                        direction: PathArc.Clockwise
+                        direction: PathArc.Counterclockwise
                     }
                 }
             }
@@ -264,18 +264,17 @@ PanelWindow {
                     strokeWidth: -1
                     fillColor: "#000000"
 
-                    startX: cornerRadius
+                    startX: 0
                     startY: 0
 
+                    PathLine { x: 0; y: cornerRadius }
                     PathArc {
-                        x: 0
-                        y: cornerRadius
+                        x: cornerRadius
+                        y: 0
                         radiusX: cornerRadius
                         radiusY: cornerRadius
                         direction: PathArc.Clockwise
                     }
-                    PathLine { x: cornerRadius; y: cornerRadius }
-                    PathLine { x: cornerRadius; y: 0 }
                 }
             }
 
