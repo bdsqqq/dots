@@ -142,7 +142,7 @@ PanelWindow {
                         ctx.moveTo(width, 0)
                         ctx.lineTo(width, height)
                         ctx.lineTo(0, height)
-                        ctx.arc(0, 0, cornerRadius, Math.PI / 2, 0, true)
+                        ctx.arc(0, 0, cornerRadius, Math.PI / 2, 0, false)
                         ctx.closePath()
                         ctx.fill()
                     }
