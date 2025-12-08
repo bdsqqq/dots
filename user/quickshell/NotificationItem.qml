@@ -21,15 +21,6 @@ Item {
         color: "#000000"
     }
 
-    Rectangle {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: 1
-        color: "#1a1a1a"
-        visible: !root.isLast
-    }
-
     ColumnLayout {
         id: contentLayout
         anchors.fill: parent
