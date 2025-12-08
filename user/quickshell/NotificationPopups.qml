@@ -51,9 +51,9 @@ PanelWindow {
 
     Item {
         id: contentMask
-        x: 0
+        x: -cornerRadius
         y: 0
-        width: popup.implicitWidth
+        width: popup.implicitWidth + cornerRadius
         height: popup.implicitHeight
     }
 
