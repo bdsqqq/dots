@@ -252,7 +252,7 @@ PanelWindow {
             id: bottomLeftCorner
             x: 0
             y: surface.height
-            width: cornerRadius
+            width: cornerRadius - cornerRadius
             height: cornerRadius
 
             ShapePath {
@@ -266,21 +266,12 @@ PanelWindow {
 
                 PathArc {
                     relativeX: -cornerRadius
-                    relativeY: -cornerRadius
+                    relativeY: cornerRadius
                     radiusX: cornerRadius
                     radiusY: cornerRadius
-                    direction: PathArc.Counterclockwise
+                    direction: PathArc.Clockwise
                 }
             }
-        }
-
-        // Bottom strip extending from corner to right edge
-        Rectangle {
-            x: cornerRadius
-            y: surface.height
-            width: popupWidth
-            height: cornerRadius
-            color: "#000000"
         }
     }
 }
