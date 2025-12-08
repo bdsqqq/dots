@@ -27,7 +27,7 @@ PanelWindow {
         right: true
     }
 
-    implicitWidth: hasNotifications ? popupWidth + cornerRadius : 1
+    implicitWidth: hasNotifications ? popupWidth + cornerRadius * 2 : 1
     implicitHeight: hasNotifications ? Math.min(contentColumn.implicitHeight, maxHeight) : 1
 
     color: "transparent"
@@ -51,9 +51,9 @@ PanelWindow {
 
     Item {
         id: contentMask
-        x: -cornerRadius
+        x: 0
         y: 0
-        width: popup.implicitWidth + cornerRadius
+        width: popup.implicitWidth
         height: popup.implicitHeight
     }
 
@@ -100,12 +100,11 @@ PanelWindow {
         visible: popup.hasNotifications
         anchors.top: parent.top
         anchors.right: parent.right
-        width: popupWidth + cornerRadius
+        width: popupWidth + cornerRadius * 2
 
         Row {
             id: topRow
-            width: parent.width + cornerRadius
-            x: -cornerRadius
+            width: parent.width
             height: cornerRadius
 
             // Convex corner: smooth rounded ┌ transition from bar into notification
