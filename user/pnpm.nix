@@ -62,6 +62,13 @@ in
       # shims are available via PATH entry to "$GLOBAL_DIR/node_modules/.bin"
     '';
 
+    # manage pnpm config file with correct global-dir per platform
+    # this ensures `pnpm i -g` writes to the symlinked package.json
+    home.file.".config/pnpm/rc".text = ''
+      global-dir=${pnpmGlobalRoot}
+      enable-pre-post-scripts=true
+    '';
+
     # zsh-specific: re-assert pnpm precedence after fnm's dynamic PATH prepend
     programs.zsh.initContent = ''
       # fnm prepends at runtime; ensure pnpm wins by re-prepending after shell init
