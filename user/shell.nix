@@ -109,6 +109,7 @@ no need to set enableZshIntegration, enableBashIntegration, etc. unless overridi
       l = "ls -lah";
       ll = "ls -l";
       c = "clear";
+      amp = "amp --visibility private";
     };
   };
 }
