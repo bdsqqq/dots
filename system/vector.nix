@@ -58,6 +58,12 @@ let
     type = "host_metrics"
     collectors = ["cpu", "memory", "disk", "filesystem", "load", "network"]
     scrape_interval_secs = 30
+    filesystem.mountpoints.excludes = [
+      "^/run/credentials/.*$",
+      "^/run/secrets$",
+      "^/run/secrets/.*$",
+      "^/run/user/.*$"
+    ]
     
     [transforms.parse_logs]
     type = "remap"
