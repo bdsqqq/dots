@@ -15,6 +15,12 @@ in
       escapeTime = 0;
       baseIndex = 1;
       
+      plugins = with pkgs.tmuxPlugins; [
+        sensible
+        yank
+        vim-tmux-navigator
+      ];
+      
       extraConfig = ''
         # theme colors matching zellij
         set -g status-style "bg=#101010,fg=#c2c2c2"
