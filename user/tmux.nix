@@ -11,6 +11,7 @@ in
       
       prefix = "C-Space";
       terminal = "tmux-256color";
+      shell = "${pkgs.zsh}/bin/zsh";
       mouse = true;
       escapeTime = 0;
       baseIndex = 1;
