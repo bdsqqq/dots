@@ -4,14 +4,14 @@ let
   copyCommand = if isDarwin then "pbcopy" else "wl-copy";
 in
 {
-  home-manager.users.bdsqqq = { pkgs, ... }: {
+  home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
     programs.tmux = {
       enable = true;
       package = pkgs.tmux;
       
       prefix = "C-Space";
       terminal = "tmux-256color";
-      shell = "${pkgs.zsh}/bin/zsh";
+      shell = lib.getExe config.my.defaultShell;
       mouse = true;
       escapeTime = 0;
       baseIndex = 1;
