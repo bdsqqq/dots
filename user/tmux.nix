@@ -26,10 +26,11 @@ in
         # status bar (minimal, tabs on right like zjstatus)
         set -g status-position top
         set -g status-justify right
-        set -g status-left ""
-        set -g status-left-length 0
+        set -g status-left '#(cat #{socket_path}-#{session_id}-vimbridge)'
+        set -g status-left-length 99
         set -g status-right ""
         set -g status-right-length 0
+        set -g focus-events on
         
         # window list formatting (matches zjstatus tab style)
         set -g window-status-format "#[fg=#6b7280][#W]#[default] "
