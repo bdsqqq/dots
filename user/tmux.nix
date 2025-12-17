@@ -23,6 +23,9 @@ in
       ];
       
       extraConfig = ''
+        # override sensible's broken default-command (it uses $SHELL from build env)
+        set -g default-command "${lib.getExe config.my.defaultShell}"
+        
         # theme colors matching zellij
         set -g status-style "bg=#101010,fg=#c2c2c2"
         set -g pane-border-style "fg=#374151"
