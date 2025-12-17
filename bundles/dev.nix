@@ -10,7 +10,7 @@ in
       ../user/dev-tools.nix
       ../user/zellij.nix
       ../user/tmux.nix
-      ../user/amp.nix
+      ../user/amp
     ]
     ++ lib.optionals isGraphical [
       ../user/ghostty.nix
