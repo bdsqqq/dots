@@ -1,4 +1,4 @@
-{ lib, config, ... }:
+{ lib, ... }:
 /*
 ## shell-agnostic config
 
@@ -13,7 +13,17 @@ programs like fzf, zoxide, etc. auto-enable integration for all configured shell
 no need to set enableZshIntegration, enableBashIntegration, etc. unless overriding.
 */
 {
-  home-manager.users.bdsqqq = { config, pkgs, ... }: {
+  home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
+    # define my.defaultShell option here, derived from enabled shell programs
+    # other modules (tmux, etc.) can reference config.my.defaultShell
+    options.my.defaultShell = lib.mkOption {
+      type = lib.types.package;
+      default =
+        if config.programs.zsh.enable then config.programs.zsh.package
+        else if config.programs.fish.enable then config.programs.fish.package
+        else pkgs.bash;
+      description = "Default shell package, derived from whichever shell is enabled";
+    };
     xdg.enable = true;
     xdg.userDirs = if pkgs.stdenv.isDarwin then {} else {
       enable = true;
