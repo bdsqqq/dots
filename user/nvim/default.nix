@@ -39,16 +39,29 @@ let
       hash = "sha256-jPV2DFq3rSEWzUEXqQyGRGQEmYBJPxjAoiawvwVR6LM=";
     };
   };
+  vim-tpipeline = pkgs.vimUtils.buildVimPlugin {
+    name = "vim-tpipeline";
+    src = pkgs.fetchFromGitHub {
+      owner = "vimpostor";
+      repo = "vim-tpipeline";
+      rev = "bc6dfc10e26a8dd1ec2f0512050a8a0afaa9d090";
+      hash = "sha256-p25EBXx4lDA+7lP6LukPT/rqX/bNCliRlHs0PcOp9bo=";
+    };
+  };
 in
 {
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
     imports = [ inputs.nixvim.homeManagerModules.nixvim ];
     programs.nixvim = {
       enable = true;
-      extraPlugins = [ ts-error-translator ];
+      extraPlugins = [ ts-error-translator vim-tpipeline ];
       extraConfigLua = builtins.readFile ./config.lua;
 
-      globals = { mapleader = " "; maplocalleader = " "; have_nerd_font = true; };
+      globals = { 
+        mapleader = " "; maplocalleader = " "; have_nerd_font = true;
+        tpipeline_autoembed = 0;
+        tpipeline_statusline = "%{%v:lua.Statusline()%}";
+      };
       clipboard = { providers = { wl-copy.enable = true; xsel.enable = true; }; register = "unnamedplus"; };
       opts = {
         number = true; mouse = "a"; showmode = false; laststatus = 0; ruler = false; cmdheight = 0;
