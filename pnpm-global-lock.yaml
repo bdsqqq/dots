@@ -20,9 +20,6 @@ importers:
       npm:
         specifier: 11.6.2
         version: 11.6.2
-      opencode-ai:
-        specifier: 0.15.18
-        version: 0.15.18
       turbo:
         specifier: 2.5.8
         version: 2.5.8
@@ -59,11 +56,11 @@ packages:
     resolution: {integrity: sha512-0dEVyRLM/lG4gp1R/Ik5bfPl/1wX00xFwd5KcNH602tzBa09oF7pbTKETEhR1GjZ75K6OJnYFu8II2dyMhONMw==}
     engines: {node: '>=16'}
 
-  '@emnapi/core@1.6.0':
-    resolution: {integrity: sha512-zq/ay+9fNIJJtJiZxdTnXS20PllcYMX3OE23ESc4HK/bdYu3cOWYVhsOhVnXALfU/uqJIxn5NBPd9z4v+SfoSg==}
+  '@emnapi/core@1.7.1':
+    resolution: {integrity: sha512-o1uhUASyo921r2XtHYOHy7gdkGLge8ghBEQHMWmyJFoXlpU58kIrhhN3w26lpQb6dspetweapMn2CSNwQ8I4wg==}
 
-  '@emnapi/runtime@1.6.0':
-    resolution: {integrity: sha512-obtUmAHTMjll499P+D9A3axeJFlhdjOWdKUNs/U6QIGT7V5RjcUW1xToAzjvmgTSQhDbYn/NwfTRoJcQ2rNBxA==}
+  '@emnapi/runtime@1.7.1':
+    resolution: {integrity: sha512-PVtJr5CmLwYAU9PZDMITZoR5iAOShYREoR45EyyLrbntV50mdePTgUn4AmOw90Ifcj+x2kRjdzr1HP3RrNiHGA==}
 
   '@emnapi/wasi-threads@1.1.0':
     resolution: {integrity: sha512-WI0DdZ8xFSbgMjR1sFsKABJ/C5OnRrjT06JXbZKexJGrDuPTzZdDYfFlsgcCXCyf+suG5QU2e/y1Wo2V/OapLQ==}
@@ -90,8 +87,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
-  '@mapbox/node-pre-gyp@2.0.0':
-    resolution: {integrity: sha512-llMXd39jtP0HpQLVI37Bf1m2ADlEb35GYSh1SDSLsBhR+5iCxiNGlT31yqbNtVHygHAtMy6dWFERpU2JgufhPg==}
+  '@mapbox/node-pre-gyp@2.0.3':
+    resolution: {integrity: sha512-uwPAhccfFJlsfCxMYTwOdVfOz3xqyj8xYL3zJj8f0pb30tLohnnFPhLuqp4/qoEz8sNxe4SESZedcBojRefIzg==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -171,8 +168,8 @@ packages:
     resolution: {integrity: sha512-qjg04yaJ/gFqgG7wDqLlWBvZpsjvYDtwL+xOr2vSM2JrhojuIKsw7pH013U7xJOradTVGeQqhwqgZtt2IblgOw==}
     engines: {node: '>= 10'}
 
-  '@napi-rs/wasm-runtime@1.0.7':
-    resolution: {integrity: sha512-SeDnOO0Tk7Okiq6DbXmmBODgOAb9dp9gjlphokTUxmt8U3liIP1ZsozBahH69j/RJv+Rfs6IwUKHTgQYJ/HBAw==}
+  '@napi-rs/wasm-runtime@1.1.0':
+    resolution: {integrity: sha512-Fq6DJW+Bb5jaWE69/qOE0D1TUN9+6uWhCeZpdnSBk14pjLcCWR7Q8n49PTSPHazM37JqrsdpEthXy2xn6jWWiA==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -349,8 +346,8 @@ packages:
   '@ts-morph/common@0.11.1':
     resolution: {integrity: sha512-7hWZS0NRpEsNV8vWJzg7FEz6V8MaLNeJOmwmghqUXTpzk16V1LLZhdo+4QvE/+zv4cVci0OviuJFnqhEfoV3+g==}
 
-  '@tsconfig/node10@1.0.11':
-    resolution: {integrity: sha512-DcRjDCujK/kCk/cUe8Xz8ZSpm8mS3mNNpta+jGCA6USEDfktlNvm1+IuZ9eTcDbNk41BHwpHHeW+N1lKCz4zOw==}
+  '@tsconfig/node10@1.0.12':
+    resolution: {integrity: sha512-UCYBaeFvM11aU2y3YPZ//O5Rhj+xKyzy7mvcIoAjASbigy8mHMryP5cK7dgjlz2hWxh1g5pLw084E0a/wlUSFQ==}
 
   '@tsconfig/node12@1.0.11':
     resolution: {integrity: sha512-cqefuRsh12pWyGsIoBKJA9luFu3mRxCA+ORZvA4ktLSzIuCUtWVxGIuXigEwO5/ywWFMZ2QEGKWvkZG1zDMTag==}
@@ -945,8 +942,8 @@ packages:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
     engines: {node: '>= 6'}
 
-  glob@10.4.5:
-    resolution: {integrity: sha512-7Bv8RF0k6xjo7d4A/PxYLbUCfb6c+Vpd2/mB2yRDlew7Jb5hEXiCD9ibfO7wpk8i4sevK6DFny9h7EYbM3/sHg==}
+  glob@10.5.0:
+    resolution: {integrity: sha512-DfXN8DfhJ7NH3Oe7cFmu3NCu1wKbkReJ8TorzSAFbSKrlNaQSKfIzqYqVY8zlbs2NLBbWpRiU52GX2PbaBVNkg==}
     hasBin: true
 
   glob@7.2.3:
@@ -1300,45 +1297,6 @@ packages:
     resolution: {integrity: sha512-GZ+g4jayMqzCRMgB2sol7GiCLjKfS1PINkjmx8spcKce1LiVqcbQreXwqs2YAFXC6R03VIG28ZS31t8M866v6A==}
     engines: {node: '>=0.10.0'}
 
-  opencode-ai@0.15.18:
-    resolution: {integrity: sha512-uR8fV+vOl8uq/ZwFiFU6PvGwaj90M5LjAefds0Qk1tPoI8U2ewiHK6kDti3yfAznBZLy4pyAN5/yFf47A6O+RA==}
-    hasBin: true
-
-  opencode-darwin-arm64@0.15.18:
-    resolution: {integrity: sha512-L5AjTfSEnsTdVu5qBBd5TEhnt87xi67+J4gtVMVqgJW5H0KX/B06GZNnCQ9MpWn2JK5DgqDBWULvBSmgC/Ymiw==}
-    cpu: [arm64]
-    os: [darwin]
-
-  opencode-darwin-x64-baseline@0.15.18:
-    resolution: {integrity: sha512-vbktGgKkyN6Sg0Vm6pRQ1CYnDct9n4gUWJykUW2UJOvUV2OZtd8qiYr9qGnFT2qdAzteOxXfl+HCveYpybfnKw==}
-    cpu: [x64-baseline]
-    os: [darwin]
-
-  opencode-darwin-x64@0.15.18:
-    resolution: {integrity: sha512-LYXxWin01SnPsN7UjQJcY9SOSfVH2A4snWy+J3M6s9nl8hIg3eyXwYEEhHoEgD8sdYeyqQQz0SItP2kJWKZXHA==}
-    cpu: [x64]
-    os: [darwin]
-
-  opencode-linux-arm64@0.15.18:
-    resolution: {integrity: sha512-/Vzc0otAEe+wuteNByEnKZbboLNJp1nRs63FmLB7rjSOFtAT3KjWLenPTvIK1gwmFZDUMlTUQ8MfHWnlmZoxbg==}
-    cpu: [arm64]
-    os: [linux]
-
-  opencode-linux-x64-baseline@0.15.18:
-    resolution: {integrity: sha512-FsQzgLGebANW+YxNFxWd60lp2lPoMH2mhiw18+IjKz8pabtuXRwuGt6QDZXQL173vSlTR87+lYhiPPh7EqRc6Q==}
-    cpu: [x64-baseline]
-    os: [linux]
-
-  opencode-linux-x64@0.15.18:
-    resolution: {integrity: sha512-sUwnnW8a4MYzbPJ95pdaeIYpvfCKokkt45s5MNzzDl4P99KB/UmsShpvYSgnpPblB+J9xrZ3XILLawObj/wojg==}
-    cpu: [x64]
-    os: [linux]
-
-  opencode-windows-x64@0.15.18:
-    resolution: {integrity: sha512-dIGsAsXaHSLKo56Q6iVYx8/BSuOc0hvIXVSBtDOFrGl95byDq98hXMHgSzp2V3ayUrBAmEEUoFDN99NXEe67ow==}
-    cpu: [x64]
-    os: [win32]
-
   os-homedir@1.0.2:
     resolution: {integrity: sha512-B5JU3cabzk8c67mRRd3ECmROafjYMXbuzlwtqdM8IbS8ktlTix8aFGb2bAGKrSRIlnfKwovGUUr72JUPyOb6kQ==}
     engines: {node: '>=0.10.0'}
@@ -1574,8 +1532,8 @@ packages:
     resolution: {integrity: sha512-DZ4yORTwrbTj/7MZYq2w+/ZFdI6OZ/f9SFHR+71gIVUZhOQPHzVCLpvRnPgyaMpfWxxk/4ONva3GQSyNIKRv6A==}
     engines: {node: '>=10'}
 
-  tar@7.5.1:
-    resolution: {integrity: sha512-nlGpxf+hv0v7GkWBK2V9spgactGOp0qvfWRxUMjqHyzrt3SgwE48DIv/FhqPHJYLHpgW1opq3nERbz5Anq7n1g==}
+  tar@7.5.2:
+    resolution: {integrity: sha512-7NyxrTE4Anh8km8iEy7o0QYPs+0JKBTj5ZaqHg6B39erLg0qYXN3BijtShwbsNSvQ+LN75+KV+C4QR/f6Gwnpg==}
     engines: {node: '>=18'}
 
   thenify-all@1.6.0:
@@ -1814,13 +1772,13 @@ snapshots:
     dependencies:
       '@edge-runtime/primitives': 4.1.0
 
-  '@emnapi/core@1.6.0':
+  '@emnapi/core@1.7.1':
     dependencies:
       '@emnapi/wasi-threads': 1.1.0
       tslib: 2.8.1
     optional: true
 
-  '@emnapi/runtime@1.6.0':
+  '@emnapi/runtime@1.7.1':
     dependencies:
       tslib: 2.8.1
     optional: true
@@ -1854,7 +1812,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@mapbox/node-pre-gyp@2.0.0':
+  '@mapbox/node-pre-gyp@2.0.3':
     dependencies:
       consola: 3.4.2
       detect-libc: 2.1.2
@@ -1862,7 +1820,7 @@ snapshots:
       node-fetch: 2.7.0
       nopt: 8.1.0
       semver: 7.7.3
-      tar: 7.5.1
+      tar: 7.5.2
     transitivePeerDependencies:
       - encoding
       - supports-color
@@ -1918,10 +1876,10 @@ snapshots:
       '@napi-rs/keyring-win32-ia32-msvc': 1.1.9
       '@napi-rs/keyring-win32-x64-msvc': 1.1.9
 
-  '@napi-rs/wasm-runtime@1.0.7':
+  '@napi-rs/wasm-runtime@1.1.0':
     dependencies:
-      '@emnapi/core': 1.6.0
-      '@emnapi/runtime': 1.6.0
+      '@emnapi/core': 1.7.1
+      '@emnapi/runtime': 1.7.1
       '@tybys/wasm-util': 0.10.1
     optional: true
 
@@ -2009,7 +1967,7 @@ snapshots:
 
   '@rolldown/binding-wasm32-wasi@1.0.0-beta.35':
     dependencies:
-      '@napi-rs/wasm-runtime': 1.0.7
+      '@napi-rs/wasm-runtime': 1.1.0
     optional: true
 
   '@rolldown/binding-win32-arm64-msvc@1.0.0-beta.35':
@@ -2044,7 +2002,7 @@ snapshots:
       mkdirp: 1.0.4
       path-browserify: 1.0.1
 
-  '@tsconfig/node10@1.0.11': {}
+  '@tsconfig/node10@1.0.12': {}
 
   '@tsconfig/node12@1.0.11': {}
 
@@ -2175,14 +2133,14 @@ snapshots:
 
   '@vercel/nft@0.30.1':
     dependencies:
-      '@mapbox/node-pre-gyp': 2.0.0
+      '@mapbox/node-pre-gyp': 2.0.3
       '@rollup/pluginutils': 5.3.0
       acorn: 8.15.0
       acorn-import-attributes: 1.9.5(acorn@8.15.0)
       async-sema: 3.1.1
       bindings: 1.5.0
       estree-walker: 2.0.2
-      glob: 10.4.5
+      glob: 10.5.0
       graceful-fs: 4.2.11
       node-gyp-build: 4.8.4
       picomatch: 4.0.3
@@ -2693,7 +2651,7 @@ snapshots:
     dependencies:
       is-glob: 4.0.3
 
-  glob@10.4.5:
+  glob@10.5.0:
     dependencies:
       foreground-child: 3.3.1
       jackspeak: 3.4.3
@@ -2968,37 +2926,6 @@ snapshots:
 
   onetime@1.1.0: {}
 
-  opencode-ai@0.15.18:
-    optionalDependencies:
-      opencode-darwin-arm64: 0.15.18
-      opencode-darwin-x64: 0.15.18
-      opencode-darwin-x64-baseline: 0.15.18
-      opencode-linux-arm64: 0.15.18
-      opencode-linux-x64: 0.15.18
-      opencode-linux-x64-baseline: 0.15.18
-      opencode-windows-x64: 0.15.18
-
-  opencode-darwin-arm64@0.15.18:
-    optional: true
-
-  opencode-darwin-x64-baseline@0.15.18:
-    optional: true
-
-  opencode-darwin-x64@0.15.18:
-    optional: true
-
-  opencode-linux-arm64@0.15.18:
-    optional: true
-
-  opencode-linux-x64-baseline@0.15.18:
-    optional: true
-
-  opencode-linux-x64@0.15.18:
-    optional: true
-
-  opencode-windows-x64@0.15.18:
-    optional: true
-
   os-homedir@1.0.2: {}
 
   os-paths@4.4.0: {}
@@ -3245,7 +3172,7 @@ snapshots:
       mkdirp: 1.0.4
       yallist: 4.0.0
 
-  tar@7.5.1:
+  tar@7.5.2:
     dependencies:
       '@isaacs/fs-minipass': 4.0.1
       chownr: 3.0.0
@@ -3294,7 +3221,7 @@ snapshots:
   ts-node@10.9.1(@types/node@16.18.11)(typescript@4.9.5):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
-      '@tsconfig/node10': 1.0.11
+      '@tsconfig/node10': 1.0.12
       '@tsconfig/node12': 1.0.11
       '@tsconfig/node14': 1.0.3
       '@tsconfig/node16': 1.0.4
