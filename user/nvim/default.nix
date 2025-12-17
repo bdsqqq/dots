@@ -47,6 +47,16 @@ let
       rev = "bc6dfc10e26a8dd1ec2f0512050a8a0afaa9d090";
       hash = "sha256-p25EBXx4lDA+7lP6LukPT/rqX/bNCliRlHs0PcOp9bo=";
     };
+    nvimSkipModule = [ "tpipeline.main" ];
+  };
+  amp-nvim = pkgs.vimUtils.buildVimPlugin {
+    name = "amp-nvim";
+    src = pkgs.fetchFromGitHub {
+      owner = "sourcegraph";
+      repo = "amp.nvim";
+      rev = "3b9ad5ef0328de1b35cc9bfa723a37db5daf9434";
+      hash = "sha256-f/li32jpVigbZANnnbgSArnOH4nusj0DUz7952K+Znw=";
+    };
   };
 in
 {
@@ -54,12 +64,13 @@ in
     imports = [ inputs.nixvim.homeManagerModules.nixvim ];
     programs.nixvim = {
       enable = true;
-      extraPlugins = [ ts-error-translator vim-tpipeline ];
+      extraPlugins = [ ts-error-translator vim-tpipeline amp-nvim ];
       extraConfigLua = builtins.readFile ./config.lua;
 
       globals = { 
         mapleader = " "; maplocalleader = " "; have_nerd_font = true;
         tpipeline_autoembed = 0;
+        tpipeline_fillchar = " ";
         tpipeline_statusline = "%{%v:lua.Statusline()%}";
       };
       clipboard = { providers = { wl-copy.enable = true; xsel.enable = true; }; register = "unnamedplus"; };
