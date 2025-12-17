@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@sourcegraph/amp':
-        specifier: 0.0.1765987287-ge92e6f
-        version: 0.0.1765987287-ge92e6f
+        specifier: 0.0.1765991883-g0871ef
+        version: 0.0.1765991883-g0871ef
       biome:
         specifier: 0.3.3
         version: 0.3.3
@@ -27,8 +27,8 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       vercel:
-        specifier: 50.1.0
-        version: 50.1.0(typescript@5.9.3)
+        specifier: 50.1.1
+        version: 50.1.1(typescript@5.9.3)
 
 packages:
 
@@ -726,8 +726,8 @@ packages:
   '@sinclair/typebox@0.25.24':
     resolution: {integrity: sha512-XJfwUVUKDHF5ugKwIcxEgc9k8b7HbznCp6eUfWgu710hMPNIO4aw4/zB5RogDQz8nd6gyCDpU9O/m6qYEWY6yQ==}
 
-  '@sourcegraph/amp@0.0.1765987287-ge92e6f':
-    resolution: {integrity: sha512-LvvzwtvG3mojolkgSlzrBVOlx04qg2zhKEFA+ZYQjZmJ068QTzlLNh06a8r3xOQVO918yzRLwzTZxe3S3dPBsw==}
+  '@sourcegraph/amp@0.0.1765991883-g0871ef':
+    resolution: {integrity: sha512-YDS0RiRE1AqxZxbnfxZTJTwr23mytu0bIhs9jvIMj4owMpfJi8WdWCXkdp2Anxy1QDzogohO2lUusyqrK+/vqg==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -2194,8 +2194,8 @@ packages:
   v8-compile-cache-lib@3.0.1:
     resolution: {integrity: sha512-wa7YjyUGfNZngI/vtK0UHAN+lgDCxBPCylVXGp0zu59Fz5aiGtNXaq3DhIov063MorB+VfufLh3JlF2KdTK3xg==}
 
-  vercel@50.1.0:
-    resolution: {integrity: sha512-a1SouUAEaB5hNW1lg8eGnC2vDWyHF81qLmzacCo5nN5wZ9wBxAMG6KNQc+7cUekkcybinyPQ1qt8nbLsc0ogFw==}
+  vercel@50.1.1:
+    resolution: {integrity: sha512-OxjK8j3EOtSHDX/KOHlQ2p0GKUgRe2BSZBZuvfqU+MFgbyyPZFrDnquQpA38XNPtK5SFUu2tH4VDmr6GgvF+rw==}
     engines: {node: '>= 18'}
     hasBin: true
 
@@ -2682,7 +2682,7 @@ snapshots:
 
   '@sinclair/typebox@0.25.24': {}
 
-  '@sourcegraph/amp@0.0.1765987287-ge92e6f':
+  '@sourcegraph/amp@0.0.1765991883-g0871ef':
     dependencies:
       '@napi-rs/keyring': 1.1.9
 
@@ -4231,7 +4231,7 @@ snapshots:
 
   v8-compile-cache-lib@3.0.1: {}
 
-  vercel@50.1.0(typescript@5.9.3):
+  vercel@50.1.1(typescript@5.9.3):
     dependencies:
       '@vercel/backends': 0.0.17(typescript@5.9.3)
       '@vercel/blob': 1.0.2
