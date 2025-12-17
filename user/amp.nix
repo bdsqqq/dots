@@ -5,8 +5,6 @@ in
 {
   home-manager.users.bdsqqq = { pkgs, config, ... }: 
   let
-    skillsDir = "${config.home.homeDirectory}/.amp/skills";
-    
     gitShipSkill = ''
       ---
       name: git-ship
@@ -146,17 +144,17 @@ in
     '';
   in {
     # amp skills directory
-    home.file.".amp/skills/git-ship/SKILL.md" = {
+    home.file.".config/amp/skills/git-ship/SKILL.md" = {
       force = true;
       text = gitShipSkill;
     };
     
-    home.file.".amp/skills/git-worktree/SKILL.md" = {
+    home.file.".config/amp/skills/git-worktree/SKILL.md" = {
       force = true;
       text = gitWorktreeSkill;
     };
 
-    home.file.".amp/skills/clean-copy/SKILL.md" = {
+    home.file.".config/amp/skills/clean-copy/SKILL.md" = {
       force = true;
       text = cleanCopySkill;
     };
