@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@sourcegraph/amp": "0.0.1765991883-g0871ef",
+    "@sourcegraph/amp": "0.0.1766016110-gbafd5c",
     "biome": "0.3.3",
-    "bun": "1.3.4",
+    "bun": "1.3.5",
     "npm": "11.7.0",
     "turbo": "2.6.3",
     "typescript": "5.9.3",
-    "vercel": "50.1.1"
+    "vercel": "50.1.2"
   }
 }
