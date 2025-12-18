@@ -1,0 +1,58 @@
+---
+name: spawn
+description: spawn parallel amp agents in tmux with thread linkage
+---
+# spawn
+
+spawn amp agents in tmux windows. establishes parent/child thread relationship visible in `amp threads map`.
+
+## thread linkage
+
+```bash
+$AMP_CURRENT_THREAD_ID  # current thread id (T-xxx...)
+```
+
+include thread reference in first message to establish relationship.
+
+## one-liner (scriptable)
+
+```bash
+TASK="<task>" NAME="<window-name>" && \
+  tmux new-window -n "$NAME" "amp" && sleep 2 && \
+  tmux send-keys -t "$NAME" "Continuing from https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID. $TASK" C-m
+```
+
+## hotkey binding
+
+add to shell rc or bind to key:
+
+```bash
+amp-spawn() {
+  local name="${1:-agent}" task="${2:-}"
+  tmux new-window -n "$name" "amp" && sleep 2 && \
+    tmux send-keys -t "$name" "Continuing from https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID. $task" C-m
+}
+```
+
+usage: `amp-spawn fix-lint "fix all eslint errors in src/"`
+
+## control
+
+```bash
+tmux select-window -t "name"         # switch to
+tmux capture-pane -p -t "name"       # check output
+tmux kill-window -t "name"           # stop
+```
+
+## claude (no thread linkage)
+
+```bash
+tmux new-window -n "name" "claude --dangerously-skip-permissions" && sleep 2 && \
+  tmux send-keys -t "name" "<task>" C-m
+```
+
+## guidelines
+
+- sanitize window names: lowercase, dashes, no spaces/special chars
+- keep names short (max 30 chars)
+- one task per agent — keep threads focused

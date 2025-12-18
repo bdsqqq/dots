@@ -1,35 +1,38 @@
 ---
 name: git-ship
-description: stage all changes, commit with conventional commits format, and push to remote
+description: stage, commit (conventional), push
 ---
 # git-ship
 
-execute this deterministically without extensive analysis.
+stage all changes, commit with conventional commits, push.
 
 ## workflow
 
-1. run `git add -A && git status` to stage and review changes
-2. analyze the diff with `git diff --staged` to understand what changed
-3. generate a commit message following conventional commits:
-   - format: `type(scope): description`
-   - types: feat, fix, docs, style, refactor, perf, test, chore
-   - lowercase, imperative mood
-   - if multiple logical changes, use bullet points in body
-4. run `git commit -m "..."` with the generated message
-5. run `git push`
-
-## commit message examples
-
-simple:
-```
-feat(auth): add jwt token refresh endpoint
+```bash
+git add -A && git status
+git diff --staged
+git commit -m "type(scope): description"
+git push
 ```
 
-with body:
-```
-feat(console): add UI source viewer for components
+## commit format
 
-- import source files at build time via import.meta.glob
-- parse source into JSDoc and code blocks
-- add 'UI Source' section to design sidebar
+`type(scope): description`
+
+types: `feat` `fix` `docs` `style` `refactor` `perf` `test` `chore`
+
+lowercase, imperative mood. bullet points in body for multiple changes.
+
+## examples
+
+```
+feat(auth): add jwt refresh endpoint
+```
+
+```
+feat(console): add source viewer
+
+- import source via import.meta.glob
+- parse into jsdoc and code blocks
+- add source section to sidebar
 ```

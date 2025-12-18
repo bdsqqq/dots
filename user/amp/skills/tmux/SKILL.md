@@ -1,98 +1,48 @@
 ---
 name: tmux
-description: Instructions for using tmux to spawn multiple processes, inspect them, and capture their output. Useful for running servers or long-running tasks in the background.
+description: manage background processes in tmux windows
 allowed-tools:
   - Bash
 ---
+# tmux
 
-# Tmux Skill
+manage concurrent processes (servers, builds, watchers) in tmux windows.
 
-> source: https://github.com/sourcegraph/amp-contrib/blob/main/tmux/skill.md
-
-This skill empowers you to manage multiple concurrent processes (like servers, watchers, or long builds) using `tmux` directly from the `Bash` tool.
-
-Since you are likely already running inside a tmux session, you can spawn new windows or panes to handle these tasks without blocking your main communication channel.
-
-## 1. Verify Environment & Check Status
-
-First, verify you are running inside tmux:
+## verify
 
 ```bash
-echo $TMUX
+echo $TMUX        # non-empty if inside tmux
+tmux list-windows # show current windows
 ```
 
-If this returns empty, you are not running inside tmux and these commands will not work as expected.
-
-Once verified, check your current windows:
+## spawn a process
 
 ```bash
-tmux list-windows
+tmux new-window -n "name" -d
+tmux send-keys -t "name" "command" C-m
 ```
 
-## 2. Spawn a Background Process
-
-To run a command (e.g., a dev server) in a way that persists and can be inspected:
-
-1.  **Create a new detached window** with a specific name. This keeps it isolated and easy to reference.
-
-    ```bash
-    tmux new-window -n "server-log" -d
-    ```
-
-    _(Replace "server-log" with a relevant name for your task)_
-
-2.  **Send the command** to that window.
-    ```bash
-    tmux send-keys -t "server-log" "npm start" C-m
-    ```
-    _(`C-m` simulates the Enter key)_
-
-## 3. Inspect Output (Read Logs)
-
-You can read the output of that pane at any time without switching your context.
-
-**Get the current visible screen:**
+or combined:
 
 ```bash
-tmux capture-pane -p -t "server-log"
+tmux new-window -n "name" -d ';' send-keys -t "name" "command" C-m
 ```
 
-**Get the entire history (scrollback):**
+## inspect output
 
 ```bash
-tmux capture-pane -p -S - -t "server-log"
+tmux capture-pane -p -t "name"         # visible screen
+tmux capture-pane -p -S - -t "name"    # full scrollback
 ```
 
-_Use this if the output might have scrolled off the screen._
-
-## 4. Interact with the Process
-
-If you need to stop or restart the process:
-
-**Send Ctrl+C (Interrupt):**
+## control
 
 ```bash
-tmux send-keys -t "server-log" C-c
+tmux send-keys -t "name" C-c           # interrupt (ctrl+c)
+tmux kill-window -t "name"             # terminate
+tmux select-window -t "name"           # switch to
 ```
 
-**Kill the window (Clean up):**
+## agent spawning
 
-```bash
-tmux kill-window -t "server-log"
-```
-
-## 5. Advanced: Chaining Commands
-
-You can chain multiple tmux commands in a single invocation using `';'` (note the quotes to avoid interpretation by the shell). This is faster and cleaner than running multiple `tmux` commands.
-
-Example: Create window and start process in one go:
-
-```bash
-tmux new-window -n "server-log" -d ';' send-keys -t "server-log" "npm start" C-m
-```
-
-## Summary of Pattern
-
-1. `tmux new-window -n "ID" -d`
-2. `tmux send-keys -t "ID" "CMD" C-m`
-3. `tmux capture-pane -p -t "ID"`
+for spawning amp/claude agents with thread linkage, use the `spawn` skill.
