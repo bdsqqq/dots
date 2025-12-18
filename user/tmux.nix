@@ -26,12 +26,12 @@ in
         # override sensible's broken default-command (it uses $SHELL from build env)
         set -g default-command "${lib.getExe config.my.defaultShell}"
         
-        # theme colors matching zellij
-        set -g status-style "bg=#101010,fg=#c2c2c2"
+        # theme colors matching zellij (transparent bg)
+        set -g status-style "bg=default,fg=#c2c2c2"
         set -g pane-border-style "fg=#374151"
         set -g pane-active-border-style "fg=#6b7280"
-        set -g message-style "bg=#101010,fg=#c2c2c2"
-        set -g message-command-style "bg=#101010,fg=#c2c2c2"
+        set -g message-style "bg=default,fg=#c2c2c2"
+        set -g message-command-style "bg=default,fg=#c2c2c2"
         
         # status bar (minimal, tabs on right like zjstatus)
         set -g status-position top
@@ -70,16 +70,19 @@ in
         bind Tab next-window
         bind BTab previous-window
         
-        # prefix + 1-9: go to window by number (already default, but explicit)
-        bind 1 select-window -t 1
-        bind 2 select-window -t 2
-        bind 3 select-window -t 3
-        bind 4 select-window -t 4
-        bind 5 select-window -t 5
-        bind 6 select-window -t 6
-        bind 7 select-window -t 7
-        bind 8 select-window -t 8
-        bind 9 select-window -t 9
+        # auto-renumber windows when one is closed (browser-like)
+        set -g renumber-windows on
+        
+        # prefix + 1-9: browser-like tab switching (clamped to window count)
+        bind 1 select-window -t :1
+        bind 2 run-shell 'n=2; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
+        bind 3 run-shell 'n=3; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
+        bind 4 run-shell 'n=4; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
+        bind 5 run-shell 'n=5; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
+        bind 6 run-shell 'n=6; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
+        bind 7 run-shell 'n=7; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
+        bind 8 run-shell 'n=8; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
+        bind 9 run-shell 'n=9; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
         
         # prefix + t: new window
         bind t new-window
@@ -102,6 +105,10 @@ in
         # automatic window renaming (let zsh hooks handle it)
         set -g allow-rename on
         set -g automatic-rename off
+        
+        # extended keys for shift+enter, ctrl+shift combos etc
+        set -g extended-keys on
+        set -as terminal-features ',*:extkeys'
       '';
     };
 
