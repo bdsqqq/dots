@@ -108,7 +108,17 @@ in
         
         # extended keys for shift+enter, ctrl+shift combos etc
         set -g extended-keys on
+        set -g extended-keys-format csi-u
+        
+        # modern terminal features for ghostty
+        set -as terminal-features ',ghostty:RGB,extkeys,clipboard,hyperlinks,focus,sync,strikethrough,usstyle'
         set -as terminal-features ',*:extkeys'
+        
+        # passthrough for image protocols, sixel, etc
+        set -g allow-passthrough on
+        
+        # osc52 clipboard (bidirectional with system clipboard)
+        set -g set-clipboard on
       '';
     };
 
