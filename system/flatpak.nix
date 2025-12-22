@@ -12,6 +12,11 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       "app.zen_browser.zen"
       "com.modrinth.ModrinthApp"
     ];
+    overrides = {
+      "com.modrinth.ModrinthApp".Context.filesystems = [
+        "~/.local/share/ModrinthApp"
+      ];
+    };
   };
 }
 
