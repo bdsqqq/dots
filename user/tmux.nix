@@ -180,7 +180,17 @@ in
 
         function set_window_to_command_line() {
           setopt localoptions extended_glob
-          local cmd=''${1[(wr)^(*=*|sudo|ssh|mosh|-*)]:t}
+          # extract command name, handling env vars and sudo/ssh prefixes
+          local words=(''${(z)1})
+          local cmd=""
+          for w in "''${words[@]}"; do
+            # skip env assignments (FOO=bar) and common wrappers
+            [[ "$w" == *=* || "$w" == sudo || "$w" == ssh || "$w" == mosh ]] && continue
+            # skip flags
+            [[ "$w" == -* ]] && continue
+            cmd="''${w:t}"
+            break
+          done
           [[ -z "$cmd" ]] && return
           
           # amp gets a random human name, preserved across the session
