@@ -132,6 +132,15 @@ in
           };
         };
 
+        prism-instances = {
+          enable = true;
+          id = "prism-instances";
+          label = "PrismLauncher instances";
+          path = "/home/bdsqqq/.local/share/PrismLauncher/instances";
+          type = "sendreceive";
+          rescanIntervalS = 120;
+          devices = [ "mbp-m2" ];
+        };
       };
     };
   };

@@ -10,7 +10,6 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     ];
     packages = [
       "app.zen_browser.zen"
-      "com.modrinth.ModrinthApp"
     ];
   };
 }
