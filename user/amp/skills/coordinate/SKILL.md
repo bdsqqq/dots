@@ -43,10 +43,22 @@ these appear in YOUR amp session as user messages prefixed with "AGENT <name>:".
 
 ## coordinator-to-agent messages
 
-send instructions TO agents via:
+### polite (queued) — preferred
+use `/queue` to avoid interrupting agent mid-step:
 
 ```bash
+tmux send-keys -t debug-foo "/queue" C-m
+sleep 0.5
 tmux send-keys -t debug-foo "COORDINATOR: <instruction>" C-m
+```
+
+agent will receive message after completing current step.
+
+### interrupt — use sparingly
+only interrupt when agent is deviating from correct approach:
+
+```bash
+tmux send-keys -t debug-foo "COORDINATOR: STOP - <urgent correction>" C-m
 ```
 
 ## monitoring pattern
@@ -84,9 +96,19 @@ tmux kill-window -t debug-bar
 
 ## pitfalls
 
+### naming windows
+always name tmux windows descriptively — easier than indexes:
+
+```bash
+tmux new-window -n "debug-auth"    # good: descriptive
+tmux new-window -n "agent-2"       # bad: meaningless
+```
+
+use `tmux rename-window -t 2 "debug-auth"` to fix existing windows.
+
 ### agent pane targeting
-- `tmux send-keys -t 1.1` targets window 1, pane 1 (coordinator)
-- `tmux send-keys -t debug-foo` targets by window name
+- `tmux send-keys -t debug-foo` targets by window name (preferred)
+- `tmux send-keys -t 1.1` targets window 1, pane 1 (fragile)
 - `tmux send-keys -t %4` targets by pane id (use `tmux list-panes` to find)
 
 ### sudo/tty issues
@@ -105,11 +127,23 @@ tmux split-window -h "amp" && sleep 2 && \
 
 then exit your pane after successor acknowledges.
 
+## communication etiquette
+
+### as coordinator
+- use `/queue` for non-urgent messages (polite)
+- interrupt only when agent is going wrong direction
+- your job: ensure agents complete the overall task
+
+### as worker agent
+- message coordinator, NOT peer agents directly
+- use callback pattern: `tmux send-keys -t coordinator-window 'AGENT name: msg' C-m`
+- let coordinator relay info between agents if needed
+
 ## workflow example
 
 1. user asks to debug issue across 2 hosts
 2. spawn debug-host-a and debug-host-b with callback instructions
 3. set timer to check on them: `sleep 30 && tmux capture-pane ...`
-4. when agent messages arrive ("AGENT debug-host-a: found X"), respond with guidance
-5. coordinate between agents if they need to share findings
+4. when agent messages arrive ("AGENT debug-host-a: found X"), queue response via `/queue`
+5. coordinate between agents — relay findings, don't have them message each other
 6. once tasks complete, cleanup windows
