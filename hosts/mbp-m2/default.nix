@@ -14,7 +14,6 @@
     ../../system/syncthing-automerge.nix
     ../../system/code-server.nix
     ../../system/vector.nix
-    ../../system/rustdesk.nix
     ../../user/gaming.nix
   ];
 
