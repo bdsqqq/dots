@@ -1,9 +1,5 @@
 -- Global functions and configuration
 
--- Colorscheme (vesper with transparency)
-require("vesper").setup({ transparent = true })
-vim.cmd.colorscheme("vesper")
-
 -- Floating terminal function
 local function open_floating_term(cmd)
   local columns = vim.api.nvim_get_option("columns")
