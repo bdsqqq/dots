@@ -20,6 +20,7 @@ lib.mkIf (headMode == "graphical") {
       _1password-cli
       dbeaver-bin
       vlc
+      imv
       xwayland-satellite
       fuzzel
       blueman
