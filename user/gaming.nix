@@ -6,7 +6,7 @@ let
 in
 {
   home-manager.users.bdsqqq = { pkgs, ... }: {
-    home.packages = [
+    home.packages = lib.optionals isDarwin [
       pkgs.modrinth-app
     ];
   };
