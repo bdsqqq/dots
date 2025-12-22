@@ -31,12 +31,15 @@ add to shell rc or bind to key:
 ```bash
 amp-spawn() {
   local name="${1:-agent}" task="${2:-}"
+  local callback="If you need guidance, run: tmux send-keys -t $TMUX_PANE 'AGENT $name: <message>' C-m"
   tmux new-window -n "$name" "amp --dangerously-allow-all" && sleep 3 && \
-    tmux send-keys -t "$name" "Continuing from https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID. $task" C-m
+    tmux send-keys -t "$name" "Continuing from https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID. $task. $callback" C-m
 }
 ```
 
 usage: `amp-spawn fix-lint "fix all eslint errors in src/"`
+
+**note**: `$TMUX_PANE` captures your pane id (e.g., `%5`) so agents can message you back reliably.
 
 ## control
 
