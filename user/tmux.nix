@@ -107,6 +107,12 @@ in
         bind | split-window -h -c "#{pane_current_path}"
         bind - split-window -v -c "#{pane_current_path}"
         
+        # prefix + r: rename window (sets @custom_name to prevent auto-rename)
+        bind r command-prompt -I "#W" "rename-window '%%'; set-option -w @custom_name '%%'"
+        
+        # prefix + R: clear custom name (re-enable auto-rename)
+        bind R set-option -wu @custom_name
+        
         # prefix + Ctrl+Space or Esc: cancel (send-prefix for double tap)
         bind C-Space send-prefix
         bind Escape copy-mode
@@ -165,8 +171,9 @@ in
         }
 
         function set_window_to_working_dir() {
-          # don't overwrite custom names (e.g., for amp agents)
+          # don't overwrite custom names (e.g., for amp agents or manual renames)
           [[ -n "$TMUX_PANE_CUSTOM_NAME" ]] && return
+          [[ -n "$(command tmux show-options -wqv @custom_name 2>/dev/null)" ]] && return
           local title=$(current_dir)
           change_window_title $title
         }
