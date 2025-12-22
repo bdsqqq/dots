@@ -8,8 +8,8 @@ in
   let
     randomNameScript = pkgs.writeShellScriptBin "tmux-random-name" ''
       NAMES_DIR="${config.home.homeDirectory}/.config/tmux/names"
-      FIRST=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/firstnames.txt")
-      LAST=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/lastnames.txt")
+      FIRST=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/firstnames.txt" | ${pkgs.coreutils}/bin/tr '[:upper:]' '[:lower:]')
+      LAST=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/lastnames.txt" | ${pkgs.coreutils}/bin/tr '[:upper:]' '[:lower:]')
       echo "''${FIRST}_''${LAST}"
     '';
   in {
@@ -180,7 +180,7 @@ in
             local current_dir_name=$(current_dir)
             # only assign new name if window is unnamed or has folder/amp name
             if [[ -z "$TMUX_PANE_CUSTOM_NAME" && ("$current_name" == "$current_dir_name" || "$current_name" == "amp") ]]; then
-              TMUX_PANE_CUSTOM_NAME=$(tmux-random-name 2>/dev/null || echo "Agent_$RANDOM")
+              TMUX_PANE_CUSTOM_NAME=$(tmux-random-name 2>/dev/null || echo "agent_$RANDOM")
             fi
             change_window_title "$TMUX_PANE_CUSTOM_NAME"
             return
