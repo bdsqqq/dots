@@ -39,6 +39,40 @@ no need to set enableZshIntegration, enableBashIntegration, etc. unless overridi
         templates = "${config.home.homeDirectory}/Templates";
         publicShare = "${config.home.homeDirectory}/Public";
       };
+      
+      xdg.mimeApps = let
+        browser = "app.zen_browser.zen.desktop";  # flatpak
+        imageViewer = "imv.desktop";
+        videoPlayer = "vlc.desktop";
+        fileManager = "yazi.desktop";
+      in if pkgs.stdenv.isDarwin then {} else {
+        enable = true;
+        defaultApplications = {
+          # browser
+          "text/html" = browser;
+          "x-scheme-handler/http" = browser;
+          "x-scheme-handler/https" = browser;
+          "x-scheme-handler/about" = browser;
+          "x-scheme-handler/unknown" = browser;
+          
+          # images
+          "image/png" = imageViewer;
+          "image/jpeg" = imageViewer;
+          "image/gif" = imageViewer;
+          "image/webp" = imageViewer;
+          "image/svg+xml" = imageViewer;
+          "image/bmp" = imageViewer;
+          "image/tiff" = imageViewer;
+          
+          # video
+          "video/mp4" = videoPlayer;
+          "video/webm" = videoPlayer;
+          "video/x-matroska" = videoPlayer;
+          
+          # file manager
+          "inode/directory" = fileManager;
+        };
+      };
 
       home.sessionVariables = {
         EDITOR = "${pkgs.neovim}/bin/nvim";
