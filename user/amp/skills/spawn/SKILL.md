@@ -56,6 +56,19 @@ tmux new-window -n "name" "claude --dangerously-skip-permissions" && sleep 2 && 
 - sanitize window names: lowercase, dashes, no spaces/special chars
 - keep names short (max 30 chars)
 - one task per agent — keep threads focused
+- sleep 3+ seconds before sending keys (amp needs time to initialize)
+- when spawning successors or coordinated agents, explicitly mention relevant skill names in the handoff prompt (e.g., "load the coordinate skill", "use the tmux skill") so the agent knows to load them
+
+## handoff example
+
+when your context is filling up (check "╭─##% of ###k" in tmux capture), spawn a successor with explicit skill references:
+
+```bash
+TASK="HANDOFF: <context summary>. Load the coordinate skill for multi-agent work. Load the tmux skill for background processes." \
+NAME="successor" && \
+  tmux new-window -n "$NAME" "amp" && sleep 3 && \
+  tmux send-keys -t "$NAME" "Continuing from https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID. $TASK" C-m
+```
 
 ## multi-agent coordination
 

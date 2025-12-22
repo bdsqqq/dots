@@ -48,11 +48,13 @@ use `/queue` to avoid interrupting agent mid-step:
 
 ```bash
 tmux send-keys -t debug-foo "/queue" C-m
-sleep 0.5
+sleep 3  # IMPORTANT: /queue opens a UI that takes time to render
 tmux send-keys -t debug-foo "COORDINATOR: <instruction>" C-m
 ```
 
 agent will receive message after completing current step.
+
+**note**: `/` commands in amp open a UI palette that takes 2-3 seconds to render. if you send keys too quickly, the message gets cut off or the UI blocks input. always sleep 3+ seconds after `/queue`.
 
 ### interrupt — use sparingly
 only interrupt when agent is deviating from correct approach:
