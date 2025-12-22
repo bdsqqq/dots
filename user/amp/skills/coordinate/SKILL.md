@@ -83,17 +83,42 @@ done
 
 ## handling permission prompts
 
-if agent is stuck on permission prompt, send approval:
+permission prompts and other amp UI selections (command palette, etc.) require arrow keys + enter to navigate. capture-pane can't see selection state (no colors), so **ask the user to handle these manually**.
+
+## observe before acting
+
+**ALWAYS capture pane state before ANY disruptive action** — sending messages, interrupting, killing, etc. never act blind.
 
 ```bash
-tmux send-keys -t debug-foo "y" C-m
-# or for session-wide:
-tmux send-keys -t debug-foo "Allow All for This Session" C-m
+tmux capture-pane -p -t agent-name | tail -30
 ```
+
+this prevents:
+- killing agents mid-task
+- sending messages that get lost in UI palettes
+- interrupting agents that are about to finish
 
 ## cleanup
 
+observe first, then kill:
+
 ```bash
+# 1. observe FIRST — never skip this
+tmux capture-pane -p -t debug-foo | tail -30
+
+# 2. only kill after confirming agent is done or stuck
+tmux kill-window -t debug-foo
+```
+
+for multiple agents:
+
+```bash
+# observe all before any cleanup
+for w in debug-foo debug-bar; do
+  echo "=== $w ===" && tmux capture-pane -p -t "$w" | tail -20
+done
+
+# then kill after review
 tmux kill-window -t debug-foo
 tmux kill-window -t debug-bar
 ```
