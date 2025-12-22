@@ -110,8 +110,8 @@ in
         # prefix + r: rename window (sets @custom_name to prevent auto-rename)
         bind r command-prompt -I "#W" "rename-window '%%'; set-option -w @custom_name '%%'"
         
-        # prefix + R: clear custom name (re-enable auto-rename)
-        bind R set-option -wu @custom_name
+        # prefix + C-r: clear custom name (re-enable auto-rename)
+        bind C-r set-option -wu @custom_name
         
         # prefix + Ctrl+Space or Esc: cancel (send-prefix for double tap)
         bind C-Space send-prefix
