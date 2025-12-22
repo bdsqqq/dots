@@ -1,3 +1,7 @@
+# rustdesk over tailnet with direct IP access
+# connect using tailscale IPs: r56=100.94.68.111, mbp-m2=100.87.59.2
+# "unencrypted" warning is misleading — tailscale provides wireguard encryption
+# see: https://tailscale.com/kb/1599/rustdesk
 { lib, pkgs, config, hostSystem ? null, ... }:
 let
   system = hostSystem;
