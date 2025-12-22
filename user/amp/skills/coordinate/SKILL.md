@@ -22,21 +22,23 @@ coordinator (you)          agents (spawned)
 
 ## spawn agents with callback instructions
 
-always include the callback pattern in spawn message:
+always include the callback pattern in spawn message. use `$TMUX_PANE` to capture your pane id dynamically:
 
 ```bash
-TASK="<task description>. If you need guidance, run: tmux send-keys -t 1.1 'AGENT <name>: <message>' C-m" \
+TASK="<task description>. If you need guidance, run: tmux send-keys -t $TMUX_PANE 'AGENT <name>: <message>' C-m" \
 NAME="<agent-name>" && \
   tmux new-window -n "$NAME" "amp" && sleep 2 && \
   tmux send-keys -t "$NAME" "Continuing from https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID. $TASK" C-m
 ```
 
+**note**: `$TMUX_PANE` is set by tmux automatically (e.g., `%5`). it's stable across window reordering.
+
 ## agent-to-coordinator messages
 
-agents send messages TO you via:
+agents send messages TO you via the pane id provided in their spawn instructions:
 
 ```bash
-tmux send-keys -t 1.1 'AGENT debug-foo: <status or question>' C-m
+tmux send-keys -t %5 'AGENT debug-foo: <status or question>' C-m
 ```
 
 these appear in YOUR amp session as user messages prefixed with "AGENT <name>:".
@@ -109,9 +111,9 @@ tmux new-window -n "agent-2"       # bad: meaningless
 use `tmux rename-window -t 2 "debug-auth"` to fix existing windows.
 
 ### agent pane targeting
-- `tmux send-keys -t debug-foo` targets by window name (preferred)
-- `tmux send-keys -t 1.1` targets window 1, pane 1 (fragile)
-- `tmux send-keys -t %4` targets by pane id (use `tmux list-panes` to find)
+- `tmux send-keys -t debug-foo` targets by window name (preferred for agents)
+- `tmux send-keys -t %4` targets by pane id (preferred for coordinator callback)
+- `tmux send-keys -t 1.1` targets window 1, pane 1 (fragile — avoid)
 
 ### sudo/tty issues
 agents cannot run sudo commands requiring password. instruct user to run those manually, then have agent verify results.
