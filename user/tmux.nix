@@ -4,7 +4,15 @@ let
   copyCommand = if isDarwin then "pbcopy" else "wl-copy";
 in
 {
-  home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
+  home-manager.users.bdsqqq = { pkgs, config, lib, ... }: 
+  let
+    randomNameScript = pkgs.writeShellScriptBin "tmux-random-name" ''
+      NAMES_DIR="${config.home.homeDirectory}/.config/tmux/names"
+      FIRST=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/firstnames.txt")
+      LAST=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/lastnames.txt")
+      echo "''${FIRST}_''${LAST}"
+    '';
+  in {
     programs.tmux = {
       enable = true;
       package = pkgs.tmux;
@@ -128,10 +136,17 @@ in
     };
 
     home.shellAliases.tx = "tmux new-session -A -s $(basename $PWD | tr . _)";
+    
+    home.packages = [ randomNameScript ];
+    
+    home.file.".config/tmux/names/firstnames.txt".source = ../assets/names/firstnames.txt;
+    home.file.".config/tmux/names/lastnames.txt".source = ../assets/names/lastnames.txt;
 
     programs.zsh.initExtra = ''
       # tmux automatic window renaming
       if [[ -n $TMUX ]]; then
+        typeset -g TMUX_PANE_CUSTOM_NAME=""
+        
         function current_dir() {
           local current_dir=$PWD
           if [[ $current_dir == $HOME ]]; then
@@ -148,6 +163,8 @@ in
         }
 
         function set_window_to_working_dir() {
+          # don't overwrite custom names (e.g., for amp agents)
+          [[ -n "$TMUX_PANE_CUSTOM_NAME" ]] && return
           local title=$(current_dir)
           change_window_title $title
         }
@@ -156,6 +173,19 @@ in
           setopt localoptions extended_glob
           local cmd=''${1[(wr)^(*=*|sudo|ssh|mosh|-*)]:t}
           [[ -z "$cmd" ]] && return
+          
+          # amp gets a random human name, preserved across the session
+          if [[ "$cmd" == "amp" ]]; then
+            local current_name=$(command tmux display-message -p '#W')
+            local current_dir_name=$(current_dir)
+            # only assign new name if window is unnamed or has folder/amp name
+            if [[ -z "$TMUX_PANE_CUSTOM_NAME" && ("$current_name" == "$current_dir_name" || "$current_name" == "amp") ]]; then
+              TMUX_PANE_CUSTOM_NAME=$(tmux-random-name 2>/dev/null || echo "Agent_$RANDOM")
+            fi
+            change_window_title "$TMUX_PANE_CUSTOM_NAME"
+            return
+          fi
+          
           change_window_title $cmd
         }
 
