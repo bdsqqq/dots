@@ -29,6 +29,7 @@ let
         "direct-server": "Y",
         "direct-access-port": "21118",
         "whitelist": "100.64.0.0/10",
+        "stop-service": "N",  # required for direct-server to listen
     }
 
     if path.exists():
