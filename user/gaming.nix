@@ -9,6 +9,7 @@ in
     home.packages = 
       lib.optionals isDarwin [
         pkgs.modrinth-app
+        pkgs.prismlauncher
       ] ++
       lib.optionals isLinux [
         pkgs.prismlauncher
