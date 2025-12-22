@@ -79,6 +79,10 @@ in
   networking.networkmanager.enable = true;
   networking.useDHCP = lib.mkDefault true;
   
+  # allow minecraft server on tailscale
+  networking.firewall.interfaces."tailscale0".allowedTCPPorts = [ 25565 ];
+  networking.firewall.interfaces."tailscale0".allowedUDPPorts = [ 25565 ];
+  
   time.timeZone = "Europe/London";
   i18n.defaultLocale = "en_US.UTF-8";
 
