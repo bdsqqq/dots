@@ -69,7 +69,6 @@ in
     ../../system/fan-control.nix
     ../../system/audio.nix
     ../../system/vector.nix
-    ../../system/rustdesk.nix
     ../../user/ghostty.nix
     ../../user/quickshell.nix
     ../../user/gaming.nix
