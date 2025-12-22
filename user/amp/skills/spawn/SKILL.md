@@ -56,3 +56,7 @@ tmux new-window -n "name" "claude --dangerously-skip-permissions" && sleep 2 && 
 - sanitize window names: lowercase, dashes, no spaces/special chars
 - keep names short (max 30 chars)
 - one task per agent — keep threads focused
+
+## multi-agent coordination
+
+for orchestrating multiple agents with bidirectional communication, use the `coordinate` skill.

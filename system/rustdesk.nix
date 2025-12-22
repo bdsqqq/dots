@@ -58,6 +58,19 @@ if isLinux then {
   # allow direct IP access port on tailscale interface only
   networking.firewall.interfaces."tailscale0".allowedTCPPorts = [ 21118 ];
   
+  # systemd user service for rustdesk - enables --password CLI and background operation
+  systemd.user.services.rustdesk = {
+    description = "RustDesk Remote Desktop";
+    wantedBy = [ "graphical-session.target" ];
+    after = [ "graphical-session.target" ];
+    serviceConfig = {
+      Type = "simple";
+      ExecStart = "${pkgs.rustdesk}/bin/rustdesk --service";
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
+  };
+  
   # merge config via home.activation (preserves rustdesk's dynamic values)
   # lib.hm only available inside home-manager user block
   home-manager.users.bdsqqq = { lib, config, ... }: {
