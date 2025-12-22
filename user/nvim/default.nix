@@ -255,7 +255,7 @@ in
         blink-cmp.settings.snippets.preset = "default"; blink-cmp.settings.signature.enabled = true;
 
         mini.enable = true;
-        mini.modules.icons = {}; mini.modules.surround = {}; mini.modules.comment = {};
+        mini.modules.base16 = {}; mini.modules.icons = {}; mini.modules.surround = {}; mini.modules.comment = {};
         mini.modules.files.options.permanent_delete = true; mini.modules.files.options.use_as_default_explorer = true;
         mini.modules.files.content.filter.__raw = ''function(fs_entry) return true end'';
         mini.mockDevIcons = true;
