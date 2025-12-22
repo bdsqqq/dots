@@ -8,9 +8,10 @@ in
   let
     randomNameScript = pkgs.writeShellScriptBin "tmux-random-name" ''
       NAMES_DIR="${config.home.homeDirectory}/.config/tmux/names"
-      FIRST=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/firstnames.txt" | ${pkgs.coreutils}/bin/tr '[:upper:]' '[:lower:]')
-      LAST=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/lastnames.txt" | ${pkgs.coreutils}/bin/tr '[:upper:]' '[:lower:]')
-      echo "''${FIRST}_''${LAST}"
+      FIRST=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/firstnames.txt")
+      LAST1=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/lastnames_1.txt")
+      LAST2=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/lastnames_2.txt")
+      echo "''${FIRST}_''${LAST1}''${LAST2}"
     '';
   in {
     programs.tmux = {
@@ -140,7 +141,8 @@ in
     home.packages = [ randomNameScript ];
     
     home.file.".config/tmux/names/firstnames.txt".source = ../assets/names/firstnames.txt;
-    home.file.".config/tmux/names/lastnames.txt".source = ../assets/names/lastnames.txt;
+    home.file.".config/tmux/names/lastnames_1.txt".source = ../assets/names/lastnames_1.txt;
+    home.file.".config/tmux/names/lastnames_2.txt".source = ../assets/names/lastnames_2.txt;
 
     programs.zsh.initExtra = ''
       # tmux automatic window renaming
