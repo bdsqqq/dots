@@ -10,13 +10,15 @@ let
   
   homeDir = if isDarwin then "/Users/bdsqqq" else "/home/bdsqqq";
   
+  flatpakAppId = "com.rustdesk.RustDesk";
+  
   configPath = if isDarwin 
     then "Library/Preferences/com.carriez.RustDesk/RustDesk2.toml"
-    else ".config/rustdesk/RustDesk2.toml";
+    else ".var/app/${flatpakAppId}/config/rustdesk/RustDesk2.toml";
   
   configDir = if isDarwin
     then "Library/Preferences/com.carriez.RustDesk"
-    else ".config/rustdesk";
+    else ".var/app/${flatpakAppId}/config/rustdesk";
 
   pythonWithTomlkit = pkgs.python3.withPackages (ps: [ ps.tomlkit ]);
   
@@ -77,7 +79,7 @@ let
 
 in
 if isLinux then {
-  environment.systemPackages = [ pkgs.rustdesk ];
+  services.flatpak.packages = [ flatpakAppId ];
   
   networking.firewall.interfaces."tailscale0".allowedTCPPorts = [ 21118 ];
   
