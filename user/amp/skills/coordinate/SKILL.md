@@ -6,39 +6,48 @@ description: orchestrate multiple amp agents with bidirectional tmux communicati
 
 orchestrate multiple amp agents working on related tasks. you are the coordinator — agents report to you, you delegate and unblock them.
 
+## auto-naming
+
+amp windows get auto-assigned fairy names like `ted_glimmermoss` or `alice_fluttergold`. agents identify themselves by these names when messaging you.
+
 ## architecture
 
 ```
 coordinator (you)          agents (spawned)
      │                          │
-     ├──spawn──────────────────►│ debug-foo
-     ├──spawn──────────────────►│ debug-bar  
+     ├──spawn──────────────────►│ ted_glimmermoss
+     ├──spawn──────────────────►│ alice_fluttergold  
      │                          │
-     │◄────tmux send-keys───────┤ "AGENT debug-foo: found issue X"
+     │◄────tmux send-keys───────┤ "AGENT ted_glimmermoss: found issue X"
      ├─────tmux send-keys──────►│ "COORDINATOR: fix X, then do Y"
      │                          │
      └──monitor via capture─────┘
 ```
 
-## spawn agents with callback instructions
+## spawn agents
 
-always include the callback pattern in spawn message. use `$TMUX_PANE` to capture your pane id dynamically:
+agents get auto-named and include their name in callbacks:
 
 ```bash
-TASK="<task description>. If you need guidance, run: tmux send-keys -t $TMUX_PANE 'AGENT <name>: <message>' C-m" \
-NAME="<agent-name>" && \
-  tmux new-window -n "$NAME" "amp" && sleep 2 && \
-  tmux send-keys -t "$NAME" "Continuing from https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID. $TASK" C-m
+TASK="<task description>. If you need guidance, run: tmux send-keys -t $TMUX_PANE 'AGENT \$(tmux display-message -p \"#W\"): <message>' C-m" && \
+  tmux new-window "amp" && sleep 2 && \
+  tmux send-keys "Continuing from https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID. $TASK" C-m
 ```
 
 **note**: `$TMUX_PANE` is set by tmux automatically (e.g., `%5`). it's stable across window reordering.
+
+## list active agents
+
+```bash
+tmux list-windows -F '#W'
+```
 
 ## agent-to-coordinator messages
 
 agents send messages TO you via the pane id provided in their spawn instructions:
 
 ```bash
-tmux send-keys -t %5 'AGENT debug-foo: <status or question>' C-m
+tmux send-keys -t %5 'AGENT ted_glimmermoss: <status or question>' C-m
 ```
 
 these appear in YOUR amp session as user messages prefixed with "AGENT <name>:".
@@ -49,9 +58,9 @@ these appear in YOUR amp session as user messages prefixed with "AGENT <name>:".
 use `/queue` to avoid interrupting agent mid-step:
 
 ```bash
-tmux send-keys -t debug-foo "/queue" C-m
+tmux send-keys -t ted_glimmermoss "/queue" C-m
 sleep 3  # IMPORTANT: /queue opens a UI that takes time to render
-tmux send-keys -t debug-foo "COORDINATOR: <instruction>" C-m
+tmux send-keys -t ted_glimmermoss "COORDINATOR: <instruction>" C-m
 ```
 
 agent will receive message after completing current step.
@@ -62,7 +71,7 @@ agent will receive message after completing current step.
 only interrupt when agent is deviating from correct approach:
 
 ```bash
-tmux send-keys -t debug-foo "COORDINATOR: STOP - <urgent correction>" C-m
+tmux send-keys -t ted_glimmermoss "COORDINATOR: STOP - <urgent correction>" C-m
 ```
 
 ## monitoring pattern
@@ -70,13 +79,13 @@ tmux send-keys -t debug-foo "COORDINATOR: STOP - <urgent correction>" C-m
 check agent progress periodically:
 
 ```bash
-sleep 5 && tmux capture-pane -p -t debug-foo | tail -30
+sleep 5 && tmux capture-pane -p -t ted_glimmermoss | tail -30
 ```
 
 check all agents:
 
 ```bash
-for w in debug-foo debug-bar; do
+for w in $(tmux list-windows -F '#W' | grep -v "^$(tmux display-message -p '#W')$"); do
   echo "=== $w ===" && tmux capture-pane -p -t "$w" | tail -20
 done
 ```
@@ -90,7 +99,7 @@ permission prompts and other amp UI selections (command palette, etc.) require a
 **ALWAYS capture pane state before ANY disruptive action** — sending messages, interrupting, killing, etc. never act blind.
 
 ```bash
-tmux capture-pane -p -t agent-name | tail -30
+tmux capture-pane -p -t ted_glimmermoss | tail -30
 ```
 
 this prevents:
@@ -104,39 +113,16 @@ observe first, then kill:
 
 ```bash
 # 1. observe FIRST — never skip this
-tmux capture-pane -p -t debug-foo | tail -30
+tmux capture-pane -p -t ted_glimmermoss | tail -30
 
 # 2. only kill after confirming agent is done or stuck
-tmux kill-window -t debug-foo
-```
-
-for multiple agents:
-
-```bash
-# observe all before any cleanup
-for w in debug-foo debug-bar; do
-  echo "=== $w ===" && tmux capture-pane -p -t "$w" | tail -20
-done
-
-# then kill after review
-tmux kill-window -t debug-foo
-tmux kill-window -t debug-bar
+tmux kill-window -t ted_glimmermoss
 ```
 
 ## pitfalls
 
-### naming windows
-always name tmux windows descriptively — easier than indexes:
-
-```bash
-tmux new-window -n "debug-auth"    # good: descriptive
-tmux new-window -n "agent-2"       # bad: meaningless
-```
-
-use `tmux rename-window -t 2 "debug-auth"` to fix existing windows.
-
 ### agent pane targeting
-- `tmux send-keys -t debug-foo` targets by window name (preferred for agents)
+- `tmux send-keys -t ted_glimmermoss` targets by window name (preferred for agents)
 - `tmux send-keys -t %4` targets by pane id (preferred for coordinator callback)
 - `tmux send-keys -t 1.1` targets window 1, pane 1 (fragile — avoid)
 
@@ -147,11 +133,12 @@ agents cannot run sudo commands requiring password. instruct user to run those m
 after `tmux new-window`, always `sleep 2` before sending keys — amp needs time to initialize.
 
 ### context window handoff
-when your context exceeds 70%, spawn a successor in a split:
+when your context exceeds 70%, spawn a successor:
 
 ```bash
-tmux split-window -h "amp" && sleep 2 && \
-  tmux send-keys -t :.1 "HANDOFF: <full context summary>" C-m
+TASK="HANDOFF: <full context summary>" && \
+  tmux new-window "amp" && sleep 2 && \
+  tmux send-keys "Continuing from https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID. $TASK" C-m
 ```
 
 then exit your pane after successor acknowledges.
@@ -165,14 +152,15 @@ then exit your pane after successor acknowledges.
 
 ### as worker agent
 - message coordinator, NOT peer agents directly
-- use callback pattern: `tmux send-keys -t coordinator-window 'AGENT name: msg' C-m`
+- use callback pattern: `tmux send-keys -t $COORDINATOR_PANE 'AGENT myname: msg' C-m`
 - let coordinator relay info between agents if needed
 
 ## workflow example
 
 1. user asks to debug issue across 2 hosts
-2. spawn debug-host-a and debug-host-b with callback instructions
-3. set timer to check on them: `sleep 30 && tmux capture-pane ...`
-4. when agent messages arrive ("AGENT debug-host-a: found X"), queue response via `/queue`
-5. coordinate between agents — relay findings, don't have them message each other
-6. once tasks complete, cleanup windows
+2. spawn two agents (they get names like `ted_glimmermoss`, `alice_fluttergold`)
+3. list agents: `tmux list-windows -F '#W'`
+4. check on them: `tmux capture-pane -p -t ted_glimmermoss | tail -30`
+5. when agent messages arrive ("AGENT ted_glimmermoss: found X"), queue response via `/queue`
+6. coordinate between agents — relay findings, don't have them message each other
+7. once tasks complete, cleanup windows by name
