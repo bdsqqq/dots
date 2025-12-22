@@ -130,6 +130,19 @@ in
             params.cleanoutDays = "0";
           };
         };
+        modrinth = {
+          enable = true;
+          id = "modrinth-app";
+          label = "modrinth";
+          path = "/home/bdsqqq/.local/share/ModrinthApp";
+          type = "sendreceive";
+          rescanIntervalS = 300;
+          devices = [ "mbp-m2" ];
+          versioning = {
+            type = "trashcan";
+            params.cleanoutDays = "0";
+          };
+        };
       };
     };
   };

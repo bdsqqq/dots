@@ -88,6 +88,19 @@
                 params.cleanoutDays = "0";
               };
             };
+            modrinth = {
+              enable = true;
+              id = "modrinth-app";
+              label = "modrinth";
+              path = "/Users/bdsqqq/Library/Application Support/ModrinthApp";
+              type = "sendreceive";
+              rescanIntervalS = 300;
+              devices = [ "r56" ];
+              versioning = {
+                type = "trashcan";
+                params.cleanoutDays = "0";
+              };
+            };
           };
         };
       };
