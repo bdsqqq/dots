@@ -61,6 +61,11 @@ tmux new-window -n "name" "claude --dangerously-skip-permissions" && sleep 2 && 
 - sleep 3+ seconds before sending keys (amp needs time to initialize)
 - when spawning successors or coordinated agents, explicitly mention relevant skill names in the handoff prompt (e.g., "load the coordinate skill", "use the tmux skill") so the agent knows to load them
 
+### naming successors
+NEVER use "-finish", "-final", "-complete", "-done" — you don't know how many iterations it will take. use incremental numbering:
+- `rustdesk-2`, `rustdesk-3`, etc.
+- or task-phase names: `rustdesk-verify`, `rustdesk-cleanup`
+
 ## handoff example
 
 when your context is filling up (check "╭─##% of ###k" in tmux capture), spawn a successor with explicit skill references:
