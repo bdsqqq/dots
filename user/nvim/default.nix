@@ -58,13 +58,22 @@ let
       hash = "sha256-f/li32jpVigbZANnnbgSArnOH4nusj0DUz7952K+Znw=";
     };
   };
+  vesper-nvim = pkgs.vimUtils.buildVimPlugin {
+    name = "vesper-nvim";
+    src = pkgs.fetchFromGitHub {
+      owner = "nexxeln";
+      repo = "vesper.nvim";
+      rev = "002313594701828245d32d391bab9f24157b4c29";
+      hash = "sha256-q6zlvcco1vudZKMqvAgnebmnT2byDOtTQ+/4+pdPEBA=";
+    };
+  };
 in
 {
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
     imports = [ inputs.nixvim.homeManagerModules.nixvim ];
     programs.nixvim = {
       enable = true;
-      extraPlugins = [ ts-error-translator vim-tpipeline amp-nvim ];
+      extraPlugins = [ ts-error-translator vim-tpipeline amp-nvim vesper-nvim ];
       extraConfigLua = builtins.readFile ./config.lua;
 
       globals = { 
