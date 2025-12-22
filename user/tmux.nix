@@ -114,6 +114,11 @@ in
         set -as terminal-features ',ghostty:RGB,extkeys,clipboard,hyperlinks,focus,sync,strikethrough,usstyle'
         set -as terminal-features ',*:extkeys'
         
+        # terminal overrides for modern terminals (ghostty, termius/xterm-256color)
+        # Ss/Se: cursor shape, Smulx: undercurl, Setulc: underline color, RGB: truecolor
+        set -ga terminal-overrides ',xterm*:Ss=\E[%p1%d q:Se=\E[ q:Smulx=\E[4::%p1%dm:Setulc=\E[58::2::%p1%{65536}%/%d::%p1%{256}%/%{255}%&%d::%p1%{255}%&%d%;m:RGB'
+        set -ga terminal-overrides ',ghostty*:Ss=\E[%p1%d q:Se=\E[ q:Smulx=\E[4::%p1%dm:Setulc=\E[58::2::%p1%{65536}%/%d::%p1%{256}%/%{255}%&%d::%p1%{255}%&%d%;m:RGB'
+        
         # passthrough for image protocols, sixel, etc
         set -g allow-passthrough on
         
