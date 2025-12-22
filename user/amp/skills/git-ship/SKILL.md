@@ -4,16 +4,25 @@ description: stage, commit (conventional), push
 ---
 # git-ship
 
-stage all changes, commit with conventional commits, push.
+stage YOUR changes only, commit with conventional commits, push.
 
 ## workflow
 
 ```bash
-git add -A && git status
-git diff --staged
+git status                          # check what's changed
+git add <files-you-modified>        # stage only YOUR changes
+git diff --staged                   # verify staged changes are correct
 git commit -m "type(scope): description"
 git push
 ```
+
+## only commit your changes
+
+there may be other unstaged changes from the user or other agents. do NOT blindly `git add -A`.
+
+- stage files explicitly: `git add path/to/file.ts path/to/other.ts`
+- use `git status` to identify which files YOU modified
+- if unsure which changes are yours, ask the user
 
 ## NEVER force push
 
