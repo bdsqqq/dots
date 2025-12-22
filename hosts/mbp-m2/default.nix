@@ -89,6 +89,15 @@
               };
             };
 
+            prism-instances = {
+              enable = true;
+              id = "prism-instances";
+              label = "PrismLauncher instances";
+              path = "/Users/bdsqqq/Library/Application Support/PrismLauncher/instances";
+              type = "sendreceive";
+              rescanIntervalS = 120;
+              devices = [ "r56" ];
+            };
           };
         };
       };
