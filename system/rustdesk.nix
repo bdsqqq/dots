@@ -1,4 +1,4 @@
-{ lib, pkgs, hostSystem ? null, ... }:
+{ lib, pkgs, config, hostSystem ? null, ... }:
 let
   system = hostSystem;
   isLinux = system != null && lib.hasInfix "linux" system;
@@ -51,6 +51,28 @@ let
     print(f"merged rustdesk config at {path}")
   '';
 
+  # password injection script - separate from merge to handle sops timing
+  injectPasswordScript = pkgs.writeScript "rustdesk-inject-password" ''
+    #!${pythonWithTomlkit}/bin/python3
+    import sys
+    import pathlib
+    import tomlkit
+
+    config_path = pathlib.Path(sys.argv[1])
+    password = sys.argv[2]
+    
+    if not config_path.exists():
+        print(f"config not found at {config_path}, skipping password injection")
+        sys.exit(0)
+    
+    data = tomlkit.loads(config_path.read_text())
+    if "options" not in data:
+        data["options"] = tomlkit.table()
+    data["options"]["permanent-password"] = password
+    config_path.write_text(tomlkit.dumps(data))
+    print(f"injected rustdesk password")
+  '';
+
 in
 if isLinux then {
   environment.systemPackages = [ pkgs.rustdesk ];
@@ -58,25 +80,26 @@ if isLinux then {
   # allow direct IP access port on tailscale interface only
   networking.firewall.interfaces."tailscale0".allowedTCPPorts = [ 21118 ];
   
-  # systemd user service for rustdesk - enables --password CLI and background operation
-  systemd.user.services.rustdesk = {
-    description = "RustDesk Remote Desktop";
-    wantedBy = [ "graphical-session.target" ];
-    after = [ "graphical-session.target" ];
-    serviceConfig = {
-      Type = "simple";
-      ExecStart = "${pkgs.rustdesk}/bin/rustdesk --service";
-      Restart = "on-failure";
-      RestartSec = 5;
-    };
+  # declare sops secret for rustdesk password
+  sops.secrets.rustdesk_password = {
+    owner = "bdsqqq";
+    group = "users";
   };
   
   # merge config via home.activation (preserves rustdesk's dynamic values)
-  # lib.hm only available inside home-manager user block
   home-manager.users.bdsqqq = { lib, config, ... }: {
     home.activation.rustdeskConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       mkdir -p "${config.home.homeDirectory}/${configDir}"
       ${mergeScript} "${config.home.homeDirectory}/${configPath}"
+      
+      # inject password from sops secret
+      SOPS_PW_FILE="/run/secrets/rustdesk_password"
+      if [ -r "$SOPS_PW_FILE" ]; then
+        PW=$(cat "$SOPS_PW_FILE")
+        ${injectPasswordScript} "${config.home.homeDirectory}/${configPath}" "$PW"
+      else
+        echo "warning: sops rustdesk_password not available, skipping password injection"
+      fi
     '';
   };
     
@@ -84,12 +107,25 @@ if isLinux then {
   # use homebrew cask on darwin (nix package has platform detection issues)
   homebrew.casks = [ "rustdesk" ];
   
+  # declare sops secret for rustdesk password
+  sops.secrets.rustdesk_password = {
+    owner = "bdsqqq";
+  };
+  
   # merge config via home.activation (preserves rustdesk's dynamic values)
-  # macOS uses ~/Library/Preferences/com.carriez.RustDesk/RustDesk2.toml
   home-manager.users.bdsqqq = { lib, config, ... }: {
     home.activation.rustdeskConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       mkdir -p "${config.home.homeDirectory}/${configDir}"
       ${mergeScript} "${config.home.homeDirectory}/${configPath}"
+      
+      # inject password from sops secret
+      SOPS_PW_FILE="/run/secrets/rustdesk_password"
+      if [ -r "$SOPS_PW_FILE" ]; then
+        PW=$(cat "$SOPS_PW_FILE")
+        ${injectPasswordScript} "${config.home.homeDirectory}/${configPath}" "$PW"
+      else
+        echo "warning: sops rustdesk_password not available, skipping password injection"
+      fi
     '';
   };
     
