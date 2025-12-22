@@ -1,7 +1,8 @@
 -- Global functions and configuration
 
--- Colorscheme
-vim.cmd.colorscheme('default')
+-- Colorscheme (vesper with transparency)
+require("vesper").setup({ transparent = true })
+vim.cmd.colorscheme("vesper")
 
 -- Floating terminal function
 local function open_floating_term(cmd)
