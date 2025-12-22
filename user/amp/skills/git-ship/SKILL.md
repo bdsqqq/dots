@@ -15,6 +15,17 @@ git commit -m "type(scope): description"
 git push
 ```
 
+## NEVER force push
+
+do NOT use `--force`, `--force-with-lease`, or `-f`.
+
+if you need to fix a commit after pushing:
+- pull --rebase first
+- create a fixup commit instead
+- ask the user before any history rewrite
+
+if push fails due to divergence, rebase on origin/main and retry.
+
 ## commit format
 
 `type(scope): description`
