@@ -13,6 +13,7 @@ in
       spotify-player.enable = true;
     };
     home.packages = with pkgs; [
+      coreutils
       git
       lazygit
       delta
