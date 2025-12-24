@@ -4,6 +4,58 @@ let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isLinux = lib.hasInfix "linux" hostSystem;
 
+complineDarkTheme = ''
+  # from https://github.com/joshuablais/compline/blob/main/ghostty/compline
+  background = #1a1d21
+  foreground = #f0efeb
+  cursor-color = #d4ccb4
+  cursor-text = #1a1d21
+  selection-background = #3d424a
+  selection-foreground = #f0efeb
+  palette = 0 = #22262b
+  palette = 1 = #cdacac
+  palette = 2 = #b8c4b8
+  palette = 3 = #d4ccb4
+  palette = 4 = #b4bcc4
+  palette = 5 = #ccc4b4
+  palette = 6 = #b4c0c8
+  palette = 7 = #8b919a
+  palette = 8 = #515761
+  palette = 9 = #cdacac
+  palette = 10 = #b8c4b8
+  palette = 11 = #d4ccb4
+  palette = 12 = #b4bcc4
+  palette = 13 = #ccc4b4
+  palette = 14 = #b4c0c8
+  palette = 15 = #e0dcd4
+'';
+
+laudsLightTheme = ''
+  # from https://github.com/joshuablais/compline/blob/main/ghostty/lauds
+  background = #f0efeb
+  foreground = #1a1d21
+  cursor-color = #8b7e52
+  cursor-text = #f0efeb
+  selection-background = #d8d6d3
+  selection-foreground = #1a1d21
+  palette = 0 = #5f5c58
+  palette = 1 = #8b6666
+  palette = 2 = #5a6b5a
+  palette = 3 = #8b7e52
+  palette = 4 = #5a6b7a
+  palette = 5 = #8b7e52
+  palette = 6 = #64757d
+  palette = 7 = #4a4d51
+  palette = 8 = #7d7a75
+  palette = 9 = #8b6666
+  palette = 10 = #5a6b5a
+  palette = 11 = #8b7e52
+  palette = 12 = #5a6b7a
+  palette = 13 = #8b7e52
+  palette = 14 = #64757d
+  palette = 15 = #2d2a27
+'';
+
   vesperDarkTheme = ''
 # Based on https://github.com/studio1804/ghostty-theme/blob/main/themes/studio1804-modern.conf
 # and https://github.com/raunofreiberg/vesper/blob/main/themes/Vesper-dark-color-theme.json
@@ -72,7 +124,7 @@ window-padding-y = 4
 background-opacity = 0.7
 background-blur-radius = 8
 
-theme = light:vesper-light,dark:vesper-dark
+theme = light:lauds-light,dark:compline-dark
 
 keybind = shift+enter=text:\n
 
@@ -102,6 +154,14 @@ keybind = ctrl+nine=unbind
     "ghostty/themes/vesper-dark" = {
       force = true;
       text = vesperDarkTheme;
+    };
+    "ghostty/themes/compline-dark" = {
+      force = true;
+      text = complineDarkTheme;
+    };
+    "ghostty/themes/lauds-light" = {
+      force = true;
+      text = laudsLightTheme;
     };
   };
 
