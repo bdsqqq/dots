@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# resolve script directory to find assets
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ASSETS_DIR="$SCRIPT_DIR/../assets"
+
+TASK="${1:-}"
+if [[ -z "$TASK" ]]; then
+  echo "usage: spawn-amp <task>" >&2
+  exit 1
+fi
+
+# generate fairy name
+FIRST=$(shuf -n 1 "$ASSETS_DIR/firstnames.txt")
+LAST1=$(shuf -n 1 "$ASSETS_DIR/lastnames_1.txt")
+LAST2=$(shuf -n 1 "$ASSETS_DIR/lastnames_2.txt")
+NAME="${FIRST}_${LAST1}${LAST2}"
+
+THREAD_ID="${AMP_CURRENT_THREAD_ID:-}"
+PANE_ID="${TMUX_PANE:-}"
+
+# build the full prompt
+PROMPT=""
+[[ -n "$THREAD_ID" ]] && PROMPT="Continuing from https://ampcode.com/threads/$THREAD_ID. "
+PROMPT="$PROMPT$TASK"
+[[ -n "$PANE_ID" ]] && PROMPT="$PROMPT If you need guidance, run: tmux send-keys -t $PANE_ID 'AGENT $NAME: <message>' C-m"
+
+# spawn detached (-d), then send keys
+tmux new-window -d -n "$NAME" "amp --dangerously-allow-all"
+sleep 3
+tmux send-keys -t "$NAME" "$PROMPT" C-m
+
+echo "$NAME"

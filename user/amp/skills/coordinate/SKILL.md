@@ -26,13 +26,13 @@ coordinator (you)          agents (spawned)
 
 ## spawn agents
 
-agents get auto-named and include their name in callbacks:
+load the `spawn` skill first, then use its script:
 
 ```bash
-TASK="<task description>. If you need guidance, run: tmux send-keys -t $TMUX_PANE 'AGENT \$(tmux display-message -p \"#W\"): <message>' C-m" && \
-  tmux new-window "amp" && sleep 2 && \
-  tmux send-keys "Continuing from https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID. $TASK" C-m
+~/.config/amp/skills/spawn/scripts/spawn-amp "<task description>"
 ```
+
+the script handles naming, thread linkage, and callback instructions. it echoes the agent's name.
 
 **note**: `$TMUX_PANE` is set by tmux automatically (e.g., `%5`). it's stable across window reordering.
 
@@ -129,16 +129,11 @@ tmux kill-window -t ted_glimmermoss
 ### sudo/tty issues
 agents cannot run sudo commands requiring password. instruct user to run those manually, then have agent verify results.
 
-### agents need sleep before send-keys
-after `tmux new-window`, always `sleep 2` before sending keys — amp needs time to initialize.
-
 ### context window handoff
 when your context exceeds 70%, spawn a successor:
 
 ```bash
-TASK="HANDOFF: <full context summary>" && \
-  tmux new-window "amp" && sleep 2 && \
-  tmux send-keys "Continuing from https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID. $TASK" C-m
+~/.config/amp/skills/spawn/scripts/spawn-amp "HANDOFF: <full context summary>"
 ```
 
 then exit your pane after successor acknowledges.
@@ -158,9 +153,9 @@ then exit your pane after successor acknowledges.
 ## workflow example
 
 1. user asks to debug issue across 2 hosts
-2. spawn two agents (they get names like `ted_glimmermoss`, `alice_fluttergold`)
+2. spawn two agents: `AGENT1=$(~/.config/amp/skills/spawn/scripts/spawn-amp "check host A") && AGENT2=$(~/.config/amp/skills/spawn/scripts/spawn-amp "check host B")`
 3. list agents: `tmux list-windows -F '#W'`
-4. check on them: `tmux capture-pane -p -t ted_glimmermoss | tail -30`
+4. check on them: `tmux capture-pane -p -t $AGENT1 | tail -30`
 5. when agent messages arrive ("AGENT ted_glimmermoss: found X"), queue response via `/queue`
 6. coordinate between agents — relay findings, don't have them message each other
 7. once tasks complete, cleanup windows by name
