@@ -97,7 +97,10 @@ no need to set enableZshIntegration, enableBashIntegration, etc. unless overridi
         zsh = {
           enable = true;
           initContent = ''
-            autoload -Uz compinit
+          export AMI_INSTALL="$HOME/.ami"
+          export PATH="$AMI_INSTALL/bin:$PATH"
+
+          autoload -Uz compinit
             () {
               if [[ $# -gt 0 ]]; then
                 compinit -C
