@@ -9,3 +9,9 @@ creation_rules:
           - *user_bdsqqq
           - *host_htz_relay
           - *host_r56
+  - path_regex: cookies\.txt$
+    key_groups:
+      - age:
+          - *user_bdsqqq
+          - *host_htz_relay
+          - *host_r56
