@@ -19,6 +19,8 @@ in
       cookies = {
         sopsFile = inputs.self + "/cookies.txt";
         format = "binary";
+        owner = "bdsqqq";
+        mode = "0400";
       };
     };
   };

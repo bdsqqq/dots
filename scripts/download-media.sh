@@ -7,8 +7,10 @@
 
 # Optional parameters:
 # @raycast.icon ↴
-# @raycast.argument1 { "type": "text", "placeholder": "URL" }
 # @raycast.packageName media_utils
+# @raycast.argument1 { "type": "text", "placeholder": "URL" }
+# @raycast.argument2 { "type": "text", "placeholder": "output dir", "optional": true }
+# @raycast.argument3 { "type": "dropdown", "placeholder": "options", "optional": true, "data": [{"title": "normal", "value": ""}, {"title": "dry run", "value": "-n"}, {"title": "verbose", "value": "-v"}] }
 
 # Documentation:
 # @raycast.description Download media from most sites with just a URL
@@ -48,10 +50,12 @@ URL=""
 
 log() { [[ "$VERBOSE" = true ]] && echo "$@" >&2 || true; }
 
-# sops-nix decrypts cookies to this path on darwin
-COOKIES_FILE="/run/user/$(id -u)/secrets/cookies"
+# sops-nix decrypts secrets to /run/secrets on darwin
+COOKIES_FILE="/run/secrets/cookies"
 
-# parse args
+# collect positional args separately
+positional=()
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)
@@ -76,11 +80,15 @@ while [[ $# -gt 0 ]]; do
             exit 1
             ;;
         *)
-            URL="$1"
+            positional+=("$1")
             shift
             ;;
     esac
 done
+
+# positional args: URL required, output dir optional (for raycast arg2)
+[[ ${#positional[@]} -ge 1 ]] && URL="${positional[0]}"
+[[ ${#positional[@]} -ge 2 ]] && INBOX_DIR="${positional[1]}"
 
 if [ -z "$URL" ]; then
     echo "error: no url provided" >&2
@@ -107,21 +115,22 @@ OUTPUT_TEMPLATE="${INBOX_DIR}/${TODAY} %(uploader,channel|unknown)s-%(title).60B
 
 log "trying yt-dlp..."
 if OUTPUT=$(yt-dlp \
-    --format "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best" \
+    --format "bestvideo+bestaudio/best" \
     --write-subs \
-    --write-auto-subs \
-    --sub-langs "en,en-US,pt-BR" \
+    --sub-langs "en,pt" \
     --embed-subs \
+    --sleep-requests 1 \
     --embed-thumbnail \
     --embed-metadata \
     --add-metadata \
-    --merge-output-format "webm" \
+    --remux-video "mkv" \
     --restrict-filenames \
+    --ignore-errors \
     --print after_move:filepath \
-    "${cookie_args[@]}" \
-    "${dry_run_args[@]}" \
+    ${cookie_args[@]+"${cookie_args[@]}"} \
+    ${dry_run_args[@]+"${dry_run_args[@]}"} \
     --output "$OUTPUT_TEMPLATE" \
-    -- "$URL" 2>/dev/null); then
+    -- "$URL") && [[ -n "$OUTPUT" ]]; then
     echo "$OUTPUT"
     exit 0
 fi
@@ -140,9 +149,9 @@ if OUTPUT=$(gallery-dl \
     --filename "$GALLERY_TEMPLATE" \
     --print "{_path}" \
     --quiet \
-    "${cookie_args[@]}" \
-    "${gallery_dry_run_args[@]}" \
-    -- "$URL" 2>/dev/null); then
+    ${cookie_args[@]+"${cookie_args[@]}"} \
+    ${gallery_dry_run_args[@]+"${gallery_dry_run_args[@]}"} \
+    -- "$URL") && [[ -n "$OUTPUT" ]]; then
     echo "$OUTPUT"
     exit 0
 fi
