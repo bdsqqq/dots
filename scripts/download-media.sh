@@ -50,6 +50,21 @@ URL=""
 
 log() { [[ "$VERBOSE" = true ]] && echo "$@" >&2 || true; }
 
+sanitize_filename() {
+    local input="$1"
+    local dir ext base clean
+    dir=$(dirname "$input")
+    ext="${input##*.}"
+    base=$(basename "$input" ".$ext")
+    # transliterate diacritics
+    if ! clean=$(printf '%s' "$base" | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null); then
+        clean="$base"
+    fi
+    # lowercase, keep only [a-z0-9 ._-], collapse spaces, trim
+    clean=$(printf '%s' "$clean" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ._-]//g' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//')
+    printf '%s/%s.%s\n' "$dir" "$clean" "$ext"
+}
+
 # sops-nix decrypts secrets to /run/secrets on darwin
 COOKIES_FILE="/run/secrets/cookies"
 
@@ -98,11 +113,14 @@ fi
 
 mkdir -p "$INBOX_DIR"
 
-# use array so empty expands to nothing, not empty string arg
+# yt-dlp tries to write to cookies file, so copy to temp
 cookie_args=()
 if [ -f "$COOKIES_FILE" ]; then
-    cookie_args=(--cookies "$COOKIES_FILE")
-    log "using cookies: $COOKIES_FILE"
+    TEMP_COOKIES=$(mktemp)
+    cp "$COOKIES_FILE" "$TEMP_COOKIES"
+    trap 'rm -f "$TEMP_COOKIES"' EXIT
+    cookie_args=(--cookies "$TEMP_COOKIES")
+    log "using cookies: $COOKIES_FILE (copied to temp)"
 fi
 
 dry_run_args=()
@@ -111,28 +129,31 @@ if [ "$DRY_RUN" = true ]; then
     log "dry run mode"
 fi
 
-OUTPUT_TEMPLATE="${INBOX_DIR}/${TODAY} %(uploader,channel|unknown)s-%(title).60B-%(id)s.%(ext)s"
+OUTPUT_TEMPLATE="${INBOX_DIR}/${TODAY} at %(upload_date>%Y-%m-%d|unknown)s from %(uploader,channel|unknown)s - %(title).280s %(id)s.%(ext)s"
 
 log "trying yt-dlp..."
-if OUTPUT=$(yt-dlp \
-    --format "bestvideo+bestaudio/best" \
-    --write-subs \
-    --sub-langs "en,pt" \
-    --embed-subs \
-    --sleep-requests 1 \
-    --embed-thumbnail \
-    --embed-metadata \
-    --add-metadata \
-    --remux-video "mkv" \
-    --restrict-filenames \
-    --ignore-errors \
-    --print after_move:filepath \
-    ${cookie_args[@]+"${cookie_args[@]}"} \
-    ${dry_run_args[@]+"${dry_run_args[@]}"} \
-    --output "$OUTPUT_TEMPLATE" \
-    -- "$URL") && [[ -n "$OUTPUT" ]]; then
-    echo "$OUTPUT"
-    exit 0
+# get filename first, then sanitize before download
+if RAW_NAME=$(yt-dlp --print filename --output "$OUTPUT_TEMPLATE" ${cookie_args[@]+"${cookie_args[@]}"} -- "$URL" 2>/dev/null) && [[ -n "$RAW_NAME" ]]; then
+    CLEAN_NAME=$(sanitize_filename "$RAW_NAME")
+    if OUTPUT=$(yt-dlp \
+        --format "bestvideo+bestaudio/best" \
+        --write-subs \
+        --sub-langs "en,pt" \
+        --embed-subs \
+        --sleep-requests 1 \
+        --embed-thumbnail \
+        --embed-metadata \
+        --add-metadata \
+        --remux-video "mkv" \
+        --ignore-errors \
+        --print after_move:filepath \
+        ${cookie_args[@]+"${cookie_args[@]}"} \
+        ${dry_run_args[@]+"${dry_run_args[@]}"} \
+        --output "$CLEAN_NAME" \
+        -- "$URL") && [[ -n "$OUTPUT" ]]; then
+        echo "$OUTPUT"
+        exit 0
+    fi
 fi
 
 log "yt-dlp failed, trying gallery-dl..."
