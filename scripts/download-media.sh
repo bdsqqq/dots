@@ -158,7 +158,7 @@ fi
 
 log "yt-dlp failed, trying gallery-dl..."
 
-GALLERY_TEMPLATE="${TODAY}_{category}_{subcategory}_{filename}.{extension}"
+GALLERY_TEMPLATE="${TODAY} at {date:%Y-%m-%d} from {author[name]} - {content:.280} {filename}.{extension}"
 
 gallery_dry_run_args=()
 if [ "$DRY_RUN" = true ]; then
@@ -169,11 +169,20 @@ if OUTPUT=$(gallery-dl \
     --directory "$INBOX_DIR" \
     --filename "$GALLERY_TEMPLATE" \
     --print "{_path}" \
-    --quiet \
     ${cookie_args[@]+"${cookie_args[@]}"} \
     ${gallery_dry_run_args[@]+"${gallery_dry_run_args[@]}"} \
-    -- "$URL") && [[ -n "$OUTPUT" ]]; then
-    echo "$OUTPUT"
+    -- "$URL" 2>/dev/null) && [[ -n "$OUTPUT" ]]; then
+    # sanitize each output file (gallery-dl can return multiple)
+    while IFS= read -r file; do
+        [[ -z "$file" || "$file" == "None" ]] && continue
+        if [[ -f "$file" ]]; then
+            clean=$(sanitize_filename "$file")
+            if [[ "$file" != "$clean" ]]; then
+                mv "$file" "$clean" 2>/dev/null && file="$clean"
+            fi
+        fi
+        echo "$file"
+    done <<< "$OUTPUT"
     exit 0
 fi
 
