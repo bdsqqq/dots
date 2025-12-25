@@ -26,7 +26,7 @@ download-media — grab video/images from most sites
 usage: download-media [options] <url>
 
 options:
-  -d, --dir DIR      output directory (default: \$XDG_DOWNLOAD_DIR or ~/Downloads)
+  -d, --dir DIR      output directory (default: ~/commonplace/00_inputs)
   -n, --dry-run      show what would be downloaded without downloading
   -v, --verbose      show progress and fallback attempts
   -h, --help         show this help
@@ -43,7 +43,7 @@ EOF
 
 # defaults
 TODAY=$(date +%Y-%m-%d)
-INBOX_DIR="${XDG_DOWNLOAD_DIR:-$HOME/Downloads}"
+INBOX_DIR="$HOME/commonplace/00_inputs"
 DRY_RUN=false
 VERBOSE=false
 URL=""
