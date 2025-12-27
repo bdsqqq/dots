@@ -10,6 +10,8 @@ PanelWindow {
     property int barHeight: 45
     property bool hyprlandAvailable: typeof Hyprland !== "undefined"
     property bool isHyprland: hyprlandAvailable && Hyprland.workspaces.count > 0
+    property var niriState: null
+    property bool isFullscreen: niriState ? niriState.isFullscreen : false
 
     anchors {
         top: true
@@ -17,13 +19,18 @@ PanelWindow {
         right: true
     }
 
-    implicitHeight: barHeight
+    implicitHeight: isFullscreen ? 0 : barHeight
+    visible: !isFullscreen
     color: "#000000"
 
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "quickshell-bar"
 
-    exclusiveZone: barHeight
+    exclusiveZone: isFullscreen ? 0 : barHeight
+
+    Component.onCompleted: {
+        if (niriState) niriState.setScreenSize(screen.width, screen.height)
+    }
 
     RowLayout {
         anchors.fill: parent
