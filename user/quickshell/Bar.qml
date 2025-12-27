@@ -12,6 +12,8 @@ PanelWindow {
     property bool isHyprland: hyprlandAvailable && Hyprland.workspaces.count > 0
     property var niriState: null
     property bool isFullscreen: niriState ? niriState.isFullscreen : false
+    property bool controlCenterOpen: false
+    signal controlCenterToggled()
 
     anchors {
         top: true
@@ -59,7 +61,7 @@ PanelWindow {
 
         Text {
             id: clock
-            color: "#ffffff"
+            color: clockMouse.containsMouse || bar.controlCenterOpen ? "#d1d5db" : "#ffffff"
             font.family: "Berkeley Mono"
             font.pixelSize: 24
             Layout.alignment: Qt.AlignVCenter
@@ -68,11 +70,24 @@ PanelWindow {
 
             text: Qt.formatDateTime(currentTime, "yyyy-MM-dd HH:mm")
 
+            Behavior on color {
+                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+            }
+
             Timer {
                 interval: 1000
                 running: true
                 repeat: true
                 onTriggered: clock.currentTime = new Date()
+            }
+
+            MouseArea {
+                id: clockMouse
+                anchors.fill: parent
+                anchors.margins: -4
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: bar.controlCenterToggled()
             }
         }
     }

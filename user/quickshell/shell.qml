@@ -6,6 +6,7 @@ ShellRoot {
     id: root
 
     property alias niriState: _niriState
+    property bool controlCenterOpen: false
 
     NiriState {
         id: _niriState
@@ -18,6 +19,18 @@ ShellRoot {
             required property var modelData
             screen: modelData
             niriState: root.niriState
+            controlCenterOpen: root.controlCenterOpen
+            onControlCenterToggled: root.controlCenterOpen = !root.controlCenterOpen
+        }
+    }
+
+    Variants {
+        model: Quickshell.screens
+
+        ControlCenter {
+            required property var modelData
+            screen: modelData
+            isOpen: root.controlCenterOpen
         }
     }
 
@@ -38,4 +51,5 @@ ShellRoot {
             screen: modelData
         }
     }
+
 }
