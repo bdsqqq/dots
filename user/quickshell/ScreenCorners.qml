@@ -6,12 +6,9 @@ PanelWindow {
     id: corners
 
     required property var screen
-    required property var niriState
 
     property int cornerRadius: 8
     property color cornerColor: "#000000"
-    property int barHeight: niriState ? niriState.barHeight : 45
-    property int topOffset: (niriState && niriState.isFullscreen) ? 0 : barHeight
 
     anchors {
         top: true
@@ -27,19 +24,15 @@ PanelWindow {
 
     exclusiveZone: 0
 
-    Component.onCompleted: {
-        if (niriState) niriState.setScreenSize(screen.width, screen.height)
-    }
-
     // Input mask: pass through everything except the 4 corner regions
     mask: Region {
         item: Item {}
         
         regions: [
-            // Top-left corner (offset by bar when not fullscreen)
-            Region { x: 0; y: topOffset; width: cornerRadius; height: cornerRadius },
+            // Top-left corner
+            Region { x: 0; y: 0; width: cornerRadius; height: cornerRadius },
             // Top-right corner  
-            Region { x: corners.width - cornerRadius; y: topOffset; width: cornerRadius; height: cornerRadius },
+            Region { x: corners.width - cornerRadius; y: 0; width: cornerRadius; height: cornerRadius },
             // Bottom-left corner
             Region { x: 0; y: corners.height - cornerRadius; width: cornerRadius; height: cornerRadius },
             // Bottom-right corner
@@ -51,7 +44,7 @@ PanelWindow {
     Canvas {
         id: topLeftCorner
         x: 0
-        y: topOffset
+        y: 0
         width: cornerRadius
         height: cornerRadius
 
@@ -74,7 +67,7 @@ PanelWindow {
     Canvas {
         id: topRightCorner
         x: parent.width - cornerRadius
-        y: topOffset
+        y: 0
         width: cornerRadius
         height: cornerRadius
 

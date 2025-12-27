@@ -17,6 +17,7 @@ ShellRoot {
         Bar {
             required property var modelData
             screen: modelData
+            niriState: root.niriState
         }
     }
 
@@ -26,7 +27,6 @@ ShellRoot {
         ScreenCorners {
             required property var modelData
             screen: modelData
-            niriState: root.niriState
         }
     }
 
