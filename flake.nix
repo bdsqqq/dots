@@ -58,6 +58,12 @@
       url = "git+https://git.outfoxxed.me/outfoxxed/quickshell";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Jovian NixOS - Steam Deck experience for handhelds
+    jovian-nixos = {
+      url = "github:Jovian-Experiments/Jovian-NixOS";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
@@ -239,6 +245,41 @@
                 };
               })
               ./hosts/htz-relay/default.nix
+            ];
+          };
+
+          "lgo-z2e" = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "graphical"; };
+            modules = [
+              inputs.sops-nix.nixosModules.sops
+              inputs.axiom-deploy-annotation.nixosModules.default
+              stylix.nixosModules.stylix
+              inputs.home-manager.nixosModules.home-manager
+              inputs.nix-flatpak.nixosModules.nix-flatpak
+              inputs.niri.nixosModules.niri
+              inputs.jovian-nixos.nixosModules.default
+              ({ pkgs, ... }: {
+                nixpkgs.overlays = [ 
+                  (import ./overlays/unstable.nix inputs)
+                ];
+                system.configurationRevision = flakeRevision;
+                
+                services.axiom-deploy-annotation = {
+                  enable = true;
+                  datasets = [ "papertrail" "host-metrics" ];
+                  repositoryUrl = "https://github.com/bdsqqq/dots";
+                };
+              })
+              ./hosts/lgo-z2e/default.nix
+            ];
+          };
+
+          "lgo-z2e-installer" = inputs.nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            specialArgs = { inherit inputs; };
+            modules = [
+              ./iso/lgo-z2e-installer.nix
             ];
           };
         };

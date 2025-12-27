@@ -38,22 +38,21 @@ in
         name = "DejaVu Serif";
       };
       sizes = {
-        terminal = 14;
-        applications = 12;
-        desktop = 12;
+        terminal = 16;
+        applications = 14;
+        desktop = 14;
       };
     };
     
     cursor = {
       package = pkgs.apple-cursor;
       name = "macOS";
-      size = 24;
+      size = 32;
     };
     
     opacity = {
-      terminal = 0.7;
+      terminal = 0.85;
     };
-    
   };
 
   imports = [
@@ -62,39 +61,49 @@ in
     ../../bundles/headless.nix
     ../../bundles/dev.nix
     ../../bundles/desktop.nix
-    ../../bundles/wm/hyprland.nix
     ../../bundles/wm/niri.nix
-    ../../system/nvidia.nix
     ../../system/bluetooth.nix
-    ../../system/fan-control.nix
     ../../system/audio.nix
     ../../system/vector.nix
     ../../user/ghostty.nix
-    ../../user/quickshell.nix
     ../../user/gaming.nix
     ../../system/flatpak.nix
   ];
 
-  networking.hostName = "r56";
+  networking.hostName = "lgo-z2e";
   networking.networkmanager.enable = true;
   networking.useDHCP = lib.mkDefault true;
-  
-  # allow minecraft server on tailscale
-  networking.firewall.interfaces."tailscale0".allowedTCPPorts = [ 25565 ];
-  networking.firewall.interfaces."tailscale0".allowedUDPPorts = [ 25565 ];
   
   time.timeZone = "Europe/London";
   i18n.defaultLocale = "en_US.UTF-8";
 
-  # ensure DISPLAY is set for xwayland-satellite (spawned as :0 by niri/hyprland)
   environment.sessionVariables.DISPLAY = ":0";
 
-  # tailscale and ssh provided by base bundle; auth key for headless auth
+  # jovian-nixos: steam deck gaming mode
+  jovian = {
+    steam = {
+      enable = true;
+      autoStart = true;
+      desktopSession = "niri";
+      user = "bdsqqq";
+    };
+    decky-loader.enable = true;
+    hardware.has.amd.gpu = true;
+  };
+
+  # handheld daemon for controller/gyro/TDP management
+  services.handheld-daemon = {
+    enable = true;
+    user = "bdsqqq";
+    ui.enable = true;
+  };
+
+  # tailscale auth
   services.tailscale = {
     authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key) config.sops.secrets.tailscale_auth_key.path;
   };
   
-  # syncthing provided by headless bundle; declarative mesh settings here
+  # syncthing mesh
   services.syncthing = {
     settings = {
       gui = {
@@ -119,6 +128,10 @@ in
           id = "HPMO7GH-P5UX4LC-OYSWWVP-XTMOUWL-QXUDAYH-ZJXXQDJ-QN677MY-QNQACQH";
           addresses = [ "tcp://100.101.195.56:22000" "quic://100.101.195.56:22000" ];
         };
+        "r56" = {
+          id = "XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX";
+          addresses = [ "tcp://100.x.x.x:22000" "quic://100.x.x.x:22000" ];
+        };
       };
 
       folders = {
@@ -129,7 +142,7 @@ in
           path = "/home/bdsqqq/commonplace";
           type = "sendreceive";
           rescanIntervalS = 60;
-          devices = [ "mbp-m2" "htz-relay" ];
+          devices = [ "mbp-m2" "htz-relay" "r56" ];
           versioning = {
             type = "trashcan";
             params.cleanoutDays = "0";
@@ -143,38 +156,29 @@ in
           path = "/home/bdsqqq/.local/share/PrismLauncher/instances";
           type = "sendreceive";
           rescanIntervalS = 120;
-          devices = [ "mbp-m2" ];
+          devices = [ "mbp-m2" "r56" ];
         };
       };
     };
   };
 
-  # Your user
   users.users.bdsqqq = {
     isNormalUser = true;
     extraGroups = [ "wheel" "networkmanager" "audio" "video" "input" ];
     shell = pkgs.zsh;
   };
 
-  # Enable zsh
   programs.zsh.enable = true;
 
-  # Steam with controller support and proper wayland scaling
+  # steam with handheld-appropriate scaling
   programs.steam = {
     enable = true;
     remotePlay.openFirewall = true;
     dedicatedServer.openFirewall = true;
-    package = pkgs.steam.override {
-      extraEnv = {
-        STEAM_FORCE_DESKTOPUI_SCALING = "1.5";
-      };
-    };
   };
   
-  # udev rules for PS5 DualSense and other controllers
   hardware.steam-hardware.enable = true;
 
-  # home-manager module is enabled at flake level; user-layer is provided via bundles
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
@@ -189,11 +193,8 @@ in
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
       
-      # disable stylix targets we manage manually
-      stylix.targets.hyprland.enable = false;
       stylix.targets.ghostty.enable = false;
       
-      # fontconfig for crisp font rendering at 1.5x
       fonts.fontconfig = {
         enable = true;
         defaultFonts = {
@@ -233,7 +234,6 @@ in
     };
   };
   
-  # binary caches (niri cache auto-enabled by niri-flake module)
   nix.settings = {
     extra-substituters = [ 
       "https://vicinae.cachix.org"
@@ -244,33 +244,27 @@ in
   };
 
   environment.systemPackages = with pkgs; [
-    # Basic system tools
     tree
     unzip
     usbutils
     libnotify
     
-    # AI tools - whisper-cpp with CUDA (fixed via overlay)
-    whisper-cpp
+    # handheld-specific
+    mangohud
+    gamemode
   ];
 
-  # fonts provided by base bundle
-
   nixpkgs.config.allowUnfree = true;
-  nixpkgs.config.cudaSupport = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
   
-  # Automatic garbage collection
   nix.gc = {
     automatic = true;
     dates = "weekly";
     options = "--delete-older-than 30d";
   };
 
-  # System state version
   system.stateVersion = "25.05";
 
-  # set syncthing GUI password hash from sops secret (writes directly to config.xml)
   systemd.services.syncthing-gui-password = {
     description = "Set Syncthing GUI password hash from sops secret";
     after = [ "syncthing-init.service" "sops-install-secrets.service" ];
@@ -299,7 +293,6 @@ in
         exit 0
       fi
       
-      # update password hash in config.xml
       sed -i "s|<password>.*</password>|<password>$HASH</password>|" "$CFG_FILE"
       
       echo "syncthing-gui-password: hash updated in config.xml"

@@ -210,7 +210,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     "org/gnome/desktop/interface" = {
       color-scheme = "prefer-dark";
       cursor-theme = "macOS";
-      cursor-size = 24;
+      cursor-size = lib.mkDefault 24;
     };
   };
 }
