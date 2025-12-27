@@ -6,11 +6,12 @@ PanelWindow {
     id: corners
 
     required property var screen
+    required property var niriState
 
     property int cornerRadius: 8
     property color cornerColor: "#000000"
-    property int barHeight: NiriState.barHeight
-    property int topOffset: NiriState.isFullscreen ? 0 : barHeight
+    property int barHeight: niriState ? niriState.barHeight : 45
+    property int topOffset: (niriState && niriState.isFullscreen) ? 0 : barHeight
 
     anchors {
         top: true
@@ -27,7 +28,7 @@ PanelWindow {
     exclusiveZone: 0
 
     Component.onCompleted: {
-        NiriState.setScreenSize(screen.width, screen.height)
+        if (niriState) niriState.setScreenSize(screen.width, screen.height)
     }
 
     // Input mask: pass through everything except the 4 corner regions
