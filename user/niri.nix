@@ -46,7 +46,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         { argv = [ "quickshell" ]; }
         { argv = [ "vicinae" "server" ]; }
         { argv = [ "xwayland-satellite" ":0" ]; }
-        { argv = [ "${lisgd-niri}/bin/lisgd-niri" ]; }
+        # lisgd-niri runs as systemd user service to properly inherit input group
       ];
 
       # Environment variables
@@ -231,6 +231,25 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     lisgd
     lisgd-niri
   ];
+  
+  # systemd user service for lisgd - ensures proper group membership (input)
+  # niri's spawn-at-startup doesn't inherit login session groups
+  systemd.user.services.lisgd-niri = {
+    Unit = {
+      Description = "Touchscreen gesture daemon for niri";
+      After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStart = "${lisgd-niri}/bin/lisgd-niri";
+      Restart = "on-failure";
+      RestartSec = 2;
+    };
+    Install = {
+      WantedBy = [ "graphical-session.target" ];
+    };
+  };
   
   dconf.enable = true;
   dconf.settings = {
