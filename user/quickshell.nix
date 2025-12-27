@@ -9,11 +9,17 @@ let
     "quickshell/shell.qml" = {
       source = ./quickshell/shell.qml;
     };
+    "quickshell/qmldir" = {
+      source = ./quickshell/qmldir;
+    };
     "quickshell/Bar.qml" = {
       source = ./quickshell/Bar.qml;
     };
     "quickshell/ScreenCorners.qml" = {
       source = ./quickshell/ScreenCorners.qml;
+    };
+    "quickshell/NiriState.qml" = {
+      source = ./quickshell/NiriState.qml;
     };
     "quickshell/NiriWorkspacesLoader.qml" = {
       source = ./quickshell/NiriWorkspacesLoader.qml;
