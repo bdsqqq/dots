@@ -169,12 +169,36 @@ PanelWindow {
                     Item { Layout.fillWidth: true }
                 }
             }
-        }
-    }
 
-    MouseArea {
-        anchors.fill: parent
-        propagateComposedEvents: true
-        onPressed: function(mouse) { mouse.accepted = false; }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: "#1f2937"
+            }
+
+            BrightnessModule {
+                Layout.fillWidth: true
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: "#1f2937"
+            }
+
+            NetworkModule {
+                Layout.fillWidth: true
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: "#1f2937"
+            }
+
+            BluetoothModule {
+                Layout.fillWidth: true
+            }
+        }
     }
 }
