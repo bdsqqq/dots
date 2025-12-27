@@ -5,6 +5,12 @@ import QtQuick
 ShellRoot {
     id: root
 
+    property alias niriState: _niriState
+
+    NiriState {
+        id: _niriState
+    }
+
     Variants {
         model: Quickshell.screens
 
@@ -20,6 +26,7 @@ ShellRoot {
         ScreenCorners {
             required property var modelData
             screen: modelData
+            niriState: root.niriState
         }
     }
 

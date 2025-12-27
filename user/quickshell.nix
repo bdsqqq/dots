@@ -9,9 +9,7 @@ let
     "quickshell/shell.qml" = {
       source = ./quickshell/shell.qml;
     };
-    "quickshell/qmldir" = {
-      source = ./quickshell/qmldir;
-    };
+
     "quickshell/Bar.qml" = {
       source = ./quickshell/Bar.qml;
     };
