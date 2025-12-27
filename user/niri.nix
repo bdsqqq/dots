@@ -26,14 +26,14 @@ let
     NIRI_SOCK=$(ls /run/user/$(id -u)/niri.*.sock 2>/dev/null | head -1)
     export NIRI_SOCKET="$NIRI_SOCK"
     
-    # 3-finger swipes anywhere on screen
+    # 3-finger swipes anywhere on screen (natural scrolling style)
     exec ${pkgs.lisgd}/bin/lisgd -d "$TOUCH_DEV" \
       -t 50 \
       -m 1500 \
-      -g '3,DU,*,*,*,niri msg action focus-workspace-up' \
-      -g '3,UD,*,*,*,niri msg action focus-workspace-down' \
-      -g '3,LR,*,*,*,niri msg action focus-column-right' \
-      -g '3,RL,*,*,*,niri msg action focus-column-left'
+      -g '3,DU,*,*,*,niri msg action focus-workspace-down' \
+      -g '3,UD,*,*,*,niri msg action focus-workspace-up' \
+      -g '3,LR,*,*,*,niri msg action focus-column-left' \
+      -g '3,RL,*,*,*,niri msg action focus-column-right'
   '';
 in
 
