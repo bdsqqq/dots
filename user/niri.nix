@@ -11,6 +11,29 @@ let
       ${pkgs.glib}/bin/gsettings set org.gnome.desktop.interface color-scheme prefer-dark
     fi
   '';
+  
+  # touchscreen gesture daemon for niri (niri lacks native touchscreen swipe gestures)
+  # uses lisgd to translate edge swipes to niri actions
+  lisgd-niri = pkgs.writeShellScriptBin "lisgd-niri" ''
+    # find the touchscreen device dynamically
+    TOUCH_DEV=$(grep -l "GXTP6933" /sys/class/input/event*/device/name 2>/dev/null | head -1 | sed 's|.*event|/dev/input/event|' | sed 's|/device/name||')
+    if [ -z "$TOUCH_DEV" ]; then
+      # fallback to common touchscreen event
+      TOUCH_DEV="/dev/input/event12"
+    fi
+    
+    # find niri socket
+    NIRI_SOCK=$(ls /run/user/$(id -u)/niri.*.sock 2>/dev/null | head -1)
+    export NIRI_SOCKET="$NIRI_SOCK"
+    
+    exec ${pkgs.lisgd}/bin/lisgd -d "$TOUCH_DEV" \
+      -t 200 \
+      -m 400 \
+      -g "1,UD,niri msg action focus-workspace-up" \
+      -g "1,DU,niri msg action focus-workspace-down" \
+      -g "1,LR,niri msg action focus-column-right" \
+      -g "1,RL,niri msg action focus-column-left"
+  '';
 in
 
 if !(lib.hasInfix "linux" hostSystem) then {} else {
@@ -22,6 +45,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         { argv = [ "quickshell" ]; }
         { argv = [ "vicinae" "server" ]; }
         { argv = [ "xwayland-satellite" ":0" ]; }
+        { argv = [ "${lisgd-niri}/bin/lisgd-niri" ]; }
       ];
 
       # Environment variables
@@ -203,6 +227,8 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     glib
     xdg-desktop-portal-gtk
     toggleTheme
+    lisgd
+    lisgd-niri
   ];
   
   dconf.enable = true;
