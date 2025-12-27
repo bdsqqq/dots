@@ -219,18 +219,19 @@ in
         };
       };
       
-      services.vicinae = {
-        enable = true;
-        autoStart = true;
-        settings = {
-          theme.name = lib.mkForce "vicinae-dark";
-          window = {
-            csd = true;
-            opacity = lib.mkForce 0.95;
-            rounding = 0;
-          };
-        };
-      };
+      # TODO: re-enable after initial install - may have cuda deps
+      # services.vicinae = {
+      #   enable = true;
+      #   autoStart = true;
+      #   settings = {
+      #     theme.name = lib.mkForce "vicinae-dark";
+      #     window = {
+      #       csd = true;
+      #       opacity = lib.mkForce 0.95;
+      #       rounding = 0;
+      #     };
+      #   };
+      # };
     };
   };
   
