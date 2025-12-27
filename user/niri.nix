@@ -26,16 +26,19 @@ let
     NIRI_SOCK=$(ls /run/user/$(id -u)/niri.*.sock 2>/dev/null | head -1)
     export NIRI_SOCKET="$NIRI_SOCK"
     
-    # edge swipes only (start from edge, end anywhere)
-    # top/bottom edges: workspace switching
-    # left/right edges: column navigation
+    # edge swipes (1 finger from edge)
+    # 3-finger swipes (anywhere on screen)
     exec ${pkgs.lisgd}/bin/lisgd -d "$TOUCH_DEV" \
       -t 150 \
       -m 600 \
       -g "1,DU,T,*,*,niri msg action focus-workspace-up" \
       -g "1,UD,B,*,*,niri msg action focus-workspace-down" \
       -g "1,LR,L,*,*,niri msg action focus-column-right" \
-      -g "1,RL,R,*,*,niri msg action focus-column-left"
+      -g "1,RL,R,*,*,niri msg action focus-column-left" \
+      -g "3,DU,*,*,*,niri msg action focus-workspace-up" \
+      -g "3,UD,*,*,*,niri msg action focus-workspace-down" \
+      -g "3,LR,*,*,*,niri msg action focus-column-right" \
+      -g "3,RL,*,*,*,niri msg action focus-column-left"
   '';
 in
 
