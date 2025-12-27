@@ -97,10 +97,10 @@ Item {
     }
 
     function signalIcon(signal) {
-        if (signal >= 75) return "▂▄▆█";
-        if (signal >= 50) return "▂▄▆";
-        if (signal >= 25) return "▂▄";
-        return "▂";
+        if (signal >= 75) return "⣿";
+        if (signal >= 50) return "⣶";
+        if (signal >= 25) return "⣤";
+        return "⣀";
     }
 
     ColumnLayout {
