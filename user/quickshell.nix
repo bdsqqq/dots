@@ -28,6 +28,9 @@ let
     "quickshell/NotificationPopups.qml" = {
       source = ./quickshell/NotificationPopups.qml;
     };
+    "quickshell/ControlCenter.qml" = {
+      source = ./quickshell/ControlCenter.qml;
+    };
   };
 
 in
