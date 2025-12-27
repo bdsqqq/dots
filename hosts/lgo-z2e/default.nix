@@ -67,6 +67,7 @@ in
     ../../system/vector.nix
     ../../user/ghostty.nix
     ../../user/gaming.nix
+    ../../user/quickshell.nix
     ../../system/flatpak.nix
   ];
 
