@@ -204,11 +204,9 @@
               ({ pkgs, ... }: {
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
-                  (import ./overlays/whisper-cpp-cuda.nix)
                   (import ./overlays/hyprland-plugins.nix inputs)
                   # niri overlay removed - using pkgs.niri from nixpkgs for cache hits
                 ];
-                nixpkgs.config.cudaSupport = true;
                 system.configurationRevision = flakeRevision;
                 
                 services.axiom-deploy-annotation = {
