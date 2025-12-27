@@ -26,15 +26,10 @@ let
     NIRI_SOCK=$(ls /run/user/$(id -u)/niri.*.sock 2>/dev/null | head -1)
     export NIRI_SOCKET="$NIRI_SOCK"
     
-    # edge swipes (1 finger from edge)
-    # 3-finger swipes (anywhere on screen)
+    # 3-finger swipes anywhere on screen
     exec ${pkgs.lisgd}/bin/lisgd -d "$TOUCH_DEV" \
-      -t 150 \
-      -m 600 \
-      -g "1,DU,T,*,*,niri msg action focus-workspace-up" \
-      -g "1,UD,B,*,*,niri msg action focus-workspace-down" \
-      -g "1,LR,L,*,*,niri msg action focus-column-right" \
-      -g "1,RL,R,*,*,niri msg action focus-column-left" \
+      -t 50 \
+      -m 1500 \
       -g "3,DU,*,*,*,niri msg action focus-workspace-up" \
       -g "3,UD,*,*,*,niri msg action focus-workspace-down" \
       -g "3,LR,*,*,*,niri msg action focus-column-right" \
