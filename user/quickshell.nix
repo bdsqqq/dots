@@ -31,6 +31,15 @@ let
     "quickshell/ControlCenter.qml" = {
       source = ./quickshell/ControlCenter.qml;
     };
+    "quickshell/BrightnessModule.qml" = {
+      source = ./quickshell/BrightnessModule.qml;
+    };
+    "quickshell/BluetoothModule.qml" = {
+      source = ./quickshell/BluetoothModule.qml;
+    };
+    "quickshell/NetworkModule.qml" = {
+      source = ./quickshell/NetworkModule.qml;
+    };
   };
 
 in
