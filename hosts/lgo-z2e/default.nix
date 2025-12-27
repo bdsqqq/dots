@@ -79,12 +79,11 @@ in
 
   environment.sessionVariables.DISPLAY = ":0";
 
-  # jovian-nixos: steam deck gaming mode
+  # jovian-nixos: steam/gaming support (niri is primary session)
   jovian = {
     steam = {
       enable = true;
-      autoStart = true;
-      desktopSession = "niri";
+      autoStart = false;
       user = "bdsqqq";
     };
     decky-loader.enable = true;

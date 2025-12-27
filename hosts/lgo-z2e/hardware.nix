@@ -8,6 +8,12 @@
   boot.kernelModules = [ "kvm-amd" ];
   boot.extraModulePackages = [ ];
 
+  boot.kernelPackages = pkgs.linuxPackages_latest;
+  boot.kernelParams = [ 
+    "amd_pstate=active"
+    "amdgpu.sg_display=0"
+  ];
+
   boot.loader = {
     systemd-boot.enable = true;
     efi.canTouchEfiVariables = true;
