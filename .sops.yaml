@@ -2,6 +2,7 @@ keys:
   - &user_bdsqqq age1j2lyxxhxj0g2fw05h8c856fjxy2f0salxlk78pwglpv2nxjm3ptsgxcce4
   - &host_htz_relay age14vhzajp8xemrjzqh9gzf6rpy0sckf3sa4vfdf5u60xgrktnfxc0sx85uj6
   - &host_r56 age1wzdqusx4v0wpn7lgda4x4tw3qkd4jlcyy89pxrh4g679m0ajadtsh49e6t
+  - &host_lgo_z2e age1qepnuljqzftv5sg72nj4wt0njcnezvnlhsq0dg8zqls5e2twzuwsyxklww
 creation_rules:
   - path_regex: secrets\.yaml$
     key_groups:
@@ -9,9 +10,11 @@ creation_rules:
           - *user_bdsqqq
           - *host_htz_relay
           - *host_r56
+          - *host_lgo_z2e
   - path_regex: cookies\.txt$
     key_groups:
       - age:
           - *user_bdsqqq
           - *host_htz_relay
           - *host_r56
+          - *host_lgo_z2e
