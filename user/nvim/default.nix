@@ -1,4 +1,7 @@
-{ lib, config, pkgs, inputs, ... }:
+{ lib, config, pkgs, inputs, hostSystem ? null, ... }:
+let
+  isLinux = lib.hasInfix "linux" hostSystem;
+in
 /*
 ## nixvim plugin loading order
 
@@ -73,7 +76,13 @@ in
         tpipeline_fillchar = " ";
         tpipeline_statusline = "%{%v:lua.Statusline()%}";
       };
-      clipboard = { providers = { wl-copy.enable = true; xsel.enable = true; }; register = "unnamedplus"; };
+      clipboard = { 
+        providers = { 
+          wl-copy.enable = isLinux;
+          xsel.enable = isLinux;
+        }; 
+        register = "unnamedplus"; 
+      };
       opts = {
         number = true; mouse = "a"; showmode = false; laststatus = 0; ruler = false; cmdheight = 0;
         breakindent = true; undofile = true; ignorecase = true; smartcase = true; signcolumn = "yes"; updatetime = 250;
