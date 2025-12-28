@@ -17,10 +17,18 @@ Item {
         id: adapterCheck
         command: ["bluetoothctl", "show"]
 
+        property string buffer: ""
+
         stdout: SplitParser {
+            splitMarker: ""
             onRead: function(data) {
-                bluetoothModule.bluetoothOn = data.indexOf("Powered: yes") !== -1;
+                adapterCheck.buffer += data;
             }
+        }
+
+        onExited: function(code, status) {
+            bluetoothModule.bluetoothOn = adapterCheck.buffer.indexOf("Powered: yes") !== -1;
+            adapterCheck.buffer = "";
         }
     }
 
