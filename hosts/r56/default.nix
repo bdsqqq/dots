@@ -119,6 +119,10 @@ in
           id = "HPMO7GH-P5UX4LC-OYSWWVP-XTMOUWL-QXUDAYH-ZJXXQDJ-QN677MY-QNQACQH";
           addresses = [ "tcp://100.101.195.56:22000" "quic://100.101.195.56:22000" ];
         };
+        "lgo-z2e" = {
+          id = "4B7Q2Z5-SNAOQJO-S4L4FSG-IBBV5XH-67DUXTW-L3Z3JT7-CUQCWP6-TKHP5AG";
+          addresses = [ "tcp://100.104.236.95:22000" "quic://100.104.236.95:22000" ];
+        };
       };
 
       folders = {
@@ -129,7 +133,7 @@ in
           path = "/home/bdsqqq/commonplace";
           type = "sendreceive";
           rescanIntervalS = 60;
-          devices = [ "mbp-m2" "htz-relay" ];
+          devices = [ "mbp-m2" "htz-relay" "lgo-z2e" ];
           versioning = {
             type = "trashcan";
             params.cleanoutDays = "0";
@@ -143,7 +147,7 @@ in
           path = "/home/bdsqqq/.local/share/PrismLauncher/instances";
           type = "sendreceive";
           rescanIntervalS = 120;
-          devices = [ "mbp-m2" ];
+          devices = [ "mbp-m2" "lgo-z2e" ];
         };
       };
     };

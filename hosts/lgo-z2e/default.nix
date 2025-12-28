@@ -129,8 +129,8 @@ in
           addresses = [ "tcp://100.101.195.56:22000" "quic://100.101.195.56:22000" ];
         };
         "r56" = {
-          id = "XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX";
-          addresses = [ "tcp://100.x.x.x:22000" "quic://100.x.x.x:22000" ];
+          id = "JOWDMTJ-LQKWV6K-5V37UTD-EKJBBHS-3FJPKWD-HRONTJC-F4NZGJN-VKJTZAQ";
+          addresses = [ "tcp://100.94.68.111:22000" "quic://100.94.68.111:22000" ];
         };
       };
 
