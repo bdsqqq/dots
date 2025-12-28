@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
 
@@ -16,9 +17,19 @@ Item {
     Process {
         id: scanNetworks
         command: ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "wifi", "list"]
+
+        property string buffer: ""
+
+        stdout: SplitParser {
+            splitMarker: ""
+            onRead: function(data) {
+                scanNetworks.buffer += data;
+            }
+        }
+
         onExited: function(code, status) {
             if (code === 0) {
-                let lines = stdout.trim().split("\n");
+                let lines = scanNetworks.buffer.trim().split("\n");
                 let networks = [];
                 let seen = {};
                 for (let i = 0; i < lines.length; i++) {
@@ -35,24 +46,37 @@ Item {
                 networks.sort((a, b) => b.signal - a.signal);
                 networkList = networks;
             }
+            scanNetworks.buffer = "";
         }
     }
 
     Process {
         id: getActiveConnection
         command: ["nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active"]
+
+        property string buffer: ""
+
+        stdout: SplitParser {
+            splitMarker: ""
+            onRead: function(data) {
+                getActiveConnection.buffer += data;
+            }
+        }
+
         onExited: function(code, status) {
             if (code === 0) {
-                let lines = stdout.trim().split("\n");
+                let lines = getActiveConnection.buffer.trim().split("\n");
                 for (let i = 0; i < lines.length; i++) {
                     let parts = lines[i].split(":");
                     if (parts[1] === "802-11-wireless") {
                         currentSSID = parts[0];
+                        getActiveConnection.buffer = "";
                         return;
                     }
                 }
                 currentSSID = "disconnected";
             }
+            getActiveConnection.buffer = "";
         }
     }
 

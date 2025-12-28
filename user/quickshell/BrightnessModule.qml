@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
 
@@ -13,12 +14,10 @@ Item {
     Process {
         id: brightnessReader
         command: ["brightnessctl", "-m"]
-        running: true
 
-        onExited: function(exitCode, exitStatus) {
-            if (exitCode === 0) {
-                let output = stdout.trim();
-                let parts = output.split(",");
+        stdout: SplitParser {
+            onRead: function(data) {
+                let parts = data.trim().split(",");
                 if (parts.length >= 4) {
                     let percent = parseInt(parts[3].replace("%", ""));
                     brightnessModule.brightness = percent / 100;

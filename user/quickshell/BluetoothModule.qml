@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
 
@@ -9,37 +10,16 @@ Item {
     property var pairedDevices: []
     property string connectedDevice: ""
 
-    implicitWidth: parent.width
+    implicitWidth: parent ? parent.width : 248
     implicitHeight: Math.min(contentLayout.implicitHeight, 150)
-
-    function parseDevices(output) {
-        var devices = [];
-        var lines = output.trim().split('\n');
-        for (var i = 0; i < lines.length; i++) {
-            var line = lines[i].trim();
-            var match = line.match(/^Device\s+([0-9A-Fa-f:]+)\s+(.+)$/);
-            if (match) {
-                devices.push({ mac: match[1], name: match[2] });
-            }
-        }
-        return devices;
-    }
-
-    function parseAdapterStatus(output) {
-        return output.indexOf("Powered: yes") !== -1;
-    }
-
-    function parseConnectedDevice(output) {
-        var match = output.match(/Connected: yes/);
-        return match !== null;
-    }
 
     Process {
         id: adapterCheck
         command: ["bluetoothctl", "show"]
-        onExited: function(code, status) {
-            if (code === 0) {
-                bluetoothModule.bluetoothOn = parseAdapterStatus(stdout);
+
+        stdout: SplitParser {
+            onRead: function(data) {
+                bluetoothModule.bluetoothOn = data.indexOf("Powered: yes") !== -1;
             }
         }
     }
@@ -47,31 +27,63 @@ Item {
     Process {
         id: devicesCheck
         command: ["bluetoothctl", "devices", "Paired"]
+
+        property string buffer: ""
+
+        stdout: SplitParser {
+            splitMarker: ""
+            onRead: function(data) {
+                devicesCheck.buffer += data;
+            }
+        }
+
         onExited: function(code, status) {
             if (code === 0) {
-                bluetoothModule.pairedDevices = parseDevices(stdout);
-                if (pairedDevices.length > 0) {
-                    connectionCheck.running = true;
+                let devices = [];
+                let lines = devicesCheck.buffer.trim().split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i].trim();
+                    let match = line.match(/^Device\s+([0-9A-Fa-f:]+)\s+(.+)$/);
+                    if (match) {
+                        devices.push({ mac: match[1], name: match[2] });
+                    }
+                }
+                bluetoothModule.pairedDevices = devices;
+                devicesCheck.buffer = "";
+                if (devices.length > 0) {
+                    checkConnectionIndex = 0;
+                    checkNextConnection();
                 }
             }
         }
     }
 
+    property int checkConnectionIndex: 0
+
+    function checkNextConnection() {
+        if (checkConnectionIndex < pairedDevices.length) {
+            connectionCheck.targetMac = pairedDevices[checkConnectionIndex].mac;
+            connectionCheck.running = true;
+        }
+    }
+
     Process {
         id: connectionCheck
-        property int currentIndex: 0
-        command: ["bluetoothctl", "info", pairedDevices[currentIndex]?.mac ?? ""]
-        onExited: function(code, status) {
-            if (code === 0 && parseConnectedDevice(stdout)) {
-                bluetoothModule.connectedDevice = pairedDevices[currentIndex].mac;
-            } else if (currentIndex < pairedDevices.length - 1) {
-                currentIndex++;
-                running = true;
-            } else {
-                if (stdout.indexOf("Connected: yes") === -1) {
-                    bluetoothModule.connectedDevice = "";
+        property string targetMac: ""
+        command: ["bluetoothctl", "info", targetMac]
+
+        stdout: SplitParser {
+            onRead: function(data) {
+                if (data.indexOf("Connected: yes") !== -1) {
+                    bluetoothModule.connectedDevice = connectionCheck.targetMac;
                 }
-                currentIndex = 0;
+            }
+        }
+
+        onExited: function(code, status) {
+            checkConnectionIndex++;
+            if (checkConnectionIndex < pairedDevices.length) {
+                checkNextConnection();
             }
         }
     }
@@ -80,9 +92,7 @@ Item {
         id: toggleBluetooth
         command: ["bluetoothctl", "power", bluetoothOn ? "off" : "on"]
         onExited: function(code, status) {
-            if (code === 0) {
-                adapterCheck.running = true;
-            }
+            adapterCheck.running = true;
         }
     }
 
