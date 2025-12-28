@@ -19,7 +19,6 @@ in
     home.packages = [
       pkgs.prismlauncher
     ] ++ lib.optionals isDarwin [
-      pkgs.modrinth-app
     ] ++ lib.optionals isLinux [
       steam-gamescope
       pkgs.gamescope
