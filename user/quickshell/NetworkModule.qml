@@ -16,7 +16,7 @@ Item {
 
     Process {
         id: scanNetworks
-        command: ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "wifi", "list"]
+        command: ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "device", "wifi", "list"]
 
         property string buffer: ""
 
