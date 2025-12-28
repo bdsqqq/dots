@@ -7,11 +7,15 @@ Item {
     id: bluetoothModule
 
     property bool bluetoothOn: false
-    property var pairedDevices: []
     property string connectedDevice: ""
+    property bool expanded: false
+
+    ListModel {
+        id: pairedDevicesModel
+    }
 
     implicitWidth: parent ? parent.width : 248
-    implicitHeight: Math.min(contentLayout.implicitHeight, 150)
+    implicitHeight: Math.min(contentLayout.implicitHeight, 200)
 
     Process {
         id: adapterCheck
@@ -47,17 +51,23 @@ Item {
 
         onExited: function(code, status) {
             if (code === 0) {
-                let devices = [];
                 let lines = devicesCheck.buffer.trim().split('\n');
+                let devices = [];
                 for (let i = 0; i < lines.length; i++) {
                     let line = lines[i].trim();
+                    if (line === "") continue;
                     let match = line.match(/^Device\s+([0-9A-Fa-f:]+)\s+(.+)$/);
                     if (match) {
                         devices.push({ mac: match[1], name: match[2] });
                     }
                 }
-                bluetoothModule.pairedDevices = devices;
                 devicesCheck.buffer = "";
+                
+                pairedDevicesModel.clear();
+                for (let j = 0; j < devices.length; j++) {
+                    pairedDevicesModel.append(devices[j]);
+                }
+                
                 if (devices.length > 0) {
                     checkConnectionIndex = 0;
                     checkNextConnection();
@@ -69,8 +79,8 @@ Item {
     property int checkConnectionIndex: 0
 
     function checkNextConnection() {
-        if (checkConnectionIndex < pairedDevices.length) {
-            connectionCheck.targetMac = pairedDevices[checkConnectionIndex].mac;
+        if (checkConnectionIndex < pairedDevicesModel.count) {
+            connectionCheck.targetMac = pairedDevicesModel.get(checkConnectionIndex).mac;
             connectionCheck.running = true;
         }
     }
@@ -80,17 +90,22 @@ Item {
         property string targetMac: ""
         command: ["bluetoothctl", "info", targetMac]
 
+        property string buffer: ""
+
         stdout: SplitParser {
+            splitMarker: ""
             onRead: function(data) {
-                if (data.indexOf("Connected: yes") !== -1) {
-                    bluetoothModule.connectedDevice = connectionCheck.targetMac;
-                }
+                connectionCheck.buffer += data;
             }
         }
 
         onExited: function(code, status) {
+            if (connectionCheck.buffer.indexOf("Connected: yes") !== -1) {
+                bluetoothModule.connectedDevice = connectionCheck.targetMac;
+            }
+            connectionCheck.buffer = "";
             checkConnectionIndex++;
-            if (checkConnectionIndex < pairedDevices.length) {
+            if (checkConnectionIndex < pairedDevicesModel.count) {
                 checkNextConnection();
             }
         }
@@ -139,129 +154,156 @@ Item {
         anchors.fill: parent
         spacing: 8
 
-        RowLayout {
+        Item {
             Layout.fillWidth: true
-            spacing: 8
+            Layout.preferredHeight: headerRow.implicitHeight
 
-            Text {
-                text: "bluetooth"
-                color: "#9ca3af"
-                font.family: "Berkeley Mono"
-                font.pixelSize: 12
-            }
+            RowLayout {
+                id: headerRow
+                anchors.fill: parent
+                spacing: 8
 
-            Item { Layout.fillWidth: true }
-
-            Text {
-                text: bluetoothOn ? (connectedDevice !== "" ? "connected" : "on") : "off"
-                color: bluetoothOn ? "#ffffff" : "#4b5563"
-                font.family: "Berkeley Mono"
-                font.pixelSize: 12
-
-                Behavior on color {
-                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                Text {
+                    text: expanded ? "▾" : "▸"
+                    color: "#4b5563"
+                    font.family: "Berkeley Mono"
+                    font.pixelSize: 10
                 }
-            }
-        }
 
-        Rectangle {
-            Layout.preferredWidth: toggleText.implicitWidth + 16
-            Layout.preferredHeight: toggleText.implicitHeight + 8
-            color: toggleMouse.containsMouse ? "#1f2937" : "transparent"
-            border.width: 1
-            border.color: bluetoothOn ? "#ffffff" : "#1f2937"
-            radius: 4
+                Text {
+                    text: "bluetooth"
+                    color: "#9ca3af"
+                    font.family: "Berkeley Mono"
+                    font.pixelSize: 12
+                }
 
-            Behavior on color {
-                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-            }
+                Item { Layout.fillWidth: true }
 
-            Behavior on border.color {
-                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-            }
+                Text {
+                    text: bluetoothOn ? (connectedDevice !== "" ? "connected" : "on") : "off"
+                    color: bluetoothOn ? "#ffffff" : "#4b5563"
+                    font.family: "Berkeley Mono"
+                    font.pixelSize: 12
 
-            Text {
-                id: toggleText
-                anchors.centerIn: parent
-                text: bluetoothOn ? "turn off" : "turn on"
-                color: "#9ca3af"
-                font.family: "Berkeley Mono"
-                font.pixelSize: 11
+                    Behavior on color {
+                        ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                    }
+                }
             }
 
             MouseArea {
-                id: toggleMouse
                 anchors.fill: parent
-                hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    toggleBluetooth.running = true;
+                    bluetoothModule.expanded = !bluetoothModule.expanded;
                 }
             }
         }
 
-        ListView {
-            id: deviceList
+        ColumnLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(contentHeight, 80)
-            clip: true
-            spacing: 4
-            model: bluetoothModule.pairedDevices
-            visible: bluetoothOn && pairedDevices.length > 0
+            spacing: 8
+            visible: expanded
 
-            delegate: Rectangle {
-                width: deviceList.width
-                height: deviceRow.implicitHeight + 8
-                color: deviceMouse.containsMouse ? "#1f2937" : "transparent"
+            Rectangle {
+                Layout.preferredWidth: toggleText.implicitWidth + 16
+                Layout.preferredHeight: toggleText.implicitHeight + 8
+                color: toggleMouse.containsMouse ? "#1f2937" : "transparent"
+                border.width: 1
+                border.color: bluetoothOn ? "#ffffff" : "#1f2937"
                 radius: 4
 
                 Behavior on color {
                     ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
                 }
 
-                RowLayout {
-                    id: deviceRow
-                    anchors.fill: parent
-                    anchors.margins: 4
-                    spacing: 8
+                Behavior on border.color {
+                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                }
 
-                    Text {
-                        text: modelData.name
-                        color: connectedDevice === modelData.mac ? "#ffffff" : "#9ca3af"
-                        font.family: "Berkeley Mono"
-                        font.pixelSize: 11
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
-
-                        Behavior on color {
-                            ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                        }
-                    }
-
-                    Text {
-                        text: connectedDevice === modelData.mac ? "connected" : "paired"
-                        color: connectedDevice === modelData.mac ? "#ffffff" : "#4b5563"
-                        font.family: "Berkeley Mono"
-                        font.pixelSize: 10
-
-                        Behavior on color {
-                            ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                        }
-                    }
+                Text {
+                    id: toggleText
+                    anchors.centerIn: parent
+                    text: bluetoothOn ? "turn off" : "turn on"
+                    color: "#9ca3af"
+                    font.family: "Berkeley Mono"
+                    font.pixelSize: 11
                 }
 
                 MouseArea {
-                    id: deviceMouse
+                    id: toggleMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        if (connectedDevice === modelData.mac) {
-                            disconnectDevice.targetMac = modelData.mac;
-                            disconnectDevice.running = true;
-                        } else {
-                            connectDevice.targetMac = modelData.mac;
-                            connectDevice.running = true;
+                        toggleBluetooth.running = true;
+                    }
+                }
+            }
+
+            ListView {
+                id: deviceList
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(contentHeight, 80)
+                clip: true
+                spacing: 4
+                model: pairedDevicesModel
+                visible: bluetoothOn && pairedDevicesModel.count > 0
+
+                delegate: Rectangle {
+                    width: deviceList.width
+                    height: deviceRow.implicitHeight + 8
+                    color: deviceMouse.containsMouse ? "#1f2937" : "transparent"
+                    radius: 4
+
+                    Behavior on color {
+                        ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                    }
+
+                    RowLayout {
+                        id: deviceRow
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        spacing: 8
+
+                        Text {
+                            text: model.name
+                            color: connectedDevice === model.mac ? "#ffffff" : "#9ca3af"
+                            font.family: "Berkeley Mono"
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+
+                            Behavior on color {
+                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                            }
+                        }
+
+                        Text {
+                            text: connectedDevice === model.mac ? "connected" : "paired"
+                            color: connectedDevice === model.mac ? "#ffffff" : "#4b5563"
+                            font.family: "Berkeley Mono"
+                            font.pixelSize: 10
+
+                            Behavior on color {
+                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: deviceMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (connectedDevice === model.mac) {
+                                disconnectDevice.targetMac = model.mac;
+                                disconnectDevice.running = true;
+                            } else {
+                                connectDevice.targetMac = model.mac;
+                                connectDevice.running = true;
+                            }
                         }
                     }
                 }

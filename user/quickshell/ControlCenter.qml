@@ -19,7 +19,7 @@ PanelWindow {
     margins.right: 8
 
     implicitWidth: 280
-    implicitHeight: contentColumn.implicitHeight + 32
+    implicitHeight: Math.min(contentColumn.implicitHeight + 32, screen.height * 0.6)
 
     visible: isOpen
     color: "transparent"
@@ -37,12 +37,21 @@ PanelWindow {
         anchors.fill: parent
         color: "#000000"
         radius: 8
+        clip: true
 
-        ColumnLayout {
-            id: contentColumn
+        Flickable {
+            id: flickable
             anchors.fill: parent
             anchors.margins: 16
-            spacing: 16
+            contentWidth: width
+            contentHeight: contentColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            ColumnLayout {
+                id: contentColumn
+                width: flickable.width
+                spacing: 16
 
             Text {
                 text: "control center"
@@ -198,6 +207,7 @@ PanelWindow {
 
             BluetoothModule {
                 Layout.fillWidth: true
+            }
             }
         }
     }
