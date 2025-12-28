@@ -10,6 +10,7 @@ Item {
     property string currentSSID: "disconnected"
     property var networkList: []
     property string connectingTo: ""
+    property bool expanded: false
 
     implicitWidth: parent ? parent.width : 248
     implicitHeight: Math.min(contentColumn.implicitHeight, 200)
@@ -132,150 +133,186 @@ Item {
         anchors.fill: parent
         spacing: 8
 
-        RowLayout {
+        Item {
             Layout.fillWidth: true
-            spacing: 8
+            Layout.preferredHeight: headerRow.implicitHeight
 
-            Text {
-                text: "network"
-                color: "#9ca3af"
-                font.family: "Berkeley Mono"
-                font.pixelSize: 12
-            }
+            RowLayout {
+                id: headerRow
+                anchors.fill: parent
+                spacing: 8
 
-            Item { Layout.fillWidth: true }
-
-            Text {
-                text: wifiEnabled ? currentSSID : "wifi off"
-                color: currentSSID === "disconnected" || !wifiEnabled ? "#4b5563" : "#ffffff"
-                font.family: "Berkeley Mono"
-                font.pixelSize: 12
-
-                Behavior on color {
-                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                }
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-
-            Rectangle {
-                Layout.preferredWidth: wifiToggleText.implicitWidth + 16
-                Layout.preferredHeight: wifiToggleText.implicitHeight + 8
-                color: wifiToggleMouse.containsMouse ? "#1f2937" : "transparent"
-                border.width: 1
-                border.color: wifiEnabled ? "#ffffff" : "#1f2937"
-                radius: 4
-
-                Behavior on color {
-                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                }
-
-                Behavior on border.color {
-                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                Text {
+                    text: expanded ? "▾" : "▸"
+                    color: "#9ca3af"
+                    font.family: "Berkeley Mono"
+                    font.pixelSize: 12
                 }
 
                 Text {
-                    id: wifiToggleText
-                    anchors.centerIn: parent
-                    text: wifiEnabled ? "wifi on" : "wifi off"
+                    text: "network"
                     color: "#9ca3af"
                     font.family: "Berkeley Mono"
-                    font.pixelSize: 11
+                    font.pixelSize: 12
                 }
 
-                MouseArea {
-                    id: wifiToggleMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        toggleWifi.enabling = !wifiEnabled;
-                        toggleWifi.running = true;
-                    }
-                }
-            }
+                Item { Layout.fillWidth: true }
 
-            Item { Layout.fillWidth: true }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(networkListView.contentHeight, 120)
-            color: "#1f2937"
-            radius: 4
-            visible: wifiEnabled && networkList.length > 0
-
-            ListView {
-                id: networkListView
-                anchors.fill: parent
-                anchors.margins: 4
-                model: networkList
-                clip: true
-                spacing: 2
-
-                delegate: Rectangle {
-                    width: networkListView.width
-                    height: 24
-                    color: delegateMouse.containsMouse ? "#374151" : "transparent"
-                    radius: 4
+                Text {
+                    text: wifiEnabled ? currentSSID : "wifi off"
+                    color: currentSSID === "disconnected" || !wifiEnabled ? "#4b5563" : "#ffffff"
+                    font.family: "Berkeley Mono"
+                    font.pixelSize: 12
 
                     Behavior on color {
                         ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
                     }
+                }
+            }
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
-                        spacing: 8
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: expanded = !expanded
+            }
+        }
+
+        Item {
+            id: collapsibleContent
+            Layout.fillWidth: true
+            Layout.preferredHeight: expanded ? expandedContentColumn.implicitHeight : 0
+            clip: true
+
+            Behavior on Layout.preferredHeight {
+                NumberAnimation { duration: 150; easing.type: Easing.OutQuint }
+            }
+
+            ColumnLayout {
+                id: expandedContentColumn
+                width: parent.width
+                spacing: 8
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Rectangle {
+                        Layout.preferredWidth: wifiToggleText.implicitWidth + 16
+                        Layout.preferredHeight: wifiToggleText.implicitHeight + 8
+                        color: wifiToggleMouse.containsMouse ? "#1f2937" : "transparent"
+                        border.width: 1
+                        border.color: wifiEnabled ? "#ffffff" : "#1f2937"
+                        radius: 4
+
+                        Behavior on color {
+                            ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                        }
+
+                        Behavior on border.color {
+                            ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                        }
 
                         Text {
-                            text: connectingTo === modelData.ssid ? "connecting..." : modelData.ssid
-                            color: currentSSID === modelData.ssid ? "#ffffff" : "#9ca3af"
+                            id: wifiToggleText
+                            anchors.centerIn: parent
+                            text: wifiEnabled ? "wifi on" : "wifi off"
+                            color: "#9ca3af"
                             font.family: "Berkeley Mono"
                             font.pixelSize: 11
-                            elide: Text.ElideRight
-                            Layout.fillWidth: true
+                        }
+
+                        MouseArea {
+                            id: wifiToggleMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                toggleWifi.enabling = !wifiEnabled;
+                                toggleWifi.running = true;
+                            }
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(networkListView.contentHeight, 120)
+                    color: "#1f2937"
+                    radius: 4
+                    visible: wifiEnabled && networkList.length > 0
+
+                    ListView {
+                        id: networkListView
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        model: networkList
+                        clip: true
+                        spacing: 2
+
+                        delegate: Rectangle {
+                            width: networkListView.width
+                            height: 24
+                            color: delegateMouse.containsMouse ? "#374151" : "transparent"
+                            radius: 4
 
                             Behavior on color {
                                 ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
                             }
-                        }
 
-                        Text {
-                            text: signalIcon(modelData.signal)
-                            color: "#6b7280"
-                            font.family: "Berkeley Mono"
-                            font.pixelSize: 10
-                        }
-                    }
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 8
 
-                    MouseArea {
-                        id: delegateMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (currentSSID !== modelData.ssid && connectingTo === "") {
-                                connectingTo = modelData.ssid;
-                                connectNetwork.targetSSID = modelData.ssid;
-                                connectNetwork.running = true;
+                                Text {
+                                    text: connectingTo === modelData.ssid ? "connecting..." : modelData.ssid
+                                    color: currentSSID === modelData.ssid ? "#ffffff" : "#9ca3af"
+                                    font.family: "Berkeley Mono"
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+
+                                    Behavior on color {
+                                        ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                                    }
+                                }
+
+                                Text {
+                                    text: signalIcon(modelData.signal)
+                                    color: "#6b7280"
+                                    font.family: "Berkeley Mono"
+                                    font.pixelSize: 10
+                                }
+                            }
+
+                            MouseArea {
+                                id: delegateMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (currentSSID !== modelData.ssid && connectingTo === "") {
+                                        connectingTo = modelData.ssid;
+                                        connectNetwork.targetSSID = modelData.ssid;
+                                        connectNetwork.running = true;
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
-        }
 
-        Text {
-            visible: wifiEnabled && networkList.length === 0
-            text: "scanning..."
-            color: "#4b5563"
-            font.family: "Berkeley Mono"
-            font.pixelSize: 11
+                Text {
+                    visible: wifiEnabled && networkList.length === 0
+                    text: "scanning..."
+                    color: "#4b5563"
+                    font.family: "Berkeley Mono"
+                    font.pixelSize: 11
+                }
+            }
         }
     }
 }
