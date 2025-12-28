@@ -135,8 +135,5 @@
     config.allowUnfree = true;
   };
 
-  # let nix-darwin own and link GUI apps into this directory
-  environment.darwinConfig.applicationsDir = "/Applications/Nix Apps";
-
   # Kanata enabled when host imports system/kanata.nix
 }
