@@ -3,7 +3,7 @@
 let
   isLinux = lib.hasInfix "linux" hostSystem;
 
-  quickshellPkg = inputs.quickshell.packages.${hostSystem}.default;
+  quickshellWrapped = import ./lib/quickshell.nix { inherit pkgs lib inputs hostSystem; };
 
   quickshellConfig = {
     "quickshell/shell.qml" = {
@@ -48,7 +48,7 @@ let
 in
 if !isLinux then {} else {
   home-manager.users.bdsqqq = { ... }: {
-    home.packages = [ quickshellPkg ];
+    home.packages = [ quickshellWrapped ];
     xdg.configFile = quickshellConfig;
   };
 }

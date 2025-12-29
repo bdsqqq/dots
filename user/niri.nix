@@ -1,6 +1,8 @@
 { pkgs, lib, config, inputs, hostSystem ? null, ... }:
 
 let
+  quickshellWrapped = import ./lib/quickshell.nix { inherit pkgs lib inputs hostSystem; };
+
   toggleTheme = pkgs.writeShellScriptBin "toggle-theme" ''
     export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
     export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
@@ -45,7 +47,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       # Startup applications - same as hyprland
       spawn-at-startup = [
         { argv = [ "${pkgs.swaybg}/bin/swaybg" "-i" "/etc/wallpaper.jpg" "-m" "fill" ]; }
-        { argv = [ "${inputs.quickshell.packages.${hostSystem}.default}/bin/quickshell" ]; }
+        { argv = [ "${quickshellWrapped}/bin/quickshell" ]; }
         { argv = [ "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae" "server" ]; }
         { argv = [ "${pkgs.xwayland-satellite}/bin/xwayland-satellite" ":0" ]; }
         # lisgd-niri runs as systemd user service to properly inherit input group
