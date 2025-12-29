@@ -23,37 +23,51 @@
 
       # custom fzf history widget (ctrl+r) with logfmt metadata display
       _fzf_history() {
+        fc -R  # reload history from file to ensure we have latest
         local current_user="''${USER}"
         local current_host="''${HOST}"
         local selected=$(fc -rl 1 | ${pkgs.gawk}/bin/gawk -v cur_user="$current_user" -v cur_host="$current_host" '
           {
-            # format: "  123  : timestamp:elapsed;command  # user=x host=y dir=z [agent=a thread=t]"
+            # fc -rl output format: "  757  : 1767045258:0;command  # logfmt"
+            # or old entries without extended history: "  757  command"
+            
+            # skip empty lines
+            if ($0 == "") next
             
             # find the semicolon that separates timestamp from command
             rest = substr($0, index($0, ":"))
             semi = index(rest, ";")
-            if (semi == 0) next
             
-            # extract timestamp
-            ts_part = substr(rest, 2)
-            colon2 = index(ts_part, ":")
-            if (colon2 > 0) {
-              timestamp = substr(ts_part, 1, colon2 - 1)
-            } else {
+            if (semi == 0) {
+              # no semicolon - old format without timestamp
+              # extract command after line number
+              match($0, /^[[:space:]]*[0-9]+[[:space:]]+/)
+              cmd = substr($0, RLENGTH + 1)
               timestamp = 0
-            }
-            
-            # extract command (after semicolon)
-            full_cmd = substr(rest, semi + 1)
-            
-            # split command from logfmt tag
-            tag_idx = index(full_cmd, "  # ")
-            if (tag_idx > 0) {
-              cmd = substr(full_cmd, 1, tag_idx - 1)
-              tag = substr(full_cmd, tag_idx + 4)
-            } else {
-              cmd = full_cmd
               tag = ""
+            } else {
+              # extended history format
+              # extract timestamp (after first colon, before second colon)
+              ts_part = substr(rest, 2)  # skip leading :
+              colon2 = index(ts_part, ":")
+              if (colon2 > 0) {
+                timestamp = substr(ts_part, 1, colon2 - 1)
+              } else {
+                timestamp = 0
+              }
+              
+              # extract command (after semicolon)
+              full_cmd = substr(rest, semi + 1)
+              
+              # split command from logfmt tag
+              tag_idx = index(full_cmd, "  # ")
+              if (tag_idx > 0) {
+                cmd = substr(full_cmd, 1, tag_idx - 1)
+                tag = substr(full_cmd, tag_idx + 4)
+              } else {
+                cmd = full_cmd
+                tag = ""
+              }
             }
             
             # parse logfmt fields
