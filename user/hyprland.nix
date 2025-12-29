@@ -1,6 +1,8 @@
 { pkgs, lib, inputs, hostSystem ? null, ... }:
 
 let
+  quickshellWrapped = import ./lib/quickshell.nix { inherit pkgs lib inputs hostSystem; };
+
   toggleTheme = pkgs.writeShellScriptBin "toggle-theme" ''
     export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
     export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
@@ -46,7 +48,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "${pkgs.swaybg}/bin/swaybg -i /etc/wallpaper.jpg -m fill"
         "hyprctl setcursor macOS 24"
         "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae server"
-        "${inputs.quickshell.packages.${hostSystem}.default}/bin/quickshell"
+        "${quickshellWrapped}/bin/quickshell"
       ];
       
       layerrule = [
