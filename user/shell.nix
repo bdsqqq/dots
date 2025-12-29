@@ -186,6 +186,15 @@ no need to set enableZshIntegration, enableBashIntegration, etc. unless overridi
 
             precmd_functions+=(_async_git_prompt)
 
+            # strip logfmt tag from history recall (up arrow)
+            _strip_history_tag() {
+              zle up-line-or-history
+              BUFFER="''${BUFFER%  \# *=*}"
+            }
+            zle -N up-line-or-history-clean _strip_history_tag
+            bindkey '^[[A' up-line-or-history-clean  # up arrow
+            bindkey '^[OA' up-line-or-history-clean  # up arrow (alternate)
+
             PROMPT='%{$fg_bold[white]%}⁂ %c%{$reset_color%}$_git_prompt_info
    %{$fg[white]%}└ %{$reset_color%}'
           '';
