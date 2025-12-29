@@ -1,5 +1,5 @@
-# Parse fc -rl output and format for fzf display with logfmt metadata
-# Input format: "  757  : 1767045258:0;command  # user=x host=y dir=z"
+# Parse fc -liD output and format for fzf display with logfmt metadata
+# Input format: "  757  2024-12-29 21:15  0:00  command  # user=x host=y dir=z"
 # Output format: "2024-12-29 21:15 [context] command" with ANSI colors
 #
 # Variables passed in:
@@ -10,40 +10,32 @@
     # skip empty lines
     if ($0 == "") next
     
-    # find the semicolon that separates timestamp from command
-    rest = substr($0, index($0, ":"))
-    semi = index(rest, ";")
+    # fc -liD format: "  NUM  YYYY-MM-DD HH:MM  ELAPSED  command"
+    # $1 = line number, $2 = date, $3 = time, $4 = elapsed, rest = command
     
-    if (semi == 0) {
-        # no semicolon - old format without timestamp
-        # extract command after line number
-        match($0, /^[[:space:]]*[0-9]+[[:space:]]+/)
-        cmd = substr($0, RLENGTH + 1)
-        timestamp = 0
-        tag = ""
+    datetime = $2 " " $3
+    
+    # find where command starts (after 4th field)
+    # match: leading space + number + space + date + space + time + space + elapsed + space
+    match($0, /^[[:space:]]*[0-9]+[[:space:]]+[0-9-]+[[:space:]]+[0-9:]+[[:space:]]+[0-9:]+[[:space:]]+/)
+    if (RSTART > 0) {
+        full_cmd = substr($0, RSTART + RLENGTH)
     } else {
-        # extended history format
-        # extract timestamp (after first colon, before second colon)
-        ts_part = substr(rest, 2)  # skip leading :
-        colon2 = index(ts_part, ":")
-        if (colon2 > 0) {
-            timestamp = substr(ts_part, 1, colon2 - 1)
-        } else {
-            timestamp = 0
+        # fallback: just use everything after elapsed field
+        full_cmd = ""
+        for (i = 5; i <= NF; i++) {
+            full_cmd = full_cmd (i > 5 ? " " : "") $i
         }
-        
-        # extract command (after semicolon)
-        full_cmd = substr(rest, semi + 1)
-        
-        # split command from logfmt tag
-        tag_idx = index(full_cmd, "  # ")
-        if (tag_idx > 0) {
-            cmd = substr(full_cmd, 1, tag_idx - 1)
-            tag = substr(full_cmd, tag_idx + 4)
-        } else {
-            cmd = full_cmd
-            tag = ""
-        }
+    }
+    
+    # split command from logfmt tag
+    tag_idx = index(full_cmd, "  # ")
+    if (tag_idx > 0) {
+        cmd = substr(full_cmd, 1, tag_idx - 1)
+        tag = substr(full_cmd, tag_idx + 4)
+    } else {
+        cmd = full_cmd
+        tag = ""
     }
     
     # parse logfmt fields
@@ -62,13 +54,6 @@
             else if (key == "agent") agent = val
             else if (key == "thread") thread = val
         }
-    }
-    
-    # format timestamp
-    if (timestamp > 0) {
-        datetime = strftime("%Y-%m-%d %H:%M", timestamp)
-    } else {
-        datetime = "????-??-?? ??:??"
     }
     
     # build context display - only show if different from current
