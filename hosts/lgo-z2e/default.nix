@@ -121,16 +121,16 @@ in
       devices = {
         "mbp-m2" = {
           id = "6QPGO5Z-ZBZZVDW-MCYFBKB-MGZQO47-GITV6C5-5YGBXLT-VWHNAQ4-5XMKDAG";
-          addresses = [ "tcp://100.87.59.2:22000" "quic://100.87.59.2:22000" ];
+          addresses = [ "tcp://mbp-m2:22000" "quic://mbp-m2:22000" ];
           introducer = true;
         };
         "htz-relay" = {
           id = "HPMO7GH-P5UX4LC-OYSWWVP-XTMOUWL-QXUDAYH-ZJXXQDJ-QN677MY-QNQACQH";
-          addresses = [ "tcp://100.101.195.56:22000" "quic://100.101.195.56:22000" ];
+          addresses = [ "tcp://htz-relay:22000" "quic://htz-relay:22000" ];
         };
         "r56" = {
           id = "JOWDMTJ-LQKWV6K-5V37UTD-EKJBBHS-3FJPKWD-HRONTJC-F4NZGJN-VKJTZAQ";
-          addresses = [ "tcp://100.94.68.111:22000" "quic://100.94.68.111:22000" ];
+          addresses = [ "tcp://r56:22000" "quic://r56:22000" ];
         };
       };
 
