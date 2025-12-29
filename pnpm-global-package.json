@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@sourcegraph/amp": "0.0.1766865672-g7c70c0",
+    "@sourcegraph/amp": "0.0.1767024086-gf59cb1",
     "biome": "0.3.3",
     "bun": "1.3.5",
     "npm": "11.7.0",
