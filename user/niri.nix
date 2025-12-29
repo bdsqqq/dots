@@ -32,6 +32,7 @@ let
       -t 50 \
       -m 1500 \
       -g '1,UD,TR,*,R,${inputs.quickshell.packages.${hostSystem}.default}/bin/qs ipc call control-center toggleControlCenter' \
+      -g '1,DU,B,*,R,${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae toggle' \
       -g '3,DU,*,*,*,niri msg action focus-workspace-down' \
       -g '3,UD,*,*,*,niri msg action focus-workspace-up' \
       -g '3,LR,*,*,*,niri msg action focus-column-left' \
