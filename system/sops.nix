@@ -13,9 +13,12 @@ in
     
     defaultSopsFile = inputs.self + "/secrets.yaml";
     secrets = {
-      anthropic_api_key = { };
-      tailscale_auth_key = { };
-      axiom_token = { };
+      anthropic_api_key = { owner = "bdsqqq"; };
+      tailscale_auth_key = { owner = "bdsqqq"; };
+      axiom_token = { owner = "bdsqqq"; };
+      amp_api_key = { owner = "bdsqqq"; };
+      syncthing_gui_password = { owner = "bdsqqq"; };
+      syncthing_gui_password_hash = { owner = "bdsqqq"; };
       cookies = {
         sopsFile = inputs.self + "/cookies.txt";
         format = "binary";
