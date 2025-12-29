@@ -1,7 +1,7 @@
 { config, pkgs, ... }:
 {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
-    programs.zsh.initExtra = ''
+    programs.zsh.initContent = ''
       # sdkman (lazy-load on first use)
       if [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]]; then
         export SDKMAN_DIR="$HOME/.sdkman"

@@ -96,6 +96,7 @@ no need to set enableZshIntegration, enableBashIntegration, etc. unless overridi
       programs = {
         zsh = {
           enable = true;
+          dotDir = "${config.xdg.configHome}/zsh";
           initContent = ''
           export AMI_INSTALL="$HOME/.ami"
           export PATH="$AMI_INSTALL/bin:$PATH"

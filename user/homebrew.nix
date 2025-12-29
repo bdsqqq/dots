@@ -5,7 +5,7 @@ let
 in
 {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
-    programs.zsh.initExtra = lib.mkIf isDarwin ''
+    programs.zsh.initContent = lib.mkIf isDarwin ''
       # homebrew shellenv (darwin only)
       eval "$(${brewPrefix}/brew shellenv)"
     '';

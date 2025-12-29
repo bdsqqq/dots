@@ -185,7 +185,7 @@ in
     backupFileExtension = "backup";
     extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "graphical"; };
     sharedModules = [
-      inputs.vicinae.homeManagerModules.default
+      inputs.vicinae.homeModules.default
     ];
     users.bdsqqq = {
       home.username = "bdsqqq";

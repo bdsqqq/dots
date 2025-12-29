@@ -6,7 +6,7 @@ inputs: final: prev: {
   # Usage: pkgs.unstable.packageName for bleeding edge packages
   # Usage: pkgs.packageName for stable packages (default)
   unstable = import inputs.nixpkgs-unstable {
-    inherit (final) system;
+    inherit (final.stdenv.hostPlatform) system;
     config.allowUnfree = true;
   };
 }

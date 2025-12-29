@@ -1,7 +1,7 @@
 { config, pkgs, ... }:
 {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
-    programs.zsh.initExtra = ''
+    programs.zsh.initContent = ''
       # bun (if installed)
       if command -v bun >/dev/null 2>&1; then
         export BUN_INSTALL="$HOME/.bun"

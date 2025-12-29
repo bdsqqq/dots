@@ -133,7 +133,7 @@ if isDarwin then {
       cp ${pkgs.writeText "manifest.json" vesperManifest} $out/manifest.json
     '';
   in {
-    imports = [ inputs.spicetify-nix.homeManagerModules.default ];
+    imports = [ inputs.spicetify-nix.homeModules.default ];
 
     programs.spicetify = {
       enable = true;

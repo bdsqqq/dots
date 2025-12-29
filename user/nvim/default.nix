@@ -64,7 +64,7 @@ let
 in
 {
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
-    imports = [ inputs.nixvim.homeManagerModules.nixvim ];
+    imports = [ inputs.nixvim.homeModules.nixvim ];
     programs.nixvim = {
       enable = true;
       extraPlugins = [ ts-error-translator vim-tpipeline amp-nvim ];

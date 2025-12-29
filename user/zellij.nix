@@ -210,7 +210,7 @@ manual alias + tab renaming gives better control over sessions.
 
     home.shellAliases.zj = "zellij attach $(basename $PWD | tr . _) -c";
 
-    programs.zsh.initExtra = ''
+    programs.zsh.initContent = ''
         # zellij automatic tab renaming
         if [[ -n $ZELLIJ ]]; then
           function current_dir() {
