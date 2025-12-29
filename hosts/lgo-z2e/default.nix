@@ -185,7 +185,7 @@ in
     backupFileExtension = "backup";
     extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "graphical"; };
     sharedModules = [
-      inputs.vicinae.homeModules.default
+      inputs.vicinae.homeManagerModules.default
     ];
     users.bdsqqq = {
       home.username = "bdsqqq";
@@ -221,7 +221,8 @@ in
       
       services.vicinae = {
         enable = true;
-        autoStart = true;
+        systemd.enable = true;
+        systemd.autoStart = true;
         settings = {
           theme.name = lib.mkForce "vicinae-dark";
           window = {
