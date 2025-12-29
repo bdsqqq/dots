@@ -1,5 +1,6 @@
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Io
 import QtQuick
 
 ShellRoot {
@@ -12,6 +13,22 @@ ShellRoot {
         id: _niriState
     }
 
+    IpcHandler {
+        target: "control-center"
+
+        function toggleControlCenter(): void {
+            root.controlCenterOpen = !root.controlCenterOpen
+        }
+
+        function open(): void {
+            root.controlCenterOpen = true
+        }
+
+        function close(): void {
+            root.controlCenterOpen = false
+        }
+    }
+
     Variants {
         model: Quickshell.screens
 
@@ -21,6 +38,17 @@ ShellRoot {
             niriState: root.niriState
             controlCenterOpen: root.controlCenterOpen
             onControlCenterToggled: root.controlCenterOpen = !root.controlCenterOpen
+        }
+    }
+
+    Variants {
+        model: Quickshell.screens
+
+        ControlCenterBackdrop {
+            required property var modelData
+            screen: modelData
+            isOpen: root.controlCenterOpen
+            onClicked: root.controlCenterOpen = false
         }
     }
 

@@ -40,6 +40,9 @@ let
     "quickshell/NetworkModule.qml" = {
       source = ./quickshell/NetworkModule.qml;
     };
+    "quickshell/ControlCenterBackdrop.qml" = {
+      source = ./quickshell/ControlCenterBackdrop.qml;
+    };
   };
 
 in
