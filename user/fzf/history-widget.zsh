@@ -8,17 +8,18 @@ _fzf_history() {
     
     local current_user="${USER}"
     local current_host="${HOST}"
+    local today=$(date +%Y-%m-%d)
     
     local selected=$(fc -liD 1 | @gawk@ \
         -v cur_user="$current_user" \
         -v cur_host="$current_host" \
+        -v today="$today" \
         -f @awkScript@ \
-        | fzf --ansi --height=40% --layout=reverse --border --no-sort --tac -q "$LBUFFER")
+        | fzf --ansi --height=40% --layout=reverse --border --no-sort --tac --delimiter='\t' --with-nth=2 -q "$LBUFFER")
     
     if [[ -n "$selected" ]]; then
-        # strip ansi codes, datetime, optional [context] tag, and trailing logfmt tag
-        local cmd=$(echo "$selected" | sed -E 's/\x1b\[[0-9;]*m//g; s/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} //; s/^\[[^]]+\] //; s/  # [a-z]+=.*$//')
-        LBUFFER="$cmd"
+        # first tab-delimited field is the raw command
+        LBUFFER="${selected%%	*}"
     fi
     zle reset-prompt
 }

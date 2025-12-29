@@ -130,6 +130,9 @@ no need to set enableZshIntegration, enableBashIntegration, etc. unless overridi
               # strip existing tag if present (handles re-executed recalled commands)
               cmd="''${cmd%  # *=*}"
               
+              # skip trivial commands (return 2 = don't save, don't error)
+              [[ "$cmd" =~ ^[[:space:]]*(exit|ls|ll|l|bg|fg|history|clear|c|cd|pwd|\.\.)$ ]] && return 2
+              
               # get dir basename (like prompt %c)
               local dir="''${PWD:t}"
               # quote dir if it contains spaces or special chars

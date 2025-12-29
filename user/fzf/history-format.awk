@@ -1,10 +1,11 @@
 # Parse fc -liD output and format for fzf display with logfmt metadata
 # Input format: "  757  2024-12-29 21:15  0:00  command  # user=x host=y dir=z"
-# Output format: "2024-12-29 21:15 [context] command" with ANSI colors
+# Output format: "command [who@where] HH:MM" with ANSI colors
 #
 # Variables passed in:
 #   cur_user - current username
 #   cur_host - current hostname
+#   today    - today's date as YYYY-MM-DD
 
 {
     # skip empty lines
@@ -13,7 +14,8 @@
     # fc -liD format: "  NUM  YYYY-MM-DD HH:MM  ELAPSED  command"
     # $1 = line number, $2 = date, $3 = time, $4 = elapsed, rest = command
     
-    datetime = $2 " " $3
+    date = $2
+    time = $3
     
     # find where command starts (after 4th field)
     # match: leading space + number + space + date + space + time + space + elapsed + space
@@ -56,24 +58,32 @@
         }
     }
     
-    # build context display - only show if different from current
-    ctx = ""
+    # build context: who (agent or host if different)
+    who = ""
     if (agent != "") {
         # truncate long thread IDs: first4...last4
         if (length(thread) > 8) {
             thread = substr(thread, 1, 4) "..." substr(thread, length(thread) - 3)
         }
-        ctx = agent ":" thread
+        who = agent ":" thread
     }
     if (host != "" && host != cur_host) {
-        if (ctx != "") ctx = ctx "@" host
-        else ctx = host
+        if (who != "") who = who "@" host
+        else who = host
     }
     
-    # output with colors (gray datetime, yellow context)
-    if (ctx != "") {
-        printf "\033[90m%s\033[0m \033[33m[%s]\033[0m %s\n", datetime, ctx, cmd
+    # build when: only show time if today, else date+time
+    if (date == today) {
+        when = time
     } else {
-        printf "\033[90m%s\033[0m %s\n", datetime, cmd
+        when = date " " time
+    }
+    
+    # output: raw_cmd \t formatted_display
+    # fzf uses --with-nth=2 to show only formatted, we extract field 1 after selection
+    if (who != "") {
+        printf "%s\t%s \033[90m[%s] %s\033[0m\n", cmd, cmd, who, when
+    } else {
+        printf "%s\t%s \033[90m%s\033[0m\n", cmd, cmd, when
     }
 }
