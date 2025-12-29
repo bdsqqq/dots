@@ -97,6 +97,16 @@ no need to set enableZshIntegration, enableBashIntegration, etc. unless overridi
         zsh = {
           enable = true;
           dotDir = "${config.xdg.configHome}/zsh";
+          history = {
+            path = "${config.home.homeDirectory}/commonplace/01_files/.zsh_history";
+            size = 100000;
+            save = 100000;
+            extended = true;
+            share = true;
+            ignoreDups = true;
+            ignoreAllDups = true;
+            ignoreSpace = true;
+          };
           initContent = ''
           export AMI_INSTALL="$HOME/.ami"
           export PATH="$AMI_INSTALL/bin:$PATH"
