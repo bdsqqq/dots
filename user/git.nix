@@ -3,12 +3,15 @@
   home-manager.users.bdsqqq = { pkgs, ... }: {
     programs.git = {
       enable = true;
-      userName = "Igor Bedesqui";
-      userEmail = "igorbedesqui@gmail.com";
       
       lfs.enable = true;
       
-      extraConfig = {
+      settings = {
+        user = {
+          name = "Igor Bedesqui";
+          email = "igorbedesqui@gmail.com";
+        };
+        
         init.defaultBranch = "main";
         
         pull.rebase = true;
