@@ -206,7 +206,7 @@
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
                   (import ./overlays/hyprland-plugins.nix inputs)
-                  # niri overlay removed - using pkgs.niri from nixpkgs for cache hits
+                  (import ./overlays/quickshell.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
                 
@@ -267,6 +267,7 @@
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
+                  (import ./overlays/quickshell.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
                 
