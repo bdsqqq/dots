@@ -9,15 +9,15 @@ _fzf_history() {
     local current_user="${USER}"
     local current_host="${HOST}"
     
-    local selected=$(fc -rl 1 | @gawk@ \
+    local selected=$(fc -liD 1 | @gawk@ \
         -v cur_user="$current_user" \
         -v cur_host="$current_host" \
         -f @awkScript@ \
         | fzf --ansi --height=40% --layout=reverse --border --no-sort --tac)
     
     if [[ -n "$selected" ]]; then
-        # strip ansi codes, datetime, and optional tag to get clean command
-        local cmd=$(echo "$selected" | sed -E 's/\x1b\[[0-9;]*m//g; s/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} //; s/^\[[^]]+\] //')
+        # strip ansi codes, datetime, optional [context] tag, and trailing logfmt tag
+        local cmd=$(echo "$selected" | sed -E 's/\x1b\[[0-9;]*m//g; s/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} //; s/^\[[^]]+\] //; s/  # [a-z]+=.*$//')
         LBUFFER="$cmd"
     fi
     zle reset-prompt
