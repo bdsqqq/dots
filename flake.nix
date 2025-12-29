@@ -125,7 +125,6 @@
         # Darwin configurations
         darwinConfigurations = {
           "mbp-m2" = inputs.nix-darwin.lib.darwinSystem {
-            system = "aarch64-darwin";
             # Enhanced specialArgs: pass all inputs, system info, and utilities
             specialArgs = {
               inherit inputs;
@@ -146,6 +145,7 @@
               # Apply overlays to the main system packages
               {
                 nixpkgs = {
+                  hostPlatform = "aarch64-darwin";
                   config.allowUnfree = true;
                   overlays = [ (import ./overlays/unstable.nix inputs) ];
                 };
@@ -192,7 +192,6 @@
         # NixOS configurations
         nixosConfigurations = {
           "r56" = inputs.nixpkgs.lib.nixosSystem {
-            system = "x86_64-linux";
             specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "graphical"; };
             modules = [
               inputs.sops-nix.nixosModules.sops
@@ -202,6 +201,7 @@
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.niri.nixosModules.niri
               ({ pkgs, ... }: {
+                nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
                   (import ./overlays/hyprland-plugins.nix inputs)
@@ -220,7 +220,6 @@
           };
 
           "htz-relay" = inputs.nixpkgs.lib.nixosSystem {
-            system = "x86_64-linux";
             specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "headless"; };
             modules = [
               inputs.sops-nix.nixosModules.sops
@@ -230,6 +229,7 @@
               inputs.home-manager.nixosModules.home-manager
               inputs.copyparty.nixosModules.default
               ({ pkgs, ... }: {
+                nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [ 
                   inputs.copyparty.overlays.default 
                   (import ./overlays/unstable.nix inputs)
@@ -247,7 +247,6 @@
           };
 
           "lgo-z2e" = inputs.nixpkgs.lib.nixosSystem {
-            system = "x86_64-linux";
             specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "graphical"; };
             modules = [
               inputs.sops-nix.nixosModules.sops
@@ -258,6 +257,7 @@
               inputs.niri.nixosModules.niri
               inputs.jovian-nixos.nixosModules.default
               ({ pkgs, ... }: {
+                nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
                 ];
@@ -274,9 +274,9 @@
           };
 
           "lgo-z2e-installer" = inputs.nixpkgs.lib.nixosSystem {
-            system = "x86_64-linux";
             specialArgs = { inherit inputs; };
             modules = [
+              { nixpkgs.hostPlatform = "x86_64-linux"; }
               ./iso/lgo-z2e-installer.nix
             ];
           };

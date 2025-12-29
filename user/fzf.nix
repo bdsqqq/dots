@@ -11,7 +11,7 @@
       ];
     };
 
-    programs.zsh.initExtra = ''
+    programs.zsh.initContent = ''
       # custom fzf file widget (ctrl+f)
       _fzf_files() {
         local selected=$(rg --files --hidden --follow | fzf --height=40% --layout=reverse --border)

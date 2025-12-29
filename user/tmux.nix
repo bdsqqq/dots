@@ -147,7 +147,7 @@ in
     
     home.packages = [ randomNameScript ];
 
-    programs.zsh.initExtra = ''
+    programs.zsh.initContent = ''
       # tmux automatic window renaming
       if [[ -n $TMUX ]]; then
         typeset -g TMUX_PANE_CUSTOM_NAME=""
