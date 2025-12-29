@@ -6,6 +6,7 @@ in
   imports =
     [
       ../user/nvim
+      ../user/git.nix
       ../user/pnpm.nix
       ../user/dev-tools.nix
       ../user/zellij.nix
