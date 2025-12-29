@@ -1,4 +1,4 @@
-{ pkgs, lib, config, hostSystem ? null, ... }:
+{ pkgs, lib, config, inputs, hostSystem ? null, ... }:
 
 let
   toggleTheme = pkgs.writeShellScriptBin "toggle-theme" ''
@@ -27,9 +27,11 @@ let
     export NIRI_SOCKET="$NIRI_SOCK"
     
     # 3-finger swipes anywhere on screen (natural scrolling style)
+    # 1-finger top-right edge swipe down for control center
     exec ${pkgs.lisgd}/bin/lisgd -d "$TOUCH_DEV" \
       -t 50 \
       -m 1500 \
+      -g '1,UD,TR,*,R,${inputs.quickshell.packages.${hostSystem}.default}/bin/qs ipc call control-center toggleControlCenter' \
       -g '3,DU,*,*,*,niri msg action focus-workspace-down' \
       -g '3,UD,*,*,*,niri msg action focus-workspace-up' \
       -g '3,LR,*,*,*,niri msg action focus-column-left' \
