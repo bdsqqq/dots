@@ -13,7 +13,7 @@ _fzf_history() {
         -v cur_user="$current_user" \
         -v cur_host="$current_host" \
         -f @awkScript@ \
-        | fzf --ansi --height=40% --layout=reverse --border --no-sort --tac)
+        | fzf --ansi --height=40% --layout=reverse --border --no-sort --tac -q "$LBUFFER")
     
     if [[ -n "$selected" ]]; then
         # strip ansi codes, datetime, optional [context] tag, and trailing logfmt tag
