@@ -14,11 +14,6 @@ in
     };
     home.packages = with pkgs; [
       coreutils
-      git
-      lazygit
-      delta
-      gh
-      git-filter-repo
       exiftool
       sops
       age
@@ -62,16 +57,13 @@ in
     ] ++ lib.optionals isDarwin [
     istat-menus
 ] ++ lib.optionals (!isDarwin) [
-    nvtopPackages.full  # supports nvidia + amd + intel
-    radeontop           # detailed amd gpu stats
+    nvtopPackages.full
+    radeontop
 ];
 
     home.shellAliases = {
-      g = "lazygit";
       b = "btop";
       f = "fastfetch";
     };
   };
 }
-
-
