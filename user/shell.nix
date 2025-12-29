@@ -100,6 +100,7 @@ no need to set enableZshIntegration, enableBashIntegration, etc. unless overridi
           initContent = ''
           export AMI_INSTALL="$HOME/.ami"
           export PATH="$AMI_INSTALL/bin:$PATH"
+          export GH_TOKEN="$(cat /run/secrets/gh_token 2>/dev/null || echo "$GH_TOKEN")"
 
           autoload -Uz compinit
             () {
