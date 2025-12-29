@@ -44,10 +44,10 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     settings = {
       # Startup applications - same as hyprland
       spawn-at-startup = [
-        { argv = [ "swaybg" "-i" "/etc/wallpaper.jpg" "-m" "fill" ]; }
-        { argv = [ "quickshell" ]; }
-        { argv = [ "vicinae" "server" ]; }
-        { argv = [ "xwayland-satellite" ":0" ]; }
+        { argv = [ "${pkgs.swaybg}/bin/swaybg" "-i" "/etc/wallpaper.jpg" "-m" "fill" ]; }
+        { argv = [ "${inputs.quickshell.packages.${hostSystem}.default}/bin/quickshell" ]; }
+        { argv = [ "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae" "server" ]; }
+        { argv = [ "${pkgs.xwayland-satellite}/bin/xwayland-satellite" ":0" ]; }
         # lisgd-niri runs as systemd user service to properly inherit input group
       ];
 
@@ -164,8 +164,8 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       binds = with config.lib.niri.actions; {
         # Core actions
         "Mod+Q".action = close-window;
-        "Mod+Return".action = spawn "ghostty";
-        "Mod+Space".action = spawn "vicinae" "toggle";
+        "Mod+Return".action = spawn "${pkgs.ghostty}/bin/ghostty";
+        "Mod+Space".action = spawn "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae" "toggle";
         "Mod+T".action = spawn "${toggleTheme}/bin/toggle-theme";
         
         # Window state
