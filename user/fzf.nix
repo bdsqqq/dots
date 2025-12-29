@@ -25,7 +25,7 @@
       _fzf_history() {
         local current_user="''${USER}"
         local current_host="''${HOST}"
-        local selected=$(fc -rl 1 | awk -v cur_user="$current_user" -v cur_host="$current_host" '
+        local selected=$(fc -rl 1 | ${pkgs.gawk}/bin/gawk -v cur_user="$current_user" -v cur_host="$current_host" '
           {
             # format: "  123  : timestamp:elapsed;command  # user=x host=y dir=z [agent=a thread=t]"
             
