@@ -38,10 +38,12 @@
         enable = true;
         overrideFolders = true;
         overrideDevices = true;
+        # use guiAddress (not settings.gui.address) - home-manager's init script
+        # PATCHes guiAddress after PUTting settings.gui, so settings.gui.address gets overwritten
+        guiAddress = "0.0.0.0:8384";
         
         settings = {
           gui = {
-            address = "0.0.0.0:8384";
             user = "bdsqqq";
             password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
           };
