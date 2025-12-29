@@ -7,11 +7,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1764970678,
-        "narHash": "sha256-UdY/1dUzElCdbjbahq/PxEtDAfkPREs2i+Kq/HR2x+U=",
+        "lastModified": 1767032562,
+        "narHash": "sha256-0ArMcl3/2TEwoEYL5IWTY7qna4RysGG+EJOed7P8cOw=",
         "owner": "bdsqqq",
         "repo": "axiom-deploy-annotation",
-        "rev": "a92d07728b89228c43e686759ee8506b9a33ca4e",
+        "rev": "0239474fd4ad0655a24adee679115e3513b4de6c",
         "type": "github"
       },
       "original": {

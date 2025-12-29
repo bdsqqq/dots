@@ -143,7 +143,7 @@
               inputs.sops-nix.darwinModules.sops
               inputs.axiom-deploy-annotation.darwinModules.default
               # Apply overlays to the main system packages
-              {
+              ({ config, ... }: {
                 nixpkgs = {
                   hostPlatform = "aarch64-darwin";
                   config.allowUnfree = true;
@@ -157,8 +157,9 @@
                   enable = true;
                   datasets = [ "papertrail" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
+                  tokenPath = config.sops.secrets.axiom_token.path;
                 };
-              }
+              })
               
               # Host-specific configuration
               ./hosts/mbp-m2/default.nix
@@ -200,7 +201,7 @@
               inputs.home-manager.nixosModules.home-manager
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.niri.nixosModules.niri
-              ({ pkgs, ... }: {
+              ({ pkgs, config, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
@@ -213,6 +214,9 @@
                   enable = true;
                   datasets = [ "papertrail" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
+                  tokenPath = config.sops.secrets.axiom_token.path;
+                  user = "bdsqqq";
+                  group = "users";
                 };
               })
               ./hosts/r56/default.nix
@@ -228,7 +232,7 @@
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.home-manager.nixosModules.home-manager
               inputs.copyparty.nixosModules.default
-              ({ pkgs, ... }: {
+              ({ pkgs, config, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [ 
                   inputs.copyparty.overlays.default 
@@ -240,6 +244,9 @@
                   enable = true;
                   datasets = [ "papertrail" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
+                  tokenPath = config.sops.secrets.axiom_token.path;
+                  user = "bdsqqq";
+                  group = "users";
                 };
               })
               ./hosts/htz-relay/default.nix
@@ -256,7 +263,7 @@
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.niri.nixosModules.niri
               inputs.jovian-nixos.nixosModules.default
-              ({ pkgs, ... }: {
+              ({ pkgs, config, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
@@ -267,6 +274,9 @@
                   enable = true;
                   datasets = [ "papertrail" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
+                  tokenPath = config.sops.secrets.axiom_token.path;
+                  user = "bdsqqq";
+                  group = "users";
                 };
               })
               ./hosts/lgo-z2e/default.nix
