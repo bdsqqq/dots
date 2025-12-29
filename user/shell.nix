@@ -124,6 +124,32 @@ no need to set enableZshIntegration, enableBashIntegration, etc. unless overridi
             # show hidden files in globbing
             setopt GLOB_DOTS
 
+            # record metadata in history using logfmt format
+            zshaddhistory() {
+              local cmd="''${1%%$'\n'}"
+              # strip existing tag if present (handles re-executed recalled commands)
+              cmd="''${cmd%  # *=*}"
+              
+              # get dir basename (like prompt %c)
+              local dir="''${PWD:t}"
+              # quote dir if it contains spaces or special chars
+              if [[ "$dir" =~ [[:space:]=\"\'] ]]; then
+                dir="\"''${dir//\"/\\\"}\""
+              fi
+              
+              local tag="user=''${USER} host=''${HOST} dir=''${dir}"
+              
+              # add agent info if running in agent context
+              if [[ -n "$AGENT" && -n "$AGENT_THREAD_ID" ]]; then
+                local short_thread="''${AGENT_THREAD_ID##*-}"
+                short_thread="''${short_thread:0:8}"
+                tag="user=''${USER} agent=''${AGENT} thread=''${short_thread} host=''${HOST} dir=''${dir}"
+              fi
+              
+              print -sr -- "''${cmd}  # ''${tag}"
+              return 1  # prevent default history add
+            }
+
             # prompt (minimal with async git)
             autoload -U colors && colors
             setopt PROMPT_SUBST
