@@ -1,4 +1,4 @@
-{ pkgs, lib, hostSystem ? null, ... }:
+{ pkgs, lib, inputs, hostSystem ? null, ... }:
 
 let
   toggleTheme = pkgs.writeShellScriptBin "toggle-theme" ''
@@ -43,10 +43,10 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       };
       
       exec-once = [
-        "swaybg -i /etc/wallpaper.jpg -m fill"
+        "${pkgs.swaybg}/bin/swaybg -i /etc/wallpaper.jpg -m fill"
         "hyprctl setcursor macOS 24"
-        "vicinae server"
-        "quickshell"
+        "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae server"
+        "${inputs.quickshell.packages.${hostSystem}.default}/bin/quickshell"
       ];
       
       layerrule = [
@@ -104,8 +104,8 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
 
       bind = [
         "$mod, Q, killactive"
-        "$mod, Return, exec, ghostty"
-        "$mod, Space, exec, vicinae toggle"
+        "$mod, Return, exec, ${pkgs.ghostty}/bin/ghostty"
+        "$mod, Space, exec, ${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae toggle"
         "$mod, T, exec, ${toggleTheme}/bin/toggle-theme"
         
         "$mod, V, togglefloating"
