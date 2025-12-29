@@ -230,6 +230,9 @@ in
             opacity = lib.mkForce 0.95;
             rounding = 0;
           };
+          # on_demand allows compositor to route clicks outside vicinae,
+          # enabling focus-loss detection for click-outside-to-close
+          launcher_window.layer_shell.keyboard_interactivity = "on_demand";
         };
       };
     };
