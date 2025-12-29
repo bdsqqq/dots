@@ -87,8 +87,8 @@ in {
         "mbp-m2" = {
           id = "6QPGO5Z-ZBZZVDW-MCYFBKB-MGZQO47-GITV6C5-5YGBXLT-VWHNAQ4-5XMKDAG";
           addresses = [
-            "tcp://100.87.59.2:22000"
-            "quic://100.87.59.2:22000"
+            "tcp://mbp-m2:22000"
+            "quic://mbp-m2:22000"
           ];
           introducer = true;
         };
@@ -96,24 +96,24 @@ in {
         ipd = {
           id = "YORN2Q5-DWT444V-65WLF77-JHDHP5X-HHZEEFO-NKTLTYZ-M777AXS-X2KX6AF";
           addresses = [
-            "tcp://100.70.110.116:22000"
-            "quic://100.70.110.116:22000"
+            "tcp://ipd:22000"
+            "quic://ipd:22000"
           ];
         };
 
         iph16 = {
           id = "L2PJ4F3-BZUZ4RX-3BCPIYB-V544M22-P3WDZBF-ZEVYT5A-GPTX5ZF-ZM5KTQK";
           addresses = [
-            "tcp://100.123.116.27:22000"
-            "quic://100.123.116.27:22000"
+            "tcp://iph16:22000"
+            "quic://iph16:22000"
           ];
         };
         
         r56 = {
           id = "JOWDMTJ-LQKWV6K-5V37UTD-EKJBBHS-3FJPKWD-HRONTJC-F4NZGJN-VKJTZAQ";
           addresses = [
-            "tcp://100.94.68.111:22000"
-            "quic://100.94.68.111:22000"
+            "tcp://r56:22000"
+            "quic://r56:22000"
           ];
         };
       };
