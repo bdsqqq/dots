@@ -9,5 +9,9 @@ in
       # homebrew shellenv (darwin only)
       eval "$(${brewPrefix}/brew shellenv)"
     '';
+    programs.bash.initExtra = lib.mkIf isDarwin ''
+      # homebrew shellenv (darwin only)
+      eval "$(${brewPrefix}/brew shellenv)"
+    '';
   };
 }
