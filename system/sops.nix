@@ -17,7 +17,7 @@ in
       tailscale_auth_key = { owner = "bdsqqq"; };
       axiom_token = { owner = "bdsqqq"; };
       gh_token = { owner = "bdsqqq"; };
-      amp_api_key = { owner = "bdsqqq"; };
+      AMP_API_KEY = { owner = "bdsqqq"; };
       syncthing_gui_password = { owner = "bdsqqq"; };
       syncthing_gui_password_hash = { owner = "bdsqqq"; };
       cookies = {
