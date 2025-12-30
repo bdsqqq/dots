@@ -248,6 +248,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       ExecStart = "${lisgd-niri}/bin/lisgd-niri";
       Restart = "on-failure";
       RestartSec = 2;
+      SupplementaryGroups = [ "input" ];
     };
     Install = {
       WantedBy = [ "graphical-session.target" ];
