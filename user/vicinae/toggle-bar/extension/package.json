@@ -1,0 +1,44 @@
+{
+	"$schema": "https://raw.githubusercontent.com/vicinaehq/vicinae/refs/heads/main/extra/schemas/extension.json",
+	"name": "toggle-bar",
+	"title": "Toggle Bar",
+	"description": "Control quickshell bar visibility",
+	"categories": ["System"],
+	"license": "MIT",
+	"author": "bdsqqq",
+	"contributors": [],
+	"pastContributors": [],
+	"icon": "icon.png",
+	"commands": [
+		{
+			"name": "toggle-bar",
+			"title": "Toggle Bar Visibility",
+			"description": "Toggle the quickshell bar on/off",
+			"mode": "no-view"
+		},
+		{
+			"name": "show-bar",
+			"title": "Show Bar",
+			"description": "Show the quickshell bar",
+			"mode": "no-view"
+		},
+		{
+			"name": "hide-bar",
+			"title": "Hide Bar",
+			"description": "Hide the quickshell bar",
+			"mode": "no-view"
+		}
+	],
+	"preferences": [],
+	"scripts": {
+		"build": "vici build",
+		"dev": "vici develop",
+		"lint": "vici lint"
+	},
+	"dependencies": {
+		"@vicinae/api": "^0.16.1"
+	},
+	"devDependencies": {
+		"typescript": "^5.9.2"
+	}
+}

@@ -33,10 +33,12 @@ let
     
     # 3-finger swipes anywhere on screen (natural scrolling style)
     # 1-finger top-right edge swipe down for control center
+    # 1-finger top edge swipe down for bar toggle
     exec ${pkgs.lisgd}/bin/lisgd -d "$TOUCH_DEV" \
       -t 50 \
       -m 1500 \
       -g '1,UD,TR,*,R,${inputs.quickshell.packages.${hostSystem}.default}/bin/qs ipc call control-center toggleControlCenter' \
+      -g '1,UD,T,*,R,${inputs.quickshell.packages.${hostSystem}.default}/bin/qs ipc call bar toggle' \
       -g '1,DU,B,*,R,${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae toggle' \
       -g '3,DU,*,*,*,niri msg action focus-workspace-down' \
       -g '3,UD,*,*,*,niri msg action focus-workspace-up' \
@@ -172,6 +174,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "Mod+Return".action = spawn "${pkgs.ghostty}/bin/ghostty";
         "Mod+Space".action = spawn "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae" "toggle";
         "Mod+T".action = spawn "${toggleTheme}/bin/toggle-theme";
+        "Mod+Period".action = spawn "${inputs.quickshell.packages.${hostSystem}.default}/bin/qs" "ipc" "call" "bar" "toggle";
         
         # Window state
         "Mod+V".action = toggle-window-floating;

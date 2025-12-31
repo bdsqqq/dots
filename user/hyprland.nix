@@ -107,6 +107,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "$mod, Return, exec, ${pkgs.ghostty}/bin/ghostty"
         "$mod, Space, exec, ${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae toggle"
         "$mod, T, exec, ${toggleTheme}/bin/toggle-theme"
+        "$mod, Period, exec, ${inputs.quickshell.packages.${hostSystem}.default}/bin/qs ipc call bar toggle"
         
         "$mod, V, togglefloating"
         "$mod, F, fullscreen"
