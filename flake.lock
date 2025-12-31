@@ -824,16 +824,16 @@
         "systems": "systems_4"
       },
       "locked": {
-        "lastModified": 1767048093,
-        "narHash": "sha256-BW64iOpQtPnyScoGNj0a+x1RkIkuAT6T+ap0II7ktrs=",
+        "lastModified": 1767188793,
+        "narHash": "sha256-0lfN0qkbm8DOKePieCZsrbXLR1Xrekau8KcfGSjVc1E=",
         "owner": "bdsqqq",
         "repo": "vicinae",
-        "rev": "370a41fae347cb1337a154a16f7a3558642d0e80",
+        "rev": "f1afea89c35983880278c05384606a34ab1c8b40",
         "type": "github"
       },
       "original": {
         "owner": "bdsqqq",
-        "ref": "fix/wayland-focus-loss",
+        "ref": "f1afea89",
         "repo": "vicinae",
         "type": "github"
       }
