@@ -65,6 +65,12 @@
       url = "github:Jovian-Experiments/Jovian-NixOS";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Cursor - auto-updating from apt repo
+    cursor = {
+      url = "github:bdsqqq/cursor-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
