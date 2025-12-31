@@ -49,6 +49,9 @@ if !isLinux then {} else {
     home.packages = [ pkgs.quickshellWrapped ];
     xdg.configFile = quickshellConfig;
     
+    # enable sd-switch so home-manager restarts services on config change
+    systemd.user.startServices = "sd-switch";
+    
     # systemd user service for quickshell - restarts on QML config change
     systemd.user.services.quickshell = {
       Unit = {
