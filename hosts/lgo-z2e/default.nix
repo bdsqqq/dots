@@ -193,6 +193,9 @@ in
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
       
+      # enable service restart on activation (required for quickshell/lisgd-niri auto-reload)
+      systemd.user.startServices = "sd-switch";
+      
       stylix.targets.ghostty.enable = false;
       
       fonts.fontconfig = {
