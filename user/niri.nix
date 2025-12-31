@@ -15,11 +15,16 @@ let
   # touchscreen gesture daemon for niri (niri lacks native touchscreen swipe gestures)
   # uses lisgd to translate edge swipes to niri actions
   lisgd-niri = pkgs.writeShellScriptBin "lisgd-niri" ''
-    # find the touchscreen device dynamically
-    TOUCH_DEV=$(grep -l "GXTP6933" /sys/class/input/event*/device/name 2>/dev/null | head -1 | sed 's|.*event|/dev/input/event|' | sed 's|/device/name||')
+    # find touchscreen via udev ID_INPUT_TOUCHSCREEN property
+    for dev in /dev/input/event*; do
+      if ${pkgs.udev}/bin/udevadm info "$dev" 2>/dev/null | grep -q "ID_INPUT_TOUCHSCREEN=1"; then
+        TOUCH_DEV="$dev"
+        break
+      fi
+    done
     if [ -z "$TOUCH_DEV" ]; then
-      # fallback to common touchscreen event
-      TOUCH_DEV="/dev/input/event12"
+      echo "lisgd-niri: no touchscreen device found" >&2
+      exit 1
     fi
     
     # find niri socket
