@@ -45,8 +45,28 @@ let
 
 in
 if !isLinux then {} else {
-  home-manager.users.bdsqqq = { ... }: {
+  home-manager.users.bdsqqq = { config, ... }: {
     home.packages = [ pkgs.quickshellWrapped ];
     xdg.configFile = quickshellConfig;
+    
+    # systemd user service for quickshell - restarts on QML config change
+    systemd.user.services.quickshell = {
+      Unit = {
+        Description = "Quickshell status bar and shell components";
+        After = [ "graphical-session.target" ];
+        PartOf = [ "graphical-session.target" ];
+        # restart when any QML file changes (convert paths to strings)
+        X-Restart-Triggers = lib.attrValues (lib.mapAttrs (name: value: "${config.xdg.configFile.${name}.source}") quickshellConfig);
+      };
+      Service = {
+        Type = "simple";
+        ExecStart = "${pkgs.quickshellWrapped}/bin/quickshell";
+        Restart = "on-failure";
+        RestartSec = 2;
+      };
+      Install = {
+        WantedBy = [ "graphical-session.target" ];
+      };
+    };
   };
 }

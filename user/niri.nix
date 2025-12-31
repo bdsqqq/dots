@@ -46,10 +46,9 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       # Startup applications - same as hyprland
       spawn-at-startup = [
         { argv = [ "${pkgs.swaybg}/bin/swaybg" "-i" "/etc/wallpaper.jpg" "-m" "fill" ]; }
-        { argv = [ "${pkgs.quickshellWrapped}/bin/quickshell" ]; }
+        # quickshell and lisgd-niri run as systemd user services for auto-restart on config change
         { argv = [ "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae" "server" ]; }
         { argv = [ "${pkgs.xwayland-satellite}/bin/xwayland-satellite" ":0" ]; }
-        # lisgd-niri runs as systemd user service to properly inherit input group
       ];
 
       # Environment variables
