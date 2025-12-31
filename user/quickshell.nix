@@ -38,6 +38,9 @@ let
     "quickshell/NetworkModule.qml" = {
       source = ./quickshell/NetworkModule.qml;
     };
+    "quickshell/BatteryModule.qml" = {
+      source = ./quickshell/BatteryModule.qml;
+    };
     "quickshell/ControlCenterBackdrop.qml" = {
       source = ./quickshell/ControlCenterBackdrop.qml;
     };

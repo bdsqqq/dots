@@ -208,6 +208,15 @@ PanelWindow {
             BluetoothModule {
                 Layout.fillWidth: true
             }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: "#1f2937"
+            }
+
+            BatteryModule {
+                Layout.fillWidth: true
             }
         }
     }

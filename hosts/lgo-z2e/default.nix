@@ -55,6 +55,10 @@ in
     };
   };
 
+  # acpi_call for TDP control via hhd/adjustor
+  boot.extraModulePackages = [ config.boot.kernelPackages.acpi_call ];
+  boot.kernelModules = [ "acpi_call" ];
+
   imports = [
     ./hardware.nix
     ../../bundles/base.nix
