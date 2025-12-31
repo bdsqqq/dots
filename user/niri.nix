@@ -236,6 +236,29 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "XF86AudioLowerVolume".action = spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%-";
         "XF86AudioMute".action = spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SINK@" "toggle";
         
+        # Monitor focus (for multi-monitor setups)
+        "Mod+Ctrl+Left".action = focus-monitor-left;
+        "Mod+Ctrl+Right".action = focus-monitor-right;
+        "Mod+Ctrl+Up".action = focus-monitor-up;
+        "Mod+Ctrl+Down".action = focus-monitor-down;
+        "Mod+Ctrl+H".action = focus-monitor-left;
+        "Mod+Ctrl+L".action = focus-monitor-right;
+        "Mod+Ctrl+K".action = focus-monitor-up;
+        "Mod+Ctrl+J".action = focus-monitor-down;
+        
+        # Move window to monitor
+        "Mod+Shift+Ctrl+Left".action = move-column-to-monitor-left;
+        "Mod+Shift+Ctrl+Right".action = move-column-to-monitor-right;
+        "Mod+Shift+Ctrl+Up".action = move-column-to-monitor-up;
+        "Mod+Shift+Ctrl+Down".action = move-column-to-monitor-down;
+        "Mod+Shift+Ctrl+H".action = move-column-to-monitor-left;
+        "Mod+Shift+Ctrl+L".action = move-column-to-monitor-right;
+        "Mod+Shift+Ctrl+K".action = move-column-to-monitor-up;
+        "Mod+Shift+Ctrl+J".action = move-column-to-monitor-down;
+        
+        # Help overlay
+        "Mod+Shift+Slash".action = show-hotkey-overlay;
+        
         # Mouse bindings
         "Mod+WheelScrollDown" = { cooldown-ms = 150; action = focus-workspace-down; };
         "Mod+WheelScrollUp" = { cooldown-ms = 150; action = focus-workspace-up; };
