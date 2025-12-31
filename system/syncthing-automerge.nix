@@ -76,6 +76,7 @@ if isDarwin then {
     description = "Syncthing auto-merge conflicts service";
     after = [ "syncthing.service" ];
     wantedBy = [ "default.target" ];
+    restartTriggers = [ ../scripts/syncthing-automerge.py ];
     serviceConfig = {
       ExecStart = "${pkgs.uv}/bin/uv run --script /etc/syncthing-automerge/syncthing-automerge.py";
       WorkingDirectory = "/home/bdsqqq/commonplace";
