@@ -8,6 +8,7 @@ ShellRoot {
 
     property alias niriState: _niriState
     property bool controlCenterOpen: false
+    property bool barVisible: false
 
     NiriState {
         id: _niriState
@@ -29,6 +30,22 @@ ShellRoot {
         }
     }
 
+    IpcHandler {
+        target: "bar"
+
+        function toggle(): void {
+            root.barVisible = !root.barVisible
+        }
+
+        function show(): void {
+            root.barVisible = true
+        }
+
+        function hide(): void {
+            root.barVisible = false
+        }
+    }
+
     Variants {
         model: Quickshell.screens
 
@@ -37,6 +54,7 @@ ShellRoot {
             screen: modelData
             niriState: root.niriState
             controlCenterOpen: root.controlCenterOpen
+            barVisible: root.barVisible
             onControlCenterToggled: root.controlCenterOpen = !root.controlCenterOpen
         }
     }

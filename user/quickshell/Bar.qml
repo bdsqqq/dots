@@ -13,6 +13,7 @@ PanelWindow {
     property var niriState: null
     property bool isFullscreen: niriState ? niriState.isFullscreen : false
     property bool controlCenterOpen: false
+    property bool barVisible: false
     signal controlCenterToggled()
 
     anchors {
@@ -21,14 +22,14 @@ PanelWindow {
         right: true
     }
 
-    implicitHeight: isFullscreen ? 0 : barHeight
-    visible: !isFullscreen
+    implicitHeight: barVisible && !isFullscreen ? barHeight : 0
+    visible: barVisible && !isFullscreen
     color: "#000000"
 
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "quickshell-bar"
 
-    exclusiveZone: isFullscreen ? 0 : barHeight
+    exclusiveZone: barVisible && !isFullscreen ? barHeight : 0
 
     Component.onCompleted: {
         if (niriState) niriState.setScreenSize(screen.width, screen.height)
