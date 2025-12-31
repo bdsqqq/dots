@@ -256,6 +256,18 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "Mod+Shift+Ctrl+K".action = move-column-to-monitor-up;
         "Mod+Shift+Ctrl+J".action = move-column-to-monitor-down;
         
+        # Workspace reordering (Hyper = Mod+Ctrl+Alt+Shift)
+        "Mod+Ctrl+Alt+Shift+Up".action = move-workspace-up;
+        "Mod+Ctrl+Alt+Shift+Down".action = move-workspace-down;
+        "Mod+Ctrl+Alt+Shift+K".action = move-workspace-up;
+        "Mod+Ctrl+Alt+Shift+J".action = move-workspace-down;
+        
+        # Move workspace to monitor (Hyper + h/l)
+        "Mod+Ctrl+Alt+Shift+Left".action = move-workspace-to-monitor-left;
+        "Mod+Ctrl+Alt+Shift+Right".action = move-workspace-to-monitor-right;
+        "Mod+Ctrl+Alt+Shift+H".action = move-workspace-to-monitor-left;
+        "Mod+Ctrl+Alt+Shift+L".action = move-workspace-to-monitor-right;
+        
         # Help overlay
         "Mod+Shift+Slash".action = show-hotkey-overlay;
         
