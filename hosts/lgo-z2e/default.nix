@@ -59,6 +59,11 @@ in
   boot.extraModulePackages = [ config.boot.kernelPackages.acpi_call ];
   boot.kernelModules = [ "acpi_call" ];
 
+  # allow user to control amdgpu power profile without root
+  services.udev.extraRules = ''
+    ACTION=="add", SUBSYSTEM=="drm", KERNEL=="card*", RUN+="${pkgs.coreutils}/bin/chmod a+w /sys%p/device/power_dpm_force_performance_level"
+  '';
+
   imports = [
     ./hardware.nix
     ../../bundles/base.nix

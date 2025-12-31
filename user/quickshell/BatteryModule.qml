@@ -58,7 +58,7 @@ Item {
     Process {
         id: profileSetter
         property string targetProfile: "auto"
-        command: ["pkexec", "tee", "/sys/class/drm/card1/device/power_dpm_force_performance_level"]
+        command: ["tee", "/sys/class/drm/card1/device/power_dpm_force_performance_level"]
         stdinEnabled: true
 
         onStarted: {
