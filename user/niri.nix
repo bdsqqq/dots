@@ -247,7 +247,8 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       ExecStart = "${lisgd-niri}/bin/lisgd-niri";
       Restart = "on-failure";
       RestartSec = 2;
-      SupplementaryGroups = [ "input" ];
+      # note: user already in "input" group via extraGroups in host config
+      # SupplementaryGroups doesn't work in user services (can't change group creds)
     };
     Install = {
       WantedBy = [ "graphical-session.target" ];
