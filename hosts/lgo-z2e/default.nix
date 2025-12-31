@@ -61,7 +61,7 @@ in
 
   # allow user to control amdgpu power profile without root
   services.udev.extraRules = ''
-    ACTION=="add", SUBSYSTEM=="drm", KERNEL=="card*", RUN+="${pkgs.coreutils}/bin/chmod a+w /sys%p/device/power_dpm_force_performance_level"
+    ACTION=="add", SUBSYSTEM=="pci", DRIVER=="amdgpu", RUN+="${pkgs.coreutils}/bin/chmod a+w /sys%p/power_dpm_force_performance_level"
   '';
 
   imports = [
