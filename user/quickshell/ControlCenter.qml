@@ -218,6 +218,7 @@ PanelWindow {
             BatteryModule {
                 Layout.fillWidth: true
             }
+            }
         }
     }
 }
