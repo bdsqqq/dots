@@ -9,7 +9,8 @@ Item {
     property int batteryPercent: 0
     property string batteryStatus: "unknown"
     property real powerDraw: 0.0
-    property string currentProfile: "auto"
+    property string currentGpuProfile: "auto"
+    property int currentTdp: 15
     property bool expanded: false
 
     implicitHeight: contentColumn.implicitHeight
@@ -45,23 +46,33 @@ Item {
     }
 
     Process {
-        id: profileReader
+        id: gpuProfileReader
         command: ["cat", "/sys/class/drm/card1/device/power_dpm_force_performance_level"]
 
         stdout: SplitParser {
             onRead: function(data) {
-                currentProfile = data.trim();
+                currentGpuProfile = data.trim();
             }
         }
     }
 
     Process {
-        id: profileSetter
+        id: gpuProfileSetter
         property string targetProfile: "auto"
         command: ["systemctl", "start", "amdgpu-profile@" + targetProfile + ".service"]
 
         onExited: function(code, status) {
-            profileReader.running = true;
+            gpuProfileReader.running = true;
+        }
+    }
+
+    Process {
+        id: tdpSetter
+        property int targetTdp: 15
+        command: ["systemctl", "start", "ryzenadj-tdp@" + targetTdp + ".service"]
+
+        onExited: function(code, status) {
+            currentTdp = targetTdp;
         }
     }
 
@@ -72,7 +83,7 @@ Item {
         triggeredOnStart: true
         onTriggered: {
             batteryReader.running = true;
-            profileReader.running = true;
+            gpuProfileReader.running = true;
         }
     }
 
@@ -197,7 +208,7 @@ Item {
                 }
 
                 Text {
-                    text: "power profile"
+                    text: "tdp"
                     color: "#6b7280"
                     font.family: "Berkeley Mono"
                     font.pixelSize: 11
@@ -209,19 +220,20 @@ Item {
 
                     Repeater {
                         model: [
-                            { id: "low", label: "quiet" },
-                            { id: "auto", label: "auto" },
-                            { id: "high", label: "perf" }
+                            { watts: 8, label: "8W" },
+                            { watts: 15, label: "15W" },
+                            { watts: 25, label: "25W" },
+                            { watts: 30, label: "30W" }
                         ]
 
                         Rectangle {
                             required property var modelData
 
-                            Layout.preferredWidth: profileText.implicitWidth + 16
-                            Layout.preferredHeight: profileText.implicitHeight + 8
-                            color: profileMouse.containsMouse ? "#1f2937" : "transparent"
+                            Layout.preferredWidth: tdpText.implicitWidth + 16
+                            Layout.preferredHeight: tdpText.implicitHeight + 8
+                            color: tdpMouse.containsMouse ? "#1f2937" : "transparent"
                             border.width: 1
-                            border.color: currentProfile === modelData.id ? "#ffffff" : "#1f2937"
+                            border.color: currentTdp === modelData.watts ? "#ffffff" : "#1f2937"
                             radius: 4
 
                             Behavior on color {
@@ -233,10 +245,10 @@ Item {
                             }
 
                             Text {
-                                id: profileText
+                                id: tdpText
                                 anchors.centerIn: parent
                                 text: modelData.label
-                                color: currentProfile === modelData.id ? "#ffffff" : "#9ca3af"
+                                color: currentTdp === modelData.watts ? "#ffffff" : "#9ca3af"
                                 font.family: "Berkeley Mono"
                                 font.pixelSize: 11
 
@@ -246,14 +258,87 @@ Item {
                             }
 
                             MouseArea {
-                                id: profileMouse
+                                id: tdpMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    if (currentProfile !== modelData.id) {
-                                        profileSetter.targetProfile = modelData.id;
-                                        profileSetter.running = true;
+                                    if (currentTdp !== modelData.watts) {
+                                        tdpSetter.targetTdp = modelData.watts;
+                                        tdpSetter.running = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: "#374151"
+                }
+
+                Text {
+                    text: "gpu"
+                    color: "#6b7280"
+                    font.family: "Berkeley Mono"
+                    font.pixelSize: 11
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Repeater {
+                        model: [
+                            { id: "low", label: "low" },
+                            { id: "auto", label: "auto" },
+                            { id: "high", label: "high" }
+                        ]
+
+                        Rectangle {
+                            required property var modelData
+
+                            Layout.preferredWidth: gpuText.implicitWidth + 16
+                            Layout.preferredHeight: gpuText.implicitHeight + 8
+                            color: gpuMouse.containsMouse ? "#1f2937" : "transparent"
+                            border.width: 1
+                            border.color: currentGpuProfile === modelData.id ? "#ffffff" : "#1f2937"
+                            radius: 4
+
+                            Behavior on color {
+                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                            }
+
+                            Behavior on border.color {
+                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                            }
+
+                            Text {
+                                id: gpuText
+                                anchors.centerIn: parent
+                                text: modelData.label
+                                color: currentGpuProfile === modelData.id ? "#ffffff" : "#9ca3af"
+                                font.family: "Berkeley Mono"
+                                font.pixelSize: 11
+
+                                Behavior on color {
+                                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                                }
+                            }
+
+                            MouseArea {
+                                id: gpuMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (currentGpuProfile !== modelData.id) {
+                                        gpuProfileSetter.targetProfile = modelData.id;
+                                        gpuProfileSetter.running = true;
                                     }
                                 }
                             }
