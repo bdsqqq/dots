@@ -45,7 +45,7 @@
 
     # Vicinae launcher (no nixpkgs.follows to preserve cachix cache hits)
     # testing focus-loss fix - revert to vicinaehq/vicinae after PR merged
-    vicinae.url = "github:bdsqqq/vicinae/fix/wayland-focus-loss";
+    vicinae.url = "github:bdsqqq/vicinae/f1afea89";
     
     # Axiom deploy annotations
     axiom-deploy-annotation.url = "github:bdsqqq/axiom-deploy-annotation";
