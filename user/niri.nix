@@ -133,6 +133,17 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
           clip-to-geometry = true;
         }
       ];
+      
+      # Layer rules - place swaybg in backdrop so it doesn't move with workspaces
+      layer-rules = [
+        {
+          matches = [{ namespace = "^wallpaper$"; }];
+          place-within-backdrop = true;
+        }
+      ];
+      
+      # Make layout background transparent so backdrop wallpaper shows through
+      layout.background-color = "transparent";
 
       # Animations - matching hyprland's easeOutQuint feel (using ease-out-expo, closest available)
       animations = {
