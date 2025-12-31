@@ -1,4 +1,4 @@
-{ lib, hostSystem ? null, headMode ? "graphical", ... }:
+{ lib, inputs, hostSystem ? null, headMode ? "graphical", ... }:
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
 in
@@ -16,6 +16,7 @@ lib.mkIf (headMode == "graphical") {
     ] ++ lib.optionals isDarwin [
       iina
     ] ++ lib.optionals (!isDarwin) [
+      inputs.cursor.packages.x86_64-linux.default
       _1password-gui
       _1password-cli
       dbeaver-bin
