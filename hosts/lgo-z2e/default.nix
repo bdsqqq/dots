@@ -38,16 +38,16 @@ in
         name = "DejaVu Serif";
       };
       sizes = {
-        terminal = 16;
-        applications = 14;
-        desktop = 14;
+        terminal = 14;
+        applications = 12;
+        desktop = 12;
       };
     };
     
     cursor = {
       package = pkgs.apple-cursor;
       name = "macOS";
-      size = 32;
+      size = 24;
     };
     
     opacity = {
@@ -230,6 +230,8 @@ in
       programs.home-manager.enable = true;
       
       stylix.targets.ghostty.enable = false;
+      
+      programs.niri.settings.outputs."eDP-1".scale = 1.5;
       
       fonts.fontconfig = {
         enable = true;
