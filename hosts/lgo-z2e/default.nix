@@ -59,9 +59,25 @@ in
   boot.extraModulePackages = [ config.boot.kernelPackages.acpi_call ];
   boot.kernelModules = [ "acpi_call" ];
 
-  # allow user to control amdgpu power profile without root
-  services.udev.extraRules = ''
-    ACTION=="add", SUBSYSTEM=="pci", DRIVER=="amdgpu", RUN+="${pkgs.coreutils}/bin/chmod a+w /sys%p/power_dpm_force_performance_level"
+  # amdgpu power profile control via systemd + polkit
+  # templated service: systemctl start amdgpu-profile@{low,auto,high}.service
+  systemd.services."amdgpu-profile@" = {
+    description = "Set AMDGPU power profile to %i";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.bash}/bin/bash -c 'echo %i > /sys/class/drm/card1/device/power_dpm_force_performance_level'";
+    };
+  };
+
+  # polkit rule: allow user to start amdgpu-profile@ units without password
+  security.polkit.extraConfig = ''
+    polkit.addRule(function(action, subject) {
+      if (action.id == "org.freedesktop.systemd1.manage-units" &&
+          action.lookup("unit").indexOf("amdgpu-profile@") == 0 &&
+          subject.user == "bdsqqq") {
+        return polkit.Result.YES;
+      }
+    });
   '';
 
   imports = [

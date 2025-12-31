@@ -58,13 +58,7 @@ Item {
     Process {
         id: profileSetter
         property string targetProfile: "auto"
-        command: ["tee", "/sys/class/drm/card1/device/power_dpm_force_performance_level"]
-        stdinEnabled: true
-
-        onStarted: {
-            write(targetProfile + "\n");
-            closeStdin();
-        }
+        command: ["systemctl", "start", "amdgpu-profile@" + targetProfile + ".service"]
 
         onExited: function(code, status) {
             profileReader.running = true;
