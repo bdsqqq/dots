@@ -69,11 +69,22 @@ in
     };
   };
 
-  # polkit rule: allow user to start amdgpu-profile@ units without password
+  # TDP control via ryzenadj + systemd + polkit
+  # templated service: systemctl start ryzenadj-tdp@{8,15,25,30}.service (values in watts)
+  systemd.services."ryzenadj-tdp@" = {
+    description = "Set CPU TDP to %i watts via ryzenadj";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.bash}/bin/bash -c '${pkgs.ryzenadj}/bin/ryzenadj --stapm-limit=%i000 --fast-limit=%i000 --slow-limit=%i000'";
+    };
+  };
+
+  # polkit rule: allow user to start power control units without password
   security.polkit.extraConfig = ''
     polkit.addRule(function(action, subject) {
       if (action.id == "org.freedesktop.systemd1.manage-units" &&
-          action.lookup("unit").indexOf("amdgpu-profile@") == 0 &&
+          (action.lookup("unit").indexOf("amdgpu-profile@") == 0 ||
+           action.lookup("unit").indexOf("ryzenadj-tdp@") == 0) &&
           subject.user == "bdsqqq") {
         return polkit.Result.YES;
       }
@@ -281,6 +292,7 @@ in
     # handheld-specific
     mangohud
     gamemode
+    ryzenadj
   ];
 
   nixpkgs.config.allowUnfree = true;
