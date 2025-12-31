@@ -17,7 +17,7 @@ let
   lisgd-niri = pkgs.writeShellScriptBin "lisgd-niri" ''
     # find touchscreen via udev ID_INPUT_TOUCHSCREEN property
     for dev in /dev/input/event*; do
-      if ${pkgs.udev}/bin/udevadm info "$dev" 2>/dev/null | grep -q "ID_INPUT_TOUCHSCREEN=1"; then
+      if ${pkgs.systemd}/bin/udevadm info "$dev" 2>/dev/null | grep -q "ID_INPUT_TOUCHSCREEN=1"; then
         TOUCH_DEV="$dev"
         break
       fi
