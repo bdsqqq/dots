@@ -177,6 +177,65 @@ PanelWindow {
 
                     Item { Layout.fillWidth: true }
                 }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Text {
+                        text: "output"
+                        color: "#6b7280"
+                        font.family: "Berkeley Mono"
+                        font.pixelSize: 11
+                    }
+
+                    Repeater {
+                        model: Pipewire.nodes
+
+                        Rectangle {
+                            id: sinkItem
+                            required property PwNode modelData
+                            visible: modelData.isSink && modelData.audio && !modelData.isStream
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: visible ? sinkText.implicitHeight + 12 : 0
+                            color: sinkMouse.containsMouse ? "#1f2937" : "transparent"
+                            border.width: 1
+                            border.color: modelData === Pipewire.defaultAudioSink ? "#ffffff" : "#1f2937"
+                            radius: 4
+
+                            Behavior on color {
+                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                            }
+
+                            Behavior on border.color {
+                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                            }
+
+                            Text {
+                                id: sinkText
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.margins: 8
+                                text: modelData.nickname || modelData.description || modelData.name || "unknown"
+                                color: modelData === Pipewire.defaultAudioSink ? "#ffffff" : "#9ca3af"
+                                font.family: "Berkeley Mono"
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+
+                            MouseArea {
+                                id: sinkMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    Pipewire.preferredDefaultAudioSink = sinkItem.modelData;
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             Rectangle {
