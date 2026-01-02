@@ -22,6 +22,7 @@ lib.mkIf (headMode == "graphical") {
       dbeaver-bin
       vlc
       imv
+      nautilus
       xwayland-satellite
       fuzzel
       blueman
