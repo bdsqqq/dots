@@ -103,9 +103,6 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         border.enable = false;
         focus-ring.enable = false;
         
-        # Center single windows
-        center-focused-column = "on-overflow";
-        
         # Default column width
         default-column-width.proportion = 0.5;
         
