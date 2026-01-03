@@ -6,6 +6,8 @@
     package = pkgs.nixVersions.latest;
     settings = {
       experimental-features = [ "nix-command" "flakes" ];
+      keep-outputs = true;
+      keep-derivations = true;
       # Binary caches
       substituters = [
         "https://cache.nixos.org/"
