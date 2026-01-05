@@ -24,7 +24,7 @@ PANE_ID="${TMUX_PANE:-}"
 PROMPT=""
 [[ -n "$THREAD_ID" ]] && PROMPT="Continuing from https://ampcode.com/threads/$THREAD_ID. "
 PROMPT="$PROMPT$TASK"
-[[ -n "$PANE_ID" ]] && PROMPT="$PROMPT If you need guidance, run: tmux send-keys -t $PANE_ID 'AGENT $NAME: <message>' C-m"
+[[ -n "$PANE_ID" ]] && PROMPT="$PROMPT You are $NAME. Coordinator pane: $PANE_ID. Load the report skill for messaging etiquette."
 
 # write prompt to temp file for safe transport (handles special chars)
 TMPFILE=$(mktemp)
