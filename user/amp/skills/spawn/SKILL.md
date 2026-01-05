@@ -4,26 +4,19 @@ description: spawn parallel amp agents in tmux with thread linkage
 ---
 # spawn
 
-spawn amp agents in tmux windows. establishes parent/child thread relationship visible in `amp threads map`.
+spawn amp agents in tmux windows with automatic thread linkage.
 
-## auto-naming
-
-amp windows get auto-assigned fairy names like `ted_glimmermoss` or `alice_fluttergold`. the `scripts/spawn-amp` script handles this automatically.
-
-## spawn
+## usage
 
 ```bash
 scripts/spawn-amp "<task description>"
 ```
 
-the script:
-- generates a fairy name from `assets/`
-- creates a detached tmux window (doesn't steal focus)
-- links to parent thread via `$AMP_CURRENT_THREAD_ID`
-- includes callback instructions with `$TMUX_PANE`
-- echoes the agent's name so you can reference it
+creates a detached tmux window, pipes the task to amp, links to parent thread via `$AMP_CURRENT_THREAD_ID`, includes callback instructions with `$TMUX_PANE`. echoes the agent's name.
 
-## spawn multiple
+agents get auto-assigned fairy names from `assets/` (e.g., `ted_glimmermoss`).
+
+## multiple agents
 
 ```bash
 AGENT1=$(scripts/spawn-amp "task 1") && AGENT2=$(scripts/spawn-amp "task 2")
@@ -32,36 +25,20 @@ AGENT1=$(scripts/spawn-amp "task 1") && AGENT2=$(scripts/spawn-amp "task 2")
 ## control
 
 ```bash
-tmux select-window -t "ted_glimmermoss"         # switch to
-tmux capture-pane -p -t "ted_glimmermoss"       # check output
-tmux kill-window -t "ted_glimmermoss"           # stop
+tmux select-window -t "$AGENT1"           # switch to
+tmux capture-pane -p -t "$AGENT1"         # check output
+tmux kill-window -t "$AGENT1"             # stop
+tmux list-windows -F '#W'                 # list all
 ```
 
-## list agents
+## handoff
+
+when context fills up, spawn a successor with full context:
 
 ```bash
-tmux list-windows -F '#W'
+scripts/spawn-amp "HANDOFF: <context summary>. load the coordinate skill for multi-agent work."
 ```
 
-## claude (no thread linkage)
+## coordination
 
-```bash
-tmux new-window -d -n "name" "echo '<task>' | claude --dangerously-skip-permissions"
-```
-
-## guidelines
-
-- one task per agent — keep threads focused
-- when spawning successors or coordinated agents, explicitly mention relevant skill names in the handoff prompt (e.g., "load the coordinate skill", "use the tmux skill") so the agent knows to load them
-
-## handoff example
-
-when your context is filling up (check "╭─##% of ###k" in tmux capture), spawn a successor:
-
-```bash
-scripts/spawn-amp "HANDOFF: <context summary>. Load the coordinate skill for multi-agent work."
-```
-
-## multi-agent coordination
-
-for orchestrating multiple agents with bidirectional communication, use the `coordinate` skill.
+for orchestrating multiple agents with bidirectional communication, load the `coordinate` skill.
