@@ -4,158 +4,53 @@ description: orchestrate multiple amp agents with bidirectional tmux communicati
 ---
 # coordinate
 
-orchestrate multiple amp agents working on related tasks. you are the coordinator — agents report to you, you delegate and unblock them.
+orchestrate multiple amp agents. you are the coordinator — agents report to you, you delegate and unblock.
 
-## auto-naming
+## spawn
 
-amp windows get auto-assigned fairy names like `ted_glimmermoss` or `alice_fluttergold`. agents identify themselves by these names when messaging you.
-
-## architecture
-
-```
-coordinator (you)          agents (spawned)
-     │                          │
-     ├──spawn──────────────────►│ ted_glimmermoss
-     ├──spawn──────────────────►│ alice_fluttergold  
-     │                          │
-     │◄────tmux send-keys───────┤ "AGENT ted_glimmermoss: found issue X"
-     ├─────tmux send-keys──────►│ "COORDINATOR: fix X, then do Y"
-     │                          │
-     └──monitor via capture─────┘
-```
-
-## spawn agents
-
-load the `spawn` skill first, then use its script:
+use the `spawn` skill:
 
 ```bash
-~/.config/amp/skills/spawn/scripts/spawn-amp "<task description>"
+AGENT=$(~/.config/amp/skills/spawn/scripts/spawn-amp "<task>")
 ```
 
-the script handles naming, thread linkage, and callback instructions. it echoes the agent's name.
+## messaging
 
-**note**: `$TMUX_PANE` is set by tmux automatically (e.g., `%5`). it's stable across window reordering.
-
-## list active agents
-
+agent → coordinator (via pane id from spawn instructions):
 ```bash
-tmux list-windows -F '#W'
+tmux send-keys -t %5 'AGENT $NAME: <message>' C-m
 ```
 
-## agent-to-coordinator messages
-
-agents send messages TO you via the pane id provided in their spawn instructions:
-
+coordinator → agent (queued, non-interruptive):
 ```bash
-tmux send-keys -t %5 'AGENT ted_glimmermoss: <status or question>' C-m
+tmux send-keys -t $AGENT "/queue" C-m
+sleep 3  # /queue UI takes time to render
+tmux send-keys -t $AGENT "COORDINATOR: <instruction>" C-m
 ```
 
-these appear in YOUR amp session as user messages prefixed with "AGENT <name>:".
-
-## coordinator-to-agent messages
-
-### polite (queued) — preferred
-use `/queue` to avoid interrupting agent mid-step:
-
+coordinator → agent (interrupt, use sparingly):
 ```bash
-tmux send-keys -t ted_glimmermoss "/queue" C-m
-sleep 3  # IMPORTANT: /queue opens a UI that takes time to render
-tmux send-keys -t ted_glimmermoss "COORDINATOR: <instruction>" C-m
+tmux send-keys -t $AGENT "COORDINATOR: STOP - <urgent correction>" C-m
 ```
 
-agent will receive message after completing current step.
-
-**note**: `/` commands in amp open a UI palette that takes 2-3 seconds to render. if you send keys too quickly, the message gets cut off or the UI blocks input. always sleep 3+ seconds after `/queue`.
-
-### interrupt — use sparingly
-only interrupt when agent is deviating from correct approach:
+## monitoring
 
 ```bash
-tmux send-keys -t ted_glimmermoss "COORDINATOR: STOP - <urgent correction>" C-m
+tmux capture-pane -p -t $AGENT | tail -30
 ```
 
-## monitoring pattern
+ALWAYS capture before any disruptive action (messaging, killing). never act blind.
 
-check agent progress periodically:
-
-```bash
-sleep 5 && tmux capture-pane -p -t ted_glimmermoss | tail -30
-```
-
-check all agents:
+## control
 
 ```bash
-for w in $(tmux list-windows -F '#W' | grep -v "^$(tmux display-message -p '#W')$"); do
-  echo "=== $w ===" && tmux capture-pane -p -t "$w" | tail -20
-done
-```
-
-## handling permission prompts
-
-permission prompts and other amp UI selections (command palette, etc.) require arrow keys + enter to navigate. capture-pane can't see selection state (no colors), so **ask the user to handle these manually**.
-
-## observe before acting
-
-**ALWAYS capture pane state before ANY disruptive action** — sending messages, interrupting, killing, etc. never act blind.
-
-```bash
-tmux capture-pane -p -t ted_glimmermoss | tail -30
-```
-
-this prevents:
-- killing agents mid-task
-- sending messages that get lost in UI palettes
-- interrupting agents that are about to finish
-
-## cleanup
-
-observe first, then kill:
-
-```bash
-# 1. observe FIRST — never skip this
-tmux capture-pane -p -t ted_glimmermoss | tail -30
-
-# 2. only kill after confirming agent is done or stuck
-tmux kill-window -t ted_glimmermoss
+tmux list-windows -F '#W'    # list agents
+tmux kill-window -t $AGENT   # cleanup (observe first)
 ```
 
 ## pitfalls
 
-### agent pane targeting
-- `tmux send-keys -t ted_glimmermoss` targets by window name (preferred for agents)
-- `tmux send-keys -t %4` targets by pane id (preferred for coordinator callback)
-- `tmux send-keys -t 1.1` targets window 1, pane 1 (fragile — avoid)
-
-### sudo/tty issues
-agents cannot run sudo commands requiring password. instruct user to run those manually, then have agent verify results.
-
-### context window handoff
-when your context exceeds 70%, spawn a successor:
-
-```bash
-~/.config/amp/skills/spawn/scripts/spawn-amp "HANDOFF: <full context summary>"
-```
-
-then exit your pane after successor acknowledges.
-
-## communication etiquette
-
-### as coordinator
-- use `/queue` for non-urgent messages (polite)
-- interrupt only when agent is going wrong direction
-- your job: ensure agents complete the overall task
-
-### as worker agent
-- message coordinator, NOT peer agents directly
-- use callback pattern: `tmux send-keys -t $COORDINATOR_PANE 'AGENT myname: msg' C-m`
-- let coordinator relay info between agents if needed
-
-## workflow example
-
-1. user asks to debug issue across 2 hosts
-2. spawn two agents: `AGENT1=$(~/.config/amp/skills/spawn/scripts/spawn-amp "check host A") && AGENT2=$(~/.config/amp/skills/spawn/scripts/spawn-amp "check host B")`
-3. list agents: `tmux list-windows -F '#W'`
-4. check on them: `tmux capture-pane -p -t $AGENT1 | tail -30`
-5. when agent messages arrive ("AGENT ted_glimmermoss: found X"), queue response via `/queue`
-6. coordinate between agents — relay findings, don't have them message each other
-7. once tasks complete, cleanup windows by name
+- `/queue` opens a UI that takes 2-3s to render. sleep before sending keys or message gets cut off
+- permission prompts require arrow keys + enter. ask user to handle manually
+- agents can't run sudo with password. have user run, then verify
+- `send-keys -t name` targets window name (agents), `-t %4` targets pane id (coordinator callback)
