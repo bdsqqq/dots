@@ -26,12 +26,11 @@ PROMPT=""
 PROMPT="$PROMPT$TASK"
 [[ -n "$PANE_ID" ]] && PROMPT="$PROMPT If you need guidance, run: tmux send-keys -t $PANE_ID 'AGENT $NAME: <message>' C-m"
 
-# spawn interactive shell (sources .zshrc for env vars like AMP_API_KEY)
-# then start amp and send the prompt
-tmux new-window -d -n "$NAME"
-sleep 1
-tmux send-keys -t "$NAME" "amp --dangerously-allow-all" C-m
-sleep 2
-tmux send-keys -t "$NAME" "$PROMPT" C-m
+# write prompt to temp file for safe transport (handles special chars)
+TMPFILE=$(mktemp)
+printf '%s' "$PROMPT" > "$TMPFILE"
+
+# spawn amp with prompt piped in (stays interactive after first message)
+tmux new-window -d -n "$NAME" "cat '$TMPFILE' | amp --dangerously-allow-all"
 
 echo "$NAME"
