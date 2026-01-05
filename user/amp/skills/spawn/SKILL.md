@@ -46,8 +46,7 @@ tmux list-windows -F '#W'
 ## claude (no thread linkage)
 
 ```bash
-tmux new-window -d -n "name" "claude --dangerously-skip-permissions" && sleep 2 && \
-  tmux send-keys -t "name" "<task>" C-m
+tmux new-window -d -n "name" "echo '<task>' | claude --dangerously-skip-permissions"
 ```
 
 ## guidelines
