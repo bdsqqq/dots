@@ -8,7 +8,9 @@ if isLinux then {
     extraUpFlags = lib.mkDefault [ "--ssh" ];
   };
 } else {
-  services.tailscale.enable = true;
+  # on darwin, use the mac app store tailscale app instead of nix-darwin's tailscaled.
+  # the app store app bundles its own daemon via network extension and provides
+  # better macOS integration. enabling both causes race conditions on startup.
 }
 
 
