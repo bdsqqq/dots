@@ -22,7 +22,7 @@ PANE_ID="${TMUX_PANE:-}"
 
 # build the full prompt
 PROMPT=""
-[[ -n "$THREAD_ID" ]] && PROMPT="Continuing from https://ampcode.com/threads/$THREAD_ID. "
+[[ -n "$THREAD_ID" ]] && PROMPT="Continuing work from thread $THREAD_ID. When you lack specific information you can use read_thread to get it. "
 PROMPT="$PROMPT$TASK"
 [[ -n "$PANE_ID" ]] && PROMPT="$PROMPT You are $NAME. Coordinator pane: $PANE_ID. Load the report skill for messaging etiquette."
 
