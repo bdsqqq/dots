@@ -5,6 +5,10 @@ let
   sshKeyPath = if isDarwin 
     then "/Users/bdsqqq/.ssh/id_ed25519"
     else "/home/bdsqqq/.ssh/id_ed25519";
+  
+  homeDir = if isDarwin 
+    then "/Users/bdsqqq" 
+    else "/home/bdsqqq";
 in
 {
   sops = {
@@ -15,11 +19,20 @@ in
     secrets = {
       anthropic_api_key = { owner = "bdsqqq"; };
       tailscale_auth_key = { owner = "bdsqqq"; };
-      axiom_token = { owner = "bdsqqq"; };
       gh_token = { owner = "bdsqqq"; };
       AMP_API_KEY = { owner = "bdsqqq"; };
       syncthing_gui_password = { owner = "bdsqqq"; };
       syncthing_gui_password_hash = { owner = "bdsqqq"; };
+      
+      # axiom config - decrypted to ~/.axiom.toml
+      "axiom.toml" = {
+        sopsFile = inputs.self + "/axiom.toml";
+        format = "binary";
+        owner = "bdsqqq";
+        mode = "0400";
+        path = "${homeDir}/.axiom.toml";
+      };
+      
       cookies = {
         sopsFile = inputs.self + "/cookies.txt";
         format = "binary";
