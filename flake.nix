@@ -71,6 +71,11 @@
       url = "github:bdsqqq/cursor-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    lnr = {
+      inputs.lnr.url = "github:bdsqqq/lnr";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
