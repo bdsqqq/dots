@@ -73,7 +73,7 @@
     };
 
     lnr = {
-      inputs.lnr.url = "github:bdsqqq/lnr";
+      url = "github:bdsqqq/lnr";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
