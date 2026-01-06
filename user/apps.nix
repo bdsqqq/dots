@@ -13,6 +13,7 @@ lib.mkIf (headMode == "graphical") {
       transmission_4
       rclone
       qpdf
+      inputs.lnr.packages.${hostSystem}.default
     ] ++ lib.optionals isDarwin [
       iina
     ] ++ lib.optionals (!isDarwin) [
