@@ -167,9 +167,10 @@
                 # axiom deploy annotations
                 services.axiom-deploy-annotation = {
                   enable = true;
+                  configPath = config.sops.secrets."axiom.toml".path;
+                  dataset = "papertrail";
                   datasets = [ "papertrail" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
-                  tokenPath = config.sops.secrets.axiom_token.path;
                 };
               })
               
@@ -224,9 +225,10 @@
                 
                 services.axiom-deploy-annotation = {
                   enable = true;
+                  configPath = config.sops.secrets."axiom.toml".path;
+                  dataset = "papertrail";
                   datasets = [ "papertrail" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
-                  tokenPath = config.sops.secrets.axiom_token.path;
                   user = "bdsqqq";
                   group = "users";
                 };
@@ -254,9 +256,10 @@
                 
                 services.axiom-deploy-annotation = {
                   enable = true;
+                  configPath = config.sops.secrets."axiom.toml".path;
+                  dataset = "papertrail";
                   datasets = [ "papertrail" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
-                  tokenPath = config.sops.secrets.axiom_token.path;
                   user = "bdsqqq";
                   group = "users";
                 };
@@ -285,9 +288,10 @@
                 
                 services.axiom-deploy-annotation = {
                   enable = true;
+                  configPath = config.sops.secrets."axiom.toml".path;
+                  dataset = "papertrail";
                   datasets = [ "papertrail" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
-                  tokenPath = config.sops.secrets.axiom_token.path;
                   user = "bdsqqq";
                   group = "users";
                 };

@@ -11,6 +11,10 @@ let
   logsDir = if isDarwin then "${homeDir}/Library/Logs" else "/var/log";
   dataDir = if isDarwin then "${homeDir}/Library/Application Support/Vector" else "/var/lib/vector";
   
+  axiomConfigPath = "${homeDir}/.axiom.toml";
+  
+  dasel = "${pkgs.dasel}/bin/dasel";
+  
   # darwin uses file source for logs; linux uses journald
   vectorConfig = if isDarwin then ''
     data_dir = "${dataDir}"
@@ -40,13 +44,17 @@ let
     type = "axiom"
     inputs = ["parse_logs"]
     dataset = "papertrail"
-    token = "''${AXIOM_TOKEN}"
+    token = "''${AXIOM_TOKEN_LOGS}"
+    url = "''${AXIOM_URL_LOGS}"
+    org_id = "''${AXIOM_ORG_ID_LOGS}"
     
     [sinks.axiom_metrics]
     type = "axiom"
     inputs = ["host_metrics"]
     dataset = "host-metrics"
-    token = "''${AXIOM_TOKEN}"
+    token = "''${AXIOM_TOKEN_METRICS}"
+    url = "''${AXIOM_URL_METRICS}"
+    org_id = "''${AXIOM_ORG_ID_METRICS}"
   '' else ''
     data_dir = "${dataDir}"
     
@@ -74,13 +82,17 @@ let
     type = "axiom"
     inputs = ["parse_logs"]
     dataset = "papertrail"
-    token = "''${AXIOM_TOKEN}"
+    token = "''${AXIOM_TOKEN_LOGS}"
+    url = "''${AXIOM_URL_LOGS}"
+    org_id = "''${AXIOM_ORG_ID_LOGS}"
     
     [sinks.axiom_metrics]
     type = "axiom"
     inputs = ["host_metrics"]
     dataset = "host-metrics"
-    token = "''${AXIOM_TOKEN}"
+    token = "''${AXIOM_TOKEN_METRICS}"
+    url = "''${AXIOM_URL_METRICS}"
+    org_id = "''${AXIOM_ORG_ID_METRICS}"
   '';
 in
 if isDarwin then {
@@ -90,7 +102,15 @@ if isDarwin then {
   
   launchd.daemons.vector = {
     script = ''
-      export AXIOM_TOKEN="$(cat ${config.sops.secrets.axiom_token.path})"
+      # parse axiom credentials from toml config using dasel
+      export AXIOM_TOKEN_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.token')"
+      export AXIOM_URL_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.url')"
+      export AXIOM_ORG_ID_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.org_id')"
+      
+      export AXIOM_TOKEN_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.token')"
+      export AXIOM_URL_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.url')"
+      export AXIOM_ORG_ID_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.org_id')"
+      
       exec ${pkgs.vector}/bin/vector --config /etc/vector/vector.toml
     '';
     serviceConfig = {
@@ -98,7 +118,7 @@ if isDarwin then {
       RunAtLoad = true;
       KeepAlive = {
         PathState = {
-          "${config.sops.secrets.axiom_token.path}" = true;
+          "${axiomConfigPath}" = true;
         };
       };
       StandardOutPath = "${logsDir}/vector.log";
@@ -108,14 +128,10 @@ if isDarwin then {
     };
   };
   
-  sops.secrets.axiom_token = { };
-  
 } else if isLinux then {
-  environment.systemPackages = [ pkgs.vector ];
+  environment.systemPackages = [ pkgs.vector pkgs.dasel ];
   
   environment.etc."vector/vector.toml".text = vectorConfig;
-  
-  sops.secrets.axiom_token = { };
   
   systemd.services.vector = {
     description = "Vector - logs and metrics to Axiom";
@@ -123,9 +139,21 @@ if isDarwin then {
     after = [ "network-online.target" ];
     requires = [ "network-online.target" ];
     
+    script = ''
+      # parse axiom credentials from toml config using dasel
+      export AXIOM_TOKEN_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.token')"
+      export AXIOM_URL_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.url')"
+      export AXIOM_ORG_ID_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.org_id')"
+      
+      export AXIOM_TOKEN_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.token')"
+      export AXIOM_URL_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.url')"
+      export AXIOM_ORG_ID_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.org_id')"
+      
+      exec ${pkgs.vector}/bin/vector --config /etc/vector/vector.toml
+    '';
+    
     serviceConfig = {
-      ExecStart = "${pkgs.vector}/bin/vector --config /etc/vector/vector.toml";
-      EnvironmentFile = [ config.sops.templates."vector.env".path ];
+      Type = "simple";
       DynamicUser = true;
       StateDirectory = "vector";
       SupplementaryGroups = [ "systemd-journal" ];
@@ -133,9 +161,5 @@ if isDarwin then {
       RestartSec = "5s";
     };
   };
-  
-  sops.templates."vector.env".content = ''
-    AXIOM_TOKEN=${config.sops.placeholder.axiom_token}
-  '';
   
 } else { }
