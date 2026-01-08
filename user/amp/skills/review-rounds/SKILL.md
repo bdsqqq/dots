@@ -23,13 +23,12 @@ round N:
   5. repeat until 2+ consecutive rounds where BOTH code and docs are clean
 ```
 
-## what review agents should read
+## skills review agents should load
 
-instruct review agents to read the bundled guidelines:
+instruct review agents to load these skills before reviewing:
 
-- `references/VOICE.md` — academish voice, precision without hyperbole
-- `references/DOCUMENTATION.md` — only document non-obvious why
-- `references/CONTRIBUTION.md` — proven correctness, slop indicators
+- `write` — academish voice, precision without hyperbole, supported claims
+- `document` — only document non-obvious why
 
 these define what "quality" means in this context. without them, reviews catch syntax but miss substance.
 
