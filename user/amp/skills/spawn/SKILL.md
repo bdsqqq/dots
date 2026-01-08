@@ -6,6 +6,14 @@ description: spawn parallel amp agents in tmux with thread linkage
 
 spawn amp agents in tmux windows with automatic thread linkage.
 
+## why spawn?
+
+short threads outperform long threads. see bundled references:
+- @references/200k_tokens_is_plenty.md — why agents degrade with context bloat
+- @references/amp_owners_manual.md — official amp prompting guidance
+
+key insight: agents get drunk on too many tokens. spawning keeps each thread focused on ONE task with minimal context, then links via `read_thread`.
+
 ## usage
 
 ```bash
