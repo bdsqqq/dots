@@ -29,6 +29,7 @@ instruct review agents to load these skills before reviewing:
 
 - `write` — academish voice, precision without hyperbole, supported claims
 - `document` — only document non-obvious why
+- `dig` — load when investigating why code was written a certain way (git archaeology), tracing dependencies/impact, or verifying claims about intent
 
 these define what "quality" means in this context. without them, reviews catch syntax but miss substance.
 
