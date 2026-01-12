@@ -20,6 +20,22 @@
         "type": "github"
       }
     },
+    "axiom-sre": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1767959520,
+        "narHash": "sha256-Ay+AKOpppI2hbkXyDxTpBJ/E7GNpepRzK/x+W9KVlW8=",
+        "owner": "axiomhq",
+        "repo": "axiom-sre",
+        "rev": "6aee49c55d81130a90c2b89beb597728b1d262c1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "axiomhq",
+        "repo": "axiom-sre",
+        "type": "github"
+      }
+    },
     "base16": {
       "inputs": {
         "fromYaml": "fromYaml"
@@ -661,6 +677,7 @@
     "root": {
       "inputs": {
         "axiom-deploy-annotation": "axiom-deploy-annotation",
+        "axiom-sre": "axiom-sre",
         "berkeley-mono": "berkeley-mono",
         "copyparty": "copyparty",
         "cursor": "cursor",
