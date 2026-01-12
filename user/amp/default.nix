@@ -24,5 +24,16 @@ in
       # wt: create worktree in rush mode  
       wt = "amp --mode rush -x 'use the git-worktree skill'";
     };
+
+    # amp wrapper: private by default, but workspace-scoped in axiom repos
+    programs.zsh.initExtra = ''
+      amp() {
+        if [[ "$PWD" = "$HOME/www/axiom"* ]]; then
+          command amp "$@"
+        else
+          command amp --visibility private "$@"
+        fi
+      }
+    '';
   };
 }
