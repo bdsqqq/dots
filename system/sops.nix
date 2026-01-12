@@ -26,7 +26,7 @@ in
       
       # axiom config - decrypted to ~/.axiom.toml
       "axiom.toml" = {
-        sopsFile = inputs.self + "/axiom.toml";
+        sopsFile = inputs.self + "/.axiom.toml";
         format = "binary";
         owner = "bdsqqq";
         mode = "0400";
