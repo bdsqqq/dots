@@ -103,13 +103,14 @@ if isDarwin then {
   launchd.daemons.vector = {
     script = ''
       # parse axiom credentials from toml config using dasel
-      export AXIOM_TOKEN_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.token')"
-      export AXIOM_URL_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.url')"
-      export AXIOM_ORG_ID_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.org_id')"
+      # shared url/org from deployment, dataset-specific tokens
+      export AXIOM_URL_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.url')"
+      export AXIOM_ORG_ID_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.org_id')"
+      export AXIOM_TOKEN_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.datasets.papertrail.token')"
       
-      export AXIOM_TOKEN_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.token')"
-      export AXIOM_URL_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.url')"
-      export AXIOM_ORG_ID_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.org_id')"
+      export AXIOM_URL_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.url')"
+      export AXIOM_ORG_ID_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.org_id')"
+      export AXIOM_TOKEN_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.datasets.host-metrics.token')"
       
       exec ${pkgs.vector}/bin/vector --config /etc/vector/vector.toml
     '';
@@ -141,13 +142,14 @@ if isDarwin then {
     
     script = ''
       # parse axiom credentials from toml config using dasel
-      export AXIOM_TOKEN_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.token')"
-      export AXIOM_URL_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.url')"
-      export AXIOM_ORG_ID_LOGS="$(${dasel} -f "${axiomConfigPath}" '.papertrail.org_id')"
+      # shared url/org from deployment, dataset-specific tokens
+      export AXIOM_URL_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.url')"
+      export AXIOM_ORG_ID_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.org_id')"
+      export AXIOM_TOKEN_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.datasets.papertrail.token')"
       
-      export AXIOM_TOKEN_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.token')"
-      export AXIOM_URL_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.url')"
-      export AXIOM_ORG_ID_METRICS="$(${dasel} -f "${axiomConfigPath}" '.host-metrics.org_id')"
+      export AXIOM_URL_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.url')"
+      export AXIOM_ORG_ID_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.org_id')"
+      export AXIOM_TOKEN_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.datasets.host-metrics.token')"
       
       exec ${pkgs.vector}/bin/vector --config /etc/vector/vector.toml
     '';
