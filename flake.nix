@@ -76,6 +76,12 @@
       url = "github:bdsqqq/lnr";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Axiom SRE agent skill for Amp
+    axiom-sre = {
+      url = "github:axiomhq/axiom-sre";
+      flake = false;
+    };
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:

@@ -1,4 +1,4 @@
-{ lib, hostSystem ? null, ... }:
+{ lib, inputs, hostSystem ? null, ... }:
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
 in
@@ -7,6 +7,12 @@ in
     # link the entire skills directory - structure mirrors target
     home.file.".config/amp/skills" = {
       source = ./skills;
+      recursive = true;
+    };
+    
+    # external git-based skills (from flake inputs)
+    home.file.".config/amp/skills/axiom-sre" = {
+      source = inputs.axiom-sre;
       recursive = true;
     };
 
