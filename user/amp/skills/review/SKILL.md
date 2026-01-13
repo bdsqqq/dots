@@ -28,6 +28,21 @@ epistemic standards for producing defensible findings.
 4. **falsify, don't confirm** — design tests that would DISPROVE your hypothesis. ask: "what would make this NOT a bug?"
    - *prevents: confirmation bias* — you naturally notice supporting evidence and ignore contradictions; tunnel vision locks you into your first theory
 
+## quality criteria
+
+when evaluating contributions, check:
+
+1. **proven correctness** — have you seen it work? not "does the code look right" — have you actually run it?
+2. **types tell the truth** — are you lying to the compiler? do abstractions match their names?
+3. **naming is honest** — would someone reading this in six months be confused?
+4. **edges tested** — what happens on the worst path, not just the happy path?
+5. **self-consistent abstractions** — can you explain it start to finish, and each part in isolation?
+
+slop indicators:
+- missing tests
+- contradictions in abstractions
+- names that lie about what they contain
+
 ## applying to findings
 
 before reporting an issue:
