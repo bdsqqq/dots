@@ -7,7 +7,7 @@ description: systematic investigation and debugging methodology. hypothesis-driv
 
 structured approach to investigations that produces verified, actionable findings.
 
-**load first:** `investigate` — provides epistemic standards (trace or delete, label confidence, falsify don't confirm). dig assumes these are active.
+**load first:** `review` — provides epistemic standards (trace or delete, label confidence, falsify don't confirm). dig assumes these are active.
 
 ## core principles
 
