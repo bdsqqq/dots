@@ -23,15 +23,20 @@ round N:
   5. repeat until 2+ consecutive rounds where BOTH code and docs are clean
 ```
 
-## skills review agents should load
+## skills review agents must load
 
-instruct review agents to load these skills before reviewing:
+when spawning review agents, inject these skill-loading instructions into the prompt:
 
+```
+load the investigate skill before reviewing. load the write skill for report quality.
+```
+
+- `investigate` — epistemic standards: trace or delete, label confidence, falsify don't confirm
 - `write` — academish voice, precision without hyperbole, supported claims
-- `document` — only document non-obvious why
-- `dig` — load when investigating why code was written a certain way (git archaeology), tracing dependencies/impact, or verifying claims about intent
+- `document` — only document non-obvious why (optional, for docs review)
+- `dig` — git archaeology, dependency tracing (optional, when verifying intent)
 
-these define what "quality" means in this context. without them, reviews catch syntax but miss substance.
+`investigate` is mandatory — without it, reviews produce false positives from pattern-matching without verification.
 
 ## review agent focus areas
 
