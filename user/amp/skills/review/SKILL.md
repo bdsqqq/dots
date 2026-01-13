@@ -1,15 +1,15 @@
 ---
-name: investigate
-description: epistemics for investigation and analysis. load before any review, debugging, or research task where findings must be defensible.
+name: review
+description: epistemic standards for evaluation and analysis. load before reviewing, debugging, or any task where findings must be defensible.
 ---
 
-# investigate
+# review
 
 epistemic standards for producing defensible findings.
 
 ## when to load
 
-- code review (load before reviewing)
+- evaluating code, docs, or designs
 - debugging / root cause analysis
 - codebase archaeology
 - any task where you will report findings to others
