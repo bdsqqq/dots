@@ -15,6 +15,11 @@ in
       source = inputs.axiom-sre;
       recursive = true;
     };
+    
+    # lnr skill - just the SKILL.md from the lnr repo
+    home.file.".config/amp/skills/lnr/SKILL.md" = {
+      source = "${inputs.lnr}/SKILL.md";
+    };
 
     # shell wrappers for rush mode execution
     home.shellAliases = {
