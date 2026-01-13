@@ -7,14 +7,14 @@ description: systematic investigation and debugging methodology. hypothesis-driv
 
 structured approach to investigations that produces verified, actionable findings.
 
+**load first:** `investigate` — provides epistemic standards (trace or delete, label confidence, falsify don't confirm). dig assumes these are active.
+
 ## core principles
 
 1. **trust code over assumptions** — never assume intent. check git history.
 2. **scripts > docs** — extraction scales, documentation doesn't.
 3. **bidirectional analysis** — traverse dependencies forward AND reverse.
-4. **verify claims** — spawn verification agents to fact-check analysis agents.
-5. **label hunches explicitly** — `hunch (unverified)` vs facts with evidence.
-6. **autonomous discovery** — use seeds and graph traversal, don't hardcode.
+4. **autonomous discovery** — use seeds and graph traversal, don't hardcode.
 
 ## investigation phases
 
