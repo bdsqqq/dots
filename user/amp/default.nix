@@ -1,9 +1,86 @@
 { lib, inputs, hostSystem ? null, ... }:
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
+  
+  # YAML frontmatter validator for amp skills
+  # warns on invalid frontmatter but never fails the build
+  skillsDir = ./skills;
+  skillDirs = builtins.attrNames (lib.filterAttrs (_: type: type == "directory") 
+    (builtins.readDir skillsDir));
+  
+  # extract frontmatter from SKILL.md content (between first two ---)
+  extractFrontmatter = content:
+    let
+      lines = lib.splitString "\n" content;
+      # find indices of --- lines
+      findFM = idx: acc: lines':
+        if lines' == [] then acc
+        else if builtins.head lines' == "---" then 
+          findFM (idx + 1) (acc ++ [idx]) (builtins.tail lines')
+        else findFM (idx + 1) acc (builtins.tail lines');
+      fmIndices = findFM 0 [] lines;
+    in
+      if builtins.length fmIndices >= 2 then
+        lib.sublist (builtins.elemAt fmIndices 0 + 1) 
+                    (builtins.elemAt fmIndices 1 - builtins.elemAt fmIndices 0 - 1) 
+                    lines
+      else [];
+  
+  # validate a single frontmatter line (key: value format)
+  # returns null if valid, error string if invalid
+  validateLine = line:
+    let
+      trimmed = lib.trim line;
+    in
+      if trimmed == "" then null
+      else if !(lib.hasInfix ":" trimmed) then "missing colon"
+      else 
+        let
+          parts = lib.splitString ":" trimmed;
+          key = builtins.head parts;
+          # value after first colon (rejoined if multiple colons)
+          rest = lib.concatStringsSep ":" (builtins.tail parts);
+          value = lib.trim rest;
+        in
+          # check for unquoted colons in value (common YAML gotcha)
+          if lib.hasInfix ":" value && !(lib.hasPrefix "\"" value || lib.hasPrefix "'" value)
+          then "unquoted colon in value - wrap in quotes"
+          else null;
+  
+  # validate frontmatter lines, return list of errors
+  validateFrontmatter = lines:
+    builtins.filter (x: x != null) (builtins.map validateLine lines);
+  
+  # validate a skill directory, return warning message or null
+  validateSkill = name:
+    let
+      skillFile = skillsDir + "/${name}/SKILL.md";
+      content = builtins.readFile skillFile;
+      fm = extractFrontmatter content;
+      errors = validateFrontmatter fm;
+    in
+      if fm == [] then "⚠ ${name}: no YAML frontmatter found"
+      else if errors != [] then "⚠ ${name}: ${builtins.head errors}"
+      else null;
+  
+  # collect all warnings (filter out nulls)
+  skillWarnings = builtins.filter (x: x != null) (builtins.map validateSkill skillDirs);
+  
+  # format warning message for activation script
+  warningScript = if skillWarnings == [] then "" else ''
+    echo ""
+    echo "━━━ AMP SKILL FRONTMATTER WARNINGS ━━━"
+    ${lib.concatMapStringsSep "\n" (w: ''echo "  ${w}"'') skillWarnings}
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+  '';
 in
 {
-  home-manager.users.bdsqqq = { pkgs, config, ... }: {
+  
+  home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
+    # emit warnings during activation (runs on darwin-rebuild switch)
+    home.activation.validateAmpSkills = lib.hm.dag.entryBefore [ "writeBoundary" ] warningScript;
+    
     # link the entire skills directory - structure mirrors target
     home.file.".config/amp/skills" = {
       source = ./skills;
