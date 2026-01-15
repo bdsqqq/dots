@@ -5,7 +5,7 @@ description: watchdog for long-running coordinator sessions. supervises tmux age
 
 # shepherd
 
-keepalive supervisor for coordinator agents running in tmux.
+keepalive supervisor for coordinator agents.
 
 ## when to use
 
@@ -28,7 +28,7 @@ every ~180 seconds:
 2. **verify** — capture pane output, classify state
 3. **act** — respond based on state (challenge / respawn / handoff / continue)
 
-why 3 minutes: shorter burns context, longer risks missing deaths. empirically validated over 17.5 hours.
+why 3 minutes: shorter burns context, longer risks missing deaths. tested over 17.5 hours in source run.
 
 ## state classification
 
@@ -36,7 +36,7 @@ why 3 minutes: shorter burns context, longer risks missing deaths. empirically v
 |-------|-----------|--------|
 | **active** | tool calls, output changing | continue loop |
 | **idle** | claims "done", "waiting", "blocked" | challenge (see below) |
-| **stall** | output unchanged 2+ pings, or "Waiting for response..." | ping harder, then respawn |
+| **stall** | output unchanged 2+ pings, or "Waiting for response..." | send Enter key to unstick, then respawn if no response |
 | **dead** | pane not found, shell prompt visible | respawn |
 | **exhausted** | coordinator signals ~90%+ context | handoff |
 
@@ -44,18 +44,18 @@ why 3 minutes: shorter burns context, longer risks missing deaths. empirically v
 
 ### challenge idle claims
 
-idle coordinators often quit early. challenge them—but accept justified refusals.
+coordinators quit early. challenge them—but accept justified refusals.
 
-**first claim**: accept if reason given ("blocked on human credentials")  
-**repeated claims**: challenge with specifics  
-**after reasoning**: accept if coordinator rebuts suggestions ("X is over-engineering because Y")
+**first claim**: accept if reasoned ("blocked on human credentials")  
+**repeated claim**: challenge with specifics  
+**third claim**: accept if rebutted ("X is over-engineering because Y")
 
 challenge prompt pattern:
 ```
 SHEPHERD CHALLENGE: are you REALLY done? consider: tests, error handling, edge cases, docs, cleanup.
 ```
 
-rationale: in the source run, challenges discovered missing tests, slop, undocumented features. but don't nag when coordinator has genuinely considered the options.
+rationale: in source run T-019bbde9-0161-743c-975e-0608855688d6, challenges discovered missing tests, slop, undocumented features. but don't nag when coordinator has genuinely considered the options.
 
 ### respawn dead coordinators
 
@@ -80,7 +80,7 @@ new thread is critical—continuation carries exhausted context.
 
 ## state tracking
 
-persist externally, not just in your context:
+persist externally:
 
 ```bash
 echo "%PANE" > /tmp/shepherd-target-pane
@@ -94,13 +94,9 @@ track:
 
 ## hazards
 
-### self-targeting
+### pane id hazards
 
-verify pane id before every send. targeting your own pane = infinite loop.
-
-### pane id volatility
-
-pane ids are ephemeral—they change on respawn, window reorg, tmux restart. always re-query after any structural change.
+pane ids are ephemeral—they change on respawn, window reorg, tmux restart. verify pane id before every send; targeting your own pane = infinite loop. always re-query after any structural change.
 
 ### window name reuse
 
@@ -108,10 +104,7 @@ unique window names only. reusing names like "coordinator" or agent names caused
 
 ### your own context
 
-you will exhaust context too. before dying:
-1. prepare handoff notes
-2. spawn shepherd successor with new thread
-3. brief on current coordinator state
+you will exhaust context too. follow the handoff process above for yourself.
 
 ## provenance
 
