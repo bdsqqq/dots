@@ -41,6 +41,10 @@ adapt based on task:
 
 when agents find issues requiring product decisions ("remove feature X or implement it?"), **pause and ask user**. don't make product decisions unilaterally.
 
+## composition with spar
+
+rounds can orchestrate parallel spar debates. see `spar` skill for the full composition protocol, interface contract, and termination conditions.
+
 ## summary format
 
 after completion:
