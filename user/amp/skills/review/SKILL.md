@@ -66,3 +66,27 @@ if any answer is weak, either investigate more or label appropriately.
 **evidence:** what the code actually shows
 **falsification attempted:** what would disprove this, did i check?
 ```
+
+### counter-example (slop)
+
+```markdown
+## finding: possible race condition
+
+**confidence:** VERIFIED  
+**location:** src/cache/invalidator.ts
+**evidence:** the code looks like it might have a race condition because invalidate() calls multiple async functions
+**falsification attempted:** none
+```
+
+problems: confidence says VERIFIED but evidence is "looks like" (pattern-match, not trace). no line numbers. no falsification. this is pattern→fact leap.
+
+### example (correct)
+
+```markdown
+## finding: race condition in cache invalidation
+
+**confidence:** VERIFIED
+**location:** src/cache/invalidator.ts:47-52
+**evidence:** `invalidate()` awaits `fetch()` but not `write()`. concurrent calls can read stale data between L47 fetch completing and L52 write persisting. reproduced by adding 50ms delay to write() and calling invalidate() twice in quick succession — second call returns stale value.
+**falsification attempted:** checked if a mutex guards the block (none). checked if write() is synchronous (it's not — returns Promise). confirmed issue by adding delay and observing stale read.
+```
