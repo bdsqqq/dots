@@ -46,3 +46,18 @@ before submitting, verify:
 - [ ] sources credited
 - [ ] shortcomings acknowledged
 - [ ] no dismissive language about other work
+
+## sentence transforms
+
+| before | after | why |
+|--------|-------|-----|
+| "This is the best approach" | "This approach avoids X and Y" | justify, don't rank |
+| "It's important to note that..." | [delete the phrase] | throat-clearing adds nothing |
+| "basically", "obviously", "simply" | [delete] | dismissive; if obvious, don't say it |
+| "This will significantly improve..." | "This reduces latency by ~40ms" | quantify or cut the adjective |
+
+## anti-patterns
+
+**the buried lede** — three paragraphs of context before stating the point. fix: state conclusion first, then support.
+
+**the hedge stack** — "It might potentially be somewhat useful in certain cases." fix: commit or cut.
