@@ -72,4 +72,4 @@ the pattern: drop hedges, replace abstraction with concrete metaphor, say less.
 
 ## resources
 
-- @references/2025-12-18 amp voice and terminology.md — full guide
+- [references/2025-12-18 amp voice and terminology.md](references/2025-12-18%20amp%20voice%20and%20terminology.md) — full guide

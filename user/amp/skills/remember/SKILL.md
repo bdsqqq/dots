@@ -5,7 +5,17 @@ description: "record context that would help in future sessions. use after learn
 
 # remember
 
-record memories to [~/commonplace/01_files/](~/commonplace/01_files/) for future retrieval. no database—files are the memory, retrieved via grep. see the [commonplace README](~/commonplace/README.md) for the full system.
+record memories for future retrieval. no database—files are the memory, retrieved via grep.
+
+## configuration
+
+set `$MEMORY_ROOT` to your memory directory:
+
+```bash
+export MEMORY_ROOT="$HOME/commonplace/01_files"
+```
+
+if unset, defaults to `~/commonplace/01_files/`. customize paths in examples below to match your setup.
 
 ## when to use
 
@@ -16,13 +26,13 @@ record memories to [~/commonplace/01_files/](~/commonplace/01_files/) for future
 
 ## memory anatomy
 
-memories follow [commonplace file naming](~/commonplace/README.md#file-naming) with two agent-specific requirements:
+memories follow date-prefixed naming with two agent-specific requirements:
 
 1. **`source__agent` tag** — required, marks this as agent-generated
 2. **frontmatter with thread URL** — records where learning happened
 
 ```
-~/commonplace/01_files/YYYY-MM-DD description -- source__agent.md
+$MEMORY_ROOT/YYYY-MM-DD description -- source__agent.md
 ```
 
 ```yaml
@@ -35,7 +45,7 @@ keywords:
 ---
 ```
 
-`keywords` are freeform tags for retrieval. see [frontmatter](~/commonplace/README.md#frontmatter) for conventions.
+`keywords` are freeform tags for retrieval.
 
 ## content
 
@@ -45,7 +55,7 @@ write for your future self:
 - why it matters
 - how to apply it
 
-link to related memories with markdown links: `[note name](~/commonplace/01_files/note name.md)`
+link to related memories with markdown links: `[note name]($MEMORY_ROOT/note name.md)`
 
 belief: connections between ideas compound value. an isolated fact is less useful than one linked to context.
 
@@ -103,13 +113,13 @@ check for relevant memories before starting work:
 
 ```bash
 # find agent memories about a topic
-ls ~/commonplace/01_files/ | grep source__agent | grep -i topic
+ls "$MEMORY_ROOT" | grep source__agent | grep -i topic
 
 # search memory content
-rg "topic" ~/commonplace/01_files/*source__agent*.md
+rg "topic" "$MEMORY_ROOT"/*source__agent*.md
 
 # recent memories
-ls -t ~/commonplace/01_files/*source__agent*.md | head -20
+ls -t "$MEMORY_ROOT"/*source__agent*.md | head -20
 ```
 
 ## what NOT to remember
