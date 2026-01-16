@@ -60,6 +60,16 @@ write in amp's voice — direct, technical, opinionated, honest.
 - sycophantic openers ("you're absolutely right!")
 - "AI" as a noun for the agent
 
+### voice transforms
+
+| before | after |
+|--------|-------|
+| "You might want to consider spawning a subagent for this task." | "spawn a subagent for this." |
+| "This integration allows for improved workflow efficiency through automatic context sharing." | "it's an LLM, a loop, and enough tokens. the rest is elbow grease." |
+| "This feature helps maintain context more effectively, which can improve agent performance." | "short threads are best. agents get drunk if you feed them too many tokens." |
+
+the pattern: drop hedges, replace abstraction with concrete metaphor, say less.
+
 ## resources
 
 - @references/2025-12-18 amp voice and terminology.md — full guide
