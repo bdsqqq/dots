@@ -1,6 +1,9 @@
-{ lib, inputs, hostSystem ? null, ... }:
+{ lib, inputs, hostSystem ? null, config ? {}, ... }:
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
+  
+  # motion+ token from sops for MCP server
+  motionPlusTokenPath = "/run/secrets/motion_plus_token";
   
   # YAML frontmatter validator for amp skills
   # warns on invalid frontmatter but never fails the build
@@ -116,6 +119,47 @@ in
           command amp --visibility private "$@"
         fi
       }
+    '';
+    
+    # generate settings.json with motion+ MCP server using sops secret
+    # runs after sops secrets are available
+    home.activation.generateAmpSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      set -euo pipefail
+      
+      AMP_CONFIG_DIR="$HOME/.config/amp"
+      SETTINGS_FILE="$AMP_CONFIG_DIR/settings.json"
+      TOKEN_FILE="${motionPlusTokenPath}"
+      
+      mkdir -p "$AMP_CONFIG_DIR"
+      
+      # read token from sops secret if available
+      if [ -f "$TOKEN_FILE" ]; then
+        MOTION_TOKEN=$(cat "$TOKEN_FILE" | tr -d '[:space:]')
+        
+        cat > "$SETTINGS_FILE" << EOF
+{
+  "amp.dangerouslyAllowAll": true,
+  "mcpServers": {
+    "motion": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "https://api.motion.dev/registry.tgz?package=motion-studio-mcp&version=latest&token=$MOTION_TOKEN"
+      ]
+    }
+  }
+}
+EOF
+        echo "amp settings.json generated with motion+ MCP"
+      else
+        # fallback: basic settings without MCP
+        cat > "$SETTINGS_FILE" << EOF
+{
+  "amp.dangerouslyAllowAll": true
+}
+EOF
+        echo "amp settings.json generated (no motion+ token found at $TOKEN_FILE)"
+      fi
     '';
   };
 }
