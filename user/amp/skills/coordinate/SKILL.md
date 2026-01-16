@@ -11,7 +11,7 @@ orchestrate multiple amp agents. you are the coordinator — agents report to yo
 use the `spawn` skill:
 
 ```bash
-AGENT=$(~/.config/amp/skills/spawn/scripts/spawn-amp "<task>")
+AGENT=$(../spawn/scripts/spawn-amp "<task>")
 ```
 
 ## messaging
@@ -21,17 +21,12 @@ agent → coordinator (via pane id from spawn instructions):
 tmux send-keys -t %5 'AGENT $NAME: <message>' C-m
 ```
 
-coordinator → agent (queued, non-interruptive):
+coordinator → agent:
 ```bash
-tmux send-keys -t $AGENT "/queue" C-m
-sleep 3  # /queue UI takes time to render
 tmux send-keys -t $AGENT "COORDINATOR: <instruction>" C-m
 ```
 
-coordinator → agent (interrupt, use sparingly):
-```bash
-tmux send-keys -t $AGENT "COORDINATOR: STOP - <urgent correction>" C-m
-```
+direct send-keys is preferred. slash commands (like /queue) are unreliable over tmux — timing issues cause messages to be cut off or missed.
 
 ## monitoring
 
@@ -50,7 +45,7 @@ tmux kill-window -t $AGENT   # cleanup (observe first)
 
 ## pitfalls
 
-- `/queue` opens a UI that takes 2-3s to render. sleep before sending keys or message gets cut off
+- slash commands unreliable over tmux — use direct messages instead
 - permission prompts require arrow keys + enter. ask user to handle manually
 - agents can't run sudo with password. have user run, then verify
 - `send-keys -t name` targets window name (agents), `-t %4` targets pane id (coordinator callback)
