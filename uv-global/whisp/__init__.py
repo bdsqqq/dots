@@ -19,6 +19,7 @@ __all__ = [
     "make_output_filename",
     "words_to_turns",
     "assign_speakers",
+    "render",
 ]
 
 from whisp.models import Word, SpeakerTurn, Transcript
@@ -35,3 +36,4 @@ from whisp.timefmt import format_timestamp, format_duration
 from whisp.filename import get_source_timestamp, make_output_filename
 from whisp.segment import words_to_turns
 from whisp.align import assign_speakers
+from whisp.format_md import render
