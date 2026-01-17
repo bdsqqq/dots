@@ -50,12 +50,39 @@ apply documentation philosophy: explain why, not what.
 - what the function name already says
 - what types already express
 
+## jsdoc structure
+
+```typescript
+/**
+ * one-line description of purpose or behavior.
+ *
+ * additional context if design rationale is complex (keep brief).
+ *
+ * @prop propName - what it does
+ * @example
+ * ```tsx
+ * <Component>content</Component>
+ * ```
+ */
+```
+
+## maintainer notes
+
+preserve `@bdsqqq notes` or similar when they explain non-obvious decisions:
+
+```typescript
+/**
+ * @bdsqqq notes: alpha colors avoided for strokes due to compounding
+ * overlap issues at intersection points.
+ */
+```
+
+## colocate context with code
+
+jsdocs are source of truth. upon finishing a task, colocate valuable context as jsdocs — only notes that explain non-obvious why. delete everything else.
+
 ## tone
 
 - lowercase only (ALL CAPS for emphasis)
 - terse, no unsupported claims
 - specific over general; describe, don't emote
-
-## reference
-
-see [references/05-documentation-philosophy.md](references/05-documentation-philosophy.md) for full patterns and examples.
