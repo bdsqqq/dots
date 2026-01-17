@@ -8,6 +8,7 @@ in
       ../user/nvim
       ../user/git.nix
       ../user/pnpm.nix
+      ../user/uv.nix
       ../user/dev-tools.nix
       ../user/zellij.nix
       ../user/tmux.nix
