@@ -1,6 +1,6 @@
 ---
 name: write
-description: "technical prose style guide. use when writing docs, READMEs, PR descriptions, essays, or any prose meant for developer audiences. enforces academish voice + user's specific tone: lowercase, terse, anti-sycophancy."
+description: "technical prose style guide. use when writing docs, READMEs, PR descriptions, essays, or any prose meant for developer audiences. enforces academish voice: supported claims, precise language, no hyperbole. user tone: lowercase, terse, anti-sycophancy."
 ---
 
 # write
