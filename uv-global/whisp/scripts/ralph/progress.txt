@@ -78,3 +78,16 @@ Task ID: 5
   - whisp/segment_test.py (10 tests, all passing)
 - updated __init__.py exports
 ---
+
+## 2026-01-17 - P1d: align.py ✅ COMPLETED
+Thread: https://ampcode.com/threads/T-019bce5d-3029-7608-81a8-82deb2dc4257
+Task ID: 6
+- implemented align.py with assign_speakers function
+- midpoint assignment: word → speaker whose segment contains word midpoint
+- no match → UNKNOWN
+- uses dataclasses.replace() to avoid mutation
+- files created:
+  - whisp/align.py
+  - whisp/align_test.py (10 tests with MockDiarization, all passing)
+- updated __init__.py exports
+---
