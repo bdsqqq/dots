@@ -22,8 +22,7 @@ in
       pnpm
       pscale
       go
-      python3
-      uv
+
       gofumpt
       golangci-lint
       gotools
