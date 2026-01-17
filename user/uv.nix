@@ -1,4 +1,9 @@
-{ inputs, lib, hostSystem ? null, ... }:
+{ inputs, lib, hostSystem ? null, torchBackend ? null, ... }:
+let
+  isDarwin = lib.hasInfix "darwin" hostSystem;
+  # darwin uses pypi (MPS support), linux needs explicit backend
+  extraFlag = if isDarwin then "" else if torchBackend != null then "--extra ${torchBackend}" else "--extra cpu";
+in
 {
   home-manager.users.bdsqqq = { inputs, config, pkgs, lib, ... }: let
     uvGlobalDir = "${config.home.homeDirectory}/commonplace/01_files/nix/uv-global";
@@ -28,7 +33,7 @@
       fi
 
       cd "$UV_GLOBAL_DIR"
-      "${pkgs.uv}/bin/uv" sync || true
+      "${pkgs.uv}/bin/uv" sync ${extraFlag} || true
     '';
 
     programs.zsh.shellAliases = {

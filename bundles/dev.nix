@@ -1,8 +1,10 @@
-{ lib, headMode ? "graphical", ... }:
+{ lib, headMode ? "graphical", torchBackend ? null, ... }:
 let
   isGraphical = headMode == "graphical";
 in
 {
+  _module.args.torchBackend = torchBackend;
+
   imports =
     [
       ../user/nvim
