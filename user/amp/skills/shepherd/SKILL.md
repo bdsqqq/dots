@@ -80,10 +80,24 @@ new thread is critical—continuation carries exhausted context.
 
 ## state tracking
 
-persist externally:
+persist all state externally (context resets lose variables):
 
 ```bash
+# initialize
 echo "%PANE" > /tmp/shepherd-target-pane
+echo "$THREAD_ID" > /tmp/shepherd-thread-id
+echo "0" > /tmp/shepherd-missed-pings
+echo "" > /tmp/shepherd-handoff-chain
+
+# read before each ping
+PANE=$(cat /tmp/shepherd-target-pane)
+THREAD=$(cat /tmp/shepherd-thread-id)
+MISSED=$(cat /tmp/shepherd-missed-pings)
+
+# update after events
+echo "$NEW_PANE" > /tmp/shepherd-target-pane
+echo "$((MISSED + 1))" > /tmp/shepherd-missed-pings
+echo "$THREAD -> $NEW_THREAD" >> /tmp/shepherd-handoff-chain
 ```
 
 track:

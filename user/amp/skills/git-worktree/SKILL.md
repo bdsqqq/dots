@@ -10,4 +10,11 @@ create a worktree as sibling directory with a new branch.
 git worktree add ../<name> -b <name>
 ```
 
-then `cd ../<name>` or open in editor. `git worktree list` to see all.
+then `cd ../<name>` or open in editor.
+
+## manage
+
+```bash
+git worktree list                    # see all worktrees
+git worktree remove ../<name>        # cleanup when done
+```
