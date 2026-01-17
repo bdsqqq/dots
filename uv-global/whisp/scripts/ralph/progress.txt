@@ -27,7 +27,7 @@ execution order: 2 → (3,4,5,6,7,8,9,10,11 parallel) → 12 → 13 → 14
 
 ---
 
-## 2026-01-17 - P0: package skeleton
+## 2026-01-17 - P0: package skeleton ✅ COMPLETED
 Thread: https://ampcode.com/threads/T-019bce5b-37a7-75a9-9c87-a6ae489f4d11
 Task ID: 2
 - implemented package skeleton with all required files
@@ -41,4 +41,17 @@ Task ID: 2
   - package lives at uv-global/whisp/, not nested uv-global/whisp/whisp/
   - pyproject.toml is in parent dir (uv-global/), not whisp/
   - uv run whisp works immediately after file creation (editable install)
+  - task_list tool not available in context; track completion in progress.txt
+---
+
+## 2026-01-17 - P1a: timefmt.py ✅ COMPLETED
+Thread: https://ampcode.com/threads/T-019bce5d-3029-7608-81a8-82deb2dc4257
+Task ID: 3
+- implemented timefmt.py with format_timestamp and format_duration
+- files created:
+  - whisp/timefmt.py
+  - whisp/timefmt_test.py (17 tests, all passing)
+- updated __init__.py exports
+- **Learnings:**
+  - no type checker (pyright/mypy) installed; rely on pytest + python -c imports
 ---
