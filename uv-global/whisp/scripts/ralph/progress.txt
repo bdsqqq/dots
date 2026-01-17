@@ -1,0 +1,44 @@
+# Build Progress Log
+Started: 2026-01-17
+Feature: whisp - audio to markdown transcription
+Parent Task: 1
+
+## Task Dependency Graph
+
+```
+P0 (2) ─┬─► P1a (3) ─┐
+        ├─► P1b (4) ─┤
+        ├─► P1c (5) ─┤
+        ├─► P1d (6) ─┼─► P4 (12) ─► P5 (13) ─► P6 (14)
+        ├─► P1e (7) ─┤
+        ├─► P2a (8) ─┤
+        ├─► P2b (9) ─┤
+        ├─► P3a (10)─┤
+        └─► P3b (11)─┘
+```
+
+execution order: 2 → (3,4,5,6,7,8,9,10,11 parallel) → 12 → 13 → 14
+
+## Codebase Patterns
+(patterns discovered during this feature build)
+
+- flat layout: whisp/ is directly under uv-global/, NOT uv-global/whisp/whisp/
+- pyproject.toml lives in uv-global/, uses `packages = ["whisp"]` in hatch config
+
+---
+
+## 2026-01-17 - P0: package skeleton
+Thread: https://ampcode.com/threads/T-019bce5b-37a7-75a9-9c87-a6ae489f4d11
+Task ID: 2
+- implemented package skeleton with all required files
+- files created:
+  - whisp/__init__.py (version='0.1.0', __all__ exports)
+  - whisp/__main__.py (stub main())
+  - whisp/py.typed (PEP 561 marker)
+  - whisp/models.py (Word, SpeakerTurn, Transcript dataclasses)
+  - whisp/errors.py (WhispError base + 6 subclasses with exit codes)
+- **Learnings for future iterations:**
+  - package lives at uv-global/whisp/, not nested uv-global/whisp/whisp/
+  - pyproject.toml is in parent dir (uv-global/), not whisp/
+  - uv run whisp works immediately after file creation (editable install)
+---
