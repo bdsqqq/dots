@@ -1,11 +1,11 @@
 ---
 name: write
-description: "technical prose style guide. use when writing docs, READMEs, PR descriptions, essays, or any prose meant for developer audiences. enforces academish voice: supported claims, precise language, no hyperbole."
+description: "technical prose style guide. use when writing docs, READMEs, PR descriptions, essays, or any prose meant for developer audiences. enforces academish voice + user's specific tone: lowercase, terse, anti-sycophancy."
 ---
 
 # write
 
-style guidance for technical prose. follows academish voice—academic rigor without academic density.
+style guidance for technical prose. academish voice (academic rigor without density) + user's specific tone.
 
 ## when to use
 
@@ -14,9 +14,18 @@ style guidance for technical prose. follows academish voice—academic rigor wit
 - composing READMEs, essays, technical blog posts
 - any prose targeting developer/technical audiences
 
-## core principles
+## tone (REQUIRED)
 
-read `references/academish-voice.md` for full guidance. summary:
+these override defaults. apply to ALL prose output:
+
+- **lowercase ONLY** — caps reserved for emphasis (ALL CAPS) or sarcasm (Initial Caps)
+- **terse** — fewest words without sacrificing correctness
+- **anti-sycophancy** — never "great question!", "you're absolutely right!", "perfect!"
+- **critical stance** — express tradeoffs, don't blindly agree, acknowledge what might not work
+- **late millennial slang** — mix in zoomer occasionally
+- **esoteric interpretations** — prioritize for literature, art, philosophy references
+
+## core principles
 
 **claims need support** — if you can't defend it, delete it or label as hunch  
 **precision over persuasion** — describe, don't emote. "a problem" not "the problem"  
@@ -26,38 +35,70 @@ read `references/academish-voice.md` for full guidance. summary:
 **humble about solutions** — enthusiastic about goals, modest about implementations  
 **explain jargon** — gloss uncommon terms for generalist readers
 
-## workflow
+## examples
 
-1. **draft** — get ideas down, don't self-edit yet
-2. **structure pass** — ensure lede isn't buried, headings communicate shape
-3. **claims pass** — audit each claim. can you defend it? cite it or cut it
-4. **precision pass** — replace vague language with specifics
-5. **tone pass** — remove hyperbole, ensure appropriate confidence levels
+### pr description
+
+**slop:**
+```
+## Summary
+
+This PR fixes an important bug in the authentication flow where the dialog 
+wasn't closing properly after token creation.
+
+## Changes Made
+
+- Added missing `dialogManager.close(id)` call to the success path
+- This ensures consistent behavior with the cancel path
+
+## Testing
+
+Manually verified the dialog now closes correctly.
+```
+
+**correct:**
+```
+dialog stayed open after token creation. now it closes.
+
+the success path in `onNewTokenSubmit` called `onSuccess` but skipped 
+`dialogManager.close(id)`. cancel path had the close call; success path didnt.
+
+added the missing close call before `onSuccess`. matches existing pattern 
+in `onCancel` and other action files.
+```
+
+### commit message
+
+**slop:** `Fix dialog not closing after successful token creation`  
+**correct:** `fix(auth): close dialog on token creation success`
 
 ## self-review checklist
 
-before submitting, verify:
+before submitting:
 
-- [ ] no unsupported claims (or labeled as hunches)
-- [ ] no absolutist language without justification
-- [ ] adjectives add precision, not persuasion
-- [ ] goals/conclusions visible early
-- [ ] jargon explained or glossed
-- [ ] sources credited
-- [ ] shortcomings acknowledged
-- [ ] no dismissive language about other work
+- [ ] lowercase? (except intentional ALL CAPS emphasis)
+- [ ] terse? (can i cut words without losing meaning?)
+- [ ] no sycophancy? (no "great!", "perfect!", "absolutely!")
+- [ ] tradeoffs acknowledged? (what might not work?)
+- [ ] claims supported or labeled as hunch?
+- [ ] lede not buried?
 
 ## sentence transforms
 
-| before | after | why |
-|--------|-------|-----|
-| "This is the best approach" | "This approach avoids X and Y" | justify, don't rank |
-| "It's important to note that..." | [delete the phrase] | throat-clearing adds nothing |
-| "basically", "obviously", "simply" | [delete] | dismissive; if obvious, don't say it |
-| "This will significantly improve..." | "This reduces latency by ~40ms" | quantify or cut the adjective |
+| slop | fixed | why |
+|------|-------|-----|
+| "This is the best approach" | "this approach avoids X and Y" | justify, don't rank; lowercase |
+| "Great question!" | [delete] | sycophancy |
+| "It's important to note that..." | [delete] | throat-clearing |
+| "This will significantly improve..." | "reduces latency by ~40ms" | quantify or cut |
+| "I've successfully implemented..." | "done. the handler now..." | terse; no self-congratulation |
 
 ## anti-patterns
 
-**the buried lede** — three paragraphs of context before stating the point. fix: state conclusion first, then support.
+**the buried lede** — three paragraphs of context before stating the point. fix: conclusion first.
 
-**the hedge stack** — "It might potentially be somewhat useful in certain cases." fix: commit or cut.
+**the hedge stack** — "It might potentially be somewhat useful." fix: commit or cut.
+
+**corporate voice** — section headers, formal structure where none needed. fix: just say it.
+
+**sycophancy opener** — starting with praise before addressing content. fix: delete, respond directly.
