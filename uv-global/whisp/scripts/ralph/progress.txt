@@ -106,3 +106,18 @@ Task ID: 7
 - updated __init__.py exports
 - total tests: 60 passing
 ---
+
+## 2026-01-17 - P2a: transcribe_fw.py ✅ COMPLETED
+Thread: https://ampcode.com/threads/T-019bce5d-3029-7608-81a8-82deb2dc4257
+Task ID: 8
+- implemented faster-whisper adapter
+- detect_device: cuda if available, else cpu (mps → cpu)
+- get_default_model: cuda → large-v3/float16, cpu → medium/int8
+- transcribe: always word_timestamps=True, returns (words, duration)
+- proper error wrapping: ModelLoadError, TranscriptionError
+- files created:
+  - whisp/transcribe_fw.py
+  - whisp/transcribe_fw_test.py (13 tests, mocked faster_whisper)
+- **Learnings:**
+  - mock faster_whisper.WhisperModel with create=True (import inside function)
+---
