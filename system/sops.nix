@@ -19,6 +19,7 @@ in
       anthropic_api_key = { owner = "bdsqqq"; };
       tailscale_auth_key = { owner = "bdsqqq"; };
       gh_token = { owner = "bdsqqq"; };
+      hf_token = { owner = "bdsqqq"; };
       motion_plus_token = { owner = "bdsqqq"; };
       AMP_API_KEY = { owner = "bdsqqq"; };
       syncthing_gui_password = { owner = "bdsqqq"; };
