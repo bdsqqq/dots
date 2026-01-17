@@ -56,7 +56,7 @@ in {
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
-    extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "headless"; };
+    extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "headless"; torchBackend = "cpu"; };
     users.bdsqqq = {
       home.username = "bdsqqq";
       home.homeDirectory = "/home/bdsqqq";
