@@ -16,7 +16,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# linux with nvidia gpu - install with: uv sync --extra cuda
 cuda = [
   "torch",
 ]
