@@ -14,12 +14,9 @@ write in amp's voice — direct, technical, opinionated, honest.
 - communicating about amp in threads, docs, or discussions
 - reviewing text for amp voice compliance
 
-## workflow
+## core principles
 
-1. read the reference file for full terminology and voice guide:
-   - `references/2025-12-18 amp voice and terminology.md`
-
-2. apply these core principles:
+apply these (reference at `references/2025-12-18 amp voice and terminology.md` for extended examples):
    - **direct and casual** — no marketing speak, no buzzwords
    - **technical but accessible** — clear without condescension
    - **opinionated without arrogance** — "we think" not "you must"
