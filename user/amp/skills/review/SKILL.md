@@ -1,6 +1,6 @@
 ---
 name: review
-description: epistemic standards for evaluation and analysis. load before reviewing, debugging, or any task where findings must be defensible.
+description: "epistemic standards for evaluation and analysis. load before reviewing code, debugging, reporting findings, or any task where claims must be defensible. enforces trace-or-delete, confidence labeling, falsification."
 ---
 
 # review
