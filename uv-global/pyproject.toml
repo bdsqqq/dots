@@ -21,5 +21,18 @@ cuda = [
 ]
 
 [tool.uv]
-# for cuda torch wheels on linux
-extra-index-url = ["https://download.pytorch.org/whl/cu121"]
+# scope resolution to actual target platforms
+environments = [
+  "sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[tool.uv.sources]
+# cuda wheels only apply to linux
+torch = [
+  { index = "pytorch-cuda", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu121"
