@@ -21,7 +21,10 @@ git push
 - stage files explicitly, never `git add -A` (other unstaged changes may exist)
 - if unsure which changes are yours, ask the user
 - NEVER force push (`--force`, `-f`, `--force-with-lease`)
-- if push fails due to divergence, rebase on origin/main and retry
+- if push fails due to divergence, rebase and retry:
+  ```bash
+  git fetch origin && git rebase origin/main && git push
+  ```
 
 ## commit format
 

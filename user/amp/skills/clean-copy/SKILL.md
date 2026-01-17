@@ -18,6 +18,21 @@ reimplement the current branch on a new branch with clean, narrative-quality com
 6. verify: final state must match source branch exactly
 7. pr: create PR to `main`, link to original branch
 
+## example commit sequence
+
+source branch has 47 messy commits adding auth. clean-copy might produce:
+
+```
+feat(auth): add user model and migration
+feat(auth): implement JWT token generation
+feat(auth): add login/logout endpoints
+feat(auth): protect routes with auth middleware
+test(auth): add auth flow integration tests
+docs(auth): update API documentation
+```
+
+6 commits that tell a story vs 47 that document confusion.
+
 ## rules
 
 - never add yourself as author/contributor
