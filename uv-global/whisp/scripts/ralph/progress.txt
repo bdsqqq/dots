@@ -55,3 +55,14 @@ Task ID: 3
 - **Learnings:**
   - no type checker (pyright/mypy) installed; rely on pytest + python -c imports
 ---
+
+## 2026-01-17 - P1b: filename.py ✅ COMPLETED
+Thread: https://ampcode.com/threads/T-019bce5d-3029-7608-81a8-82deb2dc4257
+Task ID: 4
+- implemented filename.py with get_source_timestamp, sanitize_filename, make_output_filename
+- format: YYYY-MM-DDTHH-MM <original-name> -- source__transcript.md
+- files created:
+  - whisp/filename.py
+  - whisp/filename_test.py (12 tests, all passing)
+- updated __init__.py exports
+---

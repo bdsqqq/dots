@@ -15,6 +15,8 @@ __all__ = [
     "HFTokenMissingError",
     "format_timestamp",
     "format_duration",
+    "get_source_timestamp",
+    "make_output_filename",
 ]
 
 from whisp.models import Word, SpeakerTurn, Transcript
@@ -28,3 +30,4 @@ from whisp.errors import (
     HFTokenMissingError,
 )
 from whisp.timefmt import format_timestamp, format_duration
+from whisp.filename import get_source_timestamp, make_output_filename
