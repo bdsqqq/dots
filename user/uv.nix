@@ -27,14 +27,8 @@
         "${pkgs.uv}/bin/uv" venv "$UV_VENV_DIR" --python "${pkgs.python312}/bin/python"
       fi
 
-      # nvidia-smi presence = cuda wheels available
-      UV_SYNC_EXTRA=""
-      if command -v nvidia-smi &>/dev/null; then
-        UV_SYNC_EXTRA="--extra cuda"
-      fi
-
       cd "$UV_GLOBAL_DIR"
-      "${pkgs.uv}/bin/uv" sync $UV_SYNC_EXTRA || true
+      "${pkgs.uv}/bin/uv" sync || true
     '';
 
     programs.zsh.shellAliases = {

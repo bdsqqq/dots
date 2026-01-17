@@ -5,34 +5,24 @@ description = "global python tools managed via uv"
 requires-python = ">=3.12"
 
 dependencies = [
-  # transcription
   "faster-whisper",
   "pyannote.audio",
-
-  # torch: auto-select backend via environment markers
-  # darwin = MPS (metal), linux = CUDA
-  "torch; sys_platform == 'darwin'",
-  # note: cuda torch needs extra-index-url, see below
-]
-
-[project.optional-dependencies]
-cuda = [
   "torch",
 ]
 
 [tool.uv]
-# scope resolution to actual target platforms
 environments = [
   "sys_platform == 'darwin' and platform_machine == 'arm64'",
   "sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 
-[tool.uv.sources]
-# cuda wheels only apply to linux
-torch = [
-  { index = "pytorch-cuda", marker = "sys_platform == 'linux'" },
-]
-
 [[tool.uv.index]]
-name = "pytorch-cuda"
+name = "pytorch-cu121"
 url = "https://download.pytorch.org/whl/cu121"
+
+[tool.uv.sources]
+# linux uses cuda index, darwin uses default pypi (has MPS support)
+torch = [
+  { index = "pytorch-cu121", marker = "sys_platform == 'linux'" },
+  { index = "pypi", marker = "sys_platform == 'darwin'" },
+]
