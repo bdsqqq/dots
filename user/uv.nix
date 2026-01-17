@@ -13,11 +13,10 @@
       { order = 120; value = "${uvVenvDir}/bin"; }
     ];
 
-    # ensure uv, python, and ffmpeg are available
     home.packages = with pkgs; [
       uv
       python312
-      ffmpeg  # needed for audio processing
+      ffmpeg
     ];
 
     home.activation.installUvGlobals = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
