@@ -13,6 +13,8 @@ __all__ = [
     "ModelLoadError",
     "TranscriptionError",
     "HFTokenMissingError",
+    "format_timestamp",
+    "format_duration",
 ]
 
 from whisp.models import Word, SpeakerTurn, Transcript
@@ -25,3 +27,4 @@ from whisp.errors import (
     TranscriptionError,
     HFTokenMissingError,
 )
+from whisp.timefmt import format_timestamp, format_duration
