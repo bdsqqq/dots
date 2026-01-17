@@ -1,6 +1,6 @@
 ---
 name: git-ship
-description: stage, commit (conventional), push
+description: "stage, commit (conventional), push. use when shipping changes, committing work, or pushing to remote. never force push, never git add -A."
 ---
 # git-ship
 

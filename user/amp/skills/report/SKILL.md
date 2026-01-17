@@ -1,6 +1,6 @@
 ---
 name: report
-description: message coordinator as a spawned agent
+description: "message coordinator as a spawned agent. use when you were spawned by coordinate/spawn and need to report progress, completion, or blockers back to the coordinator."
 ---
 # report
 

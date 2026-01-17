@@ -1,6 +1,6 @@
 ---
 name: amp-voice
-description: write in amp's voice — direct, technical, opinionated, honest
+description: "write in amp's voice — direct, technical, opinionated, honest. use for technical writing that should feel authoritative without being academic. derived from analysis of amp's content patterns."
 ---
 
 # amp-voice
