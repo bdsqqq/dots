@@ -1,6 +1,6 @@
 ---
 name: git-worktree
-description: create git worktree with new branch
+description: "create git worktree with new branch. use when working on features in parallel, isolating experimental work, or avoiding stash/switch overhead. creates sibling directory."
 ---
 # git-worktree
 

@@ -1,6 +1,6 @@
 ---
 name: tmux
-description: manage background processes in tmux windows
+description: "manage background processes in tmux windows. use when running dev servers, build watchers, or any long-running process that shouldn't block the agent. check window before spawning."
 ---
 # tmux
 

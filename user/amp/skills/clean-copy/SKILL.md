@@ -1,6 +1,6 @@
 ---
 name: clean-copy
-description: reimplement current branch with clean, narrative-quality git commit history
+description: "reimplement current branch with clean, narrative-quality git commit history. use when commit history is messy, after exploratory work, or before PR review. creates new branch with logical, atomic commits."
 ---
 # clean-copy
 

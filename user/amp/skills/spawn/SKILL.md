@@ -1,6 +1,6 @@
 ---
 name: spawn
-description: spawn parallel amp agents in tmux with thread linkage
+description: "spawn parallel amp agents in tmux with thread linkage. use when delegating independent subtasks, running work in parallel, or preserving context window. lighter than coordinate for simple delegation."
 ---
 # spawn
 
