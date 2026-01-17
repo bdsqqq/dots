@@ -369,11 +369,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1767694365,
-        "narHash": "sha256-HZ14lOZBF2ADkYBAfmwTTgIzrxgHnIxtO4wg4fyp+Pk=",
+        "lastModified": 1768561213,
+        "narHash": "sha256-2rut0kIw0sMVGHUHxubIcBMRE74/TU+/mQzlTQvlIJY=",
         "owner": "bdsqqq",
         "repo": "lnr",
-        "rev": "ed24ec018cba908c2c9f2a33c39227ce3be64b02",
+        "rev": "675c4ba3f9e05d9c7d57bbff52b55ad8ccc84102",
         "type": "github"
       },
       "original": {
@@ -693,10 +693,28 @@
         "nixpkgs-unstable": "nixpkgs-unstable",
         "nixvim": "nixvim",
         "quickshell": "quickshell",
+        "snarktank-skills": "snarktank-skills",
         "sops-nix": "sops-nix",
         "spicetify-nix": "spicetify-nix",
         "stylix": "stylix",
+        "vercel-skills": "vercel-skills",
         "vicinae": "vicinae"
+      }
+    },
+    "snarktank-skills": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1768518368,
+        "narHash": "sha256-tpO3uKuT0IsPrU0fsmpW0GnHO9c/Fze9bQRvTTcYENw=",
+        "owner": "snarktank",
+        "repo": "amp-skills",
+        "rev": "bb6830e0855604d02e482ec10874703cf539d114",
+        "type": "github"
+      },
+      "original": {
+        "owner": "snarktank",
+        "repo": "amp-skills",
+        "type": "github"
       }
     },
     "sops-nix": {
@@ -942,6 +960,22 @@
       "original": {
         "owner": "tinted-theming",
         "repo": "base16-zed",
+        "type": "github"
+      }
+    },
+    "vercel-skills": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1768607231,
+        "narHash": "sha256-hS9TPqPz3jYxciAhgFmUGiy23mju47pWFK47Ab3Oum0=",
+        "owner": "vercel-labs",
+        "repo": "agent-skills",
+        "rev": "ba46938889d4e58635362fb8f618e1178ac3ec46",
+        "type": "github"
+      },
+      "original": {
+        "owner": "vercel-labs",
+        "repo": "agent-skills",
         "type": "github"
       }
     },
