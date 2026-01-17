@@ -91,3 +91,18 @@ Task ID: 6
   - whisp/align_test.py (10 tests with MockDiarization, all passing)
 - updated __init__.py exports
 ---
+
+## 2026-01-17 - P1e: format_md.py ✅ COMPLETED
+Thread: https://ampcode.com/threads/T-019bce5d-3029-7608-81a8-82deb2dc4257
+Task ID: 7
+- implemented format_md.py with render function
+- YAML frontmatter with source, duration, speakers, model, transcribed
+- single_speaker mode: empty speakers list, no labels in body
+- empty audio: [...silence]
+- UNKNOWN labels shown for diarization failure
+- files created:
+  - whisp/format_md.py
+  - whisp/format_md_test.py (11 tests, all passing)
+- updated __init__.py exports
+- total tests: 60 passing
+---
