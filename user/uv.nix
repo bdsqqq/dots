@@ -13,9 +13,10 @@
       { order = 120; value = "${uvVenvDir}/bin"; }
     ];
 
-    # ensure uv and ffmpeg are available (python provided by dev-tools.nix)
+    # ensure uv, python, and ffmpeg are available
     home.packages = with pkgs; [
       uv
+      python312
       ffmpeg  # needed for audio processing
     ];
 
@@ -27,7 +28,7 @@
 
       # ensure venv exists
       if [ ! -d "$UV_VENV_DIR" ]; then
-        "${pkgs.uv}/bin/uv" venv "$UV_VENV_DIR"
+        "${pkgs.uv}/bin/uv" venv "$UV_VENV_DIR" --python "${pkgs.python312}/bin/python"
       fi
 
       # detect cuda support at runtime
