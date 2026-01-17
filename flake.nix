@@ -82,6 +82,18 @@
       url = "github:axiomhq/axiom-sre";
       flake = false;
     };
+
+    # snarktank amp skills collection
+    snarktank-skills = {
+      url = "github:snarktank/amp-skills";
+      flake = false;
+    };
+
+    # vercel agent skills (react-best-practices, web-design-guidelines)
+    vercel-skills = {
+      url = "github:vercel-labs/agent-skills";
+      flake = false;
+    };
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:

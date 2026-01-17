@@ -101,6 +101,16 @@ in
       source = "${inputs.lnr}/SKILL.md";
     };
 
+    # snarktank skills collection
+    home.file.".config/amp/skills/compound-engineering".source = "${inputs.snarktank-skills}/compound-engineering";
+    home.file.".config/amp/skills/frontend-design".source = "${inputs.snarktank-skills}/frontend-design";
+    home.file.".config/amp/skills/prd".source = "${inputs.snarktank-skills}/prd";
+    home.file.".config/amp/skills/ralph".source = "${inputs.snarktank-skills}/ralph";
+
+    # vercel agent skills
+    home.file.".config/amp/skills/react-best-practices".source = "${inputs.vercel-skills}/skills/react-best-practices";
+    home.file.".config/amp/skills/web-design-guidelines".source = "${inputs.vercel-skills}/skills/web-design-guidelines";
+
     # shell wrappers for rush mode execution
     home.shellAliases = {
       # ship: commit and push in rush mode, continuing current thread
