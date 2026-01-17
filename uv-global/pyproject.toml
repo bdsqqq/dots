@@ -1,0 +1,26 @@
+[project]
+name = "uv-global"
+version = "0.1.0"
+description = "global python tools managed via uv"
+requires-python = ">=3.11"
+
+dependencies = [
+  # transcription
+  "faster-whisper",
+  "pyannote.audio",
+
+  # torch: auto-select backend via environment markers
+  # darwin = MPS (metal), linux = CUDA
+  "torch; sys_platform == 'darwin'",
+  # note: cuda torch needs extra-index-url, see below
+]
+
+[project.optional-dependencies]
+# linux with nvidia gpu - install with: uv sync --extra cuda
+cuda = [
+  "torch",
+]
+
+[tool.uv]
+# for cuda torch wheels on linux
+extra-index-url = ["https://download.pytorch.org/whl/cu121"]
