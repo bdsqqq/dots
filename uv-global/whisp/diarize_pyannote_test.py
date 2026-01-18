@@ -57,6 +57,16 @@ class MockDiarization:
                 yield MockSegment(start, end), None
 
 
+@pytest.fixture
+def mock_load_audio():
+    """Mock _load_audio to avoid torchaudio dependency."""
+    with patch(
+        "whisp.diarize_pyannote._load_audio",
+        return_value={"waveform": MagicMock(), "sample_rate": 16000},
+    ) as m:
+        yield m
+
+
 class TestDiarize:
     """Tests for diarize function."""
 
@@ -66,7 +76,7 @@ class TestDiarize:
         with pytest.raises(HFTokenMissingError):
             diarize("/path/to/audio.m4a")
 
-    def test_returns_diarization_result(self, monkeypatch):
+    def test_returns_diarization_result(self, monkeypatch, mock_load_audio):
         monkeypatch.setenv("HF_TOKEN", "test-token")
         mock_diarization = MockDiarization([
             (0.0, 1.0, "SPEAKER_00"),
@@ -84,7 +94,7 @@ class TestDiarize:
 
         assert result is mock_diarization
 
-    def test_passes_speakers_hint(self, monkeypatch):
+    def test_passes_speakers_hint(self, monkeypatch, mock_load_audio):
         monkeypatch.setenv("HF_TOKEN", "test-token")
         mock_diarization = MockDiarization([])
         mock_pipeline = MagicMock()
@@ -100,7 +110,7 @@ class TestDiarize:
         call_kwargs = mock_pipeline.call_args.kwargs
         assert call_kwargs["num_speakers"] == 3
 
-    def test_no_speakers_hint_by_default(self, monkeypatch):
+    def test_no_speakers_hint_by_default(self, monkeypatch, mock_load_audio):
         monkeypatch.setenv("HF_TOKEN", "test-token")
         mock_diarization = MockDiarization([])
         mock_pipeline = MagicMock()
@@ -128,7 +138,7 @@ class TestDiarize:
                 diarize("/path/to/audio.m4a")
             assert "load diarization model" in str(exc_info.value)
 
-    def test_diarization_failure_raises_transcription_error(self, monkeypatch):
+    def test_diarization_failure_raises_transcription_error(self, monkeypatch, mock_load_audio):
         monkeypatch.setenv("HF_TOKEN", "test-token")
         mock_pipeline = MagicMock()
         mock_pipeline.side_effect = Exception("audio decode error")
@@ -142,7 +152,7 @@ class TestDiarize:
                 diarize("/path/to/audio.m4a")
             assert "diarization failed" in str(exc_info.value)
 
-    def test_uses_correct_model_name(self, monkeypatch):
+    def test_uses_correct_model_name(self, monkeypatch, mock_load_audio):
         monkeypatch.setenv("HF_TOKEN", "test-token")
         mock_diarization = MockDiarization([])
         mock_pipeline = MagicMock()
@@ -159,3 +169,22 @@ class TestDiarize:
         call_args = mock_from_pretrained.call_args
         assert call_args[0][0] == "pyannote/speaker-diarization-3.1"
         assert call_args[1]["token"] == "test-token"
+
+    def test_loads_audio_with_torchaudio(self, monkeypatch, mock_load_audio):
+        """Verify audio is pre-loaded via torchaudio to bypass torchcodec."""
+        monkeypatch.setenv("HF_TOKEN", "test-token")
+        mock_diarization = MockDiarization([])
+        mock_pipeline = MagicMock()
+        mock_pipeline.return_value = mock_diarization
+
+        with patch(
+            "pyannote.audio.Pipeline.from_pretrained",
+            return_value=mock_pipeline,
+            create=True,
+        ):
+            diarize("/path/to/audio.m4a")
+
+        mock_load_audio.assert_called_once_with("/path/to/audio.m4a")
+        call_args = mock_pipeline.call_args[0][0]
+        assert "waveform" in call_args
+        assert "sample_rate" in call_args
