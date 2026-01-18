@@ -121,3 +121,17 @@ Task ID: 8
 - **Learnings:**
   - mock faster_whisper.WhisperModel with create=True (import inside function)
 ---
+
+## 2026-01-17 - P2b: diarize_pyannote.py ✅ COMPLETED
+Thread: https://ampcode.com/threads/T-019bce5d-3029-7608-81a8-82deb2dc4257
+Task ID: 9
+- implemented pyannote diarization adapter
+- check_hf_token: checks HF_TOKEN or HUGGING_FACE_HUB_TOKEN, raises HFTokenMissingError
+- diarize: loads pyannote/speaker-diarization-3.1, supports speakers_hint
+- files created:
+  - whisp/diarize_pyannote.py
+  - whisp/diarize_pyannote_test.py (11 tests, mocked pyannote.audio.Pipeline)
+- **Learnings:**
+  - pyannote.audio imported lazily; mock with create=True
+  - torchcodec warning in tests (ffmpeg not linked) — doesn't affect mocked tests
+---
