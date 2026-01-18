@@ -7,11 +7,10 @@ greenfield implementation from SPEC.md. **zero source code exists.**
 **dependencies confirmed** in `../pyproject.toml`:
 - faster-whisper ✓
 - pyannote.audio ✓
-- torch (backend per host) ✓
-
-**missing from pyproject.toml** (must fix before P0):
-- `[project.scripts]` entry point: `whisp = "whisp.__main__:main"`
-- dev dependencies: pytest, pytest-cov
+- torch (transitive dep; darwin arm64 → torch 2.8.0 from pypi with mps=True) ✓
+- `[project.scripts]` entry point ✓
+- pytest + pytest-cov in dev dependency-group ✓
+- pytest config for `*_test.py` discovery ✓
 
 ## priority order
 
@@ -19,56 +18,53 @@ items sorted by dependency chain. earlier items block later ones.
 
 ### P0 — skeleton (blocks everything)
 
-- [ ] update `../pyproject.toml`:
-  - add `[project.scripts] whisp = "whisp.__main__:main"`
-  - add dev deps: pytest, pytest-cov
-- [ ] create `src/whisp/__init__.py` (version, package exports)
-- [ ] create `src/whisp/__main__.py` (entry point stub)
-- [ ] create `src/whisp/py.typed` (pep 561 marker)
-- [ ] `src/whisp/models.py` — `Word`, `SpeakerTurn`, `Transcript` dataclasses
-- [ ] `src/whisp/errors.py` — `WhispError` base + specific errors with exit codes (2, 10, 11, 20, 30, 31)
+- [ ] create `whisp/__init__.py` (version, package exports)
+- [ ] create `whisp/__main__.py` (entry point stub)
+- [ ] create `whisp/py.typed` (pep 561 marker)
+- [ ] `whisp/models.py` — `Word`, `SpeakerTurn`, `Transcript` dataclasses
+- [ ] `whisp/errors.py` — `WhispError` base + specific errors with exit codes (2, 10, 11, 20, 30, 31)
 
 ### P1 — pure core (no ML, fast tests)
 
-- [ ] `src/whisp/timefmt.py`:
+- [ ] `whisp/timefmt.py`:
   - `format_timestamp(seconds, audio_duration_seconds) -> str` — `[MM:SS]` or `[HH:MM:SS]`
   - `format_duration(seconds) -> str` — `5m 42s`, `1h 5m 42s`
-- [ ] `src/whisp/filename.py`:
+- [ ] `whisp/filename.py`:
   - `get_source_timestamp(path) -> datetime` (mtime)
   - `make_output_filename(source_path, timestamp) -> str`
-- [ ] `src/whisp/segment.py`:
+- [ ] `whisp/segment.py`:
   - `words_to_turns(words, gap_threshold=1.5) -> list[SpeakerTurn]`
   - new block on speaker change OR gap > threshold
-- [ ] `src/whisp/align.py`:
+- [ ] `whisp/align.py`:
   - `assign_speakers(words, diarization_tracks) -> list[Word]`
   - midpoint assignment, no-match → UNKNOWN
-- [ ] `src/whisp/format_md.py`:
+- [ ] `whisp/format_md.py`:
   - `render(transcript, single_speaker=False) -> str`
   - YAML frontmatter, empty audio (`[...silence]`), single_speaker mode (no labels), UNKNOWN labels
 
 ### P2 — adapters (ML dependencies)
 
-- [ ] `src/whisp/transcribe_fw.py`:
+- [ ] `whisp/transcribe_fw.py`:
   - `detect_device() -> str` (cuda/cpu; mps → cpu)
   - `get_default_model(device) -> tuple[str, str]` (model, compute_type)
   - `transcribe(path, model, language, verbose) -> tuple[list[Word], float]`
   - always `word_timestamps=True`
-- [ ] `src/whisp/diarize_pyannote.py`:
+- [ ] `whisp/diarize_pyannote.py`:
   - `check_hf_token()` — exit 31 if missing
   - `diarize(path, speakers_hint, verbose) -> diarization_tracks`
 
 ### P3 — I/O + validation
 
-- [ ] `src/whisp/validate.py`:
+- [ ] `whisp/validate.py`:
   - `validate_file_exists(path)` — raises FileNotFoundError → exit 10
   - `validate_ffmpeg_decodable(path)` — `ffprobe -v error`, exit 11 on failure
-- [ ] `src/whisp/io.py`:
+- [ ] `whisp/io.py`:
   - `write_stdout(content)`
   - `atomic_write(path, content, keep_partial=False)` — temp + atomic rename; `.partial` on failure if keep_partial
 
 ### P4 — orchestration
 
-- [ ] `src/whisp/app.py`:
+- [ ] `whisp/app.py`:
   - `run(file, options) -> tuple[str, str]` (markdown, suggested_filename)
   - graceful degradation: diarization failure → warn stderr, UNKNOWN labels, exit 0
   - strict mode: component failure → hard exit with specific code
@@ -76,11 +72,11 @@ items sorted by dependency chain. earlier items block later ones.
 
 ### P5 — CLI
 
-- [ ] `src/whisp/cli.py`:
+- [ ] `whisp/cli.py`:
   - argparse with all flags per SPEC
   - validation flow: exists → decodable → run
   - exception → exit code mapping
-- [ ] finalize `src/whisp/__main__.py`:
+- [ ] finalize `whisp/__main__.py`:
   - `main()` wrapper
   - exception handling
 
@@ -128,7 +124,7 @@ recommendation: mock ML in CI; manual real-model tests locally.
 ## module structure
 
 ```
-src/whisp/
+whisp/
 ├── __init__.py        # version, package exports
 ├── __main__.py        # entry point: main()
 ├── py.typed           # pep 561 marker
@@ -147,4 +143,4 @@ src/whisp/
 └── validate.py        # file exists, ffprobe validation
 ```
 
-tests colocated: `module.py` → `module_test.py`
+tests colocated: `module.py` → `module_test.py` (pytest configured in pyproject.toml)

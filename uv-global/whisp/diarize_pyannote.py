@@ -9,6 +9,19 @@ from typing import Any
 from whisp.errors import HFTokenMissingError, TranscriptionError
 
 
+def _load_audio(path: str) -> dict[str, Any]:
+    """Load audio file as waveform dict for pyannote.
+    
+    Pyannote's torchcodec backend fails with ffmpeg 8+. 
+    Pre-load audio using torchaudio to bypass this.
+    """
+    import torch
+    import torchaudio
+    
+    waveform, sample_rate = torchaudio.load(path)
+    return {"waveform": waveform, "sample_rate": sample_rate}
+
+
 def check_hf_token() -> str:
     """Check for Hugging Face token in environment.
 
@@ -69,7 +82,14 @@ def diarize(
         if speakers_hint is not None:
             kwargs["num_speakers"] = speakers_hint
 
-        diarization = pipeline(path, **kwargs)
+        audio = _load_audio(path)
+        result = pipeline(audio, **kwargs)
+        
+        # pyannote 3.x returns DiarizeOutput, extract the Annotation
+        if hasattr(result, 'speaker_diarization'):
+            diarization = result.speaker_diarization
+        else:
+            diarization = result
 
     except Exception as e:
         raise TranscriptionError(f"diarization failed: {e}") from e

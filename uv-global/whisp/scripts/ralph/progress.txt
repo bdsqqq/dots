@@ -208,3 +208,20 @@ Task ID: 14
 ## FEATURE COMPLETE 🎉
 All tasks (2-14) completed. whisp v0.1.0 ready for use.
 ---
+
+## 2026-01-18 - Post-release fixes
+Thread: https://ampcode.com/threads/T-019bce6a-5cc0-7033-8566-7bf4736076bb
+
+### fix: pyannote API compatibility
+- use `token=` instead of deprecated `use_auth_token=`
+- pre-load audio with torchaudio to bypass broken torchcodec (ffmpeg 8 incompatible)
+- extract `.speaker_diarization` from DiarizeOutput (pyannote 3.x API change)
+- add HF_TOKEN export to shell.nix
+
+### pyannote gated models (user must accept licenses):
+- pyannote/speaker-diarization-3.1
+- pyannote/segmentation-3.0  
+- pyannote/speaker-diarization-community-1
+
+### 174 tests passing, diarization verified with real audio
+---
