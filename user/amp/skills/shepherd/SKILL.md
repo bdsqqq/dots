@@ -1,6 +1,6 @@
 ---
 name: shepherd
-description: watchdog for long-running coordinator sessions. supervises tmux agents with periodic pings, challenges idle claims, respawns on death, orchestrates handoffs.
+description: "watchdog for long-running coordinator sessions (3+ hours). supervises tmux agents, respawns on death, orchestrates handoffs. NOT for adding ceremony to short tasks."
 ---
 
 # shepherd

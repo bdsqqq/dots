@@ -1,6 +1,6 @@
 ---
 name: rounds
-description: iterate with spawned agents until stable. use for multi-pass review, verification, or any task where first-clean can't be trusted.
+description: "iterate with spawned agents until stable. use for verification with BOUNDED scope and explicit exit criteria. NOT for generating opinions to reconcile."
 ---
 
 # rounds

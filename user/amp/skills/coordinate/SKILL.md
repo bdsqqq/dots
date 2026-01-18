@@ -1,6 +1,6 @@
 ---
 name: coordinate
-description: "orchestrate multiple amp agents with bidirectional tmux communication. use when parallelizing work across agents, delegating subtasks, or running multi-agent workflows. you become the coordinator."
+description: "orchestrate multiple amp agents with bidirectional tmux communication. use for multi-hour autonomous runs with INDEPENDENT parallel tasks. NOT for review courts or generating opinions to reconcile."
 ---
 # coordinate
 

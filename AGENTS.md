@@ -56,4 +56,19 @@ smart defaults, full control – provide sensible defaults that work without con
 
 before reporting findings or reviewing code: load `review` skill.
 
+## orchestration discipline
+
+spawn is for **side-quests** — independent tasks discovered during main work. spawn a thread to handle cleanup, docs, or unrelated fixes while you continue the main task. each spawn = one independent deliverable.
+
+**before loading spawn/coordinate/rounds/spar/shepherd, ask:**
+
+1. **is this an independent task?** spawn for side-quests (different scope). don't spawn multiple agents to evaluate the SAME thing.
+2. **could i do this myself in <10 minutes?** if yes, just do it.
+3. **will agents produce conflicting findings?** if reviewing/evaluating, one careful pass beats reconciling disagreements.
+
+**good:** spawn cleanup PR while continuing feature work.  
+**bad:** spawn 4 agents to review one postmortem, reconcile conflicting opinions.
+
+default: one agent + skill composition. orchestration is for parallelizing independent work, not generating opinions.
+
 
