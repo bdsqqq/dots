@@ -148,3 +148,15 @@ Task ID: 10
 - **Learnings:**
   - whisp.errors.FileNotFoundError shadows builtin; use OSError with errno check for subprocess errors
 ---
+
+## 2026-01-17 - P3b: io.py ✅ COMPLETED
+Thread: https://ampcode.com/threads/T-019bce5d-3029-7608-81a8-82deb2dc4257
+Task ID: 11
+- implemented io.py
+- write_stdout: writes to stdout with newline handling
+- atomic_write: temp file + rename, optional .partial on failure
+- files created:
+  - whisp/io.py
+  - whisp/io_test.py (12 tests, all passing)
+- total tests: 106 passing
+---
