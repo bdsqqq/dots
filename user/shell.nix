@@ -112,6 +112,7 @@ no need to set enableZshIntegration, enableBashIntegration, etc. unless overridi
           export PATH="$AMI_INSTALL/bin:$PATH"
           export GH_TOKEN="$(cat /run/secrets/gh_token 2>/dev/null || echo "$GH_TOKEN")"
           export AMP_API_KEY="$(cat /run/secrets/AMP_API_KEY 2>/dev/null || echo "$AMP_API_KEY")"
+          export HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || echo "$HF_TOKEN")"
 
           autoload -Uz compinit
             () {
