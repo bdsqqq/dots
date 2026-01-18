@@ -10,6 +10,7 @@ let
       hash = "sha256-VRscBmZ0Q/vL4B+8mkmQGV4Ppoj1qPpDz0kPAACjV94=";
     };
     nativeBuildInputs = [ pkgs.installShellFiles ];
+    dontBuild = true;
     installPhase = ''
       runHook preInstall
       install -Dm755 git-hunks $out/bin/git-hunks
