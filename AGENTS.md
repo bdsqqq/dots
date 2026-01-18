@@ -54,6 +54,7 @@ smart defaults, full control – provide sensible defaults that work without con
 
 ## skill triggers
 
+before committing, pushing, or staging changes: load `git` skill.
 before reporting findings or reviewing code: load `review` skill.
 
 ## orchestration discipline
