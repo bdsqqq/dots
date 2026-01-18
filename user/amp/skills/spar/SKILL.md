@@ -1,6 +1,6 @@
 ---
 name: spar
-description: adversarial review via spawned antithesis agent. use for code review, debugging, or any analysis where false positives must be pruned.
+description: "adversarial review via spawned antithesis agent. use to prune false positives from EXISTING findings. NOT for discovery or when claim is verifiable against single source."
 ---
 
 # spar
