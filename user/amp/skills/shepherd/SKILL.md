@@ -15,9 +15,9 @@ spawn a shepherd when you need a coordinator to survive hours-long autonomous ru
 
 before spawning a shepherd, ask:
 
-1. **is this a multi-hour autonomous run?** shepherd is for 3+ hour sessions. short tasks don't need supervision overhead.
-2. **do i have a clear stopping condition?** shepherd keeps things alive. without explicit termination criteria, it runs forever.
-3. **is this already overengineered?** if you're spawning shepherd → coordinator → rounds → spar → agents, you've built a Rube Goldberg machine. simplify first.
+1. **is this a multi-hour autonomous run?** shepherd is for 3+ hour sessions. short tasks don't need supervision.
+2. **do i have explicit termination criteria?** shepherd keeps things alive. without exit conditions, it runs forever.
+3. **is this already overengineered?** shepherd → coordinator → rounds → spar → agents is a Rube Goldberg machine. simplify first.
 
 shepherd is for LONG autonomous runs. don't use it to add ceremony to work you could finish in an hour.
 

@@ -23,9 +23,9 @@ assumes prerequisite skills are sibling directories (spawn, coordinate, report a
 
 before spawning adversarial review, ask:
 
-1. **could i verify this myself in <10 minutes?** reading the code yourself is faster than spawning a debate.
-2. **is there a single source of truth?** if claim is verifiable against code/spec, verify it directly instead of debating.
-3. **is this exploratory or evaluative?** spar is for pruning false positives from findings you've already generated. don't spawn courts to generate findings.
+1. **is there a single source of truth?** if claim is verifiable against code/spec, verify it directly instead of debating.
+2. **do i already have findings to refine?** spar prunes false positives from EXISTING findings. don't spawn courts to generate findings.
+3. **will debate add signal or noise?** if the answer is in the code, read the code.
 
 spar refines EXISTING findings. it's not a discovery mechanism.
 

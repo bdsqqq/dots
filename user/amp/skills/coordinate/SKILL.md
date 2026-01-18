@@ -10,7 +10,7 @@ orchestrate multiple amp agents. you are the coordinator — agents report to yo
 
 before coordinating multiple agents, ask:
 
-1. **could i do this myself in <10 minutes?** coordination overhead is real.
+1. **is there a single source of truth?** if verifiable against one file/spec/query, do it yourself.
 2. **will agents produce conflicting findings?** if task is evaluative (judging claims), a single careful pass is cleaner than reconciling disagreements.
 3. **do i have explicit exit criteria?** multi-agent work without convergence criteria produces unbounded reconciliation work.
 
