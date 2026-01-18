@@ -135,3 +135,16 @@ Task ID: 9
   - pyannote.audio imported lazily; mock with create=True
   - torchcodec warning in tests (ffmpeg not linked) — doesn't affect mocked tests
 ---
+
+## 2026-01-17 - P3a: validate.py ✅ COMPLETED
+Thread: https://ampcode.com/threads/T-019bce5d-3029-7608-81a8-82deb2dc4257
+Task ID: 10
+- implemented validate.py
+- validate_file_exists: checks existence + is_file, returns resolved Path
+- validate_ffmpeg_decodable: runs ffprobe, handles missing ffprobe/timeout
+- files created:
+  - whisp/validate.py
+  - whisp/validate_test.py (10 tests, all passing)
+- **Learnings:**
+  - whisp.errors.FileNotFoundError shadows builtin; use OSError with errno check for subprocess errors
+---
