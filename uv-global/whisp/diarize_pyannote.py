@@ -56,7 +56,7 @@ def diarize(
 
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=token,
+            token=token,
         )
     except Exception as e:
         raise TranscriptionError(f"failed to load diarization model: {e}") from e

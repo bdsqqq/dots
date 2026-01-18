@@ -158,4 +158,4 @@ class TestDiarize:
 
         call_args = mock_from_pretrained.call_args
         assert call_args[0][0] == "pyannote/speaker-diarization-3.1"
-        assert call_args[1]["use_auth_token"] == "test-token"
+        assert call_args[1]["token"] == "test-token"
