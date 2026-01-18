@@ -6,8 +6,8 @@ let
     src = pkgs.fetchFromGitHub {
       owner = "rockorager";
       repo = "git-hunks";
-      rev = "main";
-      hash = "sha256-nN+3L70xJMnuoJE3kN4SLxqNL2VdEdlxbVD5zrIKfJ4=";
+      rev = "810609b492daae31fd974c220d77c76780db4b11";
+      hash = "sha256-VRscBmZ0Q/vL4B+8mkmQGV4Ppoj1qPpDz0kPAACjV94=";
     };
     nativeBuildInputs = [ pkgs.installShellFiles ];
     installPhase = ''
