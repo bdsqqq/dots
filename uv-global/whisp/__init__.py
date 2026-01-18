@@ -20,9 +20,12 @@ __all__ = [
     "words_to_turns",
     "assign_speakers",
     "render",
+    "run",
+    "Options",
 ]
 
 from whisp.models import Word, SpeakerTurn, Transcript
+from whisp.app import run, Options
 from whisp.errors import (
     WhispError,
     InvalidArgumentsError,
