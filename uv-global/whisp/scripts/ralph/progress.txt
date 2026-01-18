@@ -160,3 +160,19 @@ Task ID: 11
   - whisp/io_test.py (12 tests, all passing)
 - total tests: 106 passing
 ---
+
+## 2026-01-18 - P4: app.py ✅ COMPLETED
+Thread: https://ampcode.com/threads/T-019bce6a-5cc0-7033-8566-7bf4736076bb
+Task ID: 12
+- implemented app.py orchestration module
+- run(file, options) -> (markdown, suggested_filename)
+- graceful degradation: diarization failure → warn stderr, UNKNOWN labels
+- strict mode: component failure → re-raise with exit code
+- verbose mode: progress messages to stderr
+- single speaker mode: skips diarization, empty speakers list
+- files created:
+  - whisp/app.py (run, Options, _try_diarize, _mark_unknown, _extract_speakers)
+  - whisp/app_test.py (29 tests, all passing)
+- updated __init__.py: exports run, Options
+- total tests: 135 passing
+---
