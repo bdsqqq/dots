@@ -176,3 +176,18 @@ Task ID: 12
 - updated __init__.py: exports run, Options
 - total tests: 135 passing
 ---
+
+## 2026-01-18 - P5: cli.py ✅ COMPLETED
+Thread: https://ampcode.com/threads/T-019bce6a-5cc0-7033-8566-7bf4736076bb
+Task ID: 13
+- implemented cli.py with argparse
+- arguments: file (positional), -o/--output, -m/--model, -l/--language, -s/--speakers
+- flags: --strict, -v/--verbose, --version, --suggest-filename
+- output to stdout by default, file with -o (directory uses suggested filename)
+- error handling: WhispError → stderr + exit code
+- files created:
+  - whisp/cli.py (build_parser, main)
+  - whisp/cli_test.py (24 tests, all passing)
+- updated __main__.py: delegates to cli.main()
+- total tests: 159 passing
+---

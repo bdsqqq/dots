@@ -1,9 +1,8 @@
 """CLI entry point for whisp."""
 
+import sys
 
-def main() -> None:
-    pass
-
+from whisp.cli import main
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
