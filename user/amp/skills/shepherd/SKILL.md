@@ -1,6 +1,6 @@
 ---
 name: shepherd
-description: "watchdog for long-running coordinator sessions (3+ hours). supervises tmux agents, respawns on death, orchestrates handoffs. NOT for adding ceremony to short tasks."
+description: "watchdog for autonomous runs that will exhaust context and need handoffs. supervises tmux agents, respawns on death, orchestrates handoffs. NOT for single-session tasks."
 ---
 
 # shepherd
@@ -9,17 +9,17 @@ keepalive supervisor for coordinator agents.
 
 ## when to use
 
-spawn a shepherd when you need a coordinator to survive hours-long autonomous runs. the shepherd maintains liveness, challenges premature "done" claims, and ensures continuity across agent deaths and context exhaustion.
+spawn a shepherd when you need a coordinator to survive across context exhaustion and agent deaths. the shepherd maintains liveness, challenges premature "done" claims, and ensures continuity via handoffs.
 
 ## when NOT to use
 
 before spawning a shepherd, ask:
 
-1. **is this a multi-hour autonomous run?** shepherd is for 3+ hour sessions. short tasks don't need supervision.
+1. **will this exhaust context?** shepherd is for runs needing handoffs. if task fits in one session, don't add supervision.
 2. **do i have explicit termination criteria?** shepherd keeps things alive. without exit conditions, it runs forever.
 3. **is this already overengineered?** shepherd → coordinator → rounds → spar → agents is a Rube Goldberg machine. simplify first.
 
-shepherd is for LONG autonomous runs. don't use it to add ceremony to work you could finish in an hour.
+shepherd is for runs that will EXHAUST CONTEXT. don't use it to add ceremony to single-session work.
 
 ## invocation
 
