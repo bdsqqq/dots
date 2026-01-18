@@ -6,6 +6,16 @@ description: "spawn parallel amp agents in tmux with thread linkage. use when de
 
 spawn amp agents in tmux windows with automatic thread linkage.
 
+## when NOT to use
+
+before spawning, ask:
+
+1. **could i do this myself in <10 minutes?** if yes, do it. spawning adds overhead.
+2. **is there a single source of truth?** one agent reading one source beats multiple agents generating opinions to reconcile.
+3. **is this evaluative or exploratory?** spawn for exploration (hypothesis generation). single careful pass for evaluation (judging claims).
+
+spawn parallelizes INDEPENDENT work. don't spawn agents to produce conflicting findings you'll need to reconcile.
+
 ## why spawn?
 
 short threads outperform long threads. see bundled references:

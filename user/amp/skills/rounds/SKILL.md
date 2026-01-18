@@ -9,6 +9,16 @@ iterate with spawned agents until results stabilize.
 
 **prerequisite skills**: `spawn`, `coordinate`, `report`
 
+## when NOT to use
+
+before running multi-round review, ask:
+
+1. **is there a single source of truth?** if verifying against a spec or code, one agent reading carefully beats rounds of opinion-generation.
+2. **do i have explicit exit criteria?** "2+ clean rounds" is built in, but you still need to define what "clean" means.
+3. **is the scope bounded?** rounds on unbounded tasks produces sprawl. define what you're reviewing before starting.
+
+rounds is for verification where first-clean can't be trusted. don't use it to generate opinions for reconciliation.
+
 ## core rule: don't trust first clean
 
 round 5 finding issues after round 4 was clean is common. run **2-3 verification rounds minimum** after issues stop appearing.
