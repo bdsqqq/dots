@@ -191,3 +191,20 @@ Task ID: 13
 - updated __main__.py: delegates to cli.main()
 - total tests: 159 passing
 ---
+
+## 2026-01-18 - P6: integration tests ✅ COMPLETED
+Thread: https://ampcode.com/threads/T-019bce6a-5cc0-7033-8566-7bf4736076bb
+Task ID: 14
+- implemented integration_test.py with end-to-end pipeline tests
+- TestFullPipeline: stdout, file output, directory output, single speaker, verbose
+- TestGracefulDegradation: diarization failure, HF token missing
+- TestStrictMode: fails on diarization error
+- TestErrorHandling: missing file, unsupported format
+- TestOutputFormat: frontmatter structure, header, speaker turns
+- files created:
+  - whisp/integration_test.py (14 tests, all passing)
+- total tests: 173 passing
+
+## FEATURE COMPLETE 🎉
+All tasks (2-14) completed. whisp v0.1.0 ready for use.
+---
