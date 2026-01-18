@@ -63,12 +63,11 @@ spawn is for **side-quests** — independent tasks discovered during main work. 
 **before loading spawn/coordinate/rounds/spar/shepherd, ask:**
 
 1. **is this an independent task?** spawn for side-quests (different scope). don't spawn multiple agents to evaluate the SAME thing.
-2. **could i do this myself in <10 minutes?** if yes, just do it.
+2. **is there a single source of truth?** if verifiable against one file/spec/query, do it yourself. spawn when you need parallel work on DIFFERENT sources.
 3. **will agents produce conflicting findings?** if reviewing/evaluating, one careful pass beats reconciling disagreements.
 
 **good:** spawn cleanup PR while continuing feature work.  
 **bad:** spawn 4 agents to review one postmortem, reconcile conflicting opinions.
 
 default: one agent + skill composition. orchestration is for parallelizing independent work, not generating opinions.
-
 
