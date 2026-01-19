@@ -1,8 +1,13 @@
 { lib, inputs, hostSystem ? null, config ? {}, ... }:
-{  
+{
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
     home.file."AGENTS.md" = {
       source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/AGENTS.md";
+    };
+
+    home.file.".config/agents/skills" = {
+      source = ./skills;
+      recursive = true;
     };
 
     home.file.".config/agents/skills/axiom-sre" = {
