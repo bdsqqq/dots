@@ -15,7 +15,7 @@ in
       ../user/zellij.nix
       ../user/tmux.nix
       ../user/amp
-      ../user/agent-skills
+      ../user/agents
     ]
     ++ lib.optionals isGraphical [
       ../user/ghostty.nix
