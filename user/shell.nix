@@ -1,17 +1,4 @@
 { lib, ... }:
-/*
-## shell-agnostic config
-
-home-manager provides shell-agnostic options that work across bash, zsh, fish, etc:
-- home.shellAliases: aliases for all shells
-- home.sessionVariables: environment variables for all shells
-
-## shell integrations
-
-as of jan 2025, home.shell.enableShellIntegration defaults to true.
-programs like fzf, zoxide, etc. auto-enable integration for all configured shells.
-no need to set enableZshIntegration, enableBashIntegration, etc. unless overriding.
-*/
 {
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
     # define my.defaultShell option here, derived from enabled shell programs
