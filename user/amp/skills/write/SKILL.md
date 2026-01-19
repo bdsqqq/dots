@@ -1,20 +1,14 @@
 ---
 name: write
-description: "technical prose style guide. use when writing docs, READMEs, PR descriptions, essays, or any prose meant for developer audiences. enforces academish voice: supported claims, precise language, no hyperbole. user tone: lowercase, terse, anti-sycophancy."
+description: "prose style guide. use when your output includes ANYTHING other than a code snippet. use during conversation, and every time you write to a file, commit, PR. enforces academish voice: supported claims, precise language, no hyperbole. user tone: lowercase, terse, anti-sycophancy."
 ---
 
 # write
 
-style guidance for technical prose. academish voice (academic rigor without density) + user's specific tone.
+style guidance for prose. academish voice (academic rigor without density) + user's specific tone.
 
-## when to use
 
-- writing or reviewing documentation
-- drafting PR descriptions or commit messages  
-- composing READMEs, essays, technical blog posts
-- any prose targeting developer/technical audiences
-
-## tone (REQUIRED)
+## tone
 
 these override defaults. apply to ALL prose output:
 
