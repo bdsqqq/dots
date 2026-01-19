@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# resolve script directory to find assets
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ASSETS_DIR="$SCRIPT_DIR/../assets"
+ASSETS_DIR="$HOME/.config/agents/skills/spawn/assets"
 
 TASK="${1:-}"
 if [[ -z "$TASK" ]]; then

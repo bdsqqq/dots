@@ -6,12 +6,11 @@ in
 {
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: 
   let
-    # reads from spawn skill's assets (deployed to ~/.config/amp/skills/spawn/assets/)
+    spawnAssets = ../user/agents/skills/spawn/assets;
     randomNameScript = pkgs.writeShellScriptBin "tmux-random-name" ''
-      NAMES_DIR="${config.home.homeDirectory}/.config/amp/skills/spawn/assets"
-      FIRST=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/firstnames.txt")
-      LAST1=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/lastnames_1.txt")
-      LAST2=$(${pkgs.coreutils}/bin/shuf -n 1 "$NAMES_DIR/lastnames_2.txt")
+      FIRST=$(${pkgs.coreutils}/bin/shuf -n 1 "${spawnAssets}/firstnames.txt")
+      LAST1=$(${pkgs.coreutils}/bin/shuf -n 1 "${spawnAssets}/lastnames_1.txt")
+      LAST2=$(${pkgs.coreutils}/bin/shuf -n 1 "${spawnAssets}/lastnames_2.txt")
       echo "''${FIRST}_''${LAST1}''${LAST2}"
     '';
   in {
