@@ -67,9 +67,26 @@ in
         if [[ -d "./bare-repo.git" ]]; then
           git_dir="./bare-repo.git"
         else
-          echo "⚠ No bare-repo.git found, worktree created in ../$1"
+          echo "⚠ No bare-repo.git found, using current dir"
         fi
-        git -C "$git_dir" worktree add "../$1" -b "$1" origin/main
+
+        if [[ "$1" == "pr" ]]; then
+          local pr_num="$2"
+          if [[ -z "$pr_num" ]]; then
+            echo "usage: wt pr <number>"
+            return 1
+          fi
+          local branch=$(gh pr view "$pr_num" --json headRefName -q .headRefName)
+          if [[ -z "$branch" ]]; then
+            echo "failed to get branch for PR #$pr_num"
+            return 1
+          fi
+          git -C "$git_dir" fetch origin "$branch"
+          git -C "$git_dir" worktree add "../pr-$pr_num" "origin/$branch"
+          echo "created worktree for PR #$pr_num at ../pr-$pr_num (branch: $branch)"
+        else
+          git -C "$git_dir" worktree add "../$1" -b "$1" origin/main
+        fi
       }
     '';
   };
