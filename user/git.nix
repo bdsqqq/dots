@@ -59,5 +59,18 @@ in
     home.shellAliases = {
       g = "lazygit";
     };
+    
+    programs.zsh.initContent = ''
+      # git worktree helper for bare repo workflow
+      wt() {
+        local git_dir="."
+        if [[ -d "./bare-repo.git" ]]; then
+          git_dir="./bare-repo.git"
+        else
+          echo "⚠ No bare-repo.git found, worktree created in ../$1"
+        fi
+        git -C "$git_dir" worktree add "../$1" -b "$1" origin/main
+      }
+    '';
   };
 }
