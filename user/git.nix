@@ -62,6 +62,7 @@ in
     
     programs.zsh.initContent = ''
       # git worktree helper for bare repo workflow
+      # naming: pr-{number} for reviews, axm-{number}/ai-{number} for own work (Linear issue ID)
       wt() {
         local git_dir="."
         if [[ -d "./bare-repo.git" ]]; then
