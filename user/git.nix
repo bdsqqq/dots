@@ -76,7 +76,7 @@ in
             echo "usage: wt pr <number>"
             return 1
           fi
-          local branch=$(gh pr view "$pr_num" --json headRefName -q .headRefName)
+          local branch=$(GIT_DIR="$git_dir" gh pr view "$pr_num" --json headRefName -q .headRefName)
           if [[ -z "$branch" ]]; then
             echo "failed to get branch for PR #$pr_num"
             return 1
