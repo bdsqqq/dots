@@ -51,13 +51,4 @@ git worktree remove ../<name>           # cleanup
 
 `wt` checks for `./bare-repo.git` and uses it as git dir if present.
 
-### naming convention
-
-| pattern | use case |
-|---------|----------|
-| `pr-{number}` | PRs from others you're reviewing |
-| `axm-{number}` / `ai-{number}` | your own work, named by Linear issue ID |
-
-examples:
-- `wt axm-10702` → creates `../axm-10702` with new branch from origin/main
-- `wt pr 6670` → fetches PR branch, creates `../pr-6670` tracking it
+naming: `axm-{id}` / `ai-{id}` for authoring (Linear issue), `pr-{number}` for reviewing.
