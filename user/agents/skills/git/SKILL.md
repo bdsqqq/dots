@@ -43,7 +43,10 @@ use when you need to split changes across commits.
 parallel branches in sibling directories.
 
 ```bash
-git worktree add ../<name> -b <name>   # create
+wt <name>                               # create (bare repo aware)
+git worktree add ../<name> -b <name>    # create (manual)
 git worktree list                       # see all
 git worktree remove ../<name>           # cleanup
 ```
+
+`wt` checks for `./bare-repo.git` and uses it as git dir if present.
