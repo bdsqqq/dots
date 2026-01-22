@@ -67,7 +67,7 @@ in
         git clone --bare "$repo" bare-repo.git
         git -C bare-repo.git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
         git -C bare-repo.git fetch origin
-        git -C bare-repo.git worktree add ./main main
+        git -C bare-repo.git worktree add ../main main
         
         echo "done. bare repo at ./bare-repo.git, main worktree at ./main"
       }
