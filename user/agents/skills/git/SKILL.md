@@ -11,6 +11,7 @@ description: "git workflows for agents: ship (stage → commit → push), worktr
 - if unsure which changes are yours, ask user
 - commit format: `type(scope): description` (lowercase, imperative)
 - types: `feat` `fix` `docs` `style` `refactor` `perf` `test` `chore`
+- prefer `gh` cli for github operations (PRs, issues, repo info) — auth is pre-configured via sops
 
 ## ship
 
