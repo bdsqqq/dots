@@ -59,6 +59,19 @@ in
 
     
     programs.zsh.initContent = ''
+      # initialize bare repo workflow from a remote
+      wt-init() {
+        local repo="$1"
+        [[ -z "$repo" ]] && echo "usage: wt-init <repo-url>" && return 1
+        
+        git clone --bare "$repo" bare-repo.git
+        git -C bare-repo.git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+        git -C bare-repo.git fetch origin
+        git -C bare-repo.git worktree add ./main main
+        
+        echo "done. bare repo at ./bare-repo.git, main worktree at ./main"
+      }
+
       # lazygit with bare-repo detection
       g() {
         if [[ -d "./bare-repo.git" ]]; then
