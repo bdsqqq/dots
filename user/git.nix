@@ -158,7 +158,11 @@ in
             return 1
           fi
           git -C "$git_dir" fetch origin "$branch"
-          git -C "$git_dir" worktree add --track -b "$branch" "../pr-$pr_num" "origin/$branch"
+          if git -C "$git_dir" show-ref --verify --quiet "refs/heads/$branch"; then
+            git -C "$git_dir" worktree add "../pr-$pr_num" "$branch"
+          else
+            git -C "$git_dir" worktree add --track -b "$branch" "../pr-$pr_num" "origin/$branch"
+          fi
           echo "created worktree for PR #$pr_num at ../pr-$pr_num (branch: $branch)"
         else
           git -C "$git_dir" worktree add "../$1" -b "$1" origin/main
