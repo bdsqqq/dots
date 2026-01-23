@@ -141,6 +141,11 @@ in
           echo "⚠ No bare-repo.git found, using current dir"
         fi
 
+        # handle 'wt pr-6857' as alias for 'wt pr 6857'
+        if [[ "$1" =~ ^pr-([0-9]+)$ ]]; then
+          set -- "pr" "''${BASH_REMATCH[1]}"
+        fi
+
         if [[ "$1" == "pr" ]]; then
           local pr_num="$2"
           if [[ -z "$pr_num" ]]; then
