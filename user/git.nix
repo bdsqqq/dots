@@ -165,7 +165,7 @@ in
           fi
           echo "created worktree for PR #$pr_num at ../pr-$pr_num (branch: $branch)"
         else
-          local name="''${1,,}"
+          local name="''${(L)1}"
           git -C "$git_dir" worktree add "../$name" -b "$name" origin/main
         fi
       }
