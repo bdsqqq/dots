@@ -18,6 +18,8 @@ let
   };
 in
 {
+  _module.args.torchBackend = "cu121";
+
   stylix = {
     enable = true;
     image = ../../assets/wallpaper_without_mask.jpg;
