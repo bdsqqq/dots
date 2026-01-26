@@ -77,9 +77,9 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Axiom SRE agent skill for Amp
-    axiom-sre = {
-      url = "github:axiomhq/axiom-sre";
+    # Axiom agent skills collection
+    axiom-skills = {
+      url = "github:axiomhq/skills";
       flake = false;
     };
 

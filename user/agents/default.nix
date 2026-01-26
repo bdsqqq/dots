@@ -11,7 +11,7 @@
     };
 
     home.file.".config/agents/skills/axiom-sre" = {
-      source = inputs.axiom-sre;
+      source = "${inputs.axiom-skills}/skills/sre";
       recursive = true;
     };
     
