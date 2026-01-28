@@ -178,6 +178,18 @@
 
             precmd_functions+=(_async_git_prompt)
 
+            # auto-reload shell when nix generation changes
+            typeset -g _nix_gen_cached=""
+            _nix_gen_check() {
+              local gen_file="/run/current-system/sw/darwin-version"
+              local current=$(cat "$gen_file" 2>/dev/null)
+              if [[ -n "$_nix_gen_cached" && -n "$current" && "$current" != "$_nix_gen_cached" ]]; then
+                exec zsh
+              fi
+              _nix_gen_cached="$current"
+            }
+            precmd_functions+=(_nix_gen_check)
+
             # strip logfmt tag from history recall (up arrow)
             _strip_history_tag() {
               zle up-line-or-history
