@@ -118,7 +118,7 @@ in
           
           local issue_id=$(echo "$name" | grep -oE '^[a-zA-Z]+-[0-9]+' | tr '[:lower:]' '[:upper:]')
           if [[ -n "$issue_id" ]]; then
-            local json=$(lnr issue "$issue_id" --json 2>/dev/null)
+            local json=$(lnr issue "$issue_id" --json 2>/dev/null | tr -d '\000-\037')
             if [[ -n "$json" ]]; then
               local state=$(echo "$json" | jq -r '.state // empty')
               local url=$(echo "$json" | jq -r '.url // empty')
