@@ -1,15 +1,12 @@
 #!/usr/bin/env zsh
-# unified worktree management command
-# outputs __WT_CD__:/path when caller should cd
+# wt: unified worktree management
+# shell wrapper handles cd via __WT_CD__ signal (scripts can't mutate parent shell)
 
 set -euo pipefail
 
-# --- nix substitutions ---
 GH="@gh@"
 JQ="@jq@"
 TRASH="@trash@"
-
-# --- context detection ---
 
 in_worktree() {
   local git_dir
@@ -30,9 +27,8 @@ get_bare_root() {
   if in_worktree; then
     local git_dir
     git_dir=$(git rev-parse --git-dir 2>/dev/null)
-    # git_dir is like /path/to/bare-repo.git/worktrees/branch-name
-    # bare-repo.git is at /path/to/bare-repo.git
-    # parent of worktree dir is /path/to
+    # git stores worktree metadata at bare-repo.git/worktrees/<name>
+    # we need the parent of bare-repo.git, not of the metadata dir
     dirname "$(dirname "$(dirname "$git_dir")")"
   else
     pwd
@@ -57,8 +53,6 @@ get_current_worktree_name() {
   basename "$(pwd)"
 }
 
-# --- predicates ---
-
 is_url() {
   [[ "$1" == *"://"* || "$1" == git@* ]]
 }
@@ -76,7 +70,6 @@ extract_pr_num() {
 }
 
 extract_org_repo() {
-  # handles https://github.com/org/repo/... and git@github.com:org/repo.git
   echo "$1" | sed -E 's|.*github\.com[:/]([^/]+/[^/.]+).*|\1|' | sed 's/\.git$//'
 }
 
@@ -100,8 +93,6 @@ get_worktree_branch() {
   git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null
 }
 
-# --- output helpers ---
-
 signal_cd() {
   echo "__WT_CD__:$1"
 }
@@ -111,37 +102,23 @@ err() {
   exit 1
 }
 
-# --- actions ---
-
 print_setup_hint() {
   cat <<'EOF'
-no bare-repo.git found.
-
-to set up a new worktree-based repo:
-  wt <repo-url>              # clone and set up bare repo
-  wt <repo-url> <dir>        # clone into specific directory
-
-example:
-  wt https://github.com/org/repo
-  wt git@github.com:org/repo.git myproject
+no bare-repo.git. clone one:
+  wt <repo-url>
+  wt <repo-url> <dir>
 EOF
   exit 1
 }
 
 print_usage() {
   cat <<'EOF'
-usage: wt [command] [args]
-
-commands:
-  (no args)          list worktrees / show status
-  <branch>           create or switch to worktree
-  pr <num>           create worktree for PR
-  pr-<num>           alias for 'pr <num>'
-  rm                 remove current worktree
-  rm <name>          remove named worktree
-  <repo-url>         clone bare repo
-  <repo-url> <dir>   clone into directory
-  <pr-url>           clone or add worktree for PR
+wt [cmd] [args]
+  (none)        list worktrees
+  <branch>      add/switch worktree
+  pr <num>      add worktree for PR
+  rm [name]     remove worktree
+  <url>         clone bare repo
 EOF
   exit 1
 }
@@ -208,7 +185,6 @@ show_current_status() {
   echo "worktree: $name"
   echo "branch:   $branch"
   
-  # check if merged
   git -C "$git_dir" fetch origin --quiet 2>/dev/null || true
   local head
   head=$(git rev-parse HEAD 2>/dev/null)
@@ -218,7 +194,6 @@ show_current_status() {
     echo "status:   ○ not merged"
   fi
   
-  # show git status summary
   local changes
   changes=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
   if [[ "$changes" -gt 0 ]]; then
@@ -237,10 +212,9 @@ remove_worktree() {
   local default_branch
   default_branch=$(get_default_branch "$git_dir")
   
-  echo "removing worktree: $name"
+  echo "removing: $name"
   git -C "$git_dir" worktree remove "$wt_path" --force
   
-  # delete local branch if it exists and isn't default
   if [[ -n "$branch" && "$branch" != "$default_branch" && "$branch" != "HEAD" ]]; then
     if git -C "$git_dir" show-ref --verify --quiet "refs/heads/$branch"; then
       echo "deleting local branch: $branch"
@@ -281,7 +255,7 @@ add_pr_worktree() {
     git -C "$git_dir" worktree add --track -b "$branch" "$wt_path" "origin/$branch"
   fi
   
-  echo "created worktree for PR #$pr_num at $wt_path (branch: $branch)"
+  echo "done. pr-$pr_num ($branch)"
   signal_cd "$wt_path"
 }
 
@@ -294,7 +268,7 @@ add_branch_worktree() {
   
   local wt_path="$bare_root/$name"
   git -C "$git_dir" worktree add "$wt_path" -b "$name" "origin/$default_branch"
-  echo "created worktree: $name"
+  echo "done. $name"
   signal_cd "$wt_path"
 }
 
@@ -311,32 +285,27 @@ clone_bare_repo() {
   
   local default_branch
   default_branch=$(get_default_branch "$git_dir")
-  if [[ -z "$default_branch" ]]; then
-    default_branch="main"
-  fi
+  # origin/HEAD may not be set yet after bare clone; fall back to main
+  [[ -z "$default_branch" ]] && default_branch="main"
   
   local main_wt="$target_dir/$default_branch"
   git -C "$git_dir" worktree add "$main_wt" "$default_branch"
   
-  echo "done. bare repo at $git_dir, $default_branch worktree at $main_wt"
+  echo "done. $default_branch"
   signal_cd "$main_wt"
 }
-
-# --- main dispatch ---
 
 main() {
   local argc=$#
   local arg1="${1:-}"
   local arg2="${2:-}"
   
-  # reparse pr-NUM as pr NUM
   if [[ "$arg1" =~ ^pr-([0-9]+)$ ]]; then
     arg1="pr"
     arg2="${match[1]}"
     argc=2
   fi
   
-  # case 1-3: no args
   if [[ $argc -eq 0 ]]; then
     if ! has_bare_repo; then
       print_setup_hint
@@ -352,10 +321,8 @@ main() {
     return
   fi
   
-  # case 4-10: rm command
   if [[ "$arg1" == "rm" ]]; then
     if [[ -z "$arg2" ]]; then
-      # rm with no name: remove current worktree
       if ! in_worktree; then
         err "not in a worktree"
       fi
@@ -370,12 +337,10 @@ main() {
         err "refusing to remove default branch worktree ($default_branch)"
       fi
       
-      # cd out before removing
       cd "$bare_root" || err "failed to cd to $bare_root"
       remove_worktree "$git_dir" "$bare_root" "$name"
       signal_cd "$bare_root"
     else
-      # rm with name
       if ! has_bare_repo; then
         err "no bare-repo.git found"
       fi
@@ -412,7 +377,6 @@ main() {
     return
   fi
   
-  # case 11-14: pr command
   if [[ "$arg1" == "pr" ]]; then
     if [[ -z "$arg2" ]]; then
       err "usage: wt pr <number>"
@@ -448,7 +412,6 @@ main() {
     return
   fi
   
-  # case 15-18: url handling
   if is_url "$arg1"; then
     if is_pr_url "$arg1"; then
       local pr_num org_repo
@@ -465,13 +428,11 @@ main() {
         git_dir=$(get_git_dir "$bare_root")
         
         if origin_matches "$arg1" "$git_dir"; then
-          # dispatch to pr case
-          main "pr" "$pr_num"
-          return
-        fi
+                  main "pr" "$pr_num"
+                  return
+                fi
       fi
       
-      # clone and add pr worktree
       local repo_name="${org_repo#*/}"
       local target_dir="./$repo_name"
       
@@ -481,7 +442,6 @@ main() {
       local git_dir="$target_dir/bare-repo.git"
       add_pr_worktree "$git_dir" "$target_dir" "$pr_num"
     else
-      # repo url
       local target_dir
       if [[ -n "$arg2" ]]; then
         target_dir="$arg2"
@@ -497,7 +457,6 @@ main() {
     return
   fi
   
-  # case 20-23: branch name
   if ! has_bare_repo; then
     err "no bare-repo.git found. use 'wt <repo-url>' to set up."
   fi
