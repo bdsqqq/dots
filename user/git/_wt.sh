@@ -254,6 +254,9 @@ remove_worktree() {
   local bare_root="$2"
   local name="$3"
   local wt_path="$bare_root/$name"
+  # git worktree remove needs absolute path when using -C
+  local wt_path_abs
+  wt_path_abs=$(cd "$wt_path" 2>/dev/null && pwd) || wt_path_abs="$(pwd)/$wt_path"
   
   local branch
   branch=$(git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null)
@@ -261,26 +264,22 @@ remove_worktree() {
   default_branch=$(get_default_branch "$git_dir")
   
   echo "removing: $name"
-  git -C "$git_dir" worktree remove "$wt_path" --force
+  git -C "$git_dir" worktree remove "$wt_path_abs" --force
   
   if [[ -n "$branch" && "$branch" != "$default_branch" && "$branch" != "HEAD" ]]; then
     if git -C "$git_dir" show-ref --verify --quiet "refs/heads/$branch"; then
-      echo "deleting local branch: $branch"
+      echo "deleting branch: $branch"
       git -C "$git_dir" branch -D "$branch"
     fi
   fi
   
-  # trash folder if still exists
   if [[ -d "$wt_path" ]]; then
     if command -v "$TRASH" &>/dev/null; then
-      echo "trashing folder: $wt_path"
       "$TRASH" "$wt_path"
-    else
-      echo "folder still exists at $wt_path"
     fi
   fi
   
-  echo "done: removed $name"
+  echo "done"
 }
 
 add_pr_worktree() {
