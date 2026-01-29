@@ -62,13 +62,19 @@ in
       gh
       git-filter-repo
       jq
+      trash-cli
       (git-hunks { inherit pkgs; })
       
       # worktree workflow scripts
       (mkScript {
         inherit pkgs;
-        name = "wt-init";
-        src = ./wt-init.sh;
+        name = "_wt";
+        src = ./_wt.sh;
+        substitutions = {
+          "@gh@" = "${gh}/bin/gh";
+          "@jq@" = "${jq}/bin/jq";
+          "@trash@" = "${trash-cli}/bin/trash-put";
+        };
       })
       (mkScript {
         inherit pkgs;
@@ -76,22 +82,6 @@ in
         src = ./g.sh;
         substitutions = {
           "@lazygit@" = "${lazygit}/bin/lazygit";
-        };
-      })
-      (mkScript {
-        inherit pkgs;
-        name = "wts";
-        src = ./wts.sh;
-        substitutions = {
-          "@jq@" = "${jq}/bin/jq";
-        };
-      })
-      (mkScript {
-        inherit pkgs;
-        name = "wt";
-        src = ./wt.sh;
-        substitutions = {
-          "@gh@" = "${gh}/bin/gh";
         };
       })
     ];
