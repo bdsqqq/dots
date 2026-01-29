@@ -111,16 +111,64 @@ EOF
   exit 1
 }
 
-print_usage() {
+print_help() {
   cat <<'EOF'
-wt [cmd] [args]
-  (none)        list worktrees
-  <branch>      add/switch worktree
-  pr <num>      add worktree for PR
-  rm [name]     remove worktree
-  <url>         clone bare repo
+wt - worktree management
+
+usage: wt [cmd] [args]
+
+commands:
+  (none)              list worktrees (or status if in worktree)
+  <branch>            add worktree, cd into it
+  pr <num>            add worktree for PR
+  pr-<num>            alias for pr <num>
+  <pr-url>            add worktree from github PR url
+  rm [name]           remove worktree (current if no name)
+  <repo-url>          clone bare repo, add default branch worktree
+  <repo-url> <dir>    clone into specific directory
+  help, --help, -h    show this help
+
+subcommand help:
+  wt pr --help
+  wt rm --help
 EOF
-  exit 1
+}
+
+print_help_pr() {
+  cat <<'EOF'
+wt pr - add worktree for PR
+
+usage: wt pr <num>
+       wt pr-<num>
+       wt <github-pr-url>
+
+fetches PR branch from origin, creates worktree at ../pr-<num>.
+if worktree exists and branch matches, cd into it.
+if worktree exists but branch differs, error.
+
+examples:
+  wt pr 231
+  wt pr-231
+  wt https://github.com/org/repo/pull/231
+EOF
+}
+
+print_help_rm() {
+  cat <<'EOF'
+wt rm - remove a worktree
+
+usage: wt rm [name]
+
+if no name: removes current worktree (must be in one).
+if name: removes named worktree.
+
+also deletes local branch (unless default) and trashes folder.
+refuses to remove default branch worktree.
+
+examples:
+  wt rm           # remove current
+  wt rm pr-231    # remove pr-231
+EOF
 }
 
 list_worktrees() {
@@ -300,6 +348,11 @@ main() {
   local arg1="${1:-}"
   local arg2="${2:-}"
   
+  if [[ "$arg1" == "help" || "$arg1" == "--help" || "$arg1" == "-h" ]]; then
+    print_help
+    return
+  fi
+  
   if [[ "$arg1" =~ ^pr-([0-9]+)$ ]]; then
     arg1="pr"
     arg2="${match[1]}"
@@ -322,6 +375,10 @@ main() {
   fi
   
   if [[ "$arg1" == "rm" ]]; then
+    if [[ "$arg2" == "--help" || "$arg2" == "-h" ]]; then
+      print_help_rm
+      return
+    fi
     if [[ -z "$arg2" ]]; then
       if ! in_worktree; then
         err "not in a worktree"
@@ -378,6 +435,10 @@ main() {
   fi
   
   if [[ "$arg1" == "pr" ]]; then
+    if [[ "$arg2" == "--help" || "$arg2" == "-h" ]]; then
+      print_help_pr
+      return
+    fi
     if [[ -z "$arg2" ]]; then
       err "usage: wt pr <number>"
     fi
