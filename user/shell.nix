@@ -78,6 +78,9 @@
         ".claude/CLAUDE.md".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/global-agents.md";
 
         ".rgignore".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/rgignore";
+
+        # syncthing ignore (symlinked so all nix-managed devices share the same config)
+        "commonplace/.stignore".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/stignore";
       };
 
       programs = {

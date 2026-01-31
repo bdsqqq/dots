@@ -1,0 +1,128 @@
+# shared ignore patterns for commonplace
+# used by: syncthing (.stignore), ripgrep (.rgignore), rclone (.rcloneignore), fd (.ignore)
+# syntax: glob patterns compatible with all tools above
+
+# per-host scratch space
+02_temp/
+
+# version control
+**/.git/
+**/.github/
+**/.svn/
+**/.hg/
+
+# package managers and dependencies
+**/node_modules/
+**/.pnpm/
+**/.pnpm-store/
+**/.yarn/
+**/.npm/
+**/.bun/
+**/go/pkg/
+**/go/bin/
+**/.cargo/
+**/.stack/
+
+# build outputs and caches
+**/dist/
+**/build/
+**/out/
+**/coverage/
+**/target/
+**/generated/
+**/.next/
+**/.nuxt/
+**/.astro/
+**/.vite/
+**/.parcel-cache/
+**/.cache/
+**/cache/
+**/.turbo/
+**/.vercel/
+**/.netlify/
+**/.million/
+**/.svelte-kit/
+
+# development tools and editors
+**/.vscode/
+**/.idea/
+**/.changeset/
+**/.storybook/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.tox/
+**/.venv/
+**/.direnv/
+**/.expo/
+**/.angular/
+**/.gradle/
+
+# os-specific files
+**/.DS_Store
+**/Thumbs.db
+**/desktop.ini
+**/.Spotlight-V100/
+**/.Trashes/
+**/.fseventsd/
+
+# temporary and log files
+**/tmp/
+**/temp/
+**/*.tmp
+**/*.temp
+**/*.log
+*.log
+**/*.swp
+**/*.swo
+**/*~
+
+# build artifacts and binaries
+**/*.o
+**/*.obj
+**/*.exe
+**/*.dll
+**/*.so
+**/*.dylib
+**/*.a
+
+# fonts and media assets (binary, large)
+**/*.woff
+**/*.woff2
+**/*.otf
+**/*.ttf
+**/*.eot
+**/*.vst
+**/*.vst3
+**/*.component
+
+# minified files and source maps
+**/*.min.js
+**/*.min.css
+**/*.map
+
+# lock files
+**/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+**/Cargo.lock
+**/go.sum
+**/*.lock
+
+# syncthing internals
+**/.stfolder/
+**/.stversions/
+
+# nix build artifacts
+**/result/
+**/result-*
+01_files/nix/result
+01_files/nix/result-*
+
+# rclone logs
+rclone_*.log
+rclone_*.txt
+
+# project-specific
+pack-toolbox/temp/
+*/assets/minecraft/textures/
+**/*.mcmeta
