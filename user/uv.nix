@@ -1,10 +1,11 @@
-{ inputs, lib, hostSystem ? null, torchBackend ? null, ... }:
+{ inputs, lib, hostSystem ? null, torchBackend ? "cpu", ... }:
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   # darwin uses pypi (MPS support), linux needs explicit backend
-  extraFlag = if isDarwin then "" else if torchBackend != null then "--extra ${torchBackend}" else "--extra cpu";
+  extraFlag = if isDarwin then "" else "--extra ${torchBackend}";
 in
 {
+  _module.args.torchBackend = lib.mkDefault "cpu";
   home-manager.users.bdsqqq = { inputs, config, pkgs, lib, ... }: let
     uvGlobalDir = "${config.home.homeDirectory}/commonplace/01_files/nix/uv-global";
     uvVenvDir = "${uvGlobalDir}/.venv";
