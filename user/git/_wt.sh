@@ -186,9 +186,9 @@ EOF
 list_worktrees() {
   local git_dir="$1"
   local bare_root="$2"
+  local default_branch wt name branch head merged
   
   git -C "$git_dir" fetch origin --quiet 2>/dev/null || true
-  local default_branch
   default_branch=$(get_default_branch "$git_dir")
 
   git -C "$git_dir" worktree list --porcelain | while read -r line; do
@@ -199,11 +199,10 @@ list_worktrees() {
         ;;
       branch\ *)
         [[ -z "$wt" ]] && continue
-        local name branch merged="○"
+        merged="○"
         name=$(basename "$wt")
         branch="${line#branch refs/heads/}"
         
-        local head
         head=$(git -C "$wt" rev-parse HEAD 2>/dev/null) || true
         if [[ -n "$head" ]] && git -C "$git_dir" merge-base --is-ancestor "$head" "origin/$default_branch" 2>/dev/null; then
           merged="✓"
