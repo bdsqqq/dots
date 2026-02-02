@@ -93,6 +93,18 @@ get_worktree_branch() {
   git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null
 }
 
+find_worktree_for_branch() {
+  local git_dir="$1"
+  local branch="$2"
+  git -C "$git_dir" worktree list --porcelain | awk -v branch="$branch" '
+    /^worktree / { wt = substr($0, 10) }
+    /^branch refs\/heads\// { 
+      b = substr($0, 21)
+      if (b == branch) { print wt; exit }
+    }
+  '
+}
+
 signal_cd() {
   echo "__WT_CD__:$1"
 }
@@ -293,8 +305,19 @@ add_pr_worktree() {
     err "failed to get branch for PR #$pr_num"
   fi
   
+  local existing_wt
+  existing_wt=$(find_worktree_for_branch "$git_dir" "$branch")
+  if [[ -n "$existing_wt" ]]; then
+    local existing_name
+    existing_name=$(basename "$existing_wt")
+    echo "branch '$branch' already has a worktree at: $existing_name"
+    signal_cd "$existing_wt"
+    return
+  fi
+  
   git -C "$git_dir" fetch origin "$branch"
-  local wt_path="$bare_root/pr-$pr_num"
+  local wt_path
+  wt_path="$(cd "$bare_root" && pwd)/pr-$pr_num"
   
   if git -C "$git_dir" show-ref --verify --quiet "refs/heads/$branch"; then
     git -C "$git_dir" worktree add "$wt_path" "$branch"
@@ -313,7 +336,8 @@ add_branch_worktree() {
   local default_branch
   default_branch=$(get_default_branch "$git_dir")
   
-  local wt_path="$bare_root/$name"
+  local wt_path
+  wt_path="$(cd "$bare_root" && pwd)/$name"
   git -C "$git_dir" worktree add "$wt_path" -b "$name" "origin/$default_branch"
   echo "done. $name"
   signal_cd "$wt_path"
