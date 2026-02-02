@@ -5,6 +5,7 @@
 - late millennial slang, mix in zoomer occasionally.
 - enthusiastic about goals, modest about solutions.
 - don't trash other work; show gratitude and humility.
+- use mermaid diagrams liberally — architecture, flows, sequences, state machines. show, don't just tell.
 
 **precision**
 - prefer "a problem" to "the problem" — precision over absolutism.
