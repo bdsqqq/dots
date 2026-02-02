@@ -206,7 +206,7 @@ list_worktrees() {
     fi
     
     local pr_num
-    pr_num=$(echo "$name" | grep -oE '^pr-[0-9]+$' | cut -d'-' -f2)
+    pr_num=$(echo "$name" | grep -oE '^pr-[0-9]+$' | cut -d'-' -f2 || true)
     if [[ -n "$pr_num" ]]; then
       local url="https://github.com/$repo/pull/$pr_num"
       printf '%s \e]8;;%s\e\\%s\e]8;;\e\\\n' "$merged" "$url" "$name"
@@ -214,7 +214,7 @@ list_worktrees() {
     fi
     
     local issue_id
-    issue_id=$(echo "$name" | grep -oE '^[a-zA-Z]+-[0-9]+' | tr '[:lower:]' '[:upper:]')
+    issue_id=$(echo "$name" | grep -oE '^[a-zA-Z]+-[0-9]+' | tr '[:lower:]' '[:upper:]' || true)
     if [[ -n "$issue_id" ]]; then
       local json
       json=$(lnr issue "$issue_id" --json 2>/dev/null | tr -d '\000-\037')
