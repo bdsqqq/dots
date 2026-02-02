@@ -190,44 +190,33 @@ list_worktrees() {
   git -C "$git_dir" fetch origin --quiet 2>/dev/null || true
   local default_branch
   default_branch=$(get_default_branch "$git_dir")
-  local repo
-  repo=$(git -C "$git_dir" remote get-url origin 2>/dev/null | sed 's/.*github.com[:/]\(.*\)\.git/\1/')
 
-  git -C "$git_dir" worktree list --porcelain | grep "^worktree " | cut -d' ' -f2 | while read wt; do
-    [[ "$wt" == *"bare-repo.git" ]] && continue
-    local name
-    name=$(basename "$wt")
-    local head
-    head=$(git -C "$wt" rev-parse HEAD 2>/dev/null)
-    
-    local merged="○"
-    if [[ -n "$head" ]] && git -C "$git_dir" merge-base --is-ancestor "$head" "origin/$default_branch" 2>/dev/null; then
-      merged="✓"
-    fi
-    
-    local pr_num
-    pr_num=$(echo "$name" | grep -oE '^pr-[0-9]+$' | cut -d'-' -f2 || true)
-    if [[ -n "$pr_num" ]]; then
-      local url="https://github.com/$repo/pull/$pr_num"
-      printf '%s \e]8;;%s\e\\%s\e]8;;\e\\\n' "$merged" "$url" "$name"
-      continue
-    fi
-    
-    local issue_id
-    issue_id=$(echo "$name" | grep -oE '^[a-zA-Z]+-[0-9]+' | tr '[:lower:]' '[:upper:]' || true)
-    if [[ -n "$issue_id" ]]; then
-      local json
-      json=$(lnr issue "$issue_id" --json 2>/dev/null | tr -d '\000-\037')
-      if [[ -n "$json" ]]; then
-        local state url
-        state=$(echo "$json" | $JQ -r '.state // empty')
-        url=$(echo "$json" | $JQ -r '.url // empty')
-        printf '%s \e]8;;%s\e\\%s\e]8;;\e\\ (%s)\n' "$merged" "$url" "$name" "$state"
-        continue
-      fi
-    fi
-    
-    echo "$merged $name"
+  git -C "$git_dir" worktree list --porcelain | while read -r line; do
+    case "$line" in
+      worktree\ *)
+        wt="${line#worktree }"
+        [[ "$wt" == *"bare-repo.git" ]] && wt="" && continue
+        ;;
+      branch\ *)
+        [[ -z "$wt" ]] && continue
+        local name branch merged="○"
+        name=$(basename "$wt")
+        branch="${line#branch refs/heads/}"
+        
+        local head
+        head=$(git -C "$wt" rev-parse HEAD 2>/dev/null) || true
+        if [[ -n "$head" ]] && git -C "$git_dir" merge-base --is-ancestor "$head" "origin/$default_branch" 2>/dev/null; then
+          merged="✓"
+        fi
+        
+        if [[ "$name" == "$branch" ]]; then
+          echo "$merged $name"
+        else
+          echo "$merged $name ($branch)"
+        fi
+        wt=""
+        ;;
+    esac
   done
 }
 
