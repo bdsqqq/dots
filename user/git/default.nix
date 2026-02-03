@@ -68,7 +68,7 @@ in
       # worktree workflow scripts
       (mkScript {
         inherit pkgs;
-        name = "_wt";
+        name = "wt";
         src = ./_wt.sh;
         substitutions = {
           "@gh@" = "${gh}/bin/gh";
@@ -76,9 +76,6 @@ in
           "@trash@" = "${trash-cli}/bin/trash-put";
         };
       })
-      # wt binary for non-interactive shells (agents, scripts)
-      # interactive shells shadow this with a function that handles __WT_CD__
-      (pkgs.writeShellScriptBin "wt" "exec _wt \"$@\"")
       (mkScript {
         inherit pkgs;
         name = "g";

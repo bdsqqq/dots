@@ -4,7 +4,7 @@ date: 2025-01-29
 
 ## status
 
-accepted
+accepted (superseded: shell wrapper removed 2025-02-03)
 
 ## context
 
@@ -23,7 +23,7 @@ unify into single `wt` with subcommands. shell function wrapper for cd.
 - `wt <url>` → clone bare repo (replaces wt-init)
 - `wt <url> <dir>` → clone into specific dir
 
-implementation: `_wt` script (nix mkScript), `wt()` function in shell.nix calls it + handles cd.
+implementation: `wt` script (nix mkScript). no shell wrapper—user cds manually.
 
 url vs branch disambiguation: check for `://` or `git@`.
 
@@ -38,5 +38,5 @@ default branch protection: `wt rm` refuses to remove the default branch worktree
 ## consequences
 
 - single command to remember
-- cd works via shell function (canonical unix pattern, see z/autojump/nvm)
 - `wts`, `wt-init`, `wt-rm` deprecated
+- no auto-cd: user runs `cd <worktree>` after creation (simpler, works in non-interactive shells/agents)
