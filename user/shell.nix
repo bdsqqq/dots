@@ -99,22 +99,6 @@
           export AMP_API_KEY="$(cat /run/secrets/AMP_API_KEY 2>/dev/null || echo "$AMP_API_KEY")"
           export HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || echo "$HF_TOKEN")"
 
-          # wt shell wrapper (cd can't be done from script)
-          wt() {
-            local out exit_code
-            out=$(_wt "$@")
-            exit_code=$?
-            local last_line=''${out##*$'\n'}
-            if [[ "$last_line" =~ ^__WT_CD__:(.+)$ ]]; then
-              local target="''${match[1]}"
-              [[ "$out" == "$last_line" ]] || echo "''${out%$'\n'*}"
-              cd "$target"
-            else
-              [[ -n "$out" ]] && echo "$out"
-            fi
-            return $exit_code
-          }
-
           autoload -Uz compinit
             () {
               if [[ $# -gt 0 ]]; then

@@ -1,6 +1,5 @@
 #!/usr/bin/env zsh
 # wt: unified worktree management
-# shell wrapper handles cd via __WT_CD__ signal (scripts can't mutate parent shell)
 
 set -euo pipefail
 
@@ -103,10 +102,6 @@ find_worktree_for_branch() {
       if (b == branch) { print wt; exit }
     }
   '
-}
-
-signal_cd() {
-  echo "__WT_CD__:$1"
 }
 
 err() {
@@ -299,7 +294,6 @@ add_pr_worktree() {
     local existing_name
     existing_name=$(basename "$existing_wt")
     echo "branch '$branch' already has a worktree at: $existing_name"
-    signal_cd "$existing_wt"
     return
   fi
   
@@ -314,7 +308,6 @@ add_pr_worktree() {
   fi
   
   echo "done. pr-$pr_num ($branch)"
-  signal_cd "$wt_path"
 }
 
 add_branch_worktree() {
@@ -328,7 +321,6 @@ add_branch_worktree() {
   wt_path="$(cd "$bare_root" && pwd)/$name"
   git -C "$git_dir" worktree add "$wt_path" -b "$name" "origin/$default_branch"
   echo "done. $name"
-  signal_cd "$wt_path"
 }
 
 clone_bare_repo() {
@@ -351,7 +343,6 @@ clone_bare_repo() {
   git -C "$git_dir" worktree add "$main_wt" "$default_branch"
   
   echo "done. $default_branch"
-  signal_cd "$main_wt"
 }
 
 main() {
@@ -407,7 +398,6 @@ main() {
       
       cd "$bare_root" || err "failed to cd to $bare_root"
       remove_worktree "$git_dir" "$bare_root" "$name"
-      signal_cd "$bare_root"
     else
       if ! has_bare_repo; then
         err "no bare-repo.git found"
@@ -430,17 +420,7 @@ main() {
         err "worktree not found: $arg2"
       fi
       
-      local was_in_deleted=false
-      if in_worktree && [[ "$(get_current_worktree_name)" == "$arg2" ]]; then
-        was_in_deleted=true
-        cd "$bare_root" || err "failed to cd to $bare_root"
-      fi
-      
       remove_worktree "$git_dir" "$bare_root" "$arg2"
-      
-      if $was_in_deleted; then
-        signal_cd "$bare_root"
-      fi
     fi
     return
   fi
@@ -474,7 +454,6 @@ main() {
       
       if [[ "$existing_branch" == "$expected_branch" ]]; then
         echo "worktree already exists for PR #$arg2"
-        signal_cd "$bare_root/$wt_name"
       else
         err "worktree $wt_name exists but has branch '$existing_branch', PR #$arg2 is on '$expected_branch'"
       fi
@@ -549,7 +528,6 @@ main() {
     
     if [[ "$existing_branch" == "$name" ]]; then
       echo "worktree already exists: $name"
-      signal_cd "$bare_root/$name"
     else
       err "worktree $name exists but has branch '$existing_branch', not '$name'"
     fi
