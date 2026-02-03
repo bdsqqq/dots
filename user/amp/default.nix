@@ -7,7 +7,18 @@ in
   # sops template for amp settings.json (secret substitution at activation time)
   sops.templates."amp-settings.json" = {
     content = builtins.toJSON {
-      "amp.dangerouslyAllowAll" = true;
+      "amp.permissions" = [
+        # blacklist: reject dangerous git operations
+        { tool = "Bash"; matches = { cmd = "*git add -A*"; }; action = "reject"; }
+        { tool = "Bash"; matches = { cmd = "*git add .*"; }; action = "reject"; }
+        { tool = "Bash"; matches = { cmd = "*git push --force*"; }; action = "reject"; }
+        { tool = "Bash"; matches = { cmd = "*git push -f*"; }; action = "reject"; }
+        { tool = "Bash"; matches = { cmd = "*--force-with-lease*"; }; action = "reject"; }
+        
+        # allow everything else
+        { tool = "*"; action = "allow"; }
+      ];
+      
       mcpServers.motion = {
         command = "npx";
         args = [
