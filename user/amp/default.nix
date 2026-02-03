@@ -20,6 +20,14 @@ in
         { tool = "Bash"; matches = { cmd = "*--force-with-lease*"; }; action = "reject";
           message = "never force push (including --force-with-lease). if diverged: 'git fetch origin && git rebase origin/main && git push'"; }
         
+        # prefer trash over rm
+        { tool = "Bash"; matches = { cmd = "rm *"; }; action = "reject";
+          message = "use 'trash <file>' instead of rm — recoverable deletion"; }
+        { tool = "Bash"; matches = { cmd = "*rm -rf*"; }; action = "reject";
+          message = "use 'trash <file>' instead of rm -rf — recoverable deletion"; }
+        { tool = "Bash"; matches = { cmd = "*rm -r*"; }; action = "reject";
+          message = "use 'trash <file>' instead of rm -r — recoverable deletion"; }
+        
         # allow everything else
         { tool = "*"; action = "allow"; }
       ];
