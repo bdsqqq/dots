@@ -14,8 +14,8 @@ in
         { tool = "Bash"; matches = { cmd = [ "*git push --force*" "*git push -f*" "*--force-with-lease*" ]; }; action = "reject";
           message = "never force push. if diverged: 'git fetch origin && git rebase origin/main && git push'"; }
         
-        # prefer trash over rm
-        { tool = "Bash"; matches = { cmd = [ "rm *" "* rm *" ]; }; action = "reject";
+        # prefer trash over rm (but allow subcommands like 'wt rm', 'git worktree remove')
+        { tool = "Bash"; matches = { cmd = [ "rm *" "* && rm *" "* || rm *" "* ; rm *" ]; }; action = "reject";
           message = "use 'trash <file>' instead of rm — recoverable deletion"; }
         
         # allow everything else
