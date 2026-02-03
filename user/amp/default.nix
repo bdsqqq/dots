@@ -8,25 +8,15 @@ in
   sops.templates."amp-settings.json" = {
     content = builtins.toJSON {
       "amp.permissions" = [
-        # blacklist: reject dangerous git operations
-        { tool = "Bash"; matches = { cmd = "*git add -A*"; }; action = "reject"; 
+        # reject dangerous git operations
+        { tool = "Bash"; matches = { cmd = [ "*git add -A*" "*git add .*" ]; }; action = "reject"; 
           message = "stage files explicitly with 'git add <file>' — unstaged changes may not be yours"; }
-        { tool = "Bash"; matches = { cmd = "*git add .*"; }; action = "reject";
-          message = "stage files explicitly with 'git add <file>' — unstaged changes may not be yours"; }
-        { tool = "Bash"; matches = { cmd = "*git push --force*"; }; action = "reject";
+        { tool = "Bash"; matches = { cmd = [ "*git push --force*" "*git push -f*" "*--force-with-lease*" ]; }; action = "reject";
           message = "never force push. if diverged: 'git fetch origin && git rebase origin/main && git push'"; }
-        { tool = "Bash"; matches = { cmd = "*git push -f*"; }; action = "reject";
-          message = "never force push. if diverged: 'git fetch origin && git rebase origin/main && git push'"; }
-        { tool = "Bash"; matches = { cmd = "*--force-with-lease*"; }; action = "reject";
-          message = "never force push (including --force-with-lease). if diverged: 'git fetch origin && git rebase origin/main && git push'"; }
         
         # prefer trash over rm
-        { tool = "Bash"; matches = { cmd = "rm *"; }; action = "reject";
+        { tool = "Bash"; matches = { cmd = [ "rm *" "* rm *" ]; }; action = "reject";
           message = "use 'trash <file>' instead of rm — recoverable deletion"; }
-        { tool = "Bash"; matches = { cmd = "*rm -rf*"; }; action = "reject";
-          message = "use 'trash <file>' instead of rm -rf — recoverable deletion"; }
-        { tool = "Bash"; matches = { cmd = "*rm -r*"; }; action = "reject";
-          message = "use 'trash <file>' instead of rm -r — recoverable deletion"; }
         
         # allow everything else
         { tool = "*"; action = "allow"; }
