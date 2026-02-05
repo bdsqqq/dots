@@ -10,7 +10,7 @@ in
         settings = { sub-lang = "en.*"; };
       };
       gallery-dl.enable = true;
-      spotify-player.enable = true;
+
     };
     home.packages = with pkgs; [
       coreutils

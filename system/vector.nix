@@ -28,8 +28,6 @@ let
     type = "file"
     include = [
       "${logsDir}/syncthing-automerge.log",
-      "${logsDir}/openvscode-server.log",
-      "${logsDir}/openvscode-server-error.log",
       "${logsDir}/vector.log",
       "${logsDir}/vector-error.log"
     ]
