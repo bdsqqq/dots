@@ -236,7 +236,6 @@
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
-                  (import ./overlays/hyprland-plugins.nix inputs)
                   (import ./overlays/quickshell.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
