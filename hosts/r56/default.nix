@@ -64,7 +64,6 @@ in
     ../../bundles/headless.nix
     ../../bundles/dev.nix
     ../../bundles/desktop.nix
-    ../../bundles/wm/hyprland.nix
     ../../bundles/wm/niri.nix
     ../../system/nvidia.nix
     ../../system/bluetooth.nix
@@ -196,7 +195,6 @@ in
       programs.home-manager.enable = true;
       
       # disable stylix targets we manage manually
-      stylix.targets.hyprland.enable = false;
       stylix.targets.ghostty.enable = false;
       
       # fontconfig for crisp font rendering at 1.5x
