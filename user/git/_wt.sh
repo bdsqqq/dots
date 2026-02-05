@@ -319,7 +319,7 @@ add_branch_worktree() {
   
   local wt_path
   wt_path="$(cd "$bare_root" && pwd)/$name"
-  git -C "$git_dir" worktree add "$wt_path" -b "$name" "origin/$default_branch"
+  git -C "$git_dir" worktree add --no-track "$wt_path" -b "$name" "origin/$default_branch"
   echo "done. $name"
 }
 
