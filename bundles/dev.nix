@@ -10,7 +10,6 @@ in
       ../user/pnpm.nix
       ../user/uv.nix
       ../user/dev-tools.nix
-      ../user/zellij.nix
       ../user/tmux.nix
       ../user/amp
       ../user/agents

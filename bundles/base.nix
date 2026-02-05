@@ -15,7 +15,6 @@
     ../user/fnm.nix
     ../user/fzf
     ../user/zoxide.nix
-    ../user/zellij.nix
     ../system/fonts.nix
   ];
 }

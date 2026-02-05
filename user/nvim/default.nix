@@ -120,27 +120,9 @@ in
         { mode = "n"; key = "h"; action.__raw = ''function() if vim.fn.col('.') == 1 then vim.cmd('normal! za') else vim.cmd('normal! h') end end''; options.desc = "toggle fold at first column, otherwise move left"; }
       ];
 
-      autoGroups = { kickstart-highlight-yank.clear = true; kickstart-lsp-attach.clear = true; zellij-statusline.clear = true; };
+      autoGroups = { kickstart-highlight-yank.clear = true; kickstart-lsp-attach.clear = true; };
       autoCmd = [
         { event = [ "TextYankPost" ]; desc = "highlight when yanking (copying) text"; group = "kickstart-highlight-yank"; callback.__raw = ''function() vim.highlight.on_yank() end''; }
-        { 
-          event = [ "BufEnter" "BufWritePost" "TextChanged" "TextChangedI" ]; 
-          desc = "send statusline to zellij"; 
-          group = "zellij-statusline"; 
-          callback.__raw = ''function() _G.zellij_update_status() end''; 
-        }
-        {
-          event = [ "VimLeavePre" ];
-          desc = "clear zellij statusline on nvim exit";
-          group = "zellij-statusline";
-          callback.__raw = ''function() _G.zellij_clear_status() end'';
-        }
-        {
-          event = [ "FocusLost" ];
-          desc = "clear zellij statusline when nvim loses focus";
-          group = "zellij-statusline";
-          callback.__raw = ''function() _G.zellij_clear_status() end'';
-        }
       ];
 
       diagnostic.settings = {
