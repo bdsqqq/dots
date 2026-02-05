@@ -5,7 +5,6 @@ in
 lib.mkIf (headMode == "graphical") {
   home-manager.users.bdsqqq = { pkgs, ... }: {
     home.packages = with pkgs; [
-      docker
       blockbench
       vscode
       # blender  # disabled: triggers OpenUSD compile with cudaSupport
