@@ -62,38 +62,7 @@ vim.defer_fn(function()
   vim.api.nvim_set_hl(0, 'Terminal', { bg = 'NONE', ctermbg = 'NONE' })
 end, 100)
 
--- Statusline for Zellij
-_G.Statusline = function()
-  local file = vim.fn.expand("%:t")
-  if file == "" then
-    file = "[No Name]"
-  end
-
-  local branch = ""
-  local git = vim.b.gitsigns_status_dict
-  if git and git.head and git.head ~= "" then
-    branch = string.format("[%s]", git.head)
-  end
-
-  local dirty = vim.bo.modified and "*" or ""
-  return string.format("%s%s%s", branch, file, dirty)
-end
-
--- Zellij Helpers
-_G.zellij_update_status = function()
-  if vim.env.ZELLIJ then
-    local status = _G.Statusline()
-    vim.fn.system("zellij pipe 'zjstatus::pipe::pipe_nvim_status::" .. status .. "'")
-  end
-end
-
-_G.zellij_clear_status = function()
-  if vim.env.ZELLIJ then
-    vim.fn.system("zellij pipe 'zjstatus::pipe::pipe_nvim_status::'")
-  end
-end
-
--- Statusline hidden in nvim
+-- Statusline hidden in nvim (tmux status bar shows file info via vimbridge)
 vim.o.laststatus = 0
 
 -- ts-error-translator setup
