@@ -109,6 +109,51 @@ err() {
   exit 1
 }
 
+symlink_env_files() {
+  local bare_root="$1"
+  local git_dir="$2"
+  local target_wt="$3"
+  
+  local default_branch
+  default_branch=$(get_default_branch "$git_dir")
+  
+  # find the worktree that's on the default branch (name may differ)
+  local source_wt
+  source_wt=$(find_worktree_for_branch "$git_dir" "$default_branch")
+  
+  if [[ -z "$source_wt" || ! -d "$source_wt" ]]; then
+    return 0
+  fi
+  
+  # resolve to absolute for reliable comparison
+  source_wt=$(cd "$source_wt" && pwd)
+  target_wt=$(cd "$target_wt" && pwd)
+  
+  local count=0
+  while IFS= read -r -d '' env_file; do
+    local rel_path="${env_file#$source_wt/}"
+    local target_path="$target_wt/$rel_path"
+    local target_dir
+    target_dir=$(dirname "$target_path")
+    
+    if [[ -e "$target_path" ]]; then
+      continue
+    fi
+    
+    mkdir -p "$target_dir"
+    
+    # compute relative path from target_dir to env_file
+    local rel_link
+    rel_link=$(python3 -c "import os.path; print(os.path.relpath('$env_file', '$target_dir'))")
+    ln -s "$rel_link" "$target_path"
+    ((count++))
+  done < <(find "$source_wt" -name '.env*' -type f -print0 2>/dev/null)
+  
+  if [[ $count -gt 0 ]]; then
+    echo "symlinked $count .env file(s) from $default_branch"
+  fi
+}
+
 print_setup_hint() {
   cat <<'EOF'
 no bare-repo.git. clone one:
@@ -131,6 +176,7 @@ commands:
   pr-<num>            alias for pr <num>
   <pr-url>            add worktree from github PR url
   rm [name]           remove worktree (current if no name)
+  env                 (re)symlink .env files from default branch
   <repo-url>          clone bare repo, add default branch worktree
   <repo-url> <dir>    clone into specific directory
   help, --help, -h    show this help
@@ -138,6 +184,21 @@ commands:
 subcommand help:
   wt pr --help
   wt rm --help
+  wt env --help
+EOF
+}
+
+print_help_env() {
+  cat <<'EOF'
+wt env - symlink .env files from default branch worktree
+
+usage: wt env
+
+finds the worktree on the default branch (main/master) and
+symlinks all .env* files to the current worktree.
+skips files that already exist. uses relative symlinks.
+
+run from within a worktree.
 EOF
 }
 
@@ -307,6 +368,7 @@ add_pr_worktree() {
     git -C "$git_dir" worktree add --track -b "$branch" "$wt_path" "origin/$branch"
   fi
   
+  symlink_env_files "$bare_root" "$git_dir" "$wt_path"
   echo "done. pr-$pr_num ($branch)"
 }
 
@@ -320,6 +382,7 @@ add_branch_worktree() {
   local wt_path
   wt_path="$(cd "$bare_root" && pwd)/$name"
   git -C "$git_dir" worktree add --no-track "$wt_path" -b "$name" "origin/$default_branch"
+  symlink_env_files "$bare_root" "$git_dir" "$wt_path"
   echo "done. $name"
 }
 
@@ -373,6 +436,25 @@ main() {
       local git_dir="./bare-repo.git"
       list_worktrees "$git_dir" "."
     fi
+    return
+  fi
+  
+  if [[ "$arg1" == "env" ]]; then
+    if [[ "$arg2" == "--help" || "$arg2" == "-h" ]]; then
+      print_help_env
+      return
+    fi
+    if ! in_worktree; then
+      err "not in a worktree"
+    fi
+    
+    local bare_root git_dir
+    bare_root=$(get_bare_root)
+    git_dir=$(get_git_dir "$bare_root")
+    local wt_path
+    wt_path=$(pwd)
+    
+    symlink_env_files "$bare_root" "$git_dir" "$wt_path"
     return
   fi
   
