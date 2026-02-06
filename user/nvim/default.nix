@@ -72,9 +72,9 @@ in
 
       globals = { 
         mapleader = " "; maplocalleader = " "; have_nerd_font = true;
+        # tpipeline renders nvim statusline into tmux status bar
         tpipeline_autoembed = 0;
         tpipeline_fillchar = " ";
-        tpipeline_statusline = "%{%v:lua.Statusline()%}";
       };
       clipboard = { 
         providers = { 
