@@ -325,30 +325,6 @@
             ];
           };
 
-          "amp-worker" = inputs.nixpkgs.lib.nixosSystem {
-            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "headless"; };
-            modules = [
-              inputs.sops-nix.nixosModules.sops
-              inputs.axiom-deploy-annotation.nixosModules.default
-              inputs.home-manager.nixosModules.home-manager
-              ({ pkgs, config, ... }: {
-                nixpkgs.hostPlatform = "x86_64-linux";
-                nixpkgs.overlays = [ (import ./overlays/unstable.nix inputs) ];
-                system.configurationRevision = flakeRevision;
-                
-                services.axiom-deploy-annotation = {
-                  enable = true;
-                  configPath = config.sops.secrets."axiom.toml".path;
-                  dataset = "papertrail";
-                  datasets = [ "papertrail" "host-metrics" ];
-                  repositoryUrl = "https://github.com/bdsqqq/dots";
-                  user = "bdsqqq";
-                  group = "users";
-                };
-              })
-              ./hosts/amp-worker/default.nix
-            ];
-          };
         };
       };
     };
