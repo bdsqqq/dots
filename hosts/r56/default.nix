@@ -67,7 +67,6 @@ in
     ../../bundles/wm/niri.nix
     ../../system/nvidia.nix
     ../../system/bluetooth.nix
-    ../../system/fan-control.nix
     ../../system/audio.nix
     ../../system/vector.nix
     ../../user/ghostty.nix
