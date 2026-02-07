@@ -10,12 +10,6 @@ let
   kanataPlist = "/Library/LaunchDaemons/${kanataLabel}.plist";
   virtualhidPlist = "/Library/LaunchDaemons/${virtualhidLabel}.plist";
   
-  # stable path so macOS TCC (Input Monitoring) permission survives nix rebuilds.
-  # must be a COPY, not a symlink — macOS resolves symlinks for TCC checks,
-  # so a symlink still exposes the changing /nix/store/... path underneath.
-  # a copied binary at a fixed path retains its TCC grant across rebuilds.
-  kanataStablePath = "/usr/local/bin/kanata";
-  
   toggleKanata = pkgs.writeShellScriptBin "toggle-kanata" ''
     set -euo pipefail
 
@@ -135,7 +129,7 @@ if isDarwin then {
       DAEMON_PID=$!
       sleep 2
       
-      sudo ${kanataStablePath} --cfg /etc/kanata/kanata.kbd &
+      sudo ${pkgs.kanata}/bin/kanata --cfg /etc/kanata/kanata.kbd &
       KANATA_PID=$!
       
       echo "test your keyboard now"
@@ -164,21 +158,6 @@ if isDarwin then {
       echo "Activating VirtualHIDDevice..."
       /Applications/.Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager activate
     fi
-
-    # copy kanata binary to stable path so TCC permission persists across rebuilds
-    mkdir -p /usr/local/bin
-    rm -f ${kanataStablePath}
-    cp ${pkgs.kanata}/bin/kanata ${kanataStablePath}
-    chmod +x ${kanataStablePath}
-    /usr/bin/codesign -fs - ${kanataStablePath} 2>/dev/null || true
-
-    # force-reload the kanata daemon on every rebuild.
-    # nix-darwin only reloads daemons when the plist content changes, but since
-    # the plist now uses a stable path (/usr/local/bin/kanata), it never changes
-    # between rebuilds — so the daemon would keep running the old binary forever.
-    launchctl bootout system/${kanataLabel} 2>/dev/null || true
-    sleep 1
-    launchctl bootstrap system ${kanataPlist} 2>/dev/null || true
   '';
   
   launchd.daemons.karabiner-virtualhid-daemon = {
@@ -201,7 +180,7 @@ if isDarwin then {
       ProgramArguments = [
         "/bin/bash"
         "-c"
-        "sleep 5 && ${kanataStablePath} --cfg /etc/kanata/kanata.kbd"
+        "sleep 5 && ${pkgs.kanata}/bin/kanata --cfg /etc/kanata/kanata.kbd"
       ];
       RunAtLoad = true;
       KeepAlive = true;
