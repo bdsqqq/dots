@@ -170,9 +170,15 @@ if isDarwin then {
     rm -f ${kanataStablePath}
     cp ${pkgs.kanata}/bin/kanata ${kanataStablePath}
     chmod +x ${kanataStablePath}
-    # ad-hoc codesign so macOS TCC can track the binary — unsigned binaries
-    # silently fail to persist in Input Monitoring
     /usr/bin/codesign -fs - ${kanataStablePath} 2>/dev/null || true
+
+    # force-reload the kanata daemon on every rebuild.
+    # nix-darwin only reloads daemons when the plist content changes, but since
+    # the plist now uses a stable path (/usr/local/bin/kanata), it never changes
+    # between rebuilds — so the daemon would keep running the old binary forever.
+    launchctl bootout system/${kanataLabel} 2>/dev/null || true
+    sleep 1
+    launchctl bootstrap system ${kanataPlist} 2>/dev/null || true
   '';
   
   launchd.daemons.karabiner-virtualhid-daemon = {
