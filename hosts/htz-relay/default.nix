@@ -129,7 +129,7 @@ in {
           devices = [ "mbp-m2" "ipd" "iph16" "r56" ];
           versioning = {
             type = "trashcan";
-            params.cleanoutDays = "0";
+            params.cleanoutDays = "30";
           };
         };
       };
