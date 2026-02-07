@@ -19,5 +19,9 @@
       ];
     };
     optimise.automatic = true;
+    gc = {
+      automatic = lib.mkDefault true;
+      options = lib.mkDefault "--delete-older-than 14d";
+    };
   };
 }
