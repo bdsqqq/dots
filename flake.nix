@@ -232,7 +232,7 @@
               inputs.home-manager.nixosModules.home-manager
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.niri.nixosModules.niri
-              ({ pkgs, config, ... }: {
+              ({ pkgs, config, lib, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
@@ -249,6 +249,7 @@
                   user = "bdsqqq";
                   group = "users";
                 };
+                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome = lib.mkForce "read-only";
               })
               ./hosts/r56/default.nix
             ];
@@ -263,7 +264,7 @@
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.home-manager.nixosModules.home-manager
               inputs.copyparty.nixosModules.default
-              ({ pkgs, config, ... }: {
+              ({ pkgs, config, lib, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [ 
                   inputs.copyparty.overlays.default 
@@ -280,6 +281,7 @@
                   user = "bdsqqq";
                   group = "users";
                 };
+                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome = lib.mkForce "read-only";
               })
               ./hosts/htz-relay/default.nix
             ];
@@ -295,7 +297,7 @@
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.niri.nixosModules.niri
               inputs.jovian-nixos.nixosModules.default
-              ({ pkgs, config, ... }: {
+              ({ pkgs, config, lib, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [ 
                   (import ./overlays/unstable.nix inputs)
@@ -312,6 +314,7 @@
                   user = "bdsqqq";
                   group = "users";
                 };
+                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome = lib.mkForce "read-only";
               })
               ./hosts/lgo-z2e/default.nix
             ];
