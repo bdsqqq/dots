@@ -16,6 +16,7 @@
     ../user/fzf
     ../user/zoxide.nix
     ../system/fonts.nix
+    ../system/auto-upgrade.nix
   ];
 }
 
