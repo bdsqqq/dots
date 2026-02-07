@@ -170,6 +170,9 @@ if isDarwin then {
     rm -f ${kanataStablePath}
     cp ${pkgs.kanata}/bin/kanata ${kanataStablePath}
     chmod +x ${kanataStablePath}
+    # ad-hoc codesign so macOS TCC can track the binary — unsigned binaries
+    # silently fail to persist in Input Monitoring
+    /usr/bin/codesign -fs - ${kanataStablePath} 2>/dev/null || true
   '';
   
   launchd.daemons.karabiner-virtualhid-daemon = {
