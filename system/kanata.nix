@@ -167,7 +167,8 @@ if isDarwin then {
 
     # copy kanata binary to stable path so TCC permission persists across rebuilds
     mkdir -p /usr/local/bin
-    cp -f ${pkgs.kanata}/bin/kanata ${kanataStablePath}
+    rm -f ${kanataStablePath}
+    cp ${pkgs.kanata}/bin/kanata ${kanataStablePath}
     chmod +x ${kanataStablePath}
   '';
   
