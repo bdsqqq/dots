@@ -24,6 +24,7 @@ in
       mouse = true;
       escapeTime = 0;
       baseIndex = 1;
+      historyLimit = 50000;
       
       plugins = with pkgs.tmuxPlugins; [
         sensible
@@ -34,6 +35,13 @@ in
       extraConfig = ''
         # override sensible's broken default-command (it uses $SHELL from build env)
         set -g default-command "${lib.getExe config.my.defaultShell}"
+        
+        # pane numbering consistent with window base-index
+        set -g pane-base-index 1
+        
+        # let tmux set outer terminal title (visible in app switcher)
+        set -g set-titles on
+        set -g set-titles-string '#S: #W'
         
         # theme colors matching zellij (transparent bg)
         set -g status-style "bg=default,fg=#c2c2c2"
@@ -126,8 +134,8 @@ in
         set -g extended-keys-format csi-u
         
         # modern terminal features for ghostty
-        set -as terminal-features ',ghostty:RGB,extkeys,clipboard,hyperlinks,focus,sync,strikethrough,usstyle'
-        set -as terminal-features ',*:extkeys'
+        # consolidated: all features ghostty supports in one entry
+        set -as terminal-features ',ghostty:RGB,extkeys,clipboard,hyperlinks,focus,sync,strikethrough,usstyle,overline,sixel'
         
         # terminal overrides for modern terminals (ghostty, termius/xterm-256color)
         # Ss/Se: cursor shape, Smulx: undercurl, Setulc: underline color, RGB: truecolor
