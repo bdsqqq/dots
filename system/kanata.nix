@@ -11,8 +11,9 @@ let
   virtualhidPlist = "/Library/LaunchDaemons/${virtualhidLabel}.plist";
   
   # stable path so macOS TCC (Input Monitoring) permission survives nix rebuilds.
-  # each rebuild produces a new /nix/store/... binary, which macOS treats as a
-  # different app needing fresh approval. symlink stays, permission persists.
+  # must be a COPY, not a symlink — macOS resolves symlinks for TCC checks,
+  # so a symlink still exposes the changing /nix/store/... path underneath.
+  # a copied binary at a fixed path retains its TCC grant across rebuilds.
   kanataStablePath = "/usr/local/bin/kanata";
   
   toggleKanata = pkgs.writeShellScriptBin "toggle-kanata" ''
@@ -164,9 +165,10 @@ if isDarwin then {
       /Applications/.Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager activate
     fi
 
-    # update stable symlink so TCC permission persists across rebuilds
+    # copy kanata binary to stable path so TCC permission persists across rebuilds
     mkdir -p /usr/local/bin
-    ln -sf ${pkgs.kanata}/bin/kanata ${kanataStablePath}
+    cp -f ${pkgs.kanata}/bin/kanata ${kanataStablePath}
+    chmod +x ${kanataStablePath}
   '';
   
   launchd.daemons.karabiner-virtualhid-daemon = {
