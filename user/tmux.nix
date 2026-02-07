@@ -30,6 +30,28 @@ in
         sensible
         yank
         vim-tmux-navigator
+        {
+          plugin = resurrect;
+          extraConfig = ''
+            set -g @resurrect-strategy-nvim 'session'
+            set -g @resurrect-capture-pane-contents 'on'
+            resurrect_dir="$HOME/.tmux/resurrect"
+            set -g @resurrect-dir $resurrect_dir
+            # nix store paths break resurrect's process matching on restore.
+            # strip /nix/store/.../bin/ prefixes so saved entries use bare
+            # command names (e.g. "nvim" not "/nix/store/abc-neovim/bin/nvim").
+            # also strips --cmd ...-vim-pack-dir injected by nixvim's wrapper.
+            # ref: https://discourse.nixos.org/t/30819
+            set -g @resurrect-hook-post-save-all 'sed -i "s| --cmd .*-vim-pack-dir||g; s|/nix/store/.*/bin/||g" $(readlink -f $resurrect_dir/last)'
+          '';
+        }
+        {
+          plugin = continuum;
+          extraConfig = ''
+            set -g @continuum-restore 'on'
+            set -g @continuum-save-interval '15'
+          '';
+        }
       ];
       
       extraConfig = ''
@@ -147,12 +169,34 @@ in
         
         # osc52 clipboard (bidirectional with system clipboard)
         set -g set-clipboard on
+
+        # sesh: fuzzy session manager backed by zoxide + fzf (prefix + T)
+        # successor to t-smart-tmux-session-manager, rewritten in go.
+        # pairs with zoxide — cd history becomes session candidates.
+        # detach-on-destroy keeps you in tmux when closing a session
+        # instead of dropping to bare shell.
+        set -g detach-on-destroy off
+        bind-key "T" run-shell "sesh connect \"$(
+          sesh list --icons | fzf-tmux -p 80%,70% \
+            --no-sort --ansi --border-label ' sesh ' --prompt '⚡  ' \
+            --header '  ^a all ^t tmux ^g configs ^x zoxide ^d tmux kill ^f find' \
+            --bind 'tab:down,btab:up' \
+            --bind 'ctrl-a:change-prompt(⚡  )+reload(sesh list --icons)' \
+            --bind 'ctrl-t:change-prompt(🪟  )+reload(sesh list -t --icons)' \
+            --bind 'ctrl-g:change-prompt(⚙️  )+reload(sesh list -c --icons)' \
+            --bind 'ctrl-x:change-prompt(📁  )+reload(sesh list -z --icons)' \
+            --bind 'ctrl-f:change-prompt(🔎  )+reload(fd -H -d 2 -t d -E .Trash . ~)' \
+            --bind 'ctrl-d:execute(tmux kill-session -t {2..})+change-prompt(⚡  )+reload(sesh list --icons)' \
+            --preview-window 'right:55%' \
+            --preview 'sesh preview {}'
+        )\""
+        bind -N "last-session (via sesh)" L run-shell "sesh last"
       '';
     };
 
     home.shellAliases.tx = "tmux new-session -A -s $(basename $PWD | tr . _)";
     
-    home.packages = [ randomNameScript ];
+    home.packages = [ randomNameScript pkgs.sesh pkgs.fzf ];
 
     programs.zsh.initContent = ''
       # tmux automatic window renaming
