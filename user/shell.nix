@@ -204,8 +204,11 @@
       };
 
       home.shellAliases = {
-        l = "ls -lah";
-        ll = "ls -l";
+        ls = "eza";
+        l = "eza -lah --git --icons";
+        ll = "eza -l --git --icons";
+        la = "eza -a --git --icons";
+        lt = "eza --tree --level=2 --icons";
         c = "clear";
       };
 
