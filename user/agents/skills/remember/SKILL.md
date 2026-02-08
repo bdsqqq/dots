@@ -12,10 +12,10 @@ record memories for future retrieval. no database—files are the memory, retrie
 set `$MEMORY_ROOT` to your memory directory:
 
 ```bash
-export MEMORY_ROOT="$HOME/commonplace/01_files"
+export MEMORY_ROOT="$HOME/commonplace/01_files/_utilities/agent-memories"
 ```
 
-if unset, defaults to `~/commonplace/01_files/`. customize paths in examples below to match your setup.
+if unset, defaults to `~/commonplace/01_files/_utilities/agent-memories/`. customize paths in examples below to match your setup.
 
 ## when to use
 

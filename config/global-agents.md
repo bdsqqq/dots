@@ -37,7 +37,7 @@ plan (40%) → work (20%) → review (20%) → compound (20%)
 
 **review**: check correctness with evidence, not vibes. look for type lies, untested edges, hidden coupling. use confidence labels.
 
-**compound**: capture only durable learnings. cross-cutting → personal memory (`~/commonplace/01_files/*source__agent*.md`). code-adjacent rationale → jsdoc.
+**compound**: capture only durable learnings. cross-cutting → personal memory (`~/commonplace/01_files/_utilities/agent-memories/*source__agent*.md`). code-adjacent rationale → jsdoc.
 
 ## epistemics
 
@@ -55,7 +55,7 @@ falsify first: ask "what would prove me wrong?" then try that.
 
 before substantial work:
 ```bash
-rg "KEYWORDS" ~/commonplace/01_files/*source__agent*.md
+rg "KEYWORDS" ~/commonplace/01_files/_utilities/agent-memories/*source__agent*.md
 ```
 
 use memory as constraints, prior solutions, failure modes.
