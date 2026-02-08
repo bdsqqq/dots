@@ -42,7 +42,7 @@ in
             # command names (e.g. "nvim" not "/nix/store/abc-neovim/bin/nvim").
             # also strips --cmd ...-vim-pack-dir injected by nixvim's wrapper.
             # ref: https://discourse.nixos.org/t/30819
-            set -g @resurrect-hook-post-save-all 'sed -i "s| --cmd .*-vim-pack-dir||g; s|/nix/store/.*/bin/||g" $(readlink -f $resurrect_dir/last)'
+            set -g @resurrect-hook-post-save-all '${pkgs.gnused}/bin/sed -i "s| --cmd .*-vim-pack-dir||g; s|/nix/store/.*/bin/||g" $(readlink -f $resurrect_dir/last)'
           '';
         }
         {
