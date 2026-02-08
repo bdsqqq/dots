@@ -42,7 +42,10 @@ in
             # command names (e.g. "nvim" not "/nix/store/abc-neovim/bin/nvim").
             # also strips --cmd ...-vim-pack-dir injected by nixvim's wrapper.
             # ref: https://discourse.nixos.org/t/30819
-            set -g @resurrect-hook-post-save-all '${pkgs.gnused}/bin/sed -i "s| --cmd .*-vim-pack-dir||g; s|/nix/store/.*/bin/||g" $(readlink -f $resurrect_dir/last)'
+            # rewrite amp's node invocation to bare `amp` so resurrect
+            # can restore sessions with `amp t c <thread-id>`.
+            set -g @resurrect-processes '"~amp->amp"'
+            set -g @resurrect-hook-post-save-all '${pkgs.gnused}/bin/sed -i "s| --cmd .*-vim-pack-dir||g; s|/nix/store/.*/bin/||g; s|\tnode\t:node --no-warnings [^\t]*@sourcegraph/amp/dist/main.js|\tamp\t:amp|g" $(readlink -f $resurrect_dir/last)'
           '';
         }
         {
@@ -178,15 +181,15 @@ in
         set -g detach-on-destroy off
         bind-key "T" run-shell "sesh connect \"$(
           sesh list --icons | fzf-tmux -p 80%,70% \
-            --no-sort --ansi --border-label ' sesh ' --prompt '⚡  ' \
+            --no-sort --ansi --border-label ' sesh ' --prompt '> ' \
             --header '  ^a all ^t tmux ^g configs ^x zoxide ^d tmux kill ^f find' \
             --bind 'tab:down,btab:up' \
-            --bind 'ctrl-a:change-prompt(⚡  )+reload(sesh list --icons)' \
-            --bind 'ctrl-t:change-prompt(🪟  )+reload(sesh list -t --icons)' \
-            --bind 'ctrl-g:change-prompt(⚙️  )+reload(sesh list -c --icons)' \
-            --bind 'ctrl-x:change-prompt(📁  )+reload(sesh list -z --icons)' \
-            --bind 'ctrl-f:change-prompt(🔎  )+reload(fd -H -d 2 -t d -E .Trash . ~)' \
-            --bind 'ctrl-d:execute(tmux kill-session -t {2..})+change-prompt(⚡  )+reload(sesh list --icons)' \
+            --bind 'ctrl-a:change-prompt(> )+reload(sesh list --icons)' \
+            --bind 'ctrl-t:change-prompt(tmux> )+reload(sesh list -t --icons)' \
+            --bind 'ctrl-g:change-prompt(cfg> )+reload(sesh list -c --icons)' \
+            --bind 'ctrl-x:change-prompt(zox> )+reload(sesh list -z --icons)' \
+            --bind 'ctrl-f:change-prompt(find> )+reload(fd -H -d 2 -t d -E .Trash . ~)' \
+            --bind 'ctrl-d:execute(tmux kill-session -t {2..})+change-prompt(> )+reload(sesh list --icons)' \
             --preview-window 'right:55%' \
             --preview 'sesh preview {}'
         )\""
@@ -260,6 +263,27 @@ in
         add-zsh-hook precmd set_window_to_working_dir
         add-zsh-hook preexec set_window_to_command_line
       fi
+
+      # ctrl+s: fuzzy session picker via sesh (works inside and outside tmux)
+      function _sesh_connect() {
+        local selected
+        selected=$(sesh list --icons | fzf \
+          --no-sort --ansi --border-label ' sesh ' --prompt '> ' \
+          --header '  ^a all ^t tmux ^g configs ^x zoxide ^f find' \
+          --bind 'tab:down,btab:up' \
+          --bind 'ctrl-a:change-prompt(> )+reload(sesh list --icons)' \
+          --bind 'ctrl-t:change-prompt(tmux> )+reload(sesh list -t --icons)' \
+          --bind 'ctrl-g:change-prompt(cfg> )+reload(sesh list -c --icons)' \
+          --bind 'ctrl-x:change-prompt(zox> )+reload(sesh list -z --icons)' \
+          --bind 'ctrl-f:change-prompt(find> )+reload(fd -H -d 2 -t d -E .Trash . ~)' \
+          --preview-window 'right:55%' \
+          --preview 'sesh preview {}')
+        [[ -z "$selected" ]] && { zle reset-prompt; return; }
+        sesh connect "$selected"
+        zle reset-prompt
+      }
+      zle -N _sesh_connect
+      bindkey '^s' _sesh_connect
     '';
   };
 }
