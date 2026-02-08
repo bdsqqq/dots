@@ -30,12 +30,13 @@ in
         ];
       };
     };
-    path = "${homeDir}/.config/amp/settings.json";
     owner = "bdsqqq";
     mode = "0600";
   };
   
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
+    home.file.".config/amp/settings.json".source = config.lib.file.mkOutOfStoreSymlink "/run/secrets/rendered/amp-settings.json";
+
     # amp wrapper: private by default, but workspace-scoped in axiom repos
     programs.zsh.initContent = ''
       amp() {
