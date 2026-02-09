@@ -15,7 +15,7 @@ _fzf_history() {
         -v cur_host="$current_host" \
         -v today="$today" \
         -f @awkScript@ \
-        | fzf --ansi --height=40% --layout=reverse --border --no-sort --delimiter='\t' --with-nth=2 -q "$LBUFFER")
+        | fzf --ansi --height=40% --layout=reverse --no-sort --delimiter='\t' --with-nth=2 -q "$LBUFFER")
     
     if [[ -n "$selected" ]]; then
         # first tab-delimited field is the raw command
