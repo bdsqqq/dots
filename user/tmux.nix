@@ -41,6 +41,20 @@ in
     # escape single quotes for tmux command-alias values
     tq = s: builtins.replaceStrings ["'"] ["'\\''"] s;
 
+    keySymbols = {
+      "Tab" = "⇥";
+      "BTab" = "⇧⇥";
+      "C-r" = "⌃r";
+      "C-Space" = "⌃␣";
+      "Escape" = "⎋";
+      "Space" = "␣";
+      "Left" = "←";
+      "Right" = "→";
+      "Up" = "↑";
+      "Down" = "↓";
+    };
+    displayKey = k: keySymbols.${k} or k;
+
     actions = {
       pane_left       = { desc = "pane ←";    cmd = "select-pane -L"; };
       pane_down       = { desc = "pane ↓";    cmd = "select-pane -D"; };
@@ -90,32 +104,33 @@ in
       { action = "win_next";   bind = { key = "Tab"; };   menu = { cat = "Windows"; label = "next";       key = "Tab"; order = 3; }; }
       { action = "win_prev";   bind = { key = "BTab"; };  menu = { cat = "Windows"; label = "prev";       key = "BTab"; order = 4; }; }
       { action = "rename_window";     bind = { key = "r"; };     menu = { cat = "Windows"; label = "rename";     key = "r"; order = 5; }; }
-      { action = "clear_custom_name"; bind = { key = "C-r"; };   menu = { cat = "Windows"; label = "clear name"; key = "R"; order = 6; }; }
-      { action = "split_h";   bind = { key = "|"; };      menu = { cat = "Windows"; label = "split ─";   key = "|"; order = 7; }; }
-      { action = "split_v";   bind = { key = "-"; };      menu = { cat = "Windows"; label = "split │";   key = "-"; order = 8; }; }
+      { action = "clear_custom_name"; bind = { key = "C-r"; };   menu = { cat = "Windows"; label = "clear name"; key = "C-r"; order = 6; }; }
+      { action = "split_h";   bind = { key = "|"; };      menu = { cat = "Windows"; label = "split right"; key = "|"; order = 7; }; }
+      { action = "split_v";   bind = { key = "-"; };      menu = { cat = "Windows"; label = "split down";  key = "-"; order = 8; }; }
 
       # --- sessions (bind + menu) ---
-      { action = "sesh_connect"; bind = { key = "T"; };   menu = { cat = "Sessions"; label = "sesh";      key = "s"; order = 1; }; }
-      { action = "session_kill"; bind = { key = "W"; };   menu = { cat = "Sessions"; label = "kill";      key = "q"; order = 2; }; }
-      { action = "sesh_last";   bind = { key = "L"; };    menu = { cat = "Sessions"; label = "last";      key = "l"; order = 3; }; }
+      { action = "sesh_connect"; bind = { key = "T"; };   menu = { cat = "Sessions"; label = "sesh";      key = "T"; order = 1; }; }
+      { action = "session_kill"; bind = { key = "W"; };   menu = { cat = "Sessions"; label = "kill";      key = "W"; order = 2; }; }
+      { action = "sesh_last";   bind = { key = "L"; };    menu = { cat = "Sessions"; label = "last";      key = "L"; order = 3; }; }
 
       # --- bind-only ---
       { action = "session_kill"; bind = { key = "q"; }; }
       { action = "send_prefix"; bind = { key = "C-Space"; }; }
       { action = "copy_mode";  bind = { key = "Escape"; }; }
     ]
-    # window number selection: bind + menu
+    # window number selection: bind-only (collapsed in menu)
     ++ builtins.map (n: {
       action = "win_select_${toString n}";
       bind = { key = toString n; };
-      menu = { cat = "Windows"; label = "${toString n}"; key = toString n; order = 10 + n; };
     }) (lib.range 1 9)
-    ++ [{ action = "win_select_9"; bind = { key = "0"; }; menu = { cat = "Windows"; label = "0 (→last)"; key = "0"; order = 20; }; }];
+    ++ [{ action = "win_select_9"; bind = { key = "0"; }; }];
 
     # extra menu-only items (no action id — raw commands)
     menuExtras = [
-      { cat = "Navigate"; label = "-h/j/k/l panes  ↑←↓→ arrows"; key = ""; order = 1; cmd = ""; }
-      { cat = "Other"; label = "copy mode"; key = "c"; order = 1; cmd = "copy-mode"; }
+      { cat = "Navigate"; label = "hjkl / ↑←↓→  panes"; key = ""; order = 1; cmd = ""; }
+      { cat = "Windows"; label = "1-9  go to window"; key = ""; order = 10; cmd = ""; }
+      { cat = "Windows"; label = "go to last"; key = "0"; order = 11; cmd = "wk-win_select_9"; }
+      { cat = "Other"; label = "copy mode"; key = "Escape"; order = 1; cmd = "copy-mode"; }
       { cat = "Other"; label = "list keys"; key = "?"; order = 2; cmd = "list-keys"; }
     ];
 
@@ -148,33 +163,76 @@ in
         matches = builtins.filter (m: m.cat == cat) menuItems;
       in builtins.sort (a: b: a.order < b.order) matches;
 
-    # render one menu item as display-menu arguments: "label" key command
-    renderItem = item: ''"${item.label}" "${item.key}" ${item.cmd}'';
+    colWidth = 26;
 
-    # render full display-menu command
-    # tmux display-menu: "" alone = separator, "-name" key cmd = disabled/header item
-    rootMenuCmd =
+    symWidth = k:
+      if builtins.elem k [ "BTab" "C-r" "C-Space" ] then 2
+      else if k == "" then 0
+      else 1;
+
+    formatItem = item:
       let
-        sections = lib.concatMap (cat:
-          let items = itemsForCat cat;
-          in if items == [] then []
-          else
-            [ ''""'' ''"-#[bold]${cat}" "" ""'' ]
-            ++ builtins.map renderItem items
-        ) categories;
-        # drop leading separator
-        trimmed = if sections != [] then lib.tail sections else [];
-      in ''display-menu -x R -y P -T "#[align=centre,bold] keybinds " -- ${builtins.concatStringsSep " " trimmed}'';
+        sym = displayKey item.key;
+        sw = symWidth item.key;
+        isInfo = item.cmd == "";
+        rawLen = if isInfo
+          then sw + (if sw > 0 then 1 else 0) + builtins.stringLength item.label
+          else sw + 4 + builtins.stringLength item.label;
+        padN = if colWidth > rawLen then colWidth - rawLen else 1;
+        pad = builtins.concatStringsSep "" (lib.replicate padN " ");
+      in if isInfo
+        then "\\033[90m${sym}${if sw > 0 then " " else ""}${item.label}\\033[0m${pad}"
+        else "\\033[1m${sym}\\033[0m ➜ ${item.label}${pad}";
 
-    # alias for the root menu itself
-    menuAliasLine = ''set -g command-alias[200] '${tq "wk-menu_root=${rootMenuCmd}"}' '';
+    pairItems = items:
+      let
+        len = builtins.length items;
+        indices = lib.range 0 (len - 1);
+        evens = builtins.filter (i: lib.mod i 2 == 0) indices;
+      in builtins.map (i:
+        let
+          left = formatItem (builtins.elemAt items i);
+          right = if i + 1 < len then formatItem (builtins.elemAt items (i + 1)) else "";
+        in "  ${left}${right}"
+      ) evens;
+
+    displayLines =
+      let
+        groups = builtins.map (cat:
+          let items = itemsForCat cat;
+          in if items == [] then [] else pairItems items
+        ) categories;
+        nonEmpty = builtins.filter (g: g != []) groups;
+      in lib.concatMap (g: g ++ [""]) nonEmpty;
+
+    dispatchItems = builtins.filter (item: item.cmd != "" && builtins.stringLength item.key == 1) menuItems;
+
+    escapeCase = k:
+      if builtins.elem k [ "|" "?" "*" "[" "]" "(" ")" ] then "'${k}'"
+      else k;
+
+    dispatchLines = builtins.map (item:
+      "    ${escapeCase item.key}) tmux ${item.cmd} ;;"
+    ) dispatchItems;
+
+    hintScript = pkgs.writeShellScript "tmux-hints" ''
+      printf '\033[2J\033[H'
+      ${builtins.concatStringsSep "\n" (builtins.map (line: "printf '${line}\\n'") displayLines)}
+      IFS= read -rsn1 key
+      case "$key" in
+      ${builtins.concatStringsSep "\n" dispatchLines}
+      esac
+    '';
+
+    popupWidth = colWidth * 2 + 6;
+    popupHeight = builtins.length displayLines + 3;
 
     generatedBlock = builtins.concatStringsSep "\n" (
-      [ "" "# --- generated keybind system ---" menuAliasLine ]
+      [ "" "# --- generated keybind system ---" ]
       ++ aliasLines
       ++ [ "" "# binds" ]
       ++ bindLines
-      ++ [ ''bind-key Space wk-menu_root'' ]
+      ++ [ "bind-key Space display-popup -E -x R -y 1 -w ${toString popupWidth} -h ${toString popupHeight} ${hintScript}" ]
     );
 
   in {
@@ -244,8 +302,8 @@ in
         set -g status-justify right
         set -g status-left '#(cat #{socket_path}-#{session_id}-vimbridge)'
         set -g status-left-length 99
-        set -g status-right ""
-        set -g status-right-length 0
+        set -g status-right "#{?#{==:#{client_key_table},off},#[fg=#ef4444 bold] OFF ,}"
+        set -g status-right-length 10
         set -g focus-events on
         
         # window list formatting (matches zjstatus tab style)
@@ -290,6 +348,21 @@ in
 
         # sesh: detach-on-destroy keeps you in tmux when closing a session
         set -g detach-on-destroy off
+
+        # nested tmux: F12 toggles outer session off so inner gets all keys
+        # ref: samoshkin/05e65f7f1c9b55d3fc7690b59d678734
+        bind -T root F12 \
+          set prefix None \;\
+          set key-table off \;\
+          set status-style "fg=#6b7280,bg=#1a1a2e" \;\
+          if -F '#{pane_in_mode}' 'send-keys -X cancel' \;\
+          refresh-client -S
+
+        bind -T off F12 \
+          set -u prefix \;\
+          set -u key-table \;\
+          set -u status-style \;\
+          refresh-client -S
       '' + generatedBlock;
     };
 
