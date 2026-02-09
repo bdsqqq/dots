@@ -13,6 +13,161 @@ in
       LAST2=$(${pkgs.coreutils}/bin/shuf -n 1 "${spawnAssets}/lastnames_2.txt")
       echo "''${FIRST}_''${LAST1}''${LAST2}"
     '';
+
+    seshConnectScript = pkgs.writeShellScript "tmux-sesh-connect" ''
+      selected="$(
+        sesh list --icons | fzf-tmux -p 80%,70% \
+          --no-sort --ansi --border-label ' sesh ' --prompt '> ' \
+          --header '  ^a all ^t tmux ^g configs ^x zoxide ^d tmux kill ^f find' \
+          --bind 'tab:down,btab:up' \
+          --bind 'ctrl-a:change-prompt(> )+reload(sesh list --icons)' \
+          --bind 'ctrl-t:change-prompt(tmux> )+reload(sesh list -t --icons)' \
+          --bind 'ctrl-g:change-prompt(cfg> )+reload(sesh list -c --icons)' \
+          --bind 'ctrl-x:change-prompt(zox> )+reload(sesh list -z --icons)' \
+          --bind 'ctrl-f:change-prompt(find> )+reload(fd -H -d 2 -t d -E .Trash . ~)' \
+          --bind 'ctrl-d:execute(tmux kill-session -t {2..})+change-prompt(> )+reload(sesh list --icons)' \
+          --preview-window 'right:55%' \
+          --preview 'sesh preview {}'
+      )"
+      [ -n "$selected" ] || exit 0
+      sesh connect "$selected"
+    '';
+
+    # --- keybind system ---
+    # single source of truth: actions define what, bindings define where.
+    # command-alias lets both bind-key and display-menu reference a
+    # short token instead of quoting raw tmux commands everywhere.
+
+    # escape single quotes for tmux command-alias values
+    tq = s: builtins.replaceStrings ["'"] ["'\\''"] s;
+
+    actions = {
+      pane_left       = { desc = "pane ←";    cmd = "select-pane -L"; };
+      pane_down       = { desc = "pane ↓";    cmd = "select-pane -D"; };
+      pane_up         = { desc = "pane ↑";    cmd = "select-pane -U"; };
+      pane_right      = { desc = "pane →";    cmd = "select-pane -R"; };
+      win_next        = { desc = "next win";  cmd = "next-window"; };
+      win_prev        = { desc = "prev win";  cmd = "previous-window"; };
+      win_new         = { desc = "new win";   cmd = "new-window"; };
+      win_close       = { desc = "close win"; cmd = ''if-shell '[ "$(tmux list-windows | wc -l)" -gt 1 ]' kill-window detach-client''; };
+      session_kill    = { desc = "kill sess";  cmd = "kill-session"; };
+      rename_window   = { desc = "rename win"; cmd = ''command-prompt -I "#W" "rename-window '%%'; set-option -w @custom_name '%%'"''; };
+      clear_custom_name = { desc = "clear name"; cmd = "set-option -wu @custom_name"; };
+      split_h         = { desc = "split ─";   cmd = ''split-window -h -c "#{pane_current_path}"''; };
+      split_v         = { desc = "split │";   cmd = ''split-window -v -c "#{pane_current_path}"''; };
+      copy_mode       = { desc = "copy mode"; cmd = "copy-mode"; };
+      send_prefix     = { desc = "send pfx";  cmd = "send-prefix"; };
+      sesh_connect    = { desc = "sesh";      cmd = "run-shell ${seshConnectScript}"; };
+      sesh_last       = { desc = "sesh last"; cmd = ''run-shell "sesh last"''; };
+    } // builtins.listToAttrs (builtins.map (n: {
+      name = "win_select_${toString n}";
+      value = {
+        desc = "win ${toString n}";
+        cmd = if n == 1
+          then "select-window -t :1"
+          else ''run-shell 'n=${toString n}; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n' '';
+      };
+    }) (lib.range 1 9));
+
+    bindings = [
+      # --- panes (bind + menu) ---
+      { action = "pane_left";  bind = { key = "h"; };     menu = { cat = "Panes"; label = "← left";  key = "h"; order = 1; }; }
+      { action = "pane_down";  bind = { key = "j"; };     menu = { cat = "Panes"; label = "↓ down";  key = "j"; order = 2; }; }
+      { action = "pane_up";    bind = { key = "k"; };     menu = { cat = "Panes"; label = "↑ up";    key = "k"; order = 3; }; }
+      { action = "pane_right"; bind = { key = "l"; };     menu = { cat = "Panes"; label = "→ right"; key = "l"; order = 4; }; }
+
+      # arrow keys: bind-only pane nav
+      { action = "pane_left";  bind = { key = "Left"; }; }
+      { action = "pane_down";  bind = { key = "Down"; }; }
+      { action = "pane_up";    bind = { key = "Up"; }; }
+      { action = "pane_right"; bind = { key = "Right"; }; }
+
+      # --- windows (bind + menu) ---
+      { action = "win_new";    bind = { key = "t"; };     menu = { cat = "Windows"; label = "new";        key = "t"; order = 1; }; }
+      { action = "win_close";  bind = { key = "w"; };     menu = { cat = "Windows"; label = "close";      key = "w"; order = 2; }; }
+      { action = "win_next";   bind = { key = "Tab"; };   menu = { cat = "Windows"; label = "next";       key = "n"; order = 3; }; }
+      { action = "win_prev";   bind = { key = "BTab"; };  menu = { cat = "Windows"; label = "prev";       key = "p"; order = 4; }; }
+      { action = "rename_window";     bind = { key = "r"; };     menu = { cat = "Windows"; label = "rename";     key = "r"; order = 5; }; }
+      { action = "clear_custom_name"; bind = { key = "C-r"; };   menu = { cat = "Windows"; label = "clear name"; key = "R"; order = 6; }; }
+      { action = "split_h";   bind = { key = "|"; };      menu = { cat = "Windows"; label = "split ─";   key = "|"; order = 7; }; }
+      { action = "split_v";   bind = { key = "-"; };      menu = { cat = "Windows"; label = "split │";   key = "-"; order = 8; }; }
+
+      # --- sessions (bind + menu) ---
+      { action = "sesh_connect"; bind = { key = "T"; };   menu = { cat = "Sessions"; label = "sesh";      key = "s"; order = 1; }; }
+      { action = "session_kill"; bind = { key = "W"; };   menu = { cat = "Sessions"; label = "kill";      key = "q"; order = 2; }; }
+      { action = "sesh_last";   bind = { key = "L"; };    menu = { cat = "Sessions"; label = "last";      key = "l"; order = 3; }; }
+
+      # --- bind-only ---
+      { action = "session_kill"; bind = { key = "q"; }; }
+      { action = "send_prefix"; bind = { key = "C-Space"; }; }
+      { action = "copy_mode";  bind = { key = "Escape"; }; }
+    ] ++ builtins.map (n: {
+      action = "win_select_${toString n}";
+      bind = { key = toString n; };
+    }) (lib.range 1 9)
+    ++ [{ action = "win_select_9"; bind = { key = "0"; }; }];
+
+    # extra menu-only items (no action id — raw commands)
+    menuExtras = [
+      { cat = "Other"; label = "copy mode"; key = "c"; order = 1; cmd = "copy-mode"; }
+      { cat = "Other"; label = "list keys"; key = "?"; order = 2; cmd = "list-keys"; }
+    ];
+
+    # --- generators ---
+
+    actionNames = builtins.attrNames actions;
+
+    # command-alias lines: set -g command-alias[N] 'wk-name=cmd'
+    aliasLines = lib.imap1 (i: name:
+      let a = actions.${name};
+      in ''set -g command-alias[${toString (i + 200)}] '${tq "wk-${name}=${a.cmd}"}'  ''
+    ) actionNames;
+
+    # bind-key lines
+    bindLines = builtins.concatMap (b:
+      if b ? bind then
+        [''bind-key ${b.bind.key} wk-${b.action}'']
+      else []
+    ) bindings;
+
+    # group menu items by category
+    menuBindings = builtins.filter (b: b ? menu) bindings;
+    menuItems = (builtins.map (b: b.menu // { cmd = "wk-${b.action}"; }) menuBindings)
+      ++ menuExtras;
+
+    categories = [ "Windows" "Panes" "Sessions" "Other" ];
+
+    itemsForCat = cat:
+      let
+        matches = builtins.filter (m: m.cat == cat) menuItems;
+      in builtins.sort (a: b: a.order < b.order) matches;
+
+    # render one menu item as display-menu arguments: "label" key command
+    renderItem = item: ''"${item.label}" "${item.key}" ${item.cmd}'';
+
+    # render full display-menu command
+    rootMenuCmd =
+      let
+        sections = builtins.concatMap (cat:
+          let items = itemsForCat cat;
+          in if items == [] then []
+          else
+            [ ''""'' ''"#[bold]${cat}"'' ''""'' ]
+            ++ builtins.map renderItem items
+        ) categories;
+      in ''display-menu -x R -y P -T "#[align=centre,bold] keybinds " ${builtins.concatStringsSep " " sections}'';
+
+    # alias for the root menu itself
+    menuAliasLine = ''set -g command-alias[200] '${tq "wk-menu_root=${rootMenuCmd}"}' '';
+
+    generatedBlock = builtins.concatStringsSep "\n" (
+      [ "" "# --- generated keybind system ---" menuAliasLine ]
+      ++ aliasLines
+      ++ [ "" "# binds" ]
+      ++ bindLines
+      ++ [ ''bind-key Space wk-menu_root'' ]
+    );
+
   in {
     programs.tmux = {
       enable = true;
@@ -30,24 +185,6 @@ in
         sensible
         yank
         vim-tmux-navigator
-        {
-          plugin = tmux-which-key.overrideAttrs (old: {
-            # nix store files are read-only; cp preserves those permissions
-            # into xdg dirs, then build.py fails to overwrite init.tmux.
-            # patch: chmod u+w after each cp so rebuild can write.
-            postPatch = (old.postPatch or "") + ''
-              substituteInPlace plugin.sh.tmux \
-                --replace-fail 'cp "$root_dir/config.example.yaml" "$config_file"' \
-                               'cp "$root_dir/config.example.yaml" "$config_file" && chmod u+w "$config_file"' \
-                --replace-fail 'cp "$plugin_dir/init.example.tmux" "$init_file"' \
-                               'cp "$plugin_dir/init.example.tmux" "$init_file" && chmod u+w "$init_file"'
-            '';
-          });
-          extraConfig = ''
-            # xdg mode so generated config writes to ~/.config instead of nix store
-            set -g @tmux-which-key-xdg-enable 1
-          '';
-        }
         {
           plugin = resurrect;
           extraConfig = ''
@@ -116,58 +253,8 @@ in
         bind -T copy-mode-vi v send -X begin-selection
         bind -T copy-mode-vi y send -X copy-pipe-and-cancel "${copyCommand}"
         
-        # prefix + h/j/k/l: move focus between panes
-        bind h select-pane -L
-        bind j select-pane -D
-        bind k select-pane -U
-        bind l select-pane -R
-        bind Left select-pane -L
-        bind Down select-pane -D
-        bind Up select-pane -U
-        bind Right select-pane -R
-        
-        # prefix + Tab / Shift+Tab: next/previous window
-        bind Tab next-window
-        bind BTab previous-window
-        
         # auto-renumber windows when one is closed (browser-like)
         set -g renumber-windows on
-        
-        # prefix + 1-0: browser-like tab switching (clamped to window count)
-        bind 1 select-window -t :1
-        bind 2 run-shell 'n=2; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
-        bind 3 run-shell 'n=3; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
-        bind 4 run-shell 'n=4; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
-        bind 5 run-shell 'n=5; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
-        bind 6 run-shell 'n=6; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
-        bind 7 run-shell 'n=7; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
-        bind 8 run-shell 'n=8; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
-        bind 9 run-shell 'n=9; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
-        bind 0 run-shell 'n=9; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
-        
-        # prefix + t: new window
-        bind t new-window
-        
-        # prefix + w: close window (detach if last window so terminal exits cleanly)
-        bind w if-shell '[ "$(tmux list-windows | wc -l)" -gt 1 ]' kill-window detach-client
-        
-        # prefix + W or q: quit session
-        bind W kill-session
-        bind q kill-session
-        
-        # prefix + | and -: split panes
-        bind | split-window -h -c "#{pane_current_path}"
-        bind - split-window -v -c "#{pane_current_path}"
-        
-        # prefix + r: rename window (sets @custom_name to prevent auto-rename)
-        bind r command-prompt -I "#W" "rename-window '%%'; set-option -w @custom_name '%%'"
-        
-        # prefix + C-r: clear custom name (re-enable auto-rename)
-        bind C-r set-option -wu @custom_name
-        
-        # prefix + Ctrl+Space or Esc: cancel (send-prefix for double tap)
-        bind C-Space send-prefix
-        bind Escape copy-mode
         
         # automatic window renaming (let zsh hooks handle it)
         set -g allow-rename on
@@ -192,28 +279,9 @@ in
         # osc52 clipboard (bidirectional with system clipboard)
         set -g set-clipboard on
 
-        # sesh: fuzzy session manager backed by zoxide + fzf (prefix + T)
-        # successor to t-smart-tmux-session-manager, rewritten in go.
-        # pairs with zoxide — cd history becomes session candidates.
-        # detach-on-destroy keeps you in tmux when closing a session
-        # instead of dropping to bare shell.
+        # sesh: detach-on-destroy keeps you in tmux when closing a session
         set -g detach-on-destroy off
-        bind-key "T" run-shell "sesh connect \"$(
-          sesh list --icons | fzf-tmux -p 80%,70% \
-            --no-sort --ansi --border-label ' sesh ' --prompt '> ' \
-            --header '  ^a all ^t tmux ^g configs ^x zoxide ^d tmux kill ^f find' \
-            --bind 'tab:down,btab:up' \
-            --bind 'ctrl-a:change-prompt(> )+reload(sesh list --icons)' \
-            --bind 'ctrl-t:change-prompt(tmux> )+reload(sesh list -t --icons)' \
-            --bind 'ctrl-g:change-prompt(cfg> )+reload(sesh list -c --icons)' \
-            --bind 'ctrl-x:change-prompt(zox> )+reload(sesh list -z --icons)' \
-            --bind 'ctrl-f:change-prompt(find> )+reload(fd -H -d 2 -t d -E .Trash . ~)' \
-            --bind 'ctrl-d:execute(tmux kill-session -t {2..})+change-prompt(> )+reload(sesh list --icons)' \
-            --preview-window 'right:55%' \
-            --preview 'sesh preview {}'
-        )\""
-        bind -N "last-session (via sesh)" L run-shell "sesh last"
-      '';
+      '' + generatedBlock;
     };
 
     home.shellAliases.tx = "tmux new-session -A -s $(basename $PWD | tr . _)";
