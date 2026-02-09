@@ -158,7 +158,7 @@ in
         ) categories;
         # drop leading separator
         trimmed = if sections != [] then lib.tail sections else [];
-      in ''display-menu -x R -y P -T "#[align=centre,bold] keybinds " ${builtins.concatStringsSep " " trimmed}'';
+      in ''display-menu -x R -y P -T "#[align=centre,bold] keybinds " -- ${builtins.concatStringsSep " " trimmed}'';
 
     # alias for the root menu itself
     menuAliasLine = ''set -g command-alias[200] '${tq "wk-menu_root=${rootMenuCmd}"}' '';
