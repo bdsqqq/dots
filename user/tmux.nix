@@ -49,7 +49,11 @@ in
       win_next        = { desc = "next win";  cmd = "next-window"; };
       win_prev        = { desc = "prev win";  cmd = "previous-window"; };
       win_new         = { desc = "new win";   cmd = "new-window"; };
-      win_close       = { desc = "close win"; cmd = ''if-shell '[ "$(tmux list-windows | wc -l)" -gt 1 ]' kill-window detach-client''; };
+      win_close       = {
+        desc = "close tab";
+        # cascade: pane → window → detach
+        cmd = ''if-shell '[ "$(tmux list-panes | wc -l)" -gt 1 ]' kill-pane 'if-shell "[ \"$(tmux list-windows | wc -l)\" -gt 1 ]" kill-window detach-client' '';
+      };
       session_kill    = { desc = "kill sess";  cmd = "kill-session"; };
       rename_window   = { desc = "rename win"; cmd = ''command-prompt -I "#W" "rename-window '%%'; set-option -w @custom_name '%%'"''; };
       clear_custom_name = { desc = "clear name"; cmd = "set-option -wu @custom_name"; };
