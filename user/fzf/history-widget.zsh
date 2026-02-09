@@ -10,12 +10,11 @@ _fzf_history() {
     local current_host="${HOST}"
     local today=$(date +%Y-%m-%d)
     
-    local selected=$(fc -liD 1 | @gawk@ \
+    local selected=$(fc -lirD 1 | @gawk@ \
         -v cur_user="$current_user" \
         -v cur_host="$current_host" \
         -v today="$today" \
         -f @awkScript@ \
-        | @tac@ \
         | fzf --ansi --height=40% --layout=reverse --border --no-sort --delimiter='\t' --with-nth=2 -q "$LBUFFER")
     
     if [[ -n "$selected" ]]; then
