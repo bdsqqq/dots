@@ -148,8 +148,8 @@ in
         # prefix + t: new window
         bind t new-window
         
-        # prefix + w: close window
-        bind w kill-window
+        # prefix + w: close window (detach if last window so terminal exits cleanly)
+        bind w if-shell '[ "$(tmux list-windows | wc -l)" -gt 1 ]' kill-window detach-client
         
         # prefix + W or q: quit session
         bind W kill-session
