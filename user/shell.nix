@@ -93,6 +93,9 @@
             ignoreSpace = true;
           };
           initContent = ''
+          # disable XON/XOFF so ctrl+s is available for keybinds (e.g. sesh)
+          stty -ixon 2>/dev/null
+
           export AMI_INSTALL="$HOME/.ami"
           export PATH="$AMI_INSTALL/bin:$PATH"
           export GH_TOKEN="$(cat /run/secrets/gh_token 2>/dev/null || echo "$GH_TOKEN")"
