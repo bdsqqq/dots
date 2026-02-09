@@ -122,7 +122,7 @@ in
         # auto-renumber windows when one is closed (browser-like)
         set -g renumber-windows on
         
-        # prefix + 1-9: browser-like tab switching (clamped to window count)
+        # prefix + 1-0: browser-like tab switching (clamped to window count)
         bind 1 select-window -t :1
         bind 2 run-shell 'n=2; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
         bind 3 run-shell 'n=3; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
@@ -132,6 +132,7 @@ in
         bind 7 run-shell 'n=7; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
         bind 8 run-shell 'n=8; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
         bind 9 run-shell 'n=9; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
+        bind 0 run-shell 'n=9; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n'
         
         # prefix + t: new window
         bind t new-window
