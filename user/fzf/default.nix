@@ -4,8 +4,8 @@ let
   awkScript = ./history-format.awk;
   
   historyWidget = builtins.replaceStrings
-    [ "@gawk@" "@awkScript@" ]
-    [ "${pkgs.gawk}/bin/gawk" "${awkScript}" ]
+    [ "@gawk@" "@awkScript@" "@tac@" ]
+    [ "${pkgs.gawk}/bin/gawk" "${awkScript}" "${pkgs.coreutils}/bin/tac" ]
     (builtins.readFile ./history-widget.zsh);
 in
 {
