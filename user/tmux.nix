@@ -70,13 +70,11 @@ in
     }) (lib.range 1 9));
 
     bindings = [
-      # --- panes (bind + menu) ---
-      { action = "pane_left";  bind = { key = "h"; };     menu = { cat = "Panes"; label = "← left";  key = "h"; order = 1; }; }
-      { action = "pane_down";  bind = { key = "j"; };     menu = { cat = "Panes"; label = "↓ down";  key = "j"; order = 2; }; }
-      { action = "pane_up";    bind = { key = "k"; };     menu = { cat = "Panes"; label = "↑ up";    key = "k"; order = 3; }; }
-      { action = "pane_right"; bind = { key = "l"; };     menu = { cat = "Panes"; label = "→ right"; key = "l"; order = 4; }; }
-
-      # arrow keys: bind-only pane nav
+      # --- panes (bind-only, hjkl is muscle memory) ---
+      { action = "pane_left";  bind = { key = "h"; }; }
+      { action = "pane_down";  bind = { key = "j"; }; }
+      { action = "pane_up";    bind = { key = "k"; }; }
+      { action = "pane_right"; bind = { key = "l"; }; }
       { action = "pane_left";  bind = { key = "Left"; }; }
       { action = "pane_down";  bind = { key = "Down"; }; }
       { action = "pane_up";    bind = { key = "Up"; }; }
@@ -85,8 +83,8 @@ in
       # --- windows (bind + menu) ---
       { action = "win_new";    bind = { key = "t"; };     menu = { cat = "Windows"; label = "new";        key = "t"; order = 1; }; }
       { action = "win_close";  bind = { key = "w"; };     menu = { cat = "Windows"; label = "close";      key = "w"; order = 2; }; }
-      { action = "win_next";   bind = { key = "Tab"; };   menu = { cat = "Windows"; label = "next";       key = "n"; order = 3; }; }
-      { action = "win_prev";   bind = { key = "BTab"; };  menu = { cat = "Windows"; label = "prev";       key = "p"; order = 4; }; }
+      { action = "win_next";   bind = { key = "Tab"; };   menu = { cat = "Windows"; label = "next";       key = "Tab"; order = 3; }; }
+      { action = "win_prev";   bind = { key = "BTab"; };  menu = { cat = "Windows"; label = "prev";       key = "BTab"; order = 4; }; }
       { action = "rename_window";     bind = { key = "r"; };     menu = { cat = "Windows"; label = "rename";     key = "r"; order = 5; }; }
       { action = "clear_custom_name"; bind = { key = "C-r"; };   menu = { cat = "Windows"; label = "clear name"; key = "R"; order = 6; }; }
       { action = "split_h";   bind = { key = "|"; };      menu = { cat = "Windows"; label = "split ─";   key = "|"; order = 7; }; }
@@ -101,14 +99,18 @@ in
       { action = "session_kill"; bind = { key = "q"; }; }
       { action = "send_prefix"; bind = { key = "C-Space"; }; }
       { action = "copy_mode";  bind = { key = "Escape"; }; }
-    ] ++ builtins.map (n: {
+    ]
+    # window number selection: bind + menu
+    ++ builtins.map (n: {
       action = "win_select_${toString n}";
       bind = { key = toString n; };
+      menu = { cat = "Windows"; label = "${toString n}"; key = toString n; order = 10 + n; };
     }) (lib.range 1 9)
-    ++ [{ action = "win_select_9"; bind = { key = "0"; }; }];
+    ++ [{ action = "win_select_9"; bind = { key = "0"; }; menu = { cat = "Windows"; label = "0 (→last)"; key = "0"; order = 20; }; }];
 
     # extra menu-only items (no action id — raw commands)
     menuExtras = [
+      { cat = "Navigate"; label = "-h/j/k/l panes  ↑←↓→ arrows"; key = ""; order = 1; cmd = ""; }
       { cat = "Other"; label = "copy mode"; key = "c"; order = 1; cmd = "copy-mode"; }
       { cat = "Other"; label = "list keys"; key = "?"; order = 2; cmd = "list-keys"; }
     ];
@@ -135,7 +137,7 @@ in
     menuItems = (builtins.map (b: b.menu // { cmd = "wk-${b.action}"; }) menuBindings)
       ++ menuExtras;
 
-    categories = [ "Windows" "Panes" "Sessions" "Other" ];
+    categories = [ "Windows" "Navigate" "Sessions" "Other" ];
 
     itemsForCat = cat:
       let
