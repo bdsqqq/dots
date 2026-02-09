@@ -146,16 +146,19 @@ in
     renderItem = item: ''"${item.label}" "${item.key}" ${item.cmd}'';
 
     # render full display-menu command
+    # tmux display-menu: "" alone = separator, "-name" key cmd = disabled/header item
     rootMenuCmd =
       let
-        sections = builtins.concatMap (cat:
+        sections = lib.concatMap (cat:
           let items = itemsForCat cat;
           in if items == [] then []
           else
-            [ ''""'' ''"#[bold]${cat}"'' ''""'' ]
+            [ ''""'' ''"-#[bold]${cat}" "" ""'' ]
             ++ builtins.map renderItem items
         ) categories;
-      in ''display-menu -x R -y P -T "#[align=centre,bold] keybinds " ${builtins.concatStringsSep " " sections}'';
+        # drop leading separator
+        trimmed = if sections != [] then lib.tail sections else [];
+      in ''display-menu -x R -y P -T "#[align=centre,bold] keybinds " ${builtins.concatStringsSep " " trimmed}'';
 
     # alias for the root menu itself
     menuAliasLine = ''set -g command-alias[200] '${tq "wk-menu_root=${rootMenuCmd}"}' '';
