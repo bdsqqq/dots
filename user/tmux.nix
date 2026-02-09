@@ -31,7 +31,18 @@ in
         yank
         vim-tmux-navigator
         {
-          plugin = tmux-which-key;
+          plugin = tmux-which-key.overrideAttrs (old: {
+            # nix store files are read-only; cp preserves those permissions
+            # into xdg dirs, then build.py fails to overwrite init.tmux.
+            # patch: chmod u+w after each cp so rebuild can write.
+            postPatch = (old.postPatch or "") + ''
+              substituteInPlace plugin.sh.tmux \
+                --replace-fail 'cp "$root_dir/config.example.yaml" "$config_file"' \
+                               'cp "$root_dir/config.example.yaml" "$config_file" && chmod u+w "$config_file"' \
+                --replace-fail 'cp "$plugin_dir/init.example.tmux" "$init_file"' \
+                               'cp "$plugin_dir/init.example.tmux" "$init_file" && chmod u+w "$init_file"'
+            '';
+          });
           extraConfig = ''
             # xdg mode so generated config writes to ~/.config instead of nix store
             set -g @tmux-which-key-xdg-enable 1
