@@ -31,6 +31,13 @@ in
         yank
         vim-tmux-navigator
         {
+          plugin = tmux-which-key;
+          extraConfig = ''
+            # xdg mode so generated config writes to ~/.config instead of nix store
+            set -g @tmux-which-key-xdg-enable 1
+          '';
+        }
+        {
           plugin = resurrect;
           extraConfig = ''
             set -g @resurrect-strategy-nvim 'session'
