@@ -43,16 +43,14 @@ o.pumblend = 0
 -- floating terminal
 
 local function open_floating_term(cmd)
-  local columns = vim.api.nvim_get_option("columns")
-  local lines = vim.api.nvim_get_option("lines")
-  local width = math.floor(columns * 0.8)
-  local height = math.floor(lines * 0.8)
-  if width < 60 then width = columns end
-  if height < 20 then height = lines end
-  local row = math.floor((lines - height) / 2)
-  local col = math.floor((columns - width) / 2)
+  local width = math.floor(vim.o.columns * 0.8)
+  local height = math.floor(vim.o.lines * 0.8)
+  if width < 60 then width = vim.o.columns end
+  if height < 20 then height = vim.o.lines end
+  local row = math.floor((vim.o.lines - height) / 2)
+  local col = math.floor((vim.o.columns - width) / 2)
   local buf = vim.api.nvim_create_buf(false, true)
-  local opts = {
+  local win = vim.api.nvim_open_win(buf, true, {
     style = "minimal",
     relative = "editor",
     width = width,
@@ -60,9 +58,9 @@ local function open_floating_term(cmd)
     row = row,
     col = col,
     border = "rounded",
-  }
-  local win = vim.api.nvim_open_win(buf, true, opts)
-  vim.fn.termopen(cmd, {
+  })
+  vim.fn.jobstart(cmd, {
+    term = true,
     on_exit = function()
       if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
       if vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
@@ -72,7 +70,6 @@ local function open_floating_term(cmd)
 end
 
 _G.open_floating_term = open_floating_term
-_G.MyFoldText = function() return vim.fn.foldtext() end
 
 -- keymaps
 
@@ -87,7 +84,7 @@ vim.keymap.set("n", "<C-_>", "gcc", { desc = "toggle comment", remap = true })
 vim.keymap.set("v", "<C-_>", "gcgv", { desc = "toggle comment", remap = true })
 
 vim.keymap.set("", "<leader>f", function()
-  require("conform").format({ async = true, lsp_fallback = true })
+  require("conform").format({ async = true, lsp_format = "fallback" })
 end, { desc = "[f]ormat buffer" })
 
 vim.keymap.set("n", "<leader>/", function()
@@ -346,7 +343,7 @@ require("conform").setup({
     local disable_filetypes = { c = true, cpp = true }
     return {
       timeout_ms = 500,
-      lsp_fallback = not disable_filetypes[vim.bo[bufnr].filetype],
+      lsp_format = not disable_filetypes[vim.bo[bufnr].filetype] and "fallback" or "never",
       quiet = true,
     }
   end,
