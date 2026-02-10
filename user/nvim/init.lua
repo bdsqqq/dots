@@ -133,7 +133,7 @@ vim.keymap.set("n", "<leader>tg", function()
 end, { desc = "[t]oggle [g]it (lazygit)" })
 
 local function fold_or_left()
-  if vim.fn.col(".") == 1 then vim.cmd("normal! za") else vim.cmd("normal! h") end
+  if vim.fn.col(".") == 1 then pcall(vim.cmd, "normal! za") else vim.cmd("normal! h") end
 end
 vim.keymap.set("n", "<Left>", fold_or_left, { desc = "toggle fold at first column, otherwise move left" })
 vim.keymap.set("n", "h", fold_or_left, { desc = "toggle fold at first column, otherwise move left" })
