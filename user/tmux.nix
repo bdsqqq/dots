@@ -14,27 +14,6 @@ in
       echo "''${FIRST}_''${LAST1}''${LAST2}"
     '';
 
-    nestedToggleScript = pkgs.writeShellScript "tmux-nested-toggle" ''
-      cmd=$(tmux display-message -p '#{pane_current_command}')
-      case "$cmd" in
-        ssh|mosh)
-          tmux set prefix None \; \
-            set key-table off \; \
-            set status-style "fg=#6b7280,bg=#1a1a2e" \; \
-            refresh-client -S
-          ;;
-        *)
-          # only restore if currently in off mode
-          kt=$(tmux show-option -qv key-table)
-          [ "$kt" = "off" ] && \
-            tmux set -u prefix \; \
-              set -u key-table \; \
-              set -u status-style \; \
-              refresh-client -S
-          ;;
-      esac
-    '';
-
     seshConnectScript = pkgs.writeShellScript "tmux-sesh-connect" ''
       selected="$(
         sesh list --icons | fzf-tmux -p 80%,70% \
@@ -323,8 +302,8 @@ in
         set -g status-justify right
         set -g status-left '#(cat #{socket_path}-#{session_id}-vimbridge)'
         set -g status-left-length 99
-        set -g status-right "#{?#{==:#{client_key_table},off},#[fg=#ef4444 bold] OFF ,}"
-        set -g status-right-length 10
+        set -g status-right ""
+        set -g status-right-length 0
         set -g focus-events on
         
         # window list formatting (matches zjstatus tab style)
@@ -369,17 +348,6 @@ in
 
         # sesh: detach-on-destroy keeps you in tmux when closing a session
         set -g detach-on-destroy off
-
-        # nested tmux: auto-toggle when pane runs ssh/mosh
-        # adapted from samoshkin/05e65f7f1c9b55d3fc7690b59d678734
-        set-hook -g pane-focus-in "run-shell ${nestedToggleScript}"
-
-        # escape hatch: prefix key in off table restores outer control
-        bind -T off C-Space \
-          set -u prefix \;\
-          set -u key-table \;\
-          set -u status-style \;\
-          refresh-client -S
       '' + generatedBlock;
     };
 
