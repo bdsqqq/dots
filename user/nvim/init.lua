@@ -334,9 +334,10 @@ require("mini.files").setup({
   content = { filter = function() return true end },
 })
 
-require("nvim-treesitter.configs").setup({
-  highlight = { enable = true, additional_vim_regex_highlighting = true },
-  indent = { enable = true, disable = { "ruby" } },
+vim.api.nvim_create_autocmd("FileType", {
+  callback = function(args)
+    pcall(vim.treesitter.start, args.buf)
+  end,
 })
 
 require("conform").setup({
