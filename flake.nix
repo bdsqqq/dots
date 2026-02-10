@@ -91,6 +91,28 @@
       url = "github:vercel-labs/agent-skills";
       flake = false;
     };
+
+    # nvim plugins — tracked from github, updated via `nix flake update`
+    plugin-vim-tmux-navigator = { url = "github:christoomey/vim-tmux-navigator"; flake = false; };
+    plugin-oil-nvim = { url = "github:stevearc/oil.nvim"; flake = false; };
+    plugin-nvim-ufo = { url = "github:kevinhwang91/nvim-ufo"; flake = false; };
+    plugin-promise-async = { url = "github:kevinhwang91/promise-async"; flake = false; };
+    plugin-vim-sleuth = { url = "github:tpope/vim-sleuth"; flake = false; };
+    plugin-fidget-nvim = { url = "github:j-hui/fidget.nvim"; flake = false; };
+    plugin-autoclose-nvim = { url = "github:m4xshen/autoclose.nvim"; flake = false; };
+    plugin-lazydev-nvim = { url = "github:folke/lazydev.nvim"; flake = false; };
+    plugin-gitsigns-nvim = { url = "github:lewis6991/gitsigns.nvim"; flake = false; };
+    plugin-which-key-nvim = { url = "github:folke/which-key.nvim"; flake = false; };
+    plugin-telescope-nvim = { url = "github:nvim-telescope/telescope.nvim"; flake = false; };
+    plugin-telescope-fzf-native-nvim = { url = "github:nvim-telescope/telescope-fzf-native.nvim"; flake = false; };
+    plugin-telescope-ui-select-nvim = { url = "github:nvim-telescope/telescope-ui-select.nvim"; flake = false; };
+    plugin-nvim-lspconfig = { url = "github:neovim/nvim-lspconfig"; flake = false; };
+    plugin-conform-nvim = { url = "github:stevearc/conform.nvim"; flake = false; };
+    plugin-mini-nvim = { url = "github:echasnovski/mini.nvim"; flake = false; };
+    plugin-undotree = { url = "github:mbbill/undotree"; flake = false; };
+    plugin-ts-error-translator = { url = "github:dmmulroy/ts-error-translator.nvim"; flake = false; };
+    plugin-vim-tpipeline = { url = "github:vimpostor/vim-tpipeline"; flake = false; };
+    plugin-amp-nvim = { url = "github:sourcegraph/amp.nvim"; flake = false; };
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
