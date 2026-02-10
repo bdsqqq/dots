@@ -54,6 +54,11 @@ in
         };
         merge.conflictstyle = "diff3";
         diff.colorMoved = "default";
+        
+        commit.gpgsign = true;
+        tag.gpgsign = true;
+        gpg.format = "ssh";
+        user.signingKey = "~/.ssh/id_ed25519.pub";
       };
     };
     
