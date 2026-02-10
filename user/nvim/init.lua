@@ -426,12 +426,12 @@ vim.api.nvim_create_autocmd("LspAttach", {
   end,
 })
 
-local lspconfig = require("lspconfig")
-local capabilities = require("blink.cmp").get_lsp_capabilities()
+vim.lsp.config("*", {
+  capabilities = require("blink.cmp").get_lsp_capabilities(),
+})
 
-lspconfig.lua_ls.setup({
-  capabilities = capabilities,
+vim.lsp.config("lua_ls", {
   settings = { Lua = { completion = { callSnippet = "Replace" } } },
 })
-lspconfig.ts_ls.setup({ capabilities = capabilities })
-lspconfig.gopls.setup({ capabilities = capabilities })
+
+vim.lsp.enable({ "lua_ls", "ts_ls", "gopls" })
