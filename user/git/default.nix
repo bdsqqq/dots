@@ -46,6 +46,7 @@ in
         rebase.autoStash = true;
         
         core.pager = "${pkgs.delta}/bin/delta";
+        core.excludesFile = "~/.gitignore_global";
         interactive.diffFilter = "${pkgs.delta}/bin/delta --color-only";
         delta = {
           navigate = true;
