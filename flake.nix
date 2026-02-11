@@ -103,6 +103,7 @@
     plugin-lazydev-nvim = { url = "github:folke/lazydev.nvim"; flake = false; };
     plugin-gitsigns-nvim = { url = "github:lewis6991/gitsigns.nvim"; flake = false; };
     plugin-which-key-nvim = { url = "github:folke/which-key.nvim"; flake = false; };
+    plugin-plenary-nvim = { url = "github:nvim-lua/plenary.nvim"; flake = false; };
     plugin-telescope-nvim = { url = "github:nvim-telescope/telescope.nvim"; flake = false; };
     plugin-telescope-fzf-native-nvim = { url = "github:nvim-telescope/telescope-fzf-native.nvim"; flake = false; };
     plugin-telescope-ui-select-nvim = { url = "github:nvim-telescope/telescope-ui-select.nvim"; flake = false; };

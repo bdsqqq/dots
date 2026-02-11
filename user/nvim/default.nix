@@ -27,6 +27,7 @@ in
         (p "lazydev-nvim" inputs.plugin-lazydev-nvim)
         (p "gitsigns-nvim" inputs.plugin-gitsigns-nvim)
         (p "which-key-nvim" inputs.plugin-which-key-nvim)
+        (p "plenary-nvim" inputs.plugin-plenary-nvim)
         (p "telescope-nvim" inputs.plugin-telescope-nvim)
         (pkgs.vimUtils.buildVimPlugin {
           name = "telescope-fzf-native-nvim";
