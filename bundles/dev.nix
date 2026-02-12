@@ -11,6 +11,7 @@ in
       ../user/uv.nix
       ../user/dev-tools.nix
       ../user/direnv.nix
+      ../user/rust.nix
       ../user/tmux.nix
       ../user/amp
       ../user/agents
