@@ -1,6 +1,6 @@
 { ... }:
 {
-  home-manager.users.bdsqqq = { pkgs, ... }: {
+  home-manager.users.bdsqqq = { pkgs, lib, ... }: {
     home.packages = with pkgs; [
       rustup           # manages toolchains (stable/nightly), includes rustc, cargo, rustfmt, clippy, rust-analyzer
       cargo-nextest    # modern test runner (faster, better output than cargo test)
@@ -12,5 +12,11 @@
       cargo-outdated   # check for outdated deps
       cargo-bloat      # find what takes space in your binary
     ];
+
+    home.activation.ensureRustToolchain = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      if ! "${pkgs.rustup}/bin/rustup" show active-toolchain >/dev/null 2>&1; then
+        "${pkgs.rustup}/bin/rustup" default stable
+      fi
+    '';
   };
 }
