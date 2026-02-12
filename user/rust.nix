@@ -2,8 +2,7 @@
 {
   home-manager.users.bdsqqq = { pkgs, ... }: {
     home.packages = with pkgs; [
-      rustup           # manages toolchains (stable/nightly), includes rustc, cargo, rustfmt, clippy
-      rust-analyzer    # LSP — installed via nixpkgs so it's always available outside rustup
+      rustup           # manages toolchains (stable/nightly), includes rustc, cargo, rustfmt, clippy, rust-analyzer
       cargo-nextest    # modern test runner (faster, better output than cargo test)
       cargo-watch      # file watcher — re-runs check/test/build on save
       cargo-audit      # security: scan deps against RustSec advisory DB
