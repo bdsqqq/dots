@@ -11,8 +11,8 @@
       recursive = true;
     };
 
-    home.file.".config/agents/skills/axiom-sre" = {
-      source = "${inputs.axiom-skills}/skills/sre";
+    home.file.".config/agents/skills/axiom" = {
+      source = "${inputs.axiom-skills}/skills";
       recursive = true;
     };
     
@@ -20,20 +20,8 @@
       source = "${inputs.lnr}/SKILL.md";
     };
 
-    home.file.".config/agents/skills/compound-engineering" = {
-      source = "${inputs.snarktank-skills}/compound-engineering";
-      recursive = true;
-    };
-    home.file.".config/agents/skills/frontend-design" = {
-      source = "${inputs.snarktank-skills}/frontend-design";
-      recursive = true;
-    };
-    home.file.".config/agents/skills/prd" = {
-      source = "${inputs.snarktank-skills}/prd";
-      recursive = true;
-    };
     home.file.".config/agents/skills/ralph" = {
-      source = "${inputs.snarktank-skills}/ralph";
+      source = "${inputs.snarktank-ralph-skills}/skills";
       recursive = true;
     };
 
