@@ -14,6 +14,7 @@ in
       ../user/rust.nix
       ../user/tmux.nix
       ../user/amp
+      ../user/opencode
       ../user/agents
     ]
     ++ lib.optionals isGraphical [
