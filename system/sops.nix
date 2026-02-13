@@ -20,11 +20,13 @@ in
       tailscale_auth_key = { owner = "bdsqqq"; };
       gh_token = { owner = "bdsqqq"; };
       hf_token = { owner = "bdsqqq"; };
+      open_router = { owner = "bdsqqq"; };
+      opencode_zen = { owner = "bdsqqq"; };
       motion_plus_token = { owner = "bdsqqq"; };
       AMP_API_KEY = { owner = "bdsqqq"; };
       syncthing_gui_password = { owner = "bdsqqq"; };
       syncthing_gui_password_hash = { owner = "bdsqqq"; };
-      
+
       # axiom config - decrypted to ~/.axiom.toml
       "axiom.toml" = {
         sopsFile = inputs.self + "/.axiom.toml";
