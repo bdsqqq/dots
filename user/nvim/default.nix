@@ -11,7 +11,7 @@ in
       viAlias = true;
       vimAlias = true;
 
-      extraLuaConfig = builtins.readFile ./init.lua;
+      initLua = builtins.readFile ./init.lua;
 
       extraPackages = with pkgs; [ stylua go lazygit ]
         ++ lib.optionals isLinux [ wl-clipboard xsel ];
