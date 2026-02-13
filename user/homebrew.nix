@@ -7,11 +7,11 @@ in
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
     programs.zsh.initContent = lib.mkIf isDarwin ''
       # homebrew shellenv (darwin only)
-      eval "$(${prefix}/brew shellenv)"
+      eval "$(${prefix} shellenv)"
     '';
     programs.bash.initExtra = lib.mkIf isDarwin ''
       # homebrew shellenv (darwin only)
-      eval "$(${prefix}/brew shellenv)"
+      eval "$(${prefix} shellenv)"
     '';
   };
 }
