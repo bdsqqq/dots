@@ -39,7 +39,7 @@ in
         motion = {
           type = "local";
           command = [
-            "pnpx"
+            "npx"
             "-y"
             "https://api.motion.dev/registry.tgz?package=motion-studio-mcp&version=latest&token=${config.sops.placeholder.motion_plus_token}"
           ];
