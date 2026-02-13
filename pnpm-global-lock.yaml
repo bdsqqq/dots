@@ -20,6 +20,9 @@ importers:
       npm:
         specifier: 11.7.0
         version: 11.7.0
+      opencode-ai:
+        specifier: ^1.1.65
+        version: 1.1.65
       turbo:
         specifier: 2.6.3
         version: 2.6.3
@@ -1794,6 +1797,65 @@ packages:
   onetime@5.1.2:
     resolution: {integrity: sha512-kbpaSSGJTWdAY5KPVeMOKXSrPtr8C8C7wodJbcsd51jRnmD+GZu8Y0VoU6Dm5Z4vWr0Ig/1NKuWRKf7j5aaYSg==}
     engines: {node: '>=6'}
+
+  opencode-ai@1.1.65:
+    resolution: {integrity: sha512-GJ2YBt6vchSW/LdB1MvZln4vfl5M9lLGQi4p/ATLk3Ku2S0R5zw1aswYp0b00URpwmknZt652t/7mutBSBuzJg==}
+    hasBin: true
+
+  opencode-darwin-arm64@1.1.65:
+    resolution: {integrity: sha512-NR4S0EbyIS93E7viEa68kecDbQ3qB8bfDP8s8uqFR/+oJY5CFlpCXe1eR0ar15r3U7UqoWbQXSQQWk+G0Kv2dA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  opencode-darwin-x64-baseline@1.1.65:
+    resolution: {integrity: sha512-ImIMEiUzDkG5kpN5OQPoumIykUfrQem/PTNIrgUDbUthP67MUoNIHq1ff+Rs7RYu6mTmlVM10qvy99aNtTgf7w==}
+    cpu: [x64]
+    os: [darwin]
+
+  opencode-darwin-x64@1.1.65:
+    resolution: {integrity: sha512-lDNSbK85iETnXfNVs4+PGnSXl61IIL+QkaJVUIo2GwLtPUGq4RZA7MqIn3wwP959+Y9hbgjQhomv1RiMNiq1yg==}
+    cpu: [x64]
+    os: [darwin]
+
+  opencode-linux-arm64-musl@1.1.65:
+    resolution: {integrity: sha512-I6Hqn7QXHFLMiVaDIROMPzDdiBayqrBzzbpSjHUswk9XcKdAIyZ8yARh+G42Kq6RoFriqiZbup9WCYjZEFdFWQ==}
+    cpu: [arm64]
+    os: [linux]
+
+  opencode-linux-arm64@1.1.65:
+    resolution: {integrity: sha512-WWWoFJoqnkPvxLUbd59xlSKRWJuAvxKOkZqxnj9AjRD5rexgdfsDbTkL8Vu6peaRK0sqP1erfUGQzNrTleK5YA==}
+    cpu: [arm64]
+    os: [linux]
+
+  opencode-linux-x64-baseline-musl@1.1.65:
+    resolution: {integrity: sha512-5yqbO3aFax31VeXyg9FmuIXzfSheE2OmLDq1LSfQPI2KrwlilUB+n5oRscUDb/U4PQqRdJajwjqqwV4WTF7pZw==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-linux-x64-baseline@1.1.65:
+    resolution: {integrity: sha512-TB71tNSa6oAsbhSEdQZE4/hM0hD6TZBmWnvbXpQPWntK3NyGcEUjw2b1B5yulGwA/MrXHkwrFhcbknrb4B/RAw==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-linux-x64-musl@1.1.65:
+    resolution: {integrity: sha512-N9caP6J3U9qmtsR2onwUEBWhtbi2URs8Jbbbq71RFSuA/Z1zuksYjmNlO0NZj9lauwEl2zWlsEgmQxAfcZxrOQ==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-linux-x64@1.1.65:
+    resolution: {integrity: sha512-4YVnpvq2QmU/rYcE5DkvMAUP+StgWEFaNqzJhJjDH8wfKv/5oE7WEMs60RwbszKkGZUzHCp/V+Ldp0YYwhQhEA==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-windows-x64-baseline@1.1.65:
+    resolution: {integrity: sha512-sj7+EYkoFsRjpPBBMjI2PKu3eA1xQdGke4V0DvyJCqlq14TvYlY/S4xo7oZBZ9h+cG2Ni99SjeZ187KHq/CtRw==}
+    cpu: [x64]
+    os: [win32]
+
+  opencode-windows-x64@1.1.65:
+    resolution: {integrity: sha512-RJbkQ7mCpQrlIDax8VjK5tN/7Gi92ERdRpwbxSf9nJx+MaWoV06W6nazDsg+OfqTja6fMy8N1G4eRnOrcbVciQ==}
+    cpu: [x64]
+    os: [win32]
 
   os-homedir@1.0.2:
     resolution: {integrity: sha512-B5JU3cabzk8c67mRRd3ECmROafjYMXbuzlwtqdM8IbS8ktlTix8aFGb2bAGKrSRIlnfKwovGUUr72JUPyOb6kQ==}
@@ -3830,6 +3892,53 @@ snapshots:
   onetime@5.1.2:
     dependencies:
       mimic-fn: 2.1.0
+
+  opencode-ai@1.1.65:
+    optionalDependencies:
+      opencode-darwin-arm64: 1.1.65
+      opencode-darwin-x64: 1.1.65
+      opencode-darwin-x64-baseline: 1.1.65
+      opencode-linux-arm64: 1.1.65
+      opencode-linux-arm64-musl: 1.1.65
+      opencode-linux-x64: 1.1.65
+      opencode-linux-x64-baseline: 1.1.65
+      opencode-linux-x64-baseline-musl: 1.1.65
+      opencode-linux-x64-musl: 1.1.65
+      opencode-windows-x64: 1.1.65
+      opencode-windows-x64-baseline: 1.1.65
+
+  opencode-darwin-arm64@1.1.65:
+    optional: true
+
+  opencode-darwin-x64-baseline@1.1.65:
+    optional: true
+
+  opencode-darwin-x64@1.1.65:
+    optional: true
+
+  opencode-linux-arm64-musl@1.1.65:
+    optional: true
+
+  opencode-linux-arm64@1.1.65:
+    optional: true
+
+  opencode-linux-x64-baseline-musl@1.1.65:
+    optional: true
+
+  opencode-linux-x64-baseline@1.1.65:
+    optional: true
+
+  opencode-linux-x64-musl@1.1.65:
+    optional: true
+
+  opencode-linux-x64@1.1.65:
+    optional: true
+
+  opencode-windows-x64-baseline@1.1.65:
+    optional: true
+
+  opencode-windows-x64@1.1.65:
+    optional: true
 
   os-homedir@1.0.2: {}
 
