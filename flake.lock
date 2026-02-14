@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "agent-browser": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1771013197,
+        "narHash": "sha256-Xn11Ja58atexoFZVdpo6OPW3PsuKB5P3DuA5EMSbROg=",
+        "owner": "vercel-labs",
+        "repo": "agent-browser",
+        "rev": "9cbb363190bb39c0f5b4149327d0371cd3fb17ec",
+        "type": "github"
+      },
+      "original": {
+        "owner": "vercel-labs",
+        "repo": "agent-browser",
+        "type": "github"
+      }
+    },
     "axiom-deploy-annotation": {
       "inputs": {
         "nixpkgs": [
@@ -933,6 +949,7 @@
     },
     "root": {
       "inputs": {
+        "agent-browser": "agent-browser",
         "axiom-deploy-annotation": "axiom-deploy-annotation",
         "axiom-skills": "axiom-skills",
         "berkeley-mono": "berkeley-mono",

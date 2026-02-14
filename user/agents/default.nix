@@ -39,5 +39,10 @@
       source = "${inputs.vercel-skills}/skills/web-design-guidelines";
       recursive = true;
     };
+
+    home.file.".config/agents/skills/agent-browser" = {
+      source = "${inputs.agent-browser}/skills/agent-browser";
+      recursive = true;
+    };
   };
 }
