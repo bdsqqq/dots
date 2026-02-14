@@ -77,6 +77,11 @@
       flake = false;
     };
 
+    agent-browser = {
+      url = "github:vercel-labs/agent-browser";
+      flake = false;
+    };
+
     plugin-vim-tmux-navigator = { url = "github:christoomey/vim-tmux-navigator"; flake = false; };
     plugin-oil-nvim = { url = "github:stevearc/oil.nvim"; flake = false; };
     plugin-nvim-ufo = { url = "github:kevinhwang91/nvim-ufo"; flake = false; };
