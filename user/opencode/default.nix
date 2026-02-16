@@ -22,6 +22,10 @@ in
         };
       };
 
+      instructions = [
+         "$(${homeDir}/AGENTS.md" 
+      ];
+
       provider = {
         opencode = {
           options = {
