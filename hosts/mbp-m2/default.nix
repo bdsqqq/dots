@@ -111,8 +111,8 @@
               rescanIntervalS = 60;
               devices = [ "lgo-z2e" "r56" ];
               versioning = {
-                type = "simple";
-                params.keeptime = "7";
+                type = "trashcan";
+                params.cleanoutDays = "30";
               };
             };
           };

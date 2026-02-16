@@ -159,8 +159,8 @@ in
           rescanIntervalS = 60;
           devices = [ "mbp-m2" "lgo-z2e" ];
           versioning = {
-            type = "simple";
-            params.keeptime = "7";
+            type = "trashcan";
+            params.cleanoutDays = "30";
           };
         };
       };
