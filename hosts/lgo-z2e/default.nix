@@ -194,6 +194,20 @@ in
           rescanIntervalS = 120;
           devices = [ "mbp-m2" "r56" ];
         };
+
+        zen-browser = {
+          enable = true;
+          id = "zen-browser";
+          label = "Zen Browser";
+          path = "/home/bdsqqq/.var/app/app.zen_browser.zen/.zen";
+          type = "sendreceive";
+          rescanIntervalS = 60;
+          devices = [ "mbp-m2" "r56" ];
+          versioning = {
+            type = "simple";
+            params.keeptime = "7";
+          };
+        };
       };
     };
   };

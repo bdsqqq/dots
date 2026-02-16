@@ -149,6 +149,20 @@ in
           rescanIntervalS = 120;
           devices = [ "mbp-m2" "lgo-z2e" ];
         };
+
+        zen-browser = {
+          enable = true;
+          id = "zen-browser";
+          label = "Zen Browser";
+          path = "/home/bdsqqq/.var/app/app.zen_browser.zen/.zen";
+          type = "sendreceive";
+          rescanIntervalS = 60;
+          devices = [ "mbp-m2" "lgo-z2e" ];
+          versioning = {
+            type = "simple";
+            params.keeptime = "7";
+          };
+        };
       };
     };
   };

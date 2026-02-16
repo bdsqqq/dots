@@ -101,6 +101,20 @@
               rescanIntervalS = 120;
               devices = [ "r56" "lgo-z2e" ];
             };
+
+            zen-browser = {
+              enable = true;
+              id = "zen-browser";
+              label = "Zen Browser";
+              path = "/Users/bdsqqq/Library/Application Support/zen";
+              type = "sendreceive";
+              rescanIntervalS = 60;
+              devices = [ "lgo-z2e" "r56" ];
+              versioning = {
+                type = "simple";
+                params.keeptime = "7";
+              };
+            };
           };
         };
       };

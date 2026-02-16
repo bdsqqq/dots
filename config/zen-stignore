@@ -1,0 +1,32 @@
+// ignore everything by default
+*
+
+// whitelist: settings
+!prefs.js
+!user.js
+!containers.json
+!extension-preferences.json
+!extension-settings.json
+!addonStartup.json.lz4
+!handlers.json
+
+// whitelist: extensions
+!extensions/
+!extension-store/
+!extension-store-menus/
+
+// whitelist: bookmarks
+!bookmarkbackups/
+
+// whitelist: chrome customizations
+!chrome/
+!userChrome.css
+!userContent.css
+
+// whitelist: zen-specific
+!zen-keyboard-shortcuts.json
+!zen-themes.json
+
+// whitelist: profile discovery
+!installs.ini
+!profiles.ini
