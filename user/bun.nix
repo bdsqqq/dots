@@ -50,6 +50,14 @@
       fi
     '';
 
+    # configure bun's global dirs so interactive `bun add -g` creates bin
+    # links in ~/.bun/bin and writes to the symlinked manifest
+    home.file.".bunfig.toml".text = ''
+      [install]
+      globalDir = "${globalDir}"
+      globalBinDir = "${bunBin}"
+    '';
+
     # zsh-specific: re-assert bun precedence after fnm's dynamic PATH prepend
     programs.zsh.initContent = ''
       # fnm prepends at runtime; ensure bun wins by re-prepending after shell init
