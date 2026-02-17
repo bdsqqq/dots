@@ -15,6 +15,7 @@ in
       ../user/tmux.nix
       ../user/amp
       ../user/opencode
+      ../user/pi
       ../user/agents
     ]
     ++ lib.optionals isGraphical [
