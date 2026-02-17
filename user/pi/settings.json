@@ -1,7 +1,18 @@
 {
   "defaultProvider": "opencode",
-  "enabledModels": ["opencode/*", "openrouter/*"],
-  "skills": ["~/.config/agents/skills"],
-  "prompts": ["~/.config/agents/prompts"],
-  "extensions": ["~/.pi/agent/extensions/subagent/index.ts"]
+  "enabledModels": [
+    "opencode/*",
+    "openrouter/*"
+  ],
+  "skills": [
+    "~/.config/agents/skills"
+  ],
+  "prompts": [
+    "~/.config/agents/prompts"
+  ],
+  "extensions": [
+    "~/.pi/agent/extensions/sub-agents.ts"
+  ],
+  "lastChangelogVersion": "0.52.12",
+  "defaultModel": "minimax-m2.5-free"
 }

@@ -17,14 +17,10 @@ in
     home.file.".pi/agent/auth.json".source = config.lib.file.mkOutOfStoreSymlink "/run/secrets/rendered/pi-auth.json";
     home.file.".pi/agent/settings.json".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/settings.json";
 
-    # subagent extension - install to ~/.pi/agent/extensions/subagent/
-    home.file.".pi/agent/extensions/subagent/index.ts".source = ./extensions/subagent/index.ts;
-    home.file.".pi/agent/extensions/subagent/agents.ts".source = ./extensions/subagent/agents.ts;
+    # subagent extension — single file, agents discovered from ~/.pi/agent/agents at runtime
+    home.file.".pi/agent/extensions/sub-agents.ts".source = ./extensions/sub-agents.ts;
 
-    # subagent extension - agents (point to existing prompts folder)
+    # agent definitions (point to existing prompts folder)
     home.file.".pi/agent/agents".source = ../agents/prompts;
-
-    # subagent extension - prompts
-    home.file.".pi/agent/prompts".source = ./extensions/subagent/prompts;
   };
 }
