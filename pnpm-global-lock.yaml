@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@sourcegraph/amp':
-        specifier: 0.0.1770987421-gb93088
-        version: 0.0.1770987421-gb93088
+        specifier: 0.0.1771317524-g0b5dfc
+        version: 0.0.1771317524-g0b5dfc
       agent-browser:
         specifier: ^0.10.0
         version: 0.10.0
@@ -805,8 +805,8 @@ packages:
   '@sinclair/typebox@0.25.24':
     resolution: {integrity: sha512-XJfwUVUKDHF5ugKwIcxEgc9k8b7HbznCp6eUfWgu710hMPNIO4aw4/zB5RogDQz8nd6gyCDpU9O/m6qYEWY6yQ==}
 
-  '@sourcegraph/amp@0.0.1770987421-gb93088':
-    resolution: {integrity: sha512-fPIXyoxFY1slXWIx14z0KcsUiiXrRaK5rFJUKe7hh8LImFqzMsOsVonyBbngC3FDMWwJoVJcxUY+CAorD7IUmg==}
+  '@sourcegraph/amp@0.0.1771317524-g0b5dfc':
+    resolution: {integrity: sha512-6Pbx/WYh1TIfO5lEN0RJjJgitW0dXX0dtRoOnnEIWwLP6xvJtXBf4y76qBT1uTXkY6N2GYY79+BgFX3qNVbLMg==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -3745,7 +3745,7 @@ snapshots:
 
   '@sinclair/typebox@0.25.24': {}
 
-  '@sourcegraph/amp@0.0.1770987421-gb93088':
+  '@sourcegraph/amp@0.0.1771317524-g0b5dfc':
     dependencies:
       '@napi-rs/keyring': 1.1.9
 
