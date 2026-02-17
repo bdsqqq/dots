@@ -1,0 +1,7 @@
+{
+  "defaultProvider": "opencode",
+  "enabledModels": ["opencode/*", "openrouter/*"],
+  "skills": ["~/.config/agents/skills"],
+  "prompts": ["~/.config/agents/prompts"],
+  "extensions": ["~/.pi/agent/extensions/subagent/index.ts"]
+}
