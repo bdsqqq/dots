@@ -243,7 +243,8 @@ function renderToolLine(
 	item: DisplayItem & { type: "toolCall" },
 	themeFg: (color: any, text: string) => string,
 ): string {
-	const icon = item.isError ? themeFg("error", "✕") : themeFg("success", "✓");
+	const icon =
+		item.isError === true ? themeFg("error", "✕") : item.isError === false ? themeFg("success", "✓") : themeFg("warning", "⋯");
 	return `${icon} ${themeFg("accent", toolLabel(item.name))} ${themeFg("dim", toolArgSummary(item.name, item.args))}`;
 }
 
