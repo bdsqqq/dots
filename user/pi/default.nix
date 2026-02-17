@@ -18,9 +18,15 @@ in
   };
 
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: let
-    # wrapper that runs the fork's cli.js with the monorepo's node_modules
+    # wrapper that prefers the local fork, falls back to pnpm-installed pi
     pi-fork = pkgs.writeShellScriptBin "pi" ''
-      exec ${pkgs.nodejs_22}/bin/node "${piCliPath}" "$@"
+      if [ -f "${piCliPath}" ]; then
+        exec ${pkgs.nodejs_22}/bin/node "${piCliPath}" "$@"
+      fi
+      # fork not present on this host — strip self from PATH to find next pi
+      SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+      PATH="$(echo "$PATH" | tr ':' '\n' | grep -v "$SELF_DIR" | tr '\n' ':' | sed 's/:$//')"
+      exec pi "$@"
     '';
   in {
     home.file.".pi/agent/auth.json".source = config.lib.file.mkOutOfStoreSymlink "/run/secrets/rendered/pi-auth.json";
