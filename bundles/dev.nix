@@ -7,7 +7,7 @@ in
     [
       ../user/nvim
       ../user/git
-      ../user/pnpm.nix
+      ../user/bun.nix
       ../user/uv.nix
       ../user/dev-tools.nix
       ../user/direnv.nix
