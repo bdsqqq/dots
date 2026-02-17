@@ -127,6 +127,7 @@ background-blur-radius = 8
 theme = light:lauds-light,dark:compline-dark
 
 keybind = shift+enter=text:\n
+keybind = alt+backspace=text:\x1b\x7f
 
 # unbind ctrl+tab/digits so tmux can receive them
 keybind = ctrl+tab=unbind
