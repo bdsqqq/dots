@@ -33,9 +33,21 @@
       ln -sf "$MANIFEST" "$GLOBAL_DIR/package.json"
 
       # install globals; bun resolves deps into $GLOBAL_DIR/node_modules
-      # and creates bin stubs in $BUN_INSTALL/bin
       "${pkgs.bun}/bin/bun" install \
         --cwd "$GLOBAL_DIR" || true
+
+      # bun install --cwd doesn't create bin stubs in ~/.bun/bin (only bun add -g does)
+      # mirror what pnpm --global did: link node_modules/.bin/* → ~/.bun/bin/
+      BUN_BIN="${bunBin}"
+      mkdir -p "$BUN_BIN"
+      if [ -d "$GLOBAL_DIR/node_modules/.bin" ]; then
+        for bin in "$GLOBAL_DIR/node_modules/.bin"/*; do
+          name="$(basename "$bin")"
+          # don't clobber bun/bunx themselves
+          [ "$name" = "bun" ] || [ "$name" = "bunx" ] && continue
+          ln -sf "$bin" "$BUN_BIN/$name"
+        done
+      fi
     '';
 
     # zsh-specific: re-assert bun precedence after fnm's dynamic PATH prepend
