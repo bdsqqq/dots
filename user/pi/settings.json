@@ -13,6 +13,6 @@
   "extensions": [
     "~/.pi/agent/extensions/sub-agents.ts"
   ],
-  "lastChangelogVersion": "0.52.12",
+  "lastChangelogVersion": "0.53.0",
   "defaultModel": "minimax-m2.5-free"
 }
