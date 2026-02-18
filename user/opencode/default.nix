@@ -23,7 +23,7 @@ in
       };
 
       instructions = [
-         "$(${homeDir}/AGENTS.md" 
+         "${homeDir}/AGENTS.md"
       ];
 
       provider = {

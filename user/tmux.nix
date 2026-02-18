@@ -351,7 +351,7 @@ in
       '' + generatedBlock;
     };
 
-    home.shellAliases.tx = "tmux new-session -A -s $(basename $PWD | tr . _)";
+    home.shellAliases.tx = "tmux new-session -A -s \"$(basename \"$PWD\" | tr '. ' '_')\"";
     
     home.packages = [ randomNameScript pkgs.sesh pkgs.fzf ];
 
@@ -361,13 +361,13 @@ in
         typeset -g TMUX_PANE_CUSTOM_NAME=""
         
         function current_dir() {
-          local current_dir=$PWD
-          if [[ $current_dir == $HOME ]]; then
+          local current_dir="$PWD"
+          if [[ "$current_dir" == "$HOME" ]]; then
             current_dir="~"
           else
-            current_dir=''${current_dir##*/}
+            current_dir="''${current_dir##*/}"
           fi
-          echo $current_dir
+          echo "$current_dir"
         }
 
         function change_window_title() {
@@ -380,7 +380,7 @@ in
           [[ -n "$TMUX_PANE_CUSTOM_NAME" ]] && return
           [[ -n "$(command tmux show-options -wqv @custom_name 2>/dev/null)" ]] && return
           local title=$(current_dir)
-          change_window_title $title
+          change_window_title "$title"
         }
 
         function set_window_to_command_line() {
@@ -410,7 +410,7 @@ in
             return
           fi
           
-          change_window_title $cmd
+          change_window_title "$cmd"
         }
 
         autoload -Uz add-zsh-hook
