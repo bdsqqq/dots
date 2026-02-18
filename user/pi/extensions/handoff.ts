@@ -13,7 +13,8 @@
 
 import { complete, type Message } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, SessionEntry } from "@mariozechner/pi-coding-agent";
-import { BorderedLoader, convertToLlm, serializeConversation } from "@mariozechner/pi-coding-agent";
+import { BorderedLoader, convertToLlm, serializeConversation, SessionManager } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 
 const HANDOFF_THRESHOLD = 0.85;
 
@@ -27,13 +28,13 @@ Rules:
 - List SPECIFIC files with their roles, not just paths.
 - Identify the EXACT next task. If the user provided a goal, use it. If not, infer the most specific pending work from the conversation — never say "continue the work" or "focus on recent tasks."
 - Include any commands needed for verification or setup.
-- Reference the previous session ID so the new agent can use read_thread if needed.
+- Reference the previous session ID so the new agent can use read_session if needed.
 
 Output the prompt directly. No preamble, no wrapper.
 
 Format:
 
-Continuing work from session {session_id}. Use read_thread to retrieve details if needed.
+Continuing work from session {session_id}. Use read_session to retrieve details if needed.
 
 @file/references — one per relevant file
 
@@ -235,5 +236,157 @@ export default function (pi: ExtensionAPI) {
 		storedHandoffPrompt = null;
 		handoffPending = false;
 		generating = false;
+	});
+
+	// --- read_session tool: read a previous session by ID ---
+	pi.registerTool({
+		name: "read_session",
+		label: "Read Session",
+		description:
+			"Read a previous pi session by ID (partial UUID match). Returns the serialized conversation. " +
+			"Optionally provide a goal to extract only relevant information via LLM summarization.",
+		parameters: Type.Object({
+			sessionId: Type.String({ description: "Session ID or partial UUID to match against" }),
+			goal: Type.Optional(
+				Type.String({ description: "If provided, use LLM to extract only information relevant to this goal" }),
+			),
+		}),
+
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const allSessions = SessionManager.listAll();
+
+			const match = allSessions.find(
+				(s) => s.id === params.sessionId || s.id.includes(params.sessionId) || s.path.includes(params.sessionId),
+			);
+
+			if (!match) {
+				return {
+					content: [{ type: "text", text: `no session found matching "${params.sessionId}"` }],
+					isError: true,
+				};
+			}
+
+			const session = SessionManager.open(match.path);
+			const branch = session.getBranch();
+			const messages = branch
+				.filter((e): e is SessionEntry & { type: "message" } => e.type === "message")
+				.map((e) => e.message);
+
+			if (messages.length === 0) {
+				return {
+					content: [{ type: "text", text: `session ${match.id} exists but has no messages` }],
+				};
+			}
+
+			const llmMessages = convertToLlm(messages);
+			const conversationText = serializeConversation(llmMessages);
+
+			// no goal — return raw conversation
+			if (!params.goal) {
+				const header = `Session: ${match.id}\nCWD: ${match.cwd}\nCreated: ${match.created}\nMessages: ${match.messageCount}\n\n`;
+				return {
+					content: [{ type: "text", text: header + conversationText }],
+				};
+			}
+
+			// goal provided — use LLM to extract relevant info
+			if (!ctx.model) {
+				return {
+					content: [{ type: "text", text: "no model available for goal-based extraction. returning full conversation.\n\n" + conversationText }],
+				};
+			}
+
+			const apiKey = await ctx.modelRegistry.getApiKey(ctx.model);
+			const extractionPrompt = `You are extracting information from a conversation transcript. The user wants specific information — return ONLY what's relevant to their goal. Be concrete: include file paths, code snippets, decisions, and context. If the goal isn't found in the conversation, say so.`;
+
+			const userMessage: Message = {
+				role: "user",
+				content: [
+					{
+						type: "text",
+						text: `## Goal\n\n${params.goal}\n\n## Conversation\n\n${conversationText}`,
+					},
+				],
+				timestamp: Date.now(),
+			};
+
+			try {
+				const response = await complete(
+					ctx.model,
+					{ systemPrompt: extractionPrompt, messages: [userMessage] },
+					{ apiKey },
+				);
+
+				const extracted = response.content
+					.filter((c): c is { type: "text"; text: string } => c.type === "text")
+					.map((c) => c.text)
+					.join("\n");
+
+				return {
+					content: [{ type: "text", text: `From session ${match.id}:\n\n${extracted}` }],
+				};
+			} catch (err) {
+				return {
+					content: [{ type: "text", text: `LLM extraction failed, returning full conversation.\n\n${conversationText}` }],
+				};
+			}
+		},
+	});
+
+	// --- search_sessions tool: search across all sessions ---
+	pi.registerTool({
+		name: "search_sessions",
+		label: "Search Sessions",
+		description:
+			"Search across all pi sessions by text query. Returns matching session IDs with metadata and preview.",
+		parameters: Type.Object({
+			query: Type.String({ description: "Text to search for across session conversations" }),
+			cwd: Type.Optional(
+				Type.String({ description: "Limit search to sessions from this working directory" }),
+			),
+			limit: Type.Optional(
+				Type.Number({ description: "Max results to return (default: 10)", default: 10 }),
+			),
+		}),
+
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+			const sessions = params.cwd
+				? SessionManager.list(params.cwd)
+				: SessionManager.listAll();
+
+			const queryLower = params.query.toLowerCase();
+			const limit = params.limit ?? 10;
+
+			const matches = sessions
+				.filter((s) => s.allMessagesText?.toLowerCase().includes(queryLower))
+				.slice(0, limit);
+
+			if (matches.length === 0) {
+				return {
+					content: [{ type: "text", text: `no sessions found matching "${params.query}"` }],
+				};
+			}
+
+			const results = matches.map((s) => {
+				const preview = s.firstMessage
+					? s.firstMessage.length > 120
+						? s.firstMessage.slice(0, 120) + "..."
+						: s.firstMessage
+					: "(no preview)";
+
+				return [
+					`**${s.id}**`,
+					`  cwd: ${s.cwd}`,
+					`  created: ${s.created}`,
+					`  messages: ${s.messageCount}`,
+					`  preview: ${preview}`,
+				].join("\n");
+			});
+
+			const header = `found ${matches.length} session${matches.length > 1 ? "s" : ""} matching "${params.query}":\n\n`;
+			return {
+				content: [{ type: "text", text: header + results.join("\n\n") }],
+			};
+		},
 	});
 }
