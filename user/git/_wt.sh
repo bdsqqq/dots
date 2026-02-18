@@ -96,9 +96,9 @@ find_worktree_for_branch() {
   local git_dir="$1"
   local branch="$2"
   git -C "$git_dir" worktree list --porcelain | awk -v branch="$branch" '
-    /^worktree / { wt = substr($0, 10) }
-    /^branch refs\/heads\// { 
-      b = substr($0, 19)
+    /^worktree / { wt = $0; sub(/^worktree /, "", wt) }
+    /^branch refs\/heads\// {
+      b = $0; sub(/^branch refs\/heads\//, "", b)
       if (b == branch) { print wt; exit }
     }
   '
