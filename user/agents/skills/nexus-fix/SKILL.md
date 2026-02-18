@@ -205,9 +205,25 @@ gh pr create \
 
 ### screenshots in PRs
 
-screenshots from `~/.agent-browser/tmp/screenshots/`:
-- drag-drop into github PR body (github hosts them)
-- or copy to tracked dir + `git add -f` if gitignored
+the repo is private, so raw.githubusercontent.com URLs 404. use blob URLs with `?raw=true`:
+
+```bash
+# 1. copy screenshots into the repo
+mkdir -p .github/pr-assets
+cp ~/.agent-browser/tmp/screenshots/before.png .github/pr-assets/before.png
+cp ~/.agent-browser/tmp/screenshots/after.png .github/pr-assets/after.png
+
+# 2. force-add (.github/ is globally gitignored)
+git add -f .github/pr-assets/before.png .github/pr-assets/after.png
+git commit -m "docs: add pr showcase screenshots"
+git push
+
+# 3. reference in PR body with ?raw=true — this is what makes them render inline
+![before](https://github.com/axiomhq/app/blob/<branch>/.github/pr-assets/before.png?raw=true)
+![after](https://github.com/axiomhq/app/blob/<branch>/.github/pr-assets/after.png?raw=true)
+```
+
+**why `?raw=true`**: without it, github serves the blob viewer HTML page, not the image binary. the `?raw=true` param redirects to the authenticated raw content, which github's markdown renderer can inline even for private repos.
 
 ## gotchas
 
