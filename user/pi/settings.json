@@ -11,8 +11,12 @@
     "~/.config/agents/prompts"
   ],
   "extensions": [
-    "~/.pi/agent/extensions/sub-agents.ts"
+    "~/.pi/agent/extensions/sub-agents.ts",
+    "~/.pi/agent/extensions/handoff.ts"
   ],
+  "compaction": {
+    "enabled": false
+  },
   "lastChangelogVersion": "0.53.0",
   "defaultModel": "minimax-m2.5-free"
 }

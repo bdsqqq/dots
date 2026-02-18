@@ -20,6 +20,12 @@ in
     # subagent extension — single file, agents discovered from ~/.pi/agent/agents at runtime
     home.file.".pi/agent/extensions/sub-agents.ts".source = ./extensions/sub-agents.ts;
 
+    # handoff extension — replaces compaction with LLM-driven context transfer
+    home.file.".pi/agent/extensions/handoff.ts".source = ./extensions/handoff.ts;
+
+    # handoff skill — teaches the agent about context management via handoff
+    home.file.".pi/agent/skills/handoff/SKILL.md".source = ./skills/handoff/SKILL.md;
+
     # agent definitions (point to existing prompts folder)
     home.file.".pi/agent/agents".source = ../agents/prompts;
   };
