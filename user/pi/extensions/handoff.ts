@@ -207,7 +207,15 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			const prompt = storedHandoffPrompt;
+			// let user review/edit the handoff prompt before sending
+			const edited = await ctx.ui.editor("handoff prompt (edit or save to send)", storedHandoffPrompt);
+
+			if (!edited) {
+				ctx.ui.notify("handoff cancelled", "info");
+				return;
+			}
+
+			const prompt = edited;
 			const parent = parentSessionFile;
 
 			// clear state before session switch
@@ -253,7 +261,7 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const allSessions = SessionManager.listAll();
+			const allSessions = await SessionManager.listAll();
 
 			const match = allSessions.find(
 				(s) => s.id === params.sessionId || s.id.includes(params.sessionId) || s.path.includes(params.sessionId),
@@ -351,8 +359,8 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			const sessions = params.cwd
-				? SessionManager.list(params.cwd)
-				: SessionManager.listAll();
+				? await SessionManager.list(params.cwd)
+				: await SessionManager.listAll();
 
 			const queryLower = params.query.toLowerCase();
 			const limit = params.limit ?? 10;
