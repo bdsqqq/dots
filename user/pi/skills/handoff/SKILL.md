@@ -37,10 +37,9 @@ you have two tools for accessing previous sessions:
 
 ### read_session
 
-read a previous session's conversation by ID. supports partial UUID matching.
+read a previous session's conversation by ID. supports partial UUID matching. returns the full serialized conversation as markdown.
 
-- `read_session({ sessionId: "abc123" })` — returns full serialized conversation
-- `read_session({ sessionId: "abc123", goal: "extract the database schema decisions" })` — uses LLM to extract only relevant info
+- `read_session({ sessionId: "abc123" })` — returns the conversation
 
 use this when a handoff prompt references a previous session ID and you need more detail than the prompt provides.
 

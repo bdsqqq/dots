@@ -262,17 +262,12 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "read_session",
 		label: "Read Session",
-		description:
-			"Read a previous pi session by ID (partial UUID match). Returns the serialized conversation. " +
-			"Optionally provide a goal to extract only relevant information via LLM summarization.",
+		description: "Read a previous pi session by ID (partial UUID match). Returns the serialized conversation as markdown.",
 		parameters: Type.Object({
 			sessionId: Type.String({ description: "Session ID or partial UUID to match against" }),
-			goal: Type.Optional(
-				Type.String({ description: "If provided, use LLM to extract only information relevant to this goal" }),
-			),
 		}),
 
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			const allSessions = await SessionManager.listAll();
 
 			const match = allSessions.find(
@@ -300,56 +295,11 @@ export default function (pi: ExtensionAPI) {
 
 			const llmMessages = convertToLlm(messages);
 			const conversationText = serializeConversation(llmMessages);
+			const header = `Session: ${match.id}\nCWD: ${match.cwd}\nCreated: ${match.created}\nMessages: ${match.messageCount}\n\n`;
 
-			// no goal — return raw conversation
-			if (!params.goal) {
-				const header = `Session: ${match.id}\nCWD: ${match.cwd}\nCreated: ${match.created}\nMessages: ${match.messageCount}\n\n`;
-				return {
-					content: [{ type: "text", text: header + conversationText }],
-				};
-			}
-
-			// goal provided — use LLM to extract relevant info
-			if (!ctx.model) {
-				return {
-					content: [{ type: "text", text: "no model available for goal-based extraction. returning full conversation.\n\n" + conversationText }],
-				};
-			}
-
-			const apiKey = await ctx.modelRegistry.getApiKey(ctx.model);
-			const extractionPrompt = `You are extracting information from a conversation transcript. The user wants specific information — return ONLY what's relevant to their goal. Be concrete: include file paths, code snippets, decisions, and context. If the goal isn't found in the conversation, say so.`;
-
-			const userMessage: Message = {
-				role: "user",
-				content: [
-					{
-						type: "text",
-						text: `## Goal\n\n${params.goal}\n\n## Conversation\n\n${conversationText}`,
-					},
-				],
-				timestamp: Date.now(),
+			return {
+				content: [{ type: "text", text: header + conversationText }],
 			};
-
-			try {
-				const response = await complete(
-					ctx.model,
-					{ systemPrompt: extractionPrompt, messages: [userMessage] },
-					{ apiKey },
-				);
-
-				const extracted = response.content
-					.filter((c): c is { type: "text"; text: string } => c.type === "text")
-					.map((c) => c.text)
-					.join("\n");
-
-				return {
-					content: [{ type: "text", text: `From session ${match.id}:\n\n${extracted}` }],
-				};
-			} catch (err) {
-				return {
-					content: [{ type: "text", text: `LLM extraction failed, returning full conversation.\n\n${conversationText}` }],
-				};
-			}
 		},
 	});
 
