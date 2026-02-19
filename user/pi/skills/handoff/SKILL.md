@@ -17,7 +17,7 @@ compaction is **disabled** in this environment. context is managed via handoff �
 
 1. **keep threads focused.** one task per session. don't meander.
 2. **be aware of your context usage.** if you've done a lot of tool calls and file reads, you're probably getting heavy.
-3. **when context is getting heavy, hand off.** call the `handoff` tool with the next task as the goal. don't ask the user — just do it.
+3. **when context is getting heavy, hand off.** call the `handoff` tool with the next task as the goal. don't ask — just call it.
 4. **front-load investigation.** read what you need early, make decisions, then execute. don't re-read files you've already seen.
 
 ## invoking handoff
@@ -31,7 +31,7 @@ you have a `handoff` tool. call it directly when:
 handoff({ goal: "implement the auth middleware we planned" })
 ```
 
-the tool generates a handoff prompt (via extraction model), creates a new session, and sends the prompt. the current session ends.
+the tool generates a handoff prompt (via extraction model) and stages `/handoff` in the editor. the user presses Enter to switch sessions. (`newSession` is only on command context, so the tool can't switch directly.)
 
 the user can also run `/handoff <goal>` manually — this shows them the prompt for review before sending.
 

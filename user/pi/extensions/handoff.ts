@@ -245,10 +245,10 @@ export default function (pi: ExtensionAPI) {
 			generating = false;
 
 			ctx.ui.setEditorText("/handoff");
-			ctx.ui.setStatus("handoff", `⚡ handoff ready (${Math.round(usage.percent)}%)`);
+			ctx.ui.setStatus("handoff", `handoff ready (${Math.round(usage.percent)}%)`);
 			pi.events.emit("editor:set-label", {
 				key: "handoff",
-				text: `⚡ handoff ready (${Math.round(usage.percent)}%)`,
+				text: `handoff ready (${Math.round(usage.percent)}%)`,
 				position: "top",
 				align: "right",
 			});
@@ -340,7 +340,7 @@ export default function (pi: ExtensionAPI) {
 		name: "handoff",
 		label: "Handoff",
 		description:
-			"Transfer context to a new session. Generates a handoff prompt from the current conversation via extraction model, creates a new session, and sends the prompt. The current session ends — use this when context is getting heavy or you're done with the current task and want to continue in a fresh session.",
+			"Prepare a handoff to a new session. Generates a handoff prompt from the current conversation via extraction model and stages /handoff for the user. Use when context is getting heavy or you're done with the current task and want to continue in a fresh session.",
 		parameters: Type.Object({
 			goal: Type.String({
 				description: "What should be accomplished in the new session. Be specific about the next task.",
@@ -348,7 +348,7 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-			const handoffModel = getHandoffModel(ctx as any);
+			const handoffModel = getHandoffModel(ctx);
 			if (!handoffModel) {
 				return {
 					content: [{ type: "text", text: "no model available for handoff extraction" }],
@@ -356,9 +356,9 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const parent = (ctx as any).sessionManager?.getSessionFile?.();
+			parentSessionFile = ctx.sessionManager.getSessionFile();
 
-			const prompt = await generateHandoffPrompt(ctx as any, handoffModel, params.goal, signal ?? undefined);
+			const prompt = await generateHandoffPrompt(ctx, handoffModel, params.goal, signal ?? undefined);
 			if (!prompt) {
 				return {
 					content: [{ type: "text", text: "handoff generation failed: could not extract context" }],
@@ -366,16 +366,20 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const switched = await executeHandoff(prompt, parent, ctx as any);
-			if (!switched) {
-				return {
-					content: [{ type: "text", text: "handoff cancelled by user" }],
-					isError: true,
-				};
-			}
+			storedHandoffPrompt = prompt;
+			handoffPending = true;
+
+			ctx.ui.setEditorText("/handoff");
+			ctx.ui.setStatus("handoff", "handoff ready");
+			pi.events.emit("editor:set-label", {
+				key: "handoff",
+				text: "handoff ready",
+				position: "top",
+				align: "right",
+			});
 
 			return {
-				content: [{ type: "text", text: `handoff initiated: "${params.goal}"` }],
+				content: [{ type: "text", text: `handoff prompt generated for: "${params.goal}". staged /handoff — press Enter to continue in a new session.` }],
 			};
 		},
 	});
