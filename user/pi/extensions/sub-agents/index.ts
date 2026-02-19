@@ -22,6 +22,8 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { type ExtensionAPI, getMarkdownTheme, parseFrontmatter } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { findGitRoot, getGitRemoteUrl, interpolatePromptVars } from "./interpolate";
+import type { InterpolateContext } from "./interpolate";
 
 // --- agents (inlined) ---
 
@@ -364,6 +366,7 @@ async function runSingleAgent(
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
+	interpolateCtx?: InterpolateContext,
 ): Promise<SingleResult> {
 	const agent = agents.find((a) => a.name === agentName);
 
@@ -411,7 +414,9 @@ async function runSingleAgent(
 
 	try {
 		if (agent.systemPrompt.trim()) {
-			const tmp = writePromptToTempFile(agent.name, agent.systemPrompt);
+			const effectiveCwd = cwd ?? defaultCwd;
+			const interpolated = interpolatePromptVars(agent.systemPrompt, effectiveCwd, interpolateCtx);
+			const tmp = writePromptToTempFile(agent.name, interpolated);
 			tmpPromptDir = tmp.dir;
 			tmpPromptPath = tmp.filePath;
 			args.push("--append-system-prompt", tmpPromptPath);
@@ -588,6 +593,13 @@ export default function (pi: ExtensionAPI) {
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
 
+			let sessionId = "";
+			try { sessionId = ctx.sessionManager?.getSessionId?.() ?? ""; } catch { /* graceful */ }
+			const interpolateCtx: InterpolateContext = {
+				sessionId,
+				repo: getGitRemoteUrl(findGitRoot(ctx.cwd)),
+			};
+
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
 			const hasSingle = Boolean(params.agent && params.task);
@@ -673,6 +685,7 @@ export default function (pi: ExtensionAPI) {
 						signal,
 						chainUpdate,
 						makeDetails("chain"),
+						interpolateCtx,
 					);
 					results.push(result);
 
@@ -753,6 +766,7 @@ export default function (pi: ExtensionAPI) {
 							}
 						},
 						makeDetails("parallel"),
+						interpolateCtx,
 					);
 					allResults[index] = result;
 					emitParallelUpdate();
@@ -787,6 +801,7 @@ export default function (pi: ExtensionAPI) {
 					signal,
 					onUpdate,
 					makeDetails("single"),
+					interpolateCtx,
 				);
 				const isError = result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
 				if (isError) {

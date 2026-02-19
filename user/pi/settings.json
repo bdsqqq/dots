@@ -11,7 +11,7 @@
     "~/.config/agents/prompts"
   ],
   "extensions": [
-    "~/.pi/agent/extensions/sub-agents.ts",
+    "~/.pi/agent/extensions/sub-agents",
     "~/.pi/agent/extensions/handoff.ts"
   ],
   "compaction": {
