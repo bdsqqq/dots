@@ -11,12 +11,13 @@
  *   /handoff check other places that need this fix
  */
 
-import { complete, type Message } from "@mariozechner/pi-ai";
+import { complete, type Api, type Model, type Message } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, SessionEntry } from "@mariozechner/pi-coding-agent";
 import { BorderedLoader, convertToLlm, serializeConversation, SessionManager } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
 const HANDOFF_THRESHOLD = 0.85;
+const HANDOFF_MODEL = { provider: "openrouter", id: "anthropic/claude-haiku-4.5" } as const;
 
 const SYSTEM_PROMPT = `You are a PROMPT GENERATOR. You produce a structured handoff prompt — NOT a response, NOT an answer, NOT a conversation.
 
@@ -51,6 +52,11 @@ export default function (pi: ExtensionAPI) {
 	let parentSessionFile: string | undefined;
 	let generating = false;
 
+	/** resolve the dedicated handoff model, fall back to ctx.model */
+	function getHandoffModel(ctx: { modelRegistry: { find(p: string, id: string): Model<Api> | undefined }; model: Model<Api> | undefined }): Model<Api> | undefined {
+		return ctx.modelRegistry.find(HANDOFF_MODEL.provider, HANDOFF_MODEL.id) ?? ctx.model;
+	}
+
 	// --- always cancel compaction. we handoff instead. ---
 	pi.on("session_before_compact", async (_event, _ctx) => {
 		return { cancel: true };
@@ -63,7 +69,8 @@ export default function (pi: ExtensionAPI) {
 		const usage = ctx.getContextUsage();
 		if (!usage || usage.percent === null) return;
 		if (usage.percent < HANDOFF_THRESHOLD * 100) return;
-		if (!ctx.model) return;
+		const handoffModel = getHandoffModel(ctx);
+		if (!handoffModel) return;
 
 		generating = true;
 		parentSessionFile = ctx.sessionManager.getSessionFile();
@@ -83,7 +90,7 @@ export default function (pi: ExtensionAPI) {
 		const sessionId = ctx.sessionManager.getSessionId();
 
 		try {
-			const apiKey = await ctx.modelRegistry.getApiKey(ctx.model);
+			const apiKey = await ctx.modelRegistry.getApiKey(handoffModel);
 			const userMessage: Message = {
 				role: "user",
 				content: [
@@ -96,7 +103,7 @@ export default function (pi: ExtensionAPI) {
 			};
 
 			const response = await complete(
-				ctx.model,
+				handoffModel,
 				{ systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
 				{ apiKey },
 			);
@@ -134,8 +141,9 @@ export default function (pi: ExtensionAPI) {
 
 			// manual invocation with a goal — generate fresh handoff
 			if (goal && !handoffPending) {
-				if (!ctx.model) {
-					ctx.ui.notify("no model selected", "error");
+				const handoffModel = getHandoffModel(ctx);
+				if (!handoffModel) {
+					ctx.ui.notify("no model available for handoff", "error");
 					return;
 				}
 
@@ -155,11 +163,11 @@ export default function (pi: ExtensionAPI) {
 				const sessionId = ctx.sessionManager.getSessionId();
 
 				const result = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
-					const loader = new BorderedLoader(tui, theme, "generating handoff prompt...");
+					const loader = new BorderedLoader(tui, theme, `generating handoff prompt (${handoffModel.name})...`);
 					loader.onAbort = () => done(null);
 
 					const doGenerate = async () => {
-						const apiKey = await ctx.modelRegistry.getApiKey(ctx.model!);
+						const apiKey = await ctx.modelRegistry.getApiKey(handoffModel);
 						const userMessage: Message = {
 							role: "user",
 							content: [
@@ -172,7 +180,7 @@ export default function (pi: ExtensionAPI) {
 						};
 
 						const response = await complete(
-							ctx.model!,
+							handoffModel,
 							{ systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
 							{ apiKey, signal: loader.signal },
 						);
