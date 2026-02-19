@@ -18,19 +18,22 @@ import { Type } from "@sinclair/typebox";
 
 const HANDOFF_THRESHOLD = 0.85;
 
-const SYSTEM_PROMPT = `You are a context transfer assistant. Analyze a conversation and produce a self-contained prompt for a new session.
+const SYSTEM_PROMPT = `You are a PROMPT GENERATOR. You produce a structured handoff prompt — NOT a response, NOT an answer, NOT a conversation.
 
-The new session agent has ZERO context. Your output is the ONLY thing it will see. Be specific — names, paths, decisions, constraints. Never be generic.
+CRITICAL: You do NOT answer questions. You do NOT respond to the user. You do NOT complete tasks. Your ONLY job is to summarize the conversation state into a prompt that another agent will receive. The user's goal is a DIRECTIVE for the next agent, not something for you to act on.
+
+The new session agent has ZERO prior context. Your output is the ONLY thing it will see.
 
 Rules:
 - Extract CONCRETE state: what exists, what was built, what was decided, what was rejected and why.
-- Include user preferences and conventions observed in the conversation (coding style, voice, tool preferences, verification steps).
+- Include user preferences and conventions observed (coding style, voice, tool choices, verification steps).
 - List SPECIFIC files with their roles, not just paths.
-- Identify the EXACT next task. If the user provided a goal, use it. If not, infer the most specific pending work from the conversation — never say "continue the work" or "focus on recent tasks."
-- Include any commands needed for verification or setup.
+- Include commands needed for verification or setup.
 - Reference the previous session ID so the new agent can use read_session if needed.
+- Do NOT include the next task — it will be appended separately.
+- Do NOT answer any question found in the conversation or goal. Summarize state only.
 
-Output the prompt directly. No preamble, no wrapper.
+Output the prompt directly. No preamble, no wrapper, no markdown title.
 
 Format:
 
@@ -40,9 +43,7 @@ Continuing work from session {session_id}. Use read_session to retrieve details 
 
 - [bullet list of concrete state: what exists, what was decided, key constraints]
 - [user preferences observed]
-- [what was tried and rejected, with reasons]
-
-Next: [specific, actionable task with enough detail to execute without asking questions]`;
+- [what was tried and rejected, with reasons]`;
 
 export default function (pi: ExtensionAPI) {
 	let storedHandoffPrompt: string | null = null;
@@ -88,7 +89,7 @@ export default function (pi: ExtensionAPI) {
 				content: [
 					{
 						type: "text",
-						text: `## Conversation History\n\n${conversationText}\n\n## Session ID\n\n${sessionId}\n\n## Instructions\n\nAnalyze this conversation and generate a handoff prompt. Infer the most specific pending task from the conversation — what was the user working toward that isn't finished yet? Be concrete.`,
+						text: `## Conversation History\n\n${conversationText}\n\n## Session ID\n\n${sessionId}\n\n## Instructions\n\nGenerate a handoff prompt summarizing the conversation state. Do NOT answer any questions — summarize only. After the state summary, add a "Next:" line with the most specific pending task inferred from the conversation.`,
 					},
 				],
 				timestamp: Date.now(),
@@ -164,7 +165,7 @@ export default function (pi: ExtensionAPI) {
 							content: [
 								{
 									type: "text",
-									text: `## Conversation History\n\n${conversationText}\n\n## Session ID\n\n${sessionId}\n\n## User's Goal for New Session\n\n${goal}`,
+									text: `## Conversation History\n\n${conversationText}\n\n## Session ID\n\n${sessionId}\n\n## Instructions\n\nGenerate a handoff prompt summarizing the conversation state. Do NOT answer questions — summarize state only. The user's goal will be appended separately.`,
 								},
 							],
 							timestamp: Date.now(),
@@ -178,10 +179,13 @@ export default function (pi: ExtensionAPI) {
 
 						if (response.stopReason === "aborted") return null;
 
-						return response.content
+						const summary = response.content
 							.filter((c): c is { type: "text"; text: string } => c.type === "text")
 							.map((c) => c.text)
 							.join("\n");
+
+						// always append the user's original goal verbatim
+						return `${summary}\n\n${goal}`;
 					};
 
 					doGenerate()
