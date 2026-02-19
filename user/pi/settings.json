@@ -18,5 +18,6 @@
     "enabled": false
   },
   "lastChangelogVersion": "0.53.0",
-  "defaultModel": "minimax-m2.5-free"
+  "defaultModel": "glm-5-free",
+  "defaultThinkingLevel": "medium"
 }
