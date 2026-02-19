@@ -306,7 +306,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// let user review/edit the handoff prompt before sending
-			const edited = await ctx.ui.editor("handoff prompt (edit or save to send)", storedHandoffPrompt);
+			const edited = await ctx.ui.editor("handoff prompt — ⏎ to handoff ␛ to cancel", storedHandoffPrompt);
 
 			if (!edited) {
 				ctx.ui.notify("handoff cancelled", "info");
@@ -340,7 +340,7 @@ export default function (pi: ExtensionAPI) {
 		name: "handoff",
 		label: "Handoff",
 		description:
-			"Prepare a handoff to a new session. Generates a handoff prompt from the current conversation via extraction model and stages /handoff for the user. Use when context is getting heavy or you're done with the current task and want to continue in a fresh session.",
+			"Hand off to a new session. Generates a handoff prompt from the current conversation and stages /handoff in the editor. The user presses Enter to review the prompt, then confirms to switch sessions.",
 		parameters: Type.Object({
 			goal: Type.String({
 				description: "What should be accomplished in the new session. Be specific about the next task.",

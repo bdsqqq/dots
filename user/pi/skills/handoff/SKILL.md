@@ -31,9 +31,9 @@ you have a `handoff` tool. call it directly when:
 handoff({ goal: "implement the auth middleware we planned" })
 ```
 
-the tool generates a handoff prompt (via extraction model) and stages `/handoff` in the editor. the user presses Enter to switch sessions. (`newSession` is only on command context, so the tool can't switch directly.)
+the tool generates a handoff prompt (via extraction model) and stages `/handoff` in the editor. the user presses Enter to review the prompt, then confirms to switch sessions.
 
-the user can also run `/handoff <goal>` manually — this shows them the prompt for review before sending.
+the user can also run `/handoff <goal>` manually — this generates a prompt and shows it for review before sending.
 
 ## what happens during handoff
 
