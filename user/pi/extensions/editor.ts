@@ -12,8 +12,8 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { CustomEditor } from "@mariozechner/pi-coding-agent";
-import type { TUI, EditorTheme, Theme, Component } from "@mariozechner/pi-tui";
+import { CustomEditor, Theme } from "@mariozechner/pi-coding-agent";
+import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
@@ -46,6 +46,17 @@ const VERTICAL = "│";
 
 class LabeledEditor extends CustomEditor {
 	private labels: Map<string, Label> = new Map();
+	private appTheme: Theme;
+
+	constructor(tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager, appTheme: Theme) {
+		super(tui, editorTheme, keybindings);
+		this.appTheme = appTheme;
+	}
+
+	/** always-dim color for box chrome (corners, lines, rails) */
+	private dim(str: string): string {
+		return this.appTheme.fg("dim", str);
+	}
 
 	setLabel(key: string, text: string, position: "top" | "bottom" = "top", align: "left" | "right" = "left"): void {
 		this.labels.set(key, { key, text, position, align });
@@ -103,16 +114,15 @@ class LabeledEditor extends CustomEditor {
 		const fillWidth = innerWidth - leftLabelWidth - rightLabelWidth;
 
 		if (fillWidth < 0) {
-			// too narrow — plain border, no labels
-			return this.borderColor(cornerLeft + HORIZONTAL.repeat(Math.max(0, outerWidth - 2)) + cornerRight);
+			return this.dim(cornerLeft + HORIZONTAL.repeat(Math.max(0, outerWidth - 2)) + cornerRight);
 		}
 
 		return (
-			this.borderColor(cornerLeft + HORIZONTAL) +
+			this.dim(cornerLeft + HORIZONTAL) +
 			(hasLeft ? leftText : "") +
-			this.borderColor(HORIZONTAL.repeat(fillWidth)) +
+			this.dim(HORIZONTAL.repeat(fillWidth)) +
 			(hasRight ? rightCombined : "") +
-			this.borderColor(HORIZONTAL + cornerRight)
+			this.dim(HORIZONTAL + cornerRight)
 		);
 	}
 
@@ -151,9 +161,9 @@ class LabeledEditor extends CustomEditor {
 		// top border — replace line 0
 		result.push(this.buildBorderLine(width, CORNER_TL, CORNER_TR, "top", lines[0]));
 
-		// content lines — wrap with │ side rails
+		// content lines — wrap with dim │ side rails
 		for (let i = 1; i < bottomIdx; i++) {
-			result.push(this.borderColor(VERTICAL) + lines[i] + this.borderColor(VERTICAL));
+			result.push(this.dim(VERTICAL) + lines[i] + this.dim(VERTICAL));
 		}
 
 		// bottom border
@@ -221,8 +231,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		// replace editor with labeled box-drawing version
-		ctx.ui.setEditorComponent((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => {
-			editor = new LabeledEditor(tui, theme, keybindings);
+		ctx.ui.setEditorComponent((tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
+			editor = new LabeledEditor(tui, editorTheme, keybindings, ctx.ui.theme);
 			return editor;
 		});
 
