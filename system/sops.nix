@@ -42,7 +42,30 @@ in
         owner = "bdsqqq";
         mode = "0400";
       };
-    };
+    } // (
+      let
+        promptFiles = [
+          "REDACTED"
+          "REDACTED"
+          "REDACTED"
+          "REDACTED"
+          "REDACTED"
+          "REDACTED"
+          "REDACTED"
+          "REDACTED"
+          "REDACTED"
+          "REDACTED"
+        ];
+      in builtins.listToAttrs (map (name: {
+        name = "prompt-${name}";
+        value = {
+          sopsFile = inputs.self + "/user/agents/prompts/${name}.md";
+          format = "binary";
+          owner = "bdsqqq";
+          mode = "0400";
+        };
+      }) promptFiles)
+    );
   };
 }
 

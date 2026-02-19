@@ -26,7 +26,7 @@ in
     # handoff skill — teaches the agent about context management via handoff
     home.file.".pi/agent/skills/handoff/SKILL.md".source = ./skills/handoff/SKILL.md;
 
-    # agent definitions (point to existing prompts folder)
-    home.file.".pi/agent/agents".source = ../agents/prompts;
+    # agent definitions — point to decrypted prompts in ~/.config/agents/prompts
+    home.file.".pi/agent/agents".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.config/agents/prompts";
   };
 }

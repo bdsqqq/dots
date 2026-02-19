@@ -29,3 +29,11 @@ creation_rules:
           - *host_htz_relay
           - *host_r56
           - *host_lgo_z2e
+  - path_regex: user/agents/prompts/(agent|tool|skill|prompt)\..*\.md$
+    key_groups:
+      - age:
+          - *user_bdsqqq
+          - *host_mbp_m2
+          - *host_htz_relay
+          - *host_r56
+          - *host_lgo_z2e
