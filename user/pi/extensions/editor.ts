@@ -11,11 +11,12 @@
  * from the left edge, right labels from the right edge.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { CustomEditor } from "@mariozechner/pi-coding-agent";
-import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
+import type { TUI, EditorTheme, Theme, Component } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
+import type { AssistantMessage } from "@mariozechner/pi-ai";
 
 interface Label {
 	key: string;
@@ -167,14 +168,97 @@ class LabeledEditor extends CustomEditor {
 	}
 }
 
+function formatTokens(n: number): string {
+	if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+	return String(n);
+}
+
+function shortenPath(cwd: string): string {
+	const home = process.env.HOME || process.env.USERPROFILE || "";
+	if (home && cwd.startsWith(home)) return "~" + cwd.slice(home.length);
+	return cwd;
+}
+
+function updateStatsLabels(editor: LabeledEditor, ctx: ExtensionContext): void {
+	// top-left: context usage + cost
+	const usage = ctx.getContextUsage();
+	const model = ctx.model;
+
+	let cost = 0;
+	for (const entry of ctx.sessionManager.getBranch()) {
+		if (entry.type === "message" && entry.message.role === "assistant") {
+			const m = entry.message as AssistantMessage;
+			cost += m.usage?.cost?.total ?? 0;
+		}
+	}
+
+	const topLeftParts: string[] = [];
+	if (usage?.percent != null) {
+		topLeftParts.push(`${Math.round(usage.percent)}% of ${formatTokens(usage.contextWindow)}`);
+	}
+	if (cost > 0) {
+		topLeftParts.push(`$${cost.toFixed(2)}`);
+	}
+	if (topLeftParts.length > 0) {
+		editor.setLabel("stats", topLeftParts.join(" · "), "top", "left");
+	}
+
+	// top-right: model + thinking level
+	const topRightParts: string[] = [];
+	if (model) {
+		const provider = model.provider ? `(${model.provider})` : "";
+		topRightParts.push(`${provider} ${model.id}`.trim());
+	}
+	if (topRightParts.length > 0) {
+		editor.setLabel("model", topRightParts.join(" · "), "top", "right");
+	}
+}
+
 export default function (pi: ExtensionAPI) {
 	let editor: LabeledEditor | null = null;
+	let gitBranch: string | null = null;
+	let branchUnsub: (() => void) | null = null;
 
 	pi.on("session_start", async (_event, ctx) => {
+		// replace editor with labeled box-drawing version
 		ctx.ui.setEditorComponent((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => {
 			editor = new LabeledEditor(tui, theme, keybindings);
 			return editor;
 		});
+
+		// replace footer with empty component — we show its data in the borders
+		ctx.ui.setFooter((tui: TUI, _theme: Theme, footerData) => {
+			gitBranch = footerData.getGitBranch();
+			branchUnsub = footerData.onBranchChange(() => {
+				gitBranch = footerData.getGitBranch();
+				updateBottomLabel();
+				tui.requestRender();
+			});
+
+			updateBottomLabel();
+
+			return {
+				dispose: () => { branchUnsub?.(); branchUnsub = null; },
+				invalidate() {},
+				render(_width: number): string[] { return []; },
+			};
+		});
+
+		// set initial bottom label with cwd
+		function updateBottomLabel() {
+			if (!editor) return;
+			const cwd = shortenPath(ctx.cwd);
+			const branchText = gitBranch ? `(${gitBranch})` : "";
+			editor.setLabel("cwd", `${cwd} ${branchText}`.trim(), "bottom", "right");
+		}
+
+		updateBottomLabel();
+		updateStatsLabels(editor!, ctx);
+	});
+
+	// update stats after each agent turn
+	pi.on("agent_end", async (_event, ctx) => {
+		if (editor) updateStatsLabels(editor, ctx);
 	});
 
 	pi.events.on("editor:set-label", (data: unknown) => {
@@ -191,5 +275,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_switch", async () => {
 		editor = null;
+		branchUnsub?.();
+		branchUnsub = null;
+		gitBranch = null;
 	});
 }
