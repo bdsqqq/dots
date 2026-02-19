@@ -20,5 +20,6 @@
   },
   "lastChangelogVersion": "0.53.0",
   "defaultModel": "glm-5-free",
-  "defaultThinkingLevel": "medium"
+  "defaultThinkingLevel": "medium",
+  "hideThinkingBlock": true
 }

@@ -17,6 +17,7 @@ import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
+import { execSync } from "node:child_process";
 
 interface Label {
 	key: string;
@@ -189,7 +190,7 @@ function shortenPath(cwd: string): string {
 	return cwd;
 }
 
-function updateStatsLabels(editor: LabeledEditor, ctx: ExtensionContext): void {
+function updateStatsLabels(editor: LabeledEditor, pi: ExtensionAPI, ctx: ExtensionContext): void {
 	// top-left: context usage + cost
 	const usage = ctx.getContextUsage();
 	const model = ctx.model;
@@ -219,8 +220,32 @@ function updateStatsLabels(editor: LabeledEditor, ctx: ExtensionContext): void {
 		const provider = model.provider ? `(${model.provider})` : "";
 		topRightParts.push(`${provider} ${model.id}`.trim());
 	}
+	const thinkingLevel = pi.getThinkingLevel();
+	if (thinkingLevel && thinkingLevel !== "off") {
+		topRightParts.push(thinkingLevel);
+	}
 	if (topRightParts.length > 0) {
 		editor.setLabel("model", topRightParts.join(" · "), "top", "right");
+	}
+}
+
+function getGitDiffStats(cwd: string): string {
+	try {
+		const out = execSync("git diff --stat", { cwd, stdio: ["ignore", "pipe", "ignore"], timeout: 3000 }).toString().trim();
+		if (!out) return "";
+		// last line is summary: " N files changed, N insertions(+), N deletions(-)"
+		const lines = out.split("\n");
+		const summary = lines[lines.length - 1].trim();
+		const filesMatch = summary.match(/(\d+)\s+files?\s+changed/);
+		const insMatch = summary.match(/(\d+)\s+insertions?\(\+\)/);
+		const delMatch = summary.match(/(\d+)\s+deletions?\(-\)/);
+		if (!filesMatch) return "";
+		const parts = [`${filesMatch[1]} files changed`];
+		if (insMatch) parts.push(`+${insMatch[1]}`);
+		if (delMatch) parts.push(`-${delMatch[1]}`);
+		return parts.join(" ");
+	} catch {
+		return "";
 	}
 }
 
@@ -228,6 +253,7 @@ export default function (pi: ExtensionAPI) {
 	let editor: LabeledEditor | null = null;
 	let gitBranch: string | null = null;
 	let branchUnsub: (() => void) | null = null;
+	let activeTools = 0;
 
 	pi.on("session_start", async (_event, ctx) => {
 		// replace editor with labeled box-drawing version
@@ -263,12 +289,40 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		updateBottomLabel();
-		updateStatsLabels(editor!, ctx);
+		updateStatsLabels(editor!, pi, ctx);
 	});
 
-	// update stats after each agent turn
+	// --- activity status + git changes widget ---
+
+	pi.on("agent_start", async (_event, ctx) => {
+		activeTools = 0;
+		ctx.ui.setStatus("activity", "≈ thinking...");
+	});
+
+	pi.on("tool_execution_start", async (event, ctx) => {
+		activeTools++;
+		ctx.ui.setStatus("activity", `≈ ${event.toolName}...  Esc to cancel`);
+	});
+
+	pi.on("tool_execution_end", async (_event, ctx) => {
+		activeTools = Math.max(0, activeTools - 1);
+		if (activeTools === 0) {
+			ctx.ui.setStatus("activity", "≈ thinking...");
+		}
+	});
+
 	pi.on("agent_end", async (_event, ctx) => {
-		if (editor) updateStatsLabels(editor, ctx);
+		activeTools = 0;
+		ctx.ui.setStatus("activity", "");
+		if (editor) updateStatsLabels(editor, pi, ctx);
+
+		// update git changes widget
+		const diffStats = getGitDiffStats(ctx.cwd);
+		if (diffStats) {
+			ctx.ui.setWidget("git-changes", [diffStats], { placement: "belowEditor" });
+		} else {
+			ctx.ui.setWidget("git-changes", undefined);
+		}
 	});
 
 	pi.events.on("editor:set-label", (data: unknown) => {
@@ -283,10 +337,13 @@ export default function (pi: ExtensionAPI) {
 		editor?.removeLabel(payload.key);
 	});
 
-	pi.on("session_switch", async () => {
+	pi.on("session_switch", async (_event, ctx) => {
 		editor = null;
 		branchUnsub?.();
 		branchUnsub = null;
 		gitBranch = null;
+		activeTools = 0;
+		ctx.ui.setStatus("activity", "");
+		ctx.ui.setWidget("git-changes", undefined);
 	});
 }

@@ -12,7 +12,7 @@
  */
 
 import { complete, type Api, type Model, type Message, type Tool, type ToolCall } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@mariozechner/pi-coding-agent";
 import { BorderedLoader, convertToLlm, serializeConversation, SessionManager } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
@@ -107,6 +107,35 @@ function assembleHandoffPrompt(sessionId: string, extraction: HandoffExtraction,
 	return parts.join("\n\n");
 }
 
+/** get a short description from a parent session file for provenance display */
+function getParentDescription(parentPath: string): string {
+	try {
+		const session = SessionManager.open(parentPath);
+		const branch = session.getBranch();
+		const firstUser = branch.find(
+			(e): e is SessionEntry & { type: "message" } => e.type === "message" && e.message.role === "user",
+		);
+		if (firstUser) {
+			const text = firstUser.message.content
+				?.filter((c): c is { type: "text"; text: string } => c.type === "text")
+				.map((c) => c.text)
+				.join(" ")
+				.trim();
+			if (text) return text.length > 80 ? text.slice(0, 80) + "…" : text;
+		}
+		// fallback: session id from header
+		const header = session.getHeader();
+		return header?.id?.slice(0, 8) ?? parentPath.split("/").pop() ?? "unknown";
+	} catch {
+		return parentPath.split("/").pop() ?? "unknown";
+	}
+}
+
+function showProvenance(ctx: ExtensionContext, parentPath: string): void {
+	const desc = getParentDescription(parentPath);
+	ctx.ui.setWidget("handoff-provenance", [`↳ handed off from: ${desc}`]);
+}
+
 export default function (pi: ExtensionAPI) {
 	let storedHandoffPrompt: string | null = null;
 	let handoffPending = false;
@@ -117,6 +146,68 @@ export default function (pi: ExtensionAPI) {
 	function getHandoffModel(ctx: { modelRegistry: { find(p: string, id: string): Model<Api> | undefined }; model: Model<Api> | undefined }): Model<Api> | undefined {
 		return ctx.modelRegistry.find(HANDOFF_MODEL.provider, HANDOFF_MODEL.id) ?? ctx.model;
 	}
+
+	/** generate a handoff prompt from conversation + goal via haiku extraction */
+	async function generateHandoffPrompt(
+		ctx: { sessionManager: any; modelRegistry: any },
+		handoffModel: Model<Api>,
+		goal: string,
+		signal?: AbortSignal,
+	): Promise<string | null> {
+		const branch = ctx.sessionManager.getBranch();
+		const messages = branch
+			.filter((e: any): e is SessionEntry & { type: "message" } => e.type === "message")
+			.map((e: any) => e.message);
+
+		if (messages.length === 0) return null;
+
+		const llmMessages = convertToLlm(messages);
+		const conversationText = serializeConversation(llmMessages);
+		const sessionId = ctx.sessionManager.getSessionId();
+
+		const apiKey = await ctx.modelRegistry.getApiKey(handoffModel);
+		const userMessage: Message = {
+			role: "user",
+			content: [{ type: "text", text: buildExtractionPrompt(conversationText, goal) }],
+			timestamp: Date.now(),
+		};
+
+		const response = await complete(
+			handoffModel,
+			{ messages: [userMessage], tools: [HANDOFF_TOOL] },
+			{ apiKey, signal, toolChoice: "any" },
+		);
+
+		if (response.stopReason === "aborted") return null;
+
+		const extraction = extractToolCallArgs(response);
+		if (!extraction) return null;
+
+		return assembleHandoffPrompt(sessionId, extraction, goal);
+	}
+
+	/** switch to a new session and send the handoff prompt */
+	async function executeHandoff(prompt: string, parent: string | undefined, ctx: any): Promise<boolean> {
+		storedHandoffPrompt = null;
+		handoffPending = false;
+		generating = false;
+		ctx.ui?.setStatus?.("handoff", "");
+		pi.events.emit("editor:remove-label", { key: "handoff" });
+
+		const switchResult = await ctx.newSession({ parentSession: parent });
+		if (switchResult.cancelled) return false;
+
+		if (parent) showProvenance(ctx, parent);
+
+		pi.sendUserMessage(prompt);
+		return true;
+	}
+
+	// --- provenance: show "handed off from" when session has a parent ---
+	pi.on("session_start", async (_event, ctx) => {
+		const parentPath = ctx.sessionManager.getHeader()?.parentSession;
+		if (parentPath) showProvenance(ctx, parentPath);
+	});
 
 	// --- always cancel compaction. we handoff instead. ---
 	pi.on("session_before_compact", async (_event, _ctx) => {
@@ -136,57 +227,20 @@ export default function (pi: ExtensionAPI) {
 		generating = true;
 		parentSessionFile = ctx.sessionManager.getSessionFile();
 
-		const branch = ctx.sessionManager.getBranch();
-		const messages = branch
-			.filter((e): e is SessionEntry & { type: "message" } => e.type === "message")
-			.map((e) => e.message);
-
-		if (messages.length === 0) {
-			generating = false;
-			return;
-		}
-
-		const llmMessages = convertToLlm(messages);
-		const conversationText = serializeConversation(llmMessages);
-		const sessionId = ctx.sessionManager.getSessionId();
-
 		try {
-			const apiKey = await ctx.modelRegistry.getApiKey(handoffModel);
-			const userMessage: Message = {
-				role: "user",
-				content: [
-					{
-						type: "text",
-						text: buildExtractionPrompt(conversationText, "continue the most specific pending task from the conversation"),
-					},
-				],
-				timestamp: Date.now(),
-			};
-
-			const response = await complete(
+			const prompt = await generateHandoffPrompt(
+				ctx,
 				handoffModel,
-				{ messages: [userMessage], tools: [HANDOFF_TOOL] },
-				{ apiKey, toolChoice: "any" },
-			);
-
-			if (response.stopReason === "aborted") {
-				generating = false;
-				return;
-			}
-
-			const extraction = extractToolCallArgs(response);
-			if (!extraction) {
-				generating = false;
-				ctx.ui.notify("handoff generation failed: model did not call extraction tool", "error");
-				return;
-			}
-
-			storedHandoffPrompt = assembleHandoffPrompt(
-				sessionId,
-				extraction,
 				"continue the most specific pending task from the conversation",
 			);
 
+			if (!prompt) {
+				generating = false;
+				ctx.ui.notify("handoff generation failed: no extraction result", "error");
+				return;
+			}
+
+			storedHandoffPrompt = prompt;
 			handoffPending = true;
 			generating = false;
 
@@ -222,53 +276,13 @@ export default function (pi: ExtensionAPI) {
 					return;
 				}
 
-				const branch = ctx.sessionManager.getBranch();
-				const messages = branch
-					.filter((e): e is SessionEntry & { type: "message" } => e.type === "message")
-					.map((e) => e.message);
-
-				if (messages.length === 0) {
-					ctx.ui.notify("no conversation to hand off", "error");
-					return;
-				}
-
-				const llmMessages = convertToLlm(messages);
-				const conversationText = serializeConversation(llmMessages);
 				parentSessionFile = ctx.sessionManager.getSessionFile();
-				const sessionId = ctx.sessionManager.getSessionId();
 
 				const result = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
 					const loader = new BorderedLoader(tui, theme, `generating handoff prompt (${handoffModel.name})...`);
 					loader.onAbort = () => done(null);
 
-					const doGenerate = async () => {
-						const apiKey = await ctx.modelRegistry.getApiKey(handoffModel);
-						const userMessage: Message = {
-							role: "user",
-							content: [
-								{
-									type: "text",
-									text: buildExtractionPrompt(conversationText, goal),
-								},
-							],
-							timestamp: Date.now(),
-						};
-
-						const response = await complete(
-							handoffModel,
-							{ messages: [userMessage], tools: [HANDOFF_TOOL] },
-							{ apiKey, signal: loader.signal, toolChoice: "any" },
-						);
-
-						if (response.stopReason === "aborted") return null;
-
-						const extraction = extractToolCallArgs(response);
-						if (!extraction) return null;
-
-						return assembleHandoffPrompt(sessionId, extraction, goal);
-					};
-
-					doGenerate()
+					generateHandoffPrompt(ctx, handoffModel, goal, loader.signal)
 						.then(done)
 						.catch((err) => {
 							console.error("handoff generation failed:", err);
@@ -302,34 +316,68 @@ export default function (pi: ExtensionAPI) {
 			const prompt = edited;
 			const parent = parentSessionFile;
 
-			// clear state before session switch
-			storedHandoffPrompt = null;
-			handoffPending = false;
-			generating = false;
-			ctx.ui.setStatus("handoff", "");
-			pi.events.emit("editor:remove-label", { key: "handoff" });
-
-			const switchResult = await ctx.newSession({ parentSession: parent });
-
-			if (switchResult.cancelled) {
+			const switched = await executeHandoff(prompt, parent, ctx);
+			if (!switched) {
 				// restore state if user cancels
 				storedHandoffPrompt = prompt;
 				handoffPending = true;
 				ctx.ui.notify("session switch cancelled", "info");
-				return;
 			}
-
-			// send the handoff prompt as the first message — agent starts immediately
-			pi.sendUserMessage(prompt);
 		},
 	});
 
 	// reset state on manual session switch
-	pi.on("session_switch", async (_event, _ctx) => {
+	pi.on("session_switch", async (_event, ctx) => {
 		storedHandoffPrompt = null;
 		handoffPending = false;
 		generating = false;
 		pi.events.emit("editor:remove-label", { key: "handoff" });
+		ctx.ui.setWidget("handoff-provenance", undefined);
+	});
+
+	// --- handoff tool: agent-invokable session transfer ---
+	pi.registerTool({
+		name: "handoff",
+		label: "Handoff",
+		description:
+			"Transfer context to a new session. Generates a handoff prompt from the current conversation via extraction model, creates a new session, and sends the prompt. The current session ends — use this when context is getting heavy or you're done with the current task and want to continue in a fresh session.",
+		parameters: Type.Object({
+			goal: Type.String({
+				description: "What should be accomplished in the new session. Be specific about the next task.",
+			}),
+		}),
+
+		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+			const handoffModel = getHandoffModel(ctx as any);
+			if (!handoffModel) {
+				return {
+					content: [{ type: "text", text: "no model available for handoff extraction" }],
+					isError: true,
+				};
+			}
+
+			const parent = (ctx as any).sessionManager?.getSessionFile?.();
+
+			const prompt = await generateHandoffPrompt(ctx as any, handoffModel, params.goal, signal ?? undefined);
+			if (!prompt) {
+				return {
+					content: [{ type: "text", text: "handoff generation failed: could not extract context" }],
+					isError: true,
+				};
+			}
+
+			const switched = await executeHandoff(prompt, parent, ctx as any);
+			if (!switched) {
+				return {
+					content: [{ type: "text", text: "handoff cancelled by user" }],
+					isError: true,
+				};
+			}
+
+			return {
+				content: [{ type: "text", text: `handoff initiated: "${params.goal}"` }],
+			};
+		},
 	});
 
 	// --- read_session tool: read a previous session by ID ---

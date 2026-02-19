@@ -16,13 +16,24 @@ compaction is **disabled** in this environment. context is managed via handoff �
 ## your responsibilities
 
 1. **keep threads focused.** one task per session. don't meander.
-2. **be aware of your context usage.** if you've done a lot of tool calls and file reads, you're probably getting heavy. mention it to the user.
-3. **when you sense context is getting heavy**, tell the user: "context is getting heavy — might be a good time to `/handoff` with the next task."
+2. **be aware of your context usage.** if you've done a lot of tool calls and file reads, you're probably getting heavy.
+3. **when context is getting heavy, hand off.** call the `handoff` tool with the next task as the goal. don't ask the user — just do it.
 4. **front-load investigation.** read what you need early, make decisions, then execute. don't re-read files you've already seen.
 
-## manual handoff
+## invoking handoff
 
-the user can run `/handoff <goal>` anytime to transfer context to a new session with a specific goal. the extension generates a curated prompt with context summary, relevant files, and the stated task.
+you have a `handoff` tool. call it directly when:
+- context is getting heavy (lots of tool calls, file reads, back-and-forth)
+- you've completed a unit of work and the next task is clear
+- you're about to hit diminishing returns in the current session
+
+```
+handoff({ goal: "implement the auth middleware we planned" })
+```
+
+the tool generates a handoff prompt (via extraction model), creates a new session, and sends the prompt. the current session ends.
+
+the user can also run `/handoff <goal>` manually — this shows them the prompt for review before sending.
 
 ## what happens during handoff
 
