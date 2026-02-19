@@ -192,6 +192,12 @@ export default function (pi: ExtensionAPI) {
 
 			ctx.ui.setEditorText("/handoff");
 			ctx.ui.setStatus("handoff", `⚡ handoff ready (${Math.round(usage.percent)}%)`);
+			pi.events.emit("editor:set-label", {
+				key: "handoff",
+				text: `⚡ handoff ready (${Math.round(usage.percent)}%)`,
+				position: "top",
+				align: "right",
+			});
 			ctx.ui.notify(
 				`context at ${Math.round(usage.percent)}% — handoff prompt generated. press enter to continue in a new session.`,
 				"warning",
@@ -301,6 +307,7 @@ export default function (pi: ExtensionAPI) {
 			handoffPending = false;
 			generating = false;
 			ctx.ui.setStatus("handoff", "");
+			pi.events.emit("editor:remove-label", { key: "handoff" });
 
 			const switchResult = await ctx.newSession({ parentSession: parent });
 
@@ -322,6 +329,7 @@ export default function (pi: ExtensionAPI) {
 		storedHandoffPrompt = null;
 		handoffPending = false;
 		generating = false;
+		pi.events.emit("editor:remove-label", { key: "handoff" });
 	});
 
 	// --- read_session tool: read a previous session by ID ---

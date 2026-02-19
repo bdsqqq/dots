@@ -12,6 +12,7 @@
   ],
   "extensions": [
     "~/.pi/agent/extensions/sub-agents",
+    "~/.pi/agent/extensions/editor.ts",
     "~/.pi/agent/extensions/handoff.ts"
   ],
   "compaction": {

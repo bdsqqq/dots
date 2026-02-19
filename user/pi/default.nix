@@ -23,6 +23,9 @@ in
       recursive = true;
     };
 
+    # editor extension — box-drawing borders with composable label slots via EventBus
+    home.file.".pi/agent/extensions/editor.ts".source = ./extensions/editor.ts;
+
     # handoff extension — replaces compaction with LLM-driven context transfer
     home.file.".pi/agent/extensions/handoff.ts".source = ./extensions/handoff.ts;
 
