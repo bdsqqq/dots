@@ -9,6 +9,25 @@ let
   homeDir = if isDarwin 
     then "/Users/bdsqqq" 
     else "/home/bdsqqq";
+
+  promptsFile = inputs.self + "/user/agents/prompts.json";
+  promptCount = 10;
+  promptIds = builtins.genList (i: builtins.toString i) promptCount;
+
+  unpackScript = ''
+    DEST="${homeDir}/.config/agents/prompts"
+    mkdir -p "$DEST"
+    find "$DEST" -maxdepth 1 -name '*.md' -delete 2>/dev/null || true
+    for i in $(seq 0 ${builtins.toString (promptCount - 1)}); do
+      FNAME_FILE="/run/secrets/prompt-''${i}-filename"
+      CONTENT_FILE="/run/secrets/prompt-''${i}-content"
+      [ -f "$FNAME_FILE" ] && [ -f "$CONTENT_FILE" ] || continue
+      FNAME=$(cat "$FNAME_FILE")
+      cp "$CONTENT_FILE" "$DEST/$FNAME"
+      chown bdsqqq "$DEST/$FNAME"
+      chmod 0400 "$DEST/$FNAME"
+    done
+  '';
 in
 {
   sops = {
@@ -27,7 +46,6 @@ in
       syncthing_gui_password = { owner = "bdsqqq"; };
       syncthing_gui_password_hash = { owner = "bdsqqq"; };
 
-      # axiom config - decrypted to ~/.axiom.toml
       "axiom.toml" = {
         sopsFile = inputs.self + "/.axiom.toml";
         format = "binary";
@@ -44,21 +62,33 @@ in
       };
     } // (
       let
-        promptDir = inputs.self + "/user/agents/prompts";
-        entries = builtins.readDir promptDir;
-        mdFiles = lib.filterAttrs (n: t: t == "regular" && lib.hasSuffix ".md" n) entries;
-        names = map (n: lib.removeSuffix ".md" n) (builtins.attrNames mdFiles);
-      in builtins.listToAttrs (map (name: {
-        name = "prompt-${name}";
-        value = {
-          sopsFile = promptDir + "/${name}.md";
-          format = "binary";
-          owner = "bdsqqq";
-          mode = "0400";
-        };
-      }) names)
+        mkSecrets = id: [
+          { name = "prompt-${id}-filename"; value = { sopsFile = promptsFile; format = "json"; key = "${id}/filename"; owner = "bdsqqq"; mode = "0400"; }; }
+          { name = "prompt-${id}-content";  value = { sopsFile = promptsFile; format = "json"; key = "${id}/content";  owner = "bdsqqq"; mode = "0400"; }; }
+        ];
+      in builtins.listToAttrs (builtins.concatMap mkSecrets promptIds)
     );
   };
-}
-
-
+} // (if isDarwin then {
+  launchd.daemons.sops-unpack-prompts = {
+    script = unpackScript;
+    serviceConfig = {
+      Label = "dev.bdsqqq.sops-unpack-prompts";
+      RunAtLoad = true;
+      KeepAlive.PathState."/run/secrets/prompt-0-filename" = true;
+      StandardOutPath = "/tmp/sops-unpack-prompts.log";
+      StandardErrorPath = "/tmp/sops-unpack-prompts-error.log";
+    };
+  };
+} else {
+  systemd.services.sops-unpack-prompts = {
+    description = "Unpack sops-encrypted prompts to ~/.config/agents/prompts";
+    after = [ "sops-install-secrets.service" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = unpackScript;
+  };
+})

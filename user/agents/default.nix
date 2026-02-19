@@ -1,9 +1,4 @@
 { lib, inputs, hostSystem ? null, config ? {}, ... }:
-let
-  promptEntries = builtins.readDir ./prompts;
-  promptNames = map (n: lib.removeSuffix ".md" n)
-    (builtins.attrNames (lib.filterAttrs (n: t: t == "regular" && lib.hasSuffix ".md" n) promptEntries));
-in
 {
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
     home.file = {
@@ -52,10 +47,8 @@ in
         recursive = true;
       };
 
-      # decrypted prompt files — sops secrets symlinked from /run/secrets/
-    } // builtins.listToAttrs (map (name: {
-      name = ".config/agents/prompts/${name}.md";
-      value.source = config.lib.file.mkOutOfStoreSymlink "/run/secrets/prompt-${name}";
-    }) promptNames);
+      # prompt files are unpacked by sops-unpack-prompts launchd daemon
+      # into ~/.config/agents/prompts/ — no home-manager management needed
+    };
   };
 }
