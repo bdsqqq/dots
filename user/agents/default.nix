@@ -1,17 +1,8 @@
 { lib, inputs, hostSystem ? null, config ? {}, ... }:
 let
-  promptFiles = [
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
-  ];
+  promptEntries = builtins.readDir ./prompts;
+  promptNames = map (n: lib.removeSuffix ".md" n)
+    (builtins.attrNames (lib.filterAttrs (n: t: t == "regular" && lib.hasSuffix ".md" n) promptEntries));
 in
 {
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
@@ -62,10 +53,9 @@ in
       };
 
       # decrypted prompt files — sops secrets symlinked from /run/secrets/
-      ".config/agents/prompts/README.md".source = ./prompts/README.md;
     } // builtins.listToAttrs (map (name: {
       name = ".config/agents/prompts/${name}.md";
       value.source = config.lib.file.mkOutOfStoreSymlink "/run/secrets/prompt-${name}";
-    }) promptFiles);
+    }) promptNames);
   };
 }

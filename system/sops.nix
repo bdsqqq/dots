@@ -44,27 +44,19 @@ in
       };
     } // (
       let
-        promptFiles = [
-          "REDACTED"
-          "REDACTED"
-          "REDACTED"
-          "REDACTED"
-          "REDACTED"
-          "REDACTED"
-          "REDACTED"
-          "REDACTED"
-          "REDACTED"
-          "REDACTED"
-        ];
+        promptDir = inputs.self + "/user/agents/prompts";
+        entries = builtins.readDir promptDir;
+        mdFiles = lib.filterAttrs (n: t: t == "regular" && lib.hasSuffix ".md" n) entries;
+        names = map (n: lib.removeSuffix ".md" n) (builtins.attrNames mdFiles);
       in builtins.listToAttrs (map (name: {
         name = "prompt-${name}";
         value = {
-          sopsFile = inputs.self + "/user/agents/prompts/${name}.md";
+          sopsFile = promptDir + "/${name}.md";
           format = "binary";
           owner = "bdsqqq";
           mode = "0400";
         };
-      }) promptFiles)
+      }) names)
     );
   };
 }
