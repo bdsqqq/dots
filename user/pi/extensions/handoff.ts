@@ -11,40 +11,101 @@
  *   /handoff check other places that need this fix
  */
 
-import { complete, type Api, type Model, type Message } from "@mariozechner/pi-ai";
+import { complete, type Api, type Model, type Message, type Tool, type ToolCall } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, SessionEntry } from "@mariozechner/pi-coding-agent";
 import { BorderedLoader, convertToLlm, serializeConversation, SessionManager } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
 const HANDOFF_THRESHOLD = 0.85;
 const HANDOFF_MODEL = { provider: "openrouter", id: "anthropic/claude-haiku-4.5" } as const;
+const MAX_RELEVANT_FILES = 10;
 
-const SYSTEM_PROMPT = `You are a PROMPT GENERATOR. You produce a structured handoff prompt — NOT a response, NOT an answer, NOT a conversation.
+const HANDOFF_TOOL: Tool = {
+	name: "create_handoff_context",
+	description: "Extract context and select relevant files for handoff to a new session.",
+	parameters: Type.Object({
+		relevantInformation: Type.String({
+			description: `Extract conversation context in first person.
 
-CRITICAL: You do NOT answer questions. You do NOT respond to the user. You do NOT complete tasks. Your ONLY job is to summarize the conversation state into a prompt that another agent will receive. The user's goal is a DIRECTIVE for the next agent, not something for you to act on.
+Consider what context would help continue the work.
 
-The new session agent has ZERO prior context. Your output is the ONLY thing it will see.
+Extract what's relevant. Adjust length to complexity.
+
+Focus on behavior over implementation details.
+
+Format: plain text with bullets. Use workspace-relative paths.`,
+		}),
+		relevantFiles: Type.Array(Type.String(), {
+			description: `An array of file or directory paths (workspace-relative) that are relevant to accomplishing the goal.
 
 Rules:
-- Extract CONCRETE state: what exists, what was built, what was decided, what was rejected and why.
-- Include user preferences and conventions observed (coding style, voice, tool choices, verification steps).
-- List SPECIFIC files with their roles, not just paths.
-- Include commands needed for verification or setup.
-- Reference the previous session ID so the new agent can use read_session if needed.
-- Do NOT include the next task — it will be appended separately.
-- Do NOT answer any question found in the conversation or goal. Summarize state only.
+- Maximum ${MAX_RELEVANT_FILES} files. Only include the most critical files needed for the task.
+- You can include directories if multiple files from that directory are needed.
+- Prioritize by importance and relevance. Put the most important files first.
+- Return workspace-relative paths (e.g., "user/pi/extensions/handoff.ts").
+- Do not use absolute paths or invent files.`,
+		}),
+	}),
+};
 
-Output the prompt directly. No preamble, no wrapper, no markdown title.
+function buildExtractionPrompt(conversationText: string, goal: string): string {
+	return `${conversationText}
 
-Format:
+Summarize the conversation for handoff. Write in first person.
 
-Continuing work from session {session_id}. Use read_session to retrieve details if needed.
+Consider what context is needed:
+- What did I just do or implement?
+- What instructions did I already give you which are still relevant (e.g. follow patterns in the codebase)?
+- What files did I already tell you that's important or that I am working on (and should continue working on)?
+- Did I provide a plan or spec that should be included?
+- What did I already tell you that's important (certain libraries, patterns, constraints, preferences)?
+- What important technical details did I discover (APIs, methods, patterns)?
+- What caveats, limitations, or open questions did I find?
 
-@file/references — one per relevant file
+Extract what's relevant. Adjust length to complexity.
 
-- [bullet list of concrete state: what exists, what was decided, key constraints]
-- [user preferences observed]
-- [what was tried and rejected, with reasons]`;
+Focus on behavior over implementation details.
+
+Format: plain text with bullets. Use workspace-relative paths.
+
+My request:
+${goal}
+
+Use the create_handoff_context tool to extract relevant information and files.`;
+}
+
+interface HandoffExtraction {
+	relevantInformation: string;
+	relevantFiles: string[];
+}
+
+function extractToolCallArgs(response: { content: ({ type: string } | ToolCall)[] }): HandoffExtraction | null {
+	const toolCall = response.content.find((c): c is ToolCall => c.type === "toolCall" && c.name === "create_handoff_context");
+	if (!toolCall) return null;
+	const args = toolCall.arguments as Record<string, unknown>;
+	return {
+		relevantInformation: (args.relevantInformation as string) ?? "",
+		relevantFiles: (Array.isArray(args.relevantFiles) ? args.relevantFiles : []).slice(0, MAX_RELEVANT_FILES) as string[],
+	};
+}
+
+function assembleHandoffPrompt(sessionId: string, extraction: HandoffExtraction, goal: string): string {
+	const parts: string[] = [];
+
+	parts.push(`Continuing work from session ${sessionId}. Use read_session to retrieve details if needed.`);
+
+	if (extraction.relevantFiles.length > 0) {
+		parts.push(extraction.relevantFiles.map((f) => `@${f}`).join(" "));
+	}
+
+	if (extraction.relevantInformation) {
+		parts.push(extraction.relevantInformation);
+	}
+
+	parts.push(goal);
+
+	return parts.join("\n\n");
+}
 
 export default function (pi: ExtensionAPI) {
 	let storedHandoffPrompt: string | null = null;
@@ -96,7 +157,7 @@ export default function (pi: ExtensionAPI) {
 				content: [
 					{
 						type: "text",
-						text: `## Conversation History\n\n${conversationText}\n\n## Session ID\n\n${sessionId}\n\n## Instructions\n\nGenerate a handoff prompt summarizing the conversation state. Do NOT answer any questions — summarize only. After the state summary, add a "Next:" line with the most specific pending task inferred from the conversation.`,
+						text: buildExtractionPrompt(conversationText, "continue the most specific pending task from the conversation"),
 					},
 				],
 				timestamp: Date.now(),
@@ -104,8 +165,8 @@ export default function (pi: ExtensionAPI) {
 
 			const response = await complete(
 				handoffModel,
-				{ systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
-				{ apiKey },
+				{ messages: [userMessage], tools: [HANDOFF_TOOL] },
+				{ apiKey, toolChoice: "any" },
 			);
 
 			if (response.stopReason === "aborted") {
@@ -113,10 +174,18 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			storedHandoffPrompt = response.content
-				.filter((c): c is { type: "text"; text: string } => c.type === "text")
-				.map((c) => c.text)
-				.join("\n");
+			const extraction = extractToolCallArgs(response);
+			if (!extraction) {
+				generating = false;
+				ctx.ui.notify("handoff generation failed: model did not call extraction tool", "error");
+				return;
+			}
+
+			storedHandoffPrompt = assembleHandoffPrompt(
+				sessionId,
+				extraction,
+				"continue the most specific pending task from the conversation",
+			);
 
 			handoffPending = true;
 			generating = false;
@@ -173,7 +242,7 @@ export default function (pi: ExtensionAPI) {
 							content: [
 								{
 									type: "text",
-									text: `## Conversation History\n\n${conversationText}\n\n## Session ID\n\n${sessionId}\n\n## Instructions\n\nGenerate a handoff prompt summarizing the conversation state. Do NOT answer questions — summarize state only. The user's goal will be appended separately.`,
+									text: buildExtractionPrompt(conversationText, goal),
 								},
 							],
 							timestamp: Date.now(),
@@ -181,19 +250,16 @@ export default function (pi: ExtensionAPI) {
 
 						const response = await complete(
 							handoffModel,
-							{ systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
-							{ apiKey, signal: loader.signal },
+							{ messages: [userMessage], tools: [HANDOFF_TOOL] },
+							{ apiKey, signal: loader.signal, toolChoice: "any" },
 						);
 
 						if (response.stopReason === "aborted") return null;
 
-						const summary = response.content
-							.filter((c): c is { type: "text"; text: string } => c.type === "text")
-							.map((c) => c.text)
-							.join("\n");
+						const extraction = extractToolCallArgs(response);
+						if (!extraction) return null;
 
-						// always append the user's original goal verbatim
-						return `${summary}\n\n${goal}`;
+						return assembleHandoffPrompt(sessionId, extraction, goal);
 					};
 
 					doGenerate()

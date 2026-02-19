@@ -26,10 +26,11 @@ the user can run `/handoff <goal>` anytime to transfer context to a new session 
 
 ## what happens during handoff
 
-1. conversation is serialized and sent to the LLM for summarization
-2. a focused prompt is generated: context + files + next task
-3. a new session is created with `parentSession` linking to the old one
-4. the prompt is sent as the first message — you start working immediately
+1. conversation is serialized and sent to a dedicated model (haiku 4.5)
+2. the model is forced to call a `create_handoff_context` tool that extracts structured output: `relevantInformation` (first-person context bullets) + `relevantFiles` (workspace-relative paths)
+3. the final prompt is assembled in code: session link → @file references → context bullets → goal
+4. a new session is created with `parentSession` linking to the old one
+5. the prompt is sent as the first message — you start working immediately
 
 ## session tools
 
