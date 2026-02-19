@@ -63,8 +63,8 @@ in
     } // (
       let
         mkSecrets = id: [
-          { name = "prompt-${id}-filename"; value = { sopsFile = promptsFile; format = "json"; key = "${id}/filename"; owner = "bdsqqq"; mode = "0400"; }; }
-          { name = "prompt-${id}-content";  value = { sopsFile = promptsFile; format = "json"; key = "${id}/content";  owner = "bdsqqq"; mode = "0400"; }; }
+          { name = "prompt-${id}-filename"; value = { sopsFile = promptsFile; format = "json"; key = "${id}-filename"; owner = "bdsqqq"; mode = "0400"; }; }
+          { name = "prompt-${id}-content";  value = { sopsFile = promptsFile; format = "json"; key = "${id}-content";  owner = "bdsqqq"; mode = "0400"; }; }
         ];
       in builtins.listToAttrs (builtins.concatMap mkSecrets promptIds)
     );
