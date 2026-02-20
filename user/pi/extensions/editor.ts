@@ -11,12 +11,12 @@
  * from the left edge, right labels from the right edge.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { CustomEditor, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@mariozechner/pi-coding-agent";
+import { CustomEditor, Theme, estimateTokens } from "@mariozechner/pi-coding-agent";
 import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
-import type { AssistantMessage } from "@mariozechner/pi-ai";
+import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { execSync } from "node:child_process";
 
 interface Label {
@@ -190,6 +190,45 @@ function shortenPath(cwd: string): string {
 	return cwd;
 }
 
+/**
+ * estimate context tokens from session entries using chars/4 heuristic.
+ * fallback when provider hasn't reported usage yet (e.g., after compaction).
+ */
+function estimateContextFromEntries(entries: SessionEntry[]): number {
+	let total = 0;
+	for (const entry of entries) {
+		switch (entry.type) {
+			case "message":
+				total += estimateTokens(entry.message as AgentMessage);
+				break;
+			case "custom_message": {
+				const content = entry.content;
+				const text = typeof content === "string"
+					? content
+					: content
+						.filter((c): c is TextContent => c.type === "text")
+						.map((c) => c.text)
+						.join("");
+				total += Math.ceil(text.length / 4);
+				break;
+			}
+			case "branch_summary":
+				// branch summaries have a `summary` field
+				if (entry.summary) {
+					total += Math.ceil(entry.summary.length / 4);
+				}
+				break;
+			case "compaction":
+				// compaction entries also have a `summary` field
+				if (entry.summary) {
+					total += Math.ceil(entry.summary.length / 4);
+				}
+				break;
+		}
+	}
+	return total;
+}
+
 function updateStatsLabels(editor: LabeledEditor, pi: ExtensionAPI, ctx: ExtensionContext): void {
 	// top-left: context usage + cost
 	const usage = ctx.getContextUsage();
@@ -204,9 +243,18 @@ function updateStatsLabels(editor: LabeledEditor, pi: ExtensionAPI, ctx: Extensi
 	}
 
 	const topLeftParts: string[] = [];
-	if (usage?.percent != null) {
+
+	// use provider-reported usage if available, otherwise estimate from entries
+	if (usage?.percent != null && usage.tokens != null) {
 		topLeftParts.push(`${Math.round(usage.percent)}% of ${formatTokens(usage.contextWindow)}`);
+	} else if (model?.contextWindow) {
+		// fallback: estimate tokens from session entries
+		const entries = ctx.sessionManager.getBranch();
+		const estimatedTokens = estimateContextFromEntries(entries);
+		const percent = (estimatedTokens / model.contextWindow) * 100;
+		topLeftParts.push(`~${Math.round(percent)}% of ${formatTokens(model.contextWindow)}`);
 	}
+
 	if (cost > 0) {
 		topLeftParts.push(`$${cost.toFixed(2)}`);
 	}
