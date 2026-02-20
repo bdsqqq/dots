@@ -13,7 +13,8 @@
   "extensions": [
     "~/.pi/agent/extensions/sub-agents",
     "~/.pi/agent/extensions/editor.ts",
-    "~/.pi/agent/extensions/handoff.ts"
+    "~/.pi/agent/extensions/handoff.ts",
+    "~/.pi/agent/extensions/session-name.ts"
   ],
   "compaction": {
     "enabled": false

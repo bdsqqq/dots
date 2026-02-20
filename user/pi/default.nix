@@ -29,6 +29,9 @@ in
     # handoff extension — replaces compaction with LLM-driven context transfer
     home.file.".pi/agent/extensions/handoff.ts".source = ./extensions/handoff.ts;
 
+    # session-name extension — auto-generates session titles from first user message
+    home.file.".pi/agent/extensions/session-name.ts".source = ./extensions/session-name.ts;
+
     # handoff skill — teaches the agent about context management via handoff
     home.file.".pi/agent/skills/handoff/SKILL.md".source = ./skills/handoff/SKILL.md;
 
