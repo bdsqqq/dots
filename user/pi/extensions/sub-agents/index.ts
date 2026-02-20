@@ -425,6 +425,8 @@ async function runSingleAgent(
 		args.push(`Task: ${task}`);
 		let wasAborted = false;
 
+		// --tools only gates built-in tools. PI_INCLUDE_TOOLS is read by
+		// tool-harness.ts to also filter extension tools via setActiveTools().
 		const spawnEnv = agent.tools ? { ...process.env, PI_INCLUDE_TOOLS: agent.tools.join(",") } : process.env;
 
 		const exitCode = await new Promise<number>((resolve) => {

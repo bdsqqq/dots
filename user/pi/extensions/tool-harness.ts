@@ -28,12 +28,13 @@ export default function (pi: ExtensionAPI) {
 
 	const applyFilter = () => pi.setActiveTools(allowed);
 
-	// filter after all extensions have registered their tools
 	pi.on("session_start", async () => {
 		applyFilter();
 	});
 
-	// re-filter before each agent turn in case registerTool re-added tools
+	// sub-agents/index.ts re-registers the subagent tool on before_agent_start
+	// to pick up project-scoped agents. re-registration may bypass a prior
+	// setActiveTools() call, so we re-apply the filter on the same event.
 	pi.on("before_agent_start", async () => {
 		applyFilter();
 	});
