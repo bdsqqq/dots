@@ -1,9 +1,5 @@
 {
-  "defaultProvider": "opencode",
-  "enabledModels": [
-    "opencode/*",
-    "openrouter/*"
-  ],
+  "defaultProvider": "openrouter",
   "skills": [
     "~/.config/agents/skills"
   ],
@@ -20,7 +16,7 @@
     "enabled": false
   },
   "lastChangelogVersion": "0.53.0",
-  "defaultModel": "glm-5-free",
+  "defaultModel": "kimi-k2-thinking",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "steeringMode": "all",
