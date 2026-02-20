@@ -393,12 +393,13 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_switch", async (_event, ctx) => {
-		editor = null;
+		// editor component persists across session switches, just update stats
 		branchUnsub?.();
 		branchUnsub = null;
 		gitBranch = null;
 		activeTools = 0;
 		ctx.ui.setWidget("activity", undefined);
 		ctx.ui.setWidget("git-changes", undefined);
+		if (editor) updateStatsLabels(editor, pi, ctx);
 	});
 }
