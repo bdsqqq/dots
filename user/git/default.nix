@@ -72,16 +72,8 @@ in
       (git-hunks { inherit pkgs; })
       
       # worktree workflow scripts
-      (mkScript {
-        inherit pkgs;
-        name = "wt";
-        src = ./_wt.sh;
-        substitutions = {
-          "@gh@" = "${gh}/bin/gh";
-          "@jq@" = "${jq}/bin/jq";
-          "@trash@" = "${trash-cli}/bin/trash-put";
-        };
-      })
+      # bun script - no substitutions needed (bun is self-contained)
+      (pkgs.writeScriptBin "wt" (builtins.readFile ./wt.ts))
       (mkScript {
         inherit pkgs;
         name = "g";
