@@ -10,15 +10,17 @@
     "~/.pi/agent/extensions/sub-agents",
     "~/.pi/agent/extensions/editor.ts",
     "~/.pi/agent/extensions/handoff.ts",
-    "~/.pi/agent/extensions/session-name.ts"
+    "~/.pi/agent/extensions/session-name.ts",
+    "~/.pi/agent/extensions/tool-harness.ts",
+    "~/.pi/agent/extensions/tools"
   ],
   "compaction": {
     "enabled": false
   },
-  "lastChangelogVersion": "0.53.0",
-  "defaultModel": "kimi-k2-thinking",
+  "lastChangelogVersion": "0.54.0",
+  "defaultModel": "z-ai/glm-5",
   "defaultThinkingLevel": "medium",
-  "hideThinkingBlock": true,
+  "hideThinkingBlock": false,
   "steeringMode": "all",
   "followUpMode": "all",
   "collapseChangelog": true,

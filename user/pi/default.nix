@@ -32,6 +32,15 @@ in
     # session-name extension — auto-generates session titles from first user message
     home.file.".pi/agent/extensions/session-name.ts".source = ./extensions/session-name.ts;
 
+    # tool-harness — gates extension tools via PI_INCLUDE_TOOLS env var
+    home.file.".pi/agent/extensions/tool-harness.ts".source = ./extensions/tool-harness.ts;
+
+    # tools extension — custom tool implementations + shared infrastructure (mutex, AGENTS.md, undo tracking)
+    home.file.".pi/agent/extensions/tools" = {
+      source = ./extensions/tools;
+      recursive = true;
+    };
+
     # handoff skill — teaches the agent about context management via handoff
     home.file.".pi/agent/skills/handoff/SKILL.md".source = ./skills/handoff/SKILL.md;
 
