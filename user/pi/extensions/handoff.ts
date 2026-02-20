@@ -190,6 +190,10 @@ export default function (pi: ExtensionAPI) {
 
 		if (response.stopReason === "aborted") return null;
 
+		if (response.stopReason === "error") {
+			throw new Error(response.errorMessage ?? "API request failed");
+		}
+
 		const extraction = extractToolCallArgs(response);
 		if (!extraction) return null;
 
