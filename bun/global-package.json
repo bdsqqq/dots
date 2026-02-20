@@ -4,7 +4,7 @@
   "private": true,
   "dependencies": {
     "@mariozechner/pi-coding-agent": "^0.53.0",
-    "@sourcegraph/amp": "0.0.1771599414-g156025",
+    "@sourcegraph/amp": "0.0.1771603678-gac9341",
     "agent-browser": "^0.10.0",
     "biome": "0.3.3",
     "npm": "11.10.0",
