@@ -244,8 +244,8 @@ function updateStatsLabels(editor: LabeledEditor, pi: ExtensionAPI, ctx: Extensi
 
 	const topLeftParts: string[] = [];
 
-	// use provider-reported usage if available, otherwise estimate from entries
-	if (usage?.percent != null && usage.tokens != null) {
+	// use provider-reported usage if available and meaningful, otherwise estimate from entries
+	if (usage?.percent != null && usage.tokens != null && usage.tokens > 0) {
 		topLeftParts.push(`${Math.round(usage.percent)}% of ${formatTokens(usage.contextWindow)}`);
 	} else if (model?.contextWindow) {
 		// fallback: estimate tokens from session entries
