@@ -3,16 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.53.0",
-    "@sourcegraph/amp": "0.0.1771603678-gac9341",
-    "agent-browser": "^0.10.0",
+    "@mariozechner/pi-coding-agent": "^0.54.0",
+    "@sourcegraph/amp": "0.0.1771617794-g7c5b43",
+    "agent-browser": "^0.13.0",
     "biome": "0.3.3",
-    "npm": "11.10.0",
-    "opencode-ai": "^1.2.6",
+    "npm": "11.10.1",
+    "opencode-ai": "^1.2.10",
     "openportal": "^0.1.25",
-    "turbo": "2.8.9",
+    "turbo": "2.8.10",
     "typescript": "5.9.3",
-    "vercel": "50.18.1"
+    "vercel": "50.22.1"
   },
   "trustedDependencies": [
     "agent-browser",
