@@ -107,8 +107,12 @@ function assembleHandoffPrompt(sessionId: string, extraction: HandoffExtraction,
 	return parts.join("\n\n");
 }
 
+const PROVENANCE_PREFIX = "↳ handed off from: ";
+const PROVENANCE_ELLIPSIS = "…";
+
 /** get a short description from a parent session file for provenance display */
-function getParentDescription(parentPath: string): string {
+function getParentDescription(parentPath: string, maxWidth: number): string {
+	const budget = maxWidth - PROVENANCE_PREFIX.length - PROVENANCE_ELLIPSIS.length;
 	try {
 		const session = SessionManager.open(parentPath);
 		const branch = session.getBranch();
@@ -121,7 +125,7 @@ function getParentDescription(parentPath: string): string {
 				.map((c) => c.text)
 				.join(" ")
 				.trim();
-			if (text) return text.length > 80 ? text.slice(0, 80) + "…" : text;
+			if (text) return text.length > budget ? text.slice(0, Math.max(0, budget)) + PROVENANCE_ELLIPSIS : text;
 		}
 		// fallback: session id from header
 		const header = session.getHeader();
@@ -132,8 +136,13 @@ function getParentDescription(parentPath: string): string {
 }
 
 function showProvenance(ctx: ExtensionContext, parentPath: string): void {
-	const desc = getParentDescription(parentPath);
-	ctx.ui.setWidget("handoff-provenance", [`↳ handed off from: ${desc}`]);
+	ctx.ui.setWidget("handoff-provenance", (_tui, _theme) => ({
+		render(width: number): string[] {
+			const desc = getParentDescription(parentPath, width);
+			return [` ${PROVENANCE_PREFIX}${desc}`];
+		},
+		invalidate() {},
+	}));
 }
 
 export default function (pi: ExtensionAPI) {

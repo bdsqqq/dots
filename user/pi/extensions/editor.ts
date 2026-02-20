@@ -296,30 +296,37 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("agent_start", async (_event, ctx) => {
 		activeTools = 0;
-		ctx.ui.setStatus("activity", "≈ thinking...");
+		ctx.ui.setWidget("activity", [" ≈ thinking..."], { placement: "belowEditor" });
 	});
 
 	pi.on("tool_execution_start", async (event, ctx) => {
 		activeTools++;
-		ctx.ui.setStatus("activity", `≈ ${event.toolName}...  Esc to cancel`);
+		ctx.ui.setWidget("activity", [` ≈ ${event.toolName}...  Esc to cancel`], { placement: "belowEditor" });
 	});
 
 	pi.on("tool_execution_end", async (_event, ctx) => {
 		activeTools = Math.max(0, activeTools - 1);
 		if (activeTools === 0) {
-			ctx.ui.setStatus("activity", "≈ thinking...");
+			ctx.ui.setWidget("activity", [" ≈ thinking..."], { placement: "belowEditor" });
 		}
+		if (editor) updateStatsLabels(editor, pi, ctx);
 	});
 
 	pi.on("agent_end", async (_event, ctx) => {
 		activeTools = 0;
-		ctx.ui.setStatus("activity", "");
+		ctx.ui.setWidget("activity", undefined);
 		if (editor) updateStatsLabels(editor, pi, ctx);
 
-		// update git changes widget
+		// update git changes widget — right-aligned
 		const diffStats = getGitDiffStats(ctx.cwd);
 		if (diffStats) {
-			ctx.ui.setWidget("git-changes", [diffStats], { placement: "belowEditor" });
+			ctx.ui.setWidget("git-changes", (_tui, _theme) => ({
+				render(width: number): string[] {
+					const padding = Math.max(0, width - visibleWidth(diffStats));
+					return [" ".repeat(padding) + diffStats];
+				},
+				invalidate() {},
+			}), { placement: "belowEditor" });
 		} else {
 			ctx.ui.setWidget("git-changes", undefined);
 		}
@@ -343,7 +350,7 @@ export default function (pi: ExtensionAPI) {
 		branchUnsub = null;
 		gitBranch = null;
 		activeTools = 0;
-		ctx.ui.setStatus("activity", "");
+		ctx.ui.setWidget("activity", undefined);
 		ctx.ui.setWidget("git-changes", undefined);
 	});
 }
