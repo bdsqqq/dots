@@ -14,6 +14,7 @@
 import { complete, type Api, type Model, type Message, type Tool, type ToolCall } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@mariozechner/pi-coding-agent";
 import { BorderedLoader, convertToLlm, serializeConversation, SessionManager } from "@mariozechner/pi-coding-agent";
+import { truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
 const HANDOFF_THRESHOLD = 0.85;
@@ -138,8 +139,8 @@ function getParentDescription(parentPath: string, maxWidth: number): string {
 function showProvenance(ctx: ExtensionContext, parentPath: string): void {
 	ctx.ui.setWidget("handoff-provenance", (_tui, _theme) => ({
 		render(width: number): string[] {
-			const desc = getParentDescription(parentPath, width);
-			return [` ${PROVENANCE_PREFIX}${desc}`];
+			const desc = getParentDescription(parentPath, width - 1); // -1 for leading space
+			return [truncateToWidth(` ${PROVENANCE_PREFIX}${desc}`, width)];
 		},
 		invalidate() {},
 	}));
