@@ -22,5 +22,9 @@
   "lastChangelogVersion": "0.53.0",
   "defaultModel": "glm-5-free",
   "defaultThinkingLevel": "medium",
-  "hideThinkingBlock": true
+  "hideThinkingBlock": true,
+  "steeringMode": "all",
+  "followUpMode": "all",
+  "collapseChangelog": true,
+  "doubleEscapeAction": "tree"
 }
