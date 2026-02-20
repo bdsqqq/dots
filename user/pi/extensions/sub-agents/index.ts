@@ -425,8 +425,10 @@ async function runSingleAgent(
 		args.push(`Task: ${task}`);
 		let wasAborted = false;
 
+		const spawnEnv = agent.tools ? { ...process.env, PI_INCLUDE_TOOLS: agent.tools.join(",") } : process.env;
+
 		const exitCode = await new Promise<number>((resolve) => {
-			const proc = spawn("pi", args, { cwd: cwd ?? defaultCwd, shell: false, stdio: ["ignore", "pipe", "pipe"] });
+			const proc = spawn("pi", args, { cwd: cwd ?? defaultCwd, shell: false, stdio: ["ignore", "pipe", "pipe"], env: spawnEnv });
 			let buffer = "";
 
 			const processLine = (line: string) => {
