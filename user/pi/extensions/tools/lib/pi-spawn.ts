@@ -49,6 +49,17 @@ export interface PiSpawnConfig {
 	onUpdate?: (result: PiSpawnResult) => void;
 	sessionId?: string;
 	repo?: string;
+	/**
+	 * inject a follow-up user message after the agent's first end_turn.
+	 *
+	 * uses pi's RPC mode instead of print mode. the agent explores with
+	 * tools until it stops (end_turn), then receives this message as a
+	 * new user turn. the process is killed after the second end_turn.
+	 *
+	 * primary use case: code_review — agent explores the diff first,
+	 * then receives the report format instructions (q38).
+	 */
+	followUp?: string;
 }
 
 // --- interpolation (reimplemented; can't import sub-agents/) ---
@@ -147,7 +158,11 @@ export function readAgentPrompt(filename: string): string {
 // --- spawn ---
 
 export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
-	const args: string[] = ["--mode", "json", "-p", "--no-session"];
+	const useRpc = !!config.followUp;
+	const args: string[] = useRpc
+		? ["--mode", "rpc", "--no-session"]
+		: ["--mode", "json", "-p", "--no-session"];
+
 	if (config.model) args.push("--model", config.model);
 	if (config.builtinTools && config.builtinTools.length > 0) {
 		args.push("--tools", config.builtinTools.join(","));
@@ -174,7 +189,10 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 			args.push("--append-system-prompt", tmpPromptPath);
 		}
 
-		args.push(`Task: ${config.task}`);
+		// in print mode, task is a CLI arg. in RPC mode, sent via stdin prompt command.
+		if (!useRpc) {
+			args.push(`Task: ${config.task}`);
+		}
 
 		const spawnEnv: Record<string, string | undefined> = {
 			...process.env, PI_READ_COMPACT: "1",
@@ -188,9 +206,19 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 		const exitCode = await new Promise<number>((resolve) => {
 			const proc = spawn("pi", args, {
 				cwd: config.cwd, shell: false,
-				stdio: ["ignore", "pipe", "pipe"],
+				stdio: [useRpc ? "pipe" : "ignore", "pipe", "pipe"],
 				env: spawnEnv,
 			});
+
+			// RPC state: track end_turns to know when to inject follow_up
+			let followUpSent = false;
+			let endTurnCount = 0;
+
+			// send initial prompt via RPC stdin
+			if (useRpc && proc.stdin) {
+				const promptCmd = JSON.stringify({ type: "prompt", message: `Task: ${config.task}` });
+				proc.stdin.write(promptCmd + "\n");
+			}
 
 			let buffer = "";
 
@@ -198,6 +226,9 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 				if (!line.trim()) return;
 				let event: any;
 				try { event = JSON.parse(line); } catch { return; }
+
+				// skip RPC protocol responses (acks for prompt/follow_up/abort commands)
+				if (event.type === "response") return;
 
 				if (event.type === "message_end" && event.message) {
 					const msg = event.message as Message;
@@ -217,6 +248,26 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 						if (!result.model && (msg as any).model) result.model = (msg as any).model;
 						if ((msg as any).stopReason) result.stopReason = (msg as any).stopReason;
 						if ((msg as any).errorMessage) result.errorMessage = (msg as any).errorMessage;
+
+						// RPC follow-up injection: after first end_turn, send the follow-up message
+						if (useRpc && (msg as any).stopReason === "end_turn") {
+							endTurnCount++;
+							if (endTurnCount === 1 && !followUpSent && config.followUp) {
+								followUpSent = true;
+								const followUpCmd = JSON.stringify({ type: "follow_up", message: config.followUp });
+								proc.stdin?.write(followUpCmd + "\n");
+							} else if (endTurnCount >= 2 || followUpSent) {
+								// follow-up turn complete — terminate the RPC process
+								proc.kill("SIGTERM");
+								setTimeout(() => { if (!proc.killed) proc.kill("SIGKILL"); }, 5000);
+							}
+						}
+
+						// RPC: if agent errors before follow-up, terminate
+						if (useRpc && ((msg as any).stopReason === "error" || (msg as any).stopReason === "aborted")) {
+							proc.kill("SIGTERM");
+							setTimeout(() => { if (!proc.killed) proc.kill("SIGKILL"); }, 5000);
+						}
 					}
 
 					if (config.onUpdate) config.onUpdate({ ...result });
@@ -263,6 +314,10 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 		if (wasAborted) {
 			result.exitCode = 1;
 			result.stopReason = "aborted";
+		}
+		// RPC processes are killed intentionally — don't treat SIGTERM exit as error
+		if (useRpc && result.exitCode !== 0 && result.stopReason === "end_turn") {
+			result.exitCode = 0;
 		}
 		return result;
 	} finally {
