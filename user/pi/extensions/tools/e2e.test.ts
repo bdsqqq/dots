@@ -298,6 +298,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
 		expect(text).toContain("Task");
 		expect(text).toContain("look_at");
 		expect(text).toContain("read_web_page");
+		expect(text).toContain("web_search");
 
 		const c = getCosts(events);
 		costs.push({ test: "registration", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
@@ -463,6 +464,32 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
 
 		const c = getCosts(events);
 		costs.push({ test: "read_web_page", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
+	}, 60_000);
+
+	it("web_search: searches via Parallel AI and returns results", async () => {
+		const t0 = Date.now();
+		const { events, exitCode } = await runPi(
+			'Use the web_search tool with objective "What is Nix package manager?" and search_queries ["nix", "package manager"]. Just call the tool, nothing else.',
+		);
+		expect(exitCode).toBe(0);
+
+		const calls = getToolCalls(events);
+		const wsCalls = calls.filter(c => c.name === "web_search");
+		expect(wsCalls.length).toBeGreaterThanOrEqual(1);
+		expect(wsCalls[0].args.objective).toBeTruthy();
+
+		const results = getToolResults(events);
+		const wsResults = results.filter(r => r.toolName === "web_search");
+		expect(wsResults.length).toBeGreaterThanOrEqual(1);
+
+		const result = wsResults[0];
+		expect(result.isError).toBe(false);
+		// should contain URLs and content about nix
+		expect(result.content).toContain("http");
+		expect(result.content.length).toBeGreaterThan(100);
+
+		const c = getCosts(events);
+		costs.push({ test: "web_search", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
 	}, 60_000);
 
 	describe.skipIf(!tmuxAvailable)("TUI rendering", () => {
