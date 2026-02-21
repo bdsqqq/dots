@@ -29,6 +29,7 @@ import { createFinderTool } from "./finder";
 import { createOracleTool } from "./oracle";
 import { createTaskTool } from "./task";
 import { createLibrarianTool } from "./librarian";
+import { createCodeReviewTool } from "./code-review";
 import { createLookAtTool } from "./look-at";
 import { createReadWebPageTool } from "./read-web-page";
 import { createWebSearchTool } from "./web-search";
@@ -63,6 +64,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool(createOracleTool());
 	pi.registerTool(createTaskTool());
 	pi.registerTool(createLibrarianTool());
+	pi.registerTool(createCodeReviewTool());
 	pi.registerTool(createLookAtTool());
 	pi.registerTool(createReadWebPageTool());
 	pi.registerTool(createWebSearchTool());

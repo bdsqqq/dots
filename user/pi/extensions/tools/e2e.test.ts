@@ -299,6 +299,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
 		expect(text).toContain("look_at");
 		expect(text).toContain("read_web_page");
 		expect(text).toContain("web_search");
+		expect(text).toContain("code_review");
 
 		const c = getCosts(events);
 		costs.push({ test: "registration", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
@@ -491,6 +492,35 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
 		const c = getCosts(events);
 		costs.push({ test: "web_search", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
 	}, 60_000);
+
+	it("code_review: sub-agent reviews a diff and produces XML report", async () => {
+		const t0 = Date.now();
+		const { events, exitCode } = await runPi(
+			'Use the code_review tool with diff_description "the last commit on the current branch (git diff HEAD~1)". Just call the tool, nothing else.',
+		);
+		expect(exitCode).toBe(0);
+
+		const calls = getToolCalls(events);
+		const crCalls = calls.filter(c => c.name === "code_review");
+		expect(crCalls.length).toBeGreaterThanOrEqual(1);
+		expect(crCalls[0].args.diff_description).toBeTruthy();
+
+		const results = getToolResults(events);
+		const crResults = results.filter(r => r.toolName === "code_review");
+		expect(crResults.length).toBeGreaterThanOrEqual(1);
+
+		const result = crResults[0];
+		expect(result.exitCode).toBe(0);
+		expect(result.isError).toBe(false);
+		expect(result.model).toContain("gemini");
+		// should produce XML review output
+		expect(result.content).toContain("<codeReview>");
+		expect(result.content).toContain("<comment>");
+		expect(result.usage?.turns).toBeGreaterThanOrEqual(1);
+
+		const c = getCosts(events);
+		costs.push({ test: "code_review", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
+	}, 180_000);
 
 	describe.skipIf(!tmuxAvailable)("TUI rendering", () => {
 		const windowName = `pi-e2e-tui-${Date.now()}`;
