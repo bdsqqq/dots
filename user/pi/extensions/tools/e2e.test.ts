@@ -297,6 +297,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
 		expect(text).toContain("oracle");
 		expect(text).toContain("Task");
 		expect(text).toContain("look_at");
+		expect(text).toContain("read_web_page");
 
 		const c = getCosts(events);
 		costs.push({ test: "registration", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
@@ -439,6 +440,30 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
 		const c = getCosts(events);
 		costs.push({ test: "look_at (text)", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
 	}, 120_000);
+
+	it("read_web_page: fetches a URL and returns content", async () => {
+		const t0 = Date.now();
+		const { events, exitCode } = await runPi(
+			'Use the read_web_page tool to read "https://example.com". Just call the tool, nothing else.',
+		);
+		expect(exitCode).toBe(0);
+
+		const calls = getToolCalls(events);
+		const rwpCalls = calls.filter(c => c.name === "read_web_page");
+		expect(rwpCalls.length).toBeGreaterThanOrEqual(1);
+
+		const results = getToolResults(events);
+		const rwpResults = results.filter(r => r.toolName === "read_web_page");
+		expect(rwpResults.length).toBeGreaterThanOrEqual(1);
+
+		const result = rwpResults[0];
+		expect(result.isError).toBe(false);
+		// example.com always contains "Example Domain"
+		expect(result.content).toContain("Example Domain");
+
+		const c = getCosts(events);
+		costs.push({ test: "read_web_page", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
+	}, 60_000);
 
 	describe.skipIf(!tmuxAvailable)("TUI rendering", () => {
 		const windowName = `pi-e2e-tui-${Date.now()}`;

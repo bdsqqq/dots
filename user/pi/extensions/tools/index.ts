@@ -30,6 +30,7 @@ import { createOracleTool } from "./oracle";
 import { createTaskTool } from "./task";
 import { createLibrarianTool } from "./librarian";
 import { createLookAtTool } from "./look-at";
+import { createReadWebPageTool } from "./read-web-page";
 import {
 	createReadGithubTool,
 	createSearchGithubTool,
@@ -62,6 +63,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool(createTaskTool());
 	pi.registerTool(createLibrarianTool());
 	pi.registerTool(createLookAtTool());
+	pi.registerTool(createReadWebPageTool());
 
 	// github tools — used by librarian sub-agent, also available to main agent
 	pi.registerTool(createReadGithubTool());
