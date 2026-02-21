@@ -1,12 +1,12 @@
 /**
- * e2e tests for dedicated sub-agent tools (finder, oracle, Task).
+ * e2e tests for dedicated sub-agent tools (finder, oracle, Task, look_at).
  *
  * spawns `pi --mode json -p --no-session` for each test and parses
  * the NDJSON event stream. validates registration, sub-agent spawn,
  * result collection, model routing, and TUI rendering.
  *
  * these tests call real AI models.
- * estimated cost: ~$0.08 per full run.
+ * estimated cost: ~$0.10 per full run.
  *
  * usage:
  *   PI_E2E=1 bun test user/pi/extensions/tools/e2e.test.ts
@@ -286,7 +286,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
 		console.log(sep);
 	});
 
-	it("registration: finder, oracle, Task visible to model", async () => {
+	it("registration: finder, oracle, Task, look_at visible to model", async () => {
 		const t0 = Date.now();
 		const { events, exitCode } = await runPi(
 			"List every tool you have available. Just the names, one per line.",
@@ -296,6 +296,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
 		expect(text).toContain("finder");
 		expect(text).toContain("oracle");
 		expect(text).toContain("Task");
+		expect(text).toContain("look_at");
 
 		const c = getCosts(events);
 		costs.push({ test: "registration", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
@@ -388,6 +389,56 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
 		const c = getCosts(events);
 		costs.push({ test: "oracle", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
 	}, 180_000);
+
+	it("look_at: sub-agent analyzes an image via gemini flash", async () => {
+		const t0 = Date.now();
+		// use a known image in the repo
+		const imagePath = resolve(CWD, "assets/wallpaper.jpg");
+		const { events, exitCode } = await runPi(
+			`Use the look_at tool to analyze the file at "${imagePath}". Set objective to "Describe what this image shows" and context to "We are checking that the look_at tool can analyze images."`,
+		);
+		expect(exitCode).toBe(0);
+
+		const calls = getToolCalls(events);
+		const lookAtCalls = calls.filter(c => c.name === "look_at");
+		expect(lookAtCalls.length).toBeGreaterThanOrEqual(1);
+
+		const results = getToolResults(events);
+		const lookAtResults = results.filter(r => r.toolName === "look_at");
+		expect(lookAtResults.length).toBeGreaterThanOrEqual(1);
+
+		const result = lookAtResults[0];
+		expect(result.exitCode).toBe(0);
+		expect(result.isError).toBe(false);
+		expect(result.model).toContain("gemini");
+		// the model should describe visual content
+		expect(result.content.length).toBeGreaterThan(50);
+
+		const c = getCosts(events);
+		costs.push({ test: "look_at", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
+	}, 120_000);
+
+	it("look_at: sub-agent extracts info from a text file", async () => {
+		const t0 = Date.now();
+		const filePath = resolve(CWD, "flake.nix");
+		const { events, exitCode } = await runPi(
+			`Use the look_at tool to analyze the file at "${filePath}". Set objective to "List every flake input name" and context to "We want to know what dependencies this nix flake has."`,
+		);
+		expect(exitCode).toBe(0);
+
+		const results = getToolResults(events);
+		const lookAtResults = results.filter(r => r.toolName === "look_at");
+		expect(lookAtResults.length).toBeGreaterThanOrEqual(1);
+
+		const result = lookAtResults[0];
+		expect(result.exitCode).toBe(0);
+		expect(result.isError).toBe(false);
+		// should mention nixpkgs since it's a known input
+		expect(result.content.toLowerCase()).toContain("nixpkgs");
+
+		const c = getCosts(events);
+		costs.push({ test: "look_at (text)", parent: c.parent, subAgent: c.subAgent, total: c.parent + c.subAgent, durationMs: Date.now() - t0 });
+	}, 120_000);
 
 	describe.skipIf(!tmuxAvailable)("TUI rendering", () => {
 		const windowName = `pi-e2e-tui-${Date.now()}`;
