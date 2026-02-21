@@ -22,6 +22,9 @@ import { createCreateFileTool } from "./create-file";
 import { createGrepTool } from "./grep";
 import { createGlobTool } from "./glob";
 import { createBashTool } from "./bash";
+import { createUndoEditTool } from "./undo-edit";
+import { createFormatFileTool } from "./format-file";
+import { createSkillTool } from "./skill";
 
 export { withFileLock } from "./lib/mutex";
 export { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
@@ -37,4 +40,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool(createGrepTool());
 	pi.registerTool(createGlobTool());
 	pi.registerTool(createBashTool());
+	pi.registerTool(createUndoEditTool());
+	pi.registerTool(createFormatFileTool());
+	pi.registerTool(createSkillTool());
 }
