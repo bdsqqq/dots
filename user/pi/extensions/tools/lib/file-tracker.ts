@@ -1,119 +1,162 @@
 /**
- * file change tracker — stores pre-edit content for undo_edit.
+ * file change tracker — persists before/after content to disk for undo_edit.
  *
- * persistence strategy: in-memory map for fast access, backed by
- * pi's session entries (appendEntry) for cross-restart durability.
- * the caller (tool implementation) is responsible for calling
- * appendEntry after trackBeforeEdit — this module doesn't hold
- * a reference to the ExtensionAPI.
+ * mirrors the standard approach: each edit writes a JSON file to
+ * ~/.pi/file-changes/{sessionId}/{toolCallId}.json containing
+ * the full before/after content and a unified diff.
  *
- * on session_start, call restoreFromEntries() with the current
- * branch to rebuild in-memory state from persisted entries.
- *
- * only the last edit per file is tracked (single-level undo),
- * matching expected behavior.
+ * branch awareness comes from the conversation tree, not from
+ * this module. tool call IDs live in assistant messages — when
+ * the user navigates branches, only tool calls on the active
+ * branch are visible. the undo_edit tool filters by active
+ * tool call IDs before consulting the disk.
  */
 
 import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
-/** shape of the data persisted via pi.appendEntry("undo-edit", ...) */
-export interface UndoEntryData {
-	filePath: string;
-	previousContent: string;
-}
+const FILE_CHANGES_DIR = path.join(os.homedir(), ".pi", "file-changes");
 
-/** custom entry type string used with pi.appendEntry */
-export const UNDO_ENTRY_TYPE = "undo-edit";
-
-/** sentinel appended when an undo is consumed, so restore skips it */
-export const UNDO_CONSUMED_TYPE = "undo-edit-consumed";
-
-interface EditRecord {
-	previousContent: string;
+export interface FileChange {
+	/** unique id for this change record */
+	id: string;
+	/** file:// URI of the changed file */
+	uri: string;
+	/** full content before the edit */
+	before: string;
+	/** full content after the edit */
+	after: string;
+	/** unified diff */
+	diff: string;
+	/** true if this was a newly created file */
+	isNewFile: boolean;
+	/** true if undo_edit has reverted this change */
+	reverted: boolean;
+	/** epoch ms when the edit occurred */
 	timestamp: number;
 }
 
-const edits = new Map<string, EditRecord>();
+function sessionDir(sessionId: string): string {
+	return path.join(FILE_CHANGES_DIR, sessionId);
+}
 
-/**
- * capture file content before an edit. call this BEFORE modifying
- * the file. after calling this, persist with:
- *   pi.appendEntry(UNDO_ENTRY_TYPE, getUndoRecord(filePath))
- */
-export function trackBeforeEdit(filePath: string): void {
-	try {
-		const content = fs.readFileSync(filePath, "utf-8");
-		edits.set(filePath, { previousContent: content, timestamp: Date.now() });
-	} catch {
-		// file doesn't exist yet (create_file) — empty string means
-		// "undo should delete the file" (or restore to empty)
-		edits.set(filePath, { previousContent: "", timestamp: Date.now() });
+function changePath(sessionId: string, toolCallId: string): string {
+	return path.join(sessionDir(sessionId), `${toolCallId}.json`);
+}
+
+/** ensure the session's file-changes directory exists. */
+function ensureDir(sessionId: string): void {
+	const dir = sessionDir(sessionId);
+	if (!fs.existsSync(dir)) {
+		fs.mkdirSync(dir, { recursive: true });
 	}
 }
 
-/** get the tracked record for persistence via appendEntry. */
-export function getUndoRecord(filePath: string): UndoEntryData | null {
-	const record = edits.get(filePath);
-	if (!record) return null;
-	return { filePath, previousContent: record.previousContent };
-}
-
-/** check if an undo is available for this file. */
-export function hasUndo(filePath: string): boolean {
-	return edits.has(filePath);
-}
-
 /**
- * restore the file to its pre-edit state. returns current and restored
- * content for diff generation. after calling this, persist with:
- *   pi.appendEntry(UNDO_CONSUMED_TYPE, { filePath })
+ * record a file change to disk. call after performing the edit.
+ * the toolCallId comes from the execute() function's first argument.
  */
-export function undoEdit(filePath: string): { currentContent: string; restoredContent: string } | null {
-	const record = edits.get(filePath);
-	if (!record) return null;
+export function saveChange(
+	sessionId: string,
+	toolCallId: string,
+	change: Omit<FileChange, "id" | "reverted">,
+): void {
+	ensureDir(sessionId);
+	const record: FileChange = {
+		...change,
+		id: crypto.randomUUID(),
+		reverted: false,
+	};
+	fs.writeFileSync(changePath(sessionId, toolCallId), JSON.stringify(record, null, 2), "utf-8");
+}
 
-	let currentContent = "";
+/** read a change record from disk. returns null if not found. */
+export function loadChange(sessionId: string, toolCallId: string): FileChange | null {
+	const p = changePath(sessionId, toolCallId);
+	if (!fs.existsSync(p)) return null;
 	try {
-		currentContent = fs.readFileSync(filePath, "utf-8");
+		return JSON.parse(fs.readFileSync(p, "utf-8")) as FileChange;
 	} catch {
-		// file was deleted after edit — still allow undo
+		return null;
 	}
-
-	fs.writeFileSync(filePath, record.previousContent, "utf-8");
-	edits.delete(filePath);
-
-	return { currentContent, restoredContent: record.previousContent };
 }
 
 /**
- * rebuild in-memory state from session entries. call on session_start
- * with the current branch entries. processes entries in order —
- * undo-edit sets the record, undo-edit-consumed clears it.
+ * mark a change as reverted and restore the file.
+ * returns the change record, or null if not found / already reverted.
  */
-export function restoreFromEntries(entries: Array<{ type: string; customType?: string; data?: unknown }>): void {
-	edits.clear();
+export function revertChange(sessionId: string, toolCallId: string): FileChange | null {
+	const change = loadChange(sessionId, toolCallId);
+	if (!change || change.reverted) return null;
 
-	for (const entry of entries) {
-		if (entry.type !== "custom") continue;
+	// restore the file to its pre-edit state
+	const filePath = change.uri.replace(/^file:\/\//, "");
+	fs.writeFileSync(filePath, change.before, "utf-8");
 
-		if (entry.customType === UNDO_ENTRY_TYPE) {
-			const data = entry.data as UndoEntryData;
-			if (data?.filePath) {
-				edits.set(data.filePath, {
-					previousContent: data.previousContent ?? "",
-					timestamp: Date.now(),
-				});
-			}
-		} else if (entry.customType === UNDO_CONSUMED_TYPE) {
-			const data = entry.data as { filePath: string };
-			if (data?.filePath) {
-				edits.delete(data.filePath);
-			}
+	// mark as reverted on disk
+	change.reverted = true;
+	fs.writeFileSync(changePath(sessionId, toolCallId), JSON.stringify(change, null, 2), "utf-8");
+
+	return change;
+}
+
+/**
+ * find the most recent non-reverted change for a file path,
+ * filtered to only the given tool call IDs (branch awareness).
+ *
+ * the caller gets activeToolCallIds by scanning the current
+ * session branch for edit_file/create_file tool calls.
+ */
+export function findLatestChange(
+	sessionId: string,
+	filePath: string,
+	activeToolCallIds: string[],
+): { toolCallId: string; change: FileChange } | null {
+	const uri = `file://${path.resolve(filePath)}`;
+
+	// check in reverse order (most recent first)
+	for (let i = activeToolCallIds.length - 1; i >= 0; i--) {
+		const toolCallId = activeToolCallIds[i];
+		const change = loadChange(sessionId, toolCallId);
+		if (change && !change.reverted && change.uri === uri) {
+			return { toolCallId, change };
 		}
 	}
+
+	return null;
 }
 
-/** clear all tracked edits. */
-export function clearAll(): void {
-	edits.clear();
+/**
+ * generate a simple unified diff between two strings.
+ * basic implementation — can be replaced with a proper diff lib later.
+ */
+export function simpleDiff(filePath: string, before: string, after: string): string {
+	const beforeLines = before.split("\n");
+	const afterLines = after.split("\n");
+
+	const lines: string[] = [
+		`--- ${filePath}\toriginal`,
+		`+++ ${filePath}\tmodified`,
+	];
+
+	// naive: show all removed then all added. good enough for
+	// undo_edit display; not a real shortest-edit-distance diff.
+	let i = 0;
+	let j = 0;
+	while (i < beforeLines.length || j < afterLines.length) {
+		if (i < beforeLines.length && j < afterLines.length && beforeLines[i] === afterLines[j]) {
+			lines.push(` ${beforeLines[i]}`);
+			i++;
+			j++;
+		} else if (i < beforeLines.length && (j >= afterLines.length || beforeLines[i] !== afterLines[j])) {
+			lines.push(`-${beforeLines[i]}`);
+			i++;
+		} else {
+			lines.push(`+${afterLines[j]}`);
+			j++;
+		}
+	}
+
+	return lines.join("\n");
 }
