@@ -18,7 +18,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 export { withFileLock } from "./lib/mutex";
 export { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
-export { saveChange, loadChange, revertChange, findLatestChange, simpleDiff } from "./lib/file-tracker";
+export { saveChange, loadChanges, revertChange, findLatestChange, simpleDiff } from "./lib/file-tracker";
 
 export default function (_pi: ExtensionAPI) {
 	// tool registrations will be added as each tool is implemented

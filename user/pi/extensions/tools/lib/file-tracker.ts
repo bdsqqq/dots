@@ -41,8 +41,8 @@ function sessionDir(sessionId: string): string {
 	return path.join(FILE_CHANGES_DIR, sessionId);
 }
 
-function changePath(sessionId: string, toolCallId: string): string {
-	return path.join(sessionDir(sessionId), `${toolCallId}.json`);
+function changePath(sessionId: string, toolCallId: string, changeId: string): string {
+	return path.join(sessionDir(sessionId), `${toolCallId}.${changeId}`);
 }
 
 /** ensure the session's file-changes directory exists. */
@@ -56,39 +56,68 @@ function ensureDir(sessionId: string): void {
 /**
  * record a file change to disk. call after performing the edit.
  * the toolCallId comes from the execute() function's first argument.
+ * returns the change ID (UUID) for the written record.
+ *
+ * one tool call can produce multiple changes (e.g., Task sub-agent
+ * creating several files). each gets a unique UUID, stored as
+ * {toolCallId}.{uuid} — matching the expected format.
  */
 export function saveChange(
 	sessionId: string,
 	toolCallId: string,
 	change: Omit<FileChange, "id" | "reverted">,
-): void {
+): string {
 	ensureDir(sessionId);
+	const id = crypto.randomUUID();
 	const record: FileChange = {
 		...change,
-		id: crypto.randomUUID(),
+		id,
 		reverted: false,
 	};
-	fs.writeFileSync(changePath(sessionId, toolCallId), JSON.stringify(record, null, 2), "utf-8");
+	fs.writeFileSync(changePath(sessionId, toolCallId, id), JSON.stringify(record, null, 2), "utf-8");
+	return id;
 }
 
-/** read a change record from disk. returns null if not found. */
-export function loadChange(sessionId: string, toolCallId: string): FileChange | null {
-	const p = changePath(sessionId, toolCallId);
-	if (!fs.existsSync(p)) return null;
+/**
+ * load all change records for a tool call. one tool call can produce
+ * multiple changes (different files), each with its own UUID.
+ */
+export function loadChanges(sessionId: string, toolCallId: string): FileChange[] {
+	const dir = sessionDir(sessionId);
+	if (!fs.existsSync(dir)) return [];
+
+	const prefix = `${toolCallId}.`;
 	try {
-		return JSON.parse(fs.readFileSync(p, "utf-8")) as FileChange;
+		return fs.readdirSync(dir)
+			.filter((f) => f.startsWith(prefix))
+			.map((f) => {
+				try {
+					return JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8")) as FileChange;
+				} catch {
+					return null;
+				}
+			})
+			.filter((c): c is FileChange => c !== null);
 	} catch {
-		return null;
+		return [];
 	}
 }
 
 /**
- * mark a change as reverted and restore the file.
+ * mark a specific change as reverted and restore the file.
  * returns the change record, or null if not found / already reverted.
  */
-export function revertChange(sessionId: string, toolCallId: string): FileChange | null {
-	const change = loadChange(sessionId, toolCallId);
-	if (!change || change.reverted) return null;
+export function revertChange(sessionId: string, toolCallId: string, changeId: string): FileChange | null {
+	const p = changePath(sessionId, toolCallId, changeId);
+	if (!fs.existsSync(p)) return null;
+
+	let change: FileChange;
+	try {
+		change = JSON.parse(fs.readFileSync(p, "utf-8")) as FileChange;
+	} catch {
+		return null;
+	}
+	if (change.reverted) return null;
 
 	// restore the file to its pre-edit state
 	const filePath = change.uri.replace(/^file:\/\//, "");
@@ -96,7 +125,7 @@ export function revertChange(sessionId: string, toolCallId: string): FileChange 
 
 	// mark as reverted on disk
 	change.reverted = true;
-	fs.writeFileSync(changePath(sessionId, toolCallId), JSON.stringify(change, null, 2), "utf-8");
+	fs.writeFileSync(p, JSON.stringify(change, null, 2), "utf-8");
 
 	return change;
 }
@@ -118,9 +147,13 @@ export function findLatestChange(
 	// check in reverse order (most recent first)
 	for (let i = activeToolCallIds.length - 1; i >= 0; i--) {
 		const toolCallId = activeToolCallIds[i];
-		const change = loadChange(sessionId, toolCallId);
-		if (change && !change.reverted && change.uri === uri) {
-			return { toolCallId, change };
+		const changes = loadChanges(sessionId, toolCallId);
+		// within a tool call, find the matching file (most recent by timestamp)
+		const match = changes
+			.filter((c) => !c.reverted && c.uri === uri)
+			.sort((a, b) => b.timestamp - a.timestamp)[0];
+		if (match) {
+			return { toolCallId, change: match };
 		}
 	}
 
