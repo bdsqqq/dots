@@ -33,6 +33,8 @@ import { createCodeReviewTool } from "./code-review";
 import { createLookAtTool } from "./look-at";
 import { createReadWebPageTool } from "./read-web-page";
 import { createWebSearchTool } from "./web-search";
+import { createSearchSessionsTool } from "./search-sessions";
+import { createReadSessionTool } from "./read-session";
 import { readAgentPrompt } from "./lib/pi-spawn";
 import {
 	createReadGithubTool,
@@ -82,6 +84,8 @@ export default function (pi: ExtensionAPI) {
 		systemPrompt: readAgentPrompt("prompt.amp.read-web-page.md"),
 	}));
 	pi.registerTool(createWebSearchTool());
+	pi.registerTool(createSearchSessionsTool());
+	pi.registerTool(createReadSessionTool());
 
 	// github tools — used by librarian sub-agent, also available to main agent
 	pi.registerTool(createReadGithubTool());
