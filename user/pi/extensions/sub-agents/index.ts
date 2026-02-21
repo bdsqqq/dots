@@ -427,7 +427,9 @@ async function runSingleAgent(
 
 		// --tools only gates built-in tools. PI_INCLUDE_TOOLS is read by
 		// tool-harness.ts to also filter extension tools via setActiveTools().
-		const spawnEnv = agent.tools ? { ...process.env, PI_INCLUDE_TOOLS: agent.tools.join(",") } : process.env;
+		// PI_READ_COMPACT switches the read tool to tighter limits for sub-agents.
+		const spawnEnv: Record<string, string | undefined> = { ...process.env, PI_READ_COMPACT: "1" };
+		if (agent.tools) spawnEnv.PI_INCLUDE_TOOLS = agent.tools.join(",");
 
 		const exitCode = await new Promise<number>((resolve) => {
 			const proc = spawn("pi", args, { cwd: cwd ?? defaultCwd, shell: false, stdio: ["ignore", "pipe", "pipe"], env: spawnEnv });
