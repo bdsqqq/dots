@@ -28,6 +28,16 @@ import { createSkillTool } from "./skill";
 import { createFinderTool } from "./finder";
 import { createOracleTool } from "./oracle";
 import { createTaskTool } from "./task";
+import { createLibrarianTool } from "./librarian";
+import {
+	createReadGithubTool,
+	createSearchGithubTool,
+	createListDirectoryGithubTool,
+	createListRepositoriesTool,
+	createGlobGithubTool,
+	createCommitSearchTool,
+	createDiffTool,
+} from "./github";
 
 export { withFileLock } from "./lib/mutex";
 export { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
@@ -49,4 +59,14 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool(createFinderTool());
 	pi.registerTool(createOracleTool());
 	pi.registerTool(createTaskTool());
+	pi.registerTool(createLibrarianTool());
+
+	// github tools — used by librarian sub-agent, also available to main agent
+	pi.registerTool(createReadGithubTool());
+	pi.registerTool(createSearchGithubTool());
+	pi.registerTool(createListDirectoryGithubTool());
+	pi.registerTool(createListRepositoriesTool());
+	pi.registerTool(createGlobGithubTool());
+	pi.registerTool(createCommitSearchTool());
+	pi.registerTool(createDiffTool());
 }
