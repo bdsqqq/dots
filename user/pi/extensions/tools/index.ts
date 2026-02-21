@@ -33,6 +33,7 @@ import { createCodeReviewTool } from "./code-review";
 import { createLookAtTool } from "./look-at";
 import { createReadWebPageTool } from "./read-web-page";
 import { createWebSearchTool } from "./web-search";
+import { readAgentPrompt } from "./lib/pi-spawn";
 import {
 	createReadGithubTool,
 	createSearchGithubTool,
@@ -60,13 +61,26 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool(createUndoEditTool());
 	pi.registerTool(createFormatFileTool());
 	pi.registerTool(createSkillTool());
-	pi.registerTool(createFinderTool());
-	pi.registerTool(createOracleTool());
+	pi.registerTool(createFinderTool({
+		systemPrompt: readAgentPrompt("agent.amp.finder.md"),
+	}));
+	pi.registerTool(createOracleTool({
+		systemPrompt: readAgentPrompt("agent.amp.oracle.md"),
+	}));
 	pi.registerTool(createTaskTool());
-	pi.registerTool(createLibrarianTool());
-	pi.registerTool(createCodeReviewTool());
-	pi.registerTool(createLookAtTool());
-	pi.registerTool(createReadWebPageTool());
+	pi.registerTool(createLibrarianTool({
+		systemPrompt: readAgentPrompt("agent.amp.librarian.md"),
+	}));
+	pi.registerTool(createCodeReviewTool({
+		systemPrompt: readAgentPrompt("prompt.amp.code-review-system.md"),
+		reportFormat: readAgentPrompt("prompt.amp.code-review-report.md"),
+	}));
+	pi.registerTool(createLookAtTool({
+		systemPrompt: readAgentPrompt("prompt.amp.look-at.md"),
+	}));
+	pi.registerTool(createReadWebPageTool({
+		systemPrompt: readAgentPrompt("prompt.amp.read-web-page.md"),
+	}));
 	pi.registerTool(createWebSearchTool());
 
 	// github tools — used by librarian sub-agent, also available to main agent

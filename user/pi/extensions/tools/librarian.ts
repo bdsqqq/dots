@@ -17,11 +17,14 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, readAgentPrompt, zeroUsage } from "./lib/pi-spawn";
+import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
 
-const PROMPT_FILE = "agent.amp.librarian.md";
 const MODEL = "openrouter/anthropic/claude-haiku-4.5";
+
+export interface LibrarianConfig {
+	systemPrompt?: string;
+}
 
 /** github tools are extension tools, not builtins. */
 const BUILTIN_TOOLS: string[] = [];
@@ -35,7 +38,7 @@ const EXTENSION_TOOLS = [
 	"diff",
 ];
 
-export function createLibrarianTool(): ToolDefinition {
+export function createLibrarianTool(config: LibrarianConfig = {}): ToolDefinition {
 	return {
 		name: "librarian",
 		label: "Librarian",
@@ -76,8 +79,6 @@ export function createLibrarianTool(): ToolDefinition {
 			let sessionId = "";
 			try { sessionId = ctx.sessionManager?.getSessionId?.() ?? ""; } catch { /* graceful */ }
 
-			const promptBody = readAgentPrompt(PROMPT_FILE);
-
 			const parts: string[] = [params.query];
 			if (params.context) parts.push(`\nContext: ${params.context}`);
 			const fullTask = parts.join("\n");
@@ -96,7 +97,7 @@ export function createLibrarianTool(): ToolDefinition {
 				model: MODEL,
 				builtinTools: BUILTIN_TOOLS,
 				extensionTools: EXTENSION_TOOLS,
-				systemPromptBody: promptBody,
+				systemPromptBody: config.systemPrompt,
 				signal,
 				sessionId,
 				onUpdate: (partial) => {
