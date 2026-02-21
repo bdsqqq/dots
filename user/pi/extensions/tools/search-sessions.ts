@@ -72,6 +72,8 @@ export interface BranchResult {
 	models: string[];
 	messageCount: number;
 	firstUserMessage: string;
+	/** concatenated user + assistant text for keyword search (not displayed) */
+	searchableText: string;
 }
 
 /** tool argument keys that contain file paths */
@@ -82,6 +84,20 @@ function extractFilePaths(args: Record<string, unknown> | undefined): string[] {
 	const paths: string[] = [];
 	for (const key of PATH_KEYS) {
 		if (typeof args[key] === "string") paths.push(args[key] as string);
+	}
+	return paths;
+}
+
+/** extract file paths from free text — @-mentions and absolute paths */
+function extractFilePathsFromText(text: string): string[] {
+	const paths: string[] = [];
+	// @-mentions like @user/pi/extensions/editor.ts (must contain at least one /)
+	for (const m of text.matchAll(/@([\w.\/-]+\/[\w.\/-]+)/g)) {
+		paths.push(m[1]);
+	}
+	// absolute paths like /Users/bdsqqq/foo.ts
+	for (const m of text.matchAll(/(?:^|\s)(\/[\w.\/-]+)/gm)) {
+		paths.push(m[1]);
 	}
 	return paths;
 }
@@ -164,6 +180,7 @@ function enumerateBranches(
 		// extract metadata from this branch
 		const files = new Set<string>();
 		const models = new Set<string>();
+		const textChunks: string[] = [];
 		let messageCount = 0;
 		let firstUserMessage = "";
 
@@ -176,25 +193,30 @@ function enumerateBranches(
 				if (!msg) continue;
 				messageCount++;
 
-				if (msg.role === "user" && !firstUserMessage) {
-					const textPart = msg.content?.find(
-						(p): p is { type: "text"; text: string } => p.type === "text",
-					);
-					if (textPart) firstUserMessage = textPart.text.slice(0, 200);
-				}
-
-				if (msg.role === "assistant" && Array.isArray(msg.content)) {
-					for (const part of msg.content) {
-						if (part.type === "toolCall" && part.arguments) {
-							for (const p of extractFilePaths(part.arguments as Record<string, unknown>)) {
+				if (msg.role === "user") {
+					for (const part of msg.content || []) {
+						if (part.type === "text" && part.text) {
+							if (!firstUserMessage) firstUserMessage = part.text.slice(0, 200);
+							textChunks.push(part.text);
+							// extract file paths from user text (@-mentions, absolute paths)
+							for (const p of extractFilePathsFromText(part.text)) {
 								files.add(p);
 							}
 						}
 					}
 				}
 
-				if (msg.role === "toolResult" && typeof (msg as any).toolName === "string") {
-					// toolResults don't have path args, but we already get them from toolCall
+				if (msg.role === "assistant" && Array.isArray(msg.content)) {
+					for (const part of msg.content) {
+						if (part.type === "text" && part.text) {
+							textChunks.push(part.text);
+						}
+						if (part.type === "toolCall" && part.arguments) {
+							for (const p of extractFilePaths(part.arguments as Record<string, unknown>)) {
+								files.add(p);
+							}
+						}
+					}
 				}
 			}
 		}
@@ -216,6 +238,7 @@ function enumerateBranches(
 			models: [...models],
 			messageCount,
 			firstUserMessage,
+			searchableText: textChunks.join("\n"),
 		});
 	}
 
@@ -226,8 +249,8 @@ function enumerateBranches(
 
 function matchesKeyword(branch: BranchResult, keyword: string): boolean {
 	const lower = keyword.toLowerCase();
-	if (branch.firstUserMessage.toLowerCase().includes(lower)) return true;
 	if (branch.sessionName.toLowerCase().includes(lower)) return true;
+	if (branch.searchableText.toLowerCase().includes(lower)) return true;
 	return false;
 }
 
@@ -349,7 +372,7 @@ export function createSearchSessionsTool(): ToolDefinition {
 		parameters: Type.Object({
 			keyword: Type.Optional(
 				Type.String({
-					description: "Text to search for in session names and user messages.",
+					description: "Text to search for in session names, user messages, and assistant responses.",
 				}),
 			),
 			file: Type.Optional(
