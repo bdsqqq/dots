@@ -25,6 +25,9 @@ import { createBashTool } from "./bash";
 import { createUndoEditTool } from "./undo-edit";
 import { createFormatFileTool } from "./format-file";
 import { createSkillTool } from "./skill";
+import { createFinderTool } from "./finder";
+import { createOracleTool } from "./oracle";
+import { createTaskTool } from "./task";
 
 export { withFileLock } from "./lib/mutex";
 export { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
@@ -43,4 +46,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool(createUndoEditTool());
 	pi.registerTool(createFormatFileTool());
 	pi.registerTool(createSkillTool());
+	pi.registerTool(createFinderTool());
+	pi.registerTool(createOracleTool());
+	pi.registerTool(createTaskTool());
 }
