@@ -15,7 +15,7 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, zeroUsage } from "./lib/pi-spawn";
+import { piSpawn, readAgentPrompt, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
 
 const MODEL = "openrouter/google/gemini-2.5-flash";
@@ -24,35 +24,10 @@ const MODEL = "openrouter/google/gemini-2.5-flash";
 const BUILTIN_TOOLS = ["read", "ls"];
 const EXTENSION_TOOLS = ["read", "ls"];
 
-const SYSTEM_PROMPT = `You are an AI assistant that analyzes files for a software engineer.
+const SYSTEM_PROMPT_FILE = "prompt.amp.look-at.md";
 
-# Core Principles
-
-- Be concise and direct. Minimize output while maintaining accuracy.
-- Focus only on the user's objective. Do not add tangential information.
-- No preamble, disclaimers, or summaries unless specifically relevant.
-- Never start with flattery ("great question", "interesting file", etc.).
-- A wrong answer is worse than no answer. When uncertain, say so.
-
-# Precision Guidelines
-
-- When analyzing images: describe exactly what you see, do not guess or infer.
-- When analyzing code: reference specific line numbers and symbols.
-- When analyzing documents: extract the specific information requested.
-
-# Comparing Files
-
-When reference files are provided alongside the main file, you are being asked to compare them.
-- Systematically identify differences and similarities.
-- Be specific: mention exact locations, values, or visual elements that differ.
-- Structure the comparison clearly (e.g., "File A has X, File B has Y").
-
-# Output Format
-
-- Use GitHub-flavored Markdown.
-- Use code fences with language tags for code snippets.
-- No emojis or decorative symbols.
-- Keep responses focused and brief.`;
+/** fallback if sops prompt file isn't available */
+const DEFAULT_SYSTEM_PROMPT = `Analyze the provided file and answer the user's question about it. Be concise and direct, reference specific locations. When comparing files, systematically identify differences.`;
 
 export function createLookAtTool(): ToolDefinition {
 	return {
@@ -125,13 +100,15 @@ export function createLookAtTool(): ToolDefinition {
 				usage: zeroUsage(),
 			};
 
+			const systemPrompt = readAgentPrompt(SYSTEM_PROMPT_FILE) || DEFAULT_SYSTEM_PROMPT;
+
 			const result = await piSpawn({
 				cwd: ctx.cwd,
 				task: fullTask,
 				model: MODEL,
 				builtinTools: BUILTIN_TOOLS,
 				extensionTools: EXTENSION_TOOLS,
-				systemPromptBody: SYSTEM_PROMPT,
+				systemPromptBody: systemPrompt,
 				signal,
 				sessionId,
 				onUpdate: (partial) => {
