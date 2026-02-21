@@ -15,7 +15,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { htmlToMarkdown } from "./lib/html-to-md";
-import { piSpawn, readAgentPrompt, zeroUsage } from "./lib/pi-spawn";
+import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
 
 const MAX_OUTPUT_CHARS = 64_000;
@@ -23,9 +23,6 @@ const CURL_TIMEOUT_SECS = 30;
 const MAX_REDIRECTS = 5;
 const PROMPT_MODEL = "openrouter/google/gemini-2.5-flash";
 
-const PROMPT_SYSTEM_FILE = "prompt.amp.read-web-page.md";
-
-/** fallback if sops prompt file isn't available */
 const DEFAULT_PROMPT_SYSTEM = `Analyze web page content and answer questions. Be concise, answer from provided content only. No filler.`;
 
 function truncate(text: string, maxLen: number): string {
@@ -89,7 +86,11 @@ function fetchUrl(url: string, signal?: AbortSignal): Promise<{ html: string; er
 	});
 }
 
-export function createReadWebPageTool(): ToolDefinition {
+export interface ReadWebPageConfig {
+	systemPrompt?: string;
+}
+
+export function createReadWebPageTool(config: ReadWebPageConfig = {}): ToolDefinition {
 	return {
 		name: "read_web_page",
 		label: "Read Web Page",
@@ -203,7 +204,7 @@ export function createReadWebPageTool(): ToolDefinition {
 					usage: zeroUsage(),
 				};
 
-				const promptSystem = readAgentPrompt(PROMPT_SYSTEM_FILE) || DEFAULT_PROMPT_SYSTEM;
+				const promptSystem = config.systemPrompt || DEFAULT_PROMPT_SYSTEM;
 
 				const result = await piSpawn({
 					cwd: ctx.cwd,

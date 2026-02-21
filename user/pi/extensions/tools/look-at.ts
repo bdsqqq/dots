@@ -15,7 +15,7 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, readAgentPrompt, zeroUsage } from "./lib/pi-spawn";
+import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
 
 const MODEL = "openrouter/google/gemini-2.5-flash";
@@ -24,12 +24,13 @@ const MODEL = "openrouter/google/gemini-2.5-flash";
 const BUILTIN_TOOLS = ["read", "ls"];
 const EXTENSION_TOOLS = ["read", "ls"];
 
-const SYSTEM_PROMPT_FILE = "prompt.amp.look-at.md";
-
-/** fallback if sops prompt file isn't available */
 const DEFAULT_SYSTEM_PROMPT = `Analyze the provided file and answer the user's question about it. Be concise and direct, reference specific locations. When comparing files, systematically identify differences.`;
 
-export function createLookAtTool(): ToolDefinition {
+export interface LookAtConfig {
+	systemPrompt?: string;
+}
+
+export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
 	return {
 		name: "look_at",
 		label: "Look At",
@@ -100,7 +101,7 @@ export function createLookAtTool(): ToolDefinition {
 				usage: zeroUsage(),
 			};
 
-			const systemPrompt = readAgentPrompt(SYSTEM_PROMPT_FILE) || DEFAULT_SYSTEM_PROMPT;
+			const systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
 			const result = await piSpawn({
 				cwd: ctx.cwd,

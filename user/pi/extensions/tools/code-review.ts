@@ -17,7 +17,7 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, readAgentPrompt, zeroUsage } from "./lib/pi-spawn";
+import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
 
 const MODEL = "openrouter/google/gemini-2.5-pro";
@@ -26,16 +26,17 @@ const MODEL = "openrouter/google/gemini-2.5-pro";
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash"];
 const EXTENSION_TOOLS = ["read", "grep", "glob", "ls", "bash", "web_search", "read_web_page"];
 
-const SYSTEM_PROMPT_FILE = "prompt.amp.code-review-system.md";
-const REPORT_FORMAT_FILE = "prompt.amp.code-review-report.md";
-
-/** fallback if sops prompt files aren't available */
 const DEFAULT_SYSTEM_PROMPT = `You are an expert code reviewer. Review the provided diff for bugs, security issues, and code quality. Report findings with file locations and severity.
 
 Today's date: {date}
 Current working directory (cwd): {cwd}`;
 
 const DEFAULT_REPORT_FORMAT = `Emit findings as XML: <codeReview><comment> elements with filename, startLine, endLine, severity (critical/high/medium/low), commentType (bug/suggested_edit/compliment/non_actionable), text, why, and fix fields.`;
+
+export interface CodeReviewConfig {
+	systemPrompt?: string;
+	reportFormat?: string;
+}
 
 // --- XML parsing ---
 
@@ -93,7 +94,7 @@ function formatReviewSummary(comments: ReviewComment[]): string {
 
 // --- tool ---
 
-export function createCodeReviewTool(): ToolDefinition {
+export function createCodeReviewTool(config: CodeReviewConfig = {}): ToolDefinition {
 	return {
 		name: "code_review",
 		label: "Code Review",
@@ -152,8 +153,8 @@ export function createCodeReviewTool(): ToolDefinition {
 				usage: zeroUsage(),
 			};
 
-			const systemPrompt = readAgentPrompt(SYSTEM_PROMPT_FILE) || DEFAULT_SYSTEM_PROMPT;
-			const reportFormat = readAgentPrompt(REPORT_FORMAT_FILE) || DEFAULT_REPORT_FORMAT;
+			const systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+			const reportFormat = config.reportFormat || DEFAULT_REPORT_FORMAT;
 
 			const result = await piSpawn({
 				cwd: ctx.cwd,

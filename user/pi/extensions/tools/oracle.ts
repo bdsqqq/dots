@@ -18,15 +18,18 @@ import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, readAgentPrompt, zeroUsage } from "./lib/pi-spawn";
+import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
 
-const PROMPT_FILE = "agent.amp.oracle.md";
 const MODEL = "openrouter/openai/gpt-5.2";
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash"];
 const EXTENSION_TOOLS = ["read", "grep", "glob", "ls", "bash"];
 
-export function createOracleTool(): ToolDefinition {
+export interface OracleConfig {
+	systemPrompt?: string;
+}
+
+export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
 	return {
 		name: "oracle",
 		label: "Oracle",
@@ -68,8 +71,6 @@ export function createOracleTool(): ToolDefinition {
 			let sessionId = "";
 			try { sessionId = ctx.sessionManager?.getSessionId?.() ?? ""; } catch { /* graceful */ }
 
-			const promptBody = readAgentPrompt(PROMPT_FILE);
-
 			// compose task with context and inline file contents
 			const parts: string[] = [params.task];
 			if (params.context) parts.push(`\nContext: ${params.context}`);
@@ -102,7 +103,7 @@ export function createOracleTool(): ToolDefinition {
 				model: MODEL,
 				builtinTools: BUILTIN_TOOLS,
 				extensionTools: EXTENSION_TOOLS,
-				systemPromptBody: promptBody,
+				systemPromptBody: config.systemPrompt,
 				signal,
 				sessionId,
 				onUpdate: (partial) => {

@@ -17,15 +17,18 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, readAgentPrompt, zeroUsage } from "./lib/pi-spawn";
+import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
 
-const PROMPT_FILE = "agent.amp.finder.md";
 const MODEL = "openrouter/google/gemini-2.5-flash";
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls"];
 const EXTENSION_TOOLS = ["read", "grep", "glob", "ls"];
 
-export function createFinderTool(): ToolDefinition {
+export interface FinderConfig {
+	systemPrompt?: string;
+}
+
+export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
 	return {
 		name: "finder",
 		label: "Finder",
@@ -62,8 +65,6 @@ export function createFinderTool(): ToolDefinition {
 			let sessionId = "";
 			try { sessionId = ctx.sessionManager?.getSessionId?.() ?? ""; } catch { /* graceful */ }
 
-			const promptBody = readAgentPrompt(PROMPT_FILE);
-
 			const singleResult: SingleResult = {
 				agent: "finder",
 				task: params.query,
@@ -78,7 +79,7 @@ export function createFinderTool(): ToolDefinition {
 				model: MODEL,
 				builtinTools: BUILTIN_TOOLS,
 				extensionTools: EXTENSION_TOOLS,
-				systemPromptBody: promptBody,
+				systemPromptBody: config.systemPrompt,
 				signal,
 				sessionId,
 				onUpdate: (partial) => {
