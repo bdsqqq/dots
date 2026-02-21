@@ -42,10 +42,10 @@ export interface InterpolateContext {
 }
 
 /**
- * resolve template variables that amp injects at runtime (e.g. {cwd}, {roots}, {date}).
+ * resolve template variables in agent prompts (e.g. {cwd}, {roots}, {date}).
  *
- * follows the pattern: when a value is unavailable, the entire line containing
- * the placeholder is removed rather than leaving an empty label like "Repository: ".
+ * when a value is unavailable, the entire line containing the placeholder
+ * is removed rather than leaving an empty label like "Repository: ".
  */
 export function interpolatePromptVars(prompt: string, cwd: string, extra?: InterpolateContext): string {
 	const roots = findGitRoot(cwd);

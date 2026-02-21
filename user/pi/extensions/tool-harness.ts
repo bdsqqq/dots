@@ -1,5 +1,5 @@
 /**
- * tool-harness — custom includeTools for pi extensions.
+ * tool-harness — env-gated tool filtering for pi extensions.
  *
  * pi's --tools/--no-tools flags only gate built-in tools. extension tools
  * registered via pi.registerTool() always load. this extension reads
