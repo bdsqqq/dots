@@ -3,7 +3,7 @@
  * injection into the conversation context.
  *
  * replaces pi's default approach (model uses `read` on the SKILL.md
- * path) with a dedicated tool matching the target interface. the model
+ * path) with a dedicated tool. the model
  * calls `skill(name: "git")` instead of `read(path: "/.../SKILL.md")`.
  *
  * discovery searches skill directories configured in pi's settings
@@ -246,7 +246,7 @@ export function createSkillTool(): ToolDefinition {
 
 			const { body } = parseFrontmatter(rawContent);
 
-			// build output matching the <loaded_skill> format
+			// build output in <loaded_skill> format
 			const parts: string[] = [
 				`<loaded_skill name="${skill.name}">`,
 				body,

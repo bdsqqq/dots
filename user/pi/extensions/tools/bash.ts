@@ -1,8 +1,8 @@
 /**
- * bash tool — replaces pi's built-in with custom command execution.
+ * bash tool — replaces pi's built-in with enhanced command execution.
  *
  * differences from pi's built-in:
- * - `cmd` + `cwd` params (the target interface, not pi's `command`)
+ * - `cmd` + `cwd` params (model-compatible interface, not pi's `command`)
  * - auto-splits `cd dir && cmd` into cwd + command (fallback for models)
  * - strips trailing `&` (prevents background processes)
  * - git commit trailer injection (session ID)
@@ -78,7 +78,7 @@ function injectGitTrailers(cmd: string, sessionId: string): string {
 /**
  * SIGTERM the process group first, escalate to SIGKILL after delay.
  * pi's built-in goes straight to SIGKILL via killProcessTree().
- * amp uses this graceful fallback so processes can clean up.
+ * graceful fallback so processes can clean up.
  */
 function killGracefully(pid: number): void {
 	try {

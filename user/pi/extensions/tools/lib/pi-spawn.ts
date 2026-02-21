@@ -57,7 +57,7 @@ export interface PiSpawnConfig {
 	 * new user turn. the process is killed after the second end_turn.
 	 *
 	 * primary use case: code_review — agent explores the diff first,
-	 * then receives the report format instructions (q38).
+	 * then receives the report format instructions.
 	 */
 	followUp?: string;
 }

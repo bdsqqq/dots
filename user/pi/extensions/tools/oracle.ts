@@ -2,7 +2,7 @@
  * oracle tool — expert technical advisor via gpt-5.2 sub-agent.
  *
  * replaces the generic subagent(agent: "oracle", task: ...) pattern
- * with a dedicated tool matching the target interface. the model calls
+ * with a dedicated tool. the model calls
  * oracle(task: "...", context?: "...", files?: [...]) directly.
  *
  * the oracle operates zero-shot: no follow-up questions, makes its

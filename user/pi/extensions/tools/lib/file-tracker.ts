@@ -1,7 +1,7 @@
 /**
  * file change tracker — persists before/after content to disk for undo_edit.
  *
- * mirrors the standard approach: each edit writes a JSON file to
+ * each edit writes a JSON file to
  * ~/.pi/file-changes/{sessionId}/{toolCallId}.json containing
  * the full before/after content and a unified diff.
  *
@@ -60,7 +60,7 @@ function ensureDir(sessionId: string): void {
  *
  * one tool call can produce multiple changes (e.g., Task sub-agent
  * creating several files). each gets a unique UUID, stored as
- * {toolCallId}.{uuid} — matching the expected format.
+ * {toolCallId}.{uuid}.
  */
 export function saveChange(
 	sessionId: string,

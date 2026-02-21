@@ -2,7 +2,7 @@
  * Task tool — delegate complex multi-step work to a sub-agent.
  *
  * replaces the generic subagent(agent: "Task", task: ...) pattern
- * with a dedicated tool matching the target interface. the model calls
+ * with a dedicated tool. the model calls
  * Task(prompt: "...", description: "...") directly.
  *
  * the Task sub-agent inherits the parent's default model (no --model

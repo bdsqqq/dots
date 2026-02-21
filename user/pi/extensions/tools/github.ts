@@ -7,7 +7,7 @@
  *
  * all tools use `gh api` CLI under the hood. requires authenticated gh CLI.
  *
- * tool schemas match the expected github tool interfaces:
+ * tool schemas:
  *   read_github, search_github, list_directory_github,
  *   list_repositories, glob_github, commit_search, diff
  */

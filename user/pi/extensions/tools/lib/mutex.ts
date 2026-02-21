@@ -1,7 +1,7 @@
 /**
  * per-path async mutex for file operations.
  *
- * amp serializes concurrent edits to the same file path to prevent
+ * serializes concurrent edits to the same file path to prevent
  * partial writes and race conditions. pi's built-in edit tool doesn't.
  * this mutex is keyed by resolved absolute path — two relative paths
  * pointing to the same file share one lock.

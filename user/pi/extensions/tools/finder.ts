@@ -2,7 +2,7 @@
  * finder tool — fast parallel code search via gemini flash sub-agent.
  *
  * replaces the generic subagent(agent: "finder", task: ...) pattern
- * with a dedicated tool matching the target interface. the model calls
+ * with a dedicated tool. the model calls
  * finder(query: "...") instead of routing through the dispatcher.
  *
  * spawns `pi --mode json` with gemini-2.5-flash, constrained to

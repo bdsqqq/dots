@@ -1,7 +1,7 @@
 /**
  * AGENTS.md discovery — walks directory hierarchy to find guidance files.
  *
- * amp injects AGENTS.md contents into tool results after file reads/writes
+ * injects AGENTS.md contents into tool results after file reads/writes
  * so the LLM sees directory-specific instructions. guidance files closer
  * to the target file take precedence (returned last in array).
  *
@@ -75,7 +75,7 @@ export function discoverAgentsMd(filePath: string, workspaceRoot: string): Agent
 
 /**
  * format discovered guidance for injection into tool results.
- * matches the expected output format: header with scope, then content.
+ * output format: header with scope, then content.
  */
 export function formatGuidance(guidance: AgentsGuidance[]): string {
 	if (guidance.length === 0) return "";

@@ -1,7 +1,6 @@
 /**
  * v3: cheerio HTML→markdown + LLM Q&A + pagination + raw mode.
  *
- * informed by analysis of 1,202 amp read_web_page calls across 376 threads.
  * cheerio strips chrome (nav, footer, scripts), finds main content area,
  * converts to clean markdown. ~95% size reduction on typical pages.
  *

@@ -6,9 +6,9 @@
  * 2. reads changed files for context
  * 3. produces XML <codeReview> report with per-comment severity/type
  *
- * system prompt is d66 (expert reviewer role). q38 (XML report format)
+ * review system prompt defines the expert reviewer role. report format
  * is injected as a follow-up message after exploration via piSpawn's
- * RPC mode — matching the delayed injection architecture.
+ * RPC mode — follow-up injection after exploration completes.
  *
  * v1: main review agent only. checks system (parallel workspace-defined
  * .md checks via haiku) deferred.
@@ -27,14 +27,12 @@ const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash"];
 const EXTENSION_TOOLS = ["read", "grep", "glob", "ls", "bash", "web_search", "read_web_page"];
 
 /**
- * d66 (reviewer role) — system prompt for the review sub-agent.
+ * review system prompt for the review sub-agent.
  *
- * amp uses GEMINI_3_PRO_PREVIEW with thinkingConfig HIGH for this agent.
- * gemini-2.5-pro via openrouter is the closest available equivalent.
+ * uses a reasoning model for deep analysis. gemini-2.5-pro via openrouter.
  *
- * q38 (report format) is injected as a follow-up message after the agent
- * explores — matching the target architecture. piSpawn's RPC follow-up support
- * handles the delayed injection.
+ * report format is injected as a follow-up message after the agent
+ * explores. piSpawn's RPC follow-up support handles the delayed injection.
  */
 const SYSTEM_PROMPT = `You are an expert senior engineer with deep knowledge of software engineering best practices, security, performance, and maintainability.
 
@@ -49,7 +47,7 @@ Today's date: {date}
 Current working directory (cwd): {cwd}`;
 
 /**
- * q38 — report format instructions injected AFTER exploration completes.
+ * report format instructions injected AFTER exploration completes.
  *
  * piSpawn sends this as a follow_up via RPC mode. the agent has already
  * read the diff and all relevant files before seeing these instructions,

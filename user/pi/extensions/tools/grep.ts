@@ -1,13 +1,13 @@
 /**
- * grep tool — replaces pi's built-in with custom limits.
+ * grep tool — replaces pi's built-in with tighter limits.
  *
  * differences from pi's built-in:
  * - per-file match limit (10, prevents one noisy file from consuming quota)
  * - 200-char line truncation (vs pi's 500)
- * - caseSensitive param (custom — default case-sensitive)
+ * - caseSensitive param (default case-sensitive)
  * - suggests literal:true when pattern contains regex metacharacters
  * - spawns rg directly (no ensureTool — nix provides rg on PATH)
- * - no context lines param (amp doesn't expose this)
+ * - no context lines param (not needed for LLM workflows)
  *
  * shadows pi's built-in `grep` tool via same-name registration.
  */

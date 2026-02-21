@@ -1,5 +1,5 @@
 /**
- * read tool — replaces pi's built-in with custom file reading.
+ * read tool — replaces pi's built-in with enhanced file reading.
  *
  * differences from pi's built-in:
  * - line-numbered output (`1: content`)
@@ -10,7 +10,7 @@
  * - image support via base64
  * - compact variant for sub-agents (PI_READ_COMPACT=1)
  *
- * matches the Read interface: `path` + optional `read_range` [start, end].
+ * uses `path` + optional `read_range` [start, end] interface.
  */
 
 import * as fs from "node:fs";

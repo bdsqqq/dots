@@ -1,5 +1,5 @@
 /**
- * glob tool — replaces pi's built-in find with custom file finding.
+ * glob tool — replaces pi's built-in find with enhanced file finding.
  *
  * differences from pi's built-in:
  * - uses rg --files (not fd — one less dependency)

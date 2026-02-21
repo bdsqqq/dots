@@ -1,5 +1,5 @@
 /**
- * create_file tool — replaces pi's built-in write with custom file creation.
+ * create_file tool — replaces pi's built-in write with enhanced file creation.
  *
  * differences from pi's built-in:
  * - mutex-locked per file path (prevents concurrent writes)

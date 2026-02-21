@@ -1,7 +1,7 @@
 /**
  * ls tool shadow — redirects to read's directory listing.
  *
- * amp doesn't have a separate ls tool; directory listing is part of Read.
+ * directory listing is part of Read.
  * pi has a built-in ls tool that models may call by habit. this shadow
  * does the listing (no wasted tool call) but steers the model toward
  * using read for future calls.

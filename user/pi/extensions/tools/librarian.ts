@@ -1,8 +1,8 @@
 /**
  * librarian tool — cross-repo codebase understanding via haiku sub-agent.
  *
- * replaces the generic subagent pattern with a dedicated tool matching
- * the target interface. the model calls librarian(query: "...", context?: "...")
+ * replaces the generic subagent pattern with a dedicated tool. the model
+ * calls librarian(query: "...", context?: "...")
  * directly.
  *
  * spawns `pi --mode json` with claude haiku, constrained to the 7

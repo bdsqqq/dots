@@ -1,5 +1,5 @@
 /**
- * edit tool — replaces pi's built-in with custom file editing.
+ * edit tool — replaces pi's built-in with enhanced file editing.
  *
  * differences from pi's built-in:
  * - mutex-locked per file path (prevents partial writes from concurrent edits)
@@ -11,9 +11,9 @@
  * - BOM/CRLF preservation
  *
  * shadows pi's built-in `edit` tool via same-name registration.
- * uses standard parameter names (old_str, new_str, replace_all) rather
- * than pi's (oldText, newText) — models trained on the target interface
- * produce these param names naturally.
+ * uses model-compatible parameter names (old_str, new_str, replace_all)
+ * rather than pi's (oldText, newText) — models produce these param
+ * names naturally.
  */
 
 import * as fs from "node:fs";

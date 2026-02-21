@@ -4,9 +4,6 @@
  * direct HTTP call (no sub-agent). posts to parallel's search endpoint,
  * formats results as markdown with title/url/excerpts per result.
  *
- * parallel AI is the same provider amp uses internally (confirmed via
- * their Series A blog post listing amp as a customer).
- *
  * auth: PARALLEL_API_KEY env var → x-api-key header.
  * pricing: $5/1k queries.
  */
