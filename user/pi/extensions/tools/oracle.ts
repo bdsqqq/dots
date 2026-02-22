@@ -9,8 +9,7 @@
  * final message comprehensive. only the last assistant message is
  * returned to the parent agent.
  *
- * system prompt loaded from sops-decrypted prompts at init time
- * 
+ * system prompt loaded from sops-decrypted prompts at init time.
  */
 
 import * as fs from "node:fs";

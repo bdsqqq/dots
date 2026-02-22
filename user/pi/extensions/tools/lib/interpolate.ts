@@ -77,7 +77,7 @@ export function interpolatePromptVars(prompt: string, cwd: string, extra?: Inter
 
 	let result = prompt;
 
-	// pass 1: drop entire lines whose var resolved to empty ()
+	// pass 1: drop entire lines whose var resolved to empty
 	if (emptyKeys.length > 0) {
 		result = result.replace(new RegExp(`^.*\\{(${emptyKeys.join("|")})\\}.*\\n?`, "gm"), "");
 	}

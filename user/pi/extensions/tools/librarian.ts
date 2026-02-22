@@ -10,8 +10,7 @@
  * list_repositories, glob_github, commit_search, diff). the librarian
  * explores repos thoroughly before providing comprehensive answers.
  *
- * system prompt loaded from sops-decrypted prompts at init time
- * 
+ * system prompt loaded from sops-decrypted prompts at init time.
  */
 
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";

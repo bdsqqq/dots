@@ -10,8 +10,7 @@
  * maximizes parallelism (8+ tool calls per turn) and completes
  * within ~3 turns.
  *
- * system prompt loaded from sops-decrypted prompts at init time
- * 
+ * system prompt loaded from sops-decrypted prompts at init time.
  */
 
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
