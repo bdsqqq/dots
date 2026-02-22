@@ -17,12 +17,6 @@ in
     home.file.".pi/agent/auth.json".source = config.lib.file.mkOutOfStoreSymlink "/run/secrets/rendered/pi-auth.json";
     home.file.".pi/agent/settings.json".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/settings.json";
 
-    # subagent extension — directory-based, agents discovered from ~/.pi/agent/agents at runtime
-    home.file.".pi/agent/extensions/sub-agents" = {
-      source = ./extensions/sub-agents;
-      recursive = true;
-    };
-
     # editor extension — box-drawing borders with composable label slots via EventBus
     home.file.".pi/agent/extensions/editor.ts".source = ./extensions/editor.ts;
 

@@ -3,11 +3,7 @@
   "skills": [
     "~/.config/agents/skills"
   ],
-  "prompts": [
-    "~/.config/agents/prompts"
-  ],
   "extensions": [
-    "~/.pi/agent/extensions/sub-agents",
     "~/.pi/agent/extensions/editor.ts",
     "~/.pi/agent/extensions/handoff.ts",
     "~/.pi/agent/extensions/session-name.ts",

@@ -5,16 +5,16 @@
  * extension into a reusable function. each dedicated tool (finder,
  * oracle, Task) calls piSpawn() with its own config.
  *
- * reimplements prompt interpolation ({cwd}, {roots}, {date}, etc.)
- * since tools/ can't import from sub-agents/ (separate nix store paths).
+ * uses shared interpolation from ./interpolate for template variables
+ * ({cwd}, {roots}, {date}, etc.) in system prompts.
  */
 
 import { spawn } from "node:child_process";
-import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Message } from "@mariozechner/pi-ai";
+import { interpolatePromptVars, type InterpolateContext } from "./interpolate";
 
 // --- types ---
 
@@ -60,69 +60,6 @@ export interface PiSpawnConfig {
 	 * then receives the report format instructions.
 	 */
 	followUp?: string;
-}
-
-// --- interpolation (reimplemented; can't import sub-agents/) ---
-
-function findGitRoot(dir: string): string {
-	let current = path.resolve(dir);
-	while (true) {
-		try {
-			const gitPath = path.join(current, ".git");
-			const stat = fs.statSync(gitPath);
-			if (stat.isDirectory() || stat.isFile()) return current;
-		} catch { /* keep walking */ }
-		const parent = path.dirname(current);
-		if (parent === current) return dir;
-		current = parent;
-	}
-}
-
-function getGitRemoteUrl(dir: string): string {
-	try {
-		return execSync("git remote get-url origin", {
-			cwd: dir, stdio: ["ignore", "pipe", "ignore"],
-		}).toString().trim();
-	} catch { return ""; }
-}
-
-function interpolatePromptVars(
-	prompt: string, cwd: string, sessionId?: string, repo?: string,
-): string {
-	const roots = findGitRoot(cwd);
-	const date = new Date().toLocaleDateString("en-US", {
-		weekday: "short", year: "numeric", month: "short", day: "numeric",
-	});
-	const repoUrl = repo ?? getGitRemoteUrl(roots);
-	let ls = "";
-	try {
-		ls = fs.readdirSync(roots).map((e) => {
-			const full = path.join(roots, e);
-			try { return fs.statSync(full).isDirectory() ? `${full}/` : full; } catch { return full; }
-		}).join("\n");
-	} catch { /* graceful */ }
-
-	const vars: Record<string, string> = {
-		cwd, roots, wsroot: roots, workingDir: cwd, date,
-		os: `${os.platform()} (${os.release()}) on ${os.arch()}`,
-		repo: repoUrl, sessionId: sessionId ?? "", ls,
-	};
-
-	const emptyKeys = Object.keys(vars).filter((k) => !vars[k]);
-	const filled = Object.fromEntries(Object.entries(vars).filter(([, v]) => !!v));
-	let result = prompt;
-
-	if (emptyKeys.length > 0) {
-		result = result.replace(new RegExp(`^.*\\{(${emptyKeys.join("|")})\\}.*\\n?`, "gm"), "");
-	}
-	const filledKeys = Object.keys(filled);
-	if (filledKeys.length > 0) {
-		result = result.replace(
-			new RegExp(`\\{(${filledKeys.join("|")})\\}`, "g"),
-			(_, key) => filled[key],
-		);
-	}
-	return result;
 }
 
 // --- helpers ---
@@ -181,7 +118,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 	try {
 		if (config.systemPromptBody?.trim()) {
 			const interpolated = interpolatePromptVars(
-				config.systemPromptBody, config.cwd, config.sessionId, config.repo,
+				config.systemPromptBody, config.cwd, { sessionId: config.sessionId, repo: config.repo },
 			);
 			const tmp = writePromptToTempFile("subagent", interpolated);
 			tmpPromptDir = tmp.dir;

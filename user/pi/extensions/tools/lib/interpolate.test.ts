@@ -1,5 +1,5 @@
 /**
- * run: bun test user/pi/extensions/sub-agents/interpolate.test.ts
+ * run: bun test user/pi/extensions/tools/lib/interpolate.test.ts
  */
 
 import { describe, expect, test } from "bun:test";
