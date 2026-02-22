@@ -18,6 +18,7 @@ import { visibleWidth } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { execSync } from "node:child_process";
+import { hasToolCost } from "./tools/lib/tool-cost";
 
 interface Label {
 	key: string;
@@ -241,7 +242,8 @@ function updateStatsLabels(editor: LabeledEditor, pi: ExtensionAPI, ctx: Extensi
 		if (msg.role === "assistant") {
 			cost += (msg as AssistantMessage).usage?.cost?.total ?? 0;
 		} else if (msg.role === "toolResult") {
-			cost += (msg as any).details?.cost ?? 0;
+			const details = (msg as { details?: unknown }).details;
+			if (hasToolCost(details)) cost += details.cost;
 		}
 	}
 

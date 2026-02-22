@@ -14,6 +14,7 @@ import type { Message } from "@mariozechner/pi-ai";
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Text } from "@mariozechner/pi-tui";
 import type { UsageStats } from "./pi-spawn";
+import type { ToolCostDetails } from "./tool-cost";
 
 // --- types ---
 
@@ -85,7 +86,7 @@ export function subAgentResult(
 	text: string,
 	details: SingleResult,
 	isError = false,
-): any {
+): { content: { type: "text"; text: string }[]; details: SingleResult & ToolCostDetails; isError?: boolean } {
 	return {
 		content: [{ type: "text" as const, text }],
 		details: { ...details, cost: details.usage.cost },
