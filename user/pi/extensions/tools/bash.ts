@@ -10,6 +10,7 @@
  * - SIGTERM → SIGKILL fallback on cancel/timeout (pi goes straight to SIGKILL)
  * - output truncation (last 50000 chars, not pi's 2000 lines/50KB)
  * - rolling buffer trimming to cap memory on large outputs
+ * - permission rules from ~/.pi/agent/permissions.json (allow/reject)
  *
  * shadows pi's built-in `bash` tool via same-name registration.
  */
@@ -20,6 +21,7 @@ import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { withFileLock } from "./lib/mutex";
+import { evaluatePermission, loadPermissions } from "./lib/permissions";
 import { resolveToAbsolute } from "./read";
 
 const MAX_OUTPUT_CHARS = 50_000;
@@ -166,6 +168,17 @@ export function createBashTool(): ToolDefinition {
 			if (!existsSync(effectiveCwd)) {
 				return {
 					content: [{ type: "text" as const, text: `working directory does not exist: ${effectiveCwd}` }],
+					isError: true,
+				} as any;
+			}
+
+			const verdict = evaluatePermission("Bash", { cmd: command }, loadPermissions());
+			if (verdict.action === "reject") {
+				const msg = verdict.message
+					? `command rejected: ${verdict.message}`
+					: `command rejected by permission rule. command: ${command}`;
+				return {
+					content: [{ type: "text" as const, text: msg }],
 					isError: true,
 				} as any;
 			}
