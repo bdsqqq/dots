@@ -1,11 +1,17 @@
 /**
- * web_search tool — search the web via Parallel AI's Search API.
+ * web_search tool — direct HTTP call to Parallel AI's Search API.
  *
- * direct HTTP call (no sub-agent). posts to parallel's search endpoint,
- * formats results as markdown with title/url/excerpts per result.
+ * uses curl (not fetch/SDK) because pi extensions run in a nix-built
+ * environment where adding npm deps requires a rebuild. curl is always
+ * available and the single-endpoint usage doesn't justify the SDK.
  *
- * auth: PARALLEL_API_KEY env var → x-api-key header.
- * pricing: $5/1k queries.
+ * cost is derived from the response's usage array, not hardcoded —
+ * the API returns UsageItem[] with SKU counts, we multiply by known
+ * unit prices. if the API omits usage, we fall back to base search cost.
+ *
+ * refs:
+ *   schema: https://docs.parallel.ai/public-openapi.json (UsageItem)
+ *   pricing: https://docs.parallel.ai/pricing (Search API section)
  */
 
 import { spawn } from "node:child_process";
@@ -16,7 +22,7 @@ import type { ToolCostDetails } from "./lib/tool-cost";
 
 const ENDPOINT = "https://api.parallel.ai/v1beta/search";
 const CURL_TIMEOUT_SECS = 30;
-const DEFAULT_MAX_RESULTS = 5;
+const DEFAULT_MAX_RESULTS = 10;
 
 interface SearchResult {
 	url: string;
@@ -25,11 +31,36 @@ interface SearchResult {
 	excerpts: string[];
 }
 
+/**
+ * usage line item from the API response.
+ * schema: https://docs.parallel.ai/public-openapi.json → UsageItem
+ */
+interface UsageItem {
+	name: string;
+	count: number;
+}
+
+/** per-unit pricing by SKU name ($/unit). ref: https://docs.parallel.ai/pricing */
+const SKU_UNIT_COST: Record<string, number> = {
+	sku_search: 0.005,
+	sku_search_additional_results: 0.001,
+};
+
+/** falls back to base search cost when API omits usage (e.g., older API versions). */
+function costFromUsage(usage: UsageItem[] | undefined): number {
+	if (!usage?.length) return SKU_UNIT_COST.sku_search ?? 0;
+	let total = 0;
+	for (const item of usage) {
+		total += (SKU_UNIT_COST[item.name] ?? 0) * item.count;
+	}
+	return total;
+}
+
 interface SearchResponse {
 	search_id?: string;
 	results: SearchResult[];
 	warnings?: string[];
-	usage?: Record<string, unknown>;
+	usage?: UsageItem[];
 }
 
 function searchParallel(
@@ -189,9 +220,7 @@ export function createWebSearchTool(): ToolDefinition {
 				output += `\n\n**Warnings:** ${data.warnings.join("; ")}`;
 			}
 
-			const COST_PER_QUERY = 0.005;
-			const queryCount = params.search_queries?.length || 1;
-			const details: ToolCostDetails = { cost: COST_PER_QUERY * queryCount };
+			const details: ToolCostDetails = { cost: costFromUsage(data.usage) };
 			return { content: [{ type: "text" as const, text: output }], details };
 		},
 
