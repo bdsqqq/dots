@@ -12,6 +12,7 @@ import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { tagCost } from "./lib/cost";
 
 const ENDPOINT = "https://api.parallel.ai/v1beta/search";
 const CURL_TIMEOUT_SECS = 30;
@@ -188,7 +189,9 @@ export function createWebSearchTool(): ToolDefinition {
 				output += `\n\n**Warnings:** ${data.warnings.join("; ")}`;
 			}
 
-			return { content: [{ type: "text" as const, text: output }] } as any;
+			const COST_PER_QUERY = 0.005;
+			const queryCount = params.search_queries?.length || 1;
+			return { content: [{ type: "text" as const, text: tagCost(output, COST_PER_QUERY * queryCount) }] } as any;
 		},
 
 		renderCall(args: any, theme: any) {
