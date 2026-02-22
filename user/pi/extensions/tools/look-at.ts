@@ -18,7 +18,7 @@ import { Type } from "@sinclair/typebox";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
 
-const MODEL = "openrouter/google/gemini-2.5-flash";
+const MODEL = "openrouter/google/gemini-3-flash-preview";
 
 /** read tool (for file access) + ls (for context if needed) */
 const BUILTIN_TOOLS = ["read", "ls"];

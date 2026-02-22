@@ -1,7 +1,7 @@
 /**
  * code_review tool — structured diff review via gemini sub-agent.
  *
- * spawns a gemini-2.5-pro sub-agent that:
+ * spawns a gemini sub-agent that:
  * 1. runs git diff (or other bash command) based on diff_description
  * 2. reads changed files for context
  * 3. produces XML <codeReview> report with per-comment severity/type
@@ -20,7 +20,7 @@ import { Type } from "@sinclair/typebox";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
 
-const MODEL = "openrouter/google/gemini-2.5-pro";
+const MODEL = "openrouter/google/gemini-3.1-pro-preview";
 
 /** sub-agent needs bash (git diff), read/grep/glob (context), web tools (docs lookup) */
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash"];

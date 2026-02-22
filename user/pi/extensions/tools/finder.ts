@@ -5,7 +5,7 @@
  * with a dedicated tool. the model calls
  * finder(query: "...") instead of routing through the dispatcher.
  *
- * spawns `pi --mode json` with gemini-2.5-flash, constrained to
+ * spawns `pi --mode json` with gemini flash, constrained to
  * read-only tools (read, grep, find, ls, glob). the finder agent
  * maximizes parallelism (8+ tool calls per turn) and completes
  * within ~3 turns.
@@ -20,7 +20,7 @@ import { Type } from "@sinclair/typebox";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
 
-const MODEL = "openrouter/google/gemini-2.5-flash";
+const MODEL = "openrouter/google/gemini-3-flash-preview";
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls"];
 const EXTENSION_TOOLS = ["read", "grep", "glob", "ls"];
 

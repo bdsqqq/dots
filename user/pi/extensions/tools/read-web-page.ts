@@ -21,7 +21,7 @@ import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-ag
 const MAX_OUTPUT_CHARS = 64_000;
 const CURL_TIMEOUT_SECS = 30;
 const MAX_REDIRECTS = 5;
-const PROMPT_MODEL = "openrouter/google/gemini-2.5-flash";
+const PROMPT_MODEL = "openrouter/google/gemini-3-flash-preview";
 
 const DEFAULT_PROMPT_SYSTEM = `Analyze web page content and answer questions. Be concise, answer from provided content only. No filler.`;
 

@@ -19,7 +19,7 @@ import { Type } from "@sinclair/typebox";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
 
-const MODEL = "openrouter/google/gemini-2.5-flash";
+const MODEL = "openrouter/google/gemini-3-flash-preview";
 const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
 const MAX_RENDER_CHARS = 120_000;
 
