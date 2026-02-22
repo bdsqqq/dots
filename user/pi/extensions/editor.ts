@@ -18,7 +18,7 @@ import { visibleWidth } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { execSync } from "node:child_process";
-import { extractCost } from "./tools/lib/sub-agent-render";
+import { extractCost } from "./tools/lib/cost";
 
 interface Label {
 	key: string;
