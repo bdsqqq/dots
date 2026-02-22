@@ -1,0 +1,21 @@
+[
+  {
+    "tool": "Bash",
+    "matches": { "cmd": ["*git add -A*", "*git add .*"] },
+    "action": "reject",
+    "message": "stage files explicitly with 'git add <file>' — unstaged changes may not be yours"
+  },
+  {
+    "tool": "Bash",
+    "matches": { "cmd": ["*git push --force*", "*git push -f*", "*--force-with-lease*"] },
+    "action": "reject",
+    "message": "never force push. if diverged: 'git fetch origin && git rebase origin/main && git push'"
+  },
+  {
+    "tool": "Bash",
+    "matches": { "cmd": ["rm *", "* && rm *", "* || rm *", "* ; rm *"] },
+    "action": "reject",
+    "message": "use 'trash <file>' instead of rm — recoverable deletion"
+  },
+  { "tool": "*", "action": "allow" }
+]

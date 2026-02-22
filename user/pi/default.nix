@@ -16,6 +16,7 @@ in
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
     home.file.".pi/agent/auth.json".source = config.lib.file.mkOutOfStoreSymlink "/run/secrets/rendered/pi-auth.json";
     home.file.".pi/agent/settings.json".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/settings.json";
+    home.file.".pi/agent/permissions.json".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/permissions.json";
 
     # editor extension — box-drawing borders with composable label slots via EventBus
     home.file.".pi/agent/extensions/editor.ts".source = ./extensions/editor.ts;
