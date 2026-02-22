@@ -229,7 +229,7 @@ function estimateContextFromEntries(entries: SessionEntry[]): number {
 	return total;
 }
 
-function updateStatsLabels(editor: LabeledEditor, pi: ExtensionAPI, ctx: ExtensionContext): void {
+function updateStatsLabels(editor: LabeledEditor, pi: ExtensionAPI, ctx: ExtensionContext, extraCost = 0): void {
 	// top-left: context usage + cost
 	const usage = ctx.getContextUsage();
 	const model = ctx.model;
@@ -241,6 +241,7 @@ function updateStatsLabels(editor: LabeledEditor, pi: ExtensionAPI, ctx: Extensi
 			cost += m.usage?.cost?.total ?? 0;
 		}
 	}
+	cost += extraCost;
 
 	const topLeftParts: string[] = [];
 
@@ -302,6 +303,7 @@ export default function (pi: ExtensionAPI) {
 	let gitBranch: string | null = null;
 	let branchUnsub: (() => void) | null = null;
 	let activeTools = 0;
+	let subAgentCost = 0;
 
 	pi.on("session_start", async (_event, ctx) => {
 		// replace editor with labeled box-drawing version
@@ -352,18 +354,19 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setWidget("activity", [` ≈ ${event.toolName}...  Esc to cancel`], { placement: "belowEditor" });
 	});
 
-	pi.on("tool_execution_end", async (_event, ctx) => {
+	pi.on("tool_execution_end", async (event, ctx) => {
 		activeTools = Math.max(0, activeTools - 1);
 		if (activeTools === 0) {
 			ctx.ui.setWidget("activity", [" ≈ thinking..."], { placement: "belowEditor" });
 		}
-		if (editor) updateStatsLabels(editor, pi, ctx);
+		subAgentCost += (event as any).result?.details?.usage?.cost ?? 0;
+		if (editor) updateStatsLabels(editor, pi, ctx, subAgentCost);
 	});
 
 	pi.on("agent_end", async (_event, ctx) => {
 		activeTools = 0;
 		ctx.ui.setWidget("activity", undefined);
-		if (editor) updateStatsLabels(editor, pi, ctx);
+		if (editor) updateStatsLabels(editor, pi, ctx, subAgentCost);
 
 		// update git changes widget — right-aligned
 		const diffStats = getGitDiffStats(ctx.cwd);
@@ -398,6 +401,7 @@ export default function (pi: ExtensionAPI) {
 		branchUnsub = null;
 		gitBranch = null;
 		activeTools = 0;
+		subAgentCost = 0;
 		ctx.ui.setWidget("activity", undefined);
 		ctx.ui.setWidget("git-changes", undefined);
 		if (editor) updateStatsLabels(editor, pi, ctx);
