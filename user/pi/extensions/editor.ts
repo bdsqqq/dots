@@ -18,6 +18,9 @@ import { visibleWidth } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 interface Label {
 	key: string;
@@ -298,14 +301,35 @@ function getGitDiffStats(cwd: string): string {
 	}
 }
 
+// --- sub-agent cost persistence ---
+
+const SUBAGENT_COST_DIR = path.join(os.homedir(), ".pi", "subagent-costs");
+
+function saveSubAgentCost(sessionId: string, cost: number): void {
+	try {
+		fs.mkdirSync(SUBAGENT_COST_DIR, { recursive: true });
+		fs.writeFileSync(path.join(SUBAGENT_COST_DIR, `${sessionId}.txt`), String(cost));
+	} catch { /* best-effort */ }
+}
+
+function loadSubAgentCost(sessionId: string): number {
+	try {
+		return parseFloat(fs.readFileSync(path.join(SUBAGENT_COST_DIR, `${sessionId}.txt`), "utf-8")) || 0;
+	} catch { return 0; }
+}
+
 export default function (pi: ExtensionAPI) {
 	let editor: LabeledEditor | null = null;
 	let gitBranch: string | null = null;
 	let branchUnsub: (() => void) | null = null;
 	let activeTools = 0;
 	let subAgentCost = 0;
+	let currentSessionId = "";
 
 	pi.on("session_start", async (_event, ctx) => {
+		currentSessionId = ctx.sessionManager.getSessionId();
+		subAgentCost = loadSubAgentCost(currentSessionId);
+
 		// replace editor with labeled box-drawing version
 		ctx.ui.setEditorComponent((tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
 			editor = new LabeledEditor(tui, editorTheme, keybindings, ctx.ui.theme);
@@ -339,7 +363,7 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		updateBottomLabel();
-		updateStatsLabels(editor!, pi, ctx);
+		updateStatsLabels(editor!, pi, ctx, subAgentCost);
 	});
 
 	// --- activity status + git changes widget ---
@@ -359,7 +383,11 @@ export default function (pi: ExtensionAPI) {
 		if (activeTools === 0) {
 			ctx.ui.setWidget("activity", [" ≈ thinking..."], { placement: "belowEditor" });
 		}
-		subAgentCost += (event as any).result?.details?.usage?.cost ?? 0;
+		const toolCost = (event as any).result?.details?.usage?.cost ?? 0;
+		if (toolCost > 0) {
+			subAgentCost += toolCost;
+			saveSubAgentCost(currentSessionId, subAgentCost);
+		}
 		if (editor) updateStatsLabels(editor, pi, ctx, subAgentCost);
 	});
 
@@ -401,9 +429,10 @@ export default function (pi: ExtensionAPI) {
 		branchUnsub = null;
 		gitBranch = null;
 		activeTools = 0;
-		subAgentCost = 0;
+		currentSessionId = ctx.sessionManager.getSessionId();
+		subAgentCost = loadSubAgentCost(currentSessionId);
 		ctx.ui.setWidget("activity", undefined);
 		ctx.ui.setWidget("git-changes", undefined);
-		if (editor) updateStatsLabels(editor, pi, ctx);
+		if (editor) updateStatsLabels(editor, pi, ctx, subAgentCost);
 	});
 }
