@@ -359,6 +359,7 @@ export function createSearchSessionsTool(): ToolDefinition {
 			"Search pi session history by keyword, file path, or date range.\n\n" +
 			"Sessions are trees with branches. Each branch (root-to-leaf path) is a " +
 			"separate search result with its own files-touched set and message chain.\n\n" +
+			"Scoped to current workspace by default. Use `all_workspaces: true` to search everywhere.\n\n" +
 			"Use `read_session` to extract detailed content from a specific session.\n\n" +
 			"WHEN TO USE:\n" +
 			"- \"Find the session where I worked on X\"\n" +
@@ -392,12 +393,17 @@ export function createSearchSessionsTool(): ToolDefinition {
 			),
 			workspace: Type.Optional(
 				Type.String({
-					description: "Filter by workspace path (partial match against session cwd).",
+					description: "Filter by workspace path (partial match against session cwd). Defaults to current workspace.",
+				}),
+			),
+			all_workspaces: Type.Optional(
+				Type.Boolean({
+					description: "Search across all workspaces instead of just the current one.",
 				}),
 			),
 		}),
 
-		async execute(_toolCallId, params) {
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!fs.existsSync(SESSIONS_DIR)) {
 				return {
 					content: [{ type: "text" as const, text: "(no sessions directory found)" }],
@@ -460,12 +466,17 @@ export function createSearchSessionsTool(): ToolDefinition {
 			// 4. parse and enumerate branches
 			const allBranches: BranchResult[] = [];
 
+			// workspace filter: default to current cwd unless all_workspaces is set
+			const workspaceFilter = params.all_workspaces
+				? undefined
+				: params.workspace || ctx.cwd;
+
 			for (const file of sessionFiles) {
 				const { header, entries, sessionName } = parseSessionFile(file);
 				if (!header) continue;
 
 				// workspace filter
-				if (params.workspace && !header.cwd.toLowerCase().includes(params.workspace.toLowerCase())) {
+				if (workspaceFilter && !header.cwd.toLowerCase().includes(workspaceFilter.toLowerCase())) {
 					continue;
 				}
 
