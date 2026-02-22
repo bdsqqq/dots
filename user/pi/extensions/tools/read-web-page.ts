@@ -16,7 +16,7 @@ import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { htmlToMarkdown } from "./lib/html-to-md";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
-import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
+import { getFinalOutput, renderAgentTree, subAgentResult, type SingleResult } from "./lib/sub-agent-render";
 
 const MAX_OUTPUT_CHARS = 64_000;
 const CURL_TIMEOUT_SECS = 30;
@@ -241,17 +241,10 @@ export function createReadWebPageTool(config: ReadWebPageConfig = {}): ToolDefin
 				const output = getFinalOutput(result.messages) || "(no output)";
 
 				if (isError) {
-					return {
-						content: [{ type: "text" as const, text: result.errorMessage || result.stderr || output }],
-						details: singleResult,
-						isError: true,
-					} as any;
+					return subAgentResult(result.errorMessage || result.stderr || output, singleResult, true);
 				}
 
-				return {
-					content: [{ type: "text" as const, text: output }],
-					details: singleResult,
-				} as any;
+				return subAgentResult(output, singleResult);
 			}
 
 			return { content: [{ type: "text" as const, text: content }] } as any;

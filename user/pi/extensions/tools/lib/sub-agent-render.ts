@@ -84,7 +84,7 @@ const COST_TAG_RE = /\n<!-- subagent-cost:([\d.]+) -->$/;
  * in markdown rendering. editor.ts parses these to reconstruct
  * total sub-agent spend across session switches.
  */
-export function tagCost(text: string, cost: number): string {
+function tagCost(text: string, cost: number): string {
 	if (cost <= 0) return text;
 	return `${text}\n<!-- subagent-cost:${cost} -->`;
 }
@@ -92,6 +92,25 @@ export function tagCost(text: string, cost: number): string {
 export function extractCost(text: string): number {
 	const match = COST_TAG_RE.exec(text);
 	return match ? parseFloat(match[1]) || 0 : 0;
+}
+
+// --- tool result construction ---
+
+/**
+ * build the standard tool result for a piSpawn-based sub-agent.
+ * all sub-agent tools should use this instead of constructing
+ * return values manually — cost tagging is automatic.
+ */
+export function subAgentResult(
+	text: string,
+	details: SingleResult,
+	isError = false,
+): any {
+	return {
+		content: [{ type: "text" as const, text: tagCost(text, details.usage.cost) }],
+		details,
+		...(isError && { isError: true }),
+	};
 }
 
 // --- formatting ---
