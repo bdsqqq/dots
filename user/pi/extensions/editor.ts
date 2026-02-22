@@ -18,9 +18,7 @@ import { visibleWidth } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { execSync } from "node:child_process";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
+import { extractCost } from "./tools/lib/sub-agent-render";
 
 interface Label {
 	key: string;
@@ -232,19 +230,23 @@ function estimateContextFromEntries(entries: SessionEntry[]): number {
 	return total;
 }
 
-function updateStatsLabels(editor: LabeledEditor, pi: ExtensionAPI, ctx: ExtensionContext, extraCost = 0): void {
-	// top-left: context usage + cost
+function updateStatsLabels(editor: LabeledEditor, pi: ExtensionAPI, ctx: ExtensionContext): void {
+	// top-left: context usage + cost (parent model + sub-agents)
 	const usage = ctx.getContextUsage();
 	const model = ctx.model;
 
 	let cost = 0;
 	for (const entry of ctx.sessionManager.getBranch()) {
-		if (entry.type === "message" && entry.message.role === "assistant") {
-			const m = entry.message as AssistantMessage;
-			cost += m.usage?.cost?.total ?? 0;
+		if (entry.type !== "message") continue;
+		const msg = entry.message;
+		if (msg.role === "assistant") {
+			cost += (msg as AssistantMessage).usage?.cost?.total ?? 0;
+		} else if (msg.role === "toolResult") {
+			for (const part of msg.content ?? []) {
+				if (part.type === "text" && part.text) cost += extractCost(part.text);
+			}
 		}
 	}
-	cost += extraCost;
 
 	const topLeftParts: string[] = [];
 
@@ -301,35 +303,13 @@ function getGitDiffStats(cwd: string): string {
 	}
 }
 
-// --- sub-agent cost persistence ---
-
-const SUBAGENT_COST_DIR = path.join(os.homedir(), ".pi", "subagent-costs");
-
-function saveSubAgentCost(sessionId: string, cost: number): void {
-	try {
-		fs.mkdirSync(SUBAGENT_COST_DIR, { recursive: true });
-		fs.writeFileSync(path.join(SUBAGENT_COST_DIR, `${sessionId}.txt`), String(cost));
-	} catch { /* best-effort */ }
-}
-
-function loadSubAgentCost(sessionId: string): number {
-	try {
-		return parseFloat(fs.readFileSync(path.join(SUBAGENT_COST_DIR, `${sessionId}.txt`), "utf-8")) || 0;
-	} catch { return 0; }
-}
-
 export default function (pi: ExtensionAPI) {
 	let editor: LabeledEditor | null = null;
 	let gitBranch: string | null = null;
 	let branchUnsub: (() => void) | null = null;
 	let activeTools = 0;
-	let subAgentCost = 0;
-	let currentSessionId = "";
 
 	pi.on("session_start", async (_event, ctx) => {
-		currentSessionId = ctx.sessionManager.getSessionId();
-		subAgentCost = loadSubAgentCost(currentSessionId);
-
 		// replace editor with labeled box-drawing version
 		ctx.ui.setEditorComponent((tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
 			editor = new LabeledEditor(tui, editorTheme, keybindings, ctx.ui.theme);
@@ -363,7 +343,7 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		updateBottomLabel();
-		updateStatsLabels(editor!, pi, ctx, subAgentCost);
+		updateStatsLabels(editor!, pi, ctx);
 	});
 
 	// --- activity status + git changes widget ---
@@ -378,23 +358,18 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setWidget("activity", [` ≈ ${event.toolName}...  Esc to cancel`], { placement: "belowEditor" });
 	});
 
-	pi.on("tool_execution_end", async (event, ctx) => {
+	pi.on("tool_execution_end", async (_event, ctx) => {
 		activeTools = Math.max(0, activeTools - 1);
 		if (activeTools === 0) {
 			ctx.ui.setWidget("activity", [" ≈ thinking..."], { placement: "belowEditor" });
 		}
-		const toolCost = (event as any).result?.details?.usage?.cost ?? 0;
-		if (toolCost > 0) {
-			subAgentCost += toolCost;
-			saveSubAgentCost(currentSessionId, subAgentCost);
-		}
-		if (editor) updateStatsLabels(editor, pi, ctx, subAgentCost);
+		if (editor) updateStatsLabels(editor, pi, ctx);
 	});
 
 	pi.on("agent_end", async (_event, ctx) => {
 		activeTools = 0;
 		ctx.ui.setWidget("activity", undefined);
-		if (editor) updateStatsLabels(editor, pi, ctx, subAgentCost);
+		if (editor) updateStatsLabels(editor, pi, ctx);
 
 		// update git changes widget — right-aligned
 		const diffStats = getGitDiffStats(ctx.cwd);
@@ -429,10 +404,8 @@ export default function (pi: ExtensionAPI) {
 		branchUnsub = null;
 		gitBranch = null;
 		activeTools = 0;
-		currentSessionId = ctx.sessionManager.getSessionId();
-		subAgentCost = loadSubAgentCost(currentSessionId);
 		ctx.ui.setWidget("activity", undefined);
 		ctx.ui.setWidget("git-changes", undefined);
-		if (editor) updateStatsLabels(editor, pi, ctx, subAgentCost);
+		if (editor) updateStatsLabels(editor, pi, ctx);
 	});
 }

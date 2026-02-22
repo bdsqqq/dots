@@ -74,6 +74,26 @@ export function getDisplayItems(messages: Message[]): DisplayItem[] {
 	return items;
 }
 
+// --- cost tagging ---
+
+const COST_TAG_RE = /\n<!-- subagent-cost:([\d.]+) -->$/;
+
+/**
+ * append a machine-readable cost tag to tool result text.
+ * persisted in the session JSONL as part of content, invisible
+ * in markdown rendering. editor.ts parses these to reconstruct
+ * total sub-agent spend across session switches.
+ */
+export function tagCost(text: string, cost: number): string {
+	if (cost <= 0) return text;
+	return `${text}\n<!-- subagent-cost:${cost} -->`;
+}
+
+export function extractCost(text: string): number {
+	const match = COST_TAG_RE.exec(text);
+	return match ? parseFloat(match[1]) || 0 : 0;
+}
+
 // --- formatting ---
 
 function formatTokens(count: number): string {
