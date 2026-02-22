@@ -16,63 +16,43 @@ import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@mariozechner
 import { BorderedLoader, convertToLlm, serializeConversation, SessionManager } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { readAgentPrompt } from "./tools/lib/pi-spawn";
 
 const HANDOFF_THRESHOLD = 0.85;
 const HANDOFF_MODEL = { provider: "openrouter", id: "anthropic/claude-haiku-4.5" } as const;
 const MAX_RELEVANT_FILES = 10;
 
+function parsePromptSections(content: string): Record<string, string> {
+	const sections: Record<string, string> = {};
+	const parts = content.split("\n# ");
+	for (const part of parts) {
+		const nl = part.indexOf("\n");
+		if (nl === -1) continue;
+		const name = part.slice(0, nl).trim();
+		const body = part.slice(nl + 1).trim();
+		if (name) sections[name] = body;
+	}
+	return sections;
+}
+
+const handoffSections = parsePromptSections(readAgentPrompt("prompt.amp.handoff-extraction.md"));
+
 const HANDOFF_TOOL: Tool = {
 	name: "create_handoff_context",
-	description: "Extract context and select relevant files for handoff to a new session.",
+	description: handoffSections["tool-description"] || "Extract context for handoff",
 	parameters: Type.Object({
 		relevantInformation: Type.String({
-			description: `Extract conversation context in first person.
-
-Consider what context would help continue the work.
-
-Extract what's relevant. Adjust length to complexity.
-
-Focus on behavior over implementation details.
-
-Format: plain text with bullets. Use workspace-relative paths.`,
+			description: handoffSections["field-relevant-information"] || "Extract relevant context",
 		}),
 		relevantFiles: Type.Array(Type.String(), {
-			description: `An array of file or directory paths (workspace-relative) that are relevant to accomplishing the goal.
-
-Rules:
-- Maximum ${MAX_RELEVANT_FILES} files. Only include the most critical files needed for the task.
-- You can include directories if multiple files from that directory are needed.
-- Prioritize by importance and relevance. Put the most important files first.
-- Return workspace-relative paths (e.g., "user/pi/extensions/handoff.ts").
-- Do not use absolute paths or invent files.`,
+			description: handoffSections["field-relevant-files"] || "Relevant file paths",
 		}),
 	}),
 };
 
 function buildExtractionPrompt(conversationText: string, goal: string): string {
-	return `${conversationText}
-
-Summarize the conversation for handoff. Write in first person.
-
-Consider what context is needed:
-- What did I just do or implement?
-- What instructions did I already give you which are still relevant (e.g. follow patterns in the codebase)?
-- What files did I already tell you that's important or that I am working on (and should continue working on)?
-- Did I provide a plan or spec that should be included?
-- What did I already tell you that's important (certain libraries, patterns, constraints, preferences)?
-- What important technical details did I discover (APIs, methods, patterns)?
-- What caveats, limitations, or open questions did I find?
-
-Extract what's relevant. Adjust length to complexity.
-
-Focus on behavior over implementation details.
-
-Format: plain text with bullets. Use workspace-relative paths.
-
-My request:
-${goal}
-
-Use the create_handoff_context tool to extract relevant information and files.`;
+	const body = handoffSections["extraction-prompt"] ?? "";
+	return `${conversationText}\n\n${body}\n${goal}\n\nUse the create_handoff_context tool to extract relevant information and files.`;
 }
 
 interface HandoffExtraction {

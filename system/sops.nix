@@ -11,7 +11,7 @@ let
     else "/home/bdsqqq";
 
   promptsFile = inputs.self + "/user/agents/prompts.json";
-  promptCount = 14;
+  promptCount = 15;
   promptIds = builtins.genList (i: builtins.toString i) promptCount;
 
   unpackScript = ''
