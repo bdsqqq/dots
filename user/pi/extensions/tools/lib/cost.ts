@@ -10,7 +10,7 @@
  * session JSONL — single source of truth, survives session switches.
  */
 
-const COST_TAG_RE = /\n<!-- tool-cost:([\d.]+) -->$/;
+const COST_TAG_RE = /\n<!-- (?:tool|subagent)-cost:([\d.]+) -->$/;
 
 export function tagCost(text: string, cost: number): string {
 	if (cost <= 0) return text;
