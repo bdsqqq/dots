@@ -17,7 +17,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
-import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
+import { getFinalOutput, renderAgentTree, subAgentResult, type SingleResult } from "./lib/sub-agent-render";
 
 const MODEL = "openrouter/google/gemini-3-flash-preview";
 const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
@@ -370,17 +370,10 @@ export function createReadSessionTool(config: ReadSessionConfig = {}): ToolDefin
 			const output = getFinalOutput(result.messages) || "(no output)";
 
 			if (isError) {
-				return {
-					content: [{ type: "text" as const, text: result.errorMessage || result.stderr || output }],
-					details: singleResult,
-					isError: true,
-				} as any;
+				return subAgentResult(result.errorMessage || result.stderr || output, singleResult, true);
 			}
 
-			return {
-				content: [{ type: "text" as const, text: output }],
-				details: singleResult,
-			} as any;
+			return subAgentResult(output, singleResult);
 		},
 
 		renderCall(args: any, theme: any) {

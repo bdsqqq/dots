@@ -18,7 +18,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
-import { getFinalOutput, renderAgentTree, tagCost, type SingleResult } from "./lib/sub-agent-render";
+import { getFinalOutput, renderAgentTree, subAgentResult, type SingleResult } from "./lib/sub-agent-render";
 
 const MODEL = "openrouter/google/gemini-3.1-pro-preview";
 
@@ -192,17 +192,10 @@ export function createCodeReviewTool(config: CodeReviewConfig = {}): ToolDefinit
 			const output = getFinalOutput(result.messages) || "(no output)";
 
 			if (isError) {
-				return {
-					content: [{ type: "text" as const, text: tagCost(result.errorMessage || result.stderr || output, singleResult.usage.cost) }],
-					details: singleResult,
-					isError: true,
-				} as any;
+				return subAgentResult(result.errorMessage || result.stderr || output, singleResult, true);
 			}
 
-			return {
-				content: [{ type: "text" as const, text: tagCost(output, singleResult.usage.cost) }],
-				details: singleResult,
-			} as any;
+			return subAgentResult(output, singleResult);
 		},
 
 		renderCall(args: any, theme: any) {
