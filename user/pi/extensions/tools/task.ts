@@ -18,7 +18,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
-import { getFinalOutput, renderAgentTree, type SingleResult } from "./lib/sub-agent-render";
+import { getFinalOutput, renderAgentTree, tagCost, type SingleResult } from "./lib/sub-agent-render";
 
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash", "edit", "write"];
 const EXTENSION_TOOLS = [
@@ -107,14 +107,14 @@ export function createTaskTool(): ToolDefinition {
 
 			if (isError) {
 				return {
-					content: [{ type: "text" as const, text: result.errorMessage || result.stderr || output }],
+					content: [{ type: "text" as const, text: tagCost(result.errorMessage || result.stderr || output, singleResult.usage.cost) }],
 					details: singleResult,
 					isError: true,
 				} as any;
 			}
 
 			return {
-				content: [{ type: "text" as const, text: output }],
+				content: [{ type: "text" as const, text: tagCost(output, singleResult.usage.cost) }],
 				details: singleResult,
 			} as any;
 		},
