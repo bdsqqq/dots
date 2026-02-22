@@ -8,12 +8,13 @@
     "~/.pi/agent/extensions/handoff.ts",
     "~/.pi/agent/extensions/session-name.ts",
     "~/.pi/agent/extensions/tool-harness.ts",
+    "~/.pi/agent/extensions/system-prompt.ts",
     "~/.pi/agent/extensions/tools"
   ],
   "compaction": {
     "enabled": false
   },
-  "lastChangelogVersion": "0.54.0",
+  "lastChangelogVersion": "0.54.1",
   "defaultModel": "z-ai/glm-5",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": false,

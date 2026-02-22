@@ -30,6 +30,9 @@ in
     # tool-harness — gates extension tools via PI_INCLUDE_TOOLS env var
     home.file.".pi/agent/extensions/tool-harness.ts".source = ./extensions/tool-harness.ts;
 
+    # system-prompt — injects interpolated amp system prompt via before_agent_start
+    home.file.".pi/agent/extensions/system-prompt.ts".source = ./extensions/system-prompt.ts;
+
     # tools extension — custom tool implementations + shared infrastructure (mutex, AGENTS.md, undo tracking)
     home.file.".pi/agent/extensions/tools" = {
       source = ./extensions/tools;
