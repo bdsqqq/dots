@@ -39,6 +39,12 @@ export function getGitRemoteUrl(dir: string): string {
 export interface InterpolateContext {
 	sessionId?: string;
 	repo?: string;
+	/** agent identity name, e.g. "Amp". default: "Amp" */
+	identity?: string;
+	/** harness name, e.g. "pi" or "amp". determines which docs to load. default: "pi" */
+	harness?: string;
+	/** pre-loaded harness docs section. if provided, skips file read. */
+	harnessDocsSection?: string;
 }
 
 /**
@@ -70,6 +76,9 @@ export function interpolatePromptVars(prompt: string, cwd: string, extra?: Inter
 		repo,
 		sessionId,
 		ls,
+		identity: extra?.identity || "Amp",
+		harness: extra?.harness || "pi",
+		harness_docs_section: extra?.harnessDocsSection || "",
 	};
 
 	const emptyKeys = Object.keys(vars).filter((k) => !vars[k]);
