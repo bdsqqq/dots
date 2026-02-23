@@ -17,18 +17,16 @@ import { Type } from "@sinclair/typebox";
 import { htmlToMarkdown } from "./lib/html-to-md";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, subAgentResult, type SingleResult } from "./lib/sub-agent-render";
+import { OutputBuffer, headTailChars } from "./lib/output-buffer";
 
-const MAX_OUTPUT_CHARS = 64_000;
+const HEAD_LINES = 500;
+const TAIL_LINES = 500;
+const MAX_CHARS = 64_000;
 const CURL_TIMEOUT_SECS = 30;
 const MAX_REDIRECTS = 5;
 const PROMPT_MODEL = "openrouter/google/gemini-3-flash-preview";
 
 const DEFAULT_PROMPT_SYSTEM = `Analyze web page content and answer questions. Be concise, answer from provided content only. No filler.`;
-
-function truncate(text: string, maxLen: number): string {
-	if (text.length <= maxLen) return text;
-	return `${text.slice(0, maxLen)}\n\n... (truncated, ${text.length} total characters)`;
-}
 
 function fetchUrl(url: string, signal?: AbortSignal): Promise<{ html: string; error?: string }> {
 	return new Promise((resolve) => {
@@ -45,7 +43,7 @@ function fetchUrl(url: string, signal?: AbortSignal): Promise<{ html: string; er
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 
-		let stdout = "";
+		const output = new OutputBuffer(HEAD_LINES, TAIL_LINES);
 		let stderr = "";
 		let aborted = false;
 
@@ -59,10 +57,7 @@ function fetchUrl(url: string, signal?: AbortSignal): Promise<{ html: string; er
 		}
 
 		child.stdout?.on("data", (data: Buffer) => {
-			stdout += data.toString("utf-8");
-			if (stdout.length > MAX_OUTPUT_CHARS * 2) {
-				stdout = stdout.slice(-MAX_OUTPUT_CHARS);
-			}
+			output.add(data.toString("utf-8"));
 		});
 
 		child.stderr?.on("data", (data: Buffer) => {
@@ -81,7 +76,8 @@ function fetchUrl(url: string, signal?: AbortSignal): Promise<{ html: string; er
 				resolve({ html: "", error: `fetch failed: ${stderr.trim() || `curl exited with code ${code}`}` });
 				return;
 			}
-			resolve({ html: stdout });
+			const { text } = output.format();
+			resolve({ html: text });
 		});
 	});
 }
@@ -167,7 +163,7 @@ export function createReadWebPageTool(config: ReadWebPageConfig = {}): ToolDefin
 
 			// raw mode: skip conversion entirely
 			if (params.raw) {
-				const content = truncate(`Raw HTML content as requested:\n${html}`, MAX_OUTPUT_CHARS);
+				const content = headTailChars(`Raw HTML content as requested:\n${html}`, MAX_CHARS).text;
 				return { content: [{ type: "text" as const, text: content }] } as any;
 			}
 
@@ -183,7 +179,7 @@ export function createReadWebPageTool(config: ReadWebPageConfig = {}): ToolDefin
 				content += `\n\n[${start}–${Math.min(end, total)} of ${total} characters]`;
 			}
 
-			content = truncate(content, MAX_OUTPUT_CHARS);
+			content = headTailChars(content, MAX_CHARS).text;
 
 			if (params.objective) {
 				content = `Objective: ${params.objective}\n\n---\n\n${content}`;

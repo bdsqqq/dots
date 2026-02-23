@@ -512,10 +512,18 @@ export function createSearchSessionsTool(): ToolDefinition {
 				new Date(b.timestampEnd).getTime() - new Date(a.timestampEnd).getTime(),
 			);
 
-			// 7. cap results
-			filtered = filtered.slice(0, MAX_RESULTS);
-
-			const output = formatBranchResults(filtered);
+			// 7. format with head+tail truncation
+			let output: string;
+			if (filtered.length > MAX_RESULTS) {
+				const half = Math.floor(MAX_RESULTS / 2);
+				const head = filtered.slice(0, half);
+				const tail = filtered.slice(-half);
+				const headOutput = formatBranchResults(head);
+				const tailOutput = formatBranchResults(tail);
+				output = `${headOutput}\n\n... [${filtered.length - MAX_RESULTS} more sessions] ...\n\n${tailOutput}`;
+			} else {
+				output = formatBranchResults(filtered);
+			}
 			return { content: [{ type: "text" as const, text: output }] } as any;
 		},
 
