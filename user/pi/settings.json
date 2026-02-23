@@ -1,5 +1,8 @@
 {
-  "defaultProvider": "openrouter",
+  "defaultProvider": "opencode",
+  "enabledModels": [
+    "opencode*"
+  ],
   "skills": [
     "~/.config/agents/skills"
   ],
@@ -15,7 +18,7 @@
     "enabled": false
   },
   "lastChangelogVersion": "0.54.1",
-  "defaultModel": "z-ai/glm-5",
+  "defaultModel": "glm-5",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": false,
   "steeringMode": "all",
