@@ -64,6 +64,31 @@ export function formatHeadTail<T>(
 	return parts.join("\n");
 }
 
+/**
+ * truncate raw text to head + tail by characters.
+ * for when you have a single string (not lines) that needs truncation.
+ */
+export function headTailChars(
+	text: string,
+	maxChars: number = 64_000,
+): { text: string; truncated: boolean; totalChars: number } {
+	const total = text.length;
+	if (total <= maxChars) {
+		return { text, truncated: false, totalChars: total };
+	}
+
+	const half = Math.floor(maxChars / 2);
+	const head = text.slice(0, half);
+	const tail = text.slice(-half);
+	const truncated = total - maxChars;
+
+	return {
+		text: `${head}\n\n... [${truncated} characters truncated] ...\n\n${tail}`,
+		truncated: true,
+		totalChars: total,
+	};
+}
+
 export class OutputBuffer {
 	private head: string[] = [];
 	private tail: string[] = [];

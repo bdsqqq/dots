@@ -18,10 +18,11 @@ import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, subAgentResult, type SingleResult } from "./lib/sub-agent-render";
+import { headTailChars } from "./lib/output-buffer";
 
 const MODEL = "openrouter/google/gemini-3-flash-preview";
 const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
-const MAX_RENDER_CHARS = 120_000;
+const MAX_CHARS = 120_000;
 
 const DEFAULT_SYSTEM_PROMPT = `You are analyzing a pi coding agent session transcript. Extract information relevant to the user's goal. Be specific — cite file paths, decisions made, code patterns discussed. If a specific branch is marked as the target, focus on that branch but use other branches for context about what was tried and abandoned.`;
 
@@ -257,8 +258,9 @@ function renderSessionTree(
 	}
 
 	let markdown = parts.join("\n");
-	if (markdown.length > MAX_RENDER_CHARS) {
-		markdown = `${markdown.slice(0, MAX_RENDER_CHARS)}\n\n... (session truncated at ${MAX_RENDER_CHARS} characters, ${markdown.length} total)`;
+	const truncated = headTailChars(markdown, MAX_CHARS);
+	if (truncated.truncated) {
+		markdown = truncated.text;
 	}
 
 	return { markdown, sessionName, sessionId };
