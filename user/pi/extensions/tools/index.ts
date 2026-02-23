@@ -47,7 +47,7 @@ import {
 } from "./github";
 
 export { withFileLock } from "./lib/mutex";
-export { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
+export { discoverAgentsMd, discoverAgentsMdFromCwd, formatGuidance } from "./lib/agents-md";
 export { saveChange, loadChanges, revertChange, findLatestChange, simpleDiff } from "./lib/file-tracker";
 
 export default function (pi: ExtensionAPI) {
