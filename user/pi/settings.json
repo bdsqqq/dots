@@ -17,7 +17,7 @@
   "compaction": {
     "enabled": false
   },
-  "lastChangelogVersion": "0.54.1",
+  "lastChangelogVersion": "0.54.2",
   "defaultModel": "glm-5",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": false,
