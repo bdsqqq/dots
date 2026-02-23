@@ -1,0 +1,3 @@
+# test dependencies (dev only)
+node_modules/
+bun.lock

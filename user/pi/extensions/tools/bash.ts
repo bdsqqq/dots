@@ -8,8 +8,8 @@
  * - git commit trailer injection (session ID)
  * - git lock serialization via withFileLock (prevents concurrent git ops)
  * - SIGTERM → SIGKILL fallback on cancel/timeout (pi goes straight to SIGKILL)
- * - output truncation (last 50000 chars, not pi's 2000 lines/50KB)
- * - rolling buffer trimming to cap memory on large outputs
+ * - output truncation with head + tail (first/last N lines, not just tail)
+ * - constant memory via OutputBuffer (no unbounded string growth)
  * - permission rules from ~/.pi/agent/permissions.json (allow/reject)
  *
  * shadows pi's built-in `bash` tool via same-name registration.
@@ -23,8 +23,10 @@ import { Type } from "@sinclair/typebox";
 import { withFileLock } from "./lib/mutex";
 import { evaluatePermission, loadPermissions } from "./lib/permissions";
 import { resolveToAbsolute } from "./read";
+import { OutputBuffer } from "./lib/output-buffer";
 
-const MAX_OUTPUT_CHARS = 50_000;
+const HEAD_LINES = 50;
+const TAIL_LINES = 50;
 const SIGKILL_DELAY_MS = 3000;
 
 // --- shell config ---
@@ -99,26 +101,6 @@ function killGracefully(pid: number): void {
 	}, SIGKILL_DELAY_MS);
 }
 
-// --- output truncation ---
-
-function truncateOutput(output: string): { text: string; totalLines: number; truncatedLines: number } {
-	const totalLines = output.split("\n").length;
-
-	if (output.length <= MAX_OUTPUT_CHARS) {
-		return { text: output, totalLines, truncatedLines: 0 };
-	}
-
-	let truncated = output.slice(-MAX_OUTPUT_CHARS);
-	// snap to line boundary so output doesn't start mid-line
-	const firstNewline = truncated.indexOf("\n");
-	if (firstNewline >= 0 && firstNewline < truncated.length - 1) {
-		truncated = truncated.slice(firstNewline + 1);
-	}
-
-	const shownLines = truncated.split("\n").length;
-	return { text: truncated, totalLines, truncatedLines: totalLines - shownLines };
-}
-
 // --- tool factory ---
 
 export function createBashTool(): ToolDefinition {
@@ -129,7 +111,7 @@ export function createBashTool(): ToolDefinition {
 			"Executes the given shell command using bash.\n\n" +
 			"- Do NOT chain commands with `;` or `&&` or use `&` for background processes; make separate tool calls instead\n" +
 			"- Do NOT use interactive commands (REPLs, editors, password prompts)\n" +
-			`- Output is truncated to the last ${MAX_OUTPUT_CHARS} characters\n` +
+			`- Output shows first ${HEAD_LINES} and last ${TAIL_LINES} lines; middle is truncated for large outputs\n` +
 			"- Environment variables and `cd` do not persist between commands; use the `cwd` parameter instead\n" +
 			"- Commands run in the workspace root by default; only use `cwd` when you need a different directory\n" +
 			"- ALWAYS quote file paths: `cat \"path with spaces/file.txt\"`\n" +
@@ -217,7 +199,7 @@ async function runCommand(
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 
-		let output = "";
+		const output = new OutputBuffer(HEAD_LINES, TAIL_LINES);
 		let timedOut = false;
 		let aborted = false;
 
@@ -239,16 +221,10 @@ async function runCommand(
 		}
 
 		const handleData = (data: Buffer) => {
-			output += data.toString("utf-8");
-
-			// cap memory — keep ~2x the output limit so truncation
-			// always has enough context without unbounded growth
-			if (output.length > MAX_OUTPUT_CHARS * 2) {
-				output = output.slice(-MAX_OUTPUT_CHARS);
-			}
+			output.add(data.toString("utf-8"));
 
 			if (onUpdate) {
-				const { text } = truncateOutput(output);
+				const { text } = output.format();
 				onUpdate({ content: [{ type: "text", text }] });
 			}
 		};
@@ -269,9 +245,10 @@ async function runCommand(
 			if (timeoutHandle) clearTimeout(timeoutHandle);
 			signal?.removeEventListener("abort", onAbort);
 
+			const { text: outputText } = output.format();
+
 			if (aborted) {
-				let text = output ? truncateOutput(output).text + "\n\n" : "";
-				text += "command aborted";
+				const text = outputText ? `${outputText}\n\ncommand aborted` : "command aborted";
 				resolve({
 					content: [{ type: "text" as const, text }],
 					isError: true,
@@ -280,8 +257,9 @@ async function runCommand(
 			}
 
 			if (timedOut) {
-				let text = output ? truncateOutput(output).text + "\n\n" : "";
-				text += `command timed out after ${timeout} seconds`;
+				const text = outputText
+					? `${outputText}\n\ncommand timed out after ${timeout} seconds`
+					: `command timed out after ${timeout} seconds`;
 				resolve({
 					content: [{ type: "text" as const, text }],
 					isError: true,
@@ -289,12 +267,8 @@ async function runCommand(
 				return;
 			}
 
-			const { text: outputText, truncatedLines } = truncateOutput(output);
-			let result = outputText || "(no output)";
-
-			if (truncatedLines > 0) {
-				result += `\n\n[${truncatedLines} lines truncated. only the last ${MAX_OUTPUT_CHARS} characters are shown.]`;
-			}
+			// format result with command header
+			let result = `$ ${command}\n\n${outputText || "(no output)"}`;
 
 			if (code !== 0 && code !== null) {
 				result += `\n\nexit code ${code}`;
