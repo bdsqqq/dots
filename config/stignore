@@ -1,9 +1,5 @@
-// syncthing ignore patterns for commonplace
-// includes shared patterns + syncthing-specific directives
+#include 01_files/nix/config/ignore-common
 
-//include 01_files/nix/config/ignore-common
-
-// syncthing-specific: (?d) prefix allows deletion of these if blocking dir removal
 (?d).Trash/
 (?d)**/.Trash/**
 (?d).Trashes/

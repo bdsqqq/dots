@@ -76,6 +76,7 @@
         ".gitignore_global".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/ignore-common";
 
         # syncthing ignore (symlinked so all nix-managed devices share the same config)
+        # comments stripped - .stignore uses different syntax than other ignore files
         "commonplace/.stignore".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/stignore";
       };
 
