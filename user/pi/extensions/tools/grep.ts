@@ -17,8 +17,10 @@ import * as path from "node:path";
 import { createInterface } from "node:readline";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { headTail } from "./lib/output-buffer";
 
 const MAX_TOTAL_MATCHES = 100;
+const MAX_COLLECT_MATCHES = 200; // collect up to this many, then show head+tail
 const MAX_PER_FILE = 10;
 const MAX_LINE_CHARS = 200;
 
@@ -115,7 +117,7 @@ export function createGrepTool(): ToolDefinition {
 				});
 
 				rl.on("line", (line) => {
-					if (!line.trim() || totalMatches >= MAX_TOTAL_MATCHES) return;
+					if (!line.trim() || totalMatches >= MAX_COLLECT_MATCHES) return;
 
 					let event: any;
 					try {
@@ -141,7 +143,8 @@ export function createGrepTool(): ToolDefinition {
 					const displayPath = rel && !rel.startsWith("..") ? rel : path.basename(filePath);
 					outputLines.push(`${displayPath}:${lineNumber}: ${truncateLine(lineText)}`);
 
-					if (totalMatches >= MAX_TOTAL_MATCHES) {
+					// keep collecting, don't kill — apply head+tail at end
+					if (totalMatches >= MAX_COLLECT_MATCHES) {
 						killedDueToLimit = true;
 						if (!child.killed) child.kill();
 					}
@@ -186,11 +189,26 @@ export function createGrepTool(): ToolDefinition {
 						return;
 					}
 
-					let output = outputLines.join("\n");
+					// apply head+tail if over display limit
+					let output: string;
 					const notices: string[] = [];
 
+					if (outputLines.length > MAX_TOTAL_MATCHES) {
+						const { head, tail, truncatedCount } = headTail(outputLines, MAX_TOTAL_MATCHES);
+						output = [
+							...head,
+							"",
+							`... [${truncatedCount} matches truncated] ...`,
+							"",
+							...tail,
+						].join("\n");
+						notices.push(`collected ${outputLines.length} matches, showing first and last ${MAX_TOTAL_MATCHES / 2}`);
+					} else {
+						output = outputLines.join("\n");
+					}
+
 					if (killedDueToLimit) {
-						notices.push(`${MAX_TOTAL_MATCHES} match limit reached — refine pattern for more`);
+						notices.push(`stopped at ${MAX_COLLECT_MATCHES} matches — refine pattern`);
 					}
 
 					const filesAtLimit = Array.from(perFileCount.values()).filter((c) => c >= MAX_PER_FILE).length;

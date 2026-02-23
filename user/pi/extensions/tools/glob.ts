@@ -16,6 +16,7 @@ import * as path from "node:path";
 import { createInterface } from "node:readline";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { formatHeadTail } from "./lib/output-buffer";
 
 const DEFAULT_LIMIT = 500;
 
@@ -132,15 +133,21 @@ export function createGlobTool(): ToolDefinition {
 						return;
 					}
 
-					const paginated = allPaths.slice(offset, offset + limit);
-					let output = paginated.join("\n");
-
 					const total = allPaths.length;
-					const shown = paginated.length;
-					const remaining = total - offset - shown;
 
-					if (remaining > 0 || offset > 0) {
-						output += `\n\n(showing ${offset + 1}-${offset + shown} of ${total} results)`;
+					// if paginating (offset > 0), use traditional pagination
+					// otherwise use head+tail for first page
+					let output: string;
+					if (offset > 0) {
+						const paginated = allPaths.slice(offset, offset + limit);
+						output = paginated.join("\n");
+						output += `\n\n(showing ${offset + 1}-${offset + paginated.length} of ${total} results)`;
+					} else if (total > limit) {
+						output = formatHeadTail(allPaths, limit, (n) =>
+							`... [${n} more results, use a more specific pattern to narrow] ...`);
+						output += `\n\n(${total} total results)`;
+					} else {
+						output = allPaths.join("\n");
 					}
 
 					resolve({ content: [{ type: "text" as const, text: output }] } as any);

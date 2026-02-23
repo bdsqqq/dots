@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { OutputBuffer } from "./output-buffer";
+import { OutputBuffer, headTail, formatHeadTail } from "./output-buffer";
 
 describe("OutputBuffer", () => {
 	describe("small output (no truncation)", () => {
@@ -278,5 +278,72 @@ describe("OutputBuffer", () => {
 			// \r is kept as part of the line content
 			expect(text).toBe("line1\r\nline2\r");
 		});
+	});
+});
+
+// ============================================================
+// headTail and formatHeadTail helpers
+// ============================================================
+
+describe("headTail helper", () => {
+	it("returns all items when under limit", () => {
+		const items = [1, 2, 3, 4, 5];
+		const { head, tail, truncated, truncatedCount } = headTail(items, 10);
+		expect(head).toEqual([1, 2, 3, 4, 5]);
+		expect(tail).toEqual([]);
+		expect(truncated).toEqual([]);
+		expect(truncatedCount).toBe(0);
+	});
+
+	it("splits evenly at limit", () => {
+		const items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+		const { head, tail, truncated, truncatedCount } = headTail(items, 10);
+		expect(head).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+		expect(tail).toEqual([]);
+		expect(truncatedCount).toBe(0);
+	});
+
+	it("splits into head + tail when over limit", () => {
+		const items = Array.from({ length: 100 }, (_, i) => i + 1);
+		const { head, tail, truncated, truncatedCount } = headTail(items, 20);
+		expect(head).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+		expect(tail).toEqual([91, 92, 93, 94, 95, 96, 97, 98, 99, 100]);
+		expect(truncatedCount).toBe(80);
+		expect(truncated.length).toBe(80);
+	});
+
+	it("uses even split for head and tail", () => {
+		const items = Array.from({ length: 100 }, (_, i) => i + 1);
+		const { head, tail, truncatedCount } = headTail(items, 21);
+		expect(head.length).toBe(10); // floor(21/2)
+		expect(tail.length).toBe(10); // floor(21/2)
+		expect(truncatedCount).toBe(80);
+	});
+});
+
+describe("formatHeadTail helper", () => {
+	it("joins items when under limit", () => {
+		const items = ["a", "b", "c"];
+		const result = formatHeadTail(items, 10);
+		expect(result).toBe("a\nb\nc");
+	});
+
+	it("formats with truncation marker when over limit", () => {
+		const items = Array.from({ length: 100 }, (_, i) => `item ${i + 1}`);
+		const result = formatHeadTail(items, 20);
+		expect(result).toContain("item 1");
+		expect(result).toContain("item 10");
+		expect(result).toContain("item 91");
+		expect(result).toContain("item 100");
+		expect(result).toContain("80 lines truncated");
+		// verify ordering
+		expect(result.indexOf("item 10")).toBeLessThan(result.indexOf("truncated"));
+		expect(result.indexOf("truncated")).toBeLessThan(result.indexOf("item 91"));
+	});
+
+	it("uses custom truncation message", () => {
+		const items = Array.from({ length: 50 }, (_, i) => `x`);
+		const result = formatHeadTail(items, 10, (n) => `-- ${n} hidden --`);
+		expect(result).toContain("-- 40 hidden --");
 	});
 });
