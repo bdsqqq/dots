@@ -15,6 +15,7 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+import { makeShowRenderer } from "./lib/show-renderer";
 import { Type } from "@sinclair/typebox";
 
 const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
@@ -541,9 +542,18 @@ export function createSearchSessionsTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
 			const text = result.content?.[0];
-			return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
+			if (text?.type !== "text") return new Text("(no output)", 0, 0);
+			const output: string = text.text;
+			if (expanded) return new Text(output, 0, 0);
+
+			// collapsed: head shows the most recent sessions (sorted newest-first),
+			// tail shows older sessions for context when there are many results.
+			return makeShowRenderer(output, [
+				{ focus: "head", context: 5 },
+				{ focus: "tail", context: 3 },
+			]);
 		},
 	};
 }

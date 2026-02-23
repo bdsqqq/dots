@@ -17,6 +17,7 @@
 import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+import { makeShowRenderer } from "./lib/show-renderer";
 import { Type } from "@sinclair/typebox";
 import type { ToolCostDetails } from "./lib/tool-cost";
 
@@ -234,9 +235,18 @@ export function createWebSearchTool(): ToolDefinition {
 			return new Text(text, 0, 0);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
 			const text = result.content?.[0];
-			return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
+			if (text?.type !== "text") return new Text("(no output)", 0, 0);
+			const output: string = text.text;
+			if (expanded) return new Text(output, 0, 0);
+
+			// collapsed: head shows the query summary / first result title,
+			// tail shows the last few results (often most relevant for recency).
+			return makeShowRenderer(output, [
+				{ focus: "head", context: 3 },
+				{ focus: "tail", context: 8 },
+			]);
 		},
 	};
 }
