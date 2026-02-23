@@ -91,11 +91,14 @@ function assembleHandoffPrompt(sessionId: string, extraction: HandoffExtraction,
 const PROVENANCE_PREFIX = "↳ handed off from: ";
 const PROVENANCE_ELLIPSIS = "…";
 
-/** get a short description from a parent session file for provenance display */
 function getParentDescription(parentPath: string, maxWidth: number): string {
 	const budget = maxWidth - PROVENANCE_PREFIX.length - PROVENANCE_ELLIPSIS.length;
 	try {
 		const session = SessionManager.open(parentPath);
+
+		const name = session.getSessionName();
+		if (name) return name.length > budget ? name.slice(0, Math.max(0, budget)) + PROVENANCE_ELLIPSIS : name;
+
 		const branch = session.getBranch();
 		const firstUser = branch.find(
 			(e): e is SessionEntry & { type: "message" } => e.type === "message" && e.message.role === "user",
@@ -108,7 +111,6 @@ function getParentDescription(parentPath: string, maxWidth: number): string {
 				.trim();
 			if (text) return text.length > budget ? text.slice(0, Math.max(0, budget)) + PROVENANCE_ELLIPSIS : text;
 		}
-		// fallback: session id from header
 		const header = session.getHeader();
 		return header?.id?.slice(0, 8) ?? parentPath.split("/").pop() ?? "unknown";
 	} catch {
