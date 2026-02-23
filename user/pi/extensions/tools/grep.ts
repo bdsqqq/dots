@@ -16,8 +16,10 @@ import { spawn } from "node:child_process";
 import * as path from "node:path";
 import { createInterface } from "node:readline";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { headTail } from "./lib/output-buffer";
+import { makeShowRenderer } from "./lib/show-renderer";
 
 const MAX_TOTAL_MATCHES = 100;
 const MAX_COLLECT_MATCHES = 200; // collect up to this many, then show head+tail
@@ -193,6 +195,11 @@ export function createGrepTool(): ToolDefinition {
 					let output: string;
 					const notices: string[] = [];
 
+					// track which output line indices are actual match lines (not
+					// elision markers or notice lines) — used by renderResult to
+					// focus each match with ±1 context instead of a blunt head+tail.
+					let matchLineIndices: number[];
+
 					if (outputLines.length > MAX_TOTAL_MATCHES) {
 						const { head, tail, truncatedCount } = headTail(outputLines, MAX_TOTAL_MATCHES);
 						output = [
@@ -202,9 +209,15 @@ export function createGrepTool(): ToolDefinition {
 							"",
 							...tail,
 						].join("\n");
+						// head: lines 0..head.length-1, gap: 3 lines, tail after
+						matchLineIndices = [
+							...head.map((_: string, i: number) => i),
+							...tail.map((_: string, i: number) => head.length + 3 + i),
+						];
 						notices.push(`collected ${outputLines.length} matches, showing first and last ${MAX_TOTAL_MATCHES / 2}`);
 					} else {
 						output = outputLines.join("\n");
+						matchLineIndices = outputLines.map((_: string, i: number) => i);
 					}
 
 					if (killedDueToLimit) {
@@ -222,9 +235,28 @@ export function createGrepTool(): ToolDefinition {
 						output += `\n\n[${notices.join(". ")}]`;
 					}
 
-					resolve({ content: [{ type: "text" as const, text: output }] } as any);
+					resolve({
+						content: [{ type: "text" as const, text: output }],
+						details: { matchLineIndices },
+					} as any);
 				});
 			});
 		},
+
+		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+			const text = result.content?.[0];
+			if (text?.type !== "text") return new Text("(no output)", 0, 0);
+			const output: string = text.text;
+			if (expanded) return new Text(output, 0, 0);
+
+			// collapsed: show each match line with ±1 context rather than a
+			// blunt head+tail. the model gets all matches in content.text;
+			// this just makes the visual summary scannable at a glance.
+			const indices: number[] | undefined = result.details?.matchLineIndices;
+			if (!indices?.length) return new Text(output, 0, 0);
+			const excerpts = indices.map((n: number) => ({ focus: n, context: 1 }));
+			return makeShowRenderer(output, excerpts);
+		},
 	};
+}
 }

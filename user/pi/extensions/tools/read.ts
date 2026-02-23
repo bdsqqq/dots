@@ -17,6 +17,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
+import { makeShowRenderer } from "./lib/show-renderer";
 import { Type } from "@sinclair/typebox";
 import { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
 import { formatHeadTail } from "./lib/output-buffer";
@@ -278,6 +280,20 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 					isError: true,
 				} as any;
 			}
+		},
+
+		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+			const text = result.content?.[0];
+			if (text?.type !== "text") return undefined; // images — let pi handle
+			const output: string = text.text;
+			if (expanded) return new Text(output, 0, 0);
+
+			// collapsed: head+tail so both the start of the file (imports, header,
+			// function signatures) and the end are visible without scrolling.
+			return makeShowRenderer(output, [
+				{ focus: "head", context: 3 },
+				{ focus: "tail", context: 5 },
+			]);
 		},
 	};
 }

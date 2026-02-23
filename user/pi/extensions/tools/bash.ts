@@ -19,6 +19,8 @@ import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { makeShowRenderer } from "./lib/show-renderer";
+import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { withFileLock } from "./lib/mutex";
 import { evaluatePermission, loadPermissions } from "./lib/permissions";
@@ -28,6 +30,7 @@ import { OutputBuffer } from "./lib/output-buffer";
 const HEAD_LINES = 50;
 const TAIL_LINES = 50;
 const SIGKILL_DELAY_MS = 3000;
+const PREVIEW_LINES = 5;
 
 // --- shell config ---
 
@@ -134,6 +137,48 @@ export function createBashTool(): ToolDefinition {
 				}),
 			),
 		}),
+
+		renderCall(args: any, theme: any) {
+			const cmd = args.cmd || args.command || "...";
+			const timeout = args.timeout;
+			const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : "";
+			return new Text(
+				theme.fg("toolTitle", theme.bold(`$ ${cmd}`)) + timeoutSuffix,
+				0, 0,
+			);
+		},
+
+		renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
+			const content = result.content?.[0];
+			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+
+			// strip `$ command\n\n` prefix — renderCall already shows it
+			let text: string = content.text;
+			if (text.startsWith("$ ")) {
+				const sep = text.indexOf("\n\n");
+				if (sep !== -1) text = text.slice(sep + 2);
+			}
+
+			if (!text || text === "(no output)") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+
+			const lines = text.split("\n");
+			const styled = (l: string) => theme.fg("toolOutput", l);
+
+			if (expanded || lines.length <= PREVIEW_LINES) {
+				return new Text(lines.map(styled).join("\n"), 0, 0);
+			}
+
+			// collapsed: head + tail windows so both the start of output
+			// (error summary, first status line) and the most recent lines
+			// are visible with a gap marker in between.
+			const styledText = lines.map(styled).join("\n");
+			const headLines = Math.min(2, Math.floor(PREVIEW_LINES / 2));
+			const tailLines = PREVIEW_LINES - headLines;
+			return makeShowRenderer(styledText, [
+				{ focus: "head", context: headLines },
+				{ focus: "tail", context: tailLines },
+			]);
+		},
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			let command = stripBackground(params.cmd);

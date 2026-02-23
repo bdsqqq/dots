@@ -19,8 +19,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
+import { makeShowRenderer } from "./lib/show-renderer";
 import { Type } from "@sinclair/typebox";
 import { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
+import { generateDiffString } from "./lib/diff";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
 import { resolveWithVariants } from "./read";
@@ -174,47 +177,6 @@ function hasNewRedactionMarkers(oldStr: string, newStr: string): string | null {
 	return null;
 }
 
-// --- diff output ---
-
-/**
- * context-limited diff between before and after content.
- * finds the changed region via prefix/suffix matching and shows only
- * `ctx` lines of context around it. for replace_all with scattered
- * changes, the region spans from first to last diff — intermediate
- * unchanged lines are included, which is slightly verbose but always
- * correct.
- */
-function focusedDiff(filePath: string, before: string, after: string, ctx = 4): string {
-	const bL = before.split("\n");
-	const aL = after.split("\n");
-
-	// common prefix
-	let pre = 0;
-	while (pre < bL.length && pre < aL.length && bL[pre] === aL[pre]) pre++;
-
-	// common suffix (not overlapping prefix)
-	let sufB = bL.length;
-	let sufA = aL.length;
-	while (sufB > pre && sufA > pre && bL[sufB - 1] === aL[sufA - 1]) {
-		sufB--;
-		sufA--;
-	}
-
-	if (pre >= sufB && pre >= sufA) return `no changes in ${filePath}`;
-
-	const ctxStart = Math.max(0, pre - ctx);
-	const ctxEnd = Math.min(bL.length, sufB + ctx);
-
-	const out: string[] = [`--- ${filePath}`, `+++ ${filePath}`];
-
-	for (let i = ctxStart; i < pre; i++) out.push(` ${bL[i]}`);
-	for (let i = pre; i < sufB; i++) out.push(`-${bL[i]}`);
-	for (let i = pre; i < sufA; i++) out.push(`+${aL[i]}`);
-	for (let i = sufB; i < ctxEnd; i++) out.push(` ${bL[i]}`);
-
-	return out.join("\n");
-}
-
 // --- tool factory ---
 
 export function createEditFileTool(): ToolDefinition {
@@ -360,17 +322,38 @@ export function createEditFileTool(): ToolDefinition {
 				});
 
 				// build result
-				let result = focusedDiff(path.basename(resolved), strategy.content, newContent);
+				const diffResult = generateDiffString(strategy.content, newContent);
+				let text = diffResult.diff;
 
 				if (replaceAll && occurrences > 1) {
-					result += `\n\n(replaced ${occurrences} occurrences)`;
+					text += `\n\n(replaced ${occurrences} occurrences)`;
 				}
 
 				const guidanceText = formatGuidance(discoverAgentsMd(resolved, ctx.cwd));
-				if (guidanceText) result += "\n\n" + guidanceText;
+				if (guidanceText) text += "\n\n" + guidanceText;
 
-				return { content: [{ type: "text" as const, text: result }] } as any;
+				return {
+					content: [{ type: "text" as const, text }],
+					details: {
+						diff: diffResult.diff,
+						firstChangedLine: diffResult.firstChangedLine,
+					},
+				} as any;
 			});
+		},
+
+		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+			const text = result.content?.[0];
+			if (text?.type !== "text") return new Text("(no output)", 0, 0);
+			const diff: string = text.text;
+			if (expanded) return new Text(diff, 0, 0);
+
+			// collapsed: focus on the changed region. firstChangedLine is the
+			// first diff output line (0-indexed) containing a +/- hunk line.
+			// ±4 context shows the surrounding diff header + a few lines of change.
+			const firstChangedLine: number | undefined = result.details?.firstChangedLine;
+			if (firstChangedLine == null) return makeShowRenderer(diff, [{ focus: "head", context: 8 }]);
+			return makeShowRenderer(diff, [{ focus: firstChangedLine, context: 4 }]);
 		},
 	};
 }
