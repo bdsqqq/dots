@@ -2,35 +2,26 @@
  * agents-md-context — injects AGENTS.md files into context at session start and each turn.
  *
  * walks from cwd up to filesystem root, collecting all AGENTS.md files.
- * injects them as a custom message so the LLM sees directory-specific
- * instructions without needing to read a file first.
+ * appends to system prompt so it's fresh each turn without accumulating in history.
  *
- * refreshed on every turn to pick up changes.
+ * refreshed on every turn to pick up changes (additions/deletions).
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { discoverAgentsMdFromCwd, formatGuidance } from "./tools/lib/agents-md";
 
 export default function (pi: ExtensionAPI) {
-	const injectAgentsMd = (cwd: string) => {
+	const buildAgentsMdPrompt = (cwd: string): string => {
 		const guidance = discoverAgentsMdFromCwd(cwd);
-		const content = formatGuidance(guidance);
+		return formatGuidance(guidance);
+	};
+
+	pi.on("before_agent_start", async (event, ctx) => {
+		const content = buildAgentsMdPrompt(ctx.cwd);
 		if (!content) return;
 
 		return {
-			message: {
-				customType: "agents-md-context",
-				content,
-				display: "collapsed" as const,
-			},
+			systemPrompt: event.systemPrompt + "\n\n" + content,
 		};
-	};
-
-	pi.on("session_start", async (_event, ctx) => {
-		return injectAgentsMd(ctx.cwd);
-	});
-
-	pi.on("before_agent_start", async (_event, ctx) => {
-		return injectAgentsMd(ctx.cwd);
 	});
 }
