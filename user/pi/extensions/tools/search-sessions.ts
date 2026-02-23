@@ -28,6 +28,7 @@ interface SessionHeader {
 	id: string;
 	timestamp: string;
 	cwd: string;
+	parentSession?: string;
 }
 
 interface SessionEntry {
@@ -74,6 +75,8 @@ export interface BranchResult {
 	firstUserMessage: string;
 	/** concatenated user + assistant text for keyword search (not displayed) */
 	searchableText: string;
+	/** path to parent session file if this session was forked */
+	parentSessionPath?: string;
 }
 
 /** tool argument keys that contain file paths */
@@ -136,6 +139,7 @@ function enumerateBranches(
 	sessionName: string,
 	filePath: string,
 ): BranchResult[] {
+	const parentSessionPath = header.parentSession;
 	// build parent → children map
 	const children = new Map<string | null, SessionEntry[]>();
 	for (const e of entries) {
@@ -239,6 +243,7 @@ function enumerateBranches(
 			messageCount,
 			firstUserMessage,
 			searchableText: textChunks.join("\n"),
+			parentSessionPath,
 		});
 	}
 
@@ -330,6 +335,11 @@ function formatBranchResults(branches: BranchResult[]): string {
 
 		lines.push(`### ${i + 1}. ${b.sessionName || "(unnamed)"}`);
 		lines.push(`session: ${b.sessionId} / branch: ${b.leafId}`);
+		if (b.parentSessionPath) {
+			// extract session id from path (filename without extension)
+			const parentId = b.parentSessionPath.split("/").pop()?.replace(/\.jsonl$/, "")?.split("_")[1] || b.parentSessionPath;
+			lines.push(`forked from: ${parentId}`);
+		}
 		lines.push(`${dateStr} ${timeStr} — ${b.messageCount} messages`);
 		if (b.models.length > 0) lines.push(`models: ${b.models.join(", ")}`);
 		if (b.filesTouched.length > 0) {
