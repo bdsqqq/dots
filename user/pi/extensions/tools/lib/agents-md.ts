@@ -74,52 +74,6 @@ export function discoverAgentsMd(filePath: string, workspaceRoot: string): Agent
 }
 
 /**
- * discover AGENTS.md files from cwd up to filesystem root.
- * used for session-level context injection on start and each turn.
- * returns broadest-first (root → cwd).
- */
-export function discoverAgentsMdFromCwd(cwd: string): AgentsGuidance[] {
-	const results: AgentsGuidance[] = [];
-
-	// global user config
-	if (fs.existsSync(GLOBAL_PATH)) {
-		try {
-			results.push({
-				path: GLOBAL_PATH,
-				content: fs.readFileSync(GLOBAL_PATH, "utf-8"),
-				scope: "global",
-			});
-		} catch {
-			// unreadable, skip
-		}
-	}
-
-	// walk from cwd up to filesystem root
-	const dirResults: AgentsGuidance[] = [];
-	let dir = path.resolve(cwd);
-	const parts = dir.split(path.sep);
-
-	// collect all parent directories from cwd to root
-	for (let i = parts.length; i > 0; i--) {
-		const currentPath = parts.slice(0, i).join(path.sep) || "/";
-		const candidate = path.join(currentPath, FILENAME);
-		if (fs.existsSync(candidate)) {
-			try {
-				const content = fs.readFileSync(candidate, "utf-8");
-				const scope = currentPath === cwd ? "cwd" : path.relative(currentPath, cwd) || "root";
-				dirResults.push({ path: candidate, content, scope });
-			} catch {
-				// unreadable, skip
-			}
-		}
-	}
-
-	// reverse to get root → cwd ordering
-	results.push(...dirResults.reverse());
-	return results;
-}
-
-/**
  * format discovered guidance for injection into tool results.
  * output format: header with scope, then content.
  */

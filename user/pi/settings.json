@@ -9,7 +9,6 @@
     "~/.pi/agent/extensions/session-name.ts",
     "~/.pi/agent/extensions/tool-harness.ts",
     "~/.pi/agent/extensions/system-prompt.ts",
-    "~/.pi/agent/extensions/agents-md-context.ts",
     "~/.pi/agent/extensions/tools"
   ],
   "compaction": {
@@ -18,7 +17,7 @@
   "lastChangelogVersion": "0.54.1",
   "defaultModel": "z-ai/glm-5",
   "defaultThinkingLevel": "medium",
-  "hideThinkingBlock": true,
+  "hideThinkingBlock": false,
   "steeringMode": "all",
   "followUpMode": "all",
   "collapseChangelog": true,
