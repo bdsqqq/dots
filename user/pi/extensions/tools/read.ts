@@ -19,6 +19,7 @@ import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
+import { formatHeadTail } from "./lib/output-buffer";
 
 // --- limits ---
 
@@ -112,15 +113,7 @@ export function listDirectory(dirPath: string, maxEntries: number): string {
 		.map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
 		.sort((a, b) => a.localeCompare(b));
 
-	if (names.length > maxEntries) {
-		const omitted = names.length - maxEntries;
-		return (
-			names.slice(0, maxEntries).join("\n") +
-			`\n\n(${omitted} more entries not shown)`
-		);
-	}
-
-	return names.join("\n");
+	return formatHeadTail(names, maxEntries, (n) => `... [${n} more entries] ...`);
 }
 
 // --- file reading ---
@@ -141,16 +134,15 @@ function readFileContent(
 	const allLines = raw.split("\n");
 	const totalLines = allLines.length;
 
+	// determine the range to show
 	const start = Math.max(1, readRange?.[0] ?? 1);
 	const end = Math.min(totalLines, readRange?.[1] ?? start + limits.maxLines - 1);
+	const requestedLines = end - start + 1;
 
-	const selected = allLines.slice(start - 1, end);
-
+	// number lines and truncate long lines
 	const numbered: string[] = [];
-	let totalBytes = 0;
-
-	for (let i = 0; i < selected.length; i++) {
-		let line = selected[i];
+	for (let i = start - 1; i < end; i++) {
+		let line = allLines[i];
 		const lineBytes = Buffer.byteLength(line, "utf-8");
 
 		if (lineBytes > limits.maxLineBytes) {
@@ -160,19 +152,25 @@ function readFileContent(
 			line += "... (line truncated)";
 		}
 
-		const formatted = `${start + i}: ${line}`;
-		const formattedBytes = Buffer.byteLength(formatted, "utf-8") + 1;
-
-		if (totalBytes + formattedBytes > limits.maxFileBytes && numbered.length > 0) {
-			numbered.push(`\n(output truncated — ${limits.maxFileBytes / 1024}KB limit)`);
-			return { text: numbered.join("\n"), totalLines, shownStart: start, shownEnd: start + numbered.length - 2 };
-		}
-
-		totalBytes += formattedBytes;
-		numbered.push(formatted);
+		numbered.push(`${i + 1}: ${line}`);
 	}
 
-	return { text: numbered.join("\n"), totalLines, shownStart: start, shownEnd: end };
+	// if numbered output fits in byte limit, return as-is
+	const totalBytes = numbered.reduce((sum, l) => sum + Buffer.byteLength(l, "utf-8") + 1, 0);
+	if (totalBytes <= limits.maxFileBytes) {
+		return { text: numbered.join("\n"), totalLines, shownStart: start, shownEnd: end };
+	}
+
+	// otherwise apply head+tail truncation on the numbered lines
+	const formatted = formatHeadTail(numbered, limits.maxLines, (n) =>
+		`... [${n} lines truncated, ${limits.maxFileBytes / 1024}KB limit reached] ...`);
+
+	return {
+		text: formatted,
+		totalLines,
+		shownStart: start,
+		shownEnd: end,
+	};
 }
 
 // --- tool factory ---

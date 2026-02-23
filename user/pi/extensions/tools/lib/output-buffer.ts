@@ -13,6 +13,57 @@
 const DEFAULT_HEAD_LINES = 50;
 const DEFAULT_TAIL_LINES = 50;
 
+/**
+ * truncate an array to head + tail, returning formatted result.
+ * simpler than OutputBuffer — for when you have all items upfront (not streaming).
+ *
+ * @param items - array to truncate
+ * @param maxItems - total items to show (split evenly between head/tail)
+ * @returns { head, tail, truncated, truncatedCount }
+ */
+export function headTail<T>(
+	items: T[],
+	maxItems: number = 100,
+): { head: T[]; tail: T[]; truncated: T[]; truncatedCount: number } {
+	const total = items.length;
+	if (total <= maxItems) {
+		return { head: items, tail: [], truncated: [], truncatedCount: 0 };
+	}
+
+	const half = Math.floor(maxItems / 2);
+	const head = items.slice(0, half);
+	const tail = items.slice(-half);
+	const truncated = items.slice(half, -half);
+
+	return { head, tail, truncated, truncatedCount: truncated.length };
+}
+
+/**
+ * format head+tail arrays with truncation marker.
+ * returns a single string with items joined by newlines.
+ */
+export function formatHeadTail<T>(
+	items: T[],
+	maxItems: number = 100,
+	truncatedMsg: (count: number) => string = (n) => `... [${n} lines truncated] ...`,
+): string {
+	const { head, tail, truncatedCount } = headTail(items, maxItems);
+
+	if (truncatedCount === 0) {
+		return head.map(String).join("\n");
+	}
+
+	const parts = [
+		...head.map(String),
+		"",
+		truncatedMsg(truncatedCount),
+		"",
+		...tail.map(String),
+	];
+
+	return parts.join("\n");
+}
+
 export class OutputBuffer {
 	private head: string[] = [];
 	private tail: string[] = [];
