@@ -397,6 +397,11 @@ export default function (pi: ExtensionAPI) {
 		editor?.removeLabel(payload.key);
 	});
 
+	pi.on("model_select", async (_event, ctx) => {
+		// update model display when user changes model via /model or Ctrl+P
+		if (editor) updateStatsLabels(editor, pi, ctx);
+	});
+
 	pi.on("session_switch", async (_event, ctx) => {
 		// editor component persists across session switches, just update stats
 		branchUnsub?.();
