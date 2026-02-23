@@ -640,6 +640,10 @@ async function removeWorktree(
 ): Promise<Result<void, WtError>> {
   const wtPath = join(bareRepo.root, name);
 
+  // get branch name BEFORE removal (can't lookup after)
+  const worktreeResult = await getWorktreeInfo(bareRepo, name);
+  const branch = worktreeResult.ok ? worktreeResult.value.branch : null;
+
   // remove worktree via git
   const removeResult = await Bun.$`git -C ${bareRepo.gitDir} worktree remove ${wtPath} --force`.quiet().nothrow();
   if (removeResult.exitCode !== 0) {
@@ -649,14 +653,12 @@ async function removeWorktree(
     };
   }
 
-  // get branch name and delete if not default
-  const worktreeResult = await getWorktreeInfo(bareRepo, name);
-  if (worktreeResult.ok) {
-    const branch = worktreeResult.value.branch;
+  // delete branch if not default
+  if (branch && branch !== "detached") {
     const defaultBranchResult = await getDefaultBranch(bareRepo.gitDir);
     const defaultBranch = defaultBranchResult.ok ? defaultBranchResult.value : "main";
 
-    if (branch !== "detached" && branch !== defaultBranch) {
+    if (branch !== defaultBranch) {
       const deleteResult = await Bun.$`git -C ${bareRepo.gitDir} branch -D ${branch}`.quiet().nothrow();
       if (deleteResult.exitCode !== 0) {
         return {
