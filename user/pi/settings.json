@@ -15,7 +15,7 @@
     "enabled": false
   },
   "lastChangelogVersion": "0.54.1",
-  "defaultModel": "z-ai/glm-5",
+  "defaultModel": "minimax/minimax-m2.5",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": false,
   "steeringMode": "all",
