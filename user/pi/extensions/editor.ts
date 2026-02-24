@@ -311,6 +311,7 @@ export default function (pi: ExtensionAPI) {
 	let statusRow: WidgetRowRegistry | null = null;
 
 	pi.on("session_start", async (_event, ctx) => {
+		if (!ctx.hasUI) return;
 		// replace editor with labeled box-drawing version
 		ctx.ui.setEditorComponent((tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
 			editor = new LabeledEditor(tui, editorTheme, keybindings, ctx.ui.theme);
