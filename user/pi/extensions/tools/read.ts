@@ -4,7 +4,6 @@
  * differences from pi's built-in:
  * - line-numbered output (`1: content`)
  * - directory listing integrated (no separate ls tool needed)
- * - AGENTS.md discovery after every read
  * - secret file blocking (.env etc.)
  * - `~` expansion and `@` prefix stripping
  * - image support via base64
@@ -20,7 +19,6 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { makeShowRenderer } from "./lib/show-renderer";
 import { Type } from "@sinclair/typebox";
-import { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
 import { formatHeadTail } from "./lib/output-buffer";
 
 // --- limits ---
@@ -234,8 +232,6 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 			if (stat.isDirectory()) {
 				try {
 					let text = listDirectory(resolved, limits.maxDirEntries);
-					const guidanceText = formatGuidance(discoverAgentsMd(resolved, ctx.cwd));
-					if (guidanceText) text += "\n\n" + guidanceText;
 					return { content: [{ type: "text" as const, text }] } as any;
 				} catch (err: any) {
 					return {
@@ -270,10 +266,7 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 					result += `\n\n(showing lines ${shownStart}-${shownEnd} of ${totalLines}. use read_range to see more.)`;
 				}
 
-				const guidanceText = formatGuidance(discoverAgentsMd(resolved, ctx.cwd));
-				if (guidanceText) result += "\n\n" + guidanceText;
-
-				return { content: [{ type: "text" as const, text: result }] } as any;
+				return { content: [{ type: "text" as const, text }] } as any;
 			} catch (err: any) {
 				return {
 					content: [{ type: "text" as const, text: `failed to read file: ${err.message}` }],

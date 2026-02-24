@@ -3,7 +3,6 @@
  *
  * differences from pi's built-in:
  * - mutex-locked per file path (prevents concurrent writes)
- * - AGENTS.md discovery post-write
  * - file change tracking for undo_edit via lib/file-tracker
  * - captures before-content when overwriting existing files
  *
@@ -14,7 +13,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
 import { resolveWithVariants, resolveToAbsolute } from "./read";
@@ -72,9 +70,6 @@ export function createCreateFileTool(): ToolDefinition {
 				let result = isNewFile
 					? `created ${path.basename(resolved)} (${lines} lines)`
 					: `overwrote ${path.basename(resolved)} (${lines} lines)`;
-
-				const guidanceText = formatGuidance(discoverAgentsMd(resolved, ctx.cwd));
-				if (guidanceText) result += "\n\n" + guidanceText;
 
 				return { content: [{ type: "text" as const, text: result }] } as any;
 			});

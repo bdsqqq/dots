@@ -11,7 +11,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
 import { resolveWithVariants, listDirectory, type ReadLimits } from "./read";
 
 export function createLsTool(limits: ReadLimits): ToolDefinition {
@@ -49,9 +48,6 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
 
 			try {
 				let text = listDirectory(resolved, limits.maxDirEntries);
-
-				const guidanceText = formatGuidance(discoverAgentsMd(resolved, ctx.cwd));
-				if (guidanceText) text += "\n\n" + guidanceText;
 
 				text += "\n\n(note: prefer the read tool for directory listing — it handles both files and directories.)";
 
