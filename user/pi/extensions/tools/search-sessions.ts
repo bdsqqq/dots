@@ -15,7 +15,7 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { makeShowRenderer } from "./lib/show-renderer";
+import { type BoxSection, boxRenderer } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 
 const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
@@ -362,6 +362,45 @@ function formatBranchResults(branches: BranchResult[]): { text: string; headerLi
 	return { text: lines.join("\n"), headerLineIndices };
 }
 
+/** convert branch results to BoxSections for box-format rendering */
+function branchesToSections(branches: BranchResult[]): BoxSection[] {
+	return branches.map((b, i) => {
+		const dateStr = new Date(b.timestampEnd).toLocaleDateString("en-US", {
+			weekday: "short", year: "numeric", month: "short", day: "numeric",
+		});
+		const timeStr = new Date(b.timestampEnd).toLocaleTimeString("en-US", {
+			hour: "2-digit", minute: "2-digit",
+		});
+
+		const lines: { text: string; highlight?: boolean }[] = [];
+		lines.push({ text: `session: ${b.sessionId} / branch: ${b.leafId}`, highlight: true });
+		if (b.parentSessionPath) {
+			const parentId = b.parentSessionPath.split("/").pop()?.replace(/\.jsonl$/, "")?.split("_")[1] || b.parentSessionPath;
+			lines.push({ text: `forked from: ${parentId}`, highlight: true });
+		}
+		lines.push({ text: `${dateStr} ${timeStr} — ${b.messageCount} messages`, highlight: true });
+		if (b.models.length > 0) lines.push({ text: `models: ${b.models.join(", ")}`, highlight: true });
+		if (b.filesTouched.length > 0) {
+			const shown = b.filesTouched.slice(0, 10);
+			lines.push({
+				text: `files: ${shown.join(", ")}${b.filesTouched.length > 10 ? ` (+${b.filesTouched.length - 10} more)` : ""}`,
+				highlight: true,
+			});
+		}
+		if (b.firstUserMessage) {
+			const preview = b.firstUserMessage.length > 150
+				? `${b.firstUserMessage.slice(0, 150)}...`
+				: b.firstUserMessage;
+			lines.push({ text: `> ${preview}`, highlight: false });
+		}
+
+		return {
+			header: b.name || `session ${i + 1}`,
+			blocks: [{ lines }],
+		};
+	});
+}
+
 // --- tool ---
 
 export function createSearchSessionsTool(): ToolDefinition {
@@ -516,29 +555,17 @@ export function createSearchSessionsTool(): ToolDefinition {
 			);
 
 			// 7. format with head+tail truncation
-			let output: string;
-			let matchLineIndices: number[] = [];
-			if (filtered.length > MAX_RESULTS) {
-				const half = Math.floor(MAX_RESULTS / 2);
-				const head = filtered.slice(0, half);
-				const tail = filtered.slice(-half);
-				const headResult = formatBranchResults(head);
-				const tailResult = formatBranchResults(tail);
-				output = `${headResult.text}\n\n... [${filtered.length - MAX_RESULTS} more sessions] ...\n\n${tailResult.text}`;
+			const shown = filtered.length > MAX_RESULTS
+				? [...filtered.slice(0, Math.floor(MAX_RESULTS / 2)), ...filtered.slice(-Math.floor(MAX_RESULTS / 2))]
+				: filtered;
+			const truncated = filtered.length > MAX_RESULTS ? filtered.length - shown.length : 0;
 
-				const headLineCount = headResult.text.split("\n").length;
-				matchLineIndices = [
-					...headResult.headerLineIndices,
-					...tailResult.headerLineIndices.map((idx) => idx + headLineCount + 3),
-				];
-			} else {
-				const result = formatBranchResults(filtered);
-				output = result.text;
-				matchLineIndices = result.headerLineIndices;
-			}
+			const { text: output } = formatBranchResults(shown);
+			const resultSections = branchesToSections(shown);
+
 			return {
 				content: [{ type: "text" as const, text: output }],
-				details: { matchLineIndices },
+				details: { resultSections, truncated },
 			} as any;
 		},
 
@@ -556,16 +583,18 @@ export function createSearchSessionsTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
-			const text = result.content?.[0];
-			if (text?.type !== "text") return new Text("(no output)", 0, 0);
-			const output: string = text.text;
-			if (expanded) return new Text(output, 0, 0);
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+			const sections: BoxSection[] | undefined = result.details?.resultSections;
+			if (!sections?.length) return new Text(result.content?.[0]?.text ?? "(no output)", 0, 0);
 
-			// collapsed: focus each session header with ±2 context.
-			const indices: number[] | undefined = result.details?.matchLineIndices;
-			if (!indices?.length) return makeShowRenderer(output, [{ focus: "head", context: 6 }]);
-			return makeShowRenderer(output, indices.map((n) => ({ focus: n, context: 2 })));
+			const truncated: number = result.details?.truncated ?? 0;
+			const notices = truncated > 0 ? [`${truncated} sessions omitted`] : undefined;
+
+			return boxRenderer(
+				() => sections,
+				{ collapsed: { maxSections: 3 }, expanded: {} },
+				notices,
+			);
 		},
 	};
 }
