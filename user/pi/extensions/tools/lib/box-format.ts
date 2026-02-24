@@ -26,7 +26,7 @@ const RST = "\x1b[0m";
  * avoids depending on pi-tui (which lives in pi's global install,
  * not the extension's node_modules / nix store).
  */
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
+const ANSI_RE = /\x1b\[[0-9;]*m|\x1b\]8;;[^\x07]*\x07/g;
 
 /** tab stop width — terminals default to 8 but most code uses 4 */
 const TAB_WIDTH = 4;
@@ -50,9 +50,14 @@ function truncateToWidth(text: string, maxWidth: number, ellipsis = "…"): stri
 	let visible = 0;
 	let i = 0;
 	while (i < text.length && visible < target) {
-		// skip ANSI escape sequences (don't count toward visible width)
+		// skip SGR escape sequences (\x1b[...m)
 		if (text[i] === "\x1b" && text[i + 1] === "[") {
 			const end = text.indexOf("m", i);
+			if (end !== -1) { i = end + 1; continue; }
+		}
+		// skip OSC 8 hyperlink sequences (\x1b]8;;...\x07)
+		if (text[i] === "\x1b" && text[i + 1] === "]") {
+			const end = text.indexOf("\x07", i);
 			if (end !== -1) { i = end + 1; continue; }
 		}
 		visible += text[i] === "\t" ? TAB_WIDTH : 1;
@@ -249,6 +254,15 @@ export function boxRenderer(
 			cachedWidth = undefined;
 		},
 	};
+}
+
+/**
+ * wrap visible text in an OSC 8 terminal hyperlink.
+ * terminals that support OSC 8 render this as a clickable link;
+ * others silently ignore the sequences and show plain text.
+ */
+export function osc8Link(url: string, text: string): string {
+	return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
 }
 
 /**

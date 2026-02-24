@@ -20,7 +20,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { formatBoxes, type BoxSection, type BoxBlock, type BoxLine } from "./lib/box-format";
+import { formatBoxes, osc8Link, type BoxSection, type BoxBlock, type BoxLine } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
@@ -470,13 +470,10 @@ export function createEditFileTool(): ToolDefinition {
 				// build result
 				const text = simpleDiff(resolved, strategy.content, newContent);
 
-				const home = os.homedir();
-				const shortPath = resolved.startsWith(home) ? `~${resolved.slice(home.length)}` : resolved;
-
 				return {
 					content: [{ type: "text" as const, text }],
 					details: {
-						filePath: shortPath,
+						filePath: resolved,
 						...(replaceAll && occurrences > 1 ? { replaceCount: occurrences } : {}),
 					},
 				} as any;
@@ -528,9 +525,9 @@ export function createEditFileTool(): ToolDefinition {
 							return windowed;
 						});
 
-						// if expanded + truncated, show full path in header for editor access
-						const header = expanded && wasTruncated && filePath
-							? `${s.header} · ${filePath}`
+						// wrap filename in OSC 8 file:// link for editor click-to-open
+						const header = filePath
+							? osc8Link(`file://${filePath}`, s.header)
 							: s.header;
 
 						return { ...s, header, blocks: windowedBlocks };
