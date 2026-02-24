@@ -14,16 +14,23 @@ export interface LayoutOptions {
 
 export class WidgetRowRegistry {
 	private segments = new Map<string, InlineSegment>();
+	private _version = 0;
 
 	constructor(private tui: { requestRender(): void }) {}
 
+	get version(): number {
+		return this._version;
+	}
+
 	set(id: string, segment: InlineSegment): void {
 		this.segments.set(id, segment);
+		this._version++;
 		this.tui.requestRender();
 	}
 
 	remove(id: string): void {
 		if (this.segments.delete(id)) {
+			this._version++;
 			this.tui.requestRender();
 		}
 	}
@@ -31,6 +38,7 @@ export class WidgetRowRegistry {
 	clear(): void {
 		if (this.segments.size === 0) return;
 		this.segments.clear();
+		this._version++;
 		this.tui.requestRender();
 	}
 
@@ -118,11 +126,35 @@ function layoutLine(children: InlineSegment[], width: number, gap: string): stri
 }
 
 export class HorizontalLineWidget {
-	constructor(private getChildren: () => InlineSegment[], private options: LayoutOptions = {}) {}
+	private cachedWidth?: number;
+	private cachedLines?: string[];
+	private cachedVersion?: number;
 
-	invalidate(): void {}
+	constructor(
+		private getChildren: () => InlineSegment[],
+		private options: LayoutOptions = {},
+		private getVersion?: () => number,
+	) {}
+
+	invalidate(): void {
+		this.cachedWidth = undefined;
+		this.cachedLines = undefined;
+		this.cachedVersion = undefined;
+	}
 
 	render(width: number): string[] {
-		return [layoutLine(this.getChildren(), width, this.options.gap ?? "  ")];
+		const version = this.getVersion?.();
+		if (
+			this.cachedLines &&
+			this.cachedWidth === width &&
+			(!this.getVersion || (version != null && this.cachedVersion === version))
+		) {
+			return this.cachedLines;
+		}
+		const lines = [layoutLine(this.getChildren(), width, this.options.gap ?? "  ")];
+		this.cachedWidth = width;
+		this.cachedLines = lines;
+		this.cachedVersion = version;
+		return lines;
 	}
 }

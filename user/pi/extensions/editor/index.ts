@@ -18,8 +18,11 @@ import { visibleWidth } from "@mariozechner/pi-tui";
 import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/pi-ai";
-import { execSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { hasToolCost } from "../tools/lib/tool-cost";
+
+const execFileAsync = promisify(execFile);
 
 interface Label {
 	key: string;
@@ -236,14 +239,20 @@ function estimateContextFromEntries(entries: SessionEntry[]): number {
 	return total;
 }
 
-function updateStatsLabels(editor: LabeledEditor | null, pi: ExtensionAPI, ctx: ExtensionContext): void {
+function updateStatsLabels(editor: LabeledEditor | null, pi: ExtensionAPI, ctx: ExtensionContext, cachedLen?: { value: number }): void {
 	if (!editor) return;
+
+	// skip recomputation if branch length unchanged (cheap proxy for "nothing new happened")
+	const branch = ctx.sessionManager.getBranch();
+	if (cachedLen && branch.length === cachedLen.value) return;
+	if (cachedLen) cachedLen.value = branch.length;
+
 	// top-left: context usage + cost (parent model + sub-agents)
 	const usage = ctx.getContextUsage();
 	const model = ctx.model;
 
 	let cost = 0;
-	for (const entry of ctx.sessionManager.getBranch()) {
+	for (const entry of branch) {
 		if (entry.type !== "message") continue;
 		const msg = entry.message;
 		if (msg.role === "assistant") {
@@ -261,8 +270,7 @@ function updateStatsLabels(editor: LabeledEditor | null, pi: ExtensionAPI, ctx: 
 		topLeftParts.push(`${Math.round(usage.percent)}% of ${formatTokens(usage.contextWindow)}`);
 	} else if (model?.contextWindow) {
 		// fallback: estimate tokens from session entries
-		const entries = ctx.sessionManager.getBranch();
-		const estimatedTokens = estimateContextFromEntries(entries);
+		const estimatedTokens = estimateContextFromEntries(branch);
 		const percent = (estimatedTokens / model.contextWindow) * 100;
 		topLeftParts.push(`~${Math.round(percent)}% of ${formatTokens(model.contextWindow)}`);
 	}
@@ -289,9 +297,14 @@ function updateStatsLabels(editor: LabeledEditor | null, pi: ExtensionAPI, ctx: 
 	}
 }
 
-function getGitDiffStats(cwd: string): string {
+
+async function getGitDiffStats(cwd: string): Promise<string> {
 	try {
-		const out = execSync("git diff --stat", { cwd, stdio: ["ignore", "pipe", "ignore"], timeout: 3000 }).toString().trim();
+		const { stdout } = await execFileAsync("git", ["diff", "--stat"], {
+			cwd,
+			timeout: 3000,
+		});
+		const out = stdout.trim();
 		if (!out) return "";
 		// last line is summary: " N files changed, N insertions(+), N deletions(-)"
 		const lines = out.split("\n");
@@ -311,6 +324,7 @@ function getGitDiffStats(cwd: string): string {
 
 export default function (pi: ExtensionAPI) {
 	let editor: LabeledEditor | null = null;
+	const statsCacheBranchLen = { value: -1 };
 	let gitBranch: string | null = null;
 	let branchUnsub: (() => void) | null = null;
 	let activeTools = 0;
@@ -344,7 +358,7 @@ export default function (pi: ExtensionAPI) {
 
 		ctx.ui.setWidget("status-line", (tui) => {
 			statusRow = new WidgetRowRegistry(tui);
-			return new HorizontalLineWidget(() => statusRow!.snapshot(), { gap: "  " });
+			return new HorizontalLineWidget(() => statusRow!.snapshot(), { gap: "  " }, () => statusRow!.version);
 		}, { placement: "belowEditor" });
 
 		// set initial bottom label with cwd
@@ -356,7 +370,7 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		updateBottomLabel();
-		updateStatsLabels(editor!, pi, ctx);
+		updateStatsLabels(editor!, pi, ctx, statsCacheBranchLen);
 	});
 
 	// --- activity status + git changes widget ---
@@ -402,15 +416,15 @@ export default function (pi: ExtensionAPI) {
 		if (activeTools === 0) {
 			setActivitySegment(" ≈ thinking...");
 		}
-		if (editor) updateStatsLabels(editor, pi, ctx);
+		if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
 	});
 
 	pi.on("agent_end", async (_event, ctx) => {
 		activeTools = 0;
 		clearActivitySegment();
-		if (editor) updateStatsLabels(editor, pi, ctx);
+		if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
 
-		const diffStats = getGitDiffStats(ctx.cwd);
+		const diffStats = await getGitDiffStats(ctx.cwd);
 		updateGitSegment(diffStats);
 	});
 
@@ -428,7 +442,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("model_select", async (_event, ctx) => {
 		// update model display when user changes model via /model or Ctrl+P
-		if (editor) updateStatsLabels(editor, pi, ctx);
+		statsCacheBranchLen.value = -1;
+		if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
 	});
 
 	pi.on("session_switch", async (_event, ctx) => {
@@ -438,6 +453,7 @@ export default function (pi: ExtensionAPI) {
 		gitBranch = null;
 		activeTools = 0;
 		statusRow?.clear();
-		if (editor) updateStatsLabels(editor, pi, ctx);
+		statsCacheBranchLen.value = -1;
+		if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
 	});
 }
