@@ -21,7 +21,6 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { makeShowRenderer } from "./lib/show-renderer";
 import { Type } from "@sinclair/typebox";
-import { generateDiffString } from "./lib/diff";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
 import { resolveWithVariants } from "./read";
@@ -320,14 +319,13 @@ export function createEditFileTool(): ToolDefinition {
 				});
 
 				// build result
-				const diffResult = generateDiffString(strategy.content, newContent);
-				let text = diffResult.diff;
+				let text = simpleDiff(resolved, strategy.content, newContent);
 
 				if (replaceAll && occurrences > 1) {
 					text += `\n\n(replaced ${occurrences} occurrences)`;
 				}
 
-				const matchLineIndices = diffResult.diff
+				const matchLineIndices = text
 					.split("\n")
 					.reduce<number[]>((acc, line, idx) => {
 						if (line.startsWith("+") || line.startsWith("-")) acc.push(idx);
@@ -337,8 +335,7 @@ export function createEditFileTool(): ToolDefinition {
 				return {
 					content: [{ type: "text" as const, text }],
 					details: {
-						diff: diffResult.diff,
-						firstChangedLine: diffResult.firstChangedLine,
+						diff: text,
 						matchLineIndices,
 					},
 				} as any;
