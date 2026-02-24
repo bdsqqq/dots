@@ -227,7 +227,7 @@ export function createCodeReviewTool(config: CodeReviewConfig = {}): ToolDefinit
 				);
 			}
 
-			renderAgentTree(details, container, expanded, theme, "code_review");
+			renderAgentTree(details, container, expanded, theme, { label: "code_review", header: "statusOnly" });
 			return container;
 		},
 	};

@@ -250,3 +250,19 @@ export function boxRenderer(
 		},
 	};
 }
+
+/**
+ * standardized call-line component for renderCall.
+ * renders: bold(label) dim(context)
+ *
+ * usage: renderCallLine("Edit", "~/path/to/file.ts", theme)
+ */
+export function renderCallLine(label: string, context: string, theme: any): { render(width: number): string[]; invalidate(): void } {
+	const line = theme.fg("toolTitle", theme.bold(label)) + (context ? " " + theme.fg("dim", context) : "");
+	return {
+		render(_width: number): string[] {
+			return [line];
+		},
+		invalidate() {},
+	};
+}

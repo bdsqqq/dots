@@ -130,7 +130,7 @@ export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
 			const container = new Container();
-			renderAgentTree(details, container, expanded, theme, "finder");
+			renderAgentTree(details, container, expanded, theme, { label: "finder", header: "statusOnly" });
 			return container;
 		},
 	};

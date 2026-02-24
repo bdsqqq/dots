@@ -17,8 +17,9 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { getText } from "./lib/tui";
+import { Text } from "@mariozechner/pi-tui";
 import { formatBoxes, type BoxSection, type BoxBlock, type BoxLine } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
@@ -279,10 +280,10 @@ function computeDiffStats(sections: BoxSection[]): DiffStats {
 
 function formatStats(stats: DiffStats, theme: any): string {
 	const parts: string[] = [];
-	if (stats.added > 0) parts.push(theme.fg("green", `+${stats.added}`));
-	if (stats.modified > 0) parts.push(theme.fg("yellow", `~${stats.modified}`));
-	if (stats.removed > 0) parts.push(theme.fg("red", `-${stats.removed}`));
-	return parts.join(" ");
+	if (stats.added > 0) parts.push(theme.fg("toolDiffAdded", `+${stats.added}`));
+	if (stats.modified > 0) parts.push(theme.fg("warning", `~${stats.modified}`));
+	if (stats.removed > 0) parts.push(theme.fg("toolDiffRemoved", `-${stats.removed}`));
+	return parts.length > 0 ? parts.join(" ") : theme.fg("dim", "no changes");
 }
 
 // --- tool factory ---
@@ -323,9 +324,13 @@ export function createEditFileTool(): ToolDefinition {
 		}),
 
 		renderCall(args: any, theme: any) {
-			const Text = getText();
 			const filePath = args.path || "...";
-			return new Text(theme.fg("dim", filePath), 0, 0);
+			const home = os.homedir();
+			const shortened = filePath.startsWith(home) ? `~${filePath.slice(home.length)}` : filePath;
+			return new Text(
+				theme.fg("toolTitle", theme.bold("Edit ")) + theme.fg("dim", shortened),
+				0, 0,
+			);
 		},
 
 		async execute(toolCallId, params, _signal, _onUpdate, ctx) {
@@ -453,7 +458,6 @@ export function createEditFileTool(): ToolDefinition {
 		},
 
 		renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
-			const Text = getText();
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
 

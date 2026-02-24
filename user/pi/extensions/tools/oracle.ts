@@ -155,7 +155,7 @@ export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
 			const container = new Container();
-			renderAgentTree(details, container, expanded, theme, "oracle");
+			renderAgentTree(details, container, expanded, theme, { label: "oracle", header: "statusOnly" });
 			return container;
 		},
 	};

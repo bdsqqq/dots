@@ -164,7 +164,7 @@ export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
 			const container = new Container();
-			renderAgentTree(details, container, expanded, theme, "look_at");
+			renderAgentTree(details, container, expanded, theme, { label: "look_at", header: "statusOnly" });
 			return container;
 		},
 	};

@@ -148,7 +148,7 @@ export function createLibrarianTool(config: LibrarianConfig = {}): ToolDefinitio
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
 			const container = new Container();
-			renderAgentTree(details, container, expanded, theme, "librarian");
+			renderAgentTree(details, container, expanded, theme, { label: "librarian", header: "statusOnly" });
 			return container;
 		},
 	};
