@@ -17,8 +17,7 @@
  *   }
  */
 
-import type { Excerpt } from "@mariozechner/pi-coding-agent";
-import { show } from "@mariozechner/pi-coding-agent";
+import { show, type Excerpt } from "./show";
 
 export interface ShowRenderer {
 	render: (width: number) => string[];
