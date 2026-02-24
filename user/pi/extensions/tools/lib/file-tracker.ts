@@ -161,20 +161,55 @@ export function findLatestChange(
 }
 
 /**
- * generate a simple unified diff between two strings.
- * basic implementation — can be replaced with a proper diff lib later.
+ * graceful require for the `diff` package — falls back to a naive
+ * line-by-line diff when the package isn't resolvable (same pattern
+ * as cheerio in html-to-md.ts).
+ */
+let createPatchFn: ((fileName: string, oldStr: string, newStr: string, oldHeader?: string, newHeader?: string, options?: { context?: number }) => string) | null = null;
+
+try {
+	const diffLib = require("diff");
+	createPatchFn = diffLib.createPatch;
+} catch { /* diff not installed — use fallback */ }
+
+/**
+ * generate a unified diff between two strings.
+ *
+ * uses the `diff` npm package (Myers algorithm) when available for
+ * proper hunk-based output with context lines. context=3 matches
+ * git's default, producing gaps between distant changes that show()
+ * can elide in collapsed display.
+ *
+ * falls back to a naive line-by-line comparison when `diff` isn't
+ * installed (produces correct but less optimal output — every line
+ * is either +, -, or context with no hunk headers).
  */
 export function simpleDiff(filePath: string, before: string, after: string): string {
+	if (createPatchFn) {
+		const patch = createPatchFn(
+			path.basename(filePath),
+			before,
+			after,
+			"original",
+			"modified",
+			{ context: 3 },
+		);
+		// strip the Index: and === lines that createPatch prepends —
+		// they add noise for LLM consumption and TUI display
+		const lines = patch.split("\n");
+		const startIdx = lines.findIndex((l) => l.startsWith("---"));
+		return (startIdx > 0 ? lines.slice(startIdx) : lines).join("\n");
+	}
+
+	// fallback: naive line-by-line diff (no shortest-edit-distance)
 	const beforeLines = before.split("\n");
 	const afterLines = after.split("\n");
 
 	const lines: string[] = [
-		`--- ${filePath}\toriginal`,
-		`+++ ${filePath}\tmodified`,
+		`--- ${path.basename(filePath)}\toriginal`,
+		`+++ ${path.basename(filePath)}\tmodified`,
 	];
 
-	// naive: show all removed then all added. good enough for
-	// undo_edit display; not a real shortest-edit-distance diff.
 	let i = 0;
 	let j = 0;
 	while (i < beforeLines.length || j < afterLines.length) {
