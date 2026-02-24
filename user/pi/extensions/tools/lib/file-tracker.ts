@@ -13,6 +13,7 @@
  */
 
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -168,7 +169,8 @@ export function findLatestChange(
 let createPatchFn: ((fileName: string, oldStr: string, newStr: string, oldHeader?: string, newHeader?: string, options?: { context?: number }) => string) | null = null;
 
 try {
-	const diffLib = require("diff");
+	const esmRequire = createRequire(import.meta.url);
+	const diffLib = esmRequire("diff");
 	createPatchFn = diffLib.createPatch;
 } catch { /* diff not installed — use fallback */ }
 
