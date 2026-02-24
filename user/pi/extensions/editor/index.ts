@@ -322,16 +322,125 @@ async function getGitDiffStats(cwd: string): Promise<string> {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// animated activity spinner — renders rich status below the editor
+// ---------------------------------------------------------------------------
+
+const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+type ActivityPhase = "idle" | "thinking" | "tool" | "streaming";
+
+interface ActivityState {
+	phase: ActivityPhase;
+	turnIndex: number;
+	/** tool names currently in-flight (supports parallel tool calls) */
+	activeTools: Map<string, string>;
+	/** epoch ms when agent_start fired */
+	startedAt: number;
+	/** interval handle for spinner animation */
+	intervalId: ReturnType<typeof setInterval> | null;
+	/** current braille frame index */
+	frame: number;
+}
+
+function createActivityState(): ActivityState {
+	return {
+		phase: "idle",
+		turnIndex: 0,
+		activeTools: new Map(),
+		startedAt: 0,
+		intervalId: null,
+		frame: 0,
+	};
+}
+
+function formatElapsed(ms: number): string {
+	const s = Math.floor(ms / 1000);
+	if (s < 60) return `${s}s`;
+	const m = Math.floor(s / 60);
+	const rem = s % 60;
+	return `${m}m${rem > 0 ? `${rem}s` : ""}`;
+}
+
+/**
+ * shorten a tool name for display: "tool_execution" → "tool_execution",
+ * but we also extract a meaningful arg when possible (e.g. file path).
+ */
+function describeToolCall(toolName: string, args: any): string {
+	// common pi tools have a `path` or `pattern` arg — show it if short
+	const hint = args?.path ?? args?.pattern ?? args?.query ?? args?.filePattern ?? args?.cmd;
+	if (typeof hint === "string") {
+		// just the basename or first 24 chars
+		const short = hint.includes("/")
+			? hint.split("/").pop()!
+			: hint.length > 24
+				? hint.slice(0, 24) + "…"
+				: hint;
+		return `${toolName}(${short})`;
+	}
+	return toolName;
+}
+
+function renderActivity(state: ActivityState): string {
+	if (state.phase === "idle") return "";
+
+	const parts: string[] = [];
+
+	// animated spinner
+	parts.push(BRAILLE_FRAMES[state.frame % BRAILLE_FRAMES.length]);
+
+	// turn number (0-indexed from the event, display as 1-indexed)
+	if (state.turnIndex > 0) {
+		parts.push(`turn ${state.turnIndex + 1}`);
+	}
+
+	// phase-specific info
+	if (state.activeTools.size > 0) {
+		const toolDescs = [...state.activeTools.values()];
+		// show up to 2 tool descriptions
+		const shown = toolDescs.slice(0, 2).join(", ");
+		const overflow = toolDescs.length > 2 ? ` +${toolDescs.length - 2}` : "";
+		parts.push(shown + overflow);
+	} else if (state.phase === "thinking") {
+		parts.push("thinking");
+	} else if (state.phase === "streaming") {
+		parts.push("writing");
+	}
+
+	// elapsed time
+	if (state.startedAt > 0) {
+		const elapsed = Date.now() - state.startedAt;
+		if (elapsed >= 1000) {
+			parts.push(formatElapsed(elapsed));
+		}
+	}
+
+	return parts.join(" · ");
+}
+
 export default function (pi: ExtensionAPI) {
 	let editor: LabeledEditor | null = null;
 	const statsCacheBranchLen = { value: -1 };
 	let gitBranch: string | null = null;
 	let branchUnsub: (() => void) | null = null;
-	let activeTools = 0;
 	let statusRow: WidgetRowRegistry | null = null;
+	const activity = createActivityState();
 
 	pi.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI) return;
+
+		// make tool call backgrounds transparent — removes the colored box
+		// chrome that ToolExecutionComponent forces via Box(1,1,bgFn).
+		// the Box padding (1char/1row) remains but is invisible against
+		// the terminal's default background.
+		const themeAny = ctx.ui.theme as any;
+		if (themeAny.bgColors instanceof Map) {
+			const transparent = "\x1b[49m"; // ANSI bg reset = terminal default
+			themeAny.bgColors.set("toolPendingBg", transparent);
+			themeAny.bgColors.set("toolSuccessBg", transparent);
+			themeAny.bgColors.set("toolErrorBg", transparent);
+		}
+
 		// replace editor with labeled box-drawing version
 		ctx.ui.setEditorComponent((tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
 			editor = new LabeledEditor(tui, editorTheme, keybindings, ctx.ui.theme);
@@ -373,20 +482,38 @@ export default function (pi: ExtensionAPI) {
 		updateStatsLabels(editor!, pi, ctx, statsCacheBranchLen);
 	});
 
-	// --- activity status + git changes widget ---
+	// --- animated activity spinner + git changes widget ---
 	const ACTIVITY_SEGMENT = "activity";
 	const GIT_SEGMENT = "git-changes";
 
-	const setActivitySegment = (text: string): void => {
+	/** push current activity state into the widget row */
+	const syncActivitySegment = (): void => {
+		if (activity.phase === "idle") {
+			statusRow?.remove(ACTIVITY_SEGMENT);
+			return;
+		}
+		const text = renderActivity(activity);
+		if (!text) return;
 		statusRow?.set(ACTIVITY_SEGMENT, {
 			align: "left",
 			priority: 10,
-			renderInline: () => text,
+			renderInline: () => renderActivity(activity),
 		});
 	};
 
-	const clearActivitySegment = (): void => {
-		statusRow?.remove(ACTIVITY_SEGMENT);
+	const startSpinner = (): void => {
+		if (activity.intervalId) return;
+		activity.intervalId = setInterval(() => {
+			activity.frame = (activity.frame + 1) % BRAILLE_FRAMES.length;
+			syncActivitySegment();
+		}, 80);
+	};
+
+	const stopSpinner = (): void => {
+		if (activity.intervalId) {
+			clearInterval(activity.intervalId);
+			activity.intervalId = null;
+		}
 	};
 
 	const updateGitSegment = (text?: string): void => {
@@ -402,26 +529,49 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	pi.on("agent_start", async (_event, ctx) => {
-		activeTools = 0;
-		setActivitySegment(" ≈ thinking...");
+		// suppress native spinner text — we render our own below the editor
+		ctx.ui.setWorkingMessage(" ");
+
+		activity.phase = "thinking";
+		activity.turnIndex = 0;
+		activity.activeTools.clear();
+		activity.startedAt = Date.now();
+		activity.frame = 0;
+		startSpinner();
+		syncActivitySegment();
 	});
 
-	pi.on("tool_execution_start", async (event, ctx) => {
-		activeTools++;
-		setActivitySegment(` ≈ ${event.toolName}...  Esc to cancel`);
+	pi.on("turn_start", async (event, _ctx) => {
+		activity.turnIndex = event.turnIndex;
+		activity.phase = activity.activeTools.size > 0 ? "tool" : "thinking";
+		syncActivitySegment();
 	});
 
-	pi.on("tool_execution_end", async (_event, ctx) => {
-		activeTools = Math.max(0, activeTools - 1);
-		if (activeTools === 0) {
-			setActivitySegment(" ≈ thinking...");
-		}
+	pi.on("tool_execution_start", async (event, _ctx) => {
+		activity.phase = "tool";
+		activity.activeTools.set(event.toolCallId, describeToolCall(event.toolName, event.args));
+		syncActivitySegment();
+	});
+
+	pi.on("tool_execution_end", async (event, ctx) => {
+		activity.activeTools.delete(event.toolCallId);
+		activity.phase = activity.activeTools.size > 0 ? "tool" : "thinking";
+		syncActivitySegment();
 		if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
 	});
 
+	pi.on("message_start", async (event, _ctx) => {
+		if ((event.message as any).role === "assistant") {
+			activity.phase = activity.activeTools.size > 0 ? "tool" : "streaming";
+			syncActivitySegment();
+		}
+	});
+
 	pi.on("agent_end", async (_event, ctx) => {
-		activeTools = 0;
-		clearActivitySegment();
+		stopSpinner();
+		activity.phase = "idle";
+		activity.activeTools.clear();
+		statusRow?.remove(ACTIVITY_SEGMENT);
 		if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
 
 		const diffStats = await getGitDiffStats(ctx.cwd);
@@ -451,7 +601,9 @@ export default function (pi: ExtensionAPI) {
 		branchUnsub?.();
 		branchUnsub = null;
 		gitBranch = null;
-		activeTools = 0;
+		stopSpinner();
+		activity.phase = "idle";
+		activity.activeTools.clear();
 		statusRow?.clear();
 		statsCacheBranchLen.value = -1;
 		if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
