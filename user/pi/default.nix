@@ -20,6 +20,7 @@ in
 
     # editor extension — box-drawing borders with composable label slots via EventBus
     home.file.".pi/agent/extensions/editor.ts".source = ./extensions/editor.ts;
+    home.file.".pi/agent/extensions/widget-row.ts".source = ./extensions/widget-row.ts;
     home.file.".pi/agent/extensions/lib/widget-row.ts".source = ./extensions/lib/widget-row.ts;
 
     # handoff extension — replaces compaction with LLM-driven context transfer
