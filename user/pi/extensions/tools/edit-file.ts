@@ -441,16 +441,11 @@ export function createEditFileTool(): ToolDefinition {
 				});
 
 				// build result
-				let text = simpleDiff(resolved, strategy.content, newContent);
-
-
-				const boxSections = parseDiffToSections(path.basename(resolved), text);
+				const text = simpleDiff(resolved, strategy.content, newContent);
 
 				return {
 					content: [{ type: "text" as const, text }],
 					details: {
-						diff: text,
-						boxSections,
 						...(replaceAll && occurrences > 1 ? { replaceCount: occurrences } : {}),
 					},
 				} as any;
@@ -461,10 +456,14 @@ export function createEditFileTool(): ToolDefinition {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
 
-			const sections: BoxSection[] | undefined = result.details?.boxSections;
-			if (!sections?.length) return new Text(content.text, 0, 0);
+			const diffText = content.text;
+			// extract filename from first --- line, or fall back
+			const filenameMatch = diffText.match(/^---\s+(\S+)/m);
+			const filename = filenameMatch?.[1] ?? "file";
 
-			// stats line: +N ~M -K
+			const sections = parseDiffToSections(filename, diffText);
+			if (!sections?.length || !sections[0].blocks.length) return new Text(theme.fg("dim", "(no changes)"), 0, 0);
+
 			const stats = computeDiffStats(sections);
 			const statsText = formatStats(stats, theme);
 			const replaceCount: number | undefined = result.details?.replaceCount;
@@ -476,21 +475,16 @@ export function createEditFileTool(): ToolDefinition {
 				? [`replaced ${replaceCount} occurrences`]
 				: undefined;
 
-			// use box renderer but with tight collapsed limits:
-			// only show last hunk (tail) in collapsed mode
 			const COLLAPSED_TAIL_BLOCKS = 1;
 
 			return {
 				render(width: number): string[] {
 					const lines: string[] = [];
-
-					// stats header
 					lines.push(statsText + replaceNote);
 
 					const opts = expanded
 						? {}
 						: { maxSections: 1, maxBlocks: COLLAPSED_TAIL_BLOCKS };
-					// for collapsed: show last block by reversing blocks
 					let displaySections = sections;
 					if (!expanded && sections.length > 0) {
 						displaySections = sections.map((s) => ({
