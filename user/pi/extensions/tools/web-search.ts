@@ -17,7 +17,7 @@
 import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { makeShowRenderer } from "./lib/show-renderer";
+import { boxRenderer, type BoxSection } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import type { ToolCostDetails } from "./lib/tool-cost";
 
@@ -161,6 +161,29 @@ function formatResults(results: SearchResult[]): { text: string; headerLineIndic
 	return { text: lines.join("\n"), headerLineIndices };
 }
 
+/** convert raw SearchResult[] into BoxSection[] for box-format rendering. */
+function resultsToSections(results: SearchResult[]): BoxSection[] {
+	return results.map((r) => {
+		const lines = [];
+		lines.push({ text: r.url, highlight: true });
+		if (r.publish_date) lines.push({ text: r.publish_date, highlight: true });
+		if (r.excerpts?.length) {
+			lines.push({ text: "", highlight: false });
+			for (let j = 0; j < r.excerpts.length; j++) {
+				for (const l of r.excerpts[j].split("\n")) {
+					lines.push({ text: l, highlight: false });
+				}
+				if (j < r.excerpts.length - 1) lines.push({ text: "", highlight: false });
+			}
+		}
+		return {
+			header: r.title || "(untitled)",
+			blocks: [{ lines }],
+		};
+	});
+}
+
+
 export function createWebSearchTool(): ToolDefinition {
 	return {
 		name: "web_search",
@@ -235,9 +258,11 @@ export function createWebSearchTool(): ToolDefinition {
 				output += `\n\n**Warnings:** ${data.warnings.join("; ")}`;
 			}
 
-			const details: ToolCostDetails & { matchLineIndices?: number[] } = {
+			const resultSections = resultsToSections(data.results);
+			const details: ToolCostDetails & { matchLineIndices?: number[]; resultSections?: BoxSection[] } = {
 				cost: costFromUsage(data.usage),
 				matchLineIndices: headerLineIndices,
+				resultSections,
 			};
 			return { content: [{ type: "text" as const, text: output }], details };
 		},
@@ -252,16 +277,19 @@ export function createWebSearchTool(): ToolDefinition {
 			return new Text(text, 0, 0);
 		},
 
-		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
-			const text = result.content?.[0];
-			if (text?.type !== "text") return new Text("(no output)", 0, 0);
-			const output: string = text.text;
-			if (expanded) return new Text(output, 0, 0);
-
-			// collapsed: focus each result header with ±2 context.
-			const indices: number[] | undefined = result.details?.matchLineIndices;
-			if (!indices?.length) return makeShowRenderer(output, [{ focus: "head", context: 6 }]);
-			return makeShowRenderer(output, indices.map((n) => ({ focus: n, context: 2 })));
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+			const sections: BoxSection[] | undefined = result.details?.resultSections;
+			if (!sections?.length) {
+				const text = result.content?.[0];
+				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
+			}
+			return boxRenderer(
+				() => sections,
+				{
+					collapsed: { maxSections: 3, maxBlocks: 1 },
+					expanded: {},
+				},
+			);
 		},
 	};
 }

@@ -19,7 +19,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { makeShowRenderer } from "./lib/show-renderer";
+import { boxRenderer, type BoxSection, type BoxBlock, type BoxLine } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
@@ -174,6 +174,56 @@ function hasNewRedactionMarkers(oldStr: string, newStr: string): string | null {
 	return null;
 }
 
+
+// --- diff → box sections ---
+
+/**
+ * parse unified diff output into BoxSection[] for box-format rendering.
+ * each hunk becomes a BoxBlock. +/- lines are highlighted, context lines dim.
+ */
+function parseDiffToSections(filename: string, diffText: string): BoxSection[] {
+	const lines = diffText.split("\n");
+	const blocks: BoxBlock[] = [];
+	let currentLines: BoxLine[] = [];
+	let oldLine = 0;
+	let newLine = 0;
+
+	for (const line of lines) {
+		// skip --- / +++ headers
+		if (line.startsWith("--- ") || line.startsWith("+++ ")) continue;
+
+		// @@ hunk header — start a new block
+		const hunkMatch = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+		if (hunkMatch) {
+			if (currentLines.length > 0) {
+				blocks.push({ lines: currentLines });
+				currentLines = [];
+			}
+			oldLine = parseInt(hunkMatch[1], 10);
+			newLine = parseInt(hunkMatch[2], 10);
+			continue;
+		}
+
+		if (line.startsWith("-")) {
+			currentLines.push({ gutter: String(oldLine), text: line, highlight: true });
+			oldLine++;
+		} else if (line.startsWith("+")) {
+			currentLines.push({ gutter: String(newLine), text: line, highlight: true });
+			newLine++;
+		} else if (line.startsWith(" ")) {
+			currentLines.push({ gutter: String(newLine), text: line, highlight: false });
+			oldLine++;
+			newLine++;
+		}
+	}
+
+	if (currentLines.length > 0) {
+		blocks.push({ lines: currentLines });
+	}
+
+	return [{ header: filename, blocks }];
+}
+
 // --- tool factory ---
 
 export function createEditFileTool(): ToolDefinition {
@@ -325,33 +375,35 @@ export function createEditFileTool(): ToolDefinition {
 					text += `\n\n(replaced ${occurrences} occurrences)`;
 				}
 
-				const matchLineIndices = text
-					.split("\n")
-					.reduce<number[]>((acc, line, idx) => {
-						if (line.startsWith("+") || line.startsWith("-")) acc.push(idx);
-						return acc;
-					}, []);
+				const boxSections = parseDiffToSections(path.basename(resolved), text);
 
 				return {
 					content: [{ type: "text" as const, text }],
 					details: {
 						diff: text,
-						matchLineIndices,
+						boxSections,
 					},
 				} as any;
 			});
 		},
 
-		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+		renderResult(result: any) {
 			const text = result.content?.[0];
 			if (text?.type !== "text") return new Text("(no output)", 0, 0);
-			const diff: string = text.text;
-			if (expanded) return new Text(diff, 0, 0);
 
-			// collapsed: focus each changed line with ±2 context.
-			const indices: number[] | undefined = result.details?.matchLineIndices;
-			if (!indices?.length) return makeShowRenderer(diff, [{ focus: "head", context: 8 }]);
-			return makeShowRenderer(diff, indices.map((n) => ({ focus: n, context: 2 })));
+			const sections: BoxSection[] | undefined = result.details?.boxSections;
+			if (!sections?.length) return new Text(text.text, 0, 0);
+
+			const replaceCount: number | undefined = result.details?.replaceCount;
+			const notices = replaceCount && replaceCount > 1
+				? [`replaced ${replaceCount} occurrences`]
+				: undefined;
+
+			return boxRenderer(
+				() => sections,
+				{ collapsed: { maxBlocks: 1 }, expanded: {} },
+				notices,
+			);
 		},
 	};
 }
