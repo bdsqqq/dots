@@ -50,11 +50,12 @@ export interface PiSpawnConfig {
 	sessionId?: string;
 	repo?: string;
 	/**
-	 * inject a follow-up user message after the agent's first end_turn.
+	 * inject a follow-up user message after the agent's first turn.
 	 *
-	 * uses pi's RPC mode instead of print mode. the agent explores with
-	 * tools until it stops (end_turn), then receives this message as a
-	 * new user turn. the process is killed after the second end_turn.
+	 * uses pi's RPC mode instead of print mode. the follow-up is queued
+	 * eagerly at startup (not delivered until idle), so the agent loop's
+	 * getFollowUpMessages() finds it after exploration completes. the
+	 * process is killed after the second end_turn.
 	 *
 	 * primary use case: code_review — agent explores the diff first,
 	 * then receives the report format instructions.
@@ -153,15 +154,24 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 				env: spawnEnv,
 			});
 
-			// RPC state: track end_turns to know when to inject follow_up
-			let followUpSent = false;
+			// RPC state: track end_turns to know when to kill
 			let endTurnCount = 0;
 
-			// send initial prompt via RPC stdin
+			// send initial prompt via RPC stdin, then immediately queue follow_up.
+			// follow_up is queued (not delivered) until the agent is idle, so the
+			// agent loop's getFollowUpMessages() will find it after exploration.
+			// sending it eagerly avoids a race where the loop exits before a
+			// late follow_up arrives through the cross-process stdin/stdout round-trip.
 			if (useRpc && proc.stdin) {
 				const promptCmd = JSON.stringify({ type: "prompt", message: `Task: ${config.task}` });
 				debug("send_prompt");
 				proc.stdin.write(promptCmd + "\n");
+
+				if (config.followUp) {
+					const followUpCmd = JSON.stringify({ type: "follow_up", message: config.followUp });
+					debug("send_follow_up");
+					proc.stdin.write(followUpCmd + "\n");
+				}
 			}
 
 			let buffer = "";
@@ -195,25 +205,22 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
 						const stopReason = (msg as any).stopReason as string | undefined;
 						const isTurnEnd = stopReason === "end_turn" || stopReason === "stop";
-						debug("turn_end", { stopReason, isTurnEnd, endTurnCount, followUpSent });
+						const expectedTurns = config.followUp ? 2 : 1;
+						debug("turn_end", { stopReason, isTurnEnd, endTurnCount, expectedTurns });
 
-						// RPC follow-up injection: after first end_turn, send the follow-up message
+						// RPC kill logic: terminate after expected number of end_turns.
+						// follow_up was already queued eagerly at startup, so we just
+						// count turns and kill when done.
 						if (useRpc && isTurnEnd) {
 							endTurnCount++;
-							if (endTurnCount === 1 && !followUpSent && config.followUp) {
-								followUpSent = true;
-								const followUpCmd = JSON.stringify({ type: "follow_up", message: config.followUp });
-								debug("send_follow_up");
-								proc.stdin?.write(followUpCmd + "\n");
-							} else if (endTurnCount >= 2 || followUpSent) {
-								// follow-up turn complete — terminate the RPC process
+							if (endTurnCount >= expectedTurns) {
 								debug("kill_after_turn", { endTurnCount });
 								proc.kill("SIGTERM");
 								setTimeout(() => { if (!proc.killed) proc.kill("SIGKILL"); }, 5000);
 							}
 						}
 
-						// RPC: if agent errors before follow-up, terminate
+						// RPC: if agent errors, terminate immediately
 						if (useRpc && (stopReason === "error" || stopReason === "aborted")) {
 							debug("kill_after_error", { stopReason });
 							proc.kill("SIGTERM");
