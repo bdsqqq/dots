@@ -326,7 +326,7 @@ async function getGitDiffStats(cwd: string): Promise<string> {
 // animated activity spinner — renders rich status below the editor
 // ---------------------------------------------------------------------------
 
-const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER_FRAMES = ["·", "•", "*", "⁑", "⁂", "⁑", "*", "•", "·"];
 
 type ActivityPhase = "idle" | "thinking" | "tool" | "streaming";
 
@@ -387,7 +387,7 @@ function renderActivity(state: ActivityState): string {
 	const parts: string[] = [];
 
 	// animated spinner
-	parts.push(BRAILLE_FRAMES[state.frame % BRAILLE_FRAMES.length]);
+	parts.push(SPINNER_FRAMES[state.frame % SPINNER_FRAMES.length]);
 
 	// turn number (0-indexed from the event, display as 1-indexed)
 	if (state.turnIndex > 0) {
@@ -504,9 +504,9 @@ export default function (pi: ExtensionAPI) {
 	const startSpinner = (): void => {
 		if (activity.intervalId) return;
 		activity.intervalId = setInterval(() => {
-			activity.frame = (activity.frame + 1) % BRAILLE_FRAMES.length;
+			activity.frame = (activity.frame + 1) % SPINNER_FRAMES.length;
 			syncActivitySegment();
-		}, 80);
+		}, 150);
 	};
 
 	const stopSpinner = (): void => {
