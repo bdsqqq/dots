@@ -317,16 +317,17 @@ function rgFilterFiles(keyword: string): Set<string> | null {
 
 // --- format results ---
 
-function formatBranchResults(branches: BranchResult[]): string {
-	if (branches.length === 0) return "(no matching sessions found)";
+function formatBranchResults(branches: BranchResult[]): { text: string; headerLineIndices: number[] } {
+	if (branches.length === 0) return { text: "(no matching sessions found)", headerLineIndices: [] };
 
-	const parts: string[] = [];
-	parts.push(`found ${branches.length} matching branch${branches.length !== 1 ? "es" : ""}:\n`);
+	const lines: string[] = [];
+	const headerLineIndices: number[] = [];
+
+	lines.push(`found ${branches.length} matching branch${branches.length !== 1 ? "es" : ""}:`);
+	lines.push("");
 
 	for (let i = 0; i < branches.length; i++) {
 		const b = branches[i];
-		const lines: string[] = [];
-
 		const dateStr = new Date(b.timestampEnd).toLocaleDateString("en-US", {
 			weekday: "short", year: "numeric", month: "short", day: "numeric",
 		});
@@ -334,6 +335,7 @@ function formatBranchResults(branches: BranchResult[]): string {
 			hour: "2-digit", minute: "2-digit",
 		});
 
+		headerLineIndices.push(lines.length);
 		lines.push(`### ${i + 1}. ${b.sessionName || "(unnamed)"}`);
 		lines.push(`session: ${b.sessionId} / branch: ${b.leafId}`);
 		if (b.parentSessionPath) {
@@ -354,10 +356,10 @@ function formatBranchResults(branches: BranchResult[]): string {
 			lines.push(`> ${preview}`);
 		}
 
-		parts.push(lines.join("\n"));
+		if (i < branches.length - 1) lines.push("");
 	}
 
-	return parts.join("\n\n");
+	return { text: lines.join("\n"), headerLineIndices };
 }
 
 // --- tool ---
@@ -515,17 +517,29 @@ export function createSearchSessionsTool(): ToolDefinition {
 
 			// 7. format with head+tail truncation
 			let output: string;
+			let matchLineIndices: number[] = [];
 			if (filtered.length > MAX_RESULTS) {
 				const half = Math.floor(MAX_RESULTS / 2);
 				const head = filtered.slice(0, half);
 				const tail = filtered.slice(-half);
-				const headOutput = formatBranchResults(head);
-				const tailOutput = formatBranchResults(tail);
-				output = `${headOutput}\n\n... [${filtered.length - MAX_RESULTS} more sessions] ...\n\n${tailOutput}`;
+				const headResult = formatBranchResults(head);
+				const tailResult = formatBranchResults(tail);
+				output = `${headResult.text}\n\n... [${filtered.length - MAX_RESULTS} more sessions] ...\n\n${tailResult.text}`;
+
+				const headLineCount = headResult.text.split("\n").length;
+				matchLineIndices = [
+					...headResult.headerLineIndices,
+					...tailResult.headerLineIndices.map((idx) => idx + headLineCount + 3),
+				];
 			} else {
-				output = formatBranchResults(filtered);
+				const result = formatBranchResults(filtered);
+				output = result.text;
+				matchLineIndices = result.headerLineIndices;
 			}
-			return { content: [{ type: "text" as const, text: output }] } as any;
+			return {
+				content: [{ type: "text" as const, text: output }],
+				details: { matchLineIndices },
+			} as any;
 		},
 
 		renderCall(args: any, theme: any) {
@@ -548,12 +562,10 @@ export function createSearchSessionsTool(): ToolDefinition {
 			const output: string = text.text;
 			if (expanded) return new Text(output, 0, 0);
 
-			// collapsed: head shows the most recent sessions (sorted newest-first),
-			// tail shows older sessions for context when there are many results.
-			return makeShowRenderer(output, [
-				{ focus: "head", context: 5 },
-				{ focus: "tail", context: 3 },
-			]);
+			// collapsed: focus each session header with ±2 context.
+			const indices: number[] | undefined = result.details?.matchLineIndices;
+			if (!indices?.length) return makeShowRenderer(output, [{ focus: "head", context: 6 }]);
+			return makeShowRenderer(output, indices.map((n) => ({ focus: n, context: 2 })));
 		},
 	};
 }
