@@ -17,7 +17,7 @@
 import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { boxRenderer, type BoxSection } from "./lib/box-format";
+import { boxRenderer, osc8Link, type BoxSection } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import type { ToolCostDetails } from "./lib/tool-cost";
 
@@ -165,7 +165,7 @@ function formatResults(results: SearchResult[]): { text: string; headerLineIndic
 function resultsToSections(results: SearchResult[]): BoxSection[] {
 	return results.map((r) => {
 		const lines = [];
-		lines.push({ text: r.url, highlight: true });
+		lines.push({ text: osc8Link(r.url, r.url), highlight: true });
 		if (r.publish_date) lines.push({ text: r.publish_date, highlight: true });
 		if (r.excerpts?.length) {
 			lines.push({ text: "", highlight: false });

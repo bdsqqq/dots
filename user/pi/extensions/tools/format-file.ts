@@ -16,6 +16,7 @@ import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
 import { resolveWithVariants } from "./read";
+import { osc8Link } from "./lib/box-format";
 
 type Formatter = { name: string; args: (file: string) => string[] };
 
@@ -54,8 +55,9 @@ export function createFormatFileTool(): ToolDefinition {
 			const filePath = args.path || "...";
 			const home = os.homedir();
 			const shortened = filePath.startsWith(home) ? `~${filePath.slice(home.length)}` : filePath;
+			const linked = filePath.startsWith("/") ? osc8Link(`file://${filePath}`, shortened) : shortened;
 			return new Text(
-				theme.fg("toolTitle", theme.bold("Format ")) + theme.fg("dim", shortened),
+				theme.fg("toolTitle", theme.bold("Format ")) + theme.fg("dim", linked),
 				0, 0,
 			);
 		},

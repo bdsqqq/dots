@@ -21,7 +21,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { headTail } from "./lib/output-buffer";
-import { formatBoxes, type BoxSection, type BoxLine } from "./lib/box-format";
+import { formatBoxes, osc8Link, type BoxSection, type BoxLine } from "./lib/box-format";
 
 const MAX_TOTAL_MATCHES = 100;
 const MAX_COLLECT_MATCHES = 200;
@@ -143,9 +143,10 @@ export function createGrepTool(): ToolDefinition {
 			const searchPath = args.path || args.glob || ".";
 			const home = os.homedir();
 			const shortened = searchPath.startsWith(home) ? `~${searchPath.slice(home.length)}` : searchPath;
+			const linkedPath = searchPath.startsWith("/") ? osc8Link(`file://${searchPath}`, shortened) : shortened;
 			const caseSuffix = args.caseSensitive === false ? " -i" : "";
 			return new Text(
-				theme.fg("toolTitle", theme.bold("Grep ")) + theme.fg("dim", `/${pattern}/${caseSuffix} in ${shortened}`),
+				theme.fg("toolTitle", theme.bold("Grep ")) + theme.fg("dim", `/${pattern}/${caseSuffix} in ${linkedPath}`),
 				0, 0,
 			);
 		},
@@ -416,7 +417,7 @@ export function createGrepTool(): ToolDefinition {
 
 					resolve({
 						content: [{ type: "text" as const, text: output }],
-						details: { fileGroups, notices, matchLineIndices: finalMatchIndices, firstMatchPerFile },
+						details: { fileGroups, notices, matchLineIndices: finalMatchIndices, firstMatchPerFile, searchPath },
 					} as any);
 				});
 			});
@@ -425,6 +426,7 @@ export function createGrepTool(): ToolDefinition {
 		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
 			const fileGroups: GrepFile[] | undefined = result.details?.fileGroups;
 			const notices: string[] = result.details?.notices ?? [];
+			const basePath: string | undefined = result.details?.searchPath;
 
 			// fallback for old results or error results without fileGroups
 			if (!fileGroups?.length) {
@@ -433,6 +435,15 @@ export function createGrepTool(): ToolDefinition {
 			}
 
 			const sections = grepToSections(fileGroups);
+
+			// wrap section headers in OSC 8 file:// links
+			if (basePath) {
+				for (let i = 0; i < sections.length; i++) {
+					const relPath = fileGroups[i].path;
+					const absPath = basePath + "/" + relPath;
+					sections[i] = { ...sections[i], header: osc8Link(`file://${absPath}`, sections[i].header) };
+				}
+			}
 
 			let cachedWidth: number | undefined;
 			let cachedExpanded: boolean | undefined;

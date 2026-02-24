@@ -18,6 +18,7 @@ import { htmlToMarkdown } from "./lib/html-to-md";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import { getFinalOutput, renderAgentTree, subAgentResult, type SingleResult } from "./lib/sub-agent-render";
 import { OutputBuffer, headTailChars } from "./lib/output-buffer";
+import { osc8Link } from "./lib/box-format";
 
 const HEAD_LINES = 500;
 const TAIL_LINES = 500;
@@ -249,7 +250,8 @@ export function createReadWebPageTool(config: ReadWebPageConfig = {}): ToolDefin
 		renderCall(args: any, theme: any) {
 			const url = args.url || "...";
 			const displayUrl = url.length > 60 ? `${url.slice(0, 60)}...` : url;
-			let text = theme.fg("toolTitle", theme.bold("read_web_page ")) + theme.fg("dim", displayUrl);
+			const linkedUrl = url.startsWith("http") ? osc8Link(url, displayUrl) : displayUrl;
+			let text = theme.fg("toolTitle", theme.bold("read_web_page ")) + theme.fg("dim", linkedUrl);
 			const label = args.prompt || args.objective;
 			if (label) {
 				const short = label.length > 40 ? `${label.slice(0, 40)}...` : label;

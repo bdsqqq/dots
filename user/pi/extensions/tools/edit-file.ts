@@ -354,8 +354,9 @@ export function createEditFileTool(): ToolDefinition {
 			const filePath = args.path || "...";
 			const home = os.homedir();
 			const shortened = filePath.startsWith(home) ? `~${filePath.slice(home.length)}` : filePath;
+			const linked = filePath.startsWith("/") ? osc8Link(`file://${filePath}`, shortened) : shortened;
 			return new Text(
-				theme.fg("toolTitle", theme.bold("Edit ")) + theme.fg("dim", shortened),
+				theme.fg("toolTitle", theme.bold("Edit ")) + theme.fg("dim", linked),
 				0, 0,
 			);
 		},
