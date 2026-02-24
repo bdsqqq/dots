@@ -186,8 +186,11 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 						if ((msg as any).stopReason) result.stopReason = (msg as any).stopReason;
 						if ((msg as any).errorMessage) result.errorMessage = (msg as any).errorMessage;
 
+						const stopReason = (msg as any).stopReason as string | undefined;
+						const isTurnEnd = stopReason === "end_turn" || stopReason === "stop";
+
 						// RPC follow-up injection: after first end_turn, send the follow-up message
-						if (useRpc && (msg as any).stopReason === "end_turn") {
+						if (useRpc && isTurnEnd) {
 							endTurnCount++;
 							if (endTurnCount === 1 && !followUpSent && config.followUp) {
 								followUpSent = true;
@@ -201,7 +204,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 						}
 
 						// RPC: if agent errors before follow-up, terminate
-						if (useRpc && ((msg as any).stopReason === "error" || (msg as any).stopReason === "aborted")) {
+						if (useRpc && (stopReason === "error" || stopReason === "aborted")) {
 							proc.kill("SIGTERM");
 							setTimeout(() => { if (!proc.killed) proc.kill("SIGKILL"); }, 5000);
 						}
@@ -253,7 +256,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 			result.stopReason = "aborted";
 		}
 		// RPC processes are killed intentionally — don't treat SIGTERM exit as error
-		if (useRpc && result.exitCode !== 0 && result.stopReason === "end_turn") {
+		if (useRpc && result.exitCode !== 0 && (result.stopReason === "end_turn" || result.stopReason === "stop")) {
 			result.exitCode = 0;
 		}
 		return result;
