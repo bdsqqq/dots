@@ -2,12 +2,19 @@
  * cheerio-based HTML→markdown. returns null when cheerio isn't
  * resolvable (caller falls back to raw output). optimizes for
  * LLM-readable output over pixel-perfect fidelity.
+ *
+ * uses createRequire(__filename) so node resolves cheerio from
+ * user/pi/node_modules/ — jiti's intercepted require resolves
+ * from the loader's path instead of the extension file's path.
  */
+
+import { createRequire } from "node:module";
 
 let cheerioLoad: ((html: string) => any) | null = null;
 
 try {
-	const cheerio = require("cheerio");
+	const localRequire = createRequire(__filename);
+	const cheerio = localRequire("cheerio");
 	cheerioLoad = cheerio.load;
 } catch {}
 
