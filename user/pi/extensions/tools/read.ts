@@ -16,7 +16,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import { getText } from "./lib/tui";
 import { formatBoxes, type BoxSection, type BoxLine } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import { formatHeadTail } from "./lib/output-buffer";
@@ -281,6 +281,7 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 		},
 
 		renderResult(result: any) {
+			const Text = getText();
 			const text = result.content?.[0];
 			if (text?.type !== "text") return new Text("(no output)", 0, 0);
 

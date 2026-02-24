@@ -18,7 +18,18 @@
  * the TUI will crash if any rendered line exceeds terminal width.
  */
 
-import { truncateToWidth } from "@mariozechner/pi-tui";
+/**
+ * lazy-resolve truncateToWidth from pi-tui so this module can be
+ * imported in test environments where pi-tui isn't resolvable.
+ * only needed at render time (when width is provided).
+ */
+let _truncateToWidth: ((text: string, maxWidth: number, ellipsis?: string, pad?: boolean) => string) | undefined;
+function getTruncateToWidth() {
+	if (!_truncateToWidth) {
+		_truncateToWidth = require("@mariozechner/pi-tui").truncateToWidth;
+	}
+	return _truncateToWidth!;
+}
 
 const DIM = "\x1b[2m";
 const RST = "\x1b[0m";
@@ -77,7 +88,7 @@ export function formatBoxes(
 
 	/** truncate line to width if provided, otherwise pass through */
 	const clamp = (line: string): string =>
-		width != null ? truncateToWidth(line, width, "…") : line;
+		width != null ? getTruncateToWidth()(line, width, "…") : line;
 
 	for (let si = 0; si < shown.length; si++) {
 		const section = shown[si];
