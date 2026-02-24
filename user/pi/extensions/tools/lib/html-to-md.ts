@@ -4,10 +4,13 @@
  * LLM-readable output over pixel-perfect fidelity.
  */
 
+import { createRequire } from "node:module";
+
 let cheerioLoad: ((html: string) => any) | null = null;
 
 try {
-	const cheerio = require("cheerio");
+	const esmRequire = createRequire(import.meta.url);
+	const cheerio = esmRequire("cheerio");
 	cheerioLoad = cheerio.load;
 } catch {}
 
