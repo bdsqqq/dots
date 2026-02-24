@@ -18,20 +18,40 @@
  * the TUI will crash if any rendered line exceeds terminal width.
  */
 
-/**
- * lazy-resolve truncateToWidth from pi-tui so this module can be
- * imported in test environments where pi-tui isn't resolvable.
- * only needed at render time (when width is provided).
- */
-import { createRequire } from "node:module";
+const DIM = "\x1b[2m";
+const RST = "\x1b[0m";
 
-let _truncateToWidth: ((text: string, maxWidth: number, ellipsis?: string, pad?: boolean) => string) | undefined;
-function getTruncateToWidth() {
-	if (!_truncateToWidth) {
-		const esmRequire = createRequire(import.meta.url);
-		_truncateToWidth = esmRequire("@mariozechner/pi-tui").truncateToWidth;
+/**
+ * ANSI-aware visible width + truncation.
+ * avoids depending on pi-tui (which lives in pi's global install,
+ * not the extension's node_modules / nix store).
+ */
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+
+function visibleWidth(text: string): number {
+	return text.replace(ANSI_RE, "").length;
+}
+
+function truncateToWidth(text: string, maxWidth: number, ellipsis = "…"): string {
+	if (visibleWidth(text) <= maxWidth) return text;
+
+	const ellipsisLen = ellipsis.length;
+	const target = maxWidth - ellipsisLen;
+	if (target <= 0) return ellipsis.slice(0, maxWidth);
+
+	let visible = 0;
+	let i = 0;
+	while (i < text.length && visible < target) {
+		// skip ANSI escape sequences (don't count toward visible width)
+		if (text[i] === "\x1b" && text[i + 1] === "[") {
+			const end = text.indexOf("m", i);
+			if (end !== -1) { i = end + 1; continue; }
+		}
+		visible++;
+		i++;
 	}
-	return _truncateToWidth!;
+
+	return text.slice(0, i) + RST + ellipsis;
 }
 
 /**
@@ -42,9 +62,6 @@ function getTruncateToWidth() {
  * to prevent wrapping without wasting visible space.
  */
 const WIDTH_SAFETY_MARGIN = 2;
-
-const DIM = "\x1b[2m";
-const RST = "\x1b[0m";
 
 export interface BoxLine {
 	/** optional gutter text (e.g., line number). right-aligned to gutter width. */
@@ -101,7 +118,7 @@ export function formatBoxes(
 	/** truncate line to safe width if provided, otherwise pass through */
 	const safeWidth = width != null ? Math.max(1, width - WIDTH_SAFETY_MARGIN) : undefined;
 	const clamp = (line: string): string =>
-		safeWidth != null ? getTruncateToWidth()(line, safeWidth, "…") : line;
+		safeWidth != null ? truncateToWidth(line, safeWidth, "…") : line;
 
 	for (let si = 0; si < shown.length; si++) {
 		const section = shown[si];
