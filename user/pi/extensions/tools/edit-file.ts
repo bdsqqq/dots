@@ -18,8 +18,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
-import { boxRenderer, type BoxSection, type BoxBlock, type BoxLine } from "./lib/box-format";
+import { getText } from "./lib/tui";
+import { formatBoxes, type BoxSection, type BoxBlock, type BoxLine } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
@@ -224,6 +224,67 @@ function parseDiffToSections(filename: string, diffText: string): BoxSection[] {
 	return [{ header: filename, blocks }];
 }
 
+// --- diff stats ---
+
+interface DiffStats {
+	added: number;
+	removed: number;
+	modified: number;
+}
+
+/**
+ * compute +added/~modified/-removed from diff lines.
+ * adjacent - then + blocks are paired as modifications;
+ * the min count is ~modified, excess is pure +/-.
+ */
+function computeDiffStats(sections: BoxSection[]): DiffStats {
+	let added = 0;
+	let removed = 0;
+	let modified = 0;
+
+	for (const section of sections) {
+		for (const block of section.blocks) {
+			let i = 0;
+			while (i < block.lines.length) {
+				const line = block.lines[i];
+				if (line.text.startsWith("-")) {
+					// count consecutive - lines
+					let delCount = 0;
+					while (i < block.lines.length && block.lines[i].text.startsWith("-")) {
+						delCount++;
+						i++;
+					}
+					// count consecutive + lines immediately after
+					let addCount = 0;
+					while (i < block.lines.length && block.lines[i].text.startsWith("+")) {
+						addCount++;
+						i++;
+					}
+					const paired = Math.min(delCount, addCount);
+					modified += paired;
+					removed += delCount - paired;
+					added += addCount - paired;
+				} else if (line.text.startsWith("+")) {
+					added++;
+					i++;
+				} else {
+					i++;
+				}
+			}
+		}
+	}
+
+	return { added, removed, modified };
+}
+
+function formatStats(stats: DiffStats, theme: any): string {
+	const parts: string[] = [];
+	if (stats.added > 0) parts.push(theme.fg("green", `+${stats.added}`));
+	if (stats.modified > 0) parts.push(theme.fg("yellow", `~${stats.modified}`));
+	if (stats.removed > 0) parts.push(theme.fg("red", `-${stats.removed}`));
+	return parts.join(" ");
+}
+
 // --- tool factory ---
 
 export function createEditFileTool(): ToolDefinition {
@@ -260,6 +321,12 @@ export function createEditFileTool(): ToolDefinition {
 				}),
 			),
 		}),
+
+		renderCall(args: any, theme: any) {
+			const Text = getText();
+			const filePath = args.path || "...";
+			return new Text(theme.fg("dim", filePath), 0, 0);
+		},
 
 		async execute(toolCallId, params, _signal, _onUpdate, ctx) {
 			const resolved = resolveWithVariants(params.path, ctx.cwd);
@@ -385,23 +452,57 @@ export function createEditFileTool(): ToolDefinition {
 			});
 		},
 
-		renderResult(result: any) {
-			const text = result.content?.[0];
-			if (text?.type !== "text") return new Text("(no output)", 0, 0);
+		renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
+			const Text = getText();
+			const content = result.content?.[0];
+			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
 
 			const sections: BoxSection[] | undefined = result.details?.boxSections;
-			if (!sections?.length) return new Text(text.text, 0, 0);
+			if (!sections?.length) return new Text(content.text, 0, 0);
 
+			// stats line: +N ~M -K
+			const stats = computeDiffStats(sections);
+			const statsText = formatStats(stats, theme);
 			const replaceCount: number | undefined = result.details?.replaceCount;
+			const replaceNote = replaceCount && replaceCount > 1
+				? theme.fg("dim", ` (${replaceCount} replacements)`)
+				: "";
+
 			const notices = replaceCount && replaceCount > 1
 				? [`replaced ${replaceCount} occurrences`]
 				: undefined;
 
-			return boxRenderer(
-				() => sections,
-				{ collapsed: { maxBlocks: 1 }, expanded: {} },
-				notices,
-			);
+			// use box renderer but with tight collapsed limits:
+			// only show last hunk (tail) in collapsed mode
+			const COLLAPSED_TAIL_BLOCKS = 1;
+
+			return {
+				render(width: number): string[] {
+					const lines: string[] = [];
+
+					// stats header
+					lines.push(statsText + replaceNote);
+
+					const opts = expanded
+						? {}
+						: { maxSections: 1, maxBlocks: COLLAPSED_TAIL_BLOCKS };
+					// for collapsed: show last block by reversing blocks
+					let displaySections = sections;
+					if (!expanded && sections.length > 0) {
+						displaySections = sections.map((s) => ({
+							...s,
+							blocks: s.blocks.length > COLLAPSED_TAIL_BLOCKS
+								? s.blocks.slice(-COLLAPSED_TAIL_BLOCKS)
+								: s.blocks,
+						}));
+					}
+					const boxOutput = formatBoxes(displaySections, opts, notices, width);
+					lines.push(...boxOutput.split("\n"));
+
+					return lines;
+				},
+				invalidate() {},
+			};
 		},
 	};
 }
