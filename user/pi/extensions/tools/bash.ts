@@ -20,7 +20,7 @@ import * as path from "node:path";
 import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { boxRenderer, type BoxSection, type BoxBlock } from "./lib/box-format";
-import { Text } from "@mariozechner/pi-tui";
+import { getText } from "./lib/tui";
 import { Type } from "@sinclair/typebox";
 import { withFileLock } from "./lib/mutex";
 import { evaluatePermission, loadPermissions } from "./lib/permissions";
@@ -147,6 +147,7 @@ export function createBashTool(): ToolDefinition {
 		}),
 
 		renderCall(args: any, theme: any) {
+			const Text = getText();
 			const cmd = args.cmd || args.command || "...";
 			const timeout = args.timeout;
 			const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : "";
@@ -157,6 +158,7 @@ export function createBashTool(): ToolDefinition {
 		},
 
 		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+			const Text = getText();
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
 
