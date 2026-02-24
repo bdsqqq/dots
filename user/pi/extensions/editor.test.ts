@@ -46,6 +46,10 @@ function tmuxKill(target: string) {
 	Bun.spawnSync(["tmux", "kill-window", "-t", target]);
 }
 
+function firstBorderLine(capture: string): string {
+	return capture.split("\n").find((line) => line.includes("╭")) ?? "";
+}
+
 async function waitForPane(target: string, pattern: RegExp, timeoutMs: number, pollMs = 1000): Promise<string> {
 	const deadline = Date.now() + timeoutMs;
 	let last = "";
@@ -97,24 +101,28 @@ describe.skipIf(!ENABLED || !tmuxAvailable)("editor extension - model_select", (
 
 		// Capture initial state - should show kimi-k2.5 in border
 		const beforeCapture = tmuxCapture(windowName);
+		const beforeBorder = firstBorderLine(beforeCapture).toLowerCase();
 		
 		// Verify initial model is shown in border (top lines contain the model)
 		// Border format: "╭─ ... ─ (openrouter) moonshotai/kimi-k2.5 ─╮"
-		expect(beforeCapture.toLowerCase()).toContain("kimi");
+		expect(beforeBorder).toContain("kimi");
 		
 		// Send /model command to change to a different model
-		tmuxSend(windowName, "/model openrouter/z-ai/glm-5");
+		tmuxSend(windowName, "/model");
+		await Bun.sleep(1000);
+		tmuxSend(windowName, "glm-5");
 		
 		// Wait for the model selector to close and model to change
-		await Bun.sleep(4000);
+		await waitForIdle(windowName, 30_000);
 		
 		// Capture after command - the border should now show the new model
 		const afterCapture = tmuxCapture(windowName);
+		const afterBorder = firstBorderLine(afterCapture).toLowerCase();
 		
 		// CRITICAL: Verify the border changed from kimi to glm-5
 		// The model_select handler updates the border label
-		expect(afterCapture.toLowerCase()).toContain("glm");
-		expect(afterCapture.toLowerCase()).not.toContain("kimi");
+		expect(afterBorder).toContain("glm");
+		expect(afterBorder).not.toContain("kimi");
 	}, { timeout: 90_000 });
 
 	it("model_select event fires when model changes", async () => {
