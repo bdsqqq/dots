@@ -15,6 +15,7 @@ import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@mariozechner
 import { CustomEditor, Theme, estimateTokens } from "@mariozechner/pi-coding-agent";
 import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
+import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { execSync } from "node:child_process";
@@ -307,6 +308,7 @@ export default function (pi: ExtensionAPI) {
 	let gitBranch: string | null = null;
 	let branchUnsub: (() => void) | null = null;
 	let activeTools = 0;
+	let statusRow: WidgetRowRegistry | null = null;
 
 	pi.on("session_start", async (_event, ctx) => {
 		// replace editor with labeled box-drawing version
@@ -333,6 +335,11 @@ export default function (pi: ExtensionAPI) {
 			};
 		});
 
+		ctx.ui.setWidget("status-line", (tui) => {
+			statusRow = new WidgetRowRegistry(tui);
+			return new HorizontalLineWidget(() => statusRow!.snapshot(), { gap: "  " });
+		}, { placement: "belowEditor" });
+
 		// set initial bottom label with cwd
 		function updateBottomLabel() {
 			if (!editor) return;
@@ -346,43 +353,58 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// --- activity status + git changes widget ---
+	const ACTIVITY_SEGMENT = "activity";
+	const GIT_SEGMENT = "git-changes";
+
+	const setActivitySegment = (text: string): void => {
+		statusRow?.set(ACTIVITY_SEGMENT, {
+			align: "left",
+			priority: 10,
+			renderInline: () => text,
+		});
+	};
+
+	const clearActivitySegment = (): void => {
+		statusRow?.remove(ACTIVITY_SEGMENT);
+	};
+
+	const updateGitSegment = (text?: string): void => {
+		if (!text) {
+			statusRow?.remove(GIT_SEGMENT);
+			return;
+		}
+		statusRow?.set(GIT_SEGMENT, {
+			align: "right",
+			priority: 0,
+			renderInline: () => text,
+		});
+	};
 
 	pi.on("agent_start", async (_event, ctx) => {
 		activeTools = 0;
-		ctx.ui.setWidget("activity", [" ≈ thinking..."], { placement: "belowEditor" });
+		setActivitySegment(" ≈ thinking...");
 	});
 
 	pi.on("tool_execution_start", async (event, ctx) => {
 		activeTools++;
-		ctx.ui.setWidget("activity", [` ≈ ${event.toolName}...  Esc to cancel`], { placement: "belowEditor" });
+		setActivitySegment(` ≈ ${event.toolName}...  Esc to cancel`);
 	});
 
 	pi.on("tool_execution_end", async (_event, ctx) => {
 		activeTools = Math.max(0, activeTools - 1);
 		if (activeTools === 0) {
-			ctx.ui.setWidget("activity", [" ≈ thinking..."], { placement: "belowEditor" });
+			setActivitySegment(" ≈ thinking...");
 		}
 		if (editor) updateStatsLabels(editor, pi, ctx);
 	});
 
 	pi.on("agent_end", async (_event, ctx) => {
 		activeTools = 0;
-		ctx.ui.setWidget("activity", undefined);
+		clearActivitySegment();
 		if (editor) updateStatsLabels(editor, pi, ctx);
 
-		// update git changes widget — right-aligned
 		const diffStats = getGitDiffStats(ctx.cwd);
-		if (diffStats) {
-			ctx.ui.setWidget("git-changes", (_tui, _theme) => ({
-				render(width: number): string[] {
-					const padding = Math.max(0, width - visibleWidth(diffStats));
-					return [" ".repeat(padding) + diffStats];
-				},
-				invalidate() {},
-			}), { placement: "belowEditor" });
-		} else {
-			ctx.ui.setWidget("git-changes", undefined);
-		}
+		updateGitSegment(diffStats);
 	});
 
 	pi.events.on("editor:set-label", (data: unknown) => {
@@ -408,8 +430,7 @@ export default function (pi: ExtensionAPI) {
 		branchUnsub = null;
 		gitBranch = null;
 		activeTools = 0;
-		ctx.ui.setWidget("activity", undefined);
-		ctx.ui.setWidget("git-changes", undefined);
+		statusRow?.clear();
 		if (editor) updateStatsLabels(editor, pi, ctx);
 	});
 }
