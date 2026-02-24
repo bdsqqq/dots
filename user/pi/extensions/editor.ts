@@ -231,7 +231,8 @@ function estimateContextFromEntries(entries: SessionEntry[]): number {
 	return total;
 }
 
-function updateStatsLabels(editor: LabeledEditor, pi: ExtensionAPI, ctx: ExtensionContext): void {
+function updateStatsLabels(editor: LabeledEditor | null, pi: ExtensionAPI, ctx: ExtensionContext): void {
+	if (!editor) return;
 	// top-left: context usage + cost (parent model + sub-agents)
 	const usage = ctx.getContextUsage();
 	const model = ctx.model;
