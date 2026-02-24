@@ -397,7 +397,7 @@ export function createReadSessionTool(config: ReadSessionConfig = {}): ToolDefin
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
 			const container = new Container();
-			renderAgentTree(details, container, expanded, theme, "read_session");
+			renderAgentTree(details, container, expanded, theme, { label: "read_session", header: "statusOnly" });
 			return container;
 		},
 	};

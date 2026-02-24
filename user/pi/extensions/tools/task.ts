@@ -128,7 +128,7 @@ export function createTaskTool(): ToolDefinition {
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
 			const container = new Container();
-			renderAgentTree(details, container, expanded, theme, "Task");
+			renderAgentTree(details, container, expanded, theme, { label: "Task", header: "statusOnly" });
 			return container;
 		},
 	};

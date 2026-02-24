@@ -195,9 +195,10 @@ export function renderAgentTree(
 	container: Container,
 	showExpanded: boolean,
 	theme: any,
-	label?: string,
+	labelOrOpts?: string | { label?: string; header?: "full" | "statusOnly" },
 ): void {
 	const fg = theme.fg.bind(theme);
+	const opts = typeof labelOrOpts === "string" ? { label: labelOrOpts, header: "full" as const } : { label: labelOrOpts?.label, header: labelOrOpts?.header ?? "full" as const };
 	const MID = fg("muted", "├── ");
 	const END = fg("muted", "╰── ");
 	const CONT = fg("muted", "│   ");
@@ -208,9 +209,15 @@ export function renderAgentTree(
 		? fg("warning", "⋯")
 		: isError ? fg("error", "✕") : fg("success", "✓");
 
-	let header = `${icon} ${fg("toolTitle", theme.bold(label ?? r.agent))}`;
-	if (isError && r.stopReason) header += ` ${fg("error", `[${r.stopReason}]`)}`;
-	container.addChild(new Text(header, 0, 0));
+	if (opts.header === "statusOnly") {
+		let header = icon;
+		if (isError && r.stopReason) header += ` ${fg("error", `[${r.stopReason}]`)}`;
+		container.addChild(new Text(header, 0, 0));
+	} else {
+		let header = `${icon} ${fg("toolTitle", theme.bold(opts.label ?? r.agent))}`;
+		if (isError && r.stopReason) header += ` ${fg("error", `[${r.stopReason}]`)}`;
+		container.addChild(new Text(header, 0, 0));
+	}
 
 	if (isError && r.errorMessage) {
 		container.addChild(new Text(MID + fg("error", `Error: ${r.errorMessage}`), 0, 0));

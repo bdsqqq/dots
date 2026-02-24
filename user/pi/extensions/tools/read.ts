@@ -16,7 +16,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { getText } from "./lib/tui";
+import { Text } from "@mariozechner/pi-tui";
 import { formatBoxes, type BoxSection, type BoxLine } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import { formatHeadTail } from "./lib/output-buffer";
@@ -204,6 +204,21 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 			),
 		}),
 
+		renderCall(args: any, theme: any) {
+			const filePath = args.path || "...";
+			const home = os.homedir();
+			const shortened = filePath.startsWith(home) ? `~${filePath.slice(home.length)}` : filePath;
+			const readRange = args.read_range;
+			let context = shortened;
+			if (Array.isArray(readRange) && readRange.length === 2) {
+				context += `:${readRange[0]}-${readRange[1]}`;
+			}
+			return new Text(
+				theme.fg("toolTitle", theme.bold("Read ")) + theme.fg("dim", context),
+				0, 0,
+			);
+		},
+
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const resolved = resolveWithVariants(params.path, ctx.cwd);
 
@@ -281,7 +296,6 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 		},
 
 		renderResult(result: any) {
-			const Text = getText();
 			const text = result.content?.[0];
 			if (text?.type !== "text") return new Text("(no output)", 0, 0);
 

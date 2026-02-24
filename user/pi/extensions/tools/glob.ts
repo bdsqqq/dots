@@ -15,6 +15,7 @@ import { spawn } from "node:child_process";
 import * as path from "node:path";
 import { createInterface } from "node:readline";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { formatHeadTail } from "./lib/output-buffer";
 
@@ -49,6 +50,20 @@ export function createGlobTool(): ToolDefinition {
 				}),
 			),
 		}),
+
+		renderCall(args: any, theme: any) {
+			const pattern = args.filePattern || "...";
+			return new Text(
+				theme.fg("toolTitle", theme.bold("Find ")) + theme.fg("dim", pattern),
+				0, 0,
+			);
+		},
+
+		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+			const content = result.content?.[0];
+			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+		},
 
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			const searchPath = ctx.cwd;

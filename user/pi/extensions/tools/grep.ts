@@ -15,6 +15,7 @@
 
 import { spawn } from "node:child_process";
 import * as path from "node:path";
+import * as os from "node:os";
 import { createInterface } from "node:readline";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
@@ -136,6 +137,18 @@ export function createGrepTool(): ToolDefinition {
 				}),
 			),
 		}),
+
+		renderCall(args: any, theme: any) {
+			const pattern = args.pattern || "...";
+			const searchPath = args.path || args.glob || ".";
+			const home = os.homedir();
+			const shortened = searchPath.startsWith(home) ? `~${searchPath.slice(home.length)}` : searchPath;
+			const caseSuffix = args.caseSensitive === false ? " -i" : "";
+			return new Text(
+				theme.fg("toolTitle", theme.bold("Grep ")) + theme.fg("dim", `/${pattern}/${caseSuffix} in ${shortened}`),
+				0, 0,
+			);
+		},
 
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			const searchPath = params.path

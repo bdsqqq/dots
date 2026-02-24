@@ -265,7 +265,7 @@ export function createReadWebPageTool(config: ReadWebPageConfig = {}): ToolDefin
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
 			const container = new Container();
-			renderAgentTree(details, container, expanded, theme, "read_web_page");
+			renderAgentTree(details, container, expanded, theme, { label: "read_web_page", header: "statusOnly" });
 			return container;
 		},
 	};

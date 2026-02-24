@@ -22,6 +22,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { Text } from "@mariozechner/pi-tui";
 
 // --- frontmatter parsing (reimplemented; pi's isn't re-exported) ---
 
@@ -210,6 +211,14 @@ export function createSkillTool(): ToolDefinition {
 			),
 		}),
 
+		renderCall(args: any, theme: any) {
+			const name = args.name || "...";
+			return new Text(
+				theme.fg("dim", "using ") + theme.fg("toolTitle", theme.bold(name)) + theme.fg("dim", " skill"),
+				0, 0,
+			);
+		},
+
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const skill = findSkill(params.name, ctx.cwd);
 
@@ -270,6 +279,15 @@ export function createSkillTool(): ToolDefinition {
 			return {
 				content: [{ type: "text" as const, text: parts.join("\n") }],
 			} as any;
+		},
+
+		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+			const content = result.content?.[0];
+			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+			if (content.text.startsWith("<loaded_skill")) {
+				return new Text(theme.fg("dim", "skill loaded"), 0, 0);
+			}
+			return new Text(theme.fg("toolOutput", content.text), 0, 0);
 		},
 	};
 }
