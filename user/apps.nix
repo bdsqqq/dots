@@ -11,13 +11,7 @@ lib.mkIf (headMode == "graphical") {
       obsidian
       rclone
       qpdf
-      # inputs.lnr.packages.${hostSystem}.default  # CANARY: testing schema-codegen branch (PR #20)
-    ] ++ [
-      # Canary lnr binary - remove after PR #20 is merged
-      (pkgs.runCommand "lnr-canary" { } ''
-        mkdir -p $out/bin
-        ln -s /Users/bdsqqq/www/lnr/schema-codegen/lnr $out/bin/lnr
-      '')
+      inputs.lnr.packages.${hostSystem}.default
     ] ++ lib.optionals isDarwin [
       iina
     ] ++ lib.optionals (!isDarwin) [
