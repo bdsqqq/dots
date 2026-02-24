@@ -50,6 +50,10 @@ const VERTICAL = "│";
 class LabeledEditor extends CustomEditor {
 	private labels: Map<string, Label> = new Map();
 	private appTheme: Theme;
+	private borderCache: Record<"top" | "bottom", { key: string; line: string } | null> = {
+		top: null,
+		bottom: null,
+	};
 
 	constructor(tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager, appTheme: Theme) {
 		super(tui, editorTheme, keybindings);
@@ -91,18 +95,14 @@ class LabeledEditor extends CustomEditor {
 	): string {
 		const leftText = this.getLabelsFor(position, "left");
 		const rightText = this.getLabelsFor(position, "right");
-
-		// check if the original border had a scroll indicator
-		let scrollIndicator = "";
-		if (originalLine.includes("↑") || originalLine.includes("↓")) {
-			// extract the indicator text like "↑ 3 more" or "↓ 2 more"
-			const match = originalLine.match(/[↑↓]\s+\d+\s+more/);
-			if (match) scrollIndicator = match[0];
-		}
+		const scrollIndicator = this.extractScrollIndicator(originalLine);
 
 		// combine right-side content
 		const rightParts = [rightText, scrollIndicator].filter(Boolean);
 		const rightCombined = rightParts.join(SEPARATOR);
+		const cacheKey = `${outerWidth}|${position}|${leftText}|${rightCombined}`;
+		const cached = this.borderCache[position];
+		if (cached?.key === cacheKey) return cached.line;
 
 		// layout: ╭─leftLabel────────rightLabel─╮
 		// always ─ after left corner and before right corner
@@ -116,17 +116,16 @@ class LabeledEditor extends CustomEditor {
 		const innerWidth = outerWidth - 4;
 		const fillWidth = innerWidth - leftLabelWidth - rightLabelWidth;
 
-		if (fillWidth < 0) {
-			return this.dim(cornerLeft + HORIZONTAL.repeat(Math.max(0, outerWidth - 2)) + cornerRight);
-		}
+		const line = fillWidth < 0
+			? this.dim(cornerLeft + HORIZONTAL.repeat(Math.max(0, outerWidth - 2)) + cornerRight)
+			: this.dim(cornerLeft + HORIZONTAL) +
+				(hasLeft ? leftText : "") +
+				this.dim(HORIZONTAL.repeat(fillWidth)) +
+				(hasRight ? rightCombined : "") +
+				this.dim(HORIZONTAL + cornerRight);
 
-		return (
-			this.dim(cornerLeft + HORIZONTAL) +
-			(hasLeft ? leftText : "") +
-			this.dim(HORIZONTAL.repeat(fillWidth)) +
-			(hasRight ? rightCombined : "") +
-			this.dim(HORIZONTAL + cornerRight)
-		);
+		this.borderCache[position] = { key: cacheKey, line };
+		return line;
 	}
 
 	/**
