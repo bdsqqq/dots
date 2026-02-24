@@ -17,7 +17,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { formatBoxes, osc8Link, type BoxSection, type BoxLine } from "./lib/box-format";
+import { formatBoxesWindowed, osc8Link, type BoxSection, type BoxLine, type Excerpt } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import { formatHeadTail } from "./lib/output-buffer";
 
@@ -328,8 +328,13 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 			const header = filePath.startsWith("/") ? osc8Link(`file://${filePath}`, displayHeader) : displayHeader;
 			const notices = notice ? [notice] : undefined;
 
-			const HEAD = 3;
-			const TAIL = 5;
+			/** collapsed: head 3 + tail 5 visual lines */
+			const COLLAPSED_EXCERPTS: Excerpt[] = [
+				{ focus: "head", context: 3 },
+				{ focus: "tail", context: 5 },
+			];
+
+			const section: BoxSection = { header, blocks: [{ lines: parsed }] };
 
 			let cachedWidth: number | undefined;
 			let cachedExpanded: boolean | undefined;
@@ -341,20 +346,12 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 						return cachedLines;
 					}
 
-					let blocks: { lines: BoxLine[] }[];
-
-					if (expanded || parsed.length <= HEAD + TAIL + 1) {
-						blocks = [{ lines: parsed }];
-					} else {
-						// collapsed: head 3 + tail 5, gap between renders as · elision
-						blocks = [
-							{ lines: parsed.slice(0, HEAD) },
-							{ lines: parsed.slice(-TAIL) },
-						];
-					}
-
-					const section: BoxSection = { header, blocks };
-					const visual = formatBoxes([section], {}, notices, width);
+					const visual = formatBoxesWindowed(
+						[section],
+						expanded ? {} : { excerpts: COLLAPSED_EXCERPTS },
+						notices,
+						width,
+					);
 					cachedLines = visual.split("\n");
 					cachedExpanded = expanded;
 					cachedWidth = width;

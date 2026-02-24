@@ -1,20 +1,17 @@
 /**
- * show() — render a text block showing only the regions declared by excerpts.
+ * show — excerpt-based windowing for tool output.
  *
- * ported from bdsqqq/pi-mono feat/excerpt-show-api branch. lives here so we
- * don't need to maintain a forked pi binary just to export this utility.
- *
- * multiple excerpts are sorted and merged when overlapping or adjacent.
- * gaps are replaced by "... (N lines) ..." elision markers (git-hunk style).
- * if excerpts is empty, returns all lines unchanged.
+ * two layers:
+ *   windowItems<T>() — generic windowing primitive. operates on any array.
+ *   show()           — text-specific wrapper: Text.render() → windowItems<string>().
  *
  * focus semantics:
- *   "head"  — first `context` visual lines (one-sided from start)
- *   "tail"  — last `context` visual lines (one-sided from end)
- *   N       — ±context lines around visual line N (symmetric)
+ *   "head"  — first `context` items (one-sided from start)
+ *   "tail"  — last `context` items (one-sided from end)
+ *   N       — ±context items around index N (symmetric)
  *
- * uses @mariozechner/pi-tui Text for visual line expansion so wrapping and
- * ANSI sequences are handled consistently with pi's own rendering.
+ * multiple excerpts are sorted and merged when overlapping or adjacent.
+ * gaps get an elision marker via the caller-provided makeElision factory.
  */
 
 import { Text } from "@mariozechner/pi-tui";
@@ -24,26 +21,28 @@ export interface Excerpt {
 	context: number;
 }
 
-export interface ShowResult {
-	/** visual lines to render, with "... (N lines) ..." elision markers for gaps */
-	visualLines: string[];
-	/** ranges of visual lines omitted, as [startInclusive, endExclusive] pairs */
+export interface WindowResult<T> {
+	items: T[];
 	skippedRanges: Array<[number, number]>;
 }
 
-export function show(text: string, excerpts: Excerpt[], width: number, paddingX = 0): ShowResult {
-	if (!text) {
-		return { visualLines: [], skippedRanges: [] };
+/**
+ * generic excerpt windowing. picks items to keep based on excerpts,
+ * inserts caller-provided elision markers for gaps.
+ *
+ * if excerpts is empty, returns all items unchanged.
+ */
+export function windowItems<T>(
+	items: T[],
+	excerpts: Excerpt[],
+	makeElision: (count: number) => T,
+): WindowResult<T> {
+	const total = items.length;
+	if (total === 0 || excerpts.length === 0) {
+		return { items: [...items], skippedRanges: [] };
 	}
 
-	const allVisualLines = new Text(text, paddingX, 0).render(width);
-	const total = allVisualLines.length;
-
-	if (excerpts.length === 0) {
-		return { visualLines: allVisualLines, skippedRanges: [] };
-	}
-
-	// resolve each excerpt to an inclusive [start, end] range of visual lines
+	// resolve each excerpt to an inclusive [start, end] range
 	const ranges: Array<[number, number]> = excerpts.map(({ focus, context }) => {
 		if (focus === "head") {
 			return [0, Math.min(context - 1, total - 1)];
@@ -65,27 +64,58 @@ export function show(text: string, excerpts: Excerpt[], width: number, paddingX 
 		}
 	}
 
-	const visualLines: string[] = [];
+	const result: T[] = [];
 	const skippedRanges: Array<[number, number]> = [];
 	let cursor = 0;
 
 	for (const [start, end] of merged) {
 		if (cursor < start) {
-			const count = start - cursor;
 			skippedRanges.push([cursor, start]);
-			visualLines.push(`... (${count} ${count === 1 ? "line" : "lines"}) ...`);
+			result.push(makeElision(start - cursor));
 		}
 		for (let i = start; i <= end; i++) {
-			visualLines.push(allVisualLines[i]);
+			result.push(items[i]);
 		}
 		cursor = end + 1;
 	}
 
 	if (cursor < total) {
-		const count = total - cursor;
 		skippedRanges.push([cursor, total]);
-		visualLines.push(`... (${count} ${count === 1 ? "line" : "lines"}) ...`);
+		result.push(makeElision(total - cursor));
 	}
 
-	return { visualLines, skippedRanges };
+	return { items: result, skippedRanges };
+}
+
+// --- text-specific wrapper ---
+
+export interface ShowResult {
+	/** visual lines to render, with "... (N lines) ..." elision markers for gaps */
+	visualLines: string[];
+	/** ranges of visual lines omitted, as [startInclusive, endExclusive] pairs */
+	skippedRanges: Array<[number, number]>;
+}
+
+/**
+ * text-specific windowing: expands text to visual lines via pi-tui Text,
+ * then applies excerpt windowing.
+ */
+export function show(text: string, excerpts: Excerpt[], width: number, paddingX = 0): ShowResult {
+	if (!text) {
+		return { visualLines: [], skippedRanges: [] };
+	}
+
+	const allVisualLines = new Text(text, paddingX, 0).render(width);
+
+	if (excerpts.length === 0) {
+		return { visualLines: allVisualLines, skippedRanges: [] };
+	}
+
+	const result = windowItems(
+		allVisualLines,
+		excerpts,
+		(count) => `... (${count} ${count === 1 ? "line" : "lines"}) ...`,
+	);
+
+	return { visualLines: result.items, skippedRanges: result.skippedRanges };
 }
