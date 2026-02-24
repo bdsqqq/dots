@@ -7,6 +7,7 @@
     "@sourcegraph/amp": "0.0.1771863250-g045394",
     "agent-browser": "^0.13.0",
     "biome": "0.3.3",
+    "diff": "^8.0.3",
     "npm": "11.10.1",
     "opencode-ai": "^1.2.10",
     "openportal": "^0.1.25",

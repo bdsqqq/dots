@@ -107,6 +107,10 @@ export function createGrepTool(): ToolDefinition {
 				let aborted = false;
 				const perFileCount = new Map<string, number>();
 				const outputLines: string[] = [];
+				/** indices of the first match line per file — used as focus
+				 *  points in collapsed display so show() elides between files */
+				const firstMatchPerFile: number[] = [];
+				let lastFilePath: string | null = null;
 
 				const onAbort = () => {
 					aborted = true;
@@ -143,6 +147,18 @@ export function createGrepTool(): ToolDefinition {
 
 					const rel = path.relative(searchPath, filePath).replace(/\\/g, "/");
 					const displayPath = rel && !rel.startsWith("..") ? rel : path.basename(filePath);
+
+					// insert blank separator between file groups
+					if (lastFilePath !== null && filePath !== lastFilePath) {
+						outputLines.push("");
+					}
+
+					// track first match per file for collapsed display focus
+					if (filePath !== lastFilePath) {
+						firstMatchPerFile.push(outputLines.length);
+						lastFilePath = filePath;
+					}
+
 					outputLines.push(`${displayPath}:${lineNumber}: ${truncateLine(lineText)}`);
 
 					// keep collecting, don't kill — apply head+tail at end
@@ -217,7 +233,11 @@ export function createGrepTool(): ToolDefinition {
 						notices.push(`collected ${outputLines.length} matches, showing first and last ${MAX_TOTAL_MATCHES / 2}`);
 					} else {
 						output = outputLines.join("\n");
-						matchLineIndices = outputLines.map((_: string, i: number) => i);
+						// only mark non-blank lines as matches (blank lines are file group separators)
+						matchLineIndices = outputLines.reduce<number[]>((acc, line, i) => {
+							if (line !== "") acc.push(i);
+							return acc;
+						}, []);
 					}
 
 					if (killedDueToLimit) {
@@ -237,7 +257,7 @@ export function createGrepTool(): ToolDefinition {
 
 					resolve({
 						content: [{ type: "text" as const, text: output }],
-						details: { matchLineIndices },
+						details: { matchLineIndices, firstMatchPerFile },
 					} as any);
 				});
 			});
@@ -249,13 +269,18 @@ export function createGrepTool(): ToolDefinition {
 			const output: string = text.text;
 			if (expanded) return new Text(output, 0, 0);
 
-			// collapsed: show each match line with ±1 context rather than a
-			// blunt head+tail. the model gets all matches in content.text;
-			// this just makes the visual summary scannable at a glance.
+			// collapsed: focus first match per file with ±2 context so show()
+			// elides remaining matches within each file group. this gives a
+			// scannable summary (first couple matches per file) with elision
+			// markers between file groups.
+			const fileStarts: number[] | undefined = result.details?.firstMatchPerFile;
+			if (fileStarts?.length) {
+				return makeShowRenderer(output, fileStarts.map((n: number) => ({ focus: n, context: 2 })));
+			}
+			// fallback: use all match indices (legacy results without firstMatchPerFile)
 			const indices: number[] | undefined = result.details?.matchLineIndices;
 			if (!indices?.length) return new Text(output, 0, 0);
-			const excerpts = indices.map((n: number) => ({ focus: n, context: 1 }));
-			return makeShowRenderer(output, excerpts);
+			return makeShowRenderer(output, indices.map((n: number) => ({ focus: n, context: 1 })));
 		},
 	};
 }
