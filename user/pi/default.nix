@@ -19,9 +19,10 @@ in
     home.file.".pi/agent/permissions.json".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/permissions.json";
 
     # editor extension — box-drawing borders with composable label slots via EventBus
-    home.file.".pi/agent/extensions/editor.ts".source = ./extensions/editor.ts;
-    home.file.".pi/agent/extensions/widget-row.ts".source = ./extensions/widget-row.ts;
-    home.file.".pi/agent/extensions/lib/widget-row.ts".source = ./extensions/lib/widget-row.ts;
+    home.file.".pi/agent/extensions/editor" = {
+      source = ./extensions/editor;
+      recursive = true;
+    };
 
     # handoff extension — replaces compaction with LLM-driven context transfer
     home.file.".pi/agent/extensions/handoff.ts".source = ./extensions/handoff.ts;

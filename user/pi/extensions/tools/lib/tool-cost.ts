@@ -2,7 +2,7 @@
  * shared cost contract for tool result details.
  *
  * any tool that incurs costs includes `cost: number` in its
- * details object. editor.ts uses the type guard to narrow
+ * details object. editor/index.ts uses the type guard to narrow
  * details at the session read boundary — no casting needed.
  *
  * sub-agent tools satisfy this via SingleResult & ToolCostDetails.

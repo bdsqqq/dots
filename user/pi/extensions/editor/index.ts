@@ -15,11 +15,11 @@ import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@mariozechner
 import { CustomEditor, Theme, estimateTokens } from "@mariozechner/pi-coding-agent";
 import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import { HorizontalLineWidget, WidgetRowRegistry } from "./lib/widget-row";
+import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { execSync } from "node:child_process";
-import { hasToolCost } from "./tools/lib/tool-cost";
+import { hasToolCost } from "../tools/lib/tool-cost";
 
 interface Label {
 	key: string;
@@ -77,6 +77,12 @@ class LabeledEditor extends CustomEditor {
 		const matching = [...this.labels.values()].filter((l) => l.position === position && l.align === align);
 		if (matching.length === 0) return "";
 		return matching.map((l) => l.text).join(SEPARATOR);
+	}
+
+	private extractScrollIndicator(originalLine: string): string {
+		if (!originalLine.includes("↑") && !originalLine.includes("↓")) return "";
+		const match = originalLine.match(/[↑↓]\s+\d+\s+more/);
+		return match ? match[0] : "";
 	}
 
 	/**
