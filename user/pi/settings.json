@@ -18,7 +18,7 @@
     "enabled": false
   },
   "lastChangelogVersion": "0.54.2",
-  "defaultModel": "gpt-5.2-codex",
+  "defaultModel": "claude-opus-4-6",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "steeringMode": "all",
