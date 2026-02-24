@@ -23,13 +23,25 @@
  * imported in test environments where pi-tui isn't resolvable.
  * only needed at render time (when width is provided).
  */
+import { createRequire } from "node:module";
+
 let _truncateToWidth: ((text: string, maxWidth: number, ellipsis?: string, pad?: boolean) => string) | undefined;
 function getTruncateToWidth() {
 	if (!_truncateToWidth) {
-		_truncateToWidth = require("@mariozechner/pi-tui").truncateToWidth;
+		const esmRequire = createRequire(import.meta.url);
+		_truncateToWidth = esmRequire("@mariozechner/pi-tui").truncateToWidth;
 	}
 	return _truncateToWidth!;
 }
+
+/**
+ * defensive padding subtracted from width before truncating.
+ * the pi TUI passes the content-area width to render(), but
+ * border/padding chars can still cause off-by-one wrapping
+ * that eats subsequent lines. 2 chars is conservative enough
+ * to prevent wrapping without wasting visible space.
+ */
+const WIDTH_SAFETY_MARGIN = 2;
 
 const DIM = "\x1b[2m";
 const RST = "\x1b[0m";
@@ -86,9 +98,10 @@ export function formatBoxes(
 	const shown = sections.slice(0, maxSections);
 	const out: string[] = [];
 
-	/** truncate line to width if provided, otherwise pass through */
+	/** truncate line to safe width if provided, otherwise pass through */
+	const safeWidth = width != null ? Math.max(1, width - WIDTH_SAFETY_MARGIN) : undefined;
 	const clamp = (line: string): string =>
-		width != null ? getTruncateToWidth()(line, width, "…") : line;
+		safeWidth != null ? getTruncateToWidth()(line, safeWidth, "…") : line;
 
 	for (let si = 0; si < shown.length; si++) {
 		const section = shown[si];
