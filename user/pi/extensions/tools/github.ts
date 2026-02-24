@@ -91,6 +91,12 @@ export function createReadGithubTool(): ToolDefinition {
 				0, 0,
 			);
 		},
+
+		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+			const content = result.content?.[0];
+			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+		},
 	};
 }
 
@@ -169,6 +175,12 @@ export function createSearchGithubTool(): ToolDefinition {
 				0, 0,
 			);
 		},
+
+		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+			const content = result.content?.[0];
+			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+		},
 	};
 }
 
@@ -224,6 +236,12 @@ export function createListDirectoryGithubTool(): ToolDefinition {
 				theme.fg("toolTitle", theme.bold("list_directory_github ")) + theme.fg("dim", `${repo}/${path}`),
 				0, 0,
 			);
+		},
+
+		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+			const content = result.content?.[0];
+			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+			return new Text(theme.fg("toolOutput", content.text), 0, 0);
 		},
 	};
 }
@@ -300,6 +318,12 @@ export function createListRepositoriesTool(): ToolDefinition {
 				0, 0,
 			);
 		},
+
+		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+			const content = result.content?.[0];
+			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+		},
 	};
 }
 
@@ -369,6 +393,12 @@ export function createGlobGithubTool(): ToolDefinition {
 				theme.fg("toolTitle", theme.bold("glob_github ")) + theme.fg("dim", `${pattern} in ${repo}`),
 				0, 0,
 			);
+		},
+
+		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+			const content = result.content?.[0];
+			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+			return new Text(theme.fg("toolOutput", content.text), 0, 0);
 		},
 	};
 }
@@ -452,6 +482,12 @@ export function createCommitSearchTool(): ToolDefinition {
 				0, 0,
 			);
 		},
+
+		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+			const content = result.content?.[0];
+			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+		},
 	};
 }
 
@@ -520,6 +556,12 @@ export function createDiffTool(): ToolDefinition {
 				theme.fg("toolTitle", theme.bold("diff ")) + theme.fg("dim", `${repo} ${range}`),
 				0, 0,
 			);
+		},
+
+		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+			const content = result.content?.[0];
+			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+			return new Text(theme.fg("toolOutput", content.text), 0, 0);
 		},
 	};
 }
