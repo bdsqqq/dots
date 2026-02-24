@@ -19,7 +19,7 @@ import { Type } from "@sinclair/typebox";
 import { readAgentPrompt } from "./tools/lib/pi-spawn";
 
 const HANDOFF_THRESHOLD = 0.85;
-const HANDOFF_MODEL = { provider: "openrouter", id: "anthropic/claude-haiku-4.5" } as const;
+const HANDOFF_MODEL = { provider: "openrouter", id: "google/gemini-3-flash-preview" } as const;
 const MAX_RELEVANT_FILES = 10;
 
 function parsePromptSections(content: string): Record<string, string> {
@@ -139,7 +139,6 @@ export default function (pi: ExtensionAPI) {
 		return ctx.modelRegistry.find(HANDOFF_MODEL.provider, HANDOFF_MODEL.id) ?? ctx.model;
 	}
 
-	/** generate a handoff prompt from conversation + goal via haiku extraction */
 	async function generateHandoffPrompt(
 		ctx: { sessionManager: any; modelRegistry: any },
 		handoffModel: Model<Api>,
