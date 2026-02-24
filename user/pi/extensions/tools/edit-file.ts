@@ -225,6 +225,33 @@ function parseDiffToSections(filename: string, diffText: string): BoxSection[] {
 	return [{ header: filename, blocks }];
 }
 
+// --- block windowing ---
+
+/** max visible diff lines per block in collapsed/expanded mode */
+const COLLAPSED_MAX_LINES = 12;
+const EXPANDED_MAX_LINES = 100;
+
+/**
+ * truncate a block to a head+tail window with elision marker.
+ * shows first half and last half of maxLines, replacing the
+ * middle with a dim "· ··· N more lines" marker.
+ */
+function windowBlock(block: BoxBlock, maxLines: number): BoxBlock {
+	if (block.lines.length <= maxLines) return block;
+
+	const half = Math.floor(maxLines / 2);
+	const head = block.lines.slice(0, half);
+	const tail = block.lines.slice(-half);
+	const elided = block.lines.length - head.length - tail.length;
+
+	const elisionLine: BoxLine = {
+		text: `· ··· ${elided} more lines`,
+		highlight: false,
+	};
+
+	return { lines: [...head, elisionLine, ...tail] };
+}
+
 // --- diff stats ---
 
 interface DiffStats {
@@ -443,9 +470,13 @@ export function createEditFileTool(): ToolDefinition {
 				// build result
 				const text = simpleDiff(resolved, strategy.content, newContent);
 
+				const home = os.homedir();
+				const shortPath = resolved.startsWith(home) ? `~${resolved.slice(home.length)}` : resolved;
+
 				return {
 					content: [{ type: "text" as const, text }],
 					details: {
+						filePath: shortPath,
 						...(replaceAll && occurrences > 1 ? { replaceCount: occurrences } : {}),
 					},
 				} as any;
@@ -457,23 +488,20 @@ export function createEditFileTool(): ToolDefinition {
 			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
 
 			const diffText = content.text;
-			// extract filename from first --- line, or fall back
 			const filenameMatch = diffText.match(/^---\s+(\S+)/m);
 			const filename = filenameMatch?.[1] ?? "file";
+			const filePath: string | undefined = result.details?.filePath;
 
 			const sections = parseDiffToSections(filename, diffText);
 			if (!sections?.length || !sections[0].blocks.length) return new Text(theme.fg("dim", "(no changes)"), 0, 0);
 
+			// compute stats from unwindowed sections (accurate counts)
 			const stats = computeDiffStats(sections);
 			const statsText = formatStats(stats, theme);
 			const replaceCount: number | undefined = result.details?.replaceCount;
 			const replaceNote = replaceCount && replaceCount > 1
 				? theme.fg("dim", ` (${replaceCount} replacements)`)
 				: "";
-
-			const notices = replaceCount && replaceCount > 1
-				? [`replaced ${replaceCount} occurrences`]
-				: undefined;
 
 			const COLLAPSED_TAIL_BLOCKS = 1;
 
@@ -482,19 +510,46 @@ export function createEditFileTool(): ToolDefinition {
 					const lines: string[] = [];
 					lines.push(statsText + replaceNote);
 
+					const maxLines = expanded ? EXPANDED_MAX_LINES : COLLAPSED_MAX_LINES;
+
+					// window each block to cap visible lines
+					let wasTruncated = false;
+					const windowedSections = sections.map((s) => {
+						let blocks = s.blocks;
+
+						// collapsed: show only last hunk
+						if (!expanded && blocks.length > COLLAPSED_TAIL_BLOCKS) {
+							blocks = blocks.slice(-COLLAPSED_TAIL_BLOCKS);
+						}
+
+						const windowedBlocks = blocks.map((b) => {
+							const windowed = windowBlock(b, maxLines);
+							if (windowed !== b) wasTruncated = true;
+							return windowed;
+						});
+
+						// if expanded + truncated, show full path in header for editor access
+						const header = expanded && wasTruncated && filePath
+							? `${s.header} · ${filePath}`
+							: s.header;
+
+						return { ...s, header, blocks: windowedBlocks };
+					});
+
 					const opts = expanded
 						? {}
 						: { maxSections: 1, maxBlocks: COLLAPSED_TAIL_BLOCKS };
-					let displaySections = sections;
-					if (!expanded && sections.length > 0) {
-						displaySections = sections.map((s) => ({
-							...s,
-							blocks: s.blocks.length > COLLAPSED_TAIL_BLOCKS
-								? s.blocks.slice(-COLLAPSED_TAIL_BLOCKS)
-								: s.blocks,
-						}));
-					}
-					const boxOutput = formatBoxes(displaySections, opts, notices, width);
+
+					const notices: string[] = [];
+					if (replaceCount && replaceCount > 1) notices.push(`replaced ${replaceCount} occurrences`);
+					if (wasTruncated) notices.push("expand or open file for full diff");
+
+					const boxOutput = formatBoxes(
+						windowedSections,
+						opts,
+						notices.length > 0 ? notices : undefined,
+						width,
+					);
 					lines.push(...boxOutput.split("\n"));
 
 					return lines;
