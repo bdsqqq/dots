@@ -28,8 +28,16 @@ const RST = "\x1b[0m";
  */
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
+/** tab stop width — terminals default to 8 but most code uses 4 */
+const TAB_WIDTH = 4;
+
 function visibleWidth(text: string): number {
-	return text.replace(ANSI_RE, "").length;
+	const stripped = text.replace(ANSI_RE, "");
+	let w = 0;
+	for (const ch of stripped) {
+		w += ch === "\t" ? TAB_WIDTH : 1;
+	}
+	return w;
 }
 
 function truncateToWidth(text: string, maxWidth: number, ellipsis = "…"): string {
@@ -47,7 +55,7 @@ function truncateToWidth(text: string, maxWidth: number, ellipsis = "…"): stri
 			const end = text.indexOf("m", i);
 			if (end !== -1) { i = end + 1; continue; }
 		}
-		visible++;
+		visible += text[i] === "\t" ? TAB_WIDTH : 1;
 		i++;
 	}
 
