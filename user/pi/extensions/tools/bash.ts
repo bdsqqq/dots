@@ -162,13 +162,19 @@ export function createBashTool(): ToolDefinition {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
 
-			// strip `$ command\n\n` prefix — renderCall already shows it
+			// extract command from structured details (preferred) or parse from content
 			let text: string = content.text;
-			let command = "";
+			let command: string = result.details?.command ?? "";
+			if (!command && text.startsWith("$ ")) {
+				const firstNewline = text.indexOf("\n");
+				if (firstNewline !== -1) {
+					command = text.slice(2, firstNewline);
+				}
+			}
+			// strip `$ command\n\n` prefix — renderCall already shows it
 			if (text.startsWith("$ ")) {
 				const sep = text.indexOf("\n\n");
 				if (sep !== -1) {
-					command = text.slice(2, sep);
 					text = text.slice(sep + 2);
 				}
 			}
@@ -333,9 +339,13 @@ async function runCommand(
 				resolve({
 					content: [{ type: "text" as const, text: result }],
 					isError: true,
+					details: { command },
 				} as any);
 			} else {
-				resolve({ content: [{ type: "text" as const, text: result }] } as any);
+				resolve({
+					content: [{ type: "text" as const, text: result }],
+					details: { command },
+				} as any);
 			}
 		});
 	});
