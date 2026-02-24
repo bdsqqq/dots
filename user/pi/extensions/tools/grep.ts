@@ -20,13 +20,17 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { headTail } from "./lib/output-buffer";
-import { makeShowRenderer } from "./lib/show-renderer";
+import { formatBoxes, type BoxSection, type BoxLine } from "./lib/box-format";
 
 const MAX_TOTAL_MATCHES = 100;
 const MAX_COLLECT_MATCHES = 200;
 const MAX_PER_FILE = 10;
 const MAX_LINE_CHARS = 200;
 const RG_CONTEXT_LINES = 1;
+/** max files shown in collapsed display */
+const COLLAPSED_MAX_FILES = 3;
+/** max match groups per file in collapsed display */
+const COLLAPSED_MAX_BLOCKS = 1;
 
 function truncateLine(line: string): string {
 	if (line.length <= MAX_LINE_CHARS) return line;
@@ -35,6 +39,54 @@ function truncateLine(line: string): string {
 
 function looksLikeRegex(pattern: string): boolean {
 	return /[{}()\[\]|\\+*?^$]/.test(pattern);
+}
+
+// --- structured data for visual rendering ---
+
+interface GrepMatch {
+	lineNum: number;
+	text: string;
+	isContext: boolean;
+}
+
+interface GrepFile {
+	path: string;
+	matches: GrepMatch[];
+	hitLimit: boolean;
+}
+
+/**
+ * convert GrepFile[] to BoxSection[] for box-format rendering.
+ * each file becomes a section, contiguous match groups become blocks.
+ */
+function grepToSections(files: GrepFile[]): BoxSection[] {
+	return files.map((f) => {
+		const blocks: { lines: BoxLine[] }[] = [];
+		let current: BoxLine[] = [];
+		let lastLineNum = -2;
+
+		for (const m of f.matches) {
+			// gap > 1 line means new block
+			if (lastLineNum >= 0 && m.lineNum > lastLineNum + 1) {
+				if (current.length > 0) {
+					blocks.push({ lines: current });
+					current = [];
+				}
+			}
+			current.push({
+				gutter: String(m.lineNum),
+				text: m.text,
+				highlight: !m.isContext,
+			});
+			lastLineNum = m.lineNum;
+		}
+		if (current.length > 0) blocks.push({ lines: current });
+
+		return {
+			header: f.path + (f.hitLimit ? ` [${MAX_PER_FILE} match limit]` : ""),
+			blocks,
+		};
+	});
 }
 
 interface RgEvent {
@@ -221,6 +273,7 @@ export function createGrepTool(): ToolDefinition {
 					/** index of first match line per file — focus points for collapsed display */
 					const firstMatchPerFile: number[] = [];
 					const perFileMatchCount = new Map<string, number>();
+					const fileGroups: GrepFile[] = [];
 
 					for (let fi = 0; fi < fileOrder.length; fi++) {
 						const filePath = fileOrder[fi];
@@ -258,6 +311,12 @@ export function createGrepTool(): ToolDefinition {
 						const rel = path.relative(searchPath, filePath).replace(/\\/g, "/");
 						const displayPath = rel && !rel.startsWith("..") ? rel : path.basename(filePath);
 
+						const grepFile: GrepFile = {
+							path: displayPath,
+							matches: [],
+							hitLimit: matchesInFile > MAX_PER_FILE,
+						};
+
 						let lastOutputLineNum = -Infinity;
 						let isFirstMatchInFile = true;
 
@@ -277,6 +336,12 @@ export function createGrepTool(): ToolDefinition {
 							outputLines.push(`${displayPath}:${ev.lineNumber}: ${truncateLine(ev.lineText)}`);
 							lastOutputLineNum = ev.lineNumber;
 
+							grepFile.matches.push({
+								lineNum: ev.lineNumber,
+								text: truncateLine(ev.lineText),
+								isContext: ev.kind === "context",
+							});
+
 							if (includedMatchLines.has(ev.lineNumber)) {
 								matchLineIndices.push(idx);
 								if (isFirstMatchInFile) {
@@ -285,6 +350,7 @@ export function createGrepTool(): ToolDefinition {
 								}
 							}
 						}
+						fileGroups.push(grepFile);
 					}
 
 					// apply head+tail if over display limit
@@ -337,30 +403,52 @@ export function createGrepTool(): ToolDefinition {
 
 					resolve({
 						content: [{ type: "text" as const, text: output }],
-						details: { matchLineIndices: finalMatchIndices, firstMatchPerFile },
+						details: { fileGroups, notices, matchLineIndices: finalMatchIndices, firstMatchPerFile },
 					} as any);
 				});
 			});
 		},
 
 		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
-			const text = result.content?.[0];
-			if (text?.type !== "text") return new Text("(no output)", 0, 0);
-			const output: string = text.text;
-			if (expanded) return new Text(output, 0, 0);
+			const fileGroups: GrepFile[] | undefined = result.details?.fileGroups;
+			const notices: string[] = result.details?.notices ?? [];
 
-			// collapsed: focus first match per file with ±2 context so show()
-			// elides remaining matches within each file group. the context
-			// lines from rg create natural gaps between distant matches,
-			// producing cleaner elision than match-only output.
-			const fileStarts: number[] | undefined = result.details?.firstMatchPerFile;
-			if (fileStarts?.length) {
-				return makeShowRenderer(output, fileStarts.map((n: number) => ({ focus: n, context: 2 })));
+			// fallback for old results or error results without fileGroups
+			if (!fileGroups?.length) {
+				const text = result.content?.[0]?.text ?? "(no output)";
+				return new Text(text, 0, 0);
 			}
-			// fallback: use all match indices (legacy results without firstMatchPerFile)
-			const indices: number[] | undefined = result.details?.matchLineIndices;
-			if (!indices?.length) return new Text(output, 0, 0);
-			return makeShowRenderer(output, indices.map((n: number) => ({ focus: n, context: 1 })));
+
+			const sections = grepToSections(fileGroups);
+
+			let cachedWidth: number | undefined;
+			let cachedExpanded: boolean | undefined;
+			let cachedLines: string[] | undefined;
+
+			return {
+				render(width: number): string[] {
+					if (cachedLines !== undefined && cachedExpanded === expanded && cachedWidth === width) {
+						return cachedLines;
+					}
+					const visual = formatBoxes(
+						sections,
+						expanded
+							? {}
+							: { maxSections: COLLAPSED_MAX_FILES, maxBlocks: COLLAPSED_MAX_BLOCKS },
+						notices,
+						width,
+					);
+					cachedLines = visual.split("\n");
+					cachedExpanded = expanded;
+					cachedWidth = width;
+					return cachedLines;
+				},
+				invalidate() {
+					cachedLines = undefined;
+					cachedExpanded = undefined;
+					cachedWidth = undefined;
+				},
+			};
 		},
 	};
 }

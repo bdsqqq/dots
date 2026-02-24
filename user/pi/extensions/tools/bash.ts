@@ -19,7 +19,7 @@ import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { makeShowRenderer } from "./lib/show-renderer";
+import { boxRenderer, type BoxSection, type BoxBlock } from "./lib/box-format";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { withFileLock } from "./lib/mutex";
@@ -30,7 +30,6 @@ import { OutputBuffer } from "./lib/output-buffer";
 const HEAD_LINES = 50;
 const TAIL_LINES = 50;
 const SIGKILL_DELAY_MS = 3000;
-const PREVIEW_LINES = 5;
 
 // --- shell config ---
 
@@ -104,6 +103,15 @@ function killGracefully(pid: number): void {
 	}, SIGKILL_DELAY_MS);
 }
 
+function buildCollapsedBlocks(lines: string[], maxLines: number, theme: any): BoxBlock[] {
+	const head = Math.min(3, Math.floor(maxLines / 2));
+	const tail = maxLines - head;
+	return [
+		{ lines: lines.slice(0, head).map((l) => ({ text: theme.fg("toolOutput", l), highlight: true })) },
+		{ lines: lines.slice(-tail).map((l) => ({ text: theme.fg("toolOutput", l), highlight: true })) },
+	];
+}
+
 // --- tool factory ---
 
 export function createBashTool(): ToolDefinition {
@@ -148,36 +156,39 @@ export function createBashTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
 
 			// strip `$ command\n\n` prefix — renderCall already shows it
 			let text: string = content.text;
+			let command = "";
 			if (text.startsWith("$ ")) {
 				const sep = text.indexOf("\n\n");
-				if (sep !== -1) text = text.slice(sep + 2);
+				if (sep !== -1) {
+					command = text.slice(2, sep);
+					text = text.slice(sep + 2);
+				}
 			}
 
 			if (!text || text === "(no output)") return new Text(theme.fg("dim", "(no output)"), 0, 0);
 
 			const lines = text.split("\n");
-			const styled = (l: string) => theme.fg("toolOutput", l);
+			const header = command.length > 60 ? `$ ${command.slice(0, 57)}…` : `$ ${command}`;
 
-			if (expanded || lines.length <= PREVIEW_LINES) {
-				return new Text(lines.map(styled).join("\n"), 0, 0);
-			}
+			const COLLAPSED_LINES = 8;
 
-			// collapsed: head + tail windows so both the start of output
-			// (error summary, first status line) and the most recent lines
-			// are visible with a gap marker in between.
-			const styledText = lines.map(styled).join("\n");
-			const headLines = Math.min(2, Math.floor(PREVIEW_LINES / 2));
-			const tailLines = PREVIEW_LINES - headLines;
-			return makeShowRenderer(styledText, [
-				{ focus: "head", context: headLines },
-				{ focus: "tail", context: tailLines },
-			]);
+			const buildSections = (): BoxSection[] => [{
+				header,
+				blocks: _opts.expanded || lines.length <= COLLAPSED_LINES
+					? [{ lines: lines.map((l) => ({ text: theme.fg("toolOutput", l), highlight: true })) }]
+					: buildCollapsedBlocks(lines, COLLAPSED_LINES, theme),
+			}];
+
+			return boxRenderer(buildSections, {
+				collapsed: {},
+				expanded: {},
+			});
 		},
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
