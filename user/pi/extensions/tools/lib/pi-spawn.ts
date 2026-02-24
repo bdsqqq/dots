@@ -139,6 +139,12 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 		}
 
 		let wasAborted = false;
+		const debugEnabled = !!process.env.PI_SPAWN_DEBUG;
+		const debug = (label: string, data?: Record<string, unknown>) => {
+			if (!debugEnabled) return;
+			const suffix = data ? ` ${JSON.stringify(data)}` : "";
+			process.stderr.write(`[pi-spawn] ${label}${suffix}\n`);
+		};
 
 		const exitCode = await new Promise<number>((resolve) => {
 			const proc = spawn("pi", args, {
@@ -154,6 +160,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 			// send initial prompt via RPC stdin
 			if (useRpc && proc.stdin) {
 				const promptCmd = JSON.stringify({ type: "prompt", message: `Task: ${config.task}` });
+				debug("send_prompt");
 				proc.stdin.write(promptCmd + "\n");
 			}
 
@@ -188,6 +195,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
 						const stopReason = (msg as any).stopReason as string | undefined;
 						const isTurnEnd = stopReason === "end_turn" || stopReason === "stop";
+						debug("turn_end", { stopReason, isTurnEnd, endTurnCount, followUpSent });
 
 						// RPC follow-up injection: after first end_turn, send the follow-up message
 						if (useRpc && isTurnEnd) {
@@ -195,9 +203,11 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 							if (endTurnCount === 1 && !followUpSent && config.followUp) {
 								followUpSent = true;
 								const followUpCmd = JSON.stringify({ type: "follow_up", message: config.followUp });
+								debug("send_follow_up");
 								proc.stdin?.write(followUpCmd + "\n");
 							} else if (endTurnCount >= 2 || followUpSent) {
 								// follow-up turn complete — terminate the RPC process
+								debug("kill_after_turn", { endTurnCount });
 								proc.kill("SIGTERM");
 								setTimeout(() => { if (!proc.killed) proc.kill("SIGKILL"); }, 5000);
 							}
@@ -205,6 +215,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
 						// RPC: if agent errors before follow-up, terminate
 						if (useRpc && (stopReason === "error" || stopReason === "aborted")) {
+							debug("kill_after_error", { stopReason });
 							proc.kill("SIGTERM");
 							setTimeout(() => { if (!proc.killed) proc.kill("SIGKILL"); }, 5000);
 						}
