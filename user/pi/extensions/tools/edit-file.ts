@@ -5,7 +5,6 @@
  * - mutex-locked per file path (prevents partial writes from concurrent edits)
  * - replace_all mode for multiple occurrences
  * - escape sequence fallback (\n, \t when exact match fails)
- * - AGENTS.md discovery post-write
  * - redaction check (rejects edits introducing placeholder markers)
  * - file change tracking for undo_edit via lib/file-tracker
  * - BOM/CRLF preservation
@@ -22,7 +21,6 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { makeShowRenderer } from "./lib/show-renderer";
 import { Type } from "@sinclair/typebox";
-import { discoverAgentsMd, formatGuidance } from "./lib/agents-md";
 import { generateDiffString } from "./lib/diff";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
@@ -329,14 +327,19 @@ export function createEditFileTool(): ToolDefinition {
 					text += `\n\n(replaced ${occurrences} occurrences)`;
 				}
 
-				const guidanceText = formatGuidance(discoverAgentsMd(resolved, ctx.cwd));
-				if (guidanceText) text += "\n\n" + guidanceText;
+				const matchLineIndices = diffResult.diff
+					.split("\n")
+					.reduce<number[]>((acc, line, idx) => {
+						if (line.startsWith("+") || line.startsWith("-")) acc.push(idx);
+						return acc;
+					}, []);
 
 				return {
 					content: [{ type: "text" as const, text }],
 					details: {
 						diff: diffResult.diff,
 						firstChangedLine: diffResult.firstChangedLine,
+						matchLineIndices,
 					},
 				} as any;
 			});
@@ -348,12 +351,10 @@ export function createEditFileTool(): ToolDefinition {
 			const diff: string = text.text;
 			if (expanded) return new Text(diff, 0, 0);
 
-			// collapsed: focus on the changed region. firstChangedLine is the
-			// first diff output line (0-indexed) containing a +/- hunk line.
-			// ±4 context shows the surrounding diff header + a few lines of change.
-			const firstChangedLine: number | undefined = result.details?.firstChangedLine;
-			if (firstChangedLine == null) return makeShowRenderer(diff, [{ focus: "head", context: 8 }]);
-			return makeShowRenderer(diff, [{ focus: firstChangedLine, context: 4 }]);
+			// collapsed: focus each changed line with ±2 context.
+			const indices: number[] | undefined = result.details?.matchLineIndices;
+			if (!indices?.length) return makeShowRenderer(diff, [{ focus: "head", context: 8 }]);
+			return makeShowRenderer(diff, indices.map((n) => ({ focus: n, context: 2 })));
 		},
 	};
 }

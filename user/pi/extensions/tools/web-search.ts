@@ -130,22 +130,35 @@ function searchParallel(
 	});
 }
 
-function formatResults(results: SearchResult[]): string {
-	if (results.length === 0) return "(no results found)";
+function formatResults(results: SearchResult[]): { text: string; headerLineIndices: number[] } {
+	if (results.length === 0) return { text: "(no results found)", headerLineIndices: [] };
 
-	const sections: string[] = [];
-	for (const r of results) {
-		const lines: string[] = [];
+	const lines: string[] = [];
+	const headerLineIndices: number[] = [];
+
+	for (let i = 0; i < results.length; i++) {
+		const r = results[i];
+		headerLineIndices.push(lines.length);
 		lines.push(`### ${r.title || "(untitled)"}`);
 		lines.push(r.url);
 		if (r.publish_date) lines.push(`*${r.publish_date}*`);
 		if (r.excerpts?.length) {
 			lines.push("");
-			lines.push(r.excerpts.join("\n\n"));
+			for (let j = 0; j < r.excerpts.length; j++) {
+				const excerptLines = r.excerpts[j].split("\n");
+				lines.push(...excerptLines);
+				if (j < r.excerpts.length - 1) lines.push("");
+			}
 		}
-		sections.push(lines.join("\n"));
+
+		if (i < results.length - 1) {
+			lines.push("");
+			lines.push("---");
+			lines.push("");
+		}
 	}
-	return sections.join("\n\n---\n\n");
+
+	return { text: lines.join("\n"), headerLineIndices };
 }
 
 export function createWebSearchTool(): ToolDefinition {
@@ -215,13 +228,17 @@ export function createWebSearchTool(): ToolDefinition {
 				} as any;
 			}
 
-			let output = formatResults(data.results);
+			const { text, headerLineIndices } = formatResults(data.results);
+			let output = text;
 
 			if (data.warnings?.length) {
 				output += `\n\n**Warnings:** ${data.warnings.join("; ")}`;
 			}
 
-			const details: ToolCostDetails = { cost: costFromUsage(data.usage) };
+			const details: ToolCostDetails & { matchLineIndices?: number[] } = {
+				cost: costFromUsage(data.usage),
+				matchLineIndices: headerLineIndices,
+			};
 			return { content: [{ type: "text" as const, text: output }], details };
 		},
 
@@ -241,12 +258,10 @@ export function createWebSearchTool(): ToolDefinition {
 			const output: string = text.text;
 			if (expanded) return new Text(output, 0, 0);
 
-			// collapsed: head shows the query summary / first result title,
-			// tail shows the last few results (often most relevant for recency).
-			return makeShowRenderer(output, [
-				{ focus: "head", context: 3 },
-				{ focus: "tail", context: 8 },
-			]);
+			// collapsed: focus each result header with ±2 context.
+			const indices: number[] | undefined = result.details?.matchLineIndices;
+			if (!indices?.length) return makeShowRenderer(output, [{ focus: "head", context: 6 }]);
+			return makeShowRenderer(output, indices.map((n) => ({ focus: n, context: 2 })));
 		},
 	};
 }
