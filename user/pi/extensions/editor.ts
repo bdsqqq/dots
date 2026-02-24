@@ -15,7 +15,7 @@ import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@mariozechner
 import { CustomEditor, Theme, estimateTokens } from "@mariozechner/pi-coding-agent";
 import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row";
+import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row.ts";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { execSync } from "node:child_process";
