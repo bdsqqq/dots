@@ -1,5 +1,5 @@
 /**
- * grep tool — replaces pi's built-in with tighter limits and diagnostic-style output.
+ * grep tool — replaces pi's built-in with tighter limits and context lines.
  *
  * differences from pi's built-in:
  * - per-file match limit (10, prevents one noisy file from consuming quota)
@@ -7,10 +7,8 @@
  * - caseSensitive param (default case-sensitive)
  * - suggests literal:true when pattern contains regex metacharacters
  * - spawns rg directly (no ensureTool — nix provides rg on PATH)
- * - includes ±1 context lines around matches (via rg --context)
- * - renderResult shows miette/ariadne-style box-drawing format with
- *   muted chrome instead of flat file:line: lines. match lines get
- *   base-color line numbers; context lines stay fully dim.
+ * - includes ±1 context lines around matches (via rg --context) so
+ *   the LLM sees surrounding code and show() has natural gaps to elide
  *
  * shadows pi's built-in `grep` tool via same-name registration.
  */
@@ -22,18 +20,13 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { headTail } from "./lib/output-buffer";
-
+import { makeShowRenderer } from "./lib/show-renderer";
 
 const MAX_TOTAL_MATCHES = 100;
 const MAX_COLLECT_MATCHES = 200;
 const MAX_PER_FILE = 10;
 const MAX_LINE_CHARS = 200;
 const RG_CONTEXT_LINES = 1;
-
-/** max files shown in collapsed display */
-const COLLAPSED_MAX_FILES = 3;
-/** max match groups per file in collapsed display */
-const COLLAPSED_MAX_BLOCKS = 1;
 
 function truncateLine(line: string): string {
 	if (line.length <= MAX_LINE_CHARS) return line;
@@ -44,118 +37,11 @@ function looksLikeRegex(pattern: string): boolean {
 	return /[{}()\[\]|\\+*?^$]/.test(pattern);
 }
 
-// --- structured data for visual rendering ---
-
-interface Submatch {
-	start: number;
-	end: number;
-}
-
 interface RgEvent {
 	kind: "match" | "context";
 	filePath: string;
 	lineNumber: number;
 	lineText: string;
-	submatches: Submatch[];
-}
-
-interface GrepLine {
-	num: number;
-	text: string;
-	isMatch: boolean;
-	submatches: Submatch[];
-}
-
-interface GrepBlock {
-	lines: GrepLine[];
-}
-
-interface GrepFile {
-	path: string;
-	matchCount: number;
-	blocks: GrepBlock[];
-}
-
-/**
- * build the diagnostic-style visual output from structured file groups.
- *
- * format:
- *   ╭─[path/to/file.ts]
- *    21 │ context line (all dim)
- *    22 │ match line (base-color line number, dim │)
- *    23 │ context line (all dim)
- *       ·
- *   100 │ another match group
- *   ╰────
- *
- * box-drawing chars and context gutter are DIM. match lines get
- * base-color line numbers so they pop against dim context.
- */
-function formatGrepVisual(
-	files: GrepFile[],
-	opts: { maxFiles: number; maxBlocks: number },
-	notices: string[],
-): string {
-	const shownFiles = files.slice(0, opts.maxFiles);
-	const lines: string[] = [];
-
-	for (let fi = 0; fi < shownFiles.length; fi++) {
-		const file = shownFiles[fi];
-		const shownBlocks = file.blocks.slice(0, opts.maxBlocks);
-
-		// gutter width from max line number across shown blocks
-		const maxLineNum = Math.max(
-			...shownBlocks.flatMap((b) => b.lines.map((l) => l.num)),
-		);
-		const gw = maxLineNum.toString().length;
-		const pad = " ".repeat(gw);
-
-		// blank line between file boxes (not before first)
-		if (fi > 0) lines.push("");
-
-		// header
-		lines.push(`${DIM}╭─[${RST}${file.path}${DIM}]${RST}`);
-
-		for (let bi = 0; bi < shownBlocks.length; bi++) {
-			// elision dot between non-contiguous blocks
-			if (bi > 0) {
-				lines.push(`${DIM}${pad} ·${RST}`);
-			}
-
-			for (const line of shownBlocks[bi].lines) {
-				const num = line.num.toString().padStart(gw);
-				if (line.isMatch) {
-					// match line: base-color number, dim separator, base-color content
-					lines.push(`${num} ${DIM}│${RST} ${truncateLine(line.text)}`);
-				} else {
-					// context line: everything dim
-					lines.push(`${DIM}${num} │ ${truncateLine(line.text)}${RST}`);
-				}
-			}
-		}
-
-		// show elision if blocks were truncated
-		if (file.blocks.length > opts.maxBlocks) {
-			const remaining = file.blocks.length - opts.maxBlocks;
-			lines.push(`${DIM}${pad} · ··· ${remaining} more ${remaining === 1 ? "group" : "groups"}${RST}`);
-		}
-
-		// footer
-		lines.push(`${DIM}╰${"─".repeat(4)}${RST}`);
-	}
-
-	// remaining files count
-	if (files.length > opts.maxFiles) {
-		const remaining = files.length - opts.maxFiles;
-		lines.push(`${DIM}… ${remaining} more ${remaining === 1 ? "file" : "files"}${RST}`);
-	}
-
-	if (notices.length) {
-		lines.push("");
-		lines.push(`${DIM}[${notices.join(". ")}]${RST}`);
-	}
-
-	return lines.join("\n");
 }
 
 export function createGrepTool(): ToolDefinition {
@@ -231,6 +117,7 @@ export function createGrepTool(): ToolDefinition {
 				let totalMatches = 0;
 				let killedDueToLimit = false;
 				let aborted = false;
+				/** all match + context events, in stream order */
 				const events: RgEvent[] = [];
 
 				const onAbort = () => {
@@ -260,13 +147,6 @@ export function createGrepTool(): ToolDefinition {
 					const lineText: string = (event.data?.lines?.text ?? "").replace(/\r?\n$/, "");
 					if (!filePath || typeof lineNumber !== "number") return;
 
-					const submatches: Submatch[] = event.type === "match"
-						? (event.data?.submatches ?? []).map((s: any) => ({
-							start: s.start as number,
-							end: s.end as number,
-						}))
-						: [];
-
 					if (event.type === "match") {
 						totalMatches++;
 					}
@@ -276,7 +156,6 @@ export function createGrepTool(): ToolDefinition {
 						filePath,
 						lineNumber,
 						lineText,
-						submatches,
 					});
 
 					if (totalMatches >= MAX_COLLECT_MATCHES) {
@@ -323,27 +202,31 @@ export function createGrepTool(): ToolDefinition {
 						return;
 					}
 
-					// --- phase 2: build structured data from collected events ---
+					// --- phase 2: build output from collected events ---
 
+					// group events by file, preserving order
 					const fileOrder: string[] = [];
-					const fileEventsMap = new Map<string, RgEvent[]>();
+					const fileEvents = new Map<string, RgEvent[]>();
 					for (const ev of events) {
-						if (!fileEventsMap.has(ev.filePath)) {
+						if (!fileEvents.has(ev.filePath)) {
 							fileOrder.push(ev.filePath);
-							fileEventsMap.set(ev.filePath, []);
+							fileEvents.set(ev.filePath, []);
 						}
-						fileEventsMap.get(ev.filePath)!.push(ev);
+						fileEvents.get(ev.filePath)!.push(ev);
 					}
 
-					const fileGroups: GrepFile[] = [];
-					const outputLines: string[] = []; // plain format for LLM
+					const outputLines: string[] = [];
+					/** output line indices that are actual matches (not context) */
+					const matchLineIndices: number[] = [];
+					/** index of first match line per file — focus points for collapsed display */
+					const firstMatchPerFile: number[] = [];
 					const perFileMatchCount = new Map<string, number>();
 
 					for (let fi = 0; fi < fileOrder.length; fi++) {
 						const filePath = fileOrder[fi];
-						const fileEvts = fileEventsMap.get(filePath)!;
+						const fileEvts = fileEvents.get(filePath)!;
 
-						// per-file limit: determine which matches to include
+						// determine which matches to include (per-file limit)
 						const includedMatchLines = new Set<number>();
 						let matchesInFile = 0;
 						for (const ev of fileEvts) {
@@ -356,68 +239,61 @@ export function createGrepTool(): ToolDefinition {
 						}
 						perFileMatchCount.set(filePath, Math.min(matchesInFile, MAX_PER_FILE));
 
-						// include context lines adjacent to included matches
+						// include context lines only if adjacent to an included match
 						const includedLines = new Set<number>();
 						for (const ln of includedMatchLines) {
 							includedLines.add(ln);
+							// include context lines within RG_CONTEXT_LINES distance
 							for (let d = 1; d <= RG_CONTEXT_LINES; d++) {
 								includedLines.add(ln - d);
 								includedLines.add(ln + d);
 							}
 						}
 
+						// blank separator between file groups
+						if (fi > 0) {
+							outputLines.push("");
+						}
+
 						const rel = path.relative(searchPath, filePath).replace(/\\/g, "/");
 						const displayPath = rel && !rel.startsWith("..") ? rel : path.basename(filePath);
 
-						// build blocks (contiguous groups of lines)
-						const blocks: GrepBlock[] = [];
-						let currentBlock: GrepLine[] = [];
-						let lastLineNum = -Infinity;
-
-						// blank separator in plain output between file groups
-						if (fi > 0) outputLines.push("");
+						let lastOutputLineNum = -Infinity;
+						let isFirstMatchInFile = true;
 
 						for (const ev of fileEvts) {
 							if (!includedLines.has(ev.lineNumber)) continue;
-							if (ev.lineNumber <= lastLineNum) continue; // dedup
+							// deduplicate (rg can emit same line as both context for
+							// adjacent matches — we only want it once)
+							if (ev.lineNumber <= lastOutputLineNum) continue;
 
-							// non-contiguous gap → new block
-							if (lastLineNum >= 0 && ev.lineNumber > lastLineNum + 1) {
-								if (currentBlock.length) {
-									blocks.push({ lines: currentBlock });
-									currentBlock = [];
-								}
-								outputLines.push("--"); // plain format separator
+							// insert "--" separator for non-contiguous groups within file
+							// (gap > 1 means there's a break in line numbers)
+							if (lastOutputLineNum >= 0 && ev.lineNumber > lastOutputLineNum + 1) {
+								outputLines.push("--");
 							}
 
-							const grepLine: GrepLine = {
-								num: ev.lineNumber,
-								text: ev.lineText,
-								isMatch: includedMatchLines.has(ev.lineNumber),
-								submatches: ev.submatches,
-							};
-							currentBlock.push(grepLine);
-							lastLineNum = ev.lineNumber;
-
-							// plain format for LLM
+							const idx = outputLines.length;
 							outputLines.push(`${displayPath}:${ev.lineNumber}: ${truncateLine(ev.lineText)}`);
-						}
-						if (currentBlock.length) {
-							blocks.push({ lines: currentBlock });
-						}
+							lastOutputLineNum = ev.lineNumber;
 
-						fileGroups.push({
-							path: displayPath,
-							matchCount: Math.min(matchesInFile, MAX_PER_FILE),
-							blocks,
-						});
+							if (includedMatchLines.has(ev.lineNumber)) {
+								matchLineIndices.push(idx);
+								if (isFirstMatchInFile) {
+									firstMatchPerFile.push(idx);
+									isFirstMatchInFile = false;
+								}
+							}
+						}
 					}
 
-					// plain output for LLM (with head+tail if too large)
+					// apply head+tail if over display limit
 					let output: string;
 					const notices: string[] = [];
+					let finalMatchIndices: number[];
 
 					if (outputLines.length > MAX_TOTAL_MATCHES * 3) {
+						// with context lines, the threshold is higher
 						const limit = MAX_TOTAL_MATCHES * 2;
 						const { head, tail, truncatedCount } = headTail(outputLines, limit);
 						output = [
@@ -427,9 +303,21 @@ export function createGrepTool(): ToolDefinition {
 							"",
 							...tail,
 						].join("\n");
-						notices.push(`${truncatedCount} lines truncated`);
+						// remap match indices into the truncated output
+						const headLen = head.length;
+						const gapLen = 3; // blank + marker + blank
+						const tailStart = outputLines.length - tail.length;
+						finalMatchIndices = matchLineIndices
+							.map((i) => {
+								if (i < headLen) return i;
+								if (i >= tailStart) return headLen + gapLen + (i - tailStart);
+								return -1; // truncated
+							})
+							.filter((i) => i >= 0);
+						notices.push(`${truncatedCount} lines truncated, showing first and last ${limit / 2}`);
 					} else {
 						output = outputLines.join("\n");
+						finalMatchIndices = matchLineIndices;
 					}
 
 					if (killedDueToLimit) {
@@ -449,47 +337,30 @@ export function createGrepTool(): ToolDefinition {
 
 					resolve({
 						content: [{ type: "text" as const, text: output }],
-						details: { fileGroups, notices },
+						details: { matchLineIndices: finalMatchIndices, firstMatchPerFile },
 					} as any);
 				});
 			});
 		},
 
 		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
-			const fileGroups: GrepFile[] | undefined = result.details?.fileGroups;
-			const notices: string[] = result.details?.notices ?? [];
+			const text = result.content?.[0];
+			if (text?.type !== "text") return new Text("(no output)", 0, 0);
+			const output: string = text.text;
+			if (expanded) return new Text(output, 0, 0);
 
-			// fallback for old results or error results without fileGroups
-			if (!fileGroups?.length) {
-				const text = result.content?.[0]?.text ?? "(no output)";
-				return new Text(text, 0, 0);
+			// collapsed: focus first match per file with ±2 context so show()
+			// elides remaining matches within each file group. the context
+			// lines from rg create natural gaps between distant matches,
+			// producing cleaner elision than match-only output.
+			const fileStarts: number[] | undefined = result.details?.firstMatchPerFile;
+			if (fileStarts?.length) {
+				return makeShowRenderer(output, fileStarts.map((n: number) => ({ focus: n, context: 2 })));
 			}
-
-			// cache by expanded state to avoid rebuilding every frame
-			let cachedExpanded: boolean | undefined;
-			let cachedLines: string[] | undefined;
-
-			return {
-				render(_width: number): string[] {
-					if (cachedLines !== undefined && cachedExpanded === expanded) {
-						return cachedLines;
-					}
-					const visual = formatGrepVisual(
-						fileGroups,
-						expanded
-							? { maxFiles: fileGroups.length, maxBlocks: Infinity }
-							: { maxFiles: COLLAPSED_MAX_FILES, maxBlocks: COLLAPSED_MAX_BLOCKS },
-						notices,
-					);
-					cachedLines = visual.split("\n");
-					cachedExpanded = expanded;
-					return cachedLines;
-				},
-				invalidate() {
-					cachedLines = undefined;
-					cachedExpanded = undefined;
-				},
-			};
+			// fallback: use all match indices (legacy results without firstMatchPerFile)
+			const indices: number[] | undefined = result.details?.matchLineIndices;
+			if (!indices?.length) return new Text(output, 0, 0);
+			return makeShowRenderer(output, indices.map((n: number) => ({ focus: n, context: 1 })));
 		},
 	};
 }
