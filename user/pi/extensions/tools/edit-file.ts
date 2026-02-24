@@ -20,7 +20,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { formatBoxes, osc8Link, type BoxSection, type BoxBlock, type BoxLine } from "./lib/box-format";
+import { formatBoxesWindowed, osc8Link, type BoxSection, type BoxBlock, type BoxLine, type Excerpt } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
@@ -225,32 +225,6 @@ function parseDiffToSections(filename: string, diffText: string): BoxSection[] {
 	return [{ header: filename, blocks }];
 }
 
-// --- block windowing ---
-
-/** max visible diff lines per block in collapsed/expanded mode */
-const COLLAPSED_MAX_LINES = 12;
-const EXPANDED_MAX_LINES = 100;
-
-/**
- * truncate a block to a head+tail window with elision marker.
- * shows first half and last half of maxLines, replacing the
- * middle with a dim "· ··· N more lines" marker.
- */
-function windowBlock(block: BoxBlock, maxLines: number): BoxBlock {
-	if (block.lines.length <= maxLines) return block;
-
-	const half = Math.floor(maxLines / 2);
-	const head = block.lines.slice(0, half);
-	const tail = block.lines.slice(-half);
-	const elided = block.lines.length - head.length - tail.length;
-
-	const elisionLine: BoxLine = {
-		text: `· ··· ${elided} more lines`,
-		highlight: false,
-	};
-
-	return { lines: [...head, elisionLine, ...tail] };
-}
 
 // --- diff stats ---
 
@@ -501,50 +475,39 @@ export function createEditFileTool(): ToolDefinition {
 				? theme.fg("dim", ` (${replaceCount} replacements)`)
 				: "";
 
-			const COLLAPSED_TAIL_BLOCKS = 1;
+			/** 25 visual lines per hunk: head 12 + tail 13 */
+			const HUNK_EXCERPTS: Excerpt[] = [
+				{ focus: "head", context: 12 },
+				{ focus: "tail", context: 13 },
+			];
 
 			return {
 				render(width: number): string[] {
 					const lines: string[] = [];
 					lines.push(statsText + replaceNote);
 
-					const maxLines = expanded ? EXPANDED_MAX_LINES : COLLAPSED_MAX_LINES;
+					// collapsed: last hunk only; expanded: all hunks
+					const displaySections = sections.map((s) => {
+						const blocks = !expanded && s.blocks.length > 1
+							? s.blocks.slice(-1)
+							: s.blocks;
 
-					// window each block to cap visible lines
-					let wasTruncated = false;
-					const windowedSections = sections.map((s) => {
-						let blocks = s.blocks;
-
-						// collapsed: show only last hunk
-						if (!expanded && blocks.length > COLLAPSED_TAIL_BLOCKS) {
-							blocks = blocks.slice(-COLLAPSED_TAIL_BLOCKS);
-						}
-
-						const windowedBlocks = blocks.map((b) => {
-							const windowed = windowBlock(b, maxLines);
-							if (windowed !== b) wasTruncated = true;
-							return windowed;
-						});
-
-						// wrap filename in OSC 8 file:// link for editor click-to-open
 						const header = filePath
 							? osc8Link(`file://${filePath}`, s.header)
 							: s.header;
 
-						return { ...s, header, blocks: windowedBlocks };
+						return { ...s, header, blocks };
 					});
-
-					const opts = expanded
-						? {}
-						: { maxSections: 1, maxBlocks: COLLAPSED_TAIL_BLOCKS };
 
 					const notices: string[] = [];
 					if (replaceCount && replaceCount > 1) notices.push(`replaced ${replaceCount} occurrences`);
-					if (wasTruncated) notices.push("expand or open file for full diff");
 
-					const boxOutput = formatBoxes(
-						windowedSections,
-						opts,
+					const boxOutput = formatBoxesWindowed(
+						displaySections,
+						{
+							maxSections: expanded ? undefined : 1,
+							excerpts: HUNK_EXCERPTS,
+						},
 						notices.length > 0 ? notices : undefined,
 						width,
 					);
@@ -554,6 +517,7 @@ export function createEditFileTool(): ToolDefinition {
 				},
 				invalidate() {},
 			};
+
 		},
 	};
 }
