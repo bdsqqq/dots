@@ -16,7 +16,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { formatBoxes, type BoxSection, type BoxLine } from "./lib/box-format";
+import { Text } from "@mariozechner/pi-tui";
+import { makeShowRenderer } from "./lib/show-renderer";
 import { Type } from "@sinclair/typebox";
 import { formatHeadTail } from "./lib/output-buffer";
 
@@ -231,7 +232,7 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 			if (stat.isDirectory()) {
 				try {
 					let text = listDirectory(resolved, limits.maxDirEntries);
-					return { content: [{ type: "text" as const, text }], details: { filePath: resolved, isDirectory: true } } as any;
+					return { content: [{ type: "text" as const, text }] } as any;
 				} catch (err: any) {
 					return {
 						content: [{ type: "text" as const, text: err.message }],
@@ -259,18 +260,13 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 				const readRange = params.read_range as [number, number] | undefined;
 				const { text, totalLines, shownStart, shownEnd } = readFileContent(resolved, limits, readRange);
 
-				let output = text;
-				let notice: string | undefined;
+				let result = text;
 
 				if (shownEnd < totalLines) {
-					notice = `showing lines ${shownStart}-${shownEnd} of ${totalLines}`;
-					output += `\n\n(${notice}. use read_range to see more.)`;
+					result += `\n\n(showing lines ${shownStart}-${shownEnd} of ${totalLines}. use read_range to see more.)`;
 				}
 
-				return {
-					content: [{ type: "text" as const, text: output }],
-					details: { filePath: resolved, notice },
-				} as any;
+				return { content: [{ type: "text" as const, text }] } as any;
 			} catch (err: any) {
 				return {
 					content: [{ type: "text" as const, text: `failed to read file: ${err.message}` }],
@@ -279,77 +275,18 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 			}
 		},
 
-		renderResult(result: any) {
+		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
 			const text = result.content?.[0];
 			if (text?.type !== "text") return undefined; // images — let pi handle
 			const output: string = text.text;
-			const filePath: string = result.details?.filePath ?? "file";
-			const isDir: boolean = result.details?.isDirectory ?? false;
-			const notice: string | undefined = result.details?.notice;
+			if (expanded) return new Text(output, 0, 0);
 
-			// parse line-numbered content into BoxLines
-			const rawLines = output.split("\n");
-			const parsed: BoxLine[] = [];
-			for (const raw of rawLines) {
-				// lines look like "42: content" for files, plain text for dirs/notices
-				const m = !isDir ? raw.match(/^(\d+): (.*)$/) : null;
-				if (m) {
-					parsed.push({ gutter: m[1], text: m[2], highlight: true });
-				} else {
-					parsed.push({ text: raw, highlight: true });
-				}
-			}
-
-			// strip trailing notice line (already captured in details)
-			// the notice appears as a blank + "(showing lines ...)" at the end
-			if (notice && parsed.length >= 2) {
-				const last = parsed[parsed.length - 1];
-				if (last.text.startsWith(`(${notice}`)) {
-					parsed.pop(); // notice line
-					if (parsed.length && parsed[parsed.length - 1].text === "") {
-						parsed.pop(); // blank before notice
-					}
-				}
-			}
-
-			const header = isDir ? `${filePath}/` : filePath;
-			const notices = notice ? [notice] : undefined;
-
-			const HEAD = 3;
-			const TAIL = 5;
-
-			let cachedExpanded: boolean | undefined;
-			let cachedLines: string[] | undefined;
-
-			return {
-				render(_width: number, expanded: boolean): string[] {
-					if (cachedLines !== undefined && cachedExpanded === expanded) {
-						return cachedLines;
-					}
-
-					let blocks: { lines: BoxLine[] }[];
-
-					if (expanded || parsed.length <= HEAD + TAIL + 1) {
-						blocks = [{ lines: parsed }];
-					} else {
-						// collapsed: head 3 + tail 5, gap between renders as · elision
-						blocks = [
-							{ lines: parsed.slice(0, HEAD) },
-							{ lines: parsed.slice(-TAIL) },
-						];
-					}
-
-					const section: BoxSection = { header, blocks };
-					const visual = formatBoxes([section], {}, notices);
-					cachedLines = visual.split("\n");
-					cachedExpanded = expanded;
-					return cachedLines;
-				},
-				invalidate() {
-					cachedLines = undefined;
-					cachedExpanded = undefined;
-				},
-			};
+			// collapsed: head+tail so both the start of the file (imports, header,
+			// function signatures) and the end are visible without scrolling.
+			return makeShowRenderer(output, [
+				{ focus: "head", context: 3 },
+				{ focus: "tail", context: 5 },
+			]);
 		},
 	};
 }
