@@ -14,6 +14,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { resolveWithVariants, listDirectory, type ReadLimits } from "./read";
+import { osc8Link } from "./lib/box-format";
 
 export function createLsTool(limits: ReadLimits): ToolDefinition {
 	return {
@@ -34,8 +35,9 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
 			const dirPath = args.path || ".";
 			const home = os.homedir();
 			const shortened = dirPath.startsWith(home) ? `~${dirPath.slice(home.length)}` : dirPath;
+			const linked = dirPath.startsWith("/") ? osc8Link(`file://${dirPath}`, shortened) : shortened;
 			return new Text(
-				theme.fg("toolTitle", theme.bold("ls ")) + theme.fg("dim", shortened),
+				theme.fg("toolTitle", theme.bold("ls ")) + theme.fg("dim", linked),
 				0, 0,
 			);
 		},

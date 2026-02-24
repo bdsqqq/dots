@@ -17,7 +17,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { formatBoxes, type BoxSection, type BoxLine } from "./lib/box-format";
+import { formatBoxes, osc8Link, type BoxSection, type BoxLine } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import { formatHeadTail } from "./lib/output-buffer";
 
@@ -213,8 +213,9 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 			if (Array.isArray(readRange) && readRange.length === 2) {
 				context += `:${readRange[0]}-${readRange[1]}`;
 			}
+			const linked = filePath.startsWith("/") ? osc8Link(`file://${filePath}`, context) : context;
 			return new Text(
-				theme.fg("toolTitle", theme.bold("Read ")) + theme.fg("dim", context),
+				theme.fg("toolTitle", theme.bold("Read ")) + theme.fg("dim", linked),
 				0, 0,
 			);
 		},
@@ -323,7 +324,8 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 				}
 			}
 
-			const header = isDir ? `${filePath}/` : filePath;
+			const displayHeader = isDir ? `${filePath}/` : filePath;
+			const header = filePath.startsWith("/") ? osc8Link(`file://${filePath}`, displayHeader) : displayHeader;
 			const notices = notice ? [notice] : undefined;
 
 			const HEAD = 3;

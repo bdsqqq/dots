@@ -20,6 +20,7 @@ import { Type } from "@sinclair/typebox";
 import { findLatestChange, revertChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
 import { resolveWithVariants } from "./read";
+import { osc8Link } from "./lib/box-format";
 
 /**
  * extract tool call IDs from the current session branch.
@@ -84,8 +85,9 @@ export function createUndoEditTool(): ToolDefinition {
 			const filePath = args.path || "...";
 			const home = os.homedir();
 			const shortened = filePath.startsWith(home) ? `~${filePath.slice(home.length)}` : filePath;
+			const linked = filePath.startsWith("/") ? osc8Link(`file://${filePath}`, shortened) : shortened;
 			return new Text(
-				theme.fg("toolTitle", theme.bold("Undo ")) + theme.fg("dim", shortened),
+				theme.fg("toolTitle", theme.bold("Undo ")) + theme.fg("dim", linked),
 				0, 0,
 			);
 		},

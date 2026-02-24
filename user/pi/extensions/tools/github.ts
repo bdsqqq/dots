@@ -24,6 +24,7 @@ import {
 	addLineNumbers,
 	truncate,
 } from "./lib/github";
+import { osc8Link } from "./lib/box-format";
 
 // --- read_github ---
 
@@ -86,8 +87,11 @@ export function createReadGithubTool(): ToolDefinition {
 		renderCall(args: any, theme: any) {
 			const path = args.path || "...";
 			const repo = args.repository ? args.repository.replace(/^https?:\/\/github\.com\//, "") : "";
+			const display = `${repo}/${path}`;
+			const url = args.repository ? `${args.repository.replace(/\/$/, "")}/blob/HEAD/${path}` : "";
+			const linked = url ? osc8Link(url, display) : display;
 			return new Text(
-				theme.fg("toolTitle", theme.bold("read_github ")) + theme.fg("dim", `${repo}/${path}`),
+				theme.fg("toolTitle", theme.bold("read_github ")) + theme.fg("dim", linked),
 				0, 0,
 			);
 		},
@@ -170,8 +174,9 @@ export function createSearchGithubTool(): ToolDefinition {
 		renderCall(args: any, theme: any) {
 			const pattern = args.pattern || "...";
 			const repo = args.repository ? args.repository.replace(/^https?:\/\/github\.com\//, "") : "";
+			const linkedRepo = args.repository ? osc8Link(args.repository, repo) : repo;
 			return new Text(
-				theme.fg("toolTitle", theme.bold("search_github ")) + theme.fg("dim", `/${pattern}/ in ${repo}`),
+				theme.fg("toolTitle", theme.bold("search_github ")) + theme.fg("dim", `/${pattern}/ in ${linkedRepo}`),
 				0, 0,
 			);
 		},
@@ -232,8 +237,11 @@ export function createListDirectoryGithubTool(): ToolDefinition {
 		renderCall(args: any, theme: any) {
 			const path = args.path || "/";
 			const repo = args.repository ? args.repository.replace(/^https?:\/\/github\.com\//, "") : "";
+			const display = `${repo}/${path}`;
+			const url = args.repository ? `${args.repository.replace(/\/$/, "")}/tree/HEAD/${path}` : "";
+			const linked = url ? osc8Link(url, display) : display;
 			return new Text(
-				theme.fg("toolTitle", theme.bold("list_directory_github ")) + theme.fg("dim", `${repo}/${path}`),
+				theme.fg("toolTitle", theme.bold("list_directory_github ")) + theme.fg("dim", linked),
 				0, 0,
 			);
 		},
@@ -389,8 +397,9 @@ export function createGlobGithubTool(): ToolDefinition {
 		renderCall(args: any, theme: any) {
 			const pattern = args.filePattern || "...";
 			const repo = args.repository ? args.repository.replace(/^https?:\/\/github\.com\//, "") : "";
+			const linkedRepo = args.repository ? osc8Link(args.repository, repo) : repo;
 			return new Text(
-				theme.fg("toolTitle", theme.bold("glob_github ")) + theme.fg("dim", `${pattern} in ${repo}`),
+				theme.fg("toolTitle", theme.bold("glob_github ")) + theme.fg("dim", `${pattern} in ${linkedRepo}`),
 				0, 0,
 			);
 		},
@@ -476,9 +485,10 @@ export function createCommitSearchTool(): ToolDefinition {
 
 		renderCall(args: any, theme: any) {
 			const repo = args.repository ? args.repository.replace(/^https?:\/\/github\.com\//, "") : "...";
+			const linkedRepo = args.repository ? osc8Link(args.repository, repo) : repo;
 			const query = args.query || args.author || "";
 			return new Text(
-				theme.fg("toolTitle", theme.bold("commit_search ")) + theme.fg("dim", `${repo} ${query}`.trim()),
+				theme.fg("toolTitle", theme.bold("commit_search ")) + theme.fg("dim", `${linkedRepo} ${query}`.trim()),
 				0, 0,
 			);
 		},
@@ -551,9 +561,10 @@ export function createDiffTool(): ToolDefinition {
 
 		renderCall(args: any, theme: any) {
 			const repo = args.repository ? args.repository.replace(/^https?:\/\/github\.com\//, "") : "...";
+			const linkedRepo = args.repository ? osc8Link(args.repository, repo) : repo;
 			const range = `${args.base || "?"}...${args.head || "?"}`;
 			return new Text(
-				theme.fg("toolTitle", theme.bold("diff ")) + theme.fg("dim", `${repo} ${range}`),
+				theme.fg("toolTitle", theme.bold("diff ")) + theme.fg("dim", `${linkedRepo} ${range}`),
 				0, 0,
 			);
 		},
