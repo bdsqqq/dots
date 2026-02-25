@@ -398,7 +398,7 @@ function branchesToSections(branches: BranchResult[]): BoxSection[] {
 		}
 
 		return {
-			header: b.name || `session ${i + 1}`,
+			header: b.sessionName || `session ${i + 1}`,
 			blocks: [{ lines }],
 		};
 	});
