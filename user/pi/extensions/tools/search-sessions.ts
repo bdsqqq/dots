@@ -15,11 +15,14 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { type BoxSection, boxRenderer } from "./lib/box-format";
+import { type BoxSection, type Excerpt, boxRendererWindowed } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 
 const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
 const MAX_RESULTS = 50;
+
+/** per-block excerpts for collapsed display — first 5 visual lines */
+const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
 
 // --- session JSONL types ---
 
@@ -590,9 +593,9 @@ export function createSearchSessionsTool(): ToolDefinition {
 			const truncated: number = result.details?.truncated ?? 0;
 			const notices = truncated > 0 ? [`${truncated} sessions omitted`] : undefined;
 
-			return boxRenderer(
+			return boxRendererWindowed(
 				() => sections,
-				{ collapsed: { maxSections: 3 }, expanded: {} },
+				{ collapsed: { maxSections: 3, excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
 				notices,
 			);
 		},

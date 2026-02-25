@@ -19,7 +19,7 @@ import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { boxRenderer, type BoxSection, type BoxBlock } from "./lib/box-format";
+import { boxRendererWindowed, type BoxSection, type Excerpt } from "./lib/box-format";
 import { getText } from "./lib/tui";
 import { Type } from "@sinclair/typebox";
 import { withFileLock } from "./lib/mutex";
@@ -103,14 +103,11 @@ function killGracefully(pid: number): void {
 	}, SIGKILL_DELAY_MS);
 }
 
-function buildCollapsedBlocks(lines: string[], maxLines: number, theme: any): BoxBlock[] {
-	const head = Math.min(3, Math.floor(maxLines / 2));
-	const tail = maxLines - head;
-	return [
-		{ lines: lines.slice(0, head).map((l) => ({ text: theme.fg("toolOutput", l), highlight: true })) },
-		{ lines: lines.slice(-tail).map((l) => ({ text: theme.fg("toolOutput", l), highlight: true })) },
-	];
-}
+/** per-block excerpts for collapsed display — head 3 + tail 5 = 8 visual lines */
+const COLLAPSED_EXCERPTS: Excerpt[] = [
+	{ focus: "head" as const, context: 3 },
+	{ focus: "tail" as const, context: 5 },
+];
 
 // --- tool factory ---
 
@@ -184,17 +181,13 @@ export function createBashTool(): ToolDefinition {
 			const lines = text.split("\n");
 			const header = command.length > 60 ? `$ ${command.slice(0, 57)}…` : `$ ${command}`;
 
-			const COLLAPSED_LINES = 8;
-
 			const buildSections = (): BoxSection[] => [{
 				header,
-				blocks: _opts.expanded || lines.length <= COLLAPSED_LINES
-					? [{ lines: lines.map((l) => ({ text: theme.fg("toolOutput", l), highlight: true })) }]
-					: buildCollapsedBlocks(lines, COLLAPSED_LINES, theme),
+				blocks: [{ lines: lines.map((l) => ({ text: theme.fg("toolOutput", l), highlight: true })) }],
 			}];
 
-			return boxRenderer(buildSections, {
-				collapsed: {},
+			return boxRendererWindowed(buildSections, {
+				collapsed: { excerpts: COLLAPSED_EXCERPTS },
 				expanded: {},
 			});
 		},
