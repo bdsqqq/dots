@@ -148,8 +148,12 @@ export function createBashTool(): ToolDefinition {
 			const cmd = args.cmd || args.command || "...";
 			const timeout = args.timeout;
 			const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : "";
+			// show first line only for multiline commands
+			const lines = cmd.split("\n");
+			const firstLine = lines[0];
+			const multiSuffix = lines.length > 1 ? theme.fg("muted", " …") : "";
 			return new Text(
-				theme.fg("toolTitle", theme.bold(`$ ${cmd}`)) + timeoutSuffix,
+				theme.fg("toolTitle", theme.bold(`$ ${firstLine}`)) + multiSuffix + timeoutSuffix,
 				0, 0,
 			);
 		},
@@ -179,7 +183,8 @@ export function createBashTool(): ToolDefinition {
 			if (!text || text === "(no output)") return new Text(theme.fg("dim", "(no output)"), 0, 0);
 
 			const lines = text.split("\n");
-			const header = command.length > 60 ? `$ ${command.slice(0, 57)}…` : `$ ${command}`;
+			const cmdFirstLine = command.split("\n")[0];
+			const header = cmdFirstLine.length > 60 ? `$ ${cmdFirstLine.slice(0, 57)}…` : `$ ${cmdFirstLine}`;
 
 			const buildSections = (): BoxSection[] => [{
 				header,
