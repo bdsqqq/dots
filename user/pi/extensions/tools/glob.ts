@@ -18,6 +18,12 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { formatHeadTail } from "./lib/output-buffer";
+import { boxRendererWindowed, textSection, type Excerpt } from "./lib/box-format";
+
+const COLLAPSED_EXCERPTS: Excerpt[] = [
+	{ focus: "head" as const, context: 3 },
+	{ focus: "tail" as const, context: 5 },
+];
 
 const DEFAULT_LIMIT = 500;
 
@@ -59,10 +65,14 @@ export function createGlobTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
-			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
+			const header = result.details?.header ?? "output";
+			return boxRendererWindowed(
+				() => [textSection(header, content.text)],
+				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
+			);
 		},
 
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
@@ -165,7 +175,7 @@ export function createGlobTool(): ToolDefinition {
 						output = allPaths.join("\n");
 					}
 
-					resolve({ content: [{ type: "text" as const, text: output }] } as any);
+					resolve({ content: [{ type: "text" as const, text: output }], details: { header: params.filePattern } } as any);
 				});
 			});
 		},

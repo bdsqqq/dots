@@ -23,6 +23,12 @@ import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { Text } from "@mariozechner/pi-tui";
+import { boxRendererWindowed, textSection, type Excerpt } from "./lib/box-format";
+
+const COLLAPSED_EXCERPTS: Excerpt[] = [
+	{ focus: "head" as const, context: 3 },
+	{ focus: "tail" as const, context: 5 },
+];
 
 // --- frontmatter parsing (reimplemented; pi's isn't re-exported) ---
 
@@ -278,16 +284,24 @@ export function createSkillTool(): ToolDefinition {
 
 			return {
 				content: [{ type: "text" as const, text: parts.join("\n") }],
+				details: { header: skill.name },
 			} as any;
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
+			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
 			if (content.text.startsWith("<loaded_skill")) {
-				return new Text(theme.fg("dim", "skill loaded"), 0, 0);
+				const header = result.details?.header ?? "skill";
+				return boxRendererWindowed(
+					() => [textSection(header, "skill loaded", true)],
+					{ collapsed: {}, expanded: {} },
+				);
 			}
-			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+			return boxRendererWindowed(
+				() => [textSection("skill", content.text)],
+				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
+			);
 		},
 	};
 }
