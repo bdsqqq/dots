@@ -324,8 +324,6 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 				}
 			}
 
-			const displayHeader = isDir ? `${filePath}/` : filePath;
-			const header = filePath.startsWith("/") ? osc8Link(`file://${filePath}`, displayHeader) : displayHeader;
 			const notices = notice ? [notice] : undefined;
 
 			/** collapsed: head 3 + tail 5 visual lines */
@@ -334,7 +332,7 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 				{ focus: "tail", context: 5 },
 			];
 
-			const section: BoxSection = { header, blocks: [{ lines: parsed }] };
+			const section: BoxSection = { blocks: [{ lines: parsed }] };
 
 			let cachedWidth: number | undefined;
 			let cachedExpanded: boolean | undefined;

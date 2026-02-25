@@ -105,7 +105,6 @@ export function createReadGithubTool(): ToolDefinition {
 		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
-			const header = result.details?.header ?? "output";
 
 			// parse numbered lines into BoxLine[] with gutters
 			const parsed: BoxLine[] = content.text.split("\n").map((line: string) => {
@@ -114,7 +113,7 @@ export function createReadGithubTool(): ToolDefinition {
 				return { text: line, highlight: true };
 			});
 
-			const section: BoxSection = { header, blocks: [{ lines: parsed }] };
+			const section: BoxSection = { blocks: [{ lines: parsed }] };
 			return boxRendererWindowed(
 				() => [section],
 				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
@@ -203,9 +202,8 @@ export function createSearchGithubTool(): ToolDefinition {
 		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
-			const header = result.details?.header ?? "output";
 			return boxRendererWindowed(
-				() => [textSection(header, content.text)],
+				() => [textSection(undefined, content.text)],
 				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
 			);
 		},
@@ -272,9 +270,8 @@ export function createListDirectoryGithubTool(): ToolDefinition {
 		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
-			const header = result.details?.header ?? "output";
 			return boxRendererWindowed(
-				() => [textSection(header, content.text)],
+				() => [textSection(undefined, content.text)],
 				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
 			);
 		},
@@ -357,9 +354,8 @@ export function createListRepositoriesTool(): ToolDefinition {
 		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
-			const header = result.details?.header ?? "output";
 			return boxRendererWindowed(
-				() => [textSection(header, content.text)],
+				() => [textSection(undefined, content.text)],
 				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
 			);
 		},
@@ -438,9 +434,8 @@ export function createGlobGithubTool(): ToolDefinition {
 		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
-			const header = result.details?.header ?? "output";
 			return boxRendererWindowed(
-				() => [textSection(header, content.text)],
+				() => [textSection(undefined, content.text)],
 				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
 			);
 		},
@@ -531,9 +526,8 @@ export function createCommitSearchTool(): ToolDefinition {
 		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
-			const header = result.details?.header ?? "output";
 			return boxRendererWindowed(
-				() => [textSection(header, content.text)],
+				() => [textSection(undefined, content.text)],
 				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
 			);
 		},
@@ -611,9 +605,8 @@ export function createDiffTool(): ToolDefinition {
 		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
-			const header = result.details?.header ?? "output";
 			return boxRendererWindowed(
-				() => [textSection(header, content.text)],
+				() => [textSection(undefined, content.text)],
 				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
 			);
 		},

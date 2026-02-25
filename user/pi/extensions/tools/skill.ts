@@ -292,14 +292,13 @@ export function createSkillTool(): ToolDefinition {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
 			if (content.text.startsWith("<loaded_skill")) {
-				const header = result.details?.header ?? "skill";
 				return boxRendererWindowed(
-					() => [textSection(header, "skill loaded", true)],
+					() => [textSection(undefined, "skill loaded", true)],
 					{ collapsed: {}, expanded: {} },
 				);
 			}
 			return boxRendererWindowed(
-				() => [textSection("skill", content.text)],
+				() => [textSection(undefined, content.text)],
 				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
 			);
 		},

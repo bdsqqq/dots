@@ -183,11 +183,8 @@ export function createBashTool(): ToolDefinition {
 			if (!text || text === "(no output)") return new Text(theme.fg("dim", "(no output)"), 0, 0);
 
 			const lines = text.split("\n");
-			const cmdFirstLine = command.split("\n")[0];
-			const header = cmdFirstLine.length > 60 ? `$ ${cmdFirstLine.slice(0, 57)}…` : `$ ${cmdFirstLine}`;
 
 			const buildSections = (): BoxSection[] => [{
-				header,
 				blocks: [{ lines: lines.map((l) => ({ text: theme.fg("toolOutput", l), highlight: true })) }],
 			}];
 
