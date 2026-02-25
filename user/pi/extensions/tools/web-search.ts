@@ -17,13 +17,16 @@
 import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { boxRenderer, osc8Link, type BoxSection } from "./lib/box-format";
+import { boxRendererWindowed, osc8Link, type BoxSection, type Excerpt } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import type { ToolCostDetails } from "./lib/tool-cost";
 
 const ENDPOINT = "https://api.parallel.ai/v1beta/search";
 const CURL_TIMEOUT_SECS = 30;
 const DEFAULT_MAX_RESULTS = 10;
+
+/** per-result excerpts for collapsed display — first 5 visual lines */
+const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
 
 interface SearchResult {
 	url: string;
@@ -283,10 +286,10 @@ export function createWebSearchTool(): ToolDefinition {
 				const text = result.content?.[0];
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
-			return boxRenderer(
+			return boxRendererWindowed(
 				() => sections,
 				{
-					collapsed: { maxSections: 3, maxBlocks: 1 },
+					collapsed: { maxSections: 3, excerpts: COLLAPSED_EXCERPTS },
 					expanded: {},
 				},
 			);

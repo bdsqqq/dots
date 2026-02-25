@@ -21,7 +21,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { headTail } from "./lib/output-buffer";
-import { formatBoxes, osc8Link, type BoxSection, type BoxLine } from "./lib/box-format";
+import { boxRendererWindowed, osc8Link, type BoxSection, type BoxLine, type Excerpt } from "./lib/box-format";
 
 const MAX_TOTAL_MATCHES = 100;
 const MAX_COLLECT_MATCHES = 200;
@@ -30,8 +30,8 @@ const MAX_LINE_CHARS = 200;
 const RG_CONTEXT_LINES = 1;
 /** max files shown in collapsed display */
 const COLLAPSED_MAX_FILES = 3;
-/** max match groups per file in collapsed display */
-const COLLAPSED_MAX_BLOCKS = 1;
+/** per-block excerpts for collapsed display — show first 5 visual lines */
+const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
 
 function truncateLine(line: string): string {
 	if (line.length <= MAX_LINE_CHARS) return line;
@@ -423,7 +423,7 @@ export function createGrepTool(): ToolDefinition {
 			});
 		},
 
-		renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const fileGroups: GrepFile[] | undefined = result.details?.fileGroups;
 			const notices: string[] = result.details?.notices ?? [];
 			const basePath: string | undefined = result.details?.searchPath;
@@ -445,34 +445,14 @@ export function createGrepTool(): ToolDefinition {
 				}
 			}
 
-			let cachedWidth: number | undefined;
-			let cachedExpanded: boolean | undefined;
-			let cachedLines: string[] | undefined;
-
-			return {
-				render(width: number): string[] {
-					if (cachedLines !== undefined && cachedExpanded === expanded && cachedWidth === width) {
-						return cachedLines;
-					}
-					const visual = formatBoxes(
-						sections,
-						expanded
-							? {}
-							: { maxSections: COLLAPSED_MAX_FILES, maxBlocks: COLLAPSED_MAX_BLOCKS },
-						notices,
-						width,
-					);
-					cachedLines = visual.split("\n");
-					cachedExpanded = expanded;
-					cachedWidth = width;
-					return cachedLines;
+			return boxRendererWindowed(
+				() => sections,
+				{
+					collapsed: { maxSections: COLLAPSED_MAX_FILES, excerpts: COLLAPSED_EXCERPTS },
+					expanded: {},
 				},
-				invalidate() {
-					cachedLines = undefined;
-					cachedExpanded = undefined;
-					cachedWidth = undefined;
-				},
-			};
+				notices.length > 0 ? notices : undefined,
+			);
 		},
 	};
 }
