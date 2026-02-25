@@ -99,8 +99,8 @@ export interface BoxBlock {
 }
 
 export interface BoxSection {
-	/** text inside ╭─[...] */
-	header: string;
+	/** text inside ╭─[...]. omit for headless boxes (no opening line). */
+	header?: string;
 	/** contiguous blocks. gaps between blocks show · elision marker. */
 	blocks: BoxBlock[];
 }
@@ -210,8 +210,10 @@ export function formatBoxesWindowed(
 
 		if (si > 0) out.push("");
 
-		// header
-		out.push(clamp(`${DIM}╭─[${RST}${section.header}${DIM}]${RST}`));
+		// header (omitted for headless sections)
+		if (section.header != null) {
+			out.push(clamp(`${DIM}╭─[${RST}${section.header}${DIM}]${RST}`));
+		}
 
 		let anyBlockTruncated = false;
 
@@ -281,9 +283,9 @@ export function formatBoxesWindowed(
  * convenience: wrap a single text block in a box section with no gutter.
  * all lines get highlight=true (base color) by default.
  */
-export function textSection(header: string, text: string, dim = false): BoxSection {
+export function textSection(header: string | undefined, text: string, dim = false): BoxSection {
 	return {
-		header,
+		...(header != null && { header }),
 		blocks: [{
 			lines: text.split("\n").map((line) => ({
 				text: line,

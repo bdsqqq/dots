@@ -50,9 +50,8 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
 		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
 			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
-			const header = result.details?.header ?? "output";
 			return boxRendererWindowed(
-				() => [textSection(header, content.text)],
+				() => [textSection(undefined, content.text)],
 				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
 			);
 		},
