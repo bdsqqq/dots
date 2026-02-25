@@ -24,7 +24,13 @@ import {
 	addLineNumbers,
 	truncate,
 } from "./lib/github";
-import { osc8Link } from "./lib/box-format";
+import { boxRendererWindowed, textSection, osc8Link, type BoxSection, type BoxLine, type Excerpt } from "./lib/box-format";
+
+/** collapsed: head 3 + tail 5 = 8 visual lines */
+const COLLAPSED_EXCERPTS: Excerpt[] = [
+	{ focus: "head" as const, context: 3 },
+	{ focus: "tail" as const, context: 5 },
+];
 
 // --- read_github ---
 
@@ -75,10 +81,10 @@ export function createReadGithubTool(): ToolDefinition {
 					const startIdx = Math.max(0, start - 1);
 					const endIdx = Math.min(lines.length, end);
 					content = lines.slice(startIdx, endIdx).join("\n");
-					return { content: [{ type: "text" as const, text: addLineNumbers(content, start) }] };
+					return { content: [{ type: "text" as const, text: addLineNumbers(content, start) }], details: { header: `${repoSlug(ref)}/${params.path}` } };
 				}
 
-				return { content: [{ type: "text" as const, text: truncate(addLineNumbers(content), 64_000) }] };
+				return { content: [{ type: "text" as const, text: truncate(addLineNumbers(content), 64_000) }], details: { header: `${repoSlug(ref)}/${params.path}` } };
 			} catch (e: any) {
 				return { content: [{ type: "text" as const, text: e.message }], isError: true };
 			}
@@ -96,10 +102,23 @@ export function createReadGithubTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
-			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
+			const header = result.details?.header ?? "output";
+
+			// parse numbered lines into BoxLine[] with gutters
+			const parsed: BoxLine[] = content.text.split("\n").map((line: string) => {
+				const m = line.match(/^(\s*\d+): (.*)$/);
+				if (m) return { gutter: m[1].trim(), text: m[2], highlight: true };
+				return { text: line, highlight: true };
+			});
+
+			const section: BoxSection = { header, blocks: [{ lines: parsed }] };
+			return boxRendererWindowed(
+				() => [section],
+				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
+			);
 		},
 	};
 }
@@ -165,7 +184,7 @@ export function createSearchGithubTool(): ToolDefinition {
 					results.push("");
 				}
 
-				return { content: [{ type: "text" as const, text: truncate(results.join("\n"), 64_000) }] };
+				return { content: [{ type: "text" as const, text: truncate(results.join("\n"), 64_000) }], details: { header: `/${params.pattern}/ in ${repoSlug(ref)}` } };
 			} catch (e: any) {
 				return { content: [{ type: "text" as const, text: e.message }], isError: true };
 			}
@@ -181,10 +200,14 @@ export function createSearchGithubTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
-			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
+			const header = result.details?.header ?? "output";
+			return boxRendererWindowed(
+				() => [textSection(header, content.text)],
+				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
+			);
 		},
 	};
 }
@@ -228,7 +251,7 @@ export function createListDirectoryGithubTool(): ToolDefinition {
 					return `${item.name}${suffix}${size}`;
 				});
 
-				return { content: [{ type: "text" as const, text: entries.join("\n") }] };
+				return { content: [{ type: "text" as const, text: entries.join("\n") }], details: { header: `${repoSlug(ref)}/${params.path}` } };
 			} catch (e: any) {
 				return { content: [{ type: "text" as const, text: e.message }], isError: true };
 			}
@@ -246,10 +269,14 @@ export function createListDirectoryGithubTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
-			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
+			const header = result.details?.header ?? "output";
+			return boxRendererWindowed(
+				() => [textSection(header, content.text)],
+				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
+			);
 		},
 	};
 }
@@ -313,7 +340,7 @@ export function createListRepositoriesTool(): ToolDefinition {
 					lines.push(`${repo.html_url}\n`);
 				}
 
-				return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+				return { content: [{ type: "text" as const, text: lines.join("\n") }], details: { header: queryParts.join(" ") } };
 			} catch (e: any) {
 				return { content: [{ type: "text" as const, text: e.message }], isError: true };
 			}
@@ -327,10 +354,14 @@ export function createListRepositoriesTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
-			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
+			const header = result.details?.header ?? "output";
+			return boxRendererWindowed(
+				() => [textSection(header, content.text)],
+				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
+			);
 		},
 	};
 }
@@ -388,7 +419,7 @@ export function createGlobGithubTool(): ToolDefinition {
 					...sliced,
 				];
 
-				return { content: [{ type: "text" as const, text: output.join("\n") }] };
+				return { content: [{ type: "text" as const, text: output.join("\n") }], details: { header: `${params.filePattern} in ${repoSlug(ref)}` } };
 			} catch (e: any) {
 				return { content: [{ type: "text" as const, text: e.message }], isError: true };
 			}
@@ -404,10 +435,14 @@ export function createGlobGithubTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
-			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
+			const header = result.details?.header ?? "output";
+			return boxRendererWindowed(
+				() => [textSection(header, content.text)],
+				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
+			);
 		},
 	};
 }
@@ -477,7 +512,7 @@ export function createCommitSearchTool(): ToolDefinition {
 					lines.push(`${sha} ${date} (${author}) ${msg}`);
 				}
 
-				return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+				return { content: [{ type: "text" as const, text: lines.join("\n") }], details: { header: repoSlug(ref) } };
 			} catch (e: any) {
 				return { content: [{ type: "text" as const, text: e.message }], isError: true };
 			}
@@ -493,10 +528,14 @@ export function createCommitSearchTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
-			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
+			const header = result.details?.header ?? "output";
+			return boxRendererWindowed(
+				() => [textSection(header, content.text)],
+				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
+			);
 		},
 	};
 }
@@ -553,7 +592,7 @@ export function createDiffTool(): ToolDefinition {
 					}
 				}
 
-				return { content: [{ type: "text" as const, text: truncate(lines.join("\n"), 64_000) }] };
+				return { content: [{ type: "text" as const, text: truncate(lines.join("\n"), 64_000) }], details: { header: `${params.base}...${params.head}` } };
 			} catch (e: any) {
 				return { content: [{ type: "text" as const, text: e.message }], isError: true };
 			}
@@ -569,10 +608,14 @@ export function createDiffTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
-			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
+			const header = result.details?.header ?? "output";
+			return boxRendererWindowed(
+				() => [textSection(header, content.text)],
+				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
+			);
 		},
 	};
 }

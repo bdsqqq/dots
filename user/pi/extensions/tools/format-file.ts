@@ -16,7 +16,12 @@ import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
 import { resolveWithVariants } from "./read";
-import { osc8Link } from "./lib/box-format";
+import { boxRendererWindowed, textSection, osc8Link, type Excerpt } from "./lib/box-format";
+
+const COLLAPSED_EXCERPTS: Excerpt[] = [
+	{ focus: "head" as const, context: 3 },
+	{ focus: "tail" as const, context: 5 },
+];
 
 type Formatter = { name: string; args: (file: string) => string[] };
 
@@ -62,10 +67,14 @@ export function createFormatFileTool(): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
-			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
+			const header = result.details?.header ?? "output";
+			return boxRendererWindowed(
+				() => [textSection(header, content.text)],
+				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
+			);
 		},
 
 		async execute(toolCallId, params, _signal, _onUpdate, ctx) {
@@ -118,6 +127,7 @@ export function createFormatFileTool(): ToolDefinition {
 								text: `${path.basename(resolved)} is already formatted.`,
 							},
 						],
+						details: { header: resolved },
 					} as any;
 				}
 
@@ -140,6 +150,7 @@ export function createFormatFileTool(): ToolDefinition {
 							text: `formatted ${path.basename(resolved)} with ${formatter.name}.\n\n${diff}`,
 						},
 					],
+					details: { header: resolved },
 				} as any;
 			});
 		},

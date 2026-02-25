@@ -14,7 +14,12 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { resolveWithVariants, listDirectory, type ReadLimits } from "./read";
-import { osc8Link } from "./lib/box-format";
+import { boxRendererWindowed, textSection, osc8Link, type Excerpt } from "./lib/box-format";
+
+const COLLAPSED_EXCERPTS: Excerpt[] = [
+	{ focus: "head" as const, context: 3 },
+	{ focus: "tail" as const, context: 5 },
+];
 
 export function createLsTool(limits: ReadLimits): ToolDefinition {
 	return {
@@ -42,10 +47,14 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
 			);
 		},
 
-		renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
 			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text(theme.fg("dim", "(no output)"), 0, 0);
-			return new Text(theme.fg("toolOutput", content.text), 0, 0);
+			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
+			const header = result.details?.header ?? "output";
+			return boxRendererWindowed(
+				() => [textSection(header, content.text)],
+				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
+			);
 		},
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -71,7 +80,7 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
 
 				text += "\n\n(note: prefer the read tool for directory listing — it handles both files and directories.)";
 
-				return { content: [{ type: "text" as const, text }] } as any;
+				return { content: [{ type: "text" as const, text }], details: { header: resolved } } as any;
 			} catch (err: any) {
 				return {
 					content: [{ type: "text" as const, text: err.message }],
