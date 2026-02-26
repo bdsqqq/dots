@@ -24,5 +24,6 @@
   "steeringMode": "all",
   "followUpMode": "all",
   "collapseChangelog": true,
-  "doubleEscapeAction": "tree"
+  "doubleEscapeAction": "tree",
+  "quietStartup": true
 }
