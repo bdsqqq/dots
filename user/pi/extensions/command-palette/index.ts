@@ -49,7 +49,7 @@ export default function commandPaletteExtension(pi: ExtensionAPI) {
     }
   }
 
-  pi.registerShortcut("ctrl+;", {
+  pi.registerShortcut("ctrl+shift+p", {
     description: "Open command palette",
     handler: async (ctx) => {
       await openPalette(ctx);
