@@ -12,7 +12,7 @@
 import * as os from "node:os";
 import type { Message } from "@mariozechner/pi-ai";
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import { Container, Markdown, Text } from "@mariozechner/pi-tui";
+import { Container, Markdown, Text, TruncatedText } from "@mariozechner/pi-tui";
 import type { UsageStats } from "./pi-spawn";
 import type { ToolCostDetails } from "./tool-cost";
 
@@ -131,15 +131,18 @@ function toolLabel(name: string): string {
 function toolArgSummary(toolName: string, args: Record<string, unknown>): string {
 	switch (toolName) {
 		case "bash": {
-			const command = (args.command as string) || "...";
-			return command.length > 60 ? `${command.slice(0, 60)}...` : command;
+			const command = (args.cmd || args.command || "...") as string;
+			return command.split("\n")[0];
 		}
 		case "read": {
 			const rawPath = (args.file_path || args.path || "...") as string;
 			let text = shortenPath(rawPath);
+			const readRange = args.read_range as [number, number] | undefined;
 			const offset = args.offset as number | undefined;
 			const limit = args.limit as number | undefined;
-			if (offset !== undefined || limit !== undefined) {
+			if (readRange) {
+				text += `:${readRange[0]}-${readRange[1]}`;
+			} else if (offset !== undefined || limit !== undefined) {
 				const startLine = offset ?? 1;
 				const endLine = limit !== undefined ? startLine + limit - 1 : "";
 				text += `:${startLine}${endLine ? `-${endLine}` : ""}`;
@@ -159,7 +162,7 @@ function toolArgSummary(toolName: string, args: Record<string, unknown>): string
 		case "ls":
 			return shortenPath((args.path || ".") as string);
 		case "find": {
-			const pattern = (args.pattern || "*") as string;
+			const pattern = (args.filePattern || args.pattern || "*") as string;
 			const rawPath = (args.path || ".") as string;
 			return `${pattern} in ${shortenPath(rawPath)}`;
 		}
@@ -168,10 +171,8 @@ function toolArgSummary(toolName: string, args: Record<string, unknown>): string
 			const rawPath = (args.path || ".") as string;
 			return `/${pattern}/ in ${shortenPath(rawPath)}`;
 		}
-		default: {
-			const argsStr = JSON.stringify(args);
-			return argsStr.length > 50 ? `${argsStr.slice(0, 50)}...` : argsStr;
-		}
+		default:
+			return JSON.stringify(args);
 	}
 }
 
@@ -254,7 +255,7 @@ export function renderAgentTree(
 			if (child.kind === "text") {
 				container.addChild(new Text(connector + fg("dim", child.content), 0, 0));
 			} else if (child.kind === "tool") {
-				container.addChild(new Text(connector + renderToolLine(child.item, fg), 0, 0));
+				container.addChild(new TruncatedText(connector + renderToolLine(child.item, fg), 0, 0));
 			} else if (child.kind === "summary") {
 				container.addChild(new Text(connector + fg("muted", "Summary:"), 0, 0));
 				const indent = isLast ? "    " : CONT;
