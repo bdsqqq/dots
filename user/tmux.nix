@@ -328,7 +328,10 @@ in
         set -g automatic-rename off
         
         # extended keys for shift+enter, ctrl+shift combos etc
-        set -g extended-keys on
+        # "always" sends CSI u unconditionally — needed because pi uses kitty
+        # keyboard protocol (which tmux doesn't understand) rather than
+        # modifyOtherKeys, so "on" never activates.
+        set -g extended-keys always
         set -g extended-keys-format csi-u
         
         # modern terminal features for ghostty
