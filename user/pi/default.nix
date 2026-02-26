@@ -36,6 +36,12 @@ in
     # system-prompt — injects interpolated amp system prompt via before_agent_start
     home.file.".pi/agent/extensions/system-prompt.ts".source = ./extensions/system-prompt.ts;
 
+    # command-palette — ctrl+o overlay for fuzzy command search
+    home.file.".pi/agent/extensions/command-palette" = {
+      source = ./extensions/command-palette;
+      recursive = true;
+    };
+
     # tools extension — custom tool implementations + shared infrastructure (mutex, AGENTS.md, undo tracking)
     home.file.".pi/agent/extensions/tools" = {
       source = ./extensions/tools;
