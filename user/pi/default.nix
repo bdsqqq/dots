@@ -17,6 +17,7 @@ in
     home.file.".pi/agent/auth.json".source = config.lib.file.mkOutOfStoreSymlink "/run/secrets/rendered/pi-auth.json";
     home.file.".pi/agent/settings.json".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/settings.json";
     home.file.".pi/agent/permissions.json".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/permissions.json";
+    home.file.".pi/agent/keybindings.json".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/keybindings.json";
 
     # editor extension — box-drawing borders with composable label slots via EventBus
     home.file.".pi/agent/extensions/editor" = {
@@ -36,7 +37,7 @@ in
     # system-prompt — injects interpolated amp system prompt via before_agent_start
     home.file.".pi/agent/extensions/system-prompt.ts".source = ./extensions/system-prompt.ts;
 
-    # command-palette — ctrl+o overlay for fuzzy command search
+    # command-palette — ctrl+shift+p overlay for fuzzy command search
     home.file.".pi/agent/extensions/command-palette" = {
       source = ./extensions/command-palette;
       recursive = true;
