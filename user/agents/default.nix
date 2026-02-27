@@ -1,9 +1,17 @@
 { lib, inputs, hostSystem ? null, config ? {}, ... }:
 {
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
+    # home.file + mkOutOfStoreSymlink creates a 3-hop chain through /nix/store/
+    # that iOS syncthing can't resolve. home.activation + ln -sf bypasses
+    # home-manager's indirection to create a direct symlink.
+    # (same pattern as bun.nix:33 for the global manifest)
+    home.activation.commonplaceAgents = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      ln -sf "${config.home.homeDirectory}/commonplace/01_files/nix/config/global-agents.md" \
+             "${config.home.homeDirectory}/commonplace/AGENTS.md"
+    '';
+
     home.file = {
-      # global AGENTS.md symlinks (config/global-agents.md → every tool that reads it)
-      "commonplace/AGENTS.md".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/global-agents.md";
+      # global AGENTS.md symlinks (outside sync folder — symlinks fine)
       ".config/amp/AGENTS.md".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/global-agents.md";
       ".config/opencode/AGENTS.md".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/global-agents.md";
       ".claude/CLAUDE.md".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/global-agents.md";

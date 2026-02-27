@@ -66,19 +66,25 @@
         VISUAL = "nvim";
       };
 
-      # directory scaffolding and global ripgrep ignore
+      # global ripgrep/git ignore (outside sync folder — symlinks fine)
       home.file = {
-        "commonplace/00_inbox/.keep".text = "";
-        "commonplace/01_files/.keep".text = "";
-        "commonplace/02_temp/.keep".text = "";
-
         ".rgignore".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/rgignore";
         ".gitignore_global".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/ignore-common";
-
-        # syncthing ignore (symlinked so all nix-managed devices share the same config)
-        # comments stripped - .stignore uses different syntax than other ignore files
-        "commonplace/.stignore".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/stignore";
       };
+
+      # home.file creates symlinks through /nix/store/ — iOS syncthing can't
+      # resolve those. home.activation bypasses the indirection.
+      # (same pattern as bun.nix:33)
+      home.activation.commonplaceScaffold = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        mkdir -p "${config.home.homeDirectory}/commonplace/00_inbox" \
+                 "${config.home.homeDirectory}/commonplace/01_files" \
+                 "${config.home.homeDirectory}/commonplace/02_temp"
+        touch "${config.home.homeDirectory}/commonplace/00_inbox/.keep" \
+              "${config.home.homeDirectory}/commonplace/01_files/.keep" \
+              "${config.home.homeDirectory}/commonplace/02_temp/.keep"
+        ln -sf "${config.home.homeDirectory}/commonplace/01_files/nix/config/stignore" \
+               "${config.home.homeDirectory}/commonplace/.stignore"
+      '';
 
       programs = {
         zsh = {
