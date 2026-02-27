@@ -2,6 +2,8 @@
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   homeDir = if isDarwin then "/Users/bdsqqq" else "/home/bdsqqq";
+  # repo path for mkOutOfStoreSymlink — edits take effect immediately without rebuild
+  repoExtensions = "${homeDir}/commonplace/01_files/nix/user/pi/extensions";
 in
 {
   sops.templates."pi-auth.json" = {
@@ -19,35 +21,23 @@ in
     home.file.".pi/agent/permissions.json".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/permissions.json";
     home.file.".pi/agent/keybindings.json".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/keybindings.json";
 
-    # editor extension — box-drawing borders with composable label slots via EventBus
-    home.file.".pi/agent/extensions/editor" = {
-      source = ./extensions/editor;
-      recursive = true;
-    };
+    # extensions — symlinked to repo working tree so edits are instant (no rebuild needed)
+    home.file.".pi/agent/extensions/editor".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/editor";
+    home.file.".pi/agent/extensions/handoff.ts".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/handoff.ts";
+    home.file.".pi/agent/extensions/session-name.ts".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/session-name.ts";
+    home.file.".pi/agent/extensions/tool-harness.ts".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/tool-harness.ts";
+    home.file.".pi/agent/extensions/system-prompt.ts".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/system-prompt.ts";
+    home.file.".pi/agent/extensions/command-palette".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/command-palette";
+    home.file.".pi/agent/extensions/tools".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/tools";
 
-    # handoff extension — replaces compaction with LLM-driven context transfer
-    home.file.".pi/agent/extensions/handoff.ts".source = ./extensions/handoff.ts;
-
-    # session-name extension — auto-generates session titles from first user message
-    home.file.".pi/agent/extensions/session-name.ts".source = ./extensions/session-name.ts;
-
-    # tool-harness — gates extension tools via PI_INCLUDE_TOOLS env var
-    home.file.".pi/agent/extensions/tool-harness.ts".source = ./extensions/tool-harness.ts;
-
-    # system-prompt — injects interpolated amp system prompt via before_agent_start
-    home.file.".pi/agent/extensions/system-prompt.ts".source = ./extensions/system-prompt.ts;
-
-    # command-palette — ctrl+shift+p overlay for fuzzy command search
-    home.file.".pi/agent/extensions/command-palette" = {
-      source = ./extensions/command-palette;
-      recursive = true;
-    };
-
-    # tools extension — custom tool implementations + shared infrastructure (mutex, AGENTS.md, undo tracking)
-    home.file.".pi/agent/extensions/tools" = {
-      source = ./extensions/tools;
-      recursive = true;
-    };
+    # install extension deps declaratively (cheerio, diff, etc.)
+    home.activation.installPiExtensionDeps = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      TOOLS_DIR="${repoExtensions}/tools"
+      if [ -f "$TOOLS_DIR/package.json" ]; then
+        "${pkgs.bun}/bin/bun" install --cwd "$TOOLS_DIR" --frozen-lockfile 2>/dev/null \
+          || "${pkgs.bun}/bin/bun" install --cwd "$TOOLS_DIR" || true
+      fi
+    '';
 
     # handoff skill — teaches the agent about context management via handoff
     home.file.".pi/agent/skills/handoff/SKILL.md".source = ./skills/handoff/SKILL.md;
