@@ -128,6 +128,12 @@ theme = light:lauds-light,dark:compline-dark
 
 keybind = alt+backspace=text:\x1b\x7f
 
+# ctrl+shift+p: send CSI u directly to the pty because ghostty's
+# modifyOtherKeys negotiation with tmux doesn't reliably enable —
+# ghostty stays in legacy mode and sends 0x10 for both ctrl+p and
+# ctrl+shift+p. text: action writes raw bytes to the child process.
+keybind = ctrl+shift+p=text:\x1b[112;6u
+
 # unbind ctrl+tab/digits so tmux can receive them
 keybind = ctrl+tab=unbind
 keybind = ctrl+shift+tab=unbind
