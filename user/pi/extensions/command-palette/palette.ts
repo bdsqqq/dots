@@ -131,15 +131,14 @@ export class StackPalette implements Component, Focusable {
     const row = (content: string) =>
       dim("│") + pad(content, innerW) + dim("│");
 
-    // ── top border with centered title ──
-    const titleText = ` ${view.title} `;
+    // ── top border with left-aligned title ──
+    const titleText = `[${view.title}]`;
     const titleLen = visibleWidth(titleText);
-    const leftDash = Math.floor((innerW - titleLen) / 2);
-    const rightDash = innerW - leftDash - titleLen;
+    const rightDash = Math.max(0, innerW - 1 - titleLen);
     lines.push(
-      dim("┌" + "─".repeat(leftDash)) +
+      dim("╭─") +
       dim(titleText) +
-      dim("─".repeat(rightDash) + "┐"),
+      dim("─".repeat(rightDash) + "╮"),
     );
 
     // ── search ──
@@ -227,9 +226,9 @@ export class StackPalette implements Component, Focusable {
     const bLeftDash = Math.floor((innerW - footerLen) / 2);
     const bRightDash = innerW - bLeftDash - footerLen;
     lines.push(
-      dim("└" + "─".repeat(Math.max(0, bLeftDash))) +
+      dim("╰" + "─".repeat(Math.max(0, bLeftDash))) +
       dim(footerContent) +
-      dim("─".repeat(Math.max(0, bRightDash)) + "┘"),
+      dim("─".repeat(Math.max(0, bRightDash)) + "╯"),
     );
 
     this.cachedLines = lines;
