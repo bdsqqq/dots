@@ -81,7 +81,7 @@
                  "${config.home.homeDirectory}/commonplace/02_temp"
         touch "${config.home.homeDirectory}/commonplace/00_inbox/.keep" \
               "${config.home.homeDirectory}/commonplace/01_files/.keep" \
-              "${config.home.homeDirectory}/commonplace/02_temp/.keep"
+              "${config.home.homeDirectory}/commonplace/02_temp/.keep" || true
         ln -sf "${config.home.homeDirectory}/commonplace/01_files/nix/config/stignore" \
                "${config.home.homeDirectory}/commonplace/.stignore"
       '';
