@@ -131,15 +131,20 @@ export class StackPalette implements Component, Focusable {
     const row = (content: string) =>
       dim("│") + pad(content, innerW) + dim("│");
 
-    // ── top border with left-aligned title ──
-    const titleText = `[${view.title}]`;
-    const titleLen = visibleWidth(titleText);
-    const rightDash = Math.max(0, innerW - 1 - titleLen);
-    lines.push(
-      dim("╭─") +
-      dim(titleText) +
-      dim("─".repeat(rightDash) + "╮"),
-    );
+    // ── top border, title only for sub-views ──
+    const showTitle = this.stack.length > 1;
+    if (showTitle) {
+      const titleText = `[${view.title}]`;
+      const titleLen = visibleWidth(titleText);
+      const rightDash = Math.max(0, innerW - 1 - titleLen);
+      lines.push(
+        dim("╭─") +
+        dim(titleText) +
+        dim("─".repeat(rightDash) + "╮"),
+      );
+    } else {
+      lines.push(dim("╭" + hLine + "╮"));
+    }
 
     // ── search ──
     const searchable = view.searchable !== false;
