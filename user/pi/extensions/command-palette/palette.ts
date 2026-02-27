@@ -120,6 +120,7 @@ export class StackPalette implements Component, Focusable {
     const maxW = Math.min(width, 72);
     const innerW = maxW - 2;
     const lines: string[] = [];
+    const dim = (s: string) => th.fg("dim", s);
 
     const pad = (s: string, len: number) => {
       const vis = visibleWidth(s);
@@ -128,31 +129,33 @@ export class StackPalette implements Component, Focusable {
 
     const hLine = "─".repeat(innerW);
     const row = (content: string) =>
-      th.fg("border", "│") + pad(content, innerW) + th.fg("border", "│");
+      dim("│") + pad(content, innerW) + dim("│");
 
-    // ── header ──
-    lines.push(th.fg("border", `╭${hLine}╮`));
-
+    // ── top border with centered title ──
     const titleText = ` ${view.title} `;
-    const titlePadBefore = Math.floor((innerW - visibleWidth(titleText)) / 2);
-    const centeredTitle = " ".repeat(Math.max(0, titlePadBefore)) + th.bold(titleText);
-    lines.push(row(centeredTitle));
+    const titleLen = visibleWidth(titleText);
+    const leftDash = Math.floor((innerW - titleLen) / 2);
+    const rightDash = innerW - leftDash - titleLen;
+    lines.push(
+      dim("┌" + "─".repeat(leftDash)) +
+      dim(titleText) +
+      dim("─".repeat(rightDash) + "┐"),
+    );
 
     // ── search ──
     const searchable = view.searchable !== false;
     if (searchable) {
-      const prompt = th.fg("dim", " ❯ ");
+      const prompt = dim(" > ");
       const searchDisplay = th.fg("text", this.searchText);
-      const cursor = this._focused ? CURSOR_MARKER + th.fg("accent", "▏") : th.fg("dim", "▏");
-      const placeholder = this.searchText.length === 0 ? th.fg("dim", "type to search…") : "";
+      const cursor = this._focused ? CURSOR_MARKER + th.fg("accent", "▏") : dim("▏");
+      const placeholder = this.searchText.length === 0 ? dim("type to search…") : "";
       lines.push(row(prompt + searchDisplay + cursor + placeholder));
+      lines.push(row(""));
     }
-
-    lines.push(th.fg("border", `├${hLine}┤`));
 
     // ── items ──
     if (this.filtered.length === 0) {
-      lines.push(row(th.fg("muted", "  no matches")));
+      lines.push(row(dim("  no matches")));
     } else {
       const visibleEnd = Math.min(this.scrollOffset + MAX_VISIBLE, this.filtered.length);
 
@@ -162,70 +165,72 @@ export class StackPalette implements Component, Focusable {
       }, 0);
 
       if (this.scrollOffset > 0) {
-        lines.push(row(th.fg("dim", `  ↑ ${this.scrollOffset} more`)));
+        lines.push(row(dim(`  ↑ ${this.scrollOffset} more`)));
       }
 
       for (let i = this.scrollOffset; i < visibleEnd; i++) {
         const item = this.filtered[i];
         const isHl = i === this.highlightedIndex;
-        const pointer = isHl ? th.fg("accent", "❯ ") : "  ";
 
         // right-aligned category badge
         let badge = "";
         if (maxBadgeW > 0) {
           const cat = item.category ?? "";
           const padLen = maxBadgeW - visibleWidth(cat);
-          badge = " ".repeat(padLen) + th.fg("dim", cat) + "  ";
+          badge = " ".repeat(padLen) + dim(cat) + "  ";
         }
 
-        const label = isHl ? th.fg("accent", th.bold(item.label)) : th.fg("text", item.label);
-        const delegateMarker = item.delegate ? th.fg("dim", " *") : "";
+        const label = isHl ? th.bold(item.label) : th.fg("text", item.label);
+        const delegateMarker = item.delegate ? dim(" *") : "";
         let desc = "";
         if (item.description) {
-          desc = "  " + th.fg("dim", item.description);
+          desc = "  " + dim(item.description);
         }
         let shortcut = "";
         if (item.shortcut) {
           shortcut = "  " + th.fg("muted", item.shortcut);
         }
 
-        let line = `${pointer}${badge}${label}${delegateMarker}${desc}${shortcut}`;
+        let line = `   ${badge}${label}${delegateMarker}${desc}${shortcut}`;
         line = truncateToWidth(line, innerW);
         if (isHl) {
           line = th.bg("selectedBg", pad(line, innerW));
         }
 
-        lines.push(
-          isHl
-            ? th.fg("border", "│") + line + th.fg("border", "│")
-            : row(line),
-        );
+        lines.push(dim("│") + (isHl ? line : pad(line, innerW)) + dim("│"));
       }
 
       const remaining = this.filtered.length - visibleEnd;
       if (remaining > 0) {
-        lines.push(row(th.fg("dim", `  ↓ ${remaining} more`)));
+        lines.push(row(dim(`  ↓ ${remaining} more`)));
       }
     }
 
-    // ── footer ──
-    lines.push(th.fg("border", `├${hLine}┤`));
-
+    // ── bottom border with footer hints ──
     const escHint = this.stack.length > 1 ? "esc back" : "esc close";
     const hasDelegates = this.filtered.some((item) => item.delegate);
-    let footerLeft = ` ↑↓ navigate • enter select • ${escHint}`;
-    const footerRight = hasDelegates ? "* opens native ui " : "";
+    const footerLeft = `↑↓ navigate • enter select • ${escHint}`;
+    const footerRight = hasDelegates ? "* opens native ui" : "";
 
-    let footer: string;
+    let footerContent: string;
     if (footerRight) {
-      const gap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(footerRight));
-      footer = th.fg("dim", footerLeft + " ".repeat(gap) + footerRight);
+      const gap = Math.max(1, innerW - 2 - visibleWidth(footerLeft) - visibleWidth(footerRight));
+      footerContent = ` ${footerLeft}${" ".repeat(gap)}${footerRight} `;
     } else {
-      footer = th.fg("dim", footerLeft);
+      const totalPad = innerW - visibleWidth(footerLeft);
+      const leftPad = Math.floor(totalPad / 2);
+      footerContent = " ".repeat(leftPad) + footerLeft + " ".repeat(totalPad - leftPad);
     }
 
-    lines.push(row(truncateToWidth(footer, innerW)));
-    lines.push(th.fg("border", `╰${hLine}╯`));
+    // embed footer in the bottom border line
+    const footerLen = visibleWidth(footerContent);
+    const bLeftDash = Math.floor((innerW - footerLen) / 2);
+    const bRightDash = innerW - bLeftDash - footerLen;
+    lines.push(
+      dim("└" + "─".repeat(Math.max(0, bLeftDash))) +
+      dim(footerContent) +
+      dim("─".repeat(Math.max(0, bRightDash)) + "┘"),
+    );
 
     this.cachedLines = lines;
     this.cachedWidth = width;
