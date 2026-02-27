@@ -22,23 +22,13 @@ in
     home.file.".pi/agent/keybindings.json".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/keybindings.json";
 
     # extensions — symlinked to repo working tree so edits are instant (no rebuild needed)
-    # force = true on dirs that previously used recursive nix-store copies
-    home.file.".pi/agent/extensions/editor" = {
-      source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/editor";
-      force = true;
-    };
+    home.file.".pi/agent/extensions/editor".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/editor";
     home.file.".pi/agent/extensions/handoff.ts".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/handoff.ts";
     home.file.".pi/agent/extensions/session-name.ts".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/session-name.ts";
     home.file.".pi/agent/extensions/tool-harness.ts".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/tool-harness.ts";
     home.file.".pi/agent/extensions/system-prompt.ts".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/system-prompt.ts";
-    home.file.".pi/agent/extensions/command-palette" = {
-      source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/command-palette";
-      force = true;
-    };
-    home.file.".pi/agent/extensions/tools" = {
-      source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/tools";
-      force = true;
-    };
+    home.file.".pi/agent/extensions/command-palette".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/command-palette";
+    home.file.".pi/agent/extensions/tools".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/tools";
 
     # install extension deps declaratively (cheerio, diff, etc.)
     home.activation.installPiExtensionDeps = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
