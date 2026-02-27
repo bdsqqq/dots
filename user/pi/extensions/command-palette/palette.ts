@@ -168,7 +168,7 @@ export class StackPalette implements Component, Focusable {
       for (let i = this.scrollOffset; i < visibleEnd; i++) {
         const item = this.filtered[i];
         const isHl = i === this.highlightedIndex;
-        const pointer = isHl ? th.fg("accent", "❯ ") : "  ";
+        const pointer = isHl ? th.fg("accent", "✓ ") : "  ";
 
         // right-aligned category badge
         let badge = "";
