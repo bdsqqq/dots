@@ -126,13 +126,7 @@ background-blur-radius = 8
 
 theme = light:lauds-light,dark:compline-dark
 
-keybind = shift+enter=text:\n
 keybind = alt+backspace=text:\x1b\x7f
-
-# ctrl+shift+p: send CSI u explicitly so tmux can distinguish from ctrl+p.
-# ghostty's fixterms/kitty negotiation with tmux doesn't preserve the
-# shift modifier, so both ctrl+p and ctrl+shift+p arrive as 0x10.
-keybind = ctrl+shift+p=csi:112;6u
 
 # unbind ctrl+tab/digits so tmux can receive them
 keybind = ctrl+tab=unbind
