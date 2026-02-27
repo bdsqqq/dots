@@ -335,13 +335,14 @@ in
         set -g extended-keys-format csi-u
         
         # modern terminal features for ghostty
-        # consolidated: all features ghostty supports in one entry
-        set -as terminal-features ',ghostty:RGB,extkeys,clipboard,hyperlinks,focus,sync,strikethrough,usstyle,overline,sixel'
+        # pattern must match #{client_termname} which is "xterm-ghostty"
+        # colon-separated = features for one terminal type
+        set -g terminal-features[3] 'xterm-ghostty:RGB:extkeys:clipboard:hyperlinks:focus:sync:strikethrough:usstyle:overline:sixel'
         
         # terminal overrides for modern terminals (ghostty, termius/xterm-256color)
         # Ss/Se: cursor shape, Smulx: undercurl, Setulc: underline color, RGB: truecolor
         set -ga terminal-overrides ',xterm*:Ss=\E[%p1%d q:Se=\E[ q:Smulx=\E[4::%p1%dm:Setulc=\E[58::2::%p1%{65536}%/%d::%p1%{256}%/%{255}%&%d::%p1%{255}%&%d%;m:RGB'
-        set -ga terminal-overrides ',ghostty*:Ss=\E[%p1%d q:Se=\E[ q:Smulx=\E[4::%p1%dm:Setulc=\E[58::2::%p1%{65536}%/%d::%p1%{256}%/%{255}%&%d::%p1%{255}%&%d%;m:RGB'
+        set -ga terminal-overrides ',xterm-ghostty*:Ss=\E[%p1%d q:Se=\E[ q:Smulx=\E[4::%p1%dm:Setulc=\E[58::2::%p1%{65536}%/%d::%p1%{256}%/%{255}%&%d::%p1%{255}%&%d%;m:RGB'
         
         # passthrough for image protocols, sixel, etc
         set -g allow-passthrough all
