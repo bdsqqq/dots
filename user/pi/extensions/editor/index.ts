@@ -15,6 +15,7 @@ import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@mariozechner
 import { CustomEditor, Theme, estimateTokens } from "@mariozechner/pi-coding-agent";
 import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
+import { boxBorderLR, boxRow } from "../tools/lib/box-chrome";
 import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/pi-ai";
@@ -43,12 +44,7 @@ interface RemoveLabelPayload {
 }
 
 const SEPARATOR = " · ";
-const CORNER_TL = "╭";
-const CORNER_TR = "╮";
-const CORNER_BL = "╰";
-const CORNER_BR = "╯";
 const HORIZONTAL = "─";
-const VERTICAL = "│";
 
 class LabeledEditor extends CustomEditor {
 	private labels: Map<string, Label> = new Map();
@@ -92,13 +88,11 @@ class LabeledEditor extends CustomEditor {
 	 * build a border line like: ╭─ left label ─────── right label ─╮
 	 *
 	 * inherits scroll indicator text from the original border line if present.
-	 * originalLine is the border super.render() produced — we check it for
-	 * scroll indicators (↑/↓) and preserve that text as a right-aligned label.
+	 * delegates chrome layout to boxBorderLR; caching stays here.
 	 */
 	private buildBorderLine(
 		outerWidth: number,
-		cornerLeft: string,
-		cornerRight: string,
+		corner: { left: string; right: string },
 		position: "top" | "bottom",
 		originalLine: string,
 	): string {
@@ -106,32 +100,22 @@ class LabeledEditor extends CustomEditor {
 		const rightText = this.getLabelsFor(position, "right");
 		const scrollIndicator = this.extractScrollIndicator(originalLine);
 
-		// combine right-side content
 		const rightParts = [rightText, scrollIndicator].filter(Boolean);
 		const rightCombined = rightParts.join(SEPARATOR);
 		const cacheKey = `${outerWidth}|${position}|${leftText}|${rightCombined}`;
 		const cached = this.borderCache[position];
 		if (cached?.key === cacheKey) return cached.line;
 
-		// layout: ╭─leftLabel────────rightLabel─╮
-		// always ─ after left corner and before right corner
-		const hasLeft = leftText.length > 0;
-		const hasRight = rightCombined.length > 0;
+		const chrome = { dim: (s: string) => this.dim(s) };
+		const innerWidth = outerWidth - 2; // strip corner characters
 
-		const leftLabelWidth = hasLeft ? visibleWidth(leftText) : 0;
-		const rightLabelWidth = hasRight ? visibleWidth(rightCombined) : 0;
-
-		// budget: outerWidth - 2 corners - 2 edge dashes (╭─...─╮)
-		const innerWidth = outerWidth - 4;
-		const fillWidth = innerWidth - leftLabelWidth - rightLabelWidth;
-
-		const line = fillWidth < 0
-			? this.dim(cornerLeft + HORIZONTAL.repeat(Math.max(0, outerWidth - 2)) + cornerRight)
-			: this.dim(cornerLeft + HORIZONTAL) +
-				(hasLeft ? leftText : "") +
-				this.dim(HORIZONTAL.repeat(fillWidth)) +
-				(hasRight ? rightCombined : "") +
-				this.dim(HORIZONTAL + cornerRight);
+		const line = boxBorderLR({
+			corner,
+			style: chrome,
+			innerWidth,
+			left: leftText ? { text: leftText, width: visibleWidth(leftText) } : undefined,
+			right: rightCombined ? { text: rightCombined, width: visibleWidth(rightCombined) } : undefined,
+		});
 
 		this.borderCache[position] = { key: cacheKey, line };
 		return line;
@@ -169,16 +153,18 @@ class LabeledEditor extends CustomEditor {
 		const bottomIdx = this.findBottomBorderIndex(lines);
 		const result: string[] = [];
 
+		const chrome = { dim: (s: string) => this.dim(s) };
+
 		// top border — replace line 0
-		result.push(this.buildBorderLine(width, CORNER_TL, CORNER_TR, "top", lines[0]));
+		result.push(this.buildBorderLine(width, { left: "╭", right: "╮" }, "top", lines[0]));
 
 		// content lines — wrap with dim │ side rails
 		for (let i = 1; i < bottomIdx; i++) {
-			result.push(this.dim(VERTICAL) + lines[i] + this.dim(VERTICAL));
+			result.push(boxRow({ variant: "closed", style: chrome, inner: lines[i] }));
 		}
 
 		// bottom border
-		result.push(this.buildBorderLine(width, CORNER_BL, CORNER_BR, "bottom", lines[bottomIdx]));
+		result.push(this.buildBorderLine(width, { left: "╰", right: "╯" }, "bottom", lines[bottomIdx]));
 
 		// autocomplete lines (if any) — pass through, offset to align with inner content
 		for (let i = bottomIdx + 1; i < lines.length; i++) {

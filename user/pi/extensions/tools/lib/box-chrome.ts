@@ -43,6 +43,41 @@ export function boxRow(args: {
     : style.dim("│ ") + inner;
 }
 
+/**
+ * Border line with left AND right labels, separated by ─ fill.
+ * Used by the editor for: ╭─ left ──── right ─╮ / ╰─ left ──── right ─╯
+ *
+ * Always renders a ─ after the left corner and before the right corner
+ * (the "edge dashes"), so labels never touch the corners directly.
+ * innerWidth is the space between the two corner characters.
+ */
+export function boxBorderLR(args: {
+  corner: { left: string; right: string };
+  style: BoxChromeStyle;
+  innerWidth: number;
+  left?: MeasuredText;
+  right?: MeasuredText;
+}): string {
+  const { corner, style, innerWidth, left, right } = args;
+  const leftW = left?.width ?? 0;
+  const rightW = right?.width ?? 0;
+
+  // budget: innerWidth minus 2 edge dashes minus label widths
+  const fill = innerWidth - 2 - leftW - rightW;
+  if (fill < 0) {
+    // overflow — plain dashed line
+    return style.dim(corner.left + "─".repeat(Math.max(0, innerWidth)) + corner.right);
+  }
+
+  return (
+    style.dim(corner.left + "─") +
+    (left ? left.text : "") +
+    style.dim("─".repeat(fill)) +
+    (right ? right.text : "") +
+    style.dim("─" + corner.right)
+  );
+}
+
 export function boxBottom(args: {
   variant: BoxChromeVariant;
   style: BoxChromeStyle;
