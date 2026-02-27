@@ -327,16 +327,33 @@ in
         set -g allow-rename on
         set -g automatic-rename off
         
-        # extended keys for shift+enter, ctrl+shift combos etc
-        # "always" sends CSI u unconditionally — needed because pi uses kitty
-        # keyboard protocol (which tmux doesn't understand) rather than
-        # modifyOtherKeys, so "on" never activates.
+        # --- extended keys ---
+        #
+        # "always" makes tmux send CSI u to inner apps unconditionally.
+        # this alone does NOT fix ctrl+shift combos — it only sets mode 1
+        # (MODE_KEYS_EXTENDED) which still sends ctrl+letter as legacy C0.
+        # mode 2 requires the inner app to request CSI > 4;2m, but pi uses
+        # kitty keyboard protocol which tmux doesn't understand.
+        #
+        # the actual fix for ctrl+shift is a ghostty text: keybind that
+        # writes the CSI u bytes directly. see ghostty.nix.
         set -g extended-keys always
         set -g extended-keys-format csi-u
         
-        # modern terminal features for ghostty
-        # pattern must match #{client_termname} which is "xterm-ghostty"
-        # colon-separated = features for one terminal type
+        # terminal features for ghostty
+        #
+        # pattern must match #{client_termname} — ghostty reports as
+        # "xterm-ghostty", NOT "ghostty". use fnmatch-compatible pattern.
+        #
+        # features are colon-separated (one terminal). comma-separated
+        # would create separate unassociated entries. use indexed set
+        # instead of "set -as" to prevent duplication on config reload.
+        #
+        # extkeys tells tmux the outer terminal supports modifyOtherKeys.
+        # tmux then sends CSI > 4;2m to ghostty at attach time. in practice
+        # ghostty doesn't reliably enter modifyOtherKeys mode from this
+        # (see ghostty.nix), but extkeys is still needed for tmux to accept
+        # CSI u sequences arriving via the text: workaround.
         set -g terminal-features[3] 'xterm-ghostty:RGB:extkeys:clipboard:hyperlinks:focus:sync:strikethrough:usstyle:overline:sixel'
         
         # terminal overrides for modern terminals (ghostty, termius/xterm-256color)
