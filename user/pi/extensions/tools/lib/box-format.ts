@@ -24,6 +24,7 @@
  */
 
 import { Text } from "@mariozechner/pi-tui";
+import { boxBottom, boxTop } from "./box-chrome";
 import { windowItems, type Excerpt } from "./show";
 
 const DIM = "\x1b[2m";
@@ -196,6 +197,8 @@ export function formatBoxesWindowed(
 	const clamp = (line: string): string =>
 		safeWidth != null ? truncateToWidth(line, safeWidth, "…") : line;
 
+	const chrome = { dim: (s: string) => `${DIM}${s}${RST}` };
+
 	for (let si = 0; si < shown.length; si++) {
 		const section = shown[si];
 
@@ -212,7 +215,11 @@ export function formatBoxesWindowed(
 
 		// header (omitted for headless sections)
 		if (section.header != null) {
-			out.push(clamp(`${DIM}╭─[${RST}${section.header}${DIM}]${RST}`));
+			out.push(clamp(boxTop({
+				variant: "open",
+				style: chrome,
+				header: { text: section.header, width: section.header.replace(/\x1b\[[0-9;]*m/g, "").length },
+			})));
 		}
 
 		let anyBlockTruncated = false;
@@ -262,7 +269,7 @@ export function formatBoxesWindowed(
 		}
 
 		// footer
-		out.push(`${DIM}╰${"─".repeat(4)}${RST}`);
+		out.push(boxBottom({ variant: "open", style: chrome }));
 	}
 
 	// section elision

@@ -9,6 +9,7 @@ import {
   truncateToWidth,
   visibleWidth,
 } from "@mariozechner/pi-tui";
+import { boxBottom, boxRow, boxTop } from "../tools/lib/box-chrome";
 import type { PaletteActionContext, PaletteItem, PaletteView } from "./types";
 
 const MAX_VISIBLE = 12;
@@ -127,24 +128,20 @@ export class StackPalette implements Component, Focusable {
       return s + " ".repeat(Math.max(0, len - vis));
     };
 
-    const hLine = "─".repeat(innerW);
+    const chrome = { dim };
     const row = (content: string) =>
-      dim("│") + pad(content, innerW) + dim("│");
+      boxRow({ variant: "closed", style: chrome, inner: pad(content, innerW) });
 
     // ── top border, title only for sub-views ──
     const showTitle = this.stack.length > 1;
-    if (showTitle) {
-      const titleText = `[${view.title}]`;
-      const titleLen = visibleWidth(titleText);
-      const rightDash = Math.max(0, innerW - 1 - titleLen);
-      lines.push(
-        dim("╭─") +
-        dim(titleText) +
-        dim("─".repeat(rightDash) + "╮"),
-      );
-    } else {
-      lines.push(dim("╭" + hLine + "╮"));
-    }
+    const headerText = showTitle ? dim(`[${view.title}]`) : undefined;
+    const headerWidth = showTitle ? visibleWidth(`[${view.title}]`) : 0;
+    lines.push(boxTop({
+      variant: "closed",
+      style: chrome,
+      innerWidth: innerW,
+      header: showTitle ? { text: headerText!, width: headerWidth } : undefined,
+    }));
 
     // ── search ──
     const searchable = view.searchable !== false;
@@ -201,7 +198,7 @@ export class StackPalette implements Component, Focusable {
           line = th.bg("selectedBg", pad(line, innerW));
         }
 
-        lines.push(dim("│") + (isHl ? line : pad(line, innerW)) + dim("│"));
+        lines.push(boxRow({ variant: "closed", style: chrome, inner: isHl ? line : pad(line, innerW) }));
       }
 
       const remaining = this.filtered.length - visibleEnd;
@@ -213,28 +210,17 @@ export class StackPalette implements Component, Focusable {
     // ── bottom border with footer hints ──
     const escHint = this.stack.length > 1 ? "esc back" : "esc close";
     const hasDelegates = this.filtered.some((item) => item.delegate);
-    const footerLeft = `↑↓ navigate • enter select • ${escHint}`;
-    const footerRight = hasDelegates ? "* opens native ui" : "";
+    const footerParts = [`↑↓ navigate`, `enter select`, escHint];
+    if (hasDelegates) footerParts.push("* opens native ui");
+    const footerStr = dim(footerParts.join(" • "));
+    const footerWidth = visibleWidth(footerStr);
 
-    let footerContent: string;
-    if (footerRight) {
-      const gap = Math.max(1, innerW - 2 - visibleWidth(footerLeft) - visibleWidth(footerRight));
-      footerContent = ` ${footerLeft}${" ".repeat(gap)}${footerRight} `;
-    } else {
-      const totalPad = innerW - visibleWidth(footerLeft);
-      const leftPad = Math.floor(totalPad / 2);
-      footerContent = " ".repeat(leftPad) + footerLeft + " ".repeat(totalPad - leftPad);
-    }
-
-    // embed footer in the bottom border line
-    const footerLen = visibleWidth(footerContent);
-    const bLeftDash = Math.floor((innerW - footerLen) / 2);
-    const bRightDash = innerW - bLeftDash - footerLen;
-    lines.push(
-      dim("╰" + "─".repeat(Math.max(0, bLeftDash))) +
-      dim(footerContent) +
-      dim("─".repeat(Math.max(0, bRightDash)) + "╯"),
-    );
+    lines.push(boxBottom({
+      variant: "closed",
+      style: chrome,
+      innerWidth: innerW,
+      footer: { text: footerStr, width: footerWidth },
+    }));
 
     this.cachedLines = lines;
     this.cachedWidth = width;
