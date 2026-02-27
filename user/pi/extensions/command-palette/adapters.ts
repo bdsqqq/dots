@@ -25,7 +25,7 @@ function buildThinkingView(pi: ExtensionAPI): PaletteView {
   const current = pi.getThinkingLevel();
   const items: PaletteItem[] = levels.map((level) => ({
     id: `thinking:${level}`,
-    label: `${level === current ? "● " : "  "}${level}`,
+    label: `${level === current ? "✓ " : "  "}${level}`,
     category: "setting",
     onSelect: (actx: PaletteActionContext) => {
       actx.pi.setThinkingLevel(level);
