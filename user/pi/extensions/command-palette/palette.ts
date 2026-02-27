@@ -191,7 +191,7 @@ export class StackPalette implements Component, Focusable {
           shortcut = "  " + th.fg("muted", item.shortcut);
         }
 
-        let line = `   ${badge}${label}${delegateMarker}${desc}${shortcut}`;
+        let line = ` ${badge}${label}${delegateMarker}${desc}${shortcut}`;
         line = truncateToWidth(line, innerW);
         if (isHl) {
           line = th.bg("selectedBg", pad(line, innerW));
