@@ -1,18 +1,16 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Key } from "@mariozechner/pi-tui";
-import { buildEntries } from "./entries";
-import { CommandPalette } from "./palette";
-import type { PaletteEntry } from "./types";
+import { buildRootView } from "./adapters";
+import { StackPalette } from "./palette";
 
 export default function commandPaletteExtension(pi: ExtensionAPI) {
   async function openPalette(ctx: import("@mariozechner/pi-coding-agent").ExtensionContext) {
     if (!ctx.hasUI) return;
 
-    const entries = buildEntries(pi, ctx);
+    const rootView = buildRootView(pi, ctx);
 
-    const selected = await ctx.ui.custom<PaletteEntry | null>(
+    await ctx.ui.custom<void>(
       (tui, theme, _kb, done) => {
-        const palette = new CommandPalette(entries, theme, done);
+        const palette = new StackPalette(rootView, theme, pi, ctx, done);
         return {
           render: (w: number) => palette.render(w),
           handleInput: (data: string) => {
@@ -39,14 +37,6 @@ export default function commandPaletteExtension(pi: ExtensionAPI) {
         },
       },
     );
-
-    if (selected) {
-      try {
-        await selected.action(ctx);
-      } catch (err) {
-        ctx.ui.notify(`Command failed: ${err}`, "error");
-      }
-    }
   }
 
   pi.registerShortcut("ctrl+shift+p", {
