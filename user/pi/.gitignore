@@ -1,3 +1,4 @@
-# test dependencies (dev only)
+# runtime deps installed by home.activation.installPiExtensionDeps
 node_modules/
-bun.lock
+# lockfile is tracked — needed for --frozen-lockfile determinism
+!**/bun.lock
