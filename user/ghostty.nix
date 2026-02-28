@@ -123,10 +123,9 @@ window-padding-x = 16
 window-padding-y = 4
 background-opacity = 0.7
 background-blur-radius = 8
+background-opacity-cells = true
 
 theme = light:lauds-light,dark:compline-dark
-
-keybind = alt+backspace=text:\x1b\x7f
 
 # --- ctrl+shift workaround for tmux ---
 #
@@ -150,6 +149,7 @@ keybind = alt+backspace=text:\x1b\x7f
 #
 # add more ctrl+shift combos here as needed. each needs its own line.
 keybind = ctrl+shift+p=text:\x1b[112;6u
+keybind = alt+backspace=text:\x1b\x7f
 
 # unbind ctrl+tab/digits so tmux can receive them
 keybind = ctrl+tab=unbind
@@ -163,6 +163,7 @@ keybind = ctrl+six=unbind
 keybind = ctrl+seven=unbind
 keybind = ctrl+eight=unbind
 keybind = ctrl+nine=unbind
+keybind = ctrl+zero=unbind
 '';
 
   ghosttyFiles = {
