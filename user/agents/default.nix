@@ -1,7 +1,7 @@
 { lib, inputs, hostSystem ? null, config ? {}, ... }:
 {
   imports = [
-    "./skills/default.nix"
+    ./skills/default.nix
   ];
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
     # home.file + mkOutOfStoreSymlink creates a 3-hop chain through /nix/store/
