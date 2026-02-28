@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Box } from "@mariozechner/pi-tui";
+import { Box, truncateToWidth } from "@mariozechner/pi-tui";
 import { extractMermaidBlocks, captureContextSlice, extractText } from "./extract";
 import { createCache, pickBestPreset, hashCode } from "./render";
 import type { RenderCache } from "./render";
@@ -24,14 +24,14 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 		const entry = details ? diagrams.find((d) => d.id === details.diagramId) : undefined;
 
 		const component = {
+			/** width is already inner width — Box(1,1) subtracts padding before calling render */
 			render(width: number): string[] {
 				if (!entry) {
-					return [theme.fg("dim", "diagram not found")];
+					return [truncateToWidth(theme.fg("dim", "diagram not found"), width)];
 				}
 
 				try {
-					const contentWidth = Math.max(width - 2, 10);
-					const { preset, rendered, overflowed } = pickBestPreset(cache, entry.block.code, contentWidth);
+					const { preset, rendered, overflowed } = pickBestPreset(cache, entry.block.code, width);
 
 					const lines: string[] = [];
 
@@ -47,9 +47,9 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 						lines.push(theme.fg("dim", "diagram wider than terminal — ctrl+shift+m to view full"));
 					}
 
-					return lines;
+					return lines.map((l) => truncateToWidth(l, width));
 				} catch (err) {
-					return [theme.fg("dim", `render error: ${err instanceof Error ? err.message : String(err)}`)];
+					return [truncateToWidth(theme.fg("dim", `render error: ${err instanceof Error ? err.message : String(err)}`), width)];
 				}
 			},
 			invalidate() {},
