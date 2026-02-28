@@ -148,8 +148,8 @@ theme = light:lauds-light,dark:compline-dark
 #   modifier  = 2:shift  5:ctrl  6:ctrl+shift  (xterm convention)
 #
 # add more ctrl+shift combos here as needed. each needs its own line.
-keybind = ctrl+shift+p=text:\x1b[112;6u
-keybind = alt+backspace=text:\x1b\x7f
+# keybind = ctrl+shift+p=text:\x1b[112;6u
+# keybind = alt+backspace=text:\x1b\x7f
 
 # unbind ctrl+tab/digits so tmux can receive them
 keybind = ctrl+tab=unbind

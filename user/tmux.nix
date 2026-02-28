@@ -338,6 +338,7 @@ in
         # the actual fix for ctrl+shift is a ghostty text: keybind that
         # writes the CSI u bytes directly. see ghostty.nix.
         set -g extended-keys always
+        set -g xterm-keys on
         set -g extended-keys-format csi-u
         
         # terminal features for ghostty
