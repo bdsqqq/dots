@@ -2,6 +2,7 @@
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   homeDir = if isDarwin then "/Users/bdsqqq" else "/home/bdsqqq";
+  repoPi = "${homeDir}/commonplace/01_files/nix/user/pi";
   # repo path for mkOutOfStoreSymlink — edits take effect immediately without rebuild
   repoExtensions = "${homeDir}/commonplace/01_files/nix/user/pi/extensions";
 in
@@ -31,14 +32,12 @@ in
     home.file.".pi/agent/extensions/tools".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/tools";
     home.file.".pi/agent/extensions/mermaid".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/mermaid";
 
-    # install extension deps declaratively (cheerio, diff, etc.)
+    # install workspace deps declaratively for all extension packages
     home.activation.installPiExtensionDeps = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      for ext_dir in "${repoExtensions}/tools" "${repoExtensions}/mermaid"; do
-        if [ -f "$ext_dir/package.json" ]; then
-          "${pkgs.bun}/bin/bun" install --cwd "$ext_dir" --frozen-lockfile 2>/dev/null \
-            || "${pkgs.bun}/bin/bun" install --cwd "$ext_dir" || true
-        fi
-      done
+      if [ -f "${repoPi}/package.json" ]; then
+        "${pkgs.bun}/bin/bun" install --cwd "${repoPi}" --frozen-lockfile 2>/dev/null \
+          || "${pkgs.bun}/bin/bun" install --cwd "${repoPi}" || true
+      fi
     '';
 
     # handoff skill — teaches the agent about context management via handoff
