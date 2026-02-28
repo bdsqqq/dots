@@ -241,7 +241,7 @@ in
       package = pkgs.tmux;
       
       prefix = "C-Space";
-      terminal = "tmux-256color";
+      terminal = "xterm-256color";
       shell = lib.getExe config.my.defaultShell;
       mouse = true;
       escapeTime = 0;
