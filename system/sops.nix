@@ -10,7 +10,7 @@ let
     then "/Users/bdsqqq" 
     else "/home/bdsqqq";
 
-  promptsFile = inputs.self + "/user/agents/prompts.json";
+  promptsFile = inputs.self + "/user/agents/prompts.yaml";
   promptCount = 17;
   promptIds = builtins.genList (i: builtins.toString i) promptCount;
 
@@ -64,8 +64,8 @@ in
     } // (
       let
         mkSecrets = id: [
-          { name = "prompt-${id}-filename"; value = { sopsFile = promptsFile; format = "json"; key = "${id}-filename"; owner = "bdsqqq"; mode = "0400"; }; }
-          { name = "prompt-${id}-content";  value = { sopsFile = promptsFile; format = "json"; key = "${id}-content";  owner = "bdsqqq"; mode = "0400"; }; }
+          { name = "prompt-${id}-filename"; value = { sopsFile = promptsFile; format = "yaml"; key = "${id}-filename"; owner = "bdsqqq"; mode = "0400"; }; }
+          { name = "prompt-${id}-content";  value = { sopsFile = promptsFile; format = "yaml"; key = "${id}-content";  owner = "bdsqqq"; mode = "0400"; }; }
         ];
       in builtins.listToAttrs (builtins.concatMap mkSecrets promptIds)
     );
