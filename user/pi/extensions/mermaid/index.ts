@@ -83,12 +83,18 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 			const entry: DiagramEntry = { id, block, context, source: "assistant" };
 			addDiagram(entry);
 
+			/**
+			 * deliverAs: "nextTurn" — message_end fires while isStreaming is still true.
+			 * without this, sendMessage defaults to steer(), injecting a role:"custom"
+			 * message into the active agent loop. models that reject assistant prefill
+			 * (e.g. claude opus) then error because the conversation ends non-user.
+			 */
 			pi.sendMessage({
 				customType: CUSTOM_TYPE,
 				content: "",
 				display: true,
 				details: entry,
-			});
+			}, { deliverAs: "nextTurn" });
 		}
 	});
 
@@ -113,7 +119,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 				content: "",
 				display: true,
 				details: entry,
-			});
+			}, { deliverAs: "nextTurn" });
 		}
 
 		return { action: "continue" as const };
