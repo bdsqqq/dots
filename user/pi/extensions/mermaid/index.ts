@@ -44,7 +44,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 					}
 
 					if (overflowed) {
-						lines.push(theme.fg("dim", "diagram wider than terminal — ctrl+m to view full"));
+						lines.push(theme.fg("dim", "diagram wider than terminal — ctrl+shift+m to view full"));
 					}
 
 					return lines;
@@ -125,7 +125,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 		diagrams = [];
 	});
 
-	pi.registerShortcut("ctrl+m", {
+	pi.registerShortcut("ctrl+shift+m", {
 		description: "View mermaid diagrams",
 		handler: async (ctx) => {
 			if (diagrams.length === 0) {
