@@ -29,7 +29,7 @@ creation_rules:
           - *host_htz_relay
           - *host_r56
           - *host_lgo_z2e
-  - path_regex: user/agents/prompts\.json$
+  - path_regex: user/agents/prompts\.(json|yaml)$
     key_groups:
       - age:
           - *user_bdsqqq
