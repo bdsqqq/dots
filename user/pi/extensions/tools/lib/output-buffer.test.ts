@@ -82,6 +82,26 @@ describe("OutputBuffer", () => {
 			expect(truncatedLines).toBe(0);
 			expect(text).toBe("a\nb\nc");
 		});
+
+		it("does not drop lines when content has duplicates (regression)", () => {
+			// old value-based overlap used indexOf(tail[0]) and would
+			// match the first "A", dropping middle lines.
+			const buf = new OutputBuffer(3, 3);
+			buf.add("A\nB\nA\nC\n"); // 4 lines, head=[A,B,A], tail=[B,A,C]
+			const { text, truncatedLines } = buf.format();
+			expect(truncatedLines).toBe(0);
+			expect(text.split("\n")).toEqual(["A", "B", "A", "C"]);
+		});
+
+		it("handles all-identical lines without dropping (regression)", () => {
+			const buf = new OutputBuffer(3, 3);
+			buf.add("x\nx\nx\nx\nx\n"); // 5 lines, head=[x,x,x], tail=[x,x,x]
+			const { text, truncatedLines } = buf.format();
+			expect(truncatedLines).toBe(0);
+			const lines = text.split("\n");
+			expect(lines).toHaveLength(5);
+			expect(lines.every((l) => l === "x")).toBe(true);
+		});
 	});
 
 	describe("large output (truncation)", () => {

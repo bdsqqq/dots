@@ -181,7 +181,9 @@ export class OutputBuffer {
 	 * deduplicate overlapping head/tail for small outputs.
 	 *
 	 * when total lines <= maxHead + maxTail, the tail buffer
-	 * may contain lines already in head. we merge them.
+	 * may contain lines already in head. we merge them using
+	 * positional overlap (not value matching) to avoid dropping
+	 * legitimate lines when content has duplicates.
 	 */
 	private dedupe(totalLines: number): string[] {
 		// output smaller than head: head has everything
@@ -194,18 +196,17 @@ export class OutputBuffer {
 			return this.tail;
 		}
 
-		// overlap case: tail starts somewhere in head
-		// find where tail's first line appears in head
-		const tailStart = this.tail[0];
-		const overlapIdx = this.head.indexOf(tailStart);
+		// overlap case: compute how many lines head and tail share
+		// by position, not by value matching
+		const overlapLen = Math.max(0, this.head.length + this.tail.length - totalLines);
 
-		if (overlapIdx === -1) {
-			// no overlap (shouldn't happen, but handle gracefully)
+		if (overlapLen === 0) {
+			// no overlap — concatenate directly
 			return [...this.head, ...this.tail];
 		}
 
-		// take head up to overlap, then all of tail
-		const headPart = this.head.slice(0, overlapIdx);
+		// take head up to the overlap boundary, then all of tail
+		const headPart = this.head.slice(0, this.head.length - overlapLen);
 		return [...headPart, ...this.tail];
 	}
 
