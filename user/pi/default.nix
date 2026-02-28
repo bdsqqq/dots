@@ -29,14 +29,16 @@ in
     home.file.".pi/agent/extensions/system-prompt.ts".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/system-prompt.ts";
     home.file.".pi/agent/extensions/command-palette".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/command-palette";
     home.file.".pi/agent/extensions/tools".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/tools";
+    home.file.".pi/agent/extensions/mermaid".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/mermaid";
 
     # install extension deps declaratively (cheerio, diff, etc.)
     home.activation.installPiExtensionDeps = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      TOOLS_DIR="${repoExtensions}/tools"
-      if [ -f "$TOOLS_DIR/package.json" ]; then
-        "${pkgs.bun}/bin/bun" install --cwd "$TOOLS_DIR" --frozen-lockfile 2>/dev/null \
-          || "${pkgs.bun}/bin/bun" install --cwd "$TOOLS_DIR" || true
-      fi
+      for ext_dir in "${repoExtensions}/tools" "${repoExtensions}/mermaid"; do
+        if [ -f "$ext_dir/package.json" ]; then
+          "${pkgs.bun}/bin/bun" install --cwd "$ext_dir" --frozen-lockfile 2>/dev/null \
+            || "${pkgs.bun}/bin/bun" install --cwd "$ext_dir" || true
+        fi
+      done
     '';
 
     # handoff skill — teaches the agent about context management via handoff
