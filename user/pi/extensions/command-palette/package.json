@@ -1,11 +1,6 @@
 {
-  "name": "pi-extension-tools",
+  "name": "pi-extension-command-palette",
   "private": true,
-  "dependencies": {
-    "@sinclair/typebox": "^0.34.0",
-    "cheerio": "^1.0.0",
-    "diff": "^8.0.0"
-  },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "catalog:",
     "@mariozechner/pi-tui": "catalog:"

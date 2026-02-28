@@ -18,7 +18,7 @@ import { visibleWidth } from "@mariozechner/pi-tui";
 import { boxBorderLR, boxRow } from "../tools/lib/box-chrome";
 import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
-import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/pi-ai";
+import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { hasToolCost } from "../tools/lib/tool-cost";
@@ -195,7 +195,7 @@ function estimateContextFromEntries(entries: SessionEntry[]): number {
 	for (const entry of entries) {
 		switch (entry.type) {
 			case "message":
-				total += estimateTokens(entry.message as AgentMessage);
+				total += estimateTokens(entry.message as any);
 				break;
 			case "custom_message": {
 				const content = entry.content;
