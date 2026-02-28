@@ -16,6 +16,7 @@
     home.file = let 
       agentsMd = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/global-agents.md";
       skills = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.config/agents/skills";
+      cursorAgents = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.config/agents/cursor-agents";
 
     in {
       ".config/agents/skills" = {
@@ -34,6 +35,7 @@
 
       ".config/opencode/skills".source  = skills;
       ".cursor/skills".source           = skills;
+      ".cursor/agents".source           = cursorAgents;
 
       # prompt files are unpacked by sops-unpack-prompts launchd daemon
       # into ~/.config/agents/prompts/ — no home-manager management needed

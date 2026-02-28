@@ -16,8 +16,11 @@ let
 
   unpackScript = ''
     DEST="${homeDir}/.config/agents/prompts"
+    CURSOR_AGENTS="${homeDir}/.config/agents/cursor-agents"
     mkdir -p "$DEST"
+    mkdir -p "$CURSOR_AGENTS"
     find "$DEST" -maxdepth 1 -name '*.md' -delete 2>/dev/null || true
+    find "$CURSOR_AGENTS" -maxdepth 1 -name '*.md' -delete 2>/dev/null || true
     for i in $(seq 0 ${builtins.toString (promptCount - 1)}); do
       FNAME_FILE="/run/secrets/prompt-''${i}-filename"
       CONTENT_FILE="/run/secrets/prompt-''${i}-content"
@@ -26,6 +29,15 @@ let
       cp "$CONTENT_FILE" "$DEST/$FNAME"
       chown bdsqqq "$DEST/$FNAME"
       chmod 0400 "$DEST/$FNAME"
+      # project agent.*.md into Cursor-facing directory with compatibility note
+      case "$FNAME" in agent.*.md)
+        cat "$CONTENT_FILE" > "$CURSOR_AGENTS/$FNAME"
+        echo "" >> "$CURSOR_AGENTS/$FNAME"
+        echo "*Shared with pi. In Cursor, tool whitelisting and template variables ({cwd}, {roots}, etc.) may differ.*" >> "$CURSOR_AGENTS/$FNAME"
+        chown bdsqqq "$CURSOR_AGENTS/$FNAME"
+        chmod 0400 "$CURSOR_AGENTS/$FNAME"
+        ;;
+      esac
     done
   '';
 in
