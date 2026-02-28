@@ -19,8 +19,10 @@
 
     in {
       ".config/agents/skills" = {
-        source = ./skills;
-        filter = (path: type: (!(lib.hasSuffix ".nix" path)));
+        source = (builtins.path {
+          path = ./skills;
+          filter = (path: type: (!(lib.hasSuffix ".nix" path)));
+        });
         recursive = true;
       };
 
