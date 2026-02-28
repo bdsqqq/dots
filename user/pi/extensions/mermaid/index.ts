@@ -15,6 +15,7 @@ export type DiagramEntry = {
 export default function mermaidInlineExtension(pi: ExtensionAPI) {
 	const CUSTOM_TYPE = "mermaid-inline";
 	const MAX_CODE_LENGTH = 20_000;
+	const MAX_DIAGRAMS = 100;
 	const cache: RenderCache = createCache();
 	let diagrams: DiagramEntry[] = [];
 
@@ -76,7 +77,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 			const context = captureContextSlice(text, block, 5);
 			const id = `${Date.now()}:${block.blockIndex}:${hashCode(block.code)}`;
 			const entry: DiagramEntry = { id, block, context, source: "assistant" };
-			diagrams.push(entry);
+			addDiagram(entry);
 
 			pi.sendMessage({
 				customType: CUSTOM_TYPE,
@@ -101,7 +102,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 			const context = captureContextSlice(text, block, 5);
 			const id = `${Date.now()}:${block.blockIndex}:${hashCode(block.code)}`;
 			const entry: DiagramEntry = { id, block, context, source: "user" };
-			diagrams.push(entry);
+			addDiagram(entry);
 
 			pi.sendMessage({
 				customType: CUSTOM_TYPE,
@@ -152,6 +153,13 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 		},
 	});
 
+	function addDiagram(entry: DiagramEntry) {
+		diagrams.push(entry);
+		if (diagrams.length > MAX_DIAGRAMS) {
+			diagrams = diagrams.slice(-MAX_DIAGRAMS);
+		}
+	}
+
 	/** scan session history for mermaid blocks we missed (e.g. session loaded from disk) */
 	function lazyDiscoverDiagrams(ctx: ExtensionContext) {
 		const entries = ctx.sessionManager.getBranch();
@@ -171,7 +179,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 
 				const context = captureContextSlice(text, block, 5);
 				const id = `${entry.id}:${block.blockIndex}:${hash}`;
-				diagrams.push({ id, block, context, source: "assistant" });
+				addDiagram({ id, block, context, source: "assistant" });
 			}
 		}
 	}

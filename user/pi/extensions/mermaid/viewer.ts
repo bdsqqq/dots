@@ -199,6 +199,10 @@ class MermaidViewer {
  * characters within [startCol, startCol + maxCols).
  *
  * terminates with a reset to avoid color bleed from mid-sequence slicing.
+ *
+ * NOTE: treats each non-escape char as 1 column. this is correct for
+ * mermaid ASCII output (box-drawing + latin) but would break on CJK
+ * or emoji. acceptable tradeoff — beautiful-mermaid doesn't emit those.
  */
 function sliceAnsiByColumns(line: string, startCol: number, maxCols: number): string {
 	const ESC_RE = /\x1b\[[0-9;]*[A-Za-z]/;
