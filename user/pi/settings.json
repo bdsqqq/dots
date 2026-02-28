@@ -17,7 +17,7 @@
   "compaction": {
     "enabled": false
   },
-  "lastChangelogVersion": "0.55.0",
+  "lastChangelogVersion": "0.55.3",
   "defaultModel": "kimi-k2.5",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
