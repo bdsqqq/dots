@@ -18,12 +18,14 @@
     "enabled": false
   },
   "lastChangelogVersion": "0.55.0",
-  "defaultModel": "claude-opus-4-6",
+  "defaultModel": "kimi-k2.5",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "steeringMode": "all",
   "followUpMode": "all",
   "collapseChangelog": true,
   "doubleEscapeAction": "tree",
-  "quietStartup": true
+  "quietStartup": true,
+  "enableSkillCommands": true,
+  "showHardwareCursor": true
 }
