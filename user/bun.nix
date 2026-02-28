@@ -60,6 +60,7 @@
 
     # zsh-specific: re-assert bun precedence after fnm's dynamic PATH prepend
     programs.zsh.initContent = ''
+      [ -s "$BUN_INSTALL/_bun" ] && source "$BUN_INSTALL/_bun"
       # fnm prepends at runtime; ensure bun wins by re-prepending after shell init
       if [[ -n "$BUN_INSTALL" ]]; then
         typeset -U path  # enable deduplication
