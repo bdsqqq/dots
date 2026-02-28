@@ -102,8 +102,12 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 		: ["--mode", "json", "-p", "--no-session"];
 
 	if (config.model) args.push("--model", config.model);
-	if (config.builtinTools && config.builtinTools.length > 0) {
-		args.push("--tools", config.builtinTools.join(","));
+	if (config.builtinTools !== undefined) {
+		if (config.builtinTools.length === 0) {
+			args.push("--no-tools");
+		} else {
+			args.push("--tools", config.builtinTools.join(","));
+		}
 	}
 
 	let tmpPromptDir: string | null = null;
@@ -135,8 +139,12 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 		const spawnEnv: Record<string, string | undefined> = {
 			...process.env, PI_READ_COMPACT: "1",
 		};
-		if (config.extensionTools) {
-			spawnEnv.PI_INCLUDE_TOOLS = config.extensionTools.join(",");
+		if (config.extensionTools !== undefined) {
+			if (config.extensionTools.length === 0) {
+				spawnEnv.PI_INCLUDE_TOOLS = "NONE";
+			} else {
+				spawnEnv.PI_INCLUDE_TOOLS = config.extensionTools.join(",");
+			}
 		}
 
 		let wasAborted = false;
