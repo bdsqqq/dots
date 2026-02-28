@@ -127,29 +127,6 @@ background-opacity-cells = true
 
 theme = light:lauds-light,dark:compline-dark
 
-# --- ctrl+shift workaround for tmux ---
-#
-# ghostty supports modifyOtherKeys (CSI u) natively, but when tmux is
-# the child process the negotiation doesn't reliably activate. tmux
-# sends CSI > 4;2m to enable modifyOtherKeys, ghostty has the code to
-# handle it, yet ghostty stays in legacy mode and sends 0x10 for both
-# ctrl+p and ctrl+shift+p — the shift modifier is stripped.
-#
-# the csi: keybind action does NOT fix this. ghostty's inspector shows
-# "Encoding to Pty: (no data)" for csi: — it gets consumed internally
-# without writing bytes to the child process.
-#
-# text: bypasses the key encoding path entirely and writes raw bytes to
-# the pty fd. tmux receives the CSI u sequence, parses it with full
-# modifier info, and forwards it to inner apps correctly.
-#
-# format: text:\x1b[<codepoint>;<modifier>u
-#   codepoint = ASCII code of the lowercase letter (p=112)
-#   modifier  = 2:shift  5:ctrl  6:ctrl+shift  (xterm convention)
-#
-# add more ctrl+shift combos here as needed. each needs its own line.
-# keybind = ctrl+shift+p=text:\x1b[112;6u
-# keybind = alt+backspace=text:\x1b\x7f
 
 # unbind ctrl+tab/digits so tmux can receive them
 keybind = ctrl+tab=unbind
