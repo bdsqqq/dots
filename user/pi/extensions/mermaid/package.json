@@ -1,0 +1,14 @@
+{
+  "name": "mermaid-inline",
+  "private": true,
+  "dependencies": {
+    "beautiful-mermaid": "^1.1.3"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-tui": "*",
+    "@mariozechner/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}
