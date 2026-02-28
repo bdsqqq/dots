@@ -21,7 +21,7 @@ import { getFinalOutput, renderAgentTree, subAgentResult, type SingleResult } fr
 
 const MODEL = "openrouter/google/gemini-3-flash-preview";
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls"];
-const EXTENSION_TOOLS = ["read", "grep", "glob", "ls"];
+const EXTENSION_TOOLS = ["read", "grep", "find", "ls"];
 
 export interface FinderConfig {
 	systemPrompt?: string;
@@ -43,7 +43,7 @@ export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
 			"- You need answers to questions like \"Where do we validate JWT headers?\"\n\n" +
 			"WHEN NOT TO USE THIS TOOL:\n" +
 			"- When you know the exact file path - use Read directly\n" +
-			"- When looking for specific symbols or exact strings - use glob or Grep\n" +
+			"- When looking for specific symbols or exact strings - use Find or Grep\n" +
 			"- When you need to create, modify files, or run terminal commands\n\n" +
 			"USAGE GUIDELINES:\n" +
 			"1. Always spawn multiple search agents in parallel to maximise speed.\n" +
