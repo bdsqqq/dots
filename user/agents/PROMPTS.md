@@ -100,10 +100,20 @@ a launchd daemon (darwin) or systemd service (linux) then unpacks these into `~/
 1. cleans existing `*.md` files from the destination
 2. for each N, reads the decrypted filename and content from `/run/secrets/`
 3. writes content to `~/.config/agents/prompts/$FILENAME` with owner bdsqqq, mode 0400
+4. projects each `agent.*.md` into `~/.config/agents/cursor-agents/` with a short compatibility note appended (tool whitelisting and template variables differ between pi and cursor)
 
 on darwin, the daemon watches `/run/secrets/prompt-0-filename` via `KeepAlive.PathState` so it re-runs when secrets change. on linux, it runs as a oneshot after `sops-install-secrets.service`.
 
-pi's sub-agents extension discovers agent files via `~/.pi/agent/agents` → `~/.config/agents/prompts`.
+### cross-harness consumption
+
+single source of truth: `prompts.yaml` → decrypted to `~/.config/agents/prompts/`. both pi and cursor consume from that tree:
+
+| harness | path | content |
+|---------|------|---------|
+| pi | `~/.pi/agent/agents` → `~/.config/agents/prompts` | all prompts, full tool whitelisting + variable expansion |
+| cursor | `~/.cursor/agents` → `~/.config/agents/cursor-agents` | `agent.*.md` only, with compatibility note (tool/template semantics may differ) |
+
+edit prompts in `sops user/agents/prompts.yaml`; after rebuild + daemon run, both harnesses pick up changes.
 
 ### tradeoffs vs. individual files
 
@@ -114,6 +124,6 @@ pi's sub-agents extension discovers agent files via `~/.pi/agent/agents` → `~/
 
 ## usage
 
-agent files: discovered automatically from `~/.config/agents/prompts/` after system activation + unpack daemon run.
-
-everything else: reference material. read these when building your own tools, prompts, or extensions. use `sops user/agents/prompts.yaml` to view/edit.
+- **pi**: agent files discovered from `~/.config/agents/prompts/` after system activation + unpack daemon run (via `~/.pi/agent/agents` symlink).
+- **cursor**: custom subagents from `~/.cursor/agents` (symlinked to `~/.config/agents/cursor-agents`). only `agent.*.md` files are projected; Cursor may delegate to them by name (e.g. `/finder` or "use the finder subagent").
+- **everything else**: reference material. read these when building your own tools, prompts, or extensions. use `sops user/agents/prompts.yaml` to view/edit.
