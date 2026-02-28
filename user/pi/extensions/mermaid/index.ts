@@ -19,14 +19,18 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 	const cache: RenderCache = createCache();
 	let diagrams: DiagramEntry[] = [];
 
+	/**
+	 * details contains the full DiagramEntry, not just an ID reference.
+	 * this makes rendering self-contained — survives reload, resume, etc.
+	 * the in-memory store is only needed for the viewer's diagram list.
+	 */
 	pi.registerMessageRenderer(CUSTOM_TYPE, (message, { expanded }, theme) => {
-		const details = message.details as { diagramId: string } | undefined;
-		const entry = details ? diagrams.find((d) => d.id === details.diagramId) : undefined;
+		const entry = message.details as DiagramEntry | undefined;
 
 		const component = {
 			/** width is already inner width — Box(1,1) subtracts padding before calling render */
 			render(width: number): string[] {
-				if (!entry) {
+				if (!entry?.block?.code) {
 					return [truncateToWidth(theme.fg("dim", "diagram not found"), width)];
 				}
 
@@ -83,7 +87,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 				customType: CUSTOM_TYPE,
 				content: "",
 				display: true,
-				details: { diagramId: id },
+				details: entry,
 			});
 		}
 	});
@@ -108,7 +112,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
 				customType: CUSTOM_TYPE,
 				content: "",
 				display: true,
-				details: { diagramId: id },
+				details: entry,
 			});
 		}
 
