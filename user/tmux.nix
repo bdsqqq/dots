@@ -241,7 +241,7 @@ in
       package = pkgs.tmux;
       
       prefix = "C-Space";
-      terminal = "xterm-256color";
+      terminal = "tmux-256color";
       shell = lib.getExe config.my.defaultShell;
       mouse = true;
       escapeTime = 0;
@@ -327,40 +327,9 @@ in
         set -g allow-rename on
         set -g automatic-rename off
         
-        # --- extended keys ---
-        #
-        # "always" makes tmux send CSI u to inner apps unconditionally.
-        # this alone does NOT fix ctrl+shift combos — it only sets mode 1
-        # (MODE_KEYS_EXTENDED) which still sends ctrl+letter as legacy C0.
-        # mode 2 requires the inner app to request CSI > 4;2m, but pi uses
-        # kitty keyboard protocol which tmux doesn't understand.
-        #
-        # the actual fix for ctrl+shift is a ghostty text: keybind that
-        # writes the CSI u bytes directly. see ghostty.nix.
         set -g extended-keys always
         set -g xterm-keys on
         set -g extended-keys-format csi-u
-        
-        # terminal features for ghostty
-        #
-        # pattern must match #{client_termname} — ghostty reports as
-        # "xterm-ghostty", NOT "ghostty". use fnmatch-compatible pattern.
-        #
-        # features are colon-separated (one terminal). comma-separated
-        # would create separate unassociated entries. use indexed set
-        # instead of "set -as" to prevent duplication on config reload.
-        #
-        # extkeys tells tmux the outer terminal supports modifyOtherKeys.
-        # tmux then sends CSI > 4;2m to ghostty at attach time. in practice
-        # ghostty doesn't reliably enter modifyOtherKeys mode from this
-        # (see ghostty.nix), but extkeys is still needed for tmux to accept
-        # CSI u sequences arriving via the text: workaround.
-        set -g terminal-features[3] 'xterm-ghostty:RGB:extkeys:clipboard:hyperlinks:focus:sync:strikethrough:usstyle:overline:sixel'
-        
-        # terminal overrides for modern terminals (ghostty, termius/xterm-256color)
-        # Ss/Se: cursor shape, Smulx: undercurl, Setulc: underline color, RGB: truecolor
-        set -ga terminal-overrides ',xterm*:Ss=\E[%p1%d q:Se=\E[ q:Smulx=\E[4::%p1%dm:Setulc=\E[58::2::%p1%{65536}%/%d::%p1%{256}%/%{255}%&%d::%p1%{255}%&%d%;m:RGB'
-        set -ga terminal-overrides ',xterm-ghostty*:Ss=\E[%p1%d q:Se=\E[ q:Smulx=\E[4::%p1%dm:Setulc=\E[58::2::%p1%{65536}%/%d::%p1%{256}%/%{255}%&%d::%p1%{255}%&%d%;m:RGB'
         
         # passthrough for image protocols, sixel, etc
         set -g allow-passthrough all
