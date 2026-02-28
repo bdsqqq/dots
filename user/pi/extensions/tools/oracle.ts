@@ -22,7 +22,7 @@ import { getFinalOutput, renderAgentTree, subAgentResult, type SingleResult } fr
 
 const MODEL = "openrouter/openai/gpt-5.2";
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash"];
-const EXTENSION_TOOLS = ["read", "grep", "glob", "ls", "bash"];
+const EXTENSION_TOOLS = ["read", "grep", "find", "ls", "bash"];
 
 export interface OracleConfig {
 	systemPrompt?: string;
@@ -35,7 +35,7 @@ export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
 		description:
 			"Consult the oracle - an AI advisor powered by a reasoning model " +
 			"that can plan, review, and provide expert guidance.\n\n" +
-			"The oracle has access to tools: Read, Grep, glob, ls, Bash.\n\n" +
+			"The oracle has access to tools: Read, Grep, Find, ls, Bash.\n\n" +
 			"You should consult the oracle for:\n" +
 			"- Code reviews and architecture feedback\n" +
 			"- Finding difficult bugs across many files\n" +
