@@ -2,9 +2,8 @@
  * image-attachments — clipboard image staging with preview overlays.
  *
  * Features:
- * - Ctrl+V: paste image from clipboard into a staged attachment list
+ * - Cmd+V: paste image from clipboard into a staged attachment list
  * - widget above editor: left-aligned attachment pills
- * - Alt+1..9: open image preview for the indexed attachment
  * - Alt+I: open attachment picker overlay, then preview selection
  * - on send: transforms input into text + image content parts
  */
@@ -48,11 +47,7 @@ try {
 
 function buildPillLine(images: TrackedImage[], theme: Theme, width: number): string {
 	const prefix = theme.fg("dim", "attachments: ");
-	const pills = images.map((img, idx) => {
-		const hotkey = idx < 9 ? `alt+${idx + 1}` : "";
-		const suffix = hotkey ? theme.fg("muted", `(${hotkey})`) : "";
-		return theme.fg("accent", `[${img.label}]`) + suffix;
-	});
+	const pills = images.map((img) => theme.fg("accent", `[${img.label}]`));
 	const line = prefix + pills.join("  ");
 	return truncateToWidth(line, width);
 }
@@ -214,46 +209,45 @@ export default function (pi: ExtensionAPI) {
 		await showImageOverlay(ctx, image);
 	};
 
-	pi.registerShortcut("ctrl+v", {
+	const pasteHandler = async (ctx: ExtensionContext) => {
+		if (!clipboardModule || !clipboardModule.hasImage()) return;
+		try {
+			const data = await clipboardModule.getImageBinary();
+			if (!data || data.length === 0) return;
+			const bytes = data instanceof Uint8Array ? data : Uint8Array.from(data);
+			const mimeType = "image/png";
+			const base64 = Buffer.from(bytes).toString("base64");
+
+			const fileName = `pi-clipboard-${crypto.randomUUID()}.png`;
+			const filePath = path.join(os.tmpdir(), fileName);
+			fs.writeFileSync(filePath, Buffer.from(bytes));
+
+			const sizeKB = Math.max(1, Math.round(bytes.length / 1024));
+			attachments.push({
+				filePath,
+				mimeType,
+				base64,
+				sizeKB,
+				label: `image ${attachments.length + 1}`,
+			});
+
+			syncWidget(ctx);
+			ctx.ui.notify(`attached ${attachments[attachments.length - 1].label}`, "info");
+		} catch (error) {
+			ctx.ui.notify(`clipboard paste failed: ${error}`, "error");
+		}
+	};
+
+	pi.registerShortcut("cmd+v", {
 		description: "paste image from clipboard",
-		handler: async (ctx) => {
-			if (!clipboardModule || !clipboardModule.hasImage()) return;
-			try {
-				const data = await clipboardModule.getImageBinary();
-				if (!data || data.length === 0) return;
-				const bytes = data instanceof Uint8Array ? data : Uint8Array.from(data);
-				const mimeType = "image/png";
-				const base64 = Buffer.from(bytes).toString("base64");
-
-				const fileName = `pi-clipboard-${crypto.randomUUID()}.png`;
-				const filePath = path.join(os.tmpdir(), fileName);
-				fs.writeFileSync(filePath, Buffer.from(bytes));
-
-				const sizeKB = Math.max(1, Math.round(bytes.length / 1024));
-				attachments.push({
-					filePath,
-					mimeType,
-					base64,
-					sizeKB,
-					label: `image ${attachments.length + 1}`,
-				});
-
-				syncWidget(ctx);
-				ctx.ui.notify(`attached ${attachments[attachments.length - 1].label}`, "info");
-			} catch (error) {
-				ctx.ui.notify(`clipboard paste failed: ${error}`, "error");
-			}
-		},
+		handler: pasteHandler,
 	});
 
-	for (let i = 1; i <= 9; i++) {
-		pi.registerShortcut(`alt+${i}`, {
-			description: `preview attachment ${i}`,
-			handler: async (ctx) => {
-				await previewIndex(ctx, i - 1);
-			},
-		});
-	}
+	// compatibility alias for environments that expose meta instead of cmd.
+	pi.registerShortcut("meta+v", {
+		description: "paste image from clipboard",
+		handler: pasteHandler,
+	});
 
 	pi.registerShortcut("alt+i", {
 		description: "open attachment picker",
