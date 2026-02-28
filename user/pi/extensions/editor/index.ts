@@ -22,7 +22,7 @@ import type { AgentMessage, AssistantMessage, TextContent } from "@mariozechner/
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { hasToolCost } from "../tools/lib/tool-cost";
-import setupImageAttachments from "../image-attachments";
+import setupImageAttachments from "./image-attachments";
 
 const execFileAsync = promisify(execFile);
 
