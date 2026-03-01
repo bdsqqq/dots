@@ -18,7 +18,10 @@ PanelWindow {
     color: "transparent"
 
     // cover the whole screen for positioning flexibility
-    anchors.fill: parent
+    anchors.top: true
+    anchors.bottom: true
+    anchors.left: true
+    anchors.right: true
     screen: root.screen
 
     WlrLayershell.layer: WlrLayer.Overlay
