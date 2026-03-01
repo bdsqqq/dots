@@ -17,8 +17,8 @@
     "lint": "oxlint --type-aware --format=stylish --type-check --report-unused-disable-directives",
     "lint:fix": "oxlint --type-aware --format=stylish --type-check --fix --report-unused-disable-directives",
     "lint:github": "oxlint --type-aware --type-check --format=github --report-unused-disable-directives",
-    "format": "oxfmt --write \"extensions/mermaid/**/*.ts\" \"extensions/command-palette/**/*.ts\" \"extensions/editor/**/*.ts\"",
-    "format:check": "oxfmt --check \"extensions/mermaid/**/*.ts\" \"extensions/command-palette/**/*.ts\" \"extensions/editor/**/*.ts\"",
+    "format": "oxfmt --write",
+    "format:check": "oxfmt --check",
     "typecheck": "bun run --filter './extensions/mermaid' typecheck && bun run --filter './extensions/command-palette' typecheck && bun run --filter './extensions/editor' typecheck",
     "check": "bun run format && bun run lint && bun run typecheck"
   },

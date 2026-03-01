@@ -15,23 +15,26 @@ const locks = new Map<string, Promise<void>>();
  * execute `fn` while holding an exclusive lock on `filePath`.
  * concurrent calls for the same resolved path queue sequentially.
  */
-export async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
-	const key = path.resolve(filePath);
+export async function withFileLock<T>(
+  filePath: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const key = path.resolve(filePath);
 
-	while (locks.has(key)) {
-		await locks.get(key);
-	}
+  while (locks.has(key)) {
+    await locks.get(key);
+  }
 
-	let resolve!: () => void;
-	const promise = new Promise<void>((r) => {
-		resolve = r;
-	});
-	locks.set(key, promise);
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => {
+    resolve = r;
+  });
+  locks.set(key, promise);
 
-	try {
-		return await fn();
-	} finally {
-		locks.delete(key);
-		resolve();
-	}
+  try {
+    return await fn();
+  } finally {
+    locks.delete(key);
+    resolve();
+  }
 }

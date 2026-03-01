@@ -14,12 +14,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 export interface AgentsGuidance {
-	/** absolute path to the AGENTS.md file */
-	path: string;
-	/** file contents */
-	content: string;
-	/** human-readable scope: "global", "project", or relative dir path */
-	scope: string;
+  /** absolute path to the AGENTS.md file */
+  path: string;
+  /** file contents */
+  content: string;
+  /** human-readable scope: "global", "project", or relative dir path */
+  scope: string;
 }
 
 const FILENAME = "AGENTS.md";
@@ -30,47 +30,50 @@ const GLOBAL_PATH = path.join(os.homedir(), ".config", "pi", FILENAME);
  * most specific scope. walks from workspace root down to the file's
  * directory, prepending the global config if it exists.
  */
-export function discoverAgentsMd(filePath: string, workspaceRoot: string): AgentsGuidance[] {
-	const results: AgentsGuidance[] = [];
-	const root = path.resolve(workspaceRoot);
+export function discoverAgentsMd(
+  filePath: string,
+  workspaceRoot: string,
+): AgentsGuidance[] {
+  const results: AgentsGuidance[] = [];
+  const root = path.resolve(workspaceRoot);
 
-	// global user config
-	if (fs.existsSync(GLOBAL_PATH)) {
-		try {
-			results.push({
-				path: GLOBAL_PATH,
-				content: fs.readFileSync(GLOBAL_PATH, "utf-8"),
-				scope: "global",
-			});
-		} catch {
-			// unreadable, skip
-		}
-	}
+  // global user config
+  if (fs.existsSync(GLOBAL_PATH)) {
+    try {
+      results.push({
+        path: GLOBAL_PATH,
+        content: fs.readFileSync(GLOBAL_PATH, "utf-8"),
+        scope: "global",
+      });
+    } catch {
+      // unreadable, skip
+    }
+  }
 
-	// walk from file's directory up to workspace root (then reverse for
-	// broadest-first ordering)
-	const dirResults: AgentsGuidance[] = [];
-	let dir = path.dirname(path.resolve(filePath));
+  // walk from file's directory up to workspace root (then reverse for
+  // broadest-first ordering)
+  const dirResults: AgentsGuidance[] = [];
+  let dir = path.dirname(path.resolve(filePath));
 
-	while (dir.startsWith(root) || dir === root) {
-		const candidate = path.join(dir, FILENAME);
-		if (fs.existsSync(candidate)) {
-			try {
-				const content = fs.readFileSync(candidate, "utf-8");
-				const scope = dir === root ? "project" : path.relative(root, dir);
-				dirResults.push({ path: candidate, content, scope });
-			} catch {
-				// unreadable, skip
-			}
-		}
-		const parent = path.dirname(dir);
-		if (parent === dir) break;
-		dir = parent;
-	}
+  while (dir.startsWith(root) || dir === root) {
+    const candidate = path.join(dir, FILENAME);
+    if (fs.existsSync(candidate)) {
+      try {
+        const content = fs.readFileSync(candidate, "utf-8");
+        const scope = dir === root ? "project" : path.relative(root, dir);
+        dirResults.push({ path: candidate, content, scope });
+      } catch {
+        // unreadable, skip
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
 
-	// walked upward, so reverse to get project root → specific directory
-	results.push(...dirResults.reverse());
-	return results;
+  // walked upward, so reverse to get project root → specific directory
+  results.push(...dirResults.reverse());
+  return results;
 }
 
 /**
@@ -78,12 +81,12 @@ export function discoverAgentsMd(filePath: string, workspaceRoot: string): Agent
  * output format: header with scope, then content.
  */
 export function formatGuidance(guidance: AgentsGuidance[]): string {
-	if (guidance.length === 0) return "";
+  if (guidance.length === 0) return "";
 
-	return guidance
-		.map((g) => {
-			const header = `Contents of ${g.path} (directory-specific instructions for ${g.scope}):`;
-			return `${header}\n\n<instructions>\n${g.content}\n</instructions>`;
-		})
-		.join("\n\n");
+  return guidance
+    .map((g) => {
+      const header = `Contents of ${g.path} (directory-specific instructions for ${g.scope}):`;
+      return `${header}\n\n<instructions>\n${g.content}\n</instructions>`;
+    })
+    .join("\n\n");
 }

@@ -23,24 +23,25 @@ const HARNESS = "pi";
 const IDENTITY = "Amp";
 
 export default function (pi: ExtensionAPI) {
-	const body = readAgentPrompt("prompt.amp.system.md");
-	if (!body) return;
+  const body = readAgentPrompt("prompt.amp.system.md");
+  if (!body) return;
 
-	// load harness docs based on harness name
-	const harnessDocs = readAgentPrompt(`prompt.harness-docs.${HARNESS}.md`) || "";
+  // load harness docs based on harness name
+  const harnessDocs =
+    readAgentPrompt(`prompt.harness-docs.${HARNESS}.md`) || "";
 
-	pi.on("before_agent_start", async (event, ctx) => {
-		const interpolated = interpolatePromptVars(body, ctx.cwd, {
-			sessionId: ctx.sessionManager.getSessionId(),
-			identity: IDENTITY,
-			harness: HARNESS,
-			harnessDocsSection: harnessDocs,
-		});
+  pi.on("before_agent_start", async (event, ctx) => {
+    const interpolated = interpolatePromptVars(body, ctx.cwd, {
+      sessionId: ctx.sessionManager.getSessionId(),
+      identity: IDENTITY,
+      harness: HARNESS,
+      harnessDocsSection: harnessDocs,
+    });
 
-		if (!interpolated.trim()) return;
+    if (!interpolated.trim()) return;
 
-		return {
-			systemPrompt: event.systemPrompt + "\n\n" + interpolated,
-		};
-	});
+    return {
+      systemPrompt: event.systemPrompt + "\n\n" + interpolated,
+    };
+  });
 }

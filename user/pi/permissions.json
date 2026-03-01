@@ -7,7 +7,9 @@
   },
   {
     "tool": "Bash",
-    "matches": { "cmd": ["*git push --force*", "*git push -f*", "*--force-with-lease*"] },
+    "matches": {
+      "cmd": ["*git push --force*", "*git push -f*", "*--force-with-lease*"]
+    },
     "action": "reject",
     "message": "never force push. if diverged: 'git fetch origin && git rebase origin/main && git push'"
   },

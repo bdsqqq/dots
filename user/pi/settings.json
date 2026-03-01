@@ -1,11 +1,7 @@
 {
   "defaultProvider": "opencode",
-  "enabledModels": [
-    "opencode/*"
-  ],
-  "skills": [
-    "~/.config/agents/skills"
-  ],
+  "enabledModels": ["opencode/*"],
+  "skills": ["~/.config/agents/skills"],
   "extensions": [
     "~/.pi/agent/extensions/editor",
     "~/.pi/agent/extensions/handoff.ts",

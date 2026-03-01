@@ -36,61 +36,79 @@ import { createSearchSessionsTool } from "./search-sessions";
 import { createReadSessionTool } from "./read-session";
 import { readAgentPrompt } from "./lib/pi-spawn";
 import {
-	createReadGithubTool,
-	createSearchGithubTool,
-	createListDirectoryGithubTool,
-	createListRepositoriesTool,
-	createGlobGithubTool,
-	createCommitSearchTool,
-	createDiffTool,
+  createReadGithubTool,
+  createSearchGithubTool,
+  createListDirectoryGithubTool,
+  createListRepositoriesTool,
+  createGlobGithubTool,
+  createCommitSearchTool,
+  createDiffTool,
 } from "./github";
 
 export { withFileLock } from "./lib/mutex";
-export { saveChange, loadChanges, revertChange, findLatestChange, simpleDiff } from "./lib/file-tracker";
+export {
+  saveChange,
+  loadChanges,
+  revertChange,
+  findLatestChange,
+  simpleDiff,
+} from "./lib/file-tracker";
 
 export default function (pi: ExtensionAPI) {
-	const limits = process.env.PI_READ_COMPACT ? COMPACT_LIMITS : NORMAL_LIMITS;
+  const limits = process.env.PI_READ_COMPACT ? COMPACT_LIMITS : NORMAL_LIMITS;
 
-	pi.registerTool(createReadTool(limits));
-	pi.registerTool(createLsTool(limits));
-	pi.registerTool(createEditFileTool());
-	pi.registerTool(createCreateFileTool());
-	pi.registerTool(createGrepTool());
-	pi.registerTool(createGlobTool());
-	pi.registerTool(createBashTool());
-	pi.registerTool(createUndoEditTool());
-	pi.registerTool(createFormatFileTool());
-	pi.registerTool(createSkillTool());
-	pi.registerTool(createFinderTool({
-		systemPrompt: readAgentPrompt("agent.amp.finder.md"),
-	}));
-	pi.registerTool(createOracleTool({
-		systemPrompt: readAgentPrompt("agent.amp.oracle.md"),
-	}));
-	pi.registerTool(createTaskTool());
-	pi.registerTool(createLibrarianTool({
-		systemPrompt: readAgentPrompt("agent.amp.librarian.md"),
-	}));
-	pi.registerTool(createCodeReviewTool({
-		systemPrompt: readAgentPrompt("prompt.amp.code-review-system.md"),
-		reportFormat: readAgentPrompt("prompt.amp.code-review-report.md"),
-	}));
-	pi.registerTool(createLookAtTool({
-		systemPrompt: readAgentPrompt("prompt.amp.look-at.md"),
-	}));
-	pi.registerTool(createReadWebPageTool({
-		systemPrompt: readAgentPrompt("prompt.amp.read-web-page.md"),
-	}));
-	pi.registerTool(createWebSearchTool());
-	pi.registerTool(createSearchSessionsTool());
-	pi.registerTool(createReadSessionTool());
+  pi.registerTool(createReadTool(limits));
+  pi.registerTool(createLsTool(limits));
+  pi.registerTool(createEditFileTool());
+  pi.registerTool(createCreateFileTool());
+  pi.registerTool(createGrepTool());
+  pi.registerTool(createGlobTool());
+  pi.registerTool(createBashTool());
+  pi.registerTool(createUndoEditTool());
+  pi.registerTool(createFormatFileTool());
+  pi.registerTool(createSkillTool());
+  pi.registerTool(
+    createFinderTool({
+      systemPrompt: readAgentPrompt("agent.amp.finder.md"),
+    }),
+  );
+  pi.registerTool(
+    createOracleTool({
+      systemPrompt: readAgentPrompt("agent.amp.oracle.md"),
+    }),
+  );
+  pi.registerTool(createTaskTool());
+  pi.registerTool(
+    createLibrarianTool({
+      systemPrompt: readAgentPrompt("agent.amp.librarian.md"),
+    }),
+  );
+  pi.registerTool(
+    createCodeReviewTool({
+      systemPrompt: readAgentPrompt("prompt.amp.code-review-system.md"),
+      reportFormat: readAgentPrompt("prompt.amp.code-review-report.md"),
+    }),
+  );
+  pi.registerTool(
+    createLookAtTool({
+      systemPrompt: readAgentPrompt("prompt.amp.look-at.md"),
+    }),
+  );
+  pi.registerTool(
+    createReadWebPageTool({
+      systemPrompt: readAgentPrompt("prompt.amp.read-web-page.md"),
+    }),
+  );
+  pi.registerTool(createWebSearchTool());
+  pi.registerTool(createSearchSessionsTool());
+  pi.registerTool(createReadSessionTool());
 
-	// github tools — used by librarian sub-agent, also available to main agent
-	pi.registerTool(createReadGithubTool());
-	pi.registerTool(createSearchGithubTool());
-	pi.registerTool(createListDirectoryGithubTool());
-	pi.registerTool(createListRepositoriesTool());
-	pi.registerTool(createGlobGithubTool());
-	pi.registerTool(createCommitSearchTool());
-	pi.registerTool(createDiffTool());
+  // github tools — used by librarian sub-agent, also available to main agent
+  pi.registerTool(createReadGithubTool());
+  pi.registerTool(createSearchGithubTool());
+  pi.registerTool(createListDirectoryGithubTool());
+  pi.registerTool(createListRepositoriesTool());
+  pi.registerTool(createGlobGithubTool());
+  pi.registerTool(createCommitSearchTool());
+  pi.registerTool(createDiffTool());
 }

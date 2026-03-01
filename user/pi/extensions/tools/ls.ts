@@ -14,78 +14,101 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { resolveWithVariants, listDirectory, type ReadLimits } from "./read";
-import { boxRendererWindowed, textSection, osc8Link, type Excerpt } from "./lib/box-format";
+import {
+  boxRendererWindowed,
+  textSection,
+  osc8Link,
+  type Excerpt,
+} from "./lib/box-format";
 
 const COLLAPSED_EXCERPTS: Excerpt[] = [
-	{ focus: "head" as const, context: 3 },
-	{ focus: "tail" as const, context: 5 },
+  { focus: "head" as const, context: 3 },
+  { focus: "tail" as const, context: 5 },
 ];
 
 export function createLsTool(limits: ReadLimits): ToolDefinition {
-	return {
-		name: "ls",
-		label: "List Directory",
-		description:
-			"List directory contents. Prefer using the read tool instead — it handles both files and directories.",
+  return {
+    name: "ls",
+    label: "List Directory",
+    description:
+      "List directory contents. Prefer using the read tool instead — it handles both files and directories.",
 
-		parameters: Type.Object({
-			path: Type.Optional(
-				Type.String({
-					description: "The absolute path to the directory to list. Defaults to cwd.",
-				}),
-			),
-		}),
+    parameters: Type.Object({
+      path: Type.Optional(
+        Type.String({
+          description:
+            "The absolute path to the directory to list. Defaults to cwd.",
+        }),
+      ),
+    }),
 
-		renderCall(args: any, theme: any) {
-			const dirPath = args.path || ".";
-			const home = os.homedir();
-			const shortened = dirPath.startsWith(home) ? `~${dirPath.slice(home.length)}` : dirPath;
-			const linked = dirPath.startsWith("/") ? osc8Link(`file://${dirPath}`, shortened) : shortened;
-			return new Text(
-				theme.fg("toolTitle", theme.bold("ls ")) + theme.fg("dim", linked),
-				0, 0,
-			);
-		},
+    renderCall(args: any, theme: any) {
+      const dirPath = args.path || ".";
+      const home = os.homedir();
+      const shortened = dirPath.startsWith(home)
+        ? `~${dirPath.slice(home.length)}`
+        : dirPath;
+      const linked = dirPath.startsWith("/")
+        ? osc8Link(`file://${dirPath}`, shortened)
+        : shortened;
+      return new Text(
+        theme.fg("toolTitle", theme.bold("ls ")) + theme.fg("dim", linked),
+        0,
+        0,
+      );
+    },
 
-		renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
-			const content = result.content?.[0];
-			if (!content || content.type !== "text") return new Text("(no output)", 0, 0);
-			return boxRendererWindowed(
-				() => [textSection(undefined, content.text)],
-				{ collapsed: { excerpts: COLLAPSED_EXCERPTS }, expanded: {} },
-			);
-		},
+    renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+      const content = result.content?.[0];
+      if (!content || content.type !== "text")
+        return new Text("(no output)", 0, 0);
+      return boxRendererWindowed(() => [textSection(undefined, content.text)], {
+        collapsed: { excerpts: COLLAPSED_EXCERPTS },
+        expanded: {},
+      });
+    },
 
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const resolved = resolveWithVariants(params.path ?? ctx.cwd, ctx.cwd);
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const resolved = resolveWithVariants(params.path ?? ctx.cwd, ctx.cwd);
 
-			if (!fs.existsSync(resolved)) {
-				return {
-					content: [{ type: "text" as const, text: `directory not found: ${resolved}` }],
-					isError: true,
-				} as any;
-			}
+      if (!fs.existsSync(resolved)) {
+        return {
+          content: [
+            { type: "text" as const, text: `directory not found: ${resolved}` },
+          ],
+          isError: true,
+        } as any;
+      }
 
-			const stat = fs.statSync(resolved);
-			if (!stat.isDirectory()) {
-				return {
-					content: [{ type: "text" as const, text: `not a directory: ${resolved}. use the read tool for files.` }],
-					isError: true,
-				} as any;
-			}
+      const stat = fs.statSync(resolved);
+      if (!stat.isDirectory()) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `not a directory: ${resolved}. use the read tool for files.`,
+            },
+          ],
+          isError: true,
+        } as any;
+      }
 
-			try {
-				let text = listDirectory(resolved, limits.maxDirEntries);
+      try {
+        let text = listDirectory(resolved, limits.maxDirEntries);
 
-				text += "\n\n(note: prefer the read tool for directory listing — it handles both files and directories.)";
+        text +=
+          "\n\n(note: prefer the read tool for directory listing — it handles both files and directories.)";
 
-				return { content: [{ type: "text" as const, text }], details: { header: resolved } } as any;
-			} catch (err: any) {
-				return {
-					content: [{ type: "text" as const, text: err.message }],
-					isError: true,
-				} as any;
-			}
-		},
-	};
+        return {
+          content: [{ type: "text" as const, text }],
+          details: { header: resolved },
+        } as any;
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: err.message }],
+          isError: true,
+        } as any;
+      }
+    },
+  };
 }

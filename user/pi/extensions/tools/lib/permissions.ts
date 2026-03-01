@@ -20,15 +20,15 @@ import * as path from "node:path";
 // --- types ---
 
 export interface PermissionRule {
-	tool: string;
-	matches?: { cmd?: string | string[] };
-	action: "allow" | "reject";
-	message?: string;
+  tool: string;
+  matches?: { cmd?: string | string[] };
+  action: "allow" | "reject";
+  message?: string;
 }
 
 export interface PermissionVerdict {
-	action: "allow" | "reject";
-	message?: string;
+  action: "allow" | "reject";
+  message?: string;
 }
 
 // --- glob matching ---
@@ -38,45 +38,51 @@ export interface PermissionVerdict {
  * covers all patterns amp documents: `*git push*`, `rm *`, `*`.
  */
 function globToRegex(pattern: string): RegExp {
-	const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-	const withWildcards = escaped.replace(/\*/g, ".*");
-	return new RegExp(`^${withWildcards}$`, "i");
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  const withWildcards = escaped.replace(/\*/g, ".*");
+  return new RegExp(`^${withWildcards}$`, "i");
 }
 
 // --- evaluation ---
 
 export function evaluatePermission(
-	toolName: string,
-	params: { cmd?: string },
-	rules: PermissionRule[],
+  toolName: string,
+  params: { cmd?: string },
+  rules: PermissionRule[],
 ): PermissionVerdict {
-	for (const rule of rules) {
-		if (!globToRegex(rule.tool).test(toolName)) continue;
+  for (const rule of rules) {
+    if (!globToRegex(rule.tool).test(toolName)) continue;
 
-		if (rule.matches?.cmd) {
-			const patterns = Array.isArray(rule.matches.cmd)
-				? rule.matches.cmd
-				: [rule.matches.cmd];
-			if (!patterns.some((p) => globToRegex(p).test(params.cmd ?? ""))) continue;
-		}
+    if (rule.matches?.cmd) {
+      const patterns = Array.isArray(rule.matches.cmd)
+        ? rule.matches.cmd
+        : [rule.matches.cmd];
+      if (!patterns.some((p) => globToRegex(p).test(params.cmd ?? "")))
+        continue;
+    }
 
-		return { action: rule.action, message: rule.message };
-	}
+    return { action: rule.action, message: rule.message };
+  }
 
-	return { action: "allow" };
+  return { action: "allow" };
 }
 
 // --- loading ---
 
-const PERMISSIONS_PATH = path.join(os.homedir(), ".pi", "agent", "permissions.json");
+const PERMISSIONS_PATH = path.join(
+  os.homedir(),
+  ".pi",
+  "agent",
+  "permissions.json",
+);
 
 export function loadPermissions(): PermissionRule[] {
-	try {
-		const raw = fs.readFileSync(PERMISSIONS_PATH, "utf-8");
-		const parsed = JSON.parse(raw);
-		if (!Array.isArray(parsed)) return [];
-		return parsed;
-	} catch {
-		return [];
-	}
+  try {
+    const raw = fs.readFileSync(PERMISSIONS_PATH, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch {
+    return [];
+  }
 }

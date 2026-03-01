@@ -66,7 +66,9 @@ export function boxBorderLR(args: {
   const fill = innerWidth - 2 - leftW - rightW;
   if (fill < 0) {
     // overflow — plain dashed line
-    return style.dim(corner.left + "─".repeat(Math.max(0, innerWidth)) + corner.right);
+    return style.dim(
+      corner.left + "─".repeat(Math.max(0, innerWidth)) + corner.right,
+    );
   }
 
   return (
@@ -89,5 +91,9 @@ export function boxBottom(args: {
   if (!footer) return style.dim("╰" + "─".repeat(innerWidth) + "╯");
   const left = Math.max(0, Math.floor((innerWidth - footer.width) / 2));
   const right = Math.max(0, innerWidth - left - footer.width);
-  return style.dim("╰" + "─".repeat(left)) + footer.text + style.dim("─".repeat(right) + "╯");
+  return (
+    style.dim("╰" + "─".repeat(left)) +
+    footer.text +
+    style.dim("─".repeat(right) + "╯")
+  );
 }

@@ -23,6 +23,7 @@ compaction is **disabled** in this environment. context is managed via handoff â
 ## invoking handoff
 
 you have a `handoff` tool. call it directly when:
+
 - context is getting heavy (lots of tool calls, file reads, back-and-forth)
 - you've completed a unit of work and the next task is clear
 - you're about to hit diminishing returns in the current session
