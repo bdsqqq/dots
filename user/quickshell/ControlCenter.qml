@@ -19,6 +19,7 @@ PanelWindow {
     readonly property int panelMargin: 0
     readonly property int oneColumnMinWidth: 320
     readonly property int twoColumnMinWidth: 560
+    readonly property int panelMaxHeightPadding: Design.Theme.t.space6
     readonly property bool canUseTwoColumns: screen.width >= twoColumnMinWidth + panelPadding * 2 + panelMargin * 2
 
     anchors {
@@ -33,7 +34,9 @@ PanelWindow {
             (canUseTwoColumns ? twoColumnMinWidth : oneColumnMinWidth) + panelPadding * 2
         ) + panelMargin * 2
     )
-    implicitHeight: Math.min(contentColumn.implicitHeight + panelPadding * 2 + panelMargin * 2, screen.height * 0.65)
+    // surface loses `cornerRadius` height to preserve the bottom-right concave join.
+    // compensate here so last card content doesn't get clipped.
+    implicitHeight: Math.min(contentColumn.implicitHeight + panelPadding * 2 + panelMargin * 2 + Design.Theme.t.radiusMd, screen.height - panelMaxHeightPadding)
 
     visible: isOpen
     color: "transparent"
@@ -272,6 +275,11 @@ PanelWindow {
 
                     BatteryModule {
                         Layout.fillWidth: true
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: panel.cornerRadius + Design.Theme.t.space1
                     }
                 }
             }
