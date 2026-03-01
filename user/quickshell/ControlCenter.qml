@@ -15,7 +15,7 @@ PanelWindow {
     property bool isOpen: false
 
     readonly property int panelPadding: Design.Theme.t.space4
-    readonly property int panelMargin: Design.Theme.t.space2
+    readonly property int panelMargin: 0
 
     anchors {
         top: true

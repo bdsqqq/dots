@@ -27,7 +27,7 @@ Item {
 
     readonly property string resolvedEdge: edge === "auto" ? detectEdge() : edge
 
-    // -1 flat, 0 convex, 1 concave-x, 2 concave-y
+    // -1 edge-attached (flat at p=0, rounds out with reveal), 0 regular convex
     readonly property int topLeftState: cornerState("top-left")
     readonly property int topRightState: cornerState("top-right")
     readonly property int bottomRightState: cornerState("bottom-right")
@@ -60,14 +60,10 @@ Item {
         const onRight = corner.indexOf("right") !== -1
 
         if ((onTop && edgeHas("top")) || (onBottom && edgeHas("bottom")) || (onLeft && edgeHas("left")) || (onRight && edgeHas("right"))) {
-            return (onTop || onBottom) ? 1 : 2
+            return -1
         }
 
         return 0
-    }
-
-    function isConcave(state: int): bool {
-        return state === 1 || state === 2
     }
 
     Shape {
@@ -81,61 +77,60 @@ Item {
             fillColor: root.fillColor
 
             readonly property real r: root.effectiveRadius
+            readonly property real tlRadius: root.topLeftState === -1 ? r * root.p : r
+            readonly property real trRadius: root.topRightState === -1 ? r * root.p : r
+            readonly property real brRadius: root.bottomRightState === -1 ? r * root.p : r
+            readonly property real blRadius: root.bottomLeftState === -1 ? r * root.p : r
 
-            readonly property bool tlConcave: root.isConcave(root.topLeftState)
-            readonly property bool trConcave: root.isConcave(root.topRightState)
-            readonly property bool brConcave: root.isConcave(root.bottomRightState)
-            readonly property bool blConcave: root.isConcave(root.bottomLeftState)
-
-            startX: tlConcave ? 0 : r
+            startX: panelPath.tlRadius
             startY: 0
 
             PathLine {
-                x: panelPath.trConcave ? root.width : root.width - panelPath.r
+                x: root.width - panelPath.trRadius
                 y: 0
             }
             PathArc {
-                x: panelPath.trConcave ? root.width - panelPath.r * root.p : root.width
-                y: panelPath.r
-                radiusX: panelPath.r
-                radiusY: panelPath.r
-                direction: panelPath.trConcave ? PathArc.Counterclockwise : PathArc.Clockwise
+                x: root.width
+                y: panelPath.trRadius
+                radiusX: Math.max(0.001, panelPath.trRadius)
+                radiusY: Math.max(0.001, panelPath.trRadius)
+                direction: PathArc.Clockwise
             }
 
             PathLine {
                 x: root.width
-                y: panelPath.brConcave ? root.height : root.height - panelPath.r
+                y: root.height - panelPath.brRadius
             }
             PathArc {
-                x: root.width - panelPath.r
-                y: panelPath.brConcave ? root.height - panelPath.r * root.p : root.height
-                radiusX: panelPath.r
-                radiusY: panelPath.r
-                direction: panelPath.brConcave ? PathArc.Counterclockwise : PathArc.Clockwise
+                x: root.width - panelPath.brRadius
+                y: root.height
+                radiusX: Math.max(0.001, panelPath.brRadius)
+                radiusY: Math.max(0.001, panelPath.brRadius)
+                direction: PathArc.Clockwise
             }
 
             PathLine {
-                x: panelPath.blConcave ? 0 : panelPath.r
+                x: panelPath.blRadius
                 y: root.height
             }
             PathArc {
-                x: panelPath.blConcave ? panelPath.r * root.p : 0
-                y: root.height - panelPath.r
-                radiusX: panelPath.r
-                radiusY: panelPath.r
-                direction: panelPath.blConcave ? PathArc.Counterclockwise : PathArc.Clockwise
+                x: 0
+                y: root.height - panelPath.blRadius
+                radiusX: Math.max(0.001, panelPath.blRadius)
+                radiusY: Math.max(0.001, panelPath.blRadius)
+                direction: PathArc.Clockwise
             }
 
             PathLine {
                 x: 0
-                y: panelPath.tlConcave ? 0 : panelPath.r
+                y: panelPath.tlRadius
             }
             PathArc {
-                x: panelPath.tlConcave ? panelPath.r * root.p : panelPath.r
+                x: panelPath.tlRadius
                 y: 0
-                radiusX: panelPath.r
-                radiusY: panelPath.r
-                direction: panelPath.tlConcave ? PathArc.Counterclockwise : PathArc.Clockwise
+                radiusX: Math.max(0.001, panelPath.tlRadius)
+                radiusY: Math.max(0.001, panelPath.tlRadius)
+                direction: PathArc.Clockwise
             }
         }
     }
