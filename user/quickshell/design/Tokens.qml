@@ -3,10 +3,11 @@
 // Why: hardcoded values scattered across components make consistent theming impossible.
 //      tokens enable systematic adjustments without hunting through files.
 
-pragma Singleton
 import QtQuick
 
 QtObject {
+    id: root
+
     // colors
     // semantic naming based on usage patterns in the shell
     property color black: "#000000"
@@ -47,27 +48,27 @@ QtObject {
     //      'c.fg' is clearer than 'white' when used in a color: prop context.
     QtObject {
         id: c
-        property color fg: Tokens.white
-        property color muted: Tokens.gray300
-        property color subtle: Tokens.gray400
-        property color bg: Tokens.gray800
-        property color bgHover: Tokens.gray700
-        property color border: Tokens.gray500
-        property color active: Tokens.white
-        property color inactive: Tokens.gray800
+        property color fg: root.white
+        property color muted: root.gray300
+        property color subtle: root.gray400
+        property color bg: root.gray800
+        property color bgHover: root.gray700
+        property color border: root.gray500
+        property color active: root.white
+        property color inactive: root.gray800
     }
 
     QtObject {
         id: type
-        property int bodySm: Tokens.textXs    // 12px captions, metadata
-        property int bodyMd: Tokens.textSm    // 14px body, labels
-        property int titleLg: Tokens.text2xl    // 24px headings, clock
+        property int bodySm: root.textXs    // 12px captions, metadata
+        property int bodyMd: root.textSm    // 14px body, labels
+        property int titleLg: root.text2xl    // 24px headings, clock
     }
 
     // keep radius accessible as t.radius.sm, t.radius.md for consistency with c/type
     QtObject {
         id: radius
-        property int sm: Tokens.radiusSm
-        property int md: Tokens.radiusMd
+        property int sm: root.radiusSm
+        property int md: root.radiusMd
     }
 }

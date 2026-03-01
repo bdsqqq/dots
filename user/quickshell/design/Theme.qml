@@ -6,6 +6,9 @@
 pragma Singleton
 import QtQuick
 
-Tokens {
-    id: t
+QtObject {
+    id: root
+
+    // expose tokens as 't' for terse access: Theme.t.c.fg, Theme.t.space.2, etc.
+    property var t: Tokens {}
 }
