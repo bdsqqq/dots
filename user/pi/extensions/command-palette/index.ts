@@ -3,7 +3,9 @@ import { buildRootView } from "./adapters";
 import { StackPalette } from "./palette";
 
 export default function commandPaletteExtension(pi: ExtensionAPI) {
-  async function openPalette(ctx: import("@mariozechner/pi-coding-agent").ExtensionContext) {
+  async function openPalette(
+    ctx: import("@mariozechner/pi-coding-agent").ExtensionContext,
+  ) {
     if (!ctx.hasUI) return;
 
     const rootView = buildRootView(pi, ctx);

@@ -3,5 +3,6 @@
   "semi": true,
   "singleQuote": false,
   "printWidth": 80,
-  "sortPackageJson": true
+  "sortPackageJson": true,
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**"]
 }

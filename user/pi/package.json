@@ -14,8 +14,9 @@
     }
   },
   "scripts": {
-    "lint": "oxlint extensions/mermaid extensions/command-palette extensions/editor",
-    "lint:fix": "oxlint --fix extensions/mermaid extensions/command-palette extensions/editor",
+    "lint": "oxlint --type-aware --format=stylish --type-check --report-unused-disable-directives",
+    "lint:fix": "oxlint --type-aware --format=stylish --type-check --fix --report-unused-disable-directives",
+    "lint:github": "oxlint --type-aware --type-check --format=github --report-unused-disable-directives",
     "format": "oxfmt --write \"extensions/mermaid/**/*.ts\" \"extensions/command-palette/**/*.ts\" \"extensions/editor/**/*.ts\"",
     "format:check": "oxfmt --check \"extensions/mermaid/**/*.ts\" \"extensions/command-palette/**/*.ts\" \"extensions/editor/**/*.ts\"",
     "typecheck": "bun run --filter './extensions/mermaid' typecheck && bun run --filter './extensions/command-palette' typecheck && bun run --filter './extensions/editor' typecheck",
@@ -25,6 +26,7 @@
     "@types/bun": "latest",
     "oxfmt": "^0.35.0",
     "oxlint": "^1.50.0",
+    "oxlint-tsgolint": "^0.15.0",
     "typescript": "^5.9.2"
   }
 }
