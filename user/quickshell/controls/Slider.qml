@@ -16,17 +16,26 @@ Rectangle {
     property real value: 0.5
     property var onChangeEnd: function(val) {}
     property bool enabled: true
+    property real dragValue: value
+
+    readonly property real visualValue: mouse.pressed ? dragValue : value
 
     implicitHeight: 24
 
+    onValueChanged: {
+        if (!mouse.pressed) {
+            dragValue = value;
+        }
+    }
+
     // track styling
     color: Design.Theme.t.inactive
-    radius: Design.Theme.t.sm
+    radius: Design.Theme.t.radiusSm
 
     // fill indicator showing current value
     Rectangle {
         id: fill
-        width: parent.width * root.value
+        width: parent.width * root.visualValue
         height: parent.height
         color: enabled ? Design.Theme.t.active : Design.Theme.t.muted
         radius: parent.radius
@@ -44,8 +53,7 @@ Rectangle {
         hoverEnabled: true
 
         function updateValue(mouseX) {
-            let newValue = Math.max(0, Math.min(1, mouseX / width))
-            root.value = newValue
+            root.dragValue = Math.max(0, Math.min(1, mouseX / width));
         }
 
         onPressed: function(mouse) {
@@ -59,7 +67,7 @@ Rectangle {
         }
 
         onReleased: {
-            root.onChangeEnd(root.value)
+            root.onChangeEnd(root.dragValue)
         }
     }
 }

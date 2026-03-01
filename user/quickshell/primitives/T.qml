@@ -3,7 +3,7 @@
 // why: centralizes typography decisions (font family, color tones, sizing) in one place.
 //      prevents hardcoded font.pixelSize and color values scattered through components.
 //
-// @prop tone - semantic color: "fg" | "muted" | "subtle"
+// @prop tone - semantic color: "fg" | "bg" | "muted" | "subtle"
 // @prop size - semantic size: "bodySm" | "bodyMd" | "titleLg"
 
 import QtQuick
@@ -22,6 +22,7 @@ Text {
     color: {
         switch (tone) {
             case "fg": return Design.Theme.t.fg
+            case "bg": return Design.Theme.t.black
             case "muted": return Design.Theme.t.muted
             case "subtle": return Design.Theme.t.subtle
             default: return Design.Theme.t.fg

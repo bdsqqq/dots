@@ -18,7 +18,7 @@ Rectangle {
     height: layout.implicitHeight + Design.Theme.t.space4 * 2
 
     color: Design.Theme.t.black
-    radius: Design.Theme.t.md
+    radius: Design.Theme.t.radiusMd
 
     // track sink for volume/muted updates
     PwObjectTracker {

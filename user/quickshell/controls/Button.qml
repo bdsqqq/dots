@@ -5,7 +5,8 @@
 //
 // @prop variant - "ghost" | "outline" | "fill" — controls background and border presence
 // @prop text - label string
-// @prop onClicked - callback function invoked on press
+// @prop enabled - disables interaction and mutes styling when false
+// @signal clicked - emitted on press release inside bounds
 
 import QtQuick
 import "../design" as Design
@@ -16,7 +17,8 @@ Primitives.Surface {
 
     property string variant: "ghost"
     property string text: ""
-    property var onClicked: function() {}
+    property bool enabled: true
+    signal clicked
 
     // button sizing
     implicitWidth: Math.max(64, content.implicitWidth + Design.Theme.t.space4 * 2)
@@ -27,14 +29,15 @@ Primitives.Surface {
     property bool pressed: false
 
     // variant-driven styling
-    bg: {
+    surfaceColor: {
+        if (!enabled) return Design.Theme.t.inactive
         if (pressed) return Design.Theme.t.bgHover
         if (variant === "fill") return Design.Theme.t.fg
         return Design.Theme.t.bg
     }
 
-    border: variant === "outline" || (variant === "ghost" && hovered)
-    radius: "sm"
+    showBorder: variant === "outline" || (variant === "ghost" && hovered)
+    radiusToken: "sm"
 
     // content layout
     Row {
@@ -45,7 +48,7 @@ Primitives.Surface {
         Primitives.T {
             id: label
             text: root.text
-            tone: variant === "fill" ? "bg" : "fg"
+            tone: !root.enabled ? "muted" : (variant === "fill" ? "bg" : "fg")
             size: "bodySm"
             anchors.verticalCenter: parent.verticalCenter
         }
@@ -55,18 +58,19 @@ Primitives.Surface {
     MouseArea {
         anchors.fill: parent
         hoverEnabled: true
+        enabled: root.enabled
 
         onEntered: root.hovered = true
         onExited: root.hovered = false
         onPressed: root.pressed = true
         onReleased: {
             root.pressed = false
-            if (containsMouse) root.onClicked()
+            if (containsMouse) root.clicked()
         }
     }
 
     // state transitions
-    Behavior on bg {
+    Behavior on surfaceColor {
         ColorAnimation { duration: Design.Theme.t.durationMed }
     }
 }

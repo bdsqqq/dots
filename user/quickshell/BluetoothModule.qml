@@ -3,10 +3,13 @@ import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
 
+import "controls" as Controls
+
 Item {
     id: bluetoothModule
 
     property bool bluetoothOn: false
+    property bool togglePending: false
     property string connectedDevice: ""
     property bool expanded: false
     property bool scanning: false
@@ -116,6 +119,7 @@ Item {
         id: toggleBluetooth
         command: ["bluetoothctl", "power", bluetoothOn ? "off" : "on"]
         onExited: function(code, status) {
+            togglePending = false;
             adapterCheck.running = true;
         }
     }
@@ -235,80 +239,26 @@ Item {
             spacing: 8
             visible: expanded
 
-            Rectangle {
-                Layout.preferredWidth: toggleText.implicitWidth + 16
-                Layout.preferredHeight: toggleText.implicitHeight + 8
-                color: toggleMouse.containsMouse ? "#1f2937" : "transparent"
-                border.width: 1
-                border.color: bluetoothOn ? "#ffffff" : "#1f2937"
-                radius: 4
-
-                Behavior on color {
-                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                }
-
-                Behavior on border.color {
-                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                }
-
-                Text {
-                    id: toggleText
-                    anchors.centerIn: parent
-                    text: bluetoothOn ? "turn off" : "turn on"
-                    color: "#9ca3af"
-                    font.family: "Berkeley Mono"
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: toggleMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        toggleBluetooth.running = true;
-                    }
+            Controls.Button {
+                variant: bluetoothOn ? "outline" : "ghost"
+                text: togglePending ? "switching..." : (bluetoothOn ? "turn off" : "turn on")
+                enabled: !togglePending
+                onClicked: {
+                    togglePending = true;
+                    toggleBluetooth.running = true;
                 }
             }
 
-            Rectangle {
-                Layout.preferredWidth: scanText.implicitWidth + 16
-                Layout.preferredHeight: scanText.implicitHeight + 8
-                color: scanMouse.containsMouse ? "#1f2937" : "transparent"
-                border.width: 1
-                border.color: scanning ? "#ffffff" : "#1f2937"
-                radius: 4
+            Controls.Button {
+                variant: scanning ? "outline" : "ghost"
+                text: scanning ? "scanning..." : "scan"
                 visible: bluetoothOn
-
-                Behavior on color {
-                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                }
-
-                Behavior on border.color {
-                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                }
-
-                Text {
-                    id: scanText
-                    anchors.centerIn: parent
-                    text: scanning ? "scanning..." : "scan"
-                    color: "#9ca3af"
-                    font.family: "Berkeley Mono"
-                    font.pixelSize: 11
-                }
-
-                MouseArea {
-                    id: scanMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (scanning) {
-                            scanTimer.running = false;
-                            scanOff.running = true;
-                        } else {
-                            scanOn.running = true;
-                        }
+                onClicked: {
+                    if (scanning) {
+                        scanTimer.running = false;
+                        scanOff.running = true;
+                    } else {
+                        scanOn.running = true;
                     }
                 }
             }
