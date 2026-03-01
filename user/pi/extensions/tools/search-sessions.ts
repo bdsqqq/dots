@@ -99,11 +99,11 @@ function extractFilePaths(args: Record<string, unknown> | undefined): string[] {
 function extractFilePathsFromText(text: string): string[] {
 	const paths: string[] = [];
 	// @-mentions like @user/pi/extensions/editor.ts (must contain at least one /)
-	for (const m of text.matchAll(/@([\w.\/-]+\/[\w.\/-]+)/g)) {
+	for (const m of text.matchAll(/@([\w./-]+\/[\w./-]+)/g)) {
 		paths.push(m[1]);
 	}
 	// absolute paths like /Users/bdsqqq/foo.ts
-	for (const m of text.matchAll(/(?:^|\s)(\/[\w.\/-]+)/gm)) {
+	for (const m of text.matchAll(/(?:^|\s)(\/[\w./-]+)/gm)) {
 		paths.push(m[1]);
 	}
 	return paths;
