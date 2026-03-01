@@ -5,17 +5,15 @@
 //
 // @prop tone - semantic color: "fg" | "muted" | "subtle"
 // @prop size - semantic size: "bodySm" | "bodyMd" | "titleLg"
-// @prop text - the string to display
 
 import QtQuick
-import "../design/Theme.qml" as Theme
+import "../design" as Design
 
 Text {
     id: root
 
     property string tone: "fg"
     property string size: "bodyMd"
-    property string text: ""
 
     // default font family for the entire shell
     font.family: "Berkeley Mono"
@@ -23,23 +21,20 @@ Text {
     // map semantic tone to theme color
     color: {
         switch (tone) {
-            case "fg": return Theme.t.c.fg
-            case "muted": return Theme.t.c.muted
-            case "subtle": return Theme.t.c.subtle
-            default: return Theme.t.c.fg
+            case "fg": return Design.Theme.t.c.fg
+            case "muted": return Design.Theme.t.c.muted
+            case "subtle": return Design.Theme.t.c.subtle
+            default: return Design.Theme.t.c.fg
         }
     }
 
     // map semantic size to theme typography
     font.pixelSize: {
         switch (size) {
-            case "bodySm": return Theme.t.type.bodySm
-            case "bodyMd": return Theme.t.type.bodyMd
-            case "titleLg": return Theme.t.type.titleLg
-            default: return Theme.t.type.bodyMd
+            case "bodySm": return Design.Theme.t.type.bodySm
+            case "bodyMd": return Design.Theme.t.type.bodyMd
+            case "titleLg": return Design.Theme.t.type.titleLg
+            default: return Design.Theme.t.type.bodyMd
         }
     }
-
-    // bind the text property
-    text: root.text
 }
