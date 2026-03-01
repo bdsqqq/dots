@@ -3,6 +3,9 @@ import Quickshell.Wayland
 import Quickshell.Io
 import QtQuick
 
+import "./overlays/OsdVolume.qml" as OsdVolumeComponent
+import "./overlays/OverlayHost.qml" as OverlayHostComponent
+
 ShellRoot {
     id: root
 
@@ -93,6 +96,17 @@ ShellRoot {
         model: Quickshell.screens
 
         NotificationPopups {
+            required property var modelData
+            screen: modelData
+        }
+    }
+
+    // per-screen overlay host for OSDs
+    Variants {
+        id: overlayHosts
+        model: Quickshell.screens
+
+        OverlayHostComponent {
             required property var modelData
             screen: modelData
         }
