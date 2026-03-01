@@ -3,9 +3,15 @@
 // why: sliders appear in multiple modules (brightness, volume). centralizing the
 //      interaction logic and theming prevents duplication and inconsistency.
 //
-// @prop value - current position, 0..1 normalized
+// @prop value - external source of truth, 0..1 normalized
 // @signal changeEnd(value) - emitted when interaction completes
 // @prop enabled - whether interaction is allowed
+//
+// sync model (why): external state (pipewire/brightnessctl) can lag user intent.
+// showing `value` immediately after release causes a brief rollback flash.
+// we keep rendering `dragValue` while pressed + during a short post-release
+// window (`pendingExternalSync`), then hand back to `value` after convergence
+// or timeout. this keeps UI intent stable without permanently diverging state.
 
 import QtQuick
 import "../design" as Design
@@ -18,15 +24,28 @@ Rectangle {
 
     signal changeEnd(real value)
     property real dragValue: value
+    property bool pendingExternalSync: false
 
-    readonly property real visualValue: mouse.pressed ? dragValue : value
+    readonly property bool showingDragValue: mouse.pressed || pendingExternalSync
+    readonly property real visualValue: showingDragValue ? dragValue : value
 
     implicitHeight: 24
 
     onValueChanged: {
-        if (!mouse.pressed) {
-            dragValue = value;
+        if (mouse.pressed) {
+            return;
         }
+
+        if (pendingExternalSync) {
+            if (Math.abs(value - dragValue) <= 0.02) {
+                pendingExternalSync = false;
+                syncTimeout.stop();
+            } else {
+                return;
+            }
+        }
+
+        dragValue = value;
     }
 
     // track styling
@@ -42,7 +61,20 @@ Rectangle {
         radius: root.radius
 
         Behavior on width {
-            NumberAnimation { duration: Design.Theme.t.durationFast; easing.type: Easing.OutQuint }
+            NumberAnimation {
+                duration: Design.Theme.t.durationFast
+                easing.type: Easing.OutQuint
+            }
+        }
+    }
+
+    Timer {
+        id: syncTimeout
+        interval: 350
+        repeat: false
+        onTriggered: {
+            root.pendingExternalSync = false;
+            root.dragValue = root.value;
         }
     }
 
@@ -57,18 +89,22 @@ Rectangle {
             root.dragValue = Math.max(0, Math.min(1, mouseX / width));
         }
 
-        onPressed: function(mouse) {
-            updateValue(mouse.x)
+        onPressed: function (mouse) {
+            root.pendingExternalSync = false;
+            syncTimeout.stop();
+            updateValue(mouse.x);
         }
 
-        onPositionChanged: function(mouse) {
+        onPositionChanged: function (mouse) {
             if (pressed) {
-                updateValue(mouse.x)
+                updateValue(mouse.x);
             }
         }
 
         onReleased: {
-            root.changeEnd(root.dragValue)
+            root.pendingExternalSync = true;
+            syncTimeout.restart();
+            root.changeEnd(root.dragValue);
         }
     }
 }
