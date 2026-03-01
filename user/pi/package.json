@@ -13,20 +13,18 @@
       "@mariozechner/pi-tui": "^0.54.2"
     }
   },
+  "scripts": {
+    "lint": "oxlint extensions/mermaid extensions/command-palette extensions/editor",
+    "lint:fix": "oxlint --fix extensions/mermaid extensions/command-palette extensions/editor",
+    "format": "oxfmt --write \"extensions/mermaid/**/*.ts\" \"extensions/command-palette/**/*.ts\" \"extensions/editor/**/*.ts\"",
+    "format:check": "oxfmt --check \"extensions/mermaid/**/*.ts\" \"extensions/command-palette/**/*.ts\" \"extensions/editor/**/*.ts\"",
+    "typecheck": "bun run --filter './extensions/mermaid' typecheck && bun run --filter './extensions/command-palette' typecheck && bun run --filter './extensions/editor' typecheck",
+    "check": "bun run format && bun run lint && bun run typecheck"
+  },
   "devDependencies": {
-    "@total-typescript/tsconfig": "^1.0.4",
     "@types/bun": "latest",
     "oxfmt": "^0.35.0",
     "oxlint": "^1.50.0",
     "typescript": "^5.9.2"
-  },
-  "scripts": {
-    "lint": "oxlint --config .oxlintrc.json extensions/mermaid extensions/command-palette extensions/editor",
-    "lint:fix": "oxlint --config .oxlintrc.json --fix extensions/mermaid extensions/command-palette extensions/editor",
-    "format": "oxfmt --config .oxfmtrc.json --write \"extensions/mermaid/**/*.ts\" \"extensions/command-palette/**/*.ts\" \"extensions/editor/**/*.ts\"",
-    "format:check": "oxfmt --config .oxfmtrc.json --check \"extensions/mermaid/**/*.ts\" \"extensions/command-palette/**/*.ts\" \"extensions/editor/**/*.ts\"",
-    "format:write": "oxfmt --config .oxfmtrc.json --write \"extensions/mermaid/**/*.ts\" \"extensions/command-palette/**/*.ts\" \"extensions/editor/**/*.ts\"",
-    "typecheck": "bun run --filter './extensions/mermaid' typecheck && bun run --filter './extensions/command-palette' typecheck && bun run --filter './extensions/editor' typecheck",
-    "check": "bun run format && bun run lint && bun run typecheck"
   }
 }
