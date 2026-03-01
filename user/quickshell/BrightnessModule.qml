@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
+import "controls/Slider.qml" as Controls
 
 Item {
     id: brightnessModule
@@ -51,7 +52,7 @@ Item {
 
             Text {
                 text: "brightness"
-                color: "#9ca3af"
+                color: Theme.t.c.text.secondary
                 font.family: "Berkeley Mono"
                 font.pixelSize: 12
             }
@@ -60,51 +61,19 @@ Item {
 
             Text {
                 text: Math.round(brightnessModule.brightness * 100) + "%"
-                color: "#ffffff"
+                color: Theme.t.c.text.primary
                 font.family: "Berkeley Mono"
                 font.pixelSize: 12
             }
         }
 
-        Rectangle {
-            id: sliderTrack
+        Controls.Slider {
+            id: slider
             Layout.fillWidth: true
-            Layout.preferredHeight: 24
-            color: "#1f2937"
-            radius: 4
-
-            Rectangle {
-                id: sliderFill
-                width: parent.width * brightnessModule.brightness
-                height: parent.height
-                color: "#ffffff"
-                radius: 4
-
-                Behavior on width {
-                    NumberAnimation { duration: 50; easing.type: Easing.OutQuint }
-                }
-            }
-
-            MouseArea {
-                id: sliderMouse
-                anchors.fill: parent
-                hoverEnabled: true
-
-                onPressed: function(mouse) {
-                    let newBrightness = Math.max(0.01, Math.min(1, mouse.x / width));
-                    brightnessModule.brightness = newBrightness;
-                    brightnessSetter.targetPercent = Math.round(newBrightness * 100);
-                    brightnessSetter.running = true;
-                }
-
-                onPositionChanged: function(mouse) {
-                    if (pressed) {
-                        let newBrightness = Math.max(0.01, Math.min(1, mouse.x / width));
-                        brightnessModule.brightness = newBrightness;
-                        brightnessSetter.targetPercent = Math.round(newBrightness * 100);
-                        brightnessSetter.running = true;
-                    }
-                }
+            value: brightnessModule.brightness
+            onChangeEnd: function(val) {
+                brightnessSetter.targetPercent = Math.round(val * 100);
+                brightnessSetter.running = true;
             }
         }
     }
