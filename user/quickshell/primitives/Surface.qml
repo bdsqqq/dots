@@ -3,10 +3,9 @@
 // why: surfaces need coordinated decisions — bg color, radius, border presence, padding.
 //      hardcoding these in every component leads to visual inconsistency and refactoring pain.
 //
-// @prop bg - color token for background (uses Theme.t.c.*)
-// @prop radius - radius token size "sm" | "md" (uses Theme.t.radius.*)
-// @prop border - whether to draw a border
-// @prop padding - spacing token applied via defaultLayout, consumers can override
+// @prop surfaceColor - semantic background color
+// @prop radiusToken - radius token "sm" | "md"
+// @prop showBorder - whether to draw a border
 
 import QtQuick
 import "../design" as Design
@@ -14,27 +13,26 @@ import "../design" as Design
 Rectangle {
     id: root
 
-    property var bg: Design.Theme.t.bg
-    property string radius: "md"
-    property bool border: false
-    property int padding: Design.Theme.t.space2  // default 8px, consumer can override
+    property color surfaceColor: Design.Theme.t.bg
+    property string radiusToken: "md"
+    property bool showBorder: false
 
     // always clip children to bounds — surfaces are containers
     clip: true
 
     // apply background color
-    color: bg
+    color: surfaceColor
 
     // map radius token to actual value
     radius: {
-        switch (root.radius) {
-            case "sm": return Design.Theme.t.sm
-            case "md": return Design.Theme.t.md
-            default: return Design.Theme.t.md
+        switch (root.radiusToken) {
+            case "sm": return Design.Theme.t.radiusSm
+            case "md": return Design.Theme.t.radiusMd
+            default: return Design.Theme.t.radiusMd
         }
     }
 
     // border styling when enabled
-    border.color: border ? Design.Theme.t.border : "transparent"
-    border.width: border ? 1 : 0
+    border.color: showBorder ? Design.Theme.t.border : "transparent"
+    border.width: showBorder ? 1 : 0
 }

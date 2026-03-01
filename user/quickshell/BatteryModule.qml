@@ -3,6 +3,8 @@ import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
 
+import "controls" as Controls
+
 Item {
     id: batteryModule
 
@@ -226,47 +228,15 @@ Item {
                             { watts: 30, label: "30W" }
                         ]
 
-                        Rectangle {
+                        Controls.Button {
                             required property var modelData
 
-                            Layout.preferredWidth: tdpText.implicitWidth + 16
-                            Layout.preferredHeight: tdpText.implicitHeight + 8
-                            color: tdpMouse.containsMouse ? "#1f2937" : "transparent"
-                            border.width: 1
-                            border.color: currentTdp === modelData.watts ? "#ffffff" : "#1f2937"
-                            radius: 4
-
-                            Behavior on color {
-                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                            }
-
-                            Behavior on border.color {
-                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                            }
-
-                            Text {
-                                id: tdpText
-                                anchors.centerIn: parent
-                                text: modelData.label
-                                color: currentTdp === modelData.watts ? "#ffffff" : "#9ca3af"
-                                font.family: "Berkeley Mono"
-                                font.pixelSize: 11
-
-                                Behavior on color {
-                                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                                }
-                            }
-
-                            MouseArea {
-                                id: tdpMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (currentTdp !== modelData.watts) {
-                                        tdpSetter.targetTdp = modelData.watts;
-                                        tdpSetter.running = true;
-                                    }
+                            variant: currentTdp === modelData.watts ? "outline" : "ghost"
+                            text: modelData.label
+                            onClicked: {
+                                if (currentTdp !== modelData.watts) {
+                                    tdpSetter.targetTdp = modelData.watts;
+                                    tdpSetter.running = true;
                                 }
                             }
                         }
@@ -299,47 +269,15 @@ Item {
                             { id: "high", label: "high" }
                         ]
 
-                        Rectangle {
+                        Controls.Button {
                             required property var modelData
 
-                            Layout.preferredWidth: gpuText.implicitWidth + 16
-                            Layout.preferredHeight: gpuText.implicitHeight + 8
-                            color: gpuMouse.containsMouse ? "#1f2937" : "transparent"
-                            border.width: 1
-                            border.color: currentGpuProfile === modelData.id ? "#ffffff" : "#1f2937"
-                            radius: 4
-
-                            Behavior on color {
-                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                            }
-
-                            Behavior on border.color {
-                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                            }
-
-                            Text {
-                                id: gpuText
-                                anchors.centerIn: parent
-                                text: modelData.label
-                                color: currentGpuProfile === modelData.id ? "#ffffff" : "#9ca3af"
-                                font.family: "Berkeley Mono"
-                                font.pixelSize: 11
-
-                                Behavior on color {
-                                    ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                                }
-                            }
-
-                            MouseArea {
-                                id: gpuMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (currentGpuProfile !== modelData.id) {
-                                        gpuProfileSetter.targetProfile = modelData.id;
-                                        gpuProfileSetter.running = true;
-                                    }
+                            variant: currentGpuProfile === modelData.id ? "outline" : "ghost"
+                            text: modelData.label
+                            onClicked: {
+                                if (currentGpuProfile !== modelData.id) {
+                                    gpuProfileSetter.targetProfile = modelData.id;
+                                    gpuProfileSetter.running = true;
                                 }
                             }
                         }

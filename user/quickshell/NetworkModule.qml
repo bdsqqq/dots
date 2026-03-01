@@ -3,10 +3,13 @@ import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
 
+import "controls" as Controls
+
 Item {
     id: networkModule
 
     property bool wifiEnabled: true
+    property bool wifiTogglePending: false
     property string currentSSID: "disconnected"
     property var networkList: []
     property string connectingTo: ""
@@ -82,17 +85,40 @@ Item {
     }
 
     Process {
+        id: wifiRadioStatus
+        command: ["nmcli", "-t", "-f", "WIFI", "radio"]
+
+        property string buffer: ""
+
+        stdout: SplitParser {
+            splitMarker: ""
+            onRead: function(data) {
+                wifiRadioStatus.buffer += data;
+            }
+        }
+
+        onExited: function(code, status) {
+            if (code === 0) {
+                wifiEnabled = wifiRadioStatus.buffer.trim() === "enabled";
+                if (!wifiEnabled) {
+                    currentSSID = "disconnected";
+                    networkList = [];
+                }
+            }
+            wifiRadioStatus.buffer = "";
+        }
+    }
+
+    Process {
         id: toggleWifi
         property bool enabling: true
         command: ["nmcli", "radio", "wifi", enabling ? "on" : "off"]
         onExited: function(code, status) {
-            wifiEnabled = enabling;
-            if (enabling) {
+            wifiTogglePending = false;
+            wifiRadioStatus.running = true;
+            if (code === 0 && enabling) {
                 pollTimer.restart();
                 scanNetworks.running = true;
-            } else {
-                currentSSID = "disconnected";
-                networkList = [];
             }
         }
     }
@@ -114,7 +140,8 @@ Item {
         repeat: true
         triggeredOnStart: true
         onTriggered: {
-            if (wifiEnabled) {
+            wifiRadioStatus.running = true;
+            if (wifiEnabled && !wifiTogglePending) {
                 scanNetworks.running = true;
                 getActiveConnection.running = true;
             }
@@ -196,40 +223,14 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    Rectangle {
-                        Layout.preferredWidth: wifiToggleText.implicitWidth + 16
-                        Layout.preferredHeight: wifiToggleText.implicitHeight + 8
-                        color: wifiToggleMouse.containsMouse ? "#1f2937" : "transparent"
-                        border.width: 1
-                        border.color: wifiEnabled ? "#ffffff" : "#1f2937"
-                        radius: 4
-
-                        Behavior on color {
-                            ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                        }
-
-                        Behavior on border.color {
-                            ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                        }
-
-                        Text {
-                            id: wifiToggleText
-                            anchors.centerIn: parent
-                            text: wifiEnabled ? "wifi on" : "wifi off"
-                            color: "#9ca3af"
-                            font.family: "Berkeley Mono"
-                            font.pixelSize: 11
-                        }
-
-                        MouseArea {
-                            id: wifiToggleMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                toggleWifi.enabling = !wifiEnabled;
-                                toggleWifi.running = true;
-                            }
+                    Controls.Button {
+                        variant: wifiEnabled ? "outline" : "ghost"
+                        text: wifiTogglePending ? "switching..." : (wifiEnabled ? "wifi on" : "wifi off")
+                        enabled: !wifiTogglePending
+                        onClicked: {
+                            wifiTogglePending = true;
+                            toggleWifi.enabling = !wifiEnabled;
+                            toggleWifi.running = true;
                         }
                     }
 
