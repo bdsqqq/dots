@@ -22,10 +22,10 @@ PanelWindow {
     }
 
     implicitWidth: Math.min(
-        screen.width - panelMargin * 2,
-        Math.max(contentColumn.implicitWidth + panelPadding * 2, screen.width * 0.22)
+        screen.width,
+        Math.max(contentColumn.implicitWidth + panelPadding * 2, screen.width * 0.22) + panelMargin * 2
     )
-    implicitHeight: Math.min(contentColumn.implicitHeight + panelPadding * 2, screen.height * 0.65)
+    implicitHeight: Math.min(contentColumn.implicitHeight + panelPadding * 2 + panelMargin * 2, screen.height * 0.65)
 
     visible: isOpen
     color: "transparent"
@@ -41,6 +41,7 @@ PanelWindow {
 
     Rectangle {
         anchors.fill: parent
+        anchors.margins: controlCenter.panelMargin
         color: Design.Theme.t.black
         radius: Design.Theme.t.radiusMd
         clip: true
@@ -48,7 +49,7 @@ PanelWindow {
         Flickable {
             id: flickable
             anchors.fill: parent
-            anchors.margins: panelPadding
+            anchors.margins: controlCenter.panelPadding
             contentWidth: width
             contentHeight: contentColumn.implicitHeight
             clip: true
