@@ -53,9 +53,10 @@ ShellRoot {
         target: "volume"
 
         function showOsd(): void {
-            for (let i = 0; i < overlayHosts.count; i++) {
-                const host = overlayHosts.itemAt(i)
-                if (host) {
+            const hosts = overlayHosts.instances
+            for (let i = 0; i < hosts.length; i++) {
+                const host = hosts[i]
+                if (host && host.show) {
                     host.show(Overlays.OsdVolume, {}, { timeoutMs: 2000 })
                 }
             }
