@@ -2,7 +2,8 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
-import "controls/Slider.qml" as Controls
+import "controls" as Controls
+import "design" as Design
 
 Item {
     id: brightnessModule
@@ -52,7 +53,7 @@ Item {
 
             Text {
                 text: "brightness"
-                color: Theme.t.c.text.secondary
+                color: Design.Theme.t.c.muted
                 font.family: "Berkeley Mono"
                 font.pixelSize: 12
             }
@@ -61,7 +62,7 @@ Item {
 
             Text {
                 text: Math.round(brightnessModule.brightness * 100) + "%"
-                color: Theme.t.c.text.primary
+                color: Design.Theme.t.c.fg
                 font.family: "Berkeley Mono"
                 font.pixelSize: 12
             }

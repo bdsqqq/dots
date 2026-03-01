@@ -4,8 +4,7 @@ import Quickshell.Services.Pipewire
 import QtQuick
 import QtQuick.Layouts
 
-import "./controls/Slider.qml" as ControlsSlider
-import "./controls/Button.qml" as ControlsButton
+import "controls" as Controls
 
 PanelWindow {
     id: controlCenter
@@ -94,7 +93,7 @@ PanelWindow {
                     }
                 }
 
-                ControlsSlider {
+                Controls.Slider {
                     Layout.fillWidth: true
                     value: Pipewire.defaultAudioSink?.audio.volume ?? 0
                     enabled: Pipewire.defaultAudioSink?.audio !== null
@@ -109,7 +108,7 @@ PanelWindow {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    ControlsButton {
+                    Controls.Button {
                         variant: Pipewire.defaultAudioSink?.audio.muted ? "outline" : "ghost"
                         text: Pipewire.defaultAudioSink?.audio.muted ? "unmute" : "mute"
                         onClicked: function() {
