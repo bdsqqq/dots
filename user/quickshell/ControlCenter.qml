@@ -109,40 +109,12 @@ PanelWindow {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    Rectangle {
-                        Layout.preferredWidth: muteText.implicitWidth + 16
-                        Layout.preferredHeight: muteText.implicitHeight + 8
-                        color: muteMouse.containsMouse ? "#1f2937" : "transparent"
-                        border.width: 1
-                        border.color: Pipewire.defaultAudioSink?.audio.muted ? "#ffffff" : "#1f2937"
-                        radius: 4
-
-                        Behavior on color {
-                            ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                        }
-
-                        Behavior on border.color {
-                            ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                        }
-
-                        Text {
-                            id: muteText
-                            anchors.centerIn: parent
-                            text: Pipewire.defaultAudioSink?.audio.muted ? "unmute" : "mute"
-                            color: "#9ca3af"
-                            font.family: "Berkeley Mono"
-                            font.pixelSize: 11
-                        }
-
-                        MouseArea {
-                            id: muteMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (Pipewire.defaultAudioSink?.audio) {
-                                    Pipewire.defaultAudioSink.audio.muted = !Pipewire.defaultAudioSink.audio.muted;
-                                }
+                    ControlsButton {
+                        variant: Pipewire.defaultAudioSink?.audio.muted ? "outline" : "ghost"
+                        text: Pipewire.defaultAudioSink?.audio.muted ? "unmute" : "mute"
+                        onClicked: function() {
+                            if (Pipewire.defaultAudioSink?.audio) {
+                                Pipewire.defaultAudioSink.audio.muted = !Pipewire.defaultAudioSink.audio.muted;
                             }
                         }
                     }
