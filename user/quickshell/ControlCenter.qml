@@ -3,10 +3,10 @@ import Quickshell.Wayland
 import Quickshell.Services.Pipewire
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Shapes
 
 import "controls" as Controls
 import "design" as Design
-import "primitives" as Primitives
 
 PanelWindow {
     id: controlCenter
@@ -36,27 +36,83 @@ PanelWindow {
 
     exclusiveZone: 0
 
-    mask: Region {
-        item: panel.maskItem
-    }
-
     PwObjectTracker {
         objects: [ Pipewire.defaultAudioSink ]
     }
 
-    Primitives.ConcavePanel {
+    Item {
         id: panel
         anchors.fill: parent
         anchors.margins: controlCenter.panelMargin
-        screen: controlCenter.screen
-        edge: "top-left"
-        gap: controlCenter.panelMargin
-        fillColor: Design.Theme.t.black
-        radius: Design.Theme.t.radiusMd
-        revealProgress: controlCenter.isOpen ? 1 : 0
-        alignMask: false
 
-        Flickable {
+        readonly property int cornerRadius: Design.Theme.t.radiusMd
+
+        Shape {
+            id: topLeftReverseArc
+            x: 0
+            y: 0
+            width: panel.cornerRadius
+            height: panel.cornerRadius
+
+            ShapePath {
+                strokeWidth: -1
+                fillColor: Design.Theme.t.black
+
+                startX: panel.cornerRadius
+                startY: 0
+
+                PathLine { relativeX: 0; relativeY: panel.cornerRadius }
+
+                PathArc {
+                    relativeX: -panel.cornerRadius
+                    relativeY: -panel.cornerRadius
+                    radiusX: panel.cornerRadius
+                    radiusY: panel.cornerRadius
+                    direction: PathArc.Counterclockwise
+                }
+            }
+        }
+
+        Shape {
+            id: bottomRightReverseArc
+            x: 0
+            y: 0
+            width: panel.cornerRadius
+            height: panel.cornerRadius
+
+            ShapePath {
+                strokeWidth: -1
+                fillColor: Design.Theme.t.black
+
+                startX: panel.width - 1
+                startY: surface.height
+
+                PathLine { relativeX: 0; relativeY: panel.cornerRadius }
+
+                PathArc {
+                    relativeX: -panel.cornerRadius
+                    relativeY: -panel.cornerRadius
+                    radiusX: panel.cornerRadius
+                    radiusY: panel.cornerRadius
+                    direction: PathArc.Counterclockwise
+                }
+            }
+        }
+
+        Rectangle {
+            id: surface
+            x: panel.cornerRadius
+            y: 0
+            width: panel.width - panel.cornerRadius
+            height: panel.height - panel.cornerRadius
+            color: Design.Theme.t.black
+            topLeftRadius: 0
+            topRightRadius: panel.cornerRadius
+            bottomLeftRadius: panel.cornerRadius
+            bottomRightRadius: 0
+            clip: true
+
+            Flickable {
             id: flickable
             anchors.fill: parent
             anchors.margins: controlCenter.panelPadding
@@ -238,4 +294,5 @@ PanelWindow {
             }
         }
     }
+}
 }
