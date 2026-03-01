@@ -47,7 +47,7 @@ Primitives.Surface {
         Primitives.T {
             id: label
             text: root.text
-            tone: !root.enabled ? "muted" : (variant === "fill" ? "bg" : "fg")
+            tone: !root.enabled ? "muted" : (root.variant === "fill" ? "bg" : "fg")
             size: "bodySm"
             anchors.verticalCenter: parent.verticalCenter
         }
