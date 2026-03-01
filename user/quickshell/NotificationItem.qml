@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell.Services.Notifications
+import "design" as Design
 
 Item {
     id: root
@@ -8,20 +9,20 @@ Item {
     required property Notification notification
     required property bool isLast
 
-    property int padding: 16
+    property int padding: Design.Theme.t.space4
     readonly property string actionsKey: "actions"
     property var notificationActions: root.notification[root.actionsKey] || []
 
     signal dismissed()
     signal expired()
 
-    implicitWidth: parent.width
+    implicitWidth: parent ? parent.width : contentLayout.implicitWidth + padding * 2
     implicitHeight: contentLayout.implicitHeight + padding * 2
 
     Rectangle {
         anchors.fill: parent
         color: "transparent"
-        bottomLeftRadius: 8
+        bottomLeftRadius: Design.Theme.t.radiusMd
         clip: true
     }
 
@@ -29,17 +30,17 @@ Item {
         id: contentLayout
         anchors.fill: parent
         anchors.margins: root.padding
-        spacing: 0
+        spacing: Design.Theme.t.space1
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 0
+            spacing: Design.Theme.t.space2
 
             Text {
                 text: root.notification.summary || "notification"
-                color: "#ffffff"
+                color: Design.Theme.t.fg
                 font.family: "Berkeley Mono"
-                font.pixelSize: 14
+                font.pixelSize: Design.Theme.t.bodyMd
                 font.weight: Font.Medium
                 elide: Text.ElideRight
                 Layout.fillWidth: true
@@ -48,13 +49,13 @@ Item {
             Text {
                 id: dismissButton
                 text: "×"
-                color: dismissMouse.containsMouse ? "#ffffff" : "#4b5563"
+                color: dismissMouse.containsMouse ? Design.Theme.t.fg : Design.Theme.t.border
                 font.family: "Berkeley Mono"
-                font.pixelSize: 16
+                font.pixelSize: Design.Theme.t.textBase
                 font.weight: Font.Normal
 
                 Behavior on color {
-                    ColorAnimation { duration: 150; easing.type: Easing.OutQuint }
+                    ColorAnimation { duration: Design.Theme.t.durationSlow; easing.type: Easing.OutQuint }
                 }
 
                 MouseArea {
@@ -73,12 +74,12 @@ Item {
 
         Text {
             text: root.notification.body
-            color: "#9ca3af"
+            color: Design.Theme.t.muted
             font.family: "Berkeley Mono"
-            font.pixelSize: 12
+            font.pixelSize: Design.Theme.t.bodySm
             font.weight: Font.Normal
             wrapMode: Text.WordWrap
-            lineHeight: 1.4
+            lineHeight: 1.35
             Layout.fillWidth: true
             visible: text.length > 0
             maximumLineCount: 3
@@ -87,9 +88,9 @@ Item {
 
         Text {
             text: root.notification.appName
-            color: "#4b5563"
+            color: Design.Theme.t.subtle
             font.family: "Berkeley Mono"
-            font.pixelSize: 11
+            font.pixelSize: Design.Theme.t.text2xs
             font.weight: Font.Normal
             elide: Text.ElideRight
             Layout.fillWidth: true
@@ -98,38 +99,38 @@ Item {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: 4
-            spacing: 8
-            visible: root.notificationActions.length > 0
+            Layout.topMargin: Design.Theme.t.space1
+            spacing: Design.Theme.t.space2
 
             Repeater {
                 model: root.notificationActions
 
                 Rectangle {
+                    id: actionChip
                     required property NotificationAction modelData
 
-                    implicitWidth: actionText.implicitWidth + 12
-                    implicitHeight: actionText.implicitHeight + 6
-                    color: actionMouse.containsMouse ? "#1f2937" : "transparent"
+                    implicitWidth: actionText.implicitWidth + Design.Theme.t.space3
+                    implicitHeight: actionText.implicitHeight + Design.Theme.t.space1 + 2
+                    color: actionMouse.containsMouse ? Design.Theme.t.bgHover : "transparent"
                     border.width: 1
-                    border.color: actionMouse.containsMouse ? "#374151" : "#1f2937"
-                    radius: 4
+                    border.color: actionMouse.containsMouse ? Design.Theme.t.gray700 : Design.Theme.t.bg
+                    radius: Design.Theme.t.radiusSm
 
                     Behavior on color {
-                        ColorAnimation { duration: 150; easing.type: Easing.OutQuint }
+                        ColorAnimation { duration: Design.Theme.t.durationSlow; easing.type: Easing.OutQuint }
                     }
 
                     Behavior on border.color {
-                        ColorAnimation { duration: 150; easing.type: Easing.OutQuint }
+                        ColorAnimation { duration: Design.Theme.t.durationSlow; easing.type: Easing.OutQuint }
                     }
 
                     Text {
                         id: actionText
                         anchors.centerIn: parent
-                        text: modelData.text
-                        color: "#9ca3af"
+                        text: actionChip.modelData.text
+                        color: Design.Theme.t.muted
                         font.family: "Berkeley Mono"
-                        font.pixelSize: 11
+                        font.pixelSize: Design.Theme.t.text2xs
                     }
 
                     MouseArea {
@@ -137,7 +138,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: modelData.invoke()
+                        onClicked: actionChip.modelData.invoke()
                     }
                 }
             }
