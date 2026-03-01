@@ -4,7 +4,7 @@
 //      interaction logic and theming prevents duplication and inconsistency.
 //
 // @prop value - current position, 0..1 normalized
-// @prop onChangeEnd - callback(value) invoked when interaction completes
+// @signal changeEnd(value) - emitted when interaction completes
 // @prop enabled - whether interaction is allowed
 
 import QtQuick
@@ -14,8 +14,9 @@ Rectangle {
     id: root
 
     property real value: 0.5
-    property var onChangeEnd: function(val) {}
     property bool enabled: true
+
+    signal changeEnd(real value)
     property real dragValue: value
 
     readonly property real visualValue: mouse.pressed ? dragValue : value
@@ -38,7 +39,7 @@ Rectangle {
         width: parent.width * root.visualValue
         height: parent.height
         color: enabled ? Design.Theme.t.active : Design.Theme.t.muted
-        radius: parent.radius
+        radius: root.radius
 
         Behavior on width {
             NumberAnimation { duration: Design.Theme.t.durationFast; easing.type: Easing.OutQuint }
@@ -52,7 +53,7 @@ Rectangle {
         enabled: root.enabled
         hoverEnabled: true
 
-        function updateValue(mouseX) {
+        function updateValue(mouseX: real): void {
             root.dragValue = Math.max(0, Math.min(1, mouseX / width));
         }
 
@@ -67,7 +68,7 @@ Rectangle {
         }
 
         onReleased: {
-            root.onChangeEnd(root.dragValue)
+            root.changeEnd(root.dragValue)
         }
     }
 }
