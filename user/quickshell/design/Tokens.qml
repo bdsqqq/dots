@@ -47,7 +47,6 @@ QtObject {
     // why: categorical grouping reduces cognitive load when referencing tokens.
     //      'c.fg' is clearer than 'white' when used in a color: prop context.
     QtObject {
-        id: c
         property color fg: root.white
         property color muted: root.gray300
         property color subtle: root.gray400
@@ -59,7 +58,6 @@ QtObject {
     }
 
     QtObject {
-        id: type
         property int bodySm: root.textXs    // 12px captions, metadata
         property int bodyMd: root.textSm    // 14px body, labels
         property int titleLg: root.text2xl    // 24px headings, clock
@@ -67,7 +65,6 @@ QtObject {
 
     // keep radius accessible as t.radius.sm, t.radius.md for consistency with c/type
     QtObject {
-        id: radius
         property int sm: root.radiusSm
         property int md: root.radiusMd
     }
