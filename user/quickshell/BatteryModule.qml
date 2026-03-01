@@ -17,7 +17,7 @@ Item {
     property int currentTdp: 15
     property bool expanded: false
 
-    implicitHeight: contentColumn.implicitHeight
+    implicitHeight: card.implicitHeight
     Layout.fillWidth: true
 
     Process {
