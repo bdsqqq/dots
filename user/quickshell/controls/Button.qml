@@ -8,11 +8,10 @@
 // @prop onClicked - callback function invoked on press
 
 import QtQuick
-import "../design/Theme.qml" as Theme
-import "../primitives/Surface.qml" as Surface
-import "../primitives/T.qml" as T
+import "../design" as Design
+import "../primitives" as Primitives
 
-Surface {
+Primitives.Surface {
     id: root
 
     property string variant: "ghost"
@@ -20,7 +19,7 @@ Surface {
     property var onClicked: function() {}
 
     // button sizing
-    implicitWidth: Math.max(64, content.implicitWidth + Theme.t.space4 * 2)
+    implicitWidth: Math.max(64, content.implicitWidth + Design.Theme.t.space4 * 2)
     implicitHeight: 32
 
     // visual state tracking
@@ -29,9 +28,9 @@ Surface {
 
     // variant-driven styling
     bg: {
-        if (pressed) return Theme.t.c.bgHover
-        if (variant === "fill") return Theme.t.c.fg
-        return Theme.t.c.bg
+        if (pressed) return Design.Theme.t.c.bgHover
+        if (variant === "fill") return Design.Theme.t.c.fg
+        return Design.Theme.t.c.bg
     }
 
     border: variant === "outline" || (variant === "ghost" && hovered)
@@ -41,9 +40,9 @@ Surface {
     Row {
         id: content
         anchors.centerIn: parent
-        spacing: Theme.t.space2
+        spacing: Design.Theme.t.space2
 
-        T {
+        Primitives.T {
             id: label
             text: root.text
             tone: variant === "fill" ? "bg" : "fg"
@@ -68,6 +67,6 @@ Surface {
 
     // state transitions
     Behavior on bg {
-        ColorAnimation { duration: Theme.t.durationMed }
+        ColorAnimation { duration: Design.Theme.t.durationMed }
     }
 }
