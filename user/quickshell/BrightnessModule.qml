@@ -1,16 +1,19 @@
-import Quickshell
+pragma ComponentBehavior: Bound
+
 import Quickshell.Io
 import QtQuick
 import QtQuick.Layouts
+
 import "controls" as Controls
 import "design" as Design
+import "primitives" as Primitives
 
 Item {
     id: brightnessModule
 
     property real brightness: 0.5
 
-    implicitHeight: content.implicitHeight
+    implicitHeight: card.implicitHeight
     Layout.fillWidth: true
 
     Process {
@@ -42,44 +45,68 @@ Item {
         onTriggered: brightnessReader.running = true
     }
 
-    ColumnLayout {
-        id: content
+    Primitives.Surface {
+        id: card
         anchors.fill: parent
-        spacing: Design.Theme.t.space2
+        surfaceColor: Design.Theme.t.bg
+        showBorder: true
 
-        RowLayout {
-            Layout.fillWidth: true
+        implicitHeight: content.implicitHeight + Design.Theme.t.space3 * 2
+
+        ColumnLayout {
+            id: content
+            anchors.fill: parent
+            anchors.margins: Design.Theme.t.space3
             spacing: Design.Theme.t.space2
 
-            Text {
-                text: "brightness"
-                color: Design.Theme.t.muted
-                font.family: "Berkeley Mono"
-                font.pixelSize: Design.Theme.t.bodySm
-            }
-
-            Item {
+            RowLayout {
                 Layout.fillWidth: true
+
+                Primitives.T {
+                    text: "display"
+                    tone: "muted"
+                    size: "bodySm"
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Primitives.T {
+                    text: Math.round(brightnessModule.brightness * 100) + "%"
+                    tone: "fg"
+                    size: "bodySm"
+                }
             }
 
-            Text {
-                text: Math.round(brightnessModule.brightness * 100) + "%"
-                color: Design.Theme.t.fg
-                font.family: "Berkeley Mono"
-                font.pixelSize: Design.Theme.t.bodySm
+            Controls.Slider {
+                id: slider
+                Layout.fillWidth: true
+                value: brightnessModule.brightness
+                onChangeEnd: function (val) {
+                    brightnessModule.brightness = val;
+                    brightnessSetter.targetPercent = Math.round(val * 100);
+                    brightnessSetter.running = true;
+                }
             }
-        }
 
-        Controls.Slider {
-            id: slider
-            Layout.fillWidth: true
-            value: brightnessModule.brightness
-            onChangeEnd: function (val) {
-                // optimistic local sync: avoid visual rollback while brightnessctl
-                // roundtrip catches up to polled state.
-                brightnessModule.brightness = val;
-                brightnessSetter.targetPercent = Math.round(val * 100);
-                brightnessSetter.running = true;
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Design.Theme.t.space2
+
+                Repeater {
+                    model: [25, 50, 75, 100]
+
+                    Controls.Button {
+                        required property int modelData
+                        variant: Math.abs(Math.round(brightnessModule.brightness * 100) - modelData) <= 5 ? "outline" : "ghost"
+                        text: modelData + "%"
+                        onClicked: {
+                            const target = modelData / 100;
+                            brightnessModule.brightness = target;
+                            brightnessSetter.targetPercent = modelData;
+                            brightnessSetter.running = true;
+                        }
+                    }
+                }
             }
         }
     }
