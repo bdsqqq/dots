@@ -8,7 +8,7 @@
 // @prop enabled - whether interaction is allowed
 
 import QtQuick
-import "../design/Theme.qml" as Theme
+import "../design" as Design
 
 Rectangle {
     id: root
@@ -20,19 +20,19 @@ Rectangle {
     implicitHeight: 24
 
     // track styling
-    color: Theme.t.c.inactive
-    radius: Theme.t.radius.sm
+    color: Design.Theme.t.c.inactive
+    radius: Design.Theme.t.radius.sm
 
     // fill indicator showing current value
     Rectangle {
         id: fill
         width: parent.width * root.value
         height: parent.height
-        color: enabled ? Theme.t.c.active : Theme.t.c.muted
+        color: enabled ? Design.Theme.t.c.active : Design.Theme.t.c.muted
         radius: parent.radius
 
         Behavior on width {
-            NumberAnimation { duration: Theme.t.durationFast; easing.type: Easing.OutQuint }
+            NumberAnimation { duration: Design.Theme.t.durationFast; easing.type: Easing.OutQuint }
         }
     }
 
