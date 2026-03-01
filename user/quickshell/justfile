@@ -9,10 +9,9 @@ default:
 shell:
     nix-shell shell.nix
 
-# Lint all QML files
+# Lint all QML files (expects shell.nix env: wrappers + import paths)
 lint:
     #!/usr/bin/env bash
-    export QML_IMPORT_PATH=$(nix-build '<nixpkgs>' -A quickshell)/lib/qt-6/qml:$(nix-build '<nixpkgs>' -A qt6.qtdeclarative)/lib/qt-6/qml
     find . -name "*.qml" -type f | head -20 | while read f; do
       echo "Linting: $f"
       qmllint "$f" || true
@@ -20,8 +19,6 @@ lint:
 
 # Lint specific file
 lint-file file:
-    #!/usr/bin/env bash
-    export QML_IMPORT_PATH=$(nix-build '<nixpkgs>' -A quickshell)/lib/qt-6/qml:$(nix-build '<nixpkgs>' -A qt6.qtdeclarative)/lib/qt-6/qml
     qmllint {{file}}
 
 # Watch for changes and lint continuously (requires: nix-shell -p entr)
@@ -50,16 +47,12 @@ check-format:
 
 # Start LSP server for editor integration
 lsp:
-    #!/usr/bin/env bash
-    export QMLLS_BUILD_DIRS=$(nix-build '<nixpkgs>' -A quickshell)/lib/qt-6/qml:$(nix-build '<nixpkgs>' -A qt6.qtdeclarative)/lib/qt-6/qml
     echo "Starting qmlls..."
     echo "Configure your editor to connect to this LSP server"
     qmlls -E
 
 # Validate shell.qml specifically (main entry point)
 check:
-    #!/usr/bin/env bash
-    export QML_IMPORT_PATH=$(nix-build '<nixpkgs>' -A quickshell)/lib/qt-6/qml:$(nix-build '<nixpkgs>' -A qt6.qtdeclarative)/lib/qt-6/qml
     qmllint shell.qml
 
 # Restart quickshell service (after config changes)
