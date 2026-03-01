@@ -45,17 +45,17 @@ Item {
     ColumnLayout {
         id: content
         anchors.fill: parent
-        spacing: 8
+        spacing: Design.Theme.t.space2
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: Design.Theme.t.space2
 
             Text {
                 text: "brightness"
                 color: Design.Theme.t.muted
                 font.family: "Berkeley Mono"
-                font.pixelSize: 12
+                font.pixelSize: Design.Theme.t.bodySm
             }
 
             Item {
@@ -66,7 +66,7 @@ Item {
                 text: Math.round(brightnessModule.brightness * 100) + "%"
                 color: Design.Theme.t.fg
                 font.family: "Berkeley Mono"
-                font.pixelSize: 12
+                font.pixelSize: Design.Theme.t.bodySm
             }
         }
 
