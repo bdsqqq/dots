@@ -2,67 +2,26 @@
 
 let
   isLinux = lib.hasInfix "linux" hostSystem;
-
-  quickshellConfig = {
-    "quickshell/shell.qml" = {
-      source = ./quickshell/shell.qml;
-    };
-
-    "quickshell/Bar.qml" = {
-      source = ./quickshell/Bar.qml;
-    };
-    "quickshell/ScreenCorners.qml" = {
-      source = ./quickshell/ScreenCorners.qml;
-    };
-    "quickshell/NiriState.qml" = {
-      source = ./quickshell/NiriState.qml;
-    };
-    "quickshell/NiriWorkspacesLoader.qml" = {
-      source = ./quickshell/NiriWorkspacesLoader.qml;
-    };
-    "quickshell/NotificationItem.qml" = {
-      source = ./quickshell/NotificationItem.qml;
-    };
-    "quickshell/NotificationPopups.qml" = {
-      source = ./quickshell/NotificationPopups.qml;
-    };
-    "quickshell/ControlCenter.qml" = {
-      source = ./quickshell/ControlCenter.qml;
-    };
-    "quickshell/BrightnessModule.qml" = {
-      source = ./quickshell/BrightnessModule.qml;
-    };
-    "quickshell/BluetoothModule.qml" = {
-      source = ./quickshell/BluetoothModule.qml;
-    };
-    "quickshell/NetworkModule.qml" = {
-      source = ./quickshell/NetworkModule.qml;
-    };
-    "quickshell/BatteryModule.qml" = {
-      source = ./quickshell/BatteryModule.qml;
-    };
-    "quickshell/ControlCenterBackdrop.qml" = {
-      source = ./quickshell/ControlCenterBackdrop.qml;
-    };
-  };
-
+  quickshellDir = ./quickshell;
 in
 if !isLinux then {} else {
   home-manager.users.bdsqqq = { config, ... }: {
     home.packages = [ pkgs.quickshellWrapped ];
-    xdg.configFile = quickshellConfig;
-    
+
+    # symlink entire quickshell directory for live-reload (vite-speed feedback)
+    xdg.configFile."quickshell".source = config.lib.file.mkOutOfStoreSymlink quickshellDir;
+
     # enable sd-switch so home-manager restarts services on config change
     systemd.user.startServices = "sd-switch";
-    
-    # systemd user service for quickshell - restarts on QML config change
+
+    # systemd user service for quickshell - restarts when nix config changes
     systemd.user.services.quickshell = {
       Unit = {
         Description = "Quickshell status bar and shell components";
         After = [ "graphical-session.target" ];
         PartOf = [ "graphical-session.target" ];
-        # restart when any QML file changes (convert paths to strings)
-        X-Restart-Triggers = lib.attrValues (lib.mapAttrs (name: value: "${config.xdg.configFile.${name}.source}") quickshellConfig);
+        # restart when nix config changes (quickshell has native live-reload for QML files)
+        X-Restart-Triggers = [ "${config.xdg.configFile."quickshell".source}" ];
       };
       Service = {
         Type = "simple";
