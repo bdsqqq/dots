@@ -49,6 +49,20 @@ ShellRoot {
         }
     }
 
+    // volume key handler: shows OSD on all screens
+    IpcHandler {
+        target: "volume"
+
+        function showOsd(): void {
+            for (let i = 0; i < overlayHosts.count; i++) {
+                const host = overlayHosts.itemAt(i)
+                if (host) {
+                    host.show(OsdVolumeComponent, {}, { timeoutMs: 2000 })
+                }
+            }
+        }
+    }
+
     Variants {
         model: Quickshell.screens
 
