@@ -20,15 +20,15 @@ Rectangle {
     implicitHeight: 24
 
     // track styling
-    color: Design.Theme.t.c.inactive
-    radius: Design.Theme.t.radius.sm
+    color: Design.Theme.t.inactive
+    radius: Design.Theme.t.sm
 
     // fill indicator showing current value
     Rectangle {
         id: fill
         width: parent.width * root.value
         height: parent.height
-        color: enabled ? Design.Theme.t.c.active : Design.Theme.t.c.muted
+        color: enabled ? Design.Theme.t.active : Design.Theme.t.muted
         radius: parent.radius
 
         Behavior on width {

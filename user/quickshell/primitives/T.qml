@@ -21,20 +21,20 @@ Text {
     // map semantic tone to theme color
     color: {
         switch (tone) {
-            case "fg": return Design.Theme.t.c.fg
-            case "muted": return Design.Theme.t.c.muted
-            case "subtle": return Design.Theme.t.c.subtle
-            default: return Design.Theme.t.c.fg
+            case "fg": return Design.Theme.t.fg
+            case "muted": return Design.Theme.t.muted
+            case "subtle": return Design.Theme.t.subtle
+            default: return Design.Theme.t.fg
         }
     }
 
     // map semantic size to theme typography
     font.pixelSize: {
         switch (size) {
-            case "bodySm": return Design.Theme.t.type.bodySm
-            case "bodyMd": return Design.Theme.t.type.bodyMd
-            case "titleLg": return Design.Theme.t.type.titleLg
-            default: return Design.Theme.t.type.bodyMd
+            case "bodySm": return Design.Theme.t.bodySm
+            case "bodyMd": return Design.Theme.t.bodyMd
+            case "titleLg": return Design.Theme.t.titleLg
+            default: return Design.Theme.t.bodyMd
         }
     }
 }

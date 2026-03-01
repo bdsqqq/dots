@@ -28,9 +28,9 @@ Primitives.Surface {
 
     // variant-driven styling
     bg: {
-        if (pressed) return Design.Theme.t.c.bgHover
-        if (variant === "fill") return Design.Theme.t.c.fg
-        return Design.Theme.t.c.bg
+        if (pressed) return Design.Theme.t.bgHover
+        if (variant === "fill") return Design.Theme.t.fg
+        return Design.Theme.t.bg
     }
 
     border: variant === "outline" || (variant === "ghost" && hovered)
