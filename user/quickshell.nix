@@ -5,7 +5,7 @@ let
   quickshellDir = "commonplace/01_files/nix/user/quickshell";
 in
 if !isLinux then {} else {
-  home-manager.users.bdsqqq = { config, ... }: {
+  home-manager.users.bdsqqq = { config, lib, ... }: {
     home.packages = [ pkgs.quickshellWrapped ];
 
     # no-hop symlink: directly link to working tree for live-reload
