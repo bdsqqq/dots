@@ -3,7 +3,6 @@
 // Why: hardcoded values scattered across components make consistent theming impossible.
 //      tokens enable systematic adjustments without hunting through files.
 
-pragma Singleton
 import QtQuick
 
 QtObject {
