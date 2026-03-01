@@ -76,6 +76,8 @@ ShellRoot {
         }
     }
 
+    // keep control center overlay standalone (no fullscreen backdrop).
+    // why: backdrop eats clicks intended for apps when control center is open.
     Variants {
         model: Quickshell.screens
 

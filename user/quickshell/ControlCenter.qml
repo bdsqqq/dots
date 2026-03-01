@@ -40,6 +40,8 @@ PanelWindow {
         objects: [ Pipewire.defaultAudioSink ]
     }
 
+    // panel geometry mirrors NotificationPopups: base surface + two reverse arcs.
+    // why: this makes corners feel "added" from outside instead of clipping into content.
     Item {
         id: panel
         anchors.fill: parent
