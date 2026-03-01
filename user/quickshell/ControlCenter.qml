@@ -4,6 +4,9 @@ import Quickshell.Services.Pipewire
 import QtQuick
 import QtQuick.Layouts
 
+import "./controls/Slider.qml" as ControlsSlider
+import "./controls/Button.qml" as ControlsButton
+
 PanelWindow {
     id: controlCenter
 
@@ -91,44 +94,13 @@ PanelWindow {
                     }
                 }
 
-                Rectangle {
-                    id: sliderTrack
+                ControlsSlider {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 24
-                    color: "#1f2937"
-                    radius: 4
-
-                    Rectangle {
-                        id: sliderFill
-                        width: parent.width * (Pipewire.defaultAudioSink?.audio.volume ?? 0)
-                        height: parent.height
-                        color: Pipewire.defaultAudioSink?.audio.muted ? "#4b5563" : "#ffffff"
-                        radius: 4
-
-                        Behavior on width {
-                            NumberAnimation { duration: 50; easing.type: Easing.OutQuint }
-                        }
-
-                        Behavior on color {
-                            ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                        }
-                    }
-
-                    MouseArea {
-                        id: sliderMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-
-                        onPressed: function(mouse) {
-                            if (Pipewire.defaultAudioSink?.audio) {
-                                Pipewire.defaultAudioSink.audio.volume = Math.max(0, Math.min(1, mouse.x / width));
-                            }
-                        }
-
-                        onPositionChanged: function(mouse) {
-                            if (pressed && Pipewire.defaultAudioSink?.audio) {
-                                Pipewire.defaultAudioSink.audio.volume = Math.max(0, Math.min(1, mouse.x / width));
-                            }
+                    value: Pipewire.defaultAudioSink?.audio.volume ?? 0
+                    enabled: Pipewire.defaultAudioSink?.audio !== null
+                    onChangeEnd: function(val) {
+                        if (Pipewire.defaultAudioSink?.audio) {
+                            Pipewire.defaultAudioSink.audio.volume = val;
                         }
                     }
                 }
