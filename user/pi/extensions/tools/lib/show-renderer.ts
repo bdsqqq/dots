@@ -20,24 +20,27 @@
 import { show, type Excerpt } from "./show";
 
 export interface ShowRenderer {
-	render: (width: number) => string[];
-	invalidate: () => void;
+  render: (width: number) => string[];
+  invalidate: () => void;
 }
 
-export function makeShowRenderer(text: string, excerpts: Excerpt[]): ShowRenderer {
-	let cachedWidth: number | undefined;
-	let cachedLines: string[] | undefined;
-	return {
-		render(width: number): string[] {
-			if (cachedLines === undefined || cachedWidth !== width) {
-				cachedLines = show(text, excerpts, width).visualLines;
-				cachedWidth = width;
-			}
-			return cachedLines;
-		},
-		invalidate() {
-			cachedWidth = undefined;
-			cachedLines = undefined;
-		},
-	};
+export function makeShowRenderer(
+  text: string,
+  excerpts: Excerpt[],
+): ShowRenderer {
+  let cachedWidth: number | undefined;
+  let cachedLines: string[] | undefined;
+  return {
+    render(width: number): string[] {
+      if (cachedLines === undefined || cachedWidth !== width) {
+        cachedLines = show(text, excerpts, width).visualLines;
+        cachedWidth = width;
+      }
+      return cachedLines;
+    },
+    invalidate() {
+      cachedWidth = undefined;
+      cachedLines = undefined;
+    },
+  };
 }

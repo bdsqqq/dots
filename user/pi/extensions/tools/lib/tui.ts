@@ -13,23 +13,27 @@
 
 let _piTui: any;
 function tui() {
-	if (!_piTui) {
-		_piTui = require("@mariozechner/pi-tui");
-	}
-	return _piTui;
+  if (!_piTui) {
+    _piTui = require("@mariozechner/pi-tui");
+  }
+  return _piTui;
 }
 
 /** lazy Text constructor — call getText() to get the Text class, then instantiate */
-export function getText(): new (text: string, paddingX: number, paddingY: number) => any {
-	return tui().Text;
+export function getText(): new (
+  text: string,
+  paddingX: number,
+  paddingY: number,
+) => any {
+  return tui().Text;
 }
 
 /** lazy Container constructor */
 export function getContainer(): new (...args: any[]) => any {
-	return tui().Container;
+  return tui().Container;
 }
 
 /** lazy Markdown constructor */
 export function getMarkdown(): new (...args: any[]) => any {
-	return tui().Markdown;
+  return tui().Markdown;
 }

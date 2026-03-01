@@ -10,14 +10,14 @@
  */
 
 export interface ToolCostDetails {
-	cost: number;
+  cost: number;
 }
 
 export function hasToolCost(v: unknown): v is ToolCostDetails {
-	return (
-		v != null &&
-		typeof v === "object" &&
-		"cost" in v &&
-		typeof (v as Record<string, unknown>).cost === "number"
-	);
+  return (
+    v != null &&
+    typeof v === "object" &&
+    "cost" in v &&
+    typeof (v as Record<string, unknown>).cost === "number"
+  );
 }

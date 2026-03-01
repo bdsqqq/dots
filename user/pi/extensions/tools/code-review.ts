@@ -18,13 +18,26 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
-import { getFinalOutput, renderAgentTree, subAgentResult, type SingleResult } from "./lib/sub-agent-render";
+import {
+  getFinalOutput,
+  renderAgentTree,
+  subAgentResult,
+  type SingleResult,
+} from "./lib/sub-agent-render";
 
 const MODEL = "openrouter/google/gemini-3.1-pro-preview";
 
 /** sub-agent needs bash (git diff), read/grep/find (context), web tools (docs lookup) */
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash"];
-const EXTENSION_TOOLS = ["read", "grep", "find", "ls", "bash", "web_search", "read_web_page"];
+const EXTENSION_TOOLS = [
+  "read",
+  "grep",
+  "find",
+  "ls",
+  "bash",
+  "web_search",
+  "read_web_page",
+];
 
 const DEFAULT_SYSTEM_PROMPT = `You are an expert code reviewer. Review the provided diff for bugs, security issues, and code quality. Report findings with file locations and severity.
 
@@ -34,201 +47,229 @@ Current working directory (cwd): {cwd}`;
 const DEFAULT_REPORT_FORMAT = `Emit findings as XML: <codeReview><comment> elements with filename, startLine, endLine, severity (critical/high/medium/low), commentType (bug/suggested_edit/compliment/non_actionable), text, why, and fix fields.`;
 
 export interface CodeReviewConfig {
-	systemPrompt?: string;
-	reportFormat?: string;
+  systemPrompt?: string;
+  reportFormat?: string;
 }
 
 // --- XML parsing ---
 
 interface ReviewComment {
-	filename: string;
-	startLine: number;
-	endLine: number;
-	severity: string;
-	commentType: string;
-	text: string;
-	why: string;
-	fix: string;
+  filename: string;
+  startLine: number;
+  endLine: number;
+  severity: string;
+  commentType: string;
+  text: string;
+  why: string;
+  fix: string;
 }
 
 function parseReviewXml(output: string): ReviewComment[] {
-	const comments: ReviewComment[] = [];
-	const commentRegex = /<comment>([\s\S]*?)<\/comment>/g;
-	let match: RegExpExecArray | null;
+  const comments: ReviewComment[] = [];
+  const commentRegex = /<comment>([\s\S]*?)<\/comment>/g;
+  let match: RegExpExecArray | null;
 
-	while ((match = commentRegex.exec(output)) !== null) {
-		const block = match[1];
-		const get = (tag: string): string => {
-			const m = block.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
-			return m ? m[1].trim() : "";
-		};
-		comments.push({
-			filename: get("filename"),
-			startLine: parseInt(get("startLine"), 10) || 0,
-			endLine: parseInt(get("endLine"), 10) || 0,
-			severity: get("severity"),
-			commentType: get("commentType"),
-			text: get("text"),
-			why: get("why"),
-			fix: get("fix"),
-		});
-	}
-	return comments;
+  while ((match = commentRegex.exec(output)) !== null) {
+    const block = match[1];
+    const get = (tag: string): string => {
+      const m = block.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
+      return m ? m[1].trim() : "";
+    };
+    comments.push({
+      filename: get("filename"),
+      startLine: parseInt(get("startLine"), 10) || 0,
+      endLine: parseInt(get("endLine"), 10) || 0,
+      severity: get("severity"),
+      commentType: get("commentType"),
+      text: get("text"),
+      why: get("why"),
+      fix: get("fix"),
+    });
+  }
+  return comments;
 }
 
 function formatReviewSummary(comments: ReviewComment[]): string {
-	if (comments.length === 0) return "";
+  if (comments.length === 0) return "";
 
-	const bySeverity: Record<string, number> = {};
-	for (const c of comments) {
-		bySeverity[c.severity] = (bySeverity[c.severity] || 0) + 1;
-	}
+  const bySeverity: Record<string, number> = {};
+  for (const c of comments) {
+    bySeverity[c.severity] = (bySeverity[c.severity] || 0) + 1;
+  }
 
-	const severityOrder = ["critical", "high", "medium", "low"];
-	const parts = severityOrder
-		.filter((s) => bySeverity[s])
-		.map((s) => `${bySeverity[s]} ${s}`);
+  const severityOrder = ["critical", "high", "medium", "low"];
+  const parts = severityOrder
+    .filter((s) => bySeverity[s])
+    .map((s) => `${bySeverity[s]} ${s}`);
 
-	return `${comments.length} comment${comments.length !== 1 ? "s" : ""}: ${parts.join(", ")}`;
+  return `${comments.length} comment${comments.length !== 1 ? "s" : ""}: ${parts.join(", ")}`;
 }
 
 // --- tool ---
 
-export function createCodeReviewTool(config: CodeReviewConfig = {}): ToolDefinition {
-	return {
-		name: "code_review",
-		label: "Code Review",
-		description:
-			"Review code changes, diffs, outstanding changes, or modified files. " +
-			"Use when asked to review changes, check code quality, analyze uncommitted work, " +
-			"or perform a code review.\n\n" +
-			"It takes in a description of the diff or code change that can be used to generate " +
-			"the full diff, which is then reviewed. When using this tool, do not invoke `git diff` " +
-			"or any other tool to generate the diff but just pass a natural language description " +
-			"of how to compute the diff in the diff_description argument.",
+export function createCodeReviewTool(
+  config: CodeReviewConfig = {},
+): ToolDefinition {
+  return {
+    name: "code_review",
+    label: "Code Review",
+    description:
+      "Review code changes, diffs, outstanding changes, or modified files. " +
+      "Use when asked to review changes, check code quality, analyze uncommitted work, " +
+      "or perform a code review.\n\n" +
+      "It takes in a description of the diff or code change that can be used to generate " +
+      "the full diff, which is then reviewed. When using this tool, do not invoke `git diff` " +
+      "or any other tool to generate the diff but just pass a natural language description " +
+      "of how to compute the diff in the diff_description argument.",
 
-		parameters: Type.Object({
-			diff_description: Type.String({
-				description:
-					"A description of the diff or code change that can be used to generate the full diff. " +
-					"This can include a git or bash command to generate the diff or a description of the diff " +
-					"which can then be used to generate the git or bash command to generate the full diff.",
-			}),
-			files: Type.Optional(
-				Type.Array(Type.String(), {
-					description:
-						"Specific files to focus the review on. If empty, all changed files covered " +
-						"by the diff description are reviewed.",
-				}),
-			),
-			instructions: Type.Optional(
-				Type.String({
-					description: "Additional instructions to guide the review agent.",
-				}),
-			),
-		}),
+    parameters: Type.Object({
+      diff_description: Type.String({
+        description:
+          "A description of the diff or code change that can be used to generate the full diff. " +
+          "This can include a git or bash command to generate the diff or a description of the diff " +
+          "which can then be used to generate the git or bash command to generate the full diff.",
+      }),
+      files: Type.Optional(
+        Type.Array(Type.String(), {
+          description:
+            "Specific files to focus the review on. If empty, all changed files covered " +
+            "by the diff description are reviewed.",
+        }),
+      ),
+      instructions: Type.Optional(
+        Type.String({
+          description: "Additional instructions to guide the review agent.",
+        }),
+      ),
+    }),
 
-		async execute(_toolCallId, params, signal, onUpdate, ctx) {
-			let sessionId = "";
-			try { sessionId = ctx.sessionManager?.getSessionId?.() ?? ""; } catch {}
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      let sessionId = "";
+      try {
+        sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
+      } catch {}
 
-			// compose task prompt
-			const parts: string[] = [];
-			parts.push(`Review the following diff:\n${params.diff_description}`);
+      // compose task prompt
+      const parts: string[] = [];
+      parts.push(`Review the following diff:\n${params.diff_description}`);
 
-			if (params.files && params.files.length > 0) {
-				parts.push(`\nFocus the review on these files:\n${params.files.join("\n")}`);
-			}
-			if (params.instructions) {
-				parts.push(`\nAdditional review instructions:\n${params.instructions}`);
-			}
+      if (params.files && params.files.length > 0) {
+        parts.push(
+          `\nFocus the review on these files:\n${params.files.join("\n")}`,
+        );
+      }
+      if (params.instructions) {
+        parts.push(`\nAdditional review instructions:\n${params.instructions}`);
+      }
 
-			const fullTask = parts.join("\n");
+      const fullTask = parts.join("\n");
 
-			const singleResult: SingleResult = {
-				agent: "code_review",
-				task: params.diff_description,
-				exitCode: -1,
-				messages: [],
-				usage: zeroUsage(),
-			};
+      const singleResult: SingleResult = {
+        agent: "code_review",
+        task: params.diff_description,
+        exitCode: -1,
+        messages: [],
+        usage: zeroUsage(),
+      };
 
-			const systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-			const reportFormat = config.reportFormat || DEFAULT_REPORT_FORMAT;
+      const systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+      const reportFormat = config.reportFormat || DEFAULT_REPORT_FORMAT;
 
-			const result = await piSpawn({
-				cwd: ctx.cwd,
-				task: fullTask,
-				model: MODEL,
-				builtinTools: BUILTIN_TOOLS,
-				extensionTools: EXTENSION_TOOLS,
-				systemPromptBody: systemPrompt,
-				followUp: reportFormat,
-				signal,
-				sessionId,
-				onUpdate: (partial) => {
-					singleResult.messages = partial.messages;
-					singleResult.usage = partial.usage;
-					singleResult.model = partial.model;
-					singleResult.stopReason = partial.stopReason;
-					singleResult.errorMessage = partial.errorMessage;
-					if (onUpdate) {
-						onUpdate({
-							content: [{ type: "text", text: getFinalOutput(partial.messages) || "(reviewing...)" }],
-							details: singleResult,
-						} as any);
-					}
-				},
-			});
+      const result = await piSpawn({
+        cwd: ctx.cwd,
+        task: fullTask,
+        model: MODEL,
+        builtinTools: BUILTIN_TOOLS,
+        extensionTools: EXTENSION_TOOLS,
+        systemPromptBody: systemPrompt,
+        followUp: reportFormat,
+        signal,
+        sessionId,
+        onUpdate: (partial) => {
+          singleResult.messages = partial.messages;
+          singleResult.usage = partial.usage;
+          singleResult.model = partial.model;
+          singleResult.stopReason = partial.stopReason;
+          singleResult.errorMessage = partial.errorMessage;
+          if (onUpdate) {
+            onUpdate({
+              content: [
+                {
+                  type: "text",
+                  text: getFinalOutput(partial.messages) || "(reviewing...)",
+                },
+              ],
+              details: singleResult,
+            } as any);
+          }
+        },
+      });
 
-			singleResult.exitCode = result.exitCode;
-			singleResult.messages = result.messages;
-			singleResult.usage = result.usage;
-			singleResult.model = result.model;
-			singleResult.stopReason = result.stopReason;
-			singleResult.errorMessage = result.errorMessage;
+      singleResult.exitCode = result.exitCode;
+      singleResult.messages = result.messages;
+      singleResult.usage = result.usage;
+      singleResult.model = result.model;
+      singleResult.stopReason = result.stopReason;
+      singleResult.errorMessage = result.errorMessage;
 
-			const isError = result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
-			const output = getFinalOutput(result.messages) || "(no output)";
+      const isError =
+        result.exitCode !== 0 ||
+        result.stopReason === "error" ||
+        result.stopReason === "aborted";
+      const output = getFinalOutput(result.messages) || "(no output)";
 
-			if (isError) {
-				return subAgentResult(result.errorMessage || result.stderr || output, singleResult, true);
-			}
+      if (isError) {
+        return subAgentResult(
+          result.errorMessage || result.stderr || output,
+          singleResult,
+          true,
+        );
+      }
 
-			return subAgentResult(output, singleResult);
-		},
+      return subAgentResult(output, singleResult);
+    },
 
-		renderCall(args: any, theme: any) {
-			const desc = args.diff_description || "...";
-			const preview = desc.length > 70 ? `${desc.slice(0, 70)}...` : desc;
-			let text = theme.fg("toolTitle", theme.bold("code_review ")) + theme.fg("dim", preview);
-			if (args.files?.length) {
-				text += theme.fg("muted", ` (${args.files.length} file${args.files.length > 1 ? "s" : ""})`);
-			}
-			return new Text(text, 0, 0);
-		},
+    renderCall(args: any, theme: any) {
+      const desc = args.diff_description || "...";
+      const preview = desc.length > 70 ? `${desc.slice(0, 70)}...` : desc;
+      let text =
+        theme.fg("toolTitle", theme.bold("code_review ")) +
+        theme.fg("dim", preview);
+      if (args.files?.length) {
+        text += theme.fg(
+          "muted",
+          ` (${args.files.length} file${args.files.length > 1 ? "s" : ""})`,
+        );
+      }
+      return new Text(text, 0, 0);
+    },
 
-		renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
-			const details = result.details as SingleResult | undefined;
-			if (!details) {
-				const text = result.content[0];
-				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
-			}
+    renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
+      const details = result.details as SingleResult | undefined;
+      if (!details) {
+        const text = result.content[0];
+        return new Text(
+          text?.type === "text" ? text.text : "(no output)",
+          0,
+          0,
+        );
+      }
 
-			const container = new Container();
+      const container = new Container();
 
-			// parse XML comments from output for summary line
-			const output = getFinalOutput(details.messages);
-			const comments = parseReviewXml(output);
-			if (comments.length > 0) {
-				const summary = formatReviewSummary(comments);
-				container.addChild(
-					new Text(theme.fg("accent", summary), 0, 0),
-				);
-			}
+      // parse XML comments from output for summary line
+      const output = getFinalOutput(details.messages);
+      const comments = parseReviewXml(output);
+      if (comments.length > 0) {
+        const summary = formatReviewSummary(comments);
+        container.addChild(new Text(theme.fg("accent", summary), 0, 0));
+      }
 
-			renderAgentTree(details, container, expanded, theme, { label: "code_review", header: "statusOnly" });
-			return container;
-		},
-	};
+      renderAgentTree(details, container, expanded, theme, {
+        label: "code_review",
+        header: "statusOnly",
+      });
+      return container;
+    },
+  };
 }

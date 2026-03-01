@@ -20,50 +20,50 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
  * backward-compat alias map: old names -> registered names.
  */
 const TOOL_ALIASES: Record<string, string> = {
-	glob: "find",
-	edit_file: "edit",
-	create_file: "write",
+  glob: "find",
+  edit_file: "edit",
+  create_file: "write",
 };
 
 function resolveAliases(names: string[]): string[] {
-	return names.map((name) => TOOL_ALIASES[name] ?? name);
+  return names.map((name) => TOOL_ALIASES[name] ?? name);
 }
 
 export default function (pi: ExtensionAPI) {
-	const raw = process.env.PI_INCLUDE_TOOLS;
-	if (!raw) return;
+  const raw = process.env.PI_INCLUDE_TOOLS;
+  if (!raw) return;
 
-	// explicit "no extension tools" sentinel
-	if (raw === "NONE") {
-		const applyEmpty = () => pi.setActiveTools([]);
-		pi.on("session_start", async () => {
-			applyEmpty();
-		});
-		pi.on("before_agent_start", async () => {
-			applyEmpty();
-		});
-		return;
-	}
+  // explicit "no extension tools" sentinel
+  if (raw === "NONE") {
+    const applyEmpty = () => pi.setActiveTools([]);
+    pi.on("session_start", async () => {
+      applyEmpty();
+    });
+    pi.on("before_agent_start", async () => {
+      applyEmpty();
+    });
+    return;
+  }
 
-	const allowed = resolveAliases(
-		raw
-			.split(",")
-			.map((t) => t.trim())
-			.filter(Boolean),
-	);
+  const allowed = resolveAliases(
+    raw
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean),
+  );
 
-	if (allowed.length === 0) return;
+  if (allowed.length === 0) return;
 
-	const applyFilter = () => pi.setActiveTools(allowed);
+  const applyFilter = () => pi.setActiveTools(allowed);
 
-	pi.on("session_start", async () => {
-		applyFilter();
-	});
+  pi.on("session_start", async () => {
+    applyFilter();
+  });
 
-	// sub-agents/index.ts re-registers the subagent tool on before_agent_start
-	// to pick up project-scoped agents. re-registration may bypass a prior
-	// setActiveTools() call, so we re-apply the filter on the same event.
-	pi.on("before_agent_start", async () => {
-		applyFilter();
-	});
+  // sub-agents/index.ts re-registers the subagent tool on before_agent_start
+  // to pick up project-scoped agents. re-registration may bypass a prior
+  // setActiveTools() call, so we re-apply the filter on the same event.
+  pi.on("before_agent_start", async () => {
+    applyFilter();
+  });
 }

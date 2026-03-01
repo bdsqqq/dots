@@ -42,39 +42,49 @@ const ANSI_RE = /\x1b\[[0-9;]*m|\x1b\]8;;[^\x07]*\x07/g;
 const TAB_WIDTH = 4;
 
 function visibleWidth(text: string): number {
-	const stripped = text.replace(ANSI_RE, "");
-	let w = 0;
-	for (const ch of stripped) {
-		w += ch === "\t" ? TAB_WIDTH : 1;
-	}
-	return w;
+  const stripped = text.replace(ANSI_RE, "");
+  let w = 0;
+  for (const ch of stripped) {
+    w += ch === "\t" ? TAB_WIDTH : 1;
+  }
+  return w;
 }
 
-function truncateToWidth(text: string, maxWidth: number, ellipsis = "…"): string {
-	if (visibleWidth(text) <= maxWidth) return text;
+function truncateToWidth(
+  text: string,
+  maxWidth: number,
+  ellipsis = "…",
+): string {
+  if (visibleWidth(text) <= maxWidth) return text;
 
-	const ellipsisLen = ellipsis.length;
-	const target = maxWidth - ellipsisLen;
-	if (target <= 0) return ellipsis.slice(0, maxWidth);
+  const ellipsisLen = ellipsis.length;
+  const target = maxWidth - ellipsisLen;
+  if (target <= 0) return ellipsis.slice(0, maxWidth);
 
-	let visible = 0;
-	let i = 0;
-	while (i < text.length && visible < target) {
-		// skip SGR escape sequences (\x1b[...m)
-		if (text[i] === "\x1b" && text[i + 1] === "[") {
-			const end = text.indexOf("m", i);
-			if (end !== -1) { i = end + 1; continue; }
-		}
-		// skip OSC 8 hyperlink sequences (\x1b]8;;...\x07)
-		if (text[i] === "\x1b" && text[i + 1] === "]") {
-			const end = text.indexOf("\x07", i);
-			if (end !== -1) { i = end + 1; continue; }
-		}
-		visible += text[i] === "\t" ? TAB_WIDTH : 1;
-		i++;
-	}
+  let visible = 0;
+  let i = 0;
+  while (i < text.length && visible < target) {
+    // skip SGR escape sequences (\x1b[...m)
+    if (text[i] === "\x1b" && text[i + 1] === "[") {
+      const end = text.indexOf("m", i);
+      if (end !== -1) {
+        i = end + 1;
+        continue;
+      }
+    }
+    // skip OSC 8 hyperlink sequences (\x1b]8;;...\x07)
+    if (text[i] === "\x1b" && text[i + 1] === "]") {
+      const end = text.indexOf("\x07", i);
+      if (end !== -1) {
+        i = end + 1;
+        continue;
+      }
+    }
+    visible += text[i] === "\t" ? TAB_WIDTH : 1;
+    i++;
+  }
 
-	return text.slice(0, i) + RST + ellipsis;
+  return text.slice(0, i) + RST + ellipsis;
 }
 
 /**
@@ -87,23 +97,23 @@ function truncateToWidth(text: string, maxWidth: number, ellipsis = "…"): stri
 const WIDTH_SAFETY_MARGIN = 2;
 
 export interface BoxLine {
-	/** optional gutter text (e.g., line number). right-aligned to gutter width. */
-	gutter?: string;
-	/** line content */
-	text: string;
-	/** when true, gutter + content render at base color instead of dim */
-	highlight?: boolean;
+  /** optional gutter text (e.g., line number). right-aligned to gutter width. */
+  gutter?: string;
+  /** line content */
+  text: string;
+  /** when true, gutter + content render at base color instead of dim */
+  highlight?: boolean;
 }
 
 export interface BoxBlock {
-	lines: BoxLine[];
+  lines: BoxLine[];
 }
 
 export interface BoxSection {
-	/** text inside ╭─[...]. omit for headless boxes (no opening line). */
-	header?: string;
-	/** contiguous blocks. gaps between blocks show · elision marker. */
-	blocks: BoxBlock[];
+  /** text inside ╭─[...]. omit for headless boxes (no opening line). */
+  header?: string;
+  /** contiguous blocks. gaps between blocks show · elision marker. */
+  blocks: BoxBlock[];
 }
 
 // --- visual-line-aware rendering (show + box-format pipeline) ---
@@ -113,11 +123,11 @@ export type { Excerpt };
 
 /** intermediate visual line produced by expanding BoxLine text */
 interface VisualBoxLine {
-	text: string;
-	gutter: string;
-	highlight: boolean;
-	isElision: boolean;
-	isGap: boolean;
+  text: string;
+  gutter: string;
+  highlight: boolean;
+  isElision: boolean;
+  isGap: boolean;
 }
 
 /**
@@ -126,23 +136,24 @@ interface VisualBoxLine {
  * a wrapped logical line gets the gutter; continuation lines get "".
  */
 function expandBlock(block: BoxBlock, contentWidth: number): VisualBoxLine[] {
-	const result: VisualBoxLine[] = [];
-	for (const line of block.lines) {
-		const visualLines = contentWidth > 0
-			? new Text(line.text, 0, 0).render(contentWidth)
-			: [line.text];
+  const result: VisualBoxLine[] = [];
+  for (const line of block.lines) {
+    const visualLines =
+      contentWidth > 0
+        ? new Text(line.text, 0, 0).render(contentWidth)
+        : [line.text];
 
-		for (let i = 0; i < visualLines.length; i++) {
-			result.push({
-				text: visualLines[i],
-				gutter: i === 0 ? (line.gutter ?? "") : "",
-				highlight: line.highlight ?? false,
-				isElision: false,
-				isGap: false,
-			});
-		}
-	}
-	return result;
+    for (let i = 0; i < visualLines.length; i++) {
+      result.push({
+        text: visualLines[i],
+        gutter: i === 0 ? (line.gutter ?? "") : "",
+        highlight: line.highlight ?? false,
+        isElision: false,
+        isGap: false,
+      });
+    }
+  }
+  return result;
 }
 
 /**
@@ -151,18 +162,18 @@ function expandBlock(block: BoxBlock, contentWidth: number): VisualBoxLine[] {
  * without:      "│ "      = 2
  */
 function chromeWidth(gutterWidth: number): number {
-	return gutterWidth > 0 ? gutterWidth + 3 : 2;
+  return gutterWidth > 0 ? gutterWidth + 3 : 2;
 }
 
 export interface BoxWindowedOpts {
-	/** max sections to show (rest get "… N more" footer) */
-	maxSections?: number;
-	/**
-	 * excerpts applied independently to each block's visual lines.
-	 * e.g., [{ focus: "head", context: 12 }, { focus: "tail", context: 13 }]
-	 * caps each block at 25 visual lines (head 12 + tail 13).
-	 */
-	excerpts?: Excerpt[];
+  /** max sections to show (rest get "… N more" footer) */
+  maxSections?: number;
+  /**
+   * excerpts applied independently to each block's visual lines.
+   * e.g., [{ focus: "head", context: 12 }, { focus: "tail", context: 13 }]
+   * caps each block at 25 visual lines (head 12 + tail 13).
+   */
+  excerpts?: Excerpt[];
 }
 
 /**
@@ -183,123 +194,144 @@ export interface BoxWindowedOpts {
  *   )
  */
 export function formatBoxesWindowed(
-	sections: BoxSection[],
-	opts: BoxWindowedOpts = {},
-	notices?: string[],
-	width?: number,
+  sections: BoxSection[],
+  opts: BoxWindowedOpts = {},
+  notices?: string[],
+  width?: number,
 ): string {
-	const maxSections = opts.maxSections ?? sections.length;
-	const excerpts = opts.excerpts ?? [];
-	const shown = sections.slice(0, maxSections);
-	const out: string[] = [];
+  const maxSections = opts.maxSections ?? sections.length;
+  const excerpts = opts.excerpts ?? [];
+  const shown = sections.slice(0, maxSections);
+  const out: string[] = [];
 
-	const safeWidth = width != null ? Math.max(1, width - WIDTH_SAFETY_MARGIN) : undefined;
-	const clamp = (line: string): string =>
-		safeWidth != null ? truncateToWidth(line, safeWidth, "…") : line;
+  const safeWidth =
+    width != null ? Math.max(1, width - WIDTH_SAFETY_MARGIN) : undefined;
+  const clamp = (line: string): string =>
+    safeWidth != null ? truncateToWidth(line, safeWidth, "…") : line;
 
-	const chrome = { dim: (s: string) => `${DIM}${s}${RST}` };
+  const chrome = { dim: (s: string) => `${DIM}${s}${RST}` };
 
-	for (let si = 0; si < shown.length; si++) {
-		const section = shown[si];
+  for (let si = 0; si < shown.length; si++) {
+    const section = shown[si];
 
-		// compute gutter width from all lines (before any windowing)
-		const allGutters = section.blocks.flatMap((b) => b.lines.map((l) => l.gutter ?? ""));
-		const gw = Math.max(0, ...allGutters.map((g) => g.length));
-		const pad = " ".repeat(gw);
+    // compute gutter width from all lines (before any windowing)
+    const allGutters = section.blocks.flatMap((b) =>
+      b.lines.map((l) => l.gutter ?? ""),
+    );
+    const gw = Math.max(0, ...allGutters.map((g) => g.length));
+    const pad = " ".repeat(gw);
 
-		// compute content width for visual-line expansion
-		const cw = chromeWidth(gw);
-		const contentWidth = safeWidth != null ? Math.max(1, safeWidth - cw) : 80;
+    // compute content width for visual-line expansion
+    const cw = chromeWidth(gw);
+    const contentWidth = safeWidth != null ? Math.max(1, safeWidth - cw) : 80;
 
-		if (si > 0) out.push("");
+    if (si > 0) out.push("");
 
-		// header (omitted for headless sections)
-		if (section.header != null) {
-			out.push(clamp(boxTop({
-				variant: "open",
-				style: chrome,
-				header: { text: section.header, width: section.header.replace(/\x1b\[[0-9;]*m/g, "").length },
-			})));
-		}
+    // header (omitted for headless sections)
+    if (section.header != null) {
+      out.push(
+        clamp(
+          boxTop({
+            variant: "open",
+            style: chrome,
+            header: {
+              text: section.header,
+              width: section.header.replace(/\x1b\[[0-9;]*m/g, "").length,
+            },
+          }),
+        ),
+      );
+    }
 
-		let anyBlockTruncated = false;
+    let anyBlockTruncated = false;
 
-		for (let bi = 0; bi < section.blocks.length; bi++) {
-			// gap marker between blocks
-			if (bi > 0) {
-				out.push(gw > 0 ? `${DIM}${pad} ·${RST}` : `${DIM}·${RST}`);
-			}
+    for (let bi = 0; bi < section.blocks.length; bi++) {
+      // gap marker between blocks
+      if (bi > 0) {
+        out.push(gw > 0 ? `${DIM}${pad} ·${RST}` : `${DIM}·${RST}`);
+      }
 
-			// expand to visual lines at content width
-			const expanded = expandBlock(section.blocks[bi], contentWidth);
+      // expand to visual lines at content width
+      const expanded = expandBlock(section.blocks[bi], contentWidth);
 
-			// apply per-block excerpts
-			const windowed = excerpts.length > 0
-				? windowItems(expanded, excerpts, (count): VisualBoxLine => ({
-					text: `· ··· ${count} more lines`,
-					gutter: "",
-					highlight: false,
-					isElision: true,
-					isGap: false,
-				}))
-				: { items: expanded, skippedRanges: [] as Array<[number, number]> };
+      // apply per-block excerpts
+      const windowed =
+        excerpts.length > 0
+          ? windowItems(
+              expanded,
+              excerpts,
+              (count): VisualBoxLine => ({
+                text: `· ··· ${count} more lines`,
+                gutter: "",
+                highlight: false,
+                isElision: true,
+                isGap: false,
+              }),
+            )
+          : { items: expanded, skippedRanges: [] as Array<[number, number]> };
 
-			if (windowed.skippedRanges.length > 0) anyBlockTruncated = true;
+      if (windowed.skippedRanges.length > 0) anyBlockTruncated = true;
 
-			// render each visual line with chrome
-			for (const vl of windowed.items) {
-				if (vl.isElision) {
-					const prefix = gw > 0 ? `${pad} ` : "";
-					out.push(`${DIM}${prefix}${vl.text}${RST}`);
-				} else if (gw > 0) {
-					const gutter = vl.gutter.padStart(gw);
-					if (vl.highlight) {
-						out.push(clamp(`${gutter} ${DIM}│${RST} ${vl.text}`));
-					} else {
-						out.push(clamp(`${DIM}${gutter} │ ${vl.text}${RST}`));
-					}
-				} else {
-					if (vl.highlight) {
-						out.push(clamp(`${DIM}│${RST} ${vl.text}`));
-					} else {
-						out.push(clamp(`${DIM}│ ${vl.text}${RST}`));
-					}
-				}
-			}
-		}
+      // render each visual line with chrome
+      for (const vl of windowed.items) {
+        if (vl.isElision) {
+          const prefix = gw > 0 ? `${pad} ` : "";
+          out.push(`${DIM}${prefix}${vl.text}${RST}`);
+        } else if (gw > 0) {
+          const gutter = vl.gutter.padStart(gw);
+          if (vl.highlight) {
+            out.push(clamp(`${gutter} ${DIM}│${RST} ${vl.text}`));
+          } else {
+            out.push(clamp(`${DIM}${gutter} │ ${vl.text}${RST}`));
+          }
+        } else {
+          if (vl.highlight) {
+            out.push(clamp(`${DIM}│${RST} ${vl.text}`));
+          } else {
+            out.push(clamp(`${DIM}│ ${vl.text}${RST}`));
+          }
+        }
+      }
+    }
 
-		// footer
-		out.push(boxBottom({ variant: "open", style: chrome }));
-	}
+    // footer
+    out.push(boxBottom({ variant: "open", style: chrome }));
+  }
 
-	// section elision
-	if (sections.length > maxSections) {
-		const rem = sections.length - maxSections;
-		out.push(`${DIM}… ${rem} more${RST}`);
-	}
+  // section elision
+  if (sections.length > maxSections) {
+    const rem = sections.length - maxSections;
+    out.push(`${DIM}… ${rem} more${RST}`);
+  }
 
-	if (notices?.length) {
-		out.push("");
-		out.push(clamp(`${DIM}[${notices.join(". ")}]${RST}`));
-	}
+  if (notices?.length) {
+    out.push("");
+    out.push(clamp(`${DIM}[${notices.join(". ")}]${RST}`));
+  }
 
-	return out.join("\n");
+  return out.join("\n");
 }
 
 /**
  * convenience: wrap a single text block in a box section with no gutter.
  * all lines get highlight=true (base color) by default.
  */
-export function textSection(header: string | undefined, text: string, dim = false): BoxSection {
-	return {
-		...(header != null && { header }),
-		blocks: [{
-			lines: text.split("\n").map((line) => ({
-				text: line,
-				highlight: !dim,
-			})),
-		}],
-	};
+export function textSection(
+  header: string | undefined,
+  text: string,
+  dim = false,
+): BoxSection {
+  return {
+    ...(header != null && { header }),
+    blocks: [
+      {
+        lines: text.split("\n").map((line) => ({
+          text: line,
+          highlight: !dim,
+        })),
+      },
+    ],
+  };
 }
 
 /**
@@ -307,37 +339,41 @@ export function textSection(header: string | undefined, text: string, dim = fals
  * caches by (width, expanded).
  */
 export function boxRendererWindowed(
-	buildSections: () => BoxSection[],
-	opts: { collapsed: BoxWindowedOpts; expanded: BoxWindowedOpts },
-	notices?: string[],
+  buildSections: () => BoxSection[],
+  opts: { collapsed: BoxWindowedOpts; expanded: BoxWindowedOpts },
+  notices?: string[],
 ) {
-	let cachedWidth: number | undefined;
-	let cachedExpanded: boolean | undefined;
-	let cachedLines: string[] | undefined;
+  let cachedWidth: number | undefined;
+  let cachedExpanded: boolean | undefined;
+  let cachedLines: string[] | undefined;
 
-	return {
-		render(width: number, expanded: boolean): string[] {
-			if (cachedLines !== undefined && cachedExpanded === expanded && cachedWidth === width) {
-				return cachedLines;
-			}
-			const sections = buildSections();
-			const visual = formatBoxesWindowed(
-				sections,
-				expanded ? opts.expanded : opts.collapsed,
-				notices,
-				width,
-			);
-			cachedLines = visual.split("\n");
-			cachedExpanded = expanded;
-			cachedWidth = width;
-			return cachedLines;
-		},
-		invalidate() {
-			cachedLines = undefined;
-			cachedExpanded = undefined;
-			cachedWidth = undefined;
-		},
-	};
+  return {
+    render(width: number, expanded: boolean): string[] {
+      if (
+        cachedLines !== undefined &&
+        cachedExpanded === expanded &&
+        cachedWidth === width
+      ) {
+        return cachedLines;
+      }
+      const sections = buildSections();
+      const visual = formatBoxesWindowed(
+        sections,
+        expanded ? opts.expanded : opts.collapsed,
+        notices,
+        width,
+      );
+      cachedLines = visual.split("\n");
+      cachedExpanded = expanded;
+      cachedWidth = width;
+      return cachedLines;
+    },
+    invalidate() {
+      cachedLines = undefined;
+      cachedExpanded = undefined;
+      cachedWidth = undefined;
+    },
+  };
 }
 
 /**
@@ -346,7 +382,7 @@ export function boxRendererWindowed(
  * others silently ignore the sequences and show plain text.
  */
 export function osc8Link(url: string, text: string): string {
-	return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
+  return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
 }
 
 /**
@@ -355,12 +391,18 @@ export function osc8Link(url: string, text: string): string {
  *
  * usage: renderCallLine("Edit", "~/path/to/file.ts", theme)
  */
-export function renderCallLine(label: string, context: string, theme: any): { render(width: number): string[]; invalidate(): void } {
-	const line = theme.fg("toolTitle", theme.bold(label)) + (context ? " " + theme.fg("dim", context) : "");
-	return {
-		render(_width: number): string[] {
-			return [line];
-		},
-		invalidate() {},
-	};
+export function renderCallLine(
+  label: string,
+  context: string,
+  theme: any,
+): { render(width: number): string[]; invalidate(): void } {
+  const line =
+    theme.fg("toolTitle", theme.bold(label)) +
+    (context ? " " + theme.fg("dim", context) : "");
+  return {
+    render(_width: number): string[] {
+      return [line];
+    },
+    invalidate() {},
+  };
 }
