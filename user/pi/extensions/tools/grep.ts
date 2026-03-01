@@ -39,7 +39,7 @@ function truncateLine(line: string): string {
 }
 
 function looksLikeRegex(pattern: string): boolean {
-	return /[{}()\[\]|\\+*?^$]/.test(pattern);
+	return /[{}()[\]|\\+*?^$]/.test(pattern);
 }
 
 // --- structured data for visual rendering ---

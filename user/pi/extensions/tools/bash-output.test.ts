@@ -229,7 +229,7 @@ describe("bash tool output formatting", () => {
 		it("handles command with special characters", async () => {
 			const result = await tool.execute!(
 				"test-id",
-				{ cmd: `echo "special: 'quotes' and \"double\" and \$var"` },
+				{ cmd: `echo "special: 'quotes' and "double" and $var"` },
 				undefined,
 				undefined,
 				mockCtx as any,
