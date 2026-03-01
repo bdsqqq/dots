@@ -57,6 +57,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    copyparty = {
+      url = "github:9001/copyparty";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     lnr = {
       url = "github:bdsqqq/lnr";
       inputs.nixpkgs.follows = "nixpkgs";

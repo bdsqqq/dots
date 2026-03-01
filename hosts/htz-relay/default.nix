@@ -39,7 +39,7 @@ in {
   services.tailscale = {
     enable = true;
     useRoutingFeatures = "client";
-    extraUpFlags = [ "--ssh" "--accept-dns=false" ];
+    extraUpFlags = [ "--ssh" "--accept-dns=false" "--shields-up=false" ];
     authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key) config.sops.secrets.tailscale_auth_key.path;
   };
 
