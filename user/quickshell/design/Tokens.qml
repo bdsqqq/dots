@@ -43,10 +43,8 @@ QtObject {
     property int durationMed: 100  // color, opacity transitions
     property int durationSlow: 150 // emphasis animations
 
-    // nested namespaces for convenient access via Theme.t.c.* and Theme.t.type.*
-    // why: categorical grouping reduces cognitive load when referencing tokens.
-    //      'c.fg' is clearer than 'white' when used in a color: prop context.
-    QtObject {
+    // color namespace - accessible as t.c.fg, t.c.muted, etc.
+    property var c: QtObject {
         property color fg: root.white
         property color muted: root.gray300
         property color subtle: root.gray400
@@ -57,14 +55,15 @@ QtObject {
         property color inactive: root.gray800
     }
 
-    QtObject {
+    // typography namespace - accessible as t.type.bodySm, etc.
+    property var type: QtObject {
         property int bodySm: root.textXs    // 12px captions, metadata
         property int bodyMd: root.textSm    // 14px body, labels
         property int titleLg: root.text2xl    // 24px headings, clock
     }
 
-    // keep radius accessible as t.radius.sm, t.radius.md for consistency with c/type
-    QtObject {
+    // radius namespace - accessible as t.radius.sm, t.radius.md
+    property var radius: QtObject {
         property int sm: root.radiusSm
         property int md: root.radiusMd
     }
