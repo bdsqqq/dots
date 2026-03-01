@@ -187,7 +187,6 @@ Item {
                     tone: (wifiEnabled && currentSSID !== "disconnected") ? "fg" : "subtle"
                     size: "bodySm"
                     elide: Text.ElideRight
-                    Layout.preferredWidth: 120
                     horizontalAlignment: Text.AlignRight
                 }
             }
@@ -209,7 +208,7 @@ Item {
 
                 Controls.Button {
                     variant: expanded ? "outline" : "ghost"
-                    text: expanded ? "hide networks" : "show networks"
+                    text: expanded ? "hide" : "networks"
                     enabled: wifiEnabled
                     onClicked: expanded = !expanded
                 }

@@ -247,7 +247,7 @@ Item {
 
                 Controls.Button {
                     variant: expanded ? "outline" : "ghost"
-                    text: expanded ? "hide devices" : "show devices"
+                    text: expanded ? "hide" : "devices"
                     enabled: bluetoothOn
                     onClicked: bluetoothModule.expanded = !bluetoothModule.expanded
                 }
