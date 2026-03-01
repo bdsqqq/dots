@@ -79,17 +79,6 @@ ShellRoot {
     Variants {
         model: Quickshell.screens
 
-        ControlCenterBackdrop {
-            required property var modelData
-            screen: modelData
-            isOpen: root.controlCenterOpen
-            onClicked: root.controlCenterOpen = false
-        }
-    }
-
-    Variants {
-        model: Quickshell.screens
-
         ControlCenter {
             required property var modelData
             screen: modelData

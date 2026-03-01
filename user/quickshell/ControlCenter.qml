@@ -49,7 +49,7 @@ PanelWindow {
         anchors.fill: parent
         anchors.margins: controlCenter.panelMargin
         screen: controlCenter.screen
-        edge: "top-right"
+        edge: "top-left"
         gap: controlCenter.panelMargin
         fillColor: Design.Theme.t.black
         radius: Design.Theme.t.radiusMd

@@ -16,9 +16,8 @@ Item {
     readonly property real effectiveRadius: Math.max(0, Math.min(radius, width / 2, height / 2))
     readonly property real p: Math.max(0, Math.min(1, revealProgress))
     readonly property point absolutePos: mapToItem(null, 0, 0)
-
-    readonly property real screenWidth: screen ? Number(screen["width"] ?? 0) : 0
-    readonly property real screenHeight: screen ? Number(screen["height"] ?? 0) : 0
+    readonly property real screenWidth: screen ? Number(screen.width ?? 0) : 0
+    readonly property real screenHeight: screen ? Number(screen.height ?? 0) : 0
 
     readonly property bool touchingTop: Math.abs(absolutePos.y - gap) <= edgeThreshold
     readonly property bool touchingLeft: Math.abs(absolutePos.x - gap) <= edgeThreshold
@@ -27,11 +26,11 @@ Item {
 
     readonly property string resolvedEdge: edge === "auto" ? detectEdge() : edge
 
-    // -1 edge-attached (flat at p=0, rounds out with reveal), 0 regular convex
+    // state 0 normal, 1 horizontal inversion, 2 vertical inversion
     readonly property int topLeftState: cornerState("top-left")
     readonly property int topRightState: cornerState("top-right")
-    readonly property int bottomRightState: cornerState("bottom-right")
     readonly property int bottomLeftState: cornerState("bottom-left")
+    readonly property int bottomRightState: cornerState("bottom-right")
 
     readonly property Item maskItem: maskAnchor
     default property alias contentData: contentItem.data
@@ -59,78 +58,110 @@ Item {
         const onLeft = corner.indexOf("left") !== -1
         const onRight = corner.indexOf("right") !== -1
 
-        if ((onTop && edgeHas("top")) || (onBottom && edgeHas("bottom")) || (onLeft && edgeHas("left")) || (onRight && edgeHas("right"))) {
-            return -1
-        }
+        const touchTop = edgeHas("top")
+        const touchBottom = edgeHas("bottom")
+        const touchLeft = edgeHas("left")
+        const touchRight = edgeHas("right")
 
+        const touchesHorizontalEdge = (onLeft && touchLeft) || (onRight && touchRight)
+        const touchesVerticalEdge = (onTop && touchTop) || (onBottom && touchBottom)
+
+        if (touchesHorizontalEdge && touchesVerticalEdge) return 0
+        if (touchesHorizontalEdge) return 2
+        if (touchesVerticalEdge) return 1
         return 0
     }
 
+    function targetMultX(state: int): real {
+        return state === 1 ? -1 : 1
+    }
+
+    function targetMultY(state: int): real {
+        return state === 2 ? -1 : 1
+    }
+
+    function lerpMult(start: real, target: real): real {
+        return start + (target - start) * p
+    }
+
+    function arcDirection(multX: real, multY: real): int {
+        return ((multX < 0) !== (multY < 0)) ? PathArc.Counterclockwise : PathArc.Clockwise
+    }
+
     Shape {
-        anchors.fill: parent
+        id: panelShape
+        x: -root.effectiveRadius
+        y: -root.effectiveRadius
+        width: root.width + root.effectiveRadius * 2
+        height: root.height + root.effectiveRadius * 2
         antialiasing: true
 
-        ShapePath {
-            id: panelPath
+        readonly property real r: root.effectiveRadius
+        readonly property real panelW: root.width
+        readonly property real panelH: root.height
 
+        readonly property real tlMultX: root.lerpMult(1, root.targetMultX(root.topLeftState))
+        readonly property real tlMultY: root.lerpMult(1, root.targetMultY(root.topLeftState))
+        readonly property real trMultX: root.lerpMult(1, root.targetMultX(root.topRightState))
+        readonly property real trMultY: root.lerpMult(1, root.targetMultY(root.topRightState))
+        readonly property real blMultX: root.lerpMult(1, root.targetMultX(root.bottomLeftState))
+        readonly property real blMultY: root.lerpMult(1, root.targetMultY(root.bottomLeftState))
+        readonly property real brMultX: root.lerpMult(1, root.targetMultX(root.bottomRightState))
+        readonly property real brMultY: root.lerpMult(1, root.targetMultY(root.bottomRightState))
+
+        ShapePath {
             strokeWidth: -1
             fillColor: root.fillColor
 
-            readonly property real r: root.effectiveRadius
-            readonly property real tlRadius: root.topLeftState === -1 ? r * root.p : r
-            readonly property real trRadius: root.topRightState === -1 ? r * root.p : r
-            readonly property real brRadius: root.bottomRightState === -1 ? r * root.p : r
-            readonly property real blRadius: root.bottomLeftState === -1 ? r * root.p : r
-
-            startX: panelPath.tlRadius
-            startY: 0
+            startX: panelShape.r + panelShape.r * panelShape.tlMultX
+            startY: panelShape.r
 
             PathLine {
-                x: root.width - panelPath.trRadius
-                y: 0
+                relativeX: panelShape.panelW - panelShape.r * panelShape.tlMultX - panelShape.r * panelShape.trMultX
+                relativeY: 0
             }
             PathArc {
-                x: root.width
-                y: panelPath.trRadius
-                radiusX: Math.max(0.001, panelPath.trRadius)
-                radiusY: Math.max(0.001, panelPath.trRadius)
-                direction: PathArc.Clockwise
+                relativeX: panelShape.r * panelShape.trMultX
+                relativeY: panelShape.r * panelShape.trMultY
+                radiusX: panelShape.r
+                radiusY: panelShape.r
+                direction: root.arcDirection(panelShape.trMultX, panelShape.trMultY)
             }
 
             PathLine {
-                x: root.width
-                y: root.height - panelPath.brRadius
+                relativeX: 0
+                relativeY: panelShape.panelH - panelShape.r * panelShape.trMultY - panelShape.r * panelShape.brMultY
             }
             PathArc {
-                x: root.width - panelPath.brRadius
-                y: root.height
-                radiusX: Math.max(0.001, panelPath.brRadius)
-                radiusY: Math.max(0.001, panelPath.brRadius)
-                direction: PathArc.Clockwise
+                relativeX: -panelShape.r * panelShape.brMultX
+                relativeY: panelShape.r * panelShape.brMultY
+                radiusX: panelShape.r
+                radiusY: panelShape.r
+                direction: root.arcDirection(panelShape.brMultX, panelShape.brMultY)
             }
 
             PathLine {
-                x: panelPath.blRadius
-                y: root.height
+                relativeX: -(panelShape.panelW - panelShape.r * panelShape.brMultX - panelShape.r * panelShape.blMultX)
+                relativeY: 0
             }
             PathArc {
-                x: 0
-                y: root.height - panelPath.blRadius
-                radiusX: Math.max(0.001, panelPath.blRadius)
-                radiusY: Math.max(0.001, panelPath.blRadius)
-                direction: PathArc.Clockwise
+                relativeX: -panelShape.r * panelShape.blMultX
+                relativeY: -panelShape.r * panelShape.blMultY
+                radiusX: panelShape.r
+                radiusY: panelShape.r
+                direction: root.arcDirection(panelShape.blMultX, panelShape.blMultY)
             }
 
             PathLine {
-                x: 0
-                y: panelPath.tlRadius
+                relativeX: 0
+                relativeY: -(panelShape.panelH - panelShape.r * panelShape.blMultY - panelShape.r * panelShape.tlMultY)
             }
             PathArc {
-                x: panelPath.tlRadius
-                y: 0
-                radiusX: Math.max(0.001, panelPath.tlRadius)
-                radiusY: Math.max(0.001, panelPath.tlRadius)
-                direction: PathArc.Clockwise
+                relativeX: panelShape.r * panelShape.tlMultX
+                relativeY: -panelShape.r * panelShape.tlMultY
+                radiusX: panelShape.r
+                radiusY: panelShape.r
+                direction: root.arcDirection(panelShape.tlMultX, panelShape.tlMultY)
             }
         }
     }
@@ -144,9 +175,9 @@ Item {
     Item {
         id: maskAnchor
         visible: false
-        x: root.alignMask ? root.x : 0
-        y: root.alignMask ? root.y : 0
-        width: root.width
-        height: root.height
+        x: root.alignMask ? root.x - root.effectiveRadius : -root.effectiveRadius
+        y: root.alignMask ? root.y - root.effectiveRadius : -root.effectiveRadius
+        width: root.width + root.effectiveRadius * 2
+        height: root.height + root.effectiveRadius * 2
     }
 }
