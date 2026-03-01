@@ -18,7 +18,7 @@ Item {
         command: ["brightnessctl", "-m"]
 
         stdout: SplitParser {
-            onRead: function(data) {
+            onRead: function (data) {
                 let parts = data.trim().split(",");
                 if (parts.length >= 4) {
                     let percent = parseInt(parts[3].replace("%", ""));
@@ -58,7 +58,9 @@ Item {
                 font.pixelSize: 12
             }
 
-            Item { Layout.fillWidth: true }
+            Item {
+                Layout.fillWidth: true
+            }
 
             Text {
                 text: Math.round(brightnessModule.brightness * 100) + "%"
@@ -72,7 +74,10 @@ Item {
             id: slider
             Layout.fillWidth: true
             value: brightnessModule.brightness
-            onChangeEnd: function(val) {
+            onChangeEnd: function (val) {
+                // optimistic local sync: avoid visual rollback while brightnessctl
+                // roundtrip catches up to polled state.
+                brightnessModule.brightness = val;
                 brightnessSetter.targetPercent = Math.round(val * 100);
                 brightnessSetter.running = true;
             }
