@@ -24,6 +24,18 @@ lint-file file:
     export QML_IMPORT_PATH=$(nix-build '<nixpkgs>' -A quickshell)/lib/qt-6/qml:$(nix-build '<nixpkgs>' -A qt6.qtdeclarative)/lib/qt-6/qml
     qmllint {{file}}
 
+# Watch for changes and lint continuously (requires: nix-shell -p entr)
+watch:
+    #!/usr/bin/env bash
+    echo "Watching .qml files for changes... (Ctrl+C to stop)"
+    find . -name "*.qml" | entr -c just lint
+
+# Watch specific file
+watch-file file:
+    #!/usr/bin/env bash
+    echo "Watching {{file}} for changes... (Ctrl+C to stop)"
+    echo "{{file}}" | entr -c qmllint {{file}}
+
 # Format all QML files (in-place)
 format:
     find . -name "*.qml" -type f -exec qmlformat -i {} \;

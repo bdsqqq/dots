@@ -41,6 +41,7 @@ pkgs.mkShell {
     qmllsWrapped            # wrapped with env var
     quickshell
     pkgs.just               # for justfile commands
+    pkgs.entr               # file watcher for just watch
     # qt6.qtdeclarative libs needed but not the binaries in PATH
   ];
 
@@ -67,6 +68,8 @@ pkgs.mkShell {
     echo "Quick commands:"
     echo "  just lint        # lint all .qml files"
     echo "  just check       # lint shell.qml specifically"
+    echo "  just watch       # lint continuously on file changes"
+    echo "  just watch-file FILE  # watch specific file"
     echo "  just format      # format all files"
     echo "  just lsp         # start LSP server"
     echo "  qmllint file.qml # lint specific file (auto-imports configured)"
