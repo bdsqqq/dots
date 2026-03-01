@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Layouts
 
 import "controls" as Controls
+import "design" as Design
 
 PanelWindow {
     id: controlCenter
@@ -12,16 +13,19 @@ PanelWindow {
     required property var screen
     property bool isOpen: false
 
+    readonly property int panelPadding: Design.Theme.t.space4
+    readonly property int panelMargin: Design.Theme.t.space2
+
     anchors {
         top: true
         right: true
     }
 
-    margins.top: 8
-    margins.right: 8
-
-    implicitWidth: 280
-    implicitHeight: Math.min(contentColumn.implicitHeight + 32, screen.height * 0.6)
+    implicitWidth: Math.min(
+        screen.width - panelMargin * 2,
+        Math.max(contentColumn.implicitWidth + panelPadding * 2, screen.width * 0.22)
+    )
+    implicitHeight: Math.min(contentColumn.implicitHeight + panelPadding * 2, screen.height * 0.65)
 
     visible: isOpen
     color: "transparent"
@@ -37,14 +41,14 @@ PanelWindow {
 
     Rectangle {
         anchors.fill: parent
-        color: "#000000"
-        radius: 8
+        color: Design.Theme.t.black
+        radius: Design.Theme.t.radiusMd
         clip: true
 
         Flickable {
             id: flickable
             anchors.fill: parent
-            anchors.margins: 16
+            anchors.margins: panelPadding
             contentWidth: width
             contentHeight: contentColumn.implicitHeight
             clip: true
@@ -53,42 +57,42 @@ PanelWindow {
             ColumnLayout {
                 id: contentColumn
                 width: flickable.width
-                spacing: 16
+                spacing: Design.Theme.t.space4
 
-            Text {
-                text: "control center"
-                color: "#6b7280"
-                font.family: "Berkeley Mono"
-                font.pixelSize: 11
-                font.weight: Font.Normal
-                Layout.fillWidth: true
-            }
+                Text {
+                    text: "control center"
+                    color: Design.Theme.t.subtle
+                    font.family: "Berkeley Mono"
+                    font.pixelSize: Design.Theme.t.text2xs
+                    font.weight: Font.Normal
+                    Layout.fillWidth: true
+                }
 
-            ColumnLayout {
-                spacing: 8
-                Layout.fillWidth: true
+                ColumnLayout {
+                    spacing: Design.Theme.t.space2
+                    Layout.fillWidth: true
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: Design.Theme.t.space2
 
                     Text {
                         text: "volume"
-                        color: "#9ca3af"
+                        color: Design.Theme.t.muted
                         font.family: "Berkeley Mono"
-                        font.pixelSize: 12
+                        font.pixelSize: Design.Theme.t.bodySm
                     }
 
                     Item { Layout.fillWidth: true }
 
                     Text {
                         text: Math.round((Pipewire.defaultAudioSink?.audio.volume ?? 0) * 100) + "%"
-                        color: Pipewire.defaultAudioSink?.audio.muted ? "#4b5563" : "#ffffff"
+                        color: Pipewire.defaultAudioSink?.audio.muted ? Design.Theme.t.border : Design.Theme.t.fg
                         font.family: "Berkeley Mono"
-                        font.pixelSize: 12
+                        font.pixelSize: Design.Theme.t.bodySm
 
                         Behavior on color {
-                            ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                            ColorAnimation { duration: Design.Theme.t.durationMed; easing.type: Easing.OutQuint }
                         }
                     }
                 }

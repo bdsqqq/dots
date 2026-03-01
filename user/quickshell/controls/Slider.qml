@@ -29,7 +29,7 @@ Rectangle {
     readonly property bool showingDragValue: mouse.pressed || pendingExternalSync
     readonly property real visualValue: showingDragValue ? dragValue : value
 
-    implicitHeight: 24
+    implicitHeight: Design.Theme.t.space4 + Design.Theme.t.space2
 
     onValueChanged: {
         if (mouse.pressed) {
@@ -50,7 +50,7 @@ Rectangle {
 
     // track styling
     color: Design.Theme.t.inactive
-    radius: Design.Theme.t.radiusSm
+    radius: height / 2
 
     // fill indicator showing current value
     Rectangle {

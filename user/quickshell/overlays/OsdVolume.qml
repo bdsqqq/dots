@@ -14,8 +14,11 @@ import "../controls" as Controls
 Rectangle {
     id: root
 
-    width: 280
-    height: layout.implicitHeight + Design.Theme.t.space4 * 2
+    readonly property int panelPadding: Design.Theme.t.space4
+    readonly property real desiredWidth: layout.implicitWidth + panelPadding * 2
+
+    implicitWidth: parent ? Math.min(parent.width * 0.36, Math.max(parent.width * 0.18, desiredWidth)) : desiredWidth
+    implicitHeight: layout.implicitHeight + panelPadding * 2
 
     color: Design.Theme.t.black
     radius: Design.Theme.t.radiusMd
@@ -28,8 +31,8 @@ Rectangle {
     ColumnLayout {
         id: layout
         anchors.fill: parent
-        anchors.margins: Design.Theme.t.space4
-        spacing: Design.Theme.t.space3
+        anchors.margins: root.panelPadding
+        spacing: Design.Theme.t.space2
 
         // header: icon + label + percentage
         RowLayout {
