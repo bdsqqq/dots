@@ -33,8 +33,8 @@ Primitives.Surface {
         return Design.Theme.t.bg
     }
 
-    showBorder: variant === "outline" || (variant === "ghost" && hovered)
-    radiusSize: "sm"
+    border: variant === "outline" || (variant === "ghost" && hovered)
+    radius: "sm"
 
     // content layout
     Row {
