@@ -1,7 +1,11 @@
 {
   "defaultProvider": "opencode",
-  "enabledModels": ["opencode/*"],
-  "skills": ["~/.config/agents/skills"],
+  "enabledModels": [
+    "opencode/*"
+  ],
+  "skills": [
+    "~/.config/agents/skills"
+  ],
   "extensions": [
     "~/.pi/agent/extensions/editor",
     "~/.pi/agent/extensions/handoff.ts",
@@ -14,7 +18,7 @@
     "enabled": false
   },
   "lastChangelogVersion": "0.55.3",
-  "defaultModel": "kimi-k2.5",
+  "defaultModel": "gpt-5.3-codex",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "steeringMode": "all",

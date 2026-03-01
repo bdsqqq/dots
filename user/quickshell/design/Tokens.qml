@@ -1,3 +1,5 @@
+pragma Singleton
+
 // Tokens.qml
 // Design token constants. Centralized so changes propagate everywhere.
 // Why: hardcoded values scattered across components make consistent theming impossible.
