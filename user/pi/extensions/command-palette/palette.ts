@@ -1,4 +1,8 @@
-import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+  Theme,
+} from "@mariozechner/pi-coding-agent";
 import {
   type Component,
   CURSOR_MARKER,
@@ -87,7 +91,10 @@ export class StackPalette implements Component, Focusable {
     }
 
     if (matchesKey(data, Key.down) || matchesKey(data, Key.ctrl("n"))) {
-      this.highlightedIndex = Math.min(this.filtered.length - 1, this.highlightedIndex + 1);
+      this.highlightedIndex = Math.min(
+        this.filtered.length - 1,
+        this.highlightedIndex + 1,
+      );
       this.ensureVisible();
       this.invalidate();
       return;
@@ -102,7 +109,11 @@ export class StackPalette implements Component, Focusable {
       return;
     }
 
-    if (data.length >= 1 && !data.startsWith("\x1b") && data.charCodeAt(0) >= 32) {
+    if (
+      data.length >= 1 &&
+      !data.startsWith("\x1b") &&
+      data.charCodeAt(0) >= 32
+    ) {
       this.searchText += data;
       this.applyFilter();
       this.invalidate();
@@ -136,20 +147,27 @@ export class StackPalette implements Component, Focusable {
     const showTitle = this.stack.length > 1;
     const headerText = showTitle ? dim(`[${view.title}]`) : undefined;
     const headerWidth = showTitle ? visibleWidth(`[${view.title}]`) : 0;
-    lines.push(boxTop({
-      variant: "closed",
-      style: chrome,
-      innerWidth: innerW,
-      header: showTitle ? { text: headerText!, width: headerWidth } : undefined,
-    }));
+    lines.push(
+      boxTop({
+        variant: "closed",
+        style: chrome,
+        innerWidth: innerW,
+        header: showTitle
+          ? { text: headerText!, width: headerWidth }
+          : undefined,
+      }),
+    );
 
     // ── search ──
     const searchable = view.searchable !== false;
     if (searchable) {
       const prompt = dim(" > ");
       const searchDisplay = th.fg("text", this.searchText);
-      const cursor = this._focused ? CURSOR_MARKER + th.fg("accent", "▏") : dim("▏");
-      const placeholder = this.searchText.length === 0 ? dim("type to search…") : "";
+      const cursor = this._focused
+        ? CURSOR_MARKER + th.fg("accent", "▏")
+        : dim("▏");
+      const placeholder =
+        this.searchText.length === 0 ? dim("type to search…") : "";
       lines.push(row(prompt + searchDisplay + cursor + placeholder));
       lines.push(row(""));
     }
@@ -158,7 +176,10 @@ export class StackPalette implements Component, Focusable {
     if (this.filtered.length === 0) {
       lines.push(row(dim("  no matches")));
     } else {
-      const visibleEnd = Math.min(this.scrollOffset + MAX_VISIBLE, this.filtered.length);
+      const visibleEnd = Math.min(
+        this.scrollOffset + MAX_VISIBLE,
+        this.filtered.length,
+      );
 
       // compute max category badge width for right-aligned badges
       const maxBadgeW = this.filtered.reduce((max, item) => {
@@ -198,7 +219,13 @@ export class StackPalette implements Component, Focusable {
           line = th.bg("selectedBg", pad(line, innerW));
         }
 
-        lines.push(boxRow({ variant: "closed", style: chrome, inner: isHl ? line : pad(line, innerW) }));
+        lines.push(
+          boxRow({
+            variant: "closed",
+            style: chrome,
+            inner: isHl ? line : pad(line, innerW),
+          }),
+        );
       }
 
       const remaining = this.filtered.length - visibleEnd;
@@ -215,12 +242,14 @@ export class StackPalette implements Component, Focusable {
     const footerStr = dim(footerParts.join(" • "));
     const footerWidth = visibleWidth(footerStr);
 
-    lines.push(boxBottom({
-      variant: "closed",
-      style: chrome,
-      innerWidth: innerW,
-      footer: { text: footerStr, width: footerWidth },
-    }));
+    lines.push(
+      boxBottom({
+        variant: "closed",
+        style: chrome,
+        innerWidth: innerW,
+        footer: { text: footerStr, width: footerWidth },
+      }),
+    );
 
     this.cachedLines = lines;
     this.cachedWidth = width;
@@ -253,7 +282,8 @@ export class StackPalette implements Component, Focusable {
       this.filtered = fuzzyFilter(
         view.items,
         this.searchText,
-        (item) => `${item.label} ${item.description ?? ""} ${item.category ?? ""}`,
+        (item) =>
+          `${item.label} ${item.description ?? ""} ${item.category ?? ""}`,
       );
     }
     this.highlightedIndex = 0;

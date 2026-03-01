@@ -1,12 +1,12 @@
 {
-  "name": "pi-extension-command-palette",
+  "name": "command-palette",
   "private": true,
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "catalog:",
     "@mariozechner/pi-tui": "catalog:"
-  },
-  "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "pi": {
     "extensions": [

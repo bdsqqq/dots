@@ -1,4 +1,8 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["**/node_modules/**"]
+  "plugins": ["typescript"],
+  "rules": {
+    "eslint/no-control-regex": "off"
+  },
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**"]
 }

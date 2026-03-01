@@ -1,4 +1,7 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 import type { PaletteItem, PaletteView, PaletteActionContext } from "./types";
 
 // ── sub-view builders ────────────────────────────────────────────────────
@@ -111,7 +114,10 @@ function drillDown(
 
 // ── root view ────────────────────────────────────────────────────────────
 
-export function buildRootView(pi: ExtensionAPI, ctx: ExtensionContext): PaletteView {
+export function buildRootView(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+): PaletteView {
   const items: PaletteItem[] = [];
 
   // fire-and-forget
@@ -122,12 +128,22 @@ export function buildRootView(pi: ExtensionAPI, ctx: ExtensionContext): PaletteV
     fireAndForget("builtin:fork", "fork", "Fork current session", (actx) => {
       actx.pi.sendUserMessage("/fork");
     }),
-    fireAndForget("builtin:copy", "copy", "Copy last message to clipboard", (actx) => {
-      actx.pi.sendUserMessage("/copy");
-    }),
-    fireAndForget("builtin:reload", "reload", "Reload extensions, skills, prompts", (actx) => {
-      actx.pi.sendUserMessage("/reload");
-    }),
+    fireAndForget(
+      "builtin:copy",
+      "copy",
+      "Copy last message to clipboard",
+      (actx) => {
+        actx.pi.sendUserMessage("/copy");
+      },
+    ),
+    fireAndForget(
+      "builtin:reload",
+      "reload",
+      "Reload extensions, skills, prompts",
+      (actx) => {
+        actx.pi.sendUserMessage("/reload");
+      },
+    ),
     fireAndForget("builtin:quit", "quit", "Quit pi", (actx) => {
       actx.ctx.shutdown();
     }),
@@ -138,9 +154,15 @@ export function buildRootView(pi: ExtensionAPI, ctx: ExtensionContext): PaletteV
 
   // drill-down
   items.push(
-    drillDown("builtin:model", "model", "Switch models", () => buildModelView(pi, ctx)),
-    drillDown("setting:thinking", "thinking", "Set thinking level", () => buildThinkingView(pi)),
-    drillDown("setting:tools", "tools", "Toggle active tools", () => buildToolsView(pi)),
+    drillDown("builtin:model", "model", "Switch models", () =>
+      buildModelView(pi, ctx),
+    ),
+    drillDown("setting:thinking", "thinking", "Set thinking level", () =>
+      buildThinkingView(pi),
+    ),
+    drillDown("setting:tools", "tools", "Toggle active tools", () =>
+      buildToolsView(pi),
+    ),
   );
 
   // delegate — text input needed
@@ -187,9 +209,16 @@ export function buildRootView(pi: ExtensionAPI, ctx: ExtensionContext): PaletteV
   }
 
   // sort: builtin/setting first, then ext, then tpl, then skill. alphabetical within.
-  const order: Record<string, number> = { cmd: 0, setting: 0, ext: 1, tpl: 2, skill: 3 };
+  const order: Record<string, number> = {
+    cmd: 0,
+    setting: 0,
+    ext: 1,
+    tpl: 2,
+    skill: 3,
+  };
   items.sort((a, b) => {
-    const so = (order[a.category ?? ""] ?? 99) - (order[b.category ?? ""] ?? 99);
+    const so =
+      (order[a.category ?? ""] ?? 99) - (order[b.category ?? ""] ?? 99);
     if (so !== 0) return so;
     return a.label.localeCompare(b.label);
   });
