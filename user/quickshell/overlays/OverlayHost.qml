@@ -61,7 +61,7 @@ PanelWindow {
         activeOsd = instance
 
         // center in screen
-        instance.anchors.centerIn = parent
+        instance.anchors.centerIn = root
 
         // auto-hide after timeout
         const timer = Qt.createQmlObject(

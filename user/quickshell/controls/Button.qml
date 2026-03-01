@@ -17,7 +17,6 @@ Primitives.Surface {
 
     property string variant: "ghost"
     property string text: ""
-    property bool enabled: true
     signal clicked
 
     // button sizing
