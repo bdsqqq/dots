@@ -6,6 +6,7 @@ import QtQuick.Layouts
 
 import "controls" as Controls
 import "design" as Design
+import "primitives" as Primitives
 
 PanelWindow {
     id: controlCenter
@@ -35,16 +36,25 @@ PanelWindow {
 
     exclusiveZone: 0
 
+    mask: Region {
+        item: panel.maskItem
+    }
+
     PwObjectTracker {
         objects: [ Pipewire.defaultAudioSink ]
     }
 
-    Rectangle {
+    Primitives.ConcavePanel {
+        id: panel
         anchors.fill: parent
         anchors.margins: controlCenter.panelMargin
-        color: Design.Theme.t.black
+        screen: controlCenter.screen
+        edge: "auto"
+        gap: controlCenter.panelMargin
+        fillColor: Design.Theme.t.black
         radius: Design.Theme.t.radiusMd
-        clip: true
+        revealProgress: controlCenter.isOpen ? 1 : 0
+        alignMask: false
 
         Flickable {
             id: flickable
