@@ -15,7 +15,7 @@ Rectangle {
     id: root
 
     property var bg: Design.Theme.t.bg
-    property string radiusSize: "md"
+    property string radius: "md"
     property bool border: false
     property int padding: Design.Theme.t.space2  // default 8px, consumer can override
 
@@ -25,8 +25,14 @@ Rectangle {
     // apply background color
     color: bg
 
-    // map radius token to actual value - use binding directly, no property shadowing
-    radius: root.radiusSize === "sm" ? Design.Theme.t.radiusSm : Design.Theme.t.radiusMd
+    // map radius token to actual value
+    radius: {
+        switch (root.radius) {
+            case "sm": return Design.Theme.t.sm
+            case "md": return Design.Theme.t.md
+            default: return Design.Theme.t.md
+        }
+    }
 
     // border styling when enabled
     border.color: border ? Design.Theme.t.border : "transparent"
