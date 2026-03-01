@@ -3,8 +3,7 @@ import Quickshell.Wayland
 import Quickshell.Io
 import QtQuick
 
-import "./overlays/OsdVolume.qml" as OsdVolumeComponent
-import "./overlays/OverlayHost.qml" as OverlayHostComponent
+import "overlays" as Overlays
 
 ShellRoot {
     id: root
@@ -57,7 +56,7 @@ ShellRoot {
             for (let i = 0; i < overlayHosts.count; i++) {
                 const host = overlayHosts.itemAt(i)
                 if (host) {
-                    host.show(OsdVolumeComponent, {}, { timeoutMs: 2000 })
+                    host.show(Overlays.OsdVolume, {}, { timeoutMs: 2000 })
                 }
             }
         }
@@ -120,7 +119,7 @@ ShellRoot {
         id: overlayHosts
         model: Quickshell.screens
 
-        OverlayHostComponent {
+        Overlays.OverlayHost {
             required property var modelData
             screen: modelData
         }
