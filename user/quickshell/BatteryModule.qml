@@ -4,6 +4,8 @@ import QtQuick
 import QtQuick.Layouts
 
 import "controls" as Controls
+import "design" as Design
+import "primitives" as Primitives
 
 Item {
     id: batteryModule
@@ -106,184 +108,140 @@ Item {
         return "#ffffff";
     }
 
-    ColumnLayout {
-        id: contentColumn
+    Primitives.Surface {
+        id: card
         anchors.fill: parent
-        spacing: 8
+        surfaceColor: Design.Theme.t.bg
+        showBorder: true
 
-        Item {
-            Layout.fillWidth: true
-            Layout.preferredHeight: headerRow.implicitHeight
+        implicitHeight: contentColumn.implicitHeight + Design.Theme.t.space3 * 2
+
+        ColumnLayout {
+            id: contentColumn
+            anchors.fill: parent
+            anchors.margins: Design.Theme.t.space3
+            spacing: Design.Theme.t.space2
 
             RowLayout {
-                id: headerRow
-                anchors.fill: parent
-                spacing: 8
+                Layout.fillWidth: true
 
-                Text {
-                    text: expanded ? "▾" : "▸"
-                    color: "#9ca3af"
-                    font.family: "Berkeley Mono"
-                    font.pixelSize: 12
-                }
-
-                Text {
-                    text: "battery"
-                    color: "#9ca3af"
-                    font.family: "Berkeley Mono"
-                    font.pixelSize: 12
+                Primitives.T {
+                    text: "power"
+                    tone: "muted"
+                    size: "bodySm"
                 }
 
                 Item { Layout.fillWidth: true }
 
-                Text {
-                    text: batteryIcon(batteryPercent, batteryStatus)
-                    color: statusColor(batteryPercent, batteryStatus)
-                    font.family: "Berkeley Mono"
-                    font.pixelSize: 12
-
-                    Behavior on color {
-                        ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                    }
-                }
-
-                Text {
-                    text: batteryPercent + "%"
-                    color: statusColor(batteryPercent, batteryStatus)
-                    font.family: "Berkeley Mono"
-                    font.pixelSize: 12
-
-                    Behavior on color {
-                        ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
-                    }
+                Primitives.T {
+                    text: batteryIcon(batteryPercent, batteryStatus) + " " + batteryPercent + "%"
+                    tone: "fg"
+                    size: "bodySm"
                 }
             }
 
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: expanded = !expanded
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Design.Theme.t.space2
+
+                Primitives.T {
+                    text: batteryStatus
+                    tone: "subtle"
+                    size: "bodySm"
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Primitives.T {
+                    text: powerDraw.toFixed(1) + "W"
+                    tone: "subtle"
+                    size: "bodySm"
+                    visible: powerDraw > 0
+                }
+
+                Controls.Button {
+                    variant: expanded ? "outline" : "ghost"
+                    text: expanded ? "hide" : "performance"
+                    onClicked: expanded = !expanded
+                }
             }
-        }
 
-        Item {
-            id: collapsibleContent
-            Layout.fillWidth: true
-            Layout.preferredHeight: expanded ? expandedContentColumn.implicitHeight : 0
-            clip: true
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: expanded ? expandedContentColumn.implicitHeight : 0
+                clip: true
 
-            Behavior on Layout.preferredHeight {
-                NumberAnimation { duration: 150; easing.type: Easing.OutQuint }
-            }
+                Behavior on Layout.preferredHeight {
+                    NumberAnimation { duration: Design.Theme.t.durationSlow; easing.type: Easing.OutQuint }
+                }
 
-            ColumnLayout {
-                id: expandedContentColumn
-                width: parent.width
-                spacing: 8
+                ColumnLayout {
+                    id: expandedContentColumn
+                    width: parent.width
+                    spacing: Design.Theme.t.space2
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Text {
-                        text: batteryStatus
-                        color: "#6b7280"
-                        font.family: "Berkeley Mono"
-                        font.pixelSize: 11
+                    Primitives.T {
+                        text: "tdp"
+                        tone: "subtle"
+                        size: "bodySm"
                     }
 
-                    Item { Layout.fillWidth: true }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Design.Theme.t.space2
 
-                    Text {
-                        text: powerDraw.toFixed(1) + "W"
-                        color: "#6b7280"
-                        font.family: "Berkeley Mono"
-                        font.pixelSize: 11
-                        visible: powerDraw > 0
-                    }
-                }
+                        Repeater {
+                            model: [
+                                { watts: 8, label: "8W" },
+                                { watts: 15, label: "15W" },
+                                { watts: 25, label: "25W" },
+                                { watts: 30, label: "30W" }
+                            ]
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: "#374151"
-                }
-
-                Text {
-                    text: "tdp"
-                    color: "#6b7280"
-                    font.family: "Berkeley Mono"
-                    font.pixelSize: 11
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Repeater {
-                        model: [
-                            { watts: 8, label: "8W" },
-                            { watts: 15, label: "15W" },
-                            { watts: 25, label: "25W" },
-                            { watts: 30, label: "30W" }
-                        ]
-
-                        Controls.Button {
-                            required property var modelData
-
-                            variant: currentTdp === modelData.watts ? "outline" : "ghost"
-                            text: modelData.label
-                            onClicked: {
-                                if (currentTdp !== modelData.watts) {
-                                    tdpSetter.targetTdp = modelData.watts;
-                                    tdpSetter.running = true;
+                            Controls.Button {
+                                required property var modelData
+                                variant: currentTdp === modelData.watts ? "outline" : "ghost"
+                                text: modelData.label
+                                onClicked: {
+                                    if (currentTdp !== modelData.watts) {
+                                        tdpSetter.targetTdp = modelData.watts;
+                                        tdpSetter.running = true;
+                                    }
                                 }
                             }
                         }
                     }
 
-                    Item { Layout.fillWidth: true }
-                }
+                    Primitives.T {
+                        text: "gpu"
+                        tone: "subtle"
+                        size: "bodySm"
+                    }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: "#374151"
-                }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Design.Theme.t.space2
 
-                Text {
-                    text: "gpu"
-                    color: "#6b7280"
-                    font.family: "Berkeley Mono"
-                    font.pixelSize: 11
-                }
+                        Repeater {
+                            model: [
+                                { id: "low", label: "low" },
+                                { id: "auto", label: "auto" },
+                                { id: "high", label: "high" }
+                            ]
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Repeater {
-                        model: [
-                            { id: "low", label: "low" },
-                            { id: "auto", label: "auto" },
-                            { id: "high", label: "high" }
-                        ]
-
-                        Controls.Button {
-                            required property var modelData
-
-                            variant: currentGpuProfile === modelData.id ? "outline" : "ghost"
-                            text: modelData.label
-                            onClicked: {
-                                if (currentGpuProfile !== modelData.id) {
-                                    gpuProfileSetter.targetProfile = modelData.id;
-                                    gpuProfileSetter.running = true;
+                            Controls.Button {
+                                required property var modelData
+                                variant: currentGpuProfile === modelData.id ? "outline" : "ghost"
+                                text: modelData.label
+                                onClicked: {
+                                    if (currentGpuProfile !== modelData.id) {
+                                        gpuProfileSetter.targetProfile = modelData.id;
+                                        gpuProfileSetter.running = true;
+                                    }
                                 }
                             }
                         }
                     }
-
-                    Item { Layout.fillWidth: true }
                 }
             }
         }
