@@ -53,7 +53,7 @@ Item {
 
             Text {
                 text: "brightness"
-                color: Design.Theme.t.c.muted
+                color: Design.Theme.t.muted
                 font.family: "Berkeley Mono"
                 font.pixelSize: 12
             }
@@ -62,7 +62,7 @@ Item {
 
             Text {
                 text: Math.round(brightnessModule.brightness * 100) + "%"
-                color: Design.Theme.t.c.fg
+                color: Design.Theme.t.fg
                 font.family: "Berkeley Mono"
                 font.pixelSize: 12
             }

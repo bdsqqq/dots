@@ -18,7 +18,7 @@ Rectangle {
     height: layout.implicitHeight + Design.Theme.t.space4 * 2
 
     color: Design.Theme.t.black
-    radius: Design.Theme.t.radius.md
+    radius: Design.Theme.t.md
 
     // track sink for volume/muted updates
     PwObjectTracker {
@@ -39,18 +39,18 @@ Rectangle {
             // speaker icon (simplified using unicode for reliability)
             Text {
                 text: Pipewire.defaultAudioSink?.audio.muted ? "mute" : "vol"
-                color: Pipewire.defaultAudioSink?.audio.muted ? Design.Theme.t.c.muted : Design.Theme.t.c.fg
+                color: Pipewire.defaultAudioSink?.audio.muted ? Design.Theme.t.muted : Design.Theme.t.fg
                 font.family: "Berkeley Mono"
-                font.pixelSize: Design.Theme.t.type.bodySm
+                font.pixelSize: Design.Theme.t.bodySm
             }
 
             Item { Layout.fillWidth: true }
 
             Text {
                 text: Math.round((Pipewire.defaultAudioSink?.audio.volume ?? 0) * 100) + "%"
-                color: Pipewire.defaultAudioSink?.audio.muted ? Design.Theme.t.c.muted : Design.Theme.t.c.fg
+                color: Pipewire.defaultAudioSink?.audio.muted ? Design.Theme.t.muted : Design.Theme.t.fg
                 font.family: "Berkeley Mono"
-                font.pixelSize: Design.Theme.t.type.bodyMd
+                font.pixelSize: Design.Theme.t.bodyMd
 
                 Behavior on color {
                     ColorAnimation { duration: Design.Theme.t.durationMed; easing.type: Easing.OutQuint }

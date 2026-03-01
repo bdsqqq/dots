@@ -8,18 +8,27 @@ import QtQuick
 QtObject {
     id: root
 
-    // colors
-    // semantic naming based on usage patterns in the shell
+    // base colors
     property color black: "#000000"
     property color white: "#ffffff"
-    property color gray100: "#d1d5db"  // hover states, active indicators
-    property color gray300: "#9ca3af"   // secondary text, muted content
-    property color gray400: "#6b7280"   // inactive, placeholder text
-    property color gray500: "#4b5563"   // disabled, subtle elements
-    property color gray700: "#374151"   // borders on hover
-    property color gray800: "#1f2937"   // elevated surfaces, buttons
+    property color gray100: "#d1d5db"
+    property color gray300: "#9ca3af"
+    property color gray400: "#6b7280"
+    property color gray500: "#4b5563"
+    property color gray700: "#374151"
+    property color gray800: "#1f2937"
 
-    // spacing scale (base 4, naming follows tailwind conventions)
+    // semantic colors - use these in components
+    property color fg: white
+    property color muted: gray300
+    property color subtle: gray400
+    property color bg: gray800
+    property color bgHover: gray700
+    property color border: gray500
+    property color active: white
+    property color inactive: gray800
+
+    // spacing scale
     property int space1: 4
     property int space2: 8
     property int space3: 12
@@ -28,43 +37,23 @@ QtObject {
     property int space8: 32
 
     // typography scale
-    property int text2xs: 11  // captions, metadata
-    property int textXs: 12   // body small
-    property int textSm: 14   // body medium
-    property int textBase: 16 // body large, buttons
-    property int text2xl: 24  // titles, clock, logo
+    property int text2xs: 11
+    property int textXs: 12
+    property int textSm: 14
+    property int textBase: 16
+    property int text2xl: 24
+
+    // semantic typography
+    property int bodySm: textXs
+    property int bodyMd: textSm
+    property int titleLg: text2xl
 
     // radius scale
-    property int radiusSm: 4   // buttons, inputs, small elements
-    property int radiusMd: 8     // cards, panels, large surfaces
+    property int radiusSm: 4
+    property int radiusMd: 8
 
     // motion timing
-    property int durationFast: 50   // immediate feedback (width, position)
-    property int durationMed: 100  // color, opacity transitions
-    property int durationSlow: 150 // emphasis animations
-
-    // color namespace - accessible as t.c.fg, t.c.muted, etc.
-    property var c: QtObject {
-        property color fg: root.white
-        property color muted: root.gray300
-        property color subtle: root.gray400
-        property color bg: root.gray800
-        property color bgHover: root.gray700
-        property color border: root.gray500
-        property color active: root.white
-        property color inactive: root.gray800
-    }
-
-    // typography namespace - accessible as t.type.bodySm, etc.
-    property var type: QtObject {
-        property int bodySm: root.textXs    // 12px captions, metadata
-        property int bodyMd: root.textSm    // 14px body, labels
-        property int titleLg: root.text2xl    // 24px headings, clock
-    }
-
-    // radius namespace - accessible as t.radius.sm, t.radius.md
-    property var radius: QtObject {
-        property int sm: root.radiusSm
-        property int md: root.radiusMd
-    }
+    property int durationFast: 50
+    property int durationMed: 100
+    property int durationSlow: 150
 }
