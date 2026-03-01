@@ -9,6 +9,8 @@ Item {
     required property bool isLast
 
     property int padding: 16
+    readonly property string actionsKey: "actions"
+    property var notificationActions: root.notification[root.actionsKey] || []
 
     signal dismissed()
     signal expired()
@@ -98,10 +100,10 @@ Item {
             Layout.fillWidth: true
             Layout.topMargin: 4
             spacing: 8
-            visible: root.notification.actions.length > 0
+            visible: root.notificationActions.length > 0
 
             Repeater {
-                model: root.notification.actions
+                model: root.notificationActions
 
                 Rectangle {
                     required property NotificationAction modelData
