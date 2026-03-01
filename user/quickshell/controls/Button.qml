@@ -20,8 +20,8 @@ Primitives.Surface {
     signal clicked
 
     // button sizing
-    implicitWidth: Math.max(64, content.implicitWidth + Design.Theme.t.space4 * 2)
-    implicitHeight: 32
+    implicitWidth: Math.max(content.implicitWidth + Design.Theme.t.space4 * 2, Design.Theme.t.space8 * 2)
+    implicitHeight: content.implicitHeight + Design.Theme.t.space2 * 2
 
     // visual state tracking
     property bool hovered: false
