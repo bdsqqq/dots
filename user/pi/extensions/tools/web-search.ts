@@ -321,7 +321,11 @@ export function createWebSearchTool(): ToolDefinition {
       return new Text(text, 0, 0);
     },
 
-    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const sections: BoxSection[] | undefined = result.details?.resultSections;
       if (!sections?.length) {
         const text = result.content?.[0];
@@ -331,10 +335,15 @@ export function createWebSearchTool(): ToolDefinition {
           0,
         );
       }
-      return boxRendererWindowed(() => sections, {
-        collapsed: { maxSections: 3, excerpts: COLLAPSED_EXCERPTS },
-        expanded: {},
-      }, undefined, expanded);
+      return boxRendererWindowed(
+        () => sections,
+        {
+          collapsed: { maxSections: 3, excerpts: COLLAPSED_EXCERPTS },
+          expanded: {},
+        },
+        undefined,
+        expanded,
+      );
     },
   };
 }

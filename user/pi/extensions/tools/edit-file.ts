@@ -30,7 +30,7 @@ import {
 } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
-import { withFileLock } from "./lib/mutex";
+import { withFileLock } from "@pi/mutex";
 import { resolveWithVariants } from "./read";
 
 // --- BOM / CRLF ---
@@ -279,7 +279,10 @@ function computeDiffStats(sections: BoxSection[]): DiffStats {
       let i = 0;
       while (i < block.lines.length) {
         const line = block.lines[i];
-        if (!line) { i++; continue; }
+        if (!line) {
+          i++;
+          continue;
+        }
         if (line.text.startsWith("-")) {
           // count consecutive - lines
           let delCount = 0;
@@ -412,10 +415,7 @@ export function createEditFileTool(): ToolDefinition {
         } as any;
       }
 
-      const redactionMarker = hasNewRedactionMarkers(
-        p.old_str,
-        p.new_str,
-      );
+      const redactionMarker = hasNewRedactionMarkers(p.old_str, p.new_str);
       if (redactionMarker) {
         return {
           content: [

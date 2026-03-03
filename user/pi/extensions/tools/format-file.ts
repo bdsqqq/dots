@@ -14,7 +14,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
-import { withFileLock } from "./lib/mutex";
+import { withFileLock } from "@pi/mutex";
 import { resolveWithVariants } from "./read";
 import {
   boxRendererWindowed,
@@ -80,14 +80,23 @@ export function createFormatFileTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
-      return boxRendererWindowed(() => [textSection(undefined, content.text)], {
-        collapsed: { excerpts: COLLAPSED_EXCERPTS },
-        expanded: {},
-      }, undefined, expanded);
+      return boxRendererWindowed(
+        () => [textSection(undefined, content.text)],
+        {
+          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          expanded: {},
+        },
+        undefined,
+        expanded,
+      );
     },
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {

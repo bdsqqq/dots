@@ -116,13 +116,7 @@ describe("discoverAgentsMd", () => {
 
   it("handles file in nested directory correctly", () => {
     // create deeply nested structure
-    const deepDir = path.join(
-      projectDir,
-      "src",
-      "components",
-      "ui",
-      "buttons",
-    );
+    const deepDir = path.join(projectDir, "src", "components", "ui", "buttons");
     fs.mkdirSync(deepDir, { recursive: true });
 
     const filePath = path.join(deepDir, "IconButton.tsx");

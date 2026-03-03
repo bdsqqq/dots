@@ -26,7 +26,7 @@ import {
 } from "./lib/box-format";
 import { getText } from "./lib/tui";
 import { Type } from "@sinclair/typebox";
-import { withFileLock } from "./lib/mutex";
+import { withFileLock } from "@pi/mutex";
 import { evaluatePermission, loadPermissions } from "./lib/permissions";
 import { resolveToAbsolute } from "./read";
 import { OutputBuffer } from "@pi/output-buffer";
