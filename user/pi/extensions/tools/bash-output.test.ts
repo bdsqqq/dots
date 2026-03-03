@@ -29,7 +29,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
       expect(text).toMatch(/^\$ echo "hello world"/);
     });
 
@@ -42,7 +42,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
       expect(text).toContain("$ ls -la /tmp");
     });
   });
@@ -57,7 +57,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
       expect(text).toContain("line 1");
       expect(text).toContain("line 2");
       expect(text).toContain("line 3");
@@ -73,7 +73,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
       expect(text).toContain("no output");
       expect(result.isError).toBeFalsy(); // undefined or false for success
     });
@@ -90,7 +90,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
 
       // should show first lines
       expect(text).toContain("line 1");
@@ -123,7 +123,7 @@ describe("bash tool output formatting", () => {
       );
 
       expect(result.isError).toBe(true);
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
       expect(text).toContain("exit code 42");
     });
 
@@ -137,7 +137,7 @@ describe("bash tool output formatting", () => {
       );
 
       expect(result.isError).toBeFalsy(); // undefined or false for success
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
       expect(text).not.toContain("exit code");
     });
   });
@@ -152,7 +152,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
       expect(text).toContain("stdout");
       expect(text).toContain("stderr");
     });
@@ -170,7 +170,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
 
       // CRITICAL: this FAILS on old tail-only truncation
       expect(text).toContain("output line 1");
@@ -192,7 +192,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
 
       // This assertion FAILS on old code
       expect(text).toMatch(/^\$ echo "test"/);
@@ -212,7 +212,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
 
       // Find positions of first head line and last tail line
       const firstHeadIdx = text.indexOf("line 1");
@@ -235,7 +235,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
       expect(text).toContain("special");
     });
 
@@ -248,7 +248,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
       // single line fits in head, no truncation
       expect(text).toContain("xxxxx");
     }, 10_000);
@@ -262,7 +262,7 @@ describe("bash tool output formatting", () => {
         mockCtx as any,
       );
 
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
       // should have truncation marker
       expect(text).toContain("truncated");
     }, 10_000);

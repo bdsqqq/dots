@@ -95,10 +95,10 @@ describe("formatUsageStats", () => {
 describe("getFinalOutput", () => {
   it("returns text from last assistant message", () => {
     const messages: Message[] = [
-      { role: "user", content: [{ type: "text", text: "hello" }] },
-      { role: "assistant", content: [{ type: "text", text: "first response" }] },
-      { role: "user", content: [{ type: "text", text: "more" }] },
-      { role: "assistant", content: [{ type: "text", text: "final response" }] },
+      { role: "user", content: [{ type: "text", text: "hello" }], timestamp: 0 } as Message,
+      { role: "assistant", content: [{ type: "text", text: "first response" }], api: "anthropic-messages", provider: "anthropic", model: "claude", usage: { totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 0 } as Message,
+      { role: "user", content: [{ type: "text", text: "more" }], timestamp: 0 } as Message,
+      { role: "assistant", content: [{ type: "text", text: "final response" }], api: "anthropic-messages", provider: "anthropic", model: "claude", usage: { totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 0 } as Message,
     ];
 
     expect(getFinalOutput(messages)).toBe("final response");
@@ -106,7 +106,7 @@ describe("getFinalOutput", () => {
 
   it("returns empty string when no assistant messages", () => {
     const messages: Message[] = [
-      { role: "user", content: [{ type: "text", text: "hello" }] },
+      { role: "user", content: [{ type: "text", text: "hello" }], timestamp: 0 } as Message,
     ];
 
     expect(getFinalOutput(messages)).toBe("");
@@ -120,7 +120,13 @@ describe("getFinalOutput", () => {
           { type: "toolCall", id: "tc1", name: "bash", arguments: { cmd: "ls" } },
           { type: "text", text: "here's the output" },
         ],
-      },
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude",
+        usage: { totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: "stop",
+        timestamp: 0,
+      } as Message,
     ];
 
     expect(getFinalOutput(messages)).toBe("here's the output");
@@ -218,11 +224,23 @@ describe("getDisplayItems", () => {
       {
         role: "assistant",
         content: [{ type: "text", text: "first" }],
-      },
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude",
+        usage: { totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: "stop",
+        timestamp: 0,
+      } as Message,
       {
         role: "assistant",
         content: [{ type: "text", text: "second" }],
-      },
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude",
+        usage: { totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: "stop",
+        timestamp: 0,
+      } as Message,
     ];
 
     const items = getDisplayItems(messages);
