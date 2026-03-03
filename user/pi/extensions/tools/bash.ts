@@ -169,7 +169,7 @@ export function createBashTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, _opts: { expanded: boolean }, theme: any) {
+    renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
       const Text = getText();
       const content = result.content?.[0];
       if (!content || content.type !== "text")
@@ -213,7 +213,7 @@ export function createBashTool(): ToolDefinition {
       return boxRendererWindowed(buildSections, {
         collapsed: { excerpts: COLLAPSED_EXCERPTS },
         expanded: {},
-      });
+      }, undefined, expanded);
     },
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {

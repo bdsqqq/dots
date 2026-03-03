@@ -47,10 +47,7 @@ interface SessionEntry {
   [key: string]: unknown;
 }
 
-interface SessionInfo {
-  type: "session_info";
-  name: string;
-}
+// SessionInfo type removed - unused
 
 interface MessageEntry extends SessionEntry {
   type: "message";
@@ -71,6 +68,10 @@ type ContentPart =
       arguments?: Record<string, unknown>;
     }
   | { type: string; [key: string]: unknown };
+
+function isTextContent(part: ContentPart): part is { type: "text"; text: string } {
+  return part.type === "text" && typeof (part as any).text === "string";
+}
 
 // --- branch extraction ---
 
@@ -109,11 +110,11 @@ function extractFilePathsFromText(text: string): string[] {
   const paths: string[] = [];
   // @-mentions like @user/pi/extensions/editor.ts (must contain at least one /)
   for (const m of text.matchAll(/@([\w./-]+\/[\w./-]+)/g)) {
-    paths.push(m[1]);
+    if (m[1]) paths.push(m[1]);
   }
   // absolute paths like /Users/bdsqqq/foo.ts
   for (const m of text.matchAll(/(?:^|\s)(\/[\w./-]+)/gm)) {
-    paths.push(m[1]);
+    if (m[1]) paths.push(m[1]);
   }
   return paths;
 }
@@ -225,7 +226,7 @@ function enumerateBranches(
 
         if (msg.role === "user") {
           for (const part of msg.content || []) {
-            if (part.type === "text" && part.text) {
+            if (isTextContent(part) && part.text) {
               if (!firstUserMessage) firstUserMessage = part.text.slice(0, 200);
               textChunks.push(part.text);
               // extract file paths from user text (@-mentions, absolute paths)
@@ -238,7 +239,7 @@ function enumerateBranches(
 
         if (msg.role === "assistant" && Array.isArray(msg.content)) {
           for (const part of msg.content) {
-            if (part.type === "text" && part.text) {
+            if (isTextContent(part) && part.text) {
               textChunks.push(part.text);
             }
             if (part.type === "toolCall" && part.arguments) {
@@ -295,7 +296,7 @@ function matchesFile(branch: BranchResult, fileQuery: string): boolean {
 function parseDate(dateStr: string): Date | null {
   // support ISO dates and relative (7d, 2w)
   const relMatch = dateStr.match(/^(\d+)([dw])$/);
-  if (relMatch) {
+  if (relMatch && relMatch[1] && relMatch[2]) {
     const n = parseInt(relMatch[1], 10);
     const unit = relMatch[2];
     const now = new Date();
@@ -363,6 +364,7 @@ function formatBranchResults(branches: BranchResult[]): {
 
   for (let i = 0; i < branches.length; i++) {
     const b = branches[i];
+    if (!b) continue;
     const dateStr = new Date(b.timestampEnd).toLocaleDateString("en-US", {
       weekday: "short",
       year: "numeric",
@@ -467,6 +469,15 @@ function branchesToSections(branches: BranchResult[]): BoxSection[] {
 
 // --- tool ---
 
+interface SearchSessionsParams {
+  keyword?: string;
+  file?: string;
+  after?: string;
+  before?: string;
+  workspace?: string;
+  all_workspaces?: boolean;
+}
+
 export function createSearchSessionsTool(): ToolDefinition {
   return {
     name: "search_sessions",
@@ -526,6 +537,7 @@ export function createSearchSessionsTool(): ToolDefinition {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const p = params as SearchSessionsParams;
       if (!fs.existsSync(SESSIONS_DIR)) {
         return {
           content: [
@@ -564,28 +576,28 @@ export function createSearchSessionsTool(): ToolDefinition {
       }
 
       // 2. rg pre-filter if keyword set
-      if (params.keyword) {
-        const matches = rgFilterFiles(params.keyword);
+      if (p.keyword) {
+        const matches = rgFilterFiles(p.keyword);
         if (matches !== null) {
           sessionFiles = sessionFiles.filter((f) => matches.has(f));
         }
       }
 
       // 3. filename-based date pre-filter (timestamps are in filenames)
-      if (params.after || params.before) {
+      if (p.after || p.before) {
         sessionFiles = sessionFiles.filter((f) => {
           const basename = path.basename(f);
           // format: 2026-02-20T14-50-17-926Z_uuid.jsonl
           const tsMatch = basename.match(/^(\d{4}-\d{2}-\d{2})T/);
-          if (!tsMatch) return true; // keep if can't parse
+          if (!tsMatch || !tsMatch[1]) return true; // keep if can't parse
           const fileDate = new Date(tsMatch[1]);
 
-          if (params.after) {
-            const afterDate = parseDate(params.after);
+          if (p.after) {
+            const afterDate = parseDate(p.after);
             if (afterDate && fileDate < afterDate) return false;
           }
-          if (params.before) {
-            const beforeDate = parseDate(params.before);
+          if (p.before) {
+            const beforeDate = parseDate(p.before);
             if (beforeDate && fileDate > beforeDate) return false;
           }
           return true;
@@ -596,9 +608,9 @@ export function createSearchSessionsTool(): ToolDefinition {
       const allBranches: BranchResult[] = [];
 
       // workspace filter: default to current cwd unless all_workspaces is set
-      const workspaceFilter = params.all_workspaces
+      const workspaceFilter = p.all_workspaces
         ? undefined
-        : params.workspace || ctx.cwd;
+        : p.workspace || ctx.cwd;
 
       for (const file of sessionFiles) {
         const { header, entries, sessionName } = parseSessionFile(file);
@@ -619,15 +631,15 @@ export function createSearchSessionsTool(): ToolDefinition {
       // 5. filter branches
       let filtered = allBranches;
 
-      if (params.keyword) {
-        filtered = filtered.filter((b) => matchesKeyword(b, params.keyword!));
+      if (p.keyword) {
+        filtered = filtered.filter((b) => matchesKeyword(b, p.keyword!));
       }
-      if (params.file) {
-        filtered = filtered.filter((b) => matchesFile(b, params.file!));
+      if (p.file) {
+        filtered = filtered.filter((b) => matchesFile(b, p.file!));
       }
-      if (params.after || params.before) {
+      if (p.after || p.before) {
         filtered = filtered.filter((b) =>
-          matchesDateRange(b, params.after, params.before),
+          matchesDateRange(b, p.after, p.before),
         );
       }
 
@@ -674,7 +686,7 @@ export function createSearchSessionsTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
       const sections: BoxSection[] | undefined = result.details?.resultSections;
       if (!sections?.length)
         return new Text(result.content?.[0]?.text ?? "(no output)", 0, 0);
@@ -690,6 +702,7 @@ export function createSearchSessionsTool(): ToolDefinition {
           expanded: {},
         },
         notices,
+        expanded,
       );
     },
   };

@@ -23,7 +23,7 @@
  * rendered line exceeds terminal width.
  */
 
-import { Text } from "@mariozechner/pi-tui";
+import { Text, type Component } from "@mariozechner/pi-tui";
 import { boxBottom, boxTop } from "./box-chrome";
 import { windowItems, type Excerpt } from "./show";
 
@@ -144,8 +144,10 @@ function expandBlock(block: BoxBlock, contentWidth: number): VisualBoxLine[] {
         : [line.text];
 
     for (let i = 0; i < visualLines.length; i++) {
+      const visualLine = visualLines[i];
+      if (visualLine === undefined) continue;
       result.push({
-        text: visualLines[i],
+        text: visualLine,
         gutter: i === 0 ? (line.gutter ?? "") : "",
         highlight: line.highlight ?? false,
         isElision: false,
@@ -213,6 +215,7 @@ export function formatBoxesWindowed(
 
   for (let si = 0; si < shown.length; si++) {
     const section = shown[si];
+    if (!section) continue;
 
     // compute gutter width from all lines (before any windowing)
     const allGutters = section.blocks.flatMap((b) =>
@@ -243,16 +246,18 @@ export function formatBoxesWindowed(
       );
     }
 
-    let anyBlockTruncated = false;
+    let _anyBlockTruncated = false;
 
     for (let bi = 0; bi < section.blocks.length; bi++) {
+      const block = section.blocks[bi];
+      if (!block) continue;
       // gap marker between blocks
       if (bi > 0) {
         out.push(gw > 0 ? `${DIM}${pad} ·${RST}` : `${DIM}·${RST}`);
       }
 
       // expand to visual lines at content width
-      const expanded = expandBlock(section.blocks[bi], contentWidth);
+      const expanded = expandBlock(block, contentWidth);
 
       // apply per-block excerpts
       const windowed =
@@ -270,7 +275,7 @@ export function formatBoxesWindowed(
             )
           : { items: expanded, skippedRanges: [] as Array<[number, number]> };
 
-      if (windowed.skippedRanges.length > 0) anyBlockTruncated = true;
+      if (windowed.skippedRanges.length > 0) _anyBlockTruncated = true;
 
       // render each visual line with chrome
       for (const vl of windowed.items) {
@@ -342,13 +347,14 @@ export function boxRendererWindowed(
   buildSections: () => BoxSection[],
   opts: { collapsed: BoxWindowedOpts; expanded: BoxWindowedOpts },
   notices?: string[],
-) {
+  expanded: boolean = false,
+): Component & { invalidate(): void } {
   let cachedWidth: number | undefined;
   let cachedExpanded: boolean | undefined;
   let cachedLines: string[] | undefined;
 
   return {
-    render(width: number, expanded: boolean): string[] {
+    render(width: number): string[] {
       if (
         cachedLines !== undefined &&
         cachedExpanded === expanded &&
