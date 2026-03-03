@@ -88,11 +88,11 @@ function getToolResults(events: PiEvent[]): ToolResult[] {
 
 function getFinalText(events: PiEvent[]): string {
   for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].type === "agent_end") {
-      const messages = events[i].messages ?? [];
+    if (events[i]!.type === "agent_end") {
+      const messages = events[i]!.messages ?? [];
       for (let j = messages.length - 1; j >= 0; j--) {
-        if (messages[j].role === "assistant") {
-          for (const part of messages[j].content ?? []) {
+        if (messages[j]!.role === "assistant") {
+          for (const part of messages[j]!.content ?? []) {
             if (part.type === "text") return part.text;
           }
         }

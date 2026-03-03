@@ -90,8 +90,9 @@ export function createFormatFileTool(): ToolDefinition {
       }, undefined, expanded);
     },
 
-    async execute(toolCallId, params, _signal, _onUpdate, ctx) {
-      const resolved = resolveWithVariants(params.path, ctx.cwd);
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const p = params as { path: string };
+      const resolved = resolveWithVariants(p.path, ctx.cwd);
 
       if (!fs.existsSync(resolved)) {
         return {

@@ -102,6 +102,18 @@ function fetchUrl(
   });
 }
 
+// --- typed params interfaces ---
+
+interface ReadWebPageParams {
+  url: string;
+  objective?: string;
+  prompt?: string;
+  start_index?: number;
+  max_length?: number;
+  raw?: boolean;
+  forceRefetch?: boolean;
+}
+
 export interface ReadWebPageConfig {
   systemPrompt?: string;
 }
@@ -161,8 +173,9 @@ export function createReadWebPageTool(
       ),
     }),
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      const url = params.url;
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const p = params as ReadWebPageParams;
+      const url = p.url;
 
       if (!url.startsWith("http://") && !url.startsWith("https://")) {
         return {
@@ -192,7 +205,7 @@ export function createReadWebPageTool(
       }
 
       // raw mode: skip conversion entirely
-      if (params.raw) {
+      if (p.raw) {
         const content = headTailChars(
           `Raw HTML content as requested:\n${html}`,
           MAX_CHARS,
@@ -204,33 +217,33 @@ export function createReadWebPageTool(
       let content = md ?? html;
 
       // pagination: slice before truncation so offsets are stable
-      if (params.start_index !== undefined || params.max_length !== undefined) {
+      if (p.start_index !== undefined || p.max_length !== undefined) {
         const total = content.length;
-        const start = params.start_index ?? 0;
+        const start = p.start_index ?? 0;
         const end =
-          params.max_length !== undefined ? start + params.max_length : total;
+          p.max_length !== undefined ? start + p.max_length : total;
         content = content.slice(start, end);
         content += `\n\n[${start}–${Math.min(end, total)} of ${total} characters]`;
       }
 
       content = headTailChars(content, MAX_CHARS).text;
 
-      if (params.objective) {
-        content = `Objective: ${params.objective}\n\n---\n\n${content}`;
+      if (p.objective) {
+        content = `Objective: ${p.objective}\n\n---\n\n${content}`;
       }
 
       // prompt mode: spawn sub-agent to answer a question about the page
-      if (params.prompt) {
+      if (p.prompt) {
         let sessionId = "";
         try {
           sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
         } catch {}
 
-        const task = `Here is the content of ${url}:\n\n${content}\n\n---\n\nAnswer this question: ${params.prompt}`;
+        const task = `Here is the content of ${url}:\n\n${content}\n\n---\n\nAnswer this question: ${p.prompt}`;
 
         const singleResult: SingleResult = {
           agent: "read_web_page",
-          task: params.prompt,
+          task: p.prompt,
           exitCode: -1,
           messages: [],
           usage: zeroUsage(),

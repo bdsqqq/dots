@@ -124,7 +124,7 @@ export function createReadGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as ReadGithubParams;
       try {
         const ref = parseRepoUrl(p.repository);
@@ -264,7 +264,7 @@ export function createSearchGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as SearchGithubParams;
       try {
         const ref = parseRepoUrl(p.repository);
@@ -386,7 +386,7 @@ export function createListDirectoryGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as ListDirectoryGithubParams;
       try {
         const ref = parseRepoUrl(p.repository);
@@ -498,7 +498,7 @@ export function createListRepositoriesTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as ListRepositoriesParams;
       try {
         const limit = p.limit ?? 30;
@@ -606,7 +606,7 @@ export function createGlobGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as GlobGithubParams;
       try {
         const ref = parseRepoUrl(p.repository);
@@ -745,7 +745,7 @@ export function createCommitSearchTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as CommitSearchParams;
       try {
         const ref = parseRepoUrl(p.repository);
@@ -862,7 +862,7 @@ export function createDiffTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as DiffParams;
       try {
         const ref = parseRepoUrl(p.repository);

@@ -139,12 +139,12 @@ describe("saveChange and loadChanges", () => {
 
     const changes = loadChanges(sessionId, toolCallId);
     expect(changes).toHaveLength(1);
-    expect(changes[0].id).toBe(changeId);
-    expect(changes[0].uri).toBe(`file://${filePath}`);
-    expect(changes[0].before).toBe("");
-    expect(changes[0].after).toBe(content);
-    expect(changes[0].isNewFile).toBe(true);
-    expect(changes[0].reverted).toBe(false);
+    expect(changes[0]!.id).toBe(changeId);
+    expect(changes[0]!.uri).toBe(`file://${filePath}`);
+    expect(changes[0]!.before).toBe("");
+    expect(changes[0]!.after).toBe(content);
+    expect(changes[0]!.isNewFile).toBe(true);
+    expect(changes[0]!.reverted).toBe(false);
   });
 
   it("supports multiple changes per tool call", () => {
@@ -200,8 +200,8 @@ describe("saveChange and loadChanges", () => {
     // load again — should read from disk
     const changes = loadChanges(sessionId, toolCallId);
     expect(changes).toHaveLength(1);
-    expect(changes[0].before).toBe("old");
-    expect(changes[0].after).toBe("new");
+    expect(changes[0]!.before).toBe("old");
+    expect(changes[0]!.after).toBe("new");
   });
 });
 
@@ -236,7 +236,7 @@ describe("revertChange", () => {
 
     // verify disk state
     const changes = loadChanges(sessionId, toolCallId);
-    expect(changes[0].reverted).toBe(true);
+    expect(changes[0]!.reverted).toBe(true);
   });
 
   it("returns null for nonexistent change", () => {

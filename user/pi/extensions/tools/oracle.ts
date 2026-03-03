@@ -29,6 +29,12 @@ const MODEL = "openrouter/openai/gpt-5.2";
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash"];
 const EXTENSION_TOOLS = ["read", "grep", "find", "ls", "bash"];
 
+interface OracleParams {
+  task: string;
+  context?: string;
+  files?: string[];
+}
+
 export interface OracleConfig {
   systemPrompt?: string;
 }
@@ -73,7 +79,8 @@ export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
       ),
     }),
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const p = params as OracleParams;
       let sessionId = "";
       try {
         sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
@@ -82,10 +89,10 @@ export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
       }
 
       // compose task with context and inline file contents
-      const parts: string[] = [params.task];
-      if (params.context) parts.push(`\nContext: ${params.context}`);
-      if (params.files && params.files.length > 0) {
-        for (const filePath of params.files) {
+      const parts: string[] = [p.task];
+      if (p.context) parts.push(`\nContext: ${p.context}`);
+      if (p.files && p.files.length > 0) {
+        for (const filePath of p.files) {
           const resolved = path.isAbsolute(filePath)
             ? filePath
             : path.resolve(ctx.cwd, filePath);
@@ -101,7 +108,7 @@ export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
 
       const singleResult: SingleResult = {
         agent: "oracle",
-        task: params.task,
+        task: p.task,
         exitCode: -1,
         messages: [],
         usage: zeroUsage(),

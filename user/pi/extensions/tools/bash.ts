@@ -59,7 +59,7 @@ function splitCdCommand(cmd: string): { cwd: string; command: string } | null {
     /^\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*(?:&&|;)\s*(.+)$/s,
   );
   if (!match) return null;
-  const dir = match[1] ?? match[2] ?? match[3];
+  const dir = match[1] ?? match[2] ?? match[3] ?? "";
   return { cwd: dir, command: match[4] };
 }
 
@@ -216,10 +216,11 @@ export function createBashTool(): ToolDefinition {
       }, undefined, expanded);
     },
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      let command = stripBackground(params.cmd);
-      let effectiveCwd = params.cwd
-        ? resolveToAbsolute(params.cwd, ctx.cwd)
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const p = params as { cmd: string; cwd?: string; timeout?: number };
+      let command = stripBackground(p.cmd);
+      let effectiveCwd = p.cwd
+        ? resolveToAbsolute(p.cwd, ctx.cwd)
         : ctx.cwd;
 
       const cdSplit = splitCdCommand(command);
@@ -259,7 +260,7 @@ export function createBashTool(): ToolDefinition {
       command = injectGitTrailers(command, sessionId);
 
       const run = () =>
-        runCommand(command, effectiveCwd, params.timeout, signal, onUpdate);
+        runCommand(command, effectiveCwd, p.timeout, signal, onUpdate);
 
       if (isGitCommand(command)) {
         const gitLockKey = path.join(effectiveCwd, ".git", "__pi_git_lock__");

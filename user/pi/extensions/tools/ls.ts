@@ -68,8 +68,9 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
       }, undefined, expanded);
     },
 
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const resolved = resolveWithVariants(params.path ?? ctx.cwd, ctx.cwd);
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const p = params as { path?: string };
+      const resolved = resolveWithVariants(p.path ?? ctx.cwd, ctx.cwd);
 
       if (!fs.existsSync(resolved)) {
         return {
