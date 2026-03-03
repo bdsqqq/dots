@@ -17,7 +17,7 @@
  *   }
  */
 
-import { show, type Excerpt } from "./show";
+import { show, type Excerpt } from "@pi/show";
 
 export interface ShowRenderer {
   render: (width: number) => string[];

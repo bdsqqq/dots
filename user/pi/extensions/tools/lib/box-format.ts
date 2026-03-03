@@ -24,8 +24,8 @@
  */
 
 import { Text, type Component } from "@mariozechner/pi-tui";
-import { boxBottom, boxTop } from "./box-chrome";
-import { windowItems, type Excerpt } from "./show";
+import { boxBottom, boxTop } from "@pi/box-chrome";
+import { windowItems, type Excerpt } from "@pi/show";
 
 const DIM = "\x1b[2m";
 const RST = "\x1b[0m";

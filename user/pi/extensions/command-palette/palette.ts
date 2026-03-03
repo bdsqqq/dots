@@ -13,7 +13,7 @@ import {
   truncateToWidth,
   visibleWidth,
 } from "@mariozechner/pi-tui";
-import { boxBottom, boxRow, boxTop } from "../tools/lib/box-chrome";
+import { boxBottom, boxRow, boxTop } from "@pi/box-chrome";
 import type { PaletteActionContext, PaletteItem, PaletteView } from "./types";
 
 const MAX_VISIBLE = 12;
