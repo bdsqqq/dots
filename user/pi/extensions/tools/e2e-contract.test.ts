@@ -166,13 +166,6 @@ function validateEventInvariants(events: PiEvent[]): string[] {
     }
   }
 
-  // check ordering: agent_end should exist (but may not in print mode)
-  const _hasAgentEnd = events.some((e) => e.type === "agent_end");
-  // skip this check - print mode doesn't emit agent_end
-  // if (!hasAgentEnd && events.length > 0) {
-  //   errors.push("no agent_end event found");
-  // }
-
   // check for usage fields on tool_execution_end
   for (const e of events) {
     if (e.type === "tool_execution_end") {

@@ -17,7 +17,7 @@
   "lastChangelogVersion": "0.55.4",
   "defaultModel": "z-ai/glm-5",
   "defaultThinkingLevel": "medium",
-  "hideThinkingBlock": true,
+  "hideThinkingBlock": false,
   "steeringMode": "all",
   "followUpMode": "all",
   "collapseChangelog": true,
