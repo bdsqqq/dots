@@ -5,8 +5,8 @@
  * the full amp system prompt with runtime-interpolated template vars: workspace root,
  * OS info, git remote, session ID, and directory listing.
  *
- * uses the undocumented before_agent_start return value { systemPrompt } to modify
- * the system prompt per-turn. handlers chain — each receives the previous handler's
+ * uses before_agent_start return value { systemPrompt } to modify the
+ * system prompt per-turn. handlers chain — each receives the previous handler's
  * systemPrompt via event.systemPrompt.
  *
  * identity/harness decoupling: {identity} and {harness} are interpolated with

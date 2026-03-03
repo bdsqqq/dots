@@ -420,11 +420,17 @@ export default function (pi: ExtensionAPI) {
   });
 
   // --- handoff tool: agent-invokable session transfer ---
-  pi.registerTool({
+  const handoffTool = {
     name: "handoff",
     label: "Handoff",
     description:
       "Hand off to a new session. Generates a handoff prompt from the current conversation and stages /handoff in the editor. The user presses Enter to review the prompt, then confirms to switch sessions.",
+    promptSnippet:
+      "Hand off to a new session with a generated context transfer prompt",
+    promptGuidelines: [
+      "Use this when context is getting crowded or the user asks to continue in a fresh session.",
+      "Set goal to a specific next task, not a vague continuation.",
+    ],
     parameters: Type.Object({
       goal: Type.String({
         description:
@@ -484,5 +490,6 @@ export default function (pi: ExtensionAPI) {
         ],
       };
     },
-  });
+  };
+  pi.registerTool(handoffTool);
 }

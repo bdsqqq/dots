@@ -13,7 +13,7 @@
  * shared infrastructure lives in ./lib/.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createReadTool, NORMAL_LIMITS, COMPACT_LIMITS } from "./read";
 import { createLsTool } from "./ls";
 import { createEditFileTool } from "./edit-file";
@@ -54,61 +54,79 @@ export {
   simpleDiff,
 } from "./lib/file-tracker";
 
+function withPromptPatch(tool: ToolDefinition): ToolDefinition {
+  const snippet = tool.description.split("\n\n")[0].trim();
+  const guidelines = tool.description
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- "));
+
+  const patched: ToolDefinition = { ...tool };
+  if (!patched.promptSnippet) patched.promptSnippet = snippet;
+  if (!patched.promptGuidelines && guidelines.length > 0) {
+    patched.promptGuidelines = guidelines;
+  }
+
+  return patched;
+}
+
 export default function (pi: ExtensionAPI) {
   const limits = process.env.PI_READ_COMPACT ? COMPACT_LIMITS : NORMAL_LIMITS;
+  const register = (tool: ToolDefinition) =>
+    pi.registerTool(withPromptPatch(tool));
 
-  pi.registerTool(createReadTool(limits));
-  pi.registerTool(createLsTool(limits));
-  pi.registerTool(createEditFileTool());
-  pi.registerTool(createCreateFileTool());
-  pi.registerTool(createGrepTool());
-  pi.registerTool(createGlobTool());
-  pi.registerTool(createBashTool());
-  pi.registerTool(createUndoEditTool());
-  pi.registerTool(createFormatFileTool());
-  pi.registerTool(createSkillTool());
-  pi.registerTool(
+  register(createReadTool(limits));
+  register(createLsTool(limits));
+  register(createEditFileTool());
+  register(createCreateFileTool());
+  register(createGrepTool());
+  register(createGlobTool());
+  register(createBashTool());
+  register(createUndoEditTool());
+  register(createFormatFileTool());
+  register(createSkillTool());
+  register(
     createFinderTool({
       systemPrompt: readAgentPrompt("agent.amp.finder.md"),
     }),
   );
-  pi.registerTool(
+  register(
     createOracleTool({
       systemPrompt: readAgentPrompt("agent.amp.oracle.md"),
     }),
   );
-  pi.registerTool(createTaskTool());
-  pi.registerTool(
+  register(createTaskTool());
+  register(
     createLibrarianTool({
       systemPrompt: readAgentPrompt("agent.amp.librarian.md"),
     }),
   );
-  pi.registerTool(
+  register(
     createCodeReviewTool({
       systemPrompt: readAgentPrompt("prompt.amp.code-review-system.md"),
       reportFormat: readAgentPrompt("prompt.amp.code-review-report.md"),
     }),
   );
-  pi.registerTool(
+  register(
     createLookAtTool({
       systemPrompt: readAgentPrompt("prompt.amp.look-at.md"),
     }),
   );
-  pi.registerTool(
+  register(
     createReadWebPageTool({
       systemPrompt: readAgentPrompt("prompt.amp.read-web-page.md"),
     }),
   );
-  pi.registerTool(createWebSearchTool());
-  pi.registerTool(createSearchSessionsTool());
-  pi.registerTool(createReadSessionTool());
+  register(createWebSearchTool());
+  register(createSearchSessionsTool());
+  register(createReadSessionTool());
 
   // github tools — used by librarian sub-agent, also available to main agent
-  pi.registerTool(createReadGithubTool());
-  pi.registerTool(createSearchGithubTool());
-  pi.registerTool(createListDirectoryGithubTool());
-  pi.registerTool(createListRepositoriesTool());
-  pi.registerTool(createGlobGithubTool());
-  pi.registerTool(createCommitSearchTool());
-  pi.registerTool(createDiffTool());
+  register(createReadGithubTool());
+  register(createSearchGithubTool());
+  register(createListDirectoryGithubTool());
+  register(createListRepositoriesTool());
+  register(createGlobGithubTool());
+  register(createCommitSearchTool());
+  register(createDiffTool());
 }

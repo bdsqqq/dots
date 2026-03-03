@@ -9,8 +9,8 @@
       "extensions/editor"
     ],
     "catalog": {
-      "@mariozechner/pi-coding-agent": "^0.54.2",
-      "@mariozechner/pi-tui": "^0.54.2"
+      "@mariozechner/pi-coding-agent": "^0.55.4",
+      "@mariozechner/pi-tui": "^0.55.4"
     }
   },
   "scripts": {
