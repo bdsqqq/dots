@@ -14,7 +14,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Message } from "@mariozechner/pi-ai";
-import { interpolatePromptVars } from "./interpolate";
+import { interpolatePromptVars } from "@pi/interpolate";
 
 // --- types ---
 
