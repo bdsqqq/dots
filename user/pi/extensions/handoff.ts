@@ -90,7 +90,7 @@ function extractToolCallArgs(response: {
 }): HandoffExtraction | null {
   const toolCall = response.content.find(
     (c): c is ToolCall =>
-      c.type === "toolCall" && c.name === "create_handoff_context",
+      c.type === "toolCall" && "name" in c && c.name === "create_handoff_context",
   );
   if (!toolCall) return null;
   const args = toolCall.arguments as Record<string, unknown>;
@@ -148,9 +148,9 @@ function getParentDescription(parentPath: string, maxWidth: number): string {
         e.type === "message" && e.message.role === "user",
     );
     if (firstUser) {
-      const text = firstUser.message.content
+      const text = (firstUser.message.content as Array<{ type: string; text?: string }> | undefined)
         ?.filter((c): c is { type: "text"; text: string } => c.type === "text")
-        .map((c) => c.text)
+        .map((c: { type: "text"; text: string }) => c.text)
         .join(" ")
         .trim();
       if (text)
@@ -438,7 +438,8 @@ export default function (pi: ExtensionAPI) {
       }),
     }),
 
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const p = params as { goal: string };
       const handoffModel = getHandoffModel(ctx);
       if (!handoffModel) {
         return {
@@ -454,7 +455,7 @@ export default function (pi: ExtensionAPI) {
       const prompt = await generateHandoffPrompt(
         ctx,
         handoffModel,
-        params.goal,
+        p.goal,
         signal ?? undefined,
       );
       if (!prompt) {
@@ -485,7 +486,7 @@ export default function (pi: ExtensionAPI) {
         content: [
           {
             type: "text",
-            text: `handoff prompt generated for: "${params.goal}". staged /handoff — press Enter to continue in a new session.`,
+            text: `handoff prompt generated for: "${p.goal}". staged /handoff — press Enter to continue in a new session.`,
           },
         ],
       };

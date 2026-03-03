@@ -192,6 +192,7 @@ export class StackPalette implements Component, Focusable {
 
       for (let i = this.scrollOffset; i < visibleEnd; i++) {
         const item = this.filtered[i];
+        if (!item) continue;
         const isHl = i === this.highlightedIndex;
 
         // right-aligned category badge
@@ -264,7 +265,9 @@ export class StackPalette implements Component, Focusable {
   // ── internals ──────────────────────────────────────────────────────────
 
   private currentView(): PaletteView {
-    return this.stack[this.stack.length - 1];
+    const view = this.stack[this.stack.length - 1];
+    if (!view) throw new Error("No view in stack");
+    return view;
   }
 
   private resetView(): void {
