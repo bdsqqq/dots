@@ -17,7 +17,10 @@ import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 
-const FILE_CHANGES_DIR = path.join(os.homedir(), ".pi", "file-changes");
+// allow test injection via global — checked at runtime, not import
+const getFileChangesDir = () =>
+  (globalThis as any).__PI_FILE_CHANGES_DIR__ ??
+  path.join(os.homedir(), ".pi", "file-changes");
 
 export interface FileChange {
   /** unique id for this change record */
@@ -39,7 +42,7 @@ export interface FileChange {
 }
 
 function sessionDir(sessionId: string): string {
-  return path.join(FILE_CHANGES_DIR, sessionId);
+  return path.join(getFileChangesDir(), sessionId);
 }
 
 function changePath(
