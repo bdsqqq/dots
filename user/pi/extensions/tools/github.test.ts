@@ -297,9 +297,9 @@ describe.skipIf(!ENABLED)("github tools via pi", () => {
     const results = getToolResults(events);
     const readResults = results.filter((r) => r.toolName === "read_github");
     expect(readResults.length).toBeGreaterThanOrEqual(1);
-    expect(readResults[0].isError).toBe(false);
-    expect(readResults[0].content).toContain("1:");
-    expect(readResults[0].content).toContain("description");
+    expect(readResults[0]!.isError).toBe(false);
+    expect(readResults[0]!.content).toContain("1:");
+    expect(readResults[0]!.content).toContain("description");
   }, 60_000);
 
   it("search_github: finds code matching a pattern", async () => {
@@ -311,8 +311,8 @@ describe.skipIf(!ENABLED)("github tools via pi", () => {
     const results = getToolResults(events);
     const searchResults = results.filter((r) => r.toolName === "search_github");
     expect(searchResults.length).toBeGreaterThanOrEqual(1);
-    expect(searchResults[0].isError).toBe(false);
-    expect(searchResults[0].content).toContain("Found");
+    expect(searchResults[0]!.isError).toBe(false);
+    expect(searchResults[0]!.content).toContain("Found");
   }, 60_000);
 
   it("list_directory_github: lists root directory entries", async () => {
@@ -326,8 +326,8 @@ describe.skipIf(!ENABLED)("github tools via pi", () => {
       (r) => r.toolName === "list_directory_github",
     );
     expect(dirResults.length).toBeGreaterThanOrEqual(1);
-    expect(dirResults[0].isError).toBe(false);
-    expect(dirResults[0].content).toContain("flake.nix");
+    expect(dirResults[0]!.isError).toBe(false);
+    expect(dirResults[0]!.content).toContain("flake.nix");
   }, 60_000);
 
   it("commit_search: returns recent commits", async () => {
@@ -339,8 +339,8 @@ describe.skipIf(!ENABLED)("github tools via pi", () => {
     const results = getToolResults(events);
     const commitResults = results.filter((r) => r.toolName === "commit_search");
     expect(commitResults.length).toBeGreaterThanOrEqual(1);
-    expect(commitResults[0].isError).toBe(false);
-    expect(commitResults[0].content).toContain("Found");
+    expect(commitResults[0]!.isError).toBe(false);
+    expect(commitResults[0]!.content).toContain("Found");
   }, 60_000);
 
   it("glob_github: finds files by pattern", async () => {
@@ -352,8 +352,8 @@ describe.skipIf(!ENABLED)("github tools via pi", () => {
     const results = getToolResults(events);
     const globResults = results.filter((r) => r.toolName === "glob_github");
     expect(globResults.length).toBeGreaterThanOrEqual(1);
-    expect(globResults[0].isError).toBe(false);
-    expect(globResults[0].content).toContain("flake.nix");
+    expect(globResults[0]!.isError).toBe(false);
+    expect(globResults[0]!.content).toContain("flake.nix");
   }, 60_000);
 
   it("diff: compares two refs", async () => {
@@ -365,9 +365,9 @@ describe.skipIf(!ENABLED)("github tools via pi", () => {
     const results = getToolResults(events);
     const diffResults = results.filter((r) => r.toolName === "diff");
     expect(diffResults.length).toBeGreaterThanOrEqual(1);
-    expect(diffResults[0].isError).toBe(false);
-    expect(diffResults[0].content).toContain("Comparing");
-    expect(diffResults[0].content).toContain("Changed files");
+    expect(diffResults[0]!.isError).toBe(false);
+    expect(diffResults[0]!.content).toContain("Comparing");
+    expect(diffResults[0]!.content).toContain("Changed files");
   }, 60_000);
 });
 
@@ -385,8 +385,9 @@ describe.skipIf(!ENABLED)("librarian e2e", () => {
     // extract final assistant text
     let text = "";
     for (let i = events.length - 1; i >= 0; i--) {
-      if (events[i].type === "agent_end") {
-        for (const msg of (events[i].messages ?? []).reverse()) {
+      const event = events[i];
+      if (event && event.type === "agent_end") {
+        for (const msg of (event.messages ?? []).reverse()) {
           if (msg.role === "assistant") {
             for (const part of msg.content ?? []) {
               if (part.type === "text") {
@@ -421,7 +422,7 @@ describe.skipIf(!ENABLED)("librarian e2e", () => {
     const librarianResults = results.filter((r) => r.toolName === "librarian");
     expect(librarianResults.length).toBeGreaterThanOrEqual(1);
 
-    const result = librarianResults[0];
+    const result = librarianResults[0]!;
     expect(result.isError).toBe(false);
     // the librarian should have read flake.nix and found inputs
     expect(result.content.toLowerCase()).toContain("nixpkgs");
