@@ -1,0 +1,4 @@
+# large fixtures (images, etc)
+*.ndjson
+!tool-*.ndjson
+tool-look_at-image.ndjson
