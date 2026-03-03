@@ -13,6 +13,7 @@
  *
  * set PI_E2E_CWD to override the working directory for pi spawns
  * (defaults to this repo's root).
+ * set PI_E2E_MODEL to override parent model (defaults to minimax-m2.5).
  */
 
 import { spawn as nodeSpawn } from "node:child_process";
@@ -26,6 +27,7 @@ import { describe, it, expect, afterAll } from "bun:test";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CWD = process.env.PI_E2E_CWD ?? resolve(__dirname, "../../../..");
 const ENABLED = process.env.PI_E2E === "1";
+const E2E_MODEL = process.env.PI_E2E_MODEL ?? "minimax-m2.5";
 
 let tmuxAvailable = false;
 try {
@@ -86,7 +88,7 @@ function runPi(prompt: string, opts?: { timeout?: number }): Promise<PiResult> {
 
     const proc = nodeSpawn(
       "pi",
-      ["--mode", "json", "-p", "--no-session", prompt],
+      ["--mode", "json", "--model", E2E_MODEL, "-p", "--no-session", prompt],
       {
         cwd: CWD,
         shell: false,
