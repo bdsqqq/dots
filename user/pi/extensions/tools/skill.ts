@@ -306,7 +306,7 @@ export function createSkillTool(): ToolDefinition {
       } as any;
     },
 
-    renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
@@ -314,12 +314,13 @@ export function createSkillTool(): ToolDefinition {
         return boxRendererWindowed(
           () => [textSection(undefined, "skill loaded", true)],
           { collapsed: {}, expanded: {} },
+          undefined, expanded,
         );
       }
       return boxRendererWindowed(() => [textSection(undefined, content.text)], {
         collapsed: { excerpts: COLLAPSED_EXCERPTS },
         expanded: {},
-      });
+      }, undefined, expanded);
     },
   };
 }

@@ -71,14 +71,14 @@ export function createGlobTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
       return boxRendererWindowed(() => [textSection(undefined, content.text)], {
         collapsed: { excerpts: COLLAPSED_EXCERPTS },
         expanded: {},
-      });
+      }, undefined, expanded);
     },
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {

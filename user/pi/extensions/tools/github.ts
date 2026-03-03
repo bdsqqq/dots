@@ -149,7 +149,7 @@ export function createReadGithubTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
@@ -165,7 +165,7 @@ export function createReadGithubTool(): ToolDefinition {
       return boxRendererWindowed(() => [section], {
         collapsed: { excerpts: COLLAPSED_EXCERPTS },
         expanded: {},
-      });
+      }, undefined, expanded);
     },
   };
 }
@@ -289,14 +289,14 @@ export function createSearchGithubTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
       return boxRendererWindowed(() => [textSection(undefined, content.text)], {
         collapsed: { excerpts: COLLAPSED_EXCERPTS },
         expanded: {},
-      });
+      }, undefined, expanded);
     },
   };
 }
@@ -390,14 +390,14 @@ export function createListDirectoryGithubTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
       return boxRendererWindowed(() => [textSection(undefined, content.text)], {
         collapsed: { excerpts: COLLAPSED_EXCERPTS },
         expanded: {},
-      });
+      }, undefined, expanded);
     },
   };
 }
@@ -508,14 +508,14 @@ export function createListRepositoriesTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
       return boxRendererWindowed(() => [textSection(undefined, content.text)], {
         collapsed: { excerpts: COLLAPSED_EXCERPTS },
         expanded: {},
-      });
+      }, undefined, expanded);
     },
   };
 }
@@ -619,14 +619,14 @@ export function createGlobGithubTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
       return boxRendererWindowed(() => [textSection(undefined, content.text)], {
         collapsed: { excerpts: COLLAPSED_EXCERPTS },
         expanded: {},
-      });
+      }, undefined, expanded);
     },
   };
 }
@@ -757,14 +757,14 @@ export function createCommitSearchTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
       return boxRendererWindowed(() => [textSection(undefined, content.text)], {
         collapsed: { excerpts: COLLAPSED_EXCERPTS },
         expanded: {},
-      });
+      }, undefined, expanded);
     },
   };
 }
@@ -862,14 +862,14 @@ export function createDiffTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, _opts: { expanded: boolean }, _theme: any) {
+    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
       return boxRendererWindowed(() => [textSection(undefined, content.text)], {
         collapsed: { excerpts: COLLAPSED_EXCERPTS },
         expanded: {},
-      });
+      }, undefined, expanded);
     },
   };
 }
