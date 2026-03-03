@@ -7,6 +7,8 @@
  *
  * usage:
  *   PI_E2E=1 bun test user/pi/extensions/editor.test.ts
+ *
+ * set PI_E2E_MODEL to override model (defaults to minimax-m2.5).
  */
 
 import { spawn as nodeSpawn } from "node:child_process";
@@ -17,6 +19,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CWD = resolve(__dirname, "../../../..");
 const ENABLED = process.env.PI_E2E === "1";
+const E2E_MODEL = process.env.PI_E2E_MODEL ?? "minimax-m2.5";
 
 // Check if tmux is available
 let tmuxAvailable = false;
@@ -100,7 +103,7 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
   () => {
     const windowName = `pi-editor-test-${Date.now()}`;
     // Fast/cheap model for testing
-    const TEST_MODEL = "openrouter/moonshotai/kimi-k2.5";
+    const TEST_MODEL = E2E_MODEL;
 
     afterAll(() => {
       try {
