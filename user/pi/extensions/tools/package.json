@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "@pi/file-tracker": "workspace:*",
+    "@pi/interpolate": "workspace:*",
     "@pi/mutex": "workspace:*",
     "@pi/output-buffer": "workspace:*",
     "@pi/permissions": "workspace:*",
