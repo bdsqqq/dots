@@ -43,6 +43,7 @@
         "@pi/file-tracker": "workspace:*",
         "@pi/mutex": "workspace:*",
         "@pi/output-buffer": "workspace:*",
+        "@pi/permissions": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
         "cheerio": "^1.0.0",
         "diff": "^8.0.0",
@@ -70,6 +71,13 @@
     },
     "packages/core/output-buffer": {
       "name": "@pi/output-buffer",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
+    "packages/core/permissions": {
+      "name": "@pi/permissions",
       "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
@@ -358,6 +366,8 @@
     "@pi/mutex": ["@pi/mutex@workspace:packages/core/mutex"],
 
     "@pi/output-buffer": ["@pi/output-buffer@workspace:packages/core/output-buffer"],
+
+    "@pi/permissions": ["@pi/permissions@workspace:packages/core/permissions"],
 
     "@pkgjs/parseargs": ["@pkgjs/parseargs@0.11.0", "", {}, "sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg=="],
 
