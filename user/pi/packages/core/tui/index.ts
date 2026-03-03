@@ -7,7 +7,7 @@
  * inside renderCall/renderResult at runtime, never during
  * execute()-only tests.
  *
- * usage: import { getText, getContainer } from "./lib/tui";
+ * usage: import { getText, getContainer } from "@pi/tui";
  *        return getText()("hello", 0, 0);
  */
 

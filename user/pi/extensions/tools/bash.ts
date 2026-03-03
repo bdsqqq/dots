@@ -24,7 +24,7 @@ import {
   type BoxSection,
   type Excerpt,
 } from "./lib/box-format";
-import { getText } from "./lib/tui";
+import { getText } from "@pi/tui";
 import { Type } from "@sinclair/typebox";
 import { withFileLock } from "@pi/mutex";
 import { evaluatePermission, loadPermissions } from "@pi/permissions";

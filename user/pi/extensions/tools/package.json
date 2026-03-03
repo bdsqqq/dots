@@ -5,6 +5,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@pi/tui": "workspace:*",
     "@pi/box-chrome": "workspace:*",
     "@pi/file-tracker": "workspace:*",
     "@pi/html-to-md": "workspace:*",
