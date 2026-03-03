@@ -23,7 +23,7 @@ import {
   subAgentResult,
   type SingleResult,
 } from "./lib/sub-agent-render";
-import { headTailChars } from "./lib/output-buffer";
+import { headTailChars } from "@pi/output-buffer";
 
 const MODEL = "openrouter/google/gemini-3-flash-preview";
 const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
@@ -343,10 +343,7 @@ export function createReadSessionTool(
       }
 
       // render session tree
-      const { markdown } = renderSessionTree(
-        sessionFile,
-        p.leaf_id,
-      );
+      const { markdown } = renderSessionTree(sessionFile, p.leaf_id);
 
       if (!markdown.trim()) {
         return {

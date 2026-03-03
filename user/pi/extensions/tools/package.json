@@ -5,6 +5,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@pi/output-buffer": "workspace:*",
     "@sinclair/typebox": "^0.34.0",
     "cheerio": "^1.0.0",
     "diff": "^8.0.0"

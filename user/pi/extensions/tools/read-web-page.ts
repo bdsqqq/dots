@@ -22,7 +22,7 @@ import {
   subAgentResult,
   type SingleResult,
 } from "./lib/sub-agent-render";
-import { OutputBuffer, headTailChars } from "./lib/output-buffer";
+import { OutputBuffer, headTailChars } from "@pi/output-buffer";
 import { osc8Link } from "./lib/box-format";
 
 const HEAD_LINES = 500;
@@ -220,8 +220,7 @@ export function createReadWebPageTool(
       if (p.start_index !== undefined || p.max_length !== undefined) {
         const total = content.length;
         const start = p.start_index ?? 0;
-        const end =
-          p.max_length !== undefined ? start + p.max_length : total;
+        const end = p.max_length !== undefined ? start + p.max_length : total;
         content = content.slice(start, end);
         content += `\n\n[${start}–${Math.min(end, total)} of ${total} characters]`;
       }

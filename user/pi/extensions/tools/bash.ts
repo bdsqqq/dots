@@ -29,7 +29,7 @@ import { Type } from "@sinclair/typebox";
 import { withFileLock } from "./lib/mutex";
 import { evaluatePermission, loadPermissions } from "./lib/permissions";
 import { resolveToAbsolute } from "./read";
-import { OutputBuffer } from "./lib/output-buffer";
+import { OutputBuffer } from "@pi/output-buffer";
 
 const HEAD_LINES = 50;
 const TAIL_LINES = 50;
@@ -212,18 +212,21 @@ export function createBashTool(): ToolDefinition {
         },
       ];
 
-      return boxRendererWindowed(buildSections, {
-        collapsed: { excerpts: COLLAPSED_EXCERPTS },
-        expanded: {},
-      }, undefined, expanded);
+      return boxRendererWindowed(
+        buildSections,
+        {
+          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          expanded: {},
+        },
+        undefined,
+        expanded,
+      );
     },
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as { cmd: string; cwd?: string; timeout?: number };
       let command = stripBackground(p.cmd);
-      let effectiveCwd = p.cwd
-        ? resolveToAbsolute(p.cwd, ctx.cwd)
-        : ctx.cwd;
+      let effectiveCwd = p.cwd ? resolveToAbsolute(p.cwd, ctx.cwd) : ctx.cwd;
 
       const cdSplit = splitCdCommand(command);
       if (cdSplit) {
