@@ -60,13 +60,11 @@ export function windowItems<T>(
   ranges.sort((a, b) => a[0] - b[0]);
   const merged: Array<[number, number]> = [];
   for (const range of ranges) {
-    if (merged.length === 0 || range[0] > merged[merged.length - 1][1] + 1) {
+    const lastMerged = merged[merged.length - 1];
+    if (merged.length === 0 || !lastMerged || range[0] > lastMerged[1] + 1) {
       merged.push([range[0], range[1]]);
     } else {
-      merged[merged.length - 1][1] = Math.max(
-        merged[merged.length - 1][1],
-        range[1],
-      );
+      lastMerged[1] = Math.max(lastMerged[1], range[1]);
     }
   }
 
@@ -80,7 +78,8 @@ export function windowItems<T>(
       result.push(makeElision(start - cursor));
     }
     for (let i = start; i <= end; i++) {
-      result.push(items[i]);
+      const item = items[i];
+      if (item !== undefined) result.push(item);
     }
     cursor = end + 1;
   }

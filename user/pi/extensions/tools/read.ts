@@ -18,7 +18,7 @@ import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import {
-  formatBoxesWindowed,
+  boxRendererWindowed,
   osc8Link,
   type BoxSection,
   type BoxLine,
@@ -57,6 +57,11 @@ const SECRET_EXCEPTIONS = new Set([
   ".env.sample",
   ".env.template",
 ]);
+
+interface ReadParams {
+  path: string;
+  read_range?: [number, number];
+}
 
 const IMAGE_MIME: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -154,12 +159,13 @@ function readFileContent(
     totalLines,
     readRange?.[1] ?? start + limits.maxLines - 1,
   );
-  const requestedLines = end - start + 1;
+  const _requestedLines = end - start + 1;
 
   // number lines and truncate long lines
   const numbered: string[] = [];
   for (let i = start - 1; i < end; i++) {
     let line = allLines[i];
+    if (line === undefined) continue;
     const lineBytes = Buffer.byteLength(line, "utf-8");
 
     if (lineBytes > limits.maxLineBytes) {
@@ -255,7 +261,8 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
     },
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const resolved = resolveWithVariants(params.path, ctx.cwd);
+      const p = params as ReadParams;
+      const resolved = resolveWithVariants(p.path, ctx.cwd);
 
       if (isSecretFile(resolved)) {
         return {
@@ -319,7 +326,7 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 
       // --- text file ---
       try {
-        const readRange = params.read_range as [number, number] | undefined;
+        const readRange = p.read_range;
         const { text, totalLines, shownStart, shownEnd } = readFileContent(
           resolved,
           limits,
@@ -351,12 +358,12 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
       }
     },
 
-    renderResult(result: any) {
+    renderResult(result: any, _options: { expanded: boolean }, _theme: any) {
       const text = result.content?.[0];
       if (text?.type !== "text") return new Text("(no output)", 0, 0);
 
-      const filePath: string = result.details?.filePath ?? "";
-      const isDir: boolean = result.details?.isDirectory ?? false;
+      const _filePath: string = result.details?.filePath ?? "";
+      const _isDir: boolean = result.details?.isDirectory ?? false;
       const notice: string | undefined = result.details?.notice;
 
       const rawLines = (text.text as string).split("\n");
@@ -364,16 +371,17 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
       // parse numbered lines (e.g., "  42: content") into BoxLine[]
       const parsed: BoxLine[] = rawLines.map((line) => {
         const m = line.match(/^(\s*\d+): (.*)$/);
-        if (m) return { gutter: m[1].trim(), text: m[2], highlight: true };
+        if (m && m[1] && m[2]) return { gutter: m[1].trim(), text: m[2], highlight: true };
         return { text: line, highlight: true };
       });
 
       // strip trailing notice that we'll move to the box footer
       if (notice && parsed.length > 0) {
         const last = parsed[parsed.length - 1];
-        if (last.text.startsWith(`(${notice}`)) {
+        if (last && last.text.startsWith(`(${notice}`)) {
           parsed.pop(); // notice line
-          if (parsed.length && parsed[parsed.length - 1].text === "") {
+          const newLast = parsed[parsed.length - 1];
+          if (parsed.length && newLast && newLast.text === "") {
             parsed.pop(); // blank before notice
           }
         }
@@ -389,37 +397,15 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
 
       const section: BoxSection = { blocks: [{ lines: parsed }] };
 
-      let cachedWidth: number | undefined;
-      let cachedExpanded: boolean | undefined;
-      let cachedLines: string[] | undefined;
-
-      return {
-        render(width: number, expanded: boolean): string[] {
-          if (
-            cachedLines !== undefined &&
-            cachedExpanded === expanded &&
-            cachedWidth === width
-          ) {
-            return cachedLines;
-          }
-
-          const visual = formatBoxesWindowed(
-            [section],
-            expanded ? {} : { excerpts: COLLAPSED_EXCERPTS },
-            notices,
-            width,
-          );
-          cachedLines = visual.split("\n");
-          cachedExpanded = expanded;
-          cachedWidth = width;
-          return cachedLines;
+      return boxRendererWindowed(
+        () => [section],
+        {
+          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          expanded: {},
         },
-        invalidate() {
-          cachedLines = undefined;
-          cachedExpanded = undefined;
-          cachedWidth = undefined;
-        },
-      };
+        notices,
+        _options.expanded,
+      );
     },
   };
 }

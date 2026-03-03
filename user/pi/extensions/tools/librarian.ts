@@ -42,6 +42,11 @@ const EXTENSION_TOOLS = [
   "diff",
 ];
 
+interface LibrarianParams {
+  query: string;
+  context?: string;
+}
+
 export function createLibrarianTool(
   config: LibrarianConfig = {},
 ): ToolDefinition {
@@ -91,13 +96,14 @@ export function createLibrarianTool(
         /* graceful */
       }
 
-      const parts: string[] = [params.query];
-      if (params.context) parts.push(`\nContext: ${params.context}`);
+      const p = params as LibrarianParams;
+      const parts: string[] = [p.query];
+      if (p.context) parts.push(`\nContext: ${p.context}`);
       const fullTask = parts.join("\n");
 
       const singleResult: SingleResult = {
         agent: "librarian",
-        task: params.query,
+        task: p.query,
         exitCode: -1,
         messages: [],
         usage: zeroUsage(),
