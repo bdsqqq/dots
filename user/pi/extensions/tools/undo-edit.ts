@@ -74,6 +74,10 @@ function getActiveToolCallIds(sessionManager: any): string[] {
   }
 }
 
+interface UndoEditParams {
+  path: string;
+}
+
 export function createUndoEditTool(): ToolDefinition {
   return {
     name: "undo_edit",
@@ -118,7 +122,8 @@ export function createUndoEditTool(): ToolDefinition {
     },
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const resolved = resolveWithVariants(params.path, ctx.cwd);
+      const p = params as UndoEditParams;
+      const resolved = resolveWithVariants(p.path, ctx.cwd);
 
       return withFileLock(resolved, async () => {
         const sessionId = ctx.sessionManager.getSessionId();
