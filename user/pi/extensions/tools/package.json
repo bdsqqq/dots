@@ -10,6 +10,7 @@
     "@pi/mutex": "workspace:*",
     "@pi/output-buffer": "workspace:*",
     "@pi/permissions": "workspace:*",
+    "@pi/tool-cost": "workspace:*",
     "@sinclair/typebox": "^0.34.0",
     "cheerio": "^1.0.0",
     "diff": "^8.0.0"

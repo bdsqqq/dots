@@ -29,7 +29,7 @@ import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { hasToolCost } from "../tools/lib/tool-cost";
+import { hasToolCost } from "@pi/tool-cost";
 
 const execFileAsync = promisify(execFile);
 

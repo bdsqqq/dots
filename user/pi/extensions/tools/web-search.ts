@@ -24,7 +24,7 @@ import {
   type Excerpt,
 } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
-import type { ToolCostDetails } from "./lib/tool-cost";
+import type { ToolCostDetails } from "@pi/tool-cost";
 
 const ENDPOINT = "https://api.parallel.ai/v1beta/search";
 const CURL_TIMEOUT_SECS = 30;
