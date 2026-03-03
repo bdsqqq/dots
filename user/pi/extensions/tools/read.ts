@@ -25,7 +25,7 @@ import {
   type Excerpt,
 } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
-import { formatHeadTail } from "./lib/output-buffer";
+import { formatHeadTail } from "@pi/output-buffer";
 
 // --- limits ---
 
@@ -371,7 +371,8 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
       // parse numbered lines (e.g., "  42: content") into BoxLine[]
       const parsed: BoxLine[] = rawLines.map((line) => {
         const m = line.match(/^(\s*\d+): (.*)$/);
-        if (m && m[1] && m[2]) return { gutter: m[1].trim(), text: m[2], highlight: true };
+        if (m && m[1] && m[2])
+          return { gutter: m[1].trim(), text: m[2], highlight: true };
         return { text: line, highlight: true };
       });
 

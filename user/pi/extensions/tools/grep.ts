@@ -20,7 +20,7 @@ import { createInterface } from "node:readline";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { headTail } from "./lib/output-buffer";
+import { headTail } from "@pi/output-buffer";
 import {
   boxRendererWindowed,
   osc8Link,
@@ -366,7 +366,8 @@ export function createGrepTool(): ToolDefinition {
             }
 
             const rel = path.relative(searchPath, filePath).replace(/\\/g, "/");
-            const displayPath = rel && !rel.startsWith("..") ? rel : path.basename(filePath);
+            const displayPath =
+              rel && !rel.startsWith("..") ? rel : path.basename(filePath);
 
             const grepFile: GrepFile = {
               path: displayPath,
@@ -483,7 +484,11 @@ export function createGrepTool(): ToolDefinition {
       });
     },
 
-    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const fileGroups: GrepFile[] | undefined = result.details?.fileGroups;
       const notices: string[] = result.details?.notices ?? [];
       const basePath: string | undefined = result.details?.searchPath;

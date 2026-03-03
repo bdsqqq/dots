@@ -3,6 +3,9 @@
   "private": true,
   "workspaces": {
     "packages": [
+      "packages/core/*",
+      "packages/tools/*",
+      "packages/extensions/*",
       "extensions/tools",
       "extensions/mermaid",
       "extensions/command-palette",
@@ -20,14 +23,16 @@
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
     "typecheck": "bun run --filter './extensions/mermaid' typecheck && bun run --filter './extensions/command-palette' typecheck && bun run --filter './extensions/editor' typecheck",
-    "test": "bun test",
+    "test": "vitest run",
     "check": "bun run format && bun run lint && bun run typecheck && bun run test"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@vitest/coverage-v8": "^3.0.0",
     "oxfmt": "^0.35.0",
     "oxlint": "^1.50.0",
     "oxlint-tsgolint": "^0.15.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^3.0.0"
   }
 }
