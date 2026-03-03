@@ -40,12 +40,14 @@
     "extensions/tools": {
       "name": "tools",
       "dependencies": {
+        "@pi/box-chrome": "workspace:*",
         "@pi/file-tracker": "workspace:*",
         "@pi/html-to-md": "workspace:*",
         "@pi/interpolate": "workspace:*",
         "@pi/mutex": "workspace:*",
         "@pi/output-buffer": "workspace:*",
         "@pi/permissions": "workspace:*",
+        "@pi/show": "workspace:*",
         "@pi/tool-cost": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
         "cheerio": "^1.0.0",
@@ -54,6 +56,13 @@
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
         "@mariozechner/pi-tui": "catalog:",
+      },
+    },
+    "packages/core/box-chrome": {
+      "name": "@pi/box-chrome",
+      "version": "0.0.1",
+      "devDependencies": {
+        "vitest": "*",
       },
     },
     "packages/core/file-tracker": {
@@ -99,6 +108,16 @@
     "packages/core/permissions": {
       "name": "@pi/permissions",
       "version": "0.0.0",
+      "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
+    "packages/core/show": {
+      "name": "@pi/show",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mariozechner/pi-tui": "catalog:",
+      },
       "devDependencies": {
         "vitest": "^3.0.0",
       },
@@ -388,6 +407,8 @@
 
     "@oxlint/binding-win32-x64-msvc": ["@oxlint/binding-win32-x64-msvc@1.50.0", "", { "os": "win32", "cpu": "x64" }, "sha512-682t7npLC4G2Ca+iNlI9fhAKTcFPYYXJjwoa88H4q+u5HHHlsnL/gHULapX3iqp+A8FIJbgdylL5KMYo2LaluQ=="],
 
+    "@pi/box-chrome": ["@pi/box-chrome@workspace:packages/core/box-chrome"],
+
     "@pi/file-tracker": ["@pi/file-tracker@workspace:packages/core/file-tracker"],
 
     "@pi/html-to-md": ["@pi/html-to-md@workspace:packages/core/html-to-md"],
@@ -399,6 +420,8 @@
     "@pi/output-buffer": ["@pi/output-buffer@workspace:packages/core/output-buffer"],
 
     "@pi/permissions": ["@pi/permissions@workspace:packages/core/permissions"],
+
+    "@pi/show": ["@pi/show@workspace:packages/core/show"],
 
     "@pi/tool-cost": ["@pi/tool-cost@workspace:packages/core/tool-cost"],
 

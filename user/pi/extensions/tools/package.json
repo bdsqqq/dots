@@ -5,12 +5,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@pi/box-chrome": "workspace:*",
     "@pi/file-tracker": "workspace:*",
     "@pi/html-to-md": "workspace:*",
     "@pi/interpolate": "workspace:*",
     "@pi/mutex": "workspace:*",
     "@pi/output-buffer": "workspace:*",
     "@pi/permissions": "workspace:*",
+    "@pi/show": "workspace:*",
     "@pi/tool-cost": "workspace:*",
     "@sinclair/typebox": "^0.34.0",
     "cheerio": "^1.0.0",

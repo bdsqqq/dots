@@ -23,7 +23,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import { boxBorderLR, boxRow } from "../tools/lib/box-chrome";
+import { boxBorderLR, boxRow } from "@pi/box-chrome";
 import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
