@@ -70,10 +70,10 @@ function parseReviewXml(output: string): ReviewComment[] {
   let match: RegExpExecArray | null;
 
   while ((match = commentRegex.exec(output)) !== null) {
-    const block = match[1];
+    const block = match[1]!;
     const get = (tag: string): string => {
       const m = block.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
-      return m ? m[1].trim() : "";
+      return m && m[1] ? m[1].trim() : "";
     };
     comments.push({
       filename: get("filename"),
@@ -106,6 +106,12 @@ function formatReviewSummary(comments: ReviewComment[]): string {
 }
 
 // --- tool ---
+
+interface CodeReviewParams {
+  diff_description: string;
+  files?: string[];
+  instructions?: string;
+}
 
 export function createCodeReviewTool(
   config: CodeReviewConfig = {},
@@ -144,6 +150,7 @@ export function createCodeReviewTool(
     }),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      const p = params as CodeReviewParams;
       let sessionId = "";
       try {
         sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
@@ -151,22 +158,22 @@ export function createCodeReviewTool(
 
       // compose task prompt
       const parts: string[] = [];
-      parts.push(`Review the following diff:\n${params.diff_description}`);
+      parts.push(`Review the following diff:\n${p.diff_description}`);
 
-      if (params.files && params.files.length > 0) {
+      if (p.files && p.files.length > 0) {
         parts.push(
-          `\nFocus the review on these files:\n${params.files.join("\n")}`,
+          `\nFocus the review on these files:\n${p.files.join("\n")}`,
         );
       }
-      if (params.instructions) {
-        parts.push(`\nAdditional review instructions:\n${params.instructions}`);
+      if (p.instructions) {
+        parts.push(`\nAdditional review instructions:\n${p.instructions}`);
       }
 
       const fullTask = parts.join("\n");
 
       const singleResult: SingleResult = {
         agent: "code_review",
-        task: params.diff_description,
+        task: p.diff_description,
         exitCode: -1,
         messages: [],
         usage: zeroUsage(),
