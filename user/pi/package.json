@@ -20,7 +20,8 @@
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
     "typecheck": "bun run --filter './extensions/mermaid' typecheck && bun run --filter './extensions/command-palette' typecheck && bun run --filter './extensions/editor' typecheck",
-    "check": "bun run format && bun run lint && bun run typecheck"
+    "test": "bun test",
+    "check": "bun run format && bun run lint && bun run typecheck && bun run test"
   },
   "devDependencies": {
     "@types/bun": "latest",
