@@ -41,6 +41,7 @@
       "name": "tools",
       "dependencies": {
         "@pi/file-tracker": "workspace:*",
+        "@pi/interpolate": "workspace:*",
         "@pi/mutex": "workspace:*",
         "@pi/output-buffer": "workspace:*",
         "@pi/permissions": "workspace:*",
@@ -85,6 +86,13 @@
     },
     "packages/core/permissions": {
       "name": "@pi/permissions",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
+    "packages/core/tool-cost": {
+      "name": "@pi/tool-cost",
       "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
@@ -377,6 +385,8 @@
     "@pi/output-buffer": ["@pi/output-buffer@workspace:packages/core/output-buffer"],
 
     "@pi/permissions": ["@pi/permissions@workspace:packages/core/permissions"],
+
+    "@pi/tool-cost": ["@pi/tool-cost@workspace:packages/core/tool-cost"],
 
     "@pkgjs/parseargs": ["@pkgjs/parseargs@0.11.0", "", {}, "sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg=="],
 
