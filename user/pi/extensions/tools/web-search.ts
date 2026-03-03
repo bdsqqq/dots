@@ -163,15 +163,15 @@ function formatResults(results: SearchResult[]): {
   const headerLineIndices: number[] = [];
 
   for (let i = 0; i < results.length; i++) {
-    const r = results[i];
+    const r = results[i]!;
     headerLineIndices.push(lines.length);
     lines.push(`### ${r.title || "(untitled)"}`);
-    lines.push(r.url);
+    lines.push(r.url!);
     if (r.publish_date) lines.push(`*${r.publish_date}*`);
     if (r.excerpts?.length) {
       lines.push("");
       for (let j = 0; j < r.excerpts.length; j++) {
-        const excerptLines = r.excerpts[j].split("\n");
+        const excerptLines = r.excerpts[j]!.split("\n");
         lines.push(...excerptLines);
         if (j < r.excerpts.length - 1) lines.push("");
       }
@@ -196,7 +196,7 @@ function resultsToSections(results: SearchResult[]): BoxSection[] {
     if (r.excerpts?.length) {
       lines.push({ text: "", highlight: false });
       for (let j = 0; j < r.excerpts.length; j++) {
-        for (const l of r.excerpts[j].split("\n")) {
+        for (const l of r.excerpts[j]!.split("\n")) {
           lines.push({ text: l, highlight: false });
         }
         if (j < r.excerpts.length - 1)
@@ -208,6 +208,12 @@ function resultsToSections(results: SearchResult[]): BoxSection[] {
       blocks: [{ lines }],
     };
   });
+}
+
+interface WebSearchParams {
+  objective: string;
+  search_queries?: string[];
+  max_results?: number;
 }
 
 export function createWebSearchTool(): ToolDefinition {
@@ -245,6 +251,7 @@ export function createWebSearchTool(): ToolDefinition {
     }),
 
     async execute(_toolCallId, params, signal) {
+      const p = params as WebSearchParams;
       const apiKey = process.env.PARALLEL_API_KEY;
       if (!apiKey) {
         return {
@@ -259,12 +266,12 @@ export function createWebSearchTool(): ToolDefinition {
       }
 
       const body: Record<string, unknown> = {
-        objective: params.objective,
-        max_results: params.max_results ?? DEFAULT_MAX_RESULTS,
+        objective: p.objective,
+        max_results: p.max_results ?? DEFAULT_MAX_RESULTS,
         excerpts: { max_chars_per_result: 2000 },
       };
-      if (params.search_queries?.length) {
-        body.search_queries = params.search_queries;
+      if (p.search_queries?.length) {
+        body.search_queries = p.search_queries;
       }
 
       const { data, error } = await searchParallel(apiKey, body, signal);
