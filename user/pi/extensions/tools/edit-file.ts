@@ -213,7 +213,7 @@ function parseDiffToSections(filename: string, diffText: string): BoxSection[] {
 
     // @@ hunk header — start a new block
     const hunkMatch = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-    if (hunkMatch) {
+    if (hunkMatch && hunkMatch[1] && hunkMatch[2]) {
       if (currentLines.length > 0) {
         blocks.push({ lines: currentLines });
         currentLines = [];
@@ -279,12 +279,13 @@ function computeDiffStats(sections: BoxSection[]): DiffStats {
       let i = 0;
       while (i < block.lines.length) {
         const line = block.lines[i];
+        if (!line) { i++; continue; }
         if (line.text.startsWith("-")) {
           // count consecutive - lines
           let delCount = 0;
           while (
             i < block.lines.length &&
-            block.lines[i].text.startsWith("-")
+            block.lines[i]?.text.startsWith("-")
           ) {
             delCount++;
             i++;
@@ -293,7 +294,7 @@ function computeDiffStats(sections: BoxSection[]): DiffStats {
           let addCount = 0;
           while (
             i < block.lines.length &&
-            block.lines[i].text.startsWith("+")
+            block.lines[i]?.text.startsWith("+")
           ) {
             addCount++;
             i++;
@@ -325,6 +326,13 @@ function formatStats(stats: DiffStats, theme: any): string {
 }
 
 // --- tool factory ---
+
+interface EditFileParams {
+  path: string;
+  old_str: string;
+  new_str: string;
+  replace_all?: boolean;
+}
 
 export function createEditFileTool(): ToolDefinition {
   return {
@@ -379,7 +387,8 @@ export function createEditFileTool(): ToolDefinition {
     },
 
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
-      const resolved = resolveWithVariants(params.path, ctx.cwd);
+      const p = params as EditFileParams;
+      const resolved = resolveWithVariants(p.path, ctx.cwd);
 
       if (!fs.existsSync(resolved)) {
         return {
@@ -404,8 +413,8 @@ export function createEditFileTool(): ToolDefinition {
       }
 
       const redactionMarker = hasNewRedactionMarkers(
-        params.old_str,
-        params.new_str,
+        p.old_str,
+        p.new_str,
       );
       if (redactionMarker) {
         return {
@@ -424,8 +433,8 @@ export function createEditFileTool(): ToolDefinition {
         const { bom, text: bomStripped } = stripBom(rawContent);
         const originalEnding = detectLineEnding(bomStripped);
         const normalized = normalizeToLF(bomStripped);
-        const oldStr = normalizeToLF(params.old_str);
-        const newStr = normalizeToLF(params.new_str);
+        const oldStr = normalizeToLF(p.old_str);
+        const newStr = normalizeToLF(p.new_str);
 
         if (oldStr === newStr) {
           return {
@@ -456,7 +465,7 @@ export function createEditFileTool(): ToolDefinition {
           strategy.content,
           strategy.searchStr,
         );
-        const replaceAll = params.replace_all ?? false;
+        const replaceAll = p.replace_all ?? false;
 
         if (!replaceAll && occurrences > 1) {
           return {
@@ -537,7 +546,7 @@ export function createEditFileTool(): ToolDefinition {
       const filePath: string | undefined = result.details?.filePath;
 
       const sections = parseDiffToSections(filename, diffText);
-      if (!sections?.length || !sections[0].blocks.length)
+      if (!sections?.length || !sections[0]?.blocks.length)
         return new Text(theme.fg("dim", "(no changes)"), 0, 0);
 
       // compute stats from unwindowed sections (accurate counts)
@@ -566,7 +575,7 @@ export function createEditFileTool(): ToolDefinition {
               !expanded && s.blocks.length > 1 ? s.blocks.slice(-1) : s.blocks;
 
             const header = filePath
-              ? osc8Link(`file://${filePath}`, s.header)
+              ? osc8Link(`file://${filePath}`, s.header ?? "")
               : s.header;
 
             return { ...s, header, blocks };
