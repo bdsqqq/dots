@@ -36,7 +36,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
    * this makes rendering self-contained — survives reload, resume, etc.
    * the in-memory store is only needed for the viewer's diagram list.
    */
-  pi.registerMessageRenderer(CUSTOM_TYPE, (message, { expanded }, theme) => {
+  pi.registerMessageRenderer(CUSTOM_TYPE, (message, { expanded: _expanded }, theme) => {
     const entry = message.details as DiagramEntry | undefined;
 
     const component = {
@@ -93,7 +93,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
     return box;
   });
 
-  pi.on("message_end", async (event, ctx) => {
+  pi.on("message_end", async (event, _ctx) => {
     const msg = event.message;
     if (msg.role !== "assistant") return;
     if ((msg as any).customType === CUSTOM_TYPE) return;
@@ -130,7 +130,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
     }
   });
 
-  pi.on("input", async (event, ctx) => {
+  pi.on("input", async (event, _ctx) => {
     if (event.source === "extension") return;
     const text = typeof event.text === "string" ? event.text : "";
     if (!text) return { action: "continue" as const };

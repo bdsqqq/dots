@@ -317,7 +317,7 @@ describe("headTail helper", () => {
 
   it("splits evenly at limit", () => {
     const items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    const { head, tail, truncated, truncatedCount } = headTail(items, 10);
+    const { head, tail, truncatedCount } = headTail(items, 10);
     expect(head).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(tail).toEqual([]);
     expect(truncatedCount).toBe(0);
@@ -362,7 +362,7 @@ describe("formatHeadTail helper", () => {
   });
 
   it("uses custom truncation message", () => {
-    const items = Array.from({ length: 50 }, (_, i) => `x`);
+    const items = Array.from({ length: 50 }, () => `x`);
     const result = formatHeadTail(items, 10, (n) => `-- ${n} hidden --`);
     expect(result).toContain("-- 40 hidden --");
   });

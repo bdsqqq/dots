@@ -11,10 +11,9 @@
  * set PI_E2E_MODEL to override model (defaults to minimax-m2.5).
  */
 
-import { spawn as nodeSpawn } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { describe, it, expect, afterAll } from "bun:test";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CWD = resolve(__dirname, "../../../..");
@@ -176,7 +175,7 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
         const capture = tmuxCapture(testWin);
 
         // The model name should appear somewhere (in border or selector)
-        const hasModelReference =
+        const _hasModelReference =
           capture.toLowerCase().includes("gemini") ||
           capture.includes("google") ||
           capture.includes("model");
