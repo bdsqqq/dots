@@ -54,7 +54,7 @@ export {
   simpleDiff,
 } from "./lib/file-tracker";
 
-function withPromptPatch(tool: ToolDefinition): ToolDefinition {
+export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
   const snippet = tool.description.split("\n\n")[0].trim();
   const guidelines = tool.description
     .split("\n")
