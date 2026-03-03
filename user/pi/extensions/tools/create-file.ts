@@ -17,7 +17,7 @@ import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "./lib/file-tracker";
 import { withFileLock } from "./lib/mutex";
-import { resolveWithVariants, resolveToAbsolute } from "./read";
+import { resolveToAbsolute } from "./read";
 import {
   boxRendererWindowed,
   textSection,
@@ -29,6 +29,11 @@ const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },
   { focus: "tail" as const, context: 5 },
 ];
+
+interface CreateFileParams {
+  path: string;
+  content: string;
+}
 
 export function createCreateFileTool(): ToolDefinition {
   return {
@@ -79,7 +84,8 @@ export function createCreateFileTool(): ToolDefinition {
     },
 
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
-      const resolved = resolveToAbsolute(params.path, ctx.cwd);
+      const p = params as CreateFileParams;
+      const resolved = resolveToAbsolute(p.path, ctx.cwd);
 
       return withFileLock(resolved, async () => {
         // capture before-state for undo tracking
@@ -94,21 +100,21 @@ export function createCreateFileTool(): ToolDefinition {
           fs.mkdirSync(dir, { recursive: true });
         }
 
-        fs.writeFileSync(resolved, params.content, "utf-8");
+        fs.writeFileSync(resolved, p.content, "utf-8");
 
         // track change for undo_edit
         const sessionId = ctx.sessionManager.getSessionId();
-        const diff = simpleDiff(resolved, beforeContent, params.content);
+        const diff = simpleDiff(resolved, beforeContent, p.content);
         saveChange(sessionId, toolCallId, {
           uri: `file://${resolved}`,
           before: beforeContent,
-          after: params.content,
+          after: p.content,
           diff,
           isNewFile,
           timestamp: Date.now(),
         });
 
-        const lines = params.content.split("\n").length;
+        const lines = p.content.split("\n").length;
         let result = isNewFile
           ? `created ${path.basename(resolved)} (${lines} lines)`
           : `overwrote ${path.basename(resolved)} (${lines} lines)`;

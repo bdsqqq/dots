@@ -103,6 +103,14 @@ interface RgEvent {
   lineText: string;
 }
 
+interface GrepParams {
+  pattern: string;
+  path?: string;
+  glob?: string;
+  caseSensitive?: boolean;
+  literal?: boolean;
+}
+
 export function createGrepTool(): ToolDefinition {
   return {
     name: "grep",
@@ -167,10 +175,11 @@ export function createGrepTool(): ToolDefinition {
     },
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const searchPath = params.path
-        ? path.isAbsolute(params.path)
-          ? params.path
-          : path.resolve(ctx.cwd, params.path)
+      const p = params as GrepParams;
+      const searchPath = p.path
+        ? path.isAbsolute(p.path)
+          ? p.path
+          : path.resolve(ctx.cwd, p.path)
         : ctx.cwd;
 
       return new Promise((resolve) => {
@@ -183,17 +192,17 @@ export function createGrepTool(): ToolDefinition {
           String(RG_CONTEXT_LINES),
         ];
 
-        if (params.caseSensitive === false) {
+        if (p.caseSensitive === false) {
           args.push("--ignore-case");
         }
-        if (params.literal) {
+        if (p.literal) {
           args.push("--fixed-strings");
         }
-        if (params.glob) {
-          args.push("--glob", params.glob);
+        if (p.glob) {
+          args.push("--glob", p.glob);
         }
 
-        args.push("--", params.pattern, searchPath);
+        args.push("--", p.pattern, searchPath);
 
         const child = spawn("rg", args, { stdio: ["ignore", "pipe", "pipe"] });
         const rl = createInterface({ input: child.stdout! });
@@ -290,7 +299,7 @@ export function createGrepTool(): ToolDefinition {
 
           if (totalMatches === 0) {
             let text = "no matches found";
-            if (!params.literal && looksLikeRegex(params.pattern)) {
+            if (!p.literal && looksLikeRegex(p.pattern)) {
               text +=
                 "\n\n(pattern contains regex characters — try literal: true if searching for exact text)";
             }
@@ -321,6 +330,7 @@ export function createGrepTool(): ToolDefinition {
 
           for (let fi = 0; fi < fileOrder.length; fi++) {
             const filePath = fileOrder[fi];
+            if (!filePath) continue;
             const fileEvts = fileEvents.get(filePath)!;
 
             // determine which matches to include (per-file limit)
@@ -356,8 +366,7 @@ export function createGrepTool(): ToolDefinition {
             }
 
             const rel = path.relative(searchPath, filePath).replace(/\\/g, "/");
-            const displayPath =
-              rel && !rel.startsWith("..") ? rel : path.basename(filePath);
+            const displayPath = rel && !rel.startsWith("..") ? rel : path.basename(filePath);
 
             const grepFile: GrepFile = {
               path: displayPath,
@@ -490,11 +499,14 @@ export function createGrepTool(): ToolDefinition {
       // wrap section headers in OSC 8 file:// links
       if (basePath) {
         for (let i = 0; i < sections.length; i++) {
-          const relPath = fileGroups[i].path;
+          const fg = fileGroups[i];
+          const section = sections[i];
+          if (!fg || !section) continue;
+          const relPath = fg.path;
           const absPath = basePath + "/" + relPath;
           sections[i] = {
-            ...sections[i],
-            header: osc8Link(`file://${absPath}`, sections[i].header),
+            ...section,
+            header: osc8Link(`file://${absPath}`, section.header ?? ""),
           };
         }
       }
