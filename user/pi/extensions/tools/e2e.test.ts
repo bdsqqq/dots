@@ -17,9 +17,9 @@
  */
 
 import { spawn as nodeSpawn } from "node:child_process";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { unlinkSync, existsSync } from "node:fs";
+import { unlinkSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { describe, it, expect, afterAll } from "bun:test";
 
 // --- constants ---
@@ -28,6 +28,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const CWD = process.env.PI_E2E_CWD ?? resolve(__dirname, "../../../..");
 const ENABLED = process.env.PI_E2E === "1";
 const E2E_MODEL = process.env.PI_E2E_MODEL ?? "minimax-m2.5";
+const RECORD = process.env.PI_E2E_RECORD === "1";
+const FIXTURES_DIR = join(__dirname, "__fixtures__", "e2e");
 
 let tmuxAvailable = false;
 try {
@@ -135,6 +137,17 @@ function runPi(prompt: string, opts?: { timeout?: number }): Promise<PiResult> {
       reject(err);
     });
   });
+}
+
+// --- fixture recording ---
+
+function recordFixture(name: string, events: PiEvent[]): void {
+  if (!RECORD) return;
+  mkdirSync(FIXTURES_DIR, { recursive: true });
+  const path = join(FIXTURES_DIR, `${name}.ndjson`);
+  const content = events.map((e) => JSON.stringify(e)).join("\n");
+  writeFileSync(path, content + "\n", "utf-8");
+  console.log(`recorded fixture: ${path}`);
 }
 
 // --- event extractors ---
@@ -328,6 +341,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     expect(text).toContain("web_search");
     expect(text).toContain("code_review");
 
+    recordFixture("registration", events);
+
     const c = getCosts(events);
     costs.push({
       test: "registration",
@@ -360,6 +375,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     expect(result.model).toContain("gemini");
     expect(result.content).toContain("bash");
     expect(result.usage?.turns).toBeGreaterThanOrEqual(1);
+
+    recordFixture("tool-finder", events);
 
     const c = getCosts(events);
     costs.push({
@@ -406,6 +423,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
       unlinkSync(testFile);
     } catch {}
 
+    recordFixture("tool-task", events);
+
     const c = getCosts(events);
     costs.push({
       test: "Task",
@@ -437,6 +456,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     expect(result.model).toContain("gpt");
     expect(result.content.length).toBeGreaterThan(100);
     expect(result.usage?.turns).toBeGreaterThanOrEqual(1);
+
+    recordFixture("tool-oracle", events);
 
     const c = getCosts(events);
     costs.push({
@@ -472,6 +493,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     // the model should describe visual content
     expect(result.content.length).toBeGreaterThan(50);
 
+    recordFixture("tool-look_at-image", events);
+
     const c = getCosts(events);
     costs.push({
       test: "look_at",
@@ -499,6 +522,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     expect(result.isError).toBe(false);
     // should mention nixpkgs since it's a known input
     expect(result.content.toLowerCase()).toContain("nixpkgs");
+
+    recordFixture("tool-look_at-text", events);
 
     const c = getCosts(events);
     costs.push({
@@ -529,6 +554,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     expect(result.isError).toBe(false);
     // example.com always contains "Example Domain"
     expect(result.content).toContain("Example Domain");
+
+    recordFixture("tool-read_web_page", events);
 
     const c = getCosts(events);
     costs.push({
@@ -561,6 +588,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     // should contain URLs and content about nix
     expect(result.content).toContain("http");
     expect(result.content.length).toBeGreaterThan(100);
+
+    recordFixture("tool-web_search", events);
 
     const c = getCosts(events);
     costs.push({
@@ -596,6 +625,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     expect(result.content).toContain("<codeReview>");
     expect(result.content).toContain("<comment>");
     expect(result.usage?.turns).toBeGreaterThanOrEqual(1);
+
+    recordFixture("tool-code_review", events);
 
     const c = getCosts(events);
     costs.push({
