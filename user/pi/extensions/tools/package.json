@@ -5,6 +5,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@pi/file-tracker": "workspace:*",
     "@pi/mutex": "workspace:*",
     "@pi/output-buffer": "workspace:*",
     "@sinclair/typebox": "^0.34.0",

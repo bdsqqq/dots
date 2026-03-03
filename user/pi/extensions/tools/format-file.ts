@@ -13,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { saveChange, simpleDiff } from "./lib/file-tracker";
+import { saveChange, simpleDiff } from "@pi/file-tracker";
 import { withFileLock } from "@pi/mutex";
 import { resolveWithVariants } from "./read";
 import {

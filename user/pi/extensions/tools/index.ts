@@ -55,7 +55,7 @@ export {
   revertChange,
   findLatestChange,
   simpleDiff,
-} from "./lib/file-tracker";
+} from "@pi/file-tracker";
 
 export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
   const snippet = (tool.description?.split("\n\n")[0] ?? "").trim();
