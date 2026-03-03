@@ -49,6 +49,7 @@
         "@pi/permissions": "workspace:*",
         "@pi/show": "workspace:*",
         "@pi/tool-cost": "workspace:*",
+        "@pi/tui": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
         "cheerio": "^1.0.0",
         "diff": "^8.0.0",
@@ -127,6 +128,13 @@
       "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
+      },
+    },
+    "packages/core/tui": {
+      "name": "@pi/tui",
+      "version": "0.0.1",
+      "devDependencies": {
+        "vitest": "*",
       },
     },
   },
@@ -424,6 +432,8 @@
     "@pi/show": ["@pi/show@workspace:packages/core/show"],
 
     "@pi/tool-cost": ["@pi/tool-cost@workspace:packages/core/tool-cost"],
+
+    "@pi/tui": ["@pi/tui@workspace:packages/core/tui"],
 
     "@pkgjs/parseargs": ["@pkgjs/parseargs@0.11.0", "", {}, "sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg=="],
 
