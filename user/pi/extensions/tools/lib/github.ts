@@ -73,7 +73,7 @@ export function ghApi<T = any>(
   if (opts?.method) args.push("--method", opts.method);
   if (opts?.accept) args.push("-H", `Accept: ${opts.accept}`);
 
-  const result = spawnSync(args[0], args.slice(1), {
+  const result = spawnSync("gh", args.slice(1), {
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf-8",
     maxBuffer: 10 * 1024 * 1024,

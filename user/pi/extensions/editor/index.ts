@@ -161,7 +161,9 @@ class LabeledEditor extends CustomEditor {
    */
   private findBottomBorderIndex(lines: string[]): number {
     for (let i = lines.length - 1; i >= 1; i--) {
-      const stripped = lines[i]
+      const line = lines[i];
+      if (!line) continue;
+      const stripped = line
         .replace(/\x1b\[[0-9;]*[mGKHJ]/g, "")
         .replace(/\x1b_[^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
         .replace(/\x1b\]8;;[^\x07]*\x07/g, "");
@@ -172,7 +174,7 @@ class LabeledEditor extends CustomEditor {
     return lines.length - 1;
   }
 
-  render(width: number): string[] {
+  override render(width: number): string[] {
     // render the base editor at (width - 2) to leave room for │ side rails
     const innerWidth = width - 2;
     if (innerWidth < 4) return super.render(width); // too narrow, bail
@@ -187,13 +189,13 @@ class LabeledEditor extends CustomEditor {
 
     // top border — replace line 0
     result.push(
-      this.buildBorderLine(width, { left: "╭", right: "╮" }, "top", lines[0]),
+      this.buildBorderLine(width, { left: "╭", right: "╮" }, "top", lines[0]!),
     );
 
     // content lines — wrap with dim │ side rails
     for (let i = 1; i < bottomIdx; i++) {
       result.push(
-        boxRow({ variant: "closed", style: chrome, inner: lines[i] }),
+        boxRow({ variant: "closed", style: chrome, inner: lines[i]! }),
       );
     }
 
@@ -203,7 +205,7 @@ class LabeledEditor extends CustomEditor {
         width,
         { left: "╰", right: "╯" },
         "bottom",
-        lines[bottomIdx],
+        lines[bottomIdx]!,
       ),
     );
 
@@ -344,7 +346,8 @@ async function getGitDiffStats(cwd: string): Promise<string> {
     if (!out) return "";
     // last line is summary: " N files changed, N insertions(+), N deletions(-)"
     const lines = out.split("\n");
-    const summary = lines[lines.length - 1].trim();
+    const summary = lines[lines.length - 1];
+    if (!summary) return "";
     const filesMatch = summary.match(/(\d+)\s+files?\s+changed/);
     const insMatch = summary.match(/(\d+)\s+insertions?\(\+\)/);
     const delMatch = summary.match(/(\d+)\s+deletions?\(-\)/);
@@ -428,7 +431,7 @@ function renderActivity(state: ActivityState): string {
   const parts: string[] = [];
 
   // animated spinner
-  parts.push(SPINNER_FRAMES[state.frame % SPINNER_FRAMES.length]);
+  parts.push(SPINNER_FRAMES[state.frame % SPINNER_FRAMES.length]!);
 
   // turn number (0-indexed from the event, display as 1-indexed)
   if (state.turnIndex > 0) {
