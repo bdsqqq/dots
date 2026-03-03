@@ -39,6 +39,11 @@ const EXTENSION_TOOLS = [
   "finder",
 ];
 
+interface TaskParams {
+  prompt: string;
+  description: string;
+}
+
 export function createTaskTool(): ToolDefinition {
   return {
     name: "Task",
@@ -76,7 +81,8 @@ export function createTaskTool(): ToolDefinition {
       }),
     }),
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const p = params as TaskParams;
       let sessionId = "";
       try {
         sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
@@ -86,7 +92,7 @@ export function createTaskTool(): ToolDefinition {
 
       const singleResult: SingleResult = {
         agent: "Task",
-        task: params.description,
+        task: p.description,
         exitCode: -1,
         messages: [],
         usage: zeroUsage(),
@@ -94,7 +100,7 @@ export function createTaskTool(): ToolDefinition {
 
       const result = await piSpawn({
         cwd: ctx.cwd,
-        task: params.prompt,
+        task: p.prompt,
         builtinTools: BUILTIN_TOOLS,
         extensionTools: EXTENSION_TOOLS,
         signal,

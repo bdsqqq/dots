@@ -193,11 +193,11 @@ function getToolResults(events: PiEvent[]): ToolResult[] {
 
 function getFinalText(events: PiEvent[]): string {
   for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].type === "agent_end") {
-      const messages = events[i].messages ?? [];
+    if (events[i]!.type === "agent_end") {
+      const messages = events[i]!.messages ?? [];
       for (let j = messages.length - 1; j >= 0; j--) {
-        if (messages[j].role === "assistant") {
-          for (const part of messages[j].content ?? []) {
+        if (messages[j]!.role === "assistant") {
+          for (const part of messages[j]!.content ?? []) {
             if (part.type === "text") return part.text;
           }
         }
@@ -363,13 +363,13 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     const calls = getToolCalls(events);
     const finderCalls = calls.filter((c) => c.name === "finder");
     expect(finderCalls.length).toBeGreaterThanOrEqual(1);
-    expect(finderCalls[0].args.query).toBeTruthy();
+    expect(finderCalls[0]!.args.query).toBeTruthy();
 
     const results = getToolResults(events);
     const finderResults = results.filter((r) => r.toolName === "finder");
     expect(finderResults.length).toBeGreaterThanOrEqual(1);
 
-    const result = finderResults[0];
+    const result = finderResults[0]!;
     expect(result.exitCode).toBe(0);
     expect(result.isError).toBe(false);
     expect(result.model).toContain("gemini");
@@ -410,8 +410,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     const results = getToolResults(events);
     const taskResults = results.filter((r) => r.toolName === "Task");
     expect(taskResults.length).toBeGreaterThanOrEqual(1);
-    expect(taskResults[0].exitCode).toBe(0);
-    expect(taskResults[0].isError).toBe(false);
+    expect(taskResults[0]!.exitCode).toBe(0);
+    expect(taskResults[0]!.isError).toBe(false);
 
     // verify actual file on disk
     expect(existsSync(testFile)).toBe(true);
@@ -450,7 +450,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     const oracleResults = results.filter((r) => r.toolName === "oracle");
     expect(oracleResults.length).toBeGreaterThanOrEqual(1);
 
-    const result = oracleResults[0];
+    const result = oracleResults[0]!;
     expect(result.exitCode).toBe(0);
     expect(result.isError).toBe(false);
     expect(result.model).toContain("gpt");
@@ -486,7 +486,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     const lookAtResults = results.filter((r) => r.toolName === "look_at");
     expect(lookAtResults.length).toBeGreaterThanOrEqual(1);
 
-    const result = lookAtResults[0];
+    const result = lookAtResults[0]!;
     expect(result.exitCode).toBe(0);
     expect(result.isError).toBe(false);
     expect(result.model).toContain("gemini");
@@ -517,7 +517,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     const lookAtResults = results.filter((r) => r.toolName === "look_at");
     expect(lookAtResults.length).toBeGreaterThanOrEqual(1);
 
-    const result = lookAtResults[0];
+    const result = lookAtResults[0]!;
     expect(result.exitCode).toBe(0);
     expect(result.isError).toBe(false);
     // should mention nixpkgs since it's a known input
@@ -550,7 +550,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     const rwpResults = results.filter((r) => r.toolName === "read_web_page");
     expect(rwpResults.length).toBeGreaterThanOrEqual(1);
 
-    const result = rwpResults[0];
+    const result = rwpResults[0]!;
     expect(result.isError).toBe(false);
     // example.com always contains "Example Domain"
     expect(result.content).toContain("Example Domain");
@@ -577,13 +577,13 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     const calls = getToolCalls(events);
     const wsCalls = calls.filter((c) => c.name === "web_search");
     expect(wsCalls.length).toBeGreaterThanOrEqual(1);
-    expect(wsCalls[0].args.objective).toBeTruthy();
+    expect(wsCalls[0]!.args.objective).toBeTruthy();
 
     const results = getToolResults(events);
     const wsResults = results.filter((r) => r.toolName === "web_search");
     expect(wsResults.length).toBeGreaterThanOrEqual(1);
 
-    const result = wsResults[0];
+    const result = wsResults[0]!;
     expect(result.isError).toBe(false);
     // should contain URLs and content about nix
     expect(result.content).toContain("http");
@@ -611,13 +611,13 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     const calls = getToolCalls(events);
     const crCalls = calls.filter((c) => c.name === "code_review");
     expect(crCalls.length).toBeGreaterThanOrEqual(1);
-    expect(crCalls[0].args.diff_description).toBeTruthy();
+    expect(crCalls[0]!.args.diff_description).toBeTruthy();
 
     const results = getToolResults(events);
     const crResults = results.filter((r) => r.toolName === "code_review");
     expect(crResults.length).toBeGreaterThanOrEqual(1);
 
-    const result = crResults[0];
+    const result = crResults[0]!;
     expect(result.exitCode).toBe(0);
     expect(result.isError).toBe(false);
     expect(result.model).toContain("gemini");

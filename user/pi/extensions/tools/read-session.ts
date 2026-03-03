@@ -63,6 +63,12 @@ interface MessageContent {
 
 // --- session rendering ---
 
+interface ReadSessionParams {
+  session_id: string;
+  goal: string;
+  leaf_id?: string;
+}
+
 function findSessionFile(sessionId: string): string | null {
   if (!fs.existsSync(SESSIONS_DIR)) return null;
 
@@ -96,6 +102,7 @@ function findSessionFile(sessionId: string): string | null {
       } else if (entry.name.endsWith(".jsonl")) {
         try {
           const firstLine = fs.readFileSync(full, "utf-8").split("\n")[0];
+          if (!firstLine) continue;
           const header = JSON.parse(firstLine);
           if (header.type === "session" && header.id === sessionId) return full;
         } catch {
@@ -322,15 +329,16 @@ export function createReadSessionTool(
       ),
     }),
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const p = params as ReadSessionParams;
       // find the session file
-      const sessionFile = findSessionFile(params.session_id);
+      const sessionFile = findSessionFile(p.session_id);
       if (!sessionFile) {
         return {
           content: [
             {
               type: "text" as const,
-              text: `session not found: ${params.session_id}`,
+              text: `session not found: ${p.session_id}`,
             },
           ],
           isError: true,
@@ -340,7 +348,7 @@ export function createReadSessionTool(
       // render session tree
       const { markdown, sessionName } = renderSessionTree(
         sessionFile,
-        params.leaf_id,
+        p.leaf_id,
       );
 
       if (!markdown.trim()) {
@@ -355,11 +363,11 @@ export function createReadSessionTool(
         sessionId = (ctx as any).sessionManager?.getSessionId?.() ?? "";
       } catch {}
 
-      const task = `Here is a pi coding agent session transcript:\n\n${markdown}\n\n---\n\nExtract the information relevant to this goal: ${params.goal}`;
+      const task = `Here is a pi coding agent session transcript:\n\n${markdown}\n\n---\n\nExtract the information relevant to this goal: ${p.goal}`;
 
       const singleResult: SingleResult = {
         agent: "read_session",
-        task: params.goal,
+        task: p.goal,
         exitCode: -1,
         messages: [],
         usage: zeroUsage(),
