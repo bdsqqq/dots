@@ -294,14 +294,14 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
         }
       };
 
-      proc.stdout.on("data", (data: Buffer) => {
+      proc.stdout!.on("data", (data: Buffer) => {
         buffer += data.toString();
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
         for (const line of lines) processLine(line);
       });
 
-      proc.stderr.on("data", (data: Buffer) => {
+      proc.stderr!.on("data", (data: Buffer) => {
         result.stderr += data.toString();
       });
 
