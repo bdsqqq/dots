@@ -69,7 +69,9 @@ type ContentPart =
     }
   | { type: string; [key: string]: unknown };
 
-function isTextContent(part: ContentPart): part is { type: "text"; text: string } {
+function isTextContent(
+  part: ContentPart,
+): part is { type: "text"; text: string } {
   return part.type === "text" && typeof (part as any).text === "string";
 }
 
@@ -686,7 +688,11 @@ export function createSearchSessionsTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const sections: BoxSection[] | undefined = result.details?.resultSections;
       if (!sections?.length)
         return new Text(result.content?.[0]?.text ?? "(no output)", 0, 0);

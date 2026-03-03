@@ -174,9 +174,7 @@ function validateEventInvariants(events: PiEvent[]): string[] {
         // successful tool should have exitCode
         const det = r.details ?? {};
         if (det.exitCode === undefined) {
-          errors.push(
-            `tool_execution_end for ${e.toolName} missing exitCode`,
-          );
+          errors.push(`tool_execution_end for ${e.toolName} missing exitCode`);
         }
       }
     }

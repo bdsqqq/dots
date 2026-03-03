@@ -340,11 +340,7 @@ describe("findLatestChange", () => {
     // mark as reverted by updating the file
     const changes = loadChanges(sessionId, tc1);
     const change = { ...changes[0], reverted: true };
-    const changeFilePath = path.join(
-      tmpDir,
-      sessionId,
-      `${tc1}.${changeId}`,
-    );
+    const changeFilePath = path.join(tmpDir, sessionId, `${tc1}.${changeId}`);
     // directory was created by saveChange
     fs.writeFileSync(changeFilePath, JSON.stringify(change, null, 2), "utf-8");
 

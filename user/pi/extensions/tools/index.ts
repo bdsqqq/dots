@@ -13,7 +13,10 @@
  * shared infrastructure lives in ./lib/.
  */
 
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { createReadTool, NORMAL_LIMITS, COMPACT_LIMITS } from "./read";
 import { createLsTool } from "./ls";
 import { createEditFileTool } from "./edit-file";
@@ -45,7 +48,7 @@ import {
   createDiffTool,
 } from "./github";
 
-export { withFileLock } from "./lib/mutex";
+export { withFileLock } from "@pi/mutex";
 export {
   saveChange,
   loadChanges,

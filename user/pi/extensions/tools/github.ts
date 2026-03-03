@@ -128,9 +128,7 @@ export function createReadGithubTool(): ToolDefinition {
       const p = params as ReadGithubParams;
       try {
         const ref = parseRepoUrl(p.repository);
-        const data = ghApi<any>(
-          `repos/${repoSlug(ref)}/contents/${p.path}`,
-        );
+        const data = ghApi<any>(`repos/${repoSlug(ref)}/contents/${p.path}`);
 
         if (Array.isArray(data)) {
           throw new Error(
@@ -190,7 +188,11 @@ export function createReadGithubTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
@@ -198,15 +200,21 @@ export function createReadGithubTool(): ToolDefinition {
       // parse numbered lines into BoxLine[] with gutters
       const parsed: BoxLine[] = content.text.split("\n").map((line: string) => {
         const m = line.match(/^(\s*\d+): (.*)$/);
-        if (m && m[1] && m[2]) return { gutter: m[1].trim(), text: m[2], highlight: true };
+        if (m && m[1] && m[2])
+          return { gutter: m[1].trim(), text: m[2], highlight: true };
         return { text: line, highlight: true };
       });
 
       const section: BoxSection = { blocks: [{ lines: parsed }] };
-      return boxRendererWindowed(() => [section], {
-        collapsed: { excerpts: COLLAPSED_EXCERPTS },
-        expanded: {},
-      }, undefined, expanded);
+      return boxRendererWindowed(
+        () => [section],
+        {
+          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          expanded: {},
+        },
+        undefined,
+        expanded,
+      );
     },
   };
 }
@@ -329,14 +337,23 @@ export function createSearchGithubTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
-      return boxRendererWindowed(() => [textSection(undefined, content.text)], {
-        collapsed: { excerpts: COLLAPSED_EXCERPTS },
-        expanded: {},
-      }, undefined, expanded);
+      return boxRendererWindowed(
+        () => [textSection(undefined, content.text)],
+        {
+          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          expanded: {},
+        },
+        undefined,
+        expanded,
+      );
     },
   };
 }
@@ -376,9 +393,7 @@ export function createListDirectoryGithubTool(): ToolDefinition {
         const ref = parseRepoUrl(p.repository);
         const limit = p.limit ?? 100;
         const apiPath =
-          p.path === "" || p.path === "." || p.path === "/"
-            ? ""
-            : p.path;
+          p.path === "" || p.path === "." || p.path === "/" ? "" : p.path;
 
         const data = ghApi<any[]>(`repos/${repoSlug(ref)}/contents/${apiPath}`);
 
@@ -422,14 +437,23 @@ export function createListDirectoryGithubTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
-      return boxRendererWindowed(() => [textSection(undefined, content.text)], {
-        collapsed: { excerpts: COLLAPSED_EXCERPTS },
-        expanded: {},
-      }, undefined, expanded);
+      return boxRendererWindowed(
+        () => [textSection(undefined, content.text)],
+        {
+          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          expanded: {},
+        },
+        undefined,
+        expanded,
+      );
     },
   };
 }
@@ -539,14 +563,23 @@ export function createListRepositoriesTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
-      return boxRendererWindowed(() => [textSection(undefined, content.text)], {
-        collapsed: { excerpts: COLLAPSED_EXCERPTS },
-        expanded: {},
-      }, undefined, expanded);
+      return boxRendererWindowed(
+        () => [textSection(undefined, content.text)],
+        {
+          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          expanded: {},
+        },
+        undefined,
+        expanded,
+      );
     },
   };
 }
@@ -640,14 +673,23 @@ export function createGlobGithubTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
-      return boxRendererWindowed(() => [textSection(undefined, content.text)], {
-        collapsed: { excerpts: COLLAPSED_EXCERPTS },
-        expanded: {},
-      }, undefined, expanded);
+      return boxRendererWindowed(
+        () => [textSection(undefined, content.text)],
+        {
+          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          expanded: {},
+        },
+        undefined,
+        expanded,
+      );
     },
   };
 }
@@ -777,14 +819,23 @@ export function createCommitSearchTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
-      return boxRendererWindowed(() => [textSection(undefined, content.text)], {
-        collapsed: { excerpts: COLLAPSED_EXCERPTS },
-        expanded: {},
-      }, undefined, expanded);
+      return boxRendererWindowed(
+        () => [textSection(undefined, content.text)],
+        {
+          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          expanded: {},
+        },
+        undefined,
+        expanded,
+      );
     },
   };
 }
@@ -880,14 +931,23 @@ export function createDiffTool(): ToolDefinition {
       );
     },
 
-    renderResult(result: any, { expanded }: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
         return new Text("(no output)", 0, 0);
-      return boxRendererWindowed(() => [textSection(undefined, content.text)], {
-        collapsed: { excerpts: COLLAPSED_EXCERPTS },
-        expanded: {},
-      }, undefined, expanded);
+      return boxRendererWindowed(
+        () => [textSection(undefined, content.text)],
+        {
+          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          expanded: {},
+        },
+        undefined,
+        expanded,
+      );
     },
   };
 }

@@ -27,7 +27,8 @@ import { describe, it, expect, afterAll } from "bun:test";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CWD = process.env.PI_E2E_CWD ?? resolve(__dirname, "../../../..");
 const ENABLED = process.env.PI_E2E === "1";
-const E2E_MODEL = process.env.PI_E2E_MODEL ?? "huggingface/moonshotai/Kimi-K2.5";
+const E2E_MODEL =
+  process.env.PI_E2E_MODEL ?? "huggingface/moonshotai/Kimi-K2.5";
 const RECORD = process.env.PI_E2E_RECORD === "1";
 const FIXTURES_DIR = join(__dirname, "__fixtures__", "e2e");
 

@@ -54,7 +54,8 @@ describe("htmlToMarkdown", () => {
   });
 
   it("converts headings", () => {
-    const html = "<!DOCTYPE html><html><body><h1>Title</h1><h2>Subtitle</h2></body></html>";
+    const html =
+      "<!DOCTYPE html><html><body><h1>Title</h1><h2>Subtitle</h2></body></html>";
     const md = htmlToMarkdown(html);
 
     expect(md).toContain("# Title");
@@ -62,7 +63,8 @@ describe("htmlToMarkdown", () => {
   });
 
   it("converts paragraphs", () => {
-    const html = "<!DOCTYPE html><html><body><p>First para.</p><p>Second para.</p></body></html>";
+    const html =
+      "<!DOCTYPE html><html><body><p>First para.</p><p>Second para.</p></body></html>";
     const md = htmlToMarkdown(html);
 
     expect(md).toContain("First para.");
@@ -70,14 +72,16 @@ describe("htmlToMarkdown", () => {
   });
 
   it("converts links", () => {
-    const html = '<!DOCTYPE html><html><body><a href="https://example.com">Click here</a></body></html>';
+    const html =
+      '<!DOCTYPE html><html><body><a href="https://example.com">Click here</a></body></html>';
     const md = htmlToMarkdown(html);
 
     expect(md).toContain("[Click here](https://example.com)");
   });
 
   it("converts bold and italic", () => {
-    const html = "<!DOCTYPE html><html><body><strong>bold</strong> <em>italic</em></body></html>";
+    const html =
+      "<!DOCTYPE html><html><body><strong>bold</strong> <em>italic</em></body></html>";
     const md = htmlToMarkdown(html);
 
     expect(md).toContain("**bold**");
@@ -85,7 +89,8 @@ describe("htmlToMarkdown", () => {
   });
 
   it("converts code blocks", () => {
-    const html = '<!DOCTYPE html><html><body><pre><code class="language-typescript">const x = 1;</code></pre></body></html>';
+    const html =
+      '<!DOCTYPE html><html><body><pre><code class="language-typescript">const x = 1;</code></pre></body></html>';
     const md = htmlToMarkdown(html);
 
     expect(md).toContain("```typescript");
@@ -93,14 +98,16 @@ describe("htmlToMarkdown", () => {
   });
 
   it("converts inline code", () => {
-    const html = "<!DOCTYPE html><html><body><p>Use <code>npm install</code> to install.</p></body></html>";
+    const html =
+      "<!DOCTYPE html><html><body><p>Use <code>npm install</code> to install.</p></body></html>";
     const md = htmlToMarkdown(html);
 
     expect(md).toContain("`npm install`");
   });
 
   it("converts unordered lists", () => {
-    const html = "<!DOCTYPE html><html><body><ul><li>Item 1</li><li>Item 2</li></ul></body></html>";
+    const html =
+      "<!DOCTYPE html><html><body><ul><li>Item 1</li><li>Item 2</li></ul></body></html>";
     const md = htmlToMarkdown(html);
 
     expect(md).toContain("- Item 1");
@@ -108,7 +115,8 @@ describe("htmlToMarkdown", () => {
   });
 
   it("converts ordered lists", () => {
-    const html = "<!DOCTYPE html><html><body><ol><li>First</li><li>Second</li></ol></body></html>";
+    const html =
+      "<!DOCTYPE html><html><body><ol><li>First</li><li>Second</li></ol></body></html>";
     const md = htmlToMarkdown(html);
 
     expect(md).toContain("1. First");
@@ -116,14 +124,16 @@ describe("htmlToMarkdown", () => {
   });
 
   it("converts blockquotes", () => {
-    const html = "<!DOCTYPE html><html><body><blockquote>A wise quote</blockquote></body></html>";
+    const html =
+      "<!DOCTYPE html><html><body><blockquote>A wise quote</blockquote></body></html>";
     const md = htmlToMarkdown(html);
 
     expect(md).toContain("> A wise quote");
   });
 
   it("converts images", () => {
-    const html = '<!DOCTYPE html><html><body><img src="test.png" alt="Alt text"></body></html>';
+    const html =
+      '<!DOCTYPE html><html><body><img src="test.png" alt="Alt text"></body></html>';
     const md = htmlToMarkdown(html);
 
     expect(md).toContain("![Alt text](test.png)");

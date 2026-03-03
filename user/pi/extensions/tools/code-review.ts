@@ -161,9 +161,7 @@ export function createCodeReviewTool(
       parts.push(`Review the following diff:\n${p.diff_description}`);
 
       if (p.files && p.files.length > 0) {
-        parts.push(
-          `\nFocus the review on these files:\n${p.files.join("\n")}`,
-        );
+        parts.push(`\nFocus the review on these files:\n${p.files.join("\n")}`);
       }
       if (p.instructions) {
         parts.push(`\nAdditional review instructions:\n${p.instructions}`);

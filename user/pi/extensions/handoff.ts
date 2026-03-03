@@ -91,7 +91,9 @@ function extractToolCallArgs(response: {
 }): HandoffExtraction | null {
   const toolCall = response.content.find(
     (c): c is ToolCall =>
-      c.type === "toolCall" && "name" in c && c.name === "create_handoff_context",
+      c.type === "toolCall" &&
+      "name" in c &&
+      c.name === "create_handoff_context",
   );
   if (!toolCall) return null;
   const args = toolCall.arguments as Record<string, unknown>;
@@ -146,13 +148,16 @@ function getParentDescription(parentPath: string, maxWidth: number): string {
     const branch = session.getBranch();
     const firstUser = branch.find(
       (e): e is SessionEntry & { type: "message" } =>
-        e.type === "message" && "content" in e.message && e.message.role === "user",
+        e.type === "message" &&
+        "content" in e.message &&
+        e.message.role === "user",
     );
     if (firstUser) {
       const content = (firstUser.message as { content: unknown }).content;
       const text = (Array.isArray(content) ? content : [])
-        .filter((c): c is { type: "text"; text: string } =>
-          typeof c === "object" && c !== null && c.type === "text"
+        .filter(
+          (c): c is { type: "text"; text: string } =>
+            typeof c === "object" && c !== null && c.type === "text",
         )
         .map((c) => c.text)
         .join(" ")

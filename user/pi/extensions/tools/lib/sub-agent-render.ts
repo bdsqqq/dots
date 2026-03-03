@@ -46,7 +46,12 @@ export function getFinalOutput(messages: Message[]): string {
     const msg = messages[i];
     if (msg && msg.role === "assistant") {
       for (const part of msg.content) {
-        if (typeof part === "object" && part !== null && "type" in part && part.type === "text") {
+        if (
+          typeof part === "object" &&
+          part !== null &&
+          "type" in part &&
+          part.type === "text"
+        ) {
           return (part as { type: "text"; text: string }).text;
         }
       }
