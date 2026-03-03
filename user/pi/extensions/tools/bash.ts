@@ -60,7 +60,9 @@ function splitCdCommand(cmd: string): { cwd: string; command: string } | null {
   );
   if (!match) return null;
   const dir = match[1] ?? match[2] ?? match[3] ?? "";
-  return { cwd: dir, command: match[4] };
+  const command = match[4];
+  if (!command) return null;
+  return { cwd: dir, command };
 }
 
 function stripBackground(cmd: string): string {
@@ -230,15 +232,7 @@ export function createBashTool(): ToolDefinition {
       }
 
       if (!existsSync(effectiveCwd)) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `working directory does not exist: ${effectiveCwd}`,
-            },
-          ],
-          isError: true,
-        } as any;
+        throw new Error(`working directory does not exist: ${effectiveCwd}`);
       }
 
       const verdict = evaluatePermission(
@@ -250,10 +244,7 @@ export function createBashTool(): ToolDefinition {
         const msg = verdict.message
           ? `command rejected: ${verdict.message}`
           : `command rejected by permission rule. command: ${command}`;
-        return {
-          content: [{ type: "text" as const, text: msg }],
-          isError: true,
-        } as any;
+        throw new Error(msg);
       }
 
       const sessionId = ctx.sessionManager.getSessionId();
@@ -283,7 +274,7 @@ async function runCommand(
 ): Promise<any> {
   const { shell, args } = getShell();
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const child = spawn(shell, [...args, command], {
       cwd,
       detached: true,
@@ -327,12 +318,7 @@ async function runCommand(
     child.on("error", (err) => {
       if (timeoutHandle) clearTimeout(timeoutHandle);
       signal?.removeEventListener("abort", onAbort);
-      resolve({
-        content: [
-          { type: "text" as const, text: `command error: ${err.message}` },
-        ],
-        isError: true,
-      } as any);
+      reject(new Error(`command error: ${err.message}`));
     });
 
     child.on("close", (code) => {
@@ -345,10 +331,7 @@ async function runCommand(
         const text = outputText
           ? `${outputText}\n\ncommand aborted`
           : "command aborted";
-        resolve({
-          content: [{ type: "text" as const, text }],
-          isError: true,
-        } as any);
+        reject(new Error(text));
         return;
       }
 
@@ -356,10 +339,7 @@ async function runCommand(
         const text = outputText
           ? `${outputText}\n\ncommand timed out after ${timeout} seconds`
           : `command timed out after ${timeout} seconds`;
-        resolve({
-          content: [{ type: "text" as const, text }],
-          isError: true,
-        } as any);
+        reject(new Error(text));
         return;
       }
 
@@ -368,16 +348,12 @@ async function runCommand(
 
       if (code !== 0 && code !== null) {
         result += `\n\nexit code ${code}`;
-        resolve({
-          content: [{ type: "text" as const, text: result }],
-          isError: true,
-          details: { command },
-        } as any);
+        reject(new Error(result));
       } else {
         resolve({
           content: [{ type: "text" as const, text: result }],
           details: { command },
-        } as any);
+        });
       }
     });
   });
