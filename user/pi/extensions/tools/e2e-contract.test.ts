@@ -167,7 +167,7 @@ function validateEventInvariants(events: PiEvent[]): string[] {
   }
 
   // check ordering: agent_end should exist (but may not in print mode)
-  const hasAgentEnd = events.some((e) => e.type === "agent_end");
+  const _hasAgentEnd = events.some((e) => e.type === "agent_end");
   // skip this check - print mode doesn't emit agent_end
   // if (!hasAgentEnd && events.length > 0) {
   //   errors.push("no agent_end event found");
@@ -258,7 +258,7 @@ describe("e2e contract tests", () => {
       });
 
       it("extracts costs correctly", () => {
-        const { parent, subAgent } = getCosts(events);
+        const { parent } = getCosts(events);
         // parent should have some cost if events exist
         if (events.some((e) => e.type === "message_end")) {
           expect(parent).toBeGreaterThanOrEqual(0);

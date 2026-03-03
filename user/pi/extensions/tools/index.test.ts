@@ -149,6 +149,7 @@ describe("withPromptPatch", () => {
     const patched = withPromptPatch(tool);
 
     expect(patched.name).toBe("test_tool");
+    // eslint-disable-next-line typescript-eslint(unbound-method)
     expect(patched.execute).toBe(tool.execute);
   });
 });

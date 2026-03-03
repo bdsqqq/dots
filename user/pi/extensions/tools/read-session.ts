@@ -183,8 +183,6 @@ function renderSessionTree(
   if (targetLeafId) parts.push(`target branch leaf: ${targetLeafId}`);
   parts.push("");
 
-  let branchCounter = 0;
-
   const renderEntry = (entryId: string, depth: number) => {
     const entry = byId.get(entryId);
     if (!entry) return;
@@ -195,7 +193,6 @@ function renderSessionTree(
     // check if this is a branch point
     const kids = children.get(entryId) || [];
     if (kids.length > 1) {
-      branchCounter++;
       parts.push(`\n--- branch point (${kids.length} paths) ---\n`);
     }
 
@@ -259,7 +256,7 @@ function renderSessionTree(
         }
       }
     } else if (entry.type === "model_change") {
-      parts.push(`*model changed to ${entry.modelId}*\n`);
+      parts.push(`*model changed to ${String(entry.modelId)}*\n`);
     }
 
     // render children
@@ -346,7 +343,7 @@ export function createReadSessionTool(
       }
 
       // render session tree
-      const { markdown, sessionName } = renderSessionTree(
+      const { markdown } = renderSessionTree(
         sessionFile,
         p.leaf_id,
       );

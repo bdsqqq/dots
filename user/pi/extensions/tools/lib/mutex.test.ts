@@ -19,11 +19,14 @@ describe("withFileLock", () => {
   });
 
   it("propagates errors from the function", async () => {
-    await expect(
-      withFileLock("/tmp/error.txt", async () => {
+    try {
+      await withFileLock("/tmp/error.txt", async () => {
         throw new Error("test error");
-      }),
-    ).rejects.toThrow("test error");
+      });
+      expect(true).toBe(false); // should not reach
+    } catch (e) {
+      expect((e as Error).message).toBe("test error");
+    }
   });
 
   it("serializes concurrent calls for the same path", async () => {
@@ -94,8 +97,6 @@ describe("withFileLock", () => {
     // relative and absolute paths should resolve to same lock
     const order: string[] = [];
     const absolute = "/tmp/same-file.txt";
-    const relative = "../../tmp/same-file.txt"; // will resolve differently
-
     // these might resolve to different keys depending on cwd,
     // but let's test that resolve() is being used
     const results = await Promise.all([
@@ -114,11 +115,14 @@ describe("withFileLock", () => {
     const path = "/tmp/error-release.txt";
 
     // first call throws
-    await expect(
-      withFileLock(path, async () => {
+    try {
+      await withFileLock(path, async () => {
         throw new Error("first fails");
-      }),
-    ).rejects.toThrow("first fails");
+      });
+      expect(true).toBe(false); // should not reach
+    } catch (e) {
+      expect((e as Error).message).toBe("first fails");
+    }
 
     // second call should succeed (lock was released)
     const result = await withFileLock(path, async () => {

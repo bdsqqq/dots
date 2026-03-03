@@ -333,7 +333,7 @@ export default function (pi: ExtensionAPI) {
       );
     } catch (err) {
       generating = false;
-      ctx.ui.notify(`handoff generation failed: ${err}`, "error");
+      ctx.ui.notify(`handoff generation failed: ${String(err)}`, "error");
     }
   });
 

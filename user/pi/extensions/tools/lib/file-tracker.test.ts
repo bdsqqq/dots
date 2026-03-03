@@ -21,7 +21,6 @@ import {
   revertChange,
   findLatestChange,
   simpleDiff,
-  type FileChange,
 } from "./file-tracker";
 
 // use a temp directory for each test run
@@ -44,7 +43,7 @@ afterEach(() => {
 });
 
 // helper to get the actual changes dir (patched for tests)
-function getChangesDir(sid: string): string {
+function _getChangesDir(sid: string): string {
   return path.join(tmpDir, sid);
 }
 
