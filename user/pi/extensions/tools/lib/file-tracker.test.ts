@@ -42,11 +42,6 @@ afterEach(() => {
   } catch {}
 });
 
-// helper to get the actual changes dir (patched for tests)
-function _getChangesDir(sid: string): string {
-  return path.join(tmpDir, sid);
-}
-
 describe("simpleDiff", () => {
   it("generates unified diff for added lines", () => {
     const before = "line1\nline2";

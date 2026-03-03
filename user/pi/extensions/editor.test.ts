@@ -174,12 +174,6 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
 
         const capture = tmuxCapture(testWin);
 
-        // The model name should appear somewhere (in border or selector)
-        const _hasModelReference =
-          capture.toLowerCase().includes("gemini") ||
-          capture.includes("google") ||
-          capture.includes("model");
-
         expect(capture.length).toBeGreaterThan(0);
 
         try {
