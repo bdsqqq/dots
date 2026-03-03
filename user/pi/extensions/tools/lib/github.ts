@@ -34,7 +34,7 @@ export function parseRepoUrl(input: string): RepoRef {
       `invalid repository: "${input}" — expected "owner/repo" or full URL`,
     );
   }
-  return { owner: parts[0], repo: parts[1] };
+  return { owner: parts[0]!, repo: parts[1]! };
 }
 
 /** build the "owner/repo" string for gh api paths. */

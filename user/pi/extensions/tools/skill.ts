@@ -63,7 +63,7 @@ function parseFrontmatter(content: string): {
   const frontmatter: Frontmatter = {};
   for (const line of yamlStr.split("\n")) {
     const match = line.match(/^(\w[\w-]*):\s*"?(.+?)"?\s*$/);
-    if (match) {
+    if (match && match[1] && match[2]) {
       frontmatter[match[1]] = match[2];
     }
   }
@@ -208,6 +208,11 @@ function collectSkillFiles(baseDir: string): string[] {
 
 // --- tool factory ---
 
+interface SkillParams {
+  name: string;
+  arguments?: string;
+}
+
 export function createSkillTool(): ToolDefinition {
   return {
     name: "skill",
@@ -243,7 +248,8 @@ export function createSkillTool(): ToolDefinition {
     },
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const skill = findSkill(params.name, ctx.cwd);
+      const p = params as SkillParams;
+      const skill = findSkill(p.name, ctx.cwd);
 
       if (!skill) {
         const available = listAvailableSkills(ctx.cwd);
@@ -255,7 +261,7 @@ export function createSkillTool(): ToolDefinition {
           content: [
             {
               type: "text" as const,
-              text: `skill "${params.name}" not found.${list}`,
+              text: `skill "${p.name}" not found.${list}`,
             },
           ],
           isError: true,
