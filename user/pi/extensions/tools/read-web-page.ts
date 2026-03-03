@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { htmlToMarkdown } from "./lib/html-to-md";
+import { htmlToMarkdown } from "@pi/html-to-md";
 import { piSpawn, zeroUsage } from "./lib/pi-spawn";
 import {
   getFinalOutput,
