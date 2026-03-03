@@ -29,7 +29,7 @@ import {
   type Excerpt,
 } from "./lib/box-format";
 import { Type } from "@sinclair/typebox";
-import { saveChange, simpleDiff } from "./lib/file-tracker";
+import { saveChange, simpleDiff } from "@pi/file-tracker";
 import { withFileLock } from "@pi/mutex";
 import { resolveWithVariants } from "./read";
 

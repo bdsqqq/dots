@@ -15,7 +15,7 @@ import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { saveChange, simpleDiff } from "./lib/file-tracker";
+import { saveChange, simpleDiff } from "@pi/file-tracker";
 import { withFileLock } from "@pi/mutex";
 import { resolveToAbsolute } from "./read";
 import {

@@ -40,6 +40,8 @@
     "extensions/tools": {
       "name": "tools",
       "dependencies": {
+        "@pi/file-tracker": "workspace:*",
+        "@pi/mutex": "workspace:*",
         "@pi/output-buffer": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
         "cheerio": "^1.0.0",
@@ -48,6 +50,15 @@
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
         "@mariozechner/pi-tui": "catalog:",
+      },
+    },
+    "packages/core/file-tracker": {
+      "name": "@pi/file-tracker",
+      "dependencies": {
+        "diff": "^8.0.0",
+      },
+      "devDependencies": {
+        "vitest": "^3.0.0",
       },
     },
     "packages/core/mutex": {
@@ -341,6 +352,8 @@
     "@oxlint/binding-win32-ia32-msvc": ["@oxlint/binding-win32-ia32-msvc@1.50.0", "", { "os": "win32", "cpu": "ia32" }, "sha512-qTdWR9KwY/vxJGhHVIZG2eBOhidOQvOwzDxnX+jhW/zIVacal1nAhR8GLkiywW8BIFDkQKXo/zOfT+/DY+ns/w=="],
 
     "@oxlint/binding-win32-x64-msvc": ["@oxlint/binding-win32-x64-msvc@1.50.0", "", { "os": "win32", "cpu": "x64" }, "sha512-682t7npLC4G2Ca+iNlI9fhAKTcFPYYXJjwoa88H4q+u5HHHlsnL/gHULapX3iqp+A8FIJbgdylL5KMYo2LaluQ=="],
+
+    "@pi/file-tracker": ["@pi/file-tracker@workspace:packages/core/file-tracker"],
 
     "@pi/mutex": ["@pi/mutex@workspace:packages/core/mutex"],
 
