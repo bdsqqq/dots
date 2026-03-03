@@ -35,6 +35,13 @@ export interface LookAtConfig {
   systemPrompt?: string;
 }
 
+interface LookAtParams {
+  path: string;
+  objective: string;
+  context: string;
+  referenceFiles?: string[];
+}
+
 export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
   return {
     name: "look_at",
@@ -75,6 +82,7 @@ export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
     }),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      const p = params as LookAtParams;
       let sessionId = "";
       try {
         sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
@@ -83,20 +91,20 @@ export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
       // build the task prompt: read file(s), then analyze
       const parts: string[] = [];
 
-      parts.push(`Read the file at "${params.path}" using the read tool.`);
+      parts.push(`Read the file at "${p.path}" using the read tool.`);
 
-      if (params.referenceFiles && params.referenceFiles.length > 0) {
-        for (const ref of params.referenceFiles) {
+      if (p.referenceFiles && p.referenceFiles.length > 0) {
+        for (const ref of p.referenceFiles) {
           parts.push(`Also read the reference file at "${ref}".`);
         }
       }
 
       parts.push("");
-      parts.push(`Context: ${params.context}`);
+      parts.push(`Context: ${p.context}`);
       parts.push("");
-      parts.push(`Analyze with this objective: ${params.objective}`);
+      parts.push(`Analyze with this objective: ${p.objective}`);
 
-      if (params.referenceFiles && params.referenceFiles.length > 0) {
+      if (p.referenceFiles && p.referenceFiles.length > 0) {
         parts.push("");
         parts.push(
           "Compare the main file against the reference file(s). Identify all differences and similarities.",
@@ -107,7 +115,7 @@ export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
 
       const singleResult: SingleResult = {
         agent: "look_at",
-        task: params.objective,
+        task: p.objective,
         exitCode: -1,
         messages: [],
         usage: zeroUsage(),
