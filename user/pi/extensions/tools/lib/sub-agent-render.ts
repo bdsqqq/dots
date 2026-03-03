@@ -44,9 +44,11 @@ export interface SingleResult {
 export function getFinalOutput(messages: Message[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg.role === "assistant") {
+    if (msg && msg.role === "assistant") {
       for (const part of msg.content) {
-        if (part.type === "text") return part.text;
+        if (typeof part === "object" && part !== null && "type" in part && part.type === "text") {
+          return (part as { type: "text"; text: string }).text;
+        }
       }
     }
   }
@@ -154,8 +156,8 @@ function toolArgSummary(
 ): string {
   switch (toolName) {
     case "bash": {
-      const command = (args.cmd || args.command || "...") as string;
-      return command.split("\n")[0];
+      const command = (args.cmd ?? args.command ?? "...") as string;
+      return command.split("\n")[0] ?? command;
     }
     case "read": {
       const rawPath = (args.file_path || args.path || "...") as string;
@@ -296,7 +298,7 @@ export function renderAgentTree(
     container.addChild(new Text(END + fg("muted", "(no output)"), 0, 0));
   } else {
     for (let i = 0; i < children.length; i++) {
-      const child = children[i];
+      const child = children[i]!;
       const isLast = i === children.length - 1;
       const connector = isLast ? END : MID;
 
