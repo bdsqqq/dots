@@ -5,8 +5,13 @@
  * run: bun test user/pi/extensions/tools/bash-output.test.ts
  */
 
-import { describe, it, expect, beforeAll } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import { createBashTool } from "./bash";
+
+interface BashToolResult {
+  content: { type: "text"; text: string }[];
+  isError?: boolean;
+}
 
 describe("bash tool output formatting", () => {
   const tool = createBashTool();
@@ -21,26 +26,26 @@ describe("bash tool output formatting", () => {
 
   describe("command header", () => {
     it("shows command in output header", async () => {
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `echo "hello world"` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
       expect(text).toMatch(/^\$ echo "hello world"/);
     });
 
     it("shows full command including args", async () => {
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `ls -la /tmp` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
       expect(text).toContain("$ ls -la /tmp");
@@ -49,13 +54,13 @@ describe("bash tool output formatting", () => {
 
   describe("small output (no truncation)", () => {
     it("shows all output when small", async () => {
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `echo "line 1"; echo "line 2"; echo "line 3"` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
       expect(text).toContain("line 1");
@@ -65,13 +70,13 @@ describe("bash tool output formatting", () => {
     });
 
     it("handles no output gracefully", async () => {
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `true` }, // succeeds with no output
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
       expect(text).toContain("no output");
@@ -82,13 +87,13 @@ describe("bash tool output formatting", () => {
   describe("large output (truncation)", () => {
     it("shows head + tail for large output", async () => {
       // generate 200 lines
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `for i in $(seq 1 200); do echo "line $i"; done` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
 
@@ -114,27 +119,31 @@ describe("bash tool output formatting", () => {
 
   describe("exit codes", () => {
     it("shows exit code on failure", async () => {
-      const result = await tool.execute!(
-        "test-id",
-        { cmd: `echo "some output"; exit 42` },
-        undefined,
-        undefined,
-        mockCtx as any,
-      );
-
-      expect(result.isError).toBe(true);
-      const text = result.content[0]!.text;
-      expect(text).toContain("exit code 42");
+      try {
+        await tool.execute!(
+          "test-id",
+          { cmd: `echo "some output"; exit 42` },
+          undefined,
+          undefined,
+          mockCtx as any,
+        );
+        // Should have thrown
+        expect(true).toBe(false);
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        const message = (error as Error).message;
+        expect(message).toContain("exit code 42");
+      }
     });
 
     it("no exit code on success", async () => {
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `echo "success"` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       expect(result.isError).toBeFalsy(); // undefined or false for success
       const text = result.content[0]!.text;
@@ -144,13 +153,13 @@ describe("bash tool output formatting", () => {
 
   describe("mixed stdout/stderr", () => {
     it("captures both stdout and stderr", async () => {
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `echo "stdout"; echo "stderr" >&2` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
       expect(text).toContain("stdout");
@@ -162,13 +171,13 @@ describe("bash tool output formatting", () => {
     it("shows FIRST lines, not just tail", async () => {
       // OLD BEHAVIOR: only tail (last N chars)
       // NEW BEHAVIOR: head (first N lines) + tail
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `for i in $(seq 1 100); do echo "output line $i"; done` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
 
@@ -184,13 +193,13 @@ describe("bash tool output formatting", () => {
     it("command header is present at start of output", async () => {
       // OLD BEHAVIOR: no command header, just raw output
       // NEW BEHAVIOR: starts with "$ <cmd>"
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `echo "test"` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
 
@@ -204,13 +213,13 @@ describe("bash tool output formatting", () => {
     });
 
     it("head lines appear before tail lines in truncated output", async () => {
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `for i in $(seq 1 150); do echo "line $i"; done` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
 
@@ -227,26 +236,26 @@ describe("bash tool output formatting", () => {
 
   describe("edge cases", () => {
     it("handles command with special characters", async () => {
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `echo "special: 'quotes' and "double" and $var"` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
       expect(text).toContain("special");
     });
 
     it("handles very long single line", async () => {
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `python3 -c "print('x' * 10000)"` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
       // single line fits in head, no truncation
@@ -254,13 +263,13 @@ describe("bash tool output formatting", () => {
     }, 10_000);
 
     it("handles many short lines", async () => {
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         "test-id",
         { cmd: `for i in $(seq 1 500); do echo "x"; done` },
         undefined,
         undefined,
         mockCtx as any,
-      );
+      )) as BashToolResult;
 
       const text = result.content[0]!.text;
       // should have truncation marker

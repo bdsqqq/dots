@@ -23,6 +23,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
   SessionEntry,
+  ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import {
   BorderedLoader,
@@ -145,12 +146,15 @@ function getParentDescription(parentPath: string, maxWidth: number): string {
     const branch = session.getBranch();
     const firstUser = branch.find(
       (e): e is SessionEntry & { type: "message" } =>
-        e.type === "message" && e.message.role === "user",
+        e.type === "message" && "content" in e.message && e.message.role === "user",
     );
     if (firstUser) {
-      const text = (firstUser.message.content as Array<{ type: string; text?: string }> | undefined)
-        ?.filter((c): c is { type: "text"; text: string } => c.type === "text")
-        .map((c: { type: "text"; text: string }) => c.text)
+      const content = (firstUser.message as { content: unknown }).content;
+      const text = (Array.isArray(content) ? content : [])
+        .filter((c): c is { type: "text"; text: string } =>
+          typeof c === "object" && c !== null && c.type === "text"
+        )
+        .map((c) => c.text)
         .join(" ")
         .trim();
       if (text)
@@ -420,7 +424,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // --- handoff tool: agent-invokable session transfer ---
-  const handoffTool = {
+  const handoffTool: ToolDefinition = {
     name: "handoff",
     label: "Handoff",
     description:
@@ -438,43 +442,30 @@ export default function (pi: ExtensionAPI) {
       }),
     }),
 
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const p = params as { goal: string };
-      const handoffModel = getHandoffModel(ctx);
+      const handoffModel = getHandoffModel(_ctx);
       if (!handoffModel) {
-        return {
-          content: [
-            { type: "text", text: "no model available for handoff extraction" },
-          ],
-          isError: true,
-        };
+        throw new Error("no model available for handoff extraction");
       }
 
-      parentSessionFile = ctx.sessionManager.getSessionFile();
+      parentSessionFile = _ctx.sessionManager.getSessionFile();
 
       const prompt = await generateHandoffPrompt(
-        ctx,
+        _ctx,
         handoffModel,
         p.goal,
-        signal ?? undefined,
+        _signal ?? undefined,
       );
       if (!prompt) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "handoff generation failed: could not extract context",
-            },
-          ],
-          isError: true,
-        };
+        throw new Error("handoff generation failed: could not extract context");
       }
 
       storedHandoffPrompt = prompt;
       handoffPending = true;
 
-      ctx.ui.setEditorText("/handoff");
-      ctx.ui.setStatus("handoff", "handoff ready");
+      _ctx.ui.setEditorText("/handoff");
+      _ctx.ui.setStatus("handoff", "handoff ready");
       pi.events.emit("editor:set-label", {
         key: "handoff",
         text: "handoff ready",
@@ -489,6 +480,7 @@ export default function (pi: ExtensionAPI) {
             text: `handoff prompt generated for: "${p.goal}". staged /handoff — press Enter to continue in a new session.`,
           },
         ],
+        details: undefined,
       };
     },
   };

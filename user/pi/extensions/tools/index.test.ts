@@ -19,13 +19,9 @@ function makeTool(overrides: Partial<ToolDefinition> = {}): ToolDefinition {
     label: "Test Tool",
     description: "Test description.",
     parameters: Type.Object({}),
-    execute: async (
-      _toolCallId: string,
-      _params: unknown,
-      _signal: AbortSignal | undefined,
-      _onUpdate: undefined,
-      _ctx: unknown,
-    ) => ({ content: [{ type: "text", text: "ok" }] }),
+    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      return { content: [{ type: "text", text: "ok" }], details: undefined };
+    },
     ...overrides,
   };
 }

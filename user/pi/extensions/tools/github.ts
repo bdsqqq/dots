@@ -124,7 +124,7 @@ export function createReadGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const p = params as ReadGithubParams;
       try {
         const ref = parseRepoUrl(p.repository);
@@ -133,24 +133,13 @@ export function createReadGithubTool(): ToolDefinition {
         );
 
         if (Array.isArray(data)) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "Path is a directory, not a file. Use list_directory_github instead.",
-              },
-            ],
-            isError: true,
-          };
+          throw new Error(
+            "Path is a directory, not a file. Use list_directory_github instead.",
+          );
         }
 
         if (data.type !== "file" || !data.content) {
-          return {
-            content: [
-              { type: "text" as const, text: `Not a file: ${data.type}` },
-            ],
-            isError: true,
-          };
+          throw new Error(`Not a file: ${data.type}`);
         }
 
         let content = decodeBase64Content(data.content);
@@ -179,10 +168,7 @@ export function createReadGithubTool(): ToolDefinition {
           details: { header: `${repoSlug(ref)}/${p.path}` },
         };
       } catch (e: any) {
-        return {
-          content: [{ type: "text" as const, text: e.message }],
-          isError: true,
-        };
+        throw new Error(e.message);
       }
     },
 
@@ -264,7 +250,7 @@ export function createSearchGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const p = params as SearchGithubParams;
       try {
         const ref = parseRepoUrl(p.repository);
@@ -291,6 +277,7 @@ export function createSearchGithubTool(): ToolDefinition {
                 text: `No results for "${p.pattern}" in ${repoSlug(ref)}`,
               },
             ],
+            details: { header: `/${p.pattern}/ in ${repoSlug(ref)}` },
           };
         }
 
@@ -322,10 +309,7 @@ export function createSearchGithubTool(): ToolDefinition {
           details: { header: `/${p.pattern}/ in ${repoSlug(ref)}` },
         };
       } catch (e: any) {
-        return {
-          content: [{ type: "text" as const, text: e.message }],
-          isError: true,
-        };
+        throw new Error(e.message);
       }
     },
 
@@ -386,7 +370,7 @@ export function createListDirectoryGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const p = params as ListDirectoryGithubParams;
       try {
         const ref = parseRepoUrl(p.repository);
@@ -399,15 +383,9 @@ export function createListDirectoryGithubTool(): ToolDefinition {
         const data = ghApi<any[]>(`repos/${repoSlug(ref)}/contents/${apiPath}`);
 
         if (!Array.isArray(data)) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "Path is a file, not a directory. Use read_github instead.",
-              },
-            ],
-            isError: true,
-          };
+          throw new Error(
+            "Path is a file, not a directory. Use read_github instead.",
+          );
         }
 
         const entries = data.slice(0, limit).map((item: any) => {
@@ -422,10 +400,7 @@ export function createListDirectoryGithubTool(): ToolDefinition {
           details: { header: `${repoSlug(ref)}/${p.path}` },
         };
       } catch (e: any) {
-        return {
-          content: [{ type: "text" as const, text: e.message }],
-          isError: true,
-        };
+        throw new Error(e.message);
       }
     },
 
@@ -498,7 +473,7 @@ export function createListRepositoriesTool(): ToolDefinition {
       ),
     }),
 
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const p = params as ListRepositoriesParams;
       try {
         const limit = p.limit ?? 30;
@@ -524,6 +499,7 @@ export function createListRepositoriesTool(): ToolDefinition {
             content: [
               { type: "text" as const, text: "No repositories found." },
             ],
+            details: { header: queryParts.join(" ") || "repositories" },
           };
         }
 
@@ -549,10 +525,7 @@ export function createListRepositoriesTool(): ToolDefinition {
           details: { header: queryParts.join(" ") },
         };
       } catch (e: any) {
-        return {
-          content: [{ type: "text" as const, text: e.message }],
-          isError: true,
-        };
+        throw new Error(e.message);
       }
     },
 
@@ -606,7 +579,7 @@ export function createGlobGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const p = params as GlobGithubParams;
       try {
         const ref = parseRepoUrl(p.repository);
@@ -623,15 +596,7 @@ export function createGlobGithubTool(): ToolDefinition {
         );
 
         if (!tree.tree) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "Could not read repository tree.",
-              },
-            ],
-            isError: true,
-          };
+          throw new Error("Could not read repository tree.");
         }
 
         // filter by glob pattern using simple matching
@@ -655,10 +620,7 @@ export function createGlobGithubTool(): ToolDefinition {
           details: { header: `${p.filePattern} in ${repoSlug(ref)}` },
         };
       } catch (e: any) {
-        return {
-          content: [{ type: "text" as const, text: e.message }],
-          isError: true,
-        };
+        throw new Error(e.message);
       }
     },
 
@@ -745,7 +707,7 @@ export function createCommitSearchTool(): ToolDefinition {
       ),
     }),
 
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const p = params as CommitSearchParams;
       try {
         const ref = parseRepoUrl(p.repository);
@@ -768,6 +730,7 @@ export function createCommitSearchTool(): ToolDefinition {
         if (!Array.isArray(commits) || commits.length === 0) {
           return {
             content: [{ type: "text" as const, text: "No commits found." }],
+            details: { header: repoSlug(ref) },
           };
         }
 
@@ -794,10 +757,7 @@ export function createCommitSearchTool(): ToolDefinition {
           details: { header: repoSlug(ref) },
         };
       } catch (e: any) {
-        return {
-          content: [{ type: "text" as const, text: e.message }],
-          isError: true,
-        };
+        throw new Error(e.message);
       }
     },
 
@@ -862,7 +822,7 @@ export function createDiffTool(): ToolDefinition {
       ),
     }),
 
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const p = params as DiffParams;
       try {
         const ref = parseRepoUrl(p.repository);
@@ -900,10 +860,7 @@ export function createDiffTool(): ToolDefinition {
           details: { header: `${p.base}...${p.head}` },
         };
       } catch (e: any) {
-        return {
-          content: [{ type: "text" as const, text: e.message }],
-          isError: true,
-        };
+        throw new Error(e.message);
       }
     },
 
