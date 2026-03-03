@@ -26,13 +26,16 @@ export function extractMermaidBlocks(
   let i = 0;
 
   while (i < lines.length && blocks.length < maxBlocks) {
-    if (OPENING_FENCE.test(lines[i])) {
+    const currentLine = lines[i];
+    if (currentLine && OPENING_FENCE.test(currentLine)) {
       const startLine = i;
       i++;
       const codeLines: string[] = [];
 
-      while (i < lines.length && !CLOSING_FENCE.test(lines[i])) {
-        codeLines.push(lines[i]);
+      while (i < lines.length) {
+        const line = lines[i];
+        if (!line || CLOSING_FENCE.test(line)) break;
+        codeLines.push(line);
         i++;
       }
 
@@ -94,7 +97,12 @@ export function extractText(content: unknown): string {
 }
 
 function stripTrailingEmpty(arr: string[]): void {
-  while (arr.length > 0 && arr[arr.length - 1].trim() === "") {
-    arr.pop();
+  while (arr.length > 0) {
+    const last = arr[arr.length - 1];
+    if (!last || last.trim() === "") {
+      arr.pop();
+    } else {
+      break;
+    }
   }
 }

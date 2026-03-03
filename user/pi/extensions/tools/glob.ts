@@ -31,6 +31,12 @@ const COLLAPSED_EXCERPTS: Excerpt[] = [
 
 const DEFAULT_LIMIT = 500;
 
+interface GlobParams {
+  filePattern: string;
+  limit?: number;
+  offset?: number;
+}
+
 export function createGlobTool(): ToolDefinition {
   return {
     name: "find",
@@ -82,9 +88,10 @@ export function createGlobTool(): ToolDefinition {
     },
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const p = params as GlobParams;
       const searchPath = ctx.cwd;
-      const limit = params.limit ?? DEFAULT_LIMIT;
-      const offset = params.offset ?? 0;
+      const limit = p.limit ?? DEFAULT_LIMIT;
+      const offset = p.offset ?? 0;
 
       return new Promise((resolve) => {
         const args = [
@@ -98,7 +105,7 @@ export function createGlobTool(): ToolDefinition {
           "--glob",
           "!.jj",
           "--glob",
-          params.filePattern,
+          p.filePattern,
           searchPath,
         ];
 
@@ -199,7 +206,7 @@ export function createGlobTool(): ToolDefinition {
 
           resolve({
             content: [{ type: "text" as const, text: output }],
-            details: { header: params.filePattern },
+            details: { header: p.filePattern },
           } as any);
         });
       });

@@ -55,8 +55,8 @@ export {
 } from "./lib/file-tracker";
 
 export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
-  const snippet = tool.description.split("\n\n")[0].trim();
-  const guidelines = tool.description
+  const snippet = (tool.description?.split("\n\n")[0] ?? "").trim();
+  const guidelines = (tool.description ?? "")
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.startsWith("- "));

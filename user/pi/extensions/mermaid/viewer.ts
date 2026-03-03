@@ -167,6 +167,9 @@ class MermaidViewer {
     const dim = (s: string) => th.fg("dim", s);
 
     const entry = this.diagrams[this.activeIndex];
+    if (!entry) {
+      return ["(no diagram)"];
+    }
     const { rendered } = pickBestPreset(this.cache, entry.block.code, innerW);
 
     // build full content: context-before, diagram, context-after
@@ -203,7 +206,7 @@ class MermaidViewer {
 
     // body rows
     for (let i = 0; i < BODY_HEIGHT; i++) {
-      const raw = i < visible.length ? visible[i] : "";
+      const raw = i < visible.length ? (visible[i] ?? "") : "";
       const sliced = sliceAnsiByColumns(raw, this.panX, innerW);
       const padded = padToWidth(sliced, innerW);
       lines.push(`│ ${padded} │`);
