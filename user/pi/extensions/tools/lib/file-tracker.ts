@@ -169,6 +169,7 @@ export function findLatestChange(
   // check in reverse order (most recent first)
   for (let i = activeToolCallIds.length - 1; i >= 0; i--) {
     const toolCallId = activeToolCallIds[i];
+    if (!toolCallId) continue;
     const changes = loadChanges(sessionId, toolCallId);
     // within a tool call, find the matching file (most recent by timestamp)
     const match = changes

@@ -124,7 +124,7 @@ export function interpolatePromptVars(
   if (filledKeys.length > 0) {
     result = result.replace(
       new RegExp(`\\{(${filledKeys.join("|")})\\}`, "g"),
-      (_, key) => filled[key],
+      (match: string, key: string) => filled[key] ?? match,
     );
   }
 

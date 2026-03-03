@@ -32,6 +32,10 @@ export interface FinderConfig {
   systemPrompt?: string;
 }
 
+interface FinderParams {
+  query: string;
+}
+
 export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
   return {
     name: "finder",
@@ -66,6 +70,7 @@ export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
     }),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      const p = params as FinderParams;
       let sessionId = "";
       try {
         sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
@@ -75,7 +80,7 @@ export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
 
       const singleResult: SingleResult = {
         agent: "finder",
-        task: params.query,
+        task: p.query,
         exitCode: -1,
         messages: [],
         usage: zeroUsage(),
@@ -83,7 +88,7 @@ export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
 
       const result = await piSpawn({
         cwd: ctx.cwd,
-        task: params.query,
+        task: p.query,
         model: MODEL,
         builtinTools: BUILTIN_TOOLS,
         extensionTools: EXTENSION_TOOLS,

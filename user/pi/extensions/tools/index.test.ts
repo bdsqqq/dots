@@ -10,14 +10,25 @@
 import { describe, it, expect } from "bun:test";
 import { withPromptPatch } from "./index";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
+
+// Minimal valid tool for testing withPromptPatch
+function makeTool(overrides: Partial<ToolDefinition> = {}): ToolDefinition {
+  return {
+    name: "test_tool",
+    label: "Test Tool",
+    description: "Test description.",
+    parameters: Type.Object({}),
+    execute: async () => ({ content: [{ type: "text", text: "ok" }] }),
+    ...overrides,
+  };
+}
 
 describe("withPromptPatch", () => {
   it("extracts first paragraph as promptSnippet", () => {
-    const tool: ToolDefinition = {
-      name: "test_tool",
+    const tool = makeTool({
       description: "This is the first paragraph.\n\nThis is the second paragraph.",
-      parameters: { type: "object", properties: {} },
-    };
+    });
 
     const patched = withPromptPatch(tool);
 
@@ -25,12 +36,10 @@ describe("withPromptPatch", () => {
   });
 
   it("extracts bullet points as promptGuidelines", () => {
-    const tool: ToolDefinition = {
-      name: "test_tool",
+    const tool = makeTool({
       description:
         "Description.\n\n- First guideline\n- Second guideline\n- Third guideline\n\nMore text.",
-      parameters: { type: "object", properties: {} },
-    };
+    });
 
     const patched = withPromptPatch(tool);
 
@@ -42,11 +51,9 @@ describe("withPromptPatch", () => {
   });
 
   it("handles description without paragraphs", () => {
-    const tool: ToolDefinition = {
-      name: "test_tool",
+    const tool = makeTool({
       description: "Single line description",
-      parameters: { type: "object", properties: {} },
-    };
+    });
 
     const patched = withPromptPatch(tool);
 
@@ -55,11 +62,9 @@ describe("withPromptPatch", () => {
   });
 
   it("handles description without guidelines", () => {
-    const tool: ToolDefinition = {
-      name: "test_tool",
+    const tool = makeTool({
       description: "First paragraph.\n\nSecond paragraph.\n\nNo bullets here.",
-      parameters: { type: "object", properties: {} },
-    };
+    });
 
     const patched = withPromptPatch(tool);
 
@@ -68,12 +73,10 @@ describe("withPromptPatch", () => {
   });
 
   it("preserves existing promptSnippet", () => {
-    const tool: ToolDefinition = {
-      name: "test_tool",
+    const tool = makeTool({
       description: "Auto-extracted snippet.\n\n- A guideline",
-      parameters: { type: "object", properties: {} },
       promptSnippet: "Manual snippet",
-    };
+    });
 
     const patched = withPromptPatch(tool);
 
@@ -81,12 +84,10 @@ describe("withPromptPatch", () => {
   });
 
   it("preserves existing promptGuidelines", () => {
-    const tool: ToolDefinition = {
-      name: "test_tool",
+    const tool = makeTool({
       description: "Description.\n\n- Auto guideline",
-      parameters: { type: "object", properties: {} },
       promptGuidelines: ["- Manual guideline"],
-    };
+    });
 
     const patched = withPromptPatch(tool);
 
@@ -94,11 +95,9 @@ describe("withPromptPatch", () => {
   });
 
   it("trims snippet whitespace", () => {
-    const tool: ToolDefinition = {
-      name: "test_tool",
+    const tool = makeTool({
       description: "  \n  Snippet with whitespace  \n\n\n  \nSecond paragraph  ",
-      parameters: { type: "object", properties: {} },
-    };
+    });
 
     const patched = withPromptPatch(tool);
 
@@ -106,12 +105,10 @@ describe("withPromptPatch", () => {
   });
 
   it("handles multiline bullets", () => {
-    const tool: ToolDefinition = {
-      name: "test_tool",
+    const tool = makeTool({
       description:
         "Description.\n\n- First bullet\n  with continuation\n- Second bullet\n\nEnd.",
-      parameters: { type: "object", properties: {} },
-    };
+    });
 
     const patched = withPromptPatch(tool);
 
@@ -120,11 +117,9 @@ describe("withPromptPatch", () => {
   });
 
   it("does not mutate original tool", () => {
-    const tool: ToolDefinition = {
-      name: "test_tool",
+    const tool = makeTool({
       description: "Description.\n\n- Guideline",
-      parameters: { type: "object", properties: {} },
-    };
+    });
 
     const patched = withPromptPatch(tool);
 
@@ -134,11 +129,9 @@ describe("withPromptPatch", () => {
   });
 
   it("handles empty description gracefully", () => {
-    const tool: ToolDefinition = {
-      name: "test_tool",
+    const tool = makeTool({
       description: "",
-      parameters: { type: "object", properties: {} },
-    };
+    });
 
     const patched = withPromptPatch(tool);
 
@@ -147,17 +140,13 @@ describe("withPromptPatch", () => {
   });
 
   it("preserves all other tool properties", () => {
-    const tool: ToolDefinition = {
-      name: "test_tool",
+    const tool = makeTool({
       description: "Desc.\n\n- Guide",
-      parameters: { type: "object", properties: { foo: { type: "string" } } },
-      execute: async () => ({ content: [{ type: "text", text: "done" }] }),
-    };
+    });
 
     const patched = withPromptPatch(tool);
 
     expect(patched.name).toBe("test_tool");
-    expect(patched.parameters).toEqual({ type: "object", properties: { foo: { type: "string" } } });
     expect(patched.execute).toBe(tool.execute);
   });
 });

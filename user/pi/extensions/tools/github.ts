@@ -19,7 +19,6 @@ import {
   parseRepoUrl,
   repoSlug,
   ghApi,
-  ghApiPaginated,
   decodeBase64Content,
   addLineNumbers,
   truncate,
@@ -38,6 +37,61 @@ const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },
   { focus: "tail" as const, context: 5 },
 ];
+
+// --- typed params interfaces ---
+
+interface ReadGithubParams {
+  path: string;
+  repository: string;
+  read_range?: [number, number];
+}
+
+interface SearchGithubParams {
+  pattern: string;
+  repository: string;
+  path?: string;
+  limit?: number;
+  offset?: number;
+}
+
+interface ListDirectoryGithubParams {
+  path: string;
+  repository: string;
+  limit?: number;
+}
+
+interface ListRepositoriesParams {
+  pattern?: string;
+  organization?: string;
+  language?: string;
+  limit?: number;
+  offset?: number;
+}
+
+interface GlobGithubParams {
+  filePattern: string;
+  repository: string;
+  limit?: number;
+  offset?: number;
+}
+
+interface CommitSearchParams {
+  repository: string;
+  query?: string;
+  author?: string;
+  since?: string;
+  until?: string;
+  path?: string;
+  limit?: number;
+  offset?: number;
+}
+
+interface DiffParams {
+  base: string;
+  head: string;
+  repository: string;
+  includePatches?: boolean;
+}
 
 // --- read_github ---
 
@@ -70,11 +124,12 @@ export function createReadGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_id, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const p = params as ReadGithubParams;
       try {
-        const ref = parseRepoUrl(params.repository);
+        const ref = parseRepoUrl(p.repository);
         const data = ghApi<any>(
-          `repos/${repoSlug(ref)}/contents/${params.path}`,
+          `repos/${repoSlug(ref)}/contents/${p.path}`,
         );
 
         if (Array.isArray(data)) {
@@ -100,8 +155,8 @@ export function createReadGithubTool(): ToolDefinition {
 
         let content = decodeBase64Content(data.content);
 
-        if (params.read_range) {
-          const [start, end] = params.read_range;
+        if (p.read_range) {
+          const [start, end] = p.read_range;
           const lines = content.split("\n");
           const startIdx = Math.max(0, start - 1);
           const endIdx = Math.min(lines.length, end);
@@ -110,7 +165,7 @@ export function createReadGithubTool(): ToolDefinition {
             content: [
               { type: "text" as const, text: addLineNumbers(content, start) },
             ],
-            details: { header: `${repoSlug(ref)}/${params.path}` },
+            details: { header: `${repoSlug(ref)}/${p.path}` },
           };
         }
 
@@ -121,7 +176,7 @@ export function createReadGithubTool(): ToolDefinition {
               text: truncate(addLineNumbers(content), 64_000),
             },
           ],
-          details: { header: `${repoSlug(ref)}/${params.path}` },
+          details: { header: `${repoSlug(ref)}/${p.path}` },
         };
       } catch (e: any) {
         return {
@@ -157,7 +212,7 @@ export function createReadGithubTool(): ToolDefinition {
       // parse numbered lines into BoxLine[] with gutters
       const parsed: BoxLine[] = content.text.split("\n").map((line: string) => {
         const m = line.match(/^(\s*\d+): (.*)$/);
-        if (m) return { gutter: m[1].trim(), text: m[2], highlight: true };
+        if (m && m[1] && m[2]) return { gutter: m[1].trim(), text: m[2], highlight: true };
         return { text: line, highlight: true };
       });
 
@@ -209,14 +264,15 @@ export function createSearchGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_id, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const p = params as SearchGithubParams;
       try {
-        const ref = parseRepoUrl(params.repository);
-        const limit = params.limit ?? 30;
-        const page = params.offset ? Math.floor(params.offset / limit) + 1 : 1;
+        const ref = parseRepoUrl(p.repository);
+        const limit = p.limit ?? 30;
+        const page = p.offset ? Math.floor(p.offset / limit) + 1 : 1;
 
-        let query = `${params.pattern} repo:${repoSlug(ref)}`;
-        if (params.path) query += ` path:${params.path}`;
+        let query = `${p.pattern} repo:${repoSlug(ref)}`;
+        if (p.path) query += ` path:${p.path}`;
 
         const data = ghApi<any>(`search/code`, {
           params: {
@@ -232,7 +288,7 @@ export function createSearchGithubTool(): ToolDefinition {
             content: [
               {
                 type: "text" as const,
-                text: `No results for "${params.pattern}" in ${repoSlug(ref)}`,
+                text: `No results for "${p.pattern}" in ${repoSlug(ref)}`,
               },
             ],
           };
@@ -263,7 +319,7 @@ export function createSearchGithubTool(): ToolDefinition {
               text: truncate(results.join("\n"), 64_000),
             },
           ],
-          details: { header: `/${params.pattern}/ in ${repoSlug(ref)}` },
+          details: { header: `/${p.pattern}/ in ${repoSlug(ref)}` },
         };
       } catch (e: any) {
         return {
@@ -330,14 +386,15 @@ export function createListDirectoryGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_id, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const p = params as ListDirectoryGithubParams;
       try {
-        const ref = parseRepoUrl(params.repository);
-        const limit = params.limit ?? 100;
+        const ref = parseRepoUrl(p.repository);
+        const limit = p.limit ?? 100;
         const apiPath =
-          params.path === "" || params.path === "." || params.path === "/"
+          p.path === "" || p.path === "." || p.path === "/"
             ? ""
-            : params.path;
+            : p.path;
 
         const data = ghApi<any[]>(`repos/${repoSlug(ref)}/contents/${apiPath}`);
 
@@ -362,7 +419,7 @@ export function createListDirectoryGithubTool(): ToolDefinition {
 
         return {
           content: [{ type: "text" as const, text: entries.join("\n") }],
-          details: { header: `${repoSlug(ref)}/${params.path}` },
+          details: { header: `${repoSlug(ref)}/${p.path}` },
         };
       } catch (e: any) {
         return {
@@ -441,15 +498,16 @@ export function createListRepositoriesTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_id, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const p = params as ListRepositoriesParams;
       try {
-        const limit = params.limit ?? 30;
-        const page = params.offset ? Math.floor(params.offset / limit) + 1 : 1;
+        const limit = p.limit ?? 30;
+        const page = p.offset ? Math.floor(p.offset / limit) + 1 : 1;
 
         const queryParts: string[] = [];
-        if (params.pattern) queryParts.push(params.pattern);
-        if (params.organization) queryParts.push(`org:${params.organization}`);
-        if (params.language) queryParts.push(`language:${params.language}`);
+        if (p.pattern) queryParts.push(p.pattern);
+        if (p.organization) queryParts.push(`org:${p.organization}`);
+        if (p.language) queryParts.push(`language:${p.language}`);
         if (queryParts.length === 0) queryParts.push("stars:>0");
 
         const data = ghApi<any>("search/repositories", {
@@ -548,11 +606,12 @@ export function createGlobGithubTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_id, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const p = params as GlobGithubParams;
       try {
-        const ref = parseRepoUrl(params.repository);
-        const limit = params.limit ?? 100;
-        const offset = params.offset ?? 0;
+        const ref = parseRepoUrl(p.repository);
+        const limit = p.limit ?? 100;
+        const offset = p.offset ?? 0;
 
         // get default branch
         const repoData = ghApi<any>(`repos/${repoSlug(ref)}`);
@@ -576,7 +635,7 @@ export function createGlobGithubTool(): ToolDefinition {
         }
 
         // filter by glob pattern using simple matching
-        const pattern = params.filePattern;
+        const pattern = p.filePattern;
         const files = tree.tree
           .filter((item: any) => item.type === "blob")
           .map((item: any) => item.path as string)
@@ -593,7 +652,7 @@ export function createGlobGithubTool(): ToolDefinition {
 
         return {
           content: [{ type: "text" as const, text: output.join("\n") }],
-          details: { header: `${params.filePattern} in ${repoSlug(ref)}` },
+          details: { header: `${p.filePattern} in ${repoSlug(ref)}` },
         };
       } catch (e: any) {
         return {
@@ -686,22 +745,23 @@ export function createCommitSearchTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_id, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const p = params as CommitSearchParams;
       try {
-        const ref = parseRepoUrl(params.repository);
-        const limit = params.limit ?? 50;
-        const page = params.offset ? Math.floor(params.offset / limit) + 1 : 1;
+        const ref = parseRepoUrl(p.repository);
+        const limit = p.limit ?? 50;
+        const page = p.offset ? Math.floor(p.offset / limit) + 1 : 1;
 
         const apiParams: Record<string, string | number> = {
           per_page: Math.min(limit, 100),
           page,
         };
-        if (params.author) apiParams.author = params.author;
-        if (params.since) apiParams.since = params.since;
-        if (params.until) apiParams.until = params.until;
+        if (p.author) apiParams.author = p.author;
+        if (p.since) apiParams.since = p.since;
+        if (p.until) apiParams.until = p.until;
 
         let endpoint = `repos/${repoSlug(ref)}/commits`;
-        if (params.path) apiParams.path = params.path;
+        if (p.path) apiParams.path = p.path;
 
         const commits = ghApi<any[]>(endpoint, { params: apiParams });
 
@@ -713,8 +773,8 @@ export function createCommitSearchTool(): ToolDefinition {
 
         // filter by query in commit message if specified
         let filtered = commits;
-        if (params.query) {
-          const q = params.query.toLowerCase();
+        if (p.query) {
+          const q = p.query.toLowerCase();
           filtered = commits.filter((c: any) =>
             c.commit?.message?.toLowerCase().includes(q),
           );
@@ -802,15 +862,16 @@ export function createDiffTool(): ToolDefinition {
       ),
     }),
 
-    async execute(_id, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const p = params as DiffParams;
       try {
-        const ref = parseRepoUrl(params.repository);
+        const ref = parseRepoUrl(p.repository);
         const data = ghApi<any>(
-          `repos/${repoSlug(ref)}/compare/${encodeURIComponent(params.base)}...${encodeURIComponent(params.head)}`,
+          `repos/${repoSlug(ref)}/compare/${encodeURIComponent(p.base)}...${encodeURIComponent(p.head)}`,
         );
 
         const lines: string[] = [
-          `Comparing ${params.base}...${params.head}`,
+          `Comparing ${p.base}...${p.head}`,
           `Status: ${data.status}`,
           `Ahead by: ${data.ahead_by} commits`,
           `Behind by: ${data.behind_by} commits`,
@@ -823,7 +884,7 @@ export function createDiffTool(): ToolDefinition {
             const stat = `+${file.additions} -${file.deletions}`;
             lines.push(`${file.status} ${file.filename} (${stat})`);
 
-            if (params.includePatches && file.patch) {
+            if (p.includePatches && file.patch) {
               lines.push("```diff");
               lines.push(truncate(file.patch, 4000));
               lines.push("```");
@@ -836,7 +897,7 @@ export function createDiffTool(): ToolDefinition {
           content: [
             { type: "text" as const, text: truncate(lines.join("\n"), 64_000) },
           ],
-          details: { header: `${params.base}...${params.head}` },
+          details: { header: `${p.base}...${p.head}` },
         };
       } catch (e: any) {
         return {
