@@ -4,8 +4,7 @@ let
   homeDir = if isDarwin then "/Users/bdsqqq" else "/home/bdsqqq";
   repoPi = "${homeDir}/commonplace/01_files/nix/user/pi";
   # repo path for mkOutOfStoreSymlink — edits take effect immediately without rebuild
-  repoExtensions = "${homeDir}/commonplace/01_files/nix/user/pi/extensions";
-  repoPackageExtensions = "${homeDir}/commonplace/01_files/nix/user/pi/packages/extensions";
+  repoExtensions = "${homeDir}/commonplace/01_files/nix/user/pi/packages/extensions";
 in
 {
   sops.templates."pi-auth.json" = {
@@ -25,10 +24,10 @@ in
 
     # extensions — symlinked to repo working tree so edits are instant (no rebuild needed)
     home.file.".pi/agent/extensions/editor".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/editor";
-    home.file.".pi/agent/extensions/handoff".source = config.lib.file.mkOutOfStoreSymlink "${repoPackageExtensions}/handoff";
-    home.file.".pi/agent/extensions/session-name".source = config.lib.file.mkOutOfStoreSymlink "${repoPackageExtensions}/session-name";
-    home.file.".pi/agent/extensions/tool-harness".source = config.lib.file.mkOutOfStoreSymlink "${repoPackageExtensions}/tool-harness";
-    home.file.".pi/agent/extensions/system-prompt".source = config.lib.file.mkOutOfStoreSymlink "${repoPackageExtensions}/system-prompt";
+    home.file.".pi/agent/extensions/handoff".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/handoff";
+    home.file.".pi/agent/extensions/session-name".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/session-name";
+    home.file.".pi/agent/extensions/tool-harness".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/tool-harness";
+    home.file.".pi/agent/extensions/system-prompt".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/system-prompt";
     home.file.".pi/agent/extensions/command-palette".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/command-palette";
     home.file.".pi/agent/extensions/tools".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/tools";
     home.file.".pi/agent/extensions/mermaid".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/mermaid";
