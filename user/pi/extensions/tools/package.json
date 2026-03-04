@@ -5,7 +5,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@pi/glob": "workspace:*",
     "@pi/github-api": "workspace:*",
+    "@pi/ls": "workspace:*",
+    "@pi/grep": "workspace:*",
     "@pi/read": "workspace:*",
     "@pi/tui": "workspace:*",
     "@pi/box-chrome": "workspace:*",
