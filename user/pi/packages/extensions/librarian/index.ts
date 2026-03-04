@@ -44,6 +44,7 @@ const EXTENSION_TOOLS = [
   "glob_github",
   "commit_search",
   "diff",
+  "web_search",
 ];
 
 interface LibrarianParams {
