@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { withPromptPatch } from "./index";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
