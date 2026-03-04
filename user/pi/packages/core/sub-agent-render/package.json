@@ -1,12 +1,12 @@
 {
-  "name": "@pi/sub-agent-render",
+  "name": "@bds_pi/sub-agent-render",
   "version": "0.0.0",
   "private": true,
   "main": "index.ts",
   "types": "index.ts",
   "dependencies": {
-    "@pi/pi-spawn": "workspace:*",
-    "@pi/tool-cost": "workspace:*"
+    "@bds_pi/pi-spawn": "workspace:*",
+    "@bds_pi/tool-cost": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.0.0"

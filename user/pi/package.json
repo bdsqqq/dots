@@ -18,7 +18,7 @@
     "lint:github": "oxlint --type-aware --type-check --format=github --report-unused-disable-directives",
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
-    "typecheck": "bun run --filter '@pi/mermaid' typecheck && bun run --filter '@pi/command-palette' typecheck && bun run --filter '@pi/editor' typecheck",
+    "typecheck": "bun run --filter '@bds_pi/mermaid' typecheck && bun run --filter '@bds_pi/command-palette' typecheck && bun run --filter '@bds_pi/editor' typecheck",
     "test": "vitest run",
     "check": "bun run format && bun run lint && bun run typecheck && bun run test"
   },

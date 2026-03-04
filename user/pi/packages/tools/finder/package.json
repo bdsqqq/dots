@@ -1,12 +1,12 @@
 {
-  "name": "@pi/finder",
+  "name": "@bds_pi/finder",
   "version": "0.0.1",
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
   "dependencies": {
-    "@pi/pi-spawn": "workspace:*",
-    "@pi/sub-agent-render": "workspace:*",
+    "@bds_pi/pi-spawn": "workspace:*",
+    "@bds_pi/sub-agent-render": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {

@@ -23,13 +23,13 @@ import {
   boxRendererWindowed,
   type BoxSection,
   type Excerpt,
-} from "@pi/box-format";
-import { getText } from "@pi/tui";
+} from "@bds_pi/box-format";
+import { getText } from "@bds_pi/tui";
 import { Type } from "@sinclair/typebox";
-import { withFileLock } from "@pi/mutex";
-import { evaluatePermission, loadPermissions } from "@pi/permissions";
-import { resolveToAbsolute } from "@pi/read";
-import { OutputBuffer } from "@pi/output-buffer";
+import { withFileLock } from "@bds_pi/mutex";
+import { evaluatePermission, loadPermissions } from "@bds_pi/permissions";
+import { resolveToAbsolute } from "@bds_pi/read";
+import { OutputBuffer } from "@bds_pi/output-buffer";
 
 const HEAD_LINES = 50;
 const TAIL_LINES = 50;

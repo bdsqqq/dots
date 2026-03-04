@@ -15,15 +15,15 @@ import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { saveChange, simpleDiff } from "@pi/file-tracker";
-import { withFileLock } from "@pi/mutex";
-import { resolveToAbsolute } from "@pi/read";
+import { saveChange, simpleDiff } from "@bds_pi/file-tracker";
+import { withFileLock } from "@bds_pi/mutex";
+import { resolveToAbsolute } from "@bds_pi/read";
 import {
   boxRendererWindowed,
   textSection,
   osc8Link,
   type Excerpt,
-} from "@pi/box-format";
+} from "@bds_pi/box-format";
 
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },

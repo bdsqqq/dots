@@ -1,13 +1,13 @@
 {
-  "name": "@pi/read-session",
+  "name": "@bds_pi/read-session",
   "version": "0.0.1",
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
   "dependencies": {
-    "@pi/pi-spawn": "workspace:*",
-    "@pi/sub-agent-render": "workspace:*",
-    "@pi/output-buffer": "workspace:*",
+    "@bds_pi/pi-spawn": "workspace:*",
+    "@bds_pi/sub-agent-render": "workspace:*",
+    "@bds_pi/output-buffer": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {

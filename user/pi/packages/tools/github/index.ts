@@ -22,7 +22,7 @@ import {
   decodeBase64Content,
   addLineNumbers,
   truncate,
-} from "@pi/github-api";
+} from "@bds_pi/github-api";
 import {
   boxRendererWindowed,
   textSection,
@@ -30,7 +30,7 @@ import {
   type BoxSection,
   type BoxLine,
   type Excerpt,
-} from "@pi/box-format";
+} from "@bds_pi/box-format";
 
 /** collapsed: head 3 + tail 5 = 8 visual lines */
 const COLLAPSED_EXCERPTS: Excerpt[] = [

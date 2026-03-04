@@ -1,5 +1,5 @@
 {
-  "name": "@pi/output-buffer",
+  "name": "@bds_pi/output-buffer",
   "version": "0.0.0",
 
   "main": "index.ts",

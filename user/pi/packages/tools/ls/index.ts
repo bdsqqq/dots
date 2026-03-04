@@ -12,13 +12,13 @@ import * as os from "node:os";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { resolveWithVariants, listDirectory, type ReadLimits } from "@pi/read";
+import { resolveWithVariants, listDirectory, type ReadLimits } from "@bds_pi/read";
 import {
   boxRendererWindowed,
   textSection,
   osc8Link,
   type Excerpt,
-} from "@pi/box-format";
+} from "@bds_pi/box-format";
 
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },

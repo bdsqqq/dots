@@ -17,7 +17,7 @@
  *   }
  */
 
-import { show, type Excerpt } from "@pi/show";
+import { show, type Excerpt } from "@bds_pi/show";
 
 export interface ShowRenderer {
   render: (width: number) => string[];

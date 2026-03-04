@@ -20,14 +20,14 @@ import { createInterface } from "node:readline";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { headTail } from "@pi/output-buffer";
+import { headTail } from "@bds_pi/output-buffer";
 import {
   boxRendererWindowed,
   osc8Link,
   type BoxSection,
   type BoxLine,
   type Excerpt,
-} from "@pi/box-format";
+} from "@bds_pi/box-format";
 
 const MAX_TOTAL_MATCHES = 100;
 const MAX_COLLECT_MATCHES = 200;

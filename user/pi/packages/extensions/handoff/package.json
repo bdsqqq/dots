@@ -1,5 +1,5 @@
 {
-  "name": "@pi/handoff",
+  "name": "@bds_pi/handoff",
   "private": true,
   "main": "index.ts",
   "types": "index.ts",
@@ -7,7 +7,7 @@
     ".": "./index.ts"
   },
   "dependencies": {
-    "@pi/pi-spawn": "workspace:*",
+    "@bds_pi/pi-spawn": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {

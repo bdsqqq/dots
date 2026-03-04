@@ -27,7 +27,7 @@ import {
   boxRendererWindowed,
   textSection,
   type Excerpt,
-} from "@pi/box-format";
+} from "@bds_pi/box-format";
 
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },

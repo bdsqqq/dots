@@ -31,7 +31,7 @@ import {
   decodeBase64Content,
   addLineNumbers,
   truncate,
-} from "@pi/github-api";
+} from "@bds_pi/github-api";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CWD = process.env.PI_E2E_CWD ?? resolve(__dirname, "../../../..");

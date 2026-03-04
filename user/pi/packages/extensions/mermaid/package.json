@@ -1,5 +1,5 @@
 {
-  "name": "@pi/mermaid",
+  "name": "@bds_pi/mermaid",
   "private": true,
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

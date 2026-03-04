@@ -1,5 +1,5 @@
 {
-  "name": "@pi/permissions",
+  "name": "@bds_pi/permissions",
   "version": "0.0.0",
 
   "main": "index.ts",

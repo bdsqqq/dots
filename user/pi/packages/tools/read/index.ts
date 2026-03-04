@@ -23,9 +23,9 @@ import {
   type BoxSection,
   type BoxLine,
   type Excerpt,
-} from "@pi/box-format";
+} from "@bds_pi/box-format";
 import { Type } from "@sinclair/typebox";
-import { formatHeadTail } from "@pi/output-buffer";
+import { formatHeadTail } from "@bds_pi/output-buffer";
 
 // --- limits ---
 

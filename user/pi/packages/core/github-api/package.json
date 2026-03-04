@@ -1,5 +1,5 @@
 {
-  "name": "@pi/github-api",
+  "name": "@bds_pi/github-api",
   "version": "0.0.0",
   "private": true,
   "main": "index.ts",

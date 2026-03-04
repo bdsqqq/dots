@@ -16,14 +16,14 @@ import * as path from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, zeroUsage } from "@pi/pi-spawn";
+import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
 import {
   getFinalOutput,
   renderAgentTree,
   subAgentResult,
   type SingleResult,
-} from "@pi/sub-agent-render";
-import { headTailChars } from "@pi/output-buffer";
+} from "@bds_pi/sub-agent-render";
+import { headTailChars } from "@bds_pi/output-buffer";
 
 const MODEL = "openrouter/google/gemini-3-flash-preview";
 const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");

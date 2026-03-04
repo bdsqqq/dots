@@ -1,5 +1,5 @@
 {
-  "name": "@pi/command-palette",
+  "name": "@bds_pi/command-palette",
   "private": true,
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

@@ -17,27 +17,27 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
-import { createReadTool, NORMAL_LIMITS, COMPACT_LIMITS } from "@pi/read";
-import { createLsTool } from "@pi/ls";
-import { createEditFileTool } from "@pi/edit-file";
-import { createCreateFileTool } from "@pi/create-file";
-import { createGrepTool } from "@pi/grep";
-import { createGlobTool } from "@pi/glob";
-import { createBashTool } from "@pi/bash";
-import { createUndoEditTool } from "@pi/undo-edit";
-import { createFormatFileTool } from "@pi/format-file";
-import { createSkillTool } from "@pi/skill";
-import { createFinderTool } from "@pi/finder";
-import { createOracleTool } from "@pi/oracle";
-import { createTaskTool } from "@pi/task";
-import { createLibrarianTool } from "@pi/librarian";
-import { createCodeReviewTool } from "@pi/code-review";
-import { createLookAtTool } from "@pi/look-at";
-import { createReadWebPageTool } from "@pi/read-web-page";
-import { createWebSearchTool } from "@pi/web-search";
-import { createSearchSessionsTool } from "@pi/search-sessions";
-import { createReadSessionTool } from "@pi/read-session";
-import { readAgentPrompt } from "@pi/pi-spawn";
+import { createReadTool, NORMAL_LIMITS, COMPACT_LIMITS } from "@bds_pi/read";
+import { createLsTool } from "@bds_pi/ls";
+import { createEditFileTool } from "@bds_pi/edit-file";
+import { createCreateFileTool } from "@bds_pi/create-file";
+import { createGrepTool } from "@bds_pi/grep";
+import { createGlobTool } from "@bds_pi/glob";
+import { createBashTool } from "@bds_pi/bash";
+import { createUndoEditTool } from "@bds_pi/undo-edit";
+import { createFormatFileTool } from "@bds_pi/format-file";
+import { createSkillTool } from "@bds_pi/skill";
+import { createFinderTool } from "@bds_pi/finder";
+import { createOracleTool } from "@bds_pi/oracle";
+import { createTaskTool } from "@bds_pi/task";
+import { createLibrarianTool } from "@bds_pi/librarian";
+import { createCodeReviewTool } from "@bds_pi/code-review";
+import { createLookAtTool } from "@bds_pi/look-at";
+import { createReadWebPageTool } from "@bds_pi/read-web-page";
+import { createWebSearchTool } from "@bds_pi/web-search";
+import { createSearchSessionsTool } from "@bds_pi/search-sessions";
+import { createReadSessionTool } from "@bds_pi/read-session";
+import { readAgentPrompt } from "@bds_pi/pi-spawn";
 import {
   createReadGithubTool,
   createSearchGithubTool,
@@ -46,16 +46,16 @@ import {
   createGlobGithubTool,
   createCommitSearchTool,
   createDiffTool,
-} from "@pi/github";
+} from "@bds_pi/github";
 
-export { withFileLock } from "@pi/mutex";
+export { withFileLock } from "@bds_pi/mutex";
 export {
   saveChange,
   loadChanges,
   revertChange,
   findLatestChange,
   simpleDiff,
-} from "@pi/file-tracker";
+} from "@bds_pi/file-tracker";
 
 export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
   const snippet = (tool.description?.split("\n\n")[0] ?? "").trim();

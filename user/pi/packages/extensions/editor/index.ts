@@ -23,13 +23,13 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import { boxBorderLR, boxRow } from "@pi/box-chrome";
+import { boxBorderLR, boxRow } from "@bds_pi/box-chrome";
 import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { hasToolCost } from "@pi/tool-cost";
+import { hasToolCost } from "@bds_pi/tool-cost";
 
 const execFileAsync = promisify(execFile);
 

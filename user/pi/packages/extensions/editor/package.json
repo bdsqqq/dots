@@ -1,5 +1,5 @@
 {
-  "name": "@pi/editor",
+  "name": "@bds_pi/editor",
   "private": true,
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
