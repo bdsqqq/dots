@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "@bds_pi/bash": "workspace:*",
+    "@bds_pi/prompt-patch": "workspace:*",
     "@bds_pi/glob": "workspace:*",
     "@bds_pi/github": "workspace:*",
     "@bds_pi/github-api": "workspace:*",

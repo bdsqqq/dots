@@ -104,6 +104,12 @@
         "vitest": "^3.0.0",
       },
     },
+    "packages/core/prompt-patch": {
+      "name": "@bds_pi/prompt-patch",
+      "devDependencies": {
+        "@mariozechner/pi-coding-agent": "catalog:",
+      },
+    },
     "packages/core/show": {
       "name": "@bds_pi/show",
       "version": "0.0.0",
@@ -233,6 +239,7 @@
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/permissions": "workspace:*",
         "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/read": "workspace:*",
         "@bds_pi/read-session": "workspace:*",
         "@bds_pi/read-web-page": "workspace:*",
@@ -706,6 +713,8 @@
     "@bds_pi/permissions": ["@bds_pi/permissions@workspace:packages/core/permissions"],
 
     "@bds_pi/pi-spawn": ["@bds_pi/pi-spawn@workspace:packages/core/pi-spawn"],
+
+    "@bds_pi/prompt-patch": ["@bds_pi/prompt-patch@workspace:packages/core/prompt-patch"],
 
     "@bds_pi/read": ["@bds_pi/read@workspace:packages/tools/read"],
 

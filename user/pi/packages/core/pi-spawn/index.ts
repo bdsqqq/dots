@@ -159,7 +159,6 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
     const spawnEnv: Record<string, string | undefined> = {
       ...process.env,
-      PI_READ_COMPACT: "1",
     };
     if (config.extensionTools !== undefined) {
       if (config.extensionTools.length === 0) {
