@@ -12,8 +12,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
@@ -135,4 +136,8 @@ export function createCreateFileTool(): ToolDefinition {
       });
     },
   };
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createCreateFileTool()));
 }

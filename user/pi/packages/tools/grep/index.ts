@@ -17,8 +17,9 @@ import { spawn } from "node:child_process";
 import * as path from "node:path";
 import * as os from "node:os";
 import { createInterface } from "node:readline";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
 import { headTail } from "@bds_pi/output-buffer";
 import {
@@ -530,4 +531,8 @@ export function createGrepTool(): ToolDefinition {
       );
     },
   };
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createGrepTool()));
 }

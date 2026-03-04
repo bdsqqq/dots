@@ -13,8 +13,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
 import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
 import {
@@ -460,4 +461,8 @@ export function createReadSessionTool(
       return container;
     },
   };
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createReadSessionTool()));
 }

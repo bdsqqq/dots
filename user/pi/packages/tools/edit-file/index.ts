@@ -18,8 +18,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   formatBoxesWindowed,
   osc8Link,
@@ -602,4 +603,8 @@ export function createEditFileTool(): ToolDefinition {
       };
     },
   };
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createEditFileTool()));
 }

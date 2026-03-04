@@ -14,10 +14,14 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
+import { piSpawn, readAgentPrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
   renderAgentTree,
@@ -202,4 +206,10 @@ export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
       return container;
     },
   };
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createOracleTool({
+    systemPrompt: readAgentPrompt("agent.amp.oracle.md"),
+  })));
 }

@@ -270,6 +270,7 @@
         "@bds_pi/mutex": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/permissions": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/read": "workspace:*",
         "@bds_pi/tui": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
@@ -285,6 +286,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -301,6 +303,7 @@
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -317,6 +320,7 @@
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -331,6 +335,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -347,6 +352,7 @@
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -362,6 +368,7 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/github-api": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -376,6 +383,7 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -390,6 +398,7 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -403,6 +412,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -417,6 +427,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -431,6 +442,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -445,6 +457,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -460,6 +473,7 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -474,6 +488,7 @@
       "dependencies": {
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -491,6 +506,7 @@
         "@bds_pi/html-to-md": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -505,6 +521,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -518,6 +535,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -531,6 +549,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -547,6 +566,7 @@
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -561,6 +581,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/tool-cost": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },

@@ -18,7 +18,8 @@
 import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   boxRendererWindowed,
   type BoxSection,
@@ -360,4 +361,8 @@ async function runCommand(
       }
     });
   });
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createBashTool()));
 }

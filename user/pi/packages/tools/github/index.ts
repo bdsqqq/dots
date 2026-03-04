@@ -12,8 +12,9 @@
  *   list_repositories, glob_github, commit_search, diff
  */
 
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ToolDefinition, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
 import {
   parseRepoUrl,
@@ -970,4 +971,16 @@ function matchGlob(path: string, pattern: string): boolean {
   } catch {
     return path.includes(pattern.replace(/[*?]/g, ""));
   }
+}
+
+// --- self-registering extension ---
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createReadGithubTool()));
+  pi.registerTool(withPromptPatch(createSearchGithubTool()));
+  pi.registerTool(withPromptPatch(createListDirectoryGithubTool()));
+  pi.registerTool(withPromptPatch(createListRepositoriesTool()));
+  pi.registerTool(withPromptPatch(createGlobGithubTool()));
+  pi.registerTool(withPromptPatch(createCommitSearchTool()));
+  pi.registerTool(withPromptPatch(createDiffTool()));
 }

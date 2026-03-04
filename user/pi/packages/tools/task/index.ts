@@ -14,8 +14,9 @@
  * the task prompt itself contains all necessary context and instructions.
  */
 
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
 import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
 import {
@@ -177,4 +178,8 @@ export function createTaskTool(): ToolDefinition {
       return container;
     },
   };
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createTaskTool()));
 }

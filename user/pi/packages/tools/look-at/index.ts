@@ -12,10 +12,14 @@
  * screenshots, two versions of a diagram).
  */
 
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
+import { piSpawn, readAgentPrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
   renderAgentTree,
@@ -213,4 +217,10 @@ export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
       return container;
     },
   };
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createLookAtTool({
+    systemPrompt: readAgentPrompt("prompt.amp.look-at.md"),
+  })));
 }

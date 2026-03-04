@@ -4,7 +4,11 @@
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
   "dependencies": {
+    "@bds_pi/prompt-patch": "workspace:*",
     "@bds_pi/file-tracker": "workspace:*",
     "@bds_pi/mutex": "workspace:*",
     "@bds_pi/read": "workspace:*",
