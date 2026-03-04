@@ -1,8 +1,11 @@
 {
-  "name": "editor",
+  "name": "@pi/mermaid",
   "private": true,
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "beautiful-mermaid": "^1.1.3"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "catalog:",

@@ -19,7 +19,7 @@ import { describe, it, expect, afterAll } from "vitest";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CWD = resolve(__dirname, "../../../../..");
+const CWD = resolve(__dirname, "../../../../../..");
 const ENABLED = process.env.PI_E2E === "1";
 const E2E_MODEL =
   process.env.PI_E2E_MODEL ?? "huggingface/moonshotai/Kimi-K2.5";

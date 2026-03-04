@@ -13,78 +13,6 @@
         "vitest": "^3.0.0",
       },
     },
-    "extensions/command-palette": {
-      "name": "command-palette",
-      "devDependencies": {
-        "@mariozechner/pi-coding-agent": "catalog:",
-        "@mariozechner/pi-tui": "catalog:",
-      },
-    },
-    "extensions/editor": {
-      "name": "editor",
-      "devDependencies": {
-        "@mariozechner/pi-coding-agent": "catalog:",
-        "@mariozechner/pi-tui": "catalog:",
-      },
-    },
-    "extensions/mermaid": {
-      "name": "mermaid",
-      "dependencies": {
-        "beautiful-mermaid": "^1.1.3",
-      },
-      "devDependencies": {
-        "@mariozechner/pi-coding-agent": "catalog:",
-        "@mariozechner/pi-tui": "catalog:",
-      },
-    },
-    "extensions/tools": {
-      "name": "tools",
-      "dependencies": {
-        "@pi/bash": "workspace:*",
-        "@pi/box-chrome": "workspace:*",
-        "@pi/box-format": "workspace:*",
-        "@pi/code-review": "workspace:*",
-        "@pi/create-file": "workspace:*",
-        "@pi/edit-file": "workspace:*",
-        "@pi/file-tracker": "workspace:*",
-        "@pi/finder": "workspace:*",
-        "@pi/format-file": "workspace:*",
-        "@pi/github": "workspace:*",
-        "@pi/github-api": "workspace:*",
-        "@pi/glob": "workspace:*",
-        "@pi/grep": "workspace:*",
-        "@pi/html-to-md": "workspace:*",
-        "@pi/interpolate": "workspace:*",
-        "@pi/librarian": "workspace:*",
-        "@pi/look-at": "workspace:*",
-        "@pi/ls": "workspace:*",
-        "@pi/mutex": "workspace:*",
-        "@pi/oracle": "workspace:*",
-        "@pi/output-buffer": "workspace:*",
-        "@pi/permissions": "workspace:*",
-        "@pi/pi-spawn": "workspace:*",
-        "@pi/read": "workspace:*",
-        "@pi/read-session": "workspace:*",
-        "@pi/read-web-page": "workspace:*",
-        "@pi/search-sessions": "workspace:*",
-        "@pi/show": "workspace:*",
-        "@pi/show-renderer": "workspace:*",
-        "@pi/skill": "workspace:*",
-        "@pi/sub-agent-render": "workspace:*",
-        "@pi/task": "workspace:*",
-        "@pi/tool-cost": "workspace:*",
-        "@pi/tui": "workspace:*",
-        "@pi/undo-edit": "workspace:*",
-        "@pi/web-search": "workspace:*",
-        "@sinclair/typebox": "^0.34.0",
-        "cheerio": "^1.0.0",
-        "diff": "^8.0.0",
-      },
-      "devDependencies": {
-        "@mariozechner/pi-coding-agent": "catalog:",
-        "@mariozechner/pi-tui": "catalog:",
-      },
-    },
     "packages/core/agents-md": {
       "name": "@pi/agents-md",
       "version": "0.0.0",
@@ -222,11 +150,35 @@
         "vitest": "*",
       },
     },
+    "packages/extensions/command-palette": {
+      "name": "@pi/command-palette",
+      "devDependencies": {
+        "@mariozechner/pi-coding-agent": "catalog:",
+        "@mariozechner/pi-tui": "catalog:",
+      },
+    },
+    "packages/extensions/editor": {
+      "name": "@pi/editor",
+      "devDependencies": {
+        "@mariozechner/pi-coding-agent": "catalog:",
+        "@mariozechner/pi-tui": "catalog:",
+      },
+    },
     "packages/extensions/handoff": {
       "name": "@pi/handoff",
       "dependencies": {
         "@pi/pi-spawn": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
+      },
+      "devDependencies": {
+        "@mariozechner/pi-coding-agent": "catalog:",
+        "@mariozechner/pi-tui": "catalog:",
+      },
+    },
+    "packages/extensions/mermaid": {
+      "name": "@pi/mermaid",
+      "dependencies": {
+        "beautiful-mermaid": "^1.1.3",
       },
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
@@ -253,6 +205,54 @@
       "name": "@pi/tool-harness",
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
+      },
+    },
+    "packages/extensions/tools": {
+      "name": "@pi/tools",
+      "dependencies": {
+        "@pi/bash": "workspace:*",
+        "@pi/box-chrome": "workspace:*",
+        "@pi/box-format": "workspace:*",
+        "@pi/code-review": "workspace:*",
+        "@pi/create-file": "workspace:*",
+        "@pi/edit-file": "workspace:*",
+        "@pi/file-tracker": "workspace:*",
+        "@pi/finder": "workspace:*",
+        "@pi/format-file": "workspace:*",
+        "@pi/github": "workspace:*",
+        "@pi/github-api": "workspace:*",
+        "@pi/glob": "workspace:*",
+        "@pi/grep": "workspace:*",
+        "@pi/html-to-md": "workspace:*",
+        "@pi/interpolate": "workspace:*",
+        "@pi/librarian": "workspace:*",
+        "@pi/look-at": "workspace:*",
+        "@pi/ls": "workspace:*",
+        "@pi/mutex": "workspace:*",
+        "@pi/oracle": "workspace:*",
+        "@pi/output-buffer": "workspace:*",
+        "@pi/permissions": "workspace:*",
+        "@pi/pi-spawn": "workspace:*",
+        "@pi/read": "workspace:*",
+        "@pi/read-session": "workspace:*",
+        "@pi/read-web-page": "workspace:*",
+        "@pi/search-sessions": "workspace:*",
+        "@pi/show": "workspace:*",
+        "@pi/show-renderer": "workspace:*",
+        "@pi/skill": "workspace:*",
+        "@pi/sub-agent-render": "workspace:*",
+        "@pi/task": "workspace:*",
+        "@pi/tool-cost": "workspace:*",
+        "@pi/tui": "workspace:*",
+        "@pi/undo-edit": "workspace:*",
+        "@pi/web-search": "workspace:*",
+        "@sinclair/typebox": "^0.34.0",
+        "cheerio": "^1.0.0",
+        "diff": "^8.0.0",
+      },
+      "devDependencies": {
+        "@mariozechner/pi-coding-agent": "catalog:",
+        "@mariozechner/pi-tui": "catalog:",
       },
     },
     "packages/tools/bash": {
@@ -851,9 +851,13 @@
 
     "@pi/code-review": ["@pi/code-review@workspace:packages/tools/code-review"],
 
+    "@pi/command-palette": ["@pi/command-palette@workspace:packages/extensions/command-palette"],
+
     "@pi/create-file": ["@pi/create-file@workspace:packages/tools/create-file"],
 
     "@pi/edit-file": ["@pi/edit-file@workspace:packages/tools/edit-file"],
+
+    "@pi/editor": ["@pi/editor@workspace:packages/extensions/editor"],
 
     "@pi/file-tracker": ["@pi/file-tracker@workspace:packages/core/file-tracker"],
 
@@ -880,6 +884,8 @@
     "@pi/look-at": ["@pi/look-at@workspace:packages/tools/look-at"],
 
     "@pi/ls": ["@pi/ls@workspace:packages/tools/ls"],
+
+    "@pi/mermaid": ["@pi/mermaid@workspace:packages/extensions/mermaid"],
 
     "@pi/mutex": ["@pi/mutex@workspace:packages/core/mutex"],
 
@@ -916,6 +922,8 @@
     "@pi/tool-cost": ["@pi/tool-cost@workspace:packages/core/tool-cost"],
 
     "@pi/tool-harness": ["@pi/tool-harness@workspace:packages/extensions/tool-harness"],
+
+    "@pi/tools": ["@pi/tools@workspace:packages/extensions/tools"],
 
     "@pi/tui": ["@pi/tui@workspace:packages/core/tui"],
 
@@ -1187,8 +1195,6 @@
 
     "color-name": ["color-name@1.1.4", "", {}, "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA=="],
 
-    "command-palette": ["command-palette@workspace:extensions/command-palette"],
-
     "cross-spawn": ["cross-spawn@7.0.6", "", { "dependencies": { "path-key": "^3.1.0", "shebang-command": "^2.0.0", "which": "^2.0.1" } }, "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA=="],
 
     "css-select": ["css-select@5.2.2", "", { "dependencies": { "boolbase": "^1.0.0", "css-what": "^6.1.0", "domhandler": "^5.0.2", "domutils": "^3.0.1", "nth-check": "^2.0.1" } }, "sha512-TizTzUddG/xYLA3NXodFM0fSbNizXjOKhqiQQwvhlspadZokn1KDy0NZFS0wuEubIYAV5/c1/lAr0TaaFXEXzw=="],
@@ -1216,8 +1222,6 @@
     "eastasianwidth": ["eastasianwidth@0.2.0", "", {}, "sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA=="],
 
     "ecdsa-sig-formatter": ["ecdsa-sig-formatter@1.0.11", "", { "dependencies": { "safe-buffer": "^5.0.1" } }, "sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ=="],
-
-    "editor": ["editor@workspace:extensions/editor"],
 
     "elkjs": ["elkjs@0.11.0", "", {}, "sha512-u4J8h9mwEDaYMqo0RYJpqNMFDoMK7f+pu4GjcV+N8jIC7TRdORgzkfSjTJemhqONFfH6fBI3wpysgWbhgVWIXw=="],
 
@@ -1354,8 +1358,6 @@
     "make-dir": ["make-dir@4.0.0", "", { "dependencies": { "semver": "^7.5.3" } }, "sha512-hXdUTZYIVOt1Ex//jAQi+wTZZpUpwBj/0QsOzqegb3rGMMeJiSEu5xLHnYfBrRV4RH2+OCSOO95Is/7x1WJ4bw=="],
 
     "marked": ["marked@15.0.12", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-8dD6FusOQSrpv9Z1rdNMdlSgQOIP880DHqnohobOmYLElGEqAL/JvxvuxZO16r4HtjTlfPRDC1hbvxC9dPN2nA=="],
-
-    "mermaid": ["mermaid@workspace:extensions/mermaid"],
 
     "mime-db": ["mime-db@1.54.0", "", {}, "sha512-aU5EJuIN2WDemCcAp2vFBfp/m4EAhWJnUNSSw0ixs7/kXbd6Pg64EmwJkNdFhB8aWt1sH2CTXrLxo/iAGV3oPQ=="],
 
@@ -1506,8 +1508,6 @@
     "tinyspy": ["tinyspy@4.0.4", "", {}, "sha512-azl+t0z7pw/z958Gy9svOTuzqIk6xq+NSheJzn5MMWtWTFywIacg2wUlzKFGtt3cthx0r2SxMK0yzJOR0IES7Q=="],
 
     "token-types": ["token-types@6.1.2", "", { "dependencies": { "@borewit/text-codec": "^0.2.1", "@tokenizer/token": "^0.3.0", "ieee754": "^1.2.1" } }, "sha512-dRXchy+C0IgK8WPC6xvCHFRIWYUbqqdEIKPaKo/AcTUNzwLTK6AH7RjdLWsEZcAN/TBdtfUw3PYEgPr5VPr6ww=="],
-
-    "tools": ["tools@workspace:extensions/tools"],
 
     "ts-algebra": ["ts-algebra@2.0.0", "", {}, "sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw=="],
 
