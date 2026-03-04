@@ -5,7 +5,7 @@
  * extension into a reusable function. each dedicated tool (finder,
  * oracle, Task) calls piSpawn() with its own config.
  *
- * uses shared interpolation from ./interpolate for template variables
+ * uses shared interpolation from @pi/interpolate for template variables
  * ({cwd}, {roots}, {date}, etc.) in system prompts.
  */
 
