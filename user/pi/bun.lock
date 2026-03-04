@@ -49,6 +49,7 @@
         "@pi/mutex": "workspace:*",
         "@pi/output-buffer": "workspace:*",
         "@pi/permissions": "workspace:*",
+        "@pi/pi-spawn": "workspace:*",
         "@pi/show": "workspace:*",
         "@pi/show-renderer": "workspace:*",
         "@pi/tool-cost": "workspace:*",
@@ -139,6 +140,16 @@
     "packages/core/permissions": {
       "name": "@pi/permissions",
       "version": "0.0.0",
+      "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
+    "packages/core/pi-spawn": {
+      "name": "@pi/pi-spawn",
+      "version": "0.0.0",
+      "dependencies": {
+        "@pi/interpolate": "workspace:*",
+      },
       "devDependencies": {
         "vitest": "^3.0.0",
       },
@@ -475,6 +486,8 @@
     "@pi/output-buffer": ["@pi/output-buffer@workspace:packages/core/output-buffer"],
 
     "@pi/permissions": ["@pi/permissions@workspace:packages/core/permissions"],
+
+    "@pi/pi-spawn": ["@pi/pi-spawn@workspace:packages/core/pi-spawn"],
 
     "@pi/show": ["@pi/show@workspace:packages/core/show"],
 

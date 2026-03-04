@@ -37,7 +37,7 @@ import { createReadWebPageTool } from "./read-web-page";
 import { createWebSearchTool } from "./web-search";
 import { createSearchSessionsTool } from "./search-sessions";
 import { createReadSessionTool } from "./read-session";
-import { readAgentPrompt } from "./lib/pi-spawn";
+import { readAgentPrompt } from "@pi/pi-spawn";
 import {
   createReadGithubTool,
   createSearchGithubTool,

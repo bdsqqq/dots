@@ -15,7 +15,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { htmlToMarkdown } from "@pi/html-to-md";
-import { piSpawn, zeroUsage } from "./lib/pi-spawn";
+import { piSpawn, zeroUsage } from "@pi/pi-spawn";
 import {
   getFinalOutput,
   renderAgentTree,

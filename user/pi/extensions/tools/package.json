@@ -15,6 +15,7 @@
     "@pi/mutex": "workspace:*",
     "@pi/output-buffer": "workspace:*",
     "@pi/permissions": "workspace:*",
+    "@pi/pi-spawn": "workspace:*",
     "@pi/show": "workspace:*",
     "@pi/show-renderer": "workspace:*",
     "@pi/tool-cost": "workspace:*",
