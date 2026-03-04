@@ -23,7 +23,7 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vitest";
 import {
   parseRepoUrl,
   repoSlug,

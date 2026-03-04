@@ -7,7 +7,7 @@
  * run: bun test user/pi/extensions/tools/index.test.ts
  */
 
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vitest";
 import { withPromptPatch } from "./index";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";

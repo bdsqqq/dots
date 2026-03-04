@@ -16,11 +16,19 @@
  * set PI_E2E_MODEL to override parent model (defaults to minimax-m2.5).
  */
 
-import { spawn as nodeSpawn } from "node:child_process";
+import { spawn as nodeSpawn, spawnSync } from "node:child_process";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { unlinkSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { describe, it, expect, afterAll } from "bun:test";
+import {
+  unlinkSync,
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+} from "node:fs";
+import { describe, it, expect, afterAll } from "vitest";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // --- constants ---
 
@@ -34,8 +42,8 @@ const FIXTURES_DIR = join(__dirname, "__fixtures__", "e2e");
 
 let tmuxAvailable = false;
 try {
-  const r = Bun.spawnSync(["tmux", "list-sessions"]);
-  tmuxAvailable = r.exitCode === 0;
+  const r = spawnSync("tmux", ["list-sessions"]);
+  tmuxAvailable = r.status === 0;
 } catch {}
 
 // --- types ---
@@ -226,17 +234,16 @@ function getCosts(events: PiEvent[]): { parent: number; subAgent: number } {
 // --- tmux helpers ---
 
 function tmuxSpawn(name: string, cmd: string) {
-  Bun.spawnSync(["tmux", "new-window", "-d", "-n", name, cmd]);
+  spawnSync("tmux", ["new-window", "-d", "-n", name, cmd]);
 }
 
 function tmuxSend(target: string, text: string) {
   // send text then Enter — tmux send-keys treats each arg as a key/string
-  Bun.spawnSync(["tmux", "send-keys", "-t", target, text, "Enter"]);
+  spawnSync("tmux", ["send-keys", "-t", target, text, "Enter"]);
 }
 
 function tmuxCapture(target: string): string {
-  const r = Bun.spawnSync([
-    "tmux",
+  const r = spawnSync("tmux", [
     "capture-pane",
     "-p",
     "-S",
@@ -244,11 +251,11 @@ function tmuxCapture(target: string): string {
     "-t",
     target,
   ]);
-  return new TextDecoder().decode(r.stdout);
+  return r.stdout.toString();
 }
 
 function tmuxKill(target: string) {
-  Bun.spawnSync(["tmux", "kill-window", "-t", target]);
+  spawnSync("tmux", ["kill-window", "-t", target]);
 }
 
 async function waitForPane(
@@ -264,7 +271,7 @@ async function waitForPane(
       last = tmuxCapture(target);
       if (pattern.test(last)) return last;
     } catch {}
-    await Bun.sleep(pollMs);
+    await sleep(pollMs);
   }
   return last;
 }
@@ -278,7 +285,7 @@ async function waitForIdle(
   const spinners = /Working|thinking\.\.\.|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    await Bun.sleep(pollMs);
+    await sleep(pollMs);
     const capture = tmuxCapture(target);
     const tail = capture.split("\n").slice(-5).join("\n");
     if (!spinners.test(tail)) return capture;
@@ -416,7 +423,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
 
     // verify actual file on disk
     expect(existsSync(testFile)).toBe(true);
-    const content = await Bun.file(testFile).text();
+    const content = readFileSync(testFile, "utf-8");
     expect(content.trim()).toBe(testContent);
 
     // cleanup
@@ -644,8 +651,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
 
     afterAll(async () => {
       try {
-        Bun.spawnSync(["tmux", "send-keys", "-t", windowName, "C-c", "C-c"]);
-        await Bun.sleep(1000);
+        spawnSync("tmux", ["send-keys", "-t", windowName, "C-c", "C-c"]);
+        await sleep(1000);
       } catch {}
       try {
         tmuxKill(windowName);
@@ -655,7 +662,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     it("finder: tree renders with icons, connectors, and usage stats", async () => {
       const t0 = Date.now();
       tmuxSpawn(windowName, `cd ${CWD} && pi --no-session`);
-      await Bun.sleep(4000);
+      await sleep(4000);
 
       tmuxSend(
         windowName,
