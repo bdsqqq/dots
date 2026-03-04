@@ -410,3 +410,60 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
     },
   };
 }
+
+// inline tests
+if (import.meta.vitest) {
+  const { describe, it, expect } = import.meta.vitest;
+
+  describe("expandPath", () => {
+    it("strips @ prefix", () => {
+      expect(expandPath("@/foo/bar")).toBe("/foo/bar");
+    });
+
+    it("expands ~ to homedir", () => {
+      expect(expandPath("~")).toBe(os.homedir());
+    });
+
+    it("expands ~/ to homedir + path", () => {
+      expect(expandPath("~/foo")).toBe(os.homedir() + "/foo");
+    });
+
+    it("returns unchanged path without prefix", () => {
+      expect(expandPath("/absolute/path")).toBe("/absolute/path");
+      expect(expandPath("relative/path")).toBe("relative/path");
+    });
+  });
+
+  describe("resolveToAbsolute", () => {
+    it("returns absolute paths unchanged", () => {
+      expect(resolveToAbsolute("/foo/bar", "/cwd")).toBe("/foo/bar");
+    });
+
+    it("resolves relative paths against cwd", () => {
+      expect(resolveToAbsolute("foo/bar", "/cwd")).toBe("/cwd/foo/bar");
+    });
+
+    it("expands ~ before resolving", () => {
+      expect(resolveToAbsolute("~/foo", "/cwd")).toBe(os.homedir() + "/foo");
+    });
+  });
+
+  describe("isSecretFile", () => {
+    it("blocks .env files", () => {
+      expect(isSecretFile("/home/user/.env")).toBe(true);
+      expect(isSecretFile("/home/user/.env.local")).toBe(true);
+      expect(isSecretFile("/home/user/.env.production")).toBe(true);
+    });
+
+    it("allows .env.example and friends", () => {
+      expect(isSecretFile("/home/user/.env.example")).toBe(false);
+      expect(isSecretFile("/home/user/.env.sample")).toBe(false);
+      expect(isSecretFile("/home/user/.env.template")).toBe(false);
+    });
+
+    it("allows other files", () => {
+      expect(isSecretFile("/home/user/config.json")).toBe(false);
+      expect(isSecretFile("/home/user/README.md")).toBe(false);
+    });
+  });
+}

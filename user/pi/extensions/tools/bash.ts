@@ -28,7 +28,7 @@ import { getText } from "@pi/tui";
 import { Type } from "@sinclair/typebox";
 import { withFileLock } from "@pi/mutex";
 import { evaluatePermission, loadPermissions } from "@pi/permissions";
-import { resolveToAbsolute } from "./read";
+import { resolveToAbsolute } from "@pi/read";
 import { OutputBuffer } from "@pi/output-buffer";
 
 const HEAD_LINES = 50;
