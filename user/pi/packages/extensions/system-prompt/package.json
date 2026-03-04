@@ -1,5 +1,5 @@
 {
-  "name": "@pi/system-prompt",
+  "name": "@bds_pi/system-prompt",
   "private": true,
   "main": "index.ts",
   "types": "index.ts",
@@ -7,8 +7,8 @@
     ".": "./index.ts"
   },
   "dependencies": {
-    "@pi/pi-spawn": "workspace:*",
-    "@pi/interpolate": "workspace:*"
+    "@bds_pi/pi-spawn": "workspace:*",
+    "@bds_pi/interpolate": "workspace:*"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "catalog:"

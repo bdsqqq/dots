@@ -1,5 +1,5 @@
 {
-  "name": "@pi/html-to-md",
+  "name": "@bds_pi/html-to-md",
   "version": "0.0.0",
   "private": true,
   "main": "index.ts",

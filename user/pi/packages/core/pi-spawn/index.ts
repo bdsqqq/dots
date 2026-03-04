@@ -5,7 +5,7 @@
  * extension into a reusable function. each dedicated tool (finder,
  * oracle, Task) calls piSpawn() with its own config.
  *
- * uses shared interpolation from @pi/interpolate for template variables
+ * uses shared interpolation from @bds_pi/interpolate for template variables
  * ({cwd}, {roots}, {date}, etc.) in system prompts.
  */
 
@@ -14,7 +14,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Message } from "@mariozechner/pi-ai";
-import { interpolatePromptVars } from "@pi/interpolate";
+import { interpolatePromptVars } from "@bds_pi/interpolate";
 
 // --- types ---
 

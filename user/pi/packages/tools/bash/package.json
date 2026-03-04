@@ -1,16 +1,16 @@
 {
-  "name": "@pi/bash",
+  "name": "@bds_pi/bash",
   "version": "0.0.1",
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
   "dependencies": {
-    "@pi/output-buffer": "workspace:*",
-    "@pi/mutex": "workspace:*",
-    "@pi/permissions": "workspace:*",
-    "@pi/read": "workspace:*",
-    "@pi/tui": "workspace:*",
-    "@pi/box-format": "workspace:*",
+    "@bds_pi/output-buffer": "workspace:*",
+    "@bds_pi/mutex": "workspace:*",
+    "@bds_pi/permissions": "workspace:*",
+    "@bds_pi/read": "workspace:*",
+    "@bds_pi/tui": "workspace:*",
+    "@bds_pi/box-format": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 {
-  "name": "@pi/file-tracker",
+  "name": "@bds_pi/file-tracker",
   "private": true,
   "main": "index.ts",
   "types": "index.ts",

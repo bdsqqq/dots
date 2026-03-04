@@ -27,11 +27,11 @@ import {
   type BoxBlock,
   type BoxLine,
   type Excerpt,
-} from "@pi/box-format";
+} from "@bds_pi/box-format";
 import { Type } from "@sinclair/typebox";
-import { saveChange, simpleDiff } from "@pi/file-tracker";
-import { withFileLock } from "@pi/mutex";
-import { resolveWithVariants } from "@pi/read";
+import { saveChange, simpleDiff } from "@bds_pi/file-tracker";
+import { withFileLock } from "@bds_pi/mutex";
+import { resolveWithVariants } from "@bds_pi/read";
 
 // --- BOM / CRLF ---
 

@@ -1,5 +1,5 @@
 {
-  "name": "@pi/box-chrome",
+  "name": "@bds_pi/box-chrome",
   "version": "0.0.1",
 
   "main": "index.ts",

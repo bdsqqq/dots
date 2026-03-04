@@ -13,8 +13,8 @@ import * as os from "node:os";
 import type { Message } from "@mariozechner/pi-ai";
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Text, TruncatedText } from "@mariozechner/pi-tui";
-import type { UsageStats } from "@pi/pi-spawn";
-import type { ToolCostDetails } from "@pi/tool-cost";
+import type { UsageStats } from "@bds_pi/pi-spawn";
+import type { ToolCostDetails } from "@bds_pi/tool-cost";
 
 // --- types ---
 

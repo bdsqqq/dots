@@ -1,5 +1,5 @@
 {
-  "name": "@pi/tool-cost",
+  "name": "@bds_pi/tool-cost",
   "version": "0.0.0",
   "private": true,
   "main": "index.ts",

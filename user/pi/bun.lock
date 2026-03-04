@@ -14,26 +14,26 @@
       },
     },
     "packages/core/agents-md": {
-      "name": "@pi/agents-md",
+      "name": "@bds_pi/agents-md",
       "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
       },
     },
     "packages/core/box-chrome": {
-      "name": "@pi/box-chrome",
+      "name": "@bds_pi/box-chrome",
       "version": "0.0.1",
       "devDependencies": {
         "vitest": "*",
       },
     },
     "packages/core/box-format": {
-      "name": "@pi/box-format",
+      "name": "@bds_pi/box-format",
       "version": "0.0.1",
       "dependencies": {
+        "@bds_pi/box-chrome": "workspace:*",
+        "@bds_pi/show": "workspace:*",
         "@mariozechner/pi-tui": "catalog:",
-        "@pi/box-chrome": "workspace:*",
-        "@pi/show": "workspace:*",
       },
       "devDependencies": {
         "@mariozechner/pi-tui": "catalog:",
@@ -41,7 +41,7 @@
       },
     },
     "packages/core/file-tracker": {
-      "name": "@pi/file-tracker",
+      "name": "@bds_pi/file-tracker",
       "dependencies": {
         "diff": "^8.0.0",
       },
@@ -50,14 +50,14 @@
       },
     },
     "packages/core/github-api": {
-      "name": "@pi/github-api",
+      "name": "@bds_pi/github-api",
       "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
       },
     },
     "packages/core/html-to-md": {
-      "name": "@pi/html-to-md",
+      "name": "@bds_pi/html-to-md",
       "version": "0.0.0",
       "dependencies": {
         "cheerio": "^1.0.0",
@@ -67,45 +67,45 @@
       },
     },
     "packages/core/interpolate": {
-      "name": "@pi/interpolate",
+      "name": "@bds_pi/interpolate",
       "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
       },
     },
     "packages/core/mutex": {
-      "name": "@pi/mutex",
+      "name": "@bds_pi/mutex",
       "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
       },
     },
     "packages/core/output-buffer": {
-      "name": "@pi/output-buffer",
+      "name": "@bds_pi/output-buffer",
       "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
       },
     },
     "packages/core/permissions": {
-      "name": "@pi/permissions",
+      "name": "@bds_pi/permissions",
       "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
       },
     },
     "packages/core/pi-spawn": {
-      "name": "@pi/pi-spawn",
+      "name": "@bds_pi/pi-spawn",
       "version": "0.0.0",
       "dependencies": {
-        "@pi/interpolate": "workspace:*",
+        "@bds_pi/interpolate": "workspace:*",
       },
       "devDependencies": {
         "vitest": "^3.0.0",
       },
     },
     "packages/core/show": {
-      "name": "@pi/show",
+      "name": "@bds_pi/show",
       "version": "0.0.0",
       "dependencies": {
         "@mariozechner/pi-tui": "catalog:",
@@ -115,10 +115,10 @@
       },
     },
     "packages/core/show-renderer": {
-      "name": "@pi/show-renderer",
+      "name": "@bds_pi/show-renderer",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/show": "workspace:*",
+        "@bds_pi/show": "workspace:*",
       },
       "devDependencies": {
         "@mariozechner/pi-tui": "catalog:",
@@ -126,48 +126,48 @@
       },
     },
     "packages/core/sub-agent-render": {
-      "name": "@pi/sub-agent-render",
+      "name": "@bds_pi/sub-agent-render",
       "version": "0.0.0",
       "dependencies": {
-        "@pi/pi-spawn": "workspace:*",
-        "@pi/tool-cost": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/tool-cost": "workspace:*",
       },
       "devDependencies": {
         "vitest": "^3.0.0",
       },
     },
     "packages/core/tool-cost": {
-      "name": "@pi/tool-cost",
+      "name": "@bds_pi/tool-cost",
       "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
       },
     },
     "packages/core/tui": {
-      "name": "@pi/tui",
+      "name": "@bds_pi/tui",
       "version": "0.0.1",
       "devDependencies": {
         "vitest": "*",
       },
     },
     "packages/extensions/command-palette": {
-      "name": "@pi/command-palette",
+      "name": "@bds_pi/command-palette",
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
         "@mariozechner/pi-tui": "catalog:",
       },
     },
     "packages/extensions/editor": {
-      "name": "@pi/editor",
+      "name": "@bds_pi/editor",
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
         "@mariozechner/pi-tui": "catalog:",
       },
     },
     "packages/extensions/handoff": {
-      "name": "@pi/handoff",
+      "name": "@bds_pi/handoff",
       "dependencies": {
-        "@pi/pi-spawn": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -176,7 +176,7 @@
       },
     },
     "packages/extensions/mermaid": {
-      "name": "@pi/mermaid",
+      "name": "@bds_pi/mermaid",
       "dependencies": {
         "beautiful-mermaid": "^1.1.3",
       },
@@ -186,66 +186,66 @@
       },
     },
     "packages/extensions/session-name": {
-      "name": "@pi/session-name",
+      "name": "@bds_pi/session-name",
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
       },
     },
     "packages/extensions/system-prompt": {
-      "name": "@pi/system-prompt",
+      "name": "@bds_pi/system-prompt",
       "dependencies": {
-        "@pi/interpolate": "workspace:*",
-        "@pi/pi-spawn": "workspace:*",
+        "@bds_pi/interpolate": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
       },
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
       },
     },
     "packages/extensions/tool-harness": {
-      "name": "@pi/tool-harness",
+      "name": "@bds_pi/tool-harness",
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
       },
     },
     "packages/extensions/tools": {
-      "name": "@pi/tools",
+      "name": "@bds_pi/tools",
       "dependencies": {
-        "@pi/bash": "workspace:*",
-        "@pi/box-chrome": "workspace:*",
-        "@pi/box-format": "workspace:*",
-        "@pi/code-review": "workspace:*",
-        "@pi/create-file": "workspace:*",
-        "@pi/edit-file": "workspace:*",
-        "@pi/file-tracker": "workspace:*",
-        "@pi/finder": "workspace:*",
-        "@pi/format-file": "workspace:*",
-        "@pi/github": "workspace:*",
-        "@pi/github-api": "workspace:*",
-        "@pi/glob": "workspace:*",
-        "@pi/grep": "workspace:*",
-        "@pi/html-to-md": "workspace:*",
-        "@pi/interpolate": "workspace:*",
-        "@pi/librarian": "workspace:*",
-        "@pi/look-at": "workspace:*",
-        "@pi/ls": "workspace:*",
-        "@pi/mutex": "workspace:*",
-        "@pi/oracle": "workspace:*",
-        "@pi/output-buffer": "workspace:*",
-        "@pi/permissions": "workspace:*",
-        "@pi/pi-spawn": "workspace:*",
-        "@pi/read": "workspace:*",
-        "@pi/read-session": "workspace:*",
-        "@pi/read-web-page": "workspace:*",
-        "@pi/search-sessions": "workspace:*",
-        "@pi/show": "workspace:*",
-        "@pi/show-renderer": "workspace:*",
-        "@pi/skill": "workspace:*",
-        "@pi/sub-agent-render": "workspace:*",
-        "@pi/task": "workspace:*",
-        "@pi/tool-cost": "workspace:*",
-        "@pi/tui": "workspace:*",
-        "@pi/undo-edit": "workspace:*",
-        "@pi/web-search": "workspace:*",
+        "@bds_pi/bash": "workspace:*",
+        "@bds_pi/box-chrome": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/code-review": "workspace:*",
+        "@bds_pi/create-file": "workspace:*",
+        "@bds_pi/edit-file": "workspace:*",
+        "@bds_pi/file-tracker": "workspace:*",
+        "@bds_pi/finder": "workspace:*",
+        "@bds_pi/format-file": "workspace:*",
+        "@bds_pi/github": "workspace:*",
+        "@bds_pi/github-api": "workspace:*",
+        "@bds_pi/glob": "workspace:*",
+        "@bds_pi/grep": "workspace:*",
+        "@bds_pi/html-to-md": "workspace:*",
+        "@bds_pi/interpolate": "workspace:*",
+        "@bds_pi/librarian": "workspace:*",
+        "@bds_pi/look-at": "workspace:*",
+        "@bds_pi/ls": "workspace:*",
+        "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/oracle": "workspace:*",
+        "@bds_pi/output-buffer": "workspace:*",
+        "@bds_pi/permissions": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/read": "workspace:*",
+        "@bds_pi/read-session": "workspace:*",
+        "@bds_pi/read-web-page": "workspace:*",
+        "@bds_pi/search-sessions": "workspace:*",
+        "@bds_pi/show": "workspace:*",
+        "@bds_pi/show-renderer": "workspace:*",
+        "@bds_pi/skill": "workspace:*",
+        "@bds_pi/sub-agent-render": "workspace:*",
+        "@bds_pi/task": "workspace:*",
+        "@bds_pi/tool-cost": "workspace:*",
+        "@bds_pi/tui": "workspace:*",
+        "@bds_pi/undo-edit": "workspace:*",
+        "@bds_pi/web-search": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
         "cheerio": "^1.0.0",
         "diff": "^8.0.0",
@@ -256,15 +256,15 @@
       },
     },
     "packages/tools/bash": {
-      "name": "@pi/bash",
+      "name": "@bds_pi/bash",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/mutex": "workspace:*",
-        "@pi/output-buffer": "workspace:*",
-        "@pi/permissions": "workspace:*",
-        "@pi/read": "workspace:*",
-        "@pi/tui": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/output-buffer": "workspace:*",
+        "@bds_pi/permissions": "workspace:*",
+        "@bds_pi/read": "workspace:*",
+        "@bds_pi/tui": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -274,11 +274,11 @@
       },
     },
     "packages/tools/code-review": {
-      "name": "@pi/code-review",
+      "name": "@bds_pi/code-review",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/pi-spawn": "workspace:*",
-        "@pi/sub-agent-render": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -288,13 +288,13 @@
       },
     },
     "packages/tools/create-file": {
-      "name": "@pi/create-file",
+      "name": "@bds_pi/create-file",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/file-tracker": "workspace:*",
-        "@pi/mutex": "workspace:*",
-        "@pi/read": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/file-tracker": "workspace:*",
+        "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -304,13 +304,13 @@
       },
     },
     "packages/tools/edit-file": {
-      "name": "@pi/edit-file",
+      "name": "@bds_pi/edit-file",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/file-tracker": "workspace:*",
-        "@pi/mutex": "workspace:*",
-        "@pi/read": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/file-tracker": "workspace:*",
+        "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -320,11 +320,11 @@
       },
     },
     "packages/tools/finder": {
-      "name": "@pi/finder",
+      "name": "@bds_pi/finder",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/pi-spawn": "workspace:*",
-        "@pi/sub-agent-render": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -334,13 +334,13 @@
       },
     },
     "packages/tools/format-file": {
-      "name": "@pi/format-file",
+      "name": "@bds_pi/format-file",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/file-tracker": "workspace:*",
-        "@pi/mutex": "workspace:*",
-        "@pi/read": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/file-tracker": "workspace:*",
+        "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -350,11 +350,11 @@
       },
     },
     "packages/tools/github": {
-      "name": "@pi/github",
+      "name": "@bds_pi/github",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/github-api": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/github-api": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -364,11 +364,11 @@
       },
     },
     "packages/tools/glob": {
-      "name": "@pi/glob",
+      "name": "@bds_pi/glob",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/output-buffer": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/output-buffer": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -378,11 +378,11 @@
       },
     },
     "packages/tools/grep": {
-      "name": "@pi/grep",
+      "name": "@bds_pi/grep",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/output-buffer": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/output-buffer": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -392,11 +392,11 @@
       },
     },
     "packages/tools/librarian": {
-      "name": "@pi/librarian",
+      "name": "@bds_pi/librarian",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/pi-spawn": "workspace:*",
-        "@pi/sub-agent-render": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -406,11 +406,11 @@
       },
     },
     "packages/tools/look-at": {
-      "name": "@pi/look-at",
+      "name": "@bds_pi/look-at",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/pi-spawn": "workspace:*",
-        "@pi/sub-agent-render": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -420,11 +420,11 @@
       },
     },
     "packages/tools/ls": {
-      "name": "@pi/ls",
+      "name": "@bds_pi/ls",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/read": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -434,11 +434,11 @@
       },
     },
     "packages/tools/oracle": {
-      "name": "@pi/oracle",
+      "name": "@bds_pi/oracle",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/pi-spawn": "workspace:*",
-        "@pi/sub-agent-render": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -448,11 +448,11 @@
       },
     },
     "packages/tools/read": {
-      "name": "@pi/read",
+      "name": "@bds_pi/read",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/output-buffer": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/output-buffer": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -462,12 +462,12 @@
       },
     },
     "packages/tools/read-session": {
-      "name": "@pi/read-session",
+      "name": "@bds_pi/read-session",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/output-buffer": "workspace:*",
-        "@pi/pi-spawn": "workspace:*",
-        "@pi/sub-agent-render": "workspace:*",
+        "@bds_pi/output-buffer": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -477,14 +477,14 @@
       },
     },
     "packages/tools/read-web-page": {
-      "name": "@pi/read-web-page",
+      "name": "@bds_pi/read-web-page",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/html-to-md": "workspace:*",
-        "@pi/output-buffer": "workspace:*",
-        "@pi/pi-spawn": "workspace:*",
-        "@pi/sub-agent-render": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/html-to-md": "workspace:*",
+        "@bds_pi/output-buffer": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -494,10 +494,10 @@
       },
     },
     "packages/tools/search-sessions": {
-      "name": "@pi/search-sessions",
+      "name": "@bds_pi/search-sessions",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -507,10 +507,10 @@
       },
     },
     "packages/tools/skill": {
-      "name": "@pi/skill",
+      "name": "@bds_pi/skill",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -520,11 +520,11 @@
       },
     },
     "packages/tools/task": {
-      "name": "@pi/task",
+      "name": "@bds_pi/task",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/pi-spawn": "workspace:*",
-        "@pi/sub-agent-render": "workspace:*",
+        "@bds_pi/pi-spawn": "workspace:*",
+        "@bds_pi/sub-agent-render": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -534,13 +534,13 @@
       },
     },
     "packages/tools/undo-edit": {
-      "name": "@pi/undo-edit",
+      "name": "@bds_pi/undo-edit",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/file-tracker": "workspace:*",
-        "@pi/mutex": "workspace:*",
-        "@pi/read": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/file-tracker": "workspace:*",
+        "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -550,11 +550,11 @@
       },
     },
     "packages/tools/web-search": {
-      "name": "@pi/web-search",
+      "name": "@bds_pi/web-search",
       "version": "0.0.1",
       "dependencies": {
-        "@pi/box-format": "workspace:*",
-        "@pi/tool-cost": "workspace:*",
+        "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/tool-cost": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -650,6 +650,96 @@
     "@babel/types": ["@babel/types@7.29.0", "", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A=="],
 
     "@bcoe/v8-coverage": ["@bcoe/v8-coverage@1.0.2", "", {}, "sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA=="],
+
+    "@bds_pi/agents-md": ["@bds_pi/agents-md@workspace:packages/core/agents-md"],
+
+    "@bds_pi/bash": ["@bds_pi/bash@workspace:packages/tools/bash"],
+
+    "@bds_pi/box-chrome": ["@bds_pi/box-chrome@workspace:packages/core/box-chrome"],
+
+    "@bds_pi/box-format": ["@bds_pi/box-format@workspace:packages/core/box-format"],
+
+    "@bds_pi/code-review": ["@bds_pi/code-review@workspace:packages/tools/code-review"],
+
+    "@bds_pi/command-palette": ["@bds_pi/command-palette@workspace:packages/extensions/command-palette"],
+
+    "@bds_pi/create-file": ["@bds_pi/create-file@workspace:packages/tools/create-file"],
+
+    "@bds_pi/edit-file": ["@bds_pi/edit-file@workspace:packages/tools/edit-file"],
+
+    "@bds_pi/editor": ["@bds_pi/editor@workspace:packages/extensions/editor"],
+
+    "@bds_pi/file-tracker": ["@bds_pi/file-tracker@workspace:packages/core/file-tracker"],
+
+    "@bds_pi/finder": ["@bds_pi/finder@workspace:packages/tools/finder"],
+
+    "@bds_pi/format-file": ["@bds_pi/format-file@workspace:packages/tools/format-file"],
+
+    "@bds_pi/github": ["@bds_pi/github@workspace:packages/tools/github"],
+
+    "@bds_pi/github-api": ["@bds_pi/github-api@workspace:packages/core/github-api"],
+
+    "@bds_pi/glob": ["@bds_pi/glob@workspace:packages/tools/glob"],
+
+    "@bds_pi/grep": ["@bds_pi/grep@workspace:packages/tools/grep"],
+
+    "@bds_pi/handoff": ["@bds_pi/handoff@workspace:packages/extensions/handoff"],
+
+    "@bds_pi/html-to-md": ["@bds_pi/html-to-md@workspace:packages/core/html-to-md"],
+
+    "@bds_pi/interpolate": ["@bds_pi/interpolate@workspace:packages/core/interpolate"],
+
+    "@bds_pi/librarian": ["@bds_pi/librarian@workspace:packages/tools/librarian"],
+
+    "@bds_pi/look-at": ["@bds_pi/look-at@workspace:packages/tools/look-at"],
+
+    "@bds_pi/ls": ["@bds_pi/ls@workspace:packages/tools/ls"],
+
+    "@bds_pi/mermaid": ["@bds_pi/mermaid@workspace:packages/extensions/mermaid"],
+
+    "@bds_pi/mutex": ["@bds_pi/mutex@workspace:packages/core/mutex"],
+
+    "@bds_pi/oracle": ["@bds_pi/oracle@workspace:packages/tools/oracle"],
+
+    "@bds_pi/output-buffer": ["@bds_pi/output-buffer@workspace:packages/core/output-buffer"],
+
+    "@bds_pi/permissions": ["@bds_pi/permissions@workspace:packages/core/permissions"],
+
+    "@bds_pi/pi-spawn": ["@bds_pi/pi-spawn@workspace:packages/core/pi-spawn"],
+
+    "@bds_pi/read": ["@bds_pi/read@workspace:packages/tools/read"],
+
+    "@bds_pi/read-session": ["@bds_pi/read-session@workspace:packages/tools/read-session"],
+
+    "@bds_pi/read-web-page": ["@bds_pi/read-web-page@workspace:packages/tools/read-web-page"],
+
+    "@bds_pi/search-sessions": ["@bds_pi/search-sessions@workspace:packages/tools/search-sessions"],
+
+    "@bds_pi/session-name": ["@bds_pi/session-name@workspace:packages/extensions/session-name"],
+
+    "@bds_pi/show": ["@bds_pi/show@workspace:packages/core/show"],
+
+    "@bds_pi/show-renderer": ["@bds_pi/show-renderer@workspace:packages/core/show-renderer"],
+
+    "@bds_pi/skill": ["@bds_pi/skill@workspace:packages/tools/skill"],
+
+    "@bds_pi/sub-agent-render": ["@bds_pi/sub-agent-render@workspace:packages/core/sub-agent-render"],
+
+    "@bds_pi/system-prompt": ["@bds_pi/system-prompt@workspace:packages/extensions/system-prompt"],
+
+    "@bds_pi/task": ["@bds_pi/task@workspace:packages/tools/task"],
+
+    "@bds_pi/tool-cost": ["@bds_pi/tool-cost@workspace:packages/core/tool-cost"],
+
+    "@bds_pi/tool-harness": ["@bds_pi/tool-harness@workspace:packages/extensions/tool-harness"],
+
+    "@bds_pi/tools": ["@bds_pi/tools@workspace:packages/extensions/tools"],
+
+    "@bds_pi/tui": ["@bds_pi/tui@workspace:packages/core/tui"],
+
+    "@bds_pi/undo-edit": ["@bds_pi/undo-edit@workspace:packages/tools/undo-edit"],
+
+    "@bds_pi/web-search": ["@bds_pi/web-search@workspace:packages/tools/web-search"],
 
     "@borewit/text-codec": ["@borewit/text-codec@0.2.1", "", {}, "sha512-k7vvKPbf7J2fZ5klGRD9AeKfUvojuZIQ3BT5u7Jfv+puwXkUBUT5PVyMDfJZpy30CBDXGMgw7fguK/lpOMBvgw=="],
 
@@ -840,96 +930,6 @@
     "@oxlint/binding-win32-ia32-msvc": ["@oxlint/binding-win32-ia32-msvc@1.50.0", "", { "os": "win32", "cpu": "ia32" }, "sha512-qTdWR9KwY/vxJGhHVIZG2eBOhidOQvOwzDxnX+jhW/zIVacal1nAhR8GLkiywW8BIFDkQKXo/zOfT+/DY+ns/w=="],
 
     "@oxlint/binding-win32-x64-msvc": ["@oxlint/binding-win32-x64-msvc@1.50.0", "", { "os": "win32", "cpu": "x64" }, "sha512-682t7npLC4G2Ca+iNlI9fhAKTcFPYYXJjwoa88H4q+u5HHHlsnL/gHULapX3iqp+A8FIJbgdylL5KMYo2LaluQ=="],
-
-    "@pi/agents-md": ["@pi/agents-md@workspace:packages/core/agents-md"],
-
-    "@pi/bash": ["@pi/bash@workspace:packages/tools/bash"],
-
-    "@pi/box-chrome": ["@pi/box-chrome@workspace:packages/core/box-chrome"],
-
-    "@pi/box-format": ["@pi/box-format@workspace:packages/core/box-format"],
-
-    "@pi/code-review": ["@pi/code-review@workspace:packages/tools/code-review"],
-
-    "@pi/command-palette": ["@pi/command-palette@workspace:packages/extensions/command-palette"],
-
-    "@pi/create-file": ["@pi/create-file@workspace:packages/tools/create-file"],
-
-    "@pi/edit-file": ["@pi/edit-file@workspace:packages/tools/edit-file"],
-
-    "@pi/editor": ["@pi/editor@workspace:packages/extensions/editor"],
-
-    "@pi/file-tracker": ["@pi/file-tracker@workspace:packages/core/file-tracker"],
-
-    "@pi/finder": ["@pi/finder@workspace:packages/tools/finder"],
-
-    "@pi/format-file": ["@pi/format-file@workspace:packages/tools/format-file"],
-
-    "@pi/github": ["@pi/github@workspace:packages/tools/github"],
-
-    "@pi/github-api": ["@pi/github-api@workspace:packages/core/github-api"],
-
-    "@pi/glob": ["@pi/glob@workspace:packages/tools/glob"],
-
-    "@pi/grep": ["@pi/grep@workspace:packages/tools/grep"],
-
-    "@pi/handoff": ["@pi/handoff@workspace:packages/extensions/handoff"],
-
-    "@pi/html-to-md": ["@pi/html-to-md@workspace:packages/core/html-to-md"],
-
-    "@pi/interpolate": ["@pi/interpolate@workspace:packages/core/interpolate"],
-
-    "@pi/librarian": ["@pi/librarian@workspace:packages/tools/librarian"],
-
-    "@pi/look-at": ["@pi/look-at@workspace:packages/tools/look-at"],
-
-    "@pi/ls": ["@pi/ls@workspace:packages/tools/ls"],
-
-    "@pi/mermaid": ["@pi/mermaid@workspace:packages/extensions/mermaid"],
-
-    "@pi/mutex": ["@pi/mutex@workspace:packages/core/mutex"],
-
-    "@pi/oracle": ["@pi/oracle@workspace:packages/tools/oracle"],
-
-    "@pi/output-buffer": ["@pi/output-buffer@workspace:packages/core/output-buffer"],
-
-    "@pi/permissions": ["@pi/permissions@workspace:packages/core/permissions"],
-
-    "@pi/pi-spawn": ["@pi/pi-spawn@workspace:packages/core/pi-spawn"],
-
-    "@pi/read": ["@pi/read@workspace:packages/tools/read"],
-
-    "@pi/read-session": ["@pi/read-session@workspace:packages/tools/read-session"],
-
-    "@pi/read-web-page": ["@pi/read-web-page@workspace:packages/tools/read-web-page"],
-
-    "@pi/search-sessions": ["@pi/search-sessions@workspace:packages/tools/search-sessions"],
-
-    "@pi/session-name": ["@pi/session-name@workspace:packages/extensions/session-name"],
-
-    "@pi/show": ["@pi/show@workspace:packages/core/show"],
-
-    "@pi/show-renderer": ["@pi/show-renderer@workspace:packages/core/show-renderer"],
-
-    "@pi/skill": ["@pi/skill@workspace:packages/tools/skill"],
-
-    "@pi/sub-agent-render": ["@pi/sub-agent-render@workspace:packages/core/sub-agent-render"],
-
-    "@pi/system-prompt": ["@pi/system-prompt@workspace:packages/extensions/system-prompt"],
-
-    "@pi/task": ["@pi/task@workspace:packages/tools/task"],
-
-    "@pi/tool-cost": ["@pi/tool-cost@workspace:packages/core/tool-cost"],
-
-    "@pi/tool-harness": ["@pi/tool-harness@workspace:packages/extensions/tool-harness"],
-
-    "@pi/tools": ["@pi/tools@workspace:packages/extensions/tools"],
-
-    "@pi/tui": ["@pi/tui@workspace:packages/core/tui"],
-
-    "@pi/undo-edit": ["@pi/undo-edit@workspace:packages/tools/undo-edit"],
-
-    "@pi/web-search": ["@pi/web-search@workspace:packages/tools/web-search"],
 
     "@pkgjs/parseargs": ["@pkgjs/parseargs@0.11.0", "", {}, "sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg=="],
 

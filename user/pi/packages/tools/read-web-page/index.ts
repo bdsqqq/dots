@@ -14,16 +14,16 @@ import { spawn } from "node:child_process";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { htmlToMarkdown } from "@pi/html-to-md";
-import { piSpawn, zeroUsage } from "@pi/pi-spawn";
+import { htmlToMarkdown } from "@bds_pi/html-to-md";
+import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
 import {
   getFinalOutput,
   renderAgentTree,
   subAgentResult,
   type SingleResult,
-} from "@pi/sub-agent-render";
-import { OutputBuffer, headTailChars } from "@pi/output-buffer";
-import { osc8Link } from "@pi/box-format";
+} from "@bds_pi/sub-agent-render";
+import { OutputBuffer, headTailChars } from "@bds_pi/output-buffer";
+import { osc8Link } from "@bds_pi/box-format";
 
 const HEAD_LINES = 500;
 const TAIL_LINES = 500;

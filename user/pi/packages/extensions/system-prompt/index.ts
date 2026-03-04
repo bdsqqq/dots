@@ -15,8 +15,8 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { readAgentPrompt } from "@pi/pi-spawn";
-import { interpolatePromptVars } from "@pi/interpolate";
+import { readAgentPrompt } from "@bds_pi/pi-spawn";
+import { interpolatePromptVars } from "@bds_pi/interpolate";
 
 /** harness configuration. TODO: make this configurable via settings or env. */
 const HARNESS = "pi";

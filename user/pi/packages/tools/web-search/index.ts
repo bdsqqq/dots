@@ -22,9 +22,9 @@ import {
   osc8Link,
   type BoxSection,
   type Excerpt,
-} from "@pi/box-format";
+} from "@bds_pi/box-format";
 import { Type } from "@sinclair/typebox";
-import type { ToolCostDetails } from "@pi/tool-cost";
+import type { ToolCostDetails } from "@bds_pi/tool-cost";
 
 const ENDPOINT = "https://api.parallel.ai/v1beta/search";
 const CURL_TIMEOUT_SECS = 30;

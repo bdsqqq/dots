@@ -19,7 +19,7 @@ import {
   type BoxSection,
   type Excerpt,
   boxRendererWindowed,
-} from "@pi/box-format";
+} from "@bds_pi/box-format";
 import { Type } from "@sinclair/typebox";
 
 const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");

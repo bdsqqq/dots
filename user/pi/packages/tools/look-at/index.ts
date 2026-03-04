@@ -15,13 +15,13 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, zeroUsage } from "@pi/pi-spawn";
+import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
 import {
   getFinalOutput,
   renderAgentTree,
   subAgentResult,
   type SingleResult,
-} from "@pi/sub-agent-render";
+} from "@bds_pi/sub-agent-render";
 
 const MODEL = "openrouter/google/gemini-3-flash-preview";
 

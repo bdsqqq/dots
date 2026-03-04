@@ -17,12 +17,12 @@ import { createInterface } from "node:readline";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { formatHeadTail } from "@pi/output-buffer";
+import { formatHeadTail } from "@bds_pi/output-buffer";
 import {
   boxRendererWindowed,
   textSection,
   type Excerpt,
-} from "@pi/box-format";
+} from "@bds_pi/box-format";
 
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },

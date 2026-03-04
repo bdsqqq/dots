@@ -1,5 +1,5 @@
 {
-  "name": "@pi/box-format",
+  "name": "@bds_pi/box-format",
   "version": "0.0.1",
 
   "main": "index.ts",
@@ -8,8 +8,8 @@
     ".": "./index.ts"
   },
   "dependencies": {
-    "@pi/box-chrome": "workspace:*",
-    "@pi/show": "workspace:*",
+    "@bds_pi/box-chrome": "workspace:*",
+    "@bds_pi/show": "workspace:*",
     "@mariozechner/pi-tui": "catalog:"
   },
   "devDependencies": {

@@ -1,12 +1,12 @@
 {
-  "name": "@pi/glob",
+  "name": "@bds_pi/glob",
   "version": "0.0.1",
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
   "dependencies": {
-    "@pi/output-buffer": "workspace:*",
-    "@pi/box-format": "workspace:*",
+    "@bds_pi/output-buffer": "workspace:*",
+    "@bds_pi/box-format": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {
