@@ -32,6 +32,27 @@ in
     home.file.".pi/agent/extensions/tools".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/tools";
     home.file.".pi/agent/extensions/mermaid".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}/mermaid";
 
+    # pi wrapper — run under bun instead of node for workspace resolution.
+    # pi's jiti extension loader creates require() scoped to the SYMLINK path
+    # (~/.pi/agent/extensions/...), not the realpath (repo/extensions/...).
+    # under node, jiti transpiles TS → CJS but fails in ESM context.
+    # under bun, jiti uses tryNative mode (native import) which resolves
+    # @pi/* workspace packages via bun's native workspace support.
+    #
+    # overwrites ~/.bun/bin/pi (the node-shebang symlink created by bun install)
+    # with a wrapper script. no PATH ordering needed — same location, just runs
+    # bun instead of node. re-applied on every activation in case bun install
+    # regenerates the symlink.
+    home.activation.piBunWrapper = lib.hm.dag.entryAfter [ "installPiExtensionDeps" ] ''
+      PI_WRAPPER="${homeDir}/.bun/bin/pi"
+      PI_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
+      if [ -e "$PI_CLI" ]; then
+        rm -f "$PI_WRAPPER"
+        printf '%s\n' '#!/usr/bin/env bash' "exec bun \"$PI_CLI\" \"\$@\"" > "$PI_WRAPPER"
+        chmod +x "$PI_WRAPPER"
+      fi
+    '';
+
     # install workspace deps declaratively for all extension packages
     home.activation.installPiExtensionDeps = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       if [ -f "${repoPi}/package.json" ]; then
