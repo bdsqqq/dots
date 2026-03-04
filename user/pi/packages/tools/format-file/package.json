@@ -1,0 +1,19 @@
+{
+  "name": "@pi/format-file",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "dependencies": {
+    "@pi/file-tracker": "workspace:*",
+    "@pi/mutex": "workspace:*",
+    "@pi/read": "workspace:*",
+    "@pi/box-format": "workspace:*",
+    "@sinclair/typebox": "^0.34.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "@mariozechner/pi-coding-agent": "catalog:",
+    "@mariozechner/pi-tui": "catalog:"
+  }
+}

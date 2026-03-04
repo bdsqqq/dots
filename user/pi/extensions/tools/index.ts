@@ -19,13 +19,13 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import { createReadTool, NORMAL_LIMITS, COMPACT_LIMITS } from "@pi/read";
 import { createLsTool } from "@pi/ls";
-import { createEditFileTool } from "./edit-file";
-import { createCreateFileTool } from "./create-file";
+import { createEditFileTool } from "@pi/edit-file";
+import { createCreateFileTool } from "@pi/create-file";
 import { createGrepTool } from "@pi/grep";
 import { createGlobTool } from "@pi/glob";
 import { createBashTool } from "./bash";
-import { createUndoEditTool } from "./undo-edit";
-import { createFormatFileTool } from "./format-file";
+import { createUndoEditTool } from "@pi/undo-edit";
+import { createFormatFileTool } from "@pi/format-file";
 import { createSkillTool } from "./skill";
 import { createFinderTool } from "./finder";
 import { createOracleTool } from "./oracle";
