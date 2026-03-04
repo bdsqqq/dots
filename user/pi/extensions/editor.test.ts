@@ -11,9 +11,12 @@
  * set PI_E2E_MODEL to override model (defaults to minimax-m2.5).
  */
 
+import { spawnSync } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect, afterAll } from "bun:test";
+import { describe, it, expect, afterAll } from "vitest";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CWD = resolve(__dirname, "../../../..");
@@ -24,9 +27,9 @@ const E2E_MODEL =
 // Check if tmux is available
 let tmuxAvailable = false;
 try {
-  const r = Bun.spawnSync(["tmux", "list-sessions"]);
+  const r = spawnSync("tmux", ["list-sessions"]);
   tmuxAvailable =
-    r.exitCode === 0 || r.stdout.toString().includes("no server running");
+    r.status === 0 || r.stdout.toString().includes("no server running");
 } catch {
   tmuxAvailable = false;
 }
@@ -34,16 +37,15 @@ try {
 // --- tmux helpers ---
 
 function tmuxSpawn(name: string, cmd: string) {
-  Bun.spawnSync(["tmux", "new-window", "-d", "-n", name, cmd]);
+  spawnSync("tmux", ["new-window", "-d", "-n", name, cmd]);
 }
 
 function tmuxSend(target: string, text: string) {
-  Bun.spawnSync(["tmux", "send-keys", "-t", target, text, "Enter"]);
+  spawnSync("tmux", ["send-keys", "-t", target, text, "Enter"]);
 }
 
 function tmuxCapture(target: string): string {
-  const r = Bun.spawnSync([
-    "tmux",
+  const r = spawnSync("tmux", [
     "capture-pane",
     "-p",
     "-S",
@@ -51,11 +53,11 @@ function tmuxCapture(target: string): string {
     "-t",
     target,
   ]);
-  return new TextDecoder().decode(r.stdout);
+  return r.stdout.toString();
 }
 
 function tmuxKill(target: string) {
-  Bun.spawnSync(["tmux", "kill-window", "-t", target]);
+  spawnSync("tmux", ["kill-window", "-t", target]);
 }
 
 function firstBorderLine(capture: string): string {
@@ -75,7 +77,7 @@ async function waitForPane(
       last = tmuxCapture(target);
       if (pattern.test(last)) return last;
     } catch {}
-    await Bun.sleep(pollMs);
+    await sleep(pollMs);
   }
   return last;
 }
@@ -88,7 +90,7 @@ async function waitForIdle(
   const spinners = /Working|thinking\.\.\.|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    await Bun.sleep(pollMs);
+    await sleep(pollMs);
     const capture = tmuxCapture(target);
     const tail = capture.split("\n").slice(-5).join("\n");
     if (!spinners.test(tail)) return capture;
@@ -124,7 +126,7 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
         await waitForIdle(windowName, 30_000);
 
         // Additional wait for model to render in border
-        await Bun.sleep(2000);
+        await sleep(2000);
 
         // Capture initial state - should show kimi-k2.5 in border
         const beforeCapture = tmuxCapture(windowName);
@@ -136,7 +138,7 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
 
         // Send /model command to change to a different model
         tmuxSend(windowName, "/model");
-        await Bun.sleep(1000);
+        await sleep(1000);
         tmuxSend(windowName, "glm-5");
 
         // Wait for the model selector to close and model to change
@@ -171,7 +173,7 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
 
         // Now change the model
         tmuxSend(testWin, "/model gemini");
-        await Bun.sleep(3000);
+        await sleep(3000);
 
         const capture = tmuxCapture(testWin);
 

@@ -5,7 +5,7 @@
  * run: bun test user/pi/extensions/tools/bash-output.test.ts
  */
 
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vitest";
 import { createBashTool } from "@pi/bash";
 
 interface BashToolResult {

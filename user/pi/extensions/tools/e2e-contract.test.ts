@@ -9,7 +9,7 @@
  * run: bun test user/pi/extensions/tools/e2e-contract.test.ts
  */
 
-import { describe, it, expect, beforeAll } from "bun:test";
+import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, basename } from "node:path";
 import { dirname } from "node:path";
