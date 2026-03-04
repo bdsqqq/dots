@@ -22,7 +22,7 @@ import {
   renderAgentTree,
   subAgentResult,
   type SingleResult,
-} from "./lib/sub-agent-render";
+} from "@pi/sub-agent-render";
 
 const MODEL = "openrouter/anthropic/claude-haiku-4.5";
 

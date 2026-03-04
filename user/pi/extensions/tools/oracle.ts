@@ -23,7 +23,7 @@ import {
   renderAgentTree,
   subAgentResult,
   type SingleResult,
-} from "./lib/sub-agent-render";
+} from "@pi/sub-agent-render";
 
 const MODEL = "openrouter/openai/gpt-5.2";
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash"];

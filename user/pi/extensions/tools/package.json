@@ -18,6 +18,7 @@
     "@pi/pi-spawn": "workspace:*",
     "@pi/show": "workspace:*",
     "@pi/show-renderer": "workspace:*",
+    "@pi/sub-agent-render": "workspace:*",
     "@pi/tool-cost": "workspace:*",
     "@sinclair/typebox": "^0.34.0",
     "cheerio": "^1.0.0",
