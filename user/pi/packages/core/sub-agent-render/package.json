@@ -1,0 +1,14 @@
+{
+  "name": "@pi/sub-agent-render",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "dependencies": {
+    "@pi/pi-spawn": "workspace:*",
+    "@pi/tool-cost": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

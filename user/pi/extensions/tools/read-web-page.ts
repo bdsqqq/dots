@@ -21,7 +21,7 @@ import {
   renderAgentTree,
   subAgentResult,
   type SingleResult,
-} from "./lib/sub-agent-render";
+} from "@pi/sub-agent-render";
 import { OutputBuffer, headTailChars } from "@pi/output-buffer";
 import { osc8Link } from "@pi/box-format";
 

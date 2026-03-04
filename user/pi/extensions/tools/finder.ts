@@ -22,7 +22,7 @@ import {
   renderAgentTree,
   subAgentResult,
   type SingleResult,
-} from "./lib/sub-agent-render";
+} from "@pi/sub-agent-render";
 
 const MODEL = "openrouter/google/gemini-3-flash-preview";
 const BUILTIN_TOOLS = ["read", "grep", "find", "ls"];
