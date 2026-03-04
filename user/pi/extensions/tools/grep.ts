@@ -27,7 +27,7 @@ import {
   type BoxSection,
   type BoxLine,
   type Excerpt,
-} from "./lib/box-format";
+} from "@pi/box-format";
 
 const MAX_TOTAL_MATCHES = 100;
 const MAX_COLLECT_MATCHES = 200;

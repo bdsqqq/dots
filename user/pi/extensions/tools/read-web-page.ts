@@ -23,7 +23,7 @@ import {
   type SingleResult,
 } from "./lib/sub-agent-render";
 import { OutputBuffer, headTailChars } from "@pi/output-buffer";
-import { osc8Link } from "./lib/box-format";
+import { osc8Link } from "@pi/box-format";
 
 const HEAD_LINES = 500;
 const TAIL_LINES = 500;

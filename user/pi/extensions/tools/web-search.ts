@@ -22,7 +22,7 @@ import {
   osc8Link,
   type BoxSection,
   type Excerpt,
-} from "./lib/box-format";
+} from "@pi/box-format";
 import { Type } from "@sinclair/typebox";
 import type { ToolCostDetails } from "@pi/tool-cost";
 

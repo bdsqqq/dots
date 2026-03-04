@@ -23,7 +23,7 @@ import {
   type BoxSection,
   type BoxLine,
   type Excerpt,
-} from "./lib/box-format";
+} from "@pi/box-format";
 import { Type } from "@sinclair/typebox";
 import { formatHeadTail } from "@pi/output-buffer";
 
