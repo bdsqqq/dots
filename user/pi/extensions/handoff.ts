@@ -33,7 +33,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { readAgentPrompt } from "./tools/lib/pi-spawn";
+import { readAgentPrompt } from "@pi/pi-spawn";
 
 const HANDOFF_THRESHOLD = 0.85;
 const HANDOFF_MODEL = {

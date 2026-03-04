@@ -1,7 +1,7 @@
 {
   "name": "@pi/output-buffer",
   "version": "0.0.0",
-  "type": "module",
+
   "main": "index.ts",
   "types": "index.ts",
   "exports": {
