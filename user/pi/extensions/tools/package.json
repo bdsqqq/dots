@@ -7,6 +7,7 @@
   "dependencies": {
     "@pi/bash": "workspace:*",
     "@pi/glob": "workspace:*",
+    "@pi/github": "workspace:*",
     "@pi/github-api": "workspace:*",
     "@pi/ls": "workspace:*",
     "@pi/grep": "workspace:*",
@@ -31,11 +32,15 @@
     "@pi/permissions": "workspace:*",
     "@pi/pi-spawn": "workspace:*",
     "@pi/skill": "workspace:*",
+    "@pi/search-sessions": "workspace:*",
     "@pi/show": "workspace:*",
     "@pi/show-renderer": "workspace:*",
     "@pi/sub-agent-render": "workspace:*",
     "@pi/task": "workspace:*",
+    "@pi/read-session": "workspace:*",
+    "@pi/read-web-page": "workspace:*",
     "@pi/tool-cost": "workspace:*",
+    "@pi/web-search": "workspace:*",
     "@sinclair/typebox": "^0.34.0",
     "cheerio": "^1.0.0",
     "diff": "^8.0.0"

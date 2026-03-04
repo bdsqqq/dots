@@ -33,10 +33,10 @@ import { createTaskTool } from "@pi/task";
 import { createLibrarianTool } from "@pi/librarian";
 import { createCodeReviewTool } from "@pi/code-review";
 import { createLookAtTool } from "@pi/look-at";
-import { createReadWebPageTool } from "./read-web-page";
-import { createWebSearchTool } from "./web-search";
-import { createSearchSessionsTool } from "./search-sessions";
-import { createReadSessionTool } from "./read-session";
+import { createReadWebPageTool } from "@pi/read-web-page";
+import { createWebSearchTool } from "@pi/web-search";
+import { createSearchSessionsTool } from "@pi/search-sessions";
+import { createReadSessionTool } from "@pi/read-session";
 import { readAgentPrompt } from "@pi/pi-spawn";
 import {
   createReadGithubTool,
@@ -46,7 +46,7 @@ import {
   createGlobGithubTool,
   createCommitSearchTool,
   createDiffTool,
-} from "./github";
+} from "@pi/github";
 
 export { withFileLock } from "@pi/mutex";
 export {
