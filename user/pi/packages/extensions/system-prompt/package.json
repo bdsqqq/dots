@@ -1,0 +1,21 @@
+{
+  "name": "@pi/system-prompt",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "@pi/pi-spawn": "workspace:*",
+    "@pi/interpolate": "workspace:*"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "catalog:"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
