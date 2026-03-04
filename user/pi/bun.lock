@@ -222,6 +222,39 @@
         "vitest": "*",
       },
     },
+    "packages/extensions/handoff": {
+      "name": "@pi/handoff",
+      "dependencies": {
+        "@pi/pi-spawn": "workspace:*",
+        "@sinclair/typebox": "^0.34.0",
+      },
+      "devDependencies": {
+        "@mariozechner/pi-coding-agent": "catalog:",
+        "@mariozechner/pi-tui": "catalog:",
+      },
+    },
+    "packages/extensions/session-name": {
+      "name": "@pi/session-name",
+      "devDependencies": {
+        "@mariozechner/pi-coding-agent": "catalog:",
+      },
+    },
+    "packages/extensions/system-prompt": {
+      "name": "@pi/system-prompt",
+      "dependencies": {
+        "@pi/interpolate": "workspace:*",
+        "@pi/pi-spawn": "workspace:*",
+      },
+      "devDependencies": {
+        "@mariozechner/pi-coding-agent": "catalog:",
+      },
+    },
+    "packages/extensions/tool-harness": {
+      "name": "@pi/tool-harness",
+      "devDependencies": {
+        "@mariozechner/pi-coding-agent": "catalog:",
+      },
+    },
     "packages/tools/bash": {
       "name": "@pi/bash",
       "version": "0.0.1",
@@ -836,6 +869,8 @@
 
     "@pi/grep": ["@pi/grep@workspace:packages/tools/grep"],
 
+    "@pi/handoff": ["@pi/handoff@workspace:packages/extensions/handoff"],
+
     "@pi/html-to-md": ["@pi/html-to-md@workspace:packages/core/html-to-md"],
 
     "@pi/interpolate": ["@pi/interpolate@workspace:packages/core/interpolate"],
@@ -864,6 +899,8 @@
 
     "@pi/search-sessions": ["@pi/search-sessions@workspace:packages/tools/search-sessions"],
 
+    "@pi/session-name": ["@pi/session-name@workspace:packages/extensions/session-name"],
+
     "@pi/show": ["@pi/show@workspace:packages/core/show"],
 
     "@pi/show-renderer": ["@pi/show-renderer@workspace:packages/core/show-renderer"],
@@ -872,9 +909,13 @@
 
     "@pi/sub-agent-render": ["@pi/sub-agent-render@workspace:packages/core/sub-agent-render"],
 
+    "@pi/system-prompt": ["@pi/system-prompt@workspace:packages/extensions/system-prompt"],
+
     "@pi/task": ["@pi/task@workspace:packages/tools/task"],
 
     "@pi/tool-cost": ["@pi/tool-cost@workspace:packages/core/tool-cost"],
+
+    "@pi/tool-harness": ["@pi/tool-harness@workspace:packages/extensions/tool-harness"],
 
     "@pi/tui": ["@pi/tui@workspace:packages/core/tui"],
 
