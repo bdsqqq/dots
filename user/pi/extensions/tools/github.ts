@@ -22,7 +22,7 @@ import {
   decodeBase64Content,
   addLineNumbers,
   truncate,
-} from "./lib/github";
+} from "@pi/github-api";
 import {
   boxRendererWindowed,
   textSection,

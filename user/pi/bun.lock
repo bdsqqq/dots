@@ -42,6 +42,7 @@
       "dependencies": {
         "@pi/box-chrome": "workspace:*",
         "@pi/file-tracker": "workspace:*",
+        "@pi/github-api": "workspace:*",
         "@pi/html-to-md": "workspace:*",
         "@pi/interpolate": "workspace:*",
         "@pi/mutex": "workspace:*",
@@ -78,6 +79,13 @@
       "dependencies": {
         "diff": "^8.0.0",
       },
+      "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
+    "packages/core/github-api": {
+      "name": "@pi/github-api",
+      "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
       },
@@ -427,6 +435,8 @@
     "@pi/box-chrome": ["@pi/box-chrome@workspace:packages/core/box-chrome"],
 
     "@pi/file-tracker": ["@pi/file-tracker@workspace:packages/core/file-tracker"],
+
+    "@pi/github-api": ["@pi/github-api@workspace:packages/core/github-api"],
 
     "@pi/html-to-md": ["@pi/html-to-md@workspace:packages/core/html-to-md"],
 
