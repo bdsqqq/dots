@@ -34,7 +34,7 @@ import {
 } from "@bds_pi/github-api";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CWD = process.env.PI_E2E_CWD ?? resolve(__dirname, "../../../..");
+const CWD = process.env.PI_E2E_CWD ?? resolve(__dirname, "../../..");
 const ENABLED = process.env.PI_E2E === "1";
 
 // --- shared pi runner (same as e2e.test.ts) ---
