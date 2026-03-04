@@ -41,7 +41,7 @@ in
       PI_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
       if [ -e "$PI_CLI" ]; then
         rm -f "$PI_WRAPPER"
-        printf '%s\n' '#!/usr/bin/env bash' "exec bun \"$PI_CLI\" \"\$@\"" > "$PI_WRAPPER"
+        printf '%s\n' '#!/usr/bin/env bash' "export NODE_PATH=\"${repoPi}/node_modules\"" "exec bun \"$PI_CLI\" \"\$@\"" > "$PI_WRAPPER"
         chmod +x "$PI_WRAPPER"
       fi
     '';
