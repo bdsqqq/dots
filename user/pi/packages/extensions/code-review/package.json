@@ -8,9 +8,16 @@
     "extensions": ["./index.ts"]
   },
   "dependencies": {
-    "@bds_pi/prompt-patch": "workspace:*",
+    "@bds_pi/bash": "workspace:*",
+    "@bds_pi/glob": "workspace:*",
+    "@bds_pi/grep": "workspace:*",
+    "@bds_pi/ls": "workspace:*",
     "@bds_pi/pi-spawn": "workspace:*",
+    "@bds_pi/prompt-patch": "workspace:*",
+    "@bds_pi/read": "workspace:*",
+    "@bds_pi/read-web-page": "workspace:*",
     "@bds_pi/sub-agent-render": "workspace:*",
+    "@bds_pi/web-search": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {
