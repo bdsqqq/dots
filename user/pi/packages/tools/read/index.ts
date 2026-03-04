@@ -14,7 +14,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Text } from "@mariozechner/pi-tui";
 import {
   boxRendererWindowed,
@@ -457,4 +458,8 @@ if (import.meta.vitest) {
       expect(isSecretFile("/home/user/README.md")).toBe(false);
     });
   });
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createReadTool(NORMAL_LIMITS)));
 }

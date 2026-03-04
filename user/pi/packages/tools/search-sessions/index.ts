@@ -13,8 +13,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   type BoxSection,
   type Excerpt,
@@ -712,4 +713,8 @@ export function createSearchSessionsTool(): ToolDefinition {
       );
     },
   };
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createSearchSessionsTool()));
 }

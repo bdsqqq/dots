@@ -13,10 +13,14 @@
  * system prompt loaded from sops-decrypted prompts at init time.
  */
 
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
+import { piSpawn, readAgentPrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
   renderAgentTree,
@@ -170,4 +174,10 @@ export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
       return container;
     },
   };
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createFinderTool({
+    systemPrompt: readAgentPrompt("agent.amp.finder.md"),
+  })));
 }

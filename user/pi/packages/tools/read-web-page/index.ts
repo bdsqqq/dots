@@ -11,11 +11,15 @@
  */
 
 import { spawn } from "node:child_process";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { htmlToMarkdown } from "@bds_pi/html-to-md";
-import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
+import { piSpawn, readAgentPrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
   renderAgentTree,
@@ -341,4 +345,10 @@ export function createReadWebPageTool(
       return container;
     },
   };
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool(withPromptPatch(createReadWebPageTool({
+    systemPrompt: readAgentPrompt("prompt.amp.read-web-page.md"),
+  })));
 }

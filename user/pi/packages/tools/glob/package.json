@@ -4,7 +4,11 @@
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
   "dependencies": {
+    "@bds_pi/prompt-patch": "workspace:*",
     "@bds_pi/output-buffer": "workspace:*",
     "@bds_pi/box-format": "workspace:*",
     "@sinclair/typebox": "^0.34.0"

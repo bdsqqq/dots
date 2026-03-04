@@ -4,9 +4,13 @@
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
   "dependencies": {
     "@bds_pi/github-api": "workspace:*",
     "@bds_pi/box-format": "workspace:*",
+    "@bds_pi/prompt-patch": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {
