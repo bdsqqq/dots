@@ -25,7 +25,7 @@ import {
   textSection,
   osc8Link,
   type Excerpt,
-} from "./lib/box-format";
+} from "@pi/box-format";
 
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },

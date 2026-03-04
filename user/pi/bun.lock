@@ -41,6 +41,7 @@
       "name": "tools",
       "dependencies": {
         "@pi/box-chrome": "workspace:*",
+        "@pi/box-format": "workspace:*",
         "@pi/file-tracker": "workspace:*",
         "@pi/github-api": "workspace:*",
         "@pi/html-to-md": "workspace:*",
@@ -72,6 +73,19 @@
       "version": "0.0.1",
       "devDependencies": {
         "vitest": "*",
+      },
+    },
+    "packages/core/box-format": {
+      "name": "@pi/box-format",
+      "version": "0.0.1",
+      "dependencies": {
+        "@mariozechner/pi-tui": "catalog:",
+        "@pi/box-chrome": "workspace:*",
+        "@pi/show": "workspace:*",
+      },
+      "devDependencies": {
+        "@mariozechner/pi-tui": "catalog:",
+        "vitest": "^3.0.0",
       },
     },
     "packages/core/file-tracker": {
@@ -433,6 +447,8 @@
     "@pi/agents-md": ["@pi/agents-md@workspace:packages/core/agents-md"],
 
     "@pi/box-chrome": ["@pi/box-chrome@workspace:packages/core/box-chrome"],
+
+    "@pi/box-format": ["@pi/box-format@workspace:packages/core/box-format"],
 
     "@pi/file-tracker": ["@pi/file-tracker@workspace:packages/core/file-tracker"],
 

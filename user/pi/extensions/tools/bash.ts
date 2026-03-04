@@ -23,7 +23,7 @@ import {
   boxRendererWindowed,
   type BoxSection,
   type Excerpt,
-} from "./lib/box-format";
+} from "@pi/box-format";
 import { getText } from "@pi/tui";
 import { Type } from "@sinclair/typebox";
 import { withFileLock } from "@pi/mutex";

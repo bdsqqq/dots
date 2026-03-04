@@ -27,7 +27,7 @@ import {
   type BoxBlock,
   type BoxLine,
   type Excerpt,
-} from "./lib/box-format";
+} from "@pi/box-format";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "@pi/file-tracker";
 import { withFileLock } from "@pi/mutex";

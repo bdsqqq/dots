@@ -1,0 +1,19 @@
+{
+  "name": "@pi/box-format",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "@pi/box-chrome": "workspace:*",
+    "@pi/show": "workspace:*",
+    "@mariozechner/pi-tui": "catalog:"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "@mariozechner/pi-tui": "catalog:"
+  }
+}

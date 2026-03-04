@@ -30,7 +30,7 @@ import {
   type BoxSection,
   type BoxLine,
   type Excerpt,
-} from "./lib/box-format";
+} from "@pi/box-format";
 
 /** collapsed: head 3 + tail 5 = 8 visual lines */
 const COLLAPSED_EXCERPTS: Excerpt[] = [

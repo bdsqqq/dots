@@ -8,6 +8,7 @@
     "@pi/github-api": "workspace:*",
     "@pi/tui": "workspace:*",
     "@pi/box-chrome": "workspace:*",
+    "@pi/box-format": "workspace:*",
     "@pi/file-tracker": "workspace:*",
     "@pi/html-to-md": "workspace:*",
     "@pi/interpolate": "workspace:*",
