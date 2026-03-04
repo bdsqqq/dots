@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "@pi/github-api": "workspace:*",
+    "@pi/read": "workspace:*",
     "@pi/tui": "workspace:*",
     "@pi/box-chrome": "workspace:*",
     "@pi/box-format": "workspace:*",

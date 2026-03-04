@@ -12,7 +12,7 @@ import * as os from "node:os";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { resolveWithVariants, listDirectory, type ReadLimits } from "./read";
+import { resolveWithVariants, listDirectory, type ReadLimits } from "@pi/read";
 import {
   boxRendererWindowed,
   textSection,

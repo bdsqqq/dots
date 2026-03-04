@@ -31,7 +31,7 @@ import {
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "@pi/file-tracker";
 import { withFileLock } from "@pi/mutex";
-import { resolveWithVariants } from "./read";
+import { resolveWithVariants } from "@pi/read";
 
 // --- BOM / CRLF ---
 

@@ -17,7 +17,7 @@ import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "@pi/file-tracker";
 import { withFileLock } from "@pi/mutex";
-import { resolveToAbsolute } from "./read";
+import { resolveToAbsolute } from "@pi/read";
 import {
   boxRendererWindowed,
   textSection,

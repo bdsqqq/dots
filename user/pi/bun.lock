@@ -50,6 +50,7 @@
         "@pi/output-buffer": "workspace:*",
         "@pi/permissions": "workspace:*",
         "@pi/pi-spawn": "workspace:*",
+        "@pi/read": "workspace:*",
         "@pi/show": "workspace:*",
         "@pi/show-renderer": "workspace:*",
         "@pi/sub-agent-render": "workspace:*",
@@ -199,6 +200,20 @@
       "version": "0.0.1",
       "devDependencies": {
         "vitest": "*",
+      },
+    },
+    "packages/tools/read": {
+      "name": "@pi/read",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pi/box-format": "workspace:*",
+        "@pi/output-buffer": "workspace:*",
+        "@sinclair/typebox": "^0.34.0",
+      },
+      "devDependencies": {
+        "@mariozechner/pi-coding-agent": "catalog:",
+        "@mariozechner/pi-tui": "catalog:",
+        "vitest": "^3.0.0",
       },
     },
   },
@@ -500,6 +515,8 @@
     "@pi/permissions": ["@pi/permissions@workspace:packages/core/permissions"],
 
     "@pi/pi-spawn": ["@pi/pi-spawn@workspace:packages/core/pi-spawn"],
+
+    "@pi/read": ["@pi/read@workspace:packages/tools/read"],
 
     "@pi/show": ["@pi/show@workspace:packages/core/show"],
 

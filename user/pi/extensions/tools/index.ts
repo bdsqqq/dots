@@ -17,7 +17,7 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
-import { createReadTool, NORMAL_LIMITS, COMPACT_LIMITS } from "./read";
+import { createReadTool, NORMAL_LIMITS, COMPACT_LIMITS } from "@pi/read";
 import { createLsTool } from "./ls";
 import { createEditFileTool } from "./edit-file";
 import { createCreateFileTool } from "./create-file";
