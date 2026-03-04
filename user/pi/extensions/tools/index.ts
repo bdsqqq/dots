@@ -18,11 +18,11 @@ import type {
   ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import { createReadTool, NORMAL_LIMITS, COMPACT_LIMITS } from "@pi/read";
-import { createLsTool } from "./ls";
+import { createLsTool } from "@pi/ls";
 import { createEditFileTool } from "./edit-file";
 import { createCreateFileTool } from "./create-file";
-import { createGrepTool } from "./grep";
-import { createGlobTool } from "./glob";
+import { createGrepTool } from "@pi/grep";
+import { createGlobTool } from "@pi/glob";
 import { createBashTool } from "./bash";
 import { createUndoEditTool } from "./undo-edit";
 import { createFormatFileTool } from "./format-file";
