@@ -7,7 +7,6 @@
  * - secret file blocking (.env etc.)
  * - `~` expansion and `@` prefix stripping
  * - image support via base64
- * - compact variant for sub-agents (PI_READ_COMPACT=1)
  *
  * uses `path` + optional `read_range` [start, end] interface.
  */
@@ -40,14 +39,6 @@ export const NORMAL_LIMITS: ReadLimits = {
   maxLines: 500,
   maxFileBytes: 64 * 1024,
   maxLineBytes: 4096,
-  maxDirEntries: 1000,
-};
-
-/** sub-agents get tighter limits to conserve their smaller context window */
-export const COMPACT_LIMITS: ReadLimits = {
-  maxLines: 200,
-  maxFileBytes: 32 * 1024,
-  maxLineBytes: 1024,
   maxDirEntries: 1000,
 };
 

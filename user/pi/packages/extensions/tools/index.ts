@@ -9,7 +9,6 @@
  * keyed by tool call ID. branch awareness comes from the conversation
  * tree — tool call IDs in assistant messages are inherently branch-scoped.
  *
- * PI_READ_COMPACT=1 switches read/ls to tighter limits for sub-agents.
  * shared infrastructure lives in ./lib/.
  */
 
@@ -17,7 +16,8 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
-import { createReadTool, NORMAL_LIMITS, COMPACT_LIMITS } from "@bds_pi/read";
+import { createReadTool, NORMAL_LIMITS } from "@bds_pi/read";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { createLsTool } from "@bds_pi/ls";
 import { createEditFileTool } from "@bds_pi/edit-file";
 import { createCreateFileTool } from "@bds_pi/create-file";
@@ -57,29 +57,14 @@ export {
   simpleDiff,
 } from "@bds_pi/file-tracker";
 
-export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
-  const snippet = (tool.description?.split("\n\n")[0] ?? "").trim();
-  const guidelines = (tool.description ?? "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("- "));
-
-  const patched: ToolDefinition = { ...tool };
-  if (!patched.promptSnippet) patched.promptSnippet = snippet;
-  if (!patched.promptGuidelines && guidelines.length > 0) {
-    patched.promptGuidelines = guidelines;
-  }
-
-  return patched;
-}
+export { withPromptPatch } from "@bds_pi/prompt-patch";
 
 export default function (pi: ExtensionAPI) {
-  const limits = process.env.PI_READ_COMPACT ? COMPACT_LIMITS : NORMAL_LIMITS;
   const register = (tool: ToolDefinition) =>
     pi.registerTool(withPromptPatch(tool));
 
-  register(createReadTool(limits));
-  register(createLsTool(limits));
+  register(createReadTool(NORMAL_LIMITS));
+  register(createLsTool(NORMAL_LIMITS));
   register(createEditFileTool());
   register(createCreateFileTool());
   register(createGrepTool());
