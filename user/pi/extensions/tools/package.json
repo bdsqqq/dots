@@ -5,6 +5,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@pi/bash": "workspace:*",
     "@pi/glob": "workspace:*",
     "@pi/github-api": "workspace:*",
     "@pi/ls": "workspace:*",
@@ -24,6 +25,7 @@
     "@pi/output-buffer": "workspace:*",
     "@pi/permissions": "workspace:*",
     "@pi/pi-spawn": "workspace:*",
+    "@pi/skill": "workspace:*",
     "@pi/show": "workspace:*",
     "@pi/show-renderer": "workspace:*",
     "@pi/sub-agent-render": "workspace:*",

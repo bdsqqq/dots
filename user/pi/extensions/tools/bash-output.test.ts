@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { createBashTool } from "./bash";
+import { createBashTool } from "@pi/bash";
 
 interface BashToolResult {
   content: { type: "text"; text: string }[];
