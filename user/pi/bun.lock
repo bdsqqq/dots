@@ -50,6 +50,7 @@
         "@pi/output-buffer": "workspace:*",
         "@pi/permissions": "workspace:*",
         "@pi/show": "workspace:*",
+        "@pi/show-renderer": "workspace:*",
         "@pi/tool-cost": "workspace:*",
         "@pi/tui": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
@@ -149,6 +150,17 @@
         "@mariozechner/pi-tui": "catalog:",
       },
       "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
+    "packages/core/show-renderer": {
+      "name": "@pi/show-renderer",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pi/show": "workspace:*",
+      },
+      "devDependencies": {
+        "@mariozechner/pi-tui": "catalog:",
         "vitest": "^3.0.0",
       },
     },
@@ -465,6 +477,8 @@
     "@pi/permissions": ["@pi/permissions@workspace:packages/core/permissions"],
 
     "@pi/show": ["@pi/show@workspace:packages/core/show"],
+
+    "@pi/show-renderer": ["@pi/show-renderer@workspace:packages/core/show-renderer"],
 
     "@pi/tool-cost": ["@pi/tool-cost@workspace:packages/core/tool-cost"],
 
