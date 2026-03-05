@@ -15,6 +15,7 @@
     "@bds_pi/pi-spawn": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
     "@bds_pi/read": "workspace:*",
+    "@bds_pi/config": "workspace:*",
     "@bds_pi/sub-agent-render": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
