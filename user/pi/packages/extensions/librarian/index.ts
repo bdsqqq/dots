@@ -1,11 +1,11 @@
 /**
- * librarian tool — cross-repo codebase understanding via haiku sub-agent.
+ * librarian tool — cross-repo codebase understanding via gemini flash sub-agent.
  *
  * replaces the generic subagent pattern with a dedicated tool. the model
  * calls librarian(query: "...", context?: "...")
  * directly.
  *
- * spawns `pi --mode json` with claude haiku, constrained to the 7
+ * spawns `pi --mode json` with gemini flash, constrained to the 7
  * github tools (read_github, search_github, list_directory_github,
  * list_repositories, glob_github, commit_search, diff). the librarian
  * explores repos thoroughly before providing comprehensive answers.
@@ -38,7 +38,7 @@ type LibrarianExtConfig = {
 };
 
 const CONFIG_DEFAULTS: LibrarianExtConfig = {
-  model: "openrouter/anthropic/claude-haiku-4.5",
+  model: "openrouter/google/gemini-3-flash-preview",
   extensionTools: [
     "read_github",
     "search_github",
