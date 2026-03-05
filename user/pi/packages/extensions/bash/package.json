@@ -8,6 +8,7 @@
     "extensions": ["./index.ts"]
   },
   "dependencies": {
+    "@bds_pi/config": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
     "@bds_pi/output-buffer": "workspace:*",
     "@bds_pi/mutex": "workspace:*",
