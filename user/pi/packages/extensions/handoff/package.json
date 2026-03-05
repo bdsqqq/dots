@@ -7,6 +7,7 @@
     ".": "./index.ts"
   },
   "dependencies": {
+    "@bds_pi/config": "workspace:*",
     "@bds_pi/pi-spawn": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },

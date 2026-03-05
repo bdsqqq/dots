@@ -34,12 +34,21 @@ import {
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { readAgentPrompt } from "@bds_pi/pi-spawn";
+import { getExtensionConfig } from "@bds_pi/config";
 
-const HANDOFF_THRESHOLD = 0.85;
-const HANDOFF_MODEL = {
-  provider: "openrouter",
-  id: "google/gemini-3-flash-preview",
-} as const;
+type HandoffExtConfig = {
+  threshold: number;
+  model: { provider: string; id: string };
+};
+
+const CONFIG_DEFAULTS: HandoffExtConfig = {
+  threshold: 0.85,
+  model: {
+    provider: "openrouter",
+    id: "google/gemini-3-flash-preview",
+  },
+};
+
 const MAX_RELEVANT_FILES = 10;
 
 function parsePromptSections(content: string): Record<string, string> {
@@ -193,6 +202,7 @@ function showProvenance(ctx: ExtensionContext, parentPath: string): void {
 }
 
 export default function (pi: ExtensionAPI) {
+  const cfg = getExtensionConfig("@bds_pi/handoff", CONFIG_DEFAULTS);
   let storedHandoffPrompt: string | null = null;
   let handoffPending = false;
   let parentSessionFile: string | undefined;
@@ -204,7 +214,7 @@ export default function (pi: ExtensionAPI) {
     model: Model<Api> | undefined;
   }): Model<Api> | undefined {
     return (
-      ctx.modelRegistry.find(HANDOFF_MODEL.provider, HANDOFF_MODEL.id) ??
+      ctx.modelRegistry.find(cfg.model.provider, cfg.model.id) ??
       ctx.model
     );
   }
@@ -294,7 +304,7 @@ export default function (pi: ExtensionAPI) {
 
     const usage = ctx.getContextUsage();
     if (!usage || usage.percent === null) return;
-    if (usage.percent < HANDOFF_THRESHOLD * 100) return;
+    if (usage.percent < cfg.threshold * 100) return;
     const handoffModel = getHandoffModel(ctx);
     if (!handoffModel) return;
 
