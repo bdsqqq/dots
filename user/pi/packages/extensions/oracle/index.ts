@@ -42,7 +42,7 @@ const CONFIG_DEFAULTS: OracleExtConfig = {
   model: "openrouter/openai/gpt-5.2",
   extensionTools: ["read", "grep", "find", "ls", "bash"],
   builtinTools: ["read", "grep", "find", "ls", "bash"],
-  promptFile: "agent.amp.oracle.md",
+  promptFile: "",
   promptString: "",
 };
 

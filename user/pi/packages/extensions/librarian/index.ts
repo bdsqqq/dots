@@ -50,7 +50,7 @@ const CONFIG_DEFAULTS: LibrarianExtConfig = {
     "web_search",
   ],
   builtinTools: [],
-  promptFile: "agent.amp.librarian.md",
+  promptFile: "",
   promptString: "",
 };
 

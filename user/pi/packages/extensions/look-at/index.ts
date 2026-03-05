@@ -40,7 +40,7 @@ const CONFIG_DEFAULTS: LookAtExtConfig = {
   model: "openrouter/google/gemini-3-flash-preview",
   extensionTools: ["read", "ls"],
   builtinTools: ["read", "ls"],
-  promptFile: "prompt.amp.look-at.md",
+  promptFile: "",
   promptString: "",
 };
 
