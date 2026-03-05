@@ -76,6 +76,9 @@
     "packages/core/interpolate": {
       "name": "@bds_pi/interpolate",
       "version": "0.0.0",
+      "dependencies": {
+        "@bds_pi/config": "workspace:*",
+      },
       "devDependencies": {
         "vitest": "^3.0.0",
       },
@@ -168,6 +171,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/permissions": "workspace:*",
@@ -187,6 +191,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/bash": "workspace:*",
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/glob": "workspace:*",
         "@bds_pi/grep": "workspace:*",
         "@bds_pi/ls": "workspace:*",
@@ -263,6 +268,7 @@
       "name": "@bds_pi/finder",
       "version": "0.0.1",
       "dependencies": {
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/glob": "workspace:*",
         "@bds_pi/grep": "workspace:*",
         "@bds_pi/ls": "workspace:*",
@@ -283,6 +289,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
@@ -315,6 +322,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
@@ -330,6 +338,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
@@ -343,6 +352,7 @@
     "packages/extensions/handoff": {
       "name": "@bds_pi/handoff",
       "dependencies": {
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/pi-spawn": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -372,6 +382,7 @@
       "name": "@bds_pi/look-at",
       "version": "0.0.1",
       "dependencies": {
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/ls": "workspace:*",
         "@bds_pi/pi-spawn": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
@@ -415,6 +426,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/bash": "workspace:*",
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/glob": "workspace:*",
         "@bds_pi/grep": "workspace:*",
         "@bds_pi/ls": "workspace:*",
@@ -435,6 +447,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
@@ -449,6 +462,7 @@
       "name": "@bds_pi/read-session",
       "version": "0.0.1",
       "dependencies": {
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/pi-spawn": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
@@ -466,6 +480,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/html-to-md": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/pi-spawn": "workspace:*",
@@ -484,6 +499,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -495,6 +511,9 @@
     },
     "packages/extensions/session-name": {
       "name": "@bds_pi/session-name",
+      "dependencies": {
+        "@bds_pi/config": "workspace:*",
+      },
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
       },
@@ -516,6 +535,7 @@
     "packages/extensions/system-prompt": {
       "name": "@bds_pi/system-prompt",
       "dependencies": {
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/interpolate": "workspace:*",
         "@bds_pi/pi-spawn": "workspace:*",
       },
@@ -528,6 +548,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/bash": "workspace:*",
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/create-file": "workspace:*",
         "@bds_pi/edit-file": "workspace:*",
         "@bds_pi/finder": "workspace:*",
@@ -576,6 +597,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/tool-cost": "workspace:*",
         "@sinclair/typebox": "^0.34.0",

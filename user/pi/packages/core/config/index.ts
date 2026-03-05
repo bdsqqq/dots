@@ -94,6 +94,19 @@ export function getExtensionConfig<T extends Record<string, unknown>>(
   return merged;
 }
 
+/** read a top-level (non-namespaced) key from the global settings file. */
+export function getGlobalConfig<T>(key: string): T | undefined {
+  const globalPath = resolveGlobalSettingsPath();
+  const settings = readJsonFile(globalPath);
+  if (!settings || !(key in settings)) return undefined;
+  return settings[key] as T;
+}
+
+/** directory containing the global settings file (e.g. ~/.pi/agent/). */
+export function resolveConfigDir(): string {
+  return path.dirname(resolveGlobalSettingsPath());
+}
+
 if (import.meta.vitest) {
   const { afterEach, describe, expect, test } = import.meta.vitest;
   const tmpdir = os.tmpdir();
@@ -238,6 +251,36 @@ if (import.meta.vitest) {
         { cwd: projectDir },
       );
       expect(result).toEqual({ a: "global" });
+    });
+  });
+
+  describe("getGlobalConfig", () => {
+    test("returns undefined when no settings file exists", () => {
+      setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+      expect(getGlobalConfig("missing")).toBeUndefined();
+    });
+
+    test("reads top-level key from global settings", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        promptVariables: { foo: { literal: "bar" } },
+      });
+      setGlobalSettingsPath(settingsPath);
+      expect(getGlobalConfig("promptVariables")).toEqual({ foo: { literal: "bar" } });
+    });
+
+    test("returns undefined for missing key", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", { other: 1 });
+      setGlobalSettingsPath(settingsPath);
+      expect(getGlobalConfig("promptVariables")).toBeUndefined();
+    });
+  });
+
+  describe("resolveConfigDir", () => {
+    test("returns dirname of global settings path", () => {
+      setGlobalSettingsPath("/fake/dir/settings.json");
+      expect(resolveConfigDir()).toBe("/fake/dir");
     });
   });
 }
