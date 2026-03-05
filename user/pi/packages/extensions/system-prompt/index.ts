@@ -17,24 +17,30 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { readAgentPrompt } from "@bds_pi/pi-spawn";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
+import { getExtensionConfig } from "@bds_pi/config";
 
-/** harness configuration. TODO: make this configurable via settings or env. */
-const HARNESS = "pi";
-const IDENTITY = "Amp";
+type SystemPromptExtConfig = {
+  identity: string;
+  harness: string;
+};
+
+const CONFIG_DEFAULTS: SystemPromptExtConfig = {
+  identity: "Amp",
+  harness: "pi",
+};
 
 export default function (pi: ExtensionAPI) {
+  const cfg = getExtensionConfig("@bds_pi/system-prompt", CONFIG_DEFAULTS);
   const body = readAgentPrompt("prompt.amp.system.md");
   if (!body) return;
 
-  // load harness docs based on harness name
-  const harnessDocs =
-    readAgentPrompt(`prompt.harness-docs.${HARNESS}.md`) || "";
+  const harnessDocs = readAgentPrompt(`prompt.harness-docs.${cfg.harness}.md`) || "";
 
   pi.on("before_agent_start", async (event, ctx) => {
     const interpolated = interpolatePromptVars(body, ctx.cwd, {
       sessionId: ctx.sessionManager.getSessionId(),
-      identity: IDENTITY,
-      harness: HARNESS,
+      identity: cfg.identity,
+      harness: cfg.harness,
       harnessDocsSection: harnessDocs,
     });
 
