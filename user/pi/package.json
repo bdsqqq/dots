@@ -2,7 +2,7 @@
   "name": "@bdsqqq/pi",
   "version": "0.0.1",
   "type": "module",
-  "description": "extensions and core utilities for pi-coding-agent",
+  "description": "extensions and core utilities for the pi-coding-agent ecosystem",
   "keywords": ["pi-package"],
   "license": "MIT",
   "repository": {
