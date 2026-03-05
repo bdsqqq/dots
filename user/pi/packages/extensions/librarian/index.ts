@@ -27,25 +27,35 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
+import { getExtensionConfig } from "@bds_pi/config";
 
-const MODEL = "openrouter/anthropic/claude-haiku-4.5";
+type LibrarianExtConfig = {
+  model: string;
+  extensionTools: string[];
+  builtinTools: string[];
+};
+
+const CONFIG_DEFAULTS: LibrarianExtConfig = {
+  model: "openrouter/anthropic/claude-haiku-4.5",
+  extensionTools: [
+    "read_github",
+    "search_github",
+    "list_directory_github",
+    "list_repositories",
+    "glob_github",
+    "commit_search",
+    "diff",
+    "web_search",
+  ],
+  builtinTools: [],
+};
 
 export interface LibrarianConfig {
   systemPrompt?: string;
+  model?: string;
+  extensionTools?: string[];
+  builtinTools?: string[];
 }
-
-/** github tools are extension tools, not builtins. */
-const BUILTIN_TOOLS: string[] = [];
-const EXTENSION_TOOLS = [
-  "read_github",
-  "search_github",
-  "list_directory_github",
-  "list_repositories",
-  "glob_github",
-  "commit_search",
-  "diff",
-  "web_search",
-];
 
 interface LibrarianParams {
   query: string;
@@ -117,9 +127,9 @@ export function createLibrarianTool(
       const result = await piSpawn({
         cwd: ctx.cwd,
         task: fullTask,
-        model: MODEL,
-        builtinTools: BUILTIN_TOOLS,
-        extensionTools: EXTENSION_TOOLS,
+        model: config.model ?? CONFIG_DEFAULTS.model,
+        builtinTools: config.builtinTools ?? CONFIG_DEFAULTS.builtinTools,
+        extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
         systemPromptBody: config.systemPrompt,
         signal,
         sessionId,
@@ -202,7 +212,11 @@ export function createLibrarianTool(
 }
 
 export default function (pi: ExtensionAPI) {
+  const cfg = getExtensionConfig("@bds_pi/librarian", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createLibrarianTool({
     systemPrompt: readAgentPrompt("agent.amp.librarian.md"),
+    model: cfg.model,
+    extensionTools: cfg.extensionTools,
+    builtinTools: cfg.builtinTools,
   })));
 }
