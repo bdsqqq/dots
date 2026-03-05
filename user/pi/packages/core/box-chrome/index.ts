@@ -171,7 +171,7 @@ if (import.meta.vitest) {
           innerWidth: 10,
           left: { text: "L", width: 1 },
         }),
-      ).toBe("╭─L───────╮");
+      ).toBe("╭─L────────╮");
     });
 
     it("right label only", () => {
@@ -182,7 +182,7 @@ if (import.meta.vitest) {
           innerWidth: 10,
           right: { text: "R", width: 1 },
         }),
-      ).toBe("╭───────R─╮");
+      ).toBe("╭────────R─╮");
     });
 
     it("both labels", () => {
@@ -194,7 +194,7 @@ if (import.meta.vitest) {
           left: { text: "L", width: 1 },
           right: { text: "R", width: 1 },
         }),
-      ).toBe("╭─L──────R─╮");
+      ).toBe("╭─L────────R─╮");
     });
 
     it("overflow falls back to plain dashed line", () => {
