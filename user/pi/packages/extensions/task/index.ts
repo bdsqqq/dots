@@ -193,7 +193,7 @@ export function createTaskTool(config: TaskConfig = {}): ToolDefinition {
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/task", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createTaskTool({
     builtinTools: cfg.builtinTools,

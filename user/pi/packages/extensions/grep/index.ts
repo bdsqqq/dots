@@ -544,7 +544,7 @@ export function createGrepTool(config: GrepExtConfig = CONFIG_DEFAULTS): ToolDef
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/grep", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createGrepTool(cfg)));
 }

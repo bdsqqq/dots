@@ -25,7 +25,7 @@ const CONFIG_DEFAULTS: SessionNameExtConfig = {
   },
 };
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/session-name", CONFIG_DEFAULTS);
   let named = false;
 

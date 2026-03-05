@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { buildRootView } from "./adapters";
 import { StackPalette } from "./palette";
 
-export default function commandPaletteExtension(pi: ExtensionAPI) {
+export default function commandPaletteExtension(pi: ExtensionAPI): void {
   async function openPalette(
     ctx: import("@mariozechner/pi-coding-agent").ExtensionContext,
   ) {

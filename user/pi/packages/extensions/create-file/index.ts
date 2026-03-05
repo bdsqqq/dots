@@ -138,6 +138,6 @@ export function createCreateFileTool(): ToolDefinition {
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createCreateFileTool()));
 }

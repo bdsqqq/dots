@@ -233,7 +233,7 @@ export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/look-at", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createLookAtTool({
     systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),

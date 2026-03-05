@@ -360,7 +360,7 @@ export function createReadWebPageTool(
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/read-web-page", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createReadWebPageTool({
     systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),

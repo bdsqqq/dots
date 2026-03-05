@@ -1,6 +1,28 @@
 {
-  "name": "pi-extensions-workspace",
-  "private": true,
+  "name": "@bdsqqq/pi",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "extensions and core utilities for pi-coding-agent",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "files": ["dist"],
+  "exports": {
+    "./extensions": {
+      "types": "./dist/extensions.d.ts",
+      "import": "./dist/extensions.js"
+    },
+    "./extensions/*": {
+      "types": "./dist/extensions/*.d.ts",
+      "import": "./dist/extensions/*.js"
+    },
+    "./core/*": {
+      "types": "./dist/core/*.d.ts",
+      "import": "./dist/core/*.js"
+    }
+  },
+  "pi": {
+    "extensions": ["./dist/extensions"]
+  },
   "workspaces": {
     "packages": [
       "packages/core/*",
@@ -12,6 +34,7 @@
     }
   },
   "scripts": {
+    "build": "tsdown",
     "lint": "oxlint --type-aware --format=stylish --type-check --report-unused-disable-directives",
     "lint:fix": "oxlint --type-aware --format=stylish --type-check --fix --report-unused-disable-directives",
     "lint:github": "oxlint --type-aware --type-check --format=github --report-unused-disable-directives",
@@ -21,12 +44,23 @@
     "test": "vitest run",
     "check": "bun run format && bun run lint && bun run typecheck && bun run test"
   },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "diff": "^8.0.0"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.55.0",
+    "@mariozechner/pi-tui": ">=0.55.0",
+    "@mariozechner/pi-ai": ">=0.55.0",
+    "@sinclair/typebox": ">=0.34.0"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@vitest/coverage-v8": "^3.0.0",
     "oxfmt": "^0.35.0",
     "oxlint": "^1.50.0",
     "oxlint-tsgolint": "^0.15.0",
+    "tsdown": "^0.21.0",
     "typescript": "^5.9.2",
     "vitest": "^3.0.0"
   }

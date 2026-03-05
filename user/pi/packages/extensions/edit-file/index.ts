@@ -605,6 +605,6 @@ export function createEditFileTool(): ToolDefinition {
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createEditFileTool()));
 }

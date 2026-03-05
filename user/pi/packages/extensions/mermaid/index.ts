@@ -24,7 +24,7 @@ export type DiagramEntry = {
   source: "assistant" | "user" | "command";
 };
 
-export default function mermaidInlineExtension(pi: ExtensionAPI) {
+export default function mermaidInlineExtension(pi: ExtensionAPI): void {
   const CUSTOM_TYPE = "mermaid-inline";
   const MAX_CODE_LENGTH = 20_000;
   const MAX_DIAGRAMS = 100;

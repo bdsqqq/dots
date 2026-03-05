@@ -293,7 +293,7 @@ export function createCodeReviewTool(
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/code-review", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createCodeReviewTool({
     systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),

@@ -123,6 +123,6 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createLsTool(NORMAL_LIMITS)));
 }
