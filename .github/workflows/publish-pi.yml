@@ -1,0 +1,58 @@
+name: publish @bdsqqq/pi
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "user/pi/packages/**"
+      - "user/pi/src/**"
+      - "user/pi/tsdown.config.ts"
+      - "user/pi/tsconfig.build.json"
+      - "user/pi/package.json"
+  workflow_dispatch:
+
+concurrency:
+  group: publish-pi
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: user/pi
+    permissions:
+      contents: read
+      id-token: write # provenance attestation
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - run: bun install
+
+      # npm 11.5.1+ required for provenance support
+      - run: npm install -g npm@latest
+
+      - run: bun run build
+
+      - run: bun run test
+
+      - name: set epoch version
+        id: version
+        run: |
+          TIMESTAMP=$(date +%s)
+          GIT_HASH=$(git rev-parse --short HEAD)
+          VERSION="0.0.${TIMESTAMP}-g${GIT_HASH}"
+          echo "Publishing @bdsqqq/pi@${VERSION}"
+          npm version "${VERSION}" --no-git-tag-version
+
+      - name: publish
+        run: npm publish --access public --tag latest --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
