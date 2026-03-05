@@ -50,6 +50,7 @@
     "check": "bun run format && bun run lint && bun run typecheck && bun run test"
   },
   "dependencies": {
+    "beautiful-mermaid": "^1.1.3",
     "cheerio": "^1.0.0",
     "diff": "^8.0.0"
   },

@@ -43,10 +43,12 @@ export default defineConfig({
     neverBundle: [
       /^@mariozechner\//,
       /^@sinclair\//,
+      "beautiful-mermaid",
     ],
   },
   // resolve @bds_pi/* to source so they get bundled in
   alias: bdsPiAlias,
+  define: { "import.meta.vitest": "undefined" },
   outDir: "dist",
   clean: true,
   fixedExtension: false,
