@@ -24,13 +24,20 @@ import {
   textSection,
   type Excerpt,
 } from "@bds_pi/box-format";
+import { getExtensionConfig } from "@bds_pi/config";
 
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },
   { focus: "tail" as const, context: 5 },
 ];
 
-const DEFAULT_LIMIT = 500;
+type GlobExtConfig = {
+  defaultLimit: number;
+};
+
+const CONFIG_DEFAULTS: GlobExtConfig = {
+  defaultLimit: 500,
+};
 
 interface GlobParams {
   filePattern: string;
@@ -38,7 +45,7 @@ interface GlobParams {
   offset?: number;
 }
 
-export function createGlobTool(): ToolDefinition {
+export function createGlobTool(config: GlobExtConfig = CONFIG_DEFAULTS): ToolDefinition {
   return {
     name: "find",
     label: "Find Files",
@@ -100,7 +107,7 @@ export function createGlobTool(): ToolDefinition {
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const p = params as GlobParams;
       const searchPath = ctx.cwd;
-      const limit = p.limit ?? DEFAULT_LIMIT;
+      const limit = p.limit ?? config.defaultLimit;
       const offset = p.offset ?? 0;
 
       return new Promise((resolve) => {
@@ -225,5 +232,6 @@ export function createGlobTool(): ToolDefinition {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerTool(withPromptPatch(createGlobTool()));
+  const cfg = getExtensionConfig("@bds_pi/glob", CONFIG_DEFAULTS);
+  pi.registerTool(withPromptPatch(createGlobTool(cfg)));
 }
