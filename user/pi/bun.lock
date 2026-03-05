@@ -40,6 +40,13 @@
         "vitest": "^3.0.0",
       },
     },
+    "packages/core/config": {
+      "name": "@bds_pi/config",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
     "packages/core/file-tracker": {
       "name": "@bds_pi/file-tracker",
       "dependencies": {
@@ -348,6 +355,7 @@
       "name": "@bds_pi/librarian",
       "version": "0.0.1",
       "dependencies": {
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/github": "workspace:*",
         "@bds_pi/pi-spawn": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
@@ -677,6 +685,8 @@
     "@bds_pi/code-review": ["@bds_pi/code-review@workspace:packages/extensions/code-review"],
 
     "@bds_pi/command-palette": ["@bds_pi/command-palette@workspace:packages/extensions/command-palette"],
+
+    "@bds_pi/config": ["@bds_pi/config@workspace:packages/core/config"],
 
     "@bds_pi/create-file": ["@bds_pi/create-file@workspace:packages/extensions/create-file"],
 
