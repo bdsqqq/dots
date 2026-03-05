@@ -31,10 +31,19 @@ import { withFileLock } from "@bds_pi/mutex";
 import { evaluatePermission, loadPermissions } from "@bds_pi/permissions";
 import { resolveToAbsolute } from "@bds_pi/read";
 import { OutputBuffer } from "@bds_pi/output-buffer";
+import { getExtensionConfig } from "@bds_pi/config";
 
-const HEAD_LINES = 50;
-const TAIL_LINES = 50;
-const SIGKILL_DELAY_MS = 3000;
+type BashExtConfig = {
+  headLines: number;
+  tailLines: number;
+  sigkillDelayMs: number;
+};
+
+const CONFIG_DEFAULTS: BashExtConfig = {
+  headLines: 50,
+  tailLines: 50,
+  sigkillDelayMs: 3000,
+};
 
 // --- shell config ---
 
@@ -95,7 +104,7 @@ function injectGitTrailers(cmd: string, sessionId: string): string {
  * pi's built-in goes straight to SIGKILL via killProcessTree().
  * graceful fallback so processes can clean up.
  */
-function killGracefully(pid: number): void {
+function killGracefully(pid: number, delayMs: number): void {
   try {
     process.kill(-pid, "SIGTERM");
   } catch {
@@ -109,7 +118,7 @@ function killGracefully(pid: number): void {
     } catch {
       // already dead
     }
-  }, SIGKILL_DELAY_MS);
+  }, delayMs);
 }
 
 /** per-block excerpts for collapsed display — head 3 + tail 5 = 8 visual lines */
@@ -120,7 +129,7 @@ const COLLAPSED_EXCERPTS: Excerpt[] = [
 
 // --- tool factory ---
 
-export function createBashTool(): ToolDefinition {
+export function createBashTool(config: BashExtConfig = CONFIG_DEFAULTS): ToolDefinition {
   return {
     name: "bash",
     label: "Bash",
@@ -128,7 +137,7 @@ export function createBashTool(): ToolDefinition {
       "Executes the given shell command using bash.\n\n" +
       "- Do NOT chain commands with `;` or `&&` or use `&` for background processes; make separate tool calls instead\n" +
       "- Do NOT use interactive commands (REPLs, editors, password prompts)\n" +
-      `- Output shows first ${HEAD_LINES} and last ${TAIL_LINES} lines; middle is truncated for large outputs\n` +
+      `- Output shows first ${config.headLines} and last ${config.tailLines} lines; middle is truncated for large outputs\n` +
       "- Environment variables and `cd` do not persist between commands; use the `cwd` parameter instead\n" +
       "- Commands run in the workspace root by default; only use `cwd` when you need a different directory\n" +
       '- ALWAYS quote file paths: `cat "path with spaces/file.txt"`\n' +
@@ -255,7 +264,7 @@ export function createBashTool(): ToolDefinition {
       command = injectGitTrailers(command, sessionId);
 
       const run = () =>
-        runCommand(command, effectiveCwd, p.timeout, signal, onUpdate);
+        runCommand(command, effectiveCwd, p.timeout, signal, onUpdate, config);
 
       if (isGitCommand(command)) {
         const gitLockKey = path.join(effectiveCwd, ".git", "__pi_git_lock__");
@@ -275,6 +284,7 @@ async function runCommand(
   timeout: number | undefined,
   signal: AbortSignal | undefined,
   onUpdate: ((update: any) => void) | undefined,
+  config: BashExtConfig,
 ): Promise<any> {
   const { shell, args } = getShell();
 
@@ -286,7 +296,7 @@ async function runCommand(
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    const output = new OutputBuffer(HEAD_LINES, TAIL_LINES);
+    const output = new OutputBuffer(config.headLines, config.tailLines);
     let timedOut = false;
     let aborted = false;
 
@@ -294,13 +304,13 @@ async function runCommand(
     if (timeout && timeout > 0) {
       timeoutHandle = setTimeout(() => {
         timedOut = true;
-        if (child.pid) killGracefully(child.pid);
+        if (child.pid) killGracefully(child.pid, config.sigkillDelayMs);
       }, timeout * 1000);
     }
 
     const onAbort = () => {
       aborted = true;
-      if (child.pid) killGracefully(child.pid);
+      if (child.pid) killGracefully(child.pid, config.sigkillDelayMs);
     };
     if (signal) {
       if (signal.aborted) onAbort();
@@ -364,5 +374,6 @@ async function runCommand(
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerTool(withPromptPatch(createBashTool()));
+  const cfg = getExtensionConfig("@bds_pi/bash", CONFIG_DEFAULTS);
+  pi.registerTool(withPromptPatch(createBashTool(cfg)));
 }
