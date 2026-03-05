@@ -24,14 +24,16 @@ import {
 } from "@bds_pi/box-format";
 import { Type } from "@sinclair/typebox";
 
-const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
-
 type SearchSessionsExtConfig = {
   maxResults: number;
+  sessionsDir: string;
+  rgTimeoutMs: number;
 };
 
 const CONFIG_DEFAULTS: SearchSessionsExtConfig = {
   maxResults: 50,
+  sessionsDir: path.join(os.homedir(), ".pi", "agent", "sessions"),
+  rgTimeoutMs: 10000,
 };
 
 /** per-block excerpts for collapsed display — first 5 visual lines */
@@ -340,11 +342,11 @@ function matchesDateRange(
 
 // --- rg pre-filter ---
 
-function rgFilterFiles(keyword: string): Set<string> | null {
+function rgFilterFiles(keyword: string, sessionsDir: string, timeoutMs: number): Set<string> | null {
   try {
     const result = execSync(
-      `rg -l -i ${JSON.stringify(keyword)} ${JSON.stringify(SESSIONS_DIR)}`,
-      { stdio: ["ignore", "pipe", "ignore"], timeout: 10000 },
+      `rg -l -i ${JSON.stringify(keyword)} ${JSON.stringify(sessionsDir)}`,
+      { stdio: ["ignore", "pipe", "ignore"], timeout: timeoutMs },
     )
       .toString()
       .trim();
@@ -549,7 +551,7 @@ export function createSearchSessionsTool(config: SearchSessionsExtConfig = CONFI
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const p = params as SearchSessionsParams;
-      if (!fs.existsSync(SESSIONS_DIR)) {
+      if (!fs.existsSync(config.sessionsDir)) {
         return {
           content: [
             { type: "text" as const, text: "(no sessions directory found)" },
@@ -567,7 +569,7 @@ export function createSearchSessionsTool(config: SearchSessionsExtConfig = CONFI
             else if (entry.name.endsWith(".jsonl")) sessionFiles.push(full);
           }
         };
-        walkDir(SESSIONS_DIR);
+        walkDir(config.sessionsDir);
       } catch {
         return {
           content: [
@@ -588,7 +590,7 @@ export function createSearchSessionsTool(config: SearchSessionsExtConfig = CONFI
 
       // 2. rg pre-filter if keyword set
       if (p.keyword) {
-        const matches = rgFilterFiles(p.keyword);
+        const matches = rgFilterFiles(p.keyword, config.sessionsDir, config.rgTimeoutMs);
         if (matches !== null) {
           sessionFiles = sessionFiles.filter((f) => matches.has(f));
         }
