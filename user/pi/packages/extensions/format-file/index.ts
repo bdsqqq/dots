@@ -13,6 +13,7 @@ import { spawnSync } from "node:child_process";
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
+import { getExtensionConfig } from "@bds_pi/config";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
@@ -31,6 +32,14 @@ const COLLAPSED_EXCERPTS: Excerpt[] = [
 
 type Formatter = { name: string; args: (file: string) => string[] };
 
+type FormatFileExtConfig = {
+  preferredFormatter: string;
+};
+
+const CONFIG_DEFAULTS: FormatFileExtConfig = {
+  preferredFormatter: "auto",
+};
+
 const FORMATTERS: Formatter[] = [
   {
     name: "prettier",
@@ -42,8 +51,11 @@ const FORMATTERS: Formatter[] = [
   },
 ];
 
-function findFormatter(): Formatter | null {
-  for (const fmt of FORMATTERS) {
+function findFormatter(preferred: string): Formatter | null {
+  const ordered = preferred !== "auto"
+    ? [...FORMATTERS].sort((a, b) => (a.name === preferred ? -1 : b.name === preferred ? 1 : 0))
+    : FORMATTERS;
+  for (const fmt of ordered) {
     const result = spawnSync("which", [fmt.name], {
       encoding: "utf-8",
       timeout: 3000,
@@ -53,7 +65,7 @@ function findFormatter(): Formatter | null {
   return null;
 }
 
-export function createFormatFileTool(): ToolDefinition {
+export function createFormatFileTool(config: FormatFileExtConfig = CONFIG_DEFAULTS): ToolDefinition {
   return {
     name: "format_file",
     label: "Format File",
@@ -113,7 +125,7 @@ export function createFormatFileTool(): ToolDefinition {
         } as any;
       }
 
-      const formatter = findFormatter();
+      const formatter = findFormatter(config.preferredFormatter);
       if (!formatter) {
         return {
           content: [
@@ -192,5 +204,6 @@ export function createFormatFileTool(): ToolDefinition {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerTool(withPromptPatch(createFormatFileTool()));
+  const cfg = getExtensionConfig("@bds_pi/format-file", CONFIG_DEFAULTS);
+  pi.registerTool(withPromptPatch(createFormatFileTool(cfg)));
 }
