@@ -25,27 +25,40 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
+import { getExtensionConfig } from "@bds_pi/config";
 
-const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash", "edit", "write"];
-const EXTENSION_TOOLS = [
-  "read",
-  "grep",
-  "find",
-  "ls",
-  "bash",
-  "edit",
-  "write",
-  "format_file",
-  "skill",
-  "finder",
-];
+type TaskExtConfig = {
+  builtinTools: string[];
+  extensionTools: string[];
+};
+
+const CONFIG_DEFAULTS: TaskExtConfig = {
+  builtinTools: ["read", "grep", "find", "ls", "bash", "edit", "write"],
+  extensionTools: [
+    "read",
+    "grep",
+    "find",
+    "ls",
+    "bash",
+    "edit",
+    "write",
+    "format_file",
+    "skill",
+    "finder",
+  ],
+};
 
 interface TaskParams {
   prompt: string;
   description: string;
 }
 
-export function createTaskTool(): ToolDefinition {
+export interface TaskConfig {
+  builtinTools?: string[];
+  extensionTools?: string[];
+}
+
+export function createTaskTool(config: TaskConfig = {}): ToolDefinition {
   return {
     name: "Task",
     label: "Task",
@@ -102,8 +115,8 @@ export function createTaskTool(): ToolDefinition {
       const result = await piSpawn({
         cwd: ctx.cwd,
         task: p.prompt,
-        builtinTools: BUILTIN_TOOLS,
-        extensionTools: EXTENSION_TOOLS,
+        builtinTools: config.builtinTools ?? CONFIG_DEFAULTS.builtinTools,
+        extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
         signal,
         sessionId,
         onUpdate: (partial) => {
@@ -181,5 +194,9 @@ export function createTaskTool(): ToolDefinition {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerTool(withPromptPatch(createTaskTool()));
+  const cfg = getExtensionConfig("@bds_pi/task", CONFIG_DEFAULTS);
+  pi.registerTool(withPromptPatch(createTaskTool({
+    builtinTools: cfg.builtinTools,
+    extensionTools: cfg.extensionTools,
+  })));
 }
