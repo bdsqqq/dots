@@ -1,3 +1,13 @@
+/**
+ * command palette — ctrl+p overlay for navigating tools, commands, and settings.
+ *
+ * renders as a centered overlay (72-char, top-anchored) using pi's ctx.ui.custom()
+ * API. views are composable via StackPalette — each view pushes onto a stack,
+ * esc pops back. adapters (buildRootView) wire extension-registered commands
+ * and tools into palette items.
+ *
+ * also registered as `/palette` command for non-shortcut access.
+ */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { buildRootView } from "./adapters";
 import { StackPalette } from "./palette";
