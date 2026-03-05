@@ -165,7 +165,8 @@ function extractRefs(s: string | undefined, knownVars: Set<string>): string[] {
   const re = /\{(\w+)\}/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(s)) !== null) {
-    if (knownVars.has(m[1])) refs.push(m[1]);
+    const cap = m[1];
+    if (cap !== undefined && knownVars.has(cap)) refs.push(cap);
   }
   return refs;
 }
@@ -214,9 +215,10 @@ function topoSort(defs: PromptVariables): string[] {
 
 /** substitute already-resolved vars into a string. */
 function subVars(s: string, resolved: Record<string, string>): string {
-  return s.replace(/\{(\w+)\}/g, (match, key: string) =>
-    key in resolved ? resolved[key] : match,
-  );
+  return s.replace(/\{(\w+)\}/g, (match, key: string) => {
+    const val = resolved[key];
+    return val !== undefined ? val : match;
+  });
 }
 
 /** resolve a single variable definition to a string value. */
@@ -314,7 +316,8 @@ export function interpolatePromptVars(
   const order = topoSort(merged);
   const resolved: Record<string, string> = {};
   for (const name of order) {
-    resolved[name] = resolveVariable(merged[name], resolved, runtimeVars, configDir);
+    const def = merged[name];
+    if (def) resolved[name] = resolveVariable(def, resolved, runtimeVars, configDir);
   }
 
   // determine which vars are empty and which are filled, respecting dropLineIfEmpty
