@@ -4,7 +4,7 @@
  * reads per-extension configuration from pi's settings.json files,
  * keyed by extension namespace (e.g. `"@bds_pi/librarian"`).
  *
- * merge order: defaults → global (~/.pi/agent/settings.json) → project-local (.pi/settings.json).
+ * merge order: defaults → global (~/.pi/agent/bds-pi.json) → project-local (.pi/settings.json).
  * project-local is opt-in via `allowProjectConfig` to prevent malicious repo overrides.
  */
 
@@ -25,7 +25,7 @@ export function clearConfigCache(): void {
 }
 
 function resolveGlobalSettingsPath(): string {
-  return _globalSettingsPath ?? path.join(os.homedir(), ".pi", "agent", "settings.json");
+  return _globalSettingsPath ?? path.join(os.homedir(), ".pi", "agent", "bds-pi.json");
 }
 
 function readJsonFile(filePath: string): Record<string, unknown> | null {
