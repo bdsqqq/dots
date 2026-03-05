@@ -18,7 +18,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, readAgentPrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -32,12 +32,16 @@ type LookAtExtConfig = {
   model: string;
   extensionTools: string[];
   builtinTools: string[];
+  promptFile: string;
+  promptString: string;
 };
 
 const CONFIG_DEFAULTS: LookAtExtConfig = {
   model: "openrouter/google/gemini-3-flash-preview",
   extensionTools: ["read", "ls"],
   builtinTools: ["read", "ls"],
+  promptFile: "prompt.amp.look-at.md",
+  promptString: "",
 };
 
 const DEFAULT_SYSTEM_PROMPT = `Analyze the provided file and answer the user's question about it. Be concise and direct, reference specific locations. When comparing files, systematically identify differences.`;
@@ -232,7 +236,7 @@ export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
 export default function (pi: ExtensionAPI) {
   const cfg = getExtensionConfig("@bds_pi/look-at", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createLookAtTool({
-    systemPrompt: readAgentPrompt("prompt.amp.look-at.md"),
+    systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),
     model: cfg.model,
     extensionTools: cfg.extensionTools,
     builtinTools: cfg.builtinTools,

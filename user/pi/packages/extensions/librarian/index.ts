@@ -19,7 +19,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, readAgentPrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -33,6 +33,8 @@ type LibrarianExtConfig = {
   model: string;
   extensionTools: string[];
   builtinTools: string[];
+  promptFile: string;
+  promptString: string;
 };
 
 const CONFIG_DEFAULTS: LibrarianExtConfig = {
@@ -48,6 +50,8 @@ const CONFIG_DEFAULTS: LibrarianExtConfig = {
     "web_search",
   ],
   builtinTools: [],
+  promptFile: "agent.amp.librarian.md",
+  promptString: "",
 };
 
 export interface LibrarianConfig {
@@ -214,7 +218,7 @@ export function createLibrarianTool(
 export default function (pi: ExtensionAPI) {
   const cfg = getExtensionConfig("@bds_pi/librarian", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createLibrarianTool({
-    systemPrompt: readAgentPrompt("agent.amp.librarian.md"),
+    systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),
     model: cfg.model,
     extensionTools: cfg.extensionTools,
     builtinTools: cfg.builtinTools,

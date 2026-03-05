@@ -20,7 +20,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, readAgentPrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -34,12 +34,20 @@ type CodeReviewExtConfig = {
   model: string;
   builtinTools: string[];
   extensionTools: string[];
+  promptFile: string;
+  promptString: string;
+  reportPromptFile: string;
+  reportPromptString: string;
 };
 
 const CONFIG_DEFAULTS: CodeReviewExtConfig = {
   model: "openrouter/google/gemini-3.1-pro-preview",
   builtinTools: ["read", "grep", "find", "ls", "bash"],
   extensionTools: ["read", "grep", "find", "ls", "bash", "web_search", "read_web_page"],
+  promptFile: "prompt.amp.code-review-system.md",
+  promptString: "",
+  reportPromptFile: "prompt.amp.code-review-report.md",
+  reportPromptString: "",
 };
 
 const DEFAULT_SYSTEM_PROMPT = `You are an expert code reviewer. Review the provided diff for bugs, security issues, and code quality. Report findings with file locations and severity.
@@ -288,8 +296,8 @@ export function createCodeReviewTool(
 export default function (pi: ExtensionAPI) {
   const cfg = getExtensionConfig("@bds_pi/code-review", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createCodeReviewTool({
-    systemPrompt: readAgentPrompt("prompt.amp.code-review-system.md"),
-    reportFormat: readAgentPrompt("prompt.amp.code-review-report.md"),
+    systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),
+    reportFormat: resolvePrompt(cfg.reportPromptString, cfg.reportPromptFile),
     model: cfg.model,
     builtinTools: cfg.builtinTools,
     extensionTools: cfg.extensionTools,
