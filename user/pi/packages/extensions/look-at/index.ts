@@ -26,17 +26,27 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
+import { getExtensionConfig } from "@bds_pi/config";
 
-const MODEL = "openrouter/google/gemini-3-flash-preview";
+type LookAtExtConfig = {
+  model: string;
+  extensionTools: string[];
+  builtinTools: string[];
+};
 
-/** read tool (for file access) + ls (for context if needed) */
-const BUILTIN_TOOLS = ["read", "ls"];
-const EXTENSION_TOOLS = ["read", "ls"];
+const CONFIG_DEFAULTS: LookAtExtConfig = {
+  model: "openrouter/google/gemini-3-flash-preview",
+  extensionTools: ["read", "ls"],
+  builtinTools: ["read", "ls"],
+};
 
 const DEFAULT_SYSTEM_PROMPT = `Analyze the provided file and answer the user's question about it. Be concise and direct, reference specific locations. When comparing files, systematically identify differences.`;
 
 export interface LookAtConfig {
   systemPrompt?: string;
+  model?: string;
+  extensionTools?: string[];
+  builtinTools?: string[];
 }
 
 interface LookAtParams {
@@ -130,9 +140,9 @@ export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
       const result = await piSpawn({
         cwd: ctx.cwd,
         task: fullTask,
-        model: MODEL,
-        builtinTools: BUILTIN_TOOLS,
-        extensionTools: EXTENSION_TOOLS,
+        model: config.model ?? CONFIG_DEFAULTS.model,
+        builtinTools: config.builtinTools ?? CONFIG_DEFAULTS.builtinTools,
+        extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
         systemPromptBody: systemPrompt,
         signal,
         sessionId,
@@ -220,7 +230,11 @@ export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
 }
 
 export default function (pi: ExtensionAPI) {
+  const cfg = getExtensionConfig("@bds_pi/look-at", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createLookAtTool({
     systemPrompt: readAgentPrompt("prompt.amp.look-at.md"),
+    model: cfg.model,
+    extensionTools: cfg.extensionTools,
+    builtinTools: cfg.builtinTools,
   })));
 }
