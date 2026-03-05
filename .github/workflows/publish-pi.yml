@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "user/pi/packages/**"
+      - "user/pi/packages/**/*.ts"
+      - "!user/pi/packages/**/*.test.ts"
       - "user/pi/src/**"
       - "user/pi/tsdown.config.ts"
       - "user/pi/tsconfig.build.json"
