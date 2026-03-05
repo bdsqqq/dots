@@ -28,10 +28,19 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
+import { getExtensionConfig } from "@bds_pi/config";
 
-const MODEL = "openrouter/openai/gpt-5.2";
-const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash"];
-const EXTENSION_TOOLS = ["read", "grep", "find", "ls", "bash"];
+type OracleExtConfig = {
+  model: string;
+  extensionTools: string[];
+  builtinTools: string[];
+};
+
+const CONFIG_DEFAULTS: OracleExtConfig = {
+  model: "openrouter/openai/gpt-5.2",
+  extensionTools: ["read", "grep", "find", "ls", "bash"],
+  builtinTools: ["read", "grep", "find", "ls", "bash"],
+};
 
 interface OracleParams {
   task: string;
@@ -41,6 +50,9 @@ interface OracleParams {
 
 export interface OracleConfig {
   systemPrompt?: string;
+  model?: string;
+  extensionTools?: string[];
+  builtinTools?: string[];
 }
 
 export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
@@ -121,9 +133,9 @@ export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
       const result = await piSpawn({
         cwd: ctx.cwd,
         task: fullTask,
-        model: MODEL,
-        builtinTools: BUILTIN_TOOLS,
-        extensionTools: EXTENSION_TOOLS,
+        model: config.model ?? CONFIG_DEFAULTS.model,
+        builtinTools: config.builtinTools ?? CONFIG_DEFAULTS.builtinTools,
+        extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
         systemPromptBody: config.systemPrompt,
         signal,
         sessionId,
@@ -209,7 +221,11 @@ export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
 }
 
 export default function (pi: ExtensionAPI) {
+  const cfg = getExtensionConfig("@bds_pi/oracle", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createOracleTool({
     systemPrompt: readAgentPrompt("agent.amp.oracle.md"),
+    model: cfg.model,
+    extensionTools: cfg.extensionTools,
+    builtinTools: cfg.builtinTools,
   })));
 }
