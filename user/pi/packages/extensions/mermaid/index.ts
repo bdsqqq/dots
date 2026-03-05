@@ -1,3 +1,18 @@
+/**
+ * mermaid inline rendering — intercepts mermaid code blocks in assistant
+ * and user messages, renders them as ASCII diagrams in the TUI.
+ *
+ * renders via custom message type ("mermaid-inline") so diagrams persist
+ * across session reload. details contain the full DiagramEntry (not just
+ * an ID) making rendering self-contained.
+ *
+ * adapts to terminal width via pickBestPreset — tries multiple layout
+ * presets until one fits. overflow shows a hint to open the full viewer
+ * (ctrl+shift+m), which renders at unconstrained width.
+ *
+ * context hook filters mermaid custom messages from the LLM context window
+ * to avoid wasting tokens on rendered diagram metadata.
+ */
 import type {
   ExtensionAPI,
   ExtensionContext,
