@@ -1,6 +1,8 @@
 {
   "defaultProvider": "openrouter",
-  "skills": ["~/.config/agents/skills"],
+  "skills": [
+    "~/.config/agents/skills"
+  ],
   "extensions": [
     "~/.pi/agent/extensions/editor",
     "~/.pi/agent/extensions/handoff.ts",
