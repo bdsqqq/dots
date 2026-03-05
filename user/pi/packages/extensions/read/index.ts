@@ -26,6 +26,7 @@ import {
 } from "@bds_pi/box-format";
 import { Type } from "@sinclair/typebox";
 import { formatHeadTail } from "@bds_pi/output-buffer";
+import { getExtensionConfig } from "@bds_pi/config";
 
 // --- limits ---
 
@@ -39,6 +40,20 @@ export interface ReadLimits {
 export const NORMAL_LIMITS: ReadLimits = {
   maxLines: 500,
   maxFileBytes: 64 * 1024,
+  maxLineBytes: 4096,
+  maxDirEntries: 1000,
+};
+
+type ReadExtConfig = {
+  maxLines: number;
+  maxFileBytes: number;
+  maxLineBytes: number;
+  maxDirEntries: number;
+};
+
+const CONFIG_DEFAULTS: ReadExtConfig = {
+  maxLines: 500,
+  maxFileBytes: 65536,
   maxLineBytes: 4096,
   maxDirEntries: 1000,
 };
@@ -461,5 +476,6 @@ if (import.meta.vitest) {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerTool(withPromptPatch(createReadTool(NORMAL_LIMITS)));
+  const cfg = getExtensionConfig("@bds_pi/read", CONFIG_DEFAULTS);
+  pi.registerTool(withPromptPatch(createReadTool(cfg)));
 }
