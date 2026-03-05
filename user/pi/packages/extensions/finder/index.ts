@@ -27,13 +27,25 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
+import { getExtensionConfig } from "@bds_pi/config";
 
-const MODEL = "openrouter/google/gemini-3-flash-preview";
-const BUILTIN_TOOLS = ["read", "grep", "find", "ls"];
-const EXTENSION_TOOLS = ["read", "grep", "find", "ls"];
+type FinderExtConfig = {
+  model: string;
+  extensionTools: string[];
+  builtinTools: string[];
+};
+
+const CONFIG_DEFAULTS: FinderExtConfig = {
+  model: "openrouter/google/gemini-3-flash-preview",
+  extensionTools: ["read", "grep", "find", "ls"],
+  builtinTools: ["read", "grep", "find", "ls"],
+};
 
 export interface FinderConfig {
   systemPrompt?: string;
+  model?: string;
+  extensionTools?: string[];
+  builtinTools?: string[];
 }
 
 interface FinderParams {
@@ -93,9 +105,9 @@ export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
       const result = await piSpawn({
         cwd: ctx.cwd,
         task: p.query,
-        model: MODEL,
-        builtinTools: BUILTIN_TOOLS,
-        extensionTools: EXTENSION_TOOLS,
+        model: config.model ?? CONFIG_DEFAULTS.model,
+        builtinTools: config.builtinTools ?? CONFIG_DEFAULTS.builtinTools,
+        extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
         systemPromptBody: config.systemPrompt,
         signal,
         sessionId,
@@ -177,7 +189,11 @@ export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
 }
 
 export default function (pi: ExtensionAPI) {
+  const cfg = getExtensionConfig("@bds_pi/finder", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createFinderTool({
     systemPrompt: readAgentPrompt("agent.amp.finder.md"),
+    model: cfg.model,
+    extensionTools: cfg.extensionTools,
+    builtinTools: cfg.builtinTools,
   })));
 }

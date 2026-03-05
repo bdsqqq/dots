@@ -8,6 +8,7 @@
     "extensions": ["./index.ts"]
   },
   "dependencies": {
+    "@bds_pi/config": "workspace:*",
     "@bds_pi/bash": "workspace:*",
     "@bds_pi/glob": "workspace:*",
     "@bds_pi/grep": "workspace:*",

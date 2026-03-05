@@ -28,20 +28,19 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
+import { getExtensionConfig } from "@bds_pi/config";
 
-const MODEL = "openrouter/google/gemini-3.1-pro-preview";
+type CodeReviewExtConfig = {
+  model: string;
+  builtinTools: string[];
+  extensionTools: string[];
+};
 
-/** sub-agent needs bash (git diff), read/grep/find (context), web tools (docs lookup) */
-const BUILTIN_TOOLS = ["read", "grep", "find", "ls", "bash"];
-const EXTENSION_TOOLS = [
-  "read",
-  "grep",
-  "find",
-  "ls",
-  "bash",
-  "web_search",
-  "read_web_page",
-];
+const CONFIG_DEFAULTS: CodeReviewExtConfig = {
+  model: "openrouter/google/gemini-3.1-pro-preview",
+  builtinTools: ["read", "grep", "find", "ls", "bash"],
+  extensionTools: ["read", "grep", "find", "ls", "bash", "web_search", "read_web_page"],
+};
 
 const DEFAULT_SYSTEM_PROMPT = `You are an expert code reviewer. Review the provided diff for bugs, security issues, and code quality. Report findings with file locations and severity.
 
@@ -53,6 +52,9 @@ const DEFAULT_REPORT_FORMAT = `Emit findings as XML: <codeReview><comment> eleme
 export interface CodeReviewConfig {
   systemPrompt?: string;
   reportFormat?: string;
+  model?: string;
+  builtinTools?: string[];
+  extensionTools?: string[];
 }
 
 // --- XML parsing ---
@@ -187,9 +189,9 @@ export function createCodeReviewTool(
       const result = await piSpawn({
         cwd: ctx.cwd,
         task: fullTask,
-        model: MODEL,
-        builtinTools: BUILTIN_TOOLS,
-        extensionTools: EXTENSION_TOOLS,
+        model: config.model ?? CONFIG_DEFAULTS.model,
+        builtinTools: config.builtinTools ?? CONFIG_DEFAULTS.builtinTools,
+        extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
         systemPromptBody: systemPrompt,
         followUp: reportFormat,
         signal,
@@ -284,8 +286,12 @@ export function createCodeReviewTool(
 }
 
 export default function (pi: ExtensionAPI) {
+  const cfg = getExtensionConfig("@bds_pi/code-review", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createCodeReviewTool({
     systemPrompt: readAgentPrompt("prompt.amp.code-review-system.md"),
     reportFormat: readAgentPrompt("prompt.amp.code-review-report.md"),
+    model: cfg.model,
+    builtinTools: cfg.builtinTools,
+    extensionTools: cfg.extensionTools,
   })));
 }
