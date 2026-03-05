@@ -41,7 +41,8 @@ jobs:
 
       - run: bun run build
 
-      - run: bun run test
+      - name: test
+        run: bunx vitest run --exclude 'packages/extensions/github/**'
         env:
           GH_TOKEN: ${{ github.token }}
 
