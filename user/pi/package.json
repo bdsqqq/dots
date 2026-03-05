@@ -5,6 +5,11 @@
   "description": "extensions and core utilities for pi-coding-agent",
   "keywords": ["pi-package"],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bdsqqq/dots.git",
+    "directory": "user/pi"
+  },
   "files": ["dist"],
   "exports": {
     "./extensions": {
