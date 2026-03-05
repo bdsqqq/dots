@@ -18,6 +18,7 @@ import { spawn } from "node:child_process";
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
+import { getExtensionConfig } from "@bds_pi/config";
 import {
   boxRendererWindowed,
   osc8Link,
@@ -29,7 +30,14 @@ import type { ToolCostDetails } from "@bds_pi/tool-cost";
 
 const ENDPOINT = "https://api.parallel.ai/v1beta/search";
 const CURL_TIMEOUT_SECS = 30;
-const DEFAULT_MAX_RESULTS = 10;
+
+type WebSearchExtConfig = {
+  defaultMaxResults: number;
+};
+
+const CONFIG_DEFAULTS: WebSearchExtConfig = {
+  defaultMaxResults: 10,
+};
 
 /** per-result excerpts for collapsed display — first 5 visual lines */
 const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
@@ -217,7 +225,7 @@ interface WebSearchParams {
   max_results?: number;
 }
 
-export function createWebSearchTool(): ToolDefinition {
+export function createWebSearchTool(config: WebSearchExtConfig = CONFIG_DEFAULTS): ToolDefinition {
   return {
     name: "web_search",
     label: "Web Search",
@@ -246,7 +254,7 @@ export function createWebSearchTool(): ToolDefinition {
       ),
       max_results: Type.Optional(
         Type.Number({
-          description: `The maximum number of results to return (default: ${DEFAULT_MAX_RESULTS}).`,
+          description: `The maximum number of results to return (default: ${config.defaultMaxResults}).`,
         }),
       ),
     }),
@@ -268,7 +276,7 @@ export function createWebSearchTool(): ToolDefinition {
 
       const body: Record<string, unknown> = {
         objective: p.objective,
-        max_results: p.max_results ?? DEFAULT_MAX_RESULTS,
+        max_results: p.max_results ?? config.defaultMaxResults,
         excerpts: { max_chars_per_result: 2000 },
       };
       if (p.search_queries?.length) {
@@ -350,5 +358,6 @@ export function createWebSearchTool(): ToolDefinition {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerTool(withPromptPatch(createWebSearchTool()));
+  const cfg = getExtensionConfig("@bds_pi/web-search", CONFIG_DEFAULTS);
+  pi.registerTool(withPromptPatch(createWebSearchTool(cfg)));
 }
