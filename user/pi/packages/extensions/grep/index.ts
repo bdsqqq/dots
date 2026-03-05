@@ -29,20 +29,29 @@ import {
   type BoxLine,
   type Excerpt,
 } from "@bds_pi/box-format";
+import { getExtensionConfig } from "@bds_pi/config";
 
-const MAX_TOTAL_MATCHES = 100;
-const MAX_COLLECT_MATCHES = 200;
-const MAX_PER_FILE = 10;
-const MAX_LINE_CHARS = 200;
-const RG_CONTEXT_LINES = 1;
+type GrepExtConfig = {
+  maxTotalMatches: number;
+  maxPerFile: number;
+  maxLineChars: number;
+  contextLines: number;
+};
+
+const CONFIG_DEFAULTS: GrepExtConfig = {
+  maxTotalMatches: 100,
+  maxPerFile: 10,
+  maxLineChars: 200,
+  contextLines: 1,
+};
 /** max files shown in collapsed display */
 const COLLAPSED_MAX_FILES = 3;
 /** per-block excerpts for collapsed display — show first 5 visual lines */
 const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
 
-function truncateLine(line: string): string {
-  if (line.length <= MAX_LINE_CHARS) return line;
-  return line.slice(0, MAX_LINE_CHARS) + "...";
+function truncateLine(line: string, maxChars: number): string {
+  if (line.length <= maxChars) return line;
+  return line.slice(0, maxChars) + "...";
 }
 
 function looksLikeRegex(pattern: string): boolean {
@@ -67,7 +76,7 @@ interface GrepFile {
  * convert GrepFile[] to BoxSection[] for box-format rendering.
  * each file becomes a section, contiguous match groups become blocks.
  */
-function grepToSections(files: GrepFile[]): BoxSection[] {
+function grepToSections(files: GrepFile[], maxPerFile: number): BoxSection[] {
   return files.map((f) => {
     const blocks: { lines: BoxLine[] }[] = [];
     let current: BoxLine[] = [];
@@ -91,7 +100,7 @@ function grepToSections(files: GrepFile[]): BoxSection[] {
     if (current.length > 0) blocks.push({ lines: current });
 
     return {
-      header: f.path + (f.hitLimit ? ` [${MAX_PER_FILE} match limit]` : ""),
+      header: f.path + (f.hitLimit ? ` [${maxPerFile} match limit]` : ""),
       blocks,
     };
   });
@@ -112,7 +121,9 @@ interface GrepParams {
   literal?: boolean;
 }
 
-export function createGrepTool(): ToolDefinition {
+export function createGrepTool(config: GrepExtConfig = CONFIG_DEFAULTS): ToolDefinition {
+  const maxCollectMatches = config.maxTotalMatches * 2;
+
   return {
     name: "grep",
     label: "Grep",
@@ -121,8 +132,8 @@ export function createGrepTool(): ToolDefinition {
       "# When to use\n" +
       "- Finding exact text matches (variable names, function calls, specific strings)\n\n" +
       "# Constraints\n" +
-      `- Results are limited to ${MAX_TOTAL_MATCHES} matches (up to ${MAX_PER_FILE} per file)\n` +
-      `- Lines are truncated at ${MAX_LINE_CHARS} characters\n\n` +
+      `- Results are limited to ${config.maxTotalMatches} matches (up to ${config.maxPerFile} per file)\n` +
+      `- Lines are truncated at ${config.maxLineChars} characters\n\n` +
       "# Strategy\n" +
       "- Use 'path' or 'glob' to narrow searches; run multiple focused calls rather than one broad search\n" +
       "- Uses Rust-style regex (escape `{` and `}`); use `literal: true` for literal text search\n",
@@ -190,7 +201,7 @@ export function createGrepTool(): ToolDefinition {
           "--color=never",
           "--hidden",
           "--context",
-          String(RG_CONTEXT_LINES),
+          String(config.contextLines),
         ];
 
         if (p.caseSensitive === false) {
@@ -256,7 +267,7 @@ export function createGrepTool(): ToolDefinition {
             lineText,
           });
 
-          if (totalMatches >= MAX_COLLECT_MATCHES) {
+          if (totalMatches >= maxCollectMatches) {
             killedDueToLimit = true;
             if (!child.killed) child.kill();
           }
@@ -340,22 +351,22 @@ export function createGrepTool(): ToolDefinition {
             for (const ev of fileEvts) {
               if (ev.kind === "match") {
                 matchesInFile++;
-                if (matchesInFile <= MAX_PER_FILE) {
+                if (matchesInFile <= config.maxPerFile) {
                   includedMatchLines.add(ev.lineNumber);
                 }
               }
             }
             perFileMatchCount.set(
               filePath,
-              Math.min(matchesInFile, MAX_PER_FILE),
+              Math.min(matchesInFile, config.maxPerFile),
             );
 
             // include context lines only if adjacent to an included match
             const includedLines = new Set<number>();
             for (const ln of includedMatchLines) {
               includedLines.add(ln);
-              // include context lines within RG_CONTEXT_LINES distance
-              for (let d = 1; d <= RG_CONTEXT_LINES; d++) {
+              // include context lines within contextLines distance
+              for (let d = 1; d <= config.contextLines; d++) {
                 includedLines.add(ln - d);
                 includedLines.add(ln + d);
               }
@@ -373,7 +384,7 @@ export function createGrepTool(): ToolDefinition {
             const grepFile: GrepFile = {
               path: displayPath,
               matches: [],
-              hitLimit: matchesInFile > MAX_PER_FILE,
+              hitLimit: matchesInFile > config.maxPerFile,
             };
 
             let lastOutputLineNum = -Infinity;
@@ -396,13 +407,13 @@ export function createGrepTool(): ToolDefinition {
 
               const idx = outputLines.length;
               outputLines.push(
-                `${displayPath}:${ev.lineNumber}: ${truncateLine(ev.lineText)}`,
+                `${displayPath}:${ev.lineNumber}: ${truncateLine(ev.lineText, config.maxLineChars)}`,
               );
               lastOutputLineNum = ev.lineNumber;
 
               grepFile.matches.push({
                 lineNum: ev.lineNumber,
-                text: truncateLine(ev.lineText),
+                text: truncateLine(ev.lineText, config.maxLineChars),
                 isContext: ev.kind === "context",
               });
 
@@ -422,9 +433,9 @@ export function createGrepTool(): ToolDefinition {
           const notices: string[] = [];
           let finalMatchIndices: number[];
 
-          if (outputLines.length > MAX_TOTAL_MATCHES * 3) {
+          if (outputLines.length > config.maxTotalMatches * 3) {
             // with context lines, the threshold is higher
-            const limit = MAX_TOTAL_MATCHES * 2;
+            const limit = config.maxTotalMatches * 2;
             const { head, tail, truncatedCount } = headTail(outputLines, limit);
             output = [
               ...head,
@@ -454,16 +465,16 @@ export function createGrepTool(): ToolDefinition {
 
           if (killedDueToLimit) {
             notices.push(
-              `stopped at ${MAX_COLLECT_MATCHES} matches — refine pattern`,
+              `stopped at ${maxCollectMatches} matches — refine pattern`,
             );
           }
 
           const filesAtLimit = Array.from(perFileMatchCount.values()).filter(
-            (c) => c >= MAX_PER_FILE,
+            (c) => c >= config.maxPerFile,
           ).length;
           if (filesAtLimit > 0) {
             notices.push(
-              `${filesAtLimit} file${filesAtLimit > 1 ? "s" : ""} hit the ${MAX_PER_FILE}-per-file limit`,
+              `${filesAtLimit} file${filesAtLimit > 1 ? "s" : ""} hit the ${config.maxPerFile}-per-file limit`,
             );
           }
 
@@ -500,7 +511,7 @@ export function createGrepTool(): ToolDefinition {
         return new Text(text, 0, 0);
       }
 
-      const sections = grepToSections(fileGroups);
+      const sections = grepToSections(fileGroups, config.maxPerFile);
 
       // wrap section headers in OSC 8 file:// links
       if (basePath) {
@@ -534,5 +545,6 @@ export function createGrepTool(): ToolDefinition {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerTool(withPromptPatch(createGrepTool()));
+  const cfg = getExtensionConfig("@bds_pi/grep", CONFIG_DEFAULTS);
+  pi.registerTool(withPromptPatch(createGrepTool(cfg)));
 }
