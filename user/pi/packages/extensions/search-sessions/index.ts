@@ -725,7 +725,7 @@ export function createSearchSessionsTool(config: SearchSessionsExtConfig = CONFI
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/search-sessions", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createSearchSessionsTool(cfg)));
 }

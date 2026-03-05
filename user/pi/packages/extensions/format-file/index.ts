@@ -205,7 +205,7 @@ export function createFormatFileTool(config: FormatFileExtConfig = CONFIG_DEFAUL
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/format-file", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createFormatFileTool(cfg)));
 }

@@ -179,7 +179,7 @@ function showProvenance(ctx: ExtensionContext, parentPath: string): void {
   }));
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/handoff", CONFIG_DEFAULTS);
 
   const handoffSections = parsePromptSections(

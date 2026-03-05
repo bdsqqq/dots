@@ -476,7 +476,7 @@ export function createReadSessionTool(
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/read-session", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createReadSessionTool({
     model: cfg.model,

@@ -215,7 +215,7 @@ export function createLibrarianTool(
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/librarian", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createLibrarianTool({
     systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),

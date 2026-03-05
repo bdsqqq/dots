@@ -360,7 +360,7 @@ export function createWebSearchTool(config: WebSearchExtConfig = CONFIG_DEFAULTS
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/web-search", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createWebSearchTool(cfg)));
 }

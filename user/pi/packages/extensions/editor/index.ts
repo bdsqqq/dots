@@ -462,7 +462,7 @@ function renderActivity(state: ActivityState): string {
   return parts.join(" · ");
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   let editor: LabeledEditor | null = null;
   const statsCacheBranchLen = { value: -1 };
   let gitBranch: string | null = null;

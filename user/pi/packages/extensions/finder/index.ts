@@ -192,7 +192,7 @@ export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/finder", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createFinderTool({
     systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),

@@ -37,7 +37,7 @@ const CONFIG_DEFAULTS: SystemPromptExtConfig = {
   harnessDocsPromptString: "",
 };
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/system-prompt", CONFIG_DEFAULTS);
   const body = resolvePrompt(cfg.promptString, cfg.promptFile);
   if (!body) return;

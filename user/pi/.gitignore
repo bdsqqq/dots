@@ -1,4 +1,6 @@
 # runtime deps installed by home.activation.installPiExtensionDeps
 node_modules/
+# build output
+dist/
 # lockfile is tracked — needed for --frozen-lockfile determinism
 !**/bun.lock

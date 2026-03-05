@@ -975,7 +975,7 @@ function matchGlob(path: string, pattern: string): boolean {
 
 // --- self-registering extension ---
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createReadGithubTool()));
   pi.registerTool(withPromptPatch(createSearchGithubTool()));
   pi.registerTool(withPromptPatch(createListDirectoryGithubTool()));

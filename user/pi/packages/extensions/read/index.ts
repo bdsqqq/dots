@@ -475,7 +475,7 @@ if (import.meta.vitest) {
   });
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/read", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createReadTool(cfg)));
 }

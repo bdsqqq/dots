@@ -224,7 +224,7 @@ export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/oracle", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createOracleTool({
     systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),

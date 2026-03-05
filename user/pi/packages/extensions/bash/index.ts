@@ -373,7 +373,7 @@ async function runCommand(
   });
 }
 
-export default function (pi: ExtensionAPI) {
+export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/bash", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createBashTool(cfg)));
 }
