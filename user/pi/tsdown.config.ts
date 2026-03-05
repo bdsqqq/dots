@@ -37,7 +37,7 @@ export default defineConfig({
     ...coreEntries,
   },
   format: "esm",
-  dts: { resolve: true },
+  dts: { resolver: "oxc" },
   tsconfig: "tsconfig.build.json",
   deps: {
     neverBundle: [
@@ -46,11 +46,8 @@ export default defineConfig({
     ],
   },
   // resolve @bds_pi/* to source so they get bundled in
-  resolve: {
-    alias: bdsPiAlias,
-  },
+  alias: bdsPiAlias,
   outDir: "dist",
   clean: true,
-  splitting: true,
   fixedExtension: false,
 });
