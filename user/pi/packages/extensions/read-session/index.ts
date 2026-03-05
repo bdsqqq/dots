@@ -25,8 +25,15 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 import { headTailChars } from "@bds_pi/output-buffer";
+import { getExtensionConfig } from "@bds_pi/config";
 
-const MODEL = "openrouter/google/gemini-3-flash-preview";
+type ReadSessionExtConfig = {
+  model: string;
+};
+
+const CONFIG_DEFAULTS: ReadSessionExtConfig = {
+  model: "openrouter/google/gemini-3-flash-preview",
+};
 const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
 const MAX_CHARS = 120_000;
 
@@ -34,6 +41,7 @@ const DEFAULT_SYSTEM_PROMPT = `You are analyzing a pi coding agent session trans
 
 export interface ReadSessionConfig {
   systemPrompt?: string;
+  model?: string;
 }
 
 // --- session parsing (shared types with search-sessions) ---
@@ -373,7 +381,7 @@ export function createReadSessionTool(
       const result = await piSpawn({
         cwd: ctx.cwd,
         task,
-        model: MODEL,
+        model: config.model ?? CONFIG_DEFAULTS.model,
         builtinTools: [],
         extensionTools: [],
         systemPromptBody: systemPrompt,
@@ -464,5 +472,8 @@ export function createReadSessionTool(
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerTool(withPromptPatch(createReadSessionTool()));
+  const cfg = getExtensionConfig("@bds_pi/read-session", CONFIG_DEFAULTS);
+  pi.registerTool(withPromptPatch(createReadSessionTool({
+    model: cfg.model,
+  })));
 }
