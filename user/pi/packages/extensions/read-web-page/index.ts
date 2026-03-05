@@ -44,7 +44,7 @@ type ReadWebPageExtConfig = {
 
 const CONFIG_DEFAULTS: ReadWebPageExtConfig = {
   model: "openrouter/google/gemini-3-flash-preview",
-  promptFile: "prompt.amp.read-web-page.md",
+  promptFile: "",
   promptString: "",
 };
 

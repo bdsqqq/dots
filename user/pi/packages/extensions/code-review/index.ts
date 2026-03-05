@@ -44,9 +44,9 @@ const CONFIG_DEFAULTS: CodeReviewExtConfig = {
   model: "openrouter/google/gemini-3.1-pro-preview",
   builtinTools: ["read", "grep", "find", "ls", "bash"],
   extensionTools: ["read", "grep", "find", "ls", "bash", "web_search", "read_web_page"],
-  promptFile: "prompt.amp.code-review-system.md",
+  promptFile: "",
   promptString: "",
-  reportPromptFile: "prompt.amp.code-review-report.md",
+  reportPromptFile: "",
   reportPromptString: "",
 };
 

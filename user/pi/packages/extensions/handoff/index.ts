@@ -49,7 +49,7 @@ const CONFIG_DEFAULTS: HandoffExtConfig = {
     provider: "openrouter",
     id: "google/gemini-3-flash-preview",
   },
-  promptFile: "prompt.amp.handoff-extraction.md",
+  promptFile: "",
   promptString: "",
 };
 

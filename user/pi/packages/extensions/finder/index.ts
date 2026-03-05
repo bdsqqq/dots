@@ -41,7 +41,7 @@ const CONFIG_DEFAULTS: FinderExtConfig = {
   model: "openrouter/google/gemini-3-flash-preview",
   extensionTools: ["read", "grep", "find", "ls"],
   builtinTools: ["read", "grep", "find", "ls"],
-  promptFile: "agent.amp.finder.md",
+  promptFile: "",
   promptString: "",
 };
 

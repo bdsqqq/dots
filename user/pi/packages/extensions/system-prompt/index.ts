@@ -31,7 +31,7 @@ type SystemPromptExtConfig = {
 const CONFIG_DEFAULTS: SystemPromptExtConfig = {
   identity: "Amp",
   harness: "pi",
-  promptFile: "prompt.amp.system.md",
+  promptFile: "",
   promptString: "",
   harnessDocsPromptFile: "",
   harnessDocsPromptString: "",
