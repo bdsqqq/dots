@@ -16,6 +16,7 @@ import { execSync } from "node:child_process";
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
+import { getExtensionConfig } from "@bds_pi/config";
 import {
   type BoxSection,
   type Excerpt,
@@ -24,7 +25,14 @@ import {
 import { Type } from "@sinclair/typebox";
 
 const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
-const MAX_RESULTS = 50;
+
+type SearchSessionsExtConfig = {
+  maxResults: number;
+};
+
+const CONFIG_DEFAULTS: SearchSessionsExtConfig = {
+  maxResults: 50,
+};
 
 /** per-block excerpts for collapsed display — first 5 visual lines */
 const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
@@ -481,7 +489,7 @@ interface SearchSessionsParams {
   all_workspaces?: boolean;
 }
 
-export function createSearchSessionsTool(): ToolDefinition {
+export function createSearchSessionsTool(config: SearchSessionsExtConfig = CONFIG_DEFAULTS): ToolDefinition {
   return {
     name: "search_sessions",
     label: "Search Sessions",
@@ -655,14 +663,14 @@ export function createSearchSessionsTool(): ToolDefinition {
 
       // 7. format with head+tail truncation
       const shown =
-        filtered.length > MAX_RESULTS
+        filtered.length > config.maxResults
           ? [
-              ...filtered.slice(0, Math.floor(MAX_RESULTS / 2)),
-              ...filtered.slice(-Math.floor(MAX_RESULTS / 2)),
+              ...filtered.slice(0, Math.floor(config.maxResults / 2)),
+              ...filtered.slice(-Math.floor(config.maxResults / 2)),
             ]
           : filtered;
       const truncated =
-        filtered.length > MAX_RESULTS ? filtered.length - shown.length : 0;
+        filtered.length > config.maxResults ? filtered.length - shown.length : 0;
 
       const { text: output } = formatBranchResults(shown);
       const resultSections = branchesToSections(shown);
@@ -716,5 +724,6 @@ export function createSearchSessionsTool(): ToolDefinition {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerTool(withPromptPatch(createSearchSessionsTool()));
+  const cfg = getExtensionConfig("@bds_pi/search-sessions", CONFIG_DEFAULTS);
+  pi.registerTool(withPromptPatch(createSearchSessionsTool(cfg)));
 }
