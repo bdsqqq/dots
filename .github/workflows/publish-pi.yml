@@ -42,6 +42,8 @@ jobs:
       - run: bun run build
 
       - run: bun run test
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: set epoch version
         id: version
