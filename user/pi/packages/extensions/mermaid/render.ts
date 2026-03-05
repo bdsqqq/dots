@@ -1,6 +1,18 @@
-import { renderMermaidASCII } from "beautiful-mermaid";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import { createHash } from "node:crypto";
+
+/**
+ * lazy-load beautiful-mermaid (~2.8MB). deferred to first render call
+ * so consumers that don't use mermaid never pay the bundle cost.
+ * same pattern as @bds_pi/tui's lazy require().
+ */
+let _renderFn: typeof import("beautiful-mermaid").renderMermaidASCII | undefined;
+function getRenderFn() {
+  if (!_renderFn) {
+    _renderFn = require("beautiful-mermaid").renderMermaidASCII;
+  }
+  return _renderFn!;
+}
 
 export type MermaidPreset = {
   key: string;
@@ -52,7 +64,7 @@ export function renderWithCache(
   }
 
   /** colorMode "none" — pi-tui handles theming; we don't want beautiful-mermaid's ANSI colors fighting pi's theme */
-  const raw = renderMermaidASCII(code, {
+  const raw = getRenderFn()(code, {
     paddingX: preset.paddingX,
     boxBorderPadding: preset.boxBorderPadding,
     colorMode: "none",
