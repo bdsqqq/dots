@@ -28,13 +28,21 @@ import {
 } from "@bds_pi/sub-agent-render";
 import { OutputBuffer, headTailChars } from "@bds_pi/output-buffer";
 import { osc8Link } from "@bds_pi/box-format";
+import { getExtensionConfig } from "@bds_pi/config";
 
 const HEAD_LINES = 500;
 const TAIL_LINES = 500;
 const MAX_CHARS = 64_000;
 const CURL_TIMEOUT_SECS = 30;
 const MAX_REDIRECTS = 5;
-const PROMPT_MODEL = "openrouter/google/gemini-3-flash-preview";
+
+type ReadWebPageExtConfig = {
+  model: string;
+};
+
+const CONFIG_DEFAULTS: ReadWebPageExtConfig = {
+  model: "openrouter/google/gemini-3-flash-preview",
+};
 
 const DEFAULT_PROMPT_SYSTEM = `Analyze web page content and answer questions. Be concise, answer from provided content only. No filler.`;
 
@@ -120,6 +128,7 @@ interface ReadWebPageParams {
 
 export interface ReadWebPageConfig {
   systemPrompt?: string;
+  model?: string;
 }
 
 export function createReadWebPageTool(
@@ -257,7 +266,7 @@ export function createReadWebPageTool(
         const result = await piSpawn({
           cwd: ctx.cwd,
           task,
-          model: PROMPT_MODEL,
+          model: config.model ?? CONFIG_DEFAULTS.model,
           builtinTools: [],
           extensionTools: [],
           systemPromptBody: promptSystem,
@@ -348,7 +357,9 @@ export function createReadWebPageTool(
 }
 
 export default function (pi: ExtensionAPI) {
+  const cfg = getExtensionConfig("@bds_pi/read-web-page", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createReadWebPageTool({
     systemPrompt: readAgentPrompt("prompt.amp.read-web-page.md"),
+    model: cfg.model,
   })));
 }
