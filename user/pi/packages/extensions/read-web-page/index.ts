@@ -18,7 +18,7 @@ import type {
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { htmlToMarkdown } from "@bds_pi/html-to-md";
-import { piSpawn, readAgentPrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -38,10 +38,14 @@ const MAX_REDIRECTS = 5;
 
 type ReadWebPageExtConfig = {
   model: string;
+  promptFile: string;
+  promptString: string;
 };
 
 const CONFIG_DEFAULTS: ReadWebPageExtConfig = {
   model: "openrouter/google/gemini-3-flash-preview",
+  promptFile: "prompt.amp.read-web-page.md",
+  promptString: "",
 };
 
 const DEFAULT_PROMPT_SYSTEM = `Analyze web page content and answer questions. Be concise, answer from provided content only. No filler.`;
@@ -359,7 +363,7 @@ export function createReadWebPageTool(
 export default function (pi: ExtensionAPI) {
   const cfg = getExtensionConfig("@bds_pi/read-web-page", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createReadWebPageTool({
-    systemPrompt: readAgentPrompt("prompt.amp.read-web-page.md"),
+    systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),
     model: cfg.model,
   })));
 }

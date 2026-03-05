@@ -33,12 +33,14 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { readAgentPrompt } from "@bds_pi/pi-spawn";
+import { resolvePrompt } from "@bds_pi/pi-spawn";
 import { getExtensionConfig } from "@bds_pi/config";
 
 type HandoffExtConfig = {
   threshold: number;
   model: { provider: string; id: string };
+  promptFile: string;
+  promptString: string;
 };
 
 const CONFIG_DEFAULTS: HandoffExtConfig = {
@@ -47,6 +49,8 @@ const CONFIG_DEFAULTS: HandoffExtConfig = {
     provider: "openrouter",
     id: "google/gemini-3-flash-preview",
   },
+  promptFile: "prompt.amp.handoff-extraction.md",
+  promptString: "",
 };
 
 const MAX_RELEVANT_FILES = 10;
@@ -62,32 +66,6 @@ function parsePromptSections(content: string): Record<string, string> {
     if (name) sections[name] = body;
   }
   return sections;
-}
-
-const handoffSections = parsePromptSections(
-  readAgentPrompt("prompt.amp.handoff-extraction.md"),
-);
-
-const HANDOFF_TOOL: Tool = {
-  name: "create_handoff_context",
-  description:
-    handoffSections["tool-description"] || "Extract context for handoff",
-  parameters: Type.Object({
-    relevantInformation: Type.String({
-      description:
-        handoffSections["field-relevant-information"] ||
-        "Extract relevant context",
-    }),
-    relevantFiles: Type.Array(Type.String(), {
-      description:
-        handoffSections["field-relevant-files"] || "Relevant file paths",
-    }),
-  }),
-};
-
-function buildExtractionPrompt(conversationText: string, goal: string): string {
-  const body = handoffSections["extraction-prompt"] ?? "";
-  return `${conversationText}\n\n${body}\n${goal}\n\nUse the create_handoff_context tool to extract relevant information and files.`;
 }
 
 interface HandoffExtraction {
@@ -203,6 +181,33 @@ function showProvenance(ctx: ExtensionContext, parentPath: string): void {
 
 export default function (pi: ExtensionAPI) {
   const cfg = getExtensionConfig("@bds_pi/handoff", CONFIG_DEFAULTS);
+
+  const handoffSections = parsePromptSections(
+    resolvePrompt(cfg.promptString, cfg.promptFile),
+  );
+
+  const HANDOFF_TOOL: Tool = {
+    name: "create_handoff_context",
+    description:
+      handoffSections["tool-description"] || "Extract context for handoff",
+    parameters: Type.Object({
+      relevantInformation: Type.String({
+        description:
+          handoffSections["field-relevant-information"] ||
+          "Extract relevant context",
+      }),
+      relevantFiles: Type.Array(Type.String(), {
+        description:
+          handoffSections["field-relevant-files"] || "Relevant file paths",
+      }),
+    }),
+  };
+
+  function buildExtractionPrompt(conversationText: string, goal: string): string {
+    const body = handoffSections["extraction-prompt"] ?? "";
+    return `${conversationText}\n\n${body}\n${goal}\n\nUse the create_handoff_context tool to extract relevant information and files.`;
+  }
+
   let storedHandoffPrompt: string | null = null;
   let handoffPending = false;
   let parentSessionFile: string | undefined;

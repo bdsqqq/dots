@@ -20,7 +20,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, readAgentPrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -34,12 +34,16 @@ type OracleExtConfig = {
   model: string;
   extensionTools: string[];
   builtinTools: string[];
+  promptFile: string;
+  promptString: string;
 };
 
 const CONFIG_DEFAULTS: OracleExtConfig = {
   model: "openrouter/openai/gpt-5.2",
   extensionTools: ["read", "grep", "find", "ls", "bash"],
   builtinTools: ["read", "grep", "find", "ls", "bash"],
+  promptFile: "agent.amp.oracle.md",
+  promptString: "",
 };
 
 interface OracleParams {
@@ -223,7 +227,7 @@ export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
 export default function (pi: ExtensionAPI) {
   const cfg = getExtensionConfig("@bds_pi/oracle", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createOracleTool({
-    systemPrompt: readAgentPrompt("agent.amp.oracle.md"),
+    systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),
     model: cfg.model,
     extensionTools: cfg.extensionTools,
     builtinTools: cfg.builtinTools,

@@ -19,7 +19,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, readAgentPrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -33,12 +33,16 @@ type FinderExtConfig = {
   model: string;
   extensionTools: string[];
   builtinTools: string[];
+  promptFile: string;
+  promptString: string;
 };
 
 const CONFIG_DEFAULTS: FinderExtConfig = {
   model: "openrouter/google/gemini-3-flash-preview",
   extensionTools: ["read", "grep", "find", "ls"],
   builtinTools: ["read", "grep", "find", "ls"],
+  promptFile: "agent.amp.finder.md",
+  promptString: "",
 };
 
 export interface FinderConfig {
@@ -191,7 +195,7 @@ export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
 export default function (pi: ExtensionAPI) {
   const cfg = getExtensionConfig("@bds_pi/finder", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createFinderTool({
-    systemPrompt: readAgentPrompt("agent.amp.finder.md"),
+    systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),
     model: cfg.model,
     extensionTools: cfg.extensionTools,
     builtinTools: cfg.builtinTools,

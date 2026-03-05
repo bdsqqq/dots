@@ -15,26 +15,35 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { readAgentPrompt } from "@bds_pi/pi-spawn";
+import { resolvePrompt } from "@bds_pi/pi-spawn";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
 import { getExtensionConfig } from "@bds_pi/config";
 
 type SystemPromptExtConfig = {
   identity: string;
   harness: string;
+  promptFile: string;
+  promptString: string;
+  harnessDocsPromptFile: string;
+  harnessDocsPromptString: string;
 };
 
 const CONFIG_DEFAULTS: SystemPromptExtConfig = {
   identity: "Amp",
   harness: "pi",
+  promptFile: "prompt.amp.system.md",
+  promptString: "",
+  harnessDocsPromptFile: "",
+  harnessDocsPromptString: "",
 };
 
 export default function (pi: ExtensionAPI) {
   const cfg = getExtensionConfig("@bds_pi/system-prompt", CONFIG_DEFAULTS);
-  const body = readAgentPrompt("prompt.amp.system.md");
+  const body = resolvePrompt(cfg.promptString, cfg.promptFile);
   if (!body) return;
 
-  const harnessDocs = readAgentPrompt(`prompt.harness-docs.${cfg.harness}.md`) || "";
+  const harnessDocsFile = cfg.harnessDocsPromptFile || `prompt.harness-docs.${cfg.harness}.md`;
+  const harnessDocs = resolvePrompt(cfg.harnessDocsPromptString, harnessDocsFile);
 
   pi.on("before_agent_start", async (event, ctx) => {
     const interpolated = interpolatePromptVars(body, ctx.cwd, {
