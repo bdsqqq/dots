@@ -12,13 +12,21 @@ import {
   type Message,
 } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { getExtensionConfig } from "@bds_pi/config";
 
-const NAMING_MODEL = {
-  provider: "openrouter",
-  id: "anthropic/claude-haiku-4.5",
-} as const;
+type SessionNameExtConfig = {
+  model: { provider: string; id: string };
+};
+
+const CONFIG_DEFAULTS: SessionNameExtConfig = {
+  model: {
+    provider: "openrouter",
+    id: "anthropic/claude-haiku-4.5",
+  },
+};
 
 export default function (pi: ExtensionAPI) {
+  const cfg = getExtensionConfig("@bds_pi/session-name", CONFIG_DEFAULTS);
   let named = false;
 
   pi.on("input", async (event, ctx) => {
@@ -35,7 +43,7 @@ export default function (pi: ExtensionAPI) {
     named = true;
 
     const model =
-      ctx.modelRegistry.find(NAMING_MODEL.provider, NAMING_MODEL.id) ??
+      ctx.modelRegistry.find(cfg.model.provider, cfg.model.id) ??
       ctx.model;
     if (!model) return;
 

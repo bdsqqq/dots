@@ -6,6 +6,9 @@
   "exports": {
     ".": "./index.ts"
   },
+  "dependencies": {
+    "@bds_pi/config": "workspace:*"
+  },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "catalog:"
   },
