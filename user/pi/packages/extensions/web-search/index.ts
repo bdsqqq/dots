@@ -28,15 +28,16 @@ import {
 import { Type } from "@sinclair/typebox";
 import type { ToolCostDetails } from "@bds_pi/tool-cost";
 
-const ENDPOINT = "https://api.parallel.ai/v1beta/search";
-const CURL_TIMEOUT_SECS = 30;
-
 type WebSearchExtConfig = {
   defaultMaxResults: number;
+  endpoint: string;
+  curlTimeoutSecs: number;
 };
 
 const CONFIG_DEFAULTS: WebSearchExtConfig = {
   defaultMaxResults: 10,
+  endpoint: "https://api.parallel.ai/v1beta/search",
+  curlTimeoutSecs: 30,
 };
 
 /** per-result excerpts for collapsed display — first 5 visual lines */
@@ -84,6 +85,8 @@ interface SearchResponse {
 function searchParallel(
   apiKey: string,
   body: Record<string, unknown>,
+  endpoint: string,
+  curlTimeoutSecs: number,
   signal?: AbortSignal,
 ): Promise<{ data?: SearchResponse; error?: string }> {
   return new Promise((resolve) => {
@@ -100,10 +103,10 @@ function searchParallel(
       "-H",
       "parallel-beta: search-extract-2025-10-10",
       "-m",
-      String(CURL_TIMEOUT_SECS),
+      String(curlTimeoutSecs),
       "-d",
       payload,
-      ENDPOINT,
+      endpoint,
     ];
 
     const child = spawn("curl", args, {
@@ -283,7 +286,7 @@ export function createWebSearchTool(config: WebSearchExtConfig = CONFIG_DEFAULTS
         body.search_queries = p.search_queries;
       }
 
-      const { data, error } = await searchParallel(apiKey, body, signal);
+      const { data, error } = await searchParallel(apiKey, body, config.endpoint, config.curlTimeoutSecs, signal);
 
       if (error) {
         return {

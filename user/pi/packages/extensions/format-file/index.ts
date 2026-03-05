@@ -34,10 +34,12 @@ type Formatter = { name: string; args: (file: string) => string[] };
 
 type FormatFileExtConfig = {
   preferredFormatter: string;
+  formatterLookupTimeoutMs: number;
 };
 
 const CONFIG_DEFAULTS: FormatFileExtConfig = {
   preferredFormatter: "auto",
+  formatterLookupTimeoutMs: 3000,
 };
 
 const FORMATTERS: Formatter[] = [
@@ -51,14 +53,14 @@ const FORMATTERS: Formatter[] = [
   },
 ];
 
-function findFormatter(preferred: string): Formatter | null {
+function findFormatter(preferred: string, timeoutMs: number): Formatter | null {
   const ordered = preferred !== "auto"
     ? [...FORMATTERS].sort((a, b) => (a.name === preferred ? -1 : b.name === preferred ? 1 : 0))
     : FORMATTERS;
   for (const fmt of ordered) {
     const result = spawnSync("which", [fmt.name], {
       encoding: "utf-8",
-      timeout: 3000,
+      timeout: timeoutMs,
     });
     if (result.status === 0) return fmt;
   }
@@ -125,7 +127,7 @@ export function createFormatFileTool(config: FormatFileExtConfig = CONFIG_DEFAUL
         } as any;
       }
 
-      const formatter = findFormatter(config.preferredFormatter);
+      const formatter = findFormatter(config.preferredFormatter, config.formatterLookupTimeoutMs);
       if (!formatter) {
         return {
           content: [

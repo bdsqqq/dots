@@ -29,19 +29,23 @@ import { getExtensionConfig } from "@bds_pi/config";
 
 type ReadSessionExtConfig = {
   model: string;
+  sessionsDir: string;
+  maxChars: number;
 };
 
 const CONFIG_DEFAULTS: ReadSessionExtConfig = {
   model: "openrouter/google/gemini-3-flash-preview",
+  sessionsDir: path.join(os.homedir(), ".pi", "agent", "sessions"),
+  maxChars: 120_000,
 };
-const SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
-const MAX_CHARS = 120_000;
 
 const DEFAULT_SYSTEM_PROMPT = `You are analyzing a pi coding agent session transcript. Extract information relevant to the user's goal. Be specific — cite file paths, decisions made, code patterns discussed. If a specific branch is marked as the target, focus on that branch but use other branches for context about what was tried and abandoned.`;
 
 export interface ReadSessionConfig {
   systemPrompt?: string;
   model?: string;
+  sessionsDir: string;
+  maxChars: number;
 }
 
 // --- session parsing (shared types with search-sessions) ---
@@ -78,8 +82,8 @@ interface ReadSessionParams {
   leaf_id?: string;
 }
 
-function findSessionFile(sessionId: string): string | null {
-  if (!fs.existsSync(SESSIONS_DIR)) return null;
+function findSessionFile(sessionId: string, sessionsDir: string): string | null {
+  if (!fs.existsSync(sessionsDir)) return null;
 
   const walkDir = (dir: string): string | null => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -98,7 +102,7 @@ function findSessionFile(sessionId: string): string | null {
   };
 
   // fast path: check filename contains session id
-  let found = walkDir(SESSIONS_DIR);
+  let found = walkDir(sessionsDir);
   if (found) return found;
 
   // slow path: parse headers
@@ -122,12 +126,13 @@ function findSessionFile(sessionId: string): string | null {
     return null;
   };
 
-  return walkAndParse(SESSIONS_DIR);
+  return walkAndParse(sessionsDir);
 }
 
 function renderSessionTree(
   filePath: string,
-  targetLeafId?: string,
+  targetLeafId: string | undefined,
+  maxChars: number,
 ): { markdown: string; sessionName: string; sessionId: string } {
   const raw = fs.readFileSync(filePath, "utf-8");
   const lines = raw.split("\n").filter((l) => l.trim());
@@ -288,7 +293,7 @@ function renderSessionTree(
   }
 
   let markdown = parts.join("\n");
-  const truncated = headTailChars(markdown, MAX_CHARS);
+  const truncated = headTailChars(markdown, maxChars);
   if (truncated.truncated) {
     markdown = truncated.text;
   }
@@ -299,7 +304,7 @@ function renderSessionTree(
 // --- tool ---
 
 export function createReadSessionTool(
-  config: ReadSessionConfig = {},
+  config: ReadSessionConfig,
 ): ToolDefinition {
   return {
     name: "read_session",
@@ -338,7 +343,7 @@ export function createReadSessionTool(
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as ReadSessionParams;
       // find the session file
-      const sessionFile = findSessionFile(p.session_id);
+      const sessionFile = findSessionFile(p.session_id, config.sessionsDir);
       if (!sessionFile) {
         return {
           content: [
@@ -352,7 +357,7 @@ export function createReadSessionTool(
       }
 
       // render session tree
-      const { markdown } = renderSessionTree(sessionFile, p.leaf_id);
+      const { markdown } = renderSessionTree(sessionFile, p.leaf_id, config.maxChars);
 
       if (!markdown.trim()) {
         return {
@@ -475,5 +480,7 @@ export default function (pi: ExtensionAPI) {
   const cfg = getExtensionConfig("@bds_pi/read-session", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createReadSessionTool({
     model: cfg.model,
+    sessionsDir: cfg.sessionsDir,
+    maxChars: cfg.maxChars,
   })));
 }
