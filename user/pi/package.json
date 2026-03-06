@@ -3,14 +3,18 @@
   "version": "0.0.1",
   "type": "module",
   "description": "extensions and core utilities for pi-coding-agent",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bdsqqq/dots.git",
     "directory": "user/pi"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "exports": {
     "./extensions": {
       "types": "./dist/extensions.d.ts",
@@ -26,7 +30,36 @@
     }
   },
   "pi": {
-    "extensions": ["./dist/extensions"]
+    "extensions": [
+      "./dist/extensions/bash.js",
+      "./dist/extensions/code-review.js",
+      "./dist/extensions/command-palette.js",
+      "./dist/extensions/create-file.js",
+      "./dist/extensions/edit-file.js",
+      "./dist/extensions/editor.js",
+      "./dist/extensions/finder.js",
+      "./dist/extensions/format-file.js",
+      "./dist/extensions/github.js",
+      "./dist/extensions/glob.js",
+      "./dist/extensions/grep.js",
+      "./dist/extensions/handoff.js",
+      "./dist/extensions/librarian.js",
+      "./dist/extensions/look-at.js",
+      "./dist/extensions/ls.js",
+      "./dist/extensions/mermaid.js",
+      "./dist/extensions/oracle.js",
+      "./dist/extensions/read.js",
+      "./dist/extensions/read-session.js",
+      "./dist/extensions/read-web-page.js",
+      "./dist/extensions/search-sessions.js",
+      "./dist/extensions/session-name.js",
+      "./dist/extensions/skill.js",
+      "./dist/extensions/system-prompt.js",
+      "./dist/extensions/task.js",
+      "./dist/extensions/tool-harness.js",
+      "./dist/extensions/undo-edit.js",
+      "./dist/extensions/web-search.js"
+    ]
   },
   "workspaces": {
     "packages": [
@@ -39,7 +72,8 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
+    "sync:pi-extensions": "node ./scripts/sync-pi-extensions-manifest.mjs",
+    "build": "node ./scripts/sync-pi-extensions-manifest.mjs && tsdown && node ./scripts/sync-pi-extensions-manifest.mjs",
     "lint": "oxlint --type-aware --format=stylish --type-check --report-unused-disable-directives",
     "lint:fix": "oxlint --type-aware --format=stylish --type-check --fix --report-unused-disable-directives",
     "lint:github": "oxlint --type-aware --type-check --format=github --report-unused-disable-directives",
