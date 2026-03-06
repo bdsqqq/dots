@@ -11,7 +11,7 @@ in
     content = builtins.toJSON {
       openrouter = { type = "api_key"; key = config.sops.placeholder.open_router; };
       opencode = { type = "api_key"; key = config.sops.placeholder.opencode_zen; };
-      "openai-codex" = { type = "oauth"; access = config.sops.placeholder.openai_codex_access; refresh = config.sops.placeholder.openai_codex_refresh; expires = config.sops.placeholder.openai_codex_expires; accountId = config.sops.placeholder.openai_codex_accountId }
+      "openai-codex" = { type = "oauth"; access = config.sops.placeholder.openai_codex_access; refresh = config.sops.placeholder.openai_codex_refresh; expires = config.sops.placeholder.openai_codex_expires; accountId = config.sops.placeholder.openai_codex_accountId; };
     };
     owner = "bdsqqq";
     mode = "0600";
