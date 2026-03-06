@@ -46,6 +46,7 @@
       "./dist/extensions/librarian.js",
       "./dist/extensions/look-at.js",
       "./dist/extensions/ls.js",
+      "./dist/extensions/mentions.js",
       "./dist/extensions/mermaid.js",
       "./dist/extensions/oracle.js",
       "./dist/extensions/read.js",

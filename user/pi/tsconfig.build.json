@@ -8,6 +8,7 @@
       "@bds_pi/box-chrome": ["./packages/core/box-chrome/index.ts"],
       "@bds_pi/box-format": ["./packages/core/box-format/index.ts"],
       "@bds_pi/config": ["./packages/core/config/index.ts"],
+      "@bds_pi/editor-capabilities": ["./packages/core/editor-capabilities/index.ts"],
       "@bds_pi/file-tracker": ["./packages/core/file-tracker/index.ts"],
       "@bds_pi/github-api": ["./packages/core/github-api/index.ts"],
       "@bds_pi/html-to-md": ["./packages/core/html-to-md/index.ts"],
