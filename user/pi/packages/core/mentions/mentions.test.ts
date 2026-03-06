@@ -2,15 +2,18 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AutocompleteProvider } from "@mariozechner/pi-tui";
 import { afterEach, describe, expect, it } from "vitest";
-import { parseMentions, detectMentionPrefix } from "./parse";
-import { renderResolvedMentionsBlock } from "./render";
+import { detectMentionPrefix, parseMentions } from "./parse";
+import { MentionAwareProvider } from "./provider";
+import { renderResolvedMentionsBlock, renderResolvedMentionsText } from "./render";
 import {
   clearCommitIndexCache,
   getCommitIndex,
   lookupCommitByPrefix,
   parseCommitLog,
 } from "./commit-index";
+import { clearSessionMentionCache, resolveMentions } from "./resolve";
 
 describe("parseMentions", () => {
   it("parses canonical mention tokens", () => {
@@ -78,8 +81,78 @@ describe("detectMentionPrefix", () => {
   });
 });
 
-describe("renderResolvedMentionsBlock", () => {
-  it("renders only resolved mentions in a hidden block", () => {
+describe("renderResolvedMentions", () => {
+  it("renders commit, session, and handoff summaries", () => {
+    expect(
+      renderResolvedMentionsText([
+        {
+          token: {
+            kind: "commit",
+            raw: "@commit/abc1234",
+            value: "abc1234",
+            start: 0,
+            end: 15,
+          },
+          status: "resolved",
+          kind: "commit",
+          commit: {
+            sha: "abc1234def5678abc1234def5678abc1234def5",
+            shortSha: "abc1234",
+            subject: "fix mention parser",
+            committedAt: "2026-03-06T16:00:00.000Z",
+          },
+        },
+        {
+          token: {
+            kind: "session",
+            raw: "@session/alpha1234",
+            value: "alpha1234",
+            start: 16,
+            end: 34,
+          },
+          status: "resolved",
+          kind: "session",
+          session: {
+            sessionId: "alpha1234",
+            sessionName: "alpha work",
+            workspace: "/repo/app",
+            startedAt: "2026-03-06T17:00:00.000Z",
+            updatedAt: "2026-03-06T17:10:00.000Z",
+            firstUserMessage: "alpha task",
+          },
+        },
+        {
+          token: {
+            kind: "handoff",
+            raw: "@handoff/handoffabcd",
+            value: "handoffabcd",
+            start: 35,
+            end: 55,
+          },
+          status: "resolved",
+          kind: "handoff",
+          session: {
+            sessionId: "handoffabcd",
+            sessionName: "handoff alpha",
+            workspace: "/repo/app",
+            startedAt: "2026-03-06T17:00:00.000Z",
+            updatedAt: "2026-03-06T17:20:00.000Z",
+            firstUserMessage: "resume alpha",
+            parentSessionPath: "/sessions/parent.jsonl",
+          },
+        },
+      ]),
+    ).toBe(
+      [
+        "resolved mention context:",
+        '@commit/abc1234\tcommit\tabc1234def5678abc1234def5678abc1234def5\t2026-03-06T16:00:00.000Z\t"fix mention parser"',
+        '@session/alpha1234\tsession\talpha1234\t2026-03-06T17:10:00.000Z\t"alpha work"\t"/repo/app"\t"alpha task"',
+        '@handoff/handoffabcd\thandoff\thandoffabcd\t2026-03-06T17:20:00.000Z\t"handoff alpha"\t"/repo/app"\t"resume alpha"\t"/sessions/parent.jsonl"',
+      ].join("\n"),
+    );
+  });
+
+  it("wraps rendered summaries in a hidden block", () => {
     expect(
       renderResolvedMentionsBlock([
         {
@@ -91,6 +164,7 @@ describe("renderResolvedMentionsBlock", () => {
             end: 15,
           },
           status: "resolved",
+          kind: "commit",
           commit: {
             sha: "abc1234def5678abc1234def5678abc1234def5",
             shortSha: "abc1234",
@@ -98,26 +172,15 @@ describe("renderResolvedMentionsBlock", () => {
             committedAt: "2026-03-06T16:00:00.000Z",
           },
         },
-        {
-          token: {
-            kind: "session",
-            raw: "@session/test",
-            value: "test",
-            start: 16,
-            end: 29,
-          },
-          status: "unresolved",
-          reason: "unsupported",
-        },
       ]),
     ).toBe(
-      '<!-- pi-mentions\n@commit/abc1234\tabc1234def5678abc1234def5678abc1234def5\t2026-03-06T16:00:00.000Z\t"fix mention parser"\n-->',
+      '<!-- pi-mentions\nresolved mention context:\n@commit/abc1234\tcommit\tabc1234def5678abc1234def5678abc1234def5\t2026-03-06T16:00:00.000Z\t"fix mention parser"\n-->',
     );
   });
 
   it("returns empty string when nothing resolved", () => {
     expect(
-      renderResolvedMentionsBlock([
+      renderResolvedMentionsText([
         {
           token: {
             kind: "session",
@@ -127,10 +190,113 @@ describe("renderResolvedMentionsBlock", () => {
             end: 13,
           },
           status: "unresolved",
-          reason: "unsupported",
+          reason: "session_not_found",
         },
       ]),
     ).toBe("");
+  });
+});
+
+describe("mention autocomplete", () => {
+  const baseProvider: AutocompleteProvider = {
+    getSuggestions: () => null,
+    applyCompletion: (lines, cursorLine, cursorCol) => ({
+      lines,
+      cursorLine,
+      cursorCol,
+    }),
+  };
+
+  it("hides commit namespace outside git repositories", () => {
+    const provider = new MentionAwareProvider({
+      baseProvider,
+      cwd: tmpdir(),
+    });
+
+    expect(provider.getSuggestions(["@c"], 0, 2)).toBeNull();
+
+    expect(provider.getSuggestions(["@commit/abc123"], 0, 14)).toEqual({
+      items: [],
+      prefix: "@commit/abc123",
+    });
+  });
+});
+
+describe("resolveMentions", () => {
+  it("resolves session and handoff mentions from a provided session index", async () => {
+    await expect(
+      resolveMentions("see @session/alpha1234 then @handoff/handoffabcd", {
+        cwd: "/repo/app",
+        sessions: [
+          {
+            sessionId: "alpha1234",
+            sessionName: "alpha work",
+            workspace: "/repo/app",
+            filePath: "/sessions/alpha.jsonl",
+            startedAt: "2026-03-06T17:00:00.000Z",
+            updatedAt: "2026-03-06T17:10:00.000Z",
+            firstUserMessage: "alpha task",
+            searchableText: "alpha task",
+            branchCount: 1,
+            isHandoffCandidate: false,
+          },
+          {
+            sessionId: "handoffabcd",
+            sessionName: "handoff alpha",
+            workspace: "/repo/app",
+            filePath: "/sessions/handoff.jsonl",
+            startedAt: "2026-03-06T17:00:00.000Z",
+            updatedAt: "2026-03-06T17:20:00.000Z",
+            firstUserMessage: "resume alpha",
+            searchableText: "resume alpha",
+            branchCount: 1,
+            parentSessionPath: "/sessions/parent.jsonl",
+            isHandoffCandidate: true,
+          },
+        ],
+      }),
+    ).resolves.toEqual([
+      {
+        token: {
+          kind: "session",
+          raw: "@session/alpha1234",
+          value: "alpha1234",
+          start: 4,
+          end: 22,
+        },
+        status: "resolved",
+        kind: "session",
+        session: {
+          sessionId: "alpha1234",
+          sessionName: "alpha work",
+          workspace: "/repo/app",
+          startedAt: "2026-03-06T17:00:00.000Z",
+          updatedAt: "2026-03-06T17:10:00.000Z",
+          firstUserMessage: "alpha task",
+          parentSessionPath: undefined,
+        },
+      },
+      {
+        token: {
+          kind: "handoff",
+          raw: "@handoff/handoffabcd",
+          value: "handoffabcd",
+          start: 28,
+          end: 48,
+        },
+        status: "resolved",
+        kind: "handoff",
+        session: {
+          sessionId: "handoffabcd",
+          sessionName: "handoff alpha",
+          workspace: "/repo/app",
+          startedAt: "2026-03-06T17:00:00.000Z",
+          updatedAt: "2026-03-06T17:20:00.000Z",
+          firstUserMessage: "resume alpha",
+          parentSessionPath: "/sessions/parent.jsonl",
+        },
+      },
+    ]);
   });
 });
 
@@ -161,6 +327,7 @@ function commitFile(repo: string, name: string, contents: string, message: strin
 
 afterEach(() => {
   clearCommitIndexCache();
+  clearSessionMentionCache();
   for (const repo of repos.splice(0)) rmSync(repo, { recursive: true, force: true });
 });
 

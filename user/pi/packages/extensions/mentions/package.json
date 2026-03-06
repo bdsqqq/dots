@@ -1,0 +1,18 @@
+{
+  "name": "@bds_pi/mentions-extension",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "@bds_pi/editor-capabilities": "workspace:*",
+    "@bds_pi/mentions": "workspace:*",
+    "@mariozechner/pi-coding-agent": "catalog:"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

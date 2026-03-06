@@ -21,9 +21,13 @@ import {
   Theme,
   estimateTokens,
 } from "@mariozechner/pi-coding-agent";
-import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
+import type { TUI, EditorTheme, AutocompleteProvider } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import { boxBorderLR, boxRow } from "@bds_pi/box-chrome";
+import {
+  composeEditorAutocompleteProvider,
+  subscribeEditorAutocompleteContributors,
+} from "@bds_pi/editor-capabilities";
 import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
@@ -57,6 +61,7 @@ const HORIZONTAL = "─";
 class LabeledEditor extends CustomEditor {
   private labels: Map<string, Label> = new Map();
   private appTheme: Theme;
+  private baseAutocompleteProvider: AutocompleteProvider | null = null;
   private borderCache: Record<
     "top" | "bottom",
     { key: string; line: string } | null
@@ -70,6 +75,7 @@ class LabeledEditor extends CustomEditor {
     editorTheme: EditorTheme,
     keybindings: KeybindingsManager,
     appTheme: Theme,
+    private readonly cwd: string,
   ) {
     super(tui, editorTheme, keybindings);
     this.appTheme = appTheme;
@@ -91,6 +97,24 @@ class LabeledEditor extends CustomEditor {
 
   removeLabel(key: string): void {
     this.labels.delete(key);
+  }
+
+  /**
+   * recomposes the effective provider from the current base provider plus any
+   * package-local contributors. keeps normal @file behavior as the fallback path.
+   */
+  refreshAutocompleteProvider(): void {
+    if (!this.baseAutocompleteProvider) return;
+    super.setAutocompleteProvider(
+      composeEditorAutocompleteProvider(this.baseAutocompleteProvider, {
+        cwd: this.cwd,
+      }),
+    );
+  }
+
+  override setAutocompleteProvider(provider: AutocompleteProvider): void {
+    this.baseAutocompleteProvider = provider;
+    this.refreshAutocompleteProvider();
   }
 
   private getLabelsFor(
@@ -470,6 +494,10 @@ export default function(pi: ExtensionAPI): void {
   let statusRow: WidgetRowRegistry | null = null;
   const activity = createActivityState();
 
+  subscribeEditorAutocompleteContributors(() => {
+    editor?.refreshAutocompleteProvider();
+  });
+
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI) return;
 
@@ -488,7 +516,13 @@ export default function(pi: ExtensionAPI): void {
     // replace editor with labeled box-drawing version
     ctx.ui.setEditorComponent(
       (tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
-        editor = new LabeledEditor(tui, editorTheme, keybindings, ctx.ui.theme);
+        editor = new LabeledEditor(
+          tui,
+          editorTheme,
+          keybindings,
+          ctx.ui.theme,
+          ctx.cwd,
+        );
         return editor;
       },
     );
