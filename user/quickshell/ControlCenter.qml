@@ -7,6 +7,7 @@ import QtQuick.Shapes
 
 import "controls" as Controls
 import "design" as Design
+import "primitives" as Primitives
 
 PanelWindow {
     id: controlCenter
@@ -16,6 +17,10 @@ PanelWindow {
 
     readonly property int panelPadding: Design.Theme.t.space4
     readonly property int panelMargin: 0
+    readonly property int oneColumnMinWidth: 320
+    readonly property int twoColumnMinWidth: 560
+    readonly property int panelMaxHeightPadding: Design.Theme.t.space6
+    readonly property bool canUseTwoColumns: screen.width >= twoColumnMinWidth + panelPadding * 2 + panelMargin * 2
 
     anchors {
         top: true
@@ -24,9 +29,14 @@ PanelWindow {
 
     implicitWidth: Math.min(
         screen.width,
-        Math.max(contentColumn.implicitWidth + panelPadding * 2, screen.width * 0.22) + panelMargin * 2
+        Math.max(
+            contentColumn.implicitWidth + panelPadding * 2,
+            (canUseTwoColumns ? twoColumnMinWidth : oneColumnMinWidth) + panelPadding * 2
+        ) + panelMargin * 2
     )
-    implicitHeight: Math.min(contentColumn.implicitHeight + panelPadding * 2 + panelMargin * 2, screen.height * 0.65)
+    // surface loses `cornerRadius` height to preserve the bottom-right concave join.
+    // compensate here so last card content doesn't get clipped.
+    implicitHeight: Math.min(contentColumn.implicitHeight + panelPadding * 2 + panelMargin * 2 + Design.Theme.t.radiusMd, screen.height - panelMaxHeightPadding)
 
     visible: isOpen
     color: "transparent"
@@ -128,171 +138,150 @@ PanelWindow {
                 width: flickable.width
                 spacing: Design.Theme.t.space4
 
-                Text {
+                // ia pass (macos-inspired, not visual mimic):
+                // - connectivity cards: wifi + bluetooth
+                // - media/display cards: sound + brightness
+                // - status/performance card: battery + tdp/gpu detail
+                Primitives.T {
                     text: "control center"
-                    color: Design.Theme.t.subtle
-                    font.family: "Berkeley Mono"
-                    font.pixelSize: Design.Theme.t.text2xs
-                    font.weight: Font.Normal
+                    tone: "subtle"
+                    size: "bodySm"
                     Layout.fillWidth: true
                 }
 
                 ColumnLayout {
-                    spacing: Design.Theme.t.space2
-                    Layout.fillWidth: true
-
-                RowLayout {
                     Layout.fillWidth: true
                     spacing: Design.Theme.t.space2
 
-                    Text {
-                        text: "volume"
-                        color: Design.Theme.t.muted
-                        font.family: "Berkeley Mono"
-                        font.pixelSize: Design.Theme.t.bodySm
+                    NetworkModule {
+                        Layout.fillWidth: true
                     }
 
-                    Item { Layout.fillWidth: true }
-
-                    Text {
-                        text: Math.round((Pipewire.defaultAudioSink?.audio.volume ?? 0) * 100) + "%"
-                        color: Pipewire.defaultAudioSink?.audio.muted ? Design.Theme.t.border : Design.Theme.t.fg
-                        font.family: "Berkeley Mono"
-                        font.pixelSize: Design.Theme.t.bodySm
-
-                        Behavior on color {
-                            ColorAnimation { duration: Design.Theme.t.durationMed; easing.type: Easing.OutQuint }
-                        }
-                    }
-                }
-
-                Controls.Slider {
-                    Layout.fillWidth: true
-                    value: Pipewire.defaultAudioSink?.audio.volume ?? 0
-                    enabled: Pipewire.defaultAudioSink?.audio !== null
-                    onChangeEnd: function(val) {
-                        if (Pipewire.defaultAudioSink?.audio) {
-                            Pipewire.defaultAudioSink.audio.volume = val;
-                        }
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Controls.Button {
-                        variant: Pipewire.defaultAudioSink?.audio.muted ? "outline" : "ghost"
-                        text: Pipewire.defaultAudioSink?.audio.muted ? "unmute" : "mute"
-                        onClicked: function() {
-                            if (Pipewire.defaultAudioSink?.audio) {
-                                Pipewire.defaultAudioSink.audio.muted = !Pipewire.defaultAudioSink.audio.muted;
-                            }
-                        }
+                    BluetoothModule {
+                        Layout.fillWidth: true
                     }
 
-                    Item { Layout.fillWidth: true }
-                }
+                    Primitives.Surface {
+                        Layout.fillWidth: true
+                        surfaceColor: Design.Theme.t.bg
+                        showBorder: true
+                        implicitHeight: volumeContent.implicitHeight + Design.Theme.t.space3 * 2
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
+                        ColumnLayout {
+                            id: volumeContent
+                            anchors.fill: parent
+                            anchors.margins: Design.Theme.t.space3
+                            spacing: Design.Theme.t.space2
 
-                    Text {
-                        text: "output"
-                        color: "#6b7280"
-                        font.family: "Berkeley Mono"
-                        font.pixelSize: 11
-                    }
+                            RowLayout {
+                                Layout.fillWidth: true
 
-                    Repeater {
-                        model: Pipewire.nodes
+                                Primitives.T {
+                                    text: "sound"
+                                    tone: "muted"
+                                    size: "bodySm"
+                                }
 
-                        Rectangle {
-                            id: sinkItem
-                            required property PwNode modelData
-                            visible: modelData.isSink && modelData.audio && !modelData.isStream
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: visible ? sinkText.implicitHeight + 12 : 0
-                            color: sinkMouse.containsMouse ? "#1f2937" : "transparent"
-                            border.width: 1
-                            border.color: modelData === Pipewire.defaultAudioSink ? "#ffffff" : "#1f2937"
-                            radius: 4
+                                Item { Layout.fillWidth: true }
 
-                            Behavior on color {
-                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                                Primitives.T {
+                                    text: Math.round((Pipewire.defaultAudioSink?.audio.volume ?? 0) * 100) + "%"
+                                    tone: Pipewire.defaultAudioSink?.audio.muted ? "subtle" : "fg"
+                                    size: "bodySm"
+                                }
                             }
 
-                            Behavior on border.color {
-                                ColorAnimation { duration: 100; easing.type: Easing.OutQuint }
+                            Controls.Slider {
+                                Layout.fillWidth: true
+                                value: Pipewire.defaultAudioSink?.audio.volume ?? 0
+                                enabled: Pipewire.defaultAudioSink?.audio !== null
+                                onChangeEnd: function(val) {
+                                    if (Pipewire.defaultAudioSink?.audio) {
+                                        Pipewire.defaultAudioSink.audio.volume = val;
+                                    }
+                                }
                             }
 
-                            Text {
-                                id: sinkText
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                anchors.margins: 8
-                                text: modelData.nickname || modelData.description || modelData.name || "unknown"
-                                color: modelData === Pipewire.defaultAudioSink ? "#ffffff" : "#9ca3af"
-                                font.family: "Berkeley Mono"
-                                font.pixelSize: 11
-                                elide: Text.ElideRight
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Design.Theme.t.space2
+
+                                Controls.Button {
+                                    variant: Pipewire.defaultAudioSink?.audio.muted ? "outline" : "ghost"
+                                    text: Pipewire.defaultAudioSink?.audio.muted ? "unmute" : "mute"
+                                    onClicked: function() {
+                                        if (Pipewire.defaultAudioSink?.audio) {
+                                            Pipewire.defaultAudioSink.audio.muted = !Pipewire.defaultAudioSink.audio.muted;
+                                        }
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
                             }
 
-                            MouseArea {
-                                id: sinkMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    Pipewire.preferredDefaultAudioSink = sinkItem.modelData;
+                            Primitives.T {
+                                text: "output"
+                                tone: "subtle"
+                                size: "bodySm"
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+
+                                Repeater {
+                                    model: Pipewire.nodes
+
+                                    Primitives.Surface {
+                                        id: sinkItem
+                                        required property PwNode modelData
+                                        visible: modelData.isSink && modelData.audio && !modelData.isStream
+                                        Layout.fillWidth: true
+                                        implicitHeight: visible ? sinkText.implicitHeight + Design.Theme.t.space2 + 2 : 0
+                                        radiusToken: "sm"
+                                        surfaceColor: sinkMouse.containsMouse ? Design.Theme.t.bgHover : "transparent"
+                                        showBorder: modelData === Pipewire.defaultAudioSink
+
+                                        Primitives.T {
+                                            id: sinkText
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            anchors.margins: Design.Theme.t.space2
+                                            text: sinkItem.modelData.nickname || sinkItem.modelData.description || sinkItem.modelData.name || "unknown"
+                                            tone: sinkItem.modelData === Pipewire.defaultAudioSink ? "fg" : "muted"
+                                            size: "bodySm"
+                                            elide: Text.ElideRight
+                                        }
+
+                                        MouseArea {
+                                            id: sinkMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                Pipewire.preferredDefaultAudioSink = sinkItem.modelData;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
+
+                    BrightnessModule {
+                        Layout.fillWidth: true
+                    }
+
+                    BatteryModule {
+                        Layout.fillWidth: true
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: panel.cornerRadius + Design.Theme.t.space1
+                    }
                 }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 1
-                color: "#1f2937"
-            }
-
-            BrightnessModule {
-                Layout.fillWidth: true
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 1
-                color: "#1f2937"
-            }
-
-            NetworkModule {
-                Layout.fillWidth: true
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 1
-                color: "#1f2937"
-            }
-
-            BluetoothModule {
-                Layout.fillWidth: true
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 1
-                color: "#1f2937"
-            }
-
-            BatteryModule {
-                Layout.fillWidth: true
-            }
             }
         }
     }
