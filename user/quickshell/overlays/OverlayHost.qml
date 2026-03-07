@@ -13,9 +13,24 @@ PanelWindow {
 
     required property var screen
 
-    // always visible but transparent when no content
-    visible: true
+    // only materialize when an osd exists.
+    // why: an always-visible fullscreen PanelWindow can intercept pointer input
+    //      across the monitor even when transparent.
+    visible: activeOsd !== null
     color: "transparent"
+
+    // constrain the surface + input region to the active osd bounds.
+    // why: the host stays fullscreen for easy positioning, but only the osd
+    //      itself should exist as an interactive layer-shell region.
+    mask: Region {
+        item: root.activeOsd ? root.activeOsd : emptyMask
+    }
+
+    Item {
+        id: emptyMask
+        width: 0
+        height: 0
+    }
 
     // cover the whole screen for positioning flexibility
     anchors.top: true
