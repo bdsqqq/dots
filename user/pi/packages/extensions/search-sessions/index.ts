@@ -38,10 +38,22 @@ type SearchSessionsExtConfig = {
   rgTimeoutMs: number;
 };
 
+type SearchSessionsExtensionDeps = {
+  getExtensionConfig: typeof getExtensionConfig;
+  registerMentionSource: typeof registerMentionSource;
+  withPromptPatch: typeof withPromptPatch;
+};
+
 const CONFIG_DEFAULTS: SearchSessionsExtConfig = {
   maxResults: 50,
   sessionsDir: path.join(os.homedir(), ".pi", "agent", "sessions"),
   rgTimeoutMs: 10000,
+};
+
+const DEFAULT_EXTENSION_DEPS: SearchSessionsExtensionDeps = {
+  getExtensionConfig,
+  registerMentionSource,
+  withPromptPatch,
 };
 
 /** per-block excerpts for collapsed display — first 5 visual lines */
@@ -473,9 +485,95 @@ export function createSearchSessionsTool(config: SearchSessionsExtConfig = CONFI
   };
 }
 
-export default function(pi: ExtensionAPI): void {
-  registerMentionSource(createSessionMentionSource());
+function createSearchSessionsExtension(
+  deps: SearchSessionsExtensionDeps = DEFAULT_EXTENSION_DEPS,
+): (pi: ExtensionAPI) => void {
+  return function searchSessionsExtension(pi: ExtensionAPI): void {
+    deps.registerMentionSource(createSessionMentionSource());
 
-  const cfg = getExtensionConfig("@bds_pi/search-sessions", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createSearchSessionsTool(cfg)));
+    const cfg = deps.getExtensionConfig(
+      "@bds_pi/search-sessions",
+      CONFIG_DEFAULTS,
+    );
+    pi.registerTool(deps.withPromptPatch(createSearchSessionsTool(cfg)));
+  };
 }
+
+const searchSessionsExtension: (pi: ExtensionAPI) => void =
+  createSearchSessionsExtension();
+
+export default searchSessionsExtension;
+
+if (import.meta.vitest) {
+  const { describe, expect, it, vi } = import.meta.vitest;
+
+  const SESSION_FIXTURE = {
+    sessionId: "alpha1234",
+    sessionName: "alpha work",
+    workspace: "/repo/app",
+    filePath: "/sessions/alpha.jsonl",
+    startedAt: "2026-03-06T17:00:00.000Z",
+    updatedAt: "2026-03-06T17:10:00.000Z",
+    firstUserMessage: "alpha task",
+    searchableText: "alpha task",
+    branchCount: 1,
+    isHandoffCandidate: false,
+  };
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
+  describe("search-sessions extension", () => {
+    it("registers the local session mention source when loaded", () => {
+      const registerMentionSourceSpy = vi.fn();
+      const getExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) =>
+          defaults,
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createSearchSessionsExtension({
+        registerMentionSource:
+          registerMentionSourceSpy as typeof DEFAULT_EXTENSION_DEPS.registerMentionSource,
+        getExtensionConfig:
+          getExtensionConfigSpy as typeof DEFAULT_EXTENSION_DEPS.getExtensionConfig,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_EXTENSION_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(registerMentionSourceSpy).toHaveBeenCalledTimes(1);
+      const source = registerMentionSourceSpy.mock.calls[0]?.[0];
+      expect(source?.kind).toBe("session");
+      expect(
+        source?.getSuggestions("alpha", {
+          cwd: "/repo/app",
+          sessions: [SESSION_FIXTURE],
+        }),
+      ).toEqual([
+        {
+          value: "@session/alpha1234",
+          label: "@session/alpha1234",
+          description: "alpha work",
+        },
+      ]);
+      expect(getExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/search-sessions",
+        CONFIG_DEFAULTS,
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+    });
+  });
+}
+
