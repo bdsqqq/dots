@@ -24,14 +24,7 @@ import { spawn as nodeSpawn } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
-import {
-  parseRepoUrl,
-  repoSlug,
-  ghApi,
-  decodeBase64Content,
-  addLineNumbers,
-  truncate,
-} from "@bds_pi/github-api";
+import { ghApi, decodeBase64Content } from "@bds_pi/github-api";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CWD = process.env.PI_E2E_CWD ?? resolve(__dirname, "../../..");
@@ -132,91 +125,7 @@ function getToolResults(events: PiEvent[]) {
 }
 
 // ============================================================
-// layer 1: unit tests for lib/github.ts — no pi deps, no cost
-// ============================================================
-
-describe("lib/github.ts", () => {
-  describe("parseRepoUrl", () => {
-    it("parses full https URL", () => {
-      expect(parseRepoUrl("https://github.com/owner/repo")).toEqual({
-        owner: "owner",
-        repo: "repo",
-      });
-    });
-
-    it("parses URL without protocol", () => {
-      expect(parseRepoUrl("github.com/owner/repo")).toEqual({
-        owner: "owner",
-        repo: "repo",
-      });
-    });
-
-    it("parses shorthand owner/repo", () => {
-      expect(parseRepoUrl("owner/repo")).toEqual({
-        owner: "owner",
-        repo: "repo",
-      });
-    });
-
-    it("strips trailing .git", () => {
-      expect(parseRepoUrl("https://github.com/owner/repo.git")).toEqual({
-        owner: "owner",
-        repo: "repo",
-      });
-    });
-
-    it("strips trailing slash", () => {
-      expect(parseRepoUrl("https://github.com/owner/repo/")).toEqual({
-        owner: "owner",
-        repo: "repo",
-      });
-    });
-
-    it("throws on invalid input", () => {
-      expect(() => parseRepoUrl("just-a-name")).toThrow(/invalid repository/);
-    });
-  });
-
-  describe("repoSlug", () => {
-    it("returns owner/repo", () => {
-      expect(repoSlug({ owner: "a", repo: "b" })).toBe("a/b");
-    });
-  });
-
-  describe("decodeBase64Content", () => {
-    it("decodes base64 with embedded newlines", () => {
-      const encoded = Buffer.from("hello world").toString("base64");
-      const withNewlines = encoded.slice(0, 4) + "\n" + encoded.slice(4);
-      expect(decodeBase64Content(withNewlines)).toBe("hello world");
-    });
-  });
-
-  describe("addLineNumbers", () => {
-    it("numbers from 1 by default", () => {
-      expect(addLineNumbers("a\nb\nc")).toBe("1: a\n2: b\n3: c");
-    });
-
-    it("numbers from custom start", () => {
-      expect(addLineNumbers("x\ny", 10)).toBe("10: x\n11: y");
-    });
-  });
-
-  describe("truncate", () => {
-    it("returns short strings unchanged", () => {
-      expect(truncate("hello", 100)).toBe("hello");
-    });
-
-    it("truncates with indicator", () => {
-      const result = truncate("a".repeat(200), 50);
-      expect(result.length).toBeLessThan(200);
-      expect(result).toContain("truncated");
-      expect(result).toContain("200 total characters");
-    });
-  });
-});
-
-// ============================================================
-// layer 1b: gh api integration (no pi deps, but hits real API)
+// layer 1: gh api integration (no pi deps, but hits real API)
 // ============================================================
 
 describe("ghApi", () => {
