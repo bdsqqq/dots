@@ -17,6 +17,7 @@ import { resolveMentions } from "./resolve";
 import { clearSessionMentionCache } from "./session-index";
 import {
   createSessionMentionSource,
+  getMentionSource,
   registerMentionSource,
 } from "./sources";
 
@@ -54,6 +55,20 @@ describe("parseMentions", () => {
   it("ignores embedded email-ish strings", () => {
     expect(parseMentions("foo@commit/abc1234 bar")).toEqual([]);
   });
+
+  it("keeps parsing registry-backed kinds when no source is registered", () => {
+    expect(getMentionSource("session")).toBeNull();
+
+    expect(parseMentions("see @session/alpha1234")).toEqual([
+      {
+        kind: "session",
+        raw: "@session/alpha1234",
+        value: "alpha1234",
+        start: 4,
+        end: 22,
+      },
+    ]);
+  });
 });
 
 describe("detectMentionPrefix", () => {
@@ -77,6 +92,20 @@ describe("detectMentionPrefix", () => {
       familyQuery: "commit",
       kind: "commit",
       valueQuery: "abc",
+      hasSlash: true,
+    });
+  });
+
+  it("keeps registry-backed families available for prefix detection", () => {
+    expect(getMentionSource("handoff")).toBeNull();
+
+    expect(detectMentionPrefix("check @handoff/run-42", 22)).toEqual({
+      raw: "@handoff/run-42",
+      start: 6,
+      end: 22,
+      familyQuery: "handoff",
+      kind: "handoff",
+      valueQuery: "run-42",
       hasSlash: true,
     });
   });

@@ -1,27 +1,35 @@
-import {
-  MENTION_KINDS,
-  type MentionKind,
-  type MentionPrefix,
-  type MentionToken,
-} from "./types";
+import { isMentionKind, listMentionKinds } from "./sources";
+import type { MentionPrefix, MentionToken } from "./types";
 
-const FAMILY_PATTERN = MENTION_KINDS.join("|");
-const TOKEN_RE = new RegExp(
-  String.raw`(?<![\w/])@(${FAMILY_PATTERN})/([A-Za-z0-9][A-Za-z0-9._-]*)`,
-  "g",
-);
 const PREFIX_RE = /(?:^|[\s([{"'])@([A-Za-z-]*)?(?:\/([A-Za-z0-9._-]*))?$/;
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\\$&`);
+}
+
+function getTokenRegex(): RegExp | null {
+  const familyPattern = listMentionKinds().map(escapeRegex).join("|");
+  if (familyPattern.length === 0) return null;
+
+  return new RegExp(
+    String.raw`(?<![\w/])@(${familyPattern})/([A-Za-z0-9][A-Za-z0-9._-]*)`,
+    "g",
+  );
+}
 
 export function parseMentions(text: string): MentionToken[] {
   const mentions: MentionToken[] = [];
+  const tokenRegex = getTokenRegex();
 
-  for (const match of text.matchAll(TOKEN_RE)) {
+  if (!tokenRegex) return mentions;
+
+  for (const match of text.matchAll(tokenRegex)) {
     const raw = match[0];
-    const kind = match[1] as MentionKind | undefined;
+    const kind = match[1];
     const value = match[2];
     const start = match.index ?? -1;
 
-    if (kind === undefined || value === undefined || start < 0) continue;
+    if (!kind || !isMentionKind(kind) || value === undefined || start < 0) continue;
 
     mentions.push({
       kind,
@@ -49,9 +57,7 @@ export function detectMentionPrefix(
 
   const familyQuery = match[1] ?? "";
   const valueQuery = match[2] ?? "";
-  const kind = MENTION_KINDS.includes(familyQuery as MentionKind)
-    ? (familyQuery as MentionKind)
-    : null;
+  const kind = isMentionKind(familyQuery) ? familyQuery : null;
 
   return {
     raw,

@@ -1,8 +1,6 @@
 import type { MentionableSession } from "./session-index";
 
-export const MENTION_KINDS = ["commit", "session", "handoff"] as const;
-
-export type MentionKind = (typeof MENTION_KINDS)[number];
+export type MentionKind = "commit" | "session" | "handoff";
 
 export interface MentionToken {
   kind: MentionKind;
