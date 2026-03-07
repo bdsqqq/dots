@@ -17,10 +17,8 @@ import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { getExtensionConfig } from "@bds_pi/config";
-import {
-  createSessionMentionSource,
-  registerMentionSource,
-} from "@bds_pi/mentions";
+import { registerMentionSource } from "@bds_pi/mentions";
+import { createSessionMentionSource } from "./session-mention-source";
 import {
   type BoxSection,
   type Excerpt,
@@ -476,7 +474,7 @@ export function createSearchSessionsTool(config: SearchSessionsExtConfig = CONFI
 }
 
 export default function(pi: ExtensionAPI): void {
-  registerMentionSource(createSessionMentionSource("session"));
+  registerMentionSource(createSessionMentionSource());
 
   const cfg = getExtensionConfig("@bds_pi/search-sessions", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createSearchSessionsTool(cfg)));

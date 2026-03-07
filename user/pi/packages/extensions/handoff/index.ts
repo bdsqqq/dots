@@ -34,11 +34,9 @@ import {
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { getExtensionConfig } from "@bds_pi/config";
-import {
-  createSessionMentionSource,
-  registerMentionSource,
-} from "@bds_pi/mentions";
+import { registerMentionSource } from "@bds_pi/mentions";
 import { resolvePrompt } from "@bds_pi/pi-spawn";
+import { createHandoffMentionSource } from "./handoff-mention-source";
 
 type HandoffExtConfig = {
   threshold: number;
@@ -184,7 +182,7 @@ function showProvenance(ctx: ExtensionContext, parentPath: string): void {
 }
 
 export default function(pi: ExtensionAPI): void {
-  registerMentionSource(createSessionMentionSource("handoff"));
+  registerMentionSource(createHandoffMentionSource());
 
   const cfg = getExtensionConfig("@bds_pi/handoff", CONFIG_DEFAULTS);
 
