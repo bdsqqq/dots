@@ -1,0 +1,27 @@
+{
+  "name": "@bds_pi/oracle",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "@bds_pi/bash": "workspace:*",
+    "@bds_pi/glob": "workspace:*",
+    "@bds_pi/grep": "workspace:*",
+    "@bds_pi/ls": "workspace:*",
+    "@bds_pi/pi-spawn": "workspace:*",
+    "@bds_pi/prompt-patch": "workspace:*",
+    "@bds_pi/read": "workspace:*",
+    "@bds_pi/config": "workspace:*",
+    "@bds_pi/sub-agent-render": "workspace:*",
+    "@sinclair/typebox": "^0.34.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "@mariozechner/pi-coding-agent": "catalog:",
+    "@mariozechner/pi-tui": "catalog:"
+  }
+}

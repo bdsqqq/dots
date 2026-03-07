@@ -1,0 +1,13 @@
+{
+  "name": "@bds_pi/html-to-md",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "dependencies": {
+    "cheerio": "^1.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

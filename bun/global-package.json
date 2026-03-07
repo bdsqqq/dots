@@ -3,17 +3,18 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.55.3",
-    "@sourcegraph/amp": "0.0.1772021190-g554824",
-    "agent-browser": "^0.13.0",
-    "biome": "0.3.3",
+    "@mariozechner/pi-coding-agent": "^0.56.2",
+    "@openai/codex": "^0.111.0",
+    "@sourcegraph/amp": "0.0.1772802427-gaf6d64",
+    "agent-browser": "^0.16.3",
+    "biome": "^0.3.3",
     "diff": "^8.0.3",
-    "npm": "11.10.1",
-    "opencode-ai": "^1.2.15",
+    "npm": "^11.11.0",
+    "opencode-ai": "^1.2.20",
     "openportal": "^0.1.25",
-    "turbo": "2.8.10",
-    "typescript": "5.9.3",
-    "vercel": "50.22.1"
+    "turbo": "^2.8.13",
+    "typescript": "^5.9.3",
+    "vercel": "^50.28.0"
   },
   "trustedDependencies": [
     "agent-browser",

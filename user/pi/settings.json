@@ -1,8 +1,5 @@
 {
-  "defaultProvider": "opencode",
-  "enabledModels": [
-    "opencode/*"
-  ],
+  "defaultProvider": "openai-codex",
   "skills": [
     "~/.config/agents/skills"
   ],
@@ -17,8 +14,8 @@
   "compaction": {
     "enabled": false
   },
-  "lastChangelogVersion": "0.55.3",
-  "defaultModel": "gpt-5.3-codex",
+  "lastChangelogVersion": "0.56.2",
+  "defaultModel": "gpt-5.4",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "steeringMode": "all",

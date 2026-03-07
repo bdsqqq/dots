@@ -1,0 +1,25 @@
+{
+  "name": "@bds_pi/read-web-page",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "@bds_pi/config": "workspace:*",
+    "@bds_pi/prompt-patch": "workspace:*",
+    "@bds_pi/pi-spawn": "workspace:*",
+    "@bds_pi/sub-agent-render": "workspace:*",
+    "@bds_pi/html-to-md": "workspace:*",
+    "@bds_pi/output-buffer": "workspace:*",
+    "@bds_pi/box-format": "workspace:*",
+    "@sinclair/typebox": "^0.34.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "@mariozechner/pi-coding-agent": "catalog:",
+    "@mariozechner/pi-tui": "catalog:"
+  }
+}
