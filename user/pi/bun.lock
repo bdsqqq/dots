@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "pi-extensions-workspace",
@@ -59,6 +60,13 @@
         "vitest": "^3.0.0",
       },
     },
+    "packages/core/editor-capabilities": {
+      "name": "@bds_pi/editor-capabilities",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
     "packages/core/file-tracker": {
       "name": "@bds_pi/file-tracker",
       "dependencies": {
@@ -91,6 +99,13 @@
       "dependencies": {
         "@bds_pi/config": "workspace:*",
       },
+      "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
+    "packages/core/mentions": {
+      "name": "@bds_pi/mentions",
+      "version": "0.0.0",
       "devDependencies": {
         "vitest": "^3.0.0",
       },
@@ -271,6 +286,9 @@
     },
     "packages/extensions/editor": {
       "name": "@bds_pi/editor",
+      "dependencies": {
+        "@bds_pi/editor-capabilities": "workspace:*",
+      },
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
         "@mariozechner/pi-tui": "catalog:",
@@ -420,6 +438,18 @@
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
         "@mariozechner/pi-tui": "catalog:",
+        "vitest": "^3.0.0",
+      },
+    },
+    "packages/extensions/mentions": {
+      "name": "@bds_pi/mentions-extension",
+      "version": "0.0.1",
+      "dependencies": {
+        "@bds_pi/editor-capabilities": "workspace:*",
+        "@bds_pi/mentions": "workspace:*",
+        "@mariozechner/pi-coding-agent": "catalog:",
+      },
+      "devDependencies": {
         "vitest": "^3.0.0",
       },
     },
@@ -732,6 +762,8 @@
 
     "@bds_pi/editor": ["@bds_pi/editor@workspace:packages/extensions/editor"],
 
+    "@bds_pi/editor-capabilities": ["@bds_pi/editor-capabilities@workspace:packages/core/editor-capabilities"],
+
     "@bds_pi/file-tracker": ["@bds_pi/file-tracker@workspace:packages/core/file-tracker"],
 
     "@bds_pi/finder": ["@bds_pi/finder@workspace:packages/extensions/finder"],
@@ -757,6 +789,10 @@
     "@bds_pi/look-at": ["@bds_pi/look-at@workspace:packages/extensions/look-at"],
 
     "@bds_pi/ls": ["@bds_pi/ls@workspace:packages/extensions/ls"],
+
+    "@bds_pi/mentions": ["@bds_pi/mentions@workspace:packages/core/mentions"],
+
+    "@bds_pi/mentions-extension": ["@bds_pi/mentions-extension@workspace:packages/extensions/mentions"],
 
     "@bds_pi/mermaid": ["@bds_pi/mermaid@workspace:packages/extensions/mermaid"],
 
