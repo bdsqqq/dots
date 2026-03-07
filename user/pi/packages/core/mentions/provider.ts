@@ -2,16 +2,15 @@ import type {
   AutocompleteItem,
   AutocompleteProvider,
 } from "@mariozechner/pi-tui";
-import { getCommitIndex, resolveGitRoot } from "./commit-index";
+import { resolveGitRoot } from "./commit-index";
 import { detectMentionPrefix } from "./parse";
-import { getSessionMentionsIndex } from "./resolve";
-import { MENTION_KINDS, type MentionKind } from "./types";
-
-const KIND_DESCRIPTIONS: Record<MentionKind, string> = {
-  commit: "git commit",
-  session: "previous pi session",
-  handoff: "forked session with resumable context",
-};
+import {
+  getMentionKindDescription,
+  getMentionSource,
+  listEnabledMentionKinds,
+  type MentionSourceContext,
+} from "./sources";
+import type { MentionKind } from "./types";
 
 export interface MentionAwareProviderOptions {
   baseProvider: AutocompleteProvider;
@@ -99,47 +98,37 @@ export class MentionAwareProvider implements AutocompleteProvider {
   private getKindSuggestions(query: string): AutocompleteItem[] {
     return this.getEnabledKinds()
       .filter((kind) => kind.startsWith(query.toLowerCase()))
-      .map((kind) => this.trackItem({
-        value: `@${kind}/`,
-        label: `@${kind}/`,
-        description: KIND_DESCRIPTIONS[kind],
-      }))
+      .map((kind) =>
+        this.trackItem({
+          value: `@${kind}/`,
+          label: `@${kind}/`,
+          description: getMentionKindDescription(kind),
+        }),
+      )
       .slice(0, this.maxItems);
   }
 
   private getValueSuggestions(kind: MentionKind, query: string): AutocompleteItem[] {
-    if (kind === "commit") {
-      if (!this.gitEnabled) return [];
-      const index = getCommitIndex(this.cwd);
-      if (!index) return [];
+    const source = getMentionSource(kind);
+    if (!source) return [];
+    if (!(source.isEnabled?.(this.getSourceContext()) ?? true)) return [];
 
-      return index.commits
-        .filter((commit) => query.length === 0 || commit.sha.startsWith(query.toLowerCase()))
-        .slice(0, this.maxItems)
-        .map((commit) => this.trackItem({
-          value: `@commit/${commit.shortSha}`,
-          label: `@commit/${commit.shortSha}`,
-          description: commit.subject,
-        }));
-    }
-
-    return getSessionMentionsIndex(this.sessionsDir)
-      .filter((session) => kind !== "handoff" || session.isHandoffCandidate)
-      .filter((session) =>
-        query.length === 0 || session.sessionId.toLowerCase().startsWith(query.toLowerCase()),
-      )
+    return source
+      .getSuggestions(query, this.getSourceContext())
       .slice(0, this.maxItems)
-      .map((session) =>
-        this.trackItem({
-          value: `@${kind}/${session.sessionId}`,
-          label: `@${kind}/${session.sessionId}`,
-          description: session.sessionName || session.firstUserMessage || session.workspace,
-        }),
-      );
+      .map((item) => this.trackItem(item));
   }
 
   private getEnabledKinds(): MentionKind[] {
-    return MENTION_KINDS.filter((kind) => this.gitEnabled || kind !== "commit");
+    return listEnabledMentionKinds(this.getSourceContext());
+  }
+
+  private getSourceContext(): MentionSourceContext {
+    return {
+      cwd: this.cwd,
+      sessionsDir: this.sessionsDir,
+      gitEnabled: this.gitEnabled,
+    };
   }
 
   private trackItem(item: AutocompleteItem): AutocompleteItem {

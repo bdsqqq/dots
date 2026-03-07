@@ -345,10 +345,11 @@ manifest deps alone miss some important relationships.
 flowchart LR
   mentionscore[core/mentions] --> mentionsx[extensions/mentions]
   mentionsx -. registers contributor .-> editorcaps[core/editor-capabilities]
+  search[extensions/search-sessions] -. registers session source .-> mentionscore
+  handoff[extensions/handoff] -. registers handoff source .-> mentionscore
   editorcaps --> editor[extensions/editor]
-  mentionscore --> search[extensions/search-sessions]
 
-  handoff[extensions/handoff] -. editor:set-label / remove-label .-> editor
+  handoff -. editor:set-label / remove-label .-> editor
   handoff -. provenance widget .-> piui[pi ui host]
 
   search --> sessionindex[mentions/session-index]
@@ -358,8 +359,8 @@ flowchart LR
 
 - `editor` is not just another feature extension; it is the repo’s main ui host
 - `mentions` no longer hard-wires editor behavior directly; it crosses into ui autocomplete through `core/editor-capabilities`, which is the cleaner boundary
-- `handoff` already composes with `editor` softly through `pi.events`, which is a good pattern for loose ui coordination
-- `search-sessions` already shares session parsing with `core/mentions`, which is also good
+- `handoff` now owns the `handoff` mention source while still composing with `editor` softly through `pi.events`
+- `search-sessions` now owns the `session` mention source while sharing session parsing with `core/mentions`
 
 ---
 
@@ -404,7 +405,7 @@ this is the new host/contributor seam for editor autocomplete.
 this one is healthy.
 
 - current effect: lifecycle adapter over a shared domain runtime
-- future direction: keep this shape, but move hardcoded namespace ownership toward source registration
+- current boundary: namespace ownership now sits with registered sources instead of a hardcoded central switch
 
 ## 3. `search-sessions -> mentions/session-index`
 
@@ -453,11 +454,11 @@ flowchart TB
 
 ### concrete intended shifts
 
-- `core/mentions` becomes more like a source/registry/runtime layer
+- `core/mentions` is now the source/registry/runtime layer for addressable references
 - `extensions/mentions` stays the pi lifecycle adapter
-- `extensions/editor` becomes a true host for optional autocomplete contributors
-- `extensions/handoff` remains self-sufficient, but can optionally contribute addressable history capability
-- `extensions/search-sessions` keeps session search and can optionally own session mention semantics for its domain
+- `extensions/editor` is the host for optional autocomplete contributors
+- `extensions/handoff` remains self-sufficient and now contributes `handoff` mention semantics
+- `extensions/search-sessions` keeps session search and now owns `session` mention semantics for its domain
 
 ---
 

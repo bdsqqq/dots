@@ -13,7 +13,12 @@ import {
   lookupCommitByPrefix,
   parseCommitLog,
 } from "./commit-index";
-import { clearSessionMentionCache, resolveMentions } from "./resolve";
+import { resolveMentions } from "./resolve";
+import { clearSessionMentionCache } from "./session-index";
+import {
+  createSessionMentionSource,
+  registerMentionSource,
+} from "./sources";
 
 describe("parseMentions", () => {
   it("parses canonical mention tokens", () => {
@@ -224,36 +229,98 @@ describe("mention autocomplete", () => {
 
 describe("resolveMentions", () => {
   it("resolves session and handoff mentions from a provided session index", async () => {
-    await expect(
-      resolveMentions("see @session/alpha1234 then @handoff/handoffabcd", {
-        cwd: "/repo/app",
-        sessions: [
-          {
+    const unregisterSession = registerMentionSource(
+      createSessionMentionSource("session"),
+    );
+    const unregisterHandoff = registerMentionSource(
+      createSessionMentionSource("handoff"),
+    );
+
+    try {
+      await expect(
+        resolveMentions("see @session/alpha1234 then @handoff/handoffabcd", {
+          cwd: "/repo/app",
+          sessions: [
+            {
+              sessionId: "alpha1234",
+              sessionName: "alpha work",
+              workspace: "/repo/app",
+              filePath: "/sessions/alpha.jsonl",
+              startedAt: "2026-03-06T17:00:00.000Z",
+              updatedAt: "2026-03-06T17:10:00.000Z",
+              firstUserMessage: "alpha task",
+              searchableText: "alpha task",
+              branchCount: 1,
+              isHandoffCandidate: false,
+            },
+            {
+              sessionId: "handoffabcd",
+              sessionName: "handoff alpha",
+              workspace: "/repo/app",
+              filePath: "/sessions/handoff.jsonl",
+              startedAt: "2026-03-06T17:00:00.000Z",
+              updatedAt: "2026-03-06T17:20:00.000Z",
+              firstUserMessage: "resume alpha",
+              searchableText: "resume alpha",
+              branchCount: 1,
+              parentSessionPath: "/sessions/parent.jsonl",
+              isHandoffCandidate: true,
+            },
+          ],
+        }),
+      ).resolves.toEqual([
+        {
+          token: {
+            kind: "session",
+            raw: "@session/alpha1234",
+            value: "alpha1234",
+            start: 4,
+            end: 22,
+          },
+          status: "resolved",
+          kind: "session",
+          session: {
             sessionId: "alpha1234",
             sessionName: "alpha work",
             workspace: "/repo/app",
-            filePath: "/sessions/alpha.jsonl",
             startedAt: "2026-03-06T17:00:00.000Z",
             updatedAt: "2026-03-06T17:10:00.000Z",
             firstUserMessage: "alpha task",
-            searchableText: "alpha task",
-            branchCount: 1,
-            isHandoffCandidate: false,
+            parentSessionPath: undefined,
           },
-          {
+        },
+        {
+          token: {
+            kind: "handoff",
+            raw: "@handoff/handoffabcd",
+            value: "handoffabcd",
+            start: 28,
+            end: 48,
+          },
+          status: "resolved",
+          kind: "handoff",
+          session: {
             sessionId: "handoffabcd",
             sessionName: "handoff alpha",
             workspace: "/repo/app",
-            filePath: "/sessions/handoff.jsonl",
             startedAt: "2026-03-06T17:00:00.000Z",
             updatedAt: "2026-03-06T17:20:00.000Z",
             firstUserMessage: "resume alpha",
-            searchableText: "resume alpha",
-            branchCount: 1,
             parentSessionPath: "/sessions/parent.jsonl",
-            isHandoffCandidate: true,
           },
-        ],
+        },
+      ]);
+    } finally {
+      unregisterHandoff();
+      unregisterSession();
+    }
+  });
+
+  it("quietly misses when a parsed mention kind has no registered source", async () => {
+    await expect(
+      resolveMentions("see @session/alpha1234", {
+        cwd: "/repo/app",
+        sessions: [],
       }),
     ).resolves.toEqual([
       {
@@ -264,37 +331,8 @@ describe("resolveMentions", () => {
           start: 4,
           end: 22,
         },
-        status: "resolved",
-        kind: "session",
-        session: {
-          sessionId: "alpha1234",
-          sessionName: "alpha work",
-          workspace: "/repo/app",
-          startedAt: "2026-03-06T17:00:00.000Z",
-          updatedAt: "2026-03-06T17:10:00.000Z",
-          firstUserMessage: "alpha task",
-          parentSessionPath: undefined,
-        },
-      },
-      {
-        token: {
-          kind: "handoff",
-          raw: "@handoff/handoffabcd",
-          value: "handoffabcd",
-          start: 28,
-          end: 48,
-        },
-        status: "resolved",
-        kind: "handoff",
-        session: {
-          sessionId: "handoffabcd",
-          sessionName: "handoff alpha",
-          workspace: "/repo/app",
-          startedAt: "2026-03-06T17:00:00.000Z",
-          updatedAt: "2026-03-06T17:20:00.000Z",
-          firstUserMessage: "resume alpha",
-          parentSessionPath: "/sessions/parent.jsonl",
-        },
+        status: "unresolved",
+        reason: "session_mentions_not_supported_yet",
       },
     ]);
   });
