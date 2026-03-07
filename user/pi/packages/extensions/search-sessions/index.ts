@@ -30,7 +30,7 @@ import {
   listSessionFiles,
   parseSessionFile,
   type BranchResult,
-} from "../../core/mentions/session-index";
+} from "@bds_pi/mentions";
 
 type SearchSessionsExtConfig = {
   maxResults: number;

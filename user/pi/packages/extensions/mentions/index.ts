@@ -7,7 +7,7 @@ import {
   clearSessionMentionCache,
   clearCommitIndexCache,
   type ResolvedMention,
-} from "../../core/mentions";
+} from "@bds_pi/mentions";
 
 const CUSTOM_TYPE = "mentions:resolved";
 
