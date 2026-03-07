@@ -373,6 +373,161 @@ async function runCommand(
   });
 }
 
+if (import.meta.vitest) {
+  const { describe, expect, it } = import.meta.vitest;
+
+  type BashToolResult = {
+    content: [{ type: "text"; text: string }];
+    details?: { command: string };
+    isError?: boolean;
+  };
+
+  const tool = createBashTool();
+  const mockCtx = {
+    cwd: "/tmp",
+    sessionManager: {
+      getSessionId: () => "test-session-id",
+    },
+  };
+
+  async function execute(cmd: string): Promise<BashToolResult> {
+    return (await tool.execute!(
+      "test-id",
+      { cmd },
+      undefined,
+      undefined,
+      mockCtx as any,
+    )) as BashToolResult;
+  }
+
+  describe("bash tool output formatting", () => {
+    describe("command header", () => {
+      it("shows command in output header", async () => {
+        const result = await execute(`echo "hello world"`);
+        expect(result.content[0].text).toMatch(/^\$ echo "hello world"/);
+      });
+
+      it("shows full command including args", async () => {
+        const result = await execute(`ls -la /tmp`);
+        expect(result.content[0].text).toContain("$ ls -la /tmp");
+      });
+    });
+
+    describe("small output (no truncation)", () => {
+      it("shows all output when small", async () => {
+        const result = await execute(`printf 'line 1\nline 2\nline 3\n'`);
+        const text = result.content[0].text;
+        expect(text).toContain("line 1");
+        expect(text).toContain("line 2");
+        expect(text).toContain("line 3");
+        expect(text).not.toContain("truncated");
+      });
+
+      it("handles no output gracefully", async () => {
+        const result = await execute("true");
+        expect(result.content[0].text).toContain("no output");
+        expect(result.isError).toBeFalsy();
+      });
+    });
+
+    describe("large output (truncation)", () => {
+      it("shows head + tail for large output", async () => {
+        const result = await execute(
+          `for i in $(seq 1 200); do echo "line $i"; done`,
+        );
+        const text = result.content[0].text;
+
+        expect(text).toContain("line 1");
+        expect(text).toContain("line 2");
+        expect(text).toContain("line 199");
+        expect(text).toContain("line 200");
+        expect(text).toContain("truncated");
+
+        const headIndex = text.indexOf("line 1");
+        const markerIndex = text.indexOf("truncated");
+        const tailIndex = text.indexOf("line 200");
+        expect(headIndex).toBeLessThan(markerIndex);
+        expect(markerIndex).toBeLessThan(tailIndex);
+      }, 10_000);
+    });
+
+    describe("exit codes", () => {
+      it("shows exit code on failure", async () => {
+        await expect(execute(`echo "some output"; exit 42`)).rejects.toThrow(
+          "exit code 42",
+        );
+      });
+
+      it("no exit code on success", async () => {
+        const result = await execute(`echo "success"`);
+        expect(result.isError).toBeFalsy();
+        expect(result.content[0].text).not.toContain("exit code");
+      });
+    });
+
+    describe("mixed stdout/stderr", () => {
+      it("captures both stdout and stderr", async () => {
+        const result = await execute(`echo "stdout"; echo "stderr" >&2`);
+        const text = result.content[0].text;
+        expect(text).toContain("stdout");
+        expect(text).toContain("stderr");
+      });
+    });
+
+    describe("reversion guards", () => {
+      it("shows first lines, not just tail", async () => {
+        const result = await execute(
+          `for i in $(seq 1 100); do echo "output line $i"; done`,
+        );
+        const text = result.content[0].text;
+        expect(text).toContain("output line 1");
+        expect(text).toContain("output line 2");
+        expect(text).toContain("output line 99");
+        expect(text).toContain("output line 100");
+      }, 10_000);
+
+      it("puts the command header at the start of output", async () => {
+        const result = await execute(`echo "test"`);
+        const text = result.content[0].text;
+        expect(text).toMatch(/^\$ echo "test"/);
+        expect(text.slice(0, text.indexOf("\n"))).toBe('$ echo "test"');
+      });
+
+      it("keeps head lines before tail lines in truncated output", async () => {
+        const result = await execute(
+          `for i in $(seq 1 150); do echo "line $i"; done`,
+        );
+        const text = result.content[0].text;
+        const firstHeadIndex = text.indexOf("line 1");
+        const lastTailIndex = text.indexOf("line 150");
+        expect(firstHeadIndex).toBeGreaterThan(0);
+        expect(firstHeadIndex).toBeLessThan(lastTailIndex);
+      }, 10_000);
+    });
+
+    describe("edge cases", () => {
+      it("handles command with special characters", async () => {
+        const result = await execute(
+          `printf '%s\n' "special: 'quotes' and \"double\" and \$var"`,
+        );
+        expect(result.content[0].text).toContain("special");
+      });
+
+      it("handles very long single line", async () => {
+        const result = await execute(`python3 -c "print('x' * 10000)"`);
+        expect(result.content[0].text).toContain("xxxxx");
+      }, 10_000);
+
+      it("handles many short lines", async () => {
+        const result = await execute(
+          `for i in $(seq 1 500); do echo "x"; done`,
+        );
+        expect(result.content[0].text).toContain("truncated");
+      }, 10_000);
+    });
+  });
+}
+
 export default function(pi: ExtensionAPI): void {
   const cfg = getExtensionConfig("@bds_pi/bash", CONFIG_DEFAULTS);
   pi.registerTool(withPromptPatch(createBashTool(cfg)));
