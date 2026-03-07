@@ -38,7 +38,7 @@ describe("search-sessions extension", () => {
     vi.resetModules();
   });
 
-  it("registers the session mention source when loaded", async () => {
+  it("registers the local session mention source when loaded", async () => {
     const { getMentionSource } = await import("../../core/mentions/sources");
     expect(getMentionSource("session")).toBeNull();
 
@@ -62,5 +62,112 @@ describe("search-sessions extension", () => {
       },
     ]);
     expect(harness.tools).toHaveLength(1);
+  });
+
+  it("preserves session resolution and graceful degradation", async () => {
+    const { createSessionMentionSource } = await import("./session-mention-source");
+    const source = createSessionMentionSource();
+
+    expect(
+      source.getSuggestions("", {
+        cwd: "/repo/app",
+        sessionsDir: "/definitely/missing",
+      }),
+    ).toEqual([]);
+
+    expect(
+      source.resolve(
+        {
+          kind: "session",
+          raw: "@session/alpha",
+          value: "alpha",
+          start: 0,
+          end: 14,
+        },
+        {
+          cwd: "/repo/app",
+          sessions: [SESSION_FIXTURE],
+        },
+      ),
+    ).toEqual({
+      token: {
+        kind: "session",
+        raw: "@session/alpha",
+        value: "alpha",
+        start: 0,
+        end: 14,
+      },
+      status: "resolved",
+      kind: "session",
+      session: {
+        sessionId: "alpha1234",
+        sessionName: "alpha work",
+        workspace: "/repo/app",
+        startedAt: "2026-03-06T17:00:00.000Z",
+        updatedAt: "2026-03-06T17:10:00.000Z",
+        firstUserMessage: "alpha task",
+        parentSessionPath: undefined,
+      },
+    });
+
+    expect(
+      source.resolve(
+        {
+          kind: "session",
+          raw: "@session/alpha",
+          value: "alpha",
+          start: 0,
+          end: 14,
+        },
+        {
+          cwd: "/repo/app",
+          sessions: [
+            SESSION_FIXTURE,
+            {
+              ...SESSION_FIXTURE,
+              sessionId: "alpha5678",
+              filePath: "/sessions/alpha-2.jsonl",
+              updatedAt: "2026-03-06T17:20:00.000Z",
+            },
+          ],
+        },
+      ),
+    ).toEqual({
+      token: {
+        kind: "session",
+        raw: "@session/alpha",
+        value: "alpha",
+        start: 0,
+        end: 14,
+      },
+      status: "unresolved",
+      reason: "session_prefix_ambiguous",
+    });
+
+    expect(
+      source.resolve(
+        {
+          kind: "session",
+          raw: "@session/missing",
+          value: "missing",
+          start: 0,
+          end: 16,
+        },
+        {
+          cwd: "/repo/app",
+          sessions: [SESSION_FIXTURE],
+        },
+      ),
+    ).toEqual({
+      token: {
+        kind: "session",
+        raw: "@session/missing",
+        value: "missing",
+        start: 0,
+        end: 16,
+      },
+      status: "unresolved",
+      reason: "session_not_found",
+    });
   });
 });

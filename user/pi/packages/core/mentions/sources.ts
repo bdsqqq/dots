@@ -1,17 +1,7 @@
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { getCommitIndex, lookupCommitByPrefix, resolveGitRoot, type CommitIndex } from "./commit-index";
-import {
-  DEFAULT_MENTION_SESSIONS_DIR,
-  getSessionMentionsIndex,
-  resolveMentionableSession,
-  type MentionableSession,
-} from "./session-index";
-import {
-  toResolvedSessionMention,
-  type MentionKind,
-  type MentionToken,
-  type ResolvedMention,
-} from "./types";
+import type { MentionableSession } from "./session-index";
+import { type MentionKind, type MentionToken, type ResolvedMention } from "./types";
 
 const mentionKindDescriptions = new Map<MentionKind, string>([
   ["commit", "git commit"],
@@ -39,13 +29,6 @@ export interface MentionSource {
 }
 
 const sources = new Map<MentionKind, MentionSource>();
-
-function getSessions(context: MentionSourceContext): MentionableSession[] {
-  return (
-    context.sessions ??
-    getSessionMentionsIndex(context.sessionsDir ?? DEFAULT_MENTION_SESSIONS_DIR)
-  );
-}
 
 function isGitEnabled(context: MentionSourceContext): boolean {
   return context.gitEnabled ?? resolveGitRoot(context.cwd) !== null;
@@ -108,52 +91,6 @@ export function createCommitMentionSource(): MentionSource {
           result.status === "ambiguous"
             ? "commit_prefix_ambiguous"
             : "commit_not_found",
-      };
-    },
-  };
-}
-
-export function createSessionMentionSource(
-  kind: "session" | "handoff",
-): MentionSource {
-  return {
-    kind,
-    description: mentionKindDescriptions.get(kind) ?? kind,
-    getSuggestions(query, context) {
-      return getSessions(context)
-        .filter((session) => kind !== "handoff" || session.isHandoffCandidate)
-        .filter(
-          (session) =>
-            query.length === 0 ||
-            session.sessionId.toLowerCase().startsWith(query.toLowerCase()),
-        )
-        .slice(0, 8)
-        .map((session) => ({
-          value: `@${kind}/${session.sessionId}`,
-          label: `@${kind}/${session.sessionId}`,
-          description:
-            session.sessionName || session.firstUserMessage || session.workspace,
-        }));
-    },
-    resolve(token, context) {
-      const result = resolveMentionableSession(getSessions(context), token.value, kind);
-
-      if (result.status === "resolved") {
-        return {
-          token,
-          status: "resolved",
-          kind,
-          session: toResolvedSessionMention(result.session),
-        };
-      }
-
-      return {
-        token,
-        status: "unresolved",
-        reason:
-          result.status === "ambiguous"
-            ? `${kind}_prefix_ambiguous`
-            : `${kind}_not_found`,
       };
     },
   };
