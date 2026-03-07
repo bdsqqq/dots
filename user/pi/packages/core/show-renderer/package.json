@@ -1,0 +1,13 @@
+{
+  "name": "@bds_pi/show-renderer",
+  "version": "0.0.1",
+
+  "main": "index.ts",
+  "dependencies": {
+    "@bds_pi/show": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "@mariozechner/pi-tui": "catalog:"
+  }
+}

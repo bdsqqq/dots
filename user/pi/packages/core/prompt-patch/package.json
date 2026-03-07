@@ -1,0 +1,12 @@
+{
+  "name": "@bds_pi/prompt-patch",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "catalog:"
+  }
+}

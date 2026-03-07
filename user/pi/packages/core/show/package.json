@@ -1,0 +1,17 @@
+{
+  "name": "@bds_pi/show",
+  "version": "0.0.0",
+  "private": true,
+
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "@mariozechner/pi-tui": "catalog:"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

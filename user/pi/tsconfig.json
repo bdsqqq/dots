@@ -15,7 +15,7 @@
     "noImplicitOverride": true,
     "module": "preserve",
     "noEmit": true,
-    "types": ["bun"],
+    "types": ["bun", "vitest/importMeta"],
     "paths": {
       "@/*": ["./*"]
     }

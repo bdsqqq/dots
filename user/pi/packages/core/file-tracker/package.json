@@ -1,0 +1,12 @@
+{
+  "name": "@bds_pi/file-tracker",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "dependencies": {
+    "diff": "^8.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

@@ -83,7 +83,9 @@ in
         desc = "win ${toString n}";
         cmd = if n == 1
           then "select-window -t :1"
-          else ''run-shell 'n=${toString n}; c=$(tmux list-windows | wc -l | tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n' '';
+          # clamp to max window count so pressing e.g. 5 with 3 windows goes to last
+          # uses nix store paths to avoid PATH dependency in run-shell
+          else ''run-shell 'n=${toString n}; c=$(tmux list-windows | ${pkgs.coreutils}/bin/wc -l | ${pkgs.coreutils}/bin/tr -d " "); [ $n -gt $c ] && n=$c; tmux select-window -t :$n' '';
       };
     }) (lib.range 1 9));
 
@@ -282,6 +284,10 @@ in
       extraConfig = ''
         # override sensible's broken default-command (it uses $SHELL from build env)
         set -g default-command "${lib.getExe config.my.defaultShell}"
+
+        # refresh PATH from attaching client — prevents stale /etc/profiles/per-user//bin
+        # after darwin-rebuild restarts the tmux server with incomplete env
+        set -ga update-environment PATH
         
         # pane numbering consistent with window base-index
         set -g pane-base-index 1

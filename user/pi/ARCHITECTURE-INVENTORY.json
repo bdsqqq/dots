@@ -1,0 +1,1216 @@
+{
+  "generatedAt": "2026-03-06T21:28:46Z",
+  "source": "curated from package manifests + code reads",
+  "core": [
+    {
+      "name": "agents-md",
+      "packageName": "@bds_pi/agents-md",
+      "path": "packages/core/agents-md",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "helper",
+      "purpose": "discover and format AGENTS.md guidance for file-aware workflows",
+      "registers": [],
+      "composesWith": [],
+      "currentConsumers": []
+    },
+    {
+      "name": "box-chrome",
+      "packageName": "@bds_pi/box-chrome",
+      "path": "packages/core/box-chrome",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "helper",
+      "purpose": "box-drawing layout primitives for borders and rows",
+      "registers": [],
+      "composesWith": [
+        "box-format",
+        "extensions/editor",
+        "extensions/command-palette"
+      ],
+      "currentConsumers": [
+        "box-format",
+        "extensions/editor",
+        "extensions/command-palette"
+      ]
+    },
+    {
+      "name": "box-format",
+      "packageName": "@bds_pi/box-format",
+      "path": "packages/core/box-format",
+      "localDependencies": [
+        "@bds_pi/box-chrome",
+        "@bds_pi/show"
+      ],
+      "exportsPiExtensions": [],
+      "role": "runtime-helper",
+      "purpose": "shared boxed/excerpted rendering for tool results and structured text",
+      "registers": [],
+      "composesWith": [
+        "box-chrome",
+        "show"
+      ],
+      "currentConsumers": [
+        "many tool extensions"
+      ]
+    },
+    {
+      "name": "config",
+      "packageName": "@bds_pi/config",
+      "path": "packages/core/config",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "runtime-helper",
+      "purpose": "merged namespaced config loading and caching for this package",
+      "registers": [],
+      "composesWith": [
+        "most extensions",
+        "interpolate"
+      ],
+      "currentConsumers": [
+        "most extensions",
+        "core/interpolate"
+      ]
+    },
+    {
+      "name": "editor-capabilities",
+      "packageName": "@bds_pi/editor-capabilities",
+      "path": "packages/core/editor-capabilities",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "runtime-helper",
+      "purpose": "typed editor autocomplete contributor contracts and package-local registry",
+      "registers": [],
+      "composesWith": [
+        "extensions/editor",
+        "extensions/mentions"
+      ],
+      "currentConsumers": [
+        "extensions/editor",
+        "extensions/mentions"
+      ]
+    },
+    {
+      "name": "file-tracker",
+      "packageName": "@bds_pi/file-tracker",
+      "path": "packages/core/file-tracker",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "runtime-helper",
+      "purpose": "persist before/after file changes and diffs for undo flows",
+      "registers": [],
+      "composesWith": [
+        "extensions/create-file",
+        "extensions/edit-file",
+        "extensions/format-file",
+        "extensions/undo-edit"
+      ],
+      "currentConsumers": [
+        "extensions/create-file",
+        "extensions/edit-file",
+        "extensions/format-file",
+        "extensions/undo-edit"
+      ]
+    },
+    {
+      "name": "github-api",
+      "packageName": "@bds_pi/github-api",
+      "path": "packages/core/github-api",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "domain-runtime",
+      "purpose": "shared gh api helpers, repo parsing, pagination, and content decoding",
+      "registers": [],
+      "composesWith": [
+        "extensions/github"
+      ],
+      "currentConsumers": [
+        "extensions/github"
+      ]
+    },
+    {
+      "name": "html-to-md",
+      "packageName": "@bds_pi/html-to-md",
+      "path": "packages/core/html-to-md",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "domain-runtime",
+      "purpose": "convert fetched html into llm-friendly markdown",
+      "registers": [],
+      "composesWith": [
+        "extensions/read-web-page"
+      ],
+      "currentConsumers": [
+        "extensions/read-web-page"
+      ]
+    },
+    {
+      "name": "interpolate",
+      "packageName": "@bds_pi/interpolate",
+      "path": "packages/core/interpolate",
+      "localDependencies": [
+        "@bds_pi/config"
+      ],
+      "exportsPiExtensions": [],
+      "role": "runtime-helper",
+      "purpose": "prompt variable interpolation and runtime/git/session variable resolution",
+      "registers": [],
+      "composesWith": [
+        "config",
+        "pi-spawn",
+        "extensions/system-prompt"
+      ],
+      "currentConsumers": [
+        "core/pi-spawn",
+        "extensions/system-prompt"
+      ]
+    },
+    {
+      "name": "mentions",
+      "packageName": "@bds_pi/mentions",
+      "path": "packages/core/mentions",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "domain-runtime",
+      "purpose": "mention parsing, indexing, resolution, rendering, and mention-specific autocomplete wrapping",
+      "registers": [],
+      "composesWith": [
+        "extensions/mentions",
+        "extensions/search-sessions"
+      ],
+      "currentConsumers": [
+        "extensions/mentions",
+        "extensions/search-sessions via session-index"
+      ]
+    },
+    {
+      "name": "mutex",
+      "packageName": "@bds_pi/mutex",
+      "path": "packages/core/mutex",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "helper",
+      "purpose": "per-path async lock for file and process coordination",
+      "registers": [],
+      "composesWith": [
+        "file-mutating tools",
+        "extensions/bash"
+      ],
+      "currentConsumers": [
+        "extensions/bash",
+        "extensions/create-file",
+        "extensions/edit-file",
+        "extensions/format-file",
+        "extensions/undo-edit"
+      ]
+    },
+    {
+      "name": "output-buffer",
+      "packageName": "@bds_pi/output-buffer",
+      "path": "packages/core/output-buffer",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "helper",
+      "purpose": "bounded head/tail truncation utilities for tool output",
+      "registers": [],
+      "composesWith": [
+        "output-heavy tools"
+      ],
+      "currentConsumers": [
+        "extensions/bash",
+        "extensions/read",
+        "extensions/grep",
+        "extensions/glob",
+        "extensions/read-session",
+        "extensions/read-web-page"
+      ]
+    },
+    {
+      "name": "permissions",
+      "packageName": "@bds_pi/permissions",
+      "path": "packages/core/permissions",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "runtime-helper",
+      "purpose": "permission evaluation for tool execution based on rules config",
+      "registers": [],
+      "composesWith": [
+        "extensions/bash"
+      ],
+      "currentConsumers": [
+        "extensions/bash"
+      ]
+    },
+    {
+      "name": "pi-spawn",
+      "packageName": "@bds_pi/pi-spawn",
+      "path": "packages/core/pi-spawn",
+      "localDependencies": [
+        "@bds_pi/interpolate"
+      ],
+      "exportsPiExtensions": [],
+      "role": "runtime-helper",
+      "purpose": "spawn nested pi sessions/sub-agents with scoped tools and prompts",
+      "registers": [],
+      "composesWith": [
+        "sub-agent tool family",
+        "prompt-loading helpers"
+      ],
+      "currentConsumers": [
+        "extensions/finder",
+        "extensions/task",
+        "extensions/oracle",
+        "extensions/look-at",
+        "extensions/librarian",
+        "extensions/code-review",
+        "extensions/read-session",
+        "extensions/read-web-page",
+        "extensions/system-prompt",
+        "extensions/handoff"
+      ]
+    },
+    {
+      "name": "prompt-patch",
+      "packageName": "@bds_pi/prompt-patch",
+      "path": "packages/core/prompt-patch",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "helper",
+      "purpose": "derive prompt snippet and guidelines from tool descriptions",
+      "registers": [],
+      "composesWith": [
+        "most tool extensions"
+      ],
+      "currentConsumers": [
+        "most tool extensions"
+      ]
+    },
+    {
+      "name": "show",
+      "packageName": "@bds_pi/show",
+      "path": "packages/core/show",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "helper",
+      "purpose": "excerpt/windowing primitives for visual text rendering",
+      "registers": [],
+      "composesWith": [
+        "box-format",
+        "show-renderer"
+      ],
+      "currentConsumers": [
+        "core/box-format",
+        "core/show-renderer"
+      ]
+    },
+    {
+      "name": "show-renderer",
+      "packageName": "@bds_pi/show-renderer",
+      "path": "packages/core/show-renderer",
+      "localDependencies": [
+        "@bds_pi/show"
+      ],
+      "exportsPiExtensions": [],
+      "role": "helper",
+      "purpose": "cached renderer wrapper over show()",
+      "registers": [],
+      "composesWith": [
+        "show"
+      ],
+      "currentConsumers": []
+    },
+    {
+      "name": "sub-agent-render",
+      "packageName": "@bds_pi/sub-agent-render",
+      "path": "packages/core/sub-agent-render",
+      "localDependencies": [
+        "@bds_pi/pi-spawn",
+        "@bds_pi/tool-cost"
+      ],
+      "exportsPiExtensions": [],
+      "role": "runtime-helper",
+      "purpose": "normalize and render spawned-agent results with usage/cost metadata",
+      "registers": [],
+      "composesWith": [
+        "sub-agent tool family",
+        "pi-spawn",
+        "tool-cost"
+      ],
+      "currentConsumers": [
+        "extensions/finder",
+        "extensions/task",
+        "extensions/oracle",
+        "extensions/look-at",
+        "extensions/librarian",
+        "extensions/code-review",
+        "extensions/read-session",
+        "extensions/read-web-page"
+      ]
+    },
+    {
+      "name": "tool-cost",
+      "packageName": "@bds_pi/tool-cost",
+      "path": "packages/core/tool-cost",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "helper",
+      "purpose": "shared details.cost contract and type guard",
+      "registers": [],
+      "composesWith": [
+        "extensions/editor",
+        "extensions/web-search",
+        "sub-agent-render"
+      ],
+      "currentConsumers": [
+        "extensions/editor",
+        "extensions/web-search",
+        "core/sub-agent-render"
+      ]
+    },
+    {
+      "name": "tui",
+      "packageName": "@bds_pi/tui",
+      "path": "packages/core/tui",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "helper",
+      "purpose": "lazy pi-tui re-exports for runtime/test-safe imports",
+      "registers": [],
+      "composesWith": [
+        "extensions/bash"
+      ],
+      "currentConsumers": [
+        "extensions/bash"
+      ]
+    }
+  ],
+  "extensions": [
+    {
+      "name": "bash",
+      "packageName": "@bds_pi/bash",
+      "path": "packages/extensions/bash",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/config",
+        "@bds_pi/mutex",
+        "@bds_pi/output-buffer",
+        "@bds_pi/permissions",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/read",
+        "@bds_pi/tui"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "custom bash tool with permission checks, command cleanup, git trailers, and truncation",
+      "registers": [
+        "tool:bash"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/config",
+        "core/mutex",
+        "core/output-buffer",
+        "core/permissions",
+        "core/prompt-patch",
+        "extensions/read",
+        "core/tui"
+      ],
+      "runtimeType": "custom tool replacement"
+    },
+    {
+      "name": "code-review",
+      "packageName": "@bds_pi/code-review",
+      "path": "packages/extensions/code-review",
+      "localDependencies": [
+        "@bds_pi/bash",
+        "@bds_pi/config",
+        "@bds_pi/glob",
+        "@bds_pi/grep",
+        "@bds_pi/ls",
+        "@bds_pi/pi-spawn",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/read",
+        "@bds_pi/read-web-page",
+        "@bds_pi/sub-agent-render",
+        "@bds_pi/web-search"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "spawn review agent over diffs and summarize structured review comments",
+      "registers": [
+        "tool:code_review"
+      ],
+      "composesWith": [
+        "core/pi-spawn",
+        "core/sub-agent-render",
+        "core/prompt-patch",
+        "core/config",
+        "extensions/bash",
+        "extensions/glob",
+        "extensions/grep",
+        "extensions/ls",
+        "extensions/read",
+        "extensions/read-web-page",
+        "extensions/web-search"
+      ],
+      "runtimeType": "sub-agent tool"
+    },
+    {
+      "name": "command-palette",
+      "packageName": "@bds_pi/command-palette",
+      "path": "packages/extensions/command-palette",
+      "localDependencies": [],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "feature-extension",
+      "purpose": "searchable overlay palette for commands, models, thinking levels, and active tools",
+      "registers": [
+        "command:/palette",
+        "shortcut:ctrl+p",
+        "ui:overlay"
+      ],
+      "composesWith": [
+        "core/box-chrome",
+        "pi command/model/tool apis"
+      ],
+      "runtimeType": "ui feature"
+    },
+    {
+      "name": "create-file",
+      "packageName": "@bds_pi/create-file",
+      "path": "packages/extensions/create-file",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/file-tracker",
+        "@bds_pi/mutex",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/read"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "custom write tool with parent-dir creation and undo tracking",
+      "registers": [
+        "tool:write"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/file-tracker",
+        "core/mutex",
+        "core/prompt-patch",
+        "extensions/read"
+      ],
+      "runtimeType": "tool replacement"
+    },
+    {
+      "name": "e2e",
+      "packageName": "@bds_pi/e2e",
+      "path": "packages/extensions/e2e",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "test/support",
+      "purpose": "e2e fixtures and support package, not a runtime extension",
+      "registers": [],
+      "composesWith": [],
+      "runtimeType": "test/support"
+    },
+    {
+      "name": "edit-file",
+      "packageName": "@bds_pi/edit-file",
+      "path": "packages/extensions/edit-file",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/file-tracker",
+        "@bds_pi/mutex",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/read"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "custom edit tool with exact/fuzzy replacement, diffing, and undo tracking",
+      "registers": [
+        "tool:edit"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/file-tracker",
+        "core/mutex",
+        "core/prompt-patch",
+        "extensions/read"
+      ],
+      "runtimeType": "tool replacement"
+    },
+    {
+      "name": "editor",
+      "packageName": "@bds_pi/editor",
+      "path": "packages/extensions/editor",
+      "localDependencies": [
+        "@bds_pi/editor-capabilities"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "host-extension",
+      "purpose": "boxed editor ui host with labels, status row, footer replacement, and autocomplete contributor hosting",
+      "registers": [
+        "ui:editor-host",
+        "ui:footer-host",
+        "ui:widget-host",
+        "event-listener:editor:set-label",
+        "event-listener:editor:remove-label"
+      ],
+      "composesWith": [
+        "core/box-chrome",
+        "core/tool-cost",
+        "core/editor-capabilities"
+      ],
+      "runtimeType": "ui host"
+    },
+    {
+      "name": "finder",
+      "packageName": "@bds_pi/finder",
+      "path": "packages/extensions/finder",
+      "localDependencies": [
+        "@bds_pi/config",
+        "@bds_pi/glob",
+        "@bds_pi/grep",
+        "@bds_pi/ls",
+        "@bds_pi/pi-spawn",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/read",
+        "@bds_pi/sub-agent-render"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "concept-level codebase search via spawned sub-agent",
+      "registers": [
+        "tool:finder"
+      ],
+      "composesWith": [
+        "core/pi-spawn",
+        "core/sub-agent-render",
+        "core/prompt-patch",
+        "core/config",
+        "extensions/glob",
+        "extensions/grep",
+        "extensions/ls",
+        "extensions/read"
+      ],
+      "runtimeType": "sub-agent tool"
+    },
+    {
+      "name": "format-file",
+      "packageName": "@bds_pi/format-file",
+      "path": "packages/extensions/format-file",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/config",
+        "@bds_pi/file-tracker",
+        "@bds_pi/mutex",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/read"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "formatter runner with undo tracking",
+      "registers": [
+        "tool:format_file"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/config",
+        "core/file-tracker",
+        "core/mutex",
+        "core/prompt-patch",
+        "extensions/read"
+      ],
+      "runtimeType": "tool extension"
+    },
+    {
+      "name": "github",
+      "packageName": "@bds_pi/github",
+      "path": "packages/extensions/github",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/github-api",
+        "@bds_pi/prompt-patch"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "GitHub remote repository tools over gh api",
+      "registers": [
+        "tool:read_github",
+        "tool:search_github",
+        "tool:list_directory_github",
+        "tool:list_repositories",
+        "tool:glob_github",
+        "tool:commit_search",
+        "tool:diff"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/github-api",
+        "core/prompt-patch"
+      ],
+      "runtimeType": "domain tool suite"
+    },
+    {
+      "name": "glob",
+      "packageName": "@bds_pi/glob",
+      "path": "packages/extensions/glob",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/config",
+        "@bds_pi/output-buffer",
+        "@bds_pi/prompt-patch"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "custom find/glob file search over ripgrep",
+      "registers": [
+        "tool:find"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/config",
+        "core/output-buffer",
+        "core/prompt-patch"
+      ],
+      "runtimeType": "tool replacement"
+    },
+    {
+      "name": "grep",
+      "packageName": "@bds_pi/grep",
+      "path": "packages/extensions/grep",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/config",
+        "@bds_pi/output-buffer",
+        "@bds_pi/prompt-patch"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "custom grep search over ripgrep with structured rendering",
+      "registers": [
+        "tool:grep"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/config",
+        "core/output-buffer",
+        "core/prompt-patch"
+      ],
+      "runtimeType": "tool replacement"
+    },
+    {
+      "name": "handoff",
+      "packageName": "@bds_pi/handoff",
+      "path": "packages/extensions/handoff",
+      "localDependencies": [
+        "@bds_pi/config",
+        "@bds_pi/pi-spawn"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "feature-extension",
+      "purpose": "session handoff workflow replacing compaction with explicit fresh-session transfer",
+      "registers": [
+        "command:/handoff",
+        "tool:handoff",
+        "hook:session_before_compact",
+        "hook:agent_end",
+        "ui:provenance-widget"
+      ],
+      "composesWith": [
+        "core/config",
+        "core/pi-spawn",
+        "pi.events \u2194 editor labels"
+      ],
+      "runtimeType": "workflow feature"
+    },
+    {
+      "name": "librarian",
+      "packageName": "@bds_pi/librarian",
+      "path": "packages/extensions/librarian",
+      "localDependencies": [
+        "@bds_pi/config",
+        "@bds_pi/github",
+        "@bds_pi/pi-spawn",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/sub-agent-render"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "cross-repo codebase understanding using GitHub tool suite",
+      "registers": [
+        "tool:librarian"
+      ],
+      "composesWith": [
+        "core/config",
+        "extensions/github",
+        "core/pi-spawn",
+        "core/prompt-patch",
+        "core/sub-agent-render"
+      ],
+      "runtimeType": "sub-agent tool"
+    },
+    {
+      "name": "look-at",
+      "packageName": "@bds_pi/look-at",
+      "path": "packages/extensions/look-at",
+      "localDependencies": [
+        "@bds_pi/config",
+        "@bds_pi/ls",
+        "@bds_pi/pi-spawn",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/read",
+        "@bds_pi/sub-agent-render"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "interpreted local file/image analysis and comparison",
+      "registers": [
+        "tool:look_at"
+      ],
+      "composesWith": [
+        "core/config",
+        "extensions/ls",
+        "core/pi-spawn",
+        "core/prompt-patch",
+        "extensions/read",
+        "core/sub-agent-render"
+      ],
+      "runtimeType": "sub-agent tool"
+    },
+    {
+      "name": "ls",
+      "packageName": "@bds_pi/ls",
+      "path": "packages/extensions/ls",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/read"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "compatibility directory listing tool over read helpers",
+      "registers": [
+        "tool:ls"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/prompt-patch",
+        "extensions/read"
+      ],
+      "runtimeType": "tool replacement shim"
+    },
+    {
+      "name": "mentions",
+      "packageName": "@bds_pi/mentions-extension",
+      "path": "packages/extensions/mentions",
+      "localDependencies": [
+        "@bds_pi/editor-capabilities",
+        "@bds_pi/mentions"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "adapter-extension",
+      "purpose": "resolve mentions on input, inject hidden turn-local context, and register mention autocomplete",
+      "registers": [
+        "hook:input",
+        "hook:context",
+        "hook:agent_end",
+        "hook:session_start",
+        "hook:session_switch",
+        "editor-autocomplete:mentions"
+      ],
+      "composesWith": [
+        "core/mentions",
+        "core/editor-capabilities"
+      ],
+      "runtimeType": "lifecycle adapter"
+    },
+    {
+      "name": "mermaid",
+      "packageName": "@bds_pi/mermaid",
+      "path": "packages/extensions/mermaid",
+      "localDependencies": [],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "feature-extension",
+      "purpose": "inline and full-view rendering of mermaid diagrams in the tui",
+      "registers": [
+        "renderer:mermaid-inline",
+        "hook:message_end",
+        "hook:input",
+        "hook:context",
+        "command:/mermaid",
+        "shortcut:ctrl+shift+m"
+      ],
+      "composesWith": [
+        "local extract/render/viewer modules"
+      ],
+      "runtimeType": "ui feature"
+    },
+    {
+      "name": "oracle",
+      "packageName": "@bds_pi/oracle",
+      "path": "packages/extensions/oracle",
+      "localDependencies": [
+        "@bds_pi/bash",
+        "@bds_pi/config",
+        "@bds_pi/glob",
+        "@bds_pi/grep",
+        "@bds_pi/ls",
+        "@bds_pi/pi-spawn",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/read",
+        "@bds_pi/sub-agent-render"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "deep advisory reasoning tool with optional file inlining",
+      "registers": [
+        "tool:oracle"
+      ],
+      "composesWith": [
+        "extensions/bash",
+        "core/config",
+        "extensions/glob",
+        "extensions/grep",
+        "extensions/ls",
+        "core/pi-spawn",
+        "core/prompt-patch",
+        "extensions/read",
+        "core/sub-agent-render"
+      ],
+      "runtimeType": "sub-agent tool"
+    },
+    {
+      "name": "read",
+      "packageName": "@bds_pi/read",
+      "path": "packages/extensions/read",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/config",
+        "@bds_pi/output-buffer",
+        "@bds_pi/prompt-patch"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "custom read tool for files, dirs, and images with guards and truncation",
+      "registers": [
+        "tool:read"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/config",
+        "core/output-buffer",
+        "core/prompt-patch"
+      ],
+      "runtimeType": "tool replacement"
+    },
+    {
+      "name": "read-session",
+      "packageName": "@bds_pi/read-session",
+      "path": "packages/extensions/read-session",
+      "localDependencies": [
+        "@bds_pi/config",
+        "@bds_pi/output-buffer",
+        "@bds_pi/pi-spawn",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/sub-agent-render"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "parse full session trees locally then ask a model for relevant extraction",
+      "registers": [
+        "tool:read_session"
+      ],
+      "composesWith": [
+        "core/config",
+        "core/output-buffer",
+        "core/pi-spawn",
+        "core/prompt-patch",
+        "core/sub-agent-render"
+      ],
+      "runtimeType": "hybrid tool"
+    },
+    {
+      "name": "read-web-page",
+      "packageName": "@bds_pi/read-web-page",
+      "path": "packages/extensions/read-web-page",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/config",
+        "@bds_pi/html-to-md",
+        "@bds_pi/output-buffer",
+        "@bds_pi/pi-spawn",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/sub-agent-render"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "fetch live web pages, convert/paginate content, optionally run question answering",
+      "registers": [
+        "tool:read_web_page"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/config",
+        "core/html-to-md",
+        "core/output-buffer",
+        "core/pi-spawn",
+        "core/prompt-patch",
+        "core/sub-agent-render"
+      ],
+      "runtimeType": "hybrid tool"
+    },
+    {
+      "name": "search-sessions",
+      "packageName": "@bds_pi/search-sessions",
+      "path": "packages/extensions/search-sessions",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/config",
+        "@bds_pi/prompt-patch"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "feature-extension",
+      "purpose": "search prior pi session branches by keyword/file/date/workspace",
+      "registers": [
+        "tool:search_sessions"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/config",
+        "core/prompt-patch",
+        "core/mentions/session-index"
+      ],
+      "runtimeType": "feature tool"
+    },
+    {
+      "name": "session-name",
+      "packageName": "@bds_pi/session-name",
+      "path": "packages/extensions/session-name",
+      "localDependencies": [
+        "@bds_pi/config"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "feature-extension",
+      "purpose": "automatic session naming and periodic title drift correction",
+      "registers": [
+        "hook:input",
+        "hook:session_switch"
+      ],
+      "composesWith": [
+        "core/config"
+      ],
+      "runtimeType": "lifecycle feature"
+    },
+    {
+      "name": "skill",
+      "packageName": "@bds_pi/skill",
+      "path": "packages/extensions/skill",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/prompt-patch"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "discover and load skills by name with supporting file inventory",
+      "registers": [
+        "tool:skill"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/prompt-patch"
+      ],
+      "runtimeType": "local logic tool"
+    },
+    {
+      "name": "system-prompt",
+      "packageName": "@bds_pi/system-prompt",
+      "path": "packages/extensions/system-prompt",
+      "localDependencies": [
+        "@bds_pi/config",
+        "@bds_pi/interpolate",
+        "@bds_pi/pi-spawn"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "adapter-extension",
+      "purpose": "append package-managed interpolated prompt content before agent start",
+      "registers": [
+        "hook:before_agent_start"
+      ],
+      "composesWith": [
+        "core/config",
+        "core/interpolate",
+        "core/pi-spawn"
+      ],
+      "runtimeType": "lifecycle adapter"
+    },
+    {
+      "name": "task",
+      "packageName": "@bds_pi/task",
+      "path": "packages/extensions/task",
+      "localDependencies": [
+        "@bds_pi/bash",
+        "@bds_pi/config",
+        "@bds_pi/create-file",
+        "@bds_pi/edit-file",
+        "@bds_pi/finder",
+        "@bds_pi/format-file",
+        "@bds_pi/glob",
+        "@bds_pi/grep",
+        "@bds_pi/ls",
+        "@bds_pi/pi-spawn",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/read",
+        "@bds_pi/skill",
+        "@bds_pi/sub-agent-render"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "delegate multi-step subtasks to a spawned agent with broad local tool access",
+      "registers": [
+        "tool:Task"
+      ],
+      "composesWith": [
+        "extensions/bash",
+        "core/config",
+        "extensions/create-file",
+        "extensions/edit-file",
+        "extensions/finder",
+        "extensions/format-file",
+        "extensions/glob",
+        "extensions/grep",
+        "extensions/ls",
+        "core/pi-spawn",
+        "core/prompt-patch",
+        "extensions/read",
+        "extensions/skill",
+        "core/sub-agent-render"
+      ],
+      "runtimeType": "sub-agent tool"
+    },
+    {
+      "name": "tool-harness",
+      "packageName": "@bds_pi/tool-harness",
+      "path": "packages/extensions/tool-harness",
+      "localDependencies": [],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "adapter-extension",
+      "purpose": "map env-based tool policy onto pi active tools",
+      "registers": [
+        "hook:session_start",
+        "hook:before_agent_start"
+      ],
+      "composesWith": [
+        "pi active-tool api"
+      ],
+      "runtimeType": "lifecycle adapter"
+    },
+    {
+      "name": "undo-edit",
+      "packageName": "@bds_pi/undo-edit",
+      "path": "packages/extensions/undo-edit",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/file-tracker",
+        "@bds_pi/mutex",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/read"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "revert tracked file changes visible in the current branch",
+      "registers": [
+        "tool:undo_edit"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/file-tracker",
+        "core/mutex",
+        "core/prompt-patch",
+        "extensions/read"
+      ],
+      "runtimeType": "tool extension"
+    },
+    {
+      "name": "web-search",
+      "packageName": "@bds_pi/web-search",
+      "path": "packages/extensions/web-search",
+      "localDependencies": [
+        "@bds_pi/box-format",
+        "@bds_pi/config",
+        "@bds_pi/prompt-patch",
+        "@bds_pi/tool-cost"
+      ],
+      "exportsPiExtensions": [
+        "./index.ts"
+      ],
+      "role": "tool-extension",
+      "purpose": "web search via Parallel AI with structured result rendering and cost accounting",
+      "registers": [
+        "tool:web_search"
+      ],
+      "composesWith": [
+        "core/box-format",
+        "core/config",
+        "core/prompt-patch",
+        "core/tool-cost"
+      ],
+      "runtimeType": "external api tool"
+    }
+  ]
+}

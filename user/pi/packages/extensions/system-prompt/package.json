@@ -1,0 +1,22 @@
+{
+  "name": "@bds_pi/system-prompt",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "@bds_pi/config": "workspace:*",
+    "@bds_pi/pi-spawn": "workspace:*",
+    "@bds_pi/interpolate": "workspace:*"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "catalog:"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
