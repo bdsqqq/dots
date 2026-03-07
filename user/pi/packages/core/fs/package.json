@@ -1,14 +1,11 @@
 {
-  "name": "@bds_pi/mentions",
+  "name": "@bds_pi/fs",
   "version": "0.0.0",
   "private": true,
   "main": "index.ts",
   "types": "index.ts",
   "exports": {
     ".": "./index.ts"
-  },
-  "dependencies": {
-    "@bds_pi/fs": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.0.0"

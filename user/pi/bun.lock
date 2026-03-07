@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "pi-extensions-workspace",
@@ -76,6 +75,13 @@
         "vitest": "^3.0.0",
       },
     },
+    "packages/core/fs": {
+      "name": "@bds_pi/fs",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
     "packages/core/github-api": {
       "name": "@bds_pi/github-api",
       "version": "0.0.0",
@@ -106,6 +112,9 @@
     "packages/core/mentions": {
       "name": "@bds_pi/mentions",
       "version": "0.0.0",
+      "dependencies": {
+        "@bds_pi/fs": "workspace:*",
+      },
       "devDependencies": {
         "vitest": "^3.0.0",
       },
@@ -199,11 +208,11 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/config": "workspace:*",
+        "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
-        "@bds_pi/read": "workspace:*",
         "@bds_pi/tui": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -249,9 +258,9 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/file-tracker": "workspace:*",
+        "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
-        "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -273,9 +282,9 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/file-tracker": "workspace:*",
+        "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
-        "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -321,9 +330,9 @@
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/config": "workspace:*",
         "@bds_pi/file-tracker": "workspace:*",
+        "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
-        "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -383,6 +392,7 @@
       "name": "@bds_pi/handoff",
       "dependencies": {
         "@bds_pi/config": "workspace:*",
+        "@bds_pi/mentions": "workspace:*",
         "@bds_pi/pi-spawn": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -431,6 +441,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
+        "@bds_pi/fs": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
@@ -490,6 +501,7 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/config": "workspace:*",
+        "@bds_pi/fs": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
@@ -505,6 +517,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/config": "workspace:*",
+        "@bds_pi/fs": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
         "@bds_pi/pi-spawn": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
@@ -542,6 +555,7 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/config": "workspace:*",
+        "@bds_pi/mentions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -623,9 +637,9 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/file-tracker": "workspace:*",
+        "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
-        "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -769,6 +783,8 @@
     "@bds_pi/finder": ["@bds_pi/finder@workspace:packages/extensions/finder"],
 
     "@bds_pi/format-file": ["@bds_pi/format-file@workspace:packages/extensions/format-file"],
+
+    "@bds_pi/fs": ["@bds_pi/fs@workspace:packages/core/fs"],
 
     "@bds_pi/github": ["@bds_pi/github@workspace:packages/extensions/github"],
 

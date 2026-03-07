@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { walkDirSync } from "@bds_pi/fs";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
@@ -85,48 +86,31 @@ interface ReadSessionParams {
 function findSessionFile(sessionId: string, sessionsDir: string): string | null {
   if (!fs.existsSync(sessionsDir)) return null;
 
-  const walkDir = (dir: string): string | null => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        const found = walkDir(full);
-        if (found) return found;
-      } else if (
-        entry.name.endsWith(".jsonl") &&
-        entry.name.includes(sessionId)
-      ) {
-        return full;
-      }
-    }
-    return null;
-  };
-
   // fast path: check filename contains session id
-  let found = walkDir(sessionsDir);
-  if (found) return found;
+  const byFilename = walkDirSync(sessionsDir, {
+    stopWhen: (entry) =>
+      entry.isFile() &&
+      entry.name.endsWith(".jsonl") &&
+      entry.name.includes(sessionId),
+  })[0];
+  if (byFilename) return byFilename;
 
   // slow path: parse headers
-  const walkAndParse = (dir: string): string | null => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        const f = walkAndParse(full);
-        if (f) return f;
-      } else if (entry.name.endsWith(".jsonl")) {
+  return (
+    walkDirSync(sessionsDir, {
+      stopWhen: (entry, absolutePath) => {
+        if (!entry.isFile() || !entry.name.endsWith(".jsonl")) return false;
         try {
-          const firstLine = fs.readFileSync(full, "utf-8").split("\n")[0];
-          if (!firstLine) continue;
+          const firstLine = fs.readFileSync(absolutePath, "utf-8").split("\n")[0];
+          if (!firstLine) return false;
           const header = JSON.parse(firstLine);
-          if (header.type === "session" && header.id === sessionId) return full;
+          return header.type === "session" && header.id === sessionId;
         } catch {
-          /* skip */
+          return false;
         }
-      }
-    }
-    return null;
-  };
-
-  return walkAndParse(sessionsDir);
+      },
+    })[0] ?? null
+  );
 }
 
 function renderSessionTree(
@@ -474,6 +458,67 @@ export function createReadSessionTool(
       return container;
     },
   };
+}
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it } = import.meta.vitest;
+  const tmpRoots: string[] = [];
+
+  function makeTmpDir(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-read-session-"));
+    tmpRoots.push(dir);
+    return dir;
+  }
+
+  function writeSessionJsonl(filePath: string, lines: unknown[]): void {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(
+      filePath,
+      `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`,
+    );
+  }
+
+  afterEach(() => {
+    for (const dir of tmpRoots.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  describe("findSessionFile", () => {
+    it("finds sessions by filename first", () => {
+      const sessionsDir = makeTmpDir();
+      const filePath = path.join(
+        sessionsDir,
+        "2026",
+        "2026-03-06T17-00-00-000Z_alpha-session.jsonl",
+      );
+      writeSessionJsonl(filePath, [
+        {
+          type: "session",
+          id: "alpha-session",
+          timestamp: "2026-03-06T17:00:00.000Z",
+          cwd: "/repo/app",
+        },
+      ]);
+
+      expect(findSessionFile("alpha-session", sessionsDir)).toBe(filePath);
+    });
+
+    it("falls back to parsing headers when filenames do not include the session id", () => {
+      const sessionsDir = makeTmpDir();
+      const filePath = path.join(sessionsDir, "nested", "session-log.jsonl");
+      writeSessionJsonl(filePath, [
+        {
+          type: "session",
+          id: "beta-session",
+          timestamp: "2026-03-06T17:10:00.000Z",
+          cwd: "/repo/app",
+        },
+      ]);
+
+      expect(findSessionFile("beta-session", sessionsDir)).toBe(filePath);
+    });
+  });
 }
 
 export default function(pi: ExtensionAPI): void {

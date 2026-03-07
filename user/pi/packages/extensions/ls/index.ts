@@ -13,7 +13,8 @@ import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { resolveWithVariants, listDirectory, NORMAL_LIMITS, type ReadLimits } from "@bds_pi/read";
+import { listDirectory, resolveWithVariants } from "@bds_pi/fs";
+import { NORMAL_LIMITS, type ReadLimits } from "@bds_pi/read";
 import {
   boxRendererWindowed,
   textSection,

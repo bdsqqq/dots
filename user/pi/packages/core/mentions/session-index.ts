@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { walkDirSync } from "@bds_pi/fs";
 import { createCache, getOrSet } from "./cache";
 
 /**
@@ -139,18 +140,9 @@ export function extractFilePathsFromText(text: string): string[] {
 }
 
 export function listSessionFiles(sessionsDir: string): string[] {
-  const sessionFiles: string[] = [];
-
-  const walkDir = (dir: string) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walkDir(full);
-      else if (entry.name.endsWith(".jsonl")) sessionFiles.push(full);
-    }
-  };
-
-  walkDir(sessionsDir);
-  return sessionFiles;
+  return walkDirSync(sessionsDir, {
+    filter: (entry) => entry.isFile() && entry.name.endsWith(".jsonl"),
+  });
 }
 
 export function parseSessionFile(filePath: string): ParsedSessionFile {

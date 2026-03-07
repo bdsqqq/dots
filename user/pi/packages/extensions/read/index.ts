@@ -27,6 +27,18 @@ import {
 import { Type } from "@sinclair/typebox";
 import { formatHeadTail } from "@bds_pi/output-buffer";
 import { getExtensionConfig } from "@bds_pi/config";
+import {
+  isSecretFile,
+  listDirectory,
+  resolveWithVariants,
+} from "@bds_pi/fs";
+export {
+  expandPath,
+  resolveToAbsolute,
+  resolveWithVariants,
+  isSecretFile,
+  listDirectory,
+} from "@bds_pi/fs";
 
 // --- limits ---
 
@@ -58,13 +70,6 @@ const CONFIG_DEFAULTS: ReadExtConfig = {
   maxDirEntries: 1000,
 };
 
-const SECRET_PATTERNS = [/^\.env$/, /^\.env\..+$/];
-const SECRET_EXCEPTIONS = new Set([
-  ".env.example",
-  ".env.sample",
-  ".env.template",
-]);
-
 interface ReadParams {
   path: string;
   read_range?: [number, number];
@@ -78,68 +83,8 @@ const IMAGE_MIME: Record<string, string> = {
   ".webp": "image/webp",
 };
 
-// --- path resolution (reimplemented; pi's path-utils aren't re-exported) ---
-
-export function expandPath(filePath: string): string {
-  const stripped = filePath.startsWith("@") ? filePath.slice(1) : filePath;
-  if (stripped === "~") return os.homedir();
-  if (stripped.startsWith("~/")) return os.homedir() + stripped.slice(1);
-  return stripped;
-}
-
-export function resolveToAbsolute(filePath: string, cwd: string): string {
-  const expanded = expandPath(filePath);
-  return path.isAbsolute(expanded) ? expanded : path.resolve(cwd, expanded);
-}
-
-/**
- * try macOS filesystem variants when file doesn't exist at resolved path.
- * covers NFD normalization and narrow no-break space in AM/PM timestamps.
- */
-export function resolveWithVariants(filePath: string, cwd: string): string {
-  const resolved = resolveToAbsolute(filePath, cwd);
-  if (fs.existsSync(resolved)) return resolved;
-
-  const amPm = resolved.replace(/ (AM|PM)\./g, `\u202F$1.`);
-  if (amPm !== resolved && fs.existsSync(amPm)) return amPm;
-
-  const nfd = resolved.normalize("NFD");
-  if (nfd !== resolved && fs.existsSync(nfd)) return nfd;
-
-  return resolved;
-}
-
-// --- checks ---
-
-export function isSecretFile(filePath: string): boolean {
-  const basename = path.basename(filePath);
-  if (SECRET_EXCEPTIONS.has(basename)) return false;
-  return SECRET_PATTERNS.some((p) => p.test(basename));
-}
-
 function getImageMime(filePath: string): string | undefined {
   return IMAGE_MIME[path.extname(filePath).toLowerCase()];
-}
-
-// --- directory listing ---
-
-export function listDirectory(dirPath: string, maxEntries: number): string {
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  } catch (err: any) {
-    throw new Error(`cannot list directory: ${err.message}`);
-  }
-
-  const names = entries
-    .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
-    .sort((a, b) => a.localeCompare(b));
-
-  return formatHeadTail(
-    names,
-    maxEntries,
-    (n) => `... [${n} more entries] ...`,
-  );
 }
 
 // --- file reading ---
@@ -416,63 +361,6 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
       );
     },
   };
-}
-
-// inline tests
-if (import.meta.vitest) {
-  const { describe, it, expect } = import.meta.vitest;
-
-  describe("expandPath", () => {
-    it("strips @ prefix", () => {
-      expect(expandPath("@/foo/bar")).toBe("/foo/bar");
-    });
-
-    it("expands ~ to homedir", () => {
-      expect(expandPath("~")).toBe(os.homedir());
-    });
-
-    it("expands ~/ to homedir + path", () => {
-      expect(expandPath("~/foo")).toBe(os.homedir() + "/foo");
-    });
-
-    it("returns unchanged path without prefix", () => {
-      expect(expandPath("/absolute/path")).toBe("/absolute/path");
-      expect(expandPath("relative/path")).toBe("relative/path");
-    });
-  });
-
-  describe("resolveToAbsolute", () => {
-    it("returns absolute paths unchanged", () => {
-      expect(resolveToAbsolute("/foo/bar", "/cwd")).toBe("/foo/bar");
-    });
-
-    it("resolves relative paths against cwd", () => {
-      expect(resolveToAbsolute("foo/bar", "/cwd")).toBe("/cwd/foo/bar");
-    });
-
-    it("expands ~ before resolving", () => {
-      expect(resolveToAbsolute("~/foo", "/cwd")).toBe(os.homedir() + "/foo");
-    });
-  });
-
-  describe("isSecretFile", () => {
-    it("blocks .env files", () => {
-      expect(isSecretFile("/home/user/.env")).toBe(true);
-      expect(isSecretFile("/home/user/.env.local")).toBe(true);
-      expect(isSecretFile("/home/user/.env.production")).toBe(true);
-    });
-
-    it("allows .env.example and friends", () => {
-      expect(isSecretFile("/home/user/.env.example")).toBe(false);
-      expect(isSecretFile("/home/user/.env.sample")).toBe(false);
-      expect(isSecretFile("/home/user/.env.template")).toBe(false);
-    });
-
-    it("allows other files", () => {
-      expect(isSecretFile("/home/user/config.json")).toBe(false);
-      expect(isSecretFile("/home/user/README.md")).toBe(false);
-    });
-  });
 }
 
 export default function(pi: ExtensionAPI): void {

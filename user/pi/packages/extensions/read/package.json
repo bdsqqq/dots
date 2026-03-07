@@ -8,10 +8,11 @@
     "extensions": ["./index.ts"]
   },
   "dependencies": {
-    "@bds_pi/config": "workspace:*",
-    "@bds_pi/prompt-patch": "workspace:*",
-    "@bds_pi/output-buffer": "workspace:*",
     "@bds_pi/box-format": "workspace:*",
+    "@bds_pi/config": "workspace:*",
+    "@bds_pi/fs": "workspace:*",
+    "@bds_pi/output-buffer": "workspace:*",
+    "@bds_pi/prompt-patch": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {

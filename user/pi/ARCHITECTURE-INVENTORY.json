@@ -113,6 +113,38 @@
       ]
     },
     {
+      "name": "fs",
+      "packageName": "@bds_pi/fs",
+      "path": "packages/core/fs",
+      "localDependencies": [],
+      "exportsPiExtensions": [],
+      "role": "runtime-helper",
+      "purpose": "shared path normalization, tolerant path resolution, directory listing, and tiny recursive walk helpers for file-aware features",
+      "registers": [],
+      "composesWith": [
+        "extensions/read",
+        "extensions/ls",
+        "extensions/bash",
+        "extensions/create-file",
+        "extensions/edit-file",
+        "extensions/format-file",
+        "extensions/undo-edit",
+        "core/mentions",
+        "extensions/read-session"
+      ],
+      "currentConsumers": [
+        "extensions/read",
+        "extensions/ls",
+        "extensions/bash",
+        "extensions/create-file",
+        "extensions/edit-file",
+        "extensions/format-file",
+        "extensions/undo-edit",
+        "core/mentions via session-index",
+        "extensions/read-session"
+      ]
+    },
+    {
       "name": "github-api",
       "packageName": "@bds_pi/github-api",
       "path": "packages/core/github-api",
@@ -394,11 +426,11 @@
       "localDependencies": [
         "@bds_pi/box-format",
         "@bds_pi/config",
+        "@bds_pi/fs",
         "@bds_pi/mutex",
         "@bds_pi/output-buffer",
         "@bds_pi/permissions",
         "@bds_pi/prompt-patch",
-        "@bds_pi/read",
         "@bds_pi/tui"
       ],
       "exportsPiExtensions": [
@@ -412,11 +444,11 @@
       "composesWith": [
         "core/box-format",
         "core/config",
+        "core/fs",
         "core/mutex",
         "core/output-buffer",
         "core/permissions",
         "core/prompt-patch",
-        "extensions/read",
         "core/tui"
       ],
       "runtimeType": "custom tool replacement"
@@ -489,9 +521,9 @@
       "localDependencies": [
         "@bds_pi/box-format",
         "@bds_pi/file-tracker",
+        "@bds_pi/fs",
         "@bds_pi/mutex",
-        "@bds_pi/prompt-patch",
-        "@bds_pi/read"
+        "@bds_pi/prompt-patch"
       ],
       "exportsPiExtensions": [
         "./index.ts"
@@ -504,9 +536,9 @@
       "composesWith": [
         "core/box-format",
         "core/file-tracker",
+        "core/fs",
         "core/mutex",
-        "core/prompt-patch",
-        "extensions/read"
+        "core/prompt-patch"
       ],
       "runtimeType": "tool replacement"
     },
@@ -529,9 +561,9 @@
       "localDependencies": [
         "@bds_pi/box-format",
         "@bds_pi/file-tracker",
+        "@bds_pi/fs",
         "@bds_pi/mutex",
-        "@bds_pi/prompt-patch",
-        "@bds_pi/read"
+        "@bds_pi/prompt-patch"
       ],
       "exportsPiExtensions": [
         "./index.ts"
@@ -544,9 +576,9 @@
       "composesWith": [
         "core/box-format",
         "core/file-tracker",
+        "core/fs",
         "core/mutex",
-        "core/prompt-patch",
-        "extensions/read"
+        "core/prompt-patch"
       ],
       "runtimeType": "tool replacement"
     },
@@ -618,9 +650,9 @@
         "@bds_pi/box-format",
         "@bds_pi/config",
         "@bds_pi/file-tracker",
+        "@bds_pi/fs",
         "@bds_pi/mutex",
-        "@bds_pi/prompt-patch",
-        "@bds_pi/read"
+        "@bds_pi/prompt-patch"
       ],
       "exportsPiExtensions": [
         "./index.ts"
@@ -634,9 +666,9 @@
         "core/box-format",
         "core/config",
         "core/file-tracker",
+        "core/fs",
         "core/mutex",
-        "core/prompt-patch",
-        "extensions/read"
+        "core/prompt-patch"
       ],
       "runtimeType": "tool extension"
     },
@@ -816,6 +848,7 @@
       "path": "packages/extensions/ls",
       "localDependencies": [
         "@bds_pi/box-format",
+        "@bds_pi/fs",
         "@bds_pi/prompt-patch",
         "@bds_pi/read"
       ],
@@ -823,12 +856,13 @@
         "./index.ts"
       ],
       "role": "tool-extension",
-      "purpose": "compatibility directory listing tool over read helpers",
+      "purpose": "compatibility directory listing tool over shared fs helpers and read limits",
       "registers": [
         "tool:ls"
       ],
       "composesWith": [
         "core/box-format",
+        "core/fs",
         "core/prompt-patch",
         "extensions/read"
       ],
@@ -927,6 +961,7 @@
       "localDependencies": [
         "@bds_pi/box-format",
         "@bds_pi/config",
+        "@bds_pi/fs",
         "@bds_pi/output-buffer",
         "@bds_pi/prompt-patch"
       ],
@@ -941,6 +976,7 @@
       "composesWith": [
         "core/box-format",
         "core/config",
+        "core/fs",
         "core/output-buffer",
         "core/prompt-patch"
       ],
@@ -952,6 +988,7 @@
       "path": "packages/extensions/read-session",
       "localDependencies": [
         "@bds_pi/config",
+        "@bds_pi/fs",
         "@bds_pi/output-buffer",
         "@bds_pi/pi-spawn",
         "@bds_pi/prompt-patch",
@@ -967,6 +1004,7 @@
       ],
       "composesWith": [
         "core/config",
+        "core/fs",
         "core/output-buffer",
         "core/pi-spawn",
         "core/prompt-patch",
@@ -1028,6 +1066,7 @@
       "composesWith": [
         "core/box-format",
         "core/config",
+        "core/fs",
         "core/prompt-patch",
         "core/mentions",
         "core/mentions/session-index"

@@ -20,7 +20,7 @@ import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
 import { findLatestChange, revertChange, simpleDiff } from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
-import { resolveWithVariants } from "@bds_pi/read";
+import { resolveWithVariants } from "@bds_pi/fs";
 import {
   boxRendererWindowed,
   textSection,

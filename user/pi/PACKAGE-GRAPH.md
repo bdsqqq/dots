@@ -25,6 +25,7 @@ there are two kinds of edges here:
 - box-format
 - config
 - file-tracker
+- fs
 - github-api
 - html-to-md
 - interpolate
@@ -95,6 +96,7 @@ flowchart TB
     boxfmt[box-format]
     cfg[config]
     track[file-tracker]
+    fscore[fs]
     ghapi[github-api]
     html[html-to-md]
     interp[interpolate]
@@ -154,6 +156,8 @@ flowchart LR
   boxformat[box-format] --> boxchrome[box-chrome]
   boxformat --> show[show]
 
+  mentions[mentions] --> fs[fs]
+
   interpolate --> config
   pispawn[pi-spawn] --> interpolate
 
@@ -167,7 +171,7 @@ flowchart LR
 
 - most core packages are leaves
 - `pi-spawn` and `sub-agent-render` are the deepest shared runtime spine
-- `mentions` is currently self-contained at the manifest level, but composition-wise it is central to editor/mentions/search-sessions
+- `mentions` is no longer self-contained at the manifest level; session indexing now depends on `core/fs` for directory walking
 
 ---
 
@@ -179,30 +183,31 @@ flowchart LR
 flowchart LR
   create[create-file] --> boxformat[box-format]
   create --> tracker[file-tracker]
+  create --> fs[fs]
   create --> mutex[mutex]
   create --> patch[prompt-patch]
-  create --> read[read]
 
   edit[edit-file] --> boxformat
   edit --> tracker
+  edit --> fs
   edit --> mutex
   edit --> patch
-  edit --> read
 
   format[format-file] --> boxformat
   format --> config
   format --> tracker
+  format --> fs
   format --> mutex
   format --> patch
-  format --> read
 
   undo[undo-edit] --> boxformat
   undo --> tracker
+  undo --> fs
   undo --> mutex
   undo --> patch
-  undo --> read
 
   ls[ls] --> boxformat
+  ls --> fs
   ls --> patch
   ls --> read
 ```
@@ -213,11 +218,11 @@ flowchart LR
 flowchart LR
   bash[bash] --> boxformat[box-format]
   bash --> config
+  bash --> fs[fs]
   bash --> mutex
   bash --> outbuf[output-buffer]
   bash --> perms[permissions]
   bash --> patch[prompt-patch]
-  bash --> read
   bash --> tui
 
   glob[glob] --> boxformat
@@ -232,6 +237,7 @@ flowchart LR
 
   read[read] --> boxformat
   read --> config
+  read --> fs
   read --> outbuf
   read --> patch
 ```
@@ -294,6 +300,7 @@ flowchart TB
   task --> sar
 
   rsession[read-session] --> config
+  rsession --> fs
   rsession --> outbuf[output-buffer]
   rsession --> pispawn
   rsession --> patch
@@ -320,6 +327,7 @@ flowchart LR
   mentionsx --> editorcaps
   searchsessions[search-sessions] --> boxformat
   searchsessions --> config
+  searchsessions --> fs
   searchsessions --> patch[prompt-patch]
   sessionname[session-name] --> config
   skill --> boxformat
@@ -353,6 +361,8 @@ flowchart LR
   handoff -. provenance widget .-> piui[pi ui host]
 
   search --> sessionindex[mentions/session-index]
+  sessionindex --> fs[core/fs]
+  rsession[extensions/read-session] --> fs
 ```
 
 ### why this matters
@@ -361,6 +371,7 @@ flowchart LR
 - `mentions` no longer hard-wires editor behavior directly; it crosses into ui autocomplete through `core/editor-capabilities`, which is the cleaner boundary
 - `handoff` now owns the `handoff` mention source while still composing with `editor` softly through `pi.events`
 - `search-sessions` now owns the `session` mention source while sharing session parsing with `core/mentions`
+- hotspot 2 pulls path + traversal seams out of `extensions/read`, so session discovery and file-aware tools no longer depend on read as an accidental helper hub
 
 ---
 
@@ -383,7 +394,8 @@ these are the biggest hubs by actual local dependency footprint.
 
 | package | why it is a hub |
 | --- | --- |
-| `read` | depended on by many local tools and adapters |
+| `read` | still a tool hub for file-aware sub-agent tool suites |
+| `fs` | now owns shared path and directory traversal semantics that had leaked out of `read` |
 | `bash` | shared by `oracle`, `task`, `code-review` |
 | `github` | shared by `librarian` |
 | `finder` | shared by `task` |
@@ -455,6 +467,7 @@ flowchart TB
 ### concrete intended shifts
 
 - `core/mentions` is now the source/registry/runtime layer for addressable references
+- `core/fs` is the shared path + traversal seam for file-aware helpers that used to leak out of `extensions/read`
 - `extensions/mentions` stays the pi lifecycle adapter
 - `extensions/editor` is the host for optional autocomplete contributors
 - `extensions/handoff` remains self-sufficient and now contributes `handoff` mention semantics

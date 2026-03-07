@@ -10,6 +10,7 @@
       "@bds_pi/config": ["./packages/core/config/index.ts"],
       "@bds_pi/editor-capabilities": ["./packages/core/editor-capabilities/index.ts"],
       "@bds_pi/file-tracker": ["./packages/core/file-tracker/index.ts"],
+      "@bds_pi/fs": ["./packages/core/fs/index.ts"],
       "@bds_pi/github-api": ["./packages/core/github-api/index.ts"],
       "@bds_pi/html-to-md": ["./packages/core/html-to-md/index.ts"],
       "@bds_pi/interpolate": ["./packages/core/interpolate/index.ts"],
