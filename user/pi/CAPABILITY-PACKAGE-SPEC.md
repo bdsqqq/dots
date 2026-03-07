@@ -49,6 +49,7 @@ these labels are for this repo, not pi itself.
 | `config` | runtime-helper | namespaced config merge/cache for our package | many extensions, `interpolate` |
 | `editor-capabilities` | runtime-helper | typed editor autocomplete contributor contracts + package-local registry | `editor`, `mentions` |
 | `file-tracker` | runtime-helper | persist before/after file changes for undo | `create-file`, `edit-file`, `format-file`, `undo-edit` |
+| `fs` | runtime-helper | shared path normalization, tolerant resolution, directory listing, and tiny recursive walk helpers | `read`, `ls`, file tools, session indexing |
 | `github-api` | domain-runtime | shared `gh api` helpers and repo parsing | `github` |
 | `html-to-md` | domain-runtime | html → llm-friendly markdown conversion | `read-web-page` |
 | `interpolate` | runtime-helper | prompt variable interpolation/runtime vars | `pi-spawn`, `system-prompt` |
@@ -148,6 +149,14 @@ these labels are for this repo, not pi itself.
 - **exports:** `saveChange()`, `loadChanges()`, `revertChange()`, `findLatestChange()`, `simpleDiff()`.
 - **composes with:** `create-file`, `edit-file`, `format-file`, `undo-edit`.
 
+## `packages/core/fs`
+
+- **role:** runtime-helper
+- **does:** centralize the file-path and directory semantics that had drifted into `extensions/read`: `@`/`~` expansion, cwd-relative resolution, mac-tolerant path fallback, shared directory listing text, and a tiny recursive walker for local package internals.
+- **exports:** `expandPath()`, `resolveToAbsolute()`, `resolveWithVariants()`, `isSecretFile()`, `listDirectory()`, `walkDirSync()`.
+- **composes with:** `read`, `ls`, `bash`, file-mutating tools, `core/mentions/session-index`, `read-session`.
+- **read:** keep this seam boring. it owns file-aware helper semantics, not read-tool rendering or rich file content handling.
+
 ## `packages/core/github-api`
 
 - **role:** domain-runtime
@@ -180,6 +189,7 @@ these labels are for this repo, not pi itself.
   - resolve mentions through registered sources
   - render hidden mention context
   - expose `MentionAwareProvider` as the mention-specific autocomplete wrapper used by the mentions adapter
+  - share session indexing with `core/fs` directory walking rather than custom recursion
 - **exports:** parser, renderers, caches, commit/session indexes, resolver, source registry, provider.
 - **composes with:**
   - `extensions/mentions` as lifecycle + autocomplete adapter
@@ -266,7 +276,7 @@ these labels are for this repo, not pi itself.
 - **role:** tool-extension
 - **registers:** tool `bash`
 - **does:** custom shell execution with command cleanup, permission checks, git commit trailer injection, lock coordination, graceful process shutdown, structured output truncation.
-- **main composition:** `box-format`, `config`, `mutex`, `output-buffer`, `permissions`, `prompt-patch`, `read`, `tui`.
+- **main composition:** `box-format`, `config`, `fs`, `mutex`, `output-buffer`, `permissions`, `prompt-patch`, `tui`.
 - **read:** custom-heavy replacement, not a thin wrapper around pi built-in bash.
 
 ## `packages/extensions/code-review`
@@ -290,7 +300,7 @@ these labels are for this repo, not pi itself.
 - **role:** tool-extension
 - **registers:** tool `write`
 - **does:** create/overwrite files, auto-create parent dirs, track mutations for undo.
-- **main composition:** `box-format`, `file-tracker`, `mutex`, `prompt-patch`, `read`.
+- **main composition:** `box-format`, `file-tracker`, `fs`, `mutex`, `prompt-patch`.
 - **read:** adapter-heavy local tool.
 
 ## `packages/extensions/e2e`
@@ -305,7 +315,7 @@ these labels are for this repo, not pi itself.
 - **role:** tool-extension
 - **registers:** tool `edit`
 - **does:** tracked file edits with exact/fuzzy matching, `replace_all`, newline preservation, diff output, undo support.
-- **main composition:** `box-format`, `file-tracker`, `mutex`, `prompt-patch`, `read`.
+- **main composition:** `box-format`, `file-tracker`, `fs`, `mutex`, `prompt-patch`.
 - **read:** custom-heavy local tool.
 
 ## `packages/extensions/editor`
@@ -330,7 +340,7 @@ these labels are for this repo, not pi itself.
 - **role:** tool-extension
 - **registers:** tool `format_file`
 - **does:** run prettier/biome, report formatting results, track before/after for undo.
-- **main composition:** `box-format`, `config`, `file-tracker`, `mutex`, `prompt-patch`, `read`.
+- **main composition:** `box-format`, `config`, `file-tracker`, `fs`, `mutex`, `prompt-patch`.
 - **read:** adapter-heavy local tool.
 
 ## `packages/extensions/github`
@@ -386,8 +396,8 @@ these labels are for this repo, not pi itself.
 
 - **role:** tool-extension
 - **registers:** tool `ls`
-- **does:** compatibility directory listing over shared `read` helpers.
-- **main composition:** `box-format`, `prompt-patch`, `read`.
+- **does:** compatibility directory listing over shared fs helpers plus `read`'s limits contract.
+- **main composition:** `box-format`, `fs`, `prompt-patch`, `read`.
 - **read:** thin adapter.
 
 ## `packages/extensions/mentions`
@@ -419,16 +429,16 @@ these labels are for this repo, not pi itself.
 
 - **role:** tool-extension
 - **registers:** tool `read`
-- **does:** file/dir/image reading, path normalization, secret blocking, line numbering, range reads, output truncation.
-- **main composition:** `box-format`, `config`, `output-buffer`, `prompt-patch`.
-- **read:** custom-heavy replacement.
+- **does:** file/dir/image reading, secret blocking, line numbering, range reads, and output truncation on top of shared fs/path helpers.
+- **main composition:** `box-format`, `config`, `fs`, `output-buffer`, `prompt-patch`.
+- **read:** custom-heavy replacement plus compatibility re-exports for older in-repo consumers.
 
 ## `packages/extensions/read-session`
 
 - **role:** tool-extension
 - **registers:** tool `read_session`
-- **does:** parse a whole session tree locally, render it as analyzable text, then ask a sub-agent to extract only what is relevant to a stated goal.
-- **main composition:** `config`, `output-buffer`, `pi-spawn`, `prompt-patch`, `sub-agent-render`.
+- **does:** parse a whole session tree locally, using shared directory walking to find session files, then ask a sub-agent to extract only what is relevant to a stated goal.
+- **main composition:** `config`, `fs`, `output-buffer`, `pi-spawn`, `prompt-patch`, `sub-agent-render`.
 - **read:** hybrid: substantial local domain logic plus model summarizer.
 
 ## `packages/extensions/read-web-page`
@@ -493,7 +503,7 @@ these labels are for this repo, not pi itself.
 - **role:** tool-extension
 - **registers:** tool `undo_edit`
 - **does:** revert the most recent tracked file change visible in the current branch.
-- **main composition:** `box-format`, `file-tracker`, `mutex`, `prompt-patch`, `read`.
+- **main composition:** `box-format`, `file-tracker`, `fs`, `mutex`, `prompt-patch`.
 - **read:** custom local tool.
 
 ## `packages/extensions/web-search`

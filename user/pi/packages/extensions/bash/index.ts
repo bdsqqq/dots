@@ -29,7 +29,7 @@ import { getText } from "@bds_pi/tui";
 import { Type } from "@sinclair/typebox";
 import { withFileLock } from "@bds_pi/mutex";
 import { evaluatePermission, loadPermissions } from "@bds_pi/permissions";
-import { resolveToAbsolute } from "@bds_pi/read";
+import { resolveToAbsolute } from "@bds_pi/fs";
 import { OutputBuffer } from "@bds_pi/output-buffer";
 import { getExtensionConfig } from "@bds_pi/config";
 

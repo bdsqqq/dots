@@ -146,6 +146,7 @@ examples:
 - mention source
 - editor autocomplete contributor
 - config schema
+- shared fs/path helper contracts
 
 ### registries
 
@@ -160,6 +161,7 @@ do the domain work.
 examples:
 
 - session parsing
+- shared fs/path helpers for file-aware tools
 - git commit indexing
 - handoff prompt extraction
 - context rendering
@@ -472,6 +474,27 @@ the refactor should preserve current behavior while changing ownership boundarie
 - graceful fallback on malformed or missing files
 
 all of that is in scope to preserve.
+
+### file-aware helper seam now extracted
+
+hotspot 2 adds `packages/core/fs` as the boring seam for file-aware path and traversal semantics that had been stuck inside `extensions/read`.
+
+it owns:
+
+- `@`/`~` path shorthand normalization
+- cwd-relative absolute-path resolution
+- mac-tolerant path fallback for nfd + narrow no-break-space variants
+- shared directory listing text for `read` + `ls`
+- tiny recursive walking for session discovery and similar local internals
+
+it does not own:
+
+- read-tool rendering
+- line-numbering / excerpt formatting for file contents
+- image handling
+- broad ignore-policy or glob semantics
+
+that keeps `extensions/read` focused on the read tool while giving other packages a stable, non-ui file helper boundary.
 
 ---
 
