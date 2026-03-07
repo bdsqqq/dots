@@ -188,30 +188,3 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
   },
 );
 
-describe("editor extension - model display format (unit)", () => {
-  /**
-   * Unit test for the model display format used by updateStatsLabels.
-   * Format: `${provider} ${model.id}`.trim()
-   */
-  it("formats model display string correctly", () => {
-    function formatModelDisplay(
-      provider: string | undefined,
-      modelId: string,
-    ): string {
-      const providerStr = provider ? `(${provider})` : "";
-      return `${providerStr} ${modelId}`.trim();
-    }
-
-    expect(formatModelDisplay("anthropic", "claude-sonnet-4-20250514")).toBe(
-      "(anthropic) claude-sonnet-4-20250514",
-    );
-
-    expect(formatModelDisplay("openai", "gpt-4o")).toBe("(openai) gpt-4o");
-
-    expect(formatModelDisplay("openrouter", "z-ai/glm-5")).toBe(
-      "(openrouter) z-ai/glm-5",
-    );
-
-    expect(formatModelDisplay(undefined, "some-model")).toBe("some-model");
-  });
-});
