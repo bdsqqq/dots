@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-06T21:28:46Z",
+  "generatedAt": "2026-03-07T20:49:17Z",
   "source": "curated from package manifests + code reads",
   "core": [
     {
@@ -172,15 +172,17 @@
       "localDependencies": [],
       "exportsPiExtensions": [],
       "role": "domain-runtime",
-      "purpose": "mention parsing, indexing, resolution, rendering, and mention-specific autocomplete wrapping",
+      "purpose": "mention parsing, source registration, indexing, resolution, rendering, and mention-specific autocomplete wrapping",
       "registers": [],
       "composesWith": [
         "extensions/mentions",
-        "extensions/search-sessions"
+        "extensions/search-sessions",
+        "extensions/handoff"
       ],
       "currentConsumers": [
         "extensions/mentions",
-        "extensions/search-sessions via session-index"
+        "extensions/search-sessions via session source + session-index",
+        "extensions/handoff via handoff source"
       ]
     },
     {
@@ -726,22 +728,25 @@
       "path": "packages/extensions/handoff",
       "localDependencies": [
         "@bds_pi/config",
+        "@bds_pi/mentions",
         "@bds_pi/pi-spawn"
       ],
       "exportsPiExtensions": [
         "./index.ts"
       ],
       "role": "feature-extension",
-      "purpose": "session handoff workflow replacing compaction with explicit fresh-session transfer",
+      "purpose": "session handoff workflow replacing compaction with explicit fresh-session transfer plus handoff mention registration",
       "registers": [
         "command:/handoff",
         "tool:handoff",
         "hook:session_before_compact",
         "hook:agent_end",
-        "ui:provenance-widget"
+        "ui:provenance-widget",
+        "mention-source:handoff"
       ],
       "composesWith": [
         "core/config",
+        "core/mentions",
         "core/pi-spawn",
         "pi.events \u2194 editor labels"
       ],
@@ -1008,20 +1013,23 @@
       "localDependencies": [
         "@bds_pi/box-format",
         "@bds_pi/config",
+        "@bds_pi/mentions",
         "@bds_pi/prompt-patch"
       ],
       "exportsPiExtensions": [
         "./index.ts"
       ],
       "role": "feature-extension",
-      "purpose": "search prior pi session branches by keyword/file/date/workspace",
+      "purpose": "search prior pi session branches by keyword/file/date/workspace plus session mention registration",
       "registers": [
-        "tool:search_sessions"
+        "tool:search_sessions",
+        "mention-source:session"
       ],
       "composesWith": [
         "core/box-format",
         "core/config",
         "core/prompt-patch",
+        "core/mentions",
         "core/mentions/session-index"
       ],
       "runtimeType": "feature tool"

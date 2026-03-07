@@ -349,9 +349,9 @@ it should keep owning:
 - `/handoff`
 - the `handoff` tool
 
-it may additionally contribute optional capabilities:
+it additionally contributes optional capabilities:
 
-- a handoff mention source
+- the `handoff` mention source
 - editor labels/widgets
 - other ui affordances
 
@@ -371,9 +371,9 @@ those absences remove affordances. they do not remove handoff itself.
 
 search-sessions should keep owning the search tool and related search rendering.
 
-it may additionally contribute:
+it now contributes:
 
-- a session mention source built on shared session parsing/indexing
+- the `session` mention source built on shared session parsing/indexing
 
 this means session semantics come from the session domain, not from a central hardcoded mention switchboard.
 
@@ -502,9 +502,11 @@ move mention family ownership to registered sources.
 
 ## phase 4 — let feature domains provide optional capabilities
 
-- handoff can provide a handoff mention source
-- search-sessions can provide a session mention source
-- commit source can remain built in to mentions at first, or move to a git-focused domain later
+this is now partially done:
+
+- handoff provides the `handoff` mention source
+- search-sessions provides the `session` mention source
+- commit remains built in to `core/mentions` for now
 
 ## phase 5 — extend config for schema-backed gating
 

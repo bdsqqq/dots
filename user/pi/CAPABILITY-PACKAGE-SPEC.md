@@ -175,15 +175,17 @@ these labels are for this repo, not pi itself.
 - **does today:**
   - parse `@commit/...`, `@session/...`, `@handoff/...`
   - detect autocomplete prefixes
+  - keep the mention source registry and built-in `commit` source
   - index git commits and pi sessions
-  - resolve mentions
+  - resolve mentions through registered sources
   - render hidden mention context
   - expose `MentionAwareProvider` as the mention-specific autocomplete wrapper used by the mentions adapter
-- **exports:** parser, renderers, caches, commit/session indexes, resolver, provider.
+- **exports:** parser, renderers, caches, commit/session indexes, resolver, source registry, provider.
 - **composes with:**
   - `extensions/mentions` as lifecycle + autocomplete adapter
-  - `extensions/search-sessions` via shared `session-index.ts`
-- **target direction:** become contract + registry + source-helper layer for addressable references, without pretending to be a pi-wide plugin system.
+  - `extensions/search-sessions` as `session` source owner
+  - `extensions/handoff` as `handoff` source owner
+- **target direction:** stay the contract + registry + source-helper layer for addressable references, without pretending to be a pi-wide plugin system.
 
 ## `packages/core/mutex`
 
@@ -359,10 +361,10 @@ these labels are for this repo, not pi itself.
 
 - **role:** feature-extension
 - **registers:** command `/handoff`, tool `handoff`, lifecycle interception around compaction/session switching
-- **does:** replace compaction with an explicit handoff workflow: prompt extraction, prompt review/editing, child session creation, provenance display.
-- **main composition:** `config`, `pi-spawn`, pi event bus to coordinate with editor labels/widgets.
+- **does:** replace compaction with an explicit handoff workflow: prompt extraction, prompt review/editing, child session creation, provenance display, and registration of the `handoff` mention source.
+- **main composition:** `config`, `mentions`, `pi-spawn`, pi event bus to coordinate with editor labels/widgets.
 - **read:** workflow feature.
-- **target direction:** remain self-sufficient even if mentions/editor affordances are absent; optionally contribute `handoff` mention capability.
+- **note:** remains self-sufficient even if mentions/editor affordances are absent; the extra mention capability is optional.
 
 ## `packages/extensions/librarian`
 
@@ -441,10 +443,10 @@ these labels are for this repo, not pi itself.
 
 - **role:** feature-extension
 - **registers:** tool `search_sessions`
-- **does:** search past pi session branches by keyword/file/date/workspace, render structured results.
-- **main composition:** `box-format`, `config`, `prompt-patch`, shared session parsing from `core/mentions/session-index.ts`.
+- **does:** search past pi session branches by keyword/file/date/workspace, render structured results, and register the `session` mention source.
+- **main composition:** `box-format`, `config`, `mentions`, `prompt-patch`, shared session parsing from `core/mentions/session-index.ts`.
 - **read:** feature tool with shared domain runtime.
-- **target direction:** own the optional `session` mention capability for its domain.
+- **note:** now owns the `session` mention capability for its domain.
 
 ## `packages/extensions/session-name`
 
@@ -659,11 +661,11 @@ this is the package-local composition direction that fits the actual repo, not j
 
 ### specific target moves
 
-1. `core/mentions` should evolve from feature bundle to contract + registry + source-helper layer
-2. `extensions/mentions` should stay the lifecycle adapter for hidden mention context
-3. `extensions/editor` should host autocomplete contributors instead of importing mention semantics directly
-4. `extensions/handoff` should remain a self-sufficient workflow feature, with optional handoff mention capability
-5. `extensions/search-sessions` should remain the session-history feature/tool, with optional session mention capability
+1. `core/mentions` now acts as the contract + registry + source-helper layer
+2. `extensions/mentions` stays the lifecycle adapter for hidden mention context
+3. `extensions/editor` hosts autocomplete contributors instead of importing mention semantics directly
+4. `extensions/handoff` remains self-sufficient and now owns the optional `handoff` mention capability
+5. `extensions/search-sessions` remains the session-history feature/tool and now owns the optional `session` mention capability
 6. `core/config` should grow package-local schema/gating helpers, not a second settings system
 
 ---

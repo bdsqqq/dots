@@ -13,6 +13,7 @@
       "@bds_pi/github-api": ["./packages/core/github-api/index.ts"],
       "@bds_pi/html-to-md": ["./packages/core/html-to-md/index.ts"],
       "@bds_pi/interpolate": ["./packages/core/interpolate/index.ts"],
+      "@bds_pi/mentions": ["./packages/core/mentions/index.ts"],
       "@bds_pi/mutex": ["./packages/core/mutex/index.ts"],
       "@bds_pi/output-buffer": ["./packages/core/output-buffer/index.ts"],
       "@bds_pi/permissions": ["./packages/core/permissions/index.ts"],

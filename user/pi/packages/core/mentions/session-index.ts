@@ -1,5 +1,7 @@
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
+import { createCache, getOrSet } from "./cache";
 
 /**
  * shared session parsing for mentions.
@@ -88,6 +90,15 @@ export interface MentionableSessionQuery {
   kind?: "session" | "handoff";
   limit?: number;
 }
+
+export const DEFAULT_MENTION_SESSIONS_DIR: string = path.join(
+  os.homedir(),
+  ".pi",
+  "agent",
+  "sessions",
+);
+
+const sessionMentionCache = createCache<string, MentionableSession[]>();
 
 /** tool argument keys that usually contain file paths */
 const PATH_KEYS = ["path", "filePath", "file_path"];
@@ -367,6 +378,19 @@ export function summarizeMentionableSession(
     isHandoffCandidate:
       typeof parsed.header.parentSession === "string" && firstUserMessage.length > 0,
   };
+}
+
+export function clearSessionMentionCache(): void {
+  sessionMentionCache.clear();
+}
+
+export function getSessionMentionsIndex(
+  sessionsDir: string = DEFAULT_MENTION_SESSIONS_DIR,
+): MentionableSession[] {
+  if (!fs.existsSync(sessionsDir)) return [];
+  return getOrSet(sessionMentionCache, sessionsDir, () =>
+    listMentionableSessions(sessionsDir),
+  );
 }
 
 export function listMentionableSessions(
