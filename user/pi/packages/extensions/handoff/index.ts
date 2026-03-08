@@ -11,6 +11,9 @@
  *   /handoff check other places that need this fix
  */
 
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
   complete,
   type Api,
@@ -33,7 +36,12 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { getExtensionConfig } from "@bds_pi/config";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 import { registerMentionSource } from "@bds_pi/mentions";
 import { resolvePrompt } from "@bds_pi/pi-spawn";
 import { createHandoffMentionSource } from "./handoff-mention-source";
@@ -53,6 +61,34 @@ const CONFIG_DEFAULTS: HandoffExtConfig = {
   },
   promptFile: "",
   promptString: "",
+};
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isHandoffConfig(value: Record<string, unknown>): value is HandoffExtConfig {
+  const threshold = value.threshold;
+  if (typeof threshold !== "number" || threshold <= 0 || threshold > 1) {
+    return false;
+  }
+
+  if (!isPlainObject(value.model)) {
+    return false;
+  }
+
+  return (
+    typeof value.model.provider === "string" &&
+    value.model.provider.trim().length > 0 &&
+    typeof value.model.id === "string" &&
+    value.model.id.trim().length > 0 &&
+    typeof value.promptFile === "string" &&
+    typeof value.promptString === "string"
+  );
+}
+
+const HANDOFF_CONFIG_SCHEMA: ExtensionConfigSchema<HandoffExtConfig> = {
+  validate: isHandoffConfig,
 };
 
 const MAX_RELEVANT_FILES = 10;
@@ -123,13 +159,13 @@ const PROVENANCE_PREFIX = "↳ handed off from: ";
 const PROVENANCE_ELLIPSIS = "…";
 
 interface HandoffExtensionDeps {
-  getExtensionConfig: typeof getExtensionConfig;
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
   registerMentionSource: typeof registerMentionSource;
   resolvePrompt: typeof resolvePrompt;
 }
 
 const DEFAULT_DEPS: HandoffExtensionDeps = {
-  getExtensionConfig,
+  getEnabledExtensionConfig,
   registerMentionSource,
   resolvePrompt,
 };
@@ -193,11 +229,16 @@ function showProvenance(ctx: ExtensionContext, parentPath: string): void {
   }));
 }
 
-function createHandoffExtension(deps: HandoffExtensionDeps) {
+function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
   return function handoffExtension(pi: ExtensionAPI): void {
-    deps.registerMentionSource(createHandoffMentionSource());
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/handoff",
+      CONFIG_DEFAULTS,
+      { schema: HANDOFF_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
 
-    const cfg = deps.getExtensionConfig("@bds_pi/handoff", CONFIG_DEFAULTS);
+    deps.registerMentionSource(createHandoffMentionSource());
 
     const handoffSections = parsePromptSections(
       deps.resolvePrompt(cfg.promptString, cfg.promptFile),
@@ -530,14 +571,20 @@ function createHandoffExtension(deps: HandoffExtensionDeps) {
   };
 }
 
-const handoffExtension: (pi: ExtensionAPI) => void = createHandoffExtension(
-  DEFAULT_DEPS,
-);
+const handoffExtension: (pi: ExtensionAPI) => void = createHandoffExtension();
 
 export default handoffExtension;
 
 if (import.meta.vitest) {
-  const { describe, expect, it } = import.meta.vitest;
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
 
   function createMockExtensionApiHarness() {
     const tools: unknown[] = [];
@@ -603,15 +650,27 @@ if (import.meta.vitest) {
     isHandoffCandidate: true,
   };
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
   describe("handoff extension", () => {
-    it("registers the local handoff mention source when loaded", async () => {
+    it("registers mention source, command, tool, and handlers with default config when enabled", async () => {
       const { getMentionSource } = await import("@bds_pi/mentions");
       let registeredSourceCount = 0;
       let cleanup: (() => void) | undefined;
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
       const handoffExtension = createHandoffExtension({
         ...DEFAULT_DEPS,
-        getExtensionConfig: ((_, defaults: HandoffExtConfig) =>
-          defaults) as typeof getExtensionConfig,
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
         resolvePrompt: () => "",
         registerMentionSource(source) {
           registeredSourceCount += 1;
@@ -624,6 +683,11 @@ if (import.meta.vitest) {
       handoffExtension(harness.pi);
 
       try {
+        expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+          "@bds_pi/handoff",
+          CONFIG_DEFAULTS,
+          { schema: HANDOFF_CONFIG_SCHEMA },
+        );
         expect(registeredSourceCount).toBe(1);
         const source = getMentionSource("handoff");
         expect(source?.kind).toBe("handoff");
@@ -638,6 +702,12 @@ if (import.meta.vitest) {
             label: "@handoff/handoffabcd",
             description: "handoff alpha",
           },
+        ]);
+        expect(harness.handlers.map((entry) => entry.event).sort()).toEqual([
+          "agent_end",
+          "session_before_compact",
+          "session_start",
+          "session_switch",
         ]);
         expect(harness.commands).toEqual([
           {
@@ -654,6 +724,86 @@ if (import.meta.vitest) {
       } finally {
         cleanup?.();
       }
+    });
+
+    it("registers neither mention source nor command nor tool nor handlers when disabled", () => {
+      const registerMentionSourceSpy = vi.fn();
+      const resolvePromptSpy = vi.fn(() => "");
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const handoffExtension = createHandoffExtension({
+        ...DEFAULT_DEPS,
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        registerMentionSource:
+          registerMentionSourceSpy as typeof DEFAULT_DEPS.registerMentionSource,
+        resolvePrompt: resolvePromptSpy,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      handoffExtension(harness.pi);
+
+      expect(registerMentionSourceSpy).not.toHaveBeenCalled();
+      expect(resolvePromptSpy).not.toHaveBeenCalled();
+      expect(harness.commands).toHaveLength(0);
+      expect(harness.tools).toHaveLength(0);
+      expect(harness.handlers).toHaveLength(0);
+    });
+
+    it("falls back to defaults when schema validation fails and still registers startup capabilities", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-handoff-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/handoff": {
+          threshold: 2,
+          model: { provider: "", id: "" },
+          promptFile: false,
+          promptString: 123,
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const registerMentionSourceSpy = vi.fn();
+      const resolvePromptSpy = vi.fn(() => "");
+      const handoffExtension = createHandoffExtension({
+        ...DEFAULT_DEPS,
+        registerMentionSource:
+          registerMentionSourceSpy as typeof DEFAULT_DEPS.registerMentionSource,
+        resolvePrompt: resolvePromptSpy,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      handoffExtension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/handoff; falling back to defaults.",
+      );
+      expect(registerMentionSourceSpy).toHaveBeenCalledTimes(1);
+      expect(resolvePromptSpy).toHaveBeenCalledWith(
+        CONFIG_DEFAULTS.promptString,
+        CONFIG_DEFAULTS.promptFile,
+      );
+      expect(harness.handlers.map((entry) => entry.event).sort()).toEqual([
+        "agent_end",
+        "session_before_compact",
+        "session_start",
+        "session_switch",
+      ]);
+      expect(harness.commands).toEqual([
+        {
+          name: "handoff",
+          command: expect.any(Object),
+        },
+      ]);
+      expect(harness.tools).toEqual([
+        expect.objectContaining({
+          name: "handoff",
+          label: "Handoff",
+        }),
+      ]);
     });
   });
 }
