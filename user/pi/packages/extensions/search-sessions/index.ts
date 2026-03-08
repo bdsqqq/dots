@@ -16,7 +16,12 @@ import { execSync } from "node:child_process";
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
-import { getExtensionConfig } from "@bds_pi/config";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 import { registerMentionSource } from "@bds_pi/mentions";
 import { createSessionMentionSource } from "./session-mention-source";
 import {
@@ -39,7 +44,7 @@ type SearchSessionsExtConfig = {
 };
 
 type SearchSessionsExtensionDeps = {
-  getExtensionConfig: typeof getExtensionConfig;
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
   registerMentionSource: typeof registerMentionSource;
   withPromptPatch: typeof withPromptPatch;
 };
@@ -50,8 +55,25 @@ const CONFIG_DEFAULTS: SearchSessionsExtConfig = {
   rgTimeoutMs: 10000,
 };
 
+function isSearchSessionsConfig(value: Record<string, unknown>): value is SearchSessionsExtConfig {
+  return (
+    typeof value.maxResults === "number" &&
+    Number.isInteger(value.maxResults) &&
+    value.maxResults >= 1 &&
+    typeof value.sessionsDir === "string" &&
+    value.sessionsDir.trim().length > 0 &&
+    typeof value.rgTimeoutMs === "number" &&
+    Number.isInteger(value.rgTimeoutMs) &&
+    value.rgTimeoutMs >= 1
+  );
+}
+
+const SEARCH_SESSIONS_CONFIG_SCHEMA: ExtensionConfigSchema<SearchSessionsExtConfig> = {
+  validate: isSearchSessionsConfig,
+};
+
 const DEFAULT_EXTENSION_DEPS: SearchSessionsExtensionDeps = {
-  getExtensionConfig,
+  getEnabledExtensionConfig,
   registerMentionSource,
   withPromptPatch,
 };
@@ -489,12 +511,14 @@ function createSearchSessionsExtension(
   deps: SearchSessionsExtensionDeps = DEFAULT_EXTENSION_DEPS,
 ): (pi: ExtensionAPI) => void {
   return function searchSessionsExtension(pi: ExtensionAPI): void {
-    deps.registerMentionSource(createSessionMentionSource());
-
-    const cfg = deps.getExtensionConfig(
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
       "@bds_pi/search-sessions",
       CONFIG_DEFAULTS,
+      { schema: SEARCH_SESSIONS_CONFIG_SCHEMA },
     );
+    if (!enabled) return;
+
+    deps.registerMentionSource(createSessionMentionSource());
     pi.registerTool(deps.withPromptPatch(createSearchSessionsTool(cfg)));
   };
 }
@@ -505,7 +529,8 @@ const searchSessionsExtension: (pi: ExtensionAPI) => void =
 export default searchSessionsExtension;
 
 if (import.meta.vitest) {
-  const { describe, expect, it, vi } = import.meta.vitest;
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
 
   const SESSION_FIXTURE = {
     sessionId: "alpha1234",
@@ -520,6 +545,13 @@ if (import.meta.vitest) {
     isHandoffCandidate: false,
   };
 
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
   function createMockExtensionApiHarness() {
     const tools: unknown[] = [];
 
@@ -532,19 +564,27 @@ if (import.meta.vitest) {
     return { pi, tools };
   }
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
   describe("search-sessions extension", () => {
-    it("registers the local session mention source when loaded", () => {
+    it("registers mention source and tool with default config when enabled", () => {
       const registerMentionSourceSpy = vi.fn();
-      const getExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) =>
-          defaults,
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
       );
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createSearchSessionsExtension({
         registerMentionSource:
           registerMentionSourceSpy as typeof DEFAULT_EXTENSION_DEPS.registerMentionSource,
-        getExtensionConfig:
-          getExtensionConfigSpy as typeof DEFAULT_EXTENSION_DEPS.getExtensionConfig,
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_EXTENSION_DEPS.getEnabledExtensionConfig,
         withPromptPatch:
           withPromptPatchSpy as typeof DEFAULT_EXTENSION_DEPS.withPromptPatch,
       });
@@ -567,12 +607,72 @@ if (import.meta.vitest) {
           description: "alpha work",
         },
       ]);
-      expect(getExtensionConfigSpy).toHaveBeenCalledWith(
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
         "@bds_pi/search-sessions",
         CONFIG_DEFAULTS,
+        { schema: SEARCH_SESSIONS_CONFIG_SCHEMA },
       );
       expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
       expect(harness.tools).toHaveLength(1);
+    });
+
+    it("registers neither mention source nor tool when disabled", () => {
+      const registerMentionSourceSpy = vi.fn();
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createSearchSessionsExtension({
+        registerMentionSource:
+          registerMentionSourceSpy as typeof DEFAULT_EXTENSION_DEPS.registerMentionSource,
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_EXTENSION_DEPS.getEnabledExtensionConfig,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_EXTENSION_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(registerMentionSourceSpy).not.toHaveBeenCalled();
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults when schema validation fails and still registers", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-search-sessions-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/search-sessions": {
+          maxResults: 0,
+          sessionsDir: "",
+          rgTimeoutMs: "fast",
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const registerMentionSourceSpy = vi.fn();
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createSearchSessionsExtension({
+        ...DEFAULT_EXTENSION_DEPS,
+        registerMentionSource:
+          registerMentionSourceSpy as typeof DEFAULT_EXTENSION_DEPS.registerMentionSource,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_EXTENSION_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/search-sessions; falling back to defaults.",
+      );
+      expect(registerMentionSourceSpy).toHaveBeenCalledTimes(1);
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+      expect(harness.tools[0]).toMatchObject({ name: "search_sessions" });
     });
   });
 }
