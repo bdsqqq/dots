@@ -1,14 +1,14 @@
 /**
  * e2e tests for editor extension — model_select event handling.
  *
- * Uses tmux for interactive session testing to verify that:
- * 1. The model display updates when model is changed via /model command
- * 2. The model_select event fires correctly
+ * kept separate from in-source tests because these assertions depend on tmux
+ * and a real interactive pi session. the inline migration only pulled over the
+ * pure string-formatting helper.
  *
  * usage:
- *   PI_E2E=1 bun test user/pi/extensions/editor.test.ts
+ *   PI_E2E=1 bun x vitest run packages/extensions/editor/editor.test.ts
  *
- * set PI_E2E_MODEL to override model (defaults to minimax-m2.5).
+ * set PI_E2E_MODEL to override the startup model.
  */
 
 import { spawnSync } from "node:child_process";
@@ -113,78 +113,70 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
       } catch {}
     });
 
-    it(
-      "updates model display when model changes via /model command",
-      async () => {
-        // Start pi in a tmux window (interactive session) with cheap model
-        tmuxSpawn(windowName, `cd ${CWD} && pi --model ${TEST_MODEL}`);
+    it("updates model display when model changes via /model command", async () => {
+      // Start pi in a tmux window (interactive session) with cheap model
+      tmuxSpawn(windowName, `cd ${CWD} && pi --model ${TEST_MODEL}`);
 
-        // Wait for pi to start and show the editor border (LabeledEditor uses ╭)
-        await waitForPane(windowName, /╭/, 30_000);
+      // Wait for pi to start and show the editor border (LabeledEditor uses ╭)
+      await waitForPane(windowName, /╭/, 30_000);
 
-        // Wait for idle (no spinner) and for model to appear in border
-        await waitForIdle(windowName, 30_000);
+      // Wait for idle (no spinner) and for model to appear in border
+      await waitForIdle(windowName, 30_000);
 
-        // Additional wait for model to render in border
-        await sleep(2000);
+      // Additional wait for model to render in border
+      await sleep(2000);
 
-        // Capture initial state - should show kimi-k2.5 in border
-        const beforeCapture = tmuxCapture(windowName);
-        const beforeBorder = firstBorderLine(beforeCapture).toLowerCase();
+      // Capture initial state - should show kimi-k2.5 in border
+      const beforeCapture = tmuxCapture(windowName);
+      const beforeBorder = firstBorderLine(beforeCapture).toLowerCase();
 
-        // Verify initial model is shown in border (top lines contain the model)
-        // Border format: "╭─ ... ─ (openrouter) moonshotai/kimi-k2.5 ─╮"
-        expect(beforeBorder).toContain("kimi");
+      // Verify initial model is shown in border (top lines contain the model)
+      // Border format: "╭─ ... ─ (openrouter) moonshotai/kimi-k2.5 ─╮"
+      expect(beforeBorder).toContain("kimi");
 
-        // Send /model command to change to a different model
-        tmuxSend(windowName, "/model");
-        await sleep(1000);
-        tmuxSend(windowName, "glm-5");
+      // Send /model command to change to a different model
+      tmuxSend(windowName, "/model");
+      await sleep(1000);
+      tmuxSend(windowName, "glm-5");
 
-        // Wait for the model selector to close and model to change
-        await waitForIdle(windowName, 30_000);
+      // Wait for the model selector to close and model to change
+      await waitForIdle(windowName, 30_000);
 
-        // Capture after command - the border should now show the new model
-        const afterCapture = tmuxCapture(windowName);
-        const afterBorder = firstBorderLine(afterCapture).toLowerCase();
+      // Capture after command - the border should now show the new model
+      const afterCapture = tmuxCapture(windowName);
+      const afterBorder = firstBorderLine(afterCapture).toLowerCase();
 
-        // CRITICAL: Verify the border changed from kimi to glm-5
-        // The model_select handler updates the border label
-        expect(afterBorder).toContain("glm");
-        expect(afterBorder).not.toContain("kimi");
-      },
-      { timeout: 90_000 },
-    );
+      // CRITICAL: Verify the border changed from kimi to glm-5
+      // The model_select handler updates the border label
+      expect(afterBorder).toContain("glm");
+      expect(afterBorder).not.toContain("kimi");
+    }, 90_000);
 
-    it(
-      "model_select event fires when model changes",
-      async () => {
-        // Start a fresh pi session with cheap model
-        const testWin = `pi-model-event-${Date.now()}`;
-        tmuxSpawn(testWin, `cd ${CWD} && pi --model ${TEST_MODEL}`);
+    it("model_select event fires when model changes", async () => {
+      // Start a fresh pi session with cheap model
+      const testWin = `pi-model-event-${Date.now()}`;
+      tmuxSpawn(testWin, `cd ${CWD} && pi --model ${TEST_MODEL}`);
 
-        // Wait for pi to start
-        await waitForPane(testWin, /╭|─/, 30_000);
-        await waitForIdle(testWin, 30_000);
+      // Wait for pi to start
+      await waitForPane(testWin, /╭|─/, 30_000);
+      await waitForIdle(testWin, 30_000);
 
-        // Send a simple message first
-        tmuxSend(testWin, "Say hi");
-        await waitForIdle(testWin, 60_000);
+      // Send a simple message first
+      tmuxSend(testWin, "Say hi");
+      await waitForIdle(testWin, 60_000);
 
-        // Now change the model
-        tmuxSend(testWin, "/model gemini");
-        await sleep(3000);
+      // Now change the model
+      tmuxSend(testWin, "/model gemini");
+      await sleep(3000);
 
-        const capture = tmuxCapture(testWin);
+      const capture = tmuxCapture(testWin);
 
-        expect(capture.length).toBeGreaterThan(0);
+      expect(capture.length).toBeGreaterThan(0);
 
-        try {
-          tmuxKill(testWin);
-        } catch {}
-      },
-      { timeout: 120_000 },
-    );
+      try {
+        tmuxKill(testWin);
+      } catch {}
+    }, 120_000);
   },
 );
 

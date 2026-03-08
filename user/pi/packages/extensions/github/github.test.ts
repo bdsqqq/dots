@@ -1,23 +1,13 @@
 /**
- * tests for github tools — helpers + integration via pi spawn.
+ * integration coverage for the github extension.
  *
- * two layers:
- *
- * 1. unit tests for lib/github.ts (parseRepoUrl, ghApi, etc.)
- *    — no pi deps, no AI, runs directly with bun.
- *
- * 2. integration tests for the 7 github tools via pi spawn.
- *    — spawns `pi --mode json` asking it to call specific tools.
- *    — guarded by PI_E2E=1 (costs real API calls + AI tokens).
- *    — validates the full flow: model → tool call → gh api → result.
- *
- * the unit tests prove the plumbing works. the integration tests
- * prove the tools register, execute, and return correct results
- * inside pi's runtime where @mariozechner/pi-tui is available.
+ * pure helper tests now live inline with `@bds_pi/github-api`, where the logic
+ * is defined. this file stays focused on checks that still need external
+ * systems: real `gh api` calls and pi-spawn integration.
  *
  * usage:
- *   bun test user/pi/extensions/tools/github.test.ts          # unit only
- *   PI_E2E=1 bun test user/pi/extensions/tools/github.test.ts # all
+ *   bun x vitest run packages/extensions/github/github.test.ts
+ *   PI_E2E=1 bun x vitest run packages/extensions/github/github.test.ts
  */
 
 import { spawn as nodeSpawn } from "node:child_process";
@@ -125,7 +115,7 @@ function getToolResults(events: PiEvent[]) {
 }
 
 // ============================================================
-// layer 1: gh api integration (no pi deps, but hits real API)
+// layer 1: direct gh api integration (real network/auth, no pi runtime)
 // ============================================================
 
 describe("ghApi", () => {
@@ -189,7 +179,7 @@ describe("ghApi", () => {
 });
 
 // ============================================================
-// layer 2: tool integration tests via pi spawn (PI_E2E=1 only)
+// layer 2: pi-spawn integration (PI_E2E=1 only)
 // ============================================================
 
 describe.skipIf(!ENABLED)("github tools via pi", () => {
