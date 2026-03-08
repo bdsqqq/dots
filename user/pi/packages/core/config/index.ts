@@ -70,6 +70,53 @@ export interface GetExtensionConfigOpts {
   allowProjectConfig?: boolean;
 }
 
+export interface ExtensionConfigSchema<T extends Record<string, unknown>> {
+  /**
+   * validates merged config before it is returned.
+   * `getEnabledExtensionConfig()` strips the reserved `enabled` flag first.
+   * return false to fall back to defaults.
+   */
+  validate?: (value: Record<string, unknown>) => value is T;
+  /** normalize a validated config before it is returned. */
+  normalize?: (value: T) => T;
+}
+
+export interface GetExtensionConfigWithSchemaOpts<T extends Record<string, unknown>>
+  extends GetExtensionConfigOpts {
+  schema?: ExtensionConfigSchema<T>;
+}
+
+export interface EnabledExtensionConfig<T extends Record<string, unknown>> {
+  enabled: boolean;
+  config: T;
+}
+
+type RawExtensionConfig = Record<string, unknown> & {
+  enabled?: unknown;
+};
+
+function stripEnabledFlag(value: Record<string, unknown>): Record<string, unknown> {
+  const { enabled: _enabled, ...rest } = value as RawExtensionConfig;
+  return rest;
+}
+
+function applyExtensionSchema<T extends Record<string, unknown>>(
+  namespace: string,
+  candidate: Record<string, unknown>,
+  defaults: T,
+  schema?: ExtensionConfigSchema<T>,
+): T {
+  if (schema?.validate && !schema.validate(candidate)) {
+    console.error(
+      `[@bds_pi/config] invalid config for ${namespace}; falling back to defaults.`,
+    );
+    return schema.normalize ? schema.normalize(defaults) : defaults;
+  }
+
+  const config = candidate as T;
+  return schema?.normalize ? schema.normalize(config) : config;
+}
+
 export function getExtensionConfig<T extends Record<string, unknown>>(
   namespace: string,
   defaults: T,
@@ -94,6 +141,32 @@ export function getExtensionConfig<T extends Record<string, unknown>>(
   return merged;
 }
 
+export function getExtensionConfigWithSchema<T extends Record<string, unknown>>(
+  namespace: string,
+  defaults: T,
+  opts?: GetExtensionConfigWithSchemaOpts<T>,
+): T {
+  const merged = getExtensionConfig(namespace, defaults, opts);
+  return applyExtensionSchema(namespace, merged, defaults, opts?.schema);
+}
+
+export function getEnabledExtensionConfig<T extends Record<string, unknown>>(
+  namespace: string,
+  defaults: T,
+  opts?: GetExtensionConfigWithSchemaOpts<T>,
+): EnabledExtensionConfig<T> {
+  const merged = getExtensionConfig(namespace, defaults, opts) as RawExtensionConfig;
+  const enabled = typeof merged.enabled === "boolean" ? merged.enabled : true;
+  const config = applyExtensionSchema(
+    namespace,
+    stripEnabledFlag(merged),
+    defaults,
+    opts?.schema,
+  );
+
+  return { enabled, config };
+}
+
 /** read a top-level (non-namespaced) key from the global settings file. */
 export function getGlobalConfig<T>(key: string): T | undefined {
   const globalPath = resolveGlobalSettingsPath();
@@ -108,7 +181,7 @@ export function resolveConfigDir(): string {
 }
 
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, test } = import.meta.vitest;
+  const { afterEach, describe, expect, test, vi } = import.meta.vitest;
   const tmpdir = os.tmpdir();
 
   function writeTmpJson(dir: string, filename: string, data: unknown): string {
@@ -119,6 +192,7 @@ if (import.meta.vitest) {
   }
 
   afterEach(() => {
+    vi.restoreAllMocks();
     clearConfigCache();
     _globalSettingsPath = null;
   });
@@ -251,6 +325,110 @@ if (import.meta.vitest) {
         { cwd: projectDir },
       );
       expect(result).toEqual({ a: "global" });
+    });
+  });
+
+  describe("getExtensionConfigWithSchema", () => {
+    test("applies validation and normalization to merged config", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/test": { foo: "overridden", count: 2 },
+      });
+      setGlobalSettingsPath(settingsPath);
+
+      const result = getExtensionConfigWithSchema(
+        "@bds_pi/test",
+        { foo: "default", count: 0 },
+        {
+          schema: {
+            validate: (
+              value,
+            ): value is {
+              foo: string;
+              count: number;
+            } => typeof value.foo === "string" && typeof value.count === "number",
+            normalize: (value) => ({ ...value, foo: value.foo.trim().toUpperCase() }),
+          },
+        },
+      );
+
+      expect(result).toEqual({ foo: "OVERRIDDEN", count: 2 });
+    });
+
+    test("falls back to defaults when validation fails", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/test": { foo: 123 },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const result = getExtensionConfigWithSchema(
+        "@bds_pi/test",
+        { foo: "default" },
+        {
+          schema: {
+            validate: (value): value is { foo: string } => typeof value.foo === "string",
+          },
+        },
+      );
+
+      expect(result).toEqual({ foo: "default" });
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/test; falling back to defaults.",
+      );
+    });
+  });
+
+  describe("getEnabledExtensionConfig", () => {
+    test("defaults enabled to true and strips the reserved flag from config", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/test": { foo: "overridden" },
+      });
+      setGlobalSettingsPath(settingsPath);
+
+      const result = getEnabledExtensionConfig("@bds_pi/test", { foo: "default" });
+
+      expect(result).toEqual({ enabled: true, config: { foo: "overridden" } });
+    });
+
+    test("returns explicit enabled flag and validates remaining config", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/test": { enabled: false, foo: " override ", count: 2 },
+      });
+      setGlobalSettingsPath(settingsPath);
+
+      const result = getEnabledExtensionConfig(
+        "@bds_pi/test",
+        { foo: "default", count: 0 },
+        {
+          schema: {
+            validate: (
+              value,
+            ): value is {
+              foo: string;
+              count: number;
+            } => typeof value.foo === "string" && typeof value.count === "number",
+            normalize: (value) => ({ ...value, foo: value.foo.trim() }),
+          },
+        },
+      );
+
+      expect(result).toEqual({ enabled: false, config: { foo: "override", count: 2 } });
+    });
+
+    test("ignores non-boolean enabled values", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/test": { enabled: "nope", foo: "overridden" },
+      });
+      setGlobalSettingsPath(settingsPath);
+
+      const result = getEnabledExtensionConfig("@bds_pi/test", { foo: "default" });
+
+      expect(result).toEqual({ enabled: true, config: { foo: "overridden" } });
     });
   });
 
