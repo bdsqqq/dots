@@ -1,15 +1,24 @@
 ---
 name: config-gating-hotspot
-description: migrate one pi extension at a time from plain extension config reads to schema-backed startup gating. use when continuing the config-gating hotspot in user/pi: swap to getEnabledExtensionConfig, add a minimal schema, gate startup registration, add inline vitest coverage, verify with tsc + targeted vitest + full test suite, and commit each adopter in-tree.
+description: extend or audit the completed schema-backed startup-gating pattern in user/pi. use when a new extension needs `getEnabledExtensionConfig(...)`, when auditing final-state coverage, or when verifying builtin-shadow fallback behavior alongside the existing hotspot prior art.
 ---
 
 # config-gating-hotspot
 
-use this when continuing the startup-time config-gating migration in `user/pi`.
+use this when extending or auditing the startup-time config-gating pattern in `user/pi`.
+
+## current state
+
+the known migration set is done. use this skill for two cases only:
+
+- a new extension adopts schema-backed startup gating
+- an audit needs to re-check the disabled-behavior contracts
+
+`packages/extensions/e2e/config-gating.test.ts` is now the session-level contract test for the final shape.
 
 ## goal
 
-ship one adopter per commit without blowing up context or broadening scope.
+ship one adopter per commit, or run a bounded final-state audit, without blowing up context or broadening scope.
 
 ```mermaid
 flowchart LR
@@ -53,15 +62,32 @@ flowchart LR
 
 ### simple adopter
 
-tool-only startup surface.
+tool-only startup surface that does not shadow a pi built-in.
 
 examples:
 - `packages/extensions/read-web-page/index.ts`
 - `packages/extensions/oracle/index.ts`
 - `packages/extensions/code-review/index.ts`
+- `packages/extensions/format-file/index.ts`
 
 expected disabled behavior:
 - register no tools
+- session-level contract: the tool name disappears from `session.getAllTools()` and `session.getActiveToolNames()`
+
+### builtin shadow
+
+tool-only startup surface that overrides a pi built-in tool name.
+
+examples:
+- `packages/extensions/bash/index.ts`
+- `packages/extensions/read/index.ts`
+- `packages/extensions/grep/index.ts`
+- `packages/extensions/glob/index.ts` -> shadows builtin `find`
+
+expected disabled behavior:
+- skip only the `@bds_pi/*` wrapper registration
+- pi's native tool with the same public name remains available
+- session-level contract: assert fallback on tool metadata (`description`, parameter shape), not just tool presence
 
 ### startup-surface adopter
 
@@ -119,8 +145,13 @@ give it:
 for every adopter, cover all three:
 
 1. enabled/default path still registers the expected startup capabilities.
-2. disabled path registers none of them.
+2. disabled path registers the expected disabled surface for that adopter class.
 3. invalid config falls back to defaults and still registers them.
+
+for final-state audits, prefer the existing session-level split in `packages/extensions/e2e/config-gating.test.ts`:
+
+- simple adopters: assert tool removal from both registered and active tool sets
+- builtin shadows: assert fallback to pi built-ins by checking tool metadata, because the public tool name intentionally stays the same
 
 mock shape for the helper:
 
@@ -147,16 +178,23 @@ if the full suite prints known stderr from existing malformed-json coverage, not
 
 stage only your files.
 
-commit message shape:
+for new adopters:
 
 ```text
-feat(<scope>): add schema-based startup gating
+feat(pi/<scope>): add schema-based startup gating
+```
+
+for audit/docs follow-up:
+
+```text
+docs(pi/skills): refresh config-gating hotspot
 ```
 
 examples:
-- `feat(search-sessions): add schema-based startup gating`
-- `feat(handoff): add schema-based startup gating`
-- `feat(read-web-page): add schema-based startup gating`
+- `feat(pi/search-sessions): add schema-based startup gating`
+- `feat(pi/handoff): add schema-based startup gating`
+- `feat(pi/read-web-page): add schema-based startup gating`
+- `docs(pi/skills): refresh config-gating hotspot`
 
 ## parent review before reporting
 
