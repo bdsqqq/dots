@@ -22,10 +22,13 @@ import {
   setGlobalSettingsPath,
 } from "@bds_pi/config";
 import codeReviewExtension from "@bds_pi/code-review";
+import finderExtension from "@bds_pi/finder";
 import librarianExtension from "@bds_pi/librarian";
 import lookAtExtension from "@bds_pi/look-at";
 import oracleExtension from "@bds_pi/oracle";
 import readSessionExtension from "@bds_pi/read-session";
+import taskExtension from "@bds_pi/task";
+import webSearchExtension from "@bds_pi/web-search";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CWD = path.resolve(__dirname, "../../../..");
@@ -137,6 +140,37 @@ describe("config gating integration", () => {
         model: "",
         sessionsDir: "",
         maxChars: 0,
+      },
+    },
+    {
+      namespace: "@bds_pi/web-search",
+      toolName: "web_search",
+      extension: webSearchExtension,
+      invalidConfig: {
+        defaultMaxResults: 0,
+        endpoint: "",
+        curlTimeoutSecs: "fast",
+      },
+    },
+    {
+      namespace: "@bds_pi/finder",
+      toolName: "finder",
+      extension: finderExtension,
+      invalidConfig: {
+        model: "",
+        extensionTools: ["read", 123],
+        builtinTools: "grep",
+        promptFile: 123,
+        promptString: false,
+      },
+    },
+    {
+      namespace: "@bds_pi/task",
+      toolName: "Task",
+      extension: taskExtension,
+      invalidConfig: {
+        builtinTools: ["read", 123],
+        extensionTools: "finder",
       },
     },
   ];
