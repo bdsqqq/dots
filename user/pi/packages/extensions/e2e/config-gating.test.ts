@@ -22,6 +22,14 @@ import {
   clearConfigCache,
   setGlobalSettingsPath,
 } from "@bds_pi/config";
+import {
+  getMentionSource,
+  type MentionSource,
+} from "@bds_pi/mentions";
+import handoffExtension from "@bds_pi/handoff";
+import searchSessionsExtension from "@bds_pi/search-sessions";
+import systemPromptExtension from "@bds_pi/system-prompt";
+import toolHarnessExtension from "@bds_pi/tool-harness";
 import bashExtension from "@bds_pi/bash";
 import codeReviewExtension from "@bds_pi/code-review";
 import finderExtension from "@bds_pi/finder";
@@ -85,6 +93,47 @@ function getTool(session: AgentSession, name: string): ToolDefinition {
     throw new Error(`tool not found: ${name}`);
   }
   return tool;
+}
+
+function getCommandNames(session: AgentSession): string[] {
+  return session._extensionRunner.runtime.getCommands().map((command) => command.name);
+}
+
+function getMentionSourceOrThrow(kind: "session" | "handoff"): MentionSource {
+  const source = getMentionSource(kind);
+  if (!source) {
+    throw new Error(`mention source not found: ${kind}`);
+  }
+  return source;
+}
+
+function getRegisteredHandlerNames(session: AgentSession): string[] {
+  return session._extensionRunner.extensions.flatMap((ext) => [...ext.handlers.keys()]);
+}
+
+async function getSystemPromptForTurn(
+  session: AgentSession,
+  prompt = "ping",
+): Promise<string> {
+  const handler = session._extensionRunner.extensions
+    .flatMap((ext) => ext.handlers.get("before_agent_start") ?? [])
+    .at(0);
+
+  if (!handler) {
+    return session._baseSystemPrompt;
+  }
+
+  const result = await handler(
+    {
+      type: "before_agent_start",
+      prompt,
+      images: undefined,
+      systemPrompt: session._baseSystemPrompt,
+    },
+    session._extensionRunner.createContext(),
+  );
+
+  return result?.systemPrompt ?? session._baseSystemPrompt;
 }
 
 describe("config gating integration", () => {
@@ -459,6 +508,154 @@ describe("config gating integration", () => {
         `[@bds_pi/config] invalid config for ${namespace}; falling back to defaults.`,
       );
       customExpectation(getTool(session, toolName));
+    }
+  });
+
+  it("registers startup-surface capabilities when search-sessions and handoff are enabled", async () => {
+    const session = await createSession([searchSessionsExtension, handoffExtension]);
+    sessions.push(session);
+
+    expect(getToolNames(session)).toEqual(
+      expect.arrayContaining(["search_sessions", "handoff"]),
+    );
+    expect(getActiveToolNames(session)).toEqual(
+      expect.arrayContaining(["search_sessions", "handoff"]),
+    );
+    expect(getCommandNames(session)).toContain("handoff");
+
+    const sessionSource = getMentionSourceOrThrow("session");
+    expect(sessionSource.getSuggestions("alpha", {
+      cwd: "/repo/app",
+      sessions: [
+        {
+          sessionId: "alpha1234",
+          sessionName: "alpha work",
+          workspace: "/repo/app",
+          filePath: "/sessions/alpha.jsonl",
+          startedAt: "2026-03-06T17:00:00.000Z",
+          updatedAt: "2026-03-06T17:10:00.000Z",
+          firstUserMessage: "alpha task",
+          searchableText: "alpha task",
+          branchCount: 1,
+          isHandoffCandidate: false,
+        },
+      ],
+    })).toEqual([
+      {
+        value: "@session/alpha1234",
+        label: "@session/alpha1234",
+        description: "alpha work",
+      },
+    ]);
+
+    const handoffSource = getMentionSourceOrThrow("handoff");
+    expect(handoffSource.getSuggestions("handoff", {
+      cwd: "/repo/app",
+      sessions: [
+        {
+          sessionId: "handoffabcd",
+          sessionName: "handoff alpha",
+          workspace: "/repo/app",
+          filePath: "/sessions/handoff.jsonl",
+          startedAt: "2026-03-06T17:00:00.000Z",
+          updatedAt: "2026-03-06T17:20:00.000Z",
+          firstUserMessage: "resume alpha",
+          searchableText: "resume alpha",
+          branchCount: 1,
+          parentSessionPath: "/sessions/parent.jsonl",
+          isHandoffCandidate: true,
+        },
+      ],
+    })).toEqual([
+      {
+        value: "@handoff/handoffabcd",
+        label: "@handoff/handoffabcd",
+        description: "handoff alpha",
+      },
+    ]);
+  });
+
+  it("removes startup-surface capabilities when search-sessions and handoff are disabled", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const settingsPath = writeTmpJson(dir, "bds-pi.json", {
+      "@bds_pi/search-sessions": { enabled: false },
+      "@bds_pi/handoff": { enabled: false },
+    });
+    setGlobalSettingsPath(settingsPath);
+
+    const previousSessionSource = getMentionSource("session");
+    const previousHandoffSource = getMentionSource("handoff");
+    const session = await createSession([searchSessionsExtension, handoffExtension]);
+    sessions.push(session);
+
+    expect(getToolNames(session)).not.toContain("search_sessions");
+    expect(getActiveToolNames(session)).not.toContain("search_sessions");
+    expect(getToolNames(session)).not.toContain("handoff");
+    expect(getActiveToolNames(session)).not.toContain("handoff");
+    expect(getCommandNames(session)).not.toContain("handoff");
+    expect(getRegisteredHandlerNames(session)).not.toEqual(
+      expect.arrayContaining(["agent_end", "session_before_compact", "session_start", "session_switch"]),
+    );
+    expect(getMentionSource("session")).toBe(previousSessionSource);
+    expect(getMentionSource("handoff")).toBe(previousHandoffSource);
+  });
+
+  it("applies hook-only startup surface when system-prompt is enabled and removes it when disabled", async () => {
+    const enabledDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const enabledSettingsPath = writeTmpJson(enabledDir, "bds-pi.json", {
+      "@bds_pi/system-prompt": { promptString: "UNIQUE_MARKER" },
+    });
+    setGlobalSettingsPath(enabledSettingsPath);
+
+    const enabledSession = await createSession([systemPromptExtension]);
+    sessions.push(enabledSession);
+
+    expect(getRegisteredHandlerNames(enabledSession)).toContain("before_agent_start");
+    expect(await getSystemPromptForTurn(enabledSession, "ping")).toContain("UNIQUE_MARKER");
+
+    const disabledDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const disabledSettingsPath = writeTmpJson(disabledDir, "bds-pi.json", {
+      "@bds_pi/system-prompt": { enabled: false, promptString: "UNIQUE_MARKER" },
+    });
+    setGlobalSettingsPath(disabledSettingsPath);
+
+    const disabledSession = await createSession([systemPromptExtension]);
+    sessions.push(disabledSession);
+
+    expect(getRegisteredHandlerNames(disabledSession)).not.toContain("before_agent_start");
+    expect(await getSystemPromptForTurn(disabledSession, "ping")).not.toContain("UNIQUE_MARKER");
+  });
+
+  it("keeps builtin-shadow fallback stable under sub-agent tool filtering", async () => {
+    const originalPiIncludeTools = process.env.PI_INCLUDE_TOOLS;
+    process.env.PI_INCLUDE_TOOLS = "bash";
+
+    try {
+      const enabledSession = await createSession([bashExtension, toolHarnessExtension]);
+      sessions.push(enabledSession);
+      expect(getActiveToolNames(enabledSession)).toContain("bash");
+      expect(getTool(enabledSession, "bash").parameters).toMatchObject({
+        required: ["cmd"],
+      });
+
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+      const settingsPath = writeTmpJson(dir, "bds-pi.json", {
+        "@bds_pi/bash": { enabled: false },
+      });
+      setGlobalSettingsPath(settingsPath);
+
+      const disabledSession = await createSession([bashExtension, toolHarnessExtension]);
+      sessions.push(disabledSession);
+      expect(getActiveToolNames(disabledSession)).toContain("bash");
+      expect(getTool(disabledSession, "bash").parameters).toMatchObject({
+        required: ["command"],
+      });
+    } finally {
+      if (originalPiIncludeTools === undefined) {
+        delete process.env.PI_INCLUDE_TOOLS;
+      } else {
+        process.env.PI_INCLUDE_TOOLS = originalPiIncludeTools;
+      }
     }
   });
 });
