@@ -26,7 +26,12 @@ import {
 } from "@bds_pi/box-format";
 import { Type } from "@sinclair/typebox";
 import { formatHeadTail } from "@bds_pi/output-buffer";
-import { getExtensionConfig } from "@bds_pi/config";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 import {
   isSecretFile,
   listDirectory,
@@ -63,11 +68,38 @@ type ReadExtConfig = {
   maxDirEntries: number;
 };
 
+type ReadExtensionDeps = {
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
+  withPromptPatch: typeof withPromptPatch;
+};
+
 const CONFIG_DEFAULTS: ReadExtConfig = {
   maxLines: 500,
   maxFileBytes: 65536,
   maxLineBytes: 4096,
   maxDirEntries: 1000,
+};
+
+const DEFAULT_DEPS: ReadExtensionDeps = {
+  getEnabledExtensionConfig,
+  withPromptPatch,
+};
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1;
+}
+
+function isReadConfig(value: Record<string, unknown>): value is ReadExtConfig {
+  return (
+    isPositiveInteger(value.maxLines) &&
+    isPositiveInteger(value.maxFileBytes) &&
+    isPositiveInteger(value.maxLineBytes) &&
+    isPositiveInteger(value.maxDirEntries)
+  );
+}
+
+const READ_CONFIG_SCHEMA: ExtensionConfigSchema<ReadExtConfig> = {
+  validate: isReadConfig,
 };
 
 interface ReadParams {
@@ -363,7 +395,137 @@ export function createReadTool(limits: ReadLimits): ToolDefinition {
   };
 }
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/read", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createReadTool(cfg)));
+/**
+ * read is hotter than the other shadow tools because sibling extensions import
+ * its exported limits/types at module load time. config gating therefore needs
+ * to stay at startup registration only: skip the custom read wrapper when
+ * disabled, but keep this module's exports stable so imports like `@bds_pi/read`
+ * in `ls` still evaluate normally.
+ */
+function createReadExtension(
+  deps: ReadExtensionDeps = DEFAULT_DEPS,
+): (pi: ExtensionAPI) => void {
+  return function readExtension(pi: ExtensionAPI): void {
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/read",
+      CONFIG_DEFAULTS,
+      { schema: READ_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
+
+    pi.registerTool(deps.withPromptPatch(createReadTool(cfg)));
+  };
+}
+
+const readExtension: (pi: ExtensionAPI) => void = createReadExtension();
+
+export default readExtension;
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("read extension", () => {
+    it("registers the tool with default config when enabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createReadExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/read",
+        CONFIG_DEFAULTS,
+        { schema: READ_CONFIG_SCHEMA },
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+      expect(harness.tools[0]).toMatchObject({ name: "read" });
+    });
+
+    it("registers no extension tool when disabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createReadExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults for invalid config and still registers", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-read-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/read": {
+          maxLines: 0,
+          maxFileBytes: 0,
+          maxLineBytes: 0,
+          maxDirEntries: 0,
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createReadExtension({
+        ...DEFAULT_DEPS,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/read; falling back to defaults.",
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+      expect(harness.tools[0]).toMatchObject({ name: "read" });
+    });
+  });
 }

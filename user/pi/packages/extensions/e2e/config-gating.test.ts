@@ -29,6 +29,7 @@ import grepExtension from "@bds_pi/grep";
 import librarianExtension from "@bds_pi/librarian";
 import lookAtExtension from "@bds_pi/look-at";
 import oracleExtension from "@bds_pi/oracle";
+import readExtension from "@bds_pi/read";
 import readSessionExtension from "@bds_pi/read-session";
 import taskExtension from "@bds_pi/task";
 import webSearchExtension from "@bds_pi/web-search";
@@ -248,6 +249,36 @@ describe("config gating integration", () => {
           properties: expect.objectContaining({
             ignoreCase: expect.any(Object),
             context: expect.any(Object),
+            limit: expect.any(Object),
+          }),
+        });
+      },
+    },
+    {
+      namespace: "@bds_pi/read",
+      toolName: "read",
+      extension: readExtension,
+      invalidConfig: {
+        maxLines: 0,
+        maxFileBytes: 0,
+        maxLineBytes: 0,
+        maxDirEntries: 0,
+      },
+      customExpectation: (tool) => {
+        expect(tool.description).toContain("Read a file or list a directory from the file system.");
+        expect(tool.parameters).toMatchObject({
+          required: ["path"],
+          properties: expect.objectContaining({
+            read_range: expect.any(Object),
+          }),
+        });
+      },
+      builtinExpectation: (tool) => {
+        expect(tool.description).toContain("Read the contents of a file.");
+        expect(tool.parameters).toMatchObject({
+          required: ["path"],
+          properties: expect.objectContaining({
+            offset: expect.any(Object),
             limit: expect.any(Object),
           }),
         });
