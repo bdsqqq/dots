@@ -22,7 +22,10 @@ import {
   setGlobalSettingsPath,
 } from "@bds_pi/config";
 import codeReviewExtension from "@bds_pi/code-review";
+import librarianExtension from "@bds_pi/librarian";
+import lookAtExtension from "@bds_pi/look-at";
 import oracleExtension from "@bds_pi/oracle";
+import readSessionExtension from "@bds_pi/read-session";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CWD = path.resolve(__dirname, "../../../..");
@@ -70,6 +73,74 @@ function getActiveToolNames(session: AgentSession): string[] {
 describe("config gating integration", () => {
   const sessions: AgentSession[] = [];
 
+  const SIMPLE_ADOPTERS: Array<{
+    namespace: string;
+    toolName: string;
+    extension: ExtensionFactory;
+    invalidConfig: Record<string, unknown>;
+  }> = [
+    {
+      namespace: "@bds_pi/oracle",
+      toolName: "oracle",
+      extension: oracleExtension,
+      invalidConfig: {
+        model: "",
+        extensionTools: ["read", 123],
+        builtinTools: "bash",
+        promptFile: 123,
+        promptString: false,
+      },
+    },
+    {
+      namespace: "@bds_pi/code-review",
+      toolName: "code_review",
+      extension: codeReviewExtension,
+      invalidConfig: {
+        model: "",
+        builtinTools: ["read", 123],
+        extensionTools: "read",
+        promptFile: 123,
+        promptString: false,
+        reportPromptFile: null,
+        reportPromptString: 456,
+      },
+    },
+    {
+      namespace: "@bds_pi/librarian",
+      toolName: "librarian",
+      extension: librarianExtension,
+      invalidConfig: {
+        model: "",
+        extensionTools: ["read_github", 123],
+        builtinTools: "bash",
+        promptFile: 123,
+        promptString: false,
+      },
+    },
+    {
+      namespace: "@bds_pi/look-at",
+      toolName: "look_at",
+      extension: lookAtExtension,
+      invalidConfig: {
+        model: "",
+        extensionTools: ["read", 123],
+        builtinTools: "ls",
+        promptFile: 123,
+        promptString: false,
+      },
+    },
+    {
+      namespace: "@bds_pi/read-session",
+      toolName: "read_session",
+      extension: readSessionExtension,
+      invalidConfig: {
+        model: "",
+        sessionsDir: "",
+        maxChars: 0,
+      },
+    },
+  ];
+
   afterEach(() => {
     for (const session of sessions.splice(0)) {
       session.dispose();
@@ -79,72 +150,63 @@ describe("config gating integration", () => {
     setGlobalSettingsPath(path.join(os.tmpdir(), `nonexistent-${Date.now()}.json`));
   });
 
-  it("registers oracle and code_review by default", async () => {
-    const session = await createSession([oracleExtension, codeReviewExtension]);
+  it("registers all migrated simple adopters by default", async () => {
+    const session = await createSession(SIMPLE_ADOPTERS.map(({ extension }) => extension));
     sessions.push(session);
 
     expect(getToolNames(session)).toEqual(
-      expect.arrayContaining(["oracle", "code_review"]),
+      expect.arrayContaining(SIMPLE_ADOPTERS.map(({ toolName }) => toolName)),
     );
     expect(getActiveToolNames(session)).toEqual(
-      expect.arrayContaining(["oracle", "code_review"]),
+      expect.arrayContaining(SIMPLE_ADOPTERS.map(({ toolName }) => toolName)),
     );
   });
 
-  it("omits oracle and code_review when disabled", async () => {
+  it("omits migrated simple adopters when disabled", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
-    const settingsPath = writeTmpJson(dir, "bds-pi.json", {
-      "@bds_pi/oracle": { enabled: false },
-      "@bds_pi/code-review": { enabled: false },
-    });
+    const settingsPath = writeTmpJson(
+      dir,
+      "bds-pi.json",
+      Object.fromEntries(
+        SIMPLE_ADOPTERS.map(({ namespace }) => [namespace, { enabled: false }]),
+      ),
+    );
     setGlobalSettingsPath(settingsPath);
 
-    const session = await createSession([oracleExtension, codeReviewExtension]);
+    const session = await createSession(SIMPLE_ADOPTERS.map(({ extension }) => extension));
     sessions.push(session);
 
-    expect(getToolNames(session)).not.toContain("oracle");
-    expect(getToolNames(session)).not.toContain("code_review");
-    expect(getActiveToolNames(session)).not.toContain("oracle");
-    expect(getActiveToolNames(session)).not.toContain("code_review");
+    for (const { toolName } of SIMPLE_ADOPTERS) {
+      expect(getToolNames(session)).not.toContain(toolName);
+      expect(getActiveToolNames(session)).not.toContain(toolName);
+    }
   });
 
-  it("falls back to defaults for invalid config and still registers both tools", async () => {
+  it("falls back to defaults for invalid config and still registers migrated simple adopters", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
-    const settingsPath = writeTmpJson(dir, "bds-pi.json", {
-      "@bds_pi/oracle": {
-        model: "",
-        extensionTools: ["read", 123],
-        builtinTools: "bash",
-        promptFile: 123,
-        promptString: false,
-      },
-      "@bds_pi/code-review": {
-        model: "",
-        builtinTools: ["read", 123],
-        extensionTools: "read",
-        promptFile: 123,
-        promptString: false,
-        reportPromptFile: null,
-        reportPromptString: 456,
-      },
-    });
+    const settingsPath = writeTmpJson(
+      dir,
+      "bds-pi.json",
+      Object.fromEntries(
+        SIMPLE_ADOPTERS.map(({ namespace, invalidConfig }) => [namespace, invalidConfig]),
+      ),
+    );
     setGlobalSettingsPath(settingsPath);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    const session = await createSession([oracleExtension, codeReviewExtension]);
+    const session = await createSession(SIMPLE_ADOPTERS.map(({ extension }) => extension));
     sessions.push(session);
 
     expect(getToolNames(session)).toEqual(
-      expect.arrayContaining(["oracle", "code_review"]),
+      expect.arrayContaining(SIMPLE_ADOPTERS.map(({ toolName }) => toolName)),
     );
     expect(getActiveToolNames(session)).toEqual(
-      expect.arrayContaining(["oracle", "code_review"]),
+      expect.arrayContaining(SIMPLE_ADOPTERS.map(({ toolName }) => toolName)),
     );
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[@bds_pi/config] invalid config for @bds_pi/oracle; falling back to defaults.",
-    );
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[@bds_pi/config] invalid config for @bds_pi/code-review; falling back to defaults.",
-    );
+    for (const { namespace } of SIMPLE_ADOPTERS) {
+      expect(errorSpy).toHaveBeenCalledWith(
+        `[@bds_pi/config] invalid config for ${namespace}; falling back to defaults.`,
+      );
+    }
   });
 });
