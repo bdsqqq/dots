@@ -16,6 +16,7 @@ import {
   SettingsManager,
   type AgentSession,
   type ExtensionFactory,
+  type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import {
   clearConfigCache,
@@ -23,6 +24,7 @@ import {
 } from "@bds_pi/config";
 import codeReviewExtension from "@bds_pi/code-review";
 import finderExtension from "@bds_pi/finder";
+import grepExtension from "@bds_pi/grep";
 import librarianExtension from "@bds_pi/librarian";
 import lookAtExtension from "@bds_pi/look-at";
 import oracleExtension from "@bds_pi/oracle";
@@ -71,6 +73,14 @@ function getToolNames(session: AgentSession): string[] {
 
 function getActiveToolNames(session: AgentSession): string[] {
   return session.getActiveToolNames();
+}
+
+function getTool(session: AgentSession, name: string): ToolDefinition {
+  const tool = session.getAllTools().find((candidate) => candidate.name === name);
+  if (!tool) {
+    throw new Error(`tool not found: ${name}`);
+  }
+  return tool;
 }
 
 describe("config gating integration", () => {
@@ -175,6 +185,47 @@ describe("config gating integration", () => {
     },
   ];
 
+  const BUILTIN_SHADOW_ADOPTERS: Array<{
+    namespace: string;
+    toolName: string;
+    extension: ExtensionFactory;
+    invalidConfig: Record<string, unknown>;
+    customExpectation: (tool: ToolDefinition) => void;
+    builtinExpectation: (tool: ToolDefinition) => void;
+  }> = [
+    {
+      namespace: "@bds_pi/grep",
+      toolName: "grep",
+      extension: grepExtension,
+      invalidConfig: {
+        maxTotalMatches: 0,
+        maxPerFile: 0,
+        maxLineChars: 0,
+        contextLines: -1,
+      },
+      customExpectation: (tool) => {
+        expect(tool.description).toContain("Search for exact text patterns in files using ripgrep");
+        expect(tool.parameters).toMatchObject({
+          required: ["pattern"],
+          properties: expect.objectContaining({
+            caseSensitive: expect.any(Object),
+          }),
+        });
+      },
+      builtinExpectation: (tool) => {
+        expect(tool.description).toContain("Search file contents for a pattern.");
+        expect(tool.parameters).toMatchObject({
+          required: ["pattern"],
+          properties: expect.objectContaining({
+            ignoreCase: expect.any(Object),
+            context: expect.any(Object),
+            limit: expect.any(Object),
+          }),
+        });
+      },
+    },
+  ];
+
   afterEach(() => {
     for (const session of sessions.splice(0)) {
       session.dispose();
@@ -241,6 +292,71 @@ describe("config gating integration", () => {
       expect(errorSpy).toHaveBeenCalledWith(
         `[@bds_pi/config] invalid config for ${namespace}; falling back to defaults.`,
       );
+    }
+  });
+
+  it("registers migrated built-in shadows by default", async () => {
+    const session = await createSession(BUILTIN_SHADOW_ADOPTERS.map(({ extension }) => extension));
+    sessions.push(session);
+
+    expect(getToolNames(session)).toEqual(
+      expect.arrayContaining(BUILTIN_SHADOW_ADOPTERS.map(({ toolName }) => toolName)),
+    );
+    expect(getActiveToolNames(session)).toEqual(
+      expect.arrayContaining(BUILTIN_SHADOW_ADOPTERS.map(({ toolName }) => toolName)),
+    );
+    for (const { toolName, customExpectation } of BUILTIN_SHADOW_ADOPTERS) {
+      customExpectation(getTool(session, toolName));
+    }
+  });
+
+  it("falls back to pi built-ins when migrated built-in shadows are disabled", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const settingsPath = writeTmpJson(
+      dir,
+      "bds-pi.json",
+      Object.fromEntries(
+        BUILTIN_SHADOW_ADOPTERS.map(({ namespace }) => [namespace, { enabled: false }]),
+      ),
+    );
+    setGlobalSettingsPath(settingsPath);
+
+    const session = await createSession(BUILTIN_SHADOW_ADOPTERS.map(({ extension }) => extension));
+    sessions.push(session);
+
+    /**
+     * disabled shadow extensions should stop overriding the built-in tool
+     * definition, but they do not change pi's default active-tool set for a
+     * top-level session. assert fallback on registration shape, not activity.
+     */
+    expect(getToolNames(session)).toEqual(
+      expect.arrayContaining(BUILTIN_SHADOW_ADOPTERS.map(({ toolName }) => toolName)),
+    );
+    for (const { toolName, builtinExpectation } of BUILTIN_SHADOW_ADOPTERS) {
+      builtinExpectation(getTool(session, toolName));
+    }
+  });
+
+  it("falls back to defaults for invalid built-in shadow config and still registers custom tools", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const settingsPath = writeTmpJson(
+      dir,
+      "bds-pi.json",
+      Object.fromEntries(
+        BUILTIN_SHADOW_ADOPTERS.map(({ namespace, invalidConfig }) => [namespace, invalidConfig]),
+      ),
+    );
+    setGlobalSettingsPath(settingsPath);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const session = await createSession(BUILTIN_SHADOW_ADOPTERS.map(({ extension }) => extension));
+    sessions.push(session);
+
+    for (const { namespace, toolName, customExpectation } of BUILTIN_SHADOW_ADOPTERS) {
+      expect(errorSpy).toHaveBeenCalledWith(
+        `[@bds_pi/config] invalid config for ${namespace}; falling back to defaults.`,
+      );
+      customExpectation(getTool(session, toolName));
     }
   });
 });

@@ -14,6 +14,7 @@
  */
 
 import { spawn } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { createInterface } from "node:readline";
@@ -29,7 +30,12 @@ import {
   type BoxLine,
   type Excerpt,
 } from "@bds_pi/box-format";
-import { getExtensionConfig } from "@bds_pi/config";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 
 type GrepExtConfig = {
   maxTotalMatches: number;
@@ -38,12 +44,42 @@ type GrepExtConfig = {
   contextLines: number;
 };
 
+type GrepExtensionDeps = {
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
+  withPromptPatch: typeof withPromptPatch;
+};
+
 const CONFIG_DEFAULTS: GrepExtConfig = {
   maxTotalMatches: 100,
   maxPerFile: 10,
   maxLineChars: 200,
   contextLines: 1,
 };
+
+const DEFAULT_DEPS: GrepExtensionDeps = {
+  getEnabledExtensionConfig,
+  withPromptPatch,
+};
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1;
+}
+
+function isGrepConfig(value: Record<string, unknown>): value is GrepExtConfig {
+  return (
+    isPositiveInteger(value.maxTotalMatches) &&
+    isPositiveInteger(value.maxPerFile) &&
+    isPositiveInteger(value.maxLineChars) &&
+    typeof value.contextLines === "number" &&
+    Number.isInteger(value.contextLines) &&
+    value.contextLines >= 0
+  );
+}
+
+const GREP_CONFIG_SCHEMA: ExtensionConfigSchema<GrepExtConfig> = {
+  validate: isGrepConfig,
+};
+
 /** max files shown in collapsed display */
 const COLLAPSED_MAX_FILES = 3;
 /** per-block excerpts for collapsed display — show first 5 visual lines */
@@ -544,7 +580,137 @@ export function createGrepTool(config: GrepExtConfig = CONFIG_DEFAULTS): ToolDef
   };
 }
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/grep", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createGrepTool(cfg)));
+/**
+ * grep shadows pi's built-in tool, so disabling this extension needs to skip
+ * only the custom wrapper and let pi fall back to its built-in definition.
+ * that keeps tool-name resolution stable for sub-agents that explicitly opt
+ * into grep, while letting default top-level sessions inherit pi's own active
+ * tool policy instead of forcing this wrapper on.
+ */
+function createGrepExtension(
+  deps: GrepExtensionDeps = DEFAULT_DEPS,
+): (pi: ExtensionAPI) => void {
+  return function grepExtension(pi: ExtensionAPI): void {
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/grep",
+      CONFIG_DEFAULTS,
+      { schema: GREP_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
+
+    pi.registerTool(deps.withPromptPatch(createGrepTool(cfg)));
+  };
+}
+
+const grepExtension: (pi: ExtensionAPI) => void = createGrepExtension();
+
+export default grepExtension;
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("grep extension", () => {
+    it("registers the tool with default config when enabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createGrepExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/grep",
+        CONFIG_DEFAULTS,
+        { schema: GREP_CONFIG_SCHEMA },
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+      expect(harness.tools[0]).toMatchObject({ name: "grep" });
+    });
+
+    it("registers no extension tool when disabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createGrepExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults for invalid config and still registers", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-grep-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/grep": {
+          maxTotalMatches: 0,
+          maxPerFile: 0,
+          maxLineChars: 0,
+          contextLines: -1,
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createGrepExtension({
+        ...DEFAULT_DEPS,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/grep; falling back to defaults.",
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+      expect(harness.tools[0]).toMatchObject({ name: "grep" });
+    });
+  });
 }
