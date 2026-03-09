@@ -14,10 +14,19 @@
  * the task prompt itself contains all necessary context and instructions.
  */
 
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
-import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
 import {
   getFinalOutput,
@@ -25,11 +34,16 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-import { getExtensionConfig } from "@bds_pi/config";
 
 type TaskExtConfig = {
   builtinTools: string[];
   extensionTools: string[];
+};
+
+type TaskExtensionDeps = {
+  createTaskTool: typeof createTaskTool;
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
+  withPromptPatch: typeof withPromptPatch;
 };
 
 const CONFIG_DEFAULTS: TaskExtConfig = {
@@ -46,6 +60,24 @@ const CONFIG_DEFAULTS: TaskExtConfig = {
     "skill",
     "finder",
   ],
+};
+
+const DEFAULT_DEPS: TaskExtensionDeps = {
+  createTaskTool,
+  getEnabledExtensionConfig,
+  withPromptPatch,
+};
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isTaskConfig(value: Record<string, unknown>): value is TaskExtConfig {
+  return isStringArray(value.builtinTools) && isStringArray(value.extensionTools);
+}
+
+const TASK_CONFIG_SCHEMA: ExtensionConfigSchema<TaskExtConfig> = {
+  validate: isTaskConfig,
 };
 
 interface TaskParams {
@@ -193,10 +225,148 @@ export function createTaskTool(config: TaskConfig = {}): ToolDefinition {
   };
 }
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/task", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createTaskTool({
-    builtinTools: cfg.builtinTools,
-    extensionTools: cfg.extensionTools,
-  })));
+function createTaskExtension(deps: TaskExtensionDeps = DEFAULT_DEPS): (pi: ExtensionAPI) => void {
+  return function taskExtension(pi: ExtensionAPI): void {
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/task",
+      CONFIG_DEFAULTS,
+      { schema: TASK_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
+
+    pi.registerTool(
+      deps.withPromptPatch(
+        deps.createTaskTool({
+          builtinTools: cfg.builtinTools,
+          extensionTools: cfg.extensionTools,
+        }),
+      ),
+    );
+  };
+}
+
+const taskExtension: (pi: ExtensionAPI) => void = createTaskExtension();
+
+export default taskExtension;
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("task extension", () => {
+    it("registers the tool with default config when enabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
+      const tool = { name: "Task" } as ToolDefinition;
+      const createTaskToolSpy = vi.fn(() => tool);
+      const withPromptPatchSpy = vi.fn((nextTool: ToolDefinition) => nextTool);
+      const extension = createTaskExtension({
+        createTaskTool: createTaskToolSpy as typeof DEFAULT_DEPS.createTaskTool,
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/task",
+        CONFIG_DEFAULTS,
+        { schema: TASK_CONFIG_SCHEMA },
+      );
+      expect(createTaskToolSpy).toHaveBeenCalledWith({
+        builtinTools: CONFIG_DEFAULTS.builtinTools,
+        extensionTools: CONFIG_DEFAULTS.extensionTools,
+      });
+      expect(withPromptPatchSpy).toHaveBeenCalledWith(tool);
+      expect(harness.tools).toHaveLength(1);
+    });
+
+    it("registers no tools when disabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const createTaskToolSpy = vi.fn(() => ({ name: "Task" } as ToolDefinition));
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createTaskExtension({
+        createTaskTool: createTaskToolSpy as typeof DEFAULT_DEPS.createTaskTool,
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(createTaskToolSpy).not.toHaveBeenCalled();
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults for invalid config and still registers", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-task-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/task": {
+          builtinTools: ["read", 123],
+          extensionTools: "finder",
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const tool = { name: "Task" } as ToolDefinition;
+      const createTaskToolSpy = vi.fn(() => tool);
+      const withPromptPatchSpy = vi.fn((nextTool: ToolDefinition) => nextTool);
+      const extension = createTaskExtension({
+        ...DEFAULT_DEPS,
+        createTaskTool: createTaskToolSpy as typeof DEFAULT_DEPS.createTaskTool,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/task; falling back to defaults.",
+      );
+      expect(createTaskToolSpy).toHaveBeenCalledWith({
+        builtinTools: CONFIG_DEFAULTS.builtinTools,
+        extensionTools: CONFIG_DEFAULTS.extensionTools,
+      });
+      expect(withPromptPatchSpy).toHaveBeenCalledWith(tool);
+      expect(harness.tools).toHaveLength(1);
+    });
+  });
 }
