@@ -14,12 +14,17 @@ import {
   parseCommitLog,
 } from "./commit-index";
 import { resolveMentions } from "./resolve";
-import { clearSessionMentionCache } from "./session-index";
 import {
-  createSessionMentionSource,
+  clearSessionMentionCache,
+  resolveMentionableSession,
+  type MentionableSession,
+} from "./session-index";
+import {
   getMentionSource,
   registerMentionSource,
+  type MentionSource,
 } from "./sources";
+import { toResolvedSessionMention } from "./types";
 
 describe("parseMentions", () => {
   it("parses canonical mention tokens", () => {
@@ -259,43 +264,17 @@ describe("mention autocomplete", () => {
 describe("resolveMentions", () => {
   it("resolves session and handoff mentions from a provided session index", async () => {
     const unregisterSession = registerMentionSource(
-      createSessionMentionSource("session"),
+      createTestSessionMentionSource("session"),
     );
     const unregisterHandoff = registerMentionSource(
-      createSessionMentionSource("handoff"),
+      createTestSessionMentionSource("handoff"),
     );
 
     try {
       await expect(
         resolveMentions("see @session/alpha1234 then @handoff/handoffabcd", {
           cwd: "/repo/app",
-          sessions: [
-            {
-              sessionId: "alpha1234",
-              sessionName: "alpha work",
-              workspace: "/repo/app",
-              filePath: "/sessions/alpha.jsonl",
-              startedAt: "2026-03-06T17:00:00.000Z",
-              updatedAt: "2026-03-06T17:10:00.000Z",
-              firstUserMessage: "alpha task",
-              searchableText: "alpha task",
-              branchCount: 1,
-              isHandoffCandidate: false,
-            },
-            {
-              sessionId: "handoffabcd",
-              sessionName: "handoff alpha",
-              workspace: "/repo/app",
-              filePath: "/sessions/handoff.jsonl",
-              startedAt: "2026-03-06T17:00:00.000Z",
-              updatedAt: "2026-03-06T17:20:00.000Z",
-              firstUserMessage: "resume alpha",
-              searchableText: "resume alpha",
-              branchCount: 1,
-              parentSessionPath: "/sessions/parent.jsonl",
-              isHandoffCandidate: true,
-            },
-          ],
+          sessions: MENTIONABLE_SESSIONS,
         }),
       ).resolves.toEqual([
         {
@@ -366,6 +345,78 @@ describe("resolveMentions", () => {
     ]);
   });
 });
+
+const MENTIONABLE_SESSIONS: MentionableSession[] = [
+  {
+    sessionId: "alpha1234",
+    sessionName: "alpha work",
+    workspace: "/repo/app",
+    filePath: "/sessions/alpha.jsonl",
+    startedAt: "2026-03-06T17:00:00.000Z",
+    updatedAt: "2026-03-06T17:10:00.000Z",
+    firstUserMessage: "alpha task",
+    searchableText: "alpha task",
+    branchCount: 1,
+    isHandoffCandidate: false,
+  },
+  {
+    sessionId: "handoffabcd",
+    sessionName: "handoff alpha",
+    workspace: "/repo/app",
+    filePath: "/sessions/handoff.jsonl",
+    startedAt: "2026-03-06T17:00:00.000Z",
+    updatedAt: "2026-03-06T17:20:00.000Z",
+    firstUserMessage: "resume alpha",
+    searchableText: "resume alpha",
+    branchCount: 1,
+    parentSessionPath: "/sessions/parent.jsonl",
+    isHandoffCandidate: true,
+  },
+];
+
+function createTestSessionMentionSource(kind: "session" | "handoff"): MentionSource {
+  return {
+    kind,
+    description: kind,
+    getSuggestions(query, context) {
+      return (context.sessions ?? [])
+        .filter((session) => kind !== "handoff" || session.isHandoffCandidate)
+        .filter(
+          (session) =>
+            query.length === 0 ||
+            session.sessionId.toLowerCase().startsWith(query.toLowerCase()),
+        )
+        .slice(0, 8)
+        .map((session) => ({
+          value: `@${kind}/${session.sessionId}`,
+          label: `@${kind}/${session.sessionId}`,
+          description:
+            session.sessionName || session.firstUserMessage || session.workspace,
+        }));
+    },
+    resolve(token, context) {
+      const result = resolveMentionableSession(context.sessions ?? [], token.value, kind);
+
+      if (result.status === "resolved") {
+        return {
+          token,
+          status: "resolved",
+          kind,
+          session: toResolvedSessionMention(result.session),
+        };
+      }
+
+      return {
+        token,
+        status: "unresolved",
+        reason:
+          result.status === "ambiguous"
+            ? `${kind}_prefix_ambiguous`
+            : `${kind}_not_found`,
+      };
+    },
+  };
+}
 
 const repos: string[] = [];
 
