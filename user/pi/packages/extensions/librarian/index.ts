@@ -13,12 +13,21 @@
  * system prompt loaded from sops-decrypted prompts at init time.
  */
 
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -27,7 +36,6 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-import { getExtensionConfig } from "@bds_pi/config";
 
 type LibrarianExtConfig = {
   model: string;
@@ -35,6 +43,12 @@ type LibrarianExtConfig = {
   builtinTools: string[];
   promptFile: string;
   promptString: string;
+};
+
+type LibrarianExtensionDeps = {
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
+  resolvePrompt: typeof resolvePrompt;
+  withPromptPatch: typeof withPromptPatch;
 };
 
 const CONFIG_DEFAULTS: LibrarianExtConfig = {
@@ -52,6 +66,36 @@ const CONFIG_DEFAULTS: LibrarianExtConfig = {
   builtinTools: [],
   promptFile: "",
   promptString: "",
+};
+
+const DEFAULT_DEPS: LibrarianExtensionDeps = {
+  getEnabledExtensionConfig,
+  resolvePrompt,
+  withPromptPatch,
+};
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isLibrarianConfig(
+  value: Record<string, unknown>,
+): value is LibrarianExtConfig {
+  return (
+    isNonEmptyString(value.model) &&
+    isStringArray(value.extensionTools) &&
+    isStringArray(value.builtinTools) &&
+    typeof value.promptFile === "string" &&
+    typeof value.promptString === "string"
+  );
+}
+
+const LIBRARIAN_CONFIG_SCHEMA: ExtensionConfigSchema<LibrarianExtConfig> = {
+  validate: isLibrarianConfig,
 };
 
 export interface LibrarianConfig {
@@ -215,12 +259,153 @@ export function createLibrarianTool(
   };
 }
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/librarian", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createLibrarianTool({
-    systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),
-    model: cfg.model,
-    extensionTools: cfg.extensionTools,
-    builtinTools: cfg.builtinTools,
-  })));
+function createLibrarianExtension(
+  deps: LibrarianExtensionDeps = DEFAULT_DEPS,
+): (pi: ExtensionAPI) => void {
+  return function librarianExtension(pi: ExtensionAPI): void {
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/librarian",
+      CONFIG_DEFAULTS,
+      { schema: LIBRARIAN_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
+
+    pi.registerTool(
+      deps.withPromptPatch(
+        createLibrarianTool({
+          systemPrompt: deps.resolvePrompt(cfg.promptString, cfg.promptFile),
+          model: cfg.model,
+          extensionTools: cfg.extensionTools,
+          builtinTools: cfg.builtinTools,
+        }),
+      ),
+    );
+  };
+}
+
+const librarianExtension: (pi: ExtensionAPI) => void = createLibrarianExtension();
+
+export default librarianExtension;
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("librarian extension", () => {
+    it("registers the tool with default config when enabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
+      const resolvePromptSpy = vi.fn(() => "system prompt");
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createLibrarianExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/librarian",
+        CONFIG_DEFAULTS,
+        { schema: LIBRARIAN_CONFIG_SCHEMA },
+      );
+      expect(resolvePromptSpy).toHaveBeenCalledWith(
+        CONFIG_DEFAULTS.promptString,
+        CONFIG_DEFAULTS.promptFile,
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+    });
+
+    it("registers no tools when disabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const resolvePromptSpy = vi.fn(() => "system prompt");
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createLibrarianExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(resolvePromptSpy).not.toHaveBeenCalled();
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults for invalid config and still registers", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-librarian-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/librarian": {
+          model: "",
+          extensionTools: ["read_github", 123],
+          builtinTools: "bash",
+          promptFile: 123,
+          promptString: false,
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const resolvePromptSpy = vi.fn(() => "system prompt");
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createLibrarianExtension({
+        ...DEFAULT_DEPS,
+        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/librarian; falling back to defaults.",
+      );
+      expect(resolvePromptSpy).toHaveBeenCalledWith(
+        CONFIG_DEFAULTS.promptString,
+        CONFIG_DEFAULTS.promptFile,
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+    });
+  });
 }
