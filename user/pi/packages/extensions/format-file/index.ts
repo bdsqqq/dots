@@ -13,7 +13,12 @@ import { spawnSync } from "node:child_process";
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
-import { getExtensionConfig } from "@bds_pi/config";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
@@ -37,9 +42,19 @@ type FormatFileExtConfig = {
   formatterLookupTimeoutMs: number;
 };
 
+type FormatFileExtensionDeps = {
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
+  withPromptPatch: typeof withPromptPatch;
+};
+
 const CONFIG_DEFAULTS: FormatFileExtConfig = {
   preferredFormatter: "auto",
   formatterLookupTimeoutMs: 3000,
+};
+
+const DEFAULT_DEPS: FormatFileExtensionDeps = {
+  getEnabledExtensionConfig,
+  withPromptPatch,
 };
 
 const FORMATTERS: Formatter[] = [
@@ -52,6 +67,25 @@ const FORMATTERS: Formatter[] = [
     args: (file) => ["format", "--write", file],
   },
 ];
+
+function isFormatterName(value: unknown): value is string {
+  return value === "auto" || FORMATTERS.some((formatter) => formatter.name === value);
+}
+
+function isFormatFileConfig(
+  value: Record<string, unknown>,
+): value is FormatFileExtConfig {
+  return (
+    isFormatterName(value.preferredFormatter) &&
+    typeof value.formatterLookupTimeoutMs === "number" &&
+    Number.isInteger(value.formatterLookupTimeoutMs) &&
+    value.formatterLookupTimeoutMs >= 1
+  );
+}
+
+const FORMAT_FILE_CONFIG_SCHEMA: ExtensionConfigSchema<FormatFileExtConfig> = {
+  validate: isFormatFileConfig,
+};
 
 function findFormatter(preferred: string, timeoutMs: number): Formatter | null {
   const ordered = preferred !== "auto"
@@ -205,7 +239,128 @@ export function createFormatFileTool(config: FormatFileExtConfig = CONFIG_DEFAUL
   };
 }
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/format-file", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createFormatFileTool(cfg)));
+function createFormatFileExtension(
+  deps: FormatFileExtensionDeps = DEFAULT_DEPS,
+): (pi: ExtensionAPI) => void {
+  return function formatFileExtension(pi: ExtensionAPI): void {
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/format-file",
+      CONFIG_DEFAULTS,
+      { schema: FORMAT_FILE_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
+
+    pi.registerTool(deps.withPromptPatch(createFormatFileTool(cfg)));
+  };
+}
+
+const formatFileExtension: (pi: ExtensionAPI) => void = createFormatFileExtension();
+
+export default formatFileExtension;
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("format-file extension", () => {
+    it("registers the tool with default config when enabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createFormatFileExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/format-file",
+        CONFIG_DEFAULTS,
+        { schema: FORMAT_FILE_CONFIG_SCHEMA },
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+      expect(harness.tools[0]).toMatchObject({ name: "format_file" });
+    });
+
+    it("registers no tools when disabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createFormatFileExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults for invalid config and still registers", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-format-file-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/format-file": {
+          preferredFormatter: "nope",
+          formatterLookupTimeoutMs: 0,
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createFormatFileExtension({
+        ...DEFAULT_DEPS,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/format-file; falling back to defaults.",
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+      expect(harness.tools[0]).toMatchObject({ name: "format_file" });
+    });
+  });
 }
