@@ -26,7 +26,12 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 import { headTailChars } from "@bds_pi/output-buffer";
-import { getExtensionConfig } from "@bds_pi/config";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 
 type ReadSessionExtConfig = {
   model: string;
@@ -38,6 +43,34 @@ const CONFIG_DEFAULTS: ReadSessionExtConfig = {
   model: "openrouter/google/gemini-3-flash-preview",
   sessionsDir: path.join(os.homedir(), ".pi", "agent", "sessions"),
   maxChars: 120_000,
+};
+
+export type ReadSessionExtensionDeps = {
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
+  withPromptPatch: typeof withPromptPatch;
+};
+
+const DEFAULT_DEPS: ReadSessionExtensionDeps = {
+  getEnabledExtensionConfig,
+  withPromptPatch,
+};
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isReadSessionConfig(value: Record<string, unknown>): value is ReadSessionExtConfig {
+  return (
+    isNonEmptyString(value.model) &&
+    isNonEmptyString(value.sessionsDir) &&
+    typeof value.maxChars === "number" &&
+    Number.isInteger(value.maxChars) &&
+    value.maxChars >= 1
+  );
+}
+
+const READ_SESSION_CONFIG_SCHEMA: ExtensionConfigSchema<ReadSessionExtConfig> = {
+  validate: isReadSessionConfig,
 };
 
 const DEFAULT_SYSTEM_PROMPT = `You are analyzing a pi coding agent session transcript. Extract information relevant to the user's goal. Be specific — cite file paths, decisions made, code patterns discussed. If a specific branch is marked as the target, focus on that branch but use other branches for context about what was tried and abandoned.`;
@@ -461,7 +494,8 @@ export function createReadSessionTool(
 }
 
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, it } = import.meta.vitest;
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
   const tmpRoots: string[] = [];
 
   function makeTmpDir(): string {
@@ -478,7 +512,29 @@ if (import.meta.vitest) {
     );
   }
 
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
   afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
     for (const dir of tmpRoots.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -519,13 +575,107 @@ if (import.meta.vitest) {
       expect(findSessionFile("beta-session", sessionsDir)).toBe(filePath);
     });
   });
+
+  describe("read-session extension", () => {
+    it("registers the tool with default config when enabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createReadSessionExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/read-session",
+        CONFIG_DEFAULTS,
+        { schema: READ_SESSION_CONFIG_SCHEMA },
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+    });
+
+    it("registers no tools when disabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createReadSessionExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults for invalid config and still registers", () => {
+      const dir = makeTmpDir();
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/read-session": {
+          model: "",
+          sessionsDir: "",
+          maxChars: 0,
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createReadSessionExtension({
+        ...DEFAULT_DEPS,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/read-session; falling back to defaults.",
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+    });
+  });
 }
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/read-session", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createReadSessionTool({
-    model: cfg.model,
-    sessionsDir: cfg.sessionsDir,
-    maxChars: cfg.maxChars,
-  })));
+export function createReadSessionExtension(
+  deps: ReadSessionExtensionDeps = DEFAULT_DEPS,
+): (pi: ExtensionAPI) => void {
+  return function readSessionExtension(pi: ExtensionAPI): void {
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/read-session",
+      CONFIG_DEFAULTS,
+      { schema: READ_SESSION_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
+
+    pi.registerTool(
+      deps.withPromptPatch(
+        createReadSessionTool({
+          model: cfg.model,
+          sessionsDir: cfg.sessionsDir,
+          maxChars: cfg.maxChars,
+        }),
+      ),
+    );
+  };
 }
+
+const readSessionExtension: (pi: ExtensionAPI) => void = createReadSessionExtension();
+
+export default readSessionExtension;
