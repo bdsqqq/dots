@@ -335,6 +335,45 @@ rm -rf extensions/tools/*.ts extensions/tools/*.test.ts
 
 ---
 
+## migration status marker — 2026-03-06
+
+hotspot 1/3 is done for the current inline-test pass.
+
+moved inline so far:
+- `packages/extensions/mentions/index.ts`
+- `packages/extensions/search-sessions/index.ts`
+- `packages/extensions/handoff/index.ts`
+- `packages/extensions/bash/index.ts`
+- `packages/extensions/editor/index.ts` — only `formatModelDisplay(provider, modelId)`
+- `packages/core/github-api/index.ts` — pure helper coverage (`parseRepoUrl`, `repoSlug`, `decodeBase64Content`, `addLineNumbers`, `truncate`)
+
+intentional holdouts:
+- `packages/extensions/editor/editor.test.ts` — tmux e2e only
+- `packages/extensions/github/github.test.ts` — real `gh api` + `pi` integration only
+- `packages/extensions/e2e/e2e.test.ts`
+- `packages/extensions/e2e/e2e-contract.test.ts`
+
+why this boundary:
+- inline tests are for local, pure logic that benefits from living beside the implementation.
+- scenario tests stay separate when they need tmux, network auth, spawned `pi`, or fixture-driven contracts.
+- `packages/core/*` owns helper coverage when the logic lives there; don't keep extension-local tests for core helpers.
+
+verification used for each completed unit:
+- `bun x tsc -p tsconfig.build.json --noEmit`
+- targeted `bun x vitest run ...`
+- `bun run test`
+
+history markers from this pass:
+- `257eb38` refactor(mentions): move session sources to owning extensions
+- `442cbce` test(mentions): inline adapter coverage
+- `a233e95` test(search-sessions): inline adapter coverage
+- `4757323` test(handoff): inline adapter coverage
+- `51e24bb` test(bash): inline output coverage
+- `65b1210` test(editor): inline model display coverage
+- `abcab17` test(github): inline helper coverage
+
+next agents: preserve true history. commit each finished unit. if using `Task`, tell the child to commit in-tree.
+
 ## phase 7: verification
 
 **7.1 typecheck**

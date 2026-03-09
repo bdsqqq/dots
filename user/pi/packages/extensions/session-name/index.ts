@@ -7,14 +7,22 @@
  * may drift. uses gemini flash for speed/cost.
  */
 
-import {
-  complete,
-  type Api,
-  type Model,
-  type Message,
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as piAi from "@mariozechner/pi-ai";
+import type {
+  Api,
+  Model,
+  Message,
 } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { getExtensionConfig } from "@bds_pi/config";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 
 type SessionNameExtConfig = {
   model: { provider: string; id: string };
@@ -29,8 +37,40 @@ const CONFIG_DEFAULTS: SessionNameExtConfig = {
   renameInterval: 10,
 };
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/session-name", CONFIG_DEFAULTS);
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSessionNameConfig(value: Record<string, unknown>): value is SessionNameExtConfig {
+  const renameInterval = value.renameInterval;
+  if (typeof renameInterval !== "number" || !Number.isInteger(renameInterval) || renameInterval < 1) {
+    return false;
+  }
+
+  if (!isPlainObject(value.model)) {
+    return false;
+  }
+
+  return (
+    typeof value.model.provider === "string" &&
+    value.model.provider.trim().length > 0 &&
+    typeof value.model.id === "string" &&
+    value.model.id.trim().length > 0
+  );
+}
+
+const SESSION_NAME_CONFIG_SCHEMA: ExtensionConfigSchema<SessionNameExtConfig> = {
+  validate: isSessionNameConfig,
+};
+
+function sessionNameExtension(pi: ExtensionAPI): void {
+  const { enabled, config: cfg } = getEnabledExtensionConfig(
+    "@bds_pi/session-name",
+    CONFIG_DEFAULTS,
+    { schema: SESSION_NAME_CONFIG_SCHEMA },
+  );
+  if (!enabled) return;
+
   let messageCount = 0;
   let pending = false;
 
@@ -68,6 +108,8 @@ export default function(pi: ExtensionAPI): void {
   });
 }
 
+export default sessionNameExtension;
+
 async function generateName(
   model: Model<Api>,
   registry: { getApiKey(model: Model<Api>): Promise<string | undefined> },
@@ -88,7 +130,7 @@ async function generateName(
     timestamp: Date.now(),
   };
 
-  const response = await complete(
+  const response = await piAi.complete(
     model,
     { messages: [message] },
     { apiKey, maxTokens: 20 },
@@ -102,4 +144,113 @@ async function generateName(
     .trim();
 
   return title || null;
+}
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const handlers = new Map<string, (event: any, ctx: any) => Promise<void> | void>();
+    let sessionName = "";
+
+    const pi = {
+      on(event: string, handler: (event: any, ctx: any) => Promise<void> | void) {
+        handlers.set(event, handler);
+      },
+      getSessionName() {
+        return sessionName;
+      },
+      setSessionName(next: string) {
+        sessionName = next;
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, handlers, getSessionName: () => sessionName };
+  }
+
+  async function flushAsyncWork(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("session-name extension", () => {
+    it("skips hook registration when disabled in config", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-session-name-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/session-name": { enabled: false },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const harness = createMockExtensionApiHarness();
+
+      sessionNameExtension(harness.pi);
+
+      expect(harness.handlers.size).toBe(0);
+    });
+
+    it("registers hooks with default config when enabled", () => {
+      setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+      const harness = createMockExtensionApiHarness();
+
+      sessionNameExtension(harness.pi);
+
+      expect([...harness.handlers.keys()].sort()).toEqual(["input", "session_switch"]);
+    });
+
+    it("falls back to defaults when schema validation fails", async () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-session-name-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/session-name": {
+          renameInterval: "fast",
+          model: { provider: 123, id: false },
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const harness = createMockExtensionApiHarness();
+      const model = { id: "fallback-model" } as unknown as Model<Api>;
+      const findSpy = vi.fn(() => model);
+      const ctx = {
+        model,
+        modelRegistry: {
+          find: findSpy,
+          getApiKey: vi.fn(async () => undefined),
+        },
+      };
+
+      sessionNameExtension(harness.pi);
+
+      expect([...harness.handlers.keys()].sort()).toEqual(["input", "session_switch"]);
+
+      const inputHandler = harness.handlers.get("input");
+      expect(inputHandler).toBeDefined();
+
+      for (let i = 0; i < 11; i++) {
+        await inputHandler?.({ text: `message body ${i} with enough chars` }, ctx);
+        await flushAsyncWork();
+      }
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/session-name; falling back to defaults.",
+      );
+      expect(findSpy).toHaveBeenCalledWith(
+        CONFIG_DEFAULTS.model.provider,
+        CONFIG_DEFAULTS.model.id,
+      );
+      expect(ctx.modelRegistry.getApiKey).toHaveBeenCalledTimes(2);
+      expect(harness.getSessionName()).toBe("");
+    });
+  });
 }

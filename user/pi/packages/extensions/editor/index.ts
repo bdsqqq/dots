@@ -253,6 +253,14 @@ function shortenPath(cwd: string): string {
   return cwd;
 }
 
+function formatModelDisplay(
+  provider: string | undefined,
+  modelId: string,
+): string {
+  const providerDisplay = provider ? `(${provider})` : "";
+  return `${providerDisplay} ${modelId}`.trim();
+}
+
 /**
  * estimate context tokens from session entries using chars/4 heuristic.
  * fallback when provider hasn't reported usage yet (e.g., after compaction).
@@ -348,8 +356,7 @@ function updateStatsLabels(
   // top-right: model + thinking level
   const topRightParts: string[] = [];
   if (model) {
-    const provider = model.provider ? `(${model.provider})` : "";
-    topRightParts.push(`${provider} ${model.id}`.trim());
+    topRightParts.push(formatModelDisplay(model.provider, model.id));
   }
   const thinkingLevel = pi.getThinkingLevel();
   if (thinkingLevel && thinkingLevel !== "off") {
@@ -486,7 +493,7 @@ function renderActivity(state: ActivityState): string {
   return parts.join(" · ");
 }
 
-export default function(pi: ExtensionAPI): void {
+function editorExtension(pi: ExtensionAPI): void {
   let editor: LabeledEditor | null = null;
   const statsCacheBranchLen = { value: -1 };
   let gitBranch: string | null = null;
@@ -708,5 +715,33 @@ export default function(pi: ExtensionAPI): void {
     statusRow?.clear();
     statsCacheBranchLen.value = -1;
     if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
+  });
+}
+
+export default editorExtension;
+
+if (import.meta.vitest) {
+  const { describe, expect, it } = import.meta.vitest;
+
+  describe("editor extension", () => {
+    describe("formatModelDisplay", () => {
+      it("formats model display string correctly", () => {
+        expect(
+          formatModelDisplay("anthropic", "claude-sonnet-4-20250514"),
+        ).toBe("(anthropic) claude-sonnet-4-20250514");
+
+        expect(formatModelDisplay("openai", "gpt-4o")).toBe(
+          "(openai) gpt-4o",
+        );
+
+        expect(formatModelDisplay("openrouter", "z-ai/glm-5")).toBe(
+          "(openrouter) z-ai/glm-5",
+        );
+
+        expect(formatModelDisplay(undefined, "some-model")).toBe(
+          "some-model",
+        );
+      });
+    });
   });
 }
