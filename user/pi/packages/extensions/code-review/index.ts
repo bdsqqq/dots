@@ -14,12 +14,21 @@
  * .md checks via haiku) deferred.
  */
 
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -28,7 +37,6 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-import { getExtensionConfig } from "@bds_pi/config";
 
 type CodeReviewExtConfig = {
   model: string;
@@ -38,6 +46,12 @@ type CodeReviewExtConfig = {
   promptString: string;
   reportPromptFile: string;
   reportPromptString: string;
+};
+
+type CodeReviewExtensionDeps = {
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
+  resolvePrompt: typeof resolvePrompt;
+  withPromptPatch: typeof withPromptPatch;
 };
 
 const CONFIG_DEFAULTS: CodeReviewExtConfig = {
@@ -56,6 +70,38 @@ Today's date: {date}
 Current working directory (cwd): {cwd}`;
 
 const DEFAULT_REPORT_FORMAT = `Emit findings as XML: <codeReview><comment> elements with filename, startLine, endLine, severity (critical/high/medium/low), commentType (bug/suggested_edit/compliment/non_actionable), text, why, and fix fields.`;
+
+const DEFAULT_DEPS: CodeReviewExtensionDeps = {
+  getEnabledExtensionConfig,
+  resolvePrompt,
+  withPromptPatch,
+};
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isCodeReviewConfig(
+  value: Record<string, unknown>,
+): value is CodeReviewExtConfig {
+  return (
+    isNonEmptyString(value.model) &&
+    isStringArray(value.builtinTools) &&
+    isStringArray(value.extensionTools) &&
+    typeof value.promptFile === "string" &&
+    typeof value.promptString === "string" &&
+    typeof value.reportPromptFile === "string" &&
+    typeof value.reportPromptString === "string"
+  );
+}
+
+const CODE_REVIEW_CONFIG_SCHEMA: ExtensionConfigSchema<CodeReviewExtConfig> = {
+  validate: isCodeReviewConfig,
+};
 
 export interface CodeReviewConfig {
   systemPrompt?: string;
@@ -293,13 +339,177 @@ export function createCodeReviewTool(
   };
 }
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/code-review", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createCodeReviewTool({
-    systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),
-    reportFormat: resolvePrompt(cfg.reportPromptString, cfg.reportPromptFile),
-    model: cfg.model,
-    builtinTools: cfg.builtinTools,
-    extensionTools: cfg.extensionTools,
-  })));
+function createCodeReviewExtension(
+  deps: CodeReviewExtensionDeps = DEFAULT_DEPS,
+): (pi: ExtensionAPI) => void {
+  return function codeReviewExtension(pi: ExtensionAPI): void {
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/code-review",
+      CONFIG_DEFAULTS,
+      { schema: CODE_REVIEW_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
+
+    pi.registerTool(
+      deps.withPromptPatch(
+        createCodeReviewTool({
+          systemPrompt: deps.resolvePrompt(cfg.promptString, cfg.promptFile),
+          reportFormat: deps.resolvePrompt(
+            cfg.reportPromptString,
+            cfg.reportPromptFile,
+          ),
+          model: cfg.model,
+          builtinTools: cfg.builtinTools,
+          extensionTools: cfg.extensionTools,
+        }),
+      ),
+    );
+  };
+}
+
+const codeReviewExtension: (pi: ExtensionAPI) => void = createCodeReviewExtension();
+
+export default codeReviewExtension;
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("code-review extension", () => {
+    it("registers the tool with default config when enabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
+      const resolvePromptSpy = vi.fn((promptString: string, promptFile: string) =>
+        resolvePrompt(promptString, promptFile),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createCodeReviewExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/code-review",
+        CONFIG_DEFAULTS,
+        { schema: CODE_REVIEW_CONFIG_SCHEMA },
+      );
+      expect(resolvePromptSpy).toHaveBeenNthCalledWith(
+        1,
+        CONFIG_DEFAULTS.promptString,
+        CONFIG_DEFAULTS.promptFile,
+      );
+      expect(resolvePromptSpy).toHaveBeenNthCalledWith(
+        2,
+        CONFIG_DEFAULTS.reportPromptString,
+        CONFIG_DEFAULTS.reportPromptFile,
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+    });
+
+    it("registers no tools when disabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const resolvePromptSpy = vi.fn((promptString: string, promptFile: string) =>
+        resolvePrompt(promptString, promptFile),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createCodeReviewExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(resolvePromptSpy).not.toHaveBeenCalled();
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults for invalid config and still registers", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-code-review-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/code-review": {
+          model: "",
+          builtinTools: ["read", 123],
+          extensionTools: "read",
+          promptFile: 123,
+          promptString: false,
+          reportPromptFile: null,
+          reportPromptString: 456,
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const resolvePromptSpy = vi.fn((promptString: string, promptFile: string) =>
+        resolvePrompt(promptString, promptFile),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createCodeReviewExtension({
+        ...DEFAULT_DEPS,
+        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/code-review; falling back to defaults.",
+      );
+      expect(resolvePromptSpy).toHaveBeenNthCalledWith(
+        1,
+        CONFIG_DEFAULTS.promptString,
+        CONFIG_DEFAULTS.promptFile,
+      );
+      expect(resolvePromptSpy).toHaveBeenNthCalledWith(
+        2,
+        CONFIG_DEFAULTS.reportPromptString,
+        CONFIG_DEFAULTS.reportPromptFile,
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+    });
+  });
 }
