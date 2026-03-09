@@ -22,6 +22,7 @@ import {
   clearConfigCache,
   setGlobalSettingsPath,
 } from "@bds_pi/config";
+import bashExtension from "@bds_pi/bash";
 import codeReviewExtension from "@bds_pi/code-review";
 import finderExtension from "@bds_pi/finder";
 import grepExtension from "@bds_pi/grep";
@@ -193,6 +194,34 @@ describe("config gating integration", () => {
     customExpectation: (tool: ToolDefinition) => void;
     builtinExpectation: (tool: ToolDefinition) => void;
   }> = [
+    {
+      namespace: "@bds_pi/bash",
+      toolName: "bash",
+      extension: bashExtension,
+      invalidConfig: {
+        headLines: 0,
+        tailLines: 0,
+        sigkillDelayMs: -1,
+      },
+      customExpectation: (tool) => {
+        expect(tool.description).toContain("Executes the given shell command using bash.");
+        expect(tool.parameters).toMatchObject({
+          required: ["cmd"],
+          properties: expect.objectContaining({
+            cwd: expect.any(Object),
+          }),
+        });
+      },
+      builtinExpectation: (tool) => {
+        expect(tool.description).toContain("Execute a bash command in the current working directory.");
+        expect(tool.parameters).toMatchObject({
+          required: ["command"],
+          properties: expect.objectContaining({
+            timeout: expect.any(Object),
+          }),
+        });
+      },
+    },
     {
       namespace: "@bds_pi/grep",
       toolName: "grep",
