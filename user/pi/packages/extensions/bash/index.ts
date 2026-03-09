@@ -15,7 +15,9 @@
  * shadows pi's built-in `bash` tool via same-name registration.
  */
 
+import * as fs from "node:fs";
 import { existsSync } from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
@@ -31,7 +33,12 @@ import { withFileLock } from "@bds_pi/mutex";
 import { evaluatePermission, loadPermissions } from "@bds_pi/permissions";
 import { resolveToAbsolute } from "@bds_pi/fs";
 import { OutputBuffer } from "@bds_pi/output-buffer";
-import { getExtensionConfig } from "@bds_pi/config";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 
 type BashExtConfig = {
   headLines: number;
@@ -39,10 +46,38 @@ type BashExtConfig = {
   sigkillDelayMs: number;
 };
 
+type BashExtensionDeps = {
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
+  withPromptPatch: typeof withPromptPatch;
+};
+
 const CONFIG_DEFAULTS: BashExtConfig = {
   headLines: 50,
   tailLines: 50,
   sigkillDelayMs: 3000,
+};
+
+const DEFAULT_DEPS: BashExtensionDeps = {
+  getEnabledExtensionConfig,
+  withPromptPatch,
+};
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1;
+}
+
+function isBashConfig(value: Record<string, unknown>): value is BashExtConfig {
+  return (
+    isPositiveInteger(value.headLines) &&
+    isPositiveInteger(value.tailLines) &&
+    typeof value.sigkillDelayMs === "number" &&
+    Number.isInteger(value.sigkillDelayMs) &&
+    value.sigkillDelayMs >= 0
+  );
+}
+
+const BASH_CONFIG_SCHEMA: ExtensionConfigSchema<BashExtConfig> = {
+  validate: isBashConfig,
 };
 
 // --- shell config ---
@@ -528,7 +563,135 @@ if (import.meta.vitest) {
   });
 }
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/bash", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createBashTool(cfg)));
+/**
+ * bash also shadows a pi built-in, so disabling this extension should stop at
+ * the wrapper boundary and reveal pi's native bash tool. sub-agents still ask
+ * for the name `bash`; preserving that name avoids breaking tool selection
+ * while letting config opt out of the stricter command policy here.
+ */
+function createBashExtension(
+  deps: BashExtensionDeps = DEFAULT_DEPS,
+): (pi: ExtensionAPI) => void {
+  return function bashExtension(pi: ExtensionAPI): void {
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/bash",
+      CONFIG_DEFAULTS,
+      { schema: BASH_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
+
+    pi.registerTool(deps.withPromptPatch(createBashTool(cfg)));
+  };
+}
+
+const bashExtension: (pi: ExtensionAPI) => void = createBashExtension();
+
+export default bashExtension;
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("bash extension", () => {
+    it("registers the tool with default config when enabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createBashExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/bash",
+        CONFIG_DEFAULTS,
+        { schema: BASH_CONFIG_SCHEMA },
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+      expect(harness.tools[0]).toMatchObject({ name: "bash" });
+    });
+
+    it("registers no extension tool when disabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createBashExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults for invalid config and still registers", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-bash-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/bash": {
+          headLines: 0,
+          tailLines: 0,
+          sigkillDelayMs: -1,
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createBashExtension({
+        ...DEFAULT_DEPS,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/bash; falling back to defaults.",
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+      expect(harness.tools[0]).toMatchObject({ name: "bash" });
+    });
+  });
 }
