@@ -7,3 +7,6 @@
 (?d)**/.DS_Store
 (?d)**/Thumbs.db
 (?d)**/desktop.ini
+
+**/.keep
+

@@ -9,7 +9,7 @@
     # home-manager's indirection to create a direct symlink.
     # (same pattern as bun.nix:33 for the global manifest)
     home.activation.commonplaceAgents = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      ln -sf "${config.home.homeDirectory}/commonplace/01_files/nix/config/global-agents.md" \
+      ln -sf "01_files/nix/config/global-agents.md" \
              "${config.home.homeDirectory}/commonplace/AGENTS.md"
     '';
 
