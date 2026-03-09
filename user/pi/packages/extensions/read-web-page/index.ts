@@ -11,6 +11,9 @@
  */
 
 import { spawn } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type {
   ExtensionAPI,
   ToolDefinition,
@@ -18,6 +21,12 @@ import type {
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { htmlToMarkdown } from "@bds_pi/html-to-md";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -28,7 +37,6 @@ import {
 } from "@bds_pi/sub-agent-render";
 import { OutputBuffer, headTailChars } from "@bds_pi/output-buffer";
 import { osc8Link } from "@bds_pi/box-format";
-import { getExtensionConfig } from "@bds_pi/config";
 
 const HEAD_LINES = 500;
 const TAIL_LINES = 500;
@@ -42,10 +50,40 @@ type ReadWebPageExtConfig = {
   promptString: string;
 };
 
+type ReadWebPageExtensionDeps = {
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
+  resolvePrompt: typeof resolvePrompt;
+  withPromptPatch: typeof withPromptPatch;
+};
+
 const CONFIG_DEFAULTS: ReadWebPageExtConfig = {
   model: "openrouter/google/gemini-3-flash-preview",
   promptFile: "",
   promptString: "",
+};
+
+const DEFAULT_DEPS: ReadWebPageExtensionDeps = {
+  getEnabledExtensionConfig,
+  resolvePrompt,
+  withPromptPatch,
+};
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isReadWebPageConfig(
+  value: Record<string, unknown>,
+): value is ReadWebPageExtConfig {
+  return (
+    isNonEmptyString(value.model) &&
+    typeof value.promptFile === "string" &&
+    typeof value.promptString === "string"
+  );
+}
+
+const READ_WEB_PAGE_CONFIG_SCHEMA: ExtensionConfigSchema<ReadWebPageExtConfig> = {
+  validate: isReadWebPageConfig,
 };
 
 const DEFAULT_PROMPT_SYSTEM = `Analyze web page content and answer questions. Be concise, answer from provided content only. No filler.`;
@@ -360,10 +398,149 @@ export function createReadWebPageTool(
   };
 }
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/read-web-page", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createReadWebPageTool({
-    systemPrompt: resolvePrompt(cfg.promptString, cfg.promptFile),
-    model: cfg.model,
-  })));
+function createReadWebPageExtension(
+  deps: ReadWebPageExtensionDeps = DEFAULT_DEPS,
+): (pi: ExtensionAPI) => void {
+  return function readWebPageExtension(pi: ExtensionAPI): void {
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/read-web-page",
+      CONFIG_DEFAULTS,
+      { schema: READ_WEB_PAGE_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
+
+    pi.registerTool(
+      deps.withPromptPatch(
+        createReadWebPageTool({
+          systemPrompt: deps.resolvePrompt(cfg.promptString, cfg.promptFile),
+          model: cfg.model,
+        }),
+      ),
+    );
+  };
+}
+
+const readWebPageExtension: (pi: ExtensionAPI) => void = createReadWebPageExtension();
+
+export default readWebPageExtension;
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("read-web-page extension", () => {
+    it("registers the tool with default config when enabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
+      const resolvePromptSpy = vi.fn(() => DEFAULT_PROMPT_SYSTEM);
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createReadWebPageExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/read-web-page",
+        CONFIG_DEFAULTS,
+        { schema: READ_WEB_PAGE_CONFIG_SCHEMA },
+      );
+      expect(resolvePromptSpy).toHaveBeenCalledWith(
+        CONFIG_DEFAULTS.promptString,
+        CONFIG_DEFAULTS.promptFile,
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+    });
+
+    it("registers no tools when disabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const resolvePromptSpy = vi.fn(() => DEFAULT_PROMPT_SYSTEM);
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createReadWebPageExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(resolvePromptSpy).not.toHaveBeenCalled();
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults for invalid config and still registers", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-read-web-page-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/read-web-page": {
+          model: "",
+          promptFile: 123,
+          promptString: false,
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const resolvePromptSpy = vi.fn(() => DEFAULT_PROMPT_SYSTEM);
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createReadWebPageExtension({
+        ...DEFAULT_DEPS,
+        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/read-web-page; falling back to defaults.",
+      );
+      expect(resolvePromptSpy).toHaveBeenCalledWith(
+        CONFIG_DEFAULTS.promptString,
+        CONFIG_DEFAULTS.promptFile,
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+    });
+  });
 }
