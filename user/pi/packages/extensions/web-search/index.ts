@@ -15,10 +15,18 @@
  */
 
 import { spawn } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
-import { getExtensionConfig } from "@bds_pi/config";
 import {
   boxRendererWindowed,
   osc8Link,
@@ -34,10 +42,37 @@ type WebSearchExtConfig = {
   curlTimeoutSecs: number;
 };
 
+type WebSearchExtensionDeps = {
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
+  withPromptPatch: typeof withPromptPatch;
+};
+
 const CONFIG_DEFAULTS: WebSearchExtConfig = {
   defaultMaxResults: 10,
   endpoint: "https://api.parallel.ai/v1beta/search",
   curlTimeoutSecs: 30,
+};
+
+const DEFAULT_DEPS: WebSearchExtensionDeps = {
+  getEnabledExtensionConfig,
+  withPromptPatch,
+};
+
+function isWebSearchConfig(value: Record<string, unknown>): value is WebSearchExtConfig {
+  return (
+    typeof value.defaultMaxResults === "number" &&
+    Number.isInteger(value.defaultMaxResults) &&
+    value.defaultMaxResults >= 1 &&
+    typeof value.endpoint === "string" &&
+    value.endpoint.trim().length > 0 &&
+    typeof value.curlTimeoutSecs === "number" &&
+    Number.isInteger(value.curlTimeoutSecs) &&
+    value.curlTimeoutSecs >= 1
+  );
+}
+
+const WEB_SEARCH_CONFIG_SCHEMA: ExtensionConfigSchema<WebSearchExtConfig> = {
+  validate: isWebSearchConfig,
 };
 
 /** per-result excerpts for collapsed display — first 5 visual lines */
@@ -360,7 +395,127 @@ export function createWebSearchTool(config: WebSearchExtConfig = CONFIG_DEFAULTS
   };
 }
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/web-search", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createWebSearchTool(cfg)));
+function createWebSearchExtension(
+  deps: WebSearchExtensionDeps = DEFAULT_DEPS,
+): (pi: ExtensionAPI) => void {
+  return function webSearchExtension(pi: ExtensionAPI): void {
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/web-search",
+      CONFIG_DEFAULTS,
+      { schema: WEB_SEARCH_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
+
+    pi.registerTool(deps.withPromptPatch(createWebSearchTool(cfg)));
+  };
+}
+
+const webSearchExtension: (pi: ExtensionAPI) => void = createWebSearchExtension();
+
+export default webSearchExtension;
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("web-search extension", () => {
+    it("registers the tool with default config when enabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createWebSearchExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/web-search",
+        CONFIG_DEFAULTS,
+        { schema: WEB_SEARCH_CONFIG_SCHEMA },
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+    });
+
+    it("registers no tools when disabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createWebSearchExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults for invalid config and still registers", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-web-search-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/web-search": {
+          defaultMaxResults: 0,
+          endpoint: "",
+          curlTimeoutSecs: "fast",
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createWebSearchExtension({
+        ...DEFAULT_DEPS,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/web-search; falling back to defaults.",
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+    });
+  });
 }
