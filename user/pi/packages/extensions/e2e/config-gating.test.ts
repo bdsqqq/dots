@@ -25,6 +25,8 @@ import {
 import bashExtension from "@bds_pi/bash";
 import codeReviewExtension from "@bds_pi/code-review";
 import finderExtension from "@bds_pi/finder";
+import formatFileExtension from "@bds_pi/format-file";
+import globExtension from "@bds_pi/glob";
 import grepExtension from "@bds_pi/grep";
 import librarianExtension from "@bds_pi/librarian";
 import lookAtExtension from "@bds_pi/look-at";
@@ -185,8 +187,21 @@ describe("config gating integration", () => {
         extensionTools: "finder",
       },
     },
+    {
+      namespace: "@bds_pi/format-file",
+      toolName: "format_file",
+      extension: formatFileExtension,
+      invalidConfig: {
+        preferredFormatter: "nope",
+        formatterLookupTimeoutMs: 0,
+      },
+    },
   ];
 
+  /**
+   * these adopters shadow pi built-ins, so disabling them should fall back to
+   * the builtin definition instead of removing the tool name outright.
+   */
   const BUILTIN_SHADOW_ADOPTERS: Array<{
     namespace: string;
     toolName: string;
@@ -279,6 +294,33 @@ describe("config gating integration", () => {
           required: ["path"],
           properties: expect.objectContaining({
             offset: expect.any(Object),
+            limit: expect.any(Object),
+          }),
+        });
+      },
+    },
+    {
+      namespace: "@bds_pi/glob",
+      toolName: "find",
+      extension: globExtension,
+      invalidConfig: {
+        defaultLimit: 0,
+      },
+      customExpectation: (tool) => {
+        expect(tool.description).toContain("Fast file pattern matching tool that works with any codebase size.");
+        expect(tool.parameters).toMatchObject({
+          required: ["filePattern"],
+          properties: expect.objectContaining({
+            offset: expect.any(Object),
+          }),
+        });
+      },
+      builtinExpectation: (tool) => {
+        expect(tool.description).toContain("Search for files by glob pattern.");
+        expect(tool.parameters).toMatchObject({
+          required: ["pattern"],
+          properties: expect.objectContaining({
+            path: expect.any(Object),
             limit: expect.any(Object),
           }),
         });

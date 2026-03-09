@@ -11,6 +11,8 @@
  * shadows pi's built-in `find` tool via same-name registration.
  */
 
+import * as fs from "node:fs";
+import * as os from "node:os";
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 import { createInterface } from "node:readline";
@@ -24,7 +26,12 @@ import {
   textSection,
   type Excerpt,
 } from "@bds_pi/box-format";
-import { getExtensionConfig } from "@bds_pi/config";
+import {
+  clearConfigCache,
+  getEnabledExtensionConfig,
+  setGlobalSettingsPath,
+  type ExtensionConfigSchema,
+} from "@bds_pi/config";
 
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },
@@ -35,8 +42,30 @@ type GlobExtConfig = {
   defaultLimit: number;
 };
 
+type GlobExtensionDeps = {
+  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
+  withPromptPatch: typeof withPromptPatch;
+};
+
 const CONFIG_DEFAULTS: GlobExtConfig = {
   defaultLimit: 500,
+};
+
+const DEFAULT_DEPS: GlobExtensionDeps = {
+  getEnabledExtensionConfig,
+  withPromptPatch,
+};
+
+function isGlobConfig(value: Record<string, unknown>): value is GlobExtConfig {
+  return (
+    typeof value.defaultLimit === "number" &&
+    Number.isInteger(value.defaultLimit) &&
+    value.defaultLimit >= 1
+  );
+}
+
+const GLOB_CONFIG_SCHEMA: ExtensionConfigSchema<GlobExtConfig> = {
+  validate: isGlobConfig,
 };
 
 interface GlobParams {
@@ -231,7 +260,127 @@ export function createGlobTool(config: GlobExtConfig = CONFIG_DEFAULTS): ToolDef
   };
 }
 
-export default function(pi: ExtensionAPI): void {
-  const cfg = getExtensionConfig("@bds_pi/glob", CONFIG_DEFAULTS);
-  pi.registerTool(withPromptPatch(createGlobTool(cfg)));
+function createGlobExtension(
+  deps: GlobExtensionDeps = DEFAULT_DEPS,
+): (pi: ExtensionAPI) => void {
+  return function globExtension(pi: ExtensionAPI): void {
+    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+      "@bds_pi/glob",
+      CONFIG_DEFAULTS,
+      { schema: GLOB_CONFIG_SCHEMA },
+    );
+    if (!enabled) return;
+
+    pi.registerTool(deps.withPromptPatch(createGlobTool(cfg)));
+  };
+}
+
+const globExtension: (pi: ExtensionAPI) => void = createGlobExtension();
+
+export default globExtension;
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const tmpdir = os.tmpdir();
+
+  function writeTmpJson(dir: string, filename: string, data: unknown): string {
+    const filePath = path.join(dir, filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data));
+    return filePath;
+  }
+
+  function createMockExtensionApiHarness() {
+    const tools: unknown[] = [];
+
+    const pi = {
+      registerTool(tool: unknown) {
+        tools.push(tool);
+      },
+    } as unknown as ExtensionAPI;
+
+    return { pi, tools };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearConfigCache();
+    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("glob extension", () => {
+    it("registers the tool with default config when enabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: true,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createGlobExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/glob",
+        CONFIG_DEFAULTS,
+        { schema: GLOB_CONFIG_SCHEMA },
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+      expect(harness.tools[0]).toMatchObject({ name: "find" });
+    });
+
+    it("registers no tools when disabled", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(
+        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+          enabled: false,
+          config: defaults,
+        }),
+      );
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createGlobExtension({
+        getEnabledExtensionConfig:
+          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(withPromptPatchSpy).not.toHaveBeenCalled();
+      expect(harness.tools).toHaveLength(0);
+    });
+
+    it("falls back to defaults for invalid config and still registers", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-glob-test-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/glob": {
+          defaultLimit: 0,
+        },
+      });
+      setGlobalSettingsPath(settingsPath);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
+      const extension = createGlobExtension({
+        ...DEFAULT_DEPS,
+        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+
+      extension(harness.pi);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[@bds_pi/config] invalid config for @bds_pi/glob; falling back to defaults.",
+      );
+      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
+      expect(harness.tools).toHaveLength(1);
+      expect(harness.tools[0]).toMatchObject({ name: "find" });
+    });
+  });
 }
