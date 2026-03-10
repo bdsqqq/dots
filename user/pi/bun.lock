@@ -144,6 +144,7 @@
       "name": "@bds_pi/pi-spawn",
       "version": "0.0.0",
       "dependencies": {
+        "@bds_pi/config": "workspace:*",
         "@bds_pi/interpolate": "workspace:*",
       },
       "devDependencies": {
