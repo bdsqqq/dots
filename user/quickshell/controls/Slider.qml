@@ -20,14 +20,16 @@ Rectangle {
     id: root
 
     property real value: 0.5
+    property real minimumValue: 0
+    property real maximumValue: 1
     property bool enabled: true
 
     signal changeEnd(real value)
-    property real dragValue: value
+    property real dragValue: Math.max(minimumValue, Math.min(maximumValue, value))
     property bool pendingExternalSync: false
 
     readonly property bool showingDragValue: mouse.pressed || pendingExternalSync
-    readonly property real visualValue: showingDragValue ? dragValue : value
+    readonly property real visualValue: showingDragValue ? dragValue : Math.max(minimumValue, Math.min(maximumValue, value))
 
     implicitHeight: Design.Theme.t.space4 + Design.Theme.t.space2
 
@@ -86,7 +88,8 @@ Rectangle {
         hoverEnabled: true
 
         function updateValue(mouseX: real): void {
-            root.dragValue = Math.max(0, Math.min(1, mouseX / width));
+            const normalized = Math.max(0, Math.min(1, mouseX / width));
+            root.dragValue = root.minimumValue + (normalized * (root.maximumValue - root.minimumValue));
         }
 
         onPressed: function (mouse) {
