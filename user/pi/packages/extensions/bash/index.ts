@@ -897,7 +897,7 @@ if (import.meta.vitest) {
     describe("edge cases", () => {
       it("handles command with special characters", async () => {
         const result = await execute(
-          `printf '%s\n' "special: 'quotes' and \"double\" and \$var"`,
+          `printf '%s\n' "special: 'quotes' and "double" and $var"`,
         );
         expect(result.content[0].text).toContain("special");
       });
