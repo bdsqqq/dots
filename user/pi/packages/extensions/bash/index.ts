@@ -20,7 +20,10 @@ import { existsSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   boxRendererWindowed,
@@ -108,9 +111,12 @@ function getShell(): { shell: string; args: string[] } {
 // --- command preprocessing ---
 
 /**
- * models sometimes emit `cd dir && cmd` despite the system prompt
- * discouraging it. split into cwd + command so the cd takes effect
- * in the spawn call rather than being lost between invocations.
+ * `cd dir && cmd` is the one chained shape worth accepting.
+ *
+ * one bash tool call should map to one visible execution step so progress,
+ * retries, and blame stay legible. models still emit leading `cd ... &&`
+ * out of unix habit, so we normalize that case into `cwd + command` instead
+ * of rejecting it.
  */
 function splitCdCommand(cmd: string): { cwd: string; command: string } | null {
   const match = cmd.match(
@@ -132,6 +138,113 @@ function parseBackgroundCommand(cmd: string): {
     command: cmd.replace(/\s*&\s*$/, ""),
     background: true,
   };
+}
+
+/**
+ * reject top-level chaining so one tool call remains one observable step.
+ *
+ * this is intentionally conservative, not a full shell parser. it ignores
+ * operators inside quotes, escapes, and nested grouping. if this scanner ever
+ * flags valid single-step shell syntax, that would be a bug in our policy
+ * layer, not a reason to silently allow multi-step chains again.
+ */
+function findTopLevelChainOperator(
+  cmd: string,
+): { operator: ";" | "&&" | "||"; index: number } | null {
+  let inSingle = false;
+  let inDouble = false;
+  let inBacktick = false;
+  let escaped = false;
+  let parenDepth = 0;
+  let braceDepth = 0;
+  let bracketDepth = 0;
+
+  for (let i = 0; i < cmd.length; i++) {
+    const ch = cmd[i];
+    const next = cmd[i + 1];
+
+    if (!ch) continue;
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (inSingle) {
+      if (ch === "'") inSingle = false;
+      continue;
+    }
+
+    if (inDouble) {
+      if (ch === '"') inDouble = false;
+      continue;
+    }
+
+    if (inBacktick) {
+      if (ch === "`") inBacktick = false;
+      continue;
+    }
+
+    if (ch === "'") {
+      inSingle = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inDouble = true;
+      continue;
+    }
+
+    if (ch === "`") {
+      inBacktick = true;
+      continue;
+    }
+
+    if (ch === "(") {
+      parenDepth++;
+      continue;
+    }
+
+    if (ch === ")") {
+      parenDepth = Math.max(0, parenDepth - 1);
+      continue;
+    }
+
+    if (ch === "{") {
+      braceDepth++;
+      continue;
+    }
+
+    if (ch === "}") {
+      braceDepth = Math.max(0, braceDepth - 1);
+      continue;
+    }
+
+    if (ch === "[") {
+      bracketDepth++;
+      continue;
+    }
+
+    if (ch === "]") {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      continue;
+    }
+
+    if (parenDepth > 0 || braceDepth > 0 || bracketDepth > 0) {
+      continue;
+    }
+
+    if (ch === ";") return { operator: ";", index: i };
+    if (ch === "&" && next === "&") return { operator: "&&", index: i };
+    if (ch === "|" && next === "|") return { operator: "||", index: i };
+  }
+
+  return null;
 }
 
 function isGitCommand(cmd: string): boolean {
@@ -244,7 +357,8 @@ export function createBashTool(
     label: "Bash",
     description:
       "Executes the given shell command using bash.\n\n" +
-      "- Do NOT chain commands with `;` or `&&`; make separate tool calls instead\n" +
+      "- Top-level command chains using `;`, `&&`, or `||` are rejected; make separate tool calls instead\n" +
+      "- A leading `cd dir && cmd` is normalized into `cwd` + `cmd` for compatibility with model habits\n" +
       "- A trailing `&` runs the command in the background and returns immediately with a PID and log path\n" +
       "- Do NOT use interactive commands (REPLs, editors, password prompts)\n" +
       `- Output shows first ${config.headLines} and last ${config.tailLines} lines; middle is truncated for large outputs\n` +
@@ -353,6 +467,13 @@ export function createBashTool(
       if (cdSplit) {
         effectiveCwd = resolveToAbsolute(cdSplit.cwd, effectiveCwd);
         command = cdSplit.command;
+      }
+
+      const chainOperator = findTopLevelChainOperator(command);
+      if (chainOperator) {
+        throw new Error(
+          `top-level command chaining with ${chainOperator.operator} is not supported. run one command per bash call so progress stays visible.`,
+        );
       }
 
       if (!existsSync(effectiveCwd)) {
@@ -609,7 +730,10 @@ if (import.meta.vitest) {
     },
   };
 
-  async function execute(cmd: string, timeout?: number): Promise<BashToolResult> {
+  async function execute(
+    cmd: string,
+    timeout?: number,
+  ): Promise<BashToolResult> {
     return (await tool.execute!(
       "test-id",
       { cmd, timeout },
@@ -656,7 +780,7 @@ if (import.meta.vitest) {
     describe("large output (truncation)", () => {
       it("shows head + tail for large output", async () => {
         const result = await execute(
-          `for i in $(seq 1 200); do echo "line $i"; done`,
+          `python3 -c "for i in range(1, 201): print(f'line {i}')"`,
         );
         const text = result.content[0].text;
 
@@ -676,9 +800,9 @@ if (import.meta.vitest) {
 
     describe("exit codes", () => {
       it("shows exit code on failure", async () => {
-        await expect(execute(`echo "some output"; exit 42`)).rejects.toThrow(
-          "exit code 42",
-        );
+        await expect(
+          execute(`python3 -c "import sys; print('some output'); sys.exit(42)"`),
+        ).rejects.toThrow("exit code 42");
       });
 
       it("no exit code on success", async () => {
@@ -690,17 +814,53 @@ if (import.meta.vitest) {
 
     describe("mixed stdout/stderr", () => {
       it("captures both stdout and stderr", async () => {
-        const result = await execute(`echo "stdout"; echo "stderr" >&2`);
+        const result = await execute(`bash -lc 'echo stdout; echo stderr >&2'`);
         const text = result.content[0].text;
         expect(text).toContain("stdout");
         expect(text).toContain("stderr");
       });
     });
 
+    describe("command chaining policy", () => {
+      it("rejects top-level && chains", async () => {
+        await expect(execute(`echo one && echo two`)).rejects.toThrow(
+          "top-level command chaining with && is not supported",
+        );
+      });
+
+      it("rejects top-level semicolon chains", async () => {
+        await expect(execute(`echo one; echo two`)).rejects.toThrow(
+          "top-level command chaining with ; is not supported",
+        );
+      });
+
+      it("rejects top-level || chains", async () => {
+        await expect(execute(`false || echo two`)).rejects.toThrow(
+          "top-level command chaining with || is not supported",
+        );
+      });
+
+      it("allows quoted chain operators", async () => {
+        const result = await execute(`printf '%s\n' 'one && two; three || four'`);
+        expect(result.content[0].text).toContain("one && two; three || four");
+      });
+
+      it("allows leading cd normalization", async () => {
+        const result = await execute(`cd /tmp && printf 'ok\n'`);
+        expect(result.content[0].text).toContain("ok");
+      });
+
+      it("still rejects extra chaining after cd normalization", async () => {
+        await expect(execute(`cd /tmp && echo one && echo two`)).rejects.toThrow(
+          "top-level command chaining with && is not supported",
+        );
+      });
+    });
+
     describe("reversion guards", () => {
       it("shows first lines, not just tail", async () => {
         const result = await execute(
-          `for i in $(seq 1 100); do echo "output line $i"; done`,
+          `python3 -c "for i in range(1, 101): print(f'output line {i}')"`,
         );
         const text = result.content[0].text;
         expect(text).toContain("output line 1");
@@ -718,7 +878,7 @@ if (import.meta.vitest) {
 
       it("keeps head lines before tail lines in truncated output", async () => {
         const result = await execute(
-          `for i in $(seq 1 150); do echo "line $i"; done`,
+          `python3 -c "for i in range(1, 151): print(f'line {i}')"`,
         );
         const text = result.content[0].text;
         const firstHeadIndex = text.indexOf("line 1");
@@ -743,7 +903,7 @@ if (import.meta.vitest) {
 
       it("handles many short lines", async () => {
         const result = await execute(
-          `for i in $(seq 1 500); do echo "x"; done`,
+          `python3 -c "for _ in range(500): print('x')"`,
         );
         expect(result.content[0].text).toContain("truncated");
       }, 10_000);
@@ -753,7 +913,7 @@ if (import.meta.vitest) {
       it("returns immediately and writes output to a log file", async () => {
         const startedAt = Date.now();
         const result = await execute(
-          `printf 'ready\\n'; while true; do sleep 1; done &`,
+          `python3 -c "import time; print('ready', flush=True); time.sleep(60)" &`,
         );
 
         expect(Date.now() - startedAt).toBeLessThan(1_000);
@@ -763,12 +923,17 @@ if (import.meta.vitest) {
         expect(result.content[0].text).toContain("started background process");
 
         await new Promise((resolve) => setTimeout(resolve, 150));
-        const logText = fs.readFileSync(result.details!.background!.logPath, "utf-8");
+        const logText = fs.readFileSync(
+          result.details!.background!.logPath,
+          "utf-8",
+        );
         expect(logText).toContain("ready");
       }, 10_000);
 
       it("kills background commands during cleanup", async () => {
-        const result = await execute(`while true; do sleep 1; done &`);
+        const result = await execute(
+          `python3 -c "import time; time.sleep(60)" &`,
+        );
         const pid = result.details!.background!.pid;
 
         expect(isPidAlive(pid)).toBe(true);
@@ -848,7 +1013,10 @@ if (import.meta.vitest) {
   describe("bash extension", () => {
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: true,
           config: defaults,
         }),
@@ -857,7 +1025,8 @@ if (import.meta.vitest) {
       const extension = createBashExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -880,7 +1049,10 @@ if (import.meta.vitest) {
 
     it("registers no extension tool when disabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: false,
           config: defaults,
         }),
@@ -889,7 +1061,8 @@ if (import.meta.vitest) {
       const extension = createBashExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -910,11 +1083,14 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createBashExtension({
         ...DEFAULT_DEPS,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
