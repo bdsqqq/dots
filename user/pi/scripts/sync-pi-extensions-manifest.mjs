@@ -13,10 +13,11 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const packageJsonPath = path.join(rootDir, "package.json");
 const extensionsDir = path.join(rootDir, "packages", "extensions");
+const excludedExtensionDirs = new Set(["e2e", "test-utils"]);
 
 function collectExtensionEntries() {
   return readdirSync(extensionsDir)
-    .filter((name) => name !== "e2e")
+    .filter((name) => !excludedExtensionDirs.has(name))
     .filter((name) => {
       const dir = path.join(extensionsDir, name);
       if (!statSync(dir).isDirectory()) return false;
