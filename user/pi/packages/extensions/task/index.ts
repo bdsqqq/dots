@@ -17,7 +17,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import {
@@ -69,11 +72,15 @@ const DEFAULT_DEPS: TaskExtensionDeps = {
 };
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
 }
 
 function isTaskConfig(value: Record<string, unknown>): value is TaskExtConfig {
-  return isStringArray(value.builtinTools) && isStringArray(value.extensionTools);
+  return (
+    isStringArray(value.builtinTools) && isStringArray(value.extensionTools)
+  );
 }
 
 const TASK_CONFIG_SCHEMA: ExtensionConfigSchema<TaskExtConfig> = {
@@ -225,7 +232,9 @@ export function createTaskTool(config: TaskConfig = {}): ToolDefinition {
   };
 }
 
-function createTaskExtension(deps: TaskExtensionDeps = DEFAULT_DEPS): (pi: ExtensionAPI) => void {
+function createTaskExtension(
+  deps: TaskExtensionDeps = DEFAULT_DEPS,
+): (pi: ExtensionAPI) => void {
   return function taskExtension(pi: ExtensionAPI): void {
     const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
       "@bds_pi/task",
@@ -281,7 +290,10 @@ if (import.meta.vitest) {
   describe("task extension", () => {
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: true,
           config: defaults,
         }),
@@ -293,7 +305,8 @@ if (import.meta.vitest) {
         createTaskTool: createTaskToolSpy as typeof DEFAULT_DEPS.createTaskTool,
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -314,18 +327,24 @@ if (import.meta.vitest) {
 
     it("registers no tools when disabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: false,
           config: defaults,
         }),
       );
-      const createTaskToolSpy = vi.fn(() => ({ name: "Task" } as ToolDefinition));
+      const createTaskToolSpy = vi.fn(
+        () => ({ name: "Task" }) as ToolDefinition,
+      );
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createTaskExtension({
         createTaskTool: createTaskToolSpy as typeof DEFAULT_DEPS.createTaskTool,
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -345,14 +364,17 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const tool = { name: "Task" } as ToolDefinition;
       const createTaskToolSpy = vi.fn(() => tool);
       const withPromptPatchSpy = vi.fn((nextTool: ToolDefinition) => nextTool);
       const extension = createTaskExtension({
         ...DEFAULT_DEPS,
         createTaskTool: createTaskToolSpy as typeof DEFAULT_DEPS.createTaskTool,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 

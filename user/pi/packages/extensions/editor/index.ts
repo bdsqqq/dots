@@ -21,7 +21,11 @@ import {
   Theme,
   estimateTokens,
 } from "@mariozechner/pi-coding-agent";
-import type { TUI, EditorTheme, AutocompleteProvider } from "@mariozechner/pi-tui";
+import type {
+  TUI,
+  EditorTheme,
+  AutocompleteProvider,
+} from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import { boxBorderLR, boxRow } from "@bds_pi/box-chrome";
 import {
@@ -730,17 +734,13 @@ if (import.meta.vitest) {
           formatModelDisplay("anthropic", "claude-sonnet-4-20250514"),
         ).toBe("(anthropic) claude-sonnet-4-20250514");
 
-        expect(formatModelDisplay("openai", "gpt-4o")).toBe(
-          "(openai) gpt-4o",
-        );
+        expect(formatModelDisplay("openai", "gpt-4o")).toBe("(openai) gpt-4o");
 
         expect(formatModelDisplay("openrouter", "z-ai/glm-5")).toBe(
           "(openrouter) z-ai/glm-5",
         );
 
-        expect(formatModelDisplay(undefined, "some-model")).toBe(
-          "some-model",
-        );
+        expect(formatModelDisplay(undefined, "some-model")).toBe("some-model");
       });
     });
   });

@@ -23,7 +23,10 @@ const extensionEntries = collectEntries("packages/extensions", "extensions");
 
 /** all @bds_pi/* workspace packages resolved to their source. */
 const bdsPiAlias: Record<string, string> = {};
-for (const [key, value] of Object.entries({ ...coreEntries, ...extensionEntries })) {
+for (const [key, value] of Object.entries({
+  ...coreEntries,
+  ...extensionEntries,
+})) {
   const pkgName = `@bds_pi/${key.split("/")[1]}`;
   bdsPiAlias[pkgName] = value;
 }
@@ -40,11 +43,7 @@ export default defineConfig({
   dts: { resolver: "oxc" },
   tsconfig: "tsconfig.build.json",
   deps: {
-    neverBundle: [
-      /^@mariozechner\//,
-      /^@sinclair\//,
-      "beautiful-mermaid",
-    ],
+    neverBundle: [/^@mariozechner\//, /^@sinclair\//, "beautiful-mermaid"],
   },
   // resolve @bds_pi/* to source so they get bundled in
   alias: bdsPiAlias,

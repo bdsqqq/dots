@@ -20,7 +20,10 @@ function createSessionsDir(): string {
 
 function writeSessionFile(dir: string, name: string, lines: unknown[]): string {
   const filePath = join(dir, name);
-  writeFileSync(filePath, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`);
+  writeFileSync(
+    filePath,
+    `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`,
+  );
   return filePath;
 }
 
@@ -33,55 +36,59 @@ afterEach(() => {
 describe("enumerateBranches", () => {
   it("extracts first user message and touched files from a branch", () => {
     const parsed = parseSessionFile(
-      writeSessionFile(createSessionsDir(), "2026-03-06T17-00-00-000Z_alpha-session.jsonl", [
-        {
-          type: "session",
-          version: 1,
-          id: "alpha-session",
-          timestamp: "2026-03-06T17:00:00.000Z",
-          cwd: "/repo/app",
-        },
-        {
-          type: "session_info",
-          id: "info-1",
-          parentId: null,
-          timestamp: "2026-03-06T17:00:01.000Z",
-          name: "alpha work",
-        },
-        {
-          type: "message",
-          id: "msg-user-1",
-          parentId: "info-1",
-          timestamp: "2026-03-06T17:00:02.000Z",
-          message: {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "check @user/pi/packages/core/mentions/index.ts and /tmp/demo.ts",
-              },
-            ],
+      writeSessionFile(
+        createSessionsDir(),
+        "2026-03-06T17-00-00-000Z_alpha-session.jsonl",
+        [
+          {
+            type: "session",
+            version: 1,
+            id: "alpha-session",
+            timestamp: "2026-03-06T17:00:00.000Z",
+            cwd: "/repo/app",
           },
-        },
-        {
-          type: "message",
-          id: "msg-assistant-1",
-          parentId: "msg-user-1",
-          timestamp: "2026-03-06T17:00:03.000Z",
-          message: {
-            role: "assistant",
-            content: [
-              { type: "text", text: "looking now" },
-              {
-                type: "toolCall",
-                id: "tool-1",
-                name: "read",
-                arguments: { path: "/repo/app/src/index.ts" },
-              },
-            ],
+          {
+            type: "session_info",
+            id: "info-1",
+            parentId: null,
+            timestamp: "2026-03-06T17:00:01.000Z",
+            name: "alpha work",
           },
-        },
-      ]),
+          {
+            type: "message",
+            id: "msg-user-1",
+            parentId: "info-1",
+            timestamp: "2026-03-06T17:00:02.000Z",
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "check @user/pi/packages/core/mentions/index.ts and /tmp/demo.ts",
+                },
+              ],
+            },
+          },
+          {
+            type: "message",
+            id: "msg-assistant-1",
+            parentId: "msg-user-1",
+            timestamp: "2026-03-06T17:00:03.000Z",
+            message: {
+              role: "assistant",
+              content: [
+                { type: "text", text: "looking now" },
+                {
+                  type: "toolCall",
+                  id: "tool-1",
+                  name: "read",
+                  arguments: { path: "/repo/app/src/index.ts" },
+                },
+              ],
+            },
+          },
+        ],
+      ),
     );
 
     expect(parsed.header).not.toBeNull();
@@ -97,7 +104,8 @@ describe("enumerateBranches", () => {
       expect.objectContaining({
         sessionId: "alpha-session",
         sessionName: "alpha work",
-        firstUserMessage: "check @user/pi/packages/core/mentions/index.ts and /tmp/demo.ts",
+        firstUserMessage:
+          "check @user/pi/packages/core/mentions/index.ts and /tmp/demo.ts",
         filesTouched: expect.arrayContaining([
           "user/pi/packages/core/mentions/index.ts",
           "/tmp/demo.ts",
@@ -111,33 +119,37 @@ describe("enumerateBranches", () => {
 describe("summarizeMentionableSession", () => {
   it("marks forked sessions with a first user message as handoff candidates", () => {
     const parsed = parseSessionFile(
-      writeSessionFile(createSessionsDir(), "2026-03-06T17-10-00-000Z_handoff-1.jsonl", [
-        {
-          type: "session",
-          version: 1,
-          id: "handoff-1",
-          timestamp: "2026-03-06T17:10:00.000Z",
-          cwd: "/repo/app",
-          parentSession: "/sessions/2026-03-06T17-00-00-000Z_parent.jsonl",
-        },
-        {
-          type: "session_info",
-          id: "info-1",
-          parentId: null,
-          timestamp: "2026-03-06T17:10:01.000Z",
-          name: "follow-up",
-        },
-        {
-          type: "message",
-          id: "msg-user-1",
-          parentId: "info-1",
-          timestamp: "2026-03-06T17:10:02.000Z",
-          message: {
-            role: "user",
-            content: [{ type: "text", text: "continue from the handoff" }],
+      writeSessionFile(
+        createSessionsDir(),
+        "2026-03-06T17-10-00-000Z_handoff-1.jsonl",
+        [
+          {
+            type: "session",
+            version: 1,
+            id: "handoff-1",
+            timestamp: "2026-03-06T17:10:00.000Z",
+            cwd: "/repo/app",
+            parentSession: "/sessions/2026-03-06T17-00-00-000Z_parent.jsonl",
           },
-        },
-      ]),
+          {
+            type: "session_info",
+            id: "info-1",
+            parentId: null,
+            timestamp: "2026-03-06T17:10:01.000Z",
+            name: "follow-up",
+          },
+          {
+            type: "message",
+            id: "msg-user-1",
+            parentId: "info-1",
+            timestamp: "2026-03-06T17:10:02.000Z",
+            message: {
+              role: "user",
+              content: [{ type: "text", text: "continue from the handoff" }],
+            },
+          },
+        ],
+      ),
     );
 
     expect(summarizeMentionableSession(parsed)).toEqual(
@@ -152,23 +164,27 @@ describe("summarizeMentionableSession", () => {
 
   it("keeps forked sessions without a user message out of handoff results", () => {
     const parsed = parseSessionFile(
-      writeSessionFile(createSessionsDir(), "2026-03-06T17-20-00-000Z_handoff-2.jsonl", [
-        {
-          type: "session",
-          version: 1,
-          id: "handoff-2",
-          timestamp: "2026-03-06T17:20:00.000Z",
-          cwd: "/repo/app",
-          parentSession: "/sessions/2026-03-06T17-00-00-000Z_parent.jsonl",
-        },
-        {
-          type: "session_info",
-          id: "info-1",
-          parentId: null,
-          timestamp: "2026-03-06T17:20:01.000Z",
-          name: "empty follow-up",
-        },
-      ]),
+      writeSessionFile(
+        createSessionsDir(),
+        "2026-03-06T17-20-00-000Z_handoff-2.jsonl",
+        [
+          {
+            type: "session",
+            version: 1,
+            id: "handoff-2",
+            timestamp: "2026-03-06T17:20:00.000Z",
+            cwd: "/repo/app",
+            parentSession: "/sessions/2026-03-06T17-00-00-000Z_parent.jsonl",
+          },
+          {
+            type: "session_info",
+            id: "info-1",
+            parentId: null,
+            timestamp: "2026-03-06T17:20:01.000Z",
+            name: "empty follow-up",
+          },
+        ],
+      ),
     );
 
     expect(summarizeMentionableSession(parsed)).toEqual(
@@ -205,7 +221,10 @@ describe("listMentionableSessions + resolveMentionableSession", () => {
         id: "msg-user-1",
         parentId: "info-1",
         timestamp: "2026-03-06T17:30:02.000Z",
-        message: { role: "user", content: [{ type: "text", text: "alpha task" }] },
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "alpha task" }],
+        },
       },
     ]);
 
@@ -230,7 +249,10 @@ describe("listMentionableSessions + resolveMentionableSession", () => {
         id: "msg-user-1",
         parentId: "info-1",
         timestamp: "2026-03-06T17:31:02.000Z",
-        message: { role: "user", content: [{ type: "text", text: "resume alpha" }] },
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "resume alpha" }],
+        },
       },
     ]);
 
@@ -241,7 +263,9 @@ describe("listMentionableSessions + resolveMentionableSession", () => {
     ]);
 
     const handoffs = listMentionableSessions(dir, { kind: "handoff" });
-    expect(handoffs.map((session) => session.sessionId)).toEqual(["handoffabcd"]);
+    expect(handoffs.map((session) => session.sessionId)).toEqual([
+      "handoffabcd",
+    ]);
 
     expect(resolveMentionableSession(sessions, "handoffa", "handoff")).toEqual({
       status: "resolved",

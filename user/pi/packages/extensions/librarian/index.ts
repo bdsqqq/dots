@@ -79,7 +79,9 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
 }
 
 function isLibrarianConfig(
@@ -283,7 +285,8 @@ function createLibrarianExtension(
   };
 }
 
-const librarianExtension: (pi: ExtensionAPI) => void = createLibrarianExtension();
+const librarianExtension: (pi: ExtensionAPI) => void =
+  createLibrarianExtension();
 
 export default librarianExtension;
 
@@ -319,7 +322,10 @@ if (import.meta.vitest) {
   describe("librarian extension", () => {
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: true,
           config: defaults,
         }),
@@ -330,7 +336,8 @@ if (import.meta.vitest) {
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
         resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -351,7 +358,10 @@ if (import.meta.vitest) {
 
     it("registers no tools when disabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: false,
           config: defaults,
         }),
@@ -362,7 +372,8 @@ if (import.meta.vitest) {
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
         resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -385,13 +396,16 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const resolvePromptSpy = vi.fn(() => "system prompt");
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createLibrarianExtension({
         ...DEFAULT_DEPS,
         resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 

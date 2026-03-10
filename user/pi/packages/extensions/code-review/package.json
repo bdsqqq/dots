@@ -4,12 +4,9 @@
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
-  "pi": {
-    "extensions": ["./index.ts"]
-  },
   "dependencies": {
-    "@bds_pi/config": "workspace:*",
     "@bds_pi/bash": "workspace:*",
+    "@bds_pi/config": "workspace:*",
     "@bds_pi/glob": "workspace:*",
     "@bds_pi/grep": "workspace:*",
     "@bds_pi/ls": "workspace:*",
@@ -22,8 +19,13 @@
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {
-    "vitest": "^3.0.0",
     "@mariozechner/pi-coding-agent": "catalog:",
-    "@mariozechner/pi-tui": "catalog:"
+    "@mariozechner/pi-tui": "catalog:",
+    "vitest": "^3.0.0"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
   }
 }

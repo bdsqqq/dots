@@ -65,12 +65,14 @@ flowchart LR
 tool-only startup surface that does not shadow a pi built-in.
 
 examples:
+
 - `packages/extensions/read-web-page/index.ts`
 - `packages/extensions/oracle/index.ts`
 - `packages/extensions/code-review/index.ts`
 - `packages/extensions/format-file/index.ts`
 
 expected disabled behavior:
+
 - register no tools
 - session-level contract: the tool name disappears from `session.getAllTools()` and `session.getActiveToolNames()`
 
@@ -79,12 +81,14 @@ expected disabled behavior:
 tool-only startup surface that overrides a pi built-in tool name.
 
 examples:
+
 - `packages/extensions/bash/index.ts`
 - `packages/extensions/read/index.ts`
 - `packages/extensions/grep/index.ts`
 - `packages/extensions/glob/index.ts` -> shadows builtin `find`
 
 expected disabled behavior:
+
 - skip only the `@bds_pi/*` wrapper registration
 - pi's native tool with the same public name remains available
 - session-level contract: assert fallback on tool metadata (`description`, parameter shape), not just tool presence
@@ -94,11 +98,13 @@ expected disabled behavior:
 owns optional capabilities beyond a tool.
 
 examples:
+
 - `packages/extensions/search-sessions/index.ts` — tool + mention source
 - `packages/extensions/handoff/index.ts` — tool + mention source + hooks + command
 - `packages/extensions/system-prompt/index.ts` — hook-only
 
 expected disabled behavior:
+
 - register none of the startup capabilities owned by that extension
 - if it owns a mention source, verify graceful degradation through `packages/core/mentions/resolve.ts`
 
@@ -109,6 +115,7 @@ use two `Task` children in parallel.
 ### child 1 — implement
 
 give it:
+
 - exact file paths
 - required schema rules
 - exact registration sites that must be gated
@@ -118,6 +125,7 @@ give it:
 ### child 2 — skeptic
 
 give it:
+
 - no-edit instruction
 - ask it to verify assumptions with exact `file:line` evidence
 - ask whether the schema is minimal and runtime-backed
@@ -159,7 +167,7 @@ mock shape for the helper:
 vi.fn(<T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
   enabled: true,
   config: defaults,
-}))
+}));
 ```
 
 ## verification gate
@@ -191,6 +199,7 @@ docs(pi/skills): refresh config-gating hotspot
 ```
 
 examples:
+
 - `feat(pi/search-sessions): add schema-based startup gating`
 - `feat(pi/handoff): add schema-based startup gating`
 - `feat(pi/read-web-page): add schema-based startup gating`
@@ -214,6 +223,7 @@ after the child returns:
 - risks / blockers
 
 when reporting findings, use:
+
 - **confidence:** VERIFIED | HUNCH | QUESTION
 - **location:** `file:line`
 - **evidence:** what the code or command output shows

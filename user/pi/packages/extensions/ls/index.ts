@@ -9,7 +9,10 @@
 
 import * as fs from "node:fs";
 import * as os from "node:os";
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
@@ -124,6 +127,6 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
   };
 }
 
-export default function(pi: ExtensionAPI): void {
+export default function (pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createLsTool(NORMAL_LIMITS)));
 }

@@ -144,31 +144,50 @@ if (import.meta.vitest) {
     });
 
     it("returns empty array for empty input", () => {
-      const result = windowItems([], [{ focus: 0, context: 2 }], (n) => `...${n}...`);
+      const result = windowItems(
+        [],
+        [{ focus: 0, context: 2 }],
+        (n) => `...${n}...`,
+      );
       expect(result.items).toEqual([]);
       expect(result.skippedRanges).toEqual([]);
     });
 
     it("extracts head excerpt", () => {
       const items = ["a", "b", "c", "d", "e"];
-      const result = windowItems(items, [{ focus: "head", context: 2 }], (n) => `...${n}...`);
+      const result = windowItems(
+        items,
+        [{ focus: "head", context: 2 }],
+        (n) => `...${n}...`,
+      );
       expect(result.items).toEqual(["a", "b", "...3..."]);
       expect(result.skippedRanges).toEqual([[2, 5]]);
     });
 
     it("extracts tail excerpt", () => {
       const items = ["a", "b", "c", "d", "e"];
-      const result = windowItems(items, [{ focus: "tail", context: 2 }], (n) => `...${n}...`);
+      const result = windowItems(
+        items,
+        [{ focus: "tail", context: 2 }],
+        (n) => `...${n}...`,
+      );
       expect(result.items).toEqual(["...3...", "d", "e"]);
       expect(result.skippedRanges).toEqual([[0, 3]]);
     });
 
     it("extracts symmetric excerpt around index", () => {
       const items = ["a", "b", "c", "d", "e"];
-      const result = windowItems(items, [{ focus: 2, context: 1 }], (n) => `...${n}...`);
+      const result = windowItems(
+        items,
+        [{ focus: 2, context: 1 }],
+        (n) => `...${n}...`,
+      );
       // focus=2, context=1 → range [1,3] → keeps b,c,d, skips 1 at start and 1 at end
       expect(result.items).toEqual(["...1...", "b", "c", "d", "...1..."]);
-      expect(result.skippedRanges).toEqual([[0, 1], [4, 5]]);
+      expect(result.skippedRanges).toEqual([
+        [0, 1],
+        [4, 5],
+      ]);
     });
 
     it("merges overlapping excerpts", () => {
@@ -203,21 +222,33 @@ if (import.meta.vitest) {
 
     it("clamps head context to available items", () => {
       const items = ["a", "b"];
-      const result = windowItems(items, [{ focus: "head", context: 5 }], (n) => `...${n}...`);
+      const result = windowItems(
+        items,
+        [{ focus: "head", context: 5 }],
+        (n) => `...${n}...`,
+      );
       expect(result.items).toEqual(["a", "b"]);
       expect(result.skippedRanges).toEqual([]);
     });
 
     it("clamps tail context to available items", () => {
       const items = ["a", "b"];
-      const result = windowItems(items, [{ focus: "tail", context: 5 }], (n) => `...${n}...`);
+      const result = windowItems(
+        items,
+        [{ focus: "tail", context: 5 }],
+        (n) => `...${n}...`,
+      );
       expect(result.items).toEqual(["a", "b"]);
       expect(result.skippedRanges).toEqual([]);
     });
 
     it("clamps symmetric context to bounds", () => {
       const items = ["a", "b", "c"];
-      const result = windowItems(items, [{ focus: 0, context: 5 }], (n) => `...${n}...`);
+      const result = windowItems(
+        items,
+        [{ focus: 0, context: 5 }],
+        (n) => `...${n}...`,
+      );
       expect(result.items).toEqual(["a", "b", "c"]);
       expect(result.skippedRanges).toEqual([]);
     });

@@ -12,7 +12,10 @@
  *   list_repositories, glob_github, commit_search, diff
  */
 
-import type { ToolDefinition, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type {
+  ToolDefinition,
+  ExtensionAPI,
+} from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
@@ -975,7 +978,7 @@ function matchGlob(path: string, pattern: string): boolean {
 
 // --- self-registering extension ---
 
-export default function(pi: ExtensionAPI): void {
+export default function (pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createReadGithubTool()));
   pi.registerTool(withPromptPatch(createSearchGithubTool()));
   pi.registerTool(withPromptPatch(createListDirectoryGithubTool()));

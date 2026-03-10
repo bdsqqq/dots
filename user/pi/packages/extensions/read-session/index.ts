@@ -13,7 +13,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { walkDirSync } from "@bds_pi/fs";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
@@ -59,7 +62,9 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function isReadSessionConfig(value: Record<string, unknown>): value is ReadSessionExtConfig {
+function isReadSessionConfig(
+  value: Record<string, unknown>,
+): value is ReadSessionExtConfig {
   return (
     isNonEmptyString(value.model) &&
     isNonEmptyString(value.sessionsDir) &&
@@ -69,9 +74,10 @@ function isReadSessionConfig(value: Record<string, unknown>): value is ReadSessi
   );
 }
 
-const READ_SESSION_CONFIG_SCHEMA: ExtensionConfigSchema<ReadSessionExtConfig> = {
-  validate: isReadSessionConfig,
-};
+const READ_SESSION_CONFIG_SCHEMA: ExtensionConfigSchema<ReadSessionExtConfig> =
+  {
+    validate: isReadSessionConfig,
+  };
 
 const DEFAULT_SYSTEM_PROMPT = `You are analyzing a pi coding agent session transcript. Extract information relevant to the user's goal. Be specific — cite file paths, decisions made, code patterns discussed. If a specific branch is marked as the target, focus on that branch but use other branches for context about what was tried and abandoned.`;
 
@@ -116,7 +122,10 @@ interface ReadSessionParams {
   leaf_id?: string;
 }
 
-function findSessionFile(sessionId: string, sessionsDir: string): string | null {
+function findSessionFile(
+  sessionId: string,
+  sessionsDir: string,
+): string | null {
   if (!fs.existsSync(sessionsDir)) return null;
 
   // fast path: check filename contains session id
@@ -134,7 +143,9 @@ function findSessionFile(sessionId: string, sessionsDir: string): string | null 
       stopWhen: (entry, absolutePath) => {
         if (!entry.isFile() || !entry.name.endsWith(".jsonl")) return false;
         try {
-          const firstLine = fs.readFileSync(absolutePath, "utf-8").split("\n")[0];
+          const firstLine = fs
+            .readFileSync(absolutePath, "utf-8")
+            .split("\n")[0];
           if (!firstLine) return false;
           const header = JSON.parse(firstLine);
           return header.type === "session" && header.id === sessionId;
@@ -374,7 +385,11 @@ export function createReadSessionTool(
       }
 
       // render session tree
-      const { markdown } = renderSessionTree(sessionFile, p.leaf_id, config.maxChars);
+      const { markdown } = renderSessionTree(
+        sessionFile,
+        p.leaf_id,
+        config.maxChars,
+      );
 
       if (!markdown.trim()) {
         return {
@@ -579,7 +594,10 @@ if (import.meta.vitest) {
   describe("read-session extension", () => {
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: true,
           config: defaults,
         }),
@@ -588,7 +606,8 @@ if (import.meta.vitest) {
       const extension = createReadSessionExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -605,7 +624,10 @@ if (import.meta.vitest) {
 
     it("registers no tools when disabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: false,
           config: defaults,
         }),
@@ -614,7 +636,8 @@ if (import.meta.vitest) {
       const extension = createReadSessionExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -634,11 +657,14 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createReadSessionExtension({
         ...DEFAULT_DEPS,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -676,6 +702,7 @@ export function createReadSessionExtension(
   };
 }
 
-const readSessionExtension: (pi: ExtensionAPI) => void = createReadSessionExtension();
+const readSessionExtension: (pi: ExtensionAPI) => void =
+  createReadSessionExtension();
 
 export default readSessionExtension;

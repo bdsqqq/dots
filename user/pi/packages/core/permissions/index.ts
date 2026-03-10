@@ -197,11 +197,11 @@ if (import.meta.vitest) {
     });
 
     it("allows non-Bash tools via wildcard catch-all", () => {
-      expect(
-        evaluatePermission("Read", { cmd: "/etc/passwd" }, RULES),
-      ).toEqual({
-        action: "allow",
-      });
+      expect(evaluatePermission("Read", { cmd: "/etc/passwd" }, RULES)).toEqual(
+        {
+          action: "allow",
+        },
+      );
     });
 
     it("allows everything when no rules", () => {

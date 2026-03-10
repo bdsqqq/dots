@@ -8,7 +8,9 @@
       "@bds_pi/box-chrome": ["./packages/core/box-chrome/index.ts"],
       "@bds_pi/box-format": ["./packages/core/box-format/index.ts"],
       "@bds_pi/config": ["./packages/core/config/index.ts"],
-      "@bds_pi/editor-capabilities": ["./packages/core/editor-capabilities/index.ts"],
+      "@bds_pi/editor-capabilities": [
+        "./packages/core/editor-capabilities/index.ts"
+      ],
       "@bds_pi/file-tracker": ["./packages/core/file-tracker/index.ts"],
       "@bds_pi/fs": ["./packages/core/fs/index.ts"],
       "@bds_pi/github-api": ["./packages/core/github-api/index.ts"],
@@ -27,7 +29,9 @@
       "@bds_pi/tui": ["./packages/core/tui/index.ts"],
       "@bds_pi/bash": ["./packages/extensions/bash/index.ts"],
       "@bds_pi/code-review": ["./packages/extensions/code-review/index.ts"],
-      "@bds_pi/command-palette": ["./packages/extensions/command-palette/index.ts"],
+      "@bds_pi/command-palette": [
+        "./packages/extensions/command-palette/index.ts"
+      ],
       "@bds_pi/create-file": ["./packages/extensions/create-file/index.ts"],
       "@bds_pi/edit-file": ["./packages/extensions/edit-file/index.ts"],
       "@bds_pi/editor": ["./packages/extensions/editor/index.ts"],
@@ -45,7 +49,9 @@
       "@bds_pi/read": ["./packages/extensions/read/index.ts"],
       "@bds_pi/read-session": ["./packages/extensions/read-session/index.ts"],
       "@bds_pi/read-web-page": ["./packages/extensions/read-web-page/index.ts"],
-      "@bds_pi/search-sessions": ["./packages/extensions/search-sessions/index.ts"],
+      "@bds_pi/search-sessions": [
+        "./packages/extensions/search-sessions/index.ts"
+      ],
       "@bds_pi/session-name": ["./packages/extensions/session-name/index.ts"],
       "@bds_pi/skill": ["./packages/extensions/skill/index.ts"],
       "@bds_pi/system-prompt": ["./packages/extensions/system-prompt/index.ts"],

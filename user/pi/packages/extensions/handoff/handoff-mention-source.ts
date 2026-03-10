@@ -31,7 +31,9 @@ export function createHandoffMentionSource(): MentionSource {
           value: `@handoff/${session.sessionId}`,
           label: `@handoff/${session.sessionId}`,
           description:
-            session.sessionName || session.firstUserMessage || session.workspace,
+            session.sessionName ||
+            session.firstUserMessage ||
+            session.workspace,
         }));
     },
     resolve(token, context) {

@@ -103,7 +103,10 @@ export function zeroUsage(): UsageStats {
  * lets extensions externalize prompt content via config while
  * keeping sops-managed .md files as the default source.
  */
-export function resolvePrompt(promptString: string, promptFile: string): string {
+export function resolvePrompt(
+  promptString: string,
+  promptFile: string,
+): string {
   if (promptString) return promptString;
   return readAgentPrompt(promptFile);
 }

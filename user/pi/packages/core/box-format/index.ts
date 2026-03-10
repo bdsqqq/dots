@@ -435,7 +435,9 @@ if (import.meta.vitest) {
     });
 
     it("ignores OSC 8 hyperlink sequences", () => {
-      expect(visibleWidth("\x1b]8;;https://example.com\x07link\x1b]8;;\x07")).toBe(4);
+      expect(
+        visibleWidth("\x1b]8;;https://example.com\x07link\x1b]8;;\x07"),
+      ).toBe(4);
     });
   });
 
@@ -478,7 +480,9 @@ if (import.meta.vitest) {
   describe("osc8Link", () => {
     it("wraps text in OSC 8 hyperlink", () => {
       const result = osc8Link("https://example.com", "click me");
-      expect(result).toBe("\x1b]8;;https://example.com\x07click me\x1b]8;;\x07");
+      expect(result).toBe(
+        "\x1b]8;;https://example.com\x07click me\x1b]8;;\x07",
+      );
     });
 
     it("handles empty text", () => {
@@ -551,7 +555,12 @@ if (import.meta.vitest) {
         { header: "B", blocks: [{ lines: [{ text: "b" }] }] },
         { header: "C", blocks: [{ lines: [{ text: "c" }] }] },
       ];
-      const result = formatBoxesWindowed(sections, { maxSections: 2 }, undefined, 80);
+      const result = formatBoxesWindowed(
+        sections,
+        { maxSections: 2 },
+        undefined,
+        80,
+      );
       expect(result).toContain("A");
       expect(result).toContain("B");
       expect(result).not.toContain("C");
@@ -562,7 +571,12 @@ if (import.meta.vitest) {
       const sections: BoxSection[] = [
         { header: "Test", blocks: [{ lines: [{ text: "content" }] }] },
       ];
-      const result = formatBoxesWindowed(sections, {}, ["Notice 1", "Notice 2"], 80);
+      const result = formatBoxesWindowed(
+        sections,
+        {},
+        ["Notice 1", "Notice 2"],
+        80,
+      );
       expect(result).toContain("[Notice 1. Notice 2]");
     });
   });

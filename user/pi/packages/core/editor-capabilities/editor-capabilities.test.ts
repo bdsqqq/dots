@@ -66,9 +66,12 @@ describe("editor autocomplete capabilities", () => {
     });
 
     try {
-      const provider = composeEditorAutocompleteProvider(createBaseProvider(log), {
-        cwd: "/repo/app",
-      });
+      const provider = composeEditorAutocompleteProvider(
+        createBaseProvider(log),
+        {
+          cwd: "/repo/app",
+        },
+      );
 
       expect(provider.getSuggestions(["@commit/"], 0, 8)).toEqual({
         items: [{ value: "@commit/abc123", label: "@commit/abc123" }],
@@ -112,7 +115,13 @@ describe("editor autocomplete capabilities", () => {
             return provider.getSuggestions(lines, cursorLine, cursorCol);
           },
           applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
-            return provider.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+            return provider.applyCompletion(
+              lines,
+              cursorLine,
+              cursorCol,
+              item,
+              prefix,
+            );
           },
         };
       },
@@ -128,16 +137,25 @@ describe("editor autocomplete capabilities", () => {
             return provider.getSuggestions(lines, cursorLine, cursorCol);
           },
           applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
-            return provider.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+            return provider.applyCompletion(
+              lines,
+              cursorLine,
+              cursorCol,
+              item,
+              prefix,
+            );
           },
         };
       },
     });
 
     try {
-      const provider = composeEditorAutocompleteProvider(createBaseProvider(order), {
-        cwd: "/repo/app",
-      });
+      const provider = composeEditorAutocompleteProvider(
+        createBaseProvider(order),
+        {
+          cwd: "/repo/app",
+        },
+      );
       provider.getSuggestions(["@f"], 0, 2);
 
       expect(order).toEqual([

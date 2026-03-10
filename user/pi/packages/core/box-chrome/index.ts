@@ -120,9 +120,9 @@ if (import.meta.vitest) {
     });
 
     it("closed variant without header", () => {
-      expect(boxTop({ variant: "closed", style: identity, innerWidth: 5 })).toBe(
-        "╭─────╮",
-      );
+      expect(
+        boxTop({ variant: "closed", style: identity, innerWidth: 5 }),
+      ).toBe("╭─────╮");
     });
 
     it("closed variant with header", () => {
@@ -133,8 +133,7 @@ if (import.meta.vitest) {
           innerWidth: 10,
           header: { text: "hi", width: 2 },
         }),
-      ).toBe("╭─hi───────╮",
-      );
+      ).toBe("╭─hi───────╮");
     });
   });
 

@@ -51,7 +51,9 @@ function resolveWithVariantsUsing(
 }
 
 export function resolveWithVariants(filePath: string, cwd: string): string {
-  return resolveWithVariantsUsing(filePath, cwd, (candidate) => fs.existsSync(candidate));
+  return resolveWithVariantsUsing(filePath, cwd, (candidate) =>
+    fs.existsSync(candidate),
+  );
 }
 
 export function isSecretFile(filePath: string): boolean {
@@ -200,7 +202,9 @@ if (import.meta.vitest) {
       const variant = join(dir, "meeting\u202FPM.txt");
       writeFileSync(variant, "x");
 
-      expect(resolveWithVariants(join(dir, "meeting PM.txt"), "/cwd")).toBe(variant);
+      expect(resolveWithVariants(join(dir, "meeting PM.txt"), "/cwd")).toBe(
+        variant,
+      );
     });
 
     it("falls back to nfd-normalized names", () => {
@@ -208,7 +212,11 @@ if (import.meta.vitest) {
       const variant = requested.normalize("NFD");
 
       expect(
-        resolveWithVariantsUsing(requested, "/cwd", (candidate) => candidate === variant),
+        resolveWithVariantsUsing(
+          requested,
+          "/cwd",
+          (candidate) => candidate === variant,
+        ),
       ).toBe(variant);
     });
   });
@@ -238,7 +246,10 @@ if (import.meta.vitest) {
       mkdirSync(join(dir, "alpha"));
       writeFileSync(join(dir, "beta.txt"), "x");
 
-      expect(listDirectory(dir, 10).split("\n")).toEqual(["alpha/", "beta.txt"]);
+      expect(listDirectory(dir, 10).split("\n")).toEqual([
+        "alpha/",
+        "beta.txt",
+      ]);
     });
 
     it("truncates with the existing head-tail marker shape", () => {
@@ -272,7 +283,9 @@ if (import.meta.vitest) {
       expect(
         walkDirSync(dir, {
           filter: (entry) => entry.isFile() && entry.name.endsWith(".jsonl"),
-        }).map((file) => path.basename(file)).sort(),
+        })
+          .map((file) => path.basename(file))
+          .sort(),
       ).toEqual(["leaf.jsonl", "root.jsonl"]);
     });
 

@@ -13,7 +13,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -55,7 +58,9 @@ const CONFIG_DEFAULTS: SearchSessionsExtConfig = {
   rgTimeoutMs: 10000,
 };
 
-function isSearchSessionsConfig(value: Record<string, unknown>): value is SearchSessionsExtConfig {
+function isSearchSessionsConfig(
+  value: Record<string, unknown>,
+): value is SearchSessionsExtConfig {
   return (
     typeof value.maxResults === "number" &&
     Number.isInteger(value.maxResults) &&
@@ -68,9 +73,10 @@ function isSearchSessionsConfig(value: Record<string, unknown>): value is Search
   );
 }
 
-const SEARCH_SESSIONS_CONFIG_SCHEMA: ExtensionConfigSchema<SearchSessionsExtConfig> = {
-  validate: isSearchSessionsConfig,
-};
+const SEARCH_SESSIONS_CONFIG_SCHEMA: ExtensionConfigSchema<SearchSessionsExtConfig> =
+  {
+    validate: isSearchSessionsConfig,
+  };
 
 const DEFAULT_EXTENSION_DEPS: SearchSessionsExtensionDeps = {
   getEnabledExtensionConfig,
@@ -131,7 +137,11 @@ function matchesDateRange(
 
 // --- rg pre-filter ---
 
-function rgFilterFiles(keyword: string, sessionsDir: string, timeoutMs: number): Set<string> | null {
+function rgFilterFiles(
+  keyword: string,
+  sessionsDir: string,
+  timeoutMs: number,
+): Set<string> | null {
   try {
     const result = execSync(
       `rg -l -i ${JSON.stringify(keyword)} ${JSON.stringify(sessionsDir)}`,
@@ -280,7 +290,9 @@ interface SearchSessionsParams {
   all_workspaces?: boolean;
 }
 
-export function createSearchSessionsTool(config: SearchSessionsExtConfig = CONFIG_DEFAULTS): ToolDefinition {
+export function createSearchSessionsTool(
+  config: SearchSessionsExtConfig = CONFIG_DEFAULTS,
+): ToolDefinition {
   return {
     name: "search_sessions",
     label: "Search Sessions",
@@ -372,7 +384,11 @@ export function createSearchSessionsTool(config: SearchSessionsExtConfig = CONFI
 
       // 2. rg pre-filter if keyword set
       if (p.keyword) {
-        const matches = rgFilterFiles(p.keyword, config.sessionsDir, config.rgTimeoutMs);
+        const matches = rgFilterFiles(
+          p.keyword,
+          config.sessionsDir,
+          config.rgTimeoutMs,
+        );
         if (matches !== null) {
           sessionFiles = sessionFiles.filter((f) => matches.has(f));
         }
@@ -454,7 +470,9 @@ export function createSearchSessionsTool(config: SearchSessionsExtConfig = CONFI
             ]
           : filtered;
       const truncated =
-        filtered.length > config.maxResults ? filtered.length - shown.length : 0;
+        filtered.length > config.maxResults
+          ? filtered.length - shown.length
+          : 0;
 
       const { text: output } = formatBranchResults(shown);
       const resultSections = branchesToSections(shown);
@@ -574,7 +592,10 @@ if (import.meta.vitest) {
     it("registers mention source and tool with default config when enabled", () => {
       const registerMentionSourceSpy = vi.fn();
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: true,
           config: defaults,
         }),
@@ -619,7 +640,10 @@ if (import.meta.vitest) {
     it("registers neither mention source nor tool when disabled", () => {
       const registerMentionSourceSpy = vi.fn();
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: false,
           config: defaults,
         }),
@@ -652,7 +676,9 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const registerMentionSourceSpy = vi.fn();
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createSearchSessionsExtension({
@@ -676,4 +702,3 @@ if (import.meta.vitest) {
     });
   });
 }
-

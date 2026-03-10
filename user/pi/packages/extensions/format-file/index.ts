@@ -10,7 +10,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -69,7 +72,9 @@ const FORMATTERS: Formatter[] = [
 ];
 
 function isFormatterName(value: unknown): value is string {
-  return value === "auto" || FORMATTERS.some((formatter) => formatter.name === value);
+  return (
+    value === "auto" || FORMATTERS.some((formatter) => formatter.name === value)
+  );
 }
 
 function isFormatFileConfig(
@@ -88,9 +93,12 @@ const FORMAT_FILE_CONFIG_SCHEMA: ExtensionConfigSchema<FormatFileExtConfig> = {
 };
 
 function findFormatter(preferred: string, timeoutMs: number): Formatter | null {
-  const ordered = preferred !== "auto"
-    ? [...FORMATTERS].sort((a, b) => (a.name === preferred ? -1 : b.name === preferred ? 1 : 0))
-    : FORMATTERS;
+  const ordered =
+    preferred !== "auto"
+      ? [...FORMATTERS].sort((a, b) =>
+          a.name === preferred ? -1 : b.name === preferred ? 1 : 0,
+        )
+      : FORMATTERS;
   for (const fmt of ordered) {
     const result = spawnSync("which", [fmt.name], {
       encoding: "utf-8",
@@ -101,7 +109,9 @@ function findFormatter(preferred: string, timeoutMs: number): Formatter | null {
   return null;
 }
 
-export function createFormatFileTool(config: FormatFileExtConfig = CONFIG_DEFAULTS): ToolDefinition {
+export function createFormatFileTool(
+  config: FormatFileExtConfig = CONFIG_DEFAULTS,
+): ToolDefinition {
   return {
     name: "format_file",
     label: "Format File",
@@ -161,7 +171,10 @@ export function createFormatFileTool(config: FormatFileExtConfig = CONFIG_DEFAUL
         } as any;
       }
 
-      const formatter = findFormatter(config.preferredFormatter, config.formatterLookupTimeoutMs);
+      const formatter = findFormatter(
+        config.preferredFormatter,
+        config.formatterLookupTimeoutMs,
+      );
       if (!formatter) {
         return {
           content: [
@@ -254,7 +267,8 @@ function createFormatFileExtension(
   };
 }
 
-const formatFileExtension: (pi: ExtensionAPI) => void = createFormatFileExtension();
+const formatFileExtension: (pi: ExtensionAPI) => void =
+  createFormatFileExtension();
 
 export default formatFileExtension;
 
@@ -290,7 +304,10 @@ if (import.meta.vitest) {
   describe("format-file extension", () => {
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: true,
           config: defaults,
         }),
@@ -299,7 +316,8 @@ if (import.meta.vitest) {
       const extension = createFormatFileExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -317,7 +335,10 @@ if (import.meta.vitest) {
 
     it("registers no tools when disabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: false,
           config: defaults,
         }),
@@ -326,7 +347,8 @@ if (import.meta.vitest) {
       const extension = createFormatFileExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -345,11 +367,14 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createFormatFileExtension({
         ...DEFAULT_DEPS,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 

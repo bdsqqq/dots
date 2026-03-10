@@ -574,7 +574,11 @@ if (import.meta.vitest) {
       const changes = loadChanges(sessionId, tc1);
       const change = { ...changes[0], reverted: true };
       const changeFilePath = path.join(tmpDir, sessionId, `${tc1}.${changeId}`);
-      fs.writeFileSync(changeFilePath, JSON.stringify(change, null, 2), "utf-8");
+      fs.writeFileSync(
+        changeFilePath,
+        JSON.stringify(change, null, 2),
+        "utf-8",
+      );
 
       const result = findLatestChange(sessionId, filePath, [tc1]);
       expect(result).toBeNull();
@@ -611,7 +615,9 @@ if (import.meta.vitest) {
     });
 
     it("returns null when file has no changes", () => {
-      const result = findLatestChange(sessionId, "/nonexistent/file.txt", ["tc-x"]);
+      const result = findLatestChange(sessionId, "/nonexistent/file.txt", [
+        "tc-x",
+      ]);
       expect(result).toBeNull();
     });
 

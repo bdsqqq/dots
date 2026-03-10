@@ -45,14 +45,7 @@ function tmuxSend(target: string, text: string) {
 }
 
 function tmuxCapture(target: string): string {
-  const r = spawnSync("tmux", [
-    "capture-pane",
-    "-p",
-    "-S",
-    "-",
-    "-t",
-    target,
-  ]);
+  const r = spawnSync("tmux", ["capture-pane", "-p", "-S", "-", "-t", target]);
   return r.stdout.toString();
 }
 
@@ -179,4 +172,3 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
     }, 120_000);
   },
 );
-

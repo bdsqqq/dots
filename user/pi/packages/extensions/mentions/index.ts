@@ -66,7 +66,9 @@ function createMentionsExtension(deps: MentionAdapterDeps) {
 
       const mentions = await deps.resolveMentions(event.text, { cwd: ctx.cwd });
       const resolved = mentions.filter(
-        (mention): mention is Extract<ResolvedMention, { status: "resolved" }> =>
+        (
+          mention,
+        ): mention is Extract<ResolvedMention, { status: "resolved" }> =>
           mention.status === "resolved",
       );
 
@@ -113,9 +115,8 @@ function createMentionsExtension(deps: MentionAdapterDeps) {
   };
 }
 
-const mentionsExtension: (pi: ExtensionAPI) => void = createMentionsExtension(
-  DEFAULT_DEPS,
-);
+const mentionsExtension: (pi: ExtensionAPI) => void =
+  createMentionsExtension(DEFAULT_DEPS);
 
 export default mentionsExtension;
 
@@ -177,7 +178,9 @@ if (import.meta.vitest) {
       kind: "mention-provider",
     };
     const registerAutocompleteContributor = vi.fn();
-    const createMentionProvider = vi.fn((_baseProvider, _context) => mentionProvider);
+    const createMentionProvider = vi.fn(
+      (_baseProvider, _context) => mentionProvider,
+    );
     const resolveMentionsMock = vi.fn();
     const renderResolvedMentionsTextMock = vi.fn();
     const clearSessionMentionCacheMock = vi.fn();
@@ -210,11 +213,8 @@ if (import.meta.vitest) {
     });
 
     it("registers an editor autocomplete contributor", () => {
-      const {
-        deps,
-        registerAutocompleteContributor,
-        createMentionProvider,
-      } = createTestDeps();
+      const { deps, registerAutocompleteContributor, createMentionProvider } =
+        createTestDeps();
       const mentionsExtension = createMentionsExtension(deps);
       const harness = createMockExtensionApiHarness();
 
@@ -229,7 +229,9 @@ if (import.meta.vitest) {
         applyCompletion: vi.fn(),
       };
 
-      expect(contributor?.enhance(baseProvider, { cwd: "/repo/app" })).toMatchObject({
+      expect(
+        contributor?.enhance(baseProvider, { cwd: "/repo/app" }),
+      ).toMatchObject({
         kind: "mention-provider",
       });
       expect(createMentionProvider).toHaveBeenCalledWith(baseProvider, {
@@ -238,11 +240,8 @@ if (import.meta.vitest) {
     });
 
     it("resolves mentions on input and injects hidden context only when text is non-empty", async () => {
-      const {
-        deps,
-        resolveMentionsMock,
-        renderResolvedMentionsTextMock,
-      } = createTestDeps();
+      const { deps, resolveMentionsMock, renderResolvedMentionsTextMock } =
+        createTestDeps();
       const mentionsExtension = createMentionsExtension(deps);
       const harness = createMockExtensionApiHarness();
       const resolvedSessionMention = {
@@ -292,7 +291,10 @@ if (import.meta.vitest) {
 
       await expect(
         inputHandler(
-          { source: "user", text: "open @session/alpha1234 then @session/missing" },
+          {
+            source: "user",
+            text: "open @session/alpha1234 then @session/missing",
+          },
           { cwd: "/repo/app" },
         ),
       ).resolves.toEqual({ action: "continue" });
@@ -305,18 +307,20 @@ if (import.meta.vitest) {
         resolvedSessionMention,
       ]);
 
-      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual({
-        messages: [
-          ...baseMessages,
-          expect.objectContaining({
-            role: "custom",
-            customType: CUSTOM_TYPE,
-            content:
-              "resolved mention context:\n@session/alpha1234\tsession\talpha1234",
-            display: false,
-          }),
-        ],
-      });
+      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual(
+        {
+          messages: [
+            ...baseMessages,
+            expect.objectContaining({
+              role: "custom",
+              customType: CUSTOM_TYPE,
+              content:
+                "resolved mention context:\n@session/alpha1234\tsession\talpha1234",
+              display: false,
+            }),
+          ],
+        },
+      );
 
       resolveMentionsMock.mockResolvedValue([resolvedSessionMention]);
       renderResolvedMentionsTextMock.mockReturnValue("");
@@ -328,9 +332,11 @@ if (import.meta.vitest) {
         ),
       ).resolves.toEqual({ action: "continue" });
 
-      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual({
-        messages: baseMessages,
-      });
+      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual(
+        {
+          messages: baseMessages,
+        },
+      );
     });
 
     it("clears adapter state on agent_end, session_start, and session_switch", async () => {
@@ -375,14 +381,19 @@ if (import.meta.vitest) {
       const contextHandler = getHandler(harness.handlers, "context");
       const agentEndHandler = getHandler(harness.handlers, "agent_end");
       const sessionStartHandler = getHandler(harness.handlers, "session_start");
-      const sessionSwitchHandler = getHandler(harness.handlers, "session_switch");
+      const sessionSwitchHandler = getHandler(
+        harness.handlers,
+        "session_switch",
+      );
 
       const primeState = async () => {
         await inputHandler(
           { source: "user", text: "@session/alpha1234" },
           { cwd: "/repo/app" },
         );
-        await expect(contextHandler({ messages: baseMessages })).resolves.toEqual({
+        await expect(
+          contextHandler({ messages: baseMessages }),
+        ).resolves.toEqual({
           messages: [
             ...baseMessages,
             expect.objectContaining({ customType: CUSTOM_TYPE }),
@@ -392,35 +403,38 @@ if (import.meta.vitest) {
 
       await primeState();
       await agentEndHandler();
-      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual({
-        messages: baseMessages,
-      });
+      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual(
+        {
+          messages: baseMessages,
+        },
+      );
       expect(clearSessionMentionCacheMock).not.toHaveBeenCalled();
       expect(clearCommitIndexCacheMock).not.toHaveBeenCalled();
 
       await primeState();
       await sessionStartHandler();
-      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual({
-        messages: baseMessages,
-      });
+      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual(
+        {
+          messages: baseMessages,
+        },
+      );
       expect(clearSessionMentionCacheMock).toHaveBeenCalledTimes(1);
       expect(clearCommitIndexCacheMock).toHaveBeenCalledTimes(1);
 
       await primeState();
       await sessionSwitchHandler();
-      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual({
-        messages: baseMessages,
-      });
+      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual(
+        {
+          messages: baseMessages,
+        },
+      );
       expect(clearSessionMentionCacheMock).toHaveBeenCalledTimes(2);
       expect(clearCommitIndexCacheMock).toHaveBeenCalledTimes(2);
     });
 
     it("degrades gracefully when mentions resolve to nothing or stay unresolved", async () => {
-      const {
-        deps,
-        resolveMentionsMock,
-        renderResolvedMentionsTextMock,
-      } = createTestDeps();
+      const { deps, resolveMentionsMock, renderResolvedMentionsTextMock } =
+        createTestDeps();
       const mentionsExtension = createMentionsExtension(deps);
       const harness = createMockExtensionApiHarness();
       const baseMessages = [{ role: "user", content: "hi" }];
@@ -440,9 +454,11 @@ if (import.meta.vitest) {
         ),
       ).resolves.toEqual({ action: "continue" });
       expect(renderResolvedMentionsTextMock).toHaveBeenLastCalledWith([]);
-      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual({
-        messages: baseMessages,
-      });
+      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual(
+        {
+          messages: baseMessages,
+        },
+      );
 
       resolveMentionsMock.mockResolvedValue([
         {
@@ -466,9 +482,11 @@ if (import.meta.vitest) {
         ),
       ).resolves.toEqual({ action: "continue" });
       expect(renderResolvedMentionsTextMock).toHaveBeenLastCalledWith([]);
-      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual({
-        messages: baseMessages,
-      });
+      await expect(contextHandler({ messages: baseMessages })).resolves.toEqual(
+        {
+          messages: baseMessages,
+        },
+      );
     });
   });
 }
