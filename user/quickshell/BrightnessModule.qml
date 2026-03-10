@@ -80,6 +80,7 @@ Item {
             Controls.Slider {
                 id: slider
                 Layout.fillWidth: true
+                minimumValue: 0.05
                 value: brightnessModule.brightness
                 onChangeEnd: function (val) {
                     brightnessModule.brightness = val;
