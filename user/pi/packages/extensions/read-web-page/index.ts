@@ -82,9 +82,10 @@ function isReadWebPageConfig(
   );
 }
 
-const READ_WEB_PAGE_CONFIG_SCHEMA: ExtensionConfigSchema<ReadWebPageExtConfig> = {
-  validate: isReadWebPageConfig,
-};
+const READ_WEB_PAGE_CONFIG_SCHEMA: ExtensionConfigSchema<ReadWebPageExtConfig> =
+  {
+    validate: isReadWebPageConfig,
+  };
 
 const DEFAULT_PROMPT_SYSTEM = `Analyze web page content and answer questions. Be concise, answer from provided content only. No filler.`;
 
@@ -420,7 +421,8 @@ function createReadWebPageExtension(
   };
 }
 
-const readWebPageExtension: (pi: ExtensionAPI) => void = createReadWebPageExtension();
+const readWebPageExtension: (pi: ExtensionAPI) => void =
+  createReadWebPageExtension();
 
 export default readWebPageExtension;
 
@@ -456,7 +458,10 @@ if (import.meta.vitest) {
   describe("read-web-page extension", () => {
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: true,
           config: defaults,
         }),
@@ -467,7 +472,8 @@ if (import.meta.vitest) {
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
         resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -488,7 +494,10 @@ if (import.meta.vitest) {
 
     it("registers no tools when disabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: false,
           config: defaults,
         }),
@@ -499,7 +508,8 @@ if (import.meta.vitest) {
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
         resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -520,13 +530,16 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const resolvePromptSpy = vi.fn(() => DEFAULT_PROMPT_SYSTEM);
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createReadWebPageExtension({
         ...DEFAULT_DEPS,
         resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 

@@ -109,7 +109,9 @@ if (import.meta.vitest) {
   beforeEach(() => {
     tmpDir = path.join(os.tmpdir(), `pi-agents-md-test-${Date.now()}`);
     projectDir = path.join(tmpDir, "project");
-    fs.mkdirSync(path.join(projectDir, "src", "components"), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, "src", "components"), {
+      recursive: true,
+    });
 
     // create AGENTS.md files
     fs.writeFileSync(
@@ -193,7 +195,13 @@ if (import.meta.vitest) {
 
     it("handles file in nested directory correctly", () => {
       // create deeply nested structure
-      const deepDir = path.join(projectDir, "src", "components", "ui", "buttons");
+      const deepDir = path.join(
+        projectDir,
+        "src",
+        "components",
+        "ui",
+        "buttons",
+      );
       fs.mkdirSync(deepDir, { recursive: true });
 
       const filePath = path.join(deepDir, "IconButton.tsx");

@@ -1,7 +1,16 @@
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
-import { getCommitIndex, lookupCommitByPrefix, resolveGitRoot, type CommitIndex } from "./commit-index";
+import {
+  getCommitIndex,
+  lookupCommitByPrefix,
+  resolveGitRoot,
+  type CommitIndex,
+} from "./commit-index";
 import type { MentionableSession } from "./session-index";
-import { type MentionKind, type MentionToken, type ResolvedMention } from "./types";
+import {
+  type MentionKind,
+  type MentionToken,
+  type ResolvedMention,
+} from "./types";
 
 const mentionKindDescriptions = new Map<MentionKind, string>([
   ["commit", "git commit"],
@@ -21,7 +30,10 @@ export interface MentionSource {
   kind: MentionKind;
   description: string;
   isEnabled?(context: MentionSourceContext): boolean;
-  getSuggestions(query: string, context: MentionSourceContext): AutocompleteItem[];
+  getSuggestions(
+    query: string,
+    context: MentionSourceContext,
+  ): AutocompleteItem[];
   resolve(
     token: MentionToken,
     context: MentionSourceContext,
@@ -136,5 +148,9 @@ export function listEnabledMentionKinds(
 }
 
 export function getMentionKindDescription(kind: MentionKind): string {
-  return getMentionSource(kind)?.description ?? mentionKindDescriptions.get(kind) ?? kind;
+  return (
+    getMentionSource(kind)?.description ??
+    mentionKindDescriptions.get(kind) ??
+    kind
+  );
 }

@@ -67,7 +67,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isHandoffConfig(value: Record<string, unknown>): value is HandoffExtConfig {
+function isHandoffConfig(
+  value: Record<string, unknown>,
+): value is HandoffExtConfig {
   const threshold = value.threshold;
   if (typeof threshold !== "number" || threshold <= 0 || threshold > 1) {
     return false;
@@ -662,7 +664,10 @@ if (import.meta.vitest) {
       let registeredSourceCount = 0;
       let cleanup: (() => void) | undefined;
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: true,
           config: defaults,
         }),
@@ -730,7 +735,10 @@ if (import.meta.vitest) {
       const registerMentionSourceSpy = vi.fn();
       const resolvePromptSpy = vi.fn(() => "");
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: false,
           config: defaults,
         }),
@@ -765,7 +773,9 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const registerMentionSourceSpy = vi.fn();
       const resolvePromptSpy = vi.fn(() => "");
       const handoffExtension = createHandoffExtension({

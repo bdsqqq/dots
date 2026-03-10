@@ -1,7 +1,6 @@
 {
   "name": "@bds_pi/box-format",
   "version": "0.0.1",
-
   "main": "index.ts",
   "types": "index.ts",
   "exports": {
@@ -13,7 +12,7 @@
     "@mariozechner/pi-tui": "catalog:"
   },
   "devDependencies": {
-    "vitest": "^3.0.0",
-    "@mariozechner/pi-tui": "catalog:"
+    "@mariozechner/pi-tui": "catalog:",
+    "vitest": "^3.0.0"
   }
 }

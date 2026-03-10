@@ -6,7 +6,9 @@ import { createHash } from "node:crypto";
  * so consumers that don't use mermaid never pay the bundle cost.
  * same pattern as @bds_pi/tui's lazy require().
  */
-let _renderFn: typeof import("beautiful-mermaid").renderMermaidASCII | undefined;
+let _renderFn:
+  | typeof import("beautiful-mermaid").renderMermaidASCII
+  | undefined;
 function getRenderFn() {
   if (!_renderFn) {
     _renderFn = require("beautiful-mermaid").renderMermaidASCII;

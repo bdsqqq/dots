@@ -586,8 +586,12 @@ if (import.meta.vitest) {
       expect(result).toContain("item 100");
       expect(result).toContain("80 lines truncated");
       // verify ordering
-      expect(result.indexOf("item 10")).toBeLessThan(result.indexOf("truncated"));
-      expect(result.indexOf("truncated")).toBeLessThan(result.indexOf("item 91"));
+      expect(result.indexOf("item 10")).toBeLessThan(
+        result.indexOf("truncated"),
+      );
+      expect(result.indexOf("truncated")).toBeLessThan(
+        result.indexOf("item 91"),
+      );
     });
 
     it("uses custom truncation message", () => {

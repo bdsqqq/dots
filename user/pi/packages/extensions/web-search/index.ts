@@ -18,7 +18,10 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import {
   clearConfigCache,
@@ -58,7 +61,9 @@ const DEFAULT_DEPS: WebSearchExtensionDeps = {
   withPromptPatch,
 };
 
-function isWebSearchConfig(value: Record<string, unknown>): value is WebSearchExtConfig {
+function isWebSearchConfig(
+  value: Record<string, unknown>,
+): value is WebSearchExtConfig {
   return (
     typeof value.defaultMaxResults === "number" &&
     Number.isInteger(value.defaultMaxResults) &&
@@ -263,7 +268,9 @@ interface WebSearchParams {
   max_results?: number;
 }
 
-export function createWebSearchTool(config: WebSearchExtConfig = CONFIG_DEFAULTS): ToolDefinition {
+export function createWebSearchTool(
+  config: WebSearchExtConfig = CONFIG_DEFAULTS,
+): ToolDefinition {
   return {
     name: "web_search",
     label: "Web Search",
@@ -321,7 +328,13 @@ export function createWebSearchTool(config: WebSearchExtConfig = CONFIG_DEFAULTS
         body.search_queries = p.search_queries;
       }
 
-      const { data, error } = await searchParallel(apiKey, body, config.endpoint, config.curlTimeoutSecs, signal);
+      const { data, error } = await searchParallel(
+        apiKey,
+        body,
+        config.endpoint,
+        config.curlTimeoutSecs,
+        signal,
+      );
 
       if (error) {
         return {
@@ -410,7 +423,8 @@ function createWebSearchExtension(
   };
 }
 
-const webSearchExtension: (pi: ExtensionAPI) => void = createWebSearchExtension();
+const webSearchExtension: (pi: ExtensionAPI) => void =
+  createWebSearchExtension();
 
 export default webSearchExtension;
 
@@ -446,7 +460,10 @@ if (import.meta.vitest) {
   describe("web-search extension", () => {
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: true,
           config: defaults,
         }),
@@ -455,7 +472,8 @@ if (import.meta.vitest) {
       const extension = createWebSearchExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -472,7 +490,10 @@ if (import.meta.vitest) {
 
     it("registers no tools when disabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: false,
           config: defaults,
         }),
@@ -481,7 +502,8 @@ if (import.meta.vitest) {
       const extension = createWebSearchExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -501,11 +523,14 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createWebSearchExtension({
         ...DEFAULT_DEPS,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 

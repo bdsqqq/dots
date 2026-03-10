@@ -37,8 +37,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CWD = process.env.PI_E2E_CWD ?? resolve(__dirname, "../../../..");
 const ENABLED = process.env.PI_E2E === "1";
-const E2E_MODEL =
-  process.env.PI_E2E_MODEL ?? "openrouter/minimax/minimax-m2.5";
+const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openrouter/minimax/minimax-m2.5";
 const RECORD = process.env.PI_E2E_RECORD === "1";
 const FIXTURES_DIR = join(__dirname, "__fixtures__", "e2e");
 
@@ -256,14 +255,7 @@ function tmuxSend(target: string, text: string) {
 }
 
 function tmuxCapture(target: string): string {
-  const r = spawnSync("tmux", [
-    "capture-pane",
-    "-p",
-    "-S",
-    "-",
-    "-t",
-    target,
-  ]);
+  const r = spawnSync("tmux", ["capture-pane", "-p", "-S", "-", "-t", target]);
   return r.stdout.toString();
 }
 
@@ -482,7 +474,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     );
 
     const prompt = [
-      "Use the Task tool. description: \"fallback audit\".",
+      'Use the Task tool. description: "fallback audit".',
       "In the child, inspect the bash tool schema available to you before acting.",
       "If the required field is `command`, report `builtin-bash`. If the required field is `cmd`, report `custom-bash`.",
       "Then do exactly one thing: run bash with `printf fallback-ok`.",
@@ -498,7 +490,9 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     });
     expect(exitCode).toBe(0);
 
-    const taskResult = getToolResults(events).find((r) => r.toolName === "Task");
+    const taskResult = getToolResults(events).find(
+      (r) => r.toolName === "Task",
+    );
     expect(taskResult).toBeDefined();
     expect(taskResult!.exitCode).toBe(0);
     expect(taskResult!.isError).toBe(false);
@@ -506,7 +500,8 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     expect(taskResult!.content).toContain("fallback-ok");
 
     const rawTaskEnd = events.find(
-      (event) => event.type === "tool_execution_end" && event.toolName === "Task",
+      (event) =>
+        event.type === "tool_execution_end" && event.toolName === "Task",
     );
     const childMessages = rawTaskEnd?.result?.details?.messages ?? [];
     const childToolCalls = childMessages.flatMap((message: any) =>
@@ -516,9 +511,12 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     expect(bashCall?.arguments).toMatchObject({ cmd: "printf fallback-ok" });
 
     const childToolResults = childMessages.filter(
-      (message: any) => message.role === "toolResult" && message.toolName === "bash",
+      (message: any) =>
+        message.role === "toolResult" && message.toolName === "bash",
     );
-    expect(childToolResults.at(-1)?.content?.[0]?.text ?? "").toContain("fallback-ok");
+    expect(childToolResults.at(-1)?.content?.[0]?.text ?? "").toContain(
+      "fallback-ok",
+    );
 
     recordFixture("tool-task-bash-fallback", events);
 

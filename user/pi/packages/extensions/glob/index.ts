@@ -16,7 +16,10 @@ import * as os from "node:os";
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 import { createInterface } from "node:readline";
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
@@ -74,7 +77,9 @@ interface GlobParams {
   offset?: number;
 }
 
-export function createGlobTool(config: GlobExtConfig = CONFIG_DEFAULTS): ToolDefinition {
+export function createGlobTool(
+  config: GlobExtConfig = CONFIG_DEFAULTS,
+): ToolDefinition {
   return {
     name: "find",
     label: "Find Files",
@@ -311,7 +316,10 @@ if (import.meta.vitest) {
   describe("glob extension", () => {
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: true,
           config: defaults,
         }),
@@ -320,7 +328,8 @@ if (import.meta.vitest) {
       const extension = createGlobExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -338,7 +347,10 @@ if (import.meta.vitest) {
 
     it("registers no tools when disabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: false,
           config: defaults,
         }),
@@ -347,7 +359,8 @@ if (import.meta.vitest) {
       const extension = createGlobExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -365,11 +378,14 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createGlobExtension({
         ...DEFAULT_DEPS,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 

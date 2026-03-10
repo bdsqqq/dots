@@ -29,7 +29,8 @@ export function parseMentions(text: string): MentionToken[] {
     const value = match[2];
     const start = match.index ?? -1;
 
-    if (!kind || !isMentionKind(kind) || value === undefined || start < 0) continue;
+    if (!kind || !isMentionKind(kind) || value === undefined || start < 0)
+      continue;
 
     mentions.push({
       kind,
@@ -69,4 +70,3 @@ export function detectMentionPrefix(
     hasSlash: raw.includes("/"),
   };
 }
-

@@ -57,7 +57,15 @@ type CodeReviewExtensionDeps = {
 const CONFIG_DEFAULTS: CodeReviewExtConfig = {
   model: "openrouter/google/gemini-3.1-pro-preview",
   builtinTools: ["read", "grep", "find", "ls", "bash"],
-  extensionTools: ["read", "grep", "find", "ls", "bash", "web_search", "read_web_page"],
+  extensionTools: [
+    "read",
+    "grep",
+    "find",
+    "ls",
+    "bash",
+    "web_search",
+    "read_web_page",
+  ],
   promptFile: "",
   promptString: "",
   reportPromptFile: "",
@@ -82,7 +90,9 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
 }
 
 function isCodeReviewConfig(
@@ -367,7 +377,8 @@ function createCodeReviewExtension(
   };
 }
 
-const codeReviewExtension: (pi: ExtensionAPI) => void = createCodeReviewExtension();
+const codeReviewExtension: (pi: ExtensionAPI) => void =
+  createCodeReviewExtension();
 
 export default codeReviewExtension;
 
@@ -403,20 +414,25 @@ if (import.meta.vitest) {
   describe("code-review extension", () => {
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: true,
           config: defaults,
         }),
       );
-      const resolvePromptSpy = vi.fn((promptString: string, promptFile: string) =>
-        resolvePrompt(promptString, promptFile),
+      const resolvePromptSpy = vi.fn(
+        (promptString: string, promptFile: string) =>
+          resolvePrompt(promptString, promptFile),
       );
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createCodeReviewExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
         resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -443,20 +459,25 @@ if (import.meta.vitest) {
 
     it("registers no tools when disabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(_namespace: string, defaults: T) => ({
+        <T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
           enabled: false,
           config: defaults,
         }),
       );
-      const resolvePromptSpy = vi.fn((promptString: string, promptFile: string) =>
-        resolvePrompt(promptString, promptFile),
+      const resolvePromptSpy = vi.fn(
+        (promptString: string, promptFile: string) =>
+          resolvePrompt(promptString, promptFile),
       );
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createCodeReviewExtension({
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
         resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 
@@ -481,15 +502,19 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-      const resolvePromptSpy = vi.fn((promptString: string, promptFile: string) =>
-        resolvePrompt(promptString, promptFile),
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+      const resolvePromptSpy = vi.fn(
+        (promptString: string, promptFile: string) =>
+          resolvePrompt(promptString, promptFile),
       );
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createCodeReviewExtension({
         ...DEFAULT_DEPS,
         resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch: withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        withPromptPatch:
+          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
       const harness = createMockExtensionApiHarness();
 

@@ -220,7 +220,9 @@ if (import.meta.vitest) {
 
   describe("isHtml", () => {
     it("returns true for doctype", () => {
-      expect(isHtml("<!DOCTYPE html><html><body>test</body></html>")).toBe(true);
+      expect(isHtml("<!DOCTYPE html><html><body>test</body></html>")).toBe(
+        true,
+      );
       expect(isHtml("  <!DOCTYPE html>\n<html>")).toBe(true);
     });
 

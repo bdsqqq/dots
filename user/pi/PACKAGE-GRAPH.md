@@ -381,25 +381,25 @@ these are the biggest hubs by actual local dependency footprint.
 
 ### core hubs
 
-| package | why it is a hub |
-| --- | --- |
-| `config` | pulled into most extensions for namespaced settings |
-| `box-format` | shared result rendering for most tools |
-| `pi-spawn` | main sub-agent runtime spine |
+| package            | why it is a hub                                     |
+| ------------------ | --------------------------------------------------- |
+| `config`           | pulled into most extensions for namespaced settings |
+| `box-format`       | shared result rendering for most tools              |
+| `pi-spawn`         | main sub-agent runtime spine                        |
 | `sub-agent-render` | shared rendering/result shaping for sub-agent tools |
-| `mentions` | central to current addressable-history feature set |
-| `prompt-patch` | lightweight but almost everywhere in tools |
+| `mentions`         | central to current addressable-history feature set  |
+| `prompt-patch`     | lightweight but almost everywhere in tools          |
 
 ### extension hubs
 
-| package | why it is a hub |
-| --- | --- |
-| `read` | still a tool hub for file-aware sub-agent tool suites |
-| `fs` | now owns shared path and directory traversal semantics that had leaked out of `read` |
-| `bash` | shared by `oracle`, `task`, `code-review` |
-| `github` | shared by `librarian` |
-| `finder` | shared by `task` |
-| `editor` | runtime ui host, even though manifest deps do not show it as a dependency target |
+| package  | why it is a hub                                                                      |
+| -------- | ------------------------------------------------------------------------------------ |
+| `read`   | still a tool hub for file-aware sub-agent tool suites                                |
+| `fs`     | now owns shared path and directory traversal semantics that had leaked out of `read` |
+| `bash`   | shared by `oracle`, `task`, `code-review`                                            |
+| `github` | shared by `librarian`                                                                |
+| `finder` | shared by `task`                                                                     |
+| `editor` | runtime ui host, even though manifest deps do not show it as a dependency target     |
 
 ---
 

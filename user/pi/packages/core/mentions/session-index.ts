@@ -163,7 +163,10 @@ export function parseSessionFile(filePath: string): ParsedSessionFile {
       const entry = JSON.parse(line);
       if (entry.type === "session") {
         header = entry as SessionHeader;
-      } else if (entry.type === "session_info" && typeof entry.name === "string") {
+      } else if (
+        entry.type === "session_info" &&
+        typeof entry.name === "string"
+      ) {
         sessionName = entry.name;
       }
 
@@ -310,7 +313,10 @@ export function enumerateBranches(
   return branches;
 }
 
-function matchesMentionableText(session: MentionableSession, query: string): boolean {
+function matchesMentionableText(
+  session: MentionableSession,
+  query: string,
+): boolean {
   const lower = query.toLowerCase();
   return (
     session.sessionId.toLowerCase().includes(lower) ||
@@ -343,16 +349,18 @@ export function summarizeMentionableSession(
     .filter(Boolean)
     .join("\n");
 
-  const startedAt = branches
-    .map((branch) => branch.timestampStart)
-    .filter(Boolean)
-    .sort()[0] || parsed.header.timestamp;
+  const startedAt =
+    branches
+      .map((branch) => branch.timestampStart)
+      .filter(Boolean)
+      .sort()[0] || parsed.header.timestamp;
 
-  const updatedAt = branches
-    .map((branch) => branch.timestampEnd)
-    .filter(Boolean)
-    .sort()
-    .at(-1) || parsed.header.timestamp;
+  const updatedAt =
+    branches
+      .map((branch) => branch.timestampEnd)
+      .filter(Boolean)
+      .sort()
+      .at(-1) || parsed.header.timestamp;
 
   const firstUserMessage = firstWithUserMessage.firstUserMessage;
 
@@ -368,7 +376,8 @@ export function summarizeMentionableSession(
     branchCount: branches.length,
     parentSessionPath: parsed.header.parentSession,
     isHandoffCandidate:
-      typeof parsed.header.parentSession === "string" && firstUserMessage.length > 0,
+      typeof parsed.header.parentSession === "string" &&
+      firstUserMessage.length > 0,
   };
 }
 
@@ -446,7 +455,8 @@ export function resolveMentionableSession(
   );
 
   if (candidates.length === 0) return { status: "not_found" };
-  if (candidates.length === 1) return { status: "resolved", session: candidates[0]! };
+  if (candidates.length === 1)
+    return { status: "resolved", session: candidates[0]! };
 
   const exact = candidates.find(
     (session) => session.sessionId.toLowerCase() === normalized,

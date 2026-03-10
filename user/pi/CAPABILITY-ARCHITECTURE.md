@@ -233,21 +233,28 @@ it should not own:
 
 ```ts
 interface MentionContext {
-  cwd: string
-  sessionsDir?: string
-  config?: Record<string, unknown>
+  cwd: string;
+  sessionsDir?: string;
+  config?: Record<string, unknown>;
 }
 
 interface MentionSource {
-  namespace: string
-  isAvailable(ctx: MentionContext): boolean
+  namespace: string;
+  isAvailable(ctx: MentionContext): boolean;
   describe?(ctx: MentionContext): {
-    description?: string
-    priority?: number
-  }
-  getSuggestions(query: string, ctx: MentionContext): MentionCompletionItem[] | Promise<MentionCompletionItem[]>
-  resolve(value: string, token: MentionToken, ctx: MentionContext): MentionResolved | null | Promise<MentionResolved | null>
-  render?(resolved: MentionResolved, ctx: MentionContext): string
+    description?: string;
+    priority?: number;
+  };
+  getSuggestions(
+    query: string,
+    ctx: MentionContext,
+  ): MentionCompletionItem[] | Promise<MentionCompletionItem[]>;
+  resolve(
+    value: string,
+    token: MentionToken,
+    ctx: MentionContext,
+  ): MentionResolved | null | Promise<MentionResolved | null>;
+  render?(resolved: MentionResolved, ctx: MentionContext): string;
 }
 ```
 
@@ -402,13 +409,13 @@ it should not own:
 
 ```ts
 interface ConfigSchema<T> {
-  namespace: string
-  defaults: T
-  validate?(input: unknown): T
+  namespace: string;
+  defaults: T;
+  validate?(input: unknown): T;
   describe?: {
-    title: string
-    docs?: string
-  }
+    title: string;
+    docs?: string;
+  };
 }
 ```
 
@@ -541,16 +548,16 @@ let features say "participate" or "do not participate" cleanly through config, w
 
 every phase should preserve graceful partial installs.
 
-| loaded pieces | expected behavior |
-| --- | --- |
-| editor only | editor works |
-| mentions adapter only | mention resolution works for any registered sources, no autocomplete |
-| editor + mentions autocomplete contributor | mention autocomplete works |
-| handoff only | handoff works |
-| handoff + mentions adapter | handoff mentions can resolve if source is registered |
-| handoff + editor only | handoff works, but no mention resolution unless adapter exists |
-| search-sessions only | tool works |
-| search-sessions + mentions adapter | `@session/...` can resolve if source is registered |
+| loaded pieces                              | expected behavior                                                    |
+| ------------------------------------------ | -------------------------------------------------------------------- |
+| editor only                                | editor works                                                         |
+| mentions adapter only                      | mention resolution works for any registered sources, no autocomplete |
+| editor + mentions autocomplete contributor | mention autocomplete works                                           |
+| handoff only                               | handoff works                                                        |
+| handoff + mentions adapter                 | handoff mentions can resolve if source is registered                 |
+| handoff + editor only                      | handoff works, but no mention resolution unless adapter exists       |
+| search-sessions only                       | tool works                                                           |
+| search-sessions + mentions adapter         | `@session/...` can resolve if source is registered                   |
 
 if any of these combinations crash, we are building too much coupling.
 

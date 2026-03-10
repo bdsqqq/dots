@@ -70,9 +70,10 @@ export function lookupCommitByPrefix(
   const normalized = prefix.trim().toLowerCase();
   if (!/^[0-9a-f]+$/.test(normalized)) return { status: "not_found" };
 
-  const matches = index.commits.filter((commit) => commit.sha.startsWith(normalized));
+  const matches = index.commits.filter((commit) =>
+    commit.sha.startsWith(normalized),
+  );
   if (matches.length === 0) return { status: "not_found" };
   if (matches.length === 1) return { status: "resolved", commit: matches[0]! };
   return { status: "ambiguous", matches };
 }
-

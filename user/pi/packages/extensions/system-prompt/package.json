@@ -8,8 +8,8 @@
   },
   "dependencies": {
     "@bds_pi/config": "workspace:*",
-    "@bds_pi/pi-spawn": "workspace:*",
-    "@bds_pi/interpolate": "workspace:*"
+    "@bds_pi/interpolate": "workspace:*",
+    "@bds_pi/pi-spawn": "workspace:*"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "catalog:"

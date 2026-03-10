@@ -24,16 +24,16 @@ this doc covers the **full package set** we currently have:
 
 these labels are for this repo, not pi itself.
 
-| role | meaning |
-| --- | --- |
-| `helper` | low-level utility with no user-facing surface |
-| `runtime-helper` | shared runtime plumbing used by multiple features/extensions |
-| `domain-runtime` | reusable runtime logic for a user-facing domain |
-| `host-extension` | extension that hosts other behavior or ui composition |
+| role                | meaning                                                              |
+| ------------------- | -------------------------------------------------------------------- |
+| `helper`            | low-level utility with no user-facing surface                        |
+| `runtime-helper`    | shared runtime plumbing used by multiple features/extensions         |
+| `domain-runtime`    | reusable runtime logic for a user-facing domain                      |
+| `host-extension`    | extension that hosts other behavior or ui composition                |
 | `adapter-extension` | extension that bridges shared runtime into pi lifecycle/ui/tool apis |
-| `feature-extension` | extension that owns a user-facing behavior/workflow |
-| `tool-extension` | extension whose primary job is registering one or more tools |
-| `test/support` | non-runtime package for fixtures/tests |
+| `feature-extension` | extension that owns a user-facing behavior/workflow                  |
+| `tool-extension`    | extension whose primary job is registering one or more tools         |
+| `test/support`      | non-runtime package for fixtures/tests                               |
 
 ---
 
@@ -41,64 +41,64 @@ these labels are for this repo, not pi itself.
 
 ## core packages
 
-| package | role | purpose | main composition |
-| --- | --- | --- | --- |
-| `agents-md` | helper | discover + format `AGENTS.md` guidance for a file path | currently no direct in-tree consumers found |
-| `box-chrome` | helper | box-drawing layout primitives | `box-format`, `editor`, `command-palette` |
-| `box-format` | runtime-helper | standard boxed rendering for tool results and structured text | many tool extensions |
-| `config` | runtime-helper | namespaced config merge/cache for our package | many extensions, `interpolate` |
-| `editor-capabilities` | runtime-helper | typed editor autocomplete contributor contracts + package-local registry | `editor`, `mentions` |
-| `file-tracker` | runtime-helper | persist before/after file changes for undo | `create-file`, `edit-file`, `format-file`, `undo-edit` |
-| `fs` | runtime-helper | shared path normalization, tolerant resolution, directory listing, and tiny recursive walk helpers | `read`, `ls`, file tools, session indexing |
-| `github-api` | domain-runtime | shared `gh api` helpers and repo parsing | `github` |
-| `html-to-md` | domain-runtime | html → llm-friendly markdown conversion | `read-web-page` |
-| `interpolate` | runtime-helper | prompt variable interpolation/runtime vars | `pi-spawn`, `system-prompt` |
-| `mentions` | domain-runtime | mention parsing, indexing, resolution, render, autocomplete provider | `mentions` extension, `search-sessions` shared session parsing |
-| `mutex` | helper | per-path async file lock | file-mutating tools, `bash` |
-| `output-buffer` | helper | bounded head/tail truncation utilities | `bash`, `read`, `grep`, `glob`, `read-session`, `read-web-page` |
-| `permissions` | runtime-helper | permission rules for tool execution | `bash` |
-| `pi-spawn` | runtime-helper | nested pi/sub-agent orchestration | sub-agent tool family, prompt helpers |
-| `prompt-patch` | helper | derive prompt snippet/guidelines from tool descriptions | most tool extensions |
-| `show` | helper | excerpt/windowing primitives | `box-format`, `show-renderer` |
-| `show-renderer` | helper | cached renderer wrapper over `show()` | currently no direct extension consumers found |
-| `sub-agent-render` | runtime-helper | normalize + render spawned-agent results | sub-agent tool family |
-| `tool-cost` | helper | shared `details.cost` contract/type guard | `editor`, `web-search`, `sub-agent-render` |
-| `tui` | helper | lazy `pi-tui` re-exports for safe runtime/test imports | `bash` |
+| package               | role           | purpose                                                                                            | main composition                                                |
+| --------------------- | -------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `agents-md`           | helper         | discover + format `AGENTS.md` guidance for a file path                                             | currently no direct in-tree consumers found                     |
+| `box-chrome`          | helper         | box-drawing layout primitives                                                                      | `box-format`, `editor`, `command-palette`                       |
+| `box-format`          | runtime-helper | standard boxed rendering for tool results and structured text                                      | many tool extensions                                            |
+| `config`              | runtime-helper | namespaced config merge/cache for our package                                                      | many extensions, `interpolate`                                  |
+| `editor-capabilities` | runtime-helper | typed editor autocomplete contributor contracts + package-local registry                           | `editor`, `mentions`                                            |
+| `file-tracker`        | runtime-helper | persist before/after file changes for undo                                                         | `create-file`, `edit-file`, `format-file`, `undo-edit`          |
+| `fs`                  | runtime-helper | shared path normalization, tolerant resolution, directory listing, and tiny recursive walk helpers | `read`, `ls`, file tools, session indexing                      |
+| `github-api`          | domain-runtime | shared `gh api` helpers and repo parsing                                                           | `github`                                                        |
+| `html-to-md`          | domain-runtime | html → llm-friendly markdown conversion                                                            | `read-web-page`                                                 |
+| `interpolate`         | runtime-helper | prompt variable interpolation/runtime vars                                                         | `pi-spawn`, `system-prompt`                                     |
+| `mentions`            | domain-runtime | mention parsing, indexing, resolution, render, autocomplete provider                               | `mentions` extension, `search-sessions` shared session parsing  |
+| `mutex`               | helper         | per-path async file lock                                                                           | file-mutating tools, `bash`                                     |
+| `output-buffer`       | helper         | bounded head/tail truncation utilities                                                             | `bash`, `read`, `grep`, `glob`, `read-session`, `read-web-page` |
+| `permissions`         | runtime-helper | permission rules for tool execution                                                                | `bash`                                                          |
+| `pi-spawn`            | runtime-helper | nested pi/sub-agent orchestration                                                                  | sub-agent tool family, prompt helpers                           |
+| `prompt-patch`        | helper         | derive prompt snippet/guidelines from tool descriptions                                            | most tool extensions                                            |
+| `show`                | helper         | excerpt/windowing primitives                                                                       | `box-format`, `show-renderer`                                   |
+| `show-renderer`       | helper         | cached renderer wrapper over `show()`                                                              | currently no direct extension consumers found                   |
+| `sub-agent-render`    | runtime-helper | normalize + render spawned-agent results                                                           | sub-agent tool family                                           |
+| `tool-cost`           | helper         | shared `details.cost` contract/type guard                                                          | `editor`, `web-search`, `sub-agent-render`                      |
+| `tui`                 | helper         | lazy `pi-tui` re-exports for safe runtime/test imports                                             | `bash`                                                          |
 
 ## extension packages
 
-| package | role | primary registration surface | purpose |
-| --- | --- | --- | --- |
-| `bash` | tool-extension | tool | custom `bash` tool |
-| `code-review` | tool-extension | tool | spawned review agent over diffs |
-| `command-palette` | feature-extension | command + shortcut + overlay ui | searchable palette for tools/models/commands |
-| `create-file` | tool-extension | tool | custom `write` tool |
-| `e2e` | test/support | none | e2e fixtures/support, not runtime |
-| `edit-file` | tool-extension | tool | custom `edit` tool |
-| `editor` | host-extension | editor/footer/widget host | boxed editor + status/label/ui hosting |
-| `finder` | tool-extension | tool | concept-level codebase search via sub-agent |
-| `format-file` | tool-extension | tool | formatter runner with undo tracking |
-| `github` | tool-extension | tools | GitHub repo exploration/search/history tools |
-| `glob` | tool-extension | tool | custom `find`/glob file matcher |
-| `grep` | tool-extension | tool | custom `grep` tool |
-| `handoff` | feature-extension | command + tool + lifecycle interception | session handoff workflow |
-| `librarian` | tool-extension | tool | cross-repo codebase understanding |
-| `look-at` | tool-extension | tool | interpreted file/image analysis |
-| `ls` | tool-extension | tool | compatibility directory listing |
-| `mentions` | adapter-extension | lifecycle hooks | mention resolution + hidden context injection + optional editor autocomplete registration |
-| `mermaid` | feature-extension | renderer + command + shortcut + hooks | inline/full mermaid rendering |
-| `oracle` | tool-extension | tool | advisory deep reasoning via sub-agent |
-| `read` | tool-extension | tool | custom `read` tool |
-| `read-session` | tool-extension | tool | extract relevant info from past sessions |
-| `read-web-page` | tool-extension | tool | fetch/convert web pages, optional QA |
-| `search-sessions` | feature-extension | tool | branch-level session search |
-| `session-name` | feature-extension | lifecycle hooks | automatic session naming |
-| `skill` | tool-extension | tool | load skills by name |
-| `system-prompt` | adapter-extension | lifecycle hook | append package-managed system prompt |
-| `task` | tool-extension | tool | delegate a subtask to another agent |
-| `tool-harness` | adapter-extension | lifecycle hooks | env-driven active-tool filtering |
-| `undo-edit` | tool-extension | tool | revert tracked file changes |
-| `web-search` | tool-extension | tool | web search via external api |
+| package           | role              | primary registration surface            | purpose                                                                                   |
+| ----------------- | ----------------- | --------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `bash`            | tool-extension    | tool                                    | custom `bash` tool                                                                        |
+| `code-review`     | tool-extension    | tool                                    | spawned review agent over diffs                                                           |
+| `command-palette` | feature-extension | command + shortcut + overlay ui         | searchable palette for tools/models/commands                                              |
+| `create-file`     | tool-extension    | tool                                    | custom `write` tool                                                                       |
+| `e2e`             | test/support      | none                                    | e2e fixtures/support, not runtime                                                         |
+| `edit-file`       | tool-extension    | tool                                    | custom `edit` tool                                                                        |
+| `editor`          | host-extension    | editor/footer/widget host               | boxed editor + status/label/ui hosting                                                    |
+| `finder`          | tool-extension    | tool                                    | concept-level codebase search via sub-agent                                               |
+| `format-file`     | tool-extension    | tool                                    | formatter runner with undo tracking                                                       |
+| `github`          | tool-extension    | tools                                   | GitHub repo exploration/search/history tools                                              |
+| `glob`            | tool-extension    | tool                                    | custom `find`/glob file matcher                                                           |
+| `grep`            | tool-extension    | tool                                    | custom `grep` tool                                                                        |
+| `handoff`         | feature-extension | command + tool + lifecycle interception | session handoff workflow                                                                  |
+| `librarian`       | tool-extension    | tool                                    | cross-repo codebase understanding                                                         |
+| `look-at`         | tool-extension    | tool                                    | interpreted file/image analysis                                                           |
+| `ls`              | tool-extension    | tool                                    | compatibility directory listing                                                           |
+| `mentions`        | adapter-extension | lifecycle hooks                         | mention resolution + hidden context injection + optional editor autocomplete registration |
+| `mermaid`         | feature-extension | renderer + command + shortcut + hooks   | inline/full mermaid rendering                                                             |
+| `oracle`          | tool-extension    | tool                                    | advisory deep reasoning via sub-agent                                                     |
+| `read`            | tool-extension    | tool                                    | custom `read` tool                                                                        |
+| `read-session`    | tool-extension    | tool                                    | extract relevant info from past sessions                                                  |
+| `read-web-page`   | tool-extension    | tool                                    | fetch/convert web pages, optional QA                                                      |
+| `search-sessions` | feature-extension | tool                                    | branch-level session search                                                               |
+| `session-name`    | feature-extension | lifecycle hooks                         | automatic session naming                                                                  |
+| `skill`           | tool-extension    | tool                                    | load skills by name                                                                       |
+| `system-prompt`   | adapter-extension | lifecycle hook                          | append package-managed system prompt                                                      |
+| `task`            | tool-extension    | tool                                    | delegate a subtask to another agent                                                       |
+| `tool-harness`    | adapter-extension | lifecycle hooks                         | env-driven active-tool filtering                                                          |
+| `undo-edit`       | tool-extension    | tool                                    | revert tracked file changes                                                               |
+| `web-search`      | tool-extension    | tool                                    | web search via external api                                                               |
 
 ---
 
@@ -720,16 +720,16 @@ missing optional layers must degrade by omission:
 
 ## verification matrix
 
-| loaded pieces | expected behavior |
-| --- | --- |
-| `editor` only | boxed editor ui with base behavior |
-| `mentions` only | mention resolution + hidden context for registered sources, no editor autocomplete |
-| `editor` + `mentions` | current mention autocomplete + hidden context |
-| `handoff` only | handoff workflow works |
-| `handoff` + `editor`, no `mentions` | handoff works with optional editor labels/status only |
-| `search-sessions` only | session search tool works |
-| sub-agent tools without `editor` | tools still work; only rich editor ui is absent |
-| tool wrappers without `undo-edit` | normal tool behavior still works; revert affordance absent |
+| loaded pieces                       | expected behavior                                                                  |
+| ----------------------------------- | ---------------------------------------------------------------------------------- |
+| `editor` only                       | boxed editor ui with base behavior                                                 |
+| `mentions` only                     | mention resolution + hidden context for registered sources, no editor autocomplete |
+| `editor` + `mentions`               | current mention autocomplete + hidden context                                      |
+| `handoff` only                      | handoff workflow works                                                             |
+| `handoff` + `editor`, no `mentions` | handoff works with optional editor labels/status only                              |
+| `search-sessions` only              | session search tool works                                                          |
+| sub-agent tools without `editor`    | tools still work; only rich editor ui is absent                                    |
+| tool wrappers without `undo-edit`   | normal tool behavior still works; revert affordance absent                         |
 
 if any row here crashes, the package boundaries are wrong.
 

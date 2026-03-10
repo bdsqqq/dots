@@ -87,8 +87,9 @@ export interface ExtensionConfigSchema<T extends Record<string, unknown>> {
   normalize?: (value: T) => T;
 }
 
-export interface GetExtensionConfigWithSchemaOpts<T extends Record<string, unknown>>
-  extends GetExtensionConfigOpts {
+export interface GetExtensionConfigWithSchemaOpts<
+  T extends Record<string, unknown>,
+> extends GetExtensionConfigOpts {
   schema?: ExtensionConfigSchema<T>;
 }
 
@@ -101,7 +102,9 @@ type RawExtensionConfig = Record<string, unknown> & {
   enabled?: unknown;
 };
 
-function stripEnabledFlag(value: Record<string, unknown>): Record<string, unknown> {
+function stripEnabledFlag(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
   const { enabled: _enabled, ...rest } = value as RawExtensionConfig;
   return rest;
 }
@@ -133,14 +136,20 @@ export function getExtensionConfig<T extends Record<string, unknown>>(
   const globalPath = resolveGlobalSettingsPath();
   const globalSettings = readJsonFile(globalPath);
   if (globalSettings && isPlainObject(globalSettings[namespace])) {
-    merged = deepMerge(merged, globalSettings[namespace] as Record<string, unknown>);
+    merged = deepMerge(
+      merged,
+      globalSettings[namespace] as Record<string, unknown>,
+    );
   }
 
   if (opts?.allowProjectConfig && opts.cwd) {
     const projectPath = path.join(opts.cwd, ".pi", "settings.json");
     const projectSettings = readJsonFile(projectPath);
     if (projectSettings && isPlainObject(projectSettings[namespace])) {
-      merged = deepMerge(merged, projectSettings[namespace] as Record<string, unknown>);
+      merged = deepMerge(
+        merged,
+        projectSettings[namespace] as Record<string, unknown>,
+      );
     }
   }
 
@@ -161,7 +170,11 @@ export function getEnabledExtensionConfig<T extends Record<string, unknown>>(
   defaults: T,
   opts?: GetExtensionConfigWithSchemaOpts<T>,
 ): EnabledExtensionConfig<T> {
-  const merged = getExtensionConfig(namespace, defaults, opts) as RawExtensionConfig;
+  const merged = getExtensionConfig(
+    namespace,
+    defaults,
+    opts,
+  ) as RawExtensionConfig;
   const enabled = typeof merged.enabled === "boolean" ? merged.enabled : true;
   const config = applyExtensionSchema(
     namespace,
@@ -212,7 +225,9 @@ if (import.meta.vitest) {
 
   describe("getExtensionConfig", () => {
     test("returns defaults when no settings file exists", () => {
-      setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+      setGlobalSettingsPath(
+        path.join(tmpdir, `nonexistent-${Date.now()}.json`),
+      );
       const result = getExtensionConfig("@bds_pi/test", { foo: "bar", n: 1 });
       expect(result).toEqual({ foo: "bar", n: 1 });
     });
@@ -224,7 +239,10 @@ if (import.meta.vitest) {
       });
       setGlobalSettingsPath(settingsPath);
 
-      const result = getExtensionConfig("@bds_pi/test", { foo: "default", extra: true });
+      const result = getExtensionConfig("@bds_pi/test", {
+        foo: "default",
+        extra: true,
+      });
       expect(result).toEqual({ foo: "overridden", extra: true });
     });
 
@@ -234,9 +252,13 @@ if (import.meta.vitest) {
         "@bds_pi/test": { foo: "from-env" },
       });
       const manualDir = fs.mkdtempSync(path.join(tmpdir, "pi-config-manual-"));
-      const manualSettingsPath = writeTmpJson(manualDir, "manual-settings.json", {
-        "@bds_pi/test": { foo: "from-setter" },
-      });
+      const manualSettingsPath = writeTmpJson(
+        manualDir,
+        "manual-settings.json",
+        {
+          "@bds_pi/test": { foo: "from-setter" },
+        },
+      );
       process.env.PI_BDS_CONFIG_PATH = envSettingsPath;
       setGlobalSettingsPath(manualSettingsPath);
 
@@ -276,7 +298,10 @@ if (import.meta.vitest) {
       setGlobalSettingsPath(settingsPath);
 
       getExtensionConfig("@bds_pi/test", { v: 0 });
-      fs.writeFileSync(settingsPath, JSON.stringify({ "@bds_pi/test": { v: 999 } }));
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({ "@bds_pi/test": { v: 999 } }),
+      );
       const result = getExtensionConfig("@bds_pi/test", { v: 0 });
       expect(result).toEqual({ v: 1 });
     });
@@ -289,7 +314,10 @@ if (import.meta.vitest) {
       setGlobalSettingsPath(settingsPath);
 
       getExtensionConfig("@bds_pi/test", { v: 0 });
-      fs.writeFileSync(settingsPath, JSON.stringify({ "@bds_pi/test": { v: 999 } }));
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({ "@bds_pi/test": { v: 999 } }),
+      );
       clearConfigCache();
       const result = getExtensionConfig("@bds_pi/test", { v: 0 });
       expect(result).toEqual({ v: 999 });
@@ -323,7 +351,9 @@ if (import.meta.vitest) {
       });
       setGlobalSettingsPath(globalPath);
 
-      const projectDir = fs.mkdtempSync(path.join(tmpdir, "pi-config-project-"));
+      const projectDir = fs.mkdtempSync(
+        path.join(tmpdir, "pi-config-project-"),
+      );
       writeTmpJson(projectDir, ".pi/settings.json", {
         "@bds_pi/test": { b: "project", c: "project" },
       });
@@ -343,7 +373,9 @@ if (import.meta.vitest) {
       });
       setGlobalSettingsPath(globalPath);
 
-      const projectDir = fs.mkdtempSync(path.join(tmpdir, "pi-config-project-"));
+      const projectDir = fs.mkdtempSync(
+        path.join(tmpdir, "pi-config-project-"),
+      );
       writeTmpJson(projectDir, ".pi/settings.json", {
         "@bds_pi/test": { a: "project" },
       });
@@ -375,8 +407,12 @@ if (import.meta.vitest) {
             ): value is {
               foo: string;
               count: number;
-            } => typeof value.foo === "string" && typeof value.count === "number",
-            normalize: (value) => ({ ...value, foo: value.foo.trim().toUpperCase() }),
+            } =>
+              typeof value.foo === "string" && typeof value.count === "number",
+            normalize: (value) => ({
+              ...value,
+              foo: value.foo.trim().toUpperCase(),
+            }),
           },
         },
       );
@@ -390,14 +426,17 @@ if (import.meta.vitest) {
         "@bds_pi/test": { foo: 123 },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
 
       const result = getExtensionConfigWithSchema(
         "@bds_pi/test",
         { foo: "default" },
         {
           schema: {
-            validate: (value): value is { foo: string } => typeof value.foo === "string",
+            validate: (value): value is { foo: string } =>
+              typeof value.foo === "string",
           },
         },
       );
@@ -417,7 +456,9 @@ if (import.meta.vitest) {
       });
       setGlobalSettingsPath(settingsPath);
 
-      const result = getEnabledExtensionConfig("@bds_pi/test", { foo: "default" });
+      const result = getEnabledExtensionConfig("@bds_pi/test", {
+        foo: "default",
+      });
 
       expect(result).toEqual({ enabled: true, config: { foo: "overridden" } });
     });
@@ -439,13 +480,17 @@ if (import.meta.vitest) {
             ): value is {
               foo: string;
               count: number;
-            } => typeof value.foo === "string" && typeof value.count === "number",
+            } =>
+              typeof value.foo === "string" && typeof value.count === "number",
             normalize: (value) => ({ ...value, foo: value.foo.trim() }),
           },
         },
       );
 
-      expect(result).toEqual({ enabled: false, config: { foo: "override", count: 2 } });
+      expect(result).toEqual({
+        enabled: false,
+        config: { foo: "override", count: 2 },
+      });
     });
 
     test("ignores non-boolean enabled values", () => {
@@ -455,7 +500,9 @@ if (import.meta.vitest) {
       });
       setGlobalSettingsPath(settingsPath);
 
-      const result = getEnabledExtensionConfig("@bds_pi/test", { foo: "default" });
+      const result = getEnabledExtensionConfig("@bds_pi/test", {
+        foo: "default",
+      });
 
       expect(result).toEqual({ enabled: true, config: { foo: "overridden" } });
     });
@@ -463,7 +510,9 @@ if (import.meta.vitest) {
 
   describe("getGlobalConfig", () => {
     test("returns undefined when no settings file exists", () => {
-      setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+      setGlobalSettingsPath(
+        path.join(tmpdir, `nonexistent-${Date.now()}.json`),
+      );
       expect(getGlobalConfig("missing")).toBeUndefined();
     });
 
@@ -473,7 +522,9 @@ if (import.meta.vitest) {
         promptVariables: { foo: { literal: "bar" } },
       });
       setGlobalSettingsPath(settingsPath);
-      expect(getGlobalConfig("promptVariables")).toEqual({ foo: { literal: "bar" } });
+      expect(getGlobalConfig("promptVariables")).toEqual({
+        foo: { literal: "bar" },
+      });
     });
 
     test("returns undefined for missing key", () => {

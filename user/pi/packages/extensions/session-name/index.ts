@@ -11,11 +11,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as piAi from "@mariozechner/pi-ai";
-import type {
-  Api,
-  Model,
-  Message,
-} from "@mariozechner/pi-ai";
+import type { Api, Model, Message } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   clearConfigCache,
@@ -41,9 +37,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isSessionNameConfig(value: Record<string, unknown>): value is SessionNameExtConfig {
+function isSessionNameConfig(
+  value: Record<string, unknown>,
+): value is SessionNameExtConfig {
   const renameInterval = value.renameInterval;
-  if (typeof renameInterval !== "number" || !Number.isInteger(renameInterval) || renameInterval < 1) {
+  if (
+    typeof renameInterval !== "number" ||
+    !Number.isInteger(renameInterval) ||
+    renameInterval < 1
+  ) {
     return false;
   }
 
@@ -59,9 +61,10 @@ function isSessionNameConfig(value: Record<string, unknown>): value is SessionNa
   );
 }
 
-const SESSION_NAME_CONFIG_SCHEMA: ExtensionConfigSchema<SessionNameExtConfig> = {
-  validate: isSessionNameConfig,
-};
+const SESSION_NAME_CONFIG_SCHEMA: ExtensionConfigSchema<SessionNameExtConfig> =
+  {
+    validate: isSessionNameConfig,
+  };
 
 function sessionNameExtension(pi: ExtensionAPI): void {
   const { enabled, config: cfg } = getEnabledExtensionConfig(
@@ -81,13 +84,13 @@ function sessionNameExtension(pi: ExtensionAPI): void {
     messageCount++;
 
     const isFirst = messageCount === 1;
-    const isInterval = messageCount > 1 && (messageCount - 1) % cfg.renameInterval === 0;
+    const isInterval =
+      messageCount > 1 && (messageCount - 1) % cfg.renameInterval === 0;
     if (!isFirst && !isInterval) return;
     if (pending) return;
 
     const model =
-      ctx.modelRegistry.find(cfg.model.provider, cfg.model.id) ??
-      ctx.model;
+      ctx.modelRegistry.find(cfg.model.provider, cfg.model.id) ?? ctx.model;
     if (!model) return;
 
     pending = true;
@@ -99,7 +102,9 @@ function sessionNameExtension(pi: ExtensionAPI): void {
         if (name) pi.setSessionName(name);
       })
       .catch(() => {})
-      .finally(() => { pending = false; });
+      .finally(() => {
+        pending = false;
+      });
   });
 
   pi.on("session_switch", async () => {
@@ -158,11 +163,17 @@ if (import.meta.vitest) {
   }
 
   function createMockExtensionApiHarness() {
-    const handlers = new Map<string, (event: any, ctx: any) => Promise<void> | void>();
+    const handlers = new Map<
+      string,
+      (event: any, ctx: any) => Promise<void> | void
+    >();
     let sessionName = "";
 
     const pi = {
-      on(event: string, handler: (event: any, ctx: any) => Promise<void> | void) {
+      on(
+        event: string,
+        handler: (event: any, ctx: any) => Promise<void> | void,
+      ) {
         handlers.set(event, handler);
       },
       getSessionName() {
@@ -201,12 +212,17 @@ if (import.meta.vitest) {
     });
 
     it("registers hooks with default config when enabled", () => {
-      setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+      setGlobalSettingsPath(
+        path.join(tmpdir, `nonexistent-${Date.now()}.json`),
+      );
       const harness = createMockExtensionApiHarness();
 
       sessionNameExtension(harness.pi);
 
-      expect([...harness.handlers.keys()].sort()).toEqual(["input", "session_switch"]);
+      expect([...harness.handlers.keys()].sort()).toEqual([
+        "input",
+        "session_switch",
+      ]);
     });
 
     it("falls back to defaults when schema validation fails", async () => {
@@ -218,7 +234,9 @@ if (import.meta.vitest) {
         },
       });
       setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const harness = createMockExtensionApiHarness();
       const model = { id: "fallback-model" } as unknown as Model<Api>;
       const findSpy = vi.fn(() => model);
@@ -232,13 +250,19 @@ if (import.meta.vitest) {
 
       sessionNameExtension(harness.pi);
 
-      expect([...harness.handlers.keys()].sort()).toEqual(["input", "session_switch"]);
+      expect([...harness.handlers.keys()].sort()).toEqual([
+        "input",
+        "session_switch",
+      ]);
 
       const inputHandler = harness.handlers.get("input");
       expect(inputHandler).toBeDefined();
 
       for (let i = 0; i < 11; i++) {
-        await inputHandler?.({ text: `message body ${i} with enough chars` }, ctx);
+        await inputHandler?.(
+          { text: `message body ${i} with enough chars` },
+          ctx,
+        );
         await flushAsyncWork();
       }
 

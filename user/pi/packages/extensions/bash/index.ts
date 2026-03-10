@@ -801,7 +801,9 @@ if (import.meta.vitest) {
     describe("exit codes", () => {
       it("shows exit code on failure", async () => {
         await expect(
-          execute(`python3 -c "import sys; print('some output'); sys.exit(42)"`),
+          execute(
+            `python3 -c "import sys; print('some output'); sys.exit(42)"`,
+          ),
         ).rejects.toThrow("exit code 42");
       });
 
@@ -841,7 +843,9 @@ if (import.meta.vitest) {
       });
 
       it("allows quoted chain operators", async () => {
-        const result = await execute(`printf '%s\n' 'one && two; three || four'`);
+        const result = await execute(
+          `printf '%s\n' 'one && two; three || four'`,
+        );
         expect(result.content[0].text).toContain("one && two; three || four");
       });
 
@@ -851,7 +855,9 @@ if (import.meta.vitest) {
       });
 
       it("still rejects extra chaining after cd normalization", async () => {
-        await expect(execute(`cd /tmp && echo one && echo two`)).rejects.toThrow(
+        await expect(
+          execute(`cd /tmp && echo one && echo two`),
+        ).rejects.toThrow(
           "top-level command chaining with && is not supported",
         );
       });

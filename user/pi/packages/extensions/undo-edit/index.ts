@@ -14,11 +14,18 @@
 
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
-import { findLatestChange, revertChange, simpleDiff } from "@bds_pi/file-tracker";
+import {
+  findLatestChange,
+  revertChange,
+  simpleDiff,
+} from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
 import { resolveWithVariants } from "@bds_pi/fs";
 import {
@@ -202,6 +209,6 @@ export function createUndoEditTool(): ToolDefinition {
   };
 }
 
-export default function(pi: ExtensionAPI): void {
+export default function (pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createUndoEditTool()));
 }

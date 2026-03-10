@@ -30,7 +30,9 @@ export function createSessionMentionSource(): MentionSource {
           value: `@session/${session.sessionId}`,
           label: `@session/${session.sessionId}`,
           description:
-            session.sessionName || session.firstUserMessage || session.workspace,
+            session.sessionName ||
+            session.firstUserMessage ||
+            session.workspace,
         }));
     },
     resolve(token, context) {

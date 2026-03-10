@@ -6,7 +6,10 @@ import type { AutocompleteProvider } from "@mariozechner/pi-tui";
 import { afterEach, describe, expect, it } from "vitest";
 import { detectMentionPrefix, parseMentions } from "./parse";
 import { MentionAwareProvider } from "./provider";
-import { renderResolvedMentionsBlock, renderResolvedMentionsText } from "./render";
+import {
+  renderResolvedMentionsBlock,
+  renderResolvedMentionsText,
+} from "./render";
 import {
   clearCommitIndexCache,
   getCommitIndex,
@@ -374,7 +377,9 @@ const MENTIONABLE_SESSIONS: MentionableSession[] = [
   },
 ];
 
-function createTestSessionMentionSource(kind: "session" | "handoff"): MentionSource {
+function createTestSessionMentionSource(
+  kind: "session" | "handoff",
+): MentionSource {
   return {
     kind,
     description: kind,
@@ -391,11 +396,17 @@ function createTestSessionMentionSource(kind: "session" | "handoff"): MentionSou
           value: `@${kind}/${session.sessionId}`,
           label: `@${kind}/${session.sessionId}`,
           description:
-            session.sessionName || session.firstUserMessage || session.workspace,
+            session.sessionName ||
+            session.firstUserMessage ||
+            session.workspace,
         }));
     },
     resolve(token, context) {
-      const result = resolveMentionableSession(context.sessions ?? [], token.value, kind);
+      const result = resolveMentionableSession(
+        context.sessions ?? [],
+        token.value,
+        kind,
+      );
 
       if (result.status === "resolved") {
         return {
@@ -428,7 +439,12 @@ function createRepo(): string {
   return dir;
 }
 
-function commitFile(repo: string, name: string, contents: string, message: string): string {
+function commitFile(
+  repo: string,
+  name: string,
+  contents: string,
+  message: string,
+): string {
   writeFileSync(join(repo, name), contents);
   execFileSync("git", ["add", name], { cwd: repo });
   const env = {
@@ -446,7 +462,8 @@ function commitFile(repo: string, name: string, contents: string, message: strin
 afterEach(() => {
   clearCommitIndexCache();
   clearSessionMentionCache();
-  for (const repo of repos.splice(0)) rmSync(repo, { recursive: true, force: true });
+  for (const repo of repos.splice(0))
+    rmSync(repo, { recursive: true, force: true });
 });
 
 describe("parseCommitLog", () => {
