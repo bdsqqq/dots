@@ -4,7 +4,7 @@
  * differences from pi's built-in:
  * - `cmd` + `cwd` params (model-compatible interface, not pi's `command`)
  * - auto-splits `cd dir && cmd` into cwd + command (fallback for models)
- * - strips trailing `&` (prevents background processes)
+ * - trailing `&` starts a tracked background process and returns immediately
  * - git commit trailer injection (session ID)
  * - git lock serialization via withFileLock (prevents concurrent git ops)
  * - SIGTERM → SIGKILL fallback on cancel/timeout (pi goes straight to SIGKILL)
@@ -44,6 +44,19 @@ type BashExtConfig = {
   headLines: number;
   tailLines: number;
   sigkillDelayMs: number;
+};
+
+type BackgroundProcess = {
+  pid: number;
+  command: string;
+  cwd: string;
+  logPath: string;
+  timeoutHandle?: ReturnType<typeof setTimeout>;
+};
+
+type BackgroundState = {
+  nextId: number;
+  processes: Map<string, BackgroundProcess>;
 };
 
 type BashExtensionDeps = {
@@ -110,8 +123,15 @@ function splitCdCommand(cmd: string): { cwd: string; command: string } | null {
   return { cwd: dir, command };
 }
 
-function stripBackground(cmd: string): string {
-  return cmd.replace(/\s*&\s*$/, "");
+function parseBackgroundCommand(cmd: string): {
+  command: string;
+  background: boolean;
+} {
+  if (!/\s*&\s*$/.test(cmd)) return { command: cmd, background: false };
+  return {
+    command: cmd.replace(/\s*&\s*$/, ""),
+    background: true,
+  };
 }
 
 function isGitCommand(cmd: string): boolean {
@@ -156,6 +176,57 @@ function killGracefully(pid: number, delayMs: number): void {
   }, delayMs);
 }
 
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function createBackgroundState(): BackgroundState {
+  return {
+    nextId: 1,
+    processes: new Map(),
+  };
+}
+
+function getBackgroundLogPath(id: string): string {
+  return path.join(os.tmpdir(), `pi-bash-${id}.log`);
+}
+
+async function terminateBackgroundProcess(
+  processInfo: BackgroundProcess,
+  delayMs: number,
+): Promise<void> {
+  if (processInfo.timeoutHandle) clearTimeout(processInfo.timeoutHandle);
+  if (!isPidAlive(processInfo.pid)) return;
+
+  killGracefully(processInfo.pid, delayMs);
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < delayMs + 500) {
+    if (!isPidAlive(processInfo.pid)) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+async function cleanupBackgroundProcesses(
+  backgroundState: BackgroundState,
+  delayMs: number,
+): Promise<void> {
+  const entries = [...backgroundState.processes.entries()];
+  backgroundState.processes.clear();
+  backgroundState.nextId = 1;
+
+  await Promise.all(
+    entries.map(async ([, processInfo]) => {
+      await terminateBackgroundProcess(processInfo, delayMs);
+    }),
+  );
+}
+
 /** per-block excerpts for collapsed display — head 3 + tail 5 = 8 visual lines */
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },
@@ -164,13 +235,17 @@ const COLLAPSED_EXCERPTS: Excerpt[] = [
 
 // --- tool factory ---
 
-export function createBashTool(config: BashExtConfig = CONFIG_DEFAULTS): ToolDefinition {
+export function createBashTool(
+  backgroundState: BackgroundState = createBackgroundState(),
+  config: BashExtConfig = CONFIG_DEFAULTS,
+): ToolDefinition {
   return {
     name: "bash",
     label: "Bash",
     description:
       "Executes the given shell command using bash.\n\n" +
-      "- Do NOT chain commands with `;` or `&&` or use `&` for background processes; make separate tool calls instead\n" +
+      "- Do NOT chain commands with `;` or `&&`; make separate tool calls instead\n" +
+      "- A trailing `&` runs the command in the background and returns immediately with a PID and log path\n" +
       "- Do NOT use interactive commands (REPLs, editors, password prompts)\n" +
       `- Output shows first ${config.headLines} and last ${config.tailLines} lines; middle is truncated for large outputs\n` +
       "- Environment variables and `cd` do not persist between commands; use the `cwd` parameter instead\n" +
@@ -270,7 +345,8 @@ export function createBashTool(config: BashExtConfig = CONFIG_DEFAULTS): ToolDef
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as { cmd: string; cwd?: string; timeout?: number };
-      let command = stripBackground(p.cmd);
+      const parsed = parseBackgroundCommand(p.cmd);
+      let command = parsed.command;
       let effectiveCwd = p.cwd ? resolveToAbsolute(p.cwd, ctx.cwd) : ctx.cwd;
 
       const cdSplit = splitCdCommand(command);
@@ -297,9 +373,28 @@ export function createBashTool(config: BashExtConfig = CONFIG_DEFAULTS): ToolDef
 
       const sessionId = ctx.sessionManager.getSessionId();
       command = injectGitTrailers(command, sessionId);
+      const displayCommand = parsed.background ? `${command} &` : command;
 
       const run = () =>
-        runCommand(command, effectiveCwd, p.timeout, signal, onUpdate, config);
+        parsed.background
+          ? runBackgroundCommand(
+              command,
+              displayCommand,
+              effectiveCwd,
+              p.timeout,
+              signal,
+              backgroundState,
+              config,
+            )
+          : runForegroundCommand(
+              command,
+              displayCommand,
+              effectiveCwd,
+              p.timeout,
+              signal,
+              onUpdate,
+              config,
+            );
 
       if (isGitCommand(command)) {
         const gitLockKey = path.join(effectiveCwd, ".git", "__pi_git_lock__");
@@ -313,8 +408,9 @@ export function createBashTool(config: BashExtConfig = CONFIG_DEFAULTS): ToolDef
 
 // --- execution ---
 
-async function runCommand(
+async function runForegroundCommand(
   command: string,
+  displayCommand: string,
   cwd: string,
   timeout: number | undefined,
   signal: AbortSignal | undefined,
@@ -392,8 +488,7 @@ async function runCommand(
         return;
       }
 
-      // format result with command header
-      let result = `$ ${command}\n\n${outputText || "(no output)"}`;
+      let result = `$ ${displayCommand}\n\n${outputText || "(no output)"}`;
 
       if (code !== 0 && code !== null) {
         result += `\n\nexit code ${code}`;
@@ -401,23 +496,112 @@ async function runCommand(
       } else {
         resolve({
           content: [{ type: "text" as const, text: result }],
-          details: { command },
+          details: { command: displayCommand },
         });
       }
     });
   });
 }
 
+async function runBackgroundCommand(
+  command: string,
+  displayCommand: string,
+  cwd: string,
+  timeout: number | undefined,
+  signal: AbortSignal | undefined,
+  backgroundState: BackgroundState,
+  config: BashExtConfig,
+): Promise<any> {
+  const { shell, args } = getShell();
+  const id = `bg-${backgroundState.nextId++}`;
+  const logPath = getBackgroundLogPath(id);
+  const logFd = fs.openSync(logPath, "a");
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(shell, [...args, command], {
+      cwd,
+      detached: true,
+      env: process.env,
+      stdio: ["ignore", logFd, logFd],
+    });
+    fs.closeSync(logFd);
+
+    if (signal?.aborted) {
+      if (child.pid) killGracefully(child.pid, config.sigkillDelayMs);
+      reject(new Error("command aborted"));
+      return;
+    }
+
+    child.on("error", (err) => {
+      backgroundState.processes.delete(id);
+      reject(new Error(`command error: ${err.message}`));
+    });
+
+    const pid = child.pid;
+    if (!pid) {
+      backgroundState.processes.delete(id);
+      reject(new Error("command error: failed to determine background pid"));
+      return;
+    }
+
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    if (timeout && timeout > 0) {
+      timeoutHandle = setTimeout(() => {
+        if (isPidAlive(pid)) killGracefully(pid, config.sigkillDelayMs);
+      }, timeout * 1000);
+    }
+
+    backgroundState.processes.set(id, {
+      pid,
+      command,
+      cwd,
+      logPath,
+      timeoutHandle,
+    });
+
+    child.on("close", () => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      backgroundState.processes.delete(id);
+    });
+
+    child.unref();
+
+    const timeoutNote =
+      timeout && timeout > 0
+        ? `\nwill be terminated after ${timeout} seconds if still running.`
+        : "";
+
+    resolve({
+      content: [
+        {
+          type: "text" as const,
+          text:
+            `$ ${displayCommand}\n\nstarted background process ${id} (pid ${pid})` +
+            `\nlog: ${logPath}` +
+            "\nuse the read tool on the log path to inspect readiness or output." +
+            `\nuse bash to stop it, e.g. \`kill ${pid}\`.` +
+            timeoutNote,
+        },
+      ],
+      details: { command: displayCommand, background: { id, pid, logPath } },
+    });
+  });
+}
+
 if (import.meta.vitest) {
-  const { describe, expect, it } = import.meta.vitest;
+  const { afterEach, describe, expect, it } = import.meta.vitest;
 
   type BashToolResult = {
     content: [{ type: "text"; text: string }];
-    details?: { command: string };
+    details?: {
+      command: string;
+      background?: { id: string; pid: number; logPath: string };
+    };
     isError?: boolean;
   };
 
-  const tool = createBashTool();
+  const backgroundState = createBackgroundState();
+  const tool = createBashTool(backgroundState);
   const mockCtx = {
     cwd: "/tmp",
     sessionManager: {
@@ -425,15 +609,19 @@ if (import.meta.vitest) {
     },
   };
 
-  async function execute(cmd: string): Promise<BashToolResult> {
+  async function execute(cmd: string, timeout?: number): Promise<BashToolResult> {
     return (await tool.execute!(
       "test-id",
-      { cmd },
+      { cmd, timeout },
       undefined,
       undefined,
       mockCtx as any,
     )) as BashToolResult;
   }
+
+  afterEach(async () => {
+    await cleanupBackgroundProcesses(backgroundState, 100);
+  });
 
   describe("bash tool output formatting", () => {
     describe("command header", () => {
@@ -560,6 +748,34 @@ if (import.meta.vitest) {
         expect(result.content[0].text).toContain("truncated");
       }, 10_000);
     });
+
+    describe("background commands", () => {
+      it("returns immediately and writes output to a log file", async () => {
+        const startedAt = Date.now();
+        const result = await execute(
+          `printf 'ready\\n'; while true; do sleep 1; done &`,
+        );
+
+        expect(Date.now() - startedAt).toBeLessThan(1_000);
+        expect(result.details?.background?.pid).toBeTruthy();
+        expect(result.details?.background?.id).toMatch(/^bg-/);
+        expect(result.details?.background?.logPath).toBeTruthy();
+        expect(result.content[0].text).toContain("started background process");
+
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const logText = fs.readFileSync(result.details!.background!.logPath, "utf-8");
+        expect(logText).toContain("ready");
+      }, 10_000);
+
+      it("kills background commands during cleanup", async () => {
+        const result = await execute(`while true; do sleep 1; done &`);
+        const pid = result.details!.background!.pid;
+
+        expect(isPidAlive(pid)).toBe(true);
+        await cleanupBackgroundProcesses(backgroundState, 100);
+        expect(isPidAlive(pid)).toBe(false);
+      }, 10_000);
+    });
   });
 }
 
@@ -580,7 +796,15 @@ function createBashExtension(
     );
     if (!enabled) return;
 
-    pi.registerTool(deps.withPromptPatch(createBashTool(cfg)));
+    const backgroundState = createBackgroundState();
+
+    pi.registerTool(deps.withPromptPatch(createBashTool(backgroundState, cfg)));
+    pi.on("session_shutdown", async () => {
+      await cleanupBackgroundProcesses(backgroundState, cfg.sigkillDelayMs);
+    });
+    pi.on("session_switch", async () => {
+      await cleanupBackgroundProcesses(backgroundState, cfg.sigkillDelayMs);
+    });
   };
 }
 
@@ -601,14 +825,18 @@ if (import.meta.vitest) {
 
   function createMockExtensionApiHarness() {
     const tools: unknown[] = [];
+    const handlers: Array<{ event: string; handler: unknown }> = [];
 
     const pi = {
       registerTool(tool: unknown) {
         tools.push(tool);
       },
+      on(event: string, handler: unknown) {
+        handlers.push({ event, handler });
+      },
     } as unknown as ExtensionAPI;
 
-    return { pi, tools };
+    return { pi, tools, handlers };
   }
 
   afterEach(() => {
@@ -643,6 +871,11 @@ if (import.meta.vitest) {
       expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
       expect(harness.tools).toHaveLength(1);
       expect(harness.tools[0]).toMatchObject({ name: "bash" });
+      expect(harness.handlers).toHaveLength(2);
+      expect(harness.handlers.map((handler) => handler.event)).toEqual([
+        "session_shutdown",
+        "session_switch",
+      ]);
     });
 
     it("registers no extension tool when disabled", () => {
@@ -664,6 +897,7 @@ if (import.meta.vitest) {
 
       expect(withPromptPatchSpy).not.toHaveBeenCalled();
       expect(harness.tools).toHaveLength(0);
+      expect(harness.handlers).toHaveLength(0);
     });
 
     it("falls back to defaults for invalid config and still registers", () => {
@@ -692,6 +926,7 @@ if (import.meta.vitest) {
       expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
       expect(harness.tools).toHaveLength(1);
       expect(harness.tools[0]).toMatchObject({ name: "bash" });
+      expect(harness.handlers).toHaveLength(2);
     });
   });
 }
