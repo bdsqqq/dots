@@ -1,7 +1,6 @@
 02_temp/
 
 **/.git/
-**/.github/
 **/.svn/
 **/.hg/
 
@@ -85,13 +84,6 @@
 **/*.min.js
 **/*.min.css
 **/*.map
-
-**/package-lock.json
-**/yarn.lock
-**/pnpm-lock.yaml
-**/Cargo.lock
-**/go.sum
-**/*.lock
 
 **/.stfolder/
 **/.stversions/
