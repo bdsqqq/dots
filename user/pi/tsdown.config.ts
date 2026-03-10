@@ -1,19 +1,22 @@
 import { defineConfig } from "tsdown";
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+
+const excludedEntryDirs = new Set(["e2e", "test-utils"]);
 
 /** collect all index.ts entry points from a packages subdirectory. */
 function collectEntries(base: string, prefix: string): Record<string, string> {
   const entries: Record<string, string> = {};
   for (const name of readdirSync(resolve(base))) {
-    if (name === "e2e") continue; // test-only package
-    const entry = resolve(base, name, "index.ts");
-    try {
-      readdirSync(resolve(base, name)); // ensure it's a directory
-      entries[`${prefix}/${name}`] = entry;
-    } catch {
-      // not a directory, skip
-    }
+    if (excludedEntryDirs.has(name)) continue; // test-only package
+
+    const dir = resolve(base, name);
+    const entry = resolve(dir, "index.ts");
+
+    if (!statSync(dir).isDirectory()) continue;
+    if (!existsSync(entry)) continue;
+
+    entries[`${prefix}/${name}`] = entry;
   }
   return entries;
 }
