@@ -60,6 +60,7 @@
 **/*.temp
 **/*.log
 *.log
+**/*.sync-conflict-*
 **/*.swp
 **/*.swo
 **/*~
