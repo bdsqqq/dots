@@ -185,7 +185,7 @@ PanelWindow {
                                 Item { Layout.fillWidth: true }
 
                                 Primitives.T {
-                                    text: Math.round((Pipewire.defaultAudioSink?.audio.volume ?? 0) * 100) + "%"
+                                    text: Math.round(Math.max(0, Math.min(1, Pipewire.defaultAudioSink?.audio.volume ?? 0)) * 100) + "%"
                                     tone: Pipewire.defaultAudioSink?.audio.muted ? "subtle" : "fg"
                                     size: "bodySm"
                                 }
@@ -193,7 +193,7 @@ PanelWindow {
 
                             Controls.Slider {
                                 Layout.fillWidth: true
-                                value: Pipewire.defaultAudioSink?.audio.volume ?? 0
+                                value: Math.max(0, Math.min(1, Pipewire.defaultAudioSink?.audio.volume ?? 0))
                                 enabled: Pipewire.defaultAudioSink?.audio !== null
                                 onChangeEnd: function(val) {
                                     if (Pipewire.defaultAudioSink?.audio) {
