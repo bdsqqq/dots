@@ -14,7 +14,7 @@
   "compaction": {
     "enabled": false
   },
-  "lastChangelogVersion": "0.56.2",
+  "lastChangelogVersion": "0.56.3",
   "defaultModel": "gpt-5.4",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
