@@ -2,13 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -16,16 +10,9 @@ import {
   SettingsManager,
   type AgentSession,
   type ExtensionFactory,
-  type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
-import {
-  clearConfigCache,
-  setGlobalSettingsPath,
-} from "@bds_pi/config";
-import {
-  getMentionSource,
-  type MentionSource,
-} from "@bds_pi/mentions";
+import { clearConfigCache, setGlobalSettingsPath } from "@bds_pi/config";
+import { getMentionSource, type MentionSource } from "@bds_pi/mentions";
 import handoffExtension from "@bds_pi/handoff";
 import searchSessionsExtension from "@bds_pi/search-sessions";
 import systemPromptExtension from "@bds_pi/system-prompt";
@@ -46,6 +33,35 @@ import webSearchExtension from "@bds_pi/web-search";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CWD = path.resolve(__dirname, "../../../..");
+
+type SessionTool = ReturnType<AgentSession["getAllTools"]>[number];
+type BeforeAgentStartEvent = {
+  type: "before_agent_start";
+  prompt: string;
+  images: undefined;
+  systemPrompt: string;
+};
+type BeforeAgentStartResult = { systemPrompt?: string } | void;
+type BeforeAgentStartHandler = (
+  event: BeforeAgentStartEvent,
+  ctx: unknown,
+) => Promise<BeforeAgentStartResult> | BeforeAgentStartResult;
+type SessionInternals = {
+  _baseSystemPrompt: string;
+  _extensionRunner: {
+    runtime: {
+      getCommands(): Array<{ name: string }>;
+    };
+    extensions: Array<{
+      handlers: Map<string, BeforeAgentStartHandler[]>;
+    }>;
+    createContext(): unknown;
+  };
+};
+
+function getSessionInternals(session: AgentSession): SessionInternals {
+  return session as unknown as SessionInternals;
+}
 
 function writeTmpJson(dir: string, filename: string, data: unknown): string {
   const filePath = path.join(dir, filename);
@@ -87,8 +103,10 @@ function getActiveToolNames(session: AgentSession): string[] {
   return session.getActiveToolNames();
 }
 
-function getTool(session: AgentSession, name: string): ToolDefinition {
-  const tool = session.getAllTools().find((candidate) => candidate.name === name);
+function getTool(session: AgentSession, name: string): SessionTool {
+  const tool = session
+    .getAllTools()
+    .find((candidate) => candidate.name === name);
   if (!tool) {
     throw new Error(`tool not found: ${name}`);
   }
@@ -96,7 +114,9 @@ function getTool(session: AgentSession, name: string): ToolDefinition {
 }
 
 function getCommandNames(session: AgentSession): string[] {
-  return session._extensionRunner.runtime.getCommands().map((command) => command.name);
+  return getSessionInternals(session)
+    ._extensionRunner.runtime.getCommands()
+    .map(({ name }) => name);
 }
 
 function getMentionSourceOrThrow(kind: "session" | "handoff"): MentionSource {
@@ -108,19 +128,22 @@ function getMentionSourceOrThrow(kind: "session" | "handoff"): MentionSource {
 }
 
 function getRegisteredHandlerNames(session: AgentSession): string[] {
-  return session._extensionRunner.extensions.flatMap((ext) => [...ext.handlers.keys()]);
+  return getSessionInternals(session)._extensionRunner.extensions.flatMap(
+    ({ handlers }) => [...handlers.keys()],
+  );
 }
 
 async function getSystemPromptForTurn(
   session: AgentSession,
   prompt = "ping",
 ): Promise<string> {
-  const handler = session._extensionRunner.extensions
-    .flatMap((ext) => ext.handlers.get("before_agent_start") ?? [])
+  const { _baseSystemPrompt, _extensionRunner } = getSessionInternals(session);
+  const handler = _extensionRunner.extensions
+    .flatMap(({ handlers }) => handlers.get("before_agent_start") ?? [])
     .at(0);
 
   if (!handler) {
-    return session._baseSystemPrompt;
+    return _baseSystemPrompt;
   }
 
   const result = await handler(
@@ -128,12 +151,14 @@ async function getSystemPromptForTurn(
       type: "before_agent_start",
       prompt,
       images: undefined,
-      systemPrompt: session._baseSystemPrompt,
+      systemPrompt: _baseSystemPrompt,
     },
-    session._extensionRunner.createContext(),
+    _extensionRunner.createContext(),
   );
 
-  return result?.systemPrompt ?? session._baseSystemPrompt;
+  return result && "systemPrompt" in result
+    ? (result.systemPrompt ?? _baseSystemPrompt)
+    : _baseSystemPrompt;
 }
 
 describe("config gating integration", () => {
@@ -256,8 +281,8 @@ describe("config gating integration", () => {
     toolName: string;
     extension: ExtensionFactory;
     invalidConfig: Record<string, unknown>;
-    customExpectation: (tool: ToolDefinition) => void;
-    builtinExpectation: (tool: ToolDefinition) => void;
+    customExpectation: (tool: SessionTool) => void;
+    builtinExpectation: (tool: SessionTool) => void;
   }> = [
     {
       namespace: "@bds_pi/bash",
@@ -269,7 +294,9 @@ describe("config gating integration", () => {
         sigkillDelayMs: -1,
       },
       customExpectation: (tool) => {
-        expect(tool.description).toContain("Executes the given shell command using bash.");
+        expect(tool.description).toContain(
+          "Executes the given shell command using bash.",
+        );
         expect(tool.parameters).toMatchObject({
           required: ["cmd"],
           properties: expect.objectContaining({
@@ -278,7 +305,9 @@ describe("config gating integration", () => {
         });
       },
       builtinExpectation: (tool) => {
-        expect(tool.description).toContain("Execute a bash command in the current working directory.");
+        expect(tool.description).toContain(
+          "Execute a bash command in the current working directory.",
+        );
         expect(tool.parameters).toMatchObject({
           required: ["command"],
           properties: expect.objectContaining({
@@ -298,7 +327,9 @@ describe("config gating integration", () => {
         contextLines: -1,
       },
       customExpectation: (tool) => {
-        expect(tool.description).toContain("Search for exact text patterns in files using ripgrep");
+        expect(tool.description).toContain(
+          "Search for exact text patterns in files using ripgrep",
+        );
         expect(tool.parameters).toMatchObject({
           required: ["pattern"],
           properties: expect.objectContaining({
@@ -307,7 +338,9 @@ describe("config gating integration", () => {
         });
       },
       builtinExpectation: (tool) => {
-        expect(tool.description).toContain("Search file contents for a pattern.");
+        expect(tool.description).toContain(
+          "Search file contents for a pattern.",
+        );
         expect(tool.parameters).toMatchObject({
           required: ["pattern"],
           properties: expect.objectContaining({
@@ -329,7 +362,9 @@ describe("config gating integration", () => {
         maxDirEntries: 0,
       },
       customExpectation: (tool) => {
-        expect(tool.description).toContain("Read a file or list a directory from the file system.");
+        expect(tool.description).toContain(
+          "Read a file or list a directory from the file system.",
+        );
         expect(tool.parameters).toMatchObject({
           required: ["path"],
           properties: expect.objectContaining({
@@ -356,7 +391,9 @@ describe("config gating integration", () => {
         defaultLimit: 0,
       },
       customExpectation: (tool) => {
-        expect(tool.description).toContain("Fast file pattern matching tool that works with any codebase size.");
+        expect(tool.description).toContain(
+          "Fast file pattern matching tool that works with any codebase size.",
+        );
         expect(tool.parameters).toMatchObject({
           required: ["filePattern"],
           properties: expect.objectContaining({
@@ -383,11 +420,15 @@ describe("config gating integration", () => {
     }
     vi.restoreAllMocks();
     clearConfigCache();
-    setGlobalSettingsPath(path.join(os.tmpdir(), `nonexistent-${Date.now()}.json`));
+    setGlobalSettingsPath(
+      path.join(os.tmpdir(), `nonexistent-${Date.now()}.json`),
+    );
   });
 
   it("registers all migrated simple adopters by default", async () => {
-    const session = await createSession(SIMPLE_ADOPTERS.map(({ extension }) => extension));
+    const session = await createSession(
+      SIMPLE_ADOPTERS.map(({ extension }) => extension),
+    );
     sessions.push(session);
 
     expect(getToolNames(session)).toEqual(
@@ -399,7 +440,9 @@ describe("config gating integration", () => {
   });
 
   it("omits migrated simple adopters when disabled", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pi-config-gating-test-"),
+    );
     const settingsPath = writeTmpJson(
       dir,
       "bds-pi.json",
@@ -409,7 +452,9 @@ describe("config gating integration", () => {
     );
     setGlobalSettingsPath(settingsPath);
 
-    const session = await createSession(SIMPLE_ADOPTERS.map(({ extension }) => extension));
+    const session = await createSession(
+      SIMPLE_ADOPTERS.map(({ extension }) => extension),
+    );
     sessions.push(session);
 
     for (const { toolName } of SIMPLE_ADOPTERS) {
@@ -419,18 +464,27 @@ describe("config gating integration", () => {
   });
 
   it("falls back to defaults for invalid config and still registers migrated simple adopters", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pi-config-gating-test-"),
+    );
     const settingsPath = writeTmpJson(
       dir,
       "bds-pi.json",
       Object.fromEntries(
-        SIMPLE_ADOPTERS.map(({ namespace, invalidConfig }) => [namespace, invalidConfig]),
+        SIMPLE_ADOPTERS.map(({ namespace, invalidConfig }) => [
+          namespace,
+          invalidConfig,
+        ]),
       ),
     );
     setGlobalSettingsPath(settingsPath);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
 
-    const session = await createSession(SIMPLE_ADOPTERS.map(({ extension }) => extension));
+    const session = await createSession(
+      SIMPLE_ADOPTERS.map(({ extension }) => extension),
+    );
     sessions.push(session);
 
     expect(getToolNames(session)).toEqual(
@@ -447,14 +501,20 @@ describe("config gating integration", () => {
   });
 
   it("registers migrated built-in shadows by default", async () => {
-    const session = await createSession(BUILTIN_SHADOW_ADOPTERS.map(({ extension }) => extension));
+    const session = await createSession(
+      BUILTIN_SHADOW_ADOPTERS.map(({ extension }) => extension),
+    );
     sessions.push(session);
 
     expect(getToolNames(session)).toEqual(
-      expect.arrayContaining(BUILTIN_SHADOW_ADOPTERS.map(({ toolName }) => toolName)),
+      expect.arrayContaining(
+        BUILTIN_SHADOW_ADOPTERS.map(({ toolName }) => toolName),
+      ),
     );
     expect(getActiveToolNames(session)).toEqual(
-      expect.arrayContaining(BUILTIN_SHADOW_ADOPTERS.map(({ toolName }) => toolName)),
+      expect.arrayContaining(
+        BUILTIN_SHADOW_ADOPTERS.map(({ toolName }) => toolName),
+      ),
     );
     for (const { toolName, customExpectation } of BUILTIN_SHADOW_ADOPTERS) {
       customExpectation(getTool(session, toolName));
@@ -462,17 +522,24 @@ describe("config gating integration", () => {
   });
 
   it("falls back to pi built-ins when migrated built-in shadows are disabled", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pi-config-gating-test-"),
+    );
     const settingsPath = writeTmpJson(
       dir,
       "bds-pi.json",
       Object.fromEntries(
-        BUILTIN_SHADOW_ADOPTERS.map(({ namespace }) => [namespace, { enabled: false }]),
+        BUILTIN_SHADOW_ADOPTERS.map(({ namespace }) => [
+          namespace,
+          { enabled: false },
+        ]),
       ),
     );
     setGlobalSettingsPath(settingsPath);
 
-    const session = await createSession(BUILTIN_SHADOW_ADOPTERS.map(({ extension }) => extension));
+    const session = await createSession(
+      BUILTIN_SHADOW_ADOPTERS.map(({ extension }) => extension),
+    );
     sessions.push(session);
 
     /**
@@ -481,7 +548,9 @@ describe("config gating integration", () => {
      * top-level session. assert fallback on registration shape, not activity.
      */
     expect(getToolNames(session)).toEqual(
-      expect.arrayContaining(BUILTIN_SHADOW_ADOPTERS.map(({ toolName }) => toolName)),
+      expect.arrayContaining(
+        BUILTIN_SHADOW_ADOPTERS.map(({ toolName }) => toolName),
+      ),
     );
     for (const { toolName, builtinExpectation } of BUILTIN_SHADOW_ADOPTERS) {
       builtinExpectation(getTool(session, toolName));
@@ -489,21 +558,34 @@ describe("config gating integration", () => {
   });
 
   it("falls back to defaults for invalid built-in shadow config and still registers custom tools", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pi-config-gating-test-"),
+    );
     const settingsPath = writeTmpJson(
       dir,
       "bds-pi.json",
       Object.fromEntries(
-        BUILTIN_SHADOW_ADOPTERS.map(({ namespace, invalidConfig }) => [namespace, invalidConfig]),
+        BUILTIN_SHADOW_ADOPTERS.map(({ namespace, invalidConfig }) => [
+          namespace,
+          invalidConfig,
+        ]),
       ),
     );
     setGlobalSettingsPath(settingsPath);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
 
-    const session = await createSession(BUILTIN_SHADOW_ADOPTERS.map(({ extension }) => extension));
+    const session = await createSession(
+      BUILTIN_SHADOW_ADOPTERS.map(({ extension }) => extension),
+    );
     sessions.push(session);
 
-    for (const { namespace, toolName, customExpectation } of BUILTIN_SHADOW_ADOPTERS) {
+    for (const {
+      namespace,
+      toolName,
+      customExpectation,
+    } of BUILTIN_SHADOW_ADOPTERS) {
       expect(errorSpy).toHaveBeenCalledWith(
         `[@bds_pi/config] invalid config for ${namespace}; falling back to defaults.`,
       );
@@ -512,7 +594,10 @@ describe("config gating integration", () => {
   });
 
   it("registers startup-surface capabilities when search-sessions and handoff are enabled", async () => {
-    const session = await createSession([searchSessionsExtension, handoffExtension]);
+    const session = await createSession([
+      searchSessionsExtension,
+      handoffExtension,
+    ]);
     sessions.push(session);
 
     expect(getToolNames(session)).toEqual(
@@ -524,23 +609,25 @@ describe("config gating integration", () => {
     expect(getCommandNames(session)).toContain("handoff");
 
     const sessionSource = getMentionSourceOrThrow("session");
-    expect(sessionSource.getSuggestions("alpha", {
-      cwd: "/repo/app",
-      sessions: [
-        {
-          sessionId: "alpha1234",
-          sessionName: "alpha work",
-          workspace: "/repo/app",
-          filePath: "/sessions/alpha.jsonl",
-          startedAt: "2026-03-06T17:00:00.000Z",
-          updatedAt: "2026-03-06T17:10:00.000Z",
-          firstUserMessage: "alpha task",
-          searchableText: "alpha task",
-          branchCount: 1,
-          isHandoffCandidate: false,
-        },
-      ],
-    })).toEqual([
+    expect(
+      sessionSource.getSuggestions("alpha", {
+        cwd: "/repo/app",
+        sessions: [
+          {
+            sessionId: "alpha1234",
+            sessionName: "alpha work",
+            workspace: "/repo/app",
+            filePath: "/sessions/alpha.jsonl",
+            startedAt: "2026-03-06T17:00:00.000Z",
+            updatedAt: "2026-03-06T17:10:00.000Z",
+            firstUserMessage: "alpha task",
+            searchableText: "alpha task",
+            branchCount: 1,
+            isHandoffCandidate: false,
+          },
+        ],
+      }),
+    ).toEqual([
       {
         value: "@session/alpha1234",
         label: "@session/alpha1234",
@@ -549,24 +636,26 @@ describe("config gating integration", () => {
     ]);
 
     const handoffSource = getMentionSourceOrThrow("handoff");
-    expect(handoffSource.getSuggestions("handoff", {
-      cwd: "/repo/app",
-      sessions: [
-        {
-          sessionId: "handoffabcd",
-          sessionName: "handoff alpha",
-          workspace: "/repo/app",
-          filePath: "/sessions/handoff.jsonl",
-          startedAt: "2026-03-06T17:00:00.000Z",
-          updatedAt: "2026-03-06T17:20:00.000Z",
-          firstUserMessage: "resume alpha",
-          searchableText: "resume alpha",
-          branchCount: 1,
-          parentSessionPath: "/sessions/parent.jsonl",
-          isHandoffCandidate: true,
-        },
-      ],
-    })).toEqual([
+    expect(
+      handoffSource.getSuggestions("handoff", {
+        cwd: "/repo/app",
+        sessions: [
+          {
+            sessionId: "handoffabcd",
+            sessionName: "handoff alpha",
+            workspace: "/repo/app",
+            filePath: "/sessions/handoff.jsonl",
+            startedAt: "2026-03-06T17:00:00.000Z",
+            updatedAt: "2026-03-06T17:20:00.000Z",
+            firstUserMessage: "resume alpha",
+            searchableText: "resume alpha",
+            branchCount: 1,
+            parentSessionPath: "/sessions/parent.jsonl",
+            isHandoffCandidate: true,
+          },
+        ],
+      }),
+    ).toEqual([
       {
         value: "@handoff/handoffabcd",
         label: "@handoff/handoffabcd",
@@ -576,7 +665,9 @@ describe("config gating integration", () => {
   });
 
   it("removes startup-surface capabilities when search-sessions and handoff are disabled", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pi-config-gating-test-"),
+    );
     const settingsPath = writeTmpJson(dir, "bds-pi.json", {
       "@bds_pi/search-sessions": { enabled: false },
       "@bds_pi/handoff": { enabled: false },
@@ -585,7 +676,10 @@ describe("config gating integration", () => {
 
     const previousSessionSource = getMentionSource("session");
     const previousHandoffSource = getMentionSource("handoff");
-    const session = await createSession([searchSessionsExtension, handoffExtension]);
+    const session = await createSession([
+      searchSessionsExtension,
+      handoffExtension,
+    ]);
     sessions.push(session);
 
     expect(getToolNames(session)).not.toContain("search_sessions");
@@ -594,14 +688,21 @@ describe("config gating integration", () => {
     expect(getActiveToolNames(session)).not.toContain("handoff");
     expect(getCommandNames(session)).not.toContain("handoff");
     expect(getRegisteredHandlerNames(session)).not.toEqual(
-      expect.arrayContaining(["agent_end", "session_before_compact", "session_start", "session_switch"]),
+      expect.arrayContaining([
+        "agent_end",
+        "session_before_compact",
+        "session_start",
+        "session_switch",
+      ]),
     );
     expect(getMentionSource("session")).toBe(previousSessionSource);
     expect(getMentionSource("handoff")).toBe(previousHandoffSource);
   });
 
   it("applies hook-only startup surface when system-prompt is enabled and removes it when disabled", async () => {
-    const enabledDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const enabledDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pi-config-gating-test-"),
+    );
     const enabledSettingsPath = writeTmpJson(enabledDir, "bds-pi.json", {
       "@bds_pi/system-prompt": { promptString: "UNIQUE_MARKER" },
     });
@@ -610,20 +711,33 @@ describe("config gating integration", () => {
     const enabledSession = await createSession([systemPromptExtension]);
     sessions.push(enabledSession);
 
-    expect(getRegisteredHandlerNames(enabledSession)).toContain("before_agent_start");
-    expect(await getSystemPromptForTurn(enabledSession, "ping")).toContain("UNIQUE_MARKER");
+    expect(getRegisteredHandlerNames(enabledSession)).toContain(
+      "before_agent_start",
+    );
+    expect(await getSystemPromptForTurn(enabledSession, "ping")).toContain(
+      "UNIQUE_MARKER",
+    );
 
-    const disabledDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+    const disabledDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pi-config-gating-test-"),
+    );
     const disabledSettingsPath = writeTmpJson(disabledDir, "bds-pi.json", {
-      "@bds_pi/system-prompt": { enabled: false, promptString: "UNIQUE_MARKER" },
+      "@bds_pi/system-prompt": {
+        enabled: false,
+        promptString: "UNIQUE_MARKER",
+      },
     });
     setGlobalSettingsPath(disabledSettingsPath);
 
     const disabledSession = await createSession([systemPromptExtension]);
     sessions.push(disabledSession);
 
-    expect(getRegisteredHandlerNames(disabledSession)).not.toContain("before_agent_start");
-    expect(await getSystemPromptForTurn(disabledSession, "ping")).not.toContain("UNIQUE_MARKER");
+    expect(getRegisteredHandlerNames(disabledSession)).not.toContain(
+      "before_agent_start",
+    );
+    expect(await getSystemPromptForTurn(disabledSession, "ping")).not.toContain(
+      "UNIQUE_MARKER",
+    );
   });
 
   it("keeps builtin-shadow fallback stable under sub-agent tool filtering", async () => {
@@ -631,20 +745,28 @@ describe("config gating integration", () => {
     process.env.PI_INCLUDE_TOOLS = "bash";
 
     try {
-      const enabledSession = await createSession([bashExtension, toolHarnessExtension]);
+      const enabledSession = await createSession([
+        bashExtension,
+        toolHarnessExtension,
+      ]);
       sessions.push(enabledSession);
       expect(getActiveToolNames(enabledSession)).toContain("bash");
       expect(getTool(enabledSession, "bash").parameters).toMatchObject({
         required: ["cmd"],
       });
 
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-gating-test-"));
+      const dir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "pi-config-gating-test-"),
+      );
       const settingsPath = writeTmpJson(dir, "bds-pi.json", {
         "@bds_pi/bash": { enabled: false },
       });
       setGlobalSettingsPath(settingsPath);
 
-      const disabledSession = await createSession([bashExtension, toolHarnessExtension]);
+      const disabledSession = await createSession([
+        bashExtension,
+        toolHarnessExtension,
+      ]);
       sessions.push(disabledSession);
       expect(getActiveToolNames(disabledSession)).toContain("bash");
       expect(getTool(disabledSession, "bash").parameters).toMatchObject({

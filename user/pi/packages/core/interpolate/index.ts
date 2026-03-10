@@ -11,8 +11,10 @@
 
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as vm from "node:vm";
 import {
   getGlobalConfig,
   resolveConfigDir,
@@ -46,6 +48,8 @@ export type VariableDefinition = {
 };
 
 export type PromptVariables = Record<string, VariableDefinition>;
+
+const esmRequire = createRequire(import.meta.url);
 
 // ── defaults ───────────────────────────────────────────────────────────
 
@@ -177,8 +181,10 @@ function getDeps(def: VariableDefinition, knownVars: Set<string>): string[] {
   // alias is a direct var name reference, not a template
   if (def.alias !== undefined && knownVars.has(def.alias)) deps.add(def.alias);
   for (const ref of extractRefs(def.file, knownVars)) deps.add(ref);
-  for (const ref of extractRefs(def.dangerously_evaluate_js, knownVars)) deps.add(ref);
-  for (const ref of extractRefs(def.dangerously_evaluate_sh, knownVars)) deps.add(ref);
+  for (const ref of extractRefs(def.dangerously_evaluate_js, knownVars))
+    deps.add(ref);
+  for (const ref of extractRefs(def.dangerously_evaluate_sh, knownVars))
+    deps.add(ref);
   for (const ref of extractRefs(def.cwd, knownVars)) deps.add(ref);
   for (const ref of extractRefs(def.default, knownVars)) deps.add(ref);
   return [...deps];
@@ -221,6 +227,44 @@ function subVars(s: string, resolved: Record<string, string>): string {
   });
 }
 
+/**
+ * evaluate a js expression with commonjs `require` available, without using
+ * the Function constructor so lint can enforce no-implied-eval.
+ */
+function executeJsExpression(expr: string): unknown {
+  const module = { exports: undefined as unknown };
+  const exports = module.exports;
+  const source = `module.exports = (${expr});`;
+
+  vm.runInNewContext(source, {
+    require: esmRequire,
+    module,
+    exports,
+  });
+
+  return module.exports;
+}
+
+function stringifyResolvedValue(value: unknown): string {
+  if (value == null) return "";
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  if (typeof value === "function" || typeof value === "symbol") {
+    return "";
+  }
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 /** resolve a single variable definition to a string value. */
 function resolveVariable(
   def: VariableDefinition,
@@ -250,9 +294,8 @@ function resolveVariable(
   } else if (def.dangerously_evaluate_js !== undefined) {
     const expr = subVars(def.dangerously_evaluate_js, resolved);
     try {
-      const fn = new Function("require", `return (${expr})`);
-      const result = fn(require);
-      value = String(result ?? "");
+      const result = executeJsExpression(expr);
+      value = stringifyResolvedValue(result);
     } catch {
       value = "";
     }
@@ -317,7 +360,8 @@ export function interpolatePromptVars(
   const resolved: Record<string, string> = {};
   for (const name of order) {
     const def = merged[name];
-    if (def) resolved[name] = resolveVariable(def, resolved, runtimeVars, configDir);
+    if (def)
+      resolved[name] = resolveVariable(def, resolved, runtimeVars, configDir);
   }
 
   // determine which vars are empty and which are filled, respecting dropLineIfEmpty
@@ -455,10 +499,14 @@ if (import.meta.vitest) {
     test("empty ls drops the line", () => {
       // /tmp has no .git, so findGitRoot falls back to cwd, and listing /nonexistent fails
       const prompt = "Before\n{ls}\nAfter";
-      const result = interpolatePromptVars(prompt, "/nonexistent/path/unlikely", {
-        repo: "x",
-        sessionId: "y",
-      });
+      const result = interpolatePromptVars(
+        prompt,
+        "/nonexistent/path/unlikely",
+        {
+          repo: "x",
+          sessionId: "y",
+        },
+      );
 
       expect(result).toContain("Before");
       expect(result).toContain("After");
@@ -485,19 +533,29 @@ if (import.meta.vitest) {
 
   describe("literal resolver", () => {
     test("returns static string", () => {
-      const result = interpolatePromptVars("val={myVar}", cwd, { repo: "x", sessionId: "y" }, {
-        myVar: { literal: "hello world" },
-      });
+      const result = interpolatePromptVars(
+        "val={myVar}",
+        cwd,
+        { repo: "x", sessionId: "y" },
+        {
+          myVar: { literal: "hello world" },
+        },
+      );
       expect(result).toContain("val=hello world");
     });
   });
 
   describe("alias resolver", () => {
     test("resolves to another variable's value", () => {
-      const result = interpolatePromptVars("a={a} b={b}", cwd, { repo: "x", sessionId: "y" }, {
-        a: { literal: "alpha" },
-        b: { alias: "a" },
-      });
+      const result = interpolatePromptVars(
+        "a={a} b={b}",
+        cwd,
+        { repo: "x", sessionId: "y" },
+        {
+          a: { literal: "alpha" },
+          b: { alias: "a" },
+        },
+      );
       expect(result).toContain("a=alpha");
       expect(result).toContain("b=alpha");
     });
@@ -510,9 +568,14 @@ if (import.meta.vitest) {
       fs.writeFileSync(filePath, "file content here");
       setGlobalSettingsPath(path.join(tmpDir, "bds-pi.json"));
 
-      const result = interpolatePromptVars("content={f}", cwd, { repo: "x", sessionId: "y" }, {
-        f: { file: "test.txt" },
-      });
+      const result = interpolatePromptVars(
+        "content={f}",
+        cwd,
+        { repo: "x", sessionId: "y" },
+        {
+          f: { file: "test.txt" },
+        },
+      );
       expect(result).toContain("content=file content here");
     });
   });
@@ -522,9 +585,14 @@ if (import.meta.vitest) {
       const key = `PI_TEST_ENV_${Date.now()}`;
       process.env[key] = "env_value";
       try {
-        const result = interpolatePromptVars("e={e}", cwd, { repo: "x", sessionId: "y" }, {
-          e: { env: key },
-        });
+        const result = interpolatePromptVars(
+          "e={e}",
+          cwd,
+          { repo: "x", sessionId: "y" },
+          {
+            e: { env: key },
+          },
+        );
         expect(result).toContain("e=env_value");
       } finally {
         delete process.env[key];
@@ -534,16 +602,26 @@ if (import.meta.vitest) {
 
   describe("dangerously_evaluate_js resolver", () => {
     test("evaluates JS expression", () => {
-      const result = interpolatePromptVars("n={n}", cwd, { repo: "x", sessionId: "y" }, {
-        n: { dangerously_evaluate_js: "2 + 2" },
-      });
+      const result = interpolatePromptVars(
+        "n={n}",
+        cwd,
+        { repo: "x", sessionId: "y" },
+        {
+          n: { dangerously_evaluate_js: "2 + 2" },
+        },
+      );
       expect(result).toContain("n=4");
     });
 
     test("returns empty on error", () => {
-      const result = interpolatePromptVars("n={n}\nend", cwd, { repo: "x", sessionId: "y" }, {
-        n: { dangerously_evaluate_js: "throw new Error('boom')" },
-      });
+      const result = interpolatePromptVars(
+        "n={n}\nend",
+        cwd,
+        { repo: "x", sessionId: "y" },
+        {
+          n: { dangerously_evaluate_js: "throw new Error('boom')" },
+        },
+      );
       expect(result).not.toContain("n=");
       expect(result).toContain("end");
     });
@@ -551,18 +629,28 @@ if (import.meta.vitest) {
 
   describe("dangerously_evaluate_sh resolver", () => {
     test("captures stdout from shell command", () => {
-      const result = interpolatePromptVars("v={v}", cwd, { repo: "x", sessionId: "y" }, {
-        v: { dangerously_evaluate_sh: "echo hello_from_sh" },
-      });
+      const result = interpolatePromptVars(
+        "v={v}",
+        cwd,
+        { repo: "x", sessionId: "y" },
+        {
+          v: { dangerously_evaluate_sh: "echo hello_from_sh" },
+        },
+      );
       expect(result).toContain("v=hello_from_sh");
     });
 
     test("cwd supports {var} refs", () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-interp-sh-"));
-      const result = interpolatePromptVars("v={v}", cwd, { repo: "x", sessionId: "y" }, {
-        dir: { literal: tmpDir },
-        v: { dangerously_evaluate_sh: "pwd", cwd: "{dir}" },
-      });
+      const result = interpolatePromptVars(
+        "v={v}",
+        cwd,
+        { repo: "x", sessionId: "y" },
+        {
+          dir: { literal: tmpDir },
+          v: { dangerously_evaluate_sh: "pwd", cwd: "{dir}" },
+        },
+      );
       // pwd output should contain the temp dir path
       expect(result).toContain(tmpDir);
     });
@@ -572,19 +660,29 @@ if (import.meta.vitest) {
     test("falls back to default when resolver returns empty", () => {
       const key = `PI_TEST_MISSING_${Date.now()}`;
       delete process.env[key]; // ensure not set
-      const result = interpolatePromptVars("v={v}", cwd, { repo: "x", sessionId: "y" }, {
-        v: { env: key, default: "fallback" },
-      });
+      const result = interpolatePromptVars(
+        "v={v}",
+        cwd,
+        { repo: "x", sessionId: "y" },
+        {
+          v: { env: key, default: "fallback" },
+        },
+      );
       expect(result).toContain("v=fallback");
     });
 
     test("default supports {var} refs", () => {
       const key = `PI_TEST_MISSING2_${Date.now()}`;
       delete process.env[key];
-      const result = interpolatePromptVars("v={v}", cwd, { repo: "x", sessionId: "y" }, {
-        base: { literal: "hello" },
-        v: { env: key, default: "{base}-world" },
-      });
+      const result = interpolatePromptVars(
+        "v={v}",
+        cwd,
+        { repo: "x", sessionId: "y" },
+        {
+          base: { literal: "hello" },
+          v: { env: key, default: "{base}-world" },
+        },
+      );
       expect(result).toContain("v=hello-world");
     });
   });
@@ -608,10 +706,15 @@ if (import.meta.vitest) {
 
     test("throws on cycle", () => {
       expect(() =>
-        interpolatePromptVars("x={x}", cwd, { repo: "x", sessionId: "y" }, {
-          x: { alias: "y" },
-          y: { alias: "x" },
-        }),
+        interpolatePromptVars(
+          "x={x}",
+          cwd,
+          { repo: "x", sessionId: "y" },
+          {
+            x: { alias: "y" },
+            y: { alias: "x" },
+          },
+        ),
       ).toThrow(/cycle/i);
     });
   });
@@ -638,11 +741,16 @@ if (import.meta.vitest) {
       const settingsPath = path.join(tmpDir, "bds-pi.json");
       fs.writeFileSync(
         settingsPath,
-        JSON.stringify({ promptVariables: { custom: { literal: "from config" } } }),
+        JSON.stringify({
+          promptVariables: { custom: { literal: "from config" } },
+        }),
       );
       setGlobalSettingsPath(settingsPath);
 
-      const result = interpolatePromptVars("v={custom}", cwd, { repo: "x", sessionId: "y" });
+      const result = interpolatePromptVars("v={custom}", cwd, {
+        repo: "x",
+        sessionId: "y",
+      });
       expect(result).toContain("v=from config");
     });
   });
