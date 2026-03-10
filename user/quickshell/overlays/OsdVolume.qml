@@ -16,9 +16,14 @@ Rectangle {
 
     readonly property int panelPadding: Design.Theme.t.space4
     readonly property real desiredWidth: layout.implicitWidth + panelPadding * 2
+    readonly property real sinkVolume: Pipewire.defaultAudioSink?.audio.volume ?? 0
+    readonly property real visualVolume: Math.max(0, Math.min(1, sinkVolume))
+    property real availableWidth: 0
 
-    implicitWidth: parent ? Math.min(parent.width * 0.36, Math.max(parent.width * 0.18, desiredWidth)) : desiredWidth
+    implicitWidth: availableWidth > 0 ? Math.min(availableWidth * 0.36, Math.max(availableWidth * 0.18, desiredWidth)) : desiredWidth
     implicitHeight: layout.implicitHeight + panelPadding * 2
+    width: implicitWidth
+    height: implicitHeight
 
     color: Design.Theme.t.black
     radius: Design.Theme.t.radiusMd
@@ -50,7 +55,7 @@ Rectangle {
             Item { Layout.fillWidth: true }
 
             Text {
-                text: Math.round((Pipewire.defaultAudioSink?.audio.volume ?? 0) * 100) + "%"
+                text: Math.round(root.visualVolume * 100) + "%"
                 color: Pipewire.defaultAudioSink?.audio.muted ? Design.Theme.t.muted : Design.Theme.t.fg
                 font.family: "Berkeley Mono"
                 font.pixelSize: Design.Theme.t.bodyMd
@@ -64,7 +69,7 @@ Rectangle {
         // slider: same control as ControlCenter
         Controls.Slider {
             Layout.fillWidth: true
-            value: Pipewire.defaultAudioSink?.audio.volume ?? 0
+            value: root.visualVolume
             enabled: Pipewire.defaultAudioSink?.audio !== null && !Pipewire.defaultAudioSink?.audio.muted
             onChangeEnd: function(val) {
                 if (Pipewire.defaultAudioSink?.audio) {
