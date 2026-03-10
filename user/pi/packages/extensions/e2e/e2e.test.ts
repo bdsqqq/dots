@@ -25,7 +25,9 @@ import {
   mkdirSync,
   writeFileSync,
   readFileSync,
+  mkdtempSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { describe, it, expect, afterAll } from "vitest";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -89,7 +91,14 @@ interface CostEntry {
 
 // --- pi runner ---
 
-function runPi(prompt: string, opts?: { timeout?: number }): Promise<PiResult> {
+function runPi(
+  prompt: string,
+  opts?: {
+    timeout?: number;
+    cwd?: string;
+    env?: Record<string, string | undefined>;
+  },
+): Promise<PiResult> {
   const timeout = opts?.timeout ?? 120_000;
 
   return new Promise((resolve, reject) => {
@@ -101,9 +110,13 @@ function runPi(prompt: string, opts?: { timeout?: number }): Promise<PiResult> {
       "pi",
       ["--mode", "json", "--model", E2E_MODEL, "-p", "--no-session", prompt],
       {
-        cwd: CWD,
+        cwd: opts?.cwd ?? CWD,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          ...opts?.env,
+        },
       },
     );
 
@@ -436,6 +449,82 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     const c = getCosts(events);
     costs.push({
       test: "Task",
+      parent: c.parent,
+      subAgent: c.subAgent,
+      total: c.parent + c.subAgent,
+      durationMs: Date.now() - t0,
+    });
+  }, 180_000);
+
+  it("Task: child sessions respect PI_BDS_CONFIG_PATH gating for builtin-shadowed tools", async () => {
+    const t0 = Date.now();
+    const sandboxDir = mkdtempSync(join(tmpdir(), "pi-e2e-config-gating-"));
+    const projectConfigDir = join(sandboxDir, ".pi");
+    mkdirSync(projectConfigDir, { recursive: true });
+    writeFileSync(
+      join(projectConfigDir, "settings.json"),
+      JSON.stringify({
+        packages: [],
+        extensions: [
+          join(CWD, "dist/extensions/task.js"),
+          join(CWD, "dist/extensions/tool-harness.js"),
+        ],
+      }),
+      "utf-8",
+    );
+    const childConfigPath = join(sandboxDir, "bds-pi.json");
+    writeFileSync(
+      childConfigPath,
+      JSON.stringify({
+        "@bds_pi/bash": { enabled: false },
+      }),
+      "utf-8",
+    );
+
+    const prompt = [
+      "Use the Task tool. description: \"fallback audit\".",
+      "In the child, inspect the bash tool schema available to you before acting.",
+      "If the required field is `command`, report `builtin-bash`. If the required field is `cmd`, report `custom-bash`.",
+      "Then do exactly one thing: run bash with `printf fallback-ok`.",
+      "Return only two lines: first the schema label, second the command output.",
+    ].join(" ");
+
+    const { events, exitCode } = await runPi(prompt, {
+      cwd: sandboxDir,
+      env: {
+        HOME: sandboxDir,
+        PI_BDS_CONFIG_PATH: childConfigPath,
+      },
+    });
+    expect(exitCode).toBe(0);
+
+    const taskResult = getToolResults(events).find((r) => r.toolName === "Task");
+    expect(taskResult).toBeDefined();
+    expect(taskResult!.exitCode).toBe(0);
+    expect(taskResult!.isError).toBe(false);
+    expect(taskResult!.content).toContain("builtin-bash");
+    expect(taskResult!.content).toContain("fallback-ok");
+
+    const rawTaskEnd = events.find(
+      (event) => event.type === "tool_execution_end" && event.toolName === "Task",
+    );
+    const childMessages = rawTaskEnd?.result?.details?.messages ?? [];
+    const childToolCalls = childMessages.flatMap((message: any) =>
+      (message.content ?? []).filter((part: any) => part.type === "toolCall"),
+    );
+    const bashCall = childToolCalls.find((part: any) => part.name === "bash");
+    expect(bashCall?.arguments).toMatchObject({ cmd: "printf fallback-ok" });
+
+    const childToolResults = childMessages.filter(
+      (message: any) => message.role === "toolResult" && message.toolName === "bash",
+    );
+    expect(childToolResults.at(-1)?.content?.[0]?.text ?? "").toContain("fallback-ok");
+
+    recordFixture("tool-task-bash-fallback", events);
+
+    const c = getCosts(events);
+    costs.push({
+      test: "Task (bash fallback)",
       parent: c.parent,
       subAgent: c.subAgent,
       total: c.parent + c.subAgent,

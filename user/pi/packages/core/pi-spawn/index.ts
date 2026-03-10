@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Message } from "@mariozechner/pi-ai";
+import { resolveGlobalSettingsPath } from "@bds_pi/config";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
 
 // --- types ---
@@ -49,6 +50,13 @@ export interface PiSpawnConfig {
   onUpdate?: (result: PiSpawnResult) => void;
   sessionId?: string;
   repo?: string;
+  /**
+   * override the global bds config path for the child process.
+   *
+   * when omitted, piSpawn propagates the parent's resolved global config path
+   * via PI_BDS_CONFIG_PATH so sub-agents inherit extension gating.
+   */
+  configPath?: string;
   /**
    * inject a follow-up user message after the agent's first turn.
    *
@@ -171,6 +179,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
     const spawnEnv: Record<string, string | undefined> = {
       ...process.env,
+      PI_BDS_CONFIG_PATH: config.configPath ?? resolveGlobalSettingsPath(),
     };
     if (config.extensionTools !== undefined) {
       if (config.extensionTools.length === 0) {
