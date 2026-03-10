@@ -4,8 +4,10 @@
  * reads per-extension configuration from pi's settings.json files,
  * keyed by extension namespace (e.g. `"@bds_pi/librarian"`).
  *
- * merge order: defaults → global (~/.pi/agent/bds-pi.json) → project-local (.pi/settings.json).
- * project-local is opt-in via `allowProjectConfig` to prevent malicious repo overrides.
+ * merge order: defaults → global (setGlobalSettingsPath() |
+ * PI_BDS_CONFIG_PATH | ~/.pi/agent/bds-pi.json) → project-local
+ * (.pi/settings.json). project-local is opt-in via `allowProjectConfig`
+ * to prevent malicious repo overrides.
  */
 
 import * as fs from "node:fs";
@@ -24,8 +26,12 @@ export function clearConfigCache(): void {
   _cache.clear();
 }
 
-function resolveGlobalSettingsPath(): string {
-  return _globalSettingsPath ?? path.join(os.homedir(), ".pi", "agent", "bds-pi.json");
+export function resolveGlobalSettingsPath(): string {
+  return (
+    _globalSettingsPath ??
+    process.env.PI_BDS_CONFIG_PATH ??
+    path.join(os.homedir(), ".pi", "agent", "bds-pi.json")
+  );
 }
 
 function readJsonFile(filePath: string): Record<string, unknown> | null {
@@ -191,10 +197,17 @@ if (import.meta.vitest) {
     return filePath;
   }
 
+  const originalPiBdsConfigPath = process.env.PI_BDS_CONFIG_PATH;
+
   afterEach(() => {
     vi.restoreAllMocks();
     clearConfigCache();
     _globalSettingsPath = null;
+    if (originalPiBdsConfigPath === undefined) {
+      delete process.env.PI_BDS_CONFIG_PATH;
+    } else {
+      process.env.PI_BDS_CONFIG_PATH = originalPiBdsConfigPath;
+    }
   });
 
   describe("getExtensionConfig", () => {
@@ -213,6 +226,22 @@ if (import.meta.vitest) {
 
       const result = getExtensionConfig("@bds_pi/test", { foo: "default", extra: true });
       expect(result).toEqual({ foo: "overridden", extra: true });
+    });
+
+    test("prefers the in-process override over PI_BDS_CONFIG_PATH", () => {
+      const envDir = fs.mkdtempSync(path.join(tmpdir, "pi-config-env-"));
+      const envSettingsPath = writeTmpJson(envDir, "env-settings.json", {
+        "@bds_pi/test": { foo: "from-env" },
+      });
+      const manualDir = fs.mkdtempSync(path.join(tmpdir, "pi-config-manual-"));
+      const manualSettingsPath = writeTmpJson(manualDir, "manual-settings.json", {
+        "@bds_pi/test": { foo: "from-setter" },
+      });
+      process.env.PI_BDS_CONFIG_PATH = envSettingsPath;
+      setGlobalSettingsPath(manualSettingsPath);
+
+      const result = getExtensionConfig("@bds_pi/test", { foo: "default" });
+      expect(result).toEqual({ foo: "from-setter" });
     });
 
     test("deep merges nested objects", () => {

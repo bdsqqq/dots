@@ -5,6 +5,7 @@
   "main": "index.ts",
   "types": "index.ts",
   "dependencies": {
+    "@bds_pi/config": "workspace:*",
     "@bds_pi/interpolate": "workspace:*"
   },
   "devDependencies": {
