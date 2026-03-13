@@ -1,6 +1,8 @@
 {
-  "defaultProvider": "openai-codex",
-  "skills": ["~/.config/agents/skills"],
+  "defaultProvider": "openrouter",
+  "skills": [
+    "~/.config/agents/skills"
+  ],
   "extensions": [
     "~/.pi/agent/extensions/editor",
     "~/.pi/agent/extensions/handoff.ts",
@@ -13,7 +15,7 @@
     "enabled": false
   },
   "lastChangelogVersion": "0.56.3",
-  "defaultModel": "gpt-5.4",
+  "defaultModel": "openai/gpt-5.4",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
   "steeringMode": "all",
