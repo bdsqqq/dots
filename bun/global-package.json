@@ -12,6 +12,7 @@
     "npm": "^11.11.0",
     "opencode-ai": "^1.2.20",
     "openportal": "^0.1.25",
+    "parallel-web-cli": "^0.2.0",
     "turbo": "^2.8.13",
     "typescript": "^5.9.3",
     "vercel": "^50.28.0"
