@@ -9,6 +9,10 @@ let
   virtualhidLabel = "com.bdsqqq.karabiner-virtualhid-daemon";
   kanataPlist = "/Library/LaunchDaemons/${kanataLabel}.plist";
   virtualhidPlist = "/Library/LaunchDaemons/${virtualhidLabel}.plist";
+  # stable path so macOS TCC (Input Monitoring) permission can survive nix rebuilds.
+  # this must be a real file, not a symlink into /nix/store, because TCC resolves
+  # symlinks and would still see the versioned store path.
+  kanataStablePath = "/usr/local/bin/kanata";
   
   toggleKanata = pkgs.writeShellScriptBin "toggle-kanata" ''
     set -euo pipefail
@@ -129,7 +133,7 @@ if isDarwin then {
       DAEMON_PID=$!
       sleep 2
       
-      sudo ${pkgs.kanata}/bin/kanata --cfg /etc/kanata/kanata.kbd &
+      sudo ${kanataStablePath} --cfg /etc/kanata/kanata.kbd &
       KANATA_PID=$!
       
       echo "test your keyboard now"
@@ -158,6 +162,15 @@ if isDarwin then {
       echo "Activating VirtualHIDDevice..."
       /Applications/.Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager activate
     fi
+
+    mkdir -p /usr/local/bin
+    cp ${pkgs.kanata}/bin/kanata ${kanataStablePath}
+    chmod 755 ${kanataStablePath}
+    /usr/bin/codesign -fs - ${kanataStablePath} 2>/dev/null || true
+
+    launchctl bootout system/${kanataLabel} 2>/dev/null || true
+    sleep 1
+    launchctl bootstrap system ${kanataPlist} 2>/dev/null || true
   '';
   
   launchd.daemons.karabiner-virtualhid-daemon = {
@@ -180,7 +193,7 @@ if isDarwin then {
       ProgramArguments = [
         "/bin/bash"
         "-c"
-        "sleep 5 && ${pkgs.kanata}/bin/kanata --cfg /etc/kanata/kanata.kbd"
+        "sleep 5 && ${kanataStablePath} --cfg /etc/kanata/kanata.kbd"
       ];
       RunAtLoad = true;
       KeepAlive = true;
