@@ -38,10 +38,10 @@ let
       -g '1,RL,B,*,R,niri msg action focus-column-right' \
       -g '1,LR,B,*,R,niri msg action focus-column-left' \
       -g '1,DU,B,*,R,niri msg action toggle-overview' \
-      -g '3,DU,*,*,R,niri msg action move-window-down-or-to-workspace-down' \
-      -g '3,UD,*,*,R,niri msg action move-window-up-or-to-workspace-up' \
-      -g '3,RL,*,*,R,niri msg action move-column-right' \
-      -g '3,LR,*,*,R,niri msg action move-column-left' \
+      -g '3,DU,*,*,R,niri msg action move-window-down-or-to-workspace-up' \
+      -g '3,UD,*,*,R,niri msg action move-window-up-or-to-workspace-down' \
+      -g '3,RL,*,*,R,niri msg action move-column-left' \
+      -g '3,LR,*,*,R,niri msg action move-column-right' \
   '';
 in
 
