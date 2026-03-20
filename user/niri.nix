@@ -37,7 +37,7 @@ let
       -g '1,UD,R,*,R,niri msg action focus-window-or-workspace-up' \
       -g '1,RL,B,*,R,niri msg action focus-column-right' \
       -g '1,LR,B,*,R,niri msg action focus-column-left' \
-      -g '1,DU,B,*,R,${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae toggle' \
+      -g '1,DU,B,*,R,niri msg action toggle-overview' \
       -g '3,DU,*,*,*,niri msg action focus-workspace-down' \
       -g '3,UD,*,*,*,niri msg action focus-workspace-up' \
       -g '3,LR,*,*,*,niri msg action focus-column-left' \
