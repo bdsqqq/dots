@@ -210,6 +210,54 @@
             bindkey '^[[A' up-line-or-history-clean  # up arrow
             bindkey '^[OA' up-line-or-history-clean  # up arrow (alternate)
 
+            # ctrl+s: fuzzy zmx session picker with live scrollback preview
+            zmx-select() {
+              local display
+              display=$(zmx list 2>/dev/null | while IFS=$'\t' read -r name pid clients created dir; do
+                name=''${name#session_name=}
+                pid=''${pid#pid=}
+                clients=''${clients#clients=}
+                dir=''${dir#started_in=}
+                printf '%-20s  pid:%-8s  clients:%-2s  %s\n' "$name" "$pid" "$clients" "$dir"
+              done)
+
+              local output query key selected session_name rc
+              output=$({ [[ -n "$display" ]] && echo "$display"; } | fzf \
+                --print-query \
+                --expect=ctrl-n \
+                --height=80% \
+                --reverse \
+                --border-label ' zmx ' \
+                --prompt='zmx> ' \
+                --header='  enter attach  ctrl+n new' \
+                --preview='zmx history {1} 2>/dev/null' \
+                --preview-window='right:60%:follow')
+              rc=$?
+
+              query=$(echo "$output" | sed -n '1p')
+              key=$(echo "$output" | sed -n '2p')
+              selected=$(echo "$output" | sed -n '3p')
+
+              if [[ "$key" == 'ctrl-n' && -n "$query" ]]; then
+                session_name="$query"
+              elif [[ $rc -eq 0 && -n "$selected" ]]; then
+                session_name=$(echo "$selected" | awk '{print $1}')
+              elif [[ -n "$query" ]]; then
+                session_name="$query"
+              else
+                return 130
+              fi
+
+              zmx attach "$session_name"
+            }
+
+            _zmx_connect() {
+              zmx-select
+              zle reset-prompt
+            }
+            zle -N _zmx_connect
+            bindkey '^s' _zmx_connect
+
             PROMPT='%{$fg_bold[white]%}⁂ %c%{$reset_color%}$_git_prompt_info
    %{$fg[white]%}└ %{$reset_color%}'
           '';
