@@ -127,20 +127,14 @@ background-opacity-cells = true
 
 theme = light:lauds-light,dark:compline-dark
 
-
-# unbind ctrl+tab/digits so tmux can receive them
-keybind = ctrl+tab=unbind
-keybind = ctrl+shift+tab=unbind
-keybind = ctrl+one=unbind
-keybind = ctrl+two=unbind
-keybind = ctrl+three=unbind
-keybind = ctrl+four=unbind
-keybind = ctrl+five=unbind
-keybind = ctrl+six=unbind
-keybind = ctrl+seven=unbind
-keybind = ctrl+eight=unbind
-keybind = ctrl+nine=unbind
-keybind = ctrl+zero=unbind
+# keep ghostty defaults except split bindings, plus super+9 for the last tab.
+# super+d / super+shift+d -> super+| / super+_
+keybind = super+d=unbind
+keybind = super+shift+d=unbind
+keybind = super+|=new_split:right
+keybind = super+_=new_split:down
+keybind = super+digit_9=goto_tab:9
+keybind = super+9=goto_tab:9
 '';
 
   ghosttyFiles = {

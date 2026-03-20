@@ -170,7 +170,10 @@
               pkgsFor = system: import inputs.nixpkgs {
                 inherit system;
                 config.allowUnfree = true;
-                overlays = [ (import ./overlays/unstable.nix inputs) ];
+                overlays = [
+                  (import ./overlays/unstable.nix inputs)
+                  (import ./overlays/zmx.nix inputs)
+                ];
               };
             };
             modules = [
@@ -181,7 +184,10 @@
                 nixpkgs = {
                   hostPlatform = "aarch64-darwin";
                   config.allowUnfree = true;
-                  overlays = [ (import ./overlays/unstable.nix inputs) ];
+                  overlays = [
+                    (import ./overlays/unstable.nix inputs)
+                    (import ./overlays/zmx.nix inputs)
+                  ];
                 };
                 # track git revision for deploy annotations
                 system.configurationRevision = flakeRevision;
@@ -217,8 +223,9 @@
               inputs.niri.nixosModules.niri
               ({ pkgs, config, lib, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
-                nixpkgs.overlays = [ 
+                nixpkgs.overlays = [
                   (import ./overlays/unstable.nix inputs)
+                  (import ./overlays/zmx.nix inputs)
                   (import ./overlays/quickshell.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
@@ -249,9 +256,10 @@
               inputs.copyparty.nixosModules.default
               ({ pkgs, config, lib, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
-                nixpkgs.overlays = [ 
-                  inputs.copyparty.overlays.default 
+                nixpkgs.overlays = [
+                  inputs.copyparty.overlays.default
                   (import ./overlays/unstable.nix inputs)
+                  (import ./overlays/zmx.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
                 
@@ -282,8 +290,9 @@
               inputs.jovian-nixos.nixosModules.default
               ({ pkgs, config, lib, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
-                nixpkgs.overlays = [ 
+                nixpkgs.overlays = [
                   (import ./overlays/unstable.nix inputs)
+                  (import ./overlays/zmx.nix inputs)
                   (import ./overlays/quickshell.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
