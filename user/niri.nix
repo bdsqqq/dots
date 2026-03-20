@@ -31,12 +31,12 @@ let
       -m 1500 \
       -g '1,UD,TR,*,R,${inputs.quickshell.packages.${hostSystem}.default}/bin/qs ipc call control-center toggleControlCenter' \
       -g '1,UD,T,*,R,${inputs.quickshell.packages.${hostSystem}.default}/bin/qs ipc call bar toggle' \
-      -g '1,DU,L,*,R,niri msg action focus-window-or-workspace-up' \
-      -g '1,UD,L,*,R,niri msg action focus-window-or-workspace-down' \
-      -g '1,DU,R,*,R,niri msg action focus-window-or-workspace-up' \
-      -g '1,UD,R,*,R,niri msg action focus-window-or-workspace-down' \
-      -g '1,RL,B,*,R,niri msg action focus-column-left' \
-      -g '1,LR,B,*,R,niri msg action focus-column-right' \
+      -g '1,DU,L,*,R,niri msg action focus-window-or-workspace-down' \
+      -g '1,UD,L,*,R,niri msg action focus-window-or-workspace-up' \
+      -g '1,DU,R,*,R,niri msg action focus-window-or-workspace-down' \
+      -g '1,UD,R,*,R,niri msg action focus-window-or-workspace-up' \
+      -g '1,RL,B,*,R,niri msg action focus-column-right' \
+      -g '1,LR,B,*,R,niri msg action focus-column-left' \
       -g '1,DU,B,*,R,${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae toggle' \
       -g '3,DU,*,*,*,niri msg action focus-workspace-down' \
       -g '3,UD,*,*,*,niri msg action focus-workspace-up' \
