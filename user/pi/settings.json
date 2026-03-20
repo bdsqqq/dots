@@ -14,7 +14,7 @@
   "compaction": {
     "enabled": false
   },
-  "lastChangelogVersion": "0.59.0",
+  "lastChangelogVersion": "0.61.0",
   "defaultModel": "openai/gpt-5.4",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,

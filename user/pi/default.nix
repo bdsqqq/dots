@@ -40,11 +40,19 @@ in
     #
     # overwrites ~/.bun/bin/pi (the node-shebang symlink created by bun install)
     # with a wrapper script. no PATH ordering needed — same location, just runs
-    # bun instead of node. re-applied on every activation in case bun install
-    # regenerates the symlink.
+    # bun instead of node. pi 0.61 added a bun-specific cli entrypoint; prefer
+    # that when present because running bun against dist/cli.js regressed custom
+    # extension loading (`exports is not defined in ES module scope`). keep the
+    # legacy dist/cli.js path as fallback for older installs.
     home.activation.piBunWrapper = lib.hm.dag.entryAfter [ "installPiExtensionDeps" ] ''
       PI_WRAPPER="${homeDir}/.bun/bin/pi"
-      PI_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
+      PI_BUN_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/bun/cli.js"
+      PI_LEGACY_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
+      if [ -e "$PI_BUN_CLI" ]; then
+        PI_CLI="$PI_BUN_CLI"
+      else
+        PI_CLI="$PI_LEGACY_CLI"
+      fi
       if [ -e "$PI_CLI" ]; then
         rm -f "$PI_WRAPPER"
         printf '%s\n' '#!/usr/bin/env bash' "export NODE_PATH=\"${repoPi}/node_modules\"" "exec bun \"$PI_CLI\" \"\$@\"" > "$PI_WRAPPER"
