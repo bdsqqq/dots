@@ -211,25 +211,29 @@
             bindkey '^[OA' up-line-or-history-clean  # up arrow (alternate)
 
             # ctrl+s: fuzzy zmx session picker with live scrollback preview
-            zmx-select() {
-              local display
-              display=$(zmx list 2>/dev/null | while IFS=$'\t' read -r name pid clients created dir; do
-                name=''${name#session_name=}
-                pid=''${pid#pid=}
-                clients=''${clients#clients=}
-                dir=''${dir#started_in=}
-                printf '%-20s  pid:%-8s  clients:%-2s  %s\n' "$name" "$pid" "$clients" "$dir"
-              done)
+            _zmx_list() {
+              zmx list 2>/dev/null | awk -F '\t' '
+                {
+                  name=$1; sub(/^session_name=/, "", name)
+                  pid=$2; sub(/^pid=/, "", pid)
+                  clients=$3; sub(/^clients=/, "", clients)
+                  dir=$5; sub(/^started_in=/, "", dir)
+                  printf "%-20s  pid:%-8s  clients:%-2s  %s\\n", name, pid, clients, dir
+                }
+              '
+            }
 
+            zmx-select() {
               local output query key selected session_name rc
-              output=$({ [[ -n "$display" ]] && echo "$display"; } | fzf \
+              output=$(_zmx_list | fzf \
                 --print-query \
                 --expect=ctrl-n \
                 --height=80% \
                 --reverse \
                 --border-label ' zmx ' \
                 --prompt='zmx> ' \
-                --header='  enter attach  ctrl+n new' \
+                --header='  enter attach  ctrl+n new  ctrl+x kill' \
+                --bind 'ctrl-x:execute-silent(zmx kill {1})+reload(_zmx_list)' \
                 --preview='zmx history {1} 2>/dev/null' \
                 --preview-window='right:60%:follow')
               rc=$?
@@ -240,6 +244,8 @@
 
               if [[ "$key" == 'ctrl-n' && -n "$query" ]]; then
                 session_name="$query"
+              elif [[ "$key" == 'ctrl-x' ]]; then
+                return 0
               elif [[ $rc -eq 0 && -n "$selected" ]]; then
                 session_name=$(echo "$selected" | awk '{print $1}')
               elif [[ -n "$query" ]]; then
