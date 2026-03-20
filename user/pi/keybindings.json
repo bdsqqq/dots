@@ -1,4 +1,4 @@
 {
-  "cycleModelForward": [],
-  "cycleModelBackward": []
+  "app.model.cycleForward": [],
+  "app.model.cycleBackward": []
 }
