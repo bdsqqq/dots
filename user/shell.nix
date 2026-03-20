@@ -223,6 +223,8 @@
         la = "eza -a --git --icons";
         lt = "eza --tree --level=2 --icons";
         c = "clear";
+        zx = "zmx attach";
+        zxl = "zmx list";
       };
 
 
