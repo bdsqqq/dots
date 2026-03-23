@@ -7,7 +7,8 @@
     ".": "./index.ts"
   },
   "dependencies": {
-    "@bds_pi/config": "workspace:*"
+    "@bds_pi/config": "workspace:*",
+    "@mariozechner/pi-ai": "catalog:"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "catalog:"
