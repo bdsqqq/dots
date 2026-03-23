@@ -5,7 +5,7 @@
   "dependencies": {
     "@mariozechner/pi-coding-agent": "^0.61.0",
     "@openai/codex": "^0.115.0",
-    "@sourcegraph/amp": "0.0.1773768185-g3484e8",
+    "@sourcegraph/amp": "0.0.1774037043-gf69b11",
     "agent-browser": "^0.21.0",
     "biome": "^0.3.3",
     "diff": "^8.0.3",
