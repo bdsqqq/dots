@@ -40,7 +40,7 @@ in
     #
     # overwrites ~/.bun/bin/pi (the node-shebang symlink created by bun install)
     # with a wrapper script. no PATH ordering needed — same location, just runs
-    # bun instead of node. pi 0.61 added a bun-specific cli entrypoint; prefer
+    # bun instead of node. pi 0.62 still ships a bun-specific cli entrypoint; prefer
     # that when present because running bun against dist/cli.js regressed custom
     # extension loading (`exports is not defined in ES module scope`). keep the
     # legacy dist/cli.js path as fallback for older installs.

@@ -10,6 +10,7 @@
     "@bds_pi/config": "workspace:*",
     "@bds_pi/mentions": "workspace:*",
     "@bds_pi/pi-spawn": "workspace:*",
+    "@mariozechner/pi-ai": "catalog:",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {
