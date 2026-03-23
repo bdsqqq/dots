@@ -7,10 +7,8 @@ if !(lib.hasInfix "darwin" hostSystem) then {} else {
     casks = [
       # System utilities
       "superwhisper"
-      "blackhole-2ch"
       "cleanshot"
       "raycast"
-      "bitwarden"
 
       # Development tools
       "orbstack"
@@ -25,14 +23,11 @@ if !(lib.hasInfix "darwin" hostSystem) then {} else {
       "1password-cli"
       "linear-linear"
       "notion-calendar"
+      "notion"
 
       # Entertainment/Gaming
-      "prismlauncher"
       "spotify"
       "steam"
-
-      # Browsers
-      "chromium"
     ];
 
     onActivation = {
