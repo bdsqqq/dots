@@ -6,6 +6,9 @@
   "exports": {
     ".": "./index.ts"
   },
+  "dependencies": {
+    "@bds_pi/fs": "workspace:*"
+  },
   "devDependencies": {
     "vitest": "^3.0.0"
   }

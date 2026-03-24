@@ -16,7 +16,8 @@ import type {
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { listDirectory, resolveWithVariants } from "@bds_pi/fs";
+import { listDirectory, resolveToAbsolute, resolveWithVariants } from "@bds_pi/fs";
+import * as permissions from "@bds_pi/permissions";
 import { NORMAL_LIMITS, type ReadLimits } from "@bds_pi/read";
 import {
   boxRendererWindowed,
@@ -83,6 +84,29 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as { path?: string };
+      const requestedPath = resolveToAbsolute(p.path ?? ctx.cwd, ctx.cwd);
+      const verdict = permissions.evaluatePermission(
+        "ls",
+        {
+          path: requestedPath,
+          sessionCwd: ctx.cwd,
+        },
+        permissions.loadPermissions(),
+      );
+      if (verdict.action === "reject") {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: verdict.message
+                ? `path rejected: ${verdict.message}`
+                : "path rejected by permission rule.",
+            },
+          ],
+          isError: true,
+        } as any;
+      }
+
       const resolved = resolveWithVariants(p.path ?? ctx.cwd, ctx.cwd);
 
       if (!fs.existsSync(resolved)) {
@@ -129,4 +153,38 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
 
 export default function (pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createLsTool(NORMAL_LIMITS)));
+}
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe("ls permissions", () => {
+    it("rejects disallowed paths before directory checks", async () => {
+      const tool = createLsTool(NORMAL_LIMITS);
+      const evaluatePermissionSpy = vi
+        .spyOn(permissions, "evaluatePermission")
+        .mockReturnValue({ action: "reject", message: "workspace only" });
+      vi.spyOn(permissions, "loadPermissions").mockReturnValue([]);
+
+      const result = (await tool.execute!(
+        "test-id",
+        { path: "../sibling" },
+        undefined,
+        undefined,
+        { cwd: "/repo/project" } as any,
+      )) as any;
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toBe("path rejected: workspace only");
+      expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+        "ls",
+        { path: "/repo/sibling", sessionCwd: "/repo/project" },
+        [],
+      );
+    });
+  });
 }

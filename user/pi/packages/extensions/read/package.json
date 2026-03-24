@@ -9,6 +9,7 @@
     "@bds_pi/config": "workspace:*",
     "@bds_pi/fs": "workspace:*",
     "@bds_pi/output-buffer": "workspace:*",
+    "@bds_pi/permissions": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },

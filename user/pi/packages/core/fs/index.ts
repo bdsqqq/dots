@@ -56,6 +56,20 @@ export function resolveWithVariants(filePath: string, cwd: string): string {
   );
 }
 
+/**
+ * lexical directory containment check.
+ *
+ * this intentionally ignores filesystem state and symlinks. callers use it when
+ * they need to reject obvious `..` and absolute-path escapes without touching
+ * disk.
+ */
+export function isPathWithin(rootPath: string, targetPath: string): boolean {
+  const resolvedRoot = path.resolve(rootPath);
+  const resolvedTarget = path.resolve(targetPath);
+  const relative = path.relative(resolvedRoot, resolvedTarget);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 export function isSecretFile(filePath: string): boolean {
   const basename = path.basename(filePath);
   if (SECRET_EXCEPTIONS.has(basename)) return false;
@@ -218,6 +232,28 @@ if (import.meta.vitest) {
           (candidate) => candidate === variant,
         ),
       ).toBe(variant);
+    });
+  });
+
+  describe("isPathWithin", () => {
+    it("allows the same directory", () => {
+      expect(isPathWithin("/repo/project", "/repo/project")).toBe(true);
+    });
+
+    it("allows child paths", () => {
+      expect(isPathWithin("/repo/project", "/repo/project/src/index.ts")).toBe(
+        true,
+      );
+    });
+
+    it("rejects sibling paths", () => {
+      expect(isPathWithin("/repo/project", "/repo/sibling/index.ts")).toBe(
+        false,
+      );
+    });
+
+    it("rejects /tmp escapes", () => {
+      expect(isPathWithin("/repo/project", "/tmp/escape.txt")).toBe(false);
     });
   });
 

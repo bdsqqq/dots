@@ -35,7 +35,8 @@ import {
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
-import { resolveWithVariants } from "@bds_pi/fs";
+import { resolveToAbsolute, resolveWithVariants } from "@bds_pi/fs";
+import * as permissions from "@bds_pi/permissions";
 
 // --- BOM / CRLF ---
 
@@ -395,6 +396,29 @@ export function createEditFileTool(): ToolDefinition {
 
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
       const p = params as EditFileParams;
+      const requestedPath = resolveToAbsolute(p.path, ctx.cwd);
+      const verdict = permissions.evaluatePermission(
+        "edit",
+        {
+          path: requestedPath,
+          sessionCwd: ctx.cwd,
+        },
+        permissions.loadPermissions(),
+      );
+      if (verdict.action === "reject") {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: verdict.message
+                ? `path rejected: ${verdict.message}`
+                : "path rejected by permission rule.",
+            },
+          ],
+          isError: true,
+        } as any;
+      }
+
       const resolved = resolveWithVariants(p.path, ctx.cwd);
 
       if (!fs.existsSync(resolved)) {
@@ -610,4 +634,42 @@ export function createEditFileTool(): ToolDefinition {
 
 export default function (pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createEditFileTool()));
+}
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe("edit-file permissions", () => {
+    it("rejects disallowed paths before filesystem checks", async () => {
+      const tool = createEditFileTool();
+      const evaluatePermissionSpy = vi
+        .spyOn(permissions, "evaluatePermission")
+        .mockReturnValue({ action: "reject", message: "workspace only" });
+      vi.spyOn(permissions, "loadPermissions").mockReturnValue([]);
+
+      const result = (await tool.execute!(
+        "test-id",
+        {
+          path: "../sibling/file.txt",
+          old_str: "before",
+          new_str: "after",
+        },
+        undefined,
+        undefined,
+        { cwd: "/repo/project" } as any,
+      )) as any;
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toBe("path rejected: workspace only");
+      expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+        "edit",
+        { path: "/repo/sibling/file.txt", sessionCwd: "/repo/project" },
+        [],
+      );
+    });
+  });
 }

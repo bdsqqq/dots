@@ -6,10 +6,10 @@
   "types": "./index.ts",
   "dependencies": {
     "@bds_pi/box-format": "workspace:*",
-    "@bds_pi/config": "workspace:*",
     "@bds_pi/file-tracker": "workspace:*",
     "@bds_pi/fs": "workspace:*",
     "@bds_pi/mutex": "workspace:*",
+    "@bds_pi/permissions": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
