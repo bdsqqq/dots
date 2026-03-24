@@ -22,6 +22,7 @@ import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
 import { resolveToAbsolute } from "@bds_pi/fs";
+import * as permissions from "@bds_pi/permissions";
 import {
   boxRendererWindowed,
   textSection,
@@ -99,6 +100,27 @@ export function createCreateFileTool(): ToolDefinition {
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
       const p = params as CreateFileParams;
       const resolved = resolveToAbsolute(p.path, ctx.cwd);
+      const verdict = permissions.evaluatePermission(
+        "write",
+        {
+          path: resolved,
+          sessionCwd: ctx.cwd,
+        },
+        permissions.loadPermissions(),
+      );
+      if (verdict.action === "reject") {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: verdict.message
+                ? `path rejected: ${verdict.message}`
+                : "path rejected by permission rule.",
+            },
+          ],
+          isError: true,
+        } as any;
+      }
 
       return withFileLock(resolved, async () => {
         // capture before-state for undo tracking
@@ -143,4 +165,40 @@ export function createCreateFileTool(): ToolDefinition {
 
 export default function (pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createCreateFileTool()));
+}
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe("create-file permissions", () => {
+    it("rejects disallowed paths before writes", async () => {
+      const tool = createCreateFileTool();
+      const evaluatePermissionSpy = vi
+        .spyOn(permissions, "evaluatePermission")
+        .mockReturnValue({ action: "reject", message: "workspace only" });
+      vi.spyOn(permissions, "loadPermissions").mockReturnValue([]);
+      const getSessionId = vi.fn(() => "s");
+
+      const result = (await tool.execute!(
+        "test-id",
+        { path: "../sibling/new.txt", content: "hello" },
+        undefined,
+        undefined,
+        { cwd: "/repo/project", sessionManager: { getSessionId } } as any,
+      )) as any;
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toBe("path rejected: workspace only");
+      expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+        "write",
+        { path: "/repo/sibling/new.txt", sessionCwd: "/repo/project" },
+        [],
+      );
+      expect(getSessionId).not.toHaveBeenCalled();
+    });
+  });
 }

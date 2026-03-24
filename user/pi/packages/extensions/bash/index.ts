@@ -33,7 +33,7 @@ import {
 import { getText } from "@bds_pi/tui";
 import { Type } from "@sinclair/typebox";
 import { withFileLock } from "@bds_pi/mutex";
-import { evaluatePermission, loadPermissions } from "@bds_pi/permissions";
+import * as permissions from "@bds_pi/permissions";
 import { resolveToAbsolute } from "@bds_pi/fs";
 import { OutputBuffer } from "@bds_pi/output-buffer";
 import {
@@ -138,6 +138,46 @@ function parseBackgroundCommand(cmd: string): {
     command: cmd.replace(/\s*&\s*$/, ""),
     background: true,
   };
+}
+
+function isExplicitPathToken(token: string): boolean {
+  return /^(\/|\.\/|\.\.\/|~\/)/.test(token);
+}
+
+function extractPathTokenCandidates(token: string): string[] {
+  const candidates = [token];
+  const equalsIndex = token.indexOf("=");
+  if (equalsIndex !== -1 && equalsIndex < token.length - 1) {
+    candidates.push(token.slice(equalsIndex + 1));
+  }
+
+  const redirectionMatch = token.match(/^\d*(?:>>?|<<?|&>>?|&>)(.+)$/);
+  if (redirectionMatch?.[1]) candidates.push(redirectionMatch[1]);
+
+  return candidates.filter(isExplicitPathToken);
+}
+
+/**
+ * conservative path extraction for permission checks.
+ *
+ * this is intentionally token-based, not a shell parser. it only tracks
+ * explicit path-shaped args we care about for policy: absolute paths plus
+ * `./`, `../`, and `~/` forms, including simple `flag=path` and redirection
+ * shapes.
+ */
+function extractExplicitPathArgs(cmd: string, cwd: string): string[] {
+  const paths = new Set<string>();
+
+  for (const match of cmd.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)) {
+    const token = match[1] ?? match[2] ?? match[3];
+    if (!token) continue;
+
+    for (const candidate of extractPathTokenCandidates(token)) {
+      paths.add(resolveToAbsolute(candidate, cwd));
+    }
+  }
+
+  return [...paths];
 }
 
 /**
@@ -476,20 +516,26 @@ export function createBashTool(
         );
       }
 
-      if (!existsSync(effectiveCwd)) {
-        throw new Error(`working directory does not exist: ${effectiveCwd}`);
-      }
-
-      const verdict = evaluatePermission(
-        "Bash",
-        { cmd: command },
-        loadPermissions(),
+      const pathTargets = extractExplicitPathArgs(command, effectiveCwd);
+      const verdict = permissions.evaluatePermission(
+        "bash",
+        {
+          cmd: command,
+          cwd: effectiveCwd,
+          paths: pathTargets,
+          sessionCwd: ctx.cwd,
+        },
+        permissions.loadPermissions(),
       );
       if (verdict.action === "reject") {
         const msg = verdict.message
           ? `command rejected: ${verdict.message}`
           : `command rejected by permission rule. command: ${command}`;
         throw new Error(msg);
+      }
+
+      if (!existsSync(effectiveCwd)) {
+        throw new Error(`working directory does not exist: ${effectiveCwd}`);
       }
 
       const sessionId = ctx.sessionManager.getSessionId();
@@ -710,7 +756,7 @@ async function runBackgroundCommand(
 }
 
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, it } = import.meta.vitest;
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
 
   type BashToolResult = {
     content: [{ type: "text"; text: string }];
@@ -730,8 +776,9 @@ if (import.meta.vitest) {
     },
   };
 
-  async function execute(
+  async function executeWithCtx(
     cmd: string,
+    ctxOverride: Partial<typeof mockCtx>,
     timeout?: number,
   ): Promise<BashToolResult> {
     return (await tool.execute!(
@@ -739,11 +786,23 @@ if (import.meta.vitest) {
       { cmd, timeout },
       undefined,
       undefined,
-      mockCtx as any,
+      {
+        ...mockCtx,
+        ...ctxOverride,
+        sessionManager: ctxOverride.sessionManager ?? mockCtx.sessionManager,
+      } as any,
     )) as BashToolResult;
   }
 
+  async function execute(
+    cmd: string,
+    timeout?: number,
+  ): Promise<BashToolResult> {
+    return executeWithCtx(cmd, {}, timeout);
+  }
+
   afterEach(async () => {
+    vi.restoreAllMocks();
     await cleanupBackgroundProcesses(backgroundState, 100);
   });
 
@@ -827,6 +886,69 @@ if (import.meta.vitest) {
       it("rejects top-level && chains", async () => {
         await expect(execute(`echo one && echo two`)).rejects.toThrow(
           "top-level command chaining with && is not supported",
+        );
+      });
+
+      it("rejects commands with /tmp path escapes before spawn", async () => {
+        const evaluatePermissionSpy = vi
+          .spyOn(permissions, "evaluatePermission")
+          .mockReturnValue({ action: "reject", message: "tmp blocked" });
+
+        await expect(execute(`cat /tmp/escape.txt`)).rejects.toThrow(
+          "command rejected: tmp blocked",
+        );
+        expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+          "bash",
+          expect.objectContaining({
+            cmd: "cat /tmp/escape.txt",
+            cwd: "/tmp",
+            paths: ["/tmp/escape.txt"],
+            sessionCwd: "/tmp",
+          }),
+          expect.any(Array),
+        );
+      });
+
+      it("rejects sibling-worktree escapes after cd normalization", async () => {
+        const evaluatePermissionSpy = vi
+          .spyOn(permissions, "evaluatePermission")
+          .mockReturnValue({ action: "reject", message: "within only" });
+
+        await expect(
+          executeWithCtx(
+            `cd /repo/project && cat ../sibling/secret.txt`,
+            { cwd: "/workspace/root" },
+          ),
+        ).rejects.toThrow("command rejected: within only");
+        expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+          "bash",
+          expect.objectContaining({
+            cmd: "cat ../sibling/secret.txt",
+            cwd: "/repo/project",
+            paths: ["/repo/sibling/secret.txt"],
+            sessionCwd: "/workspace/root",
+          }),
+          expect.any(Array),
+        );
+      });
+
+      it("passes escaped cwd to permissions even without explicit path args", async () => {
+        const evaluatePermissionSpy = vi
+          .spyOn(permissions, "evaluatePermission")
+          .mockReturnValue({ action: "reject", message: "within only" });
+
+        await expect(
+          executeWithCtx(`printf blocked > marker.txt`, { cwd: "/repo/escape" }),
+        ).rejects.toThrow("command rejected: within only");
+        expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+          "bash",
+          expect.objectContaining({
+            cmd: "printf blocked > marker.txt",
+            cwd: "/repo/escape",
+            paths: [],
+            sessionCwd: "/repo/escape",
+          }),
+          expect.any(Array),
         );
       });
 

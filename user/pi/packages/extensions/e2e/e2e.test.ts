@@ -530,6 +530,116 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     });
   }, 180_000);
 
+  it("Task: child sessions reject bash escapes outside assigned cwd", async () => {
+    const t0 = Date.now();
+    const sandboxDir = mkdtempSync(join(tmpdir(), "pi-e2e-permissions-"));
+    const projectConfigDir = join(sandboxDir, ".pi");
+    const agentConfigDir = join(sandboxDir, ".pi", "agent");
+    const childConfigPath = join(sandboxDir, "bds-pi.json");
+    const forbiddenPath = join(
+      tmpdir(),
+      `pi-e2e-task-escape-${Date.now()}.txt`,
+    );
+
+    mkdirSync(projectConfigDir, { recursive: true });
+    mkdirSync(agentConfigDir, { recursive: true });
+    try {
+      unlinkSync(forbiddenPath);
+    } catch {}
+
+    writeFileSync(
+      join(projectConfigDir, "settings.json"),
+      JSON.stringify({
+        packages: [],
+        extensions: [
+          join(CWD, "dist/extensions/task.js"),
+          join(CWD, "dist/extensions/tool-harness.js"),
+          join(CWD, "dist/extensions/bash.js"),
+        ],
+      }),
+      "utf-8",
+    );
+    writeFileSync(childConfigPath, JSON.stringify({}), "utf-8");
+    writeFileSync(
+      join(agentConfigDir, "permissions.json"),
+      JSON.stringify(
+        [
+          {
+            tool: "bash",
+            matches: { within: "." },
+            action: "allow",
+          },
+          {
+            tool: "bash",
+            action: "reject",
+            message: "stay inside the assigned cwd",
+          },
+          { tool: "*", action: "allow" },
+        ],
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    const prompt = [
+      'Use the Task tool. description: "permission escape audit".',
+      "In the child, do exactly one thing: run bash with this command:",
+      `\`printf blocked > "${forbiddenPath}"\`.`,
+      "Do not retry. Return only the bash tool result text.",
+    ].join(" ");
+
+    const { events, exitCode, stderr } = await runPi(prompt, {
+      cwd: sandboxDir,
+      env: {
+        HOME: sandboxDir,
+        PI_BDS_CONFIG_PATH: childConfigPath,
+      },
+    });
+    if (exitCode !== 0 && /No API key found|Authentication failed/i.test(stderr)) {
+      return;
+    }
+    expect(exitCode).toBe(0);
+
+    const taskResult = getToolResults(events).find(
+      (r) => r.toolName === "Task",
+    );
+    expect(taskResult).toBeDefined();
+    expect(taskResult!.exitCode).toBe(0);
+    expect(taskResult!.isError).toBe(false);
+
+    const rawTaskEnd = events.find(
+      (event) =>
+        event.type === "tool_execution_end" && event.toolName === "Task",
+    );
+    const childMessages = rawTaskEnd?.result?.details?.messages ?? [];
+    const childToolCalls = childMessages.flatMap((message: any) =>
+      (message.content ?? []).filter((part: any) => part.type === "toolCall"),
+    );
+    const bashCall = childToolCalls.find((part: any) => part.name === "bash");
+    expect(bashCall?.arguments?.cmd ?? "").toContain(forbiddenPath);
+
+    const childToolResults = childMessages.filter(
+      (message: any) =>
+        message.role === "toolResult" && message.toolName === "bash",
+    );
+    const bashText = childToolResults.at(-1)?.content?.[0]?.text ?? "";
+    expect(bashText).toContain("command rejected");
+    expect(bashText).toContain("stay inside the assigned cwd");
+    expect(existsSync(forbiddenPath)).toBe(false);
+
+    recordFixture("tool-task-bash-permissions", events);
+
+    const c = getCosts(events);
+    costs.push({
+      test: "Task (bash permissions)",
+      parent: c.parent,
+      subAgent: c.subAgent,
+      total: c.parent + c.subAgent,
+      durationMs: Date.now() - t0,
+    });
+  }, 180_000);
+
   it("oracle: sub-agent provides advice via gpt-5.2", async () => {
     const t0 = Date.now();
     const { events, exitCode } = await runPi(

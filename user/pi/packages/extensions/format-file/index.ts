@@ -25,7 +25,8 @@ import {
 import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
-import { resolveWithVariants } from "@bds_pi/fs";
+import { resolveToAbsolute, resolveWithVariants } from "@bds_pi/fs";
+import * as permissions from "@bds_pi/permissions";
 import {
   boxRendererWindowed,
   textSection,
@@ -160,6 +161,29 @@ export function createFormatFileTool(
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as { path: string };
+      const requestedPath = resolveToAbsolute(p.path, ctx.cwd);
+      const verdict = permissions.evaluatePermission(
+        "format_file",
+        {
+          path: requestedPath,
+          sessionCwd: ctx.cwd,
+        },
+        permissions.loadPermissions(),
+      );
+      if (verdict.action === "reject") {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: verdict.message
+                ? `path rejected: ${verdict.message}`
+                : "path rejected by permission rule.",
+            },
+          ],
+          isError: true,
+        } as any;
+      }
+
       const resolved = resolveWithVariants(p.path, ctx.cwd);
 
       if (!fs.existsSync(resolved)) {
@@ -386,6 +410,32 @@ if (import.meta.vitest) {
       expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
       expect(harness.tools).toHaveLength(1);
       expect(harness.tools[0]).toMatchObject({ name: "format_file" });
+    });
+  });
+
+  describe("format-file permissions", () => {
+    it("rejects disallowed paths before filesystem checks", async () => {
+      const tool = createFormatFileTool();
+      const evaluatePermissionSpy = vi
+        .spyOn(permissions, "evaluatePermission")
+        .mockReturnValue({ action: "reject", message: "workspace only" });
+      vi.spyOn(permissions, "loadPermissions").mockReturnValue([]);
+
+      const result = (await tool.execute!(
+        "test-id",
+        { path: "../sibling/file.ts" },
+        undefined,
+        undefined,
+        { cwd: "/repo/project" } as any,
+      )) as any;
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toBe("path rejected: workspace only");
+      expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+        "format_file",
+        { path: "/repo/sibling/file.ts", sessionCwd: "/repo/project" },
+        [],
+      );
     });
   });
 }

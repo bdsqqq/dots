@@ -27,7 +27,8 @@ import {
   simpleDiff,
 } from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
-import { resolveWithVariants } from "@bds_pi/fs";
+import { resolveToAbsolute, resolveWithVariants } from "@bds_pi/fs";
+import * as permissions from "@bds_pi/permissions";
 import {
   boxRendererWindowed,
   textSection,
@@ -140,6 +141,29 @@ export function createUndoEditTool(): ToolDefinition {
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const p = params as UndoEditParams;
+      const requestedPath = resolveToAbsolute(p.path, ctx.cwd);
+      const verdict = permissions.evaluatePermission(
+        "undo_edit",
+        {
+          path: requestedPath,
+          sessionCwd: ctx.cwd,
+        },
+        permissions.loadPermissions(),
+      );
+      if (verdict.action === "reject") {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: verdict.message
+                ? `path rejected: ${verdict.message}`
+                : "path rejected by permission rule.",
+            },
+          ],
+          isError: true,
+        } as any;
+      }
+
       const resolved = resolveWithVariants(p.path, ctx.cwd);
 
       return withFileLock(resolved, async () => {
@@ -211,4 +235,40 @@ export function createUndoEditTool(): ToolDefinition {
 
 export default function (pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createUndoEditTool()));
+}
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe("undo-edit permissions", () => {
+    it("rejects disallowed paths before undo lookup", async () => {
+      const tool = createUndoEditTool();
+      const evaluatePermissionSpy = vi
+        .spyOn(permissions, "evaluatePermission")
+        .mockReturnValue({ action: "reject", message: "workspace only" });
+      vi.spyOn(permissions, "loadPermissions").mockReturnValue([]);
+      const getSessionId = vi.fn(() => "s");
+
+      const result = (await tool.execute!(
+        "test-id",
+        { path: "../sibling/file.txt" },
+        undefined,
+        undefined,
+        { cwd: "/repo/project", sessionManager: { getSessionId } } as any,
+      )) as any;
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toBe("path rejected: workspace only");
+      expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+        "undo_edit",
+        { path: "/repo/sibling/file.txt", sessionCwd: "/repo/project" },
+        [],
+      );
+      expect(getSessionId).not.toHaveBeenCalled();
+    });
+  });
 }
