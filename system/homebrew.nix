@@ -16,6 +16,7 @@ if !(lib.hasInfix "darwin" hostSystem) then {} else {
 
       # Creative/Media tools
       "audacity"
+      "blackhole-2ch"
       "figma"
       "obs"
 
