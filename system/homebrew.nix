@@ -15,6 +15,7 @@ if !(lib.hasInfix "darwin" hostSystem) then {} else {
       "tableplus"
 
       # Creative/Media tools
+      "audacity"
       "figma"
       "obs"
 
