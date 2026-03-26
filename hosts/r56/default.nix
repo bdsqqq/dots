@@ -25,7 +25,7 @@ in
     image = ../../assets/wallpaper_without_mask.jpg;
     base16Scheme = ../../modules/shared/e-ink-scheme.yaml;
     polarity = "dark";
-    
+
     fonts = {
       monospace = {
         package = berkeleyMono;
@@ -45,17 +45,17 @@ in
         desktop = 12;
       };
     };
-    
+
     cursor = {
       package = pkgs.apple-cursor;
       name = "macOS";
       size = 24;
     };
-    
+
     opacity = {
       terminal = 0.7;
     };
-    
+
   };
 
   imports = [
@@ -75,14 +75,16 @@ in
     ../../system/flatpak.nix
   ];
 
+  my.hardware.gpu.vendors = [ "nvidia" ];
+
   networking.hostName = "r56";
   networking.networkmanager.enable = true;
   networking.useDHCP = lib.mkDefault true;
-  
+
   # allow minecraft server on tailscale
   networking.firewall.interfaces."tailscale0".allowedTCPPorts = [ 25565 ];
   networking.firewall.interfaces."tailscale0".allowedUDPPorts = [ 25565 ];
-  
+
   time.timeZone = "Europe/London";
   i18n.defaultLocale = "en_US.UTF-8";
 
@@ -93,7 +95,7 @@ in
   services.tailscale = {
     authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key) config.sops.secrets.tailscale_auth_key.path;
   };
-  
+
   # syncthing provided by headless bundle; declarative mesh settings here
   services.syncthing = {
     settings = {
@@ -188,7 +190,7 @@ in
       };
     };
   };
-  
+
   # udev rules for PS5 DualSense and other controllers
   hardware.steam-hardware.enable = true;
 
@@ -206,10 +208,10 @@ in
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
-      
+
       # disable stylix targets we manage manually
       stylix.targets.ghostty.enable = false;
-      
+
       # fontconfig for crisp font rendering at 1.5x
       fonts.fontconfig = {
         enable = true;
@@ -219,7 +221,7 @@ in
           serif = [ "DejaVu Serif" ];
         };
       };
-      
+
       gtk = {
         enable = true;
         gtk3.extraConfig = {
@@ -234,7 +236,7 @@ in
           gtk-xft-hintstyle = "hintslight";
         };
       };
-      
+
       services.vicinae = {
         enable = true;
         systemd.enable = true;
@@ -253,13 +255,13 @@ in
       };
     };
   };
-  
+
   # binary caches (niri cache auto-enabled by niri-flake module)
   nix.settings = {
-    extra-substituters = [ 
+    extra-substituters = [
       "https://vicinae.cachix.org"
     ];
-    extra-trusted-public-keys = [ 
+    extra-trusted-public-keys = [
       "vicinae.cachix.org-1:1kDrfienkGHPYbkpNj1mWTr7Fm1+zcenzgTizIcI3oc="
     ];
   };
@@ -276,7 +278,7 @@ in
 
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
-  
+
   # Automatic garbage collection
   nix.gc = {
     automatic = true;
