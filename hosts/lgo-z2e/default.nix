@@ -23,7 +23,7 @@ in
     image = ../../assets/wallpaper_without_mask.jpg;
     base16Scheme = ../../modules/shared/e-ink-scheme.yaml;
     polarity = "dark";
-    
+
     fonts = {
       monospace = {
         package = berkeleyMono;
@@ -43,13 +43,13 @@ in
         desktop = 12;
       };
     };
-    
+
     cursor = {
       package = pkgs.apple-cursor;
       name = "macOS";
       size = 24;
     };
-    
+
     opacity = {
       terminal = 0.85;
     };
@@ -107,10 +107,12 @@ in
     ../../system/flatpak.nix
   ];
 
+  my.hardware.gpu.vendors = [ "amd" ];
+
   networking.hostName = "lgo-z2e";
   networking.networkmanager.enable = true;
   networking.useDHCP = lib.mkDefault true;
-  
+
   time.timeZone = "Europe/London";
   i18n.defaultLocale = "en_US.UTF-8";
 
@@ -138,7 +140,7 @@ in
   services.tailscale = {
     authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key) config.sops.secrets.tailscale_auth_key.path;
   };
-  
+
   # syncthing mesh
   services.syncthing = {
     settings = {
@@ -226,7 +228,7 @@ in
     remotePlay.openFirewall = true;
     dedicatedServer.openFirewall = true;
   };
-  
+
   hardware.steam-hardware.enable = true;
 
   home-manager = {
@@ -242,11 +244,11 @@ in
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
-      
+
       stylix.targets.ghostty.enable = false;
-      
+
       programs.niri.settings.outputs."eDP-1".scale = 1.5;
-      
+
       fonts.fontconfig = {
         enable = true;
         defaultFonts = {
@@ -255,7 +257,7 @@ in
           serif = [ "DejaVu Serif" ];
         };
       };
-      
+
       gtk = {
         enable = true;
         gtk3.extraConfig = {
@@ -270,7 +272,7 @@ in
           gtk-xft-hintstyle = "hintslight";
         };
       };
-      
+
       services.vicinae = {
         enable = true;
         systemd.enable = true;
@@ -289,12 +291,12 @@ in
       };
     };
   };
-  
+
   nix.settings = {
-    extra-substituters = [ 
+    extra-substituters = [
       "https://vicinae.cachix.org"
     ];
-    extra-trusted-public-keys = [ 
+    extra-trusted-public-keys = [
       "vicinae.cachix.org-1:1kDrfienkGHPYbkpNj1mWTr7Fm1+zcenzgTizIcI3oc="
     ];
   };
@@ -304,7 +306,7 @@ in
     unzip
     usbutils
     libnotify
-    
+
     # handheld-specific
     mangohud
     gamemode
@@ -313,7 +315,7 @@ in
 
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
-  
+
   nix.gc = {
     automatic = true;
     dates = "weekly";
