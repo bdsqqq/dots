@@ -53,6 +53,7 @@ in
       hf_token = { owner = "bdsqqq"; };
       open_router = { owner = "bdsqqq"; };
       opencode_zen = { owner = "bdsqqq"; };
+      artificial_analysis_api_key = { owner = "bdsqqq"; };
       motion_plus_token = { owner = "bdsqqq"; };
       AMP_API_KEY = { owner = "bdsqqq"; };
       parallel_api_key = { owner = "bdsqqq"; };
