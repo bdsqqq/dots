@@ -1,6 +1,6 @@
 ---
 name: coordinate
-description: "orchestrate multiple amp agents with bidirectional tmux communication. use for multi-hour autonomous runs with INDEPENDENT parallel tasks. NOT for review courts or generating opinions to reconcile."
+description: "spawn, monitor, and coordinate multiple amp agents via tmux for parallel work. use to run multiple tasks concurrently, track agent progress, and aggregate results across independent workstreams. NOT for review courts or generating opinions to reconcile."
 ---
 # coordinate
 
@@ -15,6 +15,14 @@ before coordinating multiple agents, ask:
 3. **do i have explicit exit criteria?** multi-agent work without convergence criteria produces unbounded reconciliation work.
 
 coordinate is for parallelizing INDEPENDENT work. don't spawn review courts when you can read the code yourself.
+
+## workflow
+
+1. **spawn** agents for each independent task
+2. **monitor** progress with capture-pane (always before any action)
+3. **message** agents to unblock or redirect
+4. **collect** results and verify completion
+5. **cleanup** finished agent windows
 
 ## spawn
 
