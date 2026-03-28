@@ -406,8 +406,329 @@ export function evaluateAgent(
   return evaluateRole(role, models, preset, currentModelId);
 }
 
+// ============================================================
+// LOD 24-28: Decision-first output helpers
+// ============================================================
+
+/**
+ * dimension label mapping for user-facing output.
+ * converts internal dimension ids to human-readable themes.
+ */
+export const DIMENSION_LABELS: Record<string, string> = {
+  intelligence: "smarts",
+  coding: "coding",
+  toolCalling: "tools",
+  hallucination: "hallucination",
+  instructionFollowing: "if",
+  longContextReasoning: "long ctx",
+  context: "ctx",
+  price: "price",
+  outputSpeed: "speed",
+  ttft: "ttft",
+};
+
+/**
+ * models that lead on each dimension (ties allowed within epsilon).
+ */
+export interface RoleLeaders {
+  smarts?: readonly ModelId[];
+  tools?: readonly ModelId[];
+  hallucination?: readonly ModelId[];
+  context?: readonly ModelId[];
+  longContextReasoning?: readonly ModelId[];
+  price?: readonly ModelId[];
+  speed?: readonly ModelId[];
+}
+
+/**
+ * summary of how a model compares to current.
+ */
+export interface ModelDeltaSummary {
+  better: string[];
+  worse: string[];
+  neutral: string[];
+}
+
+/**
+ * fit summary for a model across roles.
+ */
+export interface RoleFitSummary {
+  strong: RoleId[];
+  mixed: RoleId[];
+  risky: RoleId[];
+}
+
+const EPSILON = 3; // tie threshold within 3 points
+
+/**
+ * compute which models lead on each dimension.
+ * ties are included when scores are within epsilon.
+ */
+export function computeRoleLeaders(
+  models: readonly EvaluatedModel[],
+  dimensions: readonly DimensionId[]
+): RoleLeaders {
+  const leaders: RoleLeaders = {};
+
+  for (const dim of dimensions) {
+    const scored = models
+      .filter((m) => m.metrics[dim] !== undefined)
+      .sort((a, b) => (b.metrics[dim] ?? 0) - (a.metrics[dim] ?? 0));
+
+    if (scored.length === 0) continue;
+
+    const topScore = scored[0]!.metrics[dim]!;
+    const leaderIds: ModelId[] = [];
+
+    for (const model of scored) {
+      const score = model.metrics[dim]!;
+      if (topScore - score <= EPSILON) {
+        leaderIds.push(model.id);
+      } else {
+        break;
+      }
+    }
+
+    // map dimension to leader key
+    const key = dim === "intelligence" ? "smarts"
+      : dim === "toolCalling" ? "tools"
+      : dim === "longContextReasoning" ? "longContextReasoning"
+      : dim === "outputSpeed" || dim === "ttft" ? "speed"
+      : dim;
+
+    if (key === "speed") {
+      // combine speed dimensions: take best across both outputSpeed and ttft
+      const existing = leaders.speed ?? [];
+      leaders.speed = [...new Set([...existing, ...leaderIds])];
+    } else {
+      (leaders as Record<string, readonly ModelId[]>)[key] = leaderIds;
+    }
+  }
+
+  return leaders;
+}
+
+/**
+ * compute delta summary between a model and current.
+ * only includes dimensions where delta exceeds threshold.
+ */
+export function computeModelDeltas(
+  model: EvaluatedModel,
+  current: EvaluatedModel | undefined,
+  dimensions: readonly DimensionId[],
+  threshold = 5
+): ModelDeltaSummary {
+  const result: ModelDeltaSummary = { better: [], worse: [], neutral: [] };
+
+  if (!current) {
+    return result;
+  }
+
+  for (const dim of dimensions) {
+    const modelVal = model.metrics[dim];
+    const currentVal = current.metrics[dim];
+
+    if (modelVal === undefined || currentVal === undefined) continue;
+
+    const delta = modelVal - currentVal;
+    const label = DIMENSION_LABELS[dim] ?? dim;
+
+    if (delta >= threshold) {
+      result.better.push(label);
+    } else if (delta <= -threshold) {
+      result.worse.push(label);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * build a human-readable verdict for a model.
+ */
+export function buildModelVerdict(input: {
+  model: EvaluatedModel;
+  current?: EvaluatedModel;
+  role: RoleProfile;
+  leaders: RoleLeaders;
+  rank?: number;
+  totalModels?: number;
+}): string {
+  const { model, current, role, leaders, rank, totalModels } = input;
+
+  // check if this is the current model
+  if (current && model.id === current.id) {
+    return "current";
+  }
+
+  // check leadership positions
+  const isSmartsLeader = leaders.smarts?.includes(model.id);
+  const isToolsLeader = leaders.tools?.includes(model.id);
+  const isHallucinationLeader = leaders.hallucination?.includes(model.id);
+  const isPriceLeader = leaders.price?.includes(model.id);
+  const isSpeedLeader = leaders.speed?.includes(model.id);
+
+  // count leadership positions
+  const leadershipCount = [isSmartsLeader, isToolsLeader, isHallucinationLeader, isPriceLeader, isSpeedLeader]
+    .filter(Boolean).length;
+
+  // compute deltas if we have a current model
+  const deltas = computeModelDeltas(model, current, role.relevantDimensions);
+
+  // verdict logic
+  if (leadershipCount >= 2) {
+    if (isHallucinationLeader && isPriceLeader) return "safe budget pick";
+    if (isSmartsLeader && isToolsLeader) return "max capability";
+    return "top performer";
+  }
+
+  if (leadershipCount === 1) {
+    if (isPriceLeader) return "cheapest";
+    if (isSpeedLeader) return "fastest";
+    if (isHallucinationLeader) return "safest";
+    return "specialist";
+  }
+
+  // check if this is an upgrade over current
+  if (deltas.better.length > deltas.worse.length) {
+    if (deltas.worse.length === 0) return "strongest upgrade";
+    return "viable upgrade";
+  }
+
+  // check rank position
+  if (rank !== undefined && totalModels !== undefined) {
+    const percentile = rank / totalModels;
+    if (percentile <= 0.25) return "strong option";
+    if (percentile <= 0.5) return "solid choice";
+    if (percentile > 0.75) return "niche / hard to justify";
+  }
+
+  return "alternative";
+}
+
+/**
+ * extract meaningful caveats from evaluation.
+ * only returns caveats that affect decision-making.
+ */
+export function extractMeaningfulCaveats(
+  evaluation: RoleEvaluation,
+  models: readonly EvaluatedModel[]
+): string[] {
+  const caveats: string[] = [];
+
+  // check for low confidence metrics
+  const lowConfidenceDims = new Set<string>();
+  for (const model of models) {
+    for (const [dim, source] of Object.entries(model.metricSources)) {
+      if (source?.confidence === "hunch") {
+        lowConfidenceDims.add(dim);
+      }
+    }
+  }
+
+  if (lowConfidenceDims.size > 0) {
+    const labels = [...lowConfidenceDims].map((d) => DIMENSION_LABELS[d] ?? d);
+    caveats.push(`hunch-level data for: ${labels.join(", ")}`);
+  }
+
+  // check for frontier models with red flags
+  for (const modelId of evaluation.frontierModelIds) {
+    const model = models.find((m) => m.id === modelId);
+    if (!model) continue;
+
+    const redFlags = evaluation.role.redFlagDimensions ?? [];
+    for (const dim of redFlags) {
+      const score = model.metrics[dim];
+      if (score !== undefined && score < 50) {
+        caveats.push(`${model.displayName} has low ${DIMENSION_LABELS[dim] ?? dim} (${score.toFixed(0)})`);
+      }
+    }
+  }
+
+  return caveats;
+}
+
+/**
+ * compute fit summary for a model across all roles.
+ */
+export function computeRoleFit(
+  model: EvaluatedModel,
+  roles: Record<RoleId, RoleProfile>,
+  allModels: readonly EvaluatedModel[]
+): RoleFitSummary {
+  const result: RoleFitSummary = { strong: [], mixed: [], risky: [] };
+
+  for (const [roleId, role] of Object.entries(roles)) {
+    // check if model passes guardrails
+    const passesGuardrail = passesGuardrails(role, model);
+
+    if (!passesGuardrail) {
+      result.risky.push(roleId as RoleId);
+      continue;
+    }
+
+    // compute relative standing on relevant dimensions
+    const relevantDims = role.relevantDimensions;
+    let aboveAvg = 0;
+    let belowAvg = 0;
+
+    for (const dim of relevantDims) {
+      const modelScore = model.metrics[dim];
+      if (modelScore === undefined) continue;
+
+      const others = allModels
+        .filter((m) => m.id !== model.id && m.metrics[dim] !== undefined)
+        .map((m) => m.metrics[dim]!);
+
+      if (others.length === 0) continue;
+
+      const avg = others.reduce((a, b) => a + b, 0) / others.length;
+      if (modelScore >= avg) aboveAvg++;
+      else belowAvg++;
+    }
+
+    if (aboveAvg > belowAvg * 1.5) {
+      result.strong.push(roleId as RoleId);
+    } else if (belowAvg > aboveAvg * 1.5) {
+      result.mixed.push(roleId as RoleId);
+    } else {
+      result.mixed.push(roleId as RoleId);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * compute ordinal rank for each model on each dimension.
+ */
+export function computeDimensionRanks(
+  models: readonly EvaluatedModel[],
+  dimensions: readonly DimensionId[]
+): Map<ModelId, Map<DimensionId, number>> {
+  const ranks = new Map<ModelId, Map<DimensionId, number>>();
+
+  for (const dim of dimensions) {
+    const sorted = [...models]
+      .filter((m) => m.metrics[dim] !== undefined)
+      .sort((a, b) => (b.metrics[dim] ?? 0) - (a.metrics[dim] ?? 0));
+
+    sorted.forEach((model, idx) => {
+      let modelRanks = ranks.get(model.id);
+      if (!modelRanks) {
+        modelRanks = new Map();
+        ranks.set(model.id, modelRanks);
+      }
+      modelRanks.set(dim, idx + 1);
+    });
+  }
+
+  return ranks;
+}
+
 if (import.meta.vitest) {
   const { describe, expect, test } = import.meta.vitest;
+  const { roles } = await import("./registry");
 
   // synthetic test data
   const makeModel = (
@@ -631,6 +952,57 @@ if (import.meta.vitest) {
     });
   });
 
+  // === LOD 22: Guardrail threshold tests ===
+
+  describe("hallucination guardrail threshold", () => {
+    test("fails when hallucination score is 49 (below threshold)", () => {
+      const role: RoleProfile = {
+        ...testRole,
+        guardrails: { requireLowHallucination: true },
+      };
+      const model = makeModel("a", { hallucination: 49 });
+      expect(passesGuardrails(role, model)).toBe(false);
+    });
+
+    test("passes when hallucination score is 50 (at threshold)", () => {
+      const role: RoleProfile = {
+        ...testRole,
+        guardrails: { requireLowHallucination: true },
+      };
+      const model = makeModel("a", { hallucination: 50 });
+      expect(passesGuardrails(role, model)).toBe(true);
+    });
+
+    test("passes when hallucination score is above threshold", () => {
+      const role: RoleProfile = {
+        ...testRole,
+        guardrails: { requireLowHallucination: true },
+      };
+      const model = makeModel("a", { hallucination: 75 });
+      expect(passesGuardrails(role, model)).toBe(true);
+    });
+  });
+
+  describe("toolCalling guardrail threshold", () => {
+    test("fails when toolCalling score is 49 (below threshold)", () => {
+      const role: RoleProfile = {
+        ...testRole,
+        guardrails: { requireToolCalling: true },
+      };
+      const model = makeModel("a", { toolCalling: 49 });
+      expect(passesGuardrails(role, model)).toBe(false);
+    });
+
+    test("passes when toolCalling score is 50 (at threshold)", () => {
+      const role: RoleProfile = {
+        ...testRole,
+        guardrails: { requireToolCalling: true },
+      };
+      const model = makeModel("a", { toolCalling: 50 });
+      expect(passesGuardrails(role, model)).toBe(true);
+    });
+  });
+
   describe("evaluateRole", () => {
     test("full evaluation flow", () => {
       // priceScore >= 90 means actualPrice <= $10, which passes guardrail
@@ -654,6 +1026,135 @@ if (import.meta.vitest) {
       const result = evaluateRole(testRole, models, "balanced");
       expect(result.rankedModelIds).toBeDefined();
       expect(result.rankedModelIds![0]).toBe("a");
+    });
+
+    // === LOD 22: Role dimension tests ===
+
+    test("deepReasoning role includes hallucination and toolCalling", () => {
+      const deepReasoning = roles.deepReasoning;
+      expect(deepReasoning.relevantDimensions).toContain("hallucination");
+      expect(deepReasoning.relevantDimensions).toContain("toolCalling");
+      expect(deepReasoning.relevantDimensions).toContain("instructionFollowing");
+      expect(deepReasoning.guardrails?.requireLowHallucination).toBe(true);
+      expect(deepReasoning.guardrails?.requireToolCalling).toBe(true);
+    });
+
+    test("fastSummarization role includes longContextReasoning", () => {
+      const fastSumm = roles.fastSummarization;
+      expect(fastSumm.relevantDimensions).toContain("longContextReasoning");
+      expect(fastSumm.relevantDimensions).toContain("context");
+      expect(fastSumm.guardrails?.minContextTokens).toBe(256000);
+    });
+
+    test("repoResearch role includes longContextReasoning", () => {
+      const repo = roles.repoResearch;
+      expect(repo.relevantDimensions).toContain("longContextReasoning");
+      expect(repo.relevantDimensions).toContain("context");
+    });
+  });
+
+  // ============================================================
+  // LOD 24-28: Decision-first output helpers tests
+  // ============================================================
+
+  describe("computeRoleLeaders", () => {
+    test("identifies leaders on each dimension", () => {
+      const models = [
+        makeModel("a", { intelligence: 100, price: 50 }),
+        makeModel("b", { intelligence: 97, price: 100 }), // within epsilon on intelligence
+        makeModel("c", { intelligence: 80, price: 80 }),
+      ];
+      const leaders = computeRoleLeaders(models, ["intelligence", "price"] as DimensionId[]);
+      expect(leaders.smarts).toContain("a");
+      expect(leaders.smarts).toContain("b"); // within epsilon
+      expect(leaders.price).toContain("b");
+      expect(leaders.smarts).not.toContain("c");
+    });
+
+    test("handles missing dimensions", () => {
+      const models = [
+        makeModel("a", { intelligence: 100 }),
+        makeModel("b", { price: 100 }),
+      ];
+      const leaders = computeRoleLeaders(models, ["intelligence", "price"] as DimensionId[]);
+      expect(leaders.smarts).toEqual(["a"]);
+      expect(leaders.price).toEqual(["b"]);
+    });
+  });
+
+  describe("computeModelDeltas", () => {
+    test("identifies better and worse dimensions", () => {
+      const model = makeModel("a", { intelligence: 80, price: 60 });
+      const current = makeModel("current", { intelligence: 60, price: 80 });
+      const deltas = computeModelDeltas(model, current, ["intelligence", "price"] as DimensionId[]);
+      expect(deltas.better).toContain("smarts");
+      expect(deltas.worse).toContain("price");
+    });
+
+    test("ignores small deltas below threshold", () => {
+      const model = makeModel("a", { intelligence: 64 });
+      const current = makeModel("current", { intelligence: 60 });
+      const deltas = computeModelDeltas(model, current, ["intelligence"] as DimensionId[], 5);
+      expect(deltas.better).toHaveLength(0);
+      expect(deltas.worse).toHaveLength(0);
+    });
+
+    test("returns empty when no current model", () => {
+      const model = makeModel("a", { intelligence: 80 });
+      const deltas = computeModelDeltas(model, undefined, ["intelligence"] as DimensionId[]);
+      expect(deltas.better).toHaveLength(0);
+      expect(deltas.worse).toHaveLength(0);
+    });
+  });
+
+  describe("buildModelVerdict", () => {
+    test("returns 'current' for current model", () => {
+      const model = makeModel("current", { intelligence: 80 });
+      const current = model;
+      const leaders: RoleLeaders = {};
+      const verdict = buildModelVerdict({
+        model,
+        current,
+        role: testRole,
+        leaders,
+      });
+      expect(verdict).toBe("current");
+    });
+
+    test("returns 'max capability' for smarts + tools leader", () => {
+      const model = makeModel("a", { intelligence: 100, toolCalling: 100 });
+      const leaders: RoleLeaders = { smarts: ["a"], tools: ["a"] };
+      const verdict = buildModelVerdict({
+        model,
+        role: testRole,
+        leaders,
+      });
+      expect(verdict).toBe("max capability");
+    });
+
+    test("returns 'safe budget pick' for hallucination + price leader", () => {
+      const model = makeModel("a", { hallucination: 100, price: 100 });
+      const leaders: RoleLeaders = { hallucination: ["a"], price: ["a"] };
+      const verdict = buildModelVerdict({
+        model,
+        role: testRole,
+        leaders,
+      });
+      expect(verdict).toBe("safe budget pick");
+    });
+  });
+
+  describe("computeDimensionRanks", () => {
+    test("computes ordinal ranks correctly", () => {
+      const models = [
+        makeModel("a", { intelligence: 100 }),
+        makeModel("b", { intelligence: 80 }),
+        makeModel("c", { intelligence: 60 }),
+      ];
+      const ranks = computeDimensionRanks(models, ["intelligence"] as DimensionId[]);
+      expect(ranks.get("a")?.get("intelligence")).toBe(1);
+      expect(ranks.get("b")?.get("intelligence")).toBe(2);
+      expect(ranks.get("c")?.get("intelligence")).toBe(3);
     });
   });
 }

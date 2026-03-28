@@ -12,11 +12,13 @@
 
 import type {
   AgentId,
+  AgentProfile,
   EvaluatedModel,
   ModelId,
   OutputFormat,
   PresetName,
   RoleId,
+  RoleProfile,
 } from "./types";
 import {
   agents,
@@ -51,6 +53,9 @@ import {
   renderTable,
   renderAllRoles,
   renderCoverageSummary,
+  renderTldrMatrix,
+  renderPortfolioMatrix,
+  renderInspectModel,
 } from "./report";
 
 export interface CliOptions {
@@ -59,12 +64,13 @@ export interface CliOptions {
   cachePath?: string;
   refresh?: boolean;
   top?: number;
+  tldr?: boolean;
 }
 
 type Command =
   | { kind: "fetch"; refresh?: boolean }
   | { kind: "scrape-site"; refresh?: boolean }
-  | { kind: "rank"; target: "role" | "agent"; selector: string }
+  | { kind: "rank"; target: "role" | "agent"; selector?: string }
   | { kind: "report"; all: boolean }
   | { kind: "inspect"; modelId: ModelId }
   | { kind: "coverage" }
@@ -115,23 +121,35 @@ function parseArgs(argv: readonly string[]): Command {
 
 function parseRankArgs(args: string[]): Command {
   let target: "role" | "agent" | null = null;
-  let selector: string | null = null;
+  let selector: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--role") {
       target = "role";
-      selector = args[++i] ?? null;
+      const next = args[i + 1];
+      if (next && !next.startsWith("--")) {
+        selector = next;
+        i += 1;
+      }
     } else if (arg === "--agent") {
       target = "agent";
-      selector = args[++i] ?? null;
+      const next = args[i + 1];
+      if (next && !next.startsWith("--")) {
+        selector = next;
+        i += 1;
+      }
     } else if (arg === "--agent-file") {
       target = "agent";
-      selector = args[++i] ?? null;
+      const next = args[i + 1];
+      if (next && !next.startsWith("--")) {
+        selector = next;
+        i += 1;
+      }
     }
   }
 
-  if (!target || !selector) {
+  if (!target) {
     return { kind: "unknown", args };
   }
 
@@ -169,16 +187,17 @@ model-evals — evaluate llm candidates for pi agents
 commands:
   fetch [--refresh]         fetch and cache artificial analysis api data
   scrape-site [--refresh]   scrape and cache public benchmark page data
-  rank --role <role>        evaluate models for a role
-  rank --agent <agent>      evaluate models for an agent
+  rank --role [role]        evaluate models for a role, or list roles
+  rank --agent [agent]      evaluate models for an agent, or list agents
   rank --agent-file <path>  evaluate models for an agent by file path
-  report --all              generate full decision report
+  report --all              generate portfolio matrix report
   inspect --model <model>   show details for one model
   coverage                  show data coverage by dimension
 
 options:
   --format <md|json|table>  output format (default: md)
   --preset <name>           apply preset weights (balanced, cheap, fast, max-smarts)
+  --tldr                    dense summary with rank ordinals
   --top <n>                 show top n models in table format
   --refresh                 re-fetch aa data
   --cache <path>            custom cache path
@@ -186,12 +205,114 @@ options:
 examples:
   bun run model-evals fetch
   bun run model-evals scrape-site
+  bun run model-evals rank --role
   bun run model-evals rank --role dayToDay
-  bun run model-evals rank --agent oracle --preset balanced
-  bun run model-evals report --all --format md > eval-report.md
+  bun run model-evals rank --agent
+  bun run model-evals rank --agent oracle --tldr
+  bun run model-evals report --all
   bun run model-evals inspect --model glm-5
   bun run model-evals coverage
 `.trim();
+}
+
+function formatCurrentModel(agent: AgentProfile): string {
+  if (agent.currentModel === "inherits-default") {
+    return `inherits ${agents.default.currentModel ?? "default"}`;
+  }
+  return agent.currentModel ?? "—";
+}
+
+function renderRoleCatalog(format: OutputFormat): string {
+  const roleList = Object.values(roles);
+
+  if (format === "json") {
+    return JSON.stringify(
+      roleList.map((role) => ({
+        id: role.id,
+        description: role.description,
+        relevantDimensions: role.relevantDimensions,
+        redFlagDimensions: role.redFlagDimensions ?? [],
+      })),
+      null,
+      2,
+    );
+  }
+
+  if (format === "table") {
+    const lines: string[] = [];
+    const header = ["role", "dimensions", "description"];
+    const widths = [18, 40, 56];
+    lines.push(header.map((h, i) => h.padEnd(widths[i]!)).join(" | "));
+    lines.push(widths.map((w) => "─".repeat(w)).join("-+-"));
+    for (const role of roleList) {
+      lines.push(
+        [
+          role.id.slice(0, widths[0]!),
+          role.relevantDimensions.join(", ").slice(0, widths[1]!),
+          role.description.slice(0, widths[2]!),
+        ]
+          .map((value, i) => value.padEnd(widths[i]!))
+          .join(" | "),
+      );
+    }
+    return lines.join("\n");
+  }
+
+  const lines = ["# roles", ""];
+  for (const role of roleList) {
+    lines.push(`- \`${role.id}\` — ${role.description}`);
+    lines.push(`  - dims: ${role.relevantDimensions.join(", ")}`);
+    if (role.redFlagDimensions && role.redFlagDimensions.length > 0) {
+      lines.push(`  - red flags: ${role.redFlagDimensions.join(", ")}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function renderAgentCatalog(format: OutputFormat): string {
+  const agentList = Object.values(agents);
+
+  if (format === "json") {
+    return JSON.stringify(
+      agentList.map((agent) => ({
+        id: agent.id,
+        label: agent.label,
+        role: agent.role,
+        currentModel: formatCurrentModel(agent),
+      })),
+      null,
+      2,
+    );
+  }
+
+  if (format === "table") {
+    const lines: string[] = [];
+    const header = ["agent", "role", "current", "label"];
+    const widths = [18, 18, 22, 28];
+    lines.push(header.map((h, i) => h.padEnd(widths[i]!)).join(" | "));
+    lines.push(widths.map((w) => "─".repeat(w)).join("-+-"));
+    for (const agent of agentList) {
+      lines.push(
+        [
+          agent.id.slice(0, widths[0]!),
+          agent.role.slice(0, widths[1]!),
+          formatCurrentModel(agent).slice(0, widths[2]!),
+          agent.label.slice(0, widths[3]!),
+        ]
+          .map((value, i) => value.padEnd(widths[i]!))
+          .join(" | "),
+      );
+    }
+    return lines.join("\n");
+  }
+
+  const lines = ["# agents", ""];
+  for (const agent of agentList) {
+    lines.push(
+      `- \`${agent.id}\` → \`${agent.role}\` — ${agent.label} (current: ${formatCurrentModel(agent)})`,
+    );
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -327,6 +448,8 @@ export async function main(argv: readonly string[]): Promise<number> {
   const topIdx = argv.indexOf("--top");
   const top = topIdx !== -1 ? parseInt(argv[topIdx + 1] ?? "0", 10) : undefined;
 
+  const tldr = argv.includes("--tldr");
+
   const cacheIdx = argv.indexOf("--cache");
   const cachePath = cacheIdx !== -1 ? argv[cacheIdx + 1] : undefined;
 
@@ -406,28 +529,32 @@ export async function main(argv: readonly string[]): Promise<number> {
         return 1;
       }
 
-      const output =
-        format === "json"
-          ? JSON.stringify(model, null, 2)
-          : renderMarkdown(
-              { id: model.id as RoleId, description: model.displayName, relevantDimensions: [] },
-              {
-                role: { id: model.id as RoleId, description: model.displayName, relevantDimensions: [] },
-                models: [model],
-                eligibleModelIds: [model.id],
-                frontierModelIds: [model.id],
-                callouts: [],
-                coverage: {},
-              }
-            );
+      let output: string;
+      if (format === "json") {
+        output = JSON.stringify(model, null, 2);
+      } else {
+        // LOD 30: use new inspect renderer
+        output = renderInspectModel(model, roles, models);
+      }
 
       console.log(output);
       return 0;
     }
 
     case "rank": {
+      if (command.target === "role" && !command.selector) {
+        console.log(renderRoleCatalog(format));
+        return 0;
+      }
+
+      if (command.target === "agent" && !command.selector) {
+        console.log(renderAgentCatalog(format));
+        return 0;
+      }
+
       let role: RoleId;
       let currentModel: ModelId | undefined;
+      let targetProfile: RoleProfile | AgentProfile;
 
       if (command.target === "role") {
         role = command.selector as RoleId;
@@ -436,11 +563,13 @@ export async function main(argv: readonly string[]): Promise<number> {
           console.error(`available roles: ${Object.keys(roles).join(", ")}`);
           return 1;
         }
+        targetProfile = roles[role];
       } else {
         try {
-          const agentId = resolveAgentSelector(command.selector);
+          const agentId = resolveAgentSelector(command.selector ?? "");
           const agent = agents[agentId];
           role = agent.role;
+          targetProfile = agent;
 
           // resolve current model
           if (agent.currentModel === "inherits-default") {
@@ -459,15 +588,16 @@ export async function main(argv: readonly string[]): Promise<number> {
       const evaluation = evaluateRole(roleProfile, models, preset, currentModel);
 
       let output: string;
-      switch (format) {
-        case "json":
-          output = renderJson(roleProfile, evaluation, preset);
-          break;
-        case "table":
-          output = renderTable(evaluation, top);
-          break;
-        default:
-          output = renderMarkdown(roleProfile, evaluation, preset);
+      if (format === "json") {
+        output = renderJson(targetProfile, evaluation, preset);
+      } else if (tldr) {
+        // LOD 29: dense --tldr matrix
+        output = renderTldrMatrix(targetProfile, evaluation, currentModel, models);
+      } else if (format === "table") {
+        output = renderTable(evaluation, top);
+      } else {
+        // LOD 24-25: decision-first markdown
+        output = renderMarkdown(targetProfile, evaluation, preset, currentModel, models);
       }
 
       console.log(output);
@@ -482,7 +612,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         evaluations.set(roleId, evaluateRole(roleProfile, models, preset));
       }
 
-      const output = renderAllRoles(roles, evaluations, preset);
+      // LOD 25: portfolio matrix instead of concatenated reports
+      const output = renderPortfolioMatrix(roles, evaluations, agents, models);
       console.log(output);
       return 0;
     }
@@ -523,12 +654,30 @@ if (import.meta.vitest) {
       }
     });
 
+    test("parses rank --role without selector", () => {
+      const cmd = parseArgs(["rank", "--role"]);
+      expect(cmd.kind).toBe("rank");
+      if (cmd.kind === "rank") {
+        expect(cmd.target).toBe("role");
+        expect(cmd.selector).toBeUndefined();
+      }
+    });
+
     test("parses rank --agent", () => {
       const cmd = parseArgs(["rank", "--agent", "oracle"]);
       expect(cmd.kind).toBe("rank");
       if (cmd.kind === "rank") {
         expect(cmd.target).toBe("agent");
         expect(cmd.selector).toBe("oracle");
+      }
+    });
+
+    test("parses rank --agent without selector", () => {
+      const cmd = parseArgs(["rank", "--agent"]);
+      expect(cmd.kind).toBe("rank");
+      if (cmd.kind === "rank") {
+        expect(cmd.target).toBe("agent");
+        expect(cmd.selector).toBeUndefined();
       }
     });
 
@@ -559,8 +708,18 @@ if (import.meta.vitest) {
       expect(code).toBe(0);
     });
 
+    test("returns 0 for rank --role without selector", async () => {
+      const code = await main(["rank", "--role"]);
+      expect(code).toBe(0);
+    });
+
     test("returns 0 for rank --agent oracle", async () => {
       const code = await main(["rank", "--agent", "oracle"]);
+      expect(code).toBe(0);
+    });
+
+    test("returns 0 for rank --agent without selector", async () => {
+      const code = await main(["rank", "--agent"]);
       expect(code).toBe(0);
     });
 
