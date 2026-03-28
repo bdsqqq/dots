@@ -20,7 +20,7 @@ in
 {
   stylix = {
     enable = true;
-    image = ../../assets/susuwatari.jpg;
+    image = ../../assets/wallhaven-o5kpmm_3840x2400.png;
     base16Scheme = ../../modules/shared/e-ink-scheme.yaml;
     polarity = "dark";
 
