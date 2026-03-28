@@ -11,11 +11,6 @@
         source = "${inputs.lnr}/SKILL.md";
       };
 
-      ".config/agents/skills/ralph" = {
-        source = "${inputs.snarktank-ralph-skills}/skills";
-        recursive = true;
-      };
-
       ".config/agents/skills/react-best-practices" = {
         source = "${inputs.vercel-skills}/skills/react-best-practices";
         recursive = true;
