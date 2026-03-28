@@ -867,4 +867,335 @@ if (import.meta.vitest) {
       expect(manifest.pages[0]?.modelCount).toBe(1);
     });
   });
+
+  // === LOD 22: Pure math / normalization tests ===
+
+  describe("normalizeContextWindowTokens", () => {
+    test("returns 0 for 128k tokens (floor)", () => {
+      expect(normalizeContextWindowTokens(128000)).toBe(0);
+    });
+
+    test("returns 100 for 1m tokens (ceiling)", () => {
+      expect(normalizeContextWindowTokens(1_000_000)).toBe(100);
+    });
+
+    test("returns 0 for tokens below floor", () => {
+      expect(normalizeContextWindowTokens(100000)).toBe(0);
+      expect(normalizeContextWindowTokens(50000)).toBe(0);
+    });
+
+    test("returns 100 for tokens above ceiling", () => {
+      expect(normalizeContextWindowTokens(2_000_000)).toBe(100);
+    });
+
+    test("scales log-linear between floor and ceiling", () => {
+      // 256k should be ~33 (log2(2) / log2(7.8125) * 100)
+      const score256k = normalizeContextWindowTokens(256000);
+      expect(score256k).toBeGreaterThan(0);
+      expect(score256k).toBeLessThan(50);
+
+      // 512k should be ~58 (log2(4) / log2(7.8125) * 100)
+      const score512k = normalizeContextWindowTokens(512000);
+      expect(score512k).toBeGreaterThan(score256k);
+      expect(score512k).toBeLessThan(100);
+    });
+  });
+
+  describe("buildToolCallingScore", () => {
+    test("returns undefined when all components missing", () => {
+      expect(buildToolCallingScore({})).toBeUndefined();
+    });
+
+    test("computes weighted average with all components", () => {
+      // terminalbenchHard=0.5 @ 0.5, tau2=0.5 @ 0.3, agenticIndex=50 @ 0.2
+      // = (50*0.5 + 50*0.3 + 50*0.2) / 1.0 = 50
+      const score = buildToolCallingScore({
+        terminalbenchHard: 0.5,
+        tau2: 0.5,
+        agenticIndex: 50,
+      });
+      expect(score).toBeCloseTo(50, 1);
+    });
+
+    test("renormalizes when components missing", () => {
+      // only terminalbenchHard=0.6 @ 0.5
+      // = (60*0.5) / 0.5 = 60
+      const score = buildToolCallingScore({
+        terminalbenchHard: 0.6,
+      });
+      expect(score).toBeCloseTo(60, 1);
+    });
+
+    test("renormalizes with two components", () => {
+      // terminalbenchHard=0.4 @ 0.5, tau2=0.8 @ 0.3
+      // = (40*0.5 + 80*0.3) / 0.8 = (20 + 24) / 0.8 = 55
+      const score = buildToolCallingScore({
+        terminalbenchHard: 0.4,
+        tau2: 0.8,
+      });
+      expect(score).toBeCloseTo(55, 1);
+    });
+
+    test("uses agenticIndex directly (already 0-100 scale)", () => {
+      // agenticIndex=75 @ 0.2
+      // = 75*0.2 / 0.2 = 75
+      const score = buildToolCallingScore({
+        agenticIndex: 75,
+      });
+      expect(score).toBeCloseTo(75, 1);
+    });
+  });
+
+  describe("extractHallucinationScore", () => {
+    test("extracts from non_hallucination_rate (preferred)", () => {
+      const siteData = {
+        omniscience_breakdown: {
+          total: {
+            non_hallucination_rate: 0.9,
+          },
+        },
+      };
+      // extractHallucinationScore is not exported, test via merge
+      const models: EvaluatedModel[] = [{
+        id: "test-model",
+        providerModel: "test/model",
+        displayName: "Test Model",
+        metrics: {},
+        metricSources: {},
+        facts: {},
+        supplements: {},
+        notes: [],
+      }];
+      const result = mergeSiteAggregateIntoEvaluatedModels({
+        models,
+        aggregate: { "test-slug": siteData },
+        slugToModelId: new Map([["test-slug", "test-model"]]),
+      });
+      expect(result[0]?.metrics.hallucination).toBeCloseTo(90, 1);
+    });
+
+    test("inverts hallucination_rate when non_hallucination_rate missing", () => {
+      const siteData = {
+        omniscience_breakdown: {
+          total: {
+            hallucination_rate: 0.15,
+          },
+        },
+      };
+      const models: EvaluatedModel[] = [{
+        id: "test-model",
+        providerModel: "test/model",
+        displayName: "Test Model",
+        metrics: {},
+        metricSources: {},
+        facts: {},
+        supplements: {},
+        notes: [],
+      }];
+      const result = mergeSiteAggregateIntoEvaluatedModels({
+        models,
+        aggregate: { "test-slug": siteData },
+        slugToModelId: new Map([["test-slug", "test-model"]]),
+      });
+      // (1 - 0.15) * 100 = 85
+      expect(result[0]?.metrics.hallucination).toBeCloseTo(85, 1);
+    });
+
+    test("falls back to ld+json hallucination rate", () => {
+      const siteData = {
+        aa_site_omniscience_hallucination_rate: 0.2,
+      };
+      const models: EvaluatedModel[] = [{
+        id: "test-model",
+        providerModel: "test/model",
+        displayName: "Test Model",
+        metrics: {},
+        metricSources: {},
+        facts: {},
+        supplements: {},
+        notes: [],
+      }];
+      const result = mergeSiteAggregateIntoEvaluatedModels({
+        models,
+        aggregate: { "test-slug": siteData },
+        slugToModelId: new Map([["test-slug", "test-model"]]),
+      });
+      // (1 - 0.2) * 100 = 80
+      expect(result[0]?.metrics.hallucination).toBeCloseTo(80, 1);
+    });
+  });
+
+  // === LOD 22: Source matching tests ===
+
+  describe("buildSlugToModelIdMap", () => {
+    test("maps siteSlugs to model id", () => {
+      const candidates: CandidateModel[] = [{
+        id: "gemini-3-flash",
+        providerModel: "google/gemini-3-flash",
+        displayName: "Gemini 3 Flash",
+        aaMatch: { apiSlug: "gemini-3-flash-preview", siteSlugs: ["gemini-3-flash"] },
+      }];
+      const map = buildSlugToModelIdMap(candidates);
+      expect(map.get("gemini-3-flash")).toBe("gemini-3-flash");
+      expect(map.get("gemini-3-flash-preview")).toBe("gemini-3-flash");
+    });
+
+    test("maps apiSlug when no siteSlugs", () => {
+      const candidates: CandidateModel[] = [{
+        id: "gpt-5-4",
+        providerModel: "openai/gpt-5.4",
+        displayName: "GPT-5.4",
+        aaMatch: { apiSlug: "gpt-5-4" },
+      }];
+      const map = buildSlugToModelIdMap(candidates);
+      expect(map.get("gpt-5-4")).toBe("gpt-5-4");
+    });
+
+    test("maps multiple siteSlugs to same model id", () => {
+      const candidates: CandidateModel[] = [{
+        id: "gemini-3-1-pro",
+        providerModel: "google/gemini-3.1-pro",
+        displayName: "Gemini 3.1 Pro",
+        aaMatch: { apiSlug: "gemini-3-1-pro-preview", siteSlugs: ["gemini-3-1-pro-preview", "gemini-3-1-pro"] },
+      }];
+      const map = buildSlugToModelIdMap(candidates);
+      expect(map.get("gemini-3-1-pro-preview")).toBe("gemini-3-1-pro");
+      expect(map.get("gemini-3-1-pro")).toBe("gemini-3-1-pro");
+    });
+  });
+
+  // === LOD 22: Integration-ish model merge tests ===
+
+  describe("mergeSiteAggregateIntoEvaluatedModels", () => {
+    test("api metrics survive when site data adds new dimensions", () => {
+      const models: EvaluatedModel[] = [{
+        id: "test-model",
+        providerModel: "test/model",
+        displayName: "Test Model",
+        metrics: { intelligence: 75, price: 90 },
+        metricSources: { intelligence: { source: "aa-api", confidence: "verified" } },
+        facts: {},
+        supplements: {},
+        notes: [],
+      }];
+      const siteData = {
+        ifbench: 0.8,
+        context_window_tokens: 200000,
+      };
+      const result = mergeSiteAggregateIntoEvaluatedModels({
+        models,
+        aggregate: { "test-slug": siteData },
+        slugToModelId: new Map([["test-slug", "test-model"]]),
+      });
+      // api metrics preserved
+      expect(result[0]?.metrics.intelligence).toBe(75);
+      expect(result[0]?.metrics.price).toBe(90);
+      // site metrics added
+      expect(result[0]?.metrics.instructionFollowing).toBe(80);
+    });
+
+    test("site data populates facts with raw values", () => {
+      const models: EvaluatedModel[] = [{
+        id: "test-model",
+        providerModel: "test/model",
+        displayName: "Test Model",
+        metrics: {},
+        metricSources: {},
+        facts: {},
+        supplements: {},
+        notes: [],
+      }];
+      const siteData = {
+        context_window_tokens: 400000,
+        terminalbench_hard: 0.57,
+        tau2: 0.73,
+        lcr: 0.85,
+        ifbench: 0.72,
+        omniscience_breakdown: { total: { hallucination_rate: 0.1 } },
+      };
+      const result = mergeSiteAggregateIntoEvaluatedModels({
+        models,
+        aggregate: { "test-slug": siteData },
+        slugToModelId: new Map([["test-slug", "test-model"]]),
+      });
+      expect(result[0]?.facts.contextWindowTokens).toBe(400000);
+      expect(result[0]?.facts.terminalbenchHard).toBe(0.57);
+      expect(result[0]?.facts.tau2).toBe(0.73);
+      expect(result[0]?.facts.lcr).toBe(0.85);
+      expect(result[0]?.facts.ifbench).toBe(0.72);
+      expect(result[0]?.facts.hallucinationRate).toBe(0.1);
+    });
+
+    test("does not overwrite existing metrics", () => {
+      const models: EvaluatedModel[] = [{
+        id: "test-model",
+        providerModel: "test/model",
+        displayName: "Test Model",
+        metrics: { toolCalling: 95 },
+        metricSources: { toolCalling: { source: "aa-api", confidence: "verified" } },
+        facts: {},
+        supplements: {},
+        notes: [],
+      }];
+      const siteData = {
+        terminalbench_hard: 0.5,
+        tau2: 0.5,
+        agentic_index: 50,
+      };
+      const result = mergeSiteAggregateIntoEvaluatedModels({
+        models,
+        aggregate: { "test-slug": siteData },
+        slugToModelId: new Map([["test-slug", "test-model"]]),
+      });
+      // existing metric preserved
+      expect(result[0]?.metrics.toolCalling).toBe(95);
+    });
+
+    test("metricSources tracks provenance", () => {
+      const models: EvaluatedModel[] = [{
+        id: "test-model",
+        providerModel: "test/model",
+        displayName: "Test Model",
+        metrics: {},
+        metricSources: {},
+        facts: {},
+        supplements: {},
+        notes: [],
+      }];
+      const siteData = {
+        context_window_tokens: 256000,
+        ifbench: 0.75,
+        omniscience_breakdown: { total: { non_hallucination_rate: 0.92 } },
+      };
+      const result = mergeSiteAggregateIntoEvaluatedModels({
+        models,
+        aggregate: { "test-slug": siteData },
+        slugToModelId: new Map([["test-slug", "test-model"]]),
+      });
+      expect(result[0]?.metricSources.context?.source).toBe("aa-site-metadata");
+      expect(result[0]?.metricSources.instructionFollowing?.source).toBe("aa-site-ifbench");
+      expect(result[0]?.metricSources.hallucination?.source).toBe("aa-site-omniscience");
+    });
+
+    test("returns unchanged model when no site data match", () => {
+      const models: EvaluatedModel[] = [{
+        id: "orphan-model",
+        providerModel: "test/orphan",
+        displayName: "Orphan Model",
+        metrics: { intelligence: 50 },
+        metricSources: {},
+        facts: {},
+        supplements: {},
+        notes: [],
+      }];
+      const siteData = { ifbench: 0.8 };
+      const result = mergeSiteAggregateIntoEvaluatedModels({
+        models,
+        aggregate: { "other-slug": siteData },
+        slugToModelId: new Map([["other-slug", "other-model"]]),
+      });
+      expect(result[0]?.metrics).toEqual({ intelligence: 50 });
+      expect(result[0]?.notes).toEqual([]);
+    });
+  });
 }

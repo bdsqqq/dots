@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "pi-extensions-workspace",
@@ -119,6 +120,13 @@
         "vitest": "^3.0.0",
       },
     },
+    "packages/core/model-evals": {
+      "name": "@bds_pi/model-evals",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
     "packages/core/mutex": {
       "name": "@bds_pi/mutex",
       "version": "0.0.0",
@@ -136,6 +144,9 @@
     "packages/core/permissions": {
       "name": "@bds_pi/permissions",
       "version": "0.0.0",
+      "dependencies": {
+        "@bds_pi/fs": "workspace:*",
+      },
       "devDependencies": {
         "vitest": "^3.0.0",
       },
@@ -263,6 +274,7 @@
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -287,6 +299,7 @@
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -332,10 +345,10 @@
       "version": "0.0.1",
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
-        "@bds_pi/config": "workspace:*",
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -447,6 +460,7 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/fs": "workspace:*",
+        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/read": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
@@ -508,6 +522,7 @@
         "@bds_pi/config": "workspace:*",
         "@bds_pi/fs": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
+        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -645,6 +660,7 @@
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
+        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -818,6 +834,8 @@
     "@bds_pi/mentions-extension": ["@bds_pi/mentions-extension@workspace:packages/extensions/mentions"],
 
     "@bds_pi/mermaid": ["@bds_pi/mermaid@workspace:packages/extensions/mermaid"],
+
+    "@bds_pi/model-evals": ["@bds_pi/model-evals@workspace:packages/core/model-evals"],
 
     "@bds_pi/mutex": ["@bds_pi/mutex@workspace:packages/core/mutex"],
 
