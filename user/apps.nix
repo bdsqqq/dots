@@ -16,7 +16,6 @@ lib.mkIf (headMode == "graphical") {
       iina
     ] ++ lib.optionals (!isDarwin) [
       transmission_4  # fmt-9.1.0 fails to compile on darwin with newer clang
-      inputs.cursor.packages.x86_64-linux.default
       _1password-gui
       _1password-cli
       dbeaver-bin
