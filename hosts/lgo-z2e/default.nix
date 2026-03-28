@@ -20,7 +20,7 @@ in
 {
   stylix = {
     enable = true;
-    image = ../../assets/wallpaper_without_mask.jpg;
+    image = ../../assets/susuwatari.jpg;
     base16Scheme = ../../modules/shared/e-ink-scheme.yaml;
     polarity = "dark";
 
