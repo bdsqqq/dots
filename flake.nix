@@ -51,12 +51,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Cursor - auto-updating from apt repo
-    cursor = {
-      url = "github:bdsqqq/cursor-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     copyparty = {
       url = "github:9001/copyparty";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -69,11 +63,6 @@
 
     axiom-skills = {
       url = "github:axiomhq/skills";
-      flake = false;
-    };
-
-    snarktank-ralph-skills = {
-      url = "github:snarktank/ralph";
       flake = false;
     };
 
