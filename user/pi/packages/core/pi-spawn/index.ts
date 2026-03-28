@@ -101,7 +101,7 @@ export function zeroUsage(): UsageStats {
  *
  * precedence: promptString (if non-empty) → readAgentPrompt(promptFile).
  * lets extensions externalize prompt content via config while
- * keeping sops-managed .md files as the default source.
+ * keeping shared .md prompt files as the default source.
  */
 export function resolvePrompt(
   promptString: string,

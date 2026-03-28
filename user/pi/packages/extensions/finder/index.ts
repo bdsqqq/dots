@@ -10,7 +10,7 @@
  * maximizes parallelism (8+ tool calls per turn) and completes
  * within ~3 turns.
  *
- * system prompt loaded from sops-decrypted prompts at init time.
+ * default prompt loaded from the shared repo prompt file.
  */
 
 import * as fs from "node:fs";
@@ -55,7 +55,7 @@ const CONFIG_DEFAULTS: FinderExtConfig = {
   model: "openrouter/google/gemini-3-flash-preview",
   extensionTools: ["read", "grep", "find", "ls"],
   builtinTools: ["read", "grep", "find", "ls"],
-  promptFile: "",
+  promptFile: "agent.amp.finder.md",
   promptString: "",
 };
 

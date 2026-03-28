@@ -10,7 +10,7 @@
  * list_repositories, glob_github, commit_search, diff). the librarian
  * explores repos thoroughly before providing comprehensive answers.
  *
- * system prompt loaded from sops-decrypted prompts at init time.
+ * default prompt loaded from the shared repo prompt file.
  */
 
 import * as fs from "node:fs";
@@ -64,7 +64,7 @@ const CONFIG_DEFAULTS: LibrarianExtConfig = {
     "web_search",
   ],
   builtinTools: [],
-  promptFile: "",
+  promptFile: "agent.amp.librarian.md",
   promptString: "",
 };
 

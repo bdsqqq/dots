@@ -72,12 +72,52 @@ const CONFIG_DEFAULTS: CodeReviewExtConfig = {
   reportPromptString: "",
 };
 
-const DEFAULT_SYSTEM_PROMPT = `You are an expert code reviewer. Review the provided diff for bugs, security issues, and code quality. Report findings with file locations and severity.
+const DEFAULT_SYSTEM_PROMPT = String.raw`You are an expert senior engineer with deep knowledge of software engineering best practices, security, performance, and maintainability.
+
+Your task is to perform a thorough code review of the provided diff description. The diff description might be a git or bash command that generates the diff or a description of the diff which can then be used to generate the git or bash command to generate the full diff.
+
+After reading the diff, do the following:
+1. Generate a high-level summary of the changes in the diff.
+2. Go file-by-file and review each changed hunk.
+3. Comment on what changed in that hunk (including the line range) and how it relates to other changed hunks and code, reading any other relevant files. Also call out bugs, hackiness, unnecessary code, or too much shared mutable state.
 
 Today's date: {date}
-Current working directory (cwd): {cwd}`;
+Current working directory (cwd): {cwd}
+`;
 
-const DEFAULT_REPORT_FORMAT = `Emit findings as XML: <codeReview><comment> elements with filename, startLine, endLine, severity (critical/high/medium/low), commentType (bug/suggested_edit/compliment/non_actionable), text, why, and fix fields.`;
+const DEFAULT_REPORT_FORMAT = String.raw`Emit your final report in the following format:
+
+<codeReview>
+<comment>
+  <filename>the absolute file path (starting with the working directory)</filename>
+  <startLine>the starting line number (see line number rules below)</startLine>
+  <endLine>the ending line number (see line number rules below)</endLine>
+  <severity>one of: critical, high, medium, low</severity>
+  <commentType>one of: bug, suggested_edit, compliment, non_actionable</commentType>
+  <text>text describing the issue and/or the proposed change to code</text>
+  <why>brief explanation of why this matters</why>
+  <fix>brief suggestion for how to fix it (optional for compliments)</fix>
+</comment>
+<comment>...</comment>
+</codeReview>
+
+Line number rules:
+- For MODIFIED files: use line numbers from the NEW version (the + side in unified diff headers like @@ -old,count +NEW,count @@)
+- For ADDED files: use line numbers from the new file content
+- For DELETED files: use startLine=0 and endLine=0 (the file no longer exists, so describe the deletion issue in the text)
+
+Severity levels:
+- "critical": Security vulnerability, data loss, crash
+- "high": Bug or significant performance issue
+- "medium": Code smell, maintainability issue, or minor bug
+- "low": Style suggestion, minor improvement, or compliment
+
+Comment types:
+- "bug": Points out a bug or defect in the code
+- "suggested_edit": Suggests a code change or improvement
+- "compliment": Positive feedback praising good code patterns or decisions
+- "non_actionable": General observation that doesn't require code changes
+`;
 
 const DEFAULT_DEPS: CodeReviewExtensionDeps = {
   getEnabledExtensionConfig,
