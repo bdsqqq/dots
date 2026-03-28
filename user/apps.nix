@@ -7,6 +7,7 @@ lib.mkIf (headMode == "graphical") {
     home.packages = with pkgs; [
       blockbench
       vscode
+      code-cursor
       # blender  # disabled: triggers OpenUSD compile with cudaSupport
       obsidian
       rclone
@@ -29,7 +30,7 @@ lib.mkIf (headMode == "graphical") {
       playerctl
       brightnessctl
       networkmanager_dmenu
-      
+
       # TUI utilities for desktop
       bluetuith
       pulsemixer
