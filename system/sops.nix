@@ -49,14 +49,6 @@ in
         owner = "bdsqqq";
         mode = "0400";
       };
-      bds-pi-config = {
-        sopsFile = bdsPiConfigFile;
-        format = "json";
-        key = "";
-        owner = "bdsqqq";
-        mode = "0400";
-        path = "${homeDir}/.pi/agent/bds-pi.json";
-      };
     };
   };
 }
