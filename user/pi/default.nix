@@ -5,6 +5,7 @@ let
   repoPi = "${homeDir}/commonplace/01_files/nix/user/pi";
   # repo path for mkOutOfStoreSymlink — edits take effect immediately without rebuild
   repoExtensions = "${homeDir}/commonplace/01_files/nix/user/pi/packages/extensions";
+  repoAgentPrompts = "${homeDir}/commonplace/01_files/nix/user/agents/agents";
 in
 {
   sops.templates."pi-auth.json" = {
@@ -71,7 +72,7 @@ in
     # handoff skill — teaches the agent about context management via handoff
     home.file.".pi/agent/skills/handoff/SKILL.md".source = ./skills/handoff/SKILL.md;
 
-    # agent definitions — point to decrypted prompts in ~/.config/agents/prompts
-    home.file.".pi/agent/agents".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.config/agents/prompts";
+    # agent definitions — shared plaintext prompt files from the repo
+    home.file.".pi/agent/agents".source = config.lib.file.mkOutOfStoreSymlink "${repoAgentPrompts}";
   };
 }

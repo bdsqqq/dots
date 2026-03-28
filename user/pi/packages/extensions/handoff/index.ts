@@ -53,6 +53,56 @@ type HandoffExtConfig = {
   promptString: string;
 };
 
+const DEFAULT_HANDOFF_PROMPT = String.raw`
+# extraction-prompt
+
+Extract relevant context from the conversation above for continuing this work. Write from my perspective (first person: "I did...", "I told you...").
+
+Consider what would be useful to know based on my request below. Questions that might be relevant:
+- What did I just do or implement?
+- What instructions did I already give you which are still relevant (e.g. follow patterns in the codebase)?
+- What files did I already tell you that's important or that I am working on (and should continue working on)?
+- Did I provide a plan or spec that should be included?
+- What did I already tell you that's important (certain libraries, patterns, constraints, preferences)?
+- What important technical details did I discover (APIs, methods, patterns)?
+- What caveats, limitations, or open questions did I find?
+
+Extract what matters for the specific request below. Don't answer questions that aren't relevant. Pick an appropriate length based on the complexity of the request.
+
+Focus on capabilities and behavior, not file-by-file changes. Avoid excessive implementation details (variable names, storage keys, constants) unless critical.
+
+Format: Plain text with bullets. No markdown headers, no bold/italic, no code fences. Use workspace-relative paths for files.
+
+My request:
+
+# tool-description
+
+Extract relevant information from the conversation and select relevant files for another agent to continue the work. Use this tool to identify the most important context and files needed.
+
+# field-relevant-information
+
+Extract relevant context from the conversation. Write from first person perspective ("I did...", "I told you...").
+
+Consider what's useful based on the user's request. Questions that might be relevant: What did I just do or implement? What instructions did I already give you which are still relevant (e.g. follow patterns in the codebase)? Did I provide a plan or spec that should be included? What did I already tell you that's important (certain libraries, patterns, constraints, preferences)? What important technical details did I discover (APIs, methods, patterns)? What caveats, limitations, or open questions did I find? What files did I tell you to edit that I should continue working on?
+
+Extract what matters for the specific request. Don't answer questions that aren't relevant. Pick an appropriate length based on the complexity of the request.
+
+Focus on capabilities and behavior, not file-by-file changes. Avoid excessive implementation details (variable names, storage keys, constants) unless critical.
+
+Format: Plain text with bullets. No markdown headers, no bold/italic, no code fences. Use workspace-relative paths.
+
+# field-relevant-files
+
+An array of file or directory paths (workspace-relative) that are relevant to accomplishing the goal.
+
+Rules:
+- Maximum 10 files. Only include the most critical files needed for the task.
+- You can include directories if multiple files from that directory are needed.
+- Prioritize by importance and relevance. Put the most important files first.
+- Return workspace-relative paths (e.g., "user/pi/extensions/handoff.ts").
+- Do not use absolute paths or invent files.
+`;
+
 const CONFIG_DEFAULTS: HandoffExtConfig = {
   threshold: 0.85,
   model: {
@@ -60,7 +110,7 @@ const CONFIG_DEFAULTS: HandoffExtConfig = {
     id: "google/gemini-3-flash-preview",
   },
   promptFile: "",
-  promptString: "",
+  promptString: DEFAULT_HANDOFF_PROMPT,
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

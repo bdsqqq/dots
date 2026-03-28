@@ -87,7 +87,11 @@ const READ_WEB_PAGE_CONFIG_SCHEMA: ExtensionConfigSchema<ReadWebPageExtConfig> =
     validate: isReadWebPageConfig,
   };
 
-const DEFAULT_PROMPT_SYSTEM = `Analyze web page content and answer questions. Be concise, answer from provided content only. No filler.`;
+const DEFAULT_PROMPT_SYSTEM = String.raw`You analyze web page content and answer questions about it.
+Be concise and direct. Answer based only on the provided page content.
+No preamble, disclaimers, or filler. When uncertain, say so.
+Use GitHub-flavored Markdown. No emojis.
+`;
 
 function fetchUrl(
   url: string,
