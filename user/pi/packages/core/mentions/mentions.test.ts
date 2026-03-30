@@ -241,7 +241,9 @@ describe("renderResolvedMentions", () => {
 
 describe("mention autocomplete", () => {
   const baseProvider: AutocompleteProvider = {
-    getSuggestions: () => null,
+    async getSuggestions() {
+      return null;
+    },
     applyCompletion: (lines, cursorLine, cursorCol) => ({
       lines,
       cursorLine,
@@ -249,15 +251,21 @@ describe("mention autocomplete", () => {
     }),
   };
 
-  it("hides commit namespace outside git repositories", () => {
+  it("hides commit namespace outside git repositories", async () => {
     const provider = new MentionAwareProvider({
       baseProvider,
       cwd: tmpdir(),
     });
 
-    expect(provider.getSuggestions(["@c"], 0, 2)).toBeNull();
+    await expect(
+      provider.getSuggestions(["@c"], 0, 2, { signal: new AbortController().signal }),
+    ).resolves.toBeNull();
 
-    expect(provider.getSuggestions(["@commit/abc123"], 0, 14)).toEqual({
+    await expect(
+      provider.getSuggestions(["@commit/abc123"], 0, 14, {
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual({
       items: [],
       prefix: "@commit/abc123",
     });

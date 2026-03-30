@@ -7,7 +7,7 @@ import {
 
 function createBaseProvider(log: string[]): AutocompleteProvider {
   return {
-    getSuggestions: (lines, cursorLine, cursorCol) => {
+    async getSuggestions(lines, cursorLine, cursorCol) {
       log.push(`base:get:${lines[cursorLine] ?? ""}:${cursorCol}`);
       return {
         items: [{ value: "@file/src/index.ts", label: "@file/src/index.ts" }],
@@ -26,14 +26,14 @@ function createBaseProvider(log: string[]): AutocompleteProvider {
 }
 
 describe("editor autocomplete capabilities", () => {
-  it("lets contributors decorate the base provider and keep fallback behavior", () => {
+  it("lets contributors decorate the base provider and keep fallback behavior", async () => {
     const log: string[] = [];
     const unregister = registerEditorAutocompleteContributor({
       id: "mentions",
       enhance(provider, context) {
         log.push(`enhance:${context.cwd}`);
         return {
-          getSuggestions(lines, cursorLine, cursorCol) {
+          async getSuggestions(lines, cursorLine, cursorCol, options) {
             const line = lines[cursorLine] ?? "";
             if (line.startsWith("@commit/")) {
               log.push("mentions:get");
@@ -42,7 +42,7 @@ describe("editor autocomplete capabilities", () => {
                 prefix: "@commit/",
               };
             }
-            return provider.getSuggestions(lines, cursorLine, cursorCol);
+            return provider.getSuggestions(lines, cursorLine, cursorCol, options);
           },
           applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
             if (item.value.startsWith("@commit/")) {
@@ -73,12 +73,16 @@ describe("editor autocomplete capabilities", () => {
         },
       );
 
-      expect(provider.getSuggestions(["@commit/"], 0, 8)).toEqual({
+      await expect(
+        provider.getSuggestions(["@commit/"], 0, 8, { signal: new AbortController().signal }),
+      ).resolves.toEqual({
         items: [{ value: "@commit/abc123", label: "@commit/abc123" }],
         prefix: "@commit/",
       });
 
-      expect(provider.getSuggestions(["@f"], 0, 2)).toEqual({
+      await expect(
+        provider.getSuggestions(["@f"], 0, 2, { signal: new AbortController().signal }),
+      ).resolves.toEqual({
         items: [{ value: "@file/src/index.ts", label: "@file/src/index.ts" }],
         prefix: "@f",
       });
@@ -102,7 +106,7 @@ describe("editor autocomplete capabilities", () => {
     }
   });
 
-  it("applies higher priority contributors last so they become the outer host layer", () => {
+  it("applies higher priority contributors last so they become the outer host layer", async () => {
     const order: string[] = [];
     const unregisterInner = registerEditorAutocompleteContributor({
       id: "inner",
@@ -110,9 +114,9 @@ describe("editor autocomplete capabilities", () => {
       enhance(provider) {
         order.push("enhance:inner");
         return {
-          getSuggestions(lines, cursorLine, cursorCol) {
+          async getSuggestions(lines, cursorLine, cursorCol, options) {
             order.push("get:inner");
-            return provider.getSuggestions(lines, cursorLine, cursorCol);
+            return provider.getSuggestions(lines, cursorLine, cursorCol, options);
           },
           applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
             return provider.applyCompletion(
@@ -132,9 +136,9 @@ describe("editor autocomplete capabilities", () => {
       enhance(provider) {
         order.push("enhance:outer");
         return {
-          getSuggestions(lines, cursorLine, cursorCol) {
+          async getSuggestions(lines, cursorLine, cursorCol, options) {
             order.push("get:outer");
-            return provider.getSuggestions(lines, cursorLine, cursorCol);
+            return provider.getSuggestions(lines, cursorLine, cursorCol, options);
           },
           applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
             return provider.applyCompletion(
@@ -156,7 +160,9 @@ describe("editor autocomplete capabilities", () => {
           cwd: "/repo/app",
         },
       );
-      provider.getSuggestions(["@f"], 0, 2);
+      await provider.getSuggestions(["@f"], 0, 2, {
+        signal: new AbortController().signal,
+      });
 
       expect(order).toEqual([
         "enhance:inner",

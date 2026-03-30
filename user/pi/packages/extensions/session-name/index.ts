@@ -117,13 +117,21 @@ export default sessionNameExtension;
 
 async function generateName(
   model: Model<Api>,
-  registry: { getApiKey(model: Model<Api>): Promise<string | undefined> },
+  registry: {
+    getApiKeyAndHeaders(
+      model: Model<Api>,
+    ): Promise<
+      | { ok: true; apiKey?: string; headers?: Record<string, string> }
+      | { ok: false; error: string }
+    >;
+  },
   userMessage: string,
   currentName: string | undefined,
   isFirst: boolean,
 ): Promise<string | null> {
-  const apiKey = await registry.getApiKey(model);
-  if (!apiKey) return null;
+  const auth = await registry.getApiKeyAndHeaders(model);
+  if (!auth.ok) return null;
+  if (!auth.apiKey && !auth.headers) return null;
 
   const prompt = isFirst
     ? `Generate a 3-5 word title for a coding session that starts with this message. Return ONLY the title, no quotes, no punctuation, no explanation. Lowercase.\n\n${userMessage.slice(0, 500)}`
@@ -138,7 +146,11 @@ async function generateName(
   const response = await piAi.complete(
     model,
     { messages: [message] },
-    { apiKey, maxTokens: 20 },
+    {
+      apiKey: auth.apiKey,
+      headers: auth.headers,
+      maxTokens: 20,
+    },
   );
   if (response.stopReason === "aborted") return null;
 
@@ -244,7 +256,7 @@ if (import.meta.vitest) {
         model,
         modelRegistry: {
           find: findSpy,
-          getApiKey: vi.fn(async () => undefined),
+          getApiKeyAndHeaders: vi.fn(async () => ({ ok: true, apiKey: undefined })),
         },
       };
 
@@ -273,7 +285,7 @@ if (import.meta.vitest) {
         CONFIG_DEFAULTS.model.provider,
         CONFIG_DEFAULTS.model.id,
       );
-      expect(ctx.modelRegistry.getApiKey).toHaveBeenCalledTimes(2);
+      expect(ctx.modelRegistry.getApiKeyAndHeaders).toHaveBeenCalledTimes(2);
       expect(harness.getSessionName()).toBe("");
     });
   });

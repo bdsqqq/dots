@@ -1,6 +1,7 @@
 import type {
   AutocompleteItem,
   AutocompleteProvider,
+  AutocompleteSuggestions,
 } from "@mariozechner/pi-tui";
 import { resolveGitRoot } from "./commit-index";
 import { detectMentionPrefix } from "./parse";
@@ -35,14 +36,20 @@ export class MentionAwareProvider implements AutocompleteProvider {
     this.gitEnabled = resolveGitRoot(this.cwd) !== null;
   }
 
-  getSuggestions(
+  async getSuggestions(
     lines: string[],
     cursorLine: number,
     cursorCol: number,
-  ): { items: AutocompleteItem[]; prefix: string } | null {
+    options: { signal: AbortSignal; force?: boolean },
+  ): Promise<AutocompleteSuggestions | null> {
     const line = lines[cursorLine] ?? "";
     const prefix = detectMentionPrefix(line, cursorCol);
-    const base = this.baseProvider.getSuggestions(lines, cursorLine, cursorCol);
+    const base = await this.baseProvider.getSuggestions(
+      lines,
+      cursorLine,
+      cursorCol,
+      options,
+    );
 
     if (!prefix) return base;
 
