@@ -7,6 +7,10 @@
  *
  * uses shared interpolation from @bds_pi/interpolate for template variables
  * ({cwd}, {roots}, {date}, etc.) in system prompts.
+ *
+ * cancellation matters now that extensions get ctx.signal: child pi processes
+ * should die when the parent turn is aborted, otherwise sub-agents keep
+ * running after the user already bailed.
  */
 
 import { spawn } from "node:child_process";
@@ -328,21 +332,29 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
         result.stderr += data.toString();
       });
 
+      let killTimer: NodeJS.Timeout | undefined;
+      const killProc = () => {
+        wasAborted = true;
+        proc.kill("SIGTERM");
+        killTimer = setTimeout(() => {
+          if (!proc.killed) proc.kill("SIGKILL");
+        }, 5000);
+      };
+
       proc.on("close", (code) => {
+        if (config.signal) config.signal.removeEventListener("abort", killProc);
+        if (killTimer) clearTimeout(killTimer);
         if (buffer.trim()) processLine(buffer);
         resolve(code ?? 0);
       });
 
-      proc.on("error", () => resolve(1));
+      proc.on("error", () => {
+        if (config.signal) config.signal.removeEventListener("abort", killProc);
+        if (killTimer) clearTimeout(killTimer);
+        resolve(1);
+      });
 
       if (config.signal) {
-        const killProc = () => {
-          wasAborted = true;
-          proc.kill("SIGTERM");
-          setTimeout(() => {
-            if (!proc.killed) proc.kill("SIGKILL");
-          }, 5000);
-        };
         if (config.signal.aborted) killProc();
         else config.signal.addEventListener("abort", killProc, { once: true });
       }

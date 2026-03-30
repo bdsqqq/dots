@@ -13,7 +13,7 @@
  *
  * set PI_E2E_CWD to override the working directory for pi spawns
  * (defaults to this repo's root).
- * set PI_E2E_MODEL to override parent model (defaults to minimax-m2.5).
+ * set PI_E2E_MODEL to override parent model (defaults to MiniMax M2.7 via openrouter).
  */
 
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
@@ -37,7 +37,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CWD = process.env.PI_E2E_CWD ?? resolve(__dirname, "../../../..");
 const ENABLED = process.env.PI_E2E === "1";
-const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openrouter/minimax/minimax-m2.5";
+const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openrouter/minimax/m2-7";
 const RECORD = process.env.PI_E2E_RECORD === "1";
 const FIXTURES_DIR = join(__dirname, "__fixtures__", "e2e");
 

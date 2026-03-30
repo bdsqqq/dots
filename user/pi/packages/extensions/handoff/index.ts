@@ -444,6 +444,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
           ctx,
           handoffModel,
           "continue the most specific pending task from the conversation",
+          ctx.signal,
         );
 
         if (!prompt) {
