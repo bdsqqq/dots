@@ -314,7 +314,7 @@ these labels are for this repo, not pi itself.
 
 - **role:** tool-extension
 - **registers:** tool `edit`
-- **does:** tracked file edits with exact/fuzzy matching, `replace_all`, newline preservation, diff output, undo support.
+- **does:** tracked file edits with exact/fuzzy matching, multi-edit `edits[]`, newline preservation, diff output, undo support.
 - **main composition:** `box-format`, `file-tracker`, `fs`, `mutex`, `prompt-patch`.
 - **read:** custom-heavy local tool.
 
