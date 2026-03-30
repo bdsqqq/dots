@@ -56,7 +56,7 @@ these labels are for this repo, not pi itself.
 | `mentions`            | domain-runtime | mention parsing, indexing, resolution, render, autocomplete provider                               | `mentions` extension, `search-sessions` shared session parsing  |
 | `mutex`               | helper         | per-path async file lock                                                                           | file-mutating tools, `bash`                                     |
 | `output-buffer`       | helper         | bounded head/tail truncation utilities                                                             | `bash`, `read`, `grep`, `glob`, `read-session`, `read-web-page` |
-| `permissions`         | runtime-helper | permission rules for tool execution                                                                | `bash`                                                          |
+| `tool-policy`         | runtime-helper | tool policy rules for tool routing; guardrails, not a hard security boundary                       | `bash`, file-aware tools                                         |
 | `pi-spawn`            | runtime-helper | nested pi/sub-agent orchestration                                                                  | sub-agent tool family, prompt helpers                           |
 | `prompt-patch`        | helper         | derive prompt snippet/guidelines from tool descriptions                                            | most tool extensions                                            |
 | `show`                | helper         | excerpt/windowing primitives                                                                       | `box-format`, `show-renderer`                                   |
@@ -211,12 +211,12 @@ these labels are for this repo, not pi itself.
 - **exports:** `headTail()`, `formatHeadTail()`, `headTailChars()`, `OutputBuffer`.
 - **composes with:** output-heavy tools.
 
-## `packages/core/permissions`
+## `packages/core/tool-policy`
 
 - **role:** runtime-helper
-- **does:** evaluate tool permission rules from config files.
-- **exports:** `evaluatePermission()`, `loadPermissions()` and related types.
-- **composes with:** `bash`.
+- **does:** evaluate tool policy rules from config files. these are guardrails for tool routing, not a hard security boundary.
+- **exports:** `evaluateToolPolicy()`, `loadToolPolicy()` and related types.
+- **composes with:** `bash` and file-aware tools.
 
 ## `packages/core/pi-spawn`
 
@@ -275,8 +275,8 @@ these labels are for this repo, not pi itself.
 
 - **role:** tool-extension
 - **registers:** tool `bash`
-- **does:** custom shell execution with command cleanup, permission checks, git commit trailer injection, lock coordination, graceful process shutdown, structured output truncation.
-- **main composition:** `box-format`, `config`, `fs`, `mutex`, `output-buffer`, `permissions`, `prompt-patch`, `tui`.
+- **does:** custom shell execution with command cleanup, tool policy checks, git commit trailer injection, lock coordination, graceful process shutdown, structured output truncation.
+- **main composition:** `box-format`, `config`, `fs`, `mutex`, `output-buffer`, `tool-policy`, `prompt-patch`, `tui`.
 - **read:** custom-heavy replacement, not a thin wrapper around pi built-in bash.
 
 ## `packages/extensions/code-review`
@@ -560,7 +560,7 @@ flowchart LR
   cfg[config]
   ob[output-buffer]
   box[box-format]
-  perm[permissions]
+  perm[tool-policy]
 
   bash[bash] --> cfg
   bash --> ob
@@ -659,7 +659,7 @@ this is the package-local composition direction that fits the actual repo, not j
 ### stable core layers
 
 - **helper layer:** `box-chrome`, `box-format`, `show`, `show-renderer`, `output-buffer`, `mutex`, `tool-cost`, `tui`
-- **runtime-helper layer:** `config`, `editor-capabilities`, `file-tracker`, `interpolate`, `permissions`, `pi-spawn`, `sub-agent-render`
+- **runtime-helper layer:** `config`, `editor-capabilities`, `file-tracker`, `interpolate`, `tool-policy`, `pi-spawn`, `sub-agent-render`
 - **domain-runtime layer:** `mentions`, `github-api`, `html-to-md`
 
 ### extension layers

@@ -17,7 +17,7 @@ import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { listDirectory, resolveToAbsolute, resolveWithVariants } from "@bds_pi/fs";
-import * as permissions from "@bds_pi/permissions";
+import * as toolPolicy from "@bds_pi/tool-policy";
 import { NORMAL_LIMITS, type ReadLimits } from "@bds_pi/read";
 import {
   boxRendererWindowed,
@@ -85,13 +85,13 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as { path?: string };
       const requestedPath = resolveToAbsolute(p.path ?? ctx.cwd, ctx.cwd);
-      const verdict = permissions.evaluatePermission(
+      const verdict = toolPolicy.evaluateToolPolicy(
         "ls",
         {
           path: requestedPath,
           sessionCwd: ctx.cwd,
         },
-        permissions.loadPermissions(),
+        toolPolicy.loadToolPolicy(),
       );
       if (verdict.action === "reject") {
         return {
@@ -100,7 +100,7 @@ export function createLsTool(limits: ReadLimits): ToolDefinition {
               type: "text" as const,
               text: verdict.message
                 ? `path rejected: ${verdict.message}`
-                : "path rejected by permission rule.",
+                : "path rejected by tool policy.",
             },
           ],
           isError: true,
@@ -162,13 +162,13 @@ if (import.meta.vitest) {
     vi.restoreAllMocks();
   });
 
-  describe("ls permissions", () => {
+  describe("ls tool policy", () => {
     it("rejects disallowed paths before directory checks", async () => {
       const tool = createLsTool(NORMAL_LIMITS);
-      const evaluatePermissionSpy = vi
-        .spyOn(permissions, "evaluatePermission")
+      const evaluateToolPolicySpy = vi
+        .spyOn(toolPolicy, "evaluateToolPolicy")
         .mockReturnValue({ action: "reject", message: "workspace only" });
-      vi.spyOn(permissions, "loadPermissions").mockReturnValue([]);
+      vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([]);
 
       const result = (await tool.execute!(
         "test-id",
@@ -180,7 +180,7 @@ if (import.meta.vitest) {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toBe("path rejected: workspace only");
-      expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+      expect(evaluateToolPolicySpy).toHaveBeenCalledWith(
         "ls",
         { path: "/repo/sibling", sessionCwd: "/repo/project" },
         [],

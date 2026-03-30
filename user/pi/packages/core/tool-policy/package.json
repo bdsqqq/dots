@@ -1,5 +1,5 @@
 {
-  "name": "@bds_pi/permissions",
+  "name": "@bds_pi/tool-policy",
   "version": "0.0.0",
   "main": "index.ts",
   "types": "index.ts",

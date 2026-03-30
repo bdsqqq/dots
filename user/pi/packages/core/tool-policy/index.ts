@@ -1,12 +1,12 @@
 /**
- * permission evaluation for tool calls.
+ * tool policy evaluation for tool calls.
  *
- * reads rules from ~/.pi/agent/permissions.json (separate from
- * settings.json since this is extension-owned config). rules are
- * evaluated first-match-wins, matching tool name and params via
+ * reads rules from ~/.pi/agent/tool-policy.json. these rules are product
+ * guardrails for tool routing and ergonomics, not a security boundary.
+ * rules are evaluated first-match-wins, matching tool name and params via
  * glob patterns. default action when no rule matches: allow.
  *
- * format mirrors amp's amp.permissions schema:
+ * shape mirrors our existing amp-style rule format:
  *   { tool, matches?, action, message? }
  *
  * only "allow" and "reject" actions for now — no "ask" or "delegate"
@@ -20,21 +20,21 @@ import { expandPath, isPathWithin, resolveToAbsolute } from "@bds_pi/fs";
 
 // --- types ---
 
-type PermissionPattern = string | string[];
+type ToolPolicyPattern = string | string[];
 
-export interface PermissionRule {
+export interface ToolPolicyRule {
   tool: string;
   matches?: {
-    cmd?: PermissionPattern;
-    cwd?: PermissionPattern;
-    path?: PermissionPattern;
-    within?: PermissionPattern;
+    cmd?: ToolPolicyPattern;
+    cwd?: ToolPolicyPattern;
+    path?: ToolPolicyPattern;
+    within?: ToolPolicyPattern;
   };
   action: "allow" | "reject";
   message?: string;
 }
 
-export interface PermissionParams {
+export interface ToolPolicyParams {
   cmd?: string;
   cwd?: string;
   path?: string;
@@ -42,7 +42,7 @@ export interface PermissionParams {
   sessionCwd?: string;
 }
 
-export interface PermissionVerdict {
+export interface ToolPolicyVerdict {
   action: "allow" | "reject";
   message?: string;
 }
@@ -59,21 +59,21 @@ function globToRegex(pattern: string): RegExp {
   return new RegExp(`^${withWildcards}$`, "i");
 }
 
-function toPatterns(patterns: PermissionPattern): string[] {
+function toPatterns(patterns: ToolPolicyPattern): string[] {
   return Array.isArray(patterns) ? patterns : [patterns];
 }
 
-function matchesGlob(value: string, patterns: PermissionPattern): boolean {
+function matchesGlob(value: string, patterns: ToolPolicyPattern): boolean {
   return toPatterns(patterns).some((pattern) => globToRegex(pattern).test(value));
 }
 
-function collectObservedPaths(params: PermissionParams): string[] {
+function collectObservedPaths(params: ToolPolicyParams): string[] {
   return [params.path, ...(params.paths ?? [])].filter(
     (value): value is string => typeof value === "string" && value.length > 0,
   );
 }
 
-function collectWithinPaths(params: PermissionParams): string[] {
+function collectWithinPaths(params: ToolPolicyParams): string[] {
   const observedPaths = collectObservedPaths(params);
 
   if (typeof params.cwd === "string" && params.cwd.length > 0) {
@@ -93,7 +93,7 @@ function resolvePathLike(
   return path.isAbsolute(expanded) ? expanded : null;
 }
 
-function matchesWithin(params: PermissionParams, roots: PermissionPattern): boolean {
+function matchesWithin(params: ToolPolicyParams, roots: ToolPolicyPattern): boolean {
   const observedPaths = collectWithinPaths(params);
   if (observedPaths.length === 0) return false;
 
@@ -111,11 +111,11 @@ function matchesWithin(params: PermissionParams, roots: PermissionPattern): bool
 
 // --- evaluation ---
 
-export function evaluatePermission(
+export function evaluateToolPolicy(
   toolName: string,
-  params: PermissionParams,
-  rules: PermissionRule[],
-): PermissionVerdict {
+  params: ToolPolicyParams,
+  rules: ToolPolicyRule[],
+): ToolPolicyVerdict {
   for (const rule of rules) {
     if (!globToRegex(rule.tool).test(toolName)) continue;
 
@@ -151,16 +151,16 @@ export function evaluatePermission(
 
 // --- loading ---
 
-const PERMISSIONS_PATH = path.join(
+const TOOL_POLICY_PATH = path.join(
   os.homedir(),
   ".pi",
   "agent",
-  "permissions.json",
+  "tool-policy.json",
 );
 
-export function loadPermissions(): PermissionRule[] {
+export function loadToolPolicy(): ToolPolicyRule[] {
   try {
-    const raw = fs.readFileSync(PERMISSIONS_PATH, "utf-8");
+    const raw = fs.readFileSync(TOOL_POLICY_PATH, "utf-8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed;
@@ -174,7 +174,7 @@ export function loadPermissions(): PermissionRule[] {
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
 
-  const RULES: PermissionRule[] = [
+  const RULES: ToolPolicyRule[] = [
     {
       tool: "Bash",
       matches: { cmd: ["*git add -A*", "*git add .*"] },
@@ -200,32 +200,32 @@ if (import.meta.vitest) {
     { tool: "*", action: "allow" },
   ];
 
-  describe("evaluatePermission", () => {
+  describe("evaluateToolPolicy", () => {
     it("allows normal commands", () => {
-      expect(evaluatePermission("Bash", { cmd: "git status" }, RULES)).toEqual({
+      expect(evaluateToolPolicy("Bash", { cmd: "git status" }, RULES)).toEqual({
         action: "allow",
       });
-      expect(evaluatePermission("Bash", { cmd: "ls -la" }, RULES)).toEqual({
+      expect(evaluateToolPolicy("Bash", { cmd: "ls -la" }, RULES)).toEqual({
         action: "allow",
       });
       expect(
-        evaluatePermission("Bash", { cmd: "nix build .#foo" }, RULES),
+        evaluateToolPolicy("Bash", { cmd: "nix build .#foo" }, RULES),
       ).toEqual({ action: "allow" });
     });
 
     it("rejects git add -A", () => {
-      const v = evaluatePermission("Bash", { cmd: "git add -A" }, RULES);
+      const v = evaluateToolPolicy("Bash", { cmd: "git add -A" }, RULES);
       expect(v.action).toBe("reject");
       expect(v.message).toContain("stage files explicitly");
     });
 
     it("rejects git add .", () => {
-      const v = evaluatePermission("Bash", { cmd: "git add ." }, RULES);
+      const v = evaluateToolPolicy("Bash", { cmd: "git add ." }, RULES);
       expect(v.action).toBe("reject");
     });
 
     it("allows explicit git add", () => {
-      const v = evaluatePermission(
+      const v = evaluateToolPolicy(
         "Bash",
         { cmd: "git add src/foo.ts" },
         RULES,
@@ -235,14 +235,14 @@ if (import.meta.vitest) {
 
     it("rejects force push variants", () => {
       expect(
-        evaluatePermission("Bash", { cmd: "git push --force" }, RULES).action,
+        evaluateToolPolicy("Bash", { cmd: "git push --force" }, RULES).action,
       ).toBe("reject");
       expect(
-        evaluatePermission("Bash", { cmd: "git push -f origin main" }, RULES)
+        evaluateToolPolicy("Bash", { cmd: "git push -f origin main" }, RULES)
           .action,
       ).toBe("reject");
       expect(
-        evaluatePermission(
+        evaluateToolPolicy(
           "Bash",
           { cmd: "git push --force-with-lease" },
           RULES,
@@ -252,34 +252,34 @@ if (import.meta.vitest) {
 
     it("allows normal git push", () => {
       expect(
-        evaluatePermission("Bash", { cmd: "git push" }, RULES).action,
+        evaluateToolPolicy("Bash", { cmd: "git push" }, RULES).action,
       ).toBe("allow");
       expect(
-        evaluatePermission("Bash", { cmd: "git push origin main" }, RULES)
+        evaluateToolPolicy("Bash", { cmd: "git push origin main" }, RULES)
           .action,
       ).toBe("allow");
     });
 
     it("rejects rm commands", () => {
       expect(
-        evaluatePermission("Bash", { cmd: "rm foo.txt" }, RULES).action,
+        evaluateToolPolicy("Bash", { cmd: "rm foo.txt" }, RULES).action,
       ).toBe("reject");
       expect(
-        evaluatePermission("Bash", { cmd: "rm -rf /tmp/junk" }, RULES).action,
+        evaluateToolPolicy("Bash", { cmd: "rm -rf /tmp/junk" }, RULES).action,
       ).toBe("reject");
       expect(
-        evaluatePermission("Bash", { cmd: "ls && rm foo" }, RULES).action,
+        evaluateToolPolicy("Bash", { cmd: "ls && rm foo" }, RULES).action,
       ).toBe("reject");
       expect(
-        evaluatePermission("Bash", { cmd: "false || rm foo" }, RULES).action,
+        evaluateToolPolicy("Bash", { cmd: "false || rm foo" }, RULES).action,
       ).toBe("reject");
       expect(
-        evaluatePermission("Bash", { cmd: "echo hi ; rm foo" }, RULES).action,
+        evaluateToolPolicy("Bash", { cmd: "echo hi ; rm foo" }, RULES).action,
       ).toBe("reject");
     });
 
     it("allows non-Bash tools via wildcard catch-all", () => {
-      expect(evaluatePermission("Read", { cmd: "/etc/passwd" }, RULES)).toEqual(
+      expect(evaluateToolPolicy("Read", { cmd: "/etc/passwd" }, RULES)).toEqual(
         {
           action: "allow",
         },
@@ -287,26 +287,26 @@ if (import.meta.vitest) {
     });
 
     it("allows everything when no rules", () => {
-      expect(evaluatePermission("Bash", { cmd: "rm -rf /" }, [])).toEqual({
+      expect(evaluateToolPolicy("Bash", { cmd: "rm -rf /" }, [])).toEqual({
         action: "allow",
       });
     });
 
     it("matches tool name with glob", () => {
-      const rules: PermissionRule[] = [
+      const rules: ToolPolicyRule[] = [
         { tool: "mcp__*", action: "reject", message: "no mcp" },
         { tool: "*", action: "allow" },
       ];
       expect(
-        evaluatePermission("mcp__playwright_click", {}, rules).action,
+        evaluateToolPolicy("mcp__playwright_click", {}, rules).action,
       ).toBe("reject");
-      expect(evaluatePermission("Bash", { cmd: "ls" }, rules).action).toBe(
+      expect(evaluateToolPolicy("Bash", { cmd: "ls" }, rules).action).toBe(
         "allow",
       );
     });
 
     it("matches cwd globs", () => {
-      const rules: PermissionRule[] = [
+      const rules: ToolPolicyRule[] = [
         {
           tool: "Read",
           matches: { cwd: "/repo/*/docs" },
@@ -317,15 +317,15 @@ if (import.meta.vitest) {
       ];
 
       expect(
-        evaluatePermission("Read", { cwd: "/repo/app/docs" }, rules).action,
+        evaluateToolPolicy("Read", { cwd: "/repo/app/docs" }, rules).action,
       ).toBe("reject");
       expect(
-        evaluatePermission("Read", { cwd: "/repo/app/src" }, rules).action,
+        evaluateToolPolicy("Read", { cwd: "/repo/app/src" }, rules).action,
       ).toBe("allow");
     });
 
     it("matches path globs against path and paths", () => {
-      const rules: PermissionRule[] = [
+      const rules: ToolPolicyRule[] = [
         {
           tool: "Edit",
           matches: { path: ["src/*.ts", "docs/*.md"] },
@@ -336,18 +336,18 @@ if (import.meta.vitest) {
       ];
 
       expect(
-        evaluatePermission("Edit", { path: "src/index.ts" }, rules).action,
+        evaluateToolPolicy("Edit", { path: "src/index.ts" }, rules).action,
       ).toBe("reject");
       expect(
-        evaluatePermission("Edit", { paths: ["docs/readme.md"] }, rules).action,
+        evaluateToolPolicy("Edit", { paths: ["docs/readme.md"] }, rules).action,
       ).toBe("reject");
       expect(
-        evaluatePermission("Edit", { path: "assets/logo.svg" }, rules).action,
+        evaluateToolPolicy("Edit", { path: "assets/logo.svg" }, rules).action,
       ).toBe("allow");
     });
 
     it("matches within relative to session cwd", () => {
-      const rules: PermissionRule[] = [
+      const rules: ToolPolicyRule[] = [
         {
           tool: "Write",
           matches: { within: "." },
@@ -358,21 +358,21 @@ if (import.meta.vitest) {
       ];
 
       expect(
-        evaluatePermission(
+        evaluateToolPolicy(
           "Write",
           { path: "src/index.ts", sessionCwd: "/repo/project" },
           rules,
         ).action,
       ).toBe("reject");
       expect(
-        evaluatePermission(
+        evaluateToolPolicy(
           "Write",
           { path: "/tmp/escape.ts", sessionCwd: "/repo/project" },
           rules,
         ).action,
       ).toBe("allow");
       expect(
-        evaluatePermission(
+        evaluateToolPolicy(
           "Write",
           { path: "../sibling/escape.ts", sessionCwd: "/repo/project" },
           rules,
@@ -381,7 +381,7 @@ if (import.meta.vitest) {
     });
 
     it("checks within against all observed paths", () => {
-      const rules: PermissionRule[] = [
+      const rules: ToolPolicyRule[] = [
         {
           tool: "Edit",
           matches: { within: "." },
@@ -392,7 +392,7 @@ if (import.meta.vitest) {
       ];
 
       expect(
-        evaluatePermission(
+        evaluateToolPolicy(
           "Edit",
           {
             paths: ["src/index.ts", "docs/readme.md"],
@@ -402,7 +402,7 @@ if (import.meta.vitest) {
         ).action,
       ).toBe("reject");
       expect(
-        evaluatePermission(
+        evaluateToolPolicy(
           "Edit",
           {
             paths: ["src/index.ts", "../sibling/escape.ts"],
@@ -414,7 +414,7 @@ if (import.meta.vitest) {
     });
 
     it("normalizes within roots and observed paths like file tools", () => {
-      const rules: PermissionRule[] = [
+      const rules: ToolPolicyRule[] = [
         {
           tool: "Read",
           matches: { within: "@docs" },
@@ -425,14 +425,14 @@ if (import.meta.vitest) {
       ];
 
       expect(
-        evaluatePermission(
+        evaluateToolPolicy(
           "Read",
           { path: "@docs/readme.md", sessionCwd: "/repo/project" },
           rules,
         ).action,
       ).toBe("reject");
       expect(
-        evaluatePermission(
+        evaluateToolPolicy(
           "Read",
           { path: "~/notes/todo.md", sessionCwd: "/repo/project" },
           rules,
@@ -441,7 +441,7 @@ if (import.meta.vitest) {
     });
 
     it("checks within against bash cwd even without explicit path args", () => {
-      const rules: PermissionRule[] = [
+      const rules: ToolPolicyRule[] = [
         {
           tool: "Bash",
           matches: { cmd: "printf ok", within: "." },
@@ -457,7 +457,7 @@ if (import.meta.vitest) {
       ];
 
       expect(
-        evaluatePermission(
+        evaluateToolPolicy(
           "Bash",
           {
             cmd: "printf ok",
@@ -468,7 +468,7 @@ if (import.meta.vitest) {
         ).action,
       ).toBe("allow");
       expect(
-        evaluatePermission(
+        evaluateToolPolicy(
           "Bash",
           {
             cmd: "printf ok",

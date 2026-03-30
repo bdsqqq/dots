@@ -557,9 +557,9 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     });
   }, 180_000);
 
-  it("Task: child sessions reject bash escapes outside assigned cwd", async () => {
+  it("Task: child sessions reject bash escapes outside assigned cwd via tool policy", async () => {
     const t0 = Date.now();
-    const sandboxDir = mkdtempSync(join(tmpdir(), "pi-e2e-permissions-"));
+    const sandboxDir = mkdtempSync(join(tmpdir(), "pi-e2e-tool-policy-"));
     const projectConfigDir = join(sandboxDir, ".pi");
     const agentConfigDir = join(sandboxDir, ".pi", "agent");
     const childConfigPath = join(sandboxDir, "bds-pi.json");
@@ -588,7 +588,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     );
     writeFileSync(childConfigPath, JSON.stringify({}), "utf-8");
     writeFileSync(
-      join(agentConfigDir, "permissions.json"),
+      join(agentConfigDir, "tool-policy.json"),
       JSON.stringify(
         [
           {
@@ -610,7 +610,7 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     );
 
     const prompt = [
-      'Use the Task tool. description: "permission escape audit".',
+      'Use the Task tool. description: "tool policy escape audit".',
       "In the child, do exactly one thing: run bash with this command:",
       `\`printf blocked > "${forbiddenPath}"\`.`,
       "Do not retry. Return only the bash tool result text.",
@@ -655,11 +655,11 @@ describe.skipIf(!ENABLED)("sub-agent tools e2e", () => {
     expect(bashText).toContain("stay inside the assigned cwd");
     expect(existsSync(forbiddenPath)).toBe(false);
 
-    recordFixture("tool-task-bash-permissions", events);
+    recordFixture("tool-task-bash-tool-policy", events);
 
     const c = getCosts(events);
     costs.push({
-      test: "Task (bash permissions)",
+      test: "Task (bash tool policy)",
       parent: c.parent,
       subAgent: c.subAgent,
       total: c.parent + c.subAgent,
