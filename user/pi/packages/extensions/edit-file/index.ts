@@ -3,16 +3,15 @@
  *
  * differences from pi's built-in:
  * - mutex-locked per file path (prevents partial writes from concurrent edits)
- * - replace_all mode for multiple occurrences
  * - escape sequence fallback (\n, \t when exact match fails)
  * - redaction check (rejects edits introducing placeholder markers)
  * - file change tracking for undo_edit via lib/file-tracker
  * - BOM/CRLF preservation
+ * - legacy `old_str` / `new_str` calls are folded into modern `edits[]`
  *
  * shadows pi's built-in `edit` tool via same-name registration.
- * uses model-compatible parameter names (old_str, new_str, replace_all)
- * rather than pi's (oldText, newText) — models produce these param
- * names naturally.
+ * public schema matches pi 0.63+ multi-edit shape so resumed sessions keep
+ * working, while `prepareArguments()` preserves amp-style legacy calls.
  */
 
 import * as fs from "node:fs";
@@ -337,9 +336,10 @@ function formatStats(stats: DiffStats, theme: any): string {
 
 interface EditFileParams {
   path: string;
-  old_str: string;
-  new_str: string;
-  replace_all?: boolean;
+  edits: Array<{
+    oldText: string;
+    newText: string;
+  }>;
 }
 
 export function createEditFileTool(): ToolDefinition {
@@ -363,20 +363,45 @@ export function createEditFileTool(): ToolDefinition {
         description:
           "The absolute path to the file (MUST be absolute, not relative). File must exist.",
       }),
-      old_str: Type.String({
-        description: "Text to search for. Must match exactly.",
-      }),
-      new_str: Type.String({
-        description: "Text to replace old_str with.",
-      }),
-      replace_all: Type.Optional(
-        Type.Boolean({
-          description:
-            "Set to true to replace all occurrences of old_str. Otherwise, old_str must be unique.",
-          default: false,
+      edits: Type.Array(
+        Type.Object({
+          oldText: Type.String({
+            description: "Text to search for. Must match exactly.",
+          }),
+          newText: Type.String({
+            description: "Text to replace oldText with.",
+          }),
         }),
+        {
+          minItems: 1,
+          description:
+            "One or more exact text replacements to apply against the original file contents.",
+        },
       ),
     }),
+
+    prepareArguments(args) {
+      if (!args || typeof args !== "object") return args as EditFileParams;
+      const input = args as {
+        path?: string;
+        edits?: Array<{ oldText?: unknown; newText?: unknown }>;
+        old_str?: unknown;
+        new_str?: unknown;
+      };
+
+      if (
+        typeof input.old_str === "string" &&
+        typeof input.new_str === "string" &&
+        (!Array.isArray(input.edits) || input.edits.length === 0)
+      ) {
+        return {
+          path: input.path ?? "",
+          edits: [{ oldText: input.old_str, newText: input.new_str }],
+        };
+      }
+
+      return args as EditFileParams;
+    },
 
     renderCall(args: any, theme: any) {
       const filePath = args.path || "...";
@@ -396,6 +421,26 @@ export function createEditFileTool(): ToolDefinition {
 
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
       const p = params as EditFileParams;
+      const edit = p.edits[0];
+      if (!edit) {
+        return {
+          content: [
+            { type: "text" as const, text: "at least one edit is required." },
+          ],
+          isError: true,
+        } as any;
+      }
+      if (p.edits.length > 1) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "multi-edit calls are not supported by this override yet. split them into separate tool calls.",
+            },
+          ],
+          isError: true,
+        } as any;
+      }
       const requestedPath = resolveToAbsolute(p.path, ctx.cwd);
       const verdict = permissions.evaluatePermission(
         "edit",
@@ -443,7 +488,7 @@ export function createEditFileTool(): ToolDefinition {
         } as any;
       }
 
-      const redactionMarker = hasNewRedactionMarkers(p.old_str, p.new_str);
+      const redactionMarker = hasNewRedactionMarkers(edit.oldText, edit.newText);
       if (redactionMarker) {
         return {
           content: [
@@ -461,15 +506,15 @@ export function createEditFileTool(): ToolDefinition {
         const { bom, text: bomStripped } = stripBom(rawContent);
         const originalEnding = detectLineEnding(bomStripped);
         const normalized = normalizeToLF(bomStripped);
-        const oldStr = normalizeToLF(p.old_str);
-        const newStr = normalizeToLF(p.new_str);
+        const oldStr = normalizeToLF(edit.oldText);
+        const newStr = normalizeToLF(edit.newText);
 
         if (oldStr === newStr) {
           return {
             content: [
               {
                 type: "text" as const,
-                text: "old_str and new_str are identical. no changes needed.",
+                text: "oldText and newText are identical. no changes needed.",
               },
             ],
             isError: true,
@@ -482,7 +527,7 @@ export function createEditFileTool(): ToolDefinition {
             content: [
               {
                 type: "text" as const,
-                text: `could not find old_str in ${path.basename(resolved)}. the text must match exactly including whitespace and newlines.`,
+                text: `could not find oldText in ${path.basename(resolved)}. the text must match exactly including whitespace and newlines.`,
               },
             ],
             isError: true,
@@ -493,14 +538,13 @@ export function createEditFileTool(): ToolDefinition {
           strategy.content,
           strategy.searchStr,
         );
-        const replaceAll = p.replace_all ?? false;
 
-        if (!replaceAll && occurrences > 1) {
+        if (occurrences > 1) {
           return {
             content: [
               {
                 type: "text" as const,
-                text: `found ${occurrences} occurrences of old_str in ${path.basename(resolved)}. set replace_all to true, or add more context to make the match unique.`,
+                text: `found ${occurrences} occurrences of oldText in ${path.basename(resolved)}. multi-edit mode is not supported here yet, so add more context to make the match unique.`,
               },
             ],
             isError: true,
@@ -508,17 +552,10 @@ export function createEditFileTool(): ToolDefinition {
         }
 
         // perform replacement in the matched content space
-        let newContent: string;
-        if (replaceAll) {
-          newContent = strategy.content
-            .split(strategy.searchStr)
-            .join(strategy.replaceStr);
-        } else {
-          newContent =
-            strategy.content.substring(0, strategy.index) +
-            strategy.replaceStr +
-            strategy.content.substring(strategy.index + strategy.matchLength);
-        }
+        const newContent =
+          strategy.content.substring(0, strategy.index) +
+          strategy.replaceStr +
+          strategy.content.substring(strategy.index + strategy.matchLength);
 
         if (strategy.content === newContent) {
           return {
@@ -555,9 +592,6 @@ export function createEditFileTool(): ToolDefinition {
           content: [{ type: "text" as const, text }],
           details: {
             filePath: resolved,
-            ...(replaceAll && occurrences > 1
-              ? { replaceCount: occurrences }
-              : {}),
           },
         } as any;
       });
@@ -580,11 +614,6 @@ export function createEditFileTool(): ToolDefinition {
       // compute stats from unwindowed sections (accurate counts)
       const stats = computeDiffStats(sections);
       const statsText = formatStats(stats, theme);
-      const replaceCount: number | undefined = result.details?.replaceCount;
-      const replaceNote =
-        replaceCount && replaceCount > 1
-          ? theme.fg("dim", ` (${replaceCount} replacements)`)
-          : "";
 
       /** 25 visual lines per hunk: head 12 + tail 13 */
       const HUNK_EXCERPTS: Excerpt[] = [
@@ -595,7 +624,7 @@ export function createEditFileTool(): ToolDefinition {
       return {
         render(width: number): string[] {
           const lines: string[] = [];
-          lines.push(statsText + replaceNote);
+          lines.push(statsText);
 
           // collapsed: last hunk only; expanded: all hunks
           const displaySections = sections.map((s) => {
@@ -609,17 +638,13 @@ export function createEditFileTool(): ToolDefinition {
             return { ...s, header, blocks };
           });
 
-          const notices: string[] = [];
-          if (replaceCount && replaceCount > 1)
-            notices.push(`replaced ${replaceCount} occurrences`);
-
           const boxOutput = formatBoxesWindowed(
             displaySections,
             {
               maxSections: expanded ? undefined : 1,
               excerpts: HUNK_EXCERPTS,
             },
-            notices.length > 0 ? notices : undefined,
+            undefined,
             width,
           );
           lines.push(...boxOutput.split("\n"));
@@ -655,8 +680,7 @@ if (import.meta.vitest) {
         "test-id",
         {
           path: "../sibling/file.txt",
-          old_str: "before",
-          new_str: "after",
+          edits: [{ oldText: "before", newText: "after" }],
         },
         undefined,
         undefined,

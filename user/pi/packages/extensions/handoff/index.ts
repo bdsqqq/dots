@@ -356,7 +356,13 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       const conversationText = serializeConversation(llmMessages);
       const sessionId = ctx.sessionManager.getSessionId();
 
-      const apiKey = await ctx.modelRegistry.getApiKey(handoffModel);
+      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(handoffModel);
+      if (!auth.ok) {
+        throw new Error(auth.error);
+      }
+      if (!auth.apiKey && !auth.headers) {
+        throw new Error("missing auth for handoff model");
+      }
       const userMessage: Message = {
         role: "user",
         content: [
@@ -368,7 +374,12 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       const response = await complete(
         handoffModel,
         { messages: [userMessage], tools: [HANDOFF_TOOL] },
-        { apiKey, signal, toolChoice: "any" },
+        {
+          apiKey: auth.apiKey,
+          headers: auth.headers,
+          signal,
+          toolChoice: "any",
+        },
       );
 
       if (response.stopReason === "aborted") return null;
