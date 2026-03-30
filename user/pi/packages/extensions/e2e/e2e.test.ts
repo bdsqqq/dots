@@ -13,7 +13,7 @@
  *
  * set PI_E2E_CWD to override the working directory for pi spawns
  * (defaults to this repo's root).
- * set PI_E2E_MODEL to override parent model (defaults to MiniMax M2.7 via openrouter).
+ * set PI_E2E_MODEL to override parent model (defaults to moonshotai/kimi-k2.5 via openrouter).
  */
 
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
@@ -26,6 +26,7 @@ import {
   writeFileSync,
   readFileSync,
   mkdtempSync,
+  rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { describe, it, expect, afterAll } from "vitest";
@@ -35,11 +36,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // --- constants ---
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CWD = process.env.PI_E2E_CWD ?? resolve(__dirname, "../../../..");
+const CWD = process.env.PI_E2E_CWD ?? process.cwd();
 const ENABLED = process.env.PI_E2E === "1";
-const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openrouter/minimax/m2-7";
+const E2E_MODEL =
+  process.env.PI_E2E_MODEL ?? "openrouter/moonshotai/kimi-k2.5";
 const RECORD = process.env.PI_E2E_RECORD === "1";
 const FIXTURES_DIR = join(__dirname, "__fixtures__", "e2e");
+const TMP_HOME_PREFIX = join(tmpdir(), "pi-e2e-home-");
 
 let tmuxAvailable = false;
 try {
@@ -104,6 +107,27 @@ function runPi(
     const events: PiEvent[] = [];
     let stderr = "";
     let buffer = "";
+    const testHome = mkdtempSync(TMP_HOME_PREFIX);
+    const realHome = process.env.HOME;
+    mkdirSync(join(testHome, ".pi", "agent"), { recursive: true });
+    writeFileSync(
+      join(testHome, ".pi", "agent", "settings.json"),
+      JSON.stringify({
+        defaultProvider: "openrouter",
+        packages: [CWD],
+      }),
+      "utf-8",
+    );
+    if (realHome) {
+      const authPath = join(realHome, ".pi", "agent", "auth.json");
+      if (existsSync(authPath)) {
+        writeFileSync(
+          join(testHome, ".pi", "agent", "auth.json"),
+          readFileSync(authPath, "utf-8"),
+          "utf-8",
+        );
+      }
+    }
 
     const proc = nodeSpawn(
       "pi",
@@ -114,6 +138,7 @@ function runPi(
         stdio: ["ignore", "pipe", "pipe"],
         env: {
           ...process.env,
+          HOME: testHome,
           ...opts?.env,
         },
       },
@@ -150,11 +175,13 @@ function runPi(
           events.push(JSON.parse(buffer));
         } catch {}
       }
+      rmSync(testHome, { recursive: true, force: true });
       resolve({ events, exitCode: code ?? 1, stderr });
     });
 
     proc.on("error", (err) => {
       clearTimeout(timer);
+      rmSync(testHome, { recursive: true, force: true });
       reject(err);
     });
   });

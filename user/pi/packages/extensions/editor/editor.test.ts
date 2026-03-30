@@ -12,17 +12,27 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { describe, it, expect, afterAll } from "vitest";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CWD = resolve(__dirname, "../../../../../..");
+const CWD = process.env.PI_E2E_CWD ?? process.cwd();
 const ENABLED = process.env.PI_E2E === "1";
 const E2E_MODEL =
-  process.env.PI_E2E_MODEL ?? "huggingface/moonshotai/Kimi-K2.5";
+  process.env.PI_E2E_MODEL ?? "openrouter/moonshotai/kimi-k2.5";
+const TMP_HOME_PREFIX = join(tmpdir(), "pi-editor-e2e-home-");
 
 // Check if tmux is available
 let tmuxAvailable = false;
@@ -35,6 +45,31 @@ try {
 }
 
 // --- tmux helpers ---
+
+function createTestHome(): string {
+  const testHome = mkdtempSync(TMP_HOME_PREFIX);
+  const realHome = process.env.HOME;
+  mkdirSync(join(testHome, ".pi", "agent"), { recursive: true });
+  writeFileSync(
+    join(testHome, ".pi", "agent", "settings.json"),
+    JSON.stringify({
+      defaultProvider: "openrouter",
+      packages: [CWD],
+    }),
+    "utf-8",
+  );
+  if (realHome) {
+    const authPath = join(realHome, ".pi", "agent", "auth.json");
+    if (existsSync(authPath)) {
+      writeFileSync(
+        join(testHome, ".pi", "agent", "auth.json"),
+        readFileSync(authPath, "utf-8"),
+        "utf-8",
+      );
+    }
+  }
+  return testHome;
+}
 
 function tmuxSpawn(name: string, cmd: string) {
   spawnSync("tmux", ["new-window", "-d", "-n", name, cmd]);
@@ -55,6 +90,10 @@ function tmuxKill(target: string) {
 
 function firstBorderLine(capture: string): string {
   return capture.split("\n").find((line) => line.includes("╭")) ?? "";
+}
+
+function expectedModelToken(model: string): string {
+  return model.split("/").at(-1)?.toLowerCase() ?? model.toLowerCase();
 }
 
 async function waitForPane(
@@ -97,6 +136,7 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
   "editor extension - model_select",
   () => {
     const windowName = `pi-editor-test-${Date.now()}`;
+    const homes: string[] = [];
     // Fast/cheap model for testing
     const TEST_MODEL = E2E_MODEL;
 
@@ -104,11 +144,19 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
       try {
         tmuxKill(windowName);
       } catch {}
+      for (const home of homes) {
+        rmSync(home, { recursive: true, force: true });
+      }
     });
 
     it("updates model display when model changes via /model command", async () => {
+      const testHome = createTestHome();
+      homes.push(testHome);
       // Start pi in a tmux window (interactive session) with cheap model
-      tmuxSpawn(windowName, `cd ${CWD} && pi --model ${TEST_MODEL}`);
+      tmuxSpawn(
+        windowName,
+        `HOME=${testHome} PI_E2E=1 PI_E2E_CWD=${CWD} sh -lc 'cd "${CWD}" && pi --model "${TEST_MODEL}"'`,
+      );
 
       // Wait for pi to start and show the editor border (LabeledEditor uses ╭)
       await waitForPane(windowName, /╭/, 30_000);
@@ -119,13 +167,11 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
       // Additional wait for model to render in border
       await sleep(2000);
 
-      // Capture initial state - should show kimi-k2.5 in border
+      // Capture initial state - should show the configured startup model in border
       const beforeCapture = tmuxCapture(windowName);
       const beforeBorder = firstBorderLine(beforeCapture).toLowerCase();
 
-      // Verify initial model is shown in border (top lines contain the model)
-      // Border format: "╭─ ... ─ (openrouter) moonshotai/kimi-k2.5 ─╮"
-      expect(beforeBorder).toContain("kimi");
+      expect(beforeBorder).toContain(expectedModelToken(TEST_MODEL));
 
       // Send /model command to change to a different model
       tmuxSend(windowName, "/model");
@@ -146,9 +192,14 @@ describe.skipIf(!ENABLED || !tmuxAvailable)(
     }, 90_000);
 
     it("model_select event fires when model changes", async () => {
+      const testHome = createTestHome();
+      homes.push(testHome);
       // Start a fresh pi session with cheap model
       const testWin = `pi-model-event-${Date.now()}`;
-      tmuxSpawn(testWin, `cd ${CWD} && pi --model ${TEST_MODEL}`);
+      tmuxSpawn(
+        testWin,
+        `HOME=${testHome} PI_E2E=1 PI_E2E_CWD=${CWD} sh -lc 'cd "${CWD}" && pi --model "${TEST_MODEL}"'`,
+      );
 
       // Wait for pi to start
       await waitForPane(testWin, /╭|─/, 30_000);
