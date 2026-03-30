@@ -97,7 +97,7 @@ function sessionNameExtension(pi: ExtensionAPI): void {
 
     const currentName = pi.getSessionName() || undefined;
 
-    generateName(model, ctx.modelRegistry, text, currentName, isFirst)
+    generateName(model, ctx.modelRegistry, text, currentName, isFirst, ctx.signal)
       .then((name) => {
         if (name) pi.setSessionName(name);
       })
@@ -128,6 +128,7 @@ async function generateName(
   userMessage: string,
   currentName: string | undefined,
   isFirst: boolean,
+  signal?: AbortSignal,
 ): Promise<string | null> {
   const auth = await registry.getApiKeyAndHeaders(model);
   if (!auth.ok) return null;
@@ -149,6 +150,7 @@ async function generateName(
     {
       apiKey: auth.apiKey,
       headers: auth.headers,
+      signal,
       maxTokens: 20,
     },
   );
