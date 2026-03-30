@@ -20,7 +20,7 @@
       "@bds_pi/mentions": ["./packages/core/mentions/index.ts"],
       "@bds_pi/mutex": ["./packages/core/mutex/index.ts"],
       "@bds_pi/output-buffer": ["./packages/core/output-buffer/index.ts"],
-      "@bds_pi/permissions": ["./packages/core/permissions/index.ts"],
+      "@bds_pi/tool-policy": ["./packages/core/tool-policy/index.ts"],
       "@bds_pi/pi-spawn": ["./packages/core/pi-spawn/index.ts"],
       "@bds_pi/prompt-patch": ["./packages/core/prompt-patch/index.ts"],
       "@bds_pi/show-renderer": ["./packages/core/show-renderer/index.ts"],

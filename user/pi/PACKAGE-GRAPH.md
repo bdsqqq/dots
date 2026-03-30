@@ -32,7 +32,7 @@ there are two kinds of edges here:
 - mentions
 - mutex
 - output-buffer
-- permissions
+- tool-policy
 - pi-spawn
 - prompt-patch
 - show
@@ -101,7 +101,7 @@ flowchart TB
     html[html-to-md]
     interp[interpolate]
     mentionscore[mentions]
-    perms[permissions]
+    perms[tool-policy]
     spawn[pi-spawn]
     sar[sub-agent-render]
   end
@@ -221,7 +221,7 @@ flowchart LR
   bash --> fs[fs]
   bash --> mutex
   bash --> outbuf[output-buffer]
-  bash --> perms[permissions]
+  bash --> perms[tool-policy]
   bash --> patch[prompt-patch]
   bash --> tui
 

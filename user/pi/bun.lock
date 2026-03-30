@@ -140,16 +140,6 @@
         "vitest": "^3.0.0",
       },
     },
-    "packages/core/permissions": {
-      "name": "@bds_pi/permissions",
-      "version": "0.0.0",
-      "dependencies": {
-        "@bds_pi/fs": "workspace:*",
-      },
-      "devDependencies": {
-        "vitest": "^3.0.0",
-      },
-    },
     "packages/core/pi-spawn": {
       "name": "@bds_pi/pi-spawn",
       "version": "0.0.0",
@@ -208,6 +198,16 @@
         "vitest": "^3.0.0",
       },
     },
+    "packages/core/tool-policy": {
+      "name": "@bds_pi/tool-policy",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bds_pi/fs": "workspace:*",
+      },
+      "devDependencies": {
+        "vitest": "^3.0.0",
+      },
+    },
     "packages/core/tui": {
       "name": "@bds_pi/tui",
       "version": "0.0.1",
@@ -224,8 +224,8 @@
         "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
-        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
+        "@bds_pi/tool-policy": "workspace:*",
         "@bds_pi/tui": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
@@ -273,8 +273,8 @@
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
-        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
+        "@bds_pi/tool-policy": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -298,8 +298,8 @@
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
-        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
+        "@bds_pi/tool-policy": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -347,8 +347,8 @@
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
-        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
+        "@bds_pi/tool-policy": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -459,9 +459,9 @@
       "dependencies": {
         "@bds_pi/box-format": "workspace:*",
         "@bds_pi/fs": "workspace:*",
-        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
         "@bds_pi/read": "workspace:*",
+        "@bds_pi/tool-policy": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -521,8 +521,8 @@
         "@bds_pi/config": "workspace:*",
         "@bds_pi/fs": "workspace:*",
         "@bds_pi/output-buffer": "workspace:*",
-        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
+        "@bds_pi/tool-policy": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -659,8 +659,8 @@
         "@bds_pi/file-tracker": "workspace:*",
         "@bds_pi/fs": "workspace:*",
         "@bds_pi/mutex": "workspace:*",
-        "@bds_pi/permissions": "workspace:*",
         "@bds_pi/prompt-patch": "workspace:*",
+        "@bds_pi/tool-policy": "workspace:*",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
@@ -842,8 +842,6 @@
 
     "@bds_pi/output-buffer": ["@bds_pi/output-buffer@workspace:packages/core/output-buffer"],
 
-    "@bds_pi/permissions": ["@bds_pi/permissions@workspace:packages/core/permissions"],
-
     "@bds_pi/pi-spawn": ["@bds_pi/pi-spawn@workspace:packages/core/pi-spawn"],
 
     "@bds_pi/prompt-patch": ["@bds_pi/prompt-patch@workspace:packages/core/prompt-patch"],
@@ -873,6 +871,8 @@
     "@bds_pi/tool-cost": ["@bds_pi/tool-cost@workspace:packages/core/tool-cost"],
 
     "@bds_pi/tool-harness": ["@bds_pi/tool-harness@workspace:packages/extensions/tool-harness"],
+
+    "@bds_pi/tool-policy": ["@bds_pi/tool-policy@workspace:packages/core/tool-policy"],
 
     "@bds_pi/tui": ["@bds_pi/tui@workspace:packages/core/tui"],
 

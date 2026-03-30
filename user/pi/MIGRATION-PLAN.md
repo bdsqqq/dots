@@ -50,7 +50,7 @@ packages/
 │   ├── output-buffer/
 │   ├── file-tracker/
 │   ├── mutex/
-│   ├── permissions/
+│   ├── tool-policy/
 │   ├── interpolate/
 │   ├── tool-cost/
 │   ├── html-to-md/
@@ -225,13 +225,13 @@ import { formatCost } from "@pi/tool-cost";
 
 ## phase 4: migrate a tool
 
-**example: `bash` (depends on `read`, `mutex`, `output-buffer`, `permissions`, `tui`)**
+**example: `bash` (depends on `read`, `mutex`, `output-buffer`, `tool-policy`, `tui`)**
 
 **4.1 ensure all dependencies migrated**
 
 - `@pi/output-buffer` ✓
 - `@pi/mutex` ✓
-- `@pi/permissions` ✓
+- `@pi/tool-policy` ✓
 - `@pi/tui` ✓
 - `@pi/read` ← also a tool, migrate in order
 
@@ -250,7 +250,7 @@ import { formatCost } from "@pi/tool-cost";
   "dependencies": {
     "@pi/output-buffer": "workspace:*",
     "@pi/mutex": "workspace:*",
-    "@pi/permissions": "workspace:*",
+    "@pi/tool-policy": "workspace:*",
     "@pi/tui": "workspace:*",
     "@pi/read": "workspace:*",
     "@sinclair/typebox": "catalog:"
@@ -406,7 +406,7 @@ bun run check
 ```
 leaves (no internal deps):
 ├── box-chrome, show, output-buffer, file-tracker, mutex
-├── permissions, interpolate, tool-cost, html-to-md, tui
+├── tool-policy, interpolate, tool-cost, html-to-md, tui
 ├── agents-md, github-api
 │
 mid (depends on leaves):
@@ -422,7 +422,7 @@ core fs tools:
 ├── glob (→ output-buffer)
 ├── mutex, file-tracker utilities
 ├── edit-file, create-file, undo-edit, format-file (→ read, mutex, file-tracker)
-├── bash (→ read, mutex, output-buffer, permissions, tui)
+├── bash (→ read, mutex, output-buffer, tool-policy, tui)
 │
 sub-agent tools (→ pi-spawn, sub-agent-render):
 ├── code-review, finder, librarian, look-at, oracle, task

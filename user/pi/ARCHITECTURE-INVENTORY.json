@@ -218,9 +218,9 @@
       ]
     },
     {
-      "name": "permissions",
-      "packageName": "@bds_pi/permissions",
-      "path": "packages/core/permissions",
+      "name": "tool-policy",
+      "packageName": "@bds_pi/tool-policy",
+      "path": "packages/core/tool-policy",
       "localDependencies": [],
       "exportsPiExtensions": [],
       "role": "runtime-helper",
@@ -353,7 +353,7 @@
         "@bds_pi/fs",
         "@bds_pi/mutex",
         "@bds_pi/output-buffer",
-        "@bds_pi/permissions",
+        "@bds_pi/tool-policy",
         "@bds_pi/prompt-patch",
         "@bds_pi/tui"
       ],
@@ -367,7 +367,7 @@
         "core/fs",
         "core/mutex",
         "core/output-buffer",
-        "core/permissions",
+        "core/tool-policy",
         "core/prompt-patch",
         "core/tui"
       ],

@@ -10,7 +10,7 @@
  * - SIGTERM → SIGKILL fallback on cancel/timeout (pi goes straight to SIGKILL)
  * - output truncation with head + tail (first/last N lines, not just tail)
  * - constant memory via OutputBuffer (no unbounded string growth)
- * - permission rules from ~/.pi/agent/permissions.json (allow/reject)
+ * - tool policy rules from ~/.pi/agent/tool-policy.json (allow/reject)
  *
  * shadows pi's built-in `bash` tool via same-name registration.
  */
@@ -33,7 +33,7 @@ import {
 import { getText } from "@bds_pi/tui";
 import { Type } from "@sinclair/typebox";
 import { withFileLock } from "@bds_pi/mutex";
-import * as permissions from "@bds_pi/permissions";
+import * as toolPolicy from "@bds_pi/tool-policy";
 import { resolveToAbsolute } from "@bds_pi/fs";
 import { OutputBuffer } from "@bds_pi/output-buffer";
 import {
@@ -158,7 +158,7 @@ function extractPathTokenCandidates(token: string): string[] {
 }
 
 /**
- * conservative path extraction for permission checks.
+ * conservative path extraction for tool policy checks.
  *
  * this is intentionally token-based, not a shell parser. it only tracks
  * explicit path-shaped args we care about for policy: absolute paths plus
@@ -517,7 +517,7 @@ export function createBashTool(
       }
 
       const pathTargets = extractExplicitPathArgs(command, effectiveCwd);
-      const verdict = permissions.evaluatePermission(
+      const verdict = toolPolicy.evaluateToolPolicy(
         "bash",
         {
           cmd: command,
@@ -525,12 +525,12 @@ export function createBashTool(
           paths: pathTargets,
           sessionCwd: ctx.cwd,
         },
-        permissions.loadPermissions(),
+        toolPolicy.loadToolPolicy(),
       );
       if (verdict.action === "reject") {
         const msg = verdict.message
           ? `command rejected: ${verdict.message}`
-          : `command rejected by permission rule. command: ${command}`;
+          : `command rejected by tool policy. command: ${command}`;
         throw new Error(msg);
       }
 
@@ -890,14 +890,14 @@ if (import.meta.vitest) {
       });
 
       it("rejects commands with /tmp path escapes before spawn", async () => {
-        const evaluatePermissionSpy = vi
-          .spyOn(permissions, "evaluatePermission")
+        const evaluateToolPolicySpy = vi
+          .spyOn(toolPolicy, "evaluateToolPolicy")
           .mockReturnValue({ action: "reject", message: "tmp blocked" });
 
         await expect(execute(`cat /tmp/escape.txt`)).rejects.toThrow(
           "command rejected: tmp blocked",
         );
-        expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+        expect(evaluateToolPolicySpy).toHaveBeenCalledWith(
           "bash",
           expect.objectContaining({
             cmd: "cat /tmp/escape.txt",
@@ -910,8 +910,8 @@ if (import.meta.vitest) {
       });
 
       it("rejects sibling-worktree escapes after cd normalization", async () => {
-        const evaluatePermissionSpy = vi
-          .spyOn(permissions, "evaluatePermission")
+        const evaluateToolPolicySpy = vi
+          .spyOn(toolPolicy, "evaluateToolPolicy")
           .mockReturnValue({ action: "reject", message: "within only" });
 
         await expect(
@@ -920,7 +920,7 @@ if (import.meta.vitest) {
             { cwd: "/workspace/root" },
           ),
         ).rejects.toThrow("command rejected: within only");
-        expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+        expect(evaluateToolPolicySpy).toHaveBeenCalledWith(
           "bash",
           expect.objectContaining({
             cmd: "cat ../sibling/secret.txt",
@@ -932,15 +932,15 @@ if (import.meta.vitest) {
         );
       });
 
-      it("passes escaped cwd to permissions even without explicit path args", async () => {
-        const evaluatePermissionSpy = vi
-          .spyOn(permissions, "evaluatePermission")
+      it("passes escaped cwd to tool policy even without explicit path args", async () => {
+        const evaluateToolPolicySpy = vi
+          .spyOn(toolPolicy, "evaluateToolPolicy")
           .mockReturnValue({ action: "reject", message: "within only" });
 
         await expect(
           executeWithCtx(`printf blocked > marker.txt`, { cwd: "/repo/escape" }),
         ).rejects.toThrow("command rejected: within only");
-        expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+        expect(evaluateToolPolicySpy).toHaveBeenCalledWith(
           "bash",
           expect.objectContaining({
             cmd: "printf blocked > marker.txt",

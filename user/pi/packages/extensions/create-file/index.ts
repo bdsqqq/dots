@@ -22,7 +22,7 @@ import { Type } from "@sinclair/typebox";
 import { saveChange, simpleDiff } from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
 import { resolveToAbsolute } from "@bds_pi/fs";
-import * as permissions from "@bds_pi/permissions";
+import * as toolPolicy from "@bds_pi/tool-policy";
 import {
   boxRendererWindowed,
   textSection,
@@ -100,13 +100,13 @@ export function createCreateFileTool(): ToolDefinition {
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
       const p = params as CreateFileParams;
       const resolved = resolveToAbsolute(p.path, ctx.cwd);
-      const verdict = permissions.evaluatePermission(
+      const verdict = toolPolicy.evaluateToolPolicy(
         "write",
         {
           path: resolved,
           sessionCwd: ctx.cwd,
         },
-        permissions.loadPermissions(),
+        toolPolicy.loadToolPolicy(),
       );
       if (verdict.action === "reject") {
         return {
@@ -115,7 +115,7 @@ export function createCreateFileTool(): ToolDefinition {
               type: "text" as const,
               text: verdict.message
                 ? `path rejected: ${verdict.message}`
-                : "path rejected by permission rule.",
+                : "path rejected by tool policy.",
             },
           ],
           isError: true,
@@ -174,13 +174,13 @@ if (import.meta.vitest) {
     vi.restoreAllMocks();
   });
 
-  describe("create-file permissions", () => {
+  describe("create-file tool policy", () => {
     it("rejects disallowed paths before writes", async () => {
       const tool = createCreateFileTool();
-      const evaluatePermissionSpy = vi
-        .spyOn(permissions, "evaluatePermission")
+      const evaluateToolPolicySpy = vi
+        .spyOn(toolPolicy, "evaluateToolPolicy")
         .mockReturnValue({ action: "reject", message: "workspace only" });
-      vi.spyOn(permissions, "loadPermissions").mockReturnValue([]);
+      vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([]);
       const getSessionId = vi.fn(() => "s");
 
       const result = (await tool.execute!(
@@ -193,7 +193,7 @@ if (import.meta.vitest) {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toBe("path rejected: workspace only");
-      expect(evaluatePermissionSpy).toHaveBeenCalledWith(
+      expect(evaluateToolPolicySpy).toHaveBeenCalledWith(
         "write",
         { path: "/repo/sibling/new.txt", sessionCwd: "/repo/project" },
         [],
