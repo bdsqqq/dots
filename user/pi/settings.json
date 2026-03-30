@@ -14,9 +14,9 @@
   "compaction": {
     "enabled": false
   },
-  "lastChangelogVersion": "0.62.0",
-  "defaultModel": "openai/gpt-5.4",
-  "defaultThinkingLevel": "xhigh",
+  "lastChangelogVersion": "0.64.0",
+  "defaultModel": "z-ai/glm-5",
+  "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
   "steeringMode": "all",
   "followUpMode": "all",
