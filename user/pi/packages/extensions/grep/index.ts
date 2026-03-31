@@ -315,7 +315,7 @@ export function createGrepTool(
         });
 
         child.on("error", (err) => {
-          rl.close();
+          try { rl.close(); } catch {}
           signal?.removeEventListener("abort", onAbort);
           resolve({
             content: [
