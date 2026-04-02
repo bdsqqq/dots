@@ -8,6 +8,7 @@
 
 let
   mbpPubKey = lib.removeSuffix "\n" (builtins.readFile ../../system/ssh-keys/mbp-m2.pub);
+  syncthing = import ../../modules/syncthing.nix { inherit lib; };
 in {
   imports = (
     [
@@ -21,6 +22,8 @@ in {
   networking.hostName = "htz-relay";
   networking.useDHCP = lib.mkDefault true;
   networking.networkmanager.enable = false;
+
+  my.primaryUser = "bdsqqq";
 
   networking.firewall = {
     enable = true;
@@ -83,54 +86,12 @@ in {
         connectionLimitMax = 0;
       };
 
-      devices = {
-        "mbp-m2" = {
-          id = "6QPGO5Z-ZBZZVDW-MCYFBKB-MGZQO47-GITV6C5-5YGBXLT-VWHNAQ4-5XMKDAG";
-          addresses = [
-            "tcp://mbp-m2:22000"
-            "quic://mbp-m2:22000"
-          ];
-          introducer = true;
-        };
-
-        ipd = {
-          id = "YORN2Q5-DWT444V-65WLF77-JHDHP5X-HHZEEFO-NKTLTYZ-M777AXS-X2KX6AF";
-          addresses = [
-            "tcp://ipd:22000"
-            "quic://ipd:22000"
-          ];
-        };
-
-        iph16 = {
-          id = "L2PJ4F3-BZUZ4RX-3BCPIYB-V544M22-P3WDZBF-ZEVYT5A-GPTX5ZF-ZM5KTQK";
-          addresses = [
-            "tcp://iph16:22000"
-            "quic://iph16:22000"
-          ];
-        };
-        
-        r56 = {
-          id = "JOWDMTJ-LQKWV6K-5V37UTD-EKJBBHS-3FJPKWD-HRONTJC-F4NZGJN-VKJTZAQ";
-          addresses = [
-            "tcp://r56:22000"
-            "quic://r56:22000"
-          ];
-        };
-      };
+      devices = syncthing.devicesFor [ "mbp-m2" "ipd" "iph16" "r56" ];
 
       folders = {
-        commonplace = {
-          enable = true;
-          id = "sqz7z-a6tfg";
-          label = "commonplace";
-          path = "/mnt/storage-01/commonplace";
-          type = "sendreceive";
+        commonplace = syncthing.folderFor "commonplace" "/mnt/storage-01/commonplace" false [ "mbp-m2" "ipd" "iph16" "r56" ] {
           rescanIntervalS = 3600;
-          devices = [ "mbp-m2" "ipd" "iph16" "r56" ];
-          versioning = {
-            type = "trashcan";
-            params.cleanoutDays = "30";
-          };
+          versioning.params.cleanoutDays = "30";
         };
       };
     };

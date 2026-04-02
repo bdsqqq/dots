@@ -1,6 +1,8 @@
 # hosts/mbp14.local/default.nix
 # Enhanced host configuration with improved input handling
-{ pkgs, inputs, systems ? [ ], pkgsFor ? null, ... }: {
+{ lib, pkgs, inputs, systems ? [ ], pkgsFor ? null, ... }:
+let syncthing = import ../../modules/syncthing.nix { inherit lib; };
+in {
   imports = [
     inputs.home-manager.darwinModules.home-manager
     ../../bundles/base.nix
@@ -26,7 +28,7 @@
       hostSystem = "aarch64-darwin";
       headMode = "graphical";
     };
-    users.bdsqqq = { lib, pkgs, ... }: {
+    users.bdsqqq = { lib, pkgs, config, ... }: {
       home.username = "bdsqqq";
       home.homeDirectory = "/Users/bdsqqq";
       home.stateVersion = "25.05";
@@ -54,67 +56,13 @@
             natEnabled = false;
           };
           
-          devices = {
-            "htz-relay" = {
-              id = "HPMO7GH-P5UX4LC-OYSWWVP-XTMOUWL-QXUDAYH-ZJXXQDJ-QN677MY-QNQACQH";
-              addresses = [ "tcp://htz-relay:22000" "quic://htz-relay:22000" ];
-            };
-            "r56" = {
-              id = "JOWDMTJ-LQKWV6K-5V37UTD-EKJBBHS-3FJPKWD-HRONTJC-F4NZGJN-VKJTZAQ";
-              addresses = [ "tcp://r56:22000" "quic://r56:22000" ];
-            };
-            "iph16" = {
-              id = "L2PJ4F3-BZUZ4RX-3BCPIYB-V544M22-P3WDZBF-ZEVYT5A-GPTX5ZF-ZM5KTQK";
-              addresses = [ "dynamic" ];
-            };
-            "ipd" = {
-              id = "YORN2Q5-DWT444V-65WLF77-JHDHP5X-HHZEEFO-NKTLTYZ-M777AXS-X2KX6AF";
-              addresses = [ "tcp://ipd:22000" "quic://ipd:22000" ];
-            };
-            "lgo-z2e" = {
-              id = "4B7Q2Z5-SNAOQJO-S4L4FSG-IBBV5XH-67DUXTW-L3Z3JT7-CUQCWP6-TKHP5AG";
-              addresses = [ "tcp://lgo-z2e:22000" "quic://lgo-z2e:22000" ];
-            };
-          };
+          devices = syncthing.devicesFor [ "htz-relay" "r56" "lgo-z2e" "iph16" "ipd" ];
           
           folders = {
-            commonplace = {
-              enable = true;
-              id = "sqz7z-a6tfg";
-              label = "commonplace";
-              path = "/Users/bdsqqq/commonplace";
-              type = "sendreceive";
-              rescanIntervalS = 60;
-              devices = [ "htz-relay" "r56" "iph16" "ipd" "lgo-z2e" ];
-              versioning = {
-                type = "trashcan";
-                params.cleanoutDays = "0";
-              };
-            };
-
-            prism-instances = {
-              enable = true;
-              id = "prism-instances";
-              label = "PrismLauncher instances";
-              path = "/Users/bdsqqq/Library/Application Support/PrismLauncher/instances";
-              type = "sendreceive";
-              rescanIntervalS = 120;
-              devices = [ "r56" "lgo-z2e" ];
-            };
-
-            zen-browser = {
-              enable = true;
-              id = "zen-browser";
-              label = "Zen Browser";
-              path = "/Users/bdsqqq/Library/Application Support/zen";
-              type = "sendreceive";
-              rescanIntervalS = 60;
-              devices = [ "lgo-z2e" "r56" ];
-              versioning = {
-                type = "trashcan";
-                params.cleanoutDays = "30";
-              };
-            };
+            commonplace = syncthing.folderFor "commonplace" config.home.homeDirectory true [ "htz-relay" "r56" "lgo-z2e" "iph16" "ipd" ] { label = "commonplace"; };
+            prism-instances = syncthing.folderFor "prism-instances" config.home.homeDirectory true [ "r56" "lgo-z2e" ] { label = "PrismLauncher instances"; rescanIntervalS = 120; versioning = null; };
+            zen-browser = syncthing.folderFor "zen-browser" config.home.homeDirectory true [ "lgo-z2e" "r56" ] { label = "Zen Browser"; versioning = { type = "trashcan"; params.cleanoutDays = "30"; }; };
+            pi-sessions = syncthing.folderFor "pi-sessions" config.home.homeDirectory true [ "lgo-z2e" ] {};
           };
         };
       };
@@ -138,6 +86,7 @@
   # ensure darwin user exists with a concrete home path so HM can derive paths
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
+  my.primaryUser = "bdsqqq";
 
   # required by nix-darwin
   system.stateVersion = 6;
