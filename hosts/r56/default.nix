@@ -1,6 +1,7 @@
-{ pkgs, inputs, lib, config, modulesPath, ... }:
+{ lib, pkgs, inputs, config, modulesPath, ... }:
 
 let
+  syncthing = import ../../modules/syncthing.nix { inherit lib; };
   berkeleyMono = pkgs.stdenv.mkDerivation {
     pname = "berkeley-mono";
     version = "1.0.0";
@@ -76,6 +77,7 @@ in
   ];
 
   my.hardware.gpu.vendors = [ "nvidia" ];
+  my.primaryUser = "bdsqqq";
 
   networking.hostName = "r56";
   networking.networkmanager.enable = true;
@@ -111,60 +113,12 @@ in
         natEnabled = false;
       };
 
-      devices = {
-        "mbp-m2" = {
-          id = "6QPGO5Z-ZBZZVDW-MCYFBKB-MGZQO47-GITV6C5-5YGBXLT-VWHNAQ4-5XMKDAG";
-          addresses = [ "tcp://mbp-m2:22000" "quic://mbp-m2:22000" ];
-          introducer = true;
-        };
-        "htz-relay" = {
-          id = "HPMO7GH-P5UX4LC-OYSWWVP-XTMOUWL-QXUDAYH-ZJXXQDJ-QN677MY-QNQACQH";
-          addresses = [ "tcp://htz-relay:22000" "quic://htz-relay:22000" ];
-        };
-        "lgo-z2e" = {
-          id = "4B7Q2Z5-SNAOQJO-S4L4FSG-IBBV5XH-67DUXTW-L3Z3JT7-CUQCWP6-TKHP5AG";
-          addresses = [ "tcp://lgo-z2e:22000" "quic://lgo-z2e:22000" ];
-        };
-      };
+      devices = syncthing.devicesFor [ "mbp-m2" "htz-relay" "lgo-z2e" ];
 
       folders = {
-        commonplace = {
-          enable = true;
-          id = "sqz7z-a6tfg";
-          label = "commonplace";
-          path = "/home/bdsqqq/commonplace";
-          type = "sendreceive";
-          rescanIntervalS = 60;
-          devices = [ "mbp-m2" "htz-relay" "lgo-z2e" ];
-          versioning = {
-            type = "trashcan";
-            params.cleanoutDays = "0";
-          };
-        };
-
-        prism-instances = {
-          enable = true;
-          id = "prism-instances";
-          label = "PrismLauncher instances";
-          path = "/home/bdsqqq/.local/share/PrismLauncher/instances";
-          type = "sendreceive";
-          rescanIntervalS = 120;
-          devices = [ "mbp-m2" "lgo-z2e" ];
-        };
-
-        zen-browser = {
-          enable = true;
-          id = "zen-browser";
-          label = "Zen Browser";
-          path = "/home/bdsqqq/.var/app/app.zen_browser.zen/.zen";
-          type = "sendreceive";
-          rescanIntervalS = 60;
-          devices = [ "mbp-m2" "lgo-z2e" ];
-          versioning = {
-            type = "trashcan";
-            params.cleanoutDays = "30";
-          };
-        };
+        commonplace = syncthing.folderFor "commonplace" "/home/bdsqqq" false [ "mbp-m2" "htz-relay" "lgo-z2e" ] {};
+        prism-instances = syncthing.folderFor "prism-instances" "/home/bdsqqq" false [ "mbp-m2" "lgo-z2e" ] { rescanIntervalS = 120; versioning = null; };
+        zen-browser = syncthing.folderFor "zen-browser" "/home/bdsqqq" false [ "mbp-m2" "lgo-z2e" ] { versioning = { type = "trashcan"; params.cleanoutDays = "30"; }; };
       };
     };
   };

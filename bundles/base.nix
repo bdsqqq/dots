@@ -1,6 +1,7 @@
 { lib, config, pkgs, ... }:
 {
   imports = [
+    ../modules/primary-user.nix
     ../system/nix.nix
     ../system/nix-ld.nix
     ../system/ssh.nix
