@@ -236,7 +236,7 @@ export const agents: Record<AgentId, AgentProfile> = {
     id: "oracle",
     role: "deepReasoning",
     label: "Oracle",
-    currentModel: "gpt-5-2",
+    currentModel: "gemini-3-1-pro",
   },
   "code-review": {
     id: "code-review",
@@ -254,7 +254,7 @@ export const agents: Record<AgentId, AgentProfile> = {
     id: "librarian",
     role: "repoResearch",
     label: "Librarian",
-    currentModel: "gemini-3-flash",
+    currentModel: "gpt-5-4",
   },
   handoff: {
     id: "handoff",

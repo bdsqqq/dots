@@ -52,7 +52,7 @@ type LibrarianExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: LibrarianExtConfig = {
-  model: "openrouter/google/gemini-3-flash-preview",
+  model: "openrouter/openai/gpt-5.4",
   extensionTools: [
     "read_github",
     "search_github",

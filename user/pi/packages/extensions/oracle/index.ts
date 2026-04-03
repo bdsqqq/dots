@@ -51,7 +51,7 @@ type OracleExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: OracleExtConfig = {
-  model: "openrouter/openai/gpt-5.2",
+  model: "openrouter/google/gemini-3.1-pro-preview",
   extensionTools: ["read", "grep", "find", "ls", "bash"],
   builtinTools: ["read", "grep", "find", "ls", "bash"],
   promptFile: "agent.amp.oracle.md",
