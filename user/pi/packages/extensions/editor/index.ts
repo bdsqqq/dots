@@ -708,17 +708,19 @@ function editorExtension(pi: ExtensionAPI): void {
     if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
   });
 
-  pi.on("session_switch", async (_event, ctx) => {
-    // editor component persists across session switches, just update stats
-    branchUnsub?.();
-    branchUnsub = null;
-    gitBranch = null;
-    stopSpinner();
-    activity.phase = "idle";
-    activity.activeTools.clear();
-    statusRow?.clear();
-    statsCacheBranchLen.value = -1;
-    if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
+  pi.on("session_start", async (event, ctx) => {
+    if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") {
+      // editor component persists across session switches, just update stats
+      branchUnsub?.();
+      branchUnsub = null;
+      gitBranch = null;
+      stopSpinner();
+      activity.phase = "idle";
+      activity.activeTools.clear();
+      statusRow?.clear();
+      statsCacheBranchLen.value = -1;
+      if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
+    }
   });
 }
 

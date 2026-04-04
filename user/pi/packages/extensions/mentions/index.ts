@@ -106,12 +106,6 @@ function createMentionsExtension(deps: MentionAdapterDeps) {
       deps.clearSessionMentionCache();
       deps.clearCommitIndexCache();
     });
-
-    pi.on("session_switch", async () => {
-      clearActive();
-      deps.clearSessionMentionCache();
-      deps.clearCommitIndexCache();
-    });
   };
 }
 
@@ -339,7 +333,7 @@ if (import.meta.vitest) {
       );
     });
 
-    it("clears adapter state on agent_end, session_start, and session_switch", async () => {
+    it("clears adapter state on agent_end and session_start", async () => {
       const {
         deps,
         resolveMentionsMock,
@@ -381,10 +375,6 @@ if (import.meta.vitest) {
       const contextHandler = getHandler(harness.handlers, "context");
       const agentEndHandler = getHandler(harness.handlers, "agent_end");
       const sessionStartHandler = getHandler(harness.handlers, "session_start");
-      const sessionSwitchHandler = getHandler(
-        harness.handlers,
-        "session_switch",
-      );
 
       const primeState = async () => {
         await inputHandler(
@@ -412,7 +402,7 @@ if (import.meta.vitest) {
       expect(clearCommitIndexCacheMock).not.toHaveBeenCalled();
 
       await primeState();
-      await sessionStartHandler();
+      await sessionStartHandler({ reason: "startup" });
       await expect(contextHandler({ messages: baseMessages })).resolves.toEqual(
         {
           messages: baseMessages,
@@ -422,7 +412,7 @@ if (import.meta.vitest) {
       expect(clearCommitIndexCacheMock).toHaveBeenCalledTimes(1);
 
       await primeState();
-      await sessionSwitchHandler();
+      await sessionStartHandler({ reason: "resume" });
       await expect(contextHandler({ messages: baseMessages })).resolves.toEqual(
         {
           messages: baseMessages,

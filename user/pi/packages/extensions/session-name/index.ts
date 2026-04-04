@@ -107,9 +107,11 @@ function sessionNameExtension(pi: ExtensionAPI): void {
       });
   });
 
-  pi.on("session_switch", async () => {
-    messageCount = 0;
-    pending = false;
+  pi.on("session_start", async (event) => {
+    if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") {
+      messageCount = 0;
+      pending = false;
+    }
   });
 }
 
@@ -235,7 +237,7 @@ if (import.meta.vitest) {
 
       expect([...harness.handlers.keys()].sort()).toEqual([
         "input",
-        "session_switch",
+        "session_start",
       ]);
     });
 
@@ -266,7 +268,7 @@ if (import.meta.vitest) {
 
       expect([...harness.handlers.keys()].sort()).toEqual([
         "input",
-        "session_switch",
+        "session_start",
       ]);
 
       const inputHandler = harness.handlers.get("input");
