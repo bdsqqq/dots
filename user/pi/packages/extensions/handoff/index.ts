@@ -559,12 +559,14 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
     });
 
     // reset state on manual session switch
-    pi.on("session_switch", async (_event, ctx) => {
-      storedHandoffPrompt = null;
-      handoffPending = false;
-      generating = false;
-      pi.events.emit("editor:remove-label", { key: "handoff" });
-      ctx.ui.setWidget("handoff-provenance", undefined);
+    pi.on("session_start", async (event, ctx) => {
+      if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") {
+        storedHandoffPrompt = null;
+        handoffPending = false;
+        generating = false;
+        pi.events.emit("editor:remove-label", { key: "handoff" });
+        ctx.ui.setWidget("handoff-provenance", undefined);
+      }
     });
 
     // --- handoff tool: agent-invokable session transfer ---
@@ -774,7 +776,7 @@ if (import.meta.vitest) {
           "agent_end",
           "session_before_compact",
           "session_start",
-          "session_switch",
+          "session_start",
         ]);
         expect(harness.commands).toEqual([
           {
@@ -862,7 +864,7 @@ if (import.meta.vitest) {
         "agent_end",
         "session_before_compact",
         "session_start",
-        "session_switch",
+        "session_start",
       ]);
       expect(harness.commands).toEqual([
         {

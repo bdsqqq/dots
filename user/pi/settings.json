@@ -14,8 +14,8 @@
   "compaction": {
     "enabled": false
   },
-  "lastChangelogVersion": "0.64.0",
-  "defaultModel": "z-ai/glm-5",
+  "lastChangelogVersion": "0.65.0",
+  "defaultModel": "minimax/minimax-m2.7",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
   "steeringMode": "all",

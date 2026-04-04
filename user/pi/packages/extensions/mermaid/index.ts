@@ -186,8 +186,10 @@ export default function mermaidInlineExtension(pi: ExtensionAPI): void {
     };
   });
 
-  pi.on("session_switch", async () => {
-    diagrams = [];
+  pi.on("session_start", async (event) => {
+    if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") {
+      diagrams = [];
+    }
   });
 
   pi.registerShortcut("ctrl+shift+m", {

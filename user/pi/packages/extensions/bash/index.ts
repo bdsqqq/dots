@@ -1095,8 +1095,10 @@ function createBashExtension(
     pi.on("session_shutdown", async () => {
       await cleanupBackgroundProcesses(backgroundState, cfg.sigkillDelayMs);
     });
-    pi.on("session_switch", async () => {
-      await cleanupBackgroundProcesses(backgroundState, cfg.sigkillDelayMs);
+    pi.on("session_start", async (event) => {
+      if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") {
+        await cleanupBackgroundProcesses(backgroundState, cfg.sigkillDelayMs);
+      }
     });
   };
 }
@@ -1171,7 +1173,7 @@ if (import.meta.vitest) {
       expect(harness.handlers).toHaveLength(2);
       expect(harness.handlers.map((handler) => handler.event)).toEqual([
         "session_shutdown",
-        "session_switch",
+        "session_start",
       ]);
     });
 

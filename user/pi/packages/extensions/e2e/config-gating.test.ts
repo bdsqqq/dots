@@ -692,7 +692,6 @@ describe("config gating integration", () => {
         "agent_end",
         "session_before_compact",
         "session_start",
-        "session_switch",
       ]),
     );
     expect(getMentionSource("session")).toBe(previousSessionSource);

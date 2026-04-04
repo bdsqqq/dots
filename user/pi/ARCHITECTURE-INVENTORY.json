@@ -744,7 +744,6 @@
         "hook:context",
         "hook:agent_end",
         "hook:session_start",
-        "hook:session_switch",
         "editor-autocomplete:mentions"
       ],
       "composesWith": ["core/mentions", "core/editor-capabilities"],
@@ -911,7 +910,7 @@
       "exportsPiExtensions": ["./index.ts"],
       "role": "feature-extension",
       "purpose": "automatic session naming and periodic title drift correction",
-      "registers": ["hook:input", "hook:session_switch"],
+      "registers": ["hook:input", "hook:session_start"],
       "composesWith": ["core/config"],
       "runtimeType": "lifecycle feature"
     },
