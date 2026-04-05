@@ -127,6 +127,7 @@ in {
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
+    backupFileExtension = "backup";
     extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "headless"; torchBackend = "cpu"; };
     users.bdsqqq = {
       home.username = "bdsqqq";
