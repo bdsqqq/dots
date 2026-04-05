@@ -31,12 +31,19 @@ in {
     trustedInterfaces = [ "tailscale0" ];
     allowedTCPPorts = [ ];
     allowedUDPPorts = [ ];
-    interfaces.tailscale0.allowedTCPPorts = [ 22000 8384 3923 ];
+    interfaces.tailscale0.allowedTCPPorts = [ 22 22000 8384 3923 ];
     interfaces.tailscale0.allowedUDPPorts = [ 22000 ];
     checkReversePath = "loose";
   };
 
   # ssh provided by base bundle
+  services.openssh = {
+    enable = true;
+    settings = {
+      PasswordAuthentication = false;
+      PermitRootLogin = "no";
+    };
+  };
 
   # tailscale provided by base bundle; host-specific flags preserved
   services.tailscale = {
