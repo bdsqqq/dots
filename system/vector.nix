@@ -13,6 +13,9 @@ let
   
   axiomConfigPath = "${homeDir}/.axiom.toml";
   
+  # dasel v3.x changed CLI: -f flag removed, uses stdin piping instead
+  # OLD: dasel -f file.toml 'query'
+  # NEW: dasel -i toml 'query' < file.toml
   dasel = "${pkgs.dasel}/bin/dasel";
   
   # darwin uses file source for logs; linux uses journald
@@ -100,15 +103,14 @@ if isDarwin then {
   
   launchd.daemons.vector = {
     script = ''
-      # parse axiom credentials from toml config using dasel
-      # shared url/org from deployment, dataset-specific tokens
-      export AXIOM_URL_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.url')"
-      export AXIOM_ORG_ID_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.org_id')"
-      export AXIOM_TOKEN_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.datasets.papertrail.token')"
+      # parse axiom credentials from toml config using dasel v3.x syntax (stdin piping)
+      export AXIOM_URL_LOGS="$(${dasel} -i toml '.deployments.personal.url' < "${axiomConfigPath}")"
+      export AXIOM_ORG_ID_LOGS="$(${dasel} -i toml '.deployments.personal.org_id' < "${axiomConfigPath}")"
+      export AXIOM_TOKEN_LOGS="$(${dasel} -i toml '.deployments.personal.datasets.papertrail.token' < "${axiomConfigPath}")"
       
-      export AXIOM_URL_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.url')"
-      export AXIOM_ORG_ID_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.org_id')"
-      export AXIOM_TOKEN_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.datasets.host-metrics.token')"
+      export AXIOM_URL_METRICS="$(${dasel} -i toml '.deployments.personal.url' < "${axiomConfigPath}")"
+      export AXIOM_ORG_ID_METRICS="$(${dasel} -i toml '.deployments.personal.org_id' < "${axiomConfigPath}")"
+      export AXIOM_TOKEN_METRICS="$(${dasel} -i toml '.deployments.personal.datasets.host-metrics.token' < "${axiomConfigPath}")"
       
       exec ${pkgs.vector}/bin/vector --config /etc/vector/vector.toml
     '';
@@ -139,15 +141,14 @@ if isDarwin then {
     requires = [ "network-online.target" ];
     
     script = ''
-      # parse axiom credentials from toml config using dasel
-      # shared url/org from deployment, dataset-specific tokens
-      export AXIOM_URL_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.url')"
-      export AXIOM_ORG_ID_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.org_id')"
-      export AXIOM_TOKEN_LOGS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.datasets.papertrail.token')"
+      # parse axiom credentials from toml config using dasel v3.x syntax (stdin piping)
+      export AXIOM_URL_LOGS="$(${dasel} -i toml '.deployments.personal.url' < "${axiomConfigPath}")"
+      export AXIOM_ORG_ID_LOGS="$(${dasel} -i toml '.deployments.personal.org_id' < "${axiomConfigPath}")"
+      export AXIOM_TOKEN_LOGS="$(${dasel} -i toml '.deployments.personal.datasets.papertrail.token' < "${axiomConfigPath}")"
       
-      export AXIOM_URL_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.url')"
-      export AXIOM_ORG_ID_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.org_id')"
-      export AXIOM_TOKEN_METRICS="$(${dasel} -f "${axiomConfigPath}" '.deployments.personal.datasets.host-metrics.token')"
+      export AXIOM_URL_METRICS="$(${dasel} -i toml '.deployments.personal.url' < "${axiomConfigPath}")"
+      export AXIOM_ORG_ID_METRICS="$(${dasel} -i toml '.deployments.personal.org_id' < "${axiomConfigPath}")"
+      export AXIOM_TOKEN_METRICS="$(${dasel} -i toml '.deployments.personal.datasets.host-metrics.token' < "${axiomConfigPath}")"
       
       exec ${pkgs.vector}/bin/vector --config /etc/vector/vector.toml
     '';
