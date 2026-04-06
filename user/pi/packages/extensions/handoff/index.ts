@@ -411,7 +411,11 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
 
       if (parent) showProvenance(ctx, parent);
 
-      pi.sendUserMessage(prompt);
+      // pi.sendUserMessage() doesn't work after ctx.newSession() because pi creates
+      // a new runtime for each session but the extension still references the old one.
+      // Stage the prompt in the editor for manual submission instead (like pi's handoff example).
+      ctx.ui.setEditorText(prompt);
+      ctx.ui.notify("Handoff ready. Review the prompt and press Enter to submit.", "info");
       return true;
     }
 
