@@ -20,12 +20,28 @@ scope: `user/pi`
 
 ## tests
 
-- prefer inline `import.meta.vitest` coverage in `index.ts` when the logic is local and pure.
-- keep separate test files for scenario coverage, sdk/session smoke tests, tmux/tui flows, network/auth cases, and fixture-driven contracts.
-- for config-gating and similar startup slices, verify with:
-  - `bun x tsc -p tsconfig.build.json --noEmit`
-  - targeted `bun x vitest run ...`
-  - `bun run test`
+- **everything inline** — use `if (import.meta.vitest) { ... }` blocks at the bottom of source files. no `__tests__/` directories.
+- **test outcomes, not implementation** — "prompt appears in editor" not "sendUserMessage was called".
+- **only mock boundaries** — file system, network, LLM. never mock the system under test.
+- **thin wrappers don't need execution tests** — sub-agents that just call `piSpawn` have no meaningful unit tests. their value is prompt quality, which is an eval, not a unit test.
+- **TUI components**: mock theme to strip ANSI (`fg: (_, text) => text`), assert on `render(width)` output.
+- **export internals for testing**, but don't advertise in package.json exports.
+
+**what to test inline:**
+- string transformations
+- type guards / validators
+- parsing / data extraction
+- pure utility functions
+- extension registration (with minimal tracking mocks)
+
+**what NOT to test:**
+- "was piSpawn called with correct args" — that's testing piSpawn's contract
+- string interpolation / template assembly — trivial
+- config pass-through — just data
+
+verify with:
+- `bun x tsc -p tsconfig.build.json --noEmit`
+- `bun run test`
 
 ## style
 
