@@ -1,6 +1,4 @@
 # system/vector.nix
-# Vector for logs and metrics → Axiom
-# Works on both darwin (launchd) and linux (systemd)
 { lib, pkgs, config, hostSystem ? null, ... }:
 
 let
@@ -13,12 +11,11 @@ let
   
   axiomConfigPath = "${homeDir}/.axiom.toml";
   
-  # dasel v3.x changed CLI: -f flag removed, uses stdin piping instead
-  # OLD: dasel -f file.toml 'query'
-  # NEW: dasel -i toml 'query' < file.toml
+  # dasel v3 dropped the -f flag and leading-dot selector syntax.
+  # v2: dasel -f file.toml '.key'   v3: dasel -i toml 'key' < file.toml
+  # leading dots cause silent parse failure → empty env vars → InvalidUri(Empty)
   dasel = "${pkgs.dasel}/bin/dasel";
   
-  # darwin uses file source for logs; linux uses journald
   vectorConfig = if isDarwin then ''
     data_dir = "${dataDir}"
     
@@ -103,14 +100,16 @@ if isDarwin then {
   
   launchd.daemons.vector = {
     script = ''
-      # parse axiom credentials from toml config using dasel v3.x syntax (stdin piping)
-      export AXIOM_URL_LOGS="$(${dasel} -i toml '.deployments.personal.url' < "${axiomConfigPath}")"
-      export AXIOM_ORG_ID_LOGS="$(${dasel} -i toml '.deployments.personal.org_id' < "${axiomConfigPath}")"
-      export AXIOM_TOKEN_LOGS="$(${dasel} -i toml '.deployments.personal.datasets.papertrail.token' < "${axiomConfigPath}")"
+      # dasel v3: selectors MUST NOT have a leading dot.
+      # a leading dot fails silently, producing empty strings for all env vars,
+      # which causes axiom sinks to drop every event with InvalidUri(Empty).
+      export AXIOM_URL_LOGS="$(${dasel} -i toml 'deployments.personal.url' < "${axiomConfigPath}")"
+      export AXIOM_ORG_ID_LOGS="$(${dasel} -i toml 'deployments.personal.org_id' < "${axiomConfigPath}")"
+      export AXIOM_TOKEN_LOGS="$(${dasel} -i toml 'deployments.personal.datasets.papertrail.token' < "${axiomConfigPath}")"
       
-      export AXIOM_URL_METRICS="$(${dasel} -i toml '.deployments.personal.url' < "${axiomConfigPath}")"
-      export AXIOM_ORG_ID_METRICS="$(${dasel} -i toml '.deployments.personal.org_id' < "${axiomConfigPath}")"
-      export AXIOM_TOKEN_METRICS="$(${dasel} -i toml '.deployments.personal.datasets.host-metrics.token' < "${axiomConfigPath}")"
+      export AXIOM_URL_METRICS="$(${dasel} -i toml 'deployments.personal.url' < "${axiomConfigPath}")"
+      export AXIOM_ORG_ID_METRICS="$(${dasel} -i toml 'deployments.personal.org_id' < "${axiomConfigPath}")"
+      export AXIOM_TOKEN_METRICS="$(${dasel} -i toml 'deployments.personal.datasets.host-metrics.token' < "${axiomConfigPath}")"
       
       exec ${pkgs.vector}/bin/vector --config /etc/vector/vector.toml
     '';
@@ -141,14 +140,16 @@ if isDarwin then {
     requires = [ "network-online.target" ];
     
     script = ''
-      # parse axiom credentials from toml config using dasel v3.x syntax (stdin piping)
-      export AXIOM_URL_LOGS="$(${dasel} -i toml '.deployments.personal.url' < "${axiomConfigPath}")"
-      export AXIOM_ORG_ID_LOGS="$(${dasel} -i toml '.deployments.personal.org_id' < "${axiomConfigPath}")"
-      export AXIOM_TOKEN_LOGS="$(${dasel} -i toml '.deployments.personal.datasets.papertrail.token' < "${axiomConfigPath}")"
+      # dasel v3: selectors MUST NOT have a leading dot.
+      # a leading dot fails silently, producing empty strings for all env vars,
+      # which causes axiom sinks to drop every event with InvalidUri(Empty).
+      export AXIOM_URL_LOGS="$(${dasel} -i toml 'deployments.personal.url' < "${axiomConfigPath}")"
+      export AXIOM_ORG_ID_LOGS="$(${dasel} -i toml 'deployments.personal.org_id' < "${axiomConfigPath}")"
+      export AXIOM_TOKEN_LOGS="$(${dasel} -i toml 'deployments.personal.datasets.papertrail.token' < "${axiomConfigPath}")"
       
-      export AXIOM_URL_METRICS="$(${dasel} -i toml '.deployments.personal.url' < "${axiomConfigPath}")"
-      export AXIOM_ORG_ID_METRICS="$(${dasel} -i toml '.deployments.personal.org_id' < "${axiomConfigPath}")"
-      export AXIOM_TOKEN_METRICS="$(${dasel} -i toml '.deployments.personal.datasets.host-metrics.token' < "${axiomConfigPath}")"
+      export AXIOM_URL_METRICS="$(${dasel} -i toml 'deployments.personal.url' < "${axiomConfigPath}")"
+      export AXIOM_ORG_ID_METRICS="$(${dasel} -i toml 'deployments.personal.org_id' < "${axiomConfigPath}")"
+      export AXIOM_TOKEN_METRICS="$(${dasel} -i toml 'deployments.personal.datasets.host-metrics.token' < "${axiomConfigPath}")"
       
       exec ${pkgs.vector}/bin/vector --config /etc/vector/vector.toml
     '';
