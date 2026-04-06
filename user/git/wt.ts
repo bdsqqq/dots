@@ -18,6 +18,13 @@ import { join, dirname, basename, relative, resolve } from "path";
 
 type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
+/**
+ * exit with error code, typed as never to satisfy TS that code path ends.
+ */
+function die(code = 1): never {
+  process.exit(code);
+}
+
 // ============================================================================
 // DOMAIN TYPES
 // ============================================================================
@@ -865,7 +872,7 @@ async function main() {
   const contextResult = await detectContext(cwd);
   if (!contextResult.ok) {
     console.error("error: failed to detect git context");
-    process.exit(1);
+    die();
   }
   const ctx = contextResult.value;
 
@@ -877,7 +884,7 @@ no bare-repo.git found. clone one:
   wt <repo-url>
   wt <repo-url> <dir>
 `);
-      process.exit(1);
+      die();
     }
 
     if (ctx.type === "in_worktree") {
@@ -905,7 +912,7 @@ no bare-repo.git found. clone one:
     const worktreesResult = await listWorktrees(ctx.bareRepo);
     if (!worktreesResult.ok) {
       console.error("error: failed to list worktrees");
-      process.exit(1);
+      die();
     }
 
     const defaultBranchResult = await getDefaultBranch(ctx.bareRepo.gitDir);
@@ -939,13 +946,13 @@ no bare-repo.git found. clone one:
 
     if (ctx.type !== "in_worktree") {
       console.error("error: not in a worktree");
-      process.exit(1);
+      die();
     }
 
     const result = await symlinkEnvFiles(ctx.bareRepo, ctx.worktree);
     if (!result.ok) {
       console.error(`error: ${result.error.type}`);
-      process.exit(1);
+      die();
     }
 
     const { created, skipped } = result.value;
@@ -970,12 +977,12 @@ no bare-repo.git found. clone one:
 
     if (!name) {
       console.error("error: not in a worktree, specify name");
-      process.exit(1);
+      die();
     }
 
     if (ctx.type === "no_bare_repo") {
       console.error("error: no bare-repo.git found");
-      process.exit(1);
+      die();
     }
 
     const bareRepo = ctx.type === "in_worktree" ? ctx.bareRepo : ctx.bareRepo;
@@ -986,21 +993,25 @@ no bare-repo.git found. clone one:
     // check if default branch
     if (name === defaultBranch) {
       console.error(`error: refusing to remove default branch worktree (${defaultBranch})`);
-      process.exit(1);
+      die();
     }
 
     // check if exists
     const exists = existsSync(join(bareRepo.root, name));
     if (!exists) {
       console.error(`error: worktree not found: ${name}`);
-      process.exit(1);
+      die();
     }
+
+    // cd to bare root first - if we're in the worktree being removed,
+    // git worktree remove will delete our cwd and Bun's shell will error
+    process.chdir(bareRepo.root);
 
     console.log(`removing: ${name}`);
     const result = await removeWorktree(bareRepo, name);
     if (!result.ok) {
       console.error(`error: ${result.error.type}`);
-      process.exit(1);
+      die();
     }
     console.log("done");
     return;
@@ -1016,12 +1027,12 @@ no bare-repo.git found. clone one:
     const prNum = args[1];
     if (!prNum) {
       console.error("usage: wt pr <number>");
-      process.exit(1);
+      die();
     }
 
     if (ctx.type === "no_bare_repo") {
       console.error("error: no bare-repo.git found");
-      process.exit(1);
+      die();
     }
 
     const bareRepo = ctx.type === "in_worktree" ? ctx.bareRepo : ctx.bareRepo;
@@ -1029,7 +1040,7 @@ no bare-repo.git found. clone one:
 
     if (isNaN(prNumber)) {
       console.error("error: invalid PR number");
-      process.exit(1);
+      die();
     }
 
     const result = await addPrWorktree(bareRepo, prNumber);
@@ -1041,12 +1052,13 @@ no bare-repo.git found. clone one:
       }
       if (err.type === "worktree_exists_wrong_branch") {
         console.error(`error: worktree ${err.name} exists but has branch '${err.actualBranch}', PR #${prNumber} is on '${err.expectedBranch}'`);
-        process.exit(1);
+        die();
       }
       console.error(`error: ${err.type}`);
-      process.exit(1);
+      die();
     }
 
+    process.chdir(result.value.path);
     console.log(`done. pr-${prNumber} (${result.value.branch})`);
     return;
   }
@@ -1057,7 +1069,7 @@ no bare-repo.git found. clone one:
     const prNum = prMatch[1];
     if (ctx.type === "no_bare_repo") {
       console.error("error: no bare-repo.git found");
-      process.exit(1);
+      die();
     }
 
     const bareRepo = ctx.type === "in_worktree" ? ctx.bareRepo : ctx.bareRepo;
@@ -1072,12 +1084,13 @@ no bare-repo.git found. clone one:
       }
       if (err.type === "worktree_exists_wrong_branch") {
         console.error(`error: worktree ${err.name} exists but has branch '${err.actualBranch}', PR #${prNumber} is on '${err.expectedBranch}'`);
-        process.exit(1);
+        die();
       }
       console.error(`error: ${err.type}`);
-      process.exit(1);
+      die();
     }
 
+    process.chdir(result.value.path);
     console.log(`done. pr-${prNumber} (${result.value.branch})`);
     return;
   }
@@ -1090,7 +1103,7 @@ no bare-repo.git found. clone one:
 
       if (!prNum || !orgRepo) {
         console.error("error: invalid PR URL");
-        process.exit(1);
+        die();
       }
 
       // check if we have a matching bare repo
@@ -1103,14 +1116,15 @@ no bare-repo.git found. clone one:
         if (remoteOrgRepo === orgRepo) {
           // same repo, handle as pr
           const result = await addPrWorktree(bareRepo, prNum);
-          if (!result.ok && result.error.type !== "worktree_exists") {
-            console.error(`error: ${result.error.type}`);
-            process.exit(1);
-          }
-          if (result.error?.type === "worktree_exists") {
+          if (!result.ok) {
+            if (result.error.type !== "worktree_exists") {
+              console.error(`error: ${result.error.type}`);
+              die();
+            }
             console.log(`worktree already exists for PR #${prNum}`);
           } else {
-            console.log(`done. pr-${prNum} (${result.value?.branch})`);
+            process.chdir(result.value.path);
+            console.log(`done. pr-${prNum} (${result.value.branch})`);
           }
           return;
         }
@@ -1123,16 +1137,19 @@ no bare-repo.git found. clone one:
       const cloneResult = await cloneBareRepo(`https://github.com/${orgRepo}.git`, targetDir);
       if (!cloneResult.ok) {
         console.error(`error: ${cloneResult.error.type}`);
-        process.exit(1);
+        die();
       }
 
       // add PR worktree
       const prResult = await addPrWorktree(cloneResult.value.bareRepo, prNum);
       if (!prResult.ok && prResult.error.type !== "worktree_exists") {
         console.error(`error: ${prResult.error.type}`);
-        process.exit(1);
+        die();
       }
 
+      if (prResult.ok) {
+        process.chdir(prResult.value.path);
+      }
       console.log("done.");
       return;
     }
@@ -1144,7 +1161,7 @@ no bare-repo.git found. clone one:
     const result = await cloneBareRepo(arg0, targetDir);
     if (!result.ok) {
       console.error(`error: ${result.error.type}`);
-      process.exit(1);
+      die();
     }
 
     console.log(`done. ${result.value.defaultBranch}`);
@@ -1154,7 +1171,7 @@ no bare-repo.git found. clone one:
   // branch name - create worktree
   if (ctx.type === "no_bare_repo") {
     console.error("error: no bare-repo.git found. use 'wt <repo-url>' to set up.");
-    process.exit(1);
+    die();
   }
 
   const bareRepo = ctx.type === "in_worktree" ? ctx.bareRepo : ctx.bareRepo;
@@ -1170,15 +1187,16 @@ no bare-repo.git found. clone one:
       return;
     }
     console.error(`error: worktree ${name} exists but has branch '${existingBranch}', not '${name}'`);
-    process.exit(1);
+    die();
   }
 
   const result = await addBranchWorktree(bareRepo, name);
   if (!result.ok) {
     console.error(`error: ${result.error.type}`);
-    process.exit(1);
+    die();
   }
 
+  process.chdir(result.value.path);
   console.log(`done. ${name}`);
 }
 
