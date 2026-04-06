@@ -11,9 +11,6 @@
  *   /handoff check other places that need this fix
  */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import {
   complete,
   type Api,
@@ -37,9 +34,7 @@ import {
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import {
-  clearConfigCache,
   getEnabledExtensionConfig,
-  setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
 import { registerMentionSource } from "@bds_pi/mentions";
@@ -645,243 +640,278 @@ const handoffExtension: (pi: ExtensionAPI) => void = createHandoffExtension();
 
 export default handoffExtension;
 
+// Export for testing
+export {
+  parsePromptSections,
+  extractToolCallArgs,
+  assembleHandoffPrompt,
+  isHandoffConfig,
+  isPlainObject,
+  getParentDescription,
+  showProvenance,
+  createHandoffExtension,
+  DEFAULT_DEPS,
+  CONFIG_DEFAULTS,
+  HANDOFF_CONFIG_SCHEMA,
+  PROVENANCE_PREFIX,
+  PROVENANCE_ELLIPSIS,
+};
+
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
-  const tmpdir = os.tmpdir();
+  const { describe, expect, it } = import.meta.vitest;
 
-  function writeTmpJson(dir: string, filename: string, data: unknown): string {
-    const filePath = path.join(dir, filename);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(data));
-    return filePath;
-  }
+  // ============================================================================
+  // PURE FUNCTION TESTS
+  // ============================================================================
+  // These tests verify pure, stateless functions. They run inline via
+  // import.meta.vitest for fast feedback during development.
+  //
+  // For integration tests (extension lifecycle, SDK interactions), see
+  // __tests__/handoff.test.ts
+  // For headless TUI rendering tests, see __tests__/provenance-widget.test.ts
+  // ============================================================================
 
-  function createMockExtensionApiHarness() {
-    const tools: unknown[] = [];
-    const commands: Array<{ name: string; command: unknown }> = [];
-    const handlers: Array<{ event: string; handler: unknown }> = [];
-    const emittedEvents: Array<{ event: string; payload: unknown }> = [];
-    const sentUserMessages: string[] = [];
+  describe("parsePromptSections", () => {
+    it("extracts named sections from prompt text", () => {
+      const result = parsePromptSections("# foo\nbar content\n# baz\nqux content");
+      // The first section keeps the # prefix (split doesn't remove it from first part)
+      expect(result).toEqual({ "# foo": "bar content", baz: "qux content" });
+    });
 
-    const pi = {
-      registerTool(tool: unknown) {
-        tools.push(tool);
-      },
-      registerCommand(name: string, command: unknown) {
-        commands.push({ name, command });
-      },
-      on(event: string, handler: unknown) {
-        handlers.push({ event, handler });
-      },
-      sendUserMessage(message: string) {
-        sentUserMessages.push(message);
-      },
-      events: {
-        emit(event: string, payload: unknown) {
-          emittedEvents.push({ event, payload });
-        },
-      },
-    } as unknown as ExtensionAPI;
+    it("handles sections with empty bodies", () => {
+      const result = parsePromptSections("# empty\n\n# filled\nhas content");
+      // The function splits by \n# , so # empty\n becomes one part
+      // The name includes the # prefix because split doesn't remove it from the first part
+      expect(result).toEqual({ "# empty": "", filled: "has content" });
+    });
 
-    return {
-      pi,
-      tools,
-      commands,
-      handlers,
-      emittedEvents,
-      sentUserMessages,
-    };
-  }
+    it("returns empty object for text without sections", () => {
+      const result = parsePromptSections("just some text without headers");
+      expect(result).toEqual({});
+    });
 
-  const REGULAR_SESSION = {
-    sessionId: "alpha1234",
-    sessionName: "alpha work",
-    workspace: "/repo/app",
-    filePath: "/sessions/alpha.jsonl",
-    startedAt: "2026-03-06T17:00:00.000Z",
-    updatedAt: "2026-03-06T17:10:00.000Z",
-    firstUserMessage: "alpha task",
-    searchableText: "alpha task",
-    branchCount: 1,
-    isHandoffCandidate: false,
-  };
+    it("trims section names and bodies", () => {
+      const result = parsePromptSections("#  spaced name  \n  body text  ");
+      // The # prefix is kept because split doesn't remove it from the first part
+      expect(result).toEqual({ "#  spaced name": "body text" });
+    });
 
-  const HANDOFF_SESSION = {
-    sessionId: "handoffabcd",
-    sessionName: "handoff alpha",
-    workspace: "/repo/app",
-    filePath: "/sessions/handoff.jsonl",
-    startedAt: "2026-03-06T17:00:00.000Z",
-    updatedAt: "2026-03-06T17:20:00.000Z",
-    firstUserMessage: "resume alpha",
-    searchableText: "resume alpha",
-    branchCount: 1,
-    parentSessionPath: "/sessions/parent.jsonl",
-    isHandoffCandidate: true,
-  };
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    clearConfigCache();
-    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+    it("handles DEFAULT_HANDOFF_PROMPT structure", () => {
+      const result = parsePromptSections(DEFAULT_HANDOFF_PROMPT);
+      expect(result).toHaveProperty("extraction-prompt");
+      expect(result).toHaveProperty("tool-description");
+      expect(result).toHaveProperty("field-relevant-information");
+      expect(result).toHaveProperty("field-relevant-files");
+    });
   });
 
-  describe("handoff extension", () => {
-    it("registers mention source, command, tool, and handlers with default config when enabled", async () => {
-      const { getMentionSource } = await import("@bds_pi/mentions");
-      let registeredSourceCount = 0;
-      let cleanup: (() => void) | undefined;
-      const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(
-          _namespace: string,
-          defaults: T,
-        ) => ({
-          enabled: true,
-          config: defaults,
-        }),
-      );
-      const handoffExtension = createHandoffExtension({
-        ...DEFAULT_DEPS,
-        getEnabledExtensionConfig:
-          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        resolvePrompt: () => "",
-        registerMentionSource(source) {
-          registeredSourceCount += 1;
-          cleanup = registerMentionSource(source);
-          return cleanup;
-        },
+  describe("extractToolCallArgs", () => {
+    it("extracts arguments from create_handoff_context tool call", () => {
+      const response = {
+        content: [
+          {
+            type: "toolCall",
+            name: "create_handoff_context",
+            arguments: {
+              relevantInformation: "We built a feature",
+              relevantFiles: ["src/index.ts", "src/utils.ts"],
+            },
+          },
+        ],
+      };
+      const result = extractToolCallArgs(response);
+      expect(result).toEqual({
+        relevantInformation: "We built a feature",
+        relevantFiles: ["src/index.ts", "src/utils.ts"],
       });
-      const harness = createMockExtensionApiHarness();
-
-      handoffExtension(harness.pi);
-
-      try {
-        expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
-          "@bds_pi/handoff",
-          CONFIG_DEFAULTS,
-          { schema: HANDOFF_CONFIG_SCHEMA },
-        );
-        expect(registeredSourceCount).toBe(1);
-        const source = getMentionSource("handoff");
-        expect(source?.kind).toBe("handoff");
-        expect(
-          source?.getSuggestions("handoff", {
-            cwd: "/repo/app",
-            sessions: [REGULAR_SESSION, HANDOFF_SESSION],
-          }),
-        ).toEqual([
-          {
-            value: "@handoff/handoffabcd",
-            label: "@handoff/handoffabcd",
-            description: "handoff alpha",
-          },
-        ]);
-        expect(harness.handlers.map((entry) => entry.event).sort()).toEqual([
-          "agent_end",
-          "session_before_compact",
-          "session_start",
-          "session_start",
-        ]);
-        expect(harness.commands).toEqual([
-          {
-            name: "handoff",
-            command: expect.any(Object),
-          },
-        ]);
-        expect(harness.tools).toEqual([
-          expect.objectContaining({
-            name: "handoff",
-            label: "Handoff",
-          }),
-        ]);
-      } finally {
-        cleanup?.();
-      }
     });
 
-    it("registers neither mention source nor command nor tool nor handlers when disabled", () => {
-      const registerMentionSourceSpy = vi.fn();
-      const resolvePromptSpy = vi.fn(() => "");
-      const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(
-          _namespace: string,
-          defaults: T,
-        ) => ({
-          enabled: false,
-          config: defaults,
-        }),
-      );
-      const handoffExtension = createHandoffExtension({
-        ...DEFAULT_DEPS,
-        getEnabledExtensionConfig:
-          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        registerMentionSource:
-          registerMentionSourceSpy as typeof DEFAULT_DEPS.registerMentionSource,
-        resolvePrompt: resolvePromptSpy,
-      });
-      const harness = createMockExtensionApiHarness();
-
-      handoffExtension(harness.pi);
-
-      expect(registerMentionSourceSpy).not.toHaveBeenCalled();
-      expect(resolvePromptSpy).not.toHaveBeenCalled();
-      expect(harness.commands).toHaveLength(0);
-      expect(harness.tools).toHaveLength(0);
-      expect(harness.handlers).toHaveLength(0);
+    it("returns null when tool call is missing", () => {
+      const response = { content: [{ type: "text", text: "hello" }] };
+      expect(extractToolCallArgs(response)).toBeNull();
     });
 
-    it("falls back to defaults when schema validation fails and still registers startup capabilities", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-handoff-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/handoff": {
-          threshold: 2,
-          model: { provider: "", id: "" },
-          promptFile: false,
-          promptString: 123,
-        },
-      });
-      setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => undefined);
-      const registerMentionSourceSpy = vi.fn();
-      const resolvePromptSpy = vi.fn(() => "");
-      const handoffExtension = createHandoffExtension({
-        ...DEFAULT_DEPS,
-        registerMentionSource:
-          registerMentionSourceSpy as typeof DEFAULT_DEPS.registerMentionSource,
-        resolvePrompt: resolvePromptSpy,
-      });
-      const harness = createMockExtensionApiHarness();
+    it("returns null when tool call has wrong name", () => {
+      const response = {
+        content: [
+          { type: "toolCall", name: "other_tool", arguments: {} },
+        ],
+      };
+      expect(extractToolCallArgs(response)).toBeNull();
+    });
 
-      handoffExtension(harness.pi);
+    it("limits relevantFiles to MAX_RELEVANT_FILES", () => {
+      const manyFiles = Array.from({ length: 20 }, (_, i) => `file${i}.ts`);
+      const response = {
+        content: [
+          {
+            type: "toolCall",
+            name: "create_handoff_context",
+            arguments: {
+              relevantInformation: "info",
+              relevantFiles: manyFiles,
+            },
+          },
+        ],
+      };
+      const result = extractToolCallArgs(response);
+      expect(result?.relevantFiles).toHaveLength(10);
+    });
 
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[@bds_pi/config] invalid config for @bds_pi/handoff; falling back to defaults.",
-      );
-      expect(registerMentionSourceSpy).toHaveBeenCalledTimes(1);
-      expect(resolvePromptSpy).toHaveBeenCalledWith(
-        CONFIG_DEFAULTS.promptString,
-        CONFIG_DEFAULTS.promptFile,
-      );
-      expect(harness.handlers.map((entry) => entry.event).sort()).toEqual([
-        "agent_end",
-        "session_before_compact",
-        "session_start",
-        "session_start",
-      ]);
-      expect(harness.commands).toEqual([
-        {
-          name: "handoff",
-          command: expect.any(Object),
-        },
-      ]);
-      expect(harness.tools).toEqual([
-        expect.objectContaining({
-          name: "handoff",
-          label: "Handoff",
-        }),
-      ]);
+    it("handles missing arguments gracefully", () => {
+      const response = {
+        content: [
+          {
+            type: "toolCall",
+            name: "create_handoff_context",
+            arguments: {},
+          },
+        ],
+      };
+      const result = extractToolCallArgs(response);
+      expect(result).toEqual({ relevantInformation: "", relevantFiles: [] });
+    });
+
+    it("handles non-array relevantFiles", () => {
+      const response = {
+        content: [
+          {
+            type: "toolCall",
+            name: "create_handoff_context",
+            arguments: {
+              relevantInformation: "info",
+              relevantFiles: "not-an-array",
+            },
+          },
+        ],
+      };
+      const result = extractToolCallArgs(response);
+      expect(result?.relevantFiles).toEqual([]);
+    });
+  });
+
+  describe("assembleHandoffPrompt", () => {
+    it("assembles prompt with all components", () => {
+      const extraction = {
+        relevantInformation: "We discussed X",
+        relevantFiles: ["src/a.ts", "src/b.ts"],
+      };
+      const result = assembleHandoffPrompt("session-123", extraction, "continue X");
+
+      expect(result).toContain("session-123");
+      expect(result).toContain("@src/a.ts @src/b.ts");
+      expect(result).toContain("We discussed X");
+      expect(result).toContain("continue X");
+    });
+
+    it("handles empty relevantFiles", () => {
+      const extraction = { relevantInformation: "info", relevantFiles: [] };
+      const result = assembleHandoffPrompt("session-123", extraction, "goal");
+
+      expect(result).not.toContain("@");
+    });
+
+    it("handles empty relevantInformation", () => {
+      const extraction = { relevantInformation: "", relevantFiles: ["a.ts"] };
+      const result = assembleHandoffPrompt("session-123", extraction, "goal");
+
+      expect(result).toContain("@a.ts");
+      expect(result).toContain("goal");
+    });
+
+    it("always includes session reference", () => {
+      const extraction = { relevantInformation: "", relevantFiles: [] };
+      const result = assembleHandoffPrompt("abc123", extraction, "goal");
+
+      expect(result).toContain("abc123");
+      expect(result).toContain("read_session");
+    });
+  });
+
+  describe("isPlainObject", () => {
+    it("returns true for plain objects", () => {
+      expect(isPlainObject({})).toBe(true);
+      expect(isPlainObject({ a: 1 })).toBe(true);
+    });
+
+    it("returns false for non-objects", () => {
+      expect(isPlainObject(null)).toBe(false);
+      expect(isPlainObject(undefined)).toBe(false);
+      expect(isPlainObject("string")).toBe(false);
+      expect(isPlainObject(123)).toBe(false);
+    });
+
+    it("returns false for arrays", () => {
+      expect(isPlainObject([])).toBe(false);
+      expect(isPlainObject([1, 2, 3])).toBe(false);
+    });
+  });
+
+  describe("isHandoffConfig", () => {
+    it("validates correct config", () => {
+      const config = {
+        threshold: 0.85,
+        model: { provider: "openrouter", id: "gemini-flash" },
+        promptFile: "",
+        promptString: "test",
+      };
+      expect(isHandoffConfig(config)).toBe(true);
+    });
+
+    it("rejects threshold outside 0-1 range", () => {
+      const config = {
+        threshold: 1.5,
+        model: { provider: "x", id: "y" },
+        promptFile: "",
+        promptString: "",
+      };
+      expect(isHandoffConfig(config)).toBe(false);
+
+      config.threshold = 0;
+      expect(isHandoffConfig(config)).toBe(false);
+
+      config.threshold = -0.5;
+      expect(isHandoffConfig(config)).toBe(false);
+    });
+
+    it("rejects missing or empty provider", () => {
+      const config = {
+        threshold: 0.5,
+        model: { provider: "", id: "y" },
+        promptFile: "",
+        promptString: "",
+      };
+      expect(isHandoffConfig(config)).toBe(false);
+    });
+
+    it("rejects missing or empty model id", () => {
+      const config = {
+        threshold: 0.5,
+        model: { provider: "x", id: "" },
+        promptFile: "",
+        promptString: "",
+      };
+      expect(isHandoffConfig(config)).toBe(false);
+    });
+
+    it("rejects missing model object", () => {
+      const config = {
+        threshold: 0.5,
+        model: null,
+        promptFile: "",
+        promptString: "",
+      };
+      expect(isHandoffConfig(config)).toBe(false);
+    });
+
+    it("rejects non-string promptFile", () => {
+      const config = {
+        threshold: 0.5,
+        model: { provider: "x", id: "y" },
+        promptFile: 123,
+        promptString: "",
+      };
+      expect(isHandoffConfig(config)).toBe(false);
     });
   });
 }
