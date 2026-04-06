@@ -470,41 +470,8 @@ describe("code-review extension (SDK integration)", () => {
   });
 
   // ============================================================================
-  // PI-SPAWN / SUB-AGENT TESTS (todo)
+  // PI-SPAWN / SUB-AGENT TESTS removed
   // ============================================================================
-
-  describe("execute behavior (pi-spawn integration)", () => {
-    /**
-     * These tests require understanding pi-spawn's RPC mode and sub-agent
-     * execution. They document expected behavior but need either:
-     * 1. Mock pi-spawn module
-     * 2. Real SDK session with test model
-     *
-     * See TESTING_STRATEGY.md Phase 4 for full SDK integration approach.
-     */
-
-    it.todo("passes diff_description as task to piSpawn");
-
-    it.todo("includes files in task prompt when provided");
-
-    it.todo("includes instructions in task prompt when provided");
-
-    it.todo("uses configured model, builtinTools, extensionTools from config");
-
-    it.todo("passes systemPromptBody to piSpawn");
-
-    it.todo("passes reportFormat as followUp to piSpawn");
-
-    it.todo("returns error result on non-zero exitCode");
-
-    it.todo("returns error result on stopReason 'error' or 'aborted'");
-
-    it.todo("streams progress updates via onUpdate callback");
-
-    it.todo("extracts sessionId from ctx.sessionManager");
-
-    it.todo("handles missing sessionManager gracefully");
-
-    it.todo("propagates abort signal to piSpawn");
-  });
+  // Removed it.todo() entries - code-review execute is just params → piSpawn → return.
+  // Kept: parseReviewXml, formatReviewSummary (meaningful parsing/formatting logic)
 });
