@@ -7,7 +7,8 @@
     ".": "./index.ts"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "catalog:"
+    "@mariozechner/pi-coding-agent": "catalog:",
+    "vitest": "^3.0.0"
   },
   "pi": {
     "extensions": [

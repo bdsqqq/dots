@@ -726,10 +726,53 @@ function editorExtension(pi: ExtensionAPI): void {
 
 export default editorExtension;
 
+// Export for testing
+export {
+  formatTokens,
+  shortenPath,
+  formatModelDisplay,
+  estimateContextFromEntries,
+  formatElapsed,
+  describeToolCall,
+  renderActivity,
+  createActivityState,
+  updateStatsLabels,
+  LabeledEditor,
+};
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest;
 
   describe("editor extension", () => {
+    describe("formatTokens", () => {
+      it("formats tokens under 1k as-is", () => {
+        expect(formatTokens(0)).toBe("0");
+        expect(formatTokens(500)).toBe("500");
+        expect(formatTokens(999)).toBe("999");
+      });
+
+      it("formats tokens >= 1k with k suffix", () => {
+        expect(formatTokens(1000)).toBe("1.0k");
+        expect(formatTokens(1500)).toBe("1.5k");
+        expect(formatTokens(10000)).toBe("10.0k");
+        expect(formatTokens(128000)).toBe("128.0k");
+      });
+    });
+
+    describe("shortenPath", () => {
+      it("replaces HOME with ~", () => {
+        const home = process.env.HOME || process.env.USERPROFILE || "";
+        if (home) {
+          expect(shortenPath(home + "/projects/foo")).toBe("~/projects/foo");
+          expect(shortenPath(home)).toBe("~");
+        }
+      });
+
+      it("returns path as-is when not under HOME", () => {
+        expect(shortenPath("/tmp/something")).toBe("/tmp/something");
+      });
+    });
+
     describe("formatModelDisplay", () => {
       it("formats model display string correctly", () => {
         expect(
@@ -743,6 +786,125 @@ if (import.meta.vitest) {
         );
 
         expect(formatModelDisplay(undefined, "some-model")).toBe("some-model");
+      });
+    });
+
+    describe("formatElapsed", () => {
+      it("formats seconds under 60s", () => {
+        expect(formatElapsed(0)).toBe("0s");
+        expect(formatElapsed(500)).toBe("0s");
+        expect(formatElapsed(1000)).toBe("1s");
+        expect(formatElapsed(30000)).toBe("30s");
+        expect(formatElapsed(59000)).toBe("59s");
+      });
+
+      it("formats minutes with remaining seconds", () => {
+        expect(formatElapsed(60000)).toBe("1m");
+        expect(formatElapsed(90000)).toBe("1m30s");
+        expect(formatElapsed(125000)).toBe("2m5s");
+      });
+    });
+
+    describe("describeToolCall", () => {
+      it("returns tool name when no useful arg", () => {
+        expect(describeToolCall("read", {})).toBe("read");
+        expect(describeToolCall("write", null)).toBe("write");
+        expect(describeToolCall("bash", undefined)).toBe("bash");
+      });
+
+      it("extracts path arg and shows basename", () => {
+        expect(describeToolCall("read", { path: "/home/user/file.txt" })).toBe(
+          "read(file.txt)",
+        );
+        expect(describeToolCall("write", { path: "/a/b/c/d.md" })).toBe(
+          "write(d.md)",
+        );
+      });
+
+      it("extracts pattern arg", () => {
+        expect(describeToolCall("find", { pattern: "*.ts" })).toBe(
+          "find(*.ts)",
+        );
+      });
+
+      it("extracts query arg", () => {
+        expect(describeToolCall("search", { query: "some search" })).toBe(
+          "search(some search)",
+        );
+      });
+
+      it("extracts cmd arg", () => {
+        expect(describeToolCall("bash", { cmd: "npm test" })).toBe(
+          "bash(npm test)",
+        );
+      });
+
+      it("truncates long args to 24 chars", () => {
+        // Long command without slashes gets truncated
+        const longCmd = "a".repeat(30);
+        expect(describeToolCall("bash", { cmd: longCmd })).toBe(
+          "bash(" + "a".repeat(24) + "…)",
+        );
+      });
+    });
+
+    describe("renderActivity", () => {
+      it("returns empty string when idle", () => {
+        const state = createActivityState();
+        expect(renderActivity(state)).toBe("");
+      });
+
+      it("shows thinking phase", () => {
+        const state = createActivityState();
+        state.phase = "thinking";
+        state.frame = 0;
+        expect(renderActivity(state)).toContain("·");
+        expect(renderActivity(state)).toContain("thinking");
+      });
+
+      it("shows streaming phase as writing", () => {
+        const state = createActivityState();
+        state.phase = "streaming";
+        state.frame = 2;
+        expect(renderActivity(state)).toContain("writing");
+      });
+
+      it("shows tool phase with active tools", () => {
+        const state = createActivityState();
+        state.phase = "tool";
+        state.frame = 0;
+        state.activeTools.set("call-1", "read(file.ts)");
+        expect(renderActivity(state)).toContain("read(file.ts)");
+      });
+
+      it("shows elapsed time after 1 second", () => {
+        const state = createActivityState();
+        state.phase = "thinking";
+        state.startedAt = Date.now() - 5000;
+        state.frame = 0;
+        expect(renderActivity(state)).toContain("5s");
+      });
+
+      it("shows turn number when > 0", () => {
+        const state = createActivityState();
+        state.phase = "thinking";
+        state.turnIndex = 2; // 0-indexed, displays as turn 3
+        state.frame = 0;
+        expect(renderActivity(state)).toContain("turn 3");
+      });
+
+      it("truncates tool descriptions to 2 with overflow count", () => {
+        const state = createActivityState();
+        state.phase = "tool";
+        state.frame = 0;
+        state.activeTools.set("call-1", "read(a.ts)");
+        state.activeTools.set("call-2", "write(b.ts)");
+        state.activeTools.set("call-3", "bash(cmd)");
+        const result = renderActivity(state);
+        expect(result).toContain("read(a.ts)");
+        expect(result).toContain("write(b.ts)");
+        expect(result).toContain("+1");
+        expect(result).not.toContain("bash(cmd)");
       });
     });
   });

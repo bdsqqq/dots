@@ -4,6 +4,9 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import type { PaletteItem, PaletteView, PaletteActionContext } from "./types";
 
+// Export for testing
+export { buildModelView, buildThinkingView, buildToolsView };
+
 // ── sub-view builders ────────────────────────────────────────────────────
 
 function buildModelView(pi: ExtensionAPI, ctx: ExtensionContext): PaletteView {

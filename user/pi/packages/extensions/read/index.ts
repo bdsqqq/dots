@@ -120,7 +120,7 @@ const IMAGE_MIME: Record<string, string> = {
   ".webp": "image/webp",
 };
 
-function getImageMime(filePath: string): string | undefined {
+export function getImageMime(filePath: string): string | undefined {
   return IMAGE_MIME[path.extname(filePath).toLowerCase()];
 }
 
@@ -133,7 +133,7 @@ interface ReadResult {
   shownEnd: number;
 }
 
-function readFileContent(
+export function readFileContent(
   filePath: string,
   limits: ReadLimits,
   readRange?: [number, number],
@@ -450,7 +450,7 @@ const readExtension: (pi: ExtensionAPI) => void = createReadExtension();
 export default readExtension;
 
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta.vitest;
   const tmpdir = os.tmpdir();
 
   function writeTmpJson(dir: string, filename: string, data: unknown): string {
@@ -477,6 +477,104 @@ if (import.meta.vitest) {
     clearConfigCache();
     setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
   });
+
+  // --- pure function tests (Layer 1) ---
+
+  describe("getImageMime", () => {
+    it("returns mime type for known image extensions", () => {
+      expect(getImageMime("photo.jpg")).toBe("image/jpeg");
+      expect(getImageMime("photo.jpeg")).toBe("image/jpeg");
+      expect(getImageMime("icon.png")).toBe("image/png");
+      expect(getImageMime("animation.gif")).toBe("image/gif");
+      expect(getImageMime("modern.webp")).toBe("image/webp");
+    });
+
+    it("is case-insensitive", () => {
+      expect(getImageMime("PHOTO.JPG")).toBe("image/jpeg");
+      expect(getImageMime("Photo.PnG")).toBe("image/png");
+    });
+
+    it("returns undefined for non-image files", () => {
+      expect(getImageMime("file.txt")).toBeUndefined();
+      expect(getImageMime("file.json")).toBeUndefined();
+      expect(getImageMime("file.ts")).toBeUndefined();
+      expect(getImageMime("file")).toBeUndefined();
+    });
+  });
+
+  describe("readFileContent", () => {
+    let testDir: string;
+
+    beforeEach(() => {
+      testDir = fs.mkdtempSync(path.join(tmpdir, "pi-read-content-"));
+    });
+
+    afterEach(() => {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    });
+
+    it("numbers lines starting from 1", () => {
+      const filePath = path.join(testDir, "test.txt");
+      fs.writeFileSync(filePath, "first\nsecond\nthird");
+
+      const result = readFileContent(filePath, NORMAL_LIMITS);
+
+      expect(result.text).toBe("1: first\n2: second\n3: third");
+      expect(result.totalLines).toBe(3);
+      expect(result.shownStart).toBe(1);
+      expect(result.shownEnd).toBe(3);
+    });
+
+    it("respects read_range [start, end]", () => {
+      const filePath = path.join(testDir, "test.txt");
+      fs.writeFileSync(filePath, "line1\nline2\nline3\nline4\nline5");
+
+      const result = readFileContent(filePath, NORMAL_LIMITS, [2, 4]);
+
+      expect(result.text).toBe("2: line2\n3: line3\n4: line4");
+      expect(result.totalLines).toBe(5);
+      expect(result.shownStart).toBe(2);
+      expect(result.shownEnd).toBe(4);
+    });
+
+    it("clamps read_range to file bounds", () => {
+      const filePath = path.join(testDir, "test.txt");
+      fs.writeFileSync(filePath, "only\nline");
+
+      const result = readFileContent(filePath, NORMAL_LIMITS, [0, 100]);
+
+      expect(result.text).toBe("1: only\n2: line");
+      expect(result.shownStart).toBe(1);
+      expect(result.shownEnd).toBe(2);
+    });
+
+    it("truncates long lines exceeding maxLineBytes", () => {
+      const filePath = path.join(testDir, "test.txt");
+      const longLine = "x".repeat(5000);
+      fs.writeFileSync(filePath, longLine);
+
+      const result = readFileContent(filePath, { ...NORMAL_LIMITS, maxLineBytes: 100 });
+
+      expect(result.text).toContain("... (line truncated)");
+      expect(result.text.length).toBeLessThan(200);
+    });
+
+    it("applies head+tail truncation when exceeding maxFileBytes", () => {
+      const filePath = path.join(testDir, "test.txt");
+      // Create 100 lines, each ~210 chars = ~21KB total
+      const lines = Array.from({ length: 100 }, (_, i) => `line ${i + 1}: ${"x".repeat(200)}`);
+      fs.writeFileSync(filePath, lines.join("\n"));
+
+      // Use read_range to read all 100 lines, maxFileBytes triggers truncation
+      // formatHeadTail will show head+tail with 25 each (maxLines=50)
+      const result = readFileContent(filePath, { ...NORMAL_LIMITS, maxFileBytes: 1000, maxLines: 50 }, [1, 100]);
+
+      expect(result.text).toContain("truncated");
+      expect(result.totalLines).toBe(100);
+    });
+  });
+
+  // --- extension registration tests ---
 
   describe("read extension", () => {
     it("registers the tool with default config when enabled", () => {

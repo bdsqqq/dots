@@ -169,6 +169,66 @@ async function generateName(
 
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+
+  describe("isPlainObject", () => {
+    it("returns true for plain objects", () => {
+      expect(isPlainObject({})).toBe(true);
+      expect(isPlainObject({ foo: "bar" })).toBe(true);
+    });
+
+    it("returns false for non-objects", () => {
+      expect(isPlainObject(null)).toBe(false);
+      expect(isPlainObject(undefined)).toBe(false);
+      expect(isPlainObject(42)).toBe(false);
+      expect(isPlainObject("string")).toBe(false);
+    });
+
+    it("returns false for arrays", () => {
+      expect(isPlainObject([])).toBe(false);
+      expect(isPlainObject([1, 2, 3])).toBe(false);
+    });
+  });
+
+  describe("isSessionNameConfig", () => {
+    it("validates correct config", () => {
+      expect(
+        isSessionNameConfig({
+          renameInterval: 10,
+          model: { provider: "openrouter", id: "gemini-3-flash" },
+        }),
+      ).toBe(true);
+    });
+
+    it("rejects invalid renameInterval", () => {
+      expect(isSessionNameConfig({ renameInterval: 0 })).toBe(false);
+      expect(isSessionNameConfig({ renameInterval: -1 })).toBe(false);
+      expect(isSessionNameConfig({ renameInterval: 1.5 })).toBe(false);
+      expect(isSessionNameConfig({ renameInterval: "10" })).toBe(false);
+    });
+
+    it("rejects missing or invalid model", () => {
+      expect(isSessionNameConfig({ renameInterval: 10 })).toBe(false);
+      expect(
+        isSessionNameConfig({ renameInterval: 10, model: "not-an-object" }),
+      ).toBe(false);
+    });
+
+    it("rejects empty/missing provider or id", () => {
+      expect(
+        isSessionNameConfig({
+          renameInterval: 10,
+          model: { provider: "", id: "gemini" },
+        }),
+      ).toBe(false);
+      expect(
+        isSessionNameConfig({
+          renameInterval: 10,
+          model: { provider: "openrouter", id: "  " },
+        }),
+      ).toBe(false);
+    });
+  });
+
   const tmpdir = os.tmpdir();
 
   function writeTmpJson(dir: string, filename: string, data: unknown): string {

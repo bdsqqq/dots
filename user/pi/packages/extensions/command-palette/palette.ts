@@ -16,7 +16,7 @@ import {
 import { boxBottom, boxRow, boxTop } from "@bds_pi/box-chrome";
 import type { PaletteActionContext, PaletteItem, PaletteView } from "./types";
 
-const MAX_VISIBLE = 12;
+export const MAX_VISIBLE = 12;
 
 /**
  * Stack-based generic list overlay.

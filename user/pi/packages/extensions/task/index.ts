@@ -258,6 +258,16 @@ const taskExtension: (pi: ExtensionAPI) => void = createTaskExtension();
 
 export default taskExtension;
 
+// Export for testing
+export {
+  createTaskExtension,
+  isStringArray,
+  isTaskConfig,
+  DEFAULT_DEPS,
+  CONFIG_DEFAULTS,
+  TASK_CONFIG_SCHEMA,
+};
+
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it, vi } = import.meta.vitest;
   const tmpdir = os.tmpdir();

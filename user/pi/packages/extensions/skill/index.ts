@@ -345,6 +345,94 @@ export function createSkillTool(): ToolDefinition {
   };
 }
 
+// --- exports for testing ---
+
+export {
+  parseFrontmatter,
+  getAgentDir,
+  getSkillPathsFromSettings,
+  findSkill,
+  listAvailableSkills,
+  collectSkillFiles,
+};
+
+// --- extension entry point ---
+
 export default function (pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createSkillTool()));
+}
+
+// --- in-source tests (Layer 1) ---
+
+if (import.meta.vitest) {
+  const { describe, expect, it } = import.meta.vitest;
+
+  describe("parseFrontmatter", () => {
+    it("parses simple name and description", () => {
+      const content = `---
+name: git
+description: git workflows for agents
+---
+
+Some content here.`;
+      const { frontmatter, body } = parseFrontmatter(content);
+      expect(frontmatter.name).toBe("git");
+      expect(frontmatter.description).toBe("git workflows for agents");
+      expect(body).toBe("Some content here.");
+    });
+
+    it("handles quoted values", () => {
+      const content = `---
+name: "skill name"
+description: "a longer description with spaces"
+---
+
+Body text.`;
+      const { frontmatter, body } = parseFrontmatter(content);
+      expect(frontmatter.name).toBe("skill name");
+      expect(frontmatter.description).toBe("a longer description with spaces");
+    });
+
+    it("returns empty frontmatter for content without frontmatter", () => {
+      const content = "Just some markdown content.\nNo frontmatter here.";
+      const { frontmatter, body } = parseFrontmatter(content);
+      expect(frontmatter).toEqual({});
+      expect(body).toBe(content);
+    });
+
+    it("returns empty frontmatter for unclosed frontmatter block", () => {
+      const content = "---\nname: test\nNot properly closed";
+      const { frontmatter, body } = parseFrontmatter(content);
+      expect(frontmatter).toEqual({});
+    });
+
+    it("normalizes CRLF to LF", () => {
+      const content = "---\r\nname: test\r\n---\r\n\r\nBody.";
+      const { frontmatter, body } = parseFrontmatter(content);
+      expect(frontmatter.name).toBe("test");
+      expect(body).toBe("Body.");
+    });
+
+    it("handles empty body", () => {
+      const content = "---\nname: test\n---\n";
+      const { frontmatter, body } = parseFrontmatter(content);
+      expect(frontmatter.name).toBe("test");
+      expect(body).toBe("");
+    });
+
+    it("ignores malformed lines", () => {
+      const content = "---\nname: valid\nmalformed line\nother: value\n---\nBody.";
+      const { frontmatter } = parseFrontmatter(content);
+      expect(frontmatter.name).toBe("valid");
+      expect(frontmatter.other).toBe("value");
+    });
+
+    it("captures unknown frontmatter keys", () => {
+      const content = "---\nname: test\nversion: 1.0\nauthor: someone\n---\nBody.";
+      const { frontmatter } = parseFrontmatter(content);
+      expect(frontmatter.name).toBe("test");
+      expect(frontmatter.version).toBe("1.0");
+      expect(frontmatter.author).toBe("someone");
+    });
+  });
 }
