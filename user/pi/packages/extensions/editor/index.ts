@@ -741,7 +741,107 @@ export {
 };
 
 if (import.meta.vitest) {
-  const { describe, expect, it } = import.meta.vitest;
+  const { describe, expect, it, vi, beforeEach } = import.meta.vitest;
+
+  // --- LabeledEditor border tests ---
+  // Testing buildBorderLine directly avoids mocking the entire CustomEditor
+
+  describe("LabeledEditor border building", () => {
+    it("setLabel/removeLabel manages labels", () => {
+      const editor = new LabeledEditor(
+        {} as any,
+        {} as any,
+        {} as any,
+        { fg: (_, t) => t, bg: (_, t) => t } as any,
+        "/cwd",
+      );
+
+      editor.setLabel("model", "glm-5", "top", "right");
+      editor.setLabel("stats", "50%", "top", "left");
+
+      // Internal state via buildBorderLine output
+      const topLine = editor["buildBorderLine"](
+        40,
+        { left: "╭", right: "╮" },
+        "top",
+        "",
+      );
+      expect(topLine).toContain("50%");
+      expect(topLine).toContain("glm-5");
+
+      editor.removeLabel("model");
+      const afterRemove = editor["buildBorderLine"](
+        40,
+        { left: "╭", right: "╮" },
+        "top",
+        "",
+      );
+      expect(afterRemove).not.toContain("glm-5");
+      expect(afterRemove).toContain("50%");
+    });
+
+    it("multiple labels on same side are joined with ·", () => {
+      const editor = new LabeledEditor(
+        {} as any,
+        {} as any,
+        {} as any,
+        { fg: (_, t) => t, bg: (_, t) => t } as any,
+        "/cwd",
+      );
+      editor.setLabel("a", "first", "top", "left");
+      editor.setLabel("b", "second", "top", "left");
+
+      const line = editor["buildBorderLine"](
+        60,
+        { left: "╭", right: "╮" },
+        "top",
+        "",
+      );
+      expect(line).toContain("first");
+      expect(line).toContain("second");
+      expect(line).toContain("·");
+    });
+
+    it("left and right labels appear on opposite ends", () => {
+      const editor = new LabeledEditor(
+        {} as any,
+        {} as any,
+        {} as any,
+        { fg: (_, t) => t, bg: (_, t) => t } as any,
+        "/cwd",
+      );
+      editor.setLabel("left", "L-label", "top", "left");
+      editor.setLabel("right", "R-label", "top", "right");
+
+      const line = editor["buildBorderLine"](
+        50,
+        { left: "╭", right: "╮" },
+        "top",
+        "",
+      );
+      expect(line).toContain("L-label");
+      expect(line).toContain("R-label");
+    });
+
+    it("scroll indicator preserved in border", () => {
+      const editor = new LabeledEditor(
+        {} as any,
+        {} as any,
+        {} as any,
+        { fg: (_, t) => t, bg: (_, t) => t } as any,
+        "/cwd",
+      );
+      const originalWithScroll = "────── ↑ 5 more";
+
+      const line = editor["buildBorderLine"](
+        50,
+        { left: "╭", right: "╮" },
+        "top",
+        originalWithScroll,
+      );
+      expect(line).toContain("↑ 5 more");
+    });
+  });
 
   describe("editor extension", () => {
     describe("formatTokens", () => {
