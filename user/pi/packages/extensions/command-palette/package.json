@@ -2,7 +2,8 @@
   "name": "@bds_pi/command-palette",
   "private": true,
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "catalog:",

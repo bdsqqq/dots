@@ -25,9 +25,11 @@ const TOOL_ALIASES: Record<string, string> = {
   create_file: "write",
 };
 
-function resolveAliases(names: string[]): string[] {
+export function resolveAliases(names: string[]): string[] {
   return names.map((name) => TOOL_ALIASES[name] ?? name);
 }
+
+export const TOOL_ALIASES_EXPORT = TOOL_ALIASES;
 
 export default function (pi: ExtensionAPI): void {
   const raw = process.env.PI_INCLUDE_TOOLS;
@@ -65,5 +67,40 @@ export default function (pi: ExtensionAPI): void {
   // setActiveTools() call, so we re-apply the filter on the same event.
   pi.on("before_agent_start", async () => {
     applyFilter();
+  });
+}
+
+if (import.meta.vitest) {
+  const { describe, expect, it } = import.meta.vitest;
+
+  describe("resolveAliases", () => {
+    it("returns names unchanged when no aliases match", () => {
+      expect(resolveAliases(["read", "grep", "bash"])).toEqual(["read", "grep", "bash"]);
+    });
+
+    it("resolves glob -> find", () => {
+      expect(resolveAliases(["glob", "read"])).toEqual(["find", "read"]);
+    });
+
+    it("resolves edit_file -> edit", () => {
+      expect(resolveAliases(["edit_file"])).toEqual(["edit"]);
+    });
+
+    it("resolves create_file -> write", () => {
+      expect(resolveAliases(["create_file"])).toEqual(["write"]);
+    });
+
+    it("resolves multiple aliases in one call", () => {
+      expect(resolveAliases(["glob", "edit_file", "create_file", "bash"])).toEqual([
+        "find",
+        "edit",
+        "write",
+        "bash",
+      ]);
+    });
+
+    it("returns empty array unchanged", () => {
+      expect(resolveAliases([])).toEqual([]);
+    });
   });
 }

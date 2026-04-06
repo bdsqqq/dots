@@ -706,3 +706,13 @@ const readSessionExtension: (pi: ExtensionAPI) => void =
   createReadSessionExtension();
 
 export default readSessionExtension;
+
+// Export internals for testing (not advertised in package.json exports)
+export {
+  findSessionFile,
+  isNonEmptyString,
+  isReadSessionConfig,
+  renderSessionTree,
+  CONFIG_DEFAULTS,
+  READ_SESSION_CONFIG_SCHEMA,
+};

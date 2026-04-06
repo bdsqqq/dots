@@ -4,6 +4,9 @@
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
+  "scripts": {
+    "test": "npx vitest run"
+  },
   "dependencies": {
     "@bds_pi/bash": "workspace:*",
     "@bds_pi/config": "workspace:*",

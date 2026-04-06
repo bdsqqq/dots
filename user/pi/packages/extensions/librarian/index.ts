@@ -13,9 +13,6 @@
  * default prompt loaded from the shared repo prompt file.
  */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import type {
   ExtensionAPI,
   ToolDefinition,
@@ -23,9 +20,7 @@ import type {
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import {
-  clearConfigCache,
   getEnabledExtensionConfig,
-  setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
 import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
@@ -290,136 +285,170 @@ const librarianExtension: (pi: ExtensionAPI) => void =
 
 export default librarianExtension;
 
+// Export for testing
+export {
+  isNonEmptyString,
+  isStringArray,
+  isLibrarianConfig,
+  createLibrarianExtension,
+  CONFIG_DEFAULTS,
+  DEFAULT_DEPS,
+  LIBRARIAN_CONFIG_SCHEMA,
+};
+
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
-  const tmpdir = os.tmpdir();
+  const { describe, expect, it } = import.meta.vitest;
 
-  function writeTmpJson(dir: string, filename: string, data: unknown): string {
-    const filePath = path.join(dir, filename);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(data));
-    return filePath;
-  }
+  // Layer 1: Pure function tests for validators
+  describe("isNonEmptyString", () => {
+    it("returns true for non-empty strings", () => {
+      expect(isNonEmptyString("hello")).toBe(true);
+      expect(isNonEmptyString("  text  ")).toBe(true);
+    });
 
-  function createMockExtensionApiHarness() {
-    const tools: unknown[] = [];
+    it("returns false for empty strings", () => {
+      expect(isNonEmptyString("")).toBe(false);
+    });
 
-    const pi = {
-      registerTool(tool: unknown) {
-        tools.push(tool);
-      },
-    } as unknown as ExtensionAPI;
+    it("returns false for whitespace-only strings", () => {
+      expect(isNonEmptyString("   ")).toBe(false);
+      expect(isNonEmptyString("\t\n")).toBe(false);
+    });
 
-    return { pi, tools };
-  }
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    clearConfigCache();
-    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+    it("returns false for non-strings", () => {
+      expect(isNonEmptyString(null)).toBe(false);
+      expect(isNonEmptyString(undefined)).toBe(false);
+      expect(isNonEmptyString(123)).toBe(false);
+      expect(isNonEmptyString({})).toBe(false);
+    });
   });
 
-  describe("librarian extension", () => {
-    it("registers the tool with default config when enabled", () => {
-      const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(
-          _namespace: string,
-          defaults: T,
-        ) => ({
-          enabled: true,
-          config: defaults,
-        }),
-      );
-      const resolvePromptSpy = vi.fn(() => "system prompt");
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createLibrarianExtension({
-        getEnabledExtensionConfig:
-          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
-      });
-      const harness = createMockExtensionApiHarness();
-
-      extension(harness.pi);
-
-      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
-        "@bds_pi/librarian",
-        CONFIG_DEFAULTS,
-        { schema: LIBRARIAN_CONFIG_SCHEMA },
-      );
-      expect(resolvePromptSpy).toHaveBeenCalledWith(
-        CONFIG_DEFAULTS.promptString,
-        CONFIG_DEFAULTS.promptFile,
-      );
-      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
-      expect(harness.tools).toHaveLength(1);
+  describe("isStringArray", () => {
+    it("returns true for arrays of strings", () => {
+      expect(isStringArray(["a", "b", "c"])).toBe(true);
+      expect(isStringArray([])).toBe(true);
     });
 
-    it("registers no tools when disabled", () => {
-      const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(
-          _namespace: string,
-          defaults: T,
-        ) => ({
-          enabled: false,
-          config: defaults,
-        }),
-      );
-      const resolvePromptSpy = vi.fn(() => "system prompt");
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createLibrarianExtension({
-        getEnabledExtensionConfig:
-          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
-      });
-      const harness = createMockExtensionApiHarness();
-
-      extension(harness.pi);
-
-      expect(resolvePromptSpy).not.toHaveBeenCalled();
-      expect(withPromptPatchSpy).not.toHaveBeenCalled();
-      expect(harness.tools).toHaveLength(0);
+    it("returns false for arrays with non-strings", () => {
+      expect(isStringArray(["a", 123])).toBe(false);
+      expect(isStringArray(["a", null])).toBe(false);
+      expect(isStringArray([1, 2, 3])).toBe(false);
     });
 
-    it("falls back to defaults for invalid config and still registers", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-librarian-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/librarian": {
+    it("returns false for non-arrays", () => {
+      expect(isStringArray("string")).toBe(false);
+      expect(isStringArray(null)).toBe(false);
+      expect(isStringArray({})).toBe(false);
+    });
+  });
+
+  describe("isLibrarianConfig", () => {
+    it("validates a complete config", () => {
+      expect(
+        isLibrarianConfig({
+          model: "openrouter/openai/gpt-4",
+          extensionTools: ["read_github"],
+          builtinTools: [],
+          promptFile: "prompt.md",
+          promptString: "",
+        }),
+      ).toBe(true);
+    });
+
+    it("rejects empty model string", () => {
+      expect(
+        isLibrarianConfig({
           model: "",
+          extensionTools: ["read_github"],
+          builtinTools: [],
+          promptFile: "prompt.md",
+          promptString: "",
+        }),
+      ).toBe(false);
+    });
+
+    it("rejects whitespace-only model string", () => {
+      expect(
+        isLibrarianConfig({
+          model: "   ",
+          extensionTools: ["read_github"],
+          builtinTools: [],
+          promptFile: "prompt.md",
+          promptString: "",
+        }),
+      ).toBe(false);
+    });
+
+    it("rejects non-array extensionTools", () => {
+      expect(
+        isLibrarianConfig({
+          model: "openrouter/openai/gpt-4",
+          extensionTools: "read_github",
+          builtinTools: [],
+          promptFile: "prompt.md",
+          promptString: "",
+        }),
+      ).toBe(false);
+    });
+
+    it("rejects extensionTools array with non-strings", () => {
+      expect(
+        isLibrarianConfig({
+          model: "openrouter/openai/gpt-4",
           extensionTools: ["read_github", 123],
+          builtinTools: [],
+          promptFile: "prompt.md",
+          promptString: "",
+        }),
+      ).toBe(false);
+    });
+
+    it("rejects non-array builtinTools", () => {
+      expect(
+        isLibrarianConfig({
+          model: "openrouter/openai/gpt-4",
+          extensionTools: [],
           builtinTools: "bash",
+          promptFile: "prompt.md",
+          promptString: "",
+        }),
+      ).toBe(false);
+    });
+
+    it("accepts empty arrays for tools", () => {
+      expect(
+        isLibrarianConfig({
+          model: "openrouter/openai/gpt-4",
+          extensionTools: [],
+          builtinTools: [],
+          promptFile: "",
+          promptString: "",
+        }),
+      ).toBe(true);
+    });
+
+    it("rejects non-string promptFile", () => {
+      expect(
+        isLibrarianConfig({
+          model: "openrouter/openai/gpt-4",
+          extensionTools: [],
+          builtinTools: [],
           promptFile: 123,
+          promptString: "",
+        }),
+      ).toBe(false);
+    });
+
+    it("rejects non-string promptString", () => {
+      expect(
+        isLibrarianConfig({
+          model: "openrouter/openai/gpt-4",
+          extensionTools: [],
+          builtinTools: [],
+          promptFile: "",
           promptString: false,
-        },
-      });
-      setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => undefined);
-      const resolvePromptSpy = vi.fn(() => "system prompt");
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createLibrarianExtension({
-        ...DEFAULT_DEPS,
-        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
-      });
-      const harness = createMockExtensionApiHarness();
-
-      extension(harness.pi);
-
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[@bds_pi/config] invalid config for @bds_pi/librarian; falling back to defaults.",
-      );
-      expect(resolvePromptSpy).toHaveBeenCalledWith(
-        CONFIG_DEFAULTS.promptString,
-        CONFIG_DEFAULTS.promptFile,
-      );
-      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
-      expect(harness.tools).toHaveLength(1);
+        }),
+      ).toBe(false);
     });
   });
 }

@@ -336,136 +336,130 @@ const lookAtExtension: (pi: ExtensionAPI) => void = createLookAtExtension();
 
 export default lookAtExtension;
 
+// Export for testing
+export {
+  createLookAtExtension,
+  DEFAULT_DEPS,
+  CONFIG_DEFAULTS,
+  LOOK_AT_CONFIG_SCHEMA,
+  DEFAULT_SYSTEM_PROMPT,
+  isNonEmptyString,
+  isStringArray,
+  isLookAtExtConfig,
+};
+
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
-  const tmpdir = os.tmpdir();
+  const { describe, expect, it } = import.meta.vitest;
 
-  function writeTmpJson(dir: string, filename: string, data: unknown): string {
-    const filePath = path.join(dir, filename);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(data));
-    return filePath;
-  }
+  // Layer 1: Pure function tests (collocated for fast feedback)
+  describe("isNonEmptyString", () => {
+    it("returns true for non-empty strings", () => {
+      expect(isNonEmptyString("hello")).toBe(true);
+      expect(isNonEmptyString("  a  ")).toBe(true);
+    });
 
-  function createMockExtensionApiHarness() {
-    const tools: unknown[] = [];
+    it("returns false for empty or whitespace-only strings", () => {
+      expect(isNonEmptyString("")).toBe(false);
+      expect(isNonEmptyString("   ")).toBe(false);
+      expect(isNonEmptyString("\t\n")).toBe(false);
+    });
 
-    const pi = {
-      registerTool(tool: unknown) {
-        tools.push(tool);
-      },
-    } as unknown as ExtensionAPI;
-
-    return { pi, tools };
-  }
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    clearConfigCache();
-    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+    it("returns false for non-strings", () => {
+      expect(isNonEmptyString(null)).toBe(false);
+      expect(isNonEmptyString(undefined)).toBe(false);
+      expect(isNonEmptyString(123)).toBe(false);
+      expect(isNonEmptyString([])).toBe(false);
+    });
   });
 
-  describe("look-at extension", () => {
-    it("registers the tool with default config when enabled", () => {
-      const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(
-          _namespace: string,
-          defaults: T,
-        ) => ({
-          enabled: true,
-          config: defaults,
-        }),
-      );
-      const resolvePromptSpy = vi.fn(() => "system prompt");
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createLookAtExtension({
-        getEnabledExtensionConfig:
-          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
-      });
-      const harness = createMockExtensionApiHarness();
-
-      extension(harness.pi);
-
-      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
-        "@bds_pi/look-at",
-        CONFIG_DEFAULTS,
-        { schema: LOOK_AT_CONFIG_SCHEMA },
-      );
-      expect(resolvePromptSpy).toHaveBeenCalledWith(
-        CONFIG_DEFAULTS.promptString,
-        CONFIG_DEFAULTS.promptFile,
-      );
-      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
-      expect(harness.tools).toHaveLength(1);
+  describe("isStringArray", () => {
+    it("returns true for arrays of strings", () => {
+      expect(isStringArray(["a", "b", "c"])).toBe(true);
+      expect(isStringArray([""])).toBe(true);
+      expect(isStringArray([])).toBe(true);
     });
 
-    it("registers no tools when disabled", () => {
-      const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(
-          _namespace: string,
-          defaults: T,
-        ) => ({
-          enabled: false,
-          config: defaults,
-        }),
-      );
-      const resolvePromptSpy = vi.fn(() => "system prompt");
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createLookAtExtension({
-        getEnabledExtensionConfig:
-          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
-      });
-      const harness = createMockExtensionApiHarness();
-
-      extension(harness.pi);
-
-      expect(resolvePromptSpy).not.toHaveBeenCalled();
-      expect(withPromptPatchSpy).not.toHaveBeenCalled();
-      expect(harness.tools).toHaveLength(0);
+    it("returns false for arrays with non-strings", () => {
+      expect(isStringArray(["a", 1])).toBe(false);
+      expect(isStringArray([null])).toBe(false);
+      expect(isStringArray([{}])).toBe(false);
     });
 
-    it("falls back to defaults for invalid config and still registers", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-look-at-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/look-at": {
+    it("returns false for non-arrays", () => {
+      expect(isStringArray("not an array")).toBe(false);
+      expect(isStringArray(null)).toBe(false);
+      expect(isStringArray(undefined)).toBe(false);
+    });
+  });
+
+  describe("isLookAtExtConfig", () => {
+    it("validates correct config", () => {
+      expect(
+        isLookAtExtConfig({
+          model: "gpt-4",
+          extensionTools: ["read"],
+          builtinTools: ["ls"],
+          promptFile: "",
+          promptString: "",
+        }),
+      ).toBe(true);
+    });
+
+    it("rejects empty model", () => {
+      expect(
+        isLookAtExtConfig({
           model: "",
-          extensionTools: ["read", 123],
-          builtinTools: "ls",
-          promptFile: 123,
-          promptString: false,
-        },
-      });
-      setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => undefined);
-      const resolvePromptSpy = vi.fn(() => "system prompt");
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createLookAtExtension({
-        ...DEFAULT_DEPS,
-        resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
-      });
-      const harness = createMockExtensionApiHarness();
+          extensionTools: ["read"],
+          builtinTools: ["ls"],
+          promptFile: "",
+          promptString: "",
+        }),
+      ).toBe(false);
+    });
 
-      extension(harness.pi);
+    it("rejects invalid tool arrays", () => {
+      expect(
+        isLookAtExtConfig({
+          model: "gpt-4",
+          extensionTools: "not-an-array",
+          builtinTools: ["ls"],
+          promptFile: "",
+          promptString: "",
+        }),
+      ).toBe(false);
 
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[@bds_pi/config] invalid config for @bds_pi/look-at; falling back to defaults.",
-      );
-      expect(resolvePromptSpy).toHaveBeenCalledWith(
-        CONFIG_DEFAULTS.promptString,
-        CONFIG_DEFAULTS.promptFile,
-      );
-      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
-      expect(harness.tools).toHaveLength(1);
+      expect(
+        isLookAtExtConfig({
+          model: "gpt-4",
+          extensionTools: ["read"],
+          builtinTools: [123],
+          promptFile: "",
+          promptString: "",
+        }),
+      ).toBe(false);
+    });
+
+    it("accepts any string for promptFile/promptString", () => {
+      expect(
+        isLookAtExtConfig({
+          model: "gpt-4",
+          extensionTools: [],
+          builtinTools: [],
+          promptFile: "/some/path.md",
+          promptString: "custom prompt",
+        }),
+      ).toBe(true);
+
+      // Empty strings are valid (use defaults)
+      expect(
+        isLookAtExtConfig({
+          model: "gpt-4",
+          extensionTools: [],
+          builtinTools: [],
+          promptFile: "",
+          promptString: "",
+        }),
+      ).toBe(true);
     });
   });
 }

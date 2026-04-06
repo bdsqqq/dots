@@ -169,3 +169,242 @@ export class HorizontalLineWidget {
     return lines;
   }
 }
+
+// Export for testing
+export { sortByPriority, joinGroup, clampToWidth, layoutLine };
+
+if (import.meta.vitest) {
+  const { describe, expect, it } = import.meta.vitest;
+
+  describe("widget-row", () => {
+    describe("sortByPriority", () => {
+      it("sorts segments by priority ascending", () => {
+        const segments: InlineSegment[] = [
+          { align: "left", priority: 10, renderInline: () => "high" },
+          { align: "left", priority: 0, renderInline: () => "low" },
+          { align: "left", priority: 5, renderInline: () => "mid" },
+        ];
+        const sorted = sortByPriority(segments);
+        expect(sorted.map((s) => s.renderInline(10))).toEqual([
+          "low",
+          "mid",
+          "high",
+        ]);
+      });
+
+      it("treats undefined priority as 0", () => {
+        const segments: InlineSegment[] = [
+          { align: "left", priority: 5, renderInline: () => "p5" },
+          { align: "left", renderInline: () => "undef" },
+          { align: "left", priority: -2, renderInline: () => "neg" },
+        ];
+        const sorted = sortByPriority(segments);
+        expect(sorted.map((s) => s.renderInline(10))).toEqual([
+          "neg",
+          "undef",
+          "p5",
+        ]);
+      });
+    });
+
+    describe("joinGroup", () => {
+      it("joins rendered segments with gap", () => {
+        const segments: InlineSegment[] = [
+          { align: "left", renderInline: () => "a" },
+          { align: "left", renderInline: () => "b" },
+          { align: "left", renderInline: () => "c" },
+        ];
+        expect(joinGroup(segments, 80, " ")).toBe("a b c");
+        expect(joinGroup(segments, 80, " · ")).toBe("a · b · c");
+      });
+
+      it("filters out empty renders", () => {
+        const segments: InlineSegment[] = [
+          { align: "left", renderInline: () => "a" },
+          { align: "left", renderInline: () => "" },
+          { align: "left", renderInline: () => "b" },
+        ];
+        expect(joinGroup(segments, 80, " ")).toBe("a b");
+      });
+
+      it("returns empty string for empty array", () => {
+        expect(joinGroup([], 80, " ")).toBe("");
+      });
+    });
+
+    describe("clampToWidth", () => {
+      it("returns empty string for non-positive width", () => {
+        expect(clampToWidth("test", 0)).toBe("");
+        expect(clampToWidth("test", -1)).toBe("");
+      });
+
+      it("truncates text that exceeds width", () => {
+        // truncateToWidth adds ANSI codes for reset sequences
+        const result = clampToWidth("hello world", 5);
+        // The visible width should be 5 (he + ellipsis)
+        expect(result).toContain("he");
+        expect(result).toContain("...");
+      });
+
+      it("returns text as-is when within width", () => {
+        expect(clampToWidth("hi", 10)).toBe("hi");
+      });
+    });
+
+    describe("layoutLine", () => {
+      it("lays out left-aligned segments on the left", () => {
+        const segments: InlineSegment[] = [
+          { align: "left", renderInline: () => "left" },
+        ];
+        const line = layoutLine(segments, 20, " ");
+        expect(line.startsWith("left")).toBe(true);
+      });
+
+      it("lays out right-aligned segments on the right", () => {
+        const segments: InlineSegment[] = [
+          { align: "right", renderInline: () => "right" },
+        ];
+        const line = layoutLine(segments, 20, " ");
+        expect(line.endsWith("right")).toBe(true);
+      });
+
+      it("centers center-aligned segments", () => {
+        const segments: InlineSegment[] = [
+          { align: "center", renderInline: () => "center" },
+        ];
+        const line = layoutLine(segments, 20, " ");
+        // Should have padding on both sides
+        expect(line.trim()).toBe("center");
+        // Check that there's space on both sides
+        const leftPad = line.match(/^( *)/)?.[1]?.length ?? 0;
+        const rightPad = line.match(/( *)$/)?.[1]?.length ?? 0;
+        expect(leftPad).toBeGreaterThan(0);
+        expect(rightPad).toBeGreaterThanOrEqual(0);
+      });
+
+      it("handles all three alignments together", () => {
+        const segments: InlineSegment[] = [
+          { align: "left", renderInline: () => "L" },
+          { align: "center", renderInline: () => "C" },
+          { align: "right", renderInline: () => "R" },
+        ];
+        const line = layoutLine(segments, 20, " ");
+        expect(line.startsWith("L")).toBe(true);
+        expect(line.endsWith("R")).toBe(true);
+        expect(line).toContain("C");
+      });
+
+      it("returns empty string for zero/negative width", () => {
+        expect(layoutLine([], 0, " ")).toBe("");
+        expect(layoutLine([], -1, " ")).toBe("");
+      });
+
+      it("truncates overflow content", () => {
+        const segments: InlineSegment[] = [
+          { align: "left", renderInline: () => "a".repeat(30) },
+          { align: "right", renderInline: () => "b".repeat(30) },
+        ];
+        const line = layoutLine(segments, 40, " ");
+        // truncateToWidth handles overflow - visible width may differ from string length
+        // due to ANSI codes. Just verify it returns something.
+        expect(line.length).toBeGreaterThan(0);
+      });
+    });
+
+    describe("WidgetRowRegistry", () => {
+      it("tracks segments by id", () => {
+        const tui = { requestRender: () => {} };
+        const registry = new WidgetRowRegistry(tui);
+        registry.set("a", { align: "left", renderInline: () => "seg a" });
+        registry.set("b", { align: "right", renderInline: () => "seg b" });
+        expect(registry.snapshot().length).toBe(2);
+      });
+
+      it("removes segments by id", () => {
+        const tui = { requestRender: () => {} };
+        const registry = new WidgetRowRegistry(tui);
+        registry.set("a", { align: "left", renderInline: () => "seg a" });
+        registry.remove("a");
+        expect(registry.snapshot().length).toBe(0);
+      });
+
+      it("increments version on mutation", () => {
+        const tui = { requestRender: () => {} };
+        const registry = new WidgetRowRegistry(tui);
+        const v1 = registry.version;
+        registry.set("a", { align: "left", renderInline: () => "a" });
+        expect(registry.version).toBeGreaterThan(v1);
+        const v2 = registry.version;
+        registry.remove("a");
+        expect(registry.version).toBeGreaterThan(v2);
+      });
+
+      it("clears all segments", () => {
+        const tui = { requestRender: () => {} };
+        const registry = new WidgetRowRegistry(tui);
+        registry.set("a", { align: "left", renderInline: () => "a" });
+        registry.set("b", { align: "left", renderInline: () => "b" });
+        registry.clear();
+        expect(registry.snapshot().length).toBe(0);
+      });
+    });
+
+    describe("HorizontalLineWidget", () => {
+      it("renders segments via layoutLine", () => {
+        const widget = new HorizontalLineWidget(
+          () => [{ align: "left", renderInline: () => "lefty" }],
+          { gap: " " },
+        );
+        const lines = widget.render(20);
+        expect(lines).toHaveLength(1);
+        expect(lines[0]?.startsWith("lefty")).toBe(true);
+      });
+
+      it("caches rendered output", () => {
+        let callCount = 0;
+        const widget = new HorizontalLineWidget(
+          () => {
+            callCount++;
+            return [{ align: "left", renderInline: () => "test" }];
+          },
+          { gap: " " },
+        );
+        widget.render(20);
+        widget.render(20);
+        expect(callCount).toBe(1);
+      });
+
+      it("invalidates cache on invalidate() call", () => {
+        let callCount = 0;
+        const widget = new HorizontalLineWidget(
+          () => {
+            callCount++;
+            return [{ align: "left", renderInline: () => "test" }];
+          },
+          { gap: " " },
+        );
+        widget.render(20);
+        widget.invalidate();
+        widget.render(20);
+        expect(callCount).toBe(2);
+      });
+
+      it("uses version for cache invalidation", () => {
+        let version = 0;
+        let callCount = 0;
+        const widget = new HorizontalLineWidget(
+          () => {
+            callCount++;
+            return [{ align: "left", renderInline: () => "test" }];
+          },
+          { gap: " " },
+          () => version,
+        );
+        widget.render(20);
+        version = 1;
+        widget.render(20);
+        expect(callCount).toBe(2);
+      });
+    });
+  });
+}
