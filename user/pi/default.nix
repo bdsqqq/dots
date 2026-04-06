@@ -45,6 +45,11 @@ in
     # that when present because running bun against dist/cli.js regressed custom
     # extension loading (`exports is not defined in ES module scope`). keep the
     # legacy dist/cli.js path as fallback for older installs.
+    #
+    # CRITICAL: the wrapper exports PI_BIN pointing to itself. pi-spawn and
+    # other sub-agent spawners must use $PI_BIN instead of "pi" to ensure
+    # child processes use the bun CLI, not the node_modules/.bin/pi symlink
+    # (which points to the Node.js CLI and fails with ES module extensions).
     home.activation.piBunWrapper = lib.hm.dag.entryAfter [ "installPiExtensionDeps" ] ''
       PI_WRAPPER="${homeDir}/.bun/bin/pi"
       PI_BUN_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/bun/cli.js"
@@ -56,7 +61,7 @@ in
       fi
       if [ -e "$PI_CLI" ]; then
         rm -f "$PI_WRAPPER"
-        printf '%s\n' '#!/usr/bin/env bash' "export NODE_PATH=\"${repoPi}/node_modules\"" "exec bun \"$PI_CLI\" \"\$@\"" > "$PI_WRAPPER"
+        printf '%s\n' '#!/usr/bin/env bash' "export NODE_PATH=\"${repoPi}/node_modules\"" "export PI_BIN=\"$PI_WRAPPER\"" "exec bun \"$PI_CLI\" \"\$@\"" > "$PI_WRAPPER"
         chmod +x "$PI_WRAPPER"
       fi
     '';
