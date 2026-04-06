@@ -303,3 +303,291 @@ export {
   CONFIG_DEFAULTS,
   ORACLE_CONFIG_SCHEMA,
 };
+
+if (import.meta.vitest) {
+  const { describe, it, expect, vi, beforeEach } = import.meta.vitest;
+
+  function createMockExtensionApi() {
+    const tools: any[] = [];
+    const pi = {
+      registerTool(tool: any) {
+        tools.push(tool);
+      },
+    } as any;
+    return { pi, tools };
+  }
+
+  describe("oracle extension (SDK integration)", () => {
+    describe("extension registration", () => {
+      it("registers the oracle tool when enabled", () => {
+        const mockConfig = vi.fn(() => ({
+          enabled: true,
+          config: CONFIG_DEFAULTS,
+        }));
+        const resolvePromptSpy = vi.fn(() => "system prompt");
+        const withPromptPatchSpy = vi.fn((tool: any) => tool);
+
+        const ext = createOracleExtension({
+          getEnabledExtensionConfig: mockConfig as any,
+          resolvePrompt: resolvePromptSpy as any,
+          withPromptPatch: withPromptPatchSpy as any,
+        });
+
+        const { pi, tools } = createMockExtensionApi();
+        ext(pi);
+
+        expect(mockConfig).toHaveBeenCalledWith(
+          "@bds_pi/oracle",
+          CONFIG_DEFAULTS,
+          { schema: ORACLE_CONFIG_SCHEMA }
+        );
+        expect(resolvePromptSpy).toHaveBeenCalledWith(
+          CONFIG_DEFAULTS.promptString,
+          CONFIG_DEFAULTS.promptFile
+        );
+        expect(tools).toHaveLength(1);
+        expect(tools[0].name).toBe("oracle");
+      });
+
+      it("does not register any tools when disabled", () => {
+        const mockConfig = vi.fn(() => ({
+          enabled: false,
+          config: CONFIG_DEFAULTS,
+        }));
+        const resolvePromptSpy = vi.fn(() => "system prompt");
+        const withPromptPatchSpy = vi.fn((tool: any) => tool);
+
+        const ext = createOracleExtension({
+          getEnabledExtensionConfig: mockConfig as any,
+          resolvePrompt: resolvePromptSpy as any,
+          withPromptPatch: withPromptPatchSpy as any,
+        });
+
+        const { pi, tools } = createMockExtensionApi();
+        ext(pi);
+
+        expect(resolvePromptSpy).not.toHaveBeenCalled();
+        expect(withPromptPatchSpy).not.toHaveBeenCalled();
+        expect(tools).toHaveLength(0);
+      });
+
+      it("passes config values to createOracleTool", () => {
+        const customConfig = {
+          model: "custom/model",
+          extensionTools: ["read", "grep"],
+          builtinTools: ["bash"],
+          promptFile: "custom-prompt.md",
+          promptString: "",
+        };
+        const mockConfig = vi.fn(() => ({
+          enabled: true,
+          config: customConfig,
+        }));
+        const resolvePromptSpy = vi.fn(() => "custom system prompt");
+        const withPromptPatchSpy = vi.fn((tool: any) => tool);
+
+        const ext = createOracleExtension({
+          getEnabledExtensionConfig: mockConfig as any,
+          resolvePrompt: resolvePromptSpy as any,
+          withPromptPatch: withPromptPatchSpy as any,
+        });
+
+        const { pi, tools } = createMockExtensionApi();
+        ext(pi);
+
+        expect(resolvePromptSpy).toHaveBeenCalledWith(
+          customConfig.promptString,
+          customConfig.promptFile
+        );
+        expect(tools).toHaveLength(1);
+      });
+
+      it("uses provided config values even when potentially invalid", () => {
+        const weirdConfig = {
+          model: "",
+          extensionTools: ["read"],
+          builtinTools: ["bash"],
+          promptFile: "custom.md",
+          promptString: "",
+        };
+        const mockConfig = vi.fn(() => ({
+          enabled: true,
+          config: weirdConfig as any,
+        }));
+        const resolvePromptSpy = vi.fn(() => "system prompt");
+        const withPromptPatchSpy = vi.fn((tool: any) => tool);
+
+        const ext = createOracleExtension({
+          getEnabledExtensionConfig: mockConfig as any,
+          resolvePrompt: resolvePromptSpy as any,
+          withPromptPatch: withPromptPatchSpy as any,
+        });
+
+        const { pi, tools } = createMockExtensionApi();
+        ext(pi);
+
+        expect(tools).toHaveLength(1);
+        expect(tools[0].name).toBe("oracle");
+        expect(resolvePromptSpy).toHaveBeenCalledWith(
+          weirdConfig.promptString,
+          weirdConfig.promptFile
+        );
+      });
+    });
+  });
+
+  describe("createOracleTool", () => {
+    it("creates a tool with correct metadata", () => {
+      const tool = createOracleTool();
+
+      expect(tool.name).toBe("oracle");
+      expect(tool.label).toBe("Oracle");
+      expect(tool.description).toContain("expert guidance");
+      expect(tool.description).toContain("Read, Grep, Find, ls, Bash");
+    });
+
+    it("has correct parameter schema", () => {
+      const tool = createOracleTool();
+      const params = tool.parameters as any;
+
+      expect(params.type).toBe("object");
+      expect(params.properties.task).toBeDefined();
+      expect(params.properties.task.type).toBe("string");
+      expect(params.properties.context).toBeDefined();
+      expect(params.properties.files).toBeDefined();
+      expect(params.properties.files.type).toBe("array");
+    });
+
+    it("applies custom config to tool", () => {
+      const tool = createOracleTool({
+        model: "custom/model",
+        extensionTools: ["read"],
+        builtinTools: ["grep"],
+        systemPrompt: "custom prompt",
+      });
+
+      expect(tool.name).toBe("oracle");
+    });
+
+    describe("renderCall", () => {
+      it("renders short task preview", () => {
+        const tool = createOracleTool();
+        const theme = {
+          fg: (_color: string, text: string) => text,
+          bold: (text: string) => text,
+        };
+
+        const result = tool.renderCall!({ task: "short task" }, theme);
+        const lines = result.render(80);
+
+        expect(lines[0]).toContain("oracle");
+        expect(lines[0]).toContain("short task");
+      });
+
+      it("truncates long task preview", () => {
+        const tool = createOracleTool();
+        const theme = {
+          fg: (_color: string, text: string) => text,
+          bold: (text: string) => text,
+        };
+        const longTask = "a".repeat(120);
+
+        const result = tool.renderCall!({ task: longTask }, theme);
+        const lines = result.render(80);
+
+        expect(lines[0]).toMatch(/^oracle/);
+      });
+
+      it("shows file count when files provided", () => {
+        const tool = createOracleTool();
+        const theme = {
+          fg: (_color: string, text: string) => text,
+          bold: (text: string) => text,
+        };
+
+        const result = tool.renderCall!(
+          { task: "task", files: ["a.ts", "b.ts", "c.ts"] },
+          theme
+        );
+        const lines = result.render(80);
+
+        expect(lines[0]).toContain("3 files");
+      });
+    });
+  });
+
+  describe("config validation", () => {
+    describe("isNonEmptyString", () => {
+      it("returns true for non-empty strings", () => {
+        expect(isNonEmptyString("hello")).toBe(true);
+        expect(isNonEmptyString("  trimmed  ")).toBe(true);
+      });
+
+      it("returns false for empty or whitespace-only strings", () => {
+        expect(isNonEmptyString("")).toBe(false);
+        expect(isNonEmptyString("   ")).toBe(false);
+        expect(isNonEmptyString("\n\t")).toBe(false);
+      });
+
+      it("returns false for non-strings", () => {
+        expect(isNonEmptyString(123)).toBe(false);
+        expect(isNonEmptyString(null)).toBe(false);
+        expect(isNonEmptyString(undefined)).toBe(false);
+        expect(isNonEmptyString({})).toBe(false);
+      });
+    });
+
+    describe("isStringArray", () => {
+      it("returns true for arrays of strings", () => {
+        expect(isStringArray(["read", "grep"])).toBe(true);
+        expect(isStringArray([])).toBe(true);
+      });
+
+      it("returns false for arrays with non-strings", () => {
+        expect(isStringArray(["read", 123])).toBe(false);
+        expect(isStringArray([null, "grep"])).toBe(false);
+      });
+
+      it("returns false for non-arrays", () => {
+        expect(isStringArray("read")).toBe(false);
+        expect(isStringArray({})).toBe(false);
+        expect(isStringArray(null)).toBe(false);
+      });
+    });
+
+    describe("isOracleConfig", () => {
+      const validConfig = {
+        model: "openrouter/google/gemini-3.1-pro-preview",
+        extensionTools: ["read", "grep"],
+        builtinTools: ["read", "grep"],
+        promptFile: "prompt.md",
+        promptString: "",
+      };
+
+      it("returns true for valid config", () => {
+        expect(isOracleConfig(validConfig)).toBe(true);
+      });
+
+      it("returns false when model is empty", () => {
+        expect(isOracleConfig({ ...validConfig, model: "" })).toBe(false);
+      });
+
+      it("returns false when extensionTools contains non-strings", () => {
+        expect(isOracleConfig({ ...validConfig, extensionTools: ["read", 123] })).toBe(false);
+      });
+
+      it("returns false when builtinTools is not an array", () => {
+        expect(isOracleConfig({ ...validConfig, builtinTools: "bash" })).toBe(false);
+      });
+
+      it("returns false when promptFile is not a string", () => {
+        expect(isOracleConfig({ ...validConfig, promptFile: 123 })).toBe(false);
+      });
+
+      it("returns false when promptString is not a string", () => {
+        expect(isOracleConfig({ ...validConfig, promptString: false })).toBe(false);
+      });
+    });
+  });
+}
+
