@@ -204,8 +204,9 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       process.stderr.write(`[pi-spawn] ${label}${suffix}\n`);
     };
 
+    const piBin = process.env.PI_BIN || "pi";
     const exitCode = await new Promise<number>((resolve) => {
-      const proc = spawn("pi", args, {
+      const proc = spawn(piBin, args, {
         cwd: config.cwd,
         shell: false,
         stdio: [useRpc ? "pipe" : "ignore", "pipe", "pipe"],
