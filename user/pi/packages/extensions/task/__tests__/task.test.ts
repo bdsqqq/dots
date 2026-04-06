@@ -272,22 +272,6 @@ describe("createTaskTool", () => {
       expect(lines[0]).toContain("✕");
     });
   });
-
-  describe("execute", () => {
-    it.todo("spawns sub-agent with prompt and description");
-    it.todo("passes configured builtin tools to piSpawn");
-    it.todo("passes configured extension tools to piSpawn");
-    it.todo("inherits parent session ID from context");
-    it.todo("passes signal for cancellation support");
-    it.todo("calls onUpdate with partial results during execution");
-    it.todo("returns error result when sub-agent fails");
-    it.todo("returns output from final assistant message on success");
-    it.todo("handles aborted stopReason as error");
-    it.todo("handles error stopReason as error");
-    it.todo("includes error message in result when available");
-    it.todo("falls back to stderr when no error message");
-    it.todo("falls back to output when no stderr");
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -351,19 +335,8 @@ describe("config validation", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// pi-spawn integration (requires LLM boundary mocking)
+// pi-spawn integration tests removed - task is just prompt → piSpawn → return.
 // ─────────────────────────────────────────────────────────────────────────────
-
-describe("pi-spawn integration", () => {
-  it.todo("passes prompt to piSpawn");
-  it.todo("passes configured builtin tools to piSpawn");
-  it.todo("passes configured extension tools to piSpawn");
-  it.todo("passes signal for cancellation support");
-  it.todo("includes session ID from context");
-  it.todo("gracefully handles missing sessionManager");
-  it.todo("reports progress via onUpdate callback");
-  it.todo("aggregates usage stats from sub-agent");
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Default config tests

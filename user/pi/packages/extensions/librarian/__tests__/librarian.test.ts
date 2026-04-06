@@ -264,45 +264,4 @@ describe("librarian extension (SDK integration)", () => {
     });
   });
 
-  describe("tool execution (pi-spawn)", () => {
-    /**
-     * Tool execution involves pi-spawn which spawns a sub-agent with
-     * gemini flash. Testing this properly requires:
-     * 1. Mocking the LLM API calls
-     * 2. Simulating session context
-     * 3. Verifying the sub-agent result structure
-     *
-     * For now, we document expected behaviors with it.todo().
-     */
-
-    it.todo("executes query via pi-spawn with configured model");
-
-    it.todo("passes extensionTools and builtinTools to pi-spawn");
-
-    it.todo("includes context parameter in task when provided");
-
-    it.todo("returns error result on non-zero exit code");
-
-    it.todo("returns error result on stopReason 'error' or 'aborted'");
-
-    it.todo("streams progress updates via onUpdate callback");
-
-    it.todo("propagates abort signal to pi-spawn");
-
-    it.todo("handles missing sessionManager gracefully");
-  });
-
-  describe("sub-agent rendering", () => {
-    /**
-     * The renderResult method renders a SingleResult structure
-     * using renderAgentTree. Testing this requires understanding
-     * the SingleResult type and renderAgentTree function.
-     */
-
-    it.todo("renders agent tree with statusOnly header option");
-
-    it.todo("renders error state when exitCode is non-zero");
-
-    it.todo("shows progress during execution (exploring...)");
-  });
 });

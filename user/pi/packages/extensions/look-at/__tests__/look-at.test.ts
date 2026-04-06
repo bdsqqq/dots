@@ -209,21 +209,4 @@ describe("look-at extension (SDK integration)", () => {
     });
   });
 
-  describe("tool execution", () => {
-    /**
-     * Tool execution requires piSpawn which spawns a real sub-agent.
-     * Full integration testing would need:
-     * 1. Mock piSpawn or use a test model
-     * 2. Mock sessionManager for sessionId
-     * 3. Verify onUpdate streaming behavior
-     *
-     * For now, document expected behaviors with it.todo().
-     */
-    it.todo("executes piSpawn with configured model and tools");
-    it.todo("builds task prompt from path, objective, and context");
-    it.todo("includes reference files in task prompt when provided");
-    it.todo("streams progress via onUpdate callback");
-    it.todo("returns error result when exitCode is non-zero");
-    it.todo("returns success result with final output");
-  });
 });
