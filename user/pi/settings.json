@@ -14,8 +14,8 @@
   "compaction": {
     "enabled": false
   },
-  "lastChangelogVersion": "0.65.0",
-  "defaultModel": "z-ai/glm-5v-turbo",
+  "lastChangelogVersion": "0.65.2",
+  "defaultModel": "z-ai/glm-5",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
   "steeringMode": "all",
