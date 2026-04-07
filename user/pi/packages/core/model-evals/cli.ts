@@ -637,7 +637,22 @@ export async function main(argv: readonly string[]): Promise<number> {
 }
 
 if (import.meta.vitest) {
-  const { describe, expect, test } = import.meta.vitest;
+  const { afterEach, beforeEach, describe, expect, test, vi } = import.meta
+    .vitest;
+
+  // suppress console output in tests
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
 
   describe("parseArgs", () => {
     test("parses help", () => {
