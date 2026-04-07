@@ -45,7 +45,6 @@
       "@bds_pi/librarian": ["./packages/extensions/librarian/index.ts"],
       "@bds_pi/look-at": ["./packages/extensions/look-at/index.ts"],
       "@bds_pi/ls": ["./packages/extensions/ls/index.ts"],
-      "@bds_pi/mermaid": ["./packages/extensions/mermaid/index.ts"],
       "@bds_pi/oracle": ["./packages/extensions/oracle/index.ts"],
       "@bds_pi/read": ["./packages/extensions/read/index.ts"],
       "@bds_pi/read-session": ["./packages/extensions/read-session/index.ts"],
