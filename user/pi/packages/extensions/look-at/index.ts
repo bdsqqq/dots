@@ -85,7 +85,7 @@ const LOOK_AT_CONFIG_SCHEMA: ExtensionConfigSchema<LookAtExtConfig> = {
   validate: isLookAtExtConfig,
 };
 
-const DEFAULT_SYSTEM_PROMPT = String.raw`You are an AI assistant that analyzes files for a software engineer.
+const DEFAULT_SYSTEM_PROMPT: string = String.raw`You are an AI assistant that analyzes files for a software engineer.
 
 # Core Principles
 
@@ -114,7 +114,7 @@ When reference files are provided alongside the main file, you are being asked t
 - Use code fences with language tags for code snippets.
 - No emojis or decorative symbols.
 - Keep responses focused and brief.
-`;
+` as const;
 
 export interface LookAtConfig {
   systemPrompt?: string;
