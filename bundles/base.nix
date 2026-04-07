@@ -16,6 +16,7 @@
     ../user/fnm.nix
     ../user/fzf
     ../user/zoxide.nix
+    ../user/syncthing-automerge
     ../system/fonts.nix
     ../system/auto-upgrade.nix
   ];
