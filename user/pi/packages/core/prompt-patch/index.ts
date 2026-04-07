@@ -41,7 +41,8 @@ if (import.meta.vitest) {
   describe("withPromptPatch", () => {
     it("extracts first paragraph as promptSnippet", () => {
       const tool = makeTool({
-        description: "This is the first paragraph.\n\nThis is the second paragraph.",
+        description:
+          "This is the first paragraph.\n\nThis is the second paragraph.",
       });
       const patched = withPromptPatch(tool);
       expect(patched.promptSnippet).toBe("This is the first paragraph.");
@@ -69,7 +70,8 @@ if (import.meta.vitest) {
 
     it("handles description without guidelines", () => {
       const tool = makeTool({
-        description: "First paragraph.\n\nSecond paragraph.\n\nNo bullets here.",
+        description:
+          "First paragraph.\n\nSecond paragraph.\n\nNo bullets here.",
       });
       const patched = withPromptPatch(tool);
       expect(patched.promptSnippet).toBe("First paragraph.");
@@ -96,7 +98,8 @@ if (import.meta.vitest) {
 
     it("trims snippet whitespace", () => {
       const tool = makeTool({
-        description: "  \n  Snippet with whitespace  \n\n\n  \nSecond paragraph  ",
+        description:
+          "  \n  Snippet with whitespace  \n\n\n  \nSecond paragraph  ",
       });
       const patched = withPromptPatch(tool);
       expect(patched.promptSnippet).toBe("Snippet with whitespace");
@@ -108,7 +111,10 @@ if (import.meta.vitest) {
           "Description.\n\n- First bullet\n  with continuation\n- Second bullet\n\nEnd.",
       });
       const patched = withPromptPatch(tool);
-      expect(patched.promptGuidelines).toEqual(["- First bullet", "- Second bullet"]);
+      expect(patched.promptGuidelines).toEqual([
+        "- First bullet",
+        "- Second bullet",
+      ]);
     });
 
     it("does not mutate original tool", () => {
@@ -130,6 +136,7 @@ if (import.meta.vitest) {
       const tool = makeTool({ description: "Desc.\n\n- Guide" });
       const patched = withPromptPatch(tool);
       expect(patched.name).toBe("test_tool");
+      // eslint-disable-next-line typescript-eslint/unbound-method
       expect(patched.execute).toBe(tool.execute);
     });
   });

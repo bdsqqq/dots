@@ -248,7 +248,8 @@ function createSystemPromptExtension(
     if (!body) return;
 
     const defaultHarnessDocs =
-      DEFAULT_HARNESS_DOCS[cfg.harness as keyof typeof DEFAULT_HARNESS_DOCS] ?? "";
+      DEFAULT_HARNESS_DOCS[cfg.harness as keyof typeof DEFAULT_HARNESS_DOCS] ??
+      "";
     const harnessDocs =
       cfg.harnessDocsPromptString || cfg.harnessDocsPromptFile
         ? deps.resolvePrompt(

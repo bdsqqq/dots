@@ -1,6 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { CandidateModel, DimensionId, EvaluatedModel, MetricSource, ModelFacts } from "./types";
+import type {
+  CandidateModel,
+  EvaluatedModel,
+  ModelFacts,
+} from "./types";
 
 /**
  * aa site scrape definitions.
@@ -170,7 +174,10 @@ export function decodeFlightText(chunks: readonly string[]): string {
   return chunks.join("");
 }
 
-function bracketMatchJsonArray(input: string, startIndex: number): string | null {
+function bracketMatchJsonArray(
+  input: string,
+  startIndex: number,
+): string | null {
   let depth = 0;
   let inString = false;
   let escape = false;
@@ -232,7 +239,9 @@ export function extractDefaultDataArrays(decodedFlight: string): unknown[][] {
           parsed.length > 0 &&
           typeof parsed[0] === "object" &&
           parsed[0] !== null &&
-          ["slug", "name", "short_name"].some((k) => k in (parsed[0] as Record<string, unknown>))
+          ["slug", "name", "short_name"].some(
+            (k) => k in (parsed[0] as Record<string, unknown>),
+          )
         ) {
           arrays.push(parsed as unknown[][] extends never ? never : unknown[]);
         }
@@ -264,9 +273,12 @@ export function extractLdJsonDatasets(html: string): AaSiteDataset[] {
       if (parsed["@type"] !== "Dataset") continue;
       if (!Array.isArray(parsed.data)) continue;
       datasets.push({
-        name: String(parsed.name ?? "dataset"),
+        name:
+          typeof parsed.name === "string" ? parsed.name : "dataset",
         description:
-          typeof parsed.description === "string" ? parsed.description : undefined,
+          typeof parsed.description === "string"
+            ? parsed.description
+            : undefined,
         data: parsed.data,
       });
     } catch {
@@ -276,7 +288,9 @@ export function extractLdJsonDatasets(html: string): AaSiteDataset[] {
   return datasets;
 }
 
-export function extractModelSlugFromDetailsUrl(detailsUrl: string): string | null {
+export function extractModelSlugFromDetailsUrl(
+  detailsUrl: string,
+): string | null {
   const match = detailsUrl.match(/\/models\/([^/]+)\/providers/);
   return match?.[1] ?? null;
 }
@@ -285,7 +299,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function pickModelFields(row: Record<string, unknown>): Record<string, unknown> {
+function pickModelFields(
+  row: Record<string, unknown>,
+): Record<string, unknown> {
   const picked: Record<string, unknown> = {};
   for (const key of MODEL_FIELD_KEYS) {
     if (key in row) picked[key] = row[key];
@@ -326,8 +342,11 @@ export function buildModelAggregate(input: {
       const datasetName = dataset.name.toLowerCase();
       for (const row of dataset.data) {
         if (!isRecord(row)) continue;
-        const detailsUrl = typeof row.detailsUrl === "string" ? row.detailsUrl : null;
-        const slug = detailsUrl ? extractModelSlugFromDetailsUrl(detailsUrl) : null;
+        const detailsUrl =
+          typeof row.detailsUrl === "string" ? row.detailsUrl : null;
+        const slug = detailsUrl
+          ? extractModelSlugFromDetailsUrl(detailsUrl)
+          : null;
         if (!slug) continue;
         const existing = (aggregate[slug] ??= {
           slug,
@@ -342,7 +361,8 @@ export function buildModelAggregate(input: {
           datasetName.includes("hallucination rate") &&
           typeof row.omniscienceHallucinationRate === "number"
         ) {
-          existing.aa_site_omniscience_hallucination_rate = row.omniscienceHallucinationRate;
+          existing.aa_site_omniscience_hallucination_rate =
+            row.omniscienceHallucinationRate;
         }
         if (
           datasetName.includes("accuracy") &&
@@ -385,7 +405,7 @@ export function filterAggregateToCandidates(input: {
  * returns null if cache doesn't exist or can't be parsed.
  */
 export function loadCandidateSiteAggregate(
-  cacheDir?: string
+  cacheDir?: string,
 ): Record<string, Record<string, unknown>> | null {
   const dir = cacheDir ?? getDefaultSiteCacheDir();
   const candidatePath = path.join(dir, "aggregate", "candidate-models.json");
@@ -409,7 +429,7 @@ export function loadCandidateSiteAggregate(
  * maps both siteSlugs and apiSlug to the model id.
  */
 export function buildSlugToModelIdMap(
-  candidates: readonly CandidateModel[]
+  candidates: readonly CandidateModel[],
 ): Map<string, string> {
   const map = new Map<string, string>();
   for (const candidate of candidates) {
@@ -442,8 +462,9 @@ export function normalizeContextWindowTokens(tokens: number): number {
   const maxTokens = 1_000_000;
   if (tokens <= minTokens) return 0;
   if (tokens >= maxTokens) return 100;
-  
-  const normalized = Math.log2(tokens / minTokens) / Math.log2(maxTokens / minTokens);
+
+  const normalized =
+    Math.log2(tokens / minTokens) / Math.log2(maxTokens / minTokens);
   return Math.max(0, Math.min(100, normalized * 100));
 }
 
@@ -459,7 +480,7 @@ export function buildToolCallingScore(input: {
   agenticIndex?: number;
 }): number | undefined {
   const components: { value: number; weight: number }[] = [];
-  
+
   if (input.terminalbenchHard !== undefined) {
     components.push({ value: input.terminalbenchHard * 100, weight: 0.5 });
   }
@@ -469,12 +490,15 @@ export function buildToolCallingScore(input: {
   if (input.agenticIndex !== undefined) {
     components.push({ value: input.agenticIndex, weight: 0.2 });
   }
-  
+
   if (components.length === 0) return undefined;
-  
+
   const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
-  const weightedSum = components.reduce((sum, c) => sum + c.value * c.weight, 0);
-  
+  const weightedSum = components.reduce(
+    (sum, c) => sum + c.value * c.weight,
+    0,
+  );
+
   return weightedSum / totalWeight;
 }
 
@@ -486,28 +510,34 @@ export function buildToolCallingScore(input: {
  * 2. (1 - hallucination_rate) * 100 (invert lower-is-better)
  * 3. (1 - aa_site_omniscience_hallucination_rate) * 100 (ld+json fallback)
  */
-function extractHallucinationScore(siteData: Record<string, unknown>): number | undefined {
+function extractHallucinationScore(
+  siteData: Record<string, unknown>,
+): number | undefined {
   // try omniscience_breakdown.total.non_hallucination_rate first
-  const omniscienceBreakdown = siteData.omniscience_breakdown as Record<string, unknown> | undefined;
-  const totalBreakdown = omniscienceBreakdown?.total as Record<string, unknown> | undefined;
-  
+  const omniscienceBreakdown = siteData.omniscience_breakdown as
+    | Record<string, unknown>
+    | undefined;
+  const totalBreakdown = omniscienceBreakdown?.total as
+    | Record<string, unknown>
+    | undefined;
+
   const nonHallucinationRate = totalBreakdown?.non_hallucination_rate;
   if (typeof nonHallucinationRate === "number") {
     return nonHallucinationRate * 100;
   }
-  
+
   // try hallucination_rate (invert it)
   const hallucinationRate = totalBreakdown?.hallucination_rate;
   if (typeof hallucinationRate === "number") {
     return (1 - hallucinationRate) * 100;
   }
-  
+
   // try ld+json fallback
   const ldJsonRate = siteData.aa_site_omniscience_hallucination_rate;
   if (typeof ldJsonRate === "number") {
     return (1 - ldJsonRate) * 100;
   }
-  
+
   return undefined;
 }
 
@@ -534,11 +564,11 @@ export function mergeSiteAggregateIntoEvaluatedModels(input: {
     existing.push(slug);
     modelIdToSlugs.set(modelId, existing);
   }
-  
+
   return input.models.map((model): EvaluatedModel => {
     // find all slugs for this model
     const slugs = modelIdToSlugs.get(model.id) ?? [];
-    
+
     // find site data by trying each slug
     let siteData: Record<string, unknown> | undefined;
     for (const slug of slugs) {
@@ -547,7 +577,7 @@ export function mergeSiteAggregateIntoEvaluatedModels(input: {
         break;
       }
     }
-    
+
     if (!siteData) return model;
 
     const mergedMetrics = { ...model.metrics };
@@ -557,16 +587,20 @@ export function mergeSiteAggregateIntoEvaluatedModels(input: {
 
     // === HALLUCINATION ===
     // extract to facts first
-    const omniscienceBreakdown = siteData.omniscience_breakdown as Record<string, unknown> | undefined;
-    const totalBreakdown = omniscienceBreakdown?.total as Record<string, unknown> | undefined;
-    
+    const omniscienceBreakdown = siteData.omniscience_breakdown as
+      | Record<string, unknown>
+      | undefined;
+    const totalBreakdown = omniscienceBreakdown?.total as
+      | Record<string, unknown>
+      | undefined;
+
     if (typeof totalBreakdown?.hallucination_rate === "number") {
       mergedFacts.hallucinationRate = totalBreakdown.hallucination_rate;
     }
     if (typeof totalBreakdown?.non_hallucination_rate === "number") {
       mergedFacts.nonHallucinationRate = totalBreakdown.non_hallucination_rate;
     }
-    
+
     // add to metrics if not present
     if (mergedMetrics.hallucination === undefined) {
       const score = extractHallucinationScore(siteData);
@@ -584,7 +618,7 @@ export function mergeSiteAggregateIntoEvaluatedModels(input: {
     const contextTokens = siteData.context_window_tokens;
     if (typeof contextTokens === "number") {
       mergedFacts.contextWindowTokens = contextTokens;
-      
+
       // add normalized score to metrics if not present
       if (mergedMetrics.context === undefined) {
         mergedMetrics.context = normalizeContextWindowTokens(contextTokens);
@@ -600,14 +634,16 @@ export function mergeSiteAggregateIntoEvaluatedModels(input: {
     const ifbench = siteData.ifbench;
     if (typeof ifbench === "number") {
       mergedFacts.ifbench = ifbench;
-      
+
       if (mergedMetrics.instructionFollowing === undefined) {
         mergedMetrics.instructionFollowing = ifbench * 100;
         mergedSources.instructionFollowing = {
           source: "aa-site-ifbench",
           confidence: "verified",
         };
-        notes.push(`instructionFollowing from aa site ifbench: ${(ifbench * 100).toFixed(1)}`);
+        notes.push(
+          `instructionFollowing from aa site ifbench: ${(ifbench * 100).toFixed(1)}`,
+        );
       }
     }
 
@@ -615,7 +651,7 @@ export function mergeSiteAggregateIntoEvaluatedModels(input: {
     const lcr = siteData.lcr;
     if (typeof lcr === "number") {
       mergedFacts.lcr = lcr;
-      
+
       if (mergedMetrics.longContextReasoning === undefined) {
         mergedMetrics.longContextReasoning = lcr * 100;
         mergedSources.longContextReasoning = {
@@ -630,7 +666,7 @@ export function mergeSiteAggregateIntoEvaluatedModels(input: {
     const terminalbenchHard = siteData.terminalbench_hard;
     const tau2 = siteData.tau2;
     const agenticIndex = siteData.agentic_index;
-    
+
     if (typeof terminalbenchHard === "number") {
       mergedFacts.terminalbenchHard = terminalbenchHard;
     }
@@ -640,15 +676,17 @@ export function mergeSiteAggregateIntoEvaluatedModels(input: {
     if (typeof agenticIndex === "number") {
       mergedFacts.agenticIndex = agenticIndex;
     }
-    
+
     // compute composite score if not present
     if (mergedMetrics.toolCalling === undefined) {
       const score = buildToolCallingScore({
-        terminalbenchHard: typeof terminalbenchHard === "number" ? terminalbenchHard : undefined,
+        terminalbenchHard:
+          typeof terminalbenchHard === "number" ? terminalbenchHard : undefined,
         tau2: typeof tau2 === "number" ? tau2 : undefined,
-        agenticIndex: typeof agenticIndex === "number" ? agenticIndex : undefined,
+        agenticIndex:
+          typeof agenticIndex === "number" ? agenticIndex : undefined,
       });
-      
+
       if (score !== undefined) {
         mergedMetrics.toolCalling = score;
         mergedSources.toolCalling = {
@@ -716,7 +754,10 @@ export async function scrapeAaSiteToCache(input: {
     defaultDataByPage[page.id] = defaultArrays;
     const defaultDataPaths: string[] = [];
     defaultArrays.forEach((arr, index) => {
-      const filePath = path.join(parsedDir, `${page.id}.defaultData.${index}.json`);
+      const filePath = path.join(
+        parsedDir,
+        `${page.id}.defaultData.${index}.json`,
+      );
       fs.writeFileSync(filePath, JSON.stringify(arr, null, 2));
       defaultDataPaths.push(filePath);
     });
@@ -756,7 +797,10 @@ export async function scrapeAaSiteToCache(input: {
       candidates: input.candidates,
     });
     candidateModelsPath = path.join(aggregateDir, "candidate-models.json");
-    fs.writeFileSync(candidateModelsPath, JSON.stringify(candidateAggregate, null, 2));
+    fs.writeFileSync(
+      candidateModelsPath,
+      JSON.stringify(candidateAggregate, null, 2),
+    );
   }
 
   const manifest: AaSiteCacheManifest = {
@@ -793,10 +837,11 @@ if (import.meta.vitest) {
 
   describe("extractDefaultDataArrays", () => {
     test("extracts model arrays from decoded flight text", () => {
-      const decoded = 'xx "defaultData":[{"slug":"gpt-5-4","terminalbench_hard":0.5},{"slug":"glm-5"}] yy';
+      const decoded =
+        'xx "defaultData":[{"slug":"gpt-5-4","terminalbench_hard":0.5},{"slug":"glm-5"}] yy';
       const arrays = extractDefaultDataArrays(decoded);
       expect(arrays).toHaveLength(1);
-      expect((arrays[0]?.[0] as Record<string, unknown>).slug).toBe("gpt-5-4");
+      expect((arrays[0]![0] as Record<string, unknown>).slug).toBe("gpt-5-4");
     });
   });
 
@@ -813,7 +858,9 @@ if (import.meta.vitest) {
 
   describe("extractModelSlugFromDetailsUrl", () => {
     test("extracts slug from details url", () => {
-      expect(extractModelSlugFromDetailsUrl("/models/gpt-5-4/providers")).toBe("gpt-5-4");
+      expect(extractModelSlugFromDetailsUrl("/models/gpt-5-4/providers")).toBe(
+        "gpt-5-4",
+      );
       expect(extractModelSlugFromDetailsUrl("/wat/nope")).toBeNull();
     });
   });
@@ -822,9 +869,9 @@ if (import.meta.vitest) {
     test("merges defaultData and ldjson datasets", () => {
       const aggregate = buildModelAggregate({
         defaultDataByPage: {
-          foo: [[
-            { slug: "gpt-5-4", name: "GPT-5.4", terminalbench_hard: 0.57 },
-          ]],
+          foo: [
+            [{ slug: "gpt-5-4", name: "GPT-5.4", terminalbench_hard: 0.57 }],
+          ],
         },
         datasetsByPage: {
           omniscience: [
@@ -842,7 +889,9 @@ if (import.meta.vitest) {
         },
       });
       expect(aggregate["gpt-5-4"]?.terminalbench_hard).toBe(0.57);
-      expect(aggregate["gpt-5-4"]?.aa_site_omniscience_hallucination_rate).toBe(0.25);
+      expect(aggregate["gpt-5-4"]?.aa_site_omniscience_hallucination_rate).toBe(
+        0.25,
+      );
     });
   });
 
@@ -857,13 +906,20 @@ if (import.meta.vitest) {
       const manifest = await scrapeAaSiteToCache({
         cacheDir: tmpRoot,
         pages: [{ id: "test", url: "https://example.test/eval" }],
-        fetchImpl: ((async () =>
-          ({ ok: true, text: async () => pageHtml } as Response)) as unknown) as typeof fetch,
+        fetchImpl: (async () =>
+          ({
+            ok: true,
+            text: async () => pageHtml,
+          }) as Response) as unknown as typeof fetch,
       });
 
       expect(fs.existsSync(path.join(tmpRoot, "raw", "test.html"))).toBe(true);
-      expect(fs.existsSync(path.join(tmpRoot, "parsed", "test.defaultData.0.json"))).toBe(true);
-      expect(fs.existsSync(path.join(tmpRoot, "aggregate", "all-models.json"))).toBe(true);
+      expect(
+        fs.existsSync(path.join(tmpRoot, "parsed", "test.defaultData.0.json")),
+      ).toBe(true);
+      expect(
+        fs.existsSync(path.join(tmpRoot, "aggregate", "all-models.json")),
+      ).toBe(true);
       expect(manifest.pages[0]?.modelCount).toBe(1);
     });
   });
@@ -956,16 +1012,18 @@ if (import.meta.vitest) {
         },
       };
       // extractHallucinationScore is not exported, test via merge
-      const models: EvaluatedModel[] = [{
-        id: "test-model",
-        providerModel: "test/model",
-        displayName: "Test Model",
-        metrics: {},
-        metricSources: {},
-        facts: {},
-        supplements: {},
-        notes: [],
-      }];
+      const models: EvaluatedModel[] = [
+        {
+          id: "test-model",
+          providerModel: "test/model",
+          displayName: "Test Model",
+          metrics: {},
+          metricSources: {},
+          facts: {},
+          supplements: {},
+          notes: [],
+        },
+      ];
       const result = mergeSiteAggregateIntoEvaluatedModels({
         models,
         aggregate: { "test-slug": siteData },
@@ -982,16 +1040,18 @@ if (import.meta.vitest) {
           },
         },
       };
-      const models: EvaluatedModel[] = [{
-        id: "test-model",
-        providerModel: "test/model",
-        displayName: "Test Model",
-        metrics: {},
-        metricSources: {},
-        facts: {},
-        supplements: {},
-        notes: [],
-      }];
+      const models: EvaluatedModel[] = [
+        {
+          id: "test-model",
+          providerModel: "test/model",
+          displayName: "Test Model",
+          metrics: {},
+          metricSources: {},
+          facts: {},
+          supplements: {},
+          notes: [],
+        },
+      ];
       const result = mergeSiteAggregateIntoEvaluatedModels({
         models,
         aggregate: { "test-slug": siteData },
@@ -1005,16 +1065,18 @@ if (import.meta.vitest) {
       const siteData = {
         aa_site_omniscience_hallucination_rate: 0.2,
       };
-      const models: EvaluatedModel[] = [{
-        id: "test-model",
-        providerModel: "test/model",
-        displayName: "Test Model",
-        metrics: {},
-        metricSources: {},
-        facts: {},
-        supplements: {},
-        notes: [],
-      }];
+      const models: EvaluatedModel[] = [
+        {
+          id: "test-model",
+          providerModel: "test/model",
+          displayName: "Test Model",
+          metrics: {},
+          metricSources: {},
+          facts: {},
+          supplements: {},
+          notes: [],
+        },
+      ];
       const result = mergeSiteAggregateIntoEvaluatedModels({
         models,
         aggregate: { "test-slug": siteData },
@@ -1029,35 +1091,47 @@ if (import.meta.vitest) {
 
   describe("buildSlugToModelIdMap", () => {
     test("maps siteSlugs to model id", () => {
-      const candidates: CandidateModel[] = [{
-        id: "gemini-3-flash",
-        providerModel: "google/gemini-3-flash",
-        displayName: "Gemini 3 Flash",
-        aaMatch: { apiSlug: "gemini-3-flash-preview", siteSlugs: ["gemini-3-flash"] },
-      }];
+      const candidates: CandidateModel[] = [
+        {
+          id: "gemini-3-flash",
+          providerModel: "google/gemini-3-flash",
+          displayName: "Gemini 3 Flash",
+          aaMatch: {
+            apiSlug: "gemini-3-flash-preview",
+            siteSlugs: ["gemini-3-flash"],
+          },
+        },
+      ];
       const map = buildSlugToModelIdMap(candidates);
       expect(map.get("gemini-3-flash")).toBe("gemini-3-flash");
       expect(map.get("gemini-3-flash-preview")).toBe("gemini-3-flash");
     });
 
     test("maps apiSlug when no siteSlugs", () => {
-      const candidates: CandidateModel[] = [{
-        id: "gpt-5-4",
-        providerModel: "openai/gpt-5.4",
-        displayName: "GPT-5.4",
-        aaMatch: { apiSlug: "gpt-5-4" },
-      }];
+      const candidates: CandidateModel[] = [
+        {
+          id: "gpt-5-4",
+          providerModel: "openai/gpt-5.4",
+          displayName: "GPT-5.4",
+          aaMatch: { apiSlug: "gpt-5-4" },
+        },
+      ];
       const map = buildSlugToModelIdMap(candidates);
       expect(map.get("gpt-5-4")).toBe("gpt-5-4");
     });
 
     test("maps multiple siteSlugs to same model id", () => {
-      const candidates: CandidateModel[] = [{
-        id: "gemini-3-1-pro",
-        providerModel: "google/gemini-3.1-pro",
-        displayName: "Gemini 3.1 Pro",
-        aaMatch: { apiSlug: "gemini-3-1-pro-preview", siteSlugs: ["gemini-3-1-pro-preview", "gemini-3-1-pro"] },
-      }];
+      const candidates: CandidateModel[] = [
+        {
+          id: "gemini-3-1-pro",
+          providerModel: "google/gemini-3.1-pro",
+          displayName: "Gemini 3.1 Pro",
+          aaMatch: {
+            apiSlug: "gemini-3-1-pro-preview",
+            siteSlugs: ["gemini-3-1-pro-preview", "gemini-3-1-pro"],
+          },
+        },
+      ];
       const map = buildSlugToModelIdMap(candidates);
       expect(map.get("gemini-3-1-pro-preview")).toBe("gemini-3-1-pro");
       expect(map.get("gemini-3-1-pro")).toBe("gemini-3-1-pro");
@@ -1068,16 +1142,20 @@ if (import.meta.vitest) {
 
   describe("mergeSiteAggregateIntoEvaluatedModels", () => {
     test("api metrics survive when site data adds new dimensions", () => {
-      const models: EvaluatedModel[] = [{
-        id: "test-model",
-        providerModel: "test/model",
-        displayName: "Test Model",
-        metrics: { intelligence: 75, price: 90 },
-        metricSources: { intelligence: { source: "aa-api", confidence: "verified" } },
-        facts: {},
-        supplements: {},
-        notes: [],
-      }];
+      const models: EvaluatedModel[] = [
+        {
+          id: "test-model",
+          providerModel: "test/model",
+          displayName: "Test Model",
+          metrics: { intelligence: 75, price: 90 },
+          metricSources: {
+            intelligence: { source: "aa-api", confidence: "verified" },
+          },
+          facts: {},
+          supplements: {},
+          notes: [],
+        },
+      ];
       const siteData = {
         ifbench: 0.8,
         context_window_tokens: 200000,
@@ -1095,16 +1173,18 @@ if (import.meta.vitest) {
     });
 
     test("site data populates facts with raw values", () => {
-      const models: EvaluatedModel[] = [{
-        id: "test-model",
-        providerModel: "test/model",
-        displayName: "Test Model",
-        metrics: {},
-        metricSources: {},
-        facts: {},
-        supplements: {},
-        notes: [],
-      }];
+      const models: EvaluatedModel[] = [
+        {
+          id: "test-model",
+          providerModel: "test/model",
+          displayName: "Test Model",
+          metrics: {},
+          metricSources: {},
+          facts: {},
+          supplements: {},
+          notes: [],
+        },
+      ];
       const siteData = {
         context_window_tokens: 400000,
         terminalbench_hard: 0.57,
@@ -1127,16 +1207,20 @@ if (import.meta.vitest) {
     });
 
     test("does not overwrite existing metrics", () => {
-      const models: EvaluatedModel[] = [{
-        id: "test-model",
-        providerModel: "test/model",
-        displayName: "Test Model",
-        metrics: { toolCalling: 95 },
-        metricSources: { toolCalling: { source: "aa-api", confidence: "verified" } },
-        facts: {},
-        supplements: {},
-        notes: [],
-      }];
+      const models: EvaluatedModel[] = [
+        {
+          id: "test-model",
+          providerModel: "test/model",
+          displayName: "Test Model",
+          metrics: { toolCalling: 95 },
+          metricSources: {
+            toolCalling: { source: "aa-api", confidence: "verified" },
+          },
+          facts: {},
+          supplements: {},
+          notes: [],
+        },
+      ];
       const siteData = {
         terminalbench_hard: 0.5,
         tau2: 0.5,
@@ -1152,16 +1236,18 @@ if (import.meta.vitest) {
     });
 
     test("metricSources tracks provenance", () => {
-      const models: EvaluatedModel[] = [{
-        id: "test-model",
-        providerModel: "test/model",
-        displayName: "Test Model",
-        metrics: {},
-        metricSources: {},
-        facts: {},
-        supplements: {},
-        notes: [],
-      }];
+      const models: EvaluatedModel[] = [
+        {
+          id: "test-model",
+          providerModel: "test/model",
+          displayName: "Test Model",
+          metrics: {},
+          metricSources: {},
+          facts: {},
+          supplements: {},
+          notes: [],
+        },
+      ];
       const siteData = {
         context_window_tokens: 256000,
         ifbench: 0.75,
@@ -1173,21 +1259,27 @@ if (import.meta.vitest) {
         slugToModelId: new Map([["test-slug", "test-model"]]),
       });
       expect(result[0]?.metricSources.context?.source).toBe("aa-site-metadata");
-      expect(result[0]?.metricSources.instructionFollowing?.source).toBe("aa-site-ifbench");
-      expect(result[0]?.metricSources.hallucination?.source).toBe("aa-site-omniscience");
+      expect(result[0]?.metricSources.instructionFollowing?.source).toBe(
+        "aa-site-ifbench",
+      );
+      expect(result[0]?.metricSources.hallucination?.source).toBe(
+        "aa-site-omniscience",
+      );
     });
 
     test("returns unchanged model when no site data match", () => {
-      const models: EvaluatedModel[] = [{
-        id: "orphan-model",
-        providerModel: "test/orphan",
-        displayName: "Orphan Model",
-        metrics: { intelligence: 50 },
-        metricSources: {},
-        facts: {},
-        supplements: {},
-        notes: [],
-      }];
+      const models: EvaluatedModel[] = [
+        {
+          id: "orphan-model",
+          providerModel: "test/orphan",
+          displayName: "Orphan Model",
+          metrics: { intelligence: 50 },
+          metricSources: {},
+          facts: {},
+          supplements: {},
+          notes: [],
+        },
+      ];
       const siteData = { ifbench: 0.8 };
       const result = mergeSiteAggregateIntoEvaluatedModels({
         models,

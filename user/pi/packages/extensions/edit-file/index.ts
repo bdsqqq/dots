@@ -306,7 +306,11 @@ function prepareEdit(edit: EditInput): PreparedEdit {
   };
 }
 
-function getNotFoundMessage(fileName: string, editIndex: number, total: number): string {
+function getNotFoundMessage(
+  fileName: string,
+  editIndex: number,
+  total: number,
+): string {
   return total === 1
     ? `could not find oldText in ${fileName}. the text must match exactly including whitespace and newlines.`
     : `could not find edits[${editIndex}].oldText in ${fileName}. the text must match exactly including whitespace and newlines.`;
@@ -329,7 +333,11 @@ function getIdenticalMessage(editIndex: number, total: number): string {
     : `edits[${editIndex}] has identical oldText and newText. remove the no-op edit.`;
 }
 
-function getEmptyOldTextMessage(fileName: string, editIndex: number, total: number): string {
+function getEmptyOldTextMessage(
+  fileName: string,
+  editIndex: number,
+  total: number,
+): string {
   return total === 1
     ? `oldText must not be empty in ${fileName}.`
     : `edits[${editIndex}].oldText must not be empty in ${fileName}.`;
@@ -378,7 +386,7 @@ function applyEditsToContent(
   }
 
   const fuzzyContent = normalizeForFuzzy(normalizedContent);
-  const useFuzzyContent = preparedEdits.some((edit, index) => {
+  const useFuzzyContent = preparedEdits.some((edit, _index) => {
     const exactIndex = normalizedContent.indexOf(edit.oldText);
     if (exactIndex !== -1) return false;
     const unescapedIndex = normalizedContent.indexOf(edit.unescapedOldText);
@@ -416,7 +424,12 @@ function applyEditsToContent(
     if (occurrences > 1) {
       return {
         ok: false,
-        message: getDuplicateMessage(fileName, i, preparedEdits.length, occurrences),
+        message: getDuplicateMessage(
+          fileName,
+          i,
+          preparedEdits.length,
+          occurrences,
+        ),
       };
     }
 
@@ -436,7 +449,11 @@ function applyEditsToContent(
     if (previous.matchIndex + previous.matchLength > current.matchIndex) {
       return {
         ok: false,
-        message: getOverlapMessage(fileName, previous.editIndex, current.editIndex),
+        message: getOverlapMessage(
+          fileName,
+          previous.editIndex,
+          current.editIndex,
+        ),
       };
     }
   }
@@ -591,7 +608,10 @@ export function createEditFileTool(): ToolDefinition {
       }
 
       for (const edit of p.edits) {
-        const redactionMarker = hasNewRedactionMarkers(edit.oldText, edit.newText);
+        const redactionMarker = hasNewRedactionMarkers(
+          edit.oldText,
+          edit.newText,
+        );
         if (redactionMarker) {
           return {
             content: [
@@ -724,7 +744,8 @@ export default function (pi: ExtensionAPI): void {
 }
 
 if (import.meta.vitest) {
-  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta.vitest;
+  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta
+    .vitest;
   let tmpDir: string;
 
   beforeEach(() => {
@@ -810,7 +831,9 @@ if (import.meta.vitest) {
               type: "text",
               text: fileTracker.simpleDiff(
                 "test.txt",
-                Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join("\n"),
+                Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join(
+                  "\n",
+                ),
                 [
                   "line 1 updated",
                   ...Array.from({ length: 38 }, (_, i) => `line ${i + 2}`),
@@ -867,7 +890,9 @@ if (import.meta.vitest) {
       const tool = createEditFileTool();
       const filePath = path.join(tmpDir, "sample.txt");
       fs.writeFileSync(filePath, "alpha\nbeta\ngamma\ndelta\n", "utf-8");
-      vi.spyOn(toolPolicy, "evaluateToolPolicy").mockReturnValue({ action: "allow" });
+      vi.spyOn(toolPolicy, "evaluateToolPolicy").mockReturnValue({
+        action: "allow",
+      });
       vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([]);
       const saveChangeSpy = vi.spyOn(fileTracker, "saveChange");
 
@@ -889,7 +914,9 @@ if (import.meta.vitest) {
       )) as any;
 
       expect(result.isError).toBeUndefined();
-      expect(fs.readFileSync(filePath, "utf-8")).toBe("ALPHA\nbeta\ngamma\nDELTA\n");
+      expect(fs.readFileSync(filePath, "utf-8")).toBe(
+        "ALPHA\nbeta\ngamma\nDELTA\n",
+      );
       expect(result.content[0].text).toContain("@@");
       expect(result.details.filePath).toBe(filePath);
       expect(saveChangeSpy).toHaveBeenCalledTimes(1);

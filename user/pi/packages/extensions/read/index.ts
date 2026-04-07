@@ -450,7 +450,8 @@ const readExtension: (pi: ExtensionAPI) => void = createReadExtension();
 export default readExtension;
 
 if (import.meta.vitest) {
-  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta.vitest;
+  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta
+    .vitest;
   const tmpdir = os.tmpdir();
 
   function writeTmpJson(dir: string, filename: string, data: unknown): string {
@@ -553,7 +554,10 @@ if (import.meta.vitest) {
       const longLine = "x".repeat(5000);
       fs.writeFileSync(filePath, longLine);
 
-      const result = readFileContent(filePath, { ...NORMAL_LIMITS, maxLineBytes: 100 });
+      const result = readFileContent(filePath, {
+        ...NORMAL_LIMITS,
+        maxLineBytes: 100,
+      });
 
       expect(result.text).toContain("... (line truncated)");
       expect(result.text.length).toBeLessThan(200);
@@ -562,12 +566,19 @@ if (import.meta.vitest) {
     it("applies head+tail truncation when exceeding maxFileBytes", () => {
       const filePath = path.join(testDir, "test.txt");
       // Create 100 lines, each ~210 chars = ~21KB total
-      const lines = Array.from({ length: 100 }, (_, i) => `line ${i + 1}: ${"x".repeat(200)}`);
+      const lines = Array.from(
+        { length: 100 },
+        (_, i) => `line ${i + 1}: ${"x".repeat(200)}`,
+      );
       fs.writeFileSync(filePath, lines.join("\n"));
 
       // Use read_range to read all 100 lines, maxFileBytes triggers truncation
       // formatHeadTail will show head+tail with 25 each (maxLines=50)
-      const result = readFileContent(filePath, { ...NORMAL_LIMITS, maxFileBytes: 1000, maxLines: 50 }, [1, 100]);
+      const result = readFileContent(
+        filePath,
+        { ...NORMAL_LIMITS, maxFileBytes: 1000, maxLines: 50 },
+        [1, 100],
+      );
 
       expect(result.text).toContain("truncated");
       expect(result.totalLines).toBe(100);

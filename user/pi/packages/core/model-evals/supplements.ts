@@ -11,7 +11,12 @@
  * data cannot cover, specifically toolCalling for major providers.
  */
 
-import type { DimensionId, EvaluatedModel, ModelId, SupplementalMetric } from "./types";
+import type {
+  DimensionId,
+  EvaluatedModel,
+  ModelId,
+  SupplementalMetric,
+} from "./types";
 
 /**
  * supplemental metrics for candidate models.
@@ -165,8 +170,12 @@ export function mergeSupplementalMetrics(input: {
 export function getCoverageByDimension(input: {
   models: readonly EvaluatedModel[];
   dimensions: readonly DimensionId[];
-}): Partial<Record<DimensionId, { aa: number; supplements: number; verified: number }>> {
-  const coverage: Partial<Record<DimensionId, { aa: number; supplements: number; verified: number }>> = {};
+}): Partial<
+  Record<DimensionId, { aa: number; supplements: number; verified: number }>
+> {
+  const coverage: Partial<
+    Record<DimensionId, { aa: number; supplements: number; verified: number }>
+  > = {};
 
   const total = input.models.length;
 
@@ -300,7 +309,11 @@ if (import.meta.vitest) {
           metricSources: {},
           facts: {},
           supplements: {
-            toolCalling: { value: true, confidence: "verified", source: "test" },
+            toolCalling: {
+              value: true,
+              confidence: "verified",
+              source: "test",
+            },
           },
           notes: [],
         },

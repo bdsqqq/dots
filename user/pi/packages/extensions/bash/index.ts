@@ -915,10 +915,9 @@ if (import.meta.vitest) {
           .mockReturnValue({ action: "reject", message: "within only" });
 
         await expect(
-          executeWithCtx(
-            `cd /repo/project && cat ../sibling/secret.txt`,
-            { cwd: "/workspace/root" },
-          ),
+          executeWithCtx(`cd /repo/project && cat ../sibling/secret.txt`, {
+            cwd: "/workspace/root",
+          }),
         ).rejects.toThrow("command rejected: within only");
         expect(evaluateToolPolicySpy).toHaveBeenCalledWith(
           "bash",
@@ -938,7 +937,9 @@ if (import.meta.vitest) {
           .mockReturnValue({ action: "reject", message: "within only" });
 
         await expect(
-          executeWithCtx(`printf blocked > marker.txt`, { cwd: "/repo/escape" }),
+          executeWithCtx(`printf blocked > marker.txt`, {
+            cwd: "/repo/escape",
+          }),
         ).rejects.toThrow("command rejected: within only");
         expect(evaluateToolPolicySpy).toHaveBeenCalledWith(
           "bash",
@@ -1096,7 +1097,11 @@ function createBashExtension(
       await cleanupBackgroundProcesses(backgroundState, cfg.sigkillDelayMs);
     });
     pi.on("session_start", async (event) => {
-      if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") {
+      if (
+        event.reason === "new" ||
+        event.reason === "resume" ||
+        event.reason === "fork"
+      ) {
         await cleanupBackgroundProcesses(backgroundState, cfg.sigkillDelayMs);
       }
     });

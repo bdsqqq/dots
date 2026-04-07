@@ -24,7 +24,6 @@ import {
   computeRoleFit,
   DIMENSION_LABELS,
   type RoleLeaders,
-  type RoleFitSummary,
 } from "./evaluate";
 
 /**
@@ -38,7 +37,7 @@ export function renderMarkdown(
   evaluation: RoleEvaluation,
   preset?: PresetName,
   currentModelId?: ModelId,
-  allModels?: readonly EvaluatedModel[]
+  allModels?: readonly EvaluatedModel[],
 ): string {
   const lines: string[] = [];
 
@@ -51,11 +50,15 @@ export function renderMarkdown(
   // find current model - check evaluation.models first, then allModels if provided
   // (current model may be ineligible due to guardrails)
   const current = currentModelId
-    ? (evaluation.models.find((m) => m.id === currentModelId) ?? allModels?.find((m) => m.id === currentModelId))
+    ? (evaluation.models.find((m) => m.id === currentModelId) ??
+      allModels?.find((m) => m.id === currentModelId))
     : undefined;
 
   // compute leaders
-  const leaders = computeRoleLeaders(evaluation.models, evaluation.role.relevantDimensions);
+  const leaders = computeRoleLeaders(
+    evaluation.models,
+    evaluation.role.relevantDimensions,
+  );
 
   // summary block: current, best balanced, best budget, main tension
   lines.push("## summary", "");
@@ -65,19 +68,29 @@ export function renderMarkdown(
   }
 
   // find balanced winner (highest avg on relevant dims)
-  const balancedWinner = findBalancedWinner(evaluation.models, evaluation.role.relevantDimensions);
+  const balancedWinner = findBalancedWinner(
+    evaluation.models,
+    evaluation.role.relevantDimensions,
+  );
   if (balancedWinner) {
     lines.push(`**best balanced:** ${balancedWinner.displayName}`);
   }
 
   // find budget winner (best price among non-terrible models)
-  const budgetWinner = findBudgetWinner(evaluation.models, evaluation.role.relevantDimensions);
+  const budgetWinner = findBudgetWinner(
+    evaluation.models,
+    evaluation.role.relevantDimensions,
+  );
   if (budgetWinner) {
     lines.push(`**best budget:** ${budgetWinner.displayName}`);
   }
 
   // main tension: find frontier tradeoff
-  const tension = buildMainTension(evaluation.models, evaluation.role.relevantDimensions, leaders);
+  const tension = buildMainTension(
+    evaluation.models,
+    evaluation.role.relevantDimensions,
+    leaders,
+  );
   if (tension) {
     lines.push(`**main tension:** ${tension}`);
   }
@@ -97,7 +110,7 @@ export function renderMarkdown(
     evaluation.frontierModelIds,
     currentModelId,
     leaders,
-    evaluation.role
+    evaluation.role,
   );
 
   for (const model of sortedModels) {
@@ -108,17 +121,23 @@ export function renderMarkdown(
       leaders,
     });
 
-    const deltas = computeModelDeltas(model, current, evaluation.role.relevantDimensions);
+    const deltas = computeModelDeltas(
+      model,
+      current,
+      evaluation.role.relevantDimensions,
+    );
 
     const name = model.displayName.slice(0, widths[0]!);
     const verdictStr = verdict.slice(0, widths[1]!);
-    const betterStr = deltas.better.slice(0, 3).join(", ").slice(0, widths[2]!) || "—";
-    const worseStr = deltas.worse.slice(0, 3).join(", ").slice(0, widths[3]!) || "—";
+    const betterStr =
+      deltas.better.slice(0, 3).join(", ").slice(0, widths[2]!) || "—";
+    const worseStr =
+      deltas.worse.slice(0, 3).join(", ").slice(0, widths[3]!) || "—";
 
     lines.push(
       [name, verdictStr, betterStr, worseStr]
         .map((s, i) => s.padEnd(widths[i]!))
-        .join(" | ")
+        .join(" | "),
     );
   }
   lines.push("");
@@ -128,22 +147,34 @@ export function renderMarkdown(
   const leaderEntries: string[] = [];
 
   if (leaders.smarts?.length) {
-    leaderEntries.push(`- **smarts:** ${leaders.smarts.map(idToName(evaluation.models)).join(" = ")}`);
+    leaderEntries.push(
+      `- **smarts:** ${leaders.smarts.map(idToName(evaluation.models)).join(" = ")}`,
+    );
   }
   if (leaders.tools?.length) {
-    leaderEntries.push(`- **tools:** ${leaders.tools.map(idToName(evaluation.models)).join(" = ")}`);
+    leaderEntries.push(
+      `- **tools:** ${leaders.tools.map(idToName(evaluation.models)).join(" = ")}`,
+    );
   }
   if (leaders.hallucination?.length) {
-    leaderEntries.push(`- **hallucination:** ${leaders.hallucination.map(idToName(evaluation.models)).join(" = ")}`);
+    leaderEntries.push(
+      `- **hallucination:** ${leaders.hallucination.map(idToName(evaluation.models)).join(" = ")}`,
+    );
   }
   if (leaders.price?.length) {
-    leaderEntries.push(`- **price:** ${leaders.price.map(idToName(evaluation.models)).join(" = ")}`);
+    leaderEntries.push(
+      `- **price:** ${leaders.price.map(idToName(evaluation.models)).join(" = ")}`,
+    );
   }
   if (leaders.speed?.length) {
-    leaderEntries.push(`- **speed:** ${leaders.speed.map(idToName(evaluation.models)).join(" = ")}`);
+    leaderEntries.push(
+      `- **speed:** ${leaders.speed.map(idToName(evaluation.models)).join(" = ")}`,
+    );
   }
   if (leaders.context?.length) {
-    leaderEntries.push(`- **context:** ${leaders.context.map(idToName(evaluation.models)).join(" = ")}`);
+    leaderEntries.push(
+      `- **context:** ${leaders.context.map(idToName(evaluation.models)).join(" = ")}`,
+    );
   }
 
   lines.push(...leaderEntries, "");
@@ -167,7 +198,7 @@ export function renderMarkdown(
 export function renderJson(
   target: RoleProfile | AgentProfile,
   evaluation: RoleEvaluation,
-  preset?: PresetName
+  preset?: PresetName,
 ): string {
   const isRole = !("role" in target);
   return JSON.stringify(
@@ -193,27 +224,22 @@ export function renderJson(
           Object.entries(m.supplements).map(([k, v]) => [
             k,
             { value: v.value, confidence: v.confidence },
-          ])
+          ]),
         ),
       })),
     },
     null,
-    2
+    2,
   );
 }
 
 /**
  * render as compact table for terminal.
  */
-export function renderTable(
-  evaluation: RoleEvaluation,
-  top?: number
-): string {
+export function renderTable(evaluation: RoleEvaluation, top?: number): string {
   const lines: string[] = [];
 
-  const models = top
-    ? evaluation.models.slice(0, top)
-    : evaluation.models;
+  const models = top ? evaluation.models.slice(0, top) : evaluation.models;
 
   if (models.length === 0) {
     return "no eligible models";
@@ -223,12 +249,8 @@ export function renderTable(
   const header = ["model", ...evaluation.role.relevantDimensions, "notes"];
   const widths = [20, ...evaluation.role.relevantDimensions.map(() => 10), 30];
 
-  lines.push(
-    header.map((h, i) => h.padEnd(widths[i] ?? 10)).join(" | ")
-  );
-  lines.push(
-    widths.map((w) => "─".repeat(w)).join("-+-")
-  );
+  lines.push(header.map((h, i) => h.padEnd(widths[i] ?? 10)).join(" | "));
+  lines.push(widths.map((w) => "─".repeat(w)).join("-+-"));
 
   // rows
   const frontierSet = new Set(evaluation.frontierModelIds);
@@ -243,9 +265,7 @@ export function renderTable(
     const notesWidth = widths[widths.length - 1] ?? 30;
     const notes = model.notes.slice(0, 2).join("; ").slice(0, notesWidth);
 
-    lines.push(
-      [name, ...dims, notes.padEnd(notesWidth)].join(" | ")
-    );
+    lines.push([name, ...dims, notes.padEnd(notesWidth)].join(" | "));
   }
 
   // legend
@@ -264,7 +284,7 @@ export function renderTldrMatrix(
   target: RoleProfile | AgentProfile,
   evaluation: RoleEvaluation,
   currentModelId?: ModelId,
-  allModels?: readonly EvaluatedModel[]
+  allModels?: readonly EvaluatedModel[],
 ): string {
   const lines: string[] = [];
 
@@ -273,15 +293,23 @@ export function renderTldrMatrix(
   lines.push(`# ${target.id} → ${roleTitle}`, "");
 
   // main tension line
-  const leaders = computeRoleLeaders(evaluation.models, evaluation.role.relevantDimensions);
-  const tension = buildMainTension(evaluation.models, evaluation.role.relevantDimensions, leaders);
+  const leaders = computeRoleLeaders(
+    evaluation.models,
+    evaluation.role.relevantDimensions,
+  );
+  const tension = buildMainTension(
+    evaluation.models,
+    evaluation.role.relevantDimensions,
+    leaders,
+  );
   if (tension) {
     lines.push(`**main tension:** ${tension}`, "");
   }
 
   // find current model - may be ineligible
   const current = currentModelId
-    ? (evaluation.models.find((m) => m.id === currentModelId) ?? allModels?.find((m) => m.id === currentModelId))
+    ? (evaluation.models.find((m) => m.id === currentModelId) ??
+      allModels?.find((m) => m.id === currentModelId))
     : undefined;
 
   // dense matrix
@@ -347,7 +375,7 @@ export function renderPortfolioMatrix(
   roles: Record<RoleId, RoleProfile>,
   evaluations: Map<string, RoleEvaluation>,
   agents: Record<string, AgentProfile>,
-  allModels?: readonly EvaluatedModel[]
+  allModels?: readonly EvaluatedModel[],
 ): string {
   const lines: string[] = [];
 
@@ -357,7 +385,13 @@ export function renderPortfolioMatrix(
   // portfolio matrix
   lines.push("## portfolio", "");
 
-  const header = ["role", "current", "likely best", "budget pick", "main tension"];
+  const header = [
+    "role",
+    "current",
+    "likely best",
+    "budget pick",
+    "main tension",
+  ];
   const widths = [16, 16, 16, 16, 32];
   lines.push(header.map((h, i) => h.padEnd(widths[i]!)).join(" | "));
   lines.push(widths.map((w) => "─".repeat(w)).join("-+-"));
@@ -370,14 +404,20 @@ export function renderPortfolioMatrix(
     const agentsInRole = Object.values(agents).filter((a) => a.role === roleId);
     const currentModel = agentsInRole[0]?.currentModel;
     // check eval_.models first, then allModels (current may be ineligible)
-    const current = currentModel && currentModel !== "inherits-default"
-      ? (eval_.models.find((m) => m.id === currentModel) ?? allModels?.find((m) => m.id === currentModel))
-      : undefined;
+    const current =
+      currentModel && currentModel !== "inherits-default"
+        ? (eval_.models.find((m) => m.id === currentModel) ??
+          allModels?.find((m) => m.id === currentModel))
+        : undefined;
 
     const balanced = findBalancedWinner(eval_.models, role.relevantDimensions);
     const budget = findBudgetWinner(eval_.models, role.relevantDimensions);
     const leaders = computeRoleLeaders(eval_.models, role.relevantDimensions);
-    const tension = buildMainTension(eval_.models, role.relevantDimensions, leaders);
+    const tension = buildMainTension(
+      eval_.models,
+      role.relevantDimensions,
+      leaders,
+    );
 
     const row = [
       roleId.slice(0, widths[0]!),
@@ -411,7 +451,9 @@ export function renderPortfolioMatrix(
 
   for (const [modelId, roleIds] of modelRoleWins) {
     if (roleIds.length >= 2) {
-      const model = [...evaluations.values()][0]?.models.find((m) => m.id === modelId);
+      const model = [...evaluations.values()][0]?.models.find(
+        (m) => m.id === modelId,
+      );
       if (model) {
         lines.push(`- **${model.displayName}** wins: ${roleIds.join(", ")}`);
       }
@@ -429,7 +471,7 @@ export function renderPortfolioMatrix(
 export function renderInspectModel(
   model: EvaluatedModel,
   roles: Record<RoleId, RoleProfile>,
-  allModels: readonly EvaluatedModel[]
+  allModels: readonly EvaluatedModel[],
 ): string {
   const lines: string[] = [];
 
@@ -463,14 +505,18 @@ export function renderInspectModel(
     const rank = modelRanks?.get(dim);
     if (score !== undefined && rank !== undefined) {
       const label = DIMENSION_LABELS[dim] ?? dim;
-      lines.push(`- ${label}: #${rank} / ${allModels.length} (score: ${score.toFixed(0)})`);
+      lines.push(
+        `- ${label}: #${rank} / ${allModels.length} (score: ${score.toFixed(0)})`,
+      );
     }
   }
   lines.push("");
 
   // raw facts
   lines.push("## raw facts", "");
-  const factEntries = Object.entries(model.facts).filter(([, v]) => v !== undefined);
+  const factEntries = Object.entries(model.facts).filter(
+    ([, v]) => v !== undefined,
+  );
   if (factEntries.length > 0) {
     for (const [key, value] of factEntries) {
       if (typeof value === "number") {
@@ -509,7 +555,7 @@ function idToName(models: readonly EvaluatedModel[]): (id: ModelId) => string {
 
 function findBalancedWinner(
   models: readonly EvaluatedModel[],
-  dimensions: readonly string[]
+  dimensions: readonly string[],
 ): EvaluatedModel | undefined {
   if (models.length === 0) return undefined;
 
@@ -537,7 +583,7 @@ function findBalancedWinner(
 
 function findBudgetWinner(
   models: readonly EvaluatedModel[],
-  dimensions: readonly string[]
+  dimensions: readonly string[],
 ): EvaluatedModel | undefined {
   // find models with decent scores that have best price
   const viable = models.filter((m) => {
@@ -551,7 +597,7 @@ function findBudgetWinner(
         count++;
       }
     }
-    return count > 0 && (sum / count) >= 50;
+    return count > 0 && sum / count >= 50;
   });
 
   if (viable.length === 0) return undefined;
@@ -564,7 +610,7 @@ function findBudgetWinner(
 function buildMainTension(
   models: readonly EvaluatedModel[],
   dimensions: readonly string[],
-  leaders: RoleLeaders
+  leaders: RoleLeaders,
 ): string | undefined {
   // find tension between top smarts and top price leaders
   const smartsLeader = leaders.smarts?.[0];
@@ -588,7 +634,7 @@ function sortModelsForDisplay(
   frontierIds: readonly ModelId[],
   currentId?: ModelId,
   leaders?: RoleLeaders,
-  role?: RoleProfile
+  role?: RoleProfile,
 ): EvaluatedModel[] {
   return [...models].sort((a, b) => {
     // current first
@@ -603,8 +649,14 @@ function sortModelsForDisplay(
 
     // then by average score on relevant dims
     if (role) {
-      const aAvg = role.relevantDimensions.reduce((s, d) => s + (a.metrics[d] ?? 0), 0);
-      const bAvg = role.relevantDimensions.reduce((s, d) => s + (b.metrics[d] ?? 0), 0);
+      const aAvg = role.relevantDimensions.reduce(
+        (s, d) => s + (a.metrics[d] ?? 0),
+        0,
+      );
+      const bAvg = role.relevantDimensions.reduce(
+        (s, d) => s + (b.metrics[d] ?? 0),
+        0,
+      );
       return bAvg - aAvg;
     }
 
@@ -616,18 +668,7 @@ function sortModelsForDisplay(
 // legacy exports for backward compatibility
 // ============================================================
 
-/**
- * format metrics as a compact string.
- */
-function formatMetrics(model: EvaluatedModel): string {
-  const parts: string[] = [];
-  for (const [dim, value] of Object.entries(model.metrics)) {
-    if (value !== undefined) {
-      parts.push(`${dim}=${value.toFixed(1)}`);
-    }
-  }
-  return parts.join(", ") || "none";
-}
+
 
 /**
  * render all roles as a combined markdown document (legacy).
@@ -635,7 +676,7 @@ function formatMetrics(model: EvaluatedModel): string {
 export function renderAllRoles(
   roles: Record<string, RoleProfile>,
   evaluations: Map<string, RoleEvaluation>,
-  preset?: PresetName
+  preset?: PresetName,
 ): string {
   const lines: string[] = [];
 
@@ -659,7 +700,7 @@ export function renderAllRoles(
  */
 export function renderCoverageSummary(
   models: readonly EvaluatedModel[],
-  dimensions: readonly string[]
+  dimensions: readonly string[],
 ): string {
   const lines: string[] = [];
   lines.push("# coverage summary", "");
@@ -667,14 +708,15 @@ export function renderCoverageSummary(
 
   for (const dim of dimensions) {
     let metricCount = 0;
-    let verifiedCount = 0;
+    let _verifiedCount = 0;
 
     for (const model of models) {
       if (model.metrics[dim as keyof typeof model.metrics] !== undefined) {
         metricCount++;
-        const source = model.metricSources[dim as keyof typeof model.metricSources];
+        const source =
+          model.metricSources[dim as keyof typeof model.metricSources];
         if (source?.confidence === "verified") {
-          verifiedCount++;
+          _verifiedCount++;
         }
       }
     }
@@ -715,14 +757,14 @@ export function renderCoverageSummary(
 
   for (const dim of dimensions) {
     let supplementCount = 0;
-    let verifiedCount = 0;
+    let _verifiedCount = 0;
 
     for (const model of models) {
       const supp = model.supplements[dim as keyof typeof model.supplements];
       if (supp) {
         supplementCount++;
         if (supp.confidence === "verified") {
-          verifiedCount++;
+          _verifiedCount++;
         }
       }
     }
@@ -747,7 +789,7 @@ if (import.meta.vitest) {
 
   const makeModel = (
     id: string,
-    metrics: Partial<Record<string, number>>
+    metrics: Partial<Record<string, number>>,
   ): EvaluatedModel => ({
     id,
     providerModel: id,
@@ -838,10 +880,7 @@ if (import.meta.vitest) {
 
   describe("renderCoverageSummary", () => {
     test("summarizes coverage", () => {
-      const models = [
-        makeModel("a", { intelligence: 50 }),
-        makeModel("b", {}),
-      ];
+      const models = [makeModel("a", { intelligence: 50 }), makeModel("b", {})];
       const summary = renderCoverageSummary(models, ["intelligence", "price"]);
       expect(summary).toContain("- intelligence: 50% (1/2)");
       expect(summary).toContain("## comparison metrics");

@@ -71,12 +71,17 @@ export default function (pi: ExtensionAPI): void {
 }
 
 if (import.meta.vitest) {
-  const { describe, expect, it, vi, beforeEach, afterEach } = import.meta.vitest;
+  const { describe, expect, it, beforeEach, afterEach } = import.meta
+    .vitest;
   const toolHarnessExt = (await import("./index.js")).default;
 
   describe("resolveAliases", () => {
     it("returns names unchanged when no aliases match", () => {
-      expect(resolveAliases(["read", "grep", "bash"])).toEqual(["read", "grep", "bash"]);
+      expect(resolveAliases(["read", "grep", "bash"])).toEqual([
+        "read",
+        "grep",
+        "bash",
+      ]);
     });
 
     it("resolves glob -> find", () => {
@@ -92,12 +97,9 @@ if (import.meta.vitest) {
     });
 
     it("resolves multiple aliases in one call", () => {
-      expect(resolveAliases(["glob", "edit_file", "create_file", "bash"])).toEqual([
-        "find",
-        "edit",
-        "write",
-        "bash",
-      ]);
+      expect(
+        resolveAliases(["glob", "edit_file", "create_file", "bash"]),
+      ).toEqual(["find", "edit", "write", "bash"]);
     });
 
     it("returns empty array unchanged", () => {
@@ -124,7 +126,8 @@ if (import.meta.vitest) {
       it("does nothing when PI_INCLUDE_TOOLS is unset", () => {
         const calls: string[] = [];
         const mockPi = {
-          setActiveTools: (tools: string[]) => calls.push(`setActiveTools:${tools.join(",")}`),
+          setActiveTools: (tools: string[]) =>
+            calls.push(`setActiveTools:${tools.join(",")}`),
           on: (event: string) => calls.push(`on:${event}`),
         } as any;
 
@@ -142,7 +145,8 @@ if (import.meta.vitest) {
         const handlers: Record<string, () => void> = {};
 
         const mockPi = {
-          setActiveTools: (tools: string[]) => calls.push({ type: "setActiveTools", tools }),
+          setActiveTools: (tools: string[]) =>
+            calls.push({ type: "setActiveTools", tools }),
           on: (event: string, handler: () => void) => {
             calls.push({ type: "on", event });
             handlers[event] = handler;
@@ -152,20 +156,24 @@ if (import.meta.vitest) {
         toolHarnessExt(mockPi);
 
         // Verify both handlers are registered
-        expect(calls.filter((c) => c.type === "on").map((c) => c.event).sort()).toEqual([
-          "before_agent_start",
-          "session_start",
-        ]);
+        expect(
+          calls
+            .filter((c) => c.type === "on")
+            .map((c) => c.event)
+            .sort((a, b) => a!.localeCompare(b!)),
+        ).toEqual(["before_agent_start", "session_start"]);
 
         // Simulate session_start event
-        await handlers["session_start"]();
+        handlers["session_start"]!();
         expect(calls.filter((c) => c.type === "setActiveTools")).toEqual([
           { type: "setActiveTools", tools: [] },
         ]);
 
         // Simulate before_agent_start event
-        await handlers["before_agent_start"]();
-        expect(calls.filter((c) => c.type === "setActiveTools")).toHaveLength(2);
+        handlers["before_agent_start"]!();
+        expect(calls.filter((c) => c.type === "setActiveTools")).toHaveLength(
+          2,
+        );
       });
     });
 
@@ -177,7 +185,8 @@ if (import.meta.vitest) {
         const handlers: Record<string, () => void> = {};
 
         const mockPi = {
-          setActiveTools: (tools: string[]) => calls.push({ type: "setActiveTools", tools }),
+          setActiveTools: (tools: string[]) =>
+            calls.push({ type: "setActiveTools", tools }),
           on: (event: string, handler: () => void) => {
             calls.push({ type: "on", event });
             handlers[event] = handler;
@@ -187,13 +196,15 @@ if (import.meta.vitest) {
         toolHarnessExt(mockPi);
 
         // Verify handlers are registered
-        expect(calls.filter((c) => c.type === "on").map((c) => c.event).sort()).toEqual([
-          "before_agent_start",
-          "session_start",
-        ]);
+        expect(
+          calls
+            .filter((c) => c.type === "on")
+            .map((c) => c.event)
+            .sort((a, b) => a!.localeCompare(b!)),
+        ).toEqual(["before_agent_start", "session_start"]);
 
         // Simulate session_start event
-        await handlers["session_start"]();
+        handlers["session_start"]!();
         expect(calls.filter((c) => c.type === "setActiveTools")).toEqual([
           { type: "setActiveTools", tools: ["read", "grep", "bash"] },
         ]);
@@ -214,9 +225,9 @@ if (import.meta.vitest) {
 
         toolHarnessExt(mockPi);
 
-        await handlers["session_start"]();
+        handlers["session_start"]!();
 
-        expect(calls[0].tools).toEqual(["read", "grep", "bash"]);
+        expect(calls[0]!.tools).toEqual(["read", "grep", "bash"]);
       });
 
       it("resolves aliases in tool names", async () => {
@@ -234,9 +245,9 @@ if (import.meta.vitest) {
 
         toolHarnessExt(mockPi);
 
-        await handlers["session_start"]();
+        handlers["session_start"]!();
 
-        expect(calls[0].tools).toEqual(["find", "edit", "write"]);
+        expect(calls[0]!.tools).toEqual(["find", "edit", "write"]);
       });
 
       it("handles mixed aliases and non-aliases", async () => {
@@ -254,9 +265,9 @@ if (import.meta.vitest) {
 
         toolHarnessExt(mockPi);
 
-        await handlers["session_start"]();
+        handlers["session_start"]!();
 
-        expect(calls[0].tools).toEqual(["find", "read", "edit", "bash"]);
+        expect(calls[0]!.tools).toEqual(["find", "read", "edit", "bash"]);
       });
     });
 
@@ -309,14 +320,14 @@ if (import.meta.vitest) {
         toolHarnessExt(mockPi);
 
         // session_start applies the filter
-        await handlers["session_start"]();
+        handlers["session_start"]!();
         expect(activeTools).toEqual(["read", "grep"]);
 
         // Simulate external re-registration bypassing filter (sub-agents scenario)
         activeTools = ["all", "tools", "again"];
 
         // before_agent_start re-applies the filter
-        await handlers["before_agent_start"]();
+        handlers["before_agent_start"]!();
         expect(activeTools).toEqual(["read", "grep"]);
       });
     });

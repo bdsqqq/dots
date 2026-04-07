@@ -416,12 +416,30 @@ if (import.meta.vitest) {
           {
             role: "assistant",
             content: [
-              { type: "toolCall", id: "tc1", name: "grep", arguments: { pattern: "createGrepTool", path: "." } },
+              {
+                type: "toolCall",
+                id: "tc1",
+                name: "grep",
+                arguments: { pattern: "createGrepTool", path: "." },
+              },
             ],
             api: "anthropic-messages",
             provider: "anthropic",
             model: "gemini-3-flash",
-            usage: { input: 50, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 100, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+            usage: {
+              input: 50,
+              output: 50,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 100,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
+            },
             stopReason: "stop",
             timestamp: 0,
           },
@@ -439,7 +457,20 @@ if (import.meta.vitest) {
             api: "anthropic-messages",
             provider: "anthropic",
             model: "gemini-3-flash",
-            usage: { input: 75, output: 75, cacheRead: 0, cacheWrite: 0, totalTokens: 150, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+            usage: {
+              input: 75,
+              output: 75,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 150,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
+            },
             stopReason: "stop",
             timestamp: 0,
           },
@@ -487,7 +518,15 @@ if (import.meta.vitest) {
         task: "search for nonexistent",
         exitCode: 1,
         messages: [],
-        usage: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+        usage: {
+          input: 100,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0,
+          contextTokens: 0,
+          turns: 0,
+        },
         stopReason: "error",
         errorMessage: "connection timeout",
       };
@@ -511,7 +550,15 @@ if (import.meta.vitest) {
         task: "search in progress",
         exitCode: -1,
         messages: [],
-        usage: { input: 50, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+        usage: {
+          input: 50,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0,
+          contextTokens: 0,
+          turns: 0,
+        },
       };
 
       const container = new Container();
@@ -551,19 +598,34 @@ if (import.meta.vitest) {
       const messages = result.messages;
       const toolCalls = messages
         .filter((m) => m.role === "assistant")
-        .flatMap((m) => m.content?.filter((c): c is { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> } => c.type === "toolCall") ?? []);
+        .flatMap(
+          (m) =>
+            m.content?.filter(
+              (
+                c,
+              ): c is {
+                type: "toolCall";
+                id: string;
+                name: string;
+                arguments: Record<string, unknown>;
+              } => c.type === "toolCall",
+            ) ?? [],
+        );
       const finderCall = toolCalls.find((c) => c.name === "finder");
-      
+
       expect(finderCall).toBeDefined();
 
       // Check the final output mentions session-manager
       const lastAssistant = [...messages]
         .reverse()
         .find((m) => m.role === "assistant");
-      const textContent = lastAssistant?.content
-        ?.filter((c): c is { type: "text"; text: string } => c.type === "text")
-        .map((c) => c.text)
-        .join(" ") ?? "";
+      const textContent =
+        lastAssistant?.content
+          ?.filter(
+            (c): c is { type: "text"; text: string } => c.type === "text",
+          )
+          .map((c) => c.text)
+          .join(" ") ?? "";
 
       expect(textContent.toLowerCase()).toContain("session-manager");
     }, 120_000);

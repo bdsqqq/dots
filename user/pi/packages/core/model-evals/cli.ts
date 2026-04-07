@@ -11,7 +11,6 @@
  */
 
 import type {
-  AgentId,
   AgentProfile,
   EvaluatedModel,
   ModelId,
@@ -28,11 +27,7 @@ import {
   resolveModelSelector,
   roles,
 } from "./registry";
-import {
-  getAaSnapshot,
-  normalizeAaSnapshot,
-  getDefaultCachePath,
-} from "./aa";
+import { getAaSnapshot, normalizeAaSnapshot, getDefaultCachePath } from "./aa";
 import {
   DEFAULT_EVALUATION_PAGES,
   getDefaultSiteCacheDir,
@@ -44,14 +39,12 @@ import {
 import {
   supplementalMetrics,
   mergeSupplementalMetrics,
-  getCoverageByDimension,
 } from "./supplements";
 import { evaluateRole } from "./evaluate";
 import {
   renderJson,
   renderMarkdown,
   renderTable,
-  renderAllRoles,
   renderCoverageSummary,
   renderTldrMatrix,
   renderPortfolioMatrix,
@@ -324,7 +317,7 @@ function renderAgentCatalog(format: OutputFormat): string {
  */
 async function getEvaluatedModels(
   cachePath?: string,
-  refresh?: boolean
+  refresh?: boolean,
 ): Promise<EvaluatedModel[]> {
   const snapshot = await getAaSnapshot({ cachePath, refresh });
 
@@ -375,7 +368,11 @@ function createSyntheticModels(): EvaluatedModel[] {
 
     // add some role-appropriate variation
     const id = candidate.id.toLowerCase();
-    if (id.includes("gpt-5-4") && !id.includes("mini") && !id.includes("nano")) {
+    if (
+      id.includes("gpt-5-4") &&
+      !id.includes("mini") &&
+      !id.includes("nano")
+    ) {
       baseMetrics.intelligence = 85 + Math.random() * 10;
       baseMetrics.coding = 85 + Math.random() * 10;
       baseMetrics.price = 50 + Math.random() * 25; // premium pricing
@@ -478,10 +475,16 @@ export async function main(argv: readonly string[]): Promise<number> {
             snapshot,
             candidates: candidateModels,
           });
-          const found = models.filter((m) => !m.notes.includes("not found in aa data"));
-          console.log(`cached ${found.length}/${models.length} candidate models`);
+          const found = models.filter(
+            (m) => !m.notes.includes("not found in aa data"),
+          );
+          console.log(
+            `cached ${found.length}/${models.length} candidate models`,
+          );
         } else {
-          console.error("no api key provided. set artificial_analysis_api_key env var.");
+          console.error(
+            "no api key provided. set artificial_analysis_api_key env var.",
+          );
           return 1;
         }
       } catch (err) {
@@ -585,19 +588,35 @@ export async function main(argv: readonly string[]): Promise<number> {
 
       const roleProfile = roles[role];
       const models = await getEvaluatedModels(cachePath);
-      const evaluation = evaluateRole(roleProfile, models, preset, currentModel);
+      const evaluation = evaluateRole(
+        roleProfile,
+        models,
+        preset,
+        currentModel,
+      );
 
       let output: string;
       if (format === "json") {
         output = renderJson(targetProfile, evaluation, preset);
       } else if (tldr) {
         // LOD 29: dense --tldr matrix
-        output = renderTldrMatrix(targetProfile, evaluation, currentModel, models);
+        output = renderTldrMatrix(
+          targetProfile,
+          evaluation,
+          currentModel,
+          models,
+        );
       } else if (format === "table") {
         output = renderTable(evaluation, top);
       } else {
         // LOD 24-25: decision-first markdown
-        output = renderMarkdown(targetProfile, evaluation, preset, currentModel, models);
+        output = renderMarkdown(
+          targetProfile,
+          evaluation,
+          preset,
+          currentModel,
+          models,
+        );
       }
 
       console.log(output);

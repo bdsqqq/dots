@@ -9,7 +9,13 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { CandidateModel, DimensionId, EvaluatedModel, MetricSource, ModelFacts } from "./types";
+import type {
+  CandidateModel,
+  DimensionId,
+  EvaluatedModel,
+  MetricSource,
+  ModelFacts,
+} from "./types";
 
 /**
  * cached aa snapshot.
@@ -74,9 +80,7 @@ export async function fetchAaSnapshot(input: {
   const response = await fetchFn(AA_API_URL, { headers });
 
   if (!response.ok) {
-    throw new Error(
-      `aa api error: ${response.status} ${response.statusText}`
-    );
+    throw new Error(`aa api error: ${response.status} ${response.statusText}`);
   }
 
   const raw = await response.json();
@@ -158,12 +162,12 @@ export async function getAaSnapshot(input: {
  */
 function findAaModel(
   rawModels: AaModelRaw[],
-  candidate: CandidateModel
+  candidate: CandidateModel,
 ): AaModelRaw | null {
   // try apiSlug first
   if (candidate.aaMatch.apiSlug) {
     const found = rawModels.find(
-      (m) => m.slug?.toLowerCase() === candidate.aaMatch.apiSlug!.toLowerCase()
+      (m) => m.slug?.toLowerCase() === candidate.aaMatch.apiSlug!.toLowerCase(),
     );
     if (found) return found;
   }
@@ -171,14 +175,14 @@ function findAaModel(
   // try apiName
   if (candidate.aaMatch.apiName) {
     const found = rawModels.find(
-      (m) => m.name?.toLowerCase() === candidate.aaMatch.apiName!.toLowerCase()
+      (m) => m.name?.toLowerCase() === candidate.aaMatch.apiName!.toLowerCase(),
     );
     if (found) return found;
   }
 
   // try display name as fallback
-  const found = rawModels.find(
-    (m) => m.name?.toLowerCase().includes(candidate.displayName.toLowerCase())
+  const found = rawModels.find((m) =>
+    m.name?.toLowerCase().includes(candidate.displayName.toLowerCase()),
   );
   return found ?? null;
 }
@@ -193,7 +197,9 @@ function findAaModel(
  * - outputSpeed: direct (higher = faster)
  * - ttft: inverted (higher = faster, since ttft is latency)
  */
-function normalizeMetrics(aa: AaModelRaw): Partial<Record<DimensionId, number>> {
+function normalizeMetrics(
+  aa: AaModelRaw,
+): Partial<Record<DimensionId, number>> {
   const metrics: Partial<Record<DimensionId, number>> = {};
 
   // coding score
@@ -242,7 +248,9 @@ function normalizeMetrics(aa: AaModelRaw): Partial<Record<DimensionId, number>> 
 /**
  * build metric sources for aa-api-derived metrics.
  */
-function buildMetricSources(metrics: Partial<Record<DimensionId, number>>): Partial<Record<DimensionId, MetricSource>> {
+function buildMetricSources(
+  metrics: Partial<Record<DimensionId, number>>,
+): Partial<Record<DimensionId, MetricSource>> {
   const sources: Partial<Record<DimensionId, MetricSource>> = {};
   for (const dim of Object.keys(metrics) as DimensionId[]) {
     sources[dim] = {
@@ -297,7 +305,8 @@ export function normalizeAaSnapshot(input: {
 }
 
 if (import.meta.vitest) {
-  const { afterEach, beforeEach, describe, expect, test, vi } = import.meta.vitest;
+  const { afterEach, beforeEach, describe, expect, test, vi } = import.meta
+    .vitest;
   const tmpdir = os.tmpdir();
 
   let testDir: string;
@@ -364,7 +373,12 @@ if (import.meta.vitest) {
   describe("fetchAaSnapshot", () => {
     test("fetches and returns snapshot", async () => {
       const mockResponse = {
-        data: [{ slug: "gpt-5-4", evaluations: { artificial_analysis_coding_index: 85 } }],
+        data: [
+          {
+            slug: "gpt-5-4",
+            evaluations: { artificial_analysis_coding_index: 85 },
+          },
+        ],
       };
 
       const mockFetch = vi.fn().mockResolvedValue({
@@ -407,9 +421,9 @@ if (import.meta.vitest) {
         statusText: "Too Many Requests",
       }) as unknown as typeof fetch;
 
-      await expect(
-        fetchAaSnapshot({ fetchImpl: mockFetch })
-      ).rejects.toThrow("aa api error: 429");
+      await expect(fetchAaSnapshot({ fetchImpl: mockFetch })).rejects.toThrow(
+        "aa api error: 429",
+      );
     });
   });
 
@@ -538,7 +552,9 @@ if (import.meta.vitest) {
       expect(testModel.metrics.outputSpeed).toBeGreaterThan(0);
       expect(testModel.metrics.ttft).toBeGreaterThan(0); // inverted
       expect(testModel.facts.contextWindowTokens).toBe(128000);
-      expect(testModel.metricSources.coding?.source).toBe("artificial-analysis-api");
+      expect(testModel.metricSources.coding?.source).toBe(
+        "artificial-analysis-api",
+      );
       expect(testModel.notes).toHaveLength(0);
 
       const missingModel = models.find((m) => m.id === "missing-model")!;

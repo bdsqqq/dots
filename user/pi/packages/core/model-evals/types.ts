@@ -95,7 +95,7 @@ export interface AgentProfile {
   id: AgentId;
   role: RoleId;
   label: string;
-  currentModel?: ModelId | "inherits-default";
+  currentModel?: ModelId;
 }
 
 /**

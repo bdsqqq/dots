@@ -709,7 +709,11 @@ function editorExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_start", async (event, ctx) => {
-    if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") {
+    if (
+      event.reason === "new" ||
+      event.reason === "resume" ||
+      event.reason === "fork"
+    ) {
       // editor component persists across session switches, just update stats
       branchUnsub?.();
       branchUnsub = null;
@@ -741,7 +745,7 @@ export {
 };
 
 if (import.meta.vitest) {
-  const { describe, expect, it, vi, beforeEach } = import.meta.vitest;
+  const { describe, expect, it } = import.meta.vitest;
 
   // --- LabeledEditor border tests ---
   // Testing buildBorderLine directly avoids mocking the entire CustomEditor
@@ -752,7 +756,7 @@ if (import.meta.vitest) {
         {} as any,
         {} as any,
         {} as any,
-        { fg: (_, t) => t, bg: (_, t) => t } as any,
+        { fg: (_: string, t: string) => t, bg: (_: string, t: string) => t } as any,
         "/cwd",
       );
 
@@ -785,7 +789,7 @@ if (import.meta.vitest) {
         {} as any,
         {} as any,
         {} as any,
-        { fg: (_, t) => t, bg: (_, t) => t } as any,
+        { fg: (_: string, t: string) => t, bg: (_: string, t: string) => t } as any,
         "/cwd",
       );
       editor.setLabel("a", "first", "top", "left");
@@ -807,7 +811,7 @@ if (import.meta.vitest) {
         {} as any,
         {} as any,
         {} as any,
-        { fg: (_, t) => t, bg: (_, t) => t } as any,
+        { fg: (_: string, t: string) => t, bg: (_: string, t: string) => t } as any,
         "/cwd",
       );
       editor.setLabel("left", "L-label", "top", "left");
@@ -828,7 +832,7 @@ if (import.meta.vitest) {
         {} as any,
         {} as any,
         {} as any,
-        { fg: (_, t) => t, bg: (_, t) => t } as any,
+        { fg: (_: string, t: string) => t, bg: (_: string, t: string) => t } as any,
         "/cwd",
       );
       const originalWithScroll = "────── ↑ 5 more";

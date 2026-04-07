@@ -97,7 +97,14 @@ function sessionNameExtension(pi: ExtensionAPI): void {
 
     const currentName = pi.getSessionName() || undefined;
 
-    generateName(model, ctx.modelRegistry, text, currentName, isFirst, ctx.signal)
+    generateName(
+      model,
+      ctx.modelRegistry,
+      text,
+      currentName,
+      isFirst,
+      ctx.signal,
+    )
       .then((name) => {
         if (name) pi.setSessionName(name);
       })
@@ -108,7 +115,11 @@ function sessionNameExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_start", async (event) => {
-    if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") {
+    if (
+      event.reason === "new" ||
+      event.reason === "resume" ||
+      event.reason === "fork"
+    ) {
       messageCount = 0;
       pending = false;
     }
@@ -320,7 +331,10 @@ if (import.meta.vitest) {
         model,
         modelRegistry: {
           find: findSpy,
-          getApiKeyAndHeaders: vi.fn(async () => ({ ok: true, apiKey: undefined })),
+          getApiKeyAndHeaders: vi.fn(async () => ({
+            ok: true,
+            apiKey: undefined,
+          })),
         },
       };
 

@@ -67,7 +67,7 @@ export default function commandPaletteExtension(pi: ExtensionAPI): void {
 }
 
 if (import.meta.vitest) {
-  const { describe, it, expect, vi } = import.meta.vitest;
+  const { describe, it, expect } = import.meta.vitest;
   const { default: commandPaletteExtension } = await import("./index");
 
   describe("command-palette extension (SDK integration)", () => {
@@ -75,10 +75,10 @@ if (import.meta.vitest) {
       it("registers ctrl+p shortcut and /palette command", () => {
         const calls: { type: string; name?: string; key?: string }[] = [];
         const mockPi = {
-          registerShortcut: (key: string, opts: { description: string }) => {
+          registerShortcut: (key: string, _opts: { description: string }) => {
             calls.push({ type: "shortcut", key });
           },
-          registerCommand: (name: string, opts: { description: string }) => {
+          registerCommand: (name: string, _opts: { description: string }) => {
             calls.push({ type: "command", name });
           },
         } as any;
@@ -164,4 +164,3 @@ if (import.meta.vitest) {
     });
   });
 }
-

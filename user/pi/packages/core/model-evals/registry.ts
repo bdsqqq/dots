@@ -61,7 +61,10 @@ export const candidateModels: readonly CandidateModel[] = [
     id: "gemini-3-1-pro",
     providerModel: "google/gemini-3.1-pro-preview",
     displayName: "Gemini 3.1 Pro",
-    aaMatch: { apiSlug: "gemini-3-1-pro-preview", siteSlugs: ["gemini-3-1-pro-preview", "gemini-3-1-pro"] },
+    aaMatch: {
+      apiSlug: "gemini-3-1-pro-preview",
+      siteSlugs: ["gemini-3-1-pro-preview", "gemini-3-1-pro"],
+    },
     aliases: ["gemini3.1pro", "gemini-3.1-pro"],
   },
   {
@@ -70,21 +73,30 @@ export const candidateModels: readonly CandidateModel[] = [
     displayName: "Gemini 3 Flash",
     // note: site uses "gemini-3-flash" for the non-reasoning variant
     // runtime uses "google/gemini-3-flash-preview" which maps to gemini-3-flash site data
-    aaMatch: { apiSlug: "gemini-3-flash-preview", siteSlugs: ["gemini-3-flash"] },
+    aaMatch: {
+      apiSlug: "gemini-3-flash-preview",
+      siteSlugs: ["gemini-3-flash"],
+    },
     aliases: ["gemini3flash", "gemini-3-flash"],
   },
   {
     id: "claude-opus-4-6",
     providerModel: "anthropic/claude-opus-4-6",
     displayName: "Claude Opus 4.6",
-    aaMatch: { apiSlug: "claude-opus-4-6-adaptive", siteSlugs: ["claude-opus-4-6-adaptive", "claude-opus-4-6"] },
+    aaMatch: {
+      apiSlug: "claude-opus-4-6-adaptive",
+      siteSlugs: ["claude-opus-4-6-adaptive", "claude-opus-4-6"],
+    },
     aliases: ["claude-opus-4.6", "claudeopus4.6"],
   },
   {
     id: "claude-sonnet-4-6",
     providerModel: "anthropic/claude-sonnet-4-6",
     displayName: "Claude Sonnet 4.6",
-    aaMatch: { apiSlug: "claude-sonnet-4-6-adaptive", siteSlugs: ["claude-sonnet-4-6-adaptive", "claude-sonnet-4-6"] },
+    aaMatch: {
+      apiSlug: "claude-sonnet-4-6-adaptive",
+      siteSlugs: ["claude-sonnet-4-6-adaptive", "claude-sonnet-4-6"],
+    },
     aliases: ["claude-sonnet-4.6", "claudesonnet4.6"],
   },
   {
@@ -134,10 +146,21 @@ export const roles: Record<RoleId, RoleProfile> = {
       minContextTokens: 128000,
     },
     presets: {
-      balanced: { coding: 0.25, intelligence: 0.25, price: 0.25, outputSpeed: 0.15, ttft: 0.1 },
+      balanced: {
+        coding: 0.25,
+        intelligence: 0.25,
+        price: 0.25,
+        outputSpeed: 0.15,
+        ttft: 0.1,
+      },
       cheap: { price: 0.5, coding: 0.2, intelligence: 0.2, outputSpeed: 0.1 },
       fast: { outputSpeed: 0.4, ttft: 0.3, coding: 0.2, price: 0.1 },
-      "max-smarts": { intelligence: 0.4, coding: 0.3, price: 0.2, outputSpeed: 0.1 },
+      "max-smarts": {
+        intelligence: 0.4,
+        coding: 0.3,
+        price: 0.2,
+        outputSpeed: 0.1,
+      },
     },
   },
   deepReasoning: {
@@ -158,23 +181,58 @@ export const roles: Record<RoleId, RoleProfile> = {
       requireLowHallucination: true,
     },
     presets: {
-      balanced: { intelligence: 0.3, coding: 0.25, toolCalling: 0.2, hallucination: 0.15, instructionFollowing: 0.1 },
-      "max-smarts": { intelligence: 0.5, coding: 0.3, toolCalling: 0.15, hallucination: 0.05 },
+      balanced: {
+        intelligence: 0.3,
+        coding: 0.25,
+        toolCalling: 0.2,
+        hallucination: 0.15,
+        instructionFollowing: 0.1,
+      },
+      "max-smarts": {
+        intelligence: 0.5,
+        coding: 0.3,
+        toolCalling: 0.15,
+        hallucination: 0.05,
+      },
     },
   },
   fastSummarization: {
     id: "fastSummarization",
     description:
       "large-context, summarization/extraction: handoff, read-session, read-web-page, look-at.",
-    relevantDimensions: ["context", "longContextReasoning", "outputSpeed", "ttft", "price"] as const,
+    relevantDimensions: [
+      "context",
+      "longContextReasoning",
+      "outputSpeed",
+      "ttft",
+      "price",
+    ] as const,
     redFlagDimensions: [] as const,
     guardrails: {
       minContextTokens: 256000,
     },
     presets: {
-      balanced: { context: 0.25, longContextReasoning: 0.20, outputSpeed: 0.25, ttft: 0.20, price: 0.10 },
-      fast: { context: 0.10, longContextReasoning: 0.10, outputSpeed: 0.40, ttft: 0.30, price: 0.10 },
-      cheap: { context: 0.20, longContextReasoning: 0.10, outputSpeed: 0.15, ttft: 0.05, price: 0.50 },
+      balanced: {
+        context: 0.25,
+        longContextReasoning: 0.2,
+        outputSpeed: 0.25,
+        ttft: 0.2,
+        price: 0.1,
+      },
+      fast: {
+        context: 0.1,
+        longContextReasoning: 0.1,
+        outputSpeed: 0.4,
+        ttft: 0.3,
+        price: 0.1,
+      },
+      cheap: {
+        context: 0.2,
+        longContextReasoning: 0.1,
+        outputSpeed: 0.15,
+        ttft: 0.05,
+        price: 0.5,
+      },
     },
   },
   fastSearch: {
@@ -207,8 +265,22 @@ export const roles: Record<RoleId, RoleProfile> = {
       requireToolCalling: true,
     },
     presets: {
-      balanced: { coding: 0.20, intelligence: 0.20, context: 0.15, longContextReasoning: 0.20, toolCalling: 0.15, price: 0.10 },
-      cheap: { price: 0.4, coding: 0.25, intelligence: 0.2, context: 0.05, longContextReasoning: 0.05, toolCalling: 0.05 },
+      balanced: {
+        coding: 0.2,
+        intelligence: 0.2,
+        context: 0.15,
+        longContextReasoning: 0.2,
+        toolCalling: 0.15,
+        price: 0.1,
+      },
+      cheap: {
+        price: 0.4,
+        coding: 0.25,
+        intelligence: 0.2,
+        context: 0.05,
+        longContextReasoning: 0.05,
+        toolCalling: 0.05,
+      },
     },
   },
 };
@@ -282,9 +354,7 @@ export const agents: Record<AgentId, AgentProfile> = {
   },
 };
 
-const validAgentIds = new Set<AgentId>(
-  Object.keys(agents) as AgentId[]
-);
+const validAgentIds = new Set<AgentId>(Object.keys(agents) as AgentId[]);
 
 const validRoleIds = new Set<RoleId>(Object.keys(roles) as RoleId[]);
 
@@ -393,9 +463,9 @@ if (import.meta.vitest) {
         expect(model.aaMatch).toBeDefined();
         expect(
           model.aaMatch.apiSlug ||
-          model.aaMatch.apiName ||
-          model.aaMatch.siteSlugs?.length ||
-          model.aaMatch.siteNames?.length
+            model.aaMatch.apiName ||
+            model.aaMatch.siteSlugs?.length ||
+            model.aaMatch.siteNames?.length,
         ).toBeTruthy();
       }
     });
@@ -418,11 +488,17 @@ if (import.meta.vitest) {
 
       for (const role of Object.values(roles)) {
         for (const dim of role.relevantDimensions) {
-          expect(validDims.has(dim), `unknown dimension ${dim} in role ${role.id}`).toBe(true);
+          expect(
+            validDims.has(dim),
+            `unknown dimension ${dim} in role ${role.id}`,
+          ).toBe(true);
         }
         if (role.redFlagDimensions) {
           for (const dim of role.redFlagDimensions) {
-            expect(validDims.has(dim), `unknown red flag dimension ${dim} in role ${role.id}`).toBe(true);
+            expect(
+              validDims.has(dim),
+              `unknown red flag dimension ${dim} in role ${role.id}`,
+            ).toBe(true);
           }
         }
       }
@@ -431,7 +507,7 @@ if (import.meta.vitest) {
     test("all preset weights sum approximately to 1", () => {
       for (const role of Object.values(roles)) {
         if (!role.presets) continue;
-        for (const [presetName, weights] of Object.entries(role.presets)) {
+        for (const [_presetName, weights] of Object.entries(role.presets)) {
           const sum = Object.values(weights).reduce((a, b) => a + b, 0);
           expect(sum).toBeGreaterThanOrEqual(0.9);
           expect(sum).toBeLessThanOrEqual(1.1);
@@ -443,7 +519,10 @@ if (import.meta.vitest) {
   describe("agents", () => {
     test("all agents reference valid roles", () => {
       for (const agent of Object.values(agents)) {
-        expect(validRoleIds.has(agent.role), `agent ${agent.id} references invalid role ${agent.role}`).toBe(true);
+        expect(
+          validRoleIds.has(agent.role),
+          `agent ${agent.id} references invalid role ${agent.role}`,
+        ).toBe(true);
       }
     });
 
@@ -451,7 +530,11 @@ if (import.meta.vitest) {
       for (const agent of Object.values(agents)) {
         if (agent.currentModel === "inherits-default") continue;
         if (agent.currentModel === undefined) continue;
-        expect(modelIdSet.has(agent.currentModel) || agent.currentModel === "gpt-5-2", `agent ${agent.id} has invalid currentModel ${agent.currentModel}`).toBe(true);
+        expect(
+          modelIdSet.has(agent.currentModel) ||
+            agent.currentModel === "gpt-5-2",
+          `agent ${agent.id} has invalid currentModel ${agent.currentModel}`,
+        ).toBe(true);
       }
     });
   });
@@ -464,7 +547,7 @@ if (import.meta.vitest) {
 
     test("resolves agent file path", () => {
       expect(
-        resolveAgentSelector("~/.pi/agent/agents/agent.amp.oracle.md")
+        resolveAgentSelector("~/.pi/agent/agents/agent.amp.oracle.md"),
       ).toBe("oracle");
     });
 
@@ -475,7 +558,7 @@ if (import.meta.vitest) {
 
     test("throws on unknown selector", () => {
       expect(() => resolveAgentSelector("unknown-agent")).toThrow(
-        "unknown agent selector"
+        "unknown agent selector",
       );
     });
   });

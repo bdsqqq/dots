@@ -187,7 +187,9 @@ export function createGlobTool(
         });
 
         child.on("error", (err) => {
-          try { rl.close(); } catch {}
+          try {
+            rl.close();
+          } catch {}
           signal?.removeEventListener("abort", onAbort);
           resolve({
             content: [

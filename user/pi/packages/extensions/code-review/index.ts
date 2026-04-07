@@ -431,7 +431,7 @@ export {
 };
 
 if (import.meta.vitest) {
-  const { describe, it, expect, vi, beforeEach, afterEach } = import.meta.vitest;
+  const { describe, it, expect, vi } = import.meta.vitest;
 
   // ============================================================================
   // PURE FUNCTION TESTS
@@ -494,8 +494,8 @@ if (import.meta.vitest) {
       const result = parseReviewXml(xml);
 
       expect(result).toHaveLength(2);
-      expect(result[0].filename).toBe("/src/a.ts");
-      expect(result[1].filename).toBe("/src/b.ts");
+      expect(result[0]?.filename).toBe("/src/a.ts");
+      expect(result[1]?.filename).toBe("/src/b.ts");
     });
 
     it("returns empty array for XML with no comments", () => {
@@ -519,8 +519,8 @@ if (import.meta.vitest) {
       const result = parseReviewXml(xml);
 
       expect(result).toHaveLength(1);
-      expect(result[0].why).toBe("");
-      expect(result[0].fix).toBe("");
+      expect(result[0]?.why).toBe("");
+      expect(result[0]?.fix).toBe("");
     });
 
     it("handles malformed line numbers (defaults to 0)", () => {
@@ -537,27 +537,74 @@ if (import.meta.vitest) {
 
       const result = parseReviewXml(xml);
 
-      expect(result[0].startLine).toBe(0);
-      expect(result[0].endLine).toBe(0);
+      expect(result[0]?.startLine).toBe(0);
+      expect(result[0]?.endLine).toBe(0);
     });
   });
 
   describe("formatReviewSummary", () => {
     it("formats single comment count", () => {
       const comments = [
-        { filename: "/a.ts", startLine: 1, endLine: 2, severity: "high", commentType: "bug", text: "", why: "", fix: "" },
+        {
+          filename: "/a.ts",
+          startLine: 1,
+          endLine: 2,
+          severity: "high",
+          commentType: "bug",
+          text: "",
+          why: "",
+          fix: "",
+        },
       ];
       expect(formatReviewSummary(comments)).toBe("1 comment: 1 high");
     });
 
     it("formats multiple comments with severity grouping", () => {
       const comments = [
-        { filename: "/a.ts", startLine: 1, endLine: 2, severity: "critical", commentType: "bug", text: "", why: "", fix: "" },
-        { filename: "/b.ts", startLine: 1, endLine: 2, severity: "high", commentType: "bug", text: "", why: "", fix: "" },
-        { filename: "/c.ts", startLine: 1, endLine: 2, severity: "high", commentType: "bug", text: "", why: "", fix: "" },
-        { filename: "/d.ts", startLine: 1, endLine: 2, severity: "low", commentType: "compliment", text: "", why: "", fix: "" },
+        {
+          filename: "/a.ts",
+          startLine: 1,
+          endLine: 2,
+          severity: "critical",
+          commentType: "bug",
+          text: "",
+          why: "",
+          fix: "",
+        },
+        {
+          filename: "/b.ts",
+          startLine: 1,
+          endLine: 2,
+          severity: "high",
+          commentType: "bug",
+          text: "",
+          why: "",
+          fix: "",
+        },
+        {
+          filename: "/c.ts",
+          startLine: 1,
+          endLine: 2,
+          severity: "high",
+          commentType: "bug",
+          text: "",
+          why: "",
+          fix: "",
+        },
+        {
+          filename: "/d.ts",
+          startLine: 1,
+          endLine: 2,
+          severity: "low",
+          commentType: "compliment",
+          text: "",
+          why: "",
+          fix: "",
+        },
       ];
-      expect(formatReviewSummary(comments)).toBe("4 comments: 1 critical, 2 high, 1 low");
+      expect(formatReviewSummary(comments)).toBe(
+        "4 comments: 1 critical, 2 high, 1 low",
+      );
     });
 
     it("returns empty string for empty comments", () => {
@@ -566,11 +613,40 @@ if (import.meta.vitest) {
 
     it("orders severities correctly (critical > high > medium > low)", () => {
       const comments = [
-        { filename: "/a.ts", startLine: 1, endLine: 2, severity: "low", commentType: "compliment", text: "", why: "", fix: "" },
-        { filename: "/b.ts", startLine: 1, endLine: 2, severity: "critical", commentType: "bug", text: "", why: "", fix: "" },
-        { filename: "/c.ts", startLine: 1, endLine: 2, severity: "medium", commentType: "bug", text: "", why: "", fix: "" },
+        {
+          filename: "/a.ts",
+          startLine: 1,
+          endLine: 2,
+          severity: "low",
+          commentType: "compliment",
+          text: "",
+          why: "",
+          fix: "",
+        },
+        {
+          filename: "/b.ts",
+          startLine: 1,
+          endLine: 2,
+          severity: "critical",
+          commentType: "bug",
+          text: "",
+          why: "",
+          fix: "",
+        },
+        {
+          filename: "/c.ts",
+          startLine: 1,
+          endLine: 2,
+          severity: "medium",
+          commentType: "bug",
+          text: "",
+          why: "",
+          fix: "",
+        },
       ];
-      expect(formatReviewSummary(comments)).toBe("3 comments: 1 critical, 1 medium, 1 low");
+      expect(formatReviewSummary(comments)).toBe(
+        "3 comments: 1 critical, 1 medium, 1 low",
+      );
     });
   });
 
@@ -663,7 +739,10 @@ if (import.meta.vitest) {
   describe("code-review extension (SDK integration)", () => {
     describe("extension registration", () => {
       it("does not register anything when disabled", () => {
-        const mockConfig = vi.fn(() => ({ enabled: false, config: CONFIG_DEFAULTS }));
+        const mockConfig = vi.fn(() => ({
+          enabled: false,
+          config: CONFIG_DEFAULTS,
+        }));
 
         const ext = createCodeReviewExtension({
           ...DEFAULT_DEPS,
@@ -681,7 +760,10 @@ if (import.meta.vitest) {
       });
 
       it("registers tool when enabled", () => {
-        const mockConfig = vi.fn(() => ({ enabled: true, config: CONFIG_DEFAULTS }));
+        const mockConfig = vi.fn(() => ({
+          enabled: true,
+          config: CONFIG_DEFAULTS,
+        }));
 
         const ext = createCodeReviewExtension({
           ...DEFAULT_DEPS,
@@ -702,9 +784,18 @@ if (import.meta.vitest) {
       });
 
       it("calls resolvePrompt for system and report prompts", () => {
-        const mockConfig = vi.fn(() => ({ enabled: true, config: CONFIG_DEFAULTS }));
-        const resolvePromptCalls: { promptString: string; promptFile: string }[] = [];
-        const mockResolvePrompt = (promptString: string, promptFile: string) => {
+        const mockConfig = vi.fn(() => ({
+          enabled: true,
+          config: CONFIG_DEFAULTS,
+        }));
+        const resolvePromptCalls: {
+          promptString: string;
+          promptFile: string;
+        }[] = [];
+        const mockResolvePrompt = (
+          promptString: string,
+          promptFile: string,
+        ) => {
           resolvePromptCalls.push({ promptString, promptFile });
           return "resolved";
         };
@@ -734,7 +825,10 @@ if (import.meta.vitest) {
       });
 
       it("applies prompt patch to tool via withPromptPatch", () => {
-        const mockConfig = vi.fn(() => ({ enabled: true, config: CONFIG_DEFAULTS }));
+        const mockConfig = vi.fn(() => ({
+          enabled: true,
+          config: CONFIG_DEFAULTS,
+        }));
         let patchedTool: any = null;
         const mockWithPromptPatch = (tool: any) => {
           patchedTool = tool;
@@ -783,7 +877,11 @@ if (import.meta.vitest) {
           bold: (text: string) => text,
         };
 
-        const result = tool.renderCall!({ diff_description: "compare main to feature" }, mockTheme);
+        const result = tool.renderCall!(
+          { diff_description: "compare main to feature" },
+          mockTheme as any,
+          {} as any,
+        );
         const lines = result.render(80);
 
         expect(lines.join("\n")).toContain("code_review");
@@ -798,7 +896,11 @@ if (import.meta.vitest) {
         };
         const longDesc = "a".repeat(100);
 
-        const result = tool.renderCall!({ diff_description: longDesc }, mockTheme);
+        const result = tool.renderCall!(
+          { diff_description: longDesc },
+          mockTheme as any,
+          {} as any,
+        );
         const lines = result.render(80);
 
         expect(lines.join("\n")).toContain("...");
@@ -813,7 +915,8 @@ if (import.meta.vitest) {
 
         const result = tool.renderCall!(
           { diff_description: "test", files: ["/a.ts", "/b.ts", "/c.ts"] },
-          mockTheme,
+          mockTheme as any,
+          {} as any,
         );
         const lines = result.render(80);
 
@@ -849,12 +952,18 @@ if (import.meta.vitest) {
               agent: "code_review",
               task: "test",
               exitCode: 0,
-              messages: [{ role: "assistant", content: [{ type: "text", text: xmlOutput }] }],
+              messages: [
+                {
+                  role: "assistant",
+                  content: [{ type: "text", text: xmlOutput }],
+                },
+              ],
               usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
             },
           },
-          { expanded: false },
-          mockTheme,
+          { expanded: false, isPartial: false },
+          mockTheme as any,
+          {} as any,
         );
 
         const lines = result.render(80);
@@ -869,9 +978,10 @@ if (import.meta.vitest) {
         };
 
         const result = tool.renderResult!(
-          { content: [{ type: "text", text: "plain text output" }] },
-          { expanded: false },
-          mockTheme,
+          { content: [{ type: "text", text: "plain text output" }], details: undefined },
+          { expanded: false, isPartial: false },
+          mockTheme as any,
+          {} as any,
         );
 
         const lines = result.render(80);

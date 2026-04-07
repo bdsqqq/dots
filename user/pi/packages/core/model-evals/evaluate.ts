@@ -26,7 +26,7 @@ import type {
  */
 export function passesGuardrails(
   role: RoleProfile,
-  model: EvaluatedModel
+  model: EvaluatedModel,
 ): boolean {
   const g = role.guardrails;
   if (!g) return true;
@@ -62,7 +62,10 @@ export function passesGuardrails(
     }
     // if no score, check supplements for doc-based fallback
     const toolCallingSupp = model.supplements.toolCalling;
-    if (toolCallingScore === undefined && toolCallingSupp?.confidence === "verified") {
+    if (
+      toolCallingScore === undefined &&
+      toolCallingSupp?.confidence === "verified"
+    ) {
       // fail if docs say tool calling is explicitly false
       if (toolCallingSupp.value === false) {
         return false;
@@ -81,9 +84,15 @@ export function passesGuardrails(
     }
     // if no metric, check supplements for fallback
     const hallucinationSupp = model.supplements.hallucination;
-    if (hallucinationScore === undefined && hallucinationSupp?.confidence === "verified") {
+    if (
+      hallucinationScore === undefined &&
+      hallucinationSupp?.confidence === "verified"
+    ) {
       // old supplements used 0-1 scale, fail if < 0.5
-      if (typeof hallucinationSupp.value === "number" && hallucinationSupp.value < 0.5) {
+      if (
+        typeof hallucinationSupp.value === "number" &&
+        hallucinationSupp.value < 0.5
+      ) {
         return false;
       }
     }
@@ -97,7 +106,7 @@ export function passesGuardrails(
  */
 export function applyGuardrails(
   role: RoleProfile,
-  models: readonly EvaluatedModel[]
+  models: readonly EvaluatedModel[],
 ): readonly EvaluatedModel[] {
   return models.filter((m) => passesGuardrails(role, m));
 }
@@ -113,7 +122,7 @@ export function applyGuardrails(
  */
 export function computeParetoFrontier(
   models: readonly EvaluatedModel[],
-  dimensions: readonly DimensionId[]
+  dimensions: readonly DimensionId[],
 ): readonly ModelId[] {
   if (models.length === 0) return [];
   if (dimensions.length === 0) return models.map((m) => m.id);
@@ -169,7 +178,7 @@ export function computeParetoFrontier(
  */
 export function rankWithPreset(
   models: readonly EvaluatedModel[],
-  presetWeights: Partial<Record<DimensionId, number>>
+  presetWeights: Partial<Record<DimensionId, number>>,
 ): readonly ModelId[] {
   const dims = Object.keys(presetWeights) as DimensionId[];
   if (dims.length === 0) return models.map((m) => m.id);
@@ -202,7 +211,7 @@ export function buildTradeoffCallouts(
   role: RoleProfile,
   models: readonly EvaluatedModel[],
   frontierModelIds: readonly ModelId[],
-  currentModelId?: ModelId
+  currentModelId?: ModelId,
 ): readonly string[] {
   const callouts: string[] = [];
   const frontierSet = new Set(frontierModelIds);
@@ -231,27 +240,29 @@ export function buildTradeoffCallouts(
         const speed = current.metrics.outputSpeed;
 
         const betterPrice = frontierModels.find(
-          (f) => (f.metrics.price ?? Infinity) > (price ?? 0)
+          (f) => (f.metrics.price ?? Infinity) > (price ?? 0),
         );
         const betterSmarts = frontierModels.find(
-          (f) => (f.metrics.intelligence ?? 0) > (intelligence ?? 0)
+          (f) => (f.metrics.intelligence ?? 0) > (intelligence ?? 0),
         );
-        const betterSpeed = frontierModels.find(
-          (f) => (f.metrics.outputSpeed ?? 0) > (speed ?? 0)
+        const _betterSpeed = frontierModels.find(
+          (f) => (f.metrics.outputSpeed ?? 0) > (speed ?? 0),
         );
 
         if (betterPrice && betterSmarts) {
           callouts.push(
-            `${betterSmarts.displayName} is smarter than current ${current.displayName}, but ${betterPrice.displayName} is cheaper`
+            `${betterSmarts.displayName} is smarter than current ${current.displayName}, but ${betterPrice.displayName} is cheaper`,
           );
         } else if (betterSmarts) {
           callouts.push(
-            `${betterSmarts.displayName} scores higher on intelligence than current ${current.displayName}`
+            `${betterSmarts.displayName} scores higher on intelligence than current ${current.displayName}`,
           );
         }
       }
     } else if (isFrontier) {
-      callouts.push(`${current.displayName} is on the pareto frontier for this role`);
+      callouts.push(
+        `${current.displayName} is on the pareto frontier for this role`,
+      );
     }
   }
 
@@ -263,13 +274,13 @@ export function buildTradeoffCallouts(
 
     // find price/speed/smarts extremes
     const byPrice = [...frontierModels].sort(
-      (a, b) => (b.metrics.price ?? 0) - (a.metrics.price ?? 0)
+      (a, b) => (b.metrics.price ?? 0) - (a.metrics.price ?? 0),
     );
     const byIntelligence = [...frontierModels].sort(
-      (a, b) => (b.metrics.intelligence ?? 0) - (a.metrics.intelligence ?? 0)
+      (a, b) => (b.metrics.intelligence ?? 0) - (a.metrics.intelligence ?? 0),
     );
     const bySpeed = [...frontierModels].sort(
-      (a, b) => (b.metrics.outputSpeed ?? 0) - (a.metrics.outputSpeed ?? 0)
+      (a, b) => (b.metrics.outputSpeed ?? 0) - (a.metrics.outputSpeed ?? 0),
     );
 
     const cheapest = byPrice[0];
@@ -277,16 +288,19 @@ export function buildTradeoffCallouts(
     const fastest = bySpeed[0];
 
     if (cheapest && smartest && cheapest.id !== smartest.id) {
-      const priceDiff = (smartest.metrics.price ?? 0) - (cheapest.metrics.price ?? 0);
-      const intDiff = (smartest.metrics.intelligence ?? 0) - (cheapest.metrics.intelligence ?? 0);
+      const priceDiff =
+        (smartest.metrics.price ?? 0) - (cheapest.metrics.price ?? 0);
+      const intDiff =
+        (smartest.metrics.intelligence ?? 0) -
+        (cheapest.metrics.intelligence ?? 0);
       callouts.push(
-        `${cheapest.displayName} is ~${priceDiff.toFixed(1)} points cheaper but scores ~${intDiff.toFixed(1)} points lower on intelligence than ${smartest.displayName}`
+        `${cheapest.displayName} is ~${priceDiff.toFixed(1)} points cheaper but scores ~${intDiff.toFixed(1)} points lower on intelligence than ${smartest.displayName}`,
       );
     }
 
     if (fastest && smartest && fastest.id !== smartest.id) {
       callouts.push(
-        `${fastest.displayName} is fastest on the frontier; ${smartest.displayName} is smartest`
+        `${fastest.displayName} is fastest on the frontier; ${smartest.displayName} is smartest`,
       );
     }
   }
@@ -303,9 +317,7 @@ export function buildTradeoffCallouts(
   });
 
   if (missingDimensions.length > 0) {
-    callouts.push(
-      `coverage gap: no data for ${missingDimensions.join(", ")}`
-    );
+    callouts.push(`coverage gap: no data for ${missingDimensions.join(", ")}`);
   }
 
   return callouts;
@@ -319,14 +331,17 @@ export function buildTradeoffCallouts(
  */
 export function computeCoverage(
   models: readonly EvaluatedModel[],
-  dimensions: readonly DimensionId[]
+  dimensions: readonly DimensionId[],
 ): Partial<Record<DimensionId, number>> {
   const coverage: Partial<Record<DimensionId, number>> = {};
 
   for (const dim of dimensions) {
     let count = 0;
     for (const model of models) {
-      if (model.metrics[dim] !== undefined || model.supplements[dim] !== undefined) {
+      if (
+        model.metrics[dim] !== undefined ||
+        model.supplements[dim] !== undefined
+      ) {
         count++;
       }
     }
@@ -346,7 +361,7 @@ export function evaluateRole(
   role: RoleProfile,
   models: readonly EvaluatedModel[],
   preset?: PresetName,
-  currentModelId?: ModelId
+  currentModelId?: ModelId,
 ): RoleEvaluation {
   const eligible = applyGuardrails(role, models);
   const relevantDims = [...role.relevantDimensions];
@@ -357,7 +372,12 @@ export function evaluateRole(
     ranked = rankWithPreset(eligible, role.presets[preset]!);
   }
 
-  const callouts = buildTradeoffCallouts(role, eligible, frontier, currentModelId);
+  const callouts = buildTradeoffCallouts(
+    role,
+    eligible,
+    frontier,
+    currentModelId,
+  );
 
   const allDims = [...relevantDims];
   if (role.redFlagDimensions) {
@@ -384,7 +404,7 @@ export function evaluateAgent(
   agents: Record<string, { role: string; currentModel?: string }>,
   roles: Record<string, RoleProfile>,
   models: readonly EvaluatedModel[],
-  preset?: PresetName
+  preset?: PresetName,
 ): RoleEvaluation | null {
   const agent = agents[agentId];
   if (!agent) return null;
@@ -398,7 +418,10 @@ export function evaluateAgent(
     currentModelId = agent.currentModel;
   } else if (agent.currentModel === "inherits-default") {
     const defaultAgent = agents["default"];
-    if (defaultAgent?.currentModel && defaultAgent.currentModel !== "inherits-default") {
+    if (
+      defaultAgent?.currentModel &&
+      defaultAgent.currentModel !== "inherits-default"
+    ) {
       currentModelId = defaultAgent.currentModel;
     }
   }
@@ -466,7 +489,7 @@ const EPSILON = 3; // tie threshold within 3 points
  */
 export function computeRoleLeaders(
   models: readonly EvaluatedModel[],
-  dimensions: readonly DimensionId[]
+  dimensions: readonly DimensionId[],
 ): RoleLeaders {
   const leaders: RoleLeaders = {};
 
@@ -490,11 +513,16 @@ export function computeRoleLeaders(
     }
 
     // map dimension to leader key
-    const key = dim === "intelligence" ? "smarts"
-      : dim === "toolCalling" ? "tools"
-      : dim === "longContextReasoning" ? "longContextReasoning"
-      : dim === "outputSpeed" || dim === "ttft" ? "speed"
-      : dim;
+    const key =
+      dim === "intelligence"
+        ? "smarts"
+        : dim === "toolCalling"
+          ? "tools"
+          : dim === "longContextReasoning"
+            ? "longContextReasoning"
+            : dim === "outputSpeed" || dim === "ttft"
+              ? "speed"
+              : dim;
 
     if (key === "speed") {
       // combine speed dimensions: take best across both outputSpeed and ttft
@@ -516,7 +544,7 @@ export function computeModelDeltas(
   model: EvaluatedModel,
   current: EvaluatedModel | undefined,
   dimensions: readonly DimensionId[],
-  threshold = 5
+  threshold = 5,
 ): ModelDeltaSummary {
   const result: ModelDeltaSummary = { better: [], worse: [], neutral: [] };
 
@@ -569,8 +597,13 @@ export function buildModelVerdict(input: {
   const isSpeedLeader = leaders.speed?.includes(model.id);
 
   // count leadership positions
-  const leadershipCount = [isSmartsLeader, isToolsLeader, isHallucinationLeader, isPriceLeader, isSpeedLeader]
-    .filter(Boolean).length;
+  const leadershipCount = [
+    isSmartsLeader,
+    isToolsLeader,
+    isHallucinationLeader,
+    isPriceLeader,
+    isSpeedLeader,
+  ].filter(Boolean).length;
 
   // compute deltas if we have a current model
   const deltas = computeModelDeltas(model, current, role.relevantDimensions);
@@ -612,7 +645,7 @@ export function buildModelVerdict(input: {
  */
 export function extractMeaningfulCaveats(
   evaluation: RoleEvaluation,
-  models: readonly EvaluatedModel[]
+  models: readonly EvaluatedModel[],
 ): string[] {
   const caveats: string[] = [];
 
@@ -640,7 +673,9 @@ export function extractMeaningfulCaveats(
     for (const dim of redFlags) {
       const score = model.metrics[dim];
       if (score !== undefined && score < 50) {
-        caveats.push(`${model.displayName} has low ${DIMENSION_LABELS[dim] ?? dim} (${score.toFixed(0)})`);
+        caveats.push(
+          `${model.displayName} has low ${DIMENSION_LABELS[dim] ?? dim} (${score.toFixed(0)})`,
+        );
       }
     }
   }
@@ -654,7 +689,7 @@ export function extractMeaningfulCaveats(
 export function computeRoleFit(
   model: EvaluatedModel,
   roles: Record<RoleId, RoleProfile>,
-  allModels: readonly EvaluatedModel[]
+  allModels: readonly EvaluatedModel[],
 ): RoleFitSummary {
   const result: RoleFitSummary = { strong: [], mixed: [], risky: [] };
 
@@ -704,7 +739,7 @@ export function computeRoleFit(
  */
 export function computeDimensionRanks(
   models: readonly EvaluatedModel[],
-  dimensions: readonly DimensionId[]
+  dimensions: readonly DimensionId[],
 ): Map<ModelId, Map<DimensionId, number>> {
   const ranks = new Map<ModelId, Map<DimensionId, number>>();
 
@@ -734,8 +769,13 @@ if (import.meta.vitest) {
   const makeModel = (
     id: string,
     metrics: Partial<Record<DimensionId, number>>,
-    supplements: Partial<Record<DimensionId, { value: unknown; confidence: "verified" | "hunch"; source: string }>> = {},
-    facts: { contextWindowTokens?: number } = {}
+    supplements: Partial<
+      Record<
+        DimensionId,
+        { value: unknown; confidence: "verified" | "hunch"; source: string }
+      >
+    > = {},
+    facts: { contextWindowTokens?: number } = {},
   ): EvaluatedModel => ({
     id,
     providerModel: id,
@@ -744,7 +784,7 @@ if (import.meta.vitest) {
     metricSources: {},
     facts,
     supplements: Object.fromEntries(
-      Object.entries(supplements).map(([k, v]) => [k, { ...v }])
+      Object.entries(supplements).map(([k, v]) => [k, { ...v }]),
     ),
     notes: [],
   });
@@ -879,7 +919,10 @@ if (import.meta.vitest) {
   });
 
   describe("rankWithPreset", () => {
-    const weights = { intelligence: 0.5, price: 0.5 } as Record<DimensionId, number>;
+    const weights = { intelligence: 0.5, price: 0.5 } as Record<
+      DimensionId,
+      number
+    >;
 
     test("orders by weighted score", () => {
       const models = [
@@ -934,7 +977,13 @@ if (import.meta.vitest) {
         relevantDimensions: ["hallucination"] as const,
       };
       const models = [
-        makeModel("a", {}, { hallucination: { value: 0.5, confidence: "hunch", source: "test" } }),
+        makeModel(
+          "a",
+          {},
+          {
+            hallucination: { value: 0.5, confidence: "hunch", source: "test" },
+          },
+        ),
       ];
       const callouts = buildTradeoffCallouts(role, models, ["a"]);
       expect(callouts.some((c) => c.includes("coverage gap"))).toBe(false);
@@ -948,7 +997,11 @@ if (import.meta.vitest) {
       };
       const models = [makeModel("a", {})];
       const callouts = buildTradeoffCallouts(role, models, ["a"]);
-      expect(callouts.some((c) => c.includes("coverage gap: no data for coding, hallucination"))).toBe(true);
+      expect(
+        callouts.some((c) =>
+          c.includes("coverage gap: no data for coding, hallucination"),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -1034,7 +1087,9 @@ if (import.meta.vitest) {
       const deepReasoning = roles.deepReasoning;
       expect(deepReasoning.relevantDimensions).toContain("hallucination");
       expect(deepReasoning.relevantDimensions).toContain("toolCalling");
-      expect(deepReasoning.relevantDimensions).toContain("instructionFollowing");
+      expect(deepReasoning.relevantDimensions).toContain(
+        "instructionFollowing",
+      );
       expect(deepReasoning.guardrails?.requireLowHallucination).toBe(true);
       expect(deepReasoning.guardrails?.requireToolCalling).toBe(true);
     });
@@ -1064,7 +1119,10 @@ if (import.meta.vitest) {
         makeModel("b", { intelligence: 97, price: 100 }), // within epsilon on intelligence
         makeModel("c", { intelligence: 80, price: 80 }),
       ];
-      const leaders = computeRoleLeaders(models, ["intelligence", "price"] as DimensionId[]);
+      const leaders = computeRoleLeaders(models, [
+        "intelligence",
+        "price",
+      ] as DimensionId[]);
       expect(leaders.smarts).toContain("a");
       expect(leaders.smarts).toContain("b"); // within epsilon
       expect(leaders.price).toContain("b");
@@ -1076,7 +1134,10 @@ if (import.meta.vitest) {
         makeModel("a", { intelligence: 100 }),
         makeModel("b", { price: 100 }),
       ];
-      const leaders = computeRoleLeaders(models, ["intelligence", "price"] as DimensionId[]);
+      const leaders = computeRoleLeaders(models, [
+        "intelligence",
+        "price",
+      ] as DimensionId[]);
       expect(leaders.smarts).toEqual(["a"]);
       expect(leaders.price).toEqual(["b"]);
     });
@@ -1086,7 +1147,10 @@ if (import.meta.vitest) {
     test("identifies better and worse dimensions", () => {
       const model = makeModel("a", { intelligence: 80, price: 60 });
       const current = makeModel("current", { intelligence: 60, price: 80 });
-      const deltas = computeModelDeltas(model, current, ["intelligence", "price"] as DimensionId[]);
+      const deltas = computeModelDeltas(model, current, [
+        "intelligence",
+        "price",
+      ] as DimensionId[]);
       expect(deltas.better).toContain("smarts");
       expect(deltas.worse).toContain("price");
     });
@@ -1094,14 +1158,21 @@ if (import.meta.vitest) {
     test("ignores small deltas below threshold", () => {
       const model = makeModel("a", { intelligence: 64 });
       const current = makeModel("current", { intelligence: 60 });
-      const deltas = computeModelDeltas(model, current, ["intelligence"] as DimensionId[], 5);
+      const deltas = computeModelDeltas(
+        model,
+        current,
+        ["intelligence"] as DimensionId[],
+        5,
+      );
       expect(deltas.better).toHaveLength(0);
       expect(deltas.worse).toHaveLength(0);
     });
 
     test("returns empty when no current model", () => {
       const model = makeModel("a", { intelligence: 80 });
-      const deltas = computeModelDeltas(model, undefined, ["intelligence"] as DimensionId[]);
+      const deltas = computeModelDeltas(model, undefined, [
+        "intelligence",
+      ] as DimensionId[]);
       expect(deltas.better).toHaveLength(0);
       expect(deltas.worse).toHaveLength(0);
     });
@@ -1151,7 +1222,9 @@ if (import.meta.vitest) {
         makeModel("b", { intelligence: 80 }),
         makeModel("c", { intelligence: 60 }),
       ];
-      const ranks = computeDimensionRanks(models, ["intelligence"] as DimensionId[]);
+      const ranks = computeDimensionRanks(models, [
+        "intelligence",
+      ] as DimensionId[]);
       expect(ranks.get("a")?.get("intelligence")).toBe(1);
       expect(ranks.get("b")?.get("intelligence")).toBe(2);
       expect(ranks.get("c")?.get("intelligence")).toBe(3);

@@ -304,11 +304,6 @@ export class StackPalette implements Component, Focusable {
 
 if (import.meta.vitest) {
   const { describe, it, expect, vi, beforeEach } = import.meta.vitest;
-  const { Text, Container } = await import("@mariozechner/pi-tui");
-  const { ExtensionAPI, ExtensionContext, Theme } = await import("@mariozechner/pi-coding-agent");
-  type ExtAPI = typeof ExtensionAPI;
-  type ExtCtx = typeof ExtensionContext;
-  type ThemeType = typeof Theme;
 
   // Mock theme that strips ANSI codes for easy text assertions
   function createMockTheme(): any {
@@ -358,7 +353,13 @@ if (import.meta.vitest) {
     describe("rendering", () => {
       it("renders empty state when no items", () => {
         const view = createTestView([]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         const lines = palette.render(72);
 
@@ -372,7 +373,13 @@ if (import.meta.vitest) {
           { id: "1", label: "First Item", onSelect: vi.fn() },
           { id: "2", label: "Second Item", onSelect: vi.fn() },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         const lines = palette.render(72);
 
@@ -382,9 +389,20 @@ if (import.meta.vitest) {
 
       it("renders items with descriptions", () => {
         const view = createTestView([
-          { id: "1", label: "Item", description: "A description", onSelect: vi.fn() },
+          {
+            id: "1",
+            label: "Item",
+            description: "A description",
+            onSelect: vi.fn(),
+          },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         const lines = palette.render(72);
 
@@ -395,7 +413,13 @@ if (import.meta.vitest) {
         const view = createTestView([
           { id: "1", label: "Item", category: "cmd", onSelect: vi.fn() },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         const lines = palette.render(72);
 
@@ -406,7 +430,13 @@ if (import.meta.vitest) {
         const view = createTestView([
           { id: "1", label: "Item", delegate: true, onSelect: vi.fn() },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         const lines = palette.render(72);
 
@@ -414,25 +444,42 @@ if (import.meta.vitest) {
       });
 
       it("shows scroll indicators when items exceed MAX_VISIBLE", () => {
-        const items: PaletteItem[] = Array.from({ length: MAX_VISIBLE + 5 }, (_, i) => ({
-          id: `item-${i}`,
-          label: `Item ${i}`,
-          onSelect: vi.fn(),
-        }));
+        const items: PaletteItem[] = Array.from(
+          { length: MAX_VISIBLE + 5 },
+          (_, i) => ({
+            id: `item-${i}`,
+            label: `Item ${i}`,
+            onSelect: vi.fn(),
+          }),
+        );
         const view = createTestView(items);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         const lines = palette.render(72);
 
         // Should show "↓ X more" indicator
-        expect(lines.some((l) => l.includes("↓") && l.includes("more"))).toBe(true);
+        expect(lines.some((l) => l.includes("↓") && l.includes("more"))).toBe(
+          true,
+        );
       });
 
       it("caches rendered lines for same width", () => {
         const view = createTestView([
           { id: "1", label: "Item", onSelect: vi.fn() },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         const lines1 = palette.render(72);
         const lines2 = palette.render(72);
@@ -445,7 +492,13 @@ if (import.meta.vitest) {
         const view = createTestView([
           { id: "1", label: "Item", onSelect: vi.fn() },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         const lines1 = palette.render(72);
         const lines2 = palette.render(60);
@@ -462,7 +515,13 @@ if (import.meta.vitest) {
           { id: "2", label: "Banana", onSelect: vi.fn() },
           { id: "3", label: "Apricot", onSelect: vi.fn() },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         // Type "ap" to filter
         palette.handleInput("a");
@@ -480,7 +539,13 @@ if (import.meta.vitest) {
         const view = createTestView([
           { id: "1", label: "Apple", onSelect: vi.fn() },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         // Type something that won't match
         palette.handleInput("z");
@@ -496,7 +561,13 @@ if (import.meta.vitest) {
           { id: "1", label: "Apple", onSelect: vi.fn() },
           { id: "2", label: "Banana", onSelect: vi.fn() },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         // Filter to "a"
         palette.handleInput("a");
@@ -519,7 +590,13 @@ if (import.meta.vitest) {
           ],
           searchable: false,
         };
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         // Type to filter - should be ignored
         palette.handleInput("a");
@@ -539,7 +616,13 @@ if (import.meta.vitest) {
           { id: "1", label: "First", onSelect: vi.fn() },
           { id: "2", label: "Second", onSelect: vi.fn() },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         palette.render(72);
         palette.handleInput("\x1b[B"); // down arrow
@@ -554,7 +637,13 @@ if (import.meta.vitest) {
           { id: "1", label: "First", onSelect: vi.fn() },
           { id: "2", label: "Second", onSelect: vi.fn() },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         // Navigate down twice, then up once
         palette.handleInput("\x1b[B"); // down
@@ -569,7 +658,13 @@ if (import.meta.vitest) {
           { id: "1", label: "First", onSelect: vi.fn() },
           { id: "2", label: "Second", onSelect: vi.fn() },
         ]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         palette.handleInput("\x10"); // ctrl+p (up)
         palette.handleInput("\x0e"); // ctrl+n (down)
@@ -578,13 +673,22 @@ if (import.meta.vitest) {
       });
 
       it("wraps scroll offset when navigating beyond visible range", () => {
-        const items: PaletteItem[] = Array.from({ length: MAX_VISIBLE + 5 }, (_, i) => ({
-          id: `item-${i}`,
-          label: `Item ${i}`,
-          onSelect: vi.fn(),
-        }));
+        const items: PaletteItem[] = Array.from(
+          { length: MAX_VISIBLE + 5 },
+          (_, i) => ({
+            id: `item-${i}`,
+            label: `Item ${i}`,
+            onSelect: vi.fn(),
+          }),
+        );
         const view = createTestView(items);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         // Navigate down many times
         for (let i = 0; i < MAX_VISIBLE + 3; i++) {
@@ -594,7 +698,9 @@ if (import.meta.vitest) {
         const lines = palette.render(72);
 
         // Should show "↑ X more" indicator
-        expect(lines.some((l) => l.includes("↑") && l.includes("more"))).toBe(true);
+        expect(lines.some((l) => l.includes("↑") && l.includes("more"))).toBe(
+          true,
+        );
       });
     });
 
@@ -604,7 +710,13 @@ if (import.meta.vitest) {
           actx.close();
         });
         const view = createTestView([{ id: "1", label: "Item", onSelect }]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         palette.render(72);
         palette.handleInput("\x0d"); // enter
@@ -619,7 +731,13 @@ if (import.meta.vitest) {
           actx.push(subView);
         });
         const view = createTestView([{ id: "1", label: "Item", onSelect }]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         palette.render(72);
         palette.handleInput("\x0d"); // enter
@@ -634,8 +752,16 @@ if (import.meta.vitest) {
 
     describe("stack navigation", () => {
       it("closes palette on esc from root view", () => {
-        const view = createTestView([{ id: "1", label: "Item", onSelect: vi.fn() }]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const view = createTestView([
+          { id: "1", label: "Item", onSelect: vi.fn() },
+        ]);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         palette.handleInput("\x1b"); // escape
 
@@ -646,7 +772,13 @@ if (import.meta.vitest) {
         const subView: PaletteView = { title: "Sub View", items: [] };
         const onSelect = (actx: PaletteActionContext) => actx.push(subView);
         const view = createTestView([{ id: "1", label: "Item", onSelect }]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         // Push sub-view
         palette.render(72);
@@ -666,7 +798,13 @@ if (import.meta.vitest) {
         const subView: PaletteView = { title: "Sub", items: [] };
         const onSelect = (actx: PaletteActionContext) => actx.push(subView);
         const view = createTestView([{ id: "1", label: "Item", onSelect }]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         // Type search text that matches "Item" (so we can still select it)
         palette.handleInput("I");
@@ -692,7 +830,13 @@ if (import.meta.vitest) {
     describe("focus", () => {
       it("has focused property that can be set", () => {
         const view = createTestView([]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         expect(palette.focused).toBe(false);
 
@@ -702,13 +846,19 @@ if (import.meta.vitest) {
 
       it("shows cursor marker when focused", () => {
         const view = createTestView([]);
-        const palette = new StackPalette(view, mockTheme, mockPi, mockCtx, mockDone);
+        const palette = new StackPalette(
+          view,
+          mockTheme,
+          mockPi,
+          mockCtx,
+          mockDone,
+        );
 
         palette.focused = true;
         const focusedLines = palette.render(72);
 
         palette.focused = false;
-        const unfocusedLines = palette.render(72);
+        palette.render(72);
 
         // Focused should show cursor marker, unfocused should not
         // The mock theme strips colors, so we check for the raw marker
@@ -717,4 +867,3 @@ if (import.meta.vitest) {
     });
   });
 }
-
