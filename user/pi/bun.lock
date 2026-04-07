@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "pi-extensions-workspace",
@@ -281,13 +280,6 @@
         "@mariozechner/pi-coding-agent": "catalog:",
         "@mariozechner/pi-tui": "catalog:",
         "vitest": "^3.0.0",
-      },
-    },
-    "packages/extensions/e2e": {
-      "name": "@bds_pi/e2e",
-      "devDependencies": {
-        "@mariozechner/pi-coding-agent": "catalog:",
-        "@mariozechner/pi-tui": "catalog:",
       },
     },
     "packages/extensions/edit-file": {
@@ -639,6 +631,7 @@
       "name": "@bds_pi/tool-harness",
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "catalog:",
+        "vitest": "^3.0.0",
       },
     },
     "packages/extensions/undo-edit": {
@@ -781,8 +774,6 @@
     "@bds_pi/config": ["@bds_pi/config@workspace:packages/core/config"],
 
     "@bds_pi/create-file": ["@bds_pi/create-file@workspace:packages/extensions/create-file"],
-
-    "@bds_pi/e2e": ["@bds_pi/e2e@workspace:packages/extensions/e2e"],
 
     "@bds_pi/edit-file": ["@bds_pi/edit-file@workspace:packages/extensions/edit-file"],
 
