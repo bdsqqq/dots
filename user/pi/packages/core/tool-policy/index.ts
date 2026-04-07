@@ -64,7 +64,9 @@ function toPatterns(patterns: ToolPolicyPattern): string[] {
 }
 
 function matchesGlob(value: string, patterns: ToolPolicyPattern): boolean {
-  return toPatterns(patterns).some((pattern) => globToRegex(pattern).test(value));
+  return toPatterns(patterns).some((pattern) =>
+    globToRegex(pattern).test(value),
+  );
 }
 
 function collectObservedPaths(params: ToolPolicyParams): string[] {
@@ -93,7 +95,10 @@ function resolvePathLike(
   return path.isAbsolute(expanded) ? expanded : null;
 }
 
-function matchesWithin(params: ToolPolicyParams, roots: ToolPolicyPattern): boolean {
+function matchesWithin(
+  params: ToolPolicyParams,
+  roots: ToolPolicyPattern,
+): boolean {
   const observedPaths = collectWithinPaths(params);
   if (observedPaths.length === 0) return false;
 

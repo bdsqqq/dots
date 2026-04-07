@@ -310,7 +310,7 @@ export {
 };
 
 if (import.meta.vitest) {
-  const { describe, it, expect, vi, beforeEach } = import.meta.vitest;
+  const { describe, it, expect, vi } = import.meta.vitest;
 
   function createMockExtensionApi() {
     const tools: any[] = [];
@@ -344,11 +344,11 @@ if (import.meta.vitest) {
         expect(mockConfig).toHaveBeenCalledWith(
           "@bds_pi/oracle",
           CONFIG_DEFAULTS,
-          { schema: ORACLE_CONFIG_SCHEMA }
+          { schema: ORACLE_CONFIG_SCHEMA },
         );
         expect(resolvePromptSpy).toHaveBeenCalledWith(
           CONFIG_DEFAULTS.promptString,
-          CONFIG_DEFAULTS.promptFile
+          CONFIG_DEFAULTS.promptFile,
         );
         expect(tools).toHaveLength(1);
         expect(tools[0].name).toBe("oracle");
@@ -402,7 +402,7 @@ if (import.meta.vitest) {
 
         expect(resolvePromptSpy).toHaveBeenCalledWith(
           customConfig.promptString,
-          customConfig.promptFile
+          customConfig.promptFile,
         );
         expect(tools).toHaveLength(1);
       });
@@ -435,7 +435,7 @@ if (import.meta.vitest) {
         expect(tools[0].name).toBe("oracle");
         expect(resolvePromptSpy).toHaveBeenCalledWith(
           weirdConfig.promptString,
-          weirdConfig.promptFile
+          weirdConfig.promptFile,
         );
       });
     });
@@ -480,9 +480,11 @@ if (import.meta.vitest) {
         const theme = {
           fg: (_color: string, text: string) => text,
           bold: (text: string) => text,
-        };
+        } as any;
 
-        const result = tool.renderCall!({ task: "short task" }, theme);
+        const result = tool.renderCall!({ task: "short task" }, theme, {
+          lastComponent: undefined,
+        } as any);
         const lines = result.render(80);
 
         expect(lines[0]).toContain("oracle");
@@ -494,10 +496,12 @@ if (import.meta.vitest) {
         const theme = {
           fg: (_color: string, text: string) => text,
           bold: (text: string) => text,
-        };
+        } as any;
         const longTask = "a".repeat(120);
 
-        const result = tool.renderCall!({ task: longTask }, theme);
+        const result = tool.renderCall!({ task: longTask }, theme, {
+          lastComponent: undefined,
+        } as any);
         const lines = result.render(80);
 
         expect(lines[0]).toMatch(/^oracle/);
@@ -508,11 +512,12 @@ if (import.meta.vitest) {
         const theme = {
           fg: (_color: string, text: string) => text,
           bold: (text: string) => text,
-        };
+        } as any;
 
         const result = tool.renderCall!(
           { task: "task", files: ["a.ts", "b.ts", "c.ts"] },
-          theme
+          theme,
+          { lastComponent: undefined } as any,
         );
         const lines = result.render(80);
 
@@ -578,11 +583,15 @@ if (import.meta.vitest) {
       });
 
       it("returns false when extensionTools contains non-strings", () => {
-        expect(isOracleConfig({ ...validConfig, extensionTools: ["read", 123] })).toBe(false);
+        expect(
+          isOracleConfig({ ...validConfig, extensionTools: ["read", 123] }),
+        ).toBe(false);
       });
 
       it("returns false when builtinTools is not an array", () => {
-        expect(isOracleConfig({ ...validConfig, builtinTools: "bash" })).toBe(false);
+        expect(isOracleConfig({ ...validConfig, builtinTools: "bash" })).toBe(
+          false,
+        );
       });
 
       it("returns false when promptFile is not a string", () => {
@@ -590,7 +599,9 @@ if (import.meta.vitest) {
       });
 
       it("returns false when promptString is not a string", () => {
-        expect(isOracleConfig({ ...validConfig, promptString: false })).toBe(false);
+        expect(isOracleConfig({ ...validConfig, promptString: false })).toBe(
+          false,
+        );
       });
     });
   });
@@ -605,7 +616,7 @@ if (import.meta.vitest) {
         string,
         string,
       ];
-      const model = getModel(provider, modelId);
+      const model = (getModel as any)(provider, modelId);
 
       // Create oracle tool with default config
       const oracleTool = createOracleTool();
@@ -648,13 +659,10 @@ if (import.meta.vitest) {
       expect(lastAssistant).toBeDefined();
 
       const textContent = lastAssistant?.content
-        ?.filter(
-          (p): p is { type: "text"; text: string } => p.type === "text",
-        )
+        ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
         .map((p) => p.text)
         .join("");
       expect(textContent?.length).toBeGreaterThan(0);
     }, 120_000);
   });
 }
-

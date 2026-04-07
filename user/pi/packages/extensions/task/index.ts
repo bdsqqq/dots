@@ -409,12 +409,8 @@ if (import.meta.vitest) {
     const PI_ROOT = path.resolve(__dirname, "..", "..", "..");
 
     it("eval: spawns sub-agent and completes a simple task", async () => {
-      const {
-        createAgentSession,
-        SessionManager,
-        AuthStorage,
-        ModelRegistry,
-      } = await import("@mariozechner/pi-coding-agent");
+      const { createAgentSession, SessionManager, AuthStorage, ModelRegistry } =
+        await import("@mariozechner/pi-coding-agent");
 
       const authStorage = AuthStorage.create();
       const modelRegistry = ModelRegistry.create(authStorage);
@@ -473,15 +469,13 @@ if (import.meta.vitest) {
     }, 120_000);
 
     it("eval: child sessions respect PI_BDS_CONFIG_PATH gating for builtin-shadowed tools", async () => {
-      const {
-        createAgentSession,
-        SessionManager,
-        AuthStorage,
-        ModelRegistry,
-      } = await import("@mariozechner/pi-coding-agent");
+      const { createAgentSession, SessionManager, AuthStorage, ModelRegistry } =
+        await import("@mariozechner/pi-coding-agent");
 
       // set up sandbox with custom config that disables @bds_pi/bash
-      const sandboxDir = fs.mkdtempSync(path.join(tmpdir, "pi-task-config-gating-"));
+      const sandboxDir = fs.mkdtempSync(
+        path.join(tmpdir, "pi-task-config-gating-"),
+      );
       const projectConfigDir = path.join(sandboxDir, ".pi");
       fs.mkdirSync(projectConfigDir, { recursive: true });
 
@@ -558,7 +552,9 @@ if (import.meta.vitest) {
       );
       const bashCall = childToolCalls.find((part: any) => part.name === "bash");
       // builtin bash uses `command` param, not `cmd`
-      expect(bashCall?.arguments).toMatchObject({ command: "printf fallback-ok" });
+      expect(bashCall?.arguments).toMatchObject({
+        command: "printf fallback-ok",
+      });
 
       const childToolResults = childMessages.filter(
         (msg: any) => msg.role === "toolResult" && msg.toolName === "bash",
@@ -572,7 +568,9 @@ if (import.meta.vitest) {
     }, 180_000);
 
     it("eval: child sessions reject bash escapes outside assigned cwd via tool policy", async () => {
-      const sandboxDir = fs.mkdtempSync(path.join(tmpdir, "pi-e2e-tool-policy-"));
+      const sandboxDir = fs.mkdtempSync(
+        path.join(tmpdir, "pi-e2e-tool-policy-"),
+      );
       const projectConfigDir = path.join(sandboxDir, ".pi");
       const agentConfigDir = path.join(sandboxDir, ".pi", "agent");
       const forbiddenPath = path.join(
@@ -591,9 +589,7 @@ if (import.meta.vitest) {
         path.join(projectConfigDir, "settings.json"),
         JSON.stringify({
           packages: [],
-          extensions: [
-            path.join(PI_ROOT, "dist/extensions/task.js"),
-          ],
+          extensions: [path.join(PI_ROOT, "dist/extensions/task.js")],
         }),
         "utf-8",
       );
@@ -649,9 +645,19 @@ if (import.meta.vitest) {
       console.log("DEBUG: exitCode:", result.exitCode);
       console.log("DEBUG: stderr:", result.stderr.slice(0, 500));
       console.log("DEBUG: messages count:", result.messages.length);
-      console.log("DEBUG: messages roles:", result.messages.map(m => m.role));
+      console.log(
+        "DEBUG: messages roles:",
+        result.messages.map((m) => m.role),
+      );
       if (result.messages.length > 0) {
-        console.log("DEBUG: last message content:", JSON.stringify(result.messages[result.messages.length - 1]?.content, null, 2)?.slice(0, 1000));
+        console.log(
+          "DEBUG: last message content:",
+          JSON.stringify(
+            result.messages[result.messages.length - 1]?.content,
+            null,
+            2,
+          )?.slice(0, 1000),
+        );
       }
 
       if (
@@ -664,18 +670,23 @@ if (import.meta.vitest) {
 
       // Find the Task tool call and result in messages
       const taskResultMsg = result.messages.find(
-        (msg) =>
-          msg.role === "toolResult" && (msg as any).toolName === "Task",
+        (msg) => msg.role === "toolResult" && (msg as any).toolName === "Task",
       );
       expect(taskResultMsg).toBeDefined();
 
       // Get child messages from Task result
       const childMessages = (taskResultMsg as any)?.details?.messages ?? [];
       console.log("DEBUG: childMessages count:", childMessages.length);
-      console.log("DEBUG: childMessages roles:", childMessages.map((m: any) => m.role));
+      console.log(
+        "DEBUG: childMessages roles:",
+        childMessages.map((m: any) => m.role),
+      );
       if (childMessages.length > 0) {
         childMessages.forEach((m: any, i: number) => {
-          console.log(`DEBUG: childMessage[${i}] content:`, JSON.stringify(m.content)?.slice(0, 500));
+          console.log(
+            `DEBUG: childMessage[${i}] content:`,
+            JSON.stringify(m.content)?.slice(0, 500),
+          );
         });
       }
 
@@ -685,15 +696,12 @@ if (import.meta.vitest) {
           .filter((part: any) => part.type === "toolCall")
           .map((part: any) => part),
       );
-      const bashCall = childToolCalls.find(
-        (part: any) => part.name === "bash",
-      );
+      const bashCall = childToolCalls.find((part: any) => part.name === "bash");
       expect(bashCall?.arguments?.cmd ?? "").toContain(forbiddenPath);
 
       // Find the bash tool result in child messages
       const bashResultMsg = childMessages.find(
-        (msg: any) =>
-          msg.role === "toolResult" && msg.toolName === "bash",
+        (msg: any) => msg.role === "toolResult" && msg.toolName === "bash",
       );
       const bashText = bashResultMsg?.content?.[0]?.text ?? "";
       expect(bashText).toContain("command rejected");

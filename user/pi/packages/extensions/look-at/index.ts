@@ -12,9 +12,6 @@
  * screenshots, two versions of a diagram).
  */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import type {
   ExtensionAPI,
   ToolDefinition,
@@ -22,9 +19,7 @@ import type {
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import {
-  clearConfigCache,
   getEnabledExtensionConfig,
-  setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
 import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
@@ -364,9 +359,7 @@ if (import.meta.vitest) {
         DefaultResourceLoader,
         SettingsManager,
       } = await import("@mariozechner/pi-coding-agent");
-      const { SessionManager } = await import(
-        "@mariozechner/pi-coding-agent"
-      );
+      const { SessionManager } = await import("@mariozechner/pi-coding-agent");
 
       // Parse model string: "provider/model-id"
       const [provider, ...modelIdParts] = E2E_MODEL.split("/");
@@ -380,12 +373,12 @@ if (import.meta.vitest) {
       const cwd = process.cwd();
 
       // Create auth storage and model registry
-      const authStorage = await AuthStorage.create();
-      const modelRegistry = await ModelRegistry.create(authStorage);
+      const authStorage = AuthStorage.create();
+      const modelRegistry = ModelRegistry.create(authStorage);
       const model = modelRegistry.find(provider, modelId);
       if (!model) {
         throw new Error(
-          `Model not found: ${provider}/${modelId}. Available: ${modelRegistry.getProviders().join(", ")}`,
+          `Model not found: ${provider}/${modelId}. Available providers: ${[...new Set(modelRegistry.getAll().map((m) => m.provider))].join(", ")}`,
         );
       }
 
@@ -434,21 +427,24 @@ if (import.meta.vitest) {
         );
         await session.agent.waitForIdle();
 
-        // Verify look_at was called with the correct path
-        console.log("Tool calls made:", allToolCalls);
-        console.log("Final response:", responseText.slice(0, 500));
-        expect(lookAtCalled).toBe(true);
-        expect(lookAtPath).toContain("look-at/index.ts");
-
         // Get the final response
         const messages = session.agent.state.messages;
         const lastAssistant = [...messages]
           .reverse()
           .find((m) => m.role === "assistant");
-        const responseText = lastAssistant?.content
-          ?.filter((c): c is { type: "text"; text: string } => c.type === "text")
-          .map((c) => c.text)
-          .join(" ") ?? "";
+        const responseText =
+          lastAssistant?.content
+            ?.filter(
+              (c): c is { type: "text"; text: string } => c.type === "text",
+            )
+            .map((c) => c.text)
+            .join(" ") ?? "";
+
+        // Verify look_at was called with the correct path
+        console.log("Tool calls made:", allToolCalls);
+        console.log("Final response:", responseText.slice(0, 500));
+        expect(lookAtCalled).toBe(true);
+        expect(lookAtPath).toContain("look-at/index.ts");
 
         // Verify the response mentions the system prompt contents
         expect(responseText.toLowerCase()).toContain("concise");

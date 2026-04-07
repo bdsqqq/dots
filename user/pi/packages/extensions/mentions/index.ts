@@ -187,7 +187,10 @@ if (import.meta.vitest) {
         const contributor = registerAutocompleteContributor.mock.calls[0]?.[0];
         expect(contributor?.id).toBe("mentions");
 
-        const baseProvider = { getSuggestions: vi.fn(), applyCompletion: vi.fn() };
+        const baseProvider = {
+          getSuggestions: vi.fn(),
+          applyCompletion: vi.fn(),
+        };
         contributor?.enhance(baseProvider, { cwd: "/repo/app" });
 
         expect(createMentionProvider).toHaveBeenCalledWith(baseProvider, {
@@ -265,22 +268,47 @@ if (import.meta.vitest) {
         const { pi, getHandler } = createMockPi();
 
         const resolvedMention = {
-          token: { kind: "session" as const, raw: "@session/a", value: "a", start: 0, end: 10 },
+          token: {
+            kind: "session" as const,
+            raw: "@session/a",
+            value: "a",
+            start: 0,
+            end: 10,
+          },
           status: "resolved" as const,
           kind: "session" as const,
-          session: { sessionId: "a", sessionName: "a", workspace: "/", startedAt: "", updatedAt: "", firstUserMessage: "" },
+          session: {
+            sessionId: "a",
+            sessionName: "a",
+            workspace: "/",
+            startedAt: "",
+            updatedAt: "",
+            firstUserMessage: "",
+          },
         };
         const unresolvedMention = {
-          token: { kind: "session" as const, raw: "@session/missing", value: "missing", start: 11, end: 27 },
+          token: {
+            kind: "session" as const,
+            raw: "@session/missing",
+            value: "missing",
+            start: 11,
+            end: 27,
+          },
           status: "unresolved" as const,
           reason: "session_not_found",
         };
 
-        resolveMentionsMock.mockResolvedValue([resolvedMention, unresolvedMention]);
+        resolveMentionsMock.mockResolvedValue([
+          resolvedMention,
+          unresolvedMention,
+        ]);
         renderResolvedMentionsTextMock.mockReturnValue("context");
 
         ext(pi);
-        await getHandler("input")({ source: "user", text: "test" }, { cwd: "/" });
+        await getHandler("input")(
+          { source: "user", text: "test" },
+          { cwd: "/" },
+        );
 
         expect(renderResolvedMentionsTextMock).toHaveBeenCalledWith([
           resolvedMention,
@@ -296,12 +324,20 @@ if (import.meta.vitest) {
         const { pi, getHandler } = createMockPi();
 
         resolveMentionsMock.mockResolvedValue([
-          { status: "resolved", kind: "session", token: { kind: "session", raw: "@s", value: "s", start: 0, end: 2 }, session: { sessionId: "s" } },
+          {
+            status: "resolved",
+            kind: "session",
+            token: { kind: "session", raw: "@s", value: "s", start: 0, end: 2 },
+            session: { sessionId: "s" },
+          },
         ]);
         renderResolvedMentionsTextMock.mockReturnValue("resolved context");
 
         ext(pi);
-        await getHandler("input")({ source: "user", text: "test" }, { cwd: "/" });
+        await getHandler("input")(
+          { source: "user", text: "test" },
+          { cwd: "/" },
+        );
 
         const result = await getHandler("context")({
           messages: [{ role: "user", content: "hi" }],
@@ -330,7 +366,12 @@ if (import.meta.vitest) {
         const result = await getHandler("context")({
           messages: [
             { role: "user", content: "hi" },
-            { role: "custom", customType: "mentions:resolved", content: "old", display: false },
+            {
+              role: "custom",
+              customType: "mentions:resolved",
+              content: "old",
+              display: false,
+            },
           ],
         });
 
@@ -348,7 +389,10 @@ if (import.meta.vitest) {
         renderResolvedMentionsTextMock.mockReturnValue("");
 
         ext(pi);
-        await getHandler("input")({ source: "user", text: "no mentions" }, { cwd: "/" });
+        await getHandler("input")(
+          { source: "user", text: "no mentions" },
+          { cwd: "/" },
+        );
 
         const messages = [{ role: "user", content: "hi" }];
         const result = await getHandler("context")({ messages });
@@ -365,7 +409,12 @@ if (import.meta.vitest) {
         const { pi, getHandler } = createMockPi();
 
         resolveMentionsMock.mockResolvedValue([
-          { status: "resolved", kind: "session", token: { kind: "session", raw: "@s", value: "s", start: 0, end: 2 }, session: { sessionId: "s" } },
+          {
+            status: "resolved",
+            kind: "session",
+            token: { kind: "session", raw: "@s", value: "s", start: 0, end: 2 },
+            session: { sessionId: "s" },
+          },
         ]);
         renderResolvedMentionsTextMock.mockReturnValue("context");
 
@@ -394,7 +443,12 @@ if (import.meta.vitest) {
         const { pi, getHandler } = createMockPi();
 
         resolveMentionsMock.mockResolvedValue([
-          { status: "resolved", kind: "session", token: { kind: "session", raw: "@s", value: "s", start: 0, end: 2 }, session: { sessionId: "s" } },
+          {
+            status: "resolved",
+            kind: "session",
+            token: { kind: "session", raw: "@s", value: "s", start: 0, end: 2 },
+            session: { sessionId: "s" },
+          },
         ]);
         renderResolvedMentionsTextMock.mockReturnValue("context");
 
@@ -422,7 +476,10 @@ if (import.meta.vitest) {
         renderResolvedMentionsTextMock.mockReturnValue("");
 
         ext(pi);
-        await getHandler("input")({ source: "user", text: "no mentions" }, { cwd: "/" });
+        await getHandler("input")(
+          { source: "user", text: "no mentions" },
+          { cwd: "/" },
+        );
 
         const result = await getHandler("context")({ messages: [] });
         expect(result.messages).toHaveLength(0);
@@ -436,7 +493,13 @@ if (import.meta.vitest) {
 
         resolveMentionsMock.mockResolvedValue([
           {
-            token: { kind: "session", raw: "@session/missing", value: "missing", start: 0, end: 16 },
+            token: {
+              kind: "session",
+              raw: "@session/missing",
+              value: "missing",
+              start: 0,
+              end: 16,
+            },
             status: "unresolved",
             reason: "session_not_found",
           },
@@ -444,11 +507,13 @@ if (import.meta.vitest) {
         renderResolvedMentionsTextMock.mockReturnValue("");
 
         ext(pi);
-        await getHandler("input")({ source: "user", text: "@session/missing" }, { cwd: "/" });
+        await getHandler("input")(
+          { source: "user", text: "@session/missing" },
+          { cwd: "/" },
+        );
 
         expect(renderResolvedMentionsTextMock).toHaveBeenCalledWith([]);
       });
     });
   });
 }
-

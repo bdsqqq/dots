@@ -56,7 +56,7 @@ these labels are for this repo, not pi itself.
 | `mentions`            | domain-runtime | mention parsing, indexing, resolution, render, autocomplete provider                               | `mentions` extension, `search-sessions` shared session parsing  |
 | `mutex`               | helper         | per-path async file lock                                                                           | file-mutating tools, `bash`                                     |
 | `output-buffer`       | helper         | bounded head/tail truncation utilities                                                             | `bash`, `read`, `grep`, `glob`, `read-session`, `read-web-page` |
-| `tool-policy`         | runtime-helper | tool policy rules for tool routing; guardrails, not a hard security boundary                       | `bash`, file-aware tools                                         |
+| `tool-policy`         | runtime-helper | tool policy rules for tool routing; guardrails, not a hard security boundary                       | `bash`, file-aware tools                                        |
 | `pi-spawn`            | runtime-helper | nested pi/sub-agent orchestration                                                                  | sub-agent tool family, prompt helpers                           |
 | `prompt-patch`        | helper         | derive prompt snippet/guidelines from tool descriptions                                            | most tool extensions                                            |
 | `show`                | helper         | excerpt/windowing primitives                                                                       | `box-format`, `show-renderer`                                   |

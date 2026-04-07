@@ -9,8 +9,8 @@
     "@bds_pi/file-tracker": "workspace:*",
     "@bds_pi/fs": "workspace:*",
     "@bds_pi/mutex": "workspace:*",
-    "@bds_pi/tool-policy": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
+    "@bds_pi/tool-policy": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {

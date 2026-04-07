@@ -410,7 +410,10 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       // a new runtime for each session but the extension still references the old one.
       // Stage the prompt in the editor for manual submission instead (like pi's handoff example).
       ctx.ui.setEditorText(prompt);
-      ctx.ui.notify("Handoff ready. Review the prompt and press Enter to submit.", "info");
+      ctx.ui.notify(
+        "Handoff ready. Review the prompt and press Enter to submit.",
+        "info",
+      );
       return true;
     }
 
@@ -559,7 +562,11 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
 
     // reset state on manual session switch
     pi.on("session_start", async (event, ctx) => {
-      if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") {
+      if (
+        event.reason === "new" ||
+        event.reason === "resume" ||
+        event.reason === "fork"
+      ) {
         storedHandoffPrompt = null;
         handoffPending = false;
         generating = false;
@@ -673,7 +680,9 @@ if (import.meta.vitest) {
 
   describe("parsePromptSections", () => {
     it("extracts named sections from prompt text", () => {
-      const result = parsePromptSections("# foo\nbar content\n# baz\nqux content");
+      const result = parsePromptSections(
+        "# foo\nbar content\n# baz\nqux content",
+      );
       // The first section keeps the # prefix (split doesn't remove it from first part)
       expect(result).toEqual({ "# foo": "bar content", baz: "qux content" });
     });
@@ -733,9 +742,7 @@ if (import.meta.vitest) {
 
     it("returns null when tool call has wrong name", () => {
       const response = {
-        content: [
-          { type: "toolCall", name: "other_tool", arguments: {} },
-        ],
+        content: [{ type: "toolCall", name: "other_tool", arguments: {} }],
       };
       expect(extractToolCallArgs(response)).toBeNull();
     });
@@ -796,7 +803,11 @@ if (import.meta.vitest) {
         relevantInformation: "We discussed X",
         relevantFiles: ["src/a.ts", "src/b.ts"],
       };
-      const result = assembleHandoffPrompt("session-123", extraction, "continue X");
+      const result = assembleHandoffPrompt(
+        "session-123",
+        extraction,
+        "continue X",
+      );
 
       expect(result).toContain("session-123");
       expect(result).toContain("@src/a.ts @src/b.ts");

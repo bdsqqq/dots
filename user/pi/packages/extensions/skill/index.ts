@@ -388,7 +388,7 @@ description: "a longer description with spaces"
 ---
 
 Body text.`;
-      const { frontmatter, body } = parseFrontmatter(content);
+      const { frontmatter, body: _body } = parseFrontmatter(content);
       expect(frontmatter.name).toBe("skill name");
       expect(frontmatter.description).toBe("a longer description with spaces");
     });
@@ -402,7 +402,7 @@ Body text.`;
 
     it("returns empty frontmatter for unclosed frontmatter block", () => {
       const content = "---\nname: test\nNot properly closed";
-      const { frontmatter, body } = parseFrontmatter(content);
+      const { frontmatter, body: _body } = parseFrontmatter(content);
       expect(frontmatter).toEqual({});
     });
 
@@ -421,14 +421,16 @@ Body text.`;
     });
 
     it("ignores malformed lines", () => {
-      const content = "---\nname: valid\nmalformed line\nother: value\n---\nBody.";
+      const content =
+        "---\nname: valid\nmalformed line\nother: value\n---\nBody.";
       const { frontmatter } = parseFrontmatter(content);
       expect(frontmatter.name).toBe("valid");
       expect(frontmatter.other).toBe("value");
     });
 
     it("captures unknown frontmatter keys", () => {
-      const content = "---\nname: test\nversion: 1.0\nauthor: someone\n---\nBody.";
+      const content =
+        "---\nname: test\nversion: 1.0\nauthor: someone\n---\nBody.";
       const { frontmatter } = parseFrontmatter(content);
       expect(frontmatter.name).toBe("test");
       expect(frontmatter.version).toBe("1.0");

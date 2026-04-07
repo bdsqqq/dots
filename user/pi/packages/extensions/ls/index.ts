@@ -16,7 +16,11 @@ import type {
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { listDirectory, resolveToAbsolute, resolveWithVariants } from "@bds_pi/fs";
+import {
+  listDirectory,
+  resolveToAbsolute,
+  resolveWithVariants,
+} from "@bds_pi/fs";
 import * as toolPolicy from "@bds_pi/tool-policy";
 import { NORMAL_LIMITS, type ReadLimits } from "@bds_pi/read";
 import {

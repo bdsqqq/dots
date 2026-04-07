@@ -10,8 +10,8 @@
     "@bds_pi/fs": "workspace:*",
     "@bds_pi/mutex": "workspace:*",
     "@bds_pi/output-buffer": "workspace:*",
-    "@bds_pi/tool-policy": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
+    "@bds_pi/tool-policy": "workspace:*",
     "@bds_pi/tui": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },

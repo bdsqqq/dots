@@ -67,7 +67,10 @@ export function isPathWithin(rootPath: string, targetPath: string): boolean {
   const resolvedRoot = path.resolve(rootPath);
   const resolvedTarget = path.resolve(targetPath);
   const relative = path.relative(resolvedRoot, resolvedTarget);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 export function isSecretFile(filePath: string): boolean {

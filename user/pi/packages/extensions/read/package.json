@@ -9,8 +9,8 @@
     "@bds_pi/config": "workspace:*",
     "@bds_pi/fs": "workspace:*",
     "@bds_pi/output-buffer": "workspace:*",
-    "@bds_pi/tool-policy": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
+    "@bds_pi/tool-policy": "workspace:*",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {

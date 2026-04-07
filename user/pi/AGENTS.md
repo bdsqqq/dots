@@ -28,6 +28,7 @@ scope: `user/pi`
 - **export internals for testing**, but don't advertise in package.json exports.
 
 **what to test inline:**
+
 - string transformations
 - type guards / validators
 - parsing / data extraction
@@ -35,11 +36,13 @@ scope: `user/pi`
 - extension registration (with minimal tracking mocks)
 
 **what NOT to test:**
+
 - "was piSpawn called with correct args" — that's testing piSpawn's contract
 - string interpolation / template assembly — trivial
 - config pass-through — just data
 
 verify with:
+
 - `bun x tsc -p tsconfig.build.json --noEmit`
 - `bun run test`
 

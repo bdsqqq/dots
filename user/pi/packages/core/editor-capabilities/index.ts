@@ -109,7 +109,12 @@ if (import.meta.vitest) {
                   prefix: "@commit/",
                 };
               }
-              return provider.getSuggestions(lines, cursorLine, cursorCol, options);
+              return provider.getSuggestions(
+                lines,
+                cursorLine,
+                cursorCol,
+                options,
+              );
             },
             applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
               if (item.value.startsWith("@commit/")) {
@@ -141,14 +146,18 @@ if (import.meta.vitest) {
         );
 
         await expect(
-          provider.getSuggestions(["@commit/"], 0, 8, { signal: new AbortController().signal }),
+          provider.getSuggestions(["@commit/"], 0, 8, {
+            signal: new AbortController().signal,
+          }),
         ).resolves.toEqual({
           items: [{ value: "@commit/abc123", label: "@commit/abc123" }],
           prefix: "@commit/",
         });
 
         await expect(
-          provider.getSuggestions(["@f"], 0, 2, { signal: new AbortController().signal }),
+          provider.getSuggestions(["@f"], 0, 2, {
+            signal: new AbortController().signal,
+          }),
         ).resolves.toEqual({
           items: [{ value: "@file/src/index.ts", label: "@file/src/index.ts" }],
           prefix: "@f",
@@ -183,7 +192,12 @@ if (import.meta.vitest) {
           return {
             async getSuggestions(lines, cursorLine, cursorCol, options) {
               order.push("get:inner");
-              return provider.getSuggestions(lines, cursorLine, cursorCol, options);
+              return provider.getSuggestions(
+                lines,
+                cursorLine,
+                cursorCol,
+                options,
+              );
             },
             applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
               return provider.applyCompletion(
@@ -205,7 +219,12 @@ if (import.meta.vitest) {
           return {
             async getSuggestions(lines, cursorLine, cursorCol, options) {
               order.push("get:outer");
-              return provider.getSuggestions(lines, cursorLine, cursorCol, options);
+              return provider.getSuggestions(
+                lines,
+                cursorLine,
+                cursorCol,
+                options,
+              );
             },
             applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
               return provider.applyCompletion(
