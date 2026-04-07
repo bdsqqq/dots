@@ -12,8 +12,7 @@
  * MIT License - Copyright 2024 solarkraft
  */
 
-import { watch } from "chokidar";
-import { existsSync, readdirSync, rmSync, statSync } from "fs";
+import { existsSync, readdirSync, rmSync, statSync, watch } from "fs";
 import { join, relative, resolve } from "path";
 
 // ============================================================================
@@ -207,27 +206,38 @@ async function main() {
   console.log("Running Syncthing deconflicter");
   console.log(`Watching: ${cwd}`);
 
-  const watcher = watch(".", {
-    cwd,
-    persistent: true,
-    ignoreInitial: true,
-    awaitWriteFinish: {
-      stabilityThreshold: 100,
-      pollInterval: 50,
-    },
-  });
+  // Track recently processed files to dedupe rapid events
+  const recentlyProcessed = new Map<string, number>();
+  const DEDUPE_WINDOW_MS = 500;
 
-  watcher.on("add", (path) => {
-    handleConflict(resolve(cwd, path), cwd).catch((e) => {
-      console.error(`Error handling ${path}:`, e.message);
-    });
-  });
+  const watcher = watch(
+    ".",
+    { recursive: true },
+    (_event: string, filename: string | null) => {
+      if (!filename) return;
 
-  watcher.on("change", (path) => {
-    handleConflict(resolve(cwd, path), cwd).catch((e) => {
-      console.error(`Error handling ${path}:`, e.message);
-    });
-  });
+      // Dedupe rapid fire events
+      const now = Date.now();
+      const lastProcessed = recentlyProcessed.get(filename);
+      if (lastProcessed && now - lastProcessed < DEDUPE_WINDOW_MS) {
+        return;
+      }
+      recentlyProcessed.set(filename, now);
+
+      // Clean old entries periodically
+      if (recentlyProcessed.size > 1000) {
+        for (const [key, timestamp] of recentlyProcessed) {
+          if (now - timestamp > DEDUPE_WINDOW_MS * 2) {
+            recentlyProcessed.delete(key);
+          }
+        }
+      }
+
+      handleConflict(resolve(cwd, filename), cwd).catch((e) => {
+        console.error(`Error handling ${filename}:`, e.message);
+      });
+    }
+  );
 
   watcher.on("error", (error) => {
     console.error("Watcher error:", error);
