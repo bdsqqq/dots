@@ -324,6 +324,9 @@ if (import.meta.vitest) {
     });
 
     test("handles malformed JSON gracefully", () => {
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
       const settingsPath = path.join(dir, "settings.json");
       fs.writeFileSync(settingsPath, "NOT VALID JSON {{{");
@@ -331,6 +334,7 @@ if (import.meta.vitest) {
 
       const result = getExtensionConfig("@bds_pi/test", { ok: true });
       expect(result).toEqual({ ok: true });
+      expect(errorSpy).toHaveBeenCalled();
     });
 
     test("returns defaults when namespace key is missing", () => {
