@@ -1,10 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type {
-  CandidateModel,
-  EvaluatedModel,
-  ModelFacts,
-} from "./types";
+import type { CandidateModel, EvaluatedModel, ModelFacts } from "./types";
 
 /**
  * aa site scrape definitions.
@@ -273,8 +269,7 @@ export function extractLdJsonDatasets(html: string): AaSiteDataset[] {
       if (parsed["@type"] !== "Dataset") continue;
       if (!Array.isArray(parsed.data)) continue;
       datasets.push({
-        name:
-          typeof parsed.name === "string" ? parsed.name : "dataset",
+        name: typeof parsed.name === "string" ? parsed.name : "dataset",
         description:
           typeof parsed.description === "string"
             ? parsed.description

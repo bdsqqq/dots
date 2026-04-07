@@ -978,7 +978,10 @@ if (import.meta.vitest) {
         };
 
         const result = tool.renderResult!(
-          { content: [{ type: "text", text: "plain text output" }], details: undefined },
+          {
+            content: [{ type: "text", text: "plain text output" }],
+            details: undefined,
+          },
           { expanded: false, isPartial: false },
           mockTheme as any,
           {} as any,

@@ -668,8 +668,6 @@ function sortModelsForDisplay(
 // legacy exports for backward compatibility
 // ============================================================
 
-
-
 /**
  * render all roles as a combined markdown document (legacy).
  */
