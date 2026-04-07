@@ -398,4 +398,174 @@ if (import.meta.vitest) {
       expect(harness.tools).toHaveLength(1);
     });
   });
+
+  describe("renderAgentTree rendering", () => {
+    const mockTheme = {
+      fg: (_color: string, text: string) => text,
+      bg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+      dim: (text: string) => text,
+    };
+
+    it("renders tree with connectors, icons, label, summary, and usage stats", () => {
+      const singleResult: SingleResult = {
+        agent: "finder",
+        task: "search for createGrepTool definition",
+        exitCode: 0,
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              { type: "toolCall", id: "tc1", name: "grep", arguments: { pattern: "createGrepTool", path: "." } },
+            ],
+            api: "anthropic-messages",
+            provider: "anthropic",
+            model: "gemini-3-flash",
+            usage: { input: 50, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 100, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+            stopReason: "stop",
+            timestamp: 0,
+          },
+          {
+            role: "toolResult",
+            toolCallId: "tc1",
+            toolName: "grep",
+            content: [{ type: "text", text: "found in src/tools/grep.ts" }],
+            isError: false,
+            timestamp: 0,
+          },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Found it in src/tools/grep.ts" }],
+            api: "anthropic-messages",
+            provider: "anthropic",
+            model: "gemini-3-flash",
+            usage: { input: 75, output: 75, cacheRead: 0, cacheWrite: 0, totalTokens: 150, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+            stopReason: "stop",
+            timestamp: 0,
+          },
+        ],
+        usage: {
+          input: 500,
+          output: 200,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0.0012,
+          contextTokens: 300,
+          turns: 2,
+        },
+        model: "gemini-3-flash",
+        stopReason: "stop",
+      };
+
+      const container = new Container();
+      renderAgentTree(singleResult, container, false, mockTheme, {
+        label: "finder",
+        header: "statusOnly",
+      });
+
+      const lines = container.render(80);
+      const output = lines.join("\n");
+
+      // tree connectors
+      expect(output).toContain("├──");
+      expect(output).toContain("╰──");
+
+      // success icon
+      expect(output).toContain("✓");
+
+      // summary section
+      expect(output).toContain("Summary:");
+
+      // usage stats
+      expect(output).toContain("2 turns");
+      expect(output).toContain("gemini");
+    });
+
+    it("renders error state with error icon and message", () => {
+      const singleResult: SingleResult = {
+        agent: "finder",
+        task: "search for nonexistent",
+        exitCode: 1,
+        messages: [],
+        usage: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+        stopReason: "error",
+        errorMessage: "connection timeout",
+      };
+
+      const container = new Container();
+      renderAgentTree(singleResult, container, false, mockTheme, {
+        label: "finder",
+        header: "statusOnly",
+      });
+
+      const lines = container.render(80);
+      const output = lines.join("\n");
+
+      expect(output).toContain("✕");
+      expect(output).toContain("connection timeout");
+    });
+
+    it("renders pending state with warning icon", () => {
+      const singleResult: SingleResult = {
+        agent: "finder",
+        task: "search in progress",
+        exitCode: -1,
+        messages: [],
+        usage: { input: 50, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+      };
+
+      const container = new Container();
+      renderAgentTree(singleResult, container, false, mockTheme, {
+        label: "finder",
+        header: "statusOnly",
+      });
+
+      const lines = container.render(80);
+      const output = lines.join("\n");
+
+      expect(output).toContain("⋯");
+    });
+  });
+
+  // Layer 2: E2E eval tests (gated by PI_E2E env var)
+  // Uses piSpawn which spawns CLI and loads extensions from user's settings
+  describe.skipIf(!process.env.PI_E2E)("eval: finder tool", () => {
+    const E2E_MODEL =
+      process.env.PI_E2E_MODEL ?? "openrouter/moonshotai/kimi-k2.5";
+
+    it("eval: searches codebase and returns results", async () => {
+      const { piSpawn } = await import("@bds_pi/pi-spawn");
+
+      const result = await piSpawn({
+        cwd: process.cwd(),
+        task: "Use the finder tool to search for where SessionManager class is defined in this codebase. Tell me the file path.",
+        model: E2E_MODEL,
+        extensionTools: ["read", "grep", "find", "ls"],
+        builtinTools: ["read", "grep", "find", "ls"],
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.errorMessage).toBeUndefined();
+
+      // Check that finder was called by looking at messages
+      const messages = result.messages;
+      const toolCalls = messages
+        .filter((m) => m.role === "assistant")
+        .flatMap((m) => m.content?.filter((c): c is { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> } => c.type === "toolCall") ?? []);
+      const finderCall = toolCalls.find((c) => c.name === "finder");
+      
+      expect(finderCall).toBeDefined();
+
+      // Check the final output mentions session-manager
+      const lastAssistant = [...messages]
+        .reverse()
+        .find((m) => m.role === "assistant");
+      const textContent = lastAssistant?.content
+        ?.filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text)
+        .join(" ") ?? "";
+
+      expect(textContent.toLowerCase()).toContain("session-manager");
+    }, 120_000);
+  });
 }

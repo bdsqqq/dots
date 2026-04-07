@@ -18,7 +18,12 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
+import {
+  createAgentSession,
+  SessionManager,
+} from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
+import { getModel } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import {
   getEnabledExtensionConfig,
@@ -588,6 +593,68 @@ if (import.meta.vitest) {
         expect(isOracleConfig({ ...validConfig, promptString: false })).toBe(false);
       });
     });
+  });
+
+  // E2E eval test - requires PI_E2E=1 and real API keys
+  describe.skipIf(!process.env.PI_E2E)("eval: oracle", () => {
+    const E2E_MODEL =
+      process.env.PI_E2E_MODEL ?? "openrouter/moonshotai/kimi-k2.5";
+
+    it("eval: consults oracle and gets a response", async () => {
+      const [provider, modelId] = E2E_MODEL.split("/").slice(-2) as [
+        string,
+        string,
+      ];
+      const model = getModel(provider, modelId);
+
+      // Create oracle tool with default config
+      const oracleTool = createOracleTool();
+
+      const { session } = await createAgentSession({
+        cwd: process.cwd(),
+        sessionManager: SessionManager.inMemory(),
+        model,
+        customTools: [oracleTool],
+      });
+
+      // Subscribe to events to collect tool calls
+      const toolCalls: Array<{ name: string; args: any }> = [];
+      session.subscribe((event) => {
+        if (
+          event.type === "message_end" &&
+          event.message?.role === "assistant"
+        ) {
+          for (const part of event.message.content ?? []) {
+            if (part.type === "toolCall") {
+              toolCalls.push({ name: part.name, args: part.arguments });
+            }
+          }
+        }
+      });
+
+      await session.prompt(
+        'Use the oracle tool with task "What is 2+2? Answer with just the number."',
+      );
+
+      // Verify oracle was called
+      const oracleCall = toolCalls.find((c) => c.name === "oracle");
+      expect(oracleCall).toBeDefined();
+
+      // Verify we got a response with content
+      const messages = session.messages;
+      const lastAssistant = messages
+        .filter((m) => m.role === "assistant")
+        .pop();
+      expect(lastAssistant).toBeDefined();
+
+      const textContent = lastAssistant?.content
+        ?.filter(
+          (p): p is { type: "text"; text: string } => p.type === "text",
+        )
+        .map((p) => p.text)
+        .join("");
+      expect(textContent?.length).toBeGreaterThan(0);
+    }, 120_000);
   });
 }
 

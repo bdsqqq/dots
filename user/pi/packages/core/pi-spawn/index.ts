@@ -73,6 +73,12 @@ export interface PiSpawnConfig {
    * then receives the report format instructions.
    */
   followUp?: string;
+  /**
+   * additional environment variables to pass to the child process.
+   *
+   * useful for testing tool-policy.json by overriding HOME.
+   */
+  env?: Record<string, string | undefined>;
 }
 
 // --- helpers ---
@@ -187,6 +193,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
     const spawnEnv: Record<string, string | undefined> = {
       ...process.env,
       PI_BDS_CONFIG_PATH: config.configPath ?? resolveGlobalSettingsPath(),
+      ...config.env,
     };
     if (config.extensionTools !== undefined) {
       if (config.extensionTools.length === 0) {
