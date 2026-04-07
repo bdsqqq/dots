@@ -38,7 +38,7 @@ jobs:
       - run: bun install
 
       # npm 11.5.1+ required for provenance support
-      - run: corepack enable && corepack prepare npm@latest --activate
+      - run: npm install -g npm@latest
 
       - run: bun run build
 
