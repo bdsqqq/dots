@@ -1,6 +1,6 @@
 {
   "name": "@bdsqqq/pi",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "extensions and core utilities for pi-coding-agent",
   "keywords": [
     "pi-package"
