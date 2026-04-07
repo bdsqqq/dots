@@ -36,10 +36,7 @@ import {
   buildSlugToModelIdMap,
   mergeSiteAggregateIntoEvaluatedModels,
 } from "./aa-site";
-import {
-  supplementalMetrics,
-  mergeSupplementalMetrics,
-} from "./supplements";
+import { supplementalMetrics, mergeSupplementalMetrics } from "./supplements";
 import { evaluateRole } from "./evaluate";
 import {
   renderJson,

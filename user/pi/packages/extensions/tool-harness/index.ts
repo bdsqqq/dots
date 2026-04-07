@@ -71,8 +71,7 @@ export default function (pi: ExtensionAPI): void {
 }
 
 if (import.meta.vitest) {
-  const { describe, expect, it, beforeEach, afterEach } = import.meta
-    .vitest;
+  const { describe, expect, it, beforeEach, afterEach } = import.meta.vitest;
   const toolHarnessExt = (await import("./index.js")).default;
 
   describe("resolveAliases", () => {

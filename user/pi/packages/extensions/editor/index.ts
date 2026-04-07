@@ -756,7 +756,10 @@ if (import.meta.vitest) {
         {} as any,
         {} as any,
         {} as any,
-        { fg: (_: string, t: string) => t, bg: (_: string, t: string) => t } as any,
+        {
+          fg: (_: string, t: string) => t,
+          bg: (_: string, t: string) => t,
+        } as any,
         "/cwd",
       );
 
@@ -789,7 +792,10 @@ if (import.meta.vitest) {
         {} as any,
         {} as any,
         {} as any,
-        { fg: (_: string, t: string) => t, bg: (_: string, t: string) => t } as any,
+        {
+          fg: (_: string, t: string) => t,
+          bg: (_: string, t: string) => t,
+        } as any,
         "/cwd",
       );
       editor.setLabel("a", "first", "top", "left");
@@ -811,7 +817,10 @@ if (import.meta.vitest) {
         {} as any,
         {} as any,
         {} as any,
-        { fg: (_: string, t: string) => t, bg: (_: string, t: string) => t } as any,
+        {
+          fg: (_: string, t: string) => t,
+          bg: (_: string, t: string) => t,
+        } as any,
         "/cwd",
       );
       editor.setLabel("left", "L-label", "top", "left");
@@ -832,7 +841,10 @@ if (import.meta.vitest) {
         {} as any,
         {} as any,
         {} as any,
-        { fg: (_: string, t: string) => t, bg: (_: string, t: string) => t } as any,
+        {
+          fg: (_: string, t: string) => t,
+          bg: (_: string, t: string) => t,
+        } as any,
         "/cwd",
       );
       const originalWithScroll = "────── ↑ 5 more";
