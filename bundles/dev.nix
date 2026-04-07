@@ -8,7 +8,6 @@ in
       ../user/nvim
       ../user/git
       ../user/bun.nix
-      ../user/uv.nix
       ../user/dev-tools.nix
       ../user/direnv.nix
       ../user/rust.nix
