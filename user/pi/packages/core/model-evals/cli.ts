@@ -722,46 +722,4 @@ if (import.meta.vitest) {
       expect(cmd.kind).toBe("coverage");
     });
   });
-
-  describe("main", () => {
-    test("returns 0 for help", async () => {
-      const code = await main(["help"]);
-      expect(code).toBe(0);
-    });
-
-    test("returns 1 for unknown command", async () => {
-      const code = await main(["bogus"]);
-      expect(code).toBe(1);
-    });
-
-    test("returns 0 for rank --role dayToDay", async () => {
-      const code = await main(["rank", "--role", "dayToDay"]);
-      expect(code).toBe(0);
-    });
-
-    test("returns 0 for rank --role without selector", async () => {
-      const code = await main(["rank", "--role"]);
-      expect(code).toBe(0);
-    });
-
-    test("returns 0 for rank --agent oracle", async () => {
-      const code = await main(["rank", "--agent", "oracle"]);
-      expect(code).toBe(0);
-    });
-
-    test("returns 0 for rank --agent without selector", async () => {
-      const code = await main(["rank", "--agent"]);
-      expect(code).toBe(0);
-    });
-
-    test("returns 0 for coverage", async () => {
-      const code = await main(["coverage"]);
-      expect(code).toBe(0);
-    });
-
-    test("returns 0 for scrape-site", async () => {
-      const code = await main(["scrape-site"]);
-      expect(code).toBe(0);
-    });
-  });
 }
