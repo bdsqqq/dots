@@ -351,6 +351,115 @@ export {
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest;
 
+  // Layer 2: E2E eval tests (gated by PI_E2E env var)
+  describe.skipIf(!process.env.PI_E2E)("eval: look-at tool", () => {
+    const E2E_MODEL =
+      process.env.PI_E2E_MODEL ?? "openrouter/moonshotai/kimi-k2.5";
+
+    it("eval: analyzes a file with real AI", async () => {
+      const {
+        createAgentSession,
+        ModelRegistry,
+        AuthStorage,
+        DefaultResourceLoader,
+        SettingsManager,
+      } = await import("@mariozechner/pi-coding-agent");
+      const { SessionManager } = await import(
+        "@mariozechner/pi-coding-agent"
+      );
+
+      // Parse model string: "provider/model-id"
+      const [provider, ...modelIdParts] = E2E_MODEL.split("/");
+      const modelId = modelIdParts.join("/");
+      if (!provider || !modelId) {
+        throw new Error(
+          `Invalid E2E_MODEL format: ${E2E_MODEL}. Expected: provider/model-id`,
+        );
+      }
+
+      const cwd = process.cwd();
+
+      // Create auth storage and model registry
+      const authStorage = await AuthStorage.create();
+      const modelRegistry = await ModelRegistry.create(authStorage);
+      const model = modelRegistry.find(provider, modelId);
+      if (!model) {
+        throw new Error(
+          `Model not found: ${provider}/${modelId}. Available: ${modelRegistry.getProviders().join(", ")}`,
+        );
+      }
+
+      // Create settings manager with the pi package enabled
+      const settingsManager = SettingsManager.create(cwd);
+
+      // Create resource loader to load extensions including look-at
+      const resourceLoader = new DefaultResourceLoader({
+        cwd,
+        settingsManager,
+      });
+      await resourceLoader.reload();
+
+      const { session } = await createAgentSession({
+        cwd,
+        model,
+        sessionManager: SessionManager.inMemory(cwd),
+        modelRegistry,
+        authStorage,
+        settingsManager,
+        resourceLoader,
+      });
+
+      // Track tool executions and messages
+      let lookAtCalled = false;
+      let lookAtPath: string | undefined;
+      const allToolCalls: string[] = [];
+      const unsubscribe = session.agent.subscribe((event) => {
+        if (event.type === "tool_execution_start") {
+          allToolCalls.push(event.toolName);
+          if (event.toolName === "look_at") {
+            lookAtCalled = true;
+            lookAtPath = event.args?.path;
+          }
+        }
+      });
+
+      // Log available tools
+      const toolNames = session.agent.state.tools.map((t) => t.name);
+      console.log("Available tools:", toolNames.slice(0, 20).join(", "));
+
+      try {
+        // Ask agent to analyze this file using look_at
+        await session.prompt(
+          `Use the look_at tool to analyze the file at "user/pi/packages/extensions/look-at/index.ts" and tell me what the DEFAULT_SYSTEM_PROMPT constant contains. Be specific about its contents.`,
+        );
+        await session.agent.waitForIdle();
+
+        // Verify look_at was called with the correct path
+        console.log("Tool calls made:", allToolCalls);
+        console.log("Final response:", responseText.slice(0, 500));
+        expect(lookAtCalled).toBe(true);
+        expect(lookAtPath).toContain("look-at/index.ts");
+
+        // Get the final response
+        const messages = session.agent.state.messages;
+        const lastAssistant = [...messages]
+          .reverse()
+          .find((m) => m.role === "assistant");
+        const responseText = lastAssistant?.content
+          ?.filter((c): c is { type: "text"; text: string } => c.type === "text")
+          .map((c) => c.text)
+          .join(" ") ?? "";
+
+        // Verify the response mentions the system prompt contents
+        expect(responseText.toLowerCase()).toContain("concise");
+        expect(responseText.toLowerCase()).toContain("ai assistant");
+      } finally {
+        unsubscribe();
+        session.dispose();
+      }
+    }, 120_000);
+  });
+
   // Layer 1: Pure function tests (collocated for fast feedback)
   describe("isNonEmptyString", () => {
     it("returns true for non-empty strings", () => {

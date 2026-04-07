@@ -401,4 +401,308 @@ if (import.meta.vitest) {
       expect(harness.tools).toHaveLength(1);
     });
   });
+
+  describe.skipIf(!process.env.PI_E2E)("eval: task tool", () => {
+    const E2E_MODEL =
+      process.env.PI_E2E_MODEL ?? "openrouter/moonshotai/kimi-k2.5";
+    // pi repo root (3 levels up from this file: task -> extensions -> packages -> pi)
+    const PI_ROOT = path.resolve(__dirname, "..", "..", "..");
+
+    it("eval: spawns sub-agent and completes a simple task", async () => {
+      const {
+        createAgentSession,
+        SessionManager,
+        AuthStorage,
+        ModelRegistry,
+      } = await import("@mariozechner/pi-coding-agent");
+
+      const authStorage = AuthStorage.create();
+      const modelRegistry = ModelRegistry.create(authStorage);
+      const slashIdx = E2E_MODEL.indexOf("/");
+      const provider = E2E_MODEL.slice(0, slashIdx);
+      const modelId = E2E_MODEL.slice(slashIdx + 1);
+      const model = modelRegistry.find(provider, modelId);
+      if (!model) throw new Error(`model not found: ${E2E_MODEL}`);
+
+      const taskTool = createTaskTool();
+
+      const { session } = await createAgentSession({
+        sessionManager: SessionManager.inMemory(),
+        model,
+        authStorage,
+        modelRegistry,
+        customTools: [taskTool],
+      });
+
+      const testFile = path.join(tmpdir, `pi-task-eval-${Date.now()}.txt`);
+      const testContent = "task eval test content";
+
+      const events: { type: string; toolName?: string; content?: string }[] =
+        [];
+      session.subscribe((event) => {
+        if (event.type === "tool_execution_start") {
+          events.push({ type: "tool_start", toolName: event.toolName });
+        }
+        if (event.type === "tool_execution_end") {
+          events.push({
+            type: "tool_end",
+            toolName: event.toolName,
+            content: event.result?.content?.[0]?.text,
+          });
+        }
+      });
+
+      await session.prompt(
+        `Use the Task tool to create a file at ${testFile} with the exact content "${testContent}". Do not use any other tools.`,
+      );
+
+      const taskEvents = events.filter((e) => e.toolName === "Task");
+      expect(taskEvents.length).toBeGreaterThanOrEqual(2);
+      expect(taskEvents[0]?.type).toBe("tool_start");
+      expect(taskEvents[1]?.type).toBe("tool_end");
+
+      const taskResult = taskEvents[1]?.content ?? "";
+      expect(taskResult).not.toContain("error");
+
+      // verify file was created
+      expect(fs.existsSync(testFile)).toBe(true);
+      expect(fs.readFileSync(testFile, "utf-8").trim()).toBe(testContent);
+
+      fs.unlinkSync(testFile);
+      session.dispose();
+    }, 120_000);
+
+    it("eval: child sessions respect PI_BDS_CONFIG_PATH gating for builtin-shadowed tools", async () => {
+      const {
+        createAgentSession,
+        SessionManager,
+        AuthStorage,
+        ModelRegistry,
+      } = await import("@mariozechner/pi-coding-agent");
+
+      // set up sandbox with custom config that disables @bds_pi/bash
+      const sandboxDir = fs.mkdtempSync(path.join(tmpdir, "pi-task-config-gating-"));
+      const projectConfigDir = path.join(sandboxDir, ".pi");
+      fs.mkdirSync(projectConfigDir, { recursive: true });
+
+      // create config that disables the bash extension
+      const childConfigPath = path.join(sandboxDir, "bds-pi.json");
+      fs.writeFileSync(
+        childConfigPath,
+        JSON.stringify({ "@bds_pi/bash": { enabled: false } }),
+        "utf-8",
+      );
+
+      // set global settings path so piSpawn propagates it to child
+      setGlobalSettingsPath(childConfigPath);
+
+      const authStorage = AuthStorage.create();
+      const modelRegistry = ModelRegistry.create(authStorage);
+      const slashIdx = E2E_MODEL.indexOf("/");
+      const provider = E2E_MODEL.slice(0, slashIdx);
+      const modelId = E2E_MODEL.slice(slashIdx + 1);
+      const model = modelRegistry.find(provider, modelId);
+      if (!model) throw new Error(`model not found: ${E2E_MODEL}`);
+
+      const taskTool = createTaskTool();
+
+      const { session } = await createAgentSession({
+        sessionManager: SessionManager.inMemory(),
+        model,
+        authStorage,
+        modelRegistry,
+        customTools: [taskTool],
+        cwd: sandboxDir,
+      });
+
+      const prompt = [
+        'Use the Task tool. description: "fallback audit".',
+        "In the child, inspect the bash tool schema available to you before acting.",
+        "If the required field is `command`, report `builtin-bash`. If the required field is `cmd`, report `custom-bash`.",
+        "Then do exactly one thing: run bash with `printf fallback-ok`.",
+        "Return only two lines: first the schema label, second the command output.",
+      ].join(" ");
+
+      const events: {
+        type: string;
+        toolName?: string;
+        content?: string;
+        result?: any;
+      }[] = [];
+      session.subscribe((event) => {
+        if (event.type === "tool_execution_end") {
+          events.push({
+            type: "tool_end",
+            toolName: (event as any).toolName,
+            content: (event as any).result?.content?.[0]?.text,
+            result: (event as any).result,
+          });
+        }
+      });
+
+      await session.prompt(prompt);
+
+      const taskEvent = events.find((e) => e.toolName === "Task");
+      expect(taskEvent).toBeDefined();
+      // result structure: { content: [{ type, text }], details: { exitCode, messages, ... } }
+      expect(taskEvent!.result?.isError ?? false).toBe(false);
+
+      const taskContent = taskEvent!.content ?? "";
+      expect(taskContent).toContain("builtin-bash");
+      expect(taskContent).toContain("fallback-ok");
+
+      // verify child used builtin bash (command param, not cmd)
+      const childMessages = taskEvent!.result?.details?.messages ?? [];
+      const childToolCalls = childMessages.flatMap((msg: any) =>
+        (msg.content ?? []).filter((part: any) => part.type === "toolCall"),
+      );
+      const bashCall = childToolCalls.find((part: any) => part.name === "bash");
+      // builtin bash uses `command` param, not `cmd`
+      expect(bashCall?.arguments).toMatchObject({ command: "printf fallback-ok" });
+
+      const childToolResults = childMessages.filter(
+        (msg: any) => msg.role === "toolResult" && msg.toolName === "bash",
+      );
+      expect(childToolResults.at(-1)?.content?.[0]?.text ?? "").toContain(
+        "fallback-ok",
+      );
+
+      session.dispose();
+      fs.rmSync(sandboxDir, { recursive: true, force: true });
+    }, 180_000);
+
+    it("eval: child sessions reject bash escapes outside assigned cwd via tool policy", async () => {
+      const sandboxDir = fs.mkdtempSync(path.join(tmpdir, "pi-e2e-tool-policy-"));
+      const projectConfigDir = path.join(sandboxDir, ".pi");
+      const agentConfigDir = path.join(sandboxDir, ".pi", "agent");
+      const forbiddenPath = path.join(
+        tmpdir,
+        `pi-e2e-task-escape-${Date.now()}.txt`,
+      );
+
+      fs.mkdirSync(projectConfigDir, { recursive: true });
+      fs.mkdirSync(agentConfigDir, { recursive: true });
+      try {
+        fs.unlinkSync(forbiddenPath);
+      } catch {}
+
+      // Write settings.json to load the Task extension
+      fs.writeFileSync(
+        path.join(projectConfigDir, "settings.json"),
+        JSON.stringify({
+          packages: [],
+          extensions: [
+            path.join(PI_ROOT, "dist/extensions/task.js"),
+          ],
+        }),
+        "utf-8",
+      );
+
+      // Copy auth.json to sandbox so child process can authenticate
+      const realHome = os.homedir();
+      const authSrcPath = path.join(realHome, ".pi", "agent", "auth.json");
+      const authDestPath = path.join(agentConfigDir, "auth.json");
+      if (fs.existsSync(authSrcPath)) {
+        fs.copyFileSync(authSrcPath, authDestPath);
+      }
+
+      // Write tool-policy.json to restrict bash to cwd
+      fs.writeFileSync(
+        path.join(agentConfigDir, "tool-policy.json"),
+        JSON.stringify(
+          [
+            {
+              tool: "bash",
+              matches: { within: "." },
+              action: "allow",
+            },
+            {
+              tool: "bash",
+              action: "reject",
+              message: "stay inside the assigned cwd",
+            },
+            { tool: "*", action: "allow" },
+          ],
+          null,
+          2,
+        ),
+        "utf-8",
+      );
+
+      const prompt = [
+        'Use the Task tool. description: "tool policy escape audit".',
+        "In the child, do exactly one thing: run bash with this command:",
+        `\`printf blocked > "${forbiddenPath}"\`.`,
+        "Do not retry. Return only the bash tool result text.",
+      ].join(" ");
+
+      // Use piSpawn with HOME override to test tool-policy.json
+      const result = await piSpawn({
+        cwd: sandboxDir,
+        task: prompt,
+        model: E2E_MODEL,
+        env: {
+          HOME: sandboxDir,
+        },
+      });
+
+      console.log("DEBUG: exitCode:", result.exitCode);
+      console.log("DEBUG: stderr:", result.stderr.slice(0, 500));
+      console.log("DEBUG: messages count:", result.messages.length);
+      console.log("DEBUG: messages roles:", result.messages.map(m => m.role));
+      if (result.messages.length > 0) {
+        console.log("DEBUG: last message content:", JSON.stringify(result.messages[result.messages.length - 1]?.content, null, 2)?.slice(0, 1000));
+      }
+
+      if (
+        result.exitCode !== 0 &&
+        /No API key found|Authentication failed/i.test(result.stderr)
+      ) {
+        console.log("DEBUG: skipping due to auth error");
+        return;
+      }
+
+      // Find the Task tool call and result in messages
+      const taskResultMsg = result.messages.find(
+        (msg) =>
+          msg.role === "toolResult" && (msg as any).toolName === "Task",
+      );
+      expect(taskResultMsg).toBeDefined();
+
+      // Get child messages from Task result
+      const childMessages = (taskResultMsg as any)?.details?.messages ?? [];
+      console.log("DEBUG: childMessages count:", childMessages.length);
+      console.log("DEBUG: childMessages roles:", childMessages.map((m: any) => m.role));
+      if (childMessages.length > 0) {
+        childMessages.forEach((m: any, i: number) => {
+          console.log(`DEBUG: childMessage[${i}] content:`, JSON.stringify(m.content)?.slice(0, 500));
+        });
+      }
+
+      // Find the bash tool call in child messages
+      const childToolCalls = childMessages.flatMap((msg: any) =>
+        (msg.content ?? [])
+          .filter((part: any) => part.type === "toolCall")
+          .map((part: any) => part),
+      );
+      const bashCall = childToolCalls.find(
+        (part: any) => part.name === "bash",
+      );
+      expect(bashCall?.arguments?.cmd ?? "").toContain(forbiddenPath);
+
+      // Find the bash tool result in child messages
+      const bashResultMsg = childMessages.find(
+        (msg: any) =>
+          msg.role === "toolResult" && msg.toolName === "bash",
+      );
+      const bashText = bashResultMsg?.content?.[0]?.text ?? "";
+      expect(bashText).toContain("command rejected");
+      expect(bashText).toContain("stay inside the assigned cwd");
+
+      // Verify the file was NOT created
+      expect(fs.existsSync(forbiddenPath)).toBe(false);
+
+      fs.rmSync(sandboxDir, { recursive: true, force: true });
+    }, 180_000);
+  });
 }
