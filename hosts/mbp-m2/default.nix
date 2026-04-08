@@ -13,7 +13,6 @@ in {
     ../../system/homebrew.nix
     ../../system/macos-defaults.nix
     ../../system/kanata.nix
-    ../../system/syncthing-automerge.nix
     ../../system/vector.nix
     ../../user/gaming.nix
   ];
