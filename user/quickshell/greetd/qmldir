@@ -1,0 +1,4 @@
+singleton GreetdSettings 1.0 GreetdSettings.qml
+singleton GreetdMemory 1.0 GreetdMemory.qml
+singleton GreetdState 1.0 GreetdState.qml
+GreetdController 1.0 GreetdController.qml
