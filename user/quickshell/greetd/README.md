@@ -16,11 +16,12 @@ frontend code should:
 wrapper / system glue should:
 - create `QS_GREETD_CFG_DIR` for the greeter user
 - provide `settings.json` when non-default behavior is needed
+- point quickshell at a dedicated root file such as `/etc/quickshell-greeter/greetd-shell.qml`
 - let greetd own authentication; this module is only a frontend-side protocol driver
 
 non-goals here:
 - wallpaper, clock, power menu, profile avatars
-- focus choreography, keyboard layouts, animation timing
+- focus choreography beyond a minimal happy path
 - shell-specific services like weather, battery, audio, bluetooth
 
 ```mermaid
