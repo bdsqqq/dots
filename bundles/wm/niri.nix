@@ -29,6 +29,11 @@
 
   environment.etc."wallpaper.jpg".source = ../../assets/wallpaper_without_mask.jpg;
 
+  specialisation.greeter-quickshell.configuration = {
+    my.login.greeter = "quickshell";
+    system.nixos.tags = [ "greeter-quickshell" ];
+  };
+
   home-manager.users.bdsqqq = { config, pkgs, lib, inputs, ... }: {
     imports = [
       ../../user/niri.nix
