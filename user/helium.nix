@@ -30,5 +30,7 @@ let
   };
 in
 lib.mkIf (headMode == "graphical") {
-  home.packages = [ helium-launcher ];
+  home-manager.users.bdsqqq = { pkgs, ... }: {
+    home.packages = [ helium-launcher ];
+  };
 }
