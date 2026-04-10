@@ -5,6 +5,7 @@
     ../system/bluetooth.nix
     ../system/flatpak.nix
     ../user/apps.nix
+    ../user/helium.nix
     ../user/spicetify.nix
   ];
 }
