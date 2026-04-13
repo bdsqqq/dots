@@ -21,7 +21,7 @@ let
 
       if [ ! -f "$DEST" ]; then
         wget -q -O - "https://github.com/imputnet/helium/releases/latest/download/$ASSET" \
-          | tar -xz -C "$(dirname $DEST)"
+          | tar -xz -C "$(dirname "$DEST")"
         chmod +x "$DEST"
       fi
 
