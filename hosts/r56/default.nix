@@ -118,7 +118,6 @@ in
       folders = {
         commonplace = syncthing.folderFor "commonplace" "/home/bdsqqq" false [ "mbp-m2" "htz-relay" "lgo-z2e" ] {};
         prism-instances = syncthing.folderFor "prism-instances" "/home/bdsqqq" false [ "mbp-m2" "lgo-z2e" ] { rescanIntervalS = 120; versioning = null; };
-        zen-browser = syncthing.folderFor "zen-browser" "/home/bdsqqq" false [ "mbp-m2" "lgo-z2e" ] { versioning = { type = "trashcan"; params.cleanoutDays = "30"; }; };
       };
     };
   };
