@@ -67,8 +67,6 @@ rec {
    - commonplace: `${home}/commonplace`
    - prism-instances: darwin: `${home}/Library/Application Support/PrismLauncher/instances`
                        linux: `${home}/.local/share/PrismLauncher/instances`
-   - zen-browser: darwin: `${home}/Library/Application Support/zen`
-                  linux: `${home}/.var/app/app.zen_browser.zen/.zen`
    - pi-sessions: `${home}/.pi/agent/sessions`
   */
   folderPaths = name: home: isDarwin:
@@ -78,9 +76,6 @@ rec {
         prism-instances = if isDarwin
           then "${home}/Library/Application Support/PrismLauncher/instances"
           else "${home}/.local/share/PrismLauncher/instances";
-        zen-browser = if isDarwin
-          then "${home}/Library/Application Support/zen"
-          else "${home}/.var/app/app.zen_browser.zen/.zen";
         pi-sessions = "${home}/.pi/agent/sessions";
       };
     in paths.${name};
@@ -91,7 +86,6 @@ rec {
   folderIds = {
     commonplace = "sqz7z-a6tfg";
     prism-instances = "prism-instances";
-    zen-browser = "zen-browser";
     pi-sessions = "pi-sessions";
   };
 
@@ -100,7 +94,7 @@ rec {
    Returns a full folder config.
 
    Parameters:
-   - name: folder name (commonplace, prism-instances, zen-browser, pi-sessions)
+   - name: folder name (commonplace, prism-instances, pi-sessions)
    - home: home directory path
    - isDarwin: whether the host is darwin
    - deviceNames: list of device names to share with

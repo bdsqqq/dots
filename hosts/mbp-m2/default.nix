@@ -60,7 +60,6 @@ in {
           folders = {
             commonplace = syncthing.folderFor "commonplace" config.home.homeDirectory true [ "htz-relay" "r56" "lgo-z2e" "iph16" "ipd" ] { label = "commonplace"; };
             prism-instances = syncthing.folderFor "prism-instances" config.home.homeDirectory true [ "r56" "lgo-z2e" ] { label = "PrismLauncher instances"; rescanIntervalS = 120; versioning = null; };
-            zen-browser = syncthing.folderFor "zen-browser" config.home.homeDirectory true [ "lgo-z2e" "r56" ] { label = "Zen Browser"; versioning = { type = "trashcan"; params.cleanoutDays = "30"; }; };
             pi-sessions = syncthing.folderFor "pi-sessions" config.home.homeDirectory true [ "lgo-z2e" ] {};
           };
         };
