@@ -5,19 +5,46 @@ let
   cfg = config.my.login;
 
   tuigreetCommand = "${pkgs.tuigreet}/bin/tuigreet --sessions /run/current-system/sw/share/wayland-sessions --remember --remember-session";
-  quickshellEntry = "/etc/quickshell-greeter/greetd-shell.qml";
-  quickshellCommand = "QS_GREETD_CFG_DIR=/var/cache/quickshell-greetd ${pkgs.cage}/bin/cage -- ${pkgs.quickshellWrapped}/bin/quickshell -p ${quickshellEntry}";
-  quickshellLauncher = pkgs.writeShellScriptBin "quickshell-greeter-launcher" ''
-    set -u
 
-    # keep the experimental greeter on a short leash.
-    # why: a login manager is one of the few places where "it crashed" can mean
-    # "you just locked yourself out of the box". if the gui greeter returns nonzero,
-    # we immediately drop back to the known-good tuigreet path.
-    if ${quickshellCommand}; then
+  # quickshell-root: a derivation containing the complete quickshell greetd frontend.
+  # lives in the nix store alongside the launcher — no dependency on /etc/static, which
+  # gets clobbered by nixos-upgrade.timer. the greeter user (uid 997) cannot read
+  # /home or ~/.config, so everything lives in the store.
+  quickshellRoot = pkgs.symlinkJoin {
+    name = "quickshell-greeter-root";
+    paths = [ ../user/quickshell ];  # ./greetd-shell.qml etc.
+  };
+
+  # launcher: runs the quickshell GUI under cage, falls back to tuigreet on failure.
+  # the fallback is the safety circuit: "it crashed" means "you just locked yourself
+  # out of the box" — we cannot let that happen.
+  quickshellLauncher = pkgs.writeShellScriptBin "quickshell-greeter-launcher" ''
+    set -eu
+
+    QS_ROOT=${quickshellRoot}  # symlinkJoin puts paths at $out/ root, not a subdir
+    QS_ENTRY=$QS_ROOT/greetd-shell.qml
+    QS_CACHE_DIR=/var/cache/quickshell-greetd
+
+    # greeter user has no XDG_RUNTIME_DIR. cage needs one to create its wayland socket.
+    # create a temp dir owned by greeter; it persists for the greeter session.
+    export XDG_RUNTIME_DIR=/run/user/997
+    mkdir -p $XDG_RUNTIME_DIR
+    chown greeter:greeter $XDG_RUNTIME_DIR
+    chmod 0700 $XDG_RUNTIME_DIR
+
+    # GPU access for rendering. render node is world-readable on most distros.
+    # if this is wrong on a specific host, the fallback to tuigreet saves us.
+    export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+
+    # launch quickshell inside cage (single-purpose wayland compositor for greeters)
+    # cage exits when quickshell exits, so the greeter session is bounded to the GUI lifetime.
+    if QS_GREETD_CFG_DIR=$QS_CACHE_DIR \
+       ${pkgs.cage}/bin/cage -- \
+       ${pkgs.quickshellWrapped}/bin/quickshell -p "$QS_ENTRY"; then
       exit 0
     fi
 
+    # gui crashed or couldn't start — fall back to the known-good tuigreet.
     exec ${tuigreetCommand}
   '';
 in
@@ -54,11 +81,10 @@ if !isLinux then {} else {
     }
 
     (lib.mkIf (cfg.greeter == "quickshell") {
-      # the greeter user cannot read your home checkout. copy the quickshell root
-      # into /etc so the config is readable before any user has authenticated.
-      environment.etc."quickshell-greeter".source = ../user/quickshell;
+      # quickshellLauncher is added to greetd's command. quickshellRoot lives in the
+      # nix store alongside it — no /etc/ involvement, survives nixos-upgrade.timer.
 
-      # persistence lives in a greeter-owned cache dir instead of a real user's home.
+      # greetd needs /var/cache before the launcher runs.
       systemd.tmpfiles.rules = [
         "d /var/cache/quickshell-greetd 0770 greeter greeter - -"
       ];
