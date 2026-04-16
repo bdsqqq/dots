@@ -21,6 +21,7 @@ scope: `user/pi`
 ## tests
 
 - **everything inline** — use `if (import.meta.vitest) { ... }` blocks at the bottom of source files. no `__tests__/` directories.
+- **run vitest via scripts** — use `bun run test` (or `bunx vitest run ...` for targeted files). do NOT use `bun test`; bun's native runner won't discover these inline tests.
 - **test outcomes, not implementation** — "prompt appears in editor" not "sendUserMessage was called".
 - **only mock boundaries** — file system, network, LLM. never mock the system under test.
 - **thin wrappers don't need execution tests** — sub-agents that just call `piSpawn` have no meaningful unit tests. their value is prompt quality, which is an eval, not a unit test.
