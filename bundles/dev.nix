@@ -12,6 +12,8 @@ in
       (import ../zmx.nix).module
       ../user/direnv.nix
       ../user/rust.nix
+      ../user/go.nix
+      ../user/nix.nix
       ../user/tmux.nix
       ../user/amp
       ../user/opencode
