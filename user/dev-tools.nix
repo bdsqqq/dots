@@ -37,14 +37,6 @@ in
       fnm
       pnpm
       pscale
-      go
-
-      gofumpt
-      golangci-lint
-      gotools
-      gopls
-      gotests
-      delve
       ripgrep
       ast-grep
       fd
