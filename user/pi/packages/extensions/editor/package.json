@@ -9,9 +9,9 @@
     "@bds_pi/editor-capabilities": "workspace:*"
   },
   "devDependencies": {
-    "@mariozechner/pi-ai": "catalog:",
-    "@mariozechner/pi-coding-agent": "catalog:",
-    "@mariozechner/pi-tui": "catalog:"
+    "@mariozechner/pi-ai": "^0.67.5",
+    "@mariozechner/pi-coding-agent": "^0.67.5",
+    "@mariozechner/pi-tui": "^0.67.5"
   },
   "pi": {
     "extensions": [

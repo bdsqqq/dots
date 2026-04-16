@@ -7,6 +7,6 @@
     ".": "./index.ts"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "catalog:"
+    "@mariozechner/pi-coding-agent": "^0.67.5"
   }
 }

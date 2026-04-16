@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.67.3",
+    "@mariozechner/pi-coding-agent": "^0.67.5",
     "@openai/codex": "^0.121.0",
     "@sourcegraph/amp": "0.0.1776359148-gfabf5f",
     "agent-browser": "^0.25.5",
