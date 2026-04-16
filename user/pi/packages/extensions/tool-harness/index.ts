@@ -29,7 +29,7 @@ export function resolveAliases(names: string[]): string[] {
   return names.map((name) => TOOL_ALIASES[name] ?? name);
 }
 
-export const TOOL_ALIASES_EXPORT: typeof TOOL_ALIASES = TOOL_ALIASES as const;
+export const TOOL_ALIASES_EXPORT: typeof TOOL_ALIASES = TOOL_ALIASES;
 
 export default function (pi: ExtensionAPI): void {
   const raw = process.env.PI_INCLUDE_TOOLS;

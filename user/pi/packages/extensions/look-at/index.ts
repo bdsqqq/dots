@@ -114,7 +114,7 @@ When reference files are provided alongside the main file, you are being asked t
 - Use code fences with language tags for code snippets.
 - No emojis or decorative symbols.
 - Keep responses focused and brief.
-` as const;
+`;
 
 export interface LookAtConfig {
   systemPrompt?: string;
