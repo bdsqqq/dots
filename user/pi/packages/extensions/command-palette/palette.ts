@@ -37,7 +37,9 @@ export class StackPalette implements Component, Focusable {
     return this._focused;
   }
   set focused(value: boolean) {
+    if (this._focused === value) return;
     this._focused = value;
+    this.invalidate();
   }
 
   constructor(
@@ -844,25 +846,39 @@ if (import.meta.vitest) {
         expect(palette.focused).toBe(true);
       });
 
-      it("shows cursor marker when focused", () => {
-        const view = createTestView([]);
-        const palette = new StackPalette(
-          view,
-          mockTheme,
-          mockPi,
-          mockCtx,
-          mockDone,
-        );
+      it("for any tested width, focused state determines cursor marker presence", () => {
+        const widths = [40, 72];
+        const view = createTestView([
+          { id: "1", label: "Alpha", onSelect: vi.fn() },
+          { id: "2", label: "Beta", onSelect: vi.fn() },
+        ]);
 
-        palette.focused = true;
-        const focusedLines = palette.render(72);
+        for (const width of widths) {
+          const palette = new StackPalette(
+            view,
+            mockTheme,
+            mockPi,
+            mockCtx,
+            mockDone,
+          );
 
-        palette.focused = false;
-        palette.render(72);
+          palette.focused = true;
+          const focusedLines = palette.render(width);
+          const focusedText = focusedLines.join("\n");
 
-        // Focused should show cursor marker, unfocused should not
-        // The mock theme strips colors, so we check for the raw marker
-        expect(focusedLines.some((l) => l.includes("▏"))).toBe(true);
+          expect(focusedText).toContain(CURSOR_MARKER);
+
+          palette.focused = false;
+          const unfocusedLines = palette.render(width);
+          const unfocusedText = unfocusedLines.join("\n");
+
+          expect(unfocusedLines).not.toBe(focusedLines);
+          expect(unfocusedText).not.toContain(CURSOR_MARKER);
+
+          palette.focused = true;
+          const refocusedText = palette.render(width).join("\n");
+          expect(refocusedText).toContain(CURSOR_MARKER);
+        }
       });
     });
   });

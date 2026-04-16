@@ -103,6 +103,12 @@ class LabeledEditor extends CustomEditor {
     this.labels.delete(key);
   }
 
+  override invalidate(): void {
+    this.borderCache.top = null;
+    this.borderCache.bottom = null;
+    super.invalidate();
+  }
+
   /**
    * recomposes the effective provider from the current base provider plus any
    * package-local contributors. keeps normal @file behavior as the fallback path.
@@ -751,8 +757,8 @@ if (import.meta.vitest) {
   // Testing buildBorderLine directly avoids mocking the entire CustomEditor
 
   describe("LabeledEditor border building", () => {
-    it("setLabel/removeLabel manages labels", () => {
-      const editor = new LabeledEditor(
+    function createPlainEditor(): LabeledEditor {
+      return new LabeledEditor(
         {} as any,
         {} as any,
         {} as any,
@@ -762,6 +768,10 @@ if (import.meta.vitest) {
         } as any,
         "/cwd",
       );
+    }
+
+    it("setLabel/removeLabel manages labels", () => {
+      const editor = createPlainEditor();
 
       editor.setLabel("model", "glm-5", "top", "right");
       editor.setLabel("stats", "50%", "top", "left");
@@ -788,16 +798,7 @@ if (import.meta.vitest) {
     });
 
     it("multiple labels on same side are joined with ·", () => {
-      const editor = new LabeledEditor(
-        {} as any,
-        {} as any,
-        {} as any,
-        {
-          fg: (_: string, t: string) => t,
-          bg: (_: string, t: string) => t,
-        } as any,
-        "/cwd",
-      );
+      const editor = createPlainEditor();
       editor.setLabel("a", "first", "top", "left");
       editor.setLabel("b", "second", "top", "left");
 
@@ -813,16 +814,7 @@ if (import.meta.vitest) {
     });
 
     it("left and right labels appear on opposite ends", () => {
-      const editor = new LabeledEditor(
-        {} as any,
-        {} as any,
-        {} as any,
-        {
-          fg: (_: string, t: string) => t,
-          bg: (_: string, t: string) => t,
-        } as any,
-        "/cwd",
-      );
+      const editor = createPlainEditor();
       editor.setLabel("left", "L-label", "top", "left");
       editor.setLabel("right", "R-label", "top", "right");
 
@@ -837,16 +829,7 @@ if (import.meta.vitest) {
     });
 
     it("scroll indicator preserved in border", () => {
-      const editor = new LabeledEditor(
-        {} as any,
-        {} as any,
-        {} as any,
-        {
-          fg: (_: string, t: string) => t,
-          bg: (_: string, t: string) => t,
-        } as any,
-        "/cwd",
-      );
+      const editor = createPlainEditor();
       const originalWithScroll = "────── ↑ 5 more";
 
       const line = editor["buildBorderLine"](
@@ -856,6 +839,51 @@ if (import.meta.vitest) {
         originalWithScroll,
       );
       expect(line).toContain("↑ 5 more");
+    });
+
+    it("invalidate clears cached themed border output for repeated same-width renders", () => {
+      let themeTag = "[old]";
+      const editor = new LabeledEditor(
+        {} as any,
+        {} as any,
+        {} as any,
+        {
+          fg: (_: string, t: string) => `${themeTag}${t}`,
+          bg: (_: string, t: string) => t,
+        } as any,
+        "/cwd",
+      );
+
+      editor.setLabel("stats", "50%", "top", "left");
+
+      const renderBorder = (width: number, position: "top" | "bottom") =>
+        editor["buildBorderLine"](
+          width,
+          position === "top"
+            ? { left: "╭", right: "╮" }
+            : { left: "╰", right: "╯" },
+          position,
+          "",
+        );
+
+      for (const width of [40, 72]) {
+        const first = renderBorder(width, "top");
+        expect(first).toContain("[old]");
+
+        themeTag = "[new]";
+        const stillCached = renderBorder(width, "top");
+        expect(stillCached).toBe(first);
+
+        editor.invalidate();
+        const refreshed = renderBorder(width, "top");
+
+        expect(refreshed).toContain("[new]");
+        expect(refreshed).not.toBe(first);
+        expect(refreshed).not.toContain("[old]");
+
+        themeTag = "[old]";
+        editor.invalidate();
+      }
     });
   });
 
