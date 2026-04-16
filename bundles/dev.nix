@@ -9,6 +9,7 @@ in
       ../user/git
       ../user/bun.nix
       ../user/dev-tools.nix
+      (import ../zmx.nix).module
       ../user/direnv.nix
       ../user/rust.nix
       ../user/tmux.nix

@@ -63,7 +63,6 @@ in
       cloc
       stow
       yazi
-      zmx
       tmux
       ffmpeg
       httpie

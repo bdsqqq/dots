@@ -161,7 +161,7 @@
                 config.allowUnfree = true;
                 overlays = [
                   (import ./overlays/unstable.nix inputs)
-                  (import ./overlays/zmx.nix inputs)
+                  (import ./zmx.nix).overlay
                 ];
               };
             };
@@ -175,7 +175,7 @@
                   config.allowUnfree = true;
                   overlays = [
                     (import ./overlays/unstable.nix inputs)
-                    (import ./overlays/zmx.nix inputs)
+                    (import ./zmx.nix).overlay
                   ];
                 };
                 # track git revision for deploy annotations
@@ -214,7 +214,7 @@
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [
                   (import ./overlays/unstable.nix inputs)
-                  (import ./overlays/zmx.nix inputs)
+                  (import ./zmx.nix).overlay
                   (import ./overlays/quickshell.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
@@ -248,7 +248,7 @@
                 nixpkgs.overlays = [
                   inputs.copyparty.overlays.default
                   (import ./overlays/unstable.nix inputs)
-                  (import ./overlays/zmx.nix inputs)
+                  (import ./zmx.nix).overlay
                 ];
                 system.configurationRevision = flakeRevision;
                 
@@ -281,7 +281,7 @@
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [
                   (import ./overlays/unstable.nix inputs)
-                  (import ./overlays/zmx.nix inputs)
+                  (import ./zmx.nix).overlay
                   (import ./overlays/quickshell.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
