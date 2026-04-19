@@ -39,6 +39,7 @@ let
     # launch quickshell inside cage (single-purpose wayland compositor for greeters)
     # cage exits when quickshell exits, so the greeter session is bounded to the GUI lifetime.
     if QS_GREETD_CFG_DIR=$QS_CACHE_DIR \
+       QS_GREETD_ENABLE_FINGERPRINT=1 \
        ${pkgs.cage}/bin/cage -- \
        ${pkgs.quickshellWrapped}/bin/quickshell -p "$QS_ENTRY"; then
       exit 0

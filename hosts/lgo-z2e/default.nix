@@ -110,6 +110,7 @@ in
 
   my.hardware.gpu.vendors = [ "amd" ];
   my.primaryUser = "bdsqqq";
+  my.login.greeter = "quickshell";
 
   networking.hostName = "lgo-z2e";
   networking.networkmanager.enable = true;
@@ -255,11 +256,19 @@ in
     ];
   };
 
+  services.fprintd.enable = true;
+
+  security.pam.services = {
+    greetd.fprintAuth = true;
+    login.fprintAuth = true;
+  };
+
   environment.systemPackages = with pkgs; [
     tree
     unzip
     usbutils
     libnotify
+    fprintd
 
     # handheld-specific
     mangohud
