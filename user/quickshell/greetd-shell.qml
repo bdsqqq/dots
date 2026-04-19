@@ -1,5 +1,4 @@
 import Quickshell
-import Quickshell.Wayland
 import QtQuick
 import QtQuick.Layouts
 
@@ -22,20 +21,14 @@ ShellRoot {
         id: controller
     }
 
-    PanelWindow {
+    FloatingWindow {
         id: greeterWindow
 
-        anchors {
-            left: true
-            right: true
-            top: true
-            bottom: true
-        }
-
-        exclusionMode: ExclusionMode.Normal
-        WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+        visible: true
+        implicitWidth: 1280
+        implicitHeight: 800
         color: Design.Theme.t.black
+        title: "greeter"
 
         Rectangle {
             anchors.fill: parent
