@@ -1,27 +1,29 @@
 # user/helium.nix
-# helium inputmethod launcher — nix ships the wrapper, helium owns its binary
-# fetches latest release at runtime; works on linux and darwin
-{ lib, pkgs, hostSystem ? null, headMode ? "graphical", ... }:
+# helium browser — binaries at imputnet/helium-linux
+{ lib, pkgs, headMode ? "graphical", ... }:
 
 let
-  isDarwin = lib.hasInfix "darwin" hostSystem;
-  isLinux = lib.hasInfix "linux" hostSystem;
-
   helium-launcher = pkgs.writeShellApplication {
     name = "helium";
-    runtimeInputs = [ pkgs.wget pkgs.gnutar ];
+    runtimeInputs = [ pkgs.curl pkgs.xz ];
     text = ''
-      case "$(uname -s)" in
-        Linux)   ASSET="helium-linux.tar.gz" ;;
-        Darwin)  ASSET="helium-macos.tar.gz" ;;
-        *)       echo "Unsupported OS" >&2; exit 1 ;;
-      esac
+      DEST="/etc/profiles/per-user/bdsqqq/bin/helium"
 
-      DEST="$HOME/.local/bin/helium"
+      # latest release: query API once to get version, then pin the URL
+      # avoids re-parsing HTML on every launch
+      TAG=$(curl -sL -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/imputnet/helium-linux/releases/latest" \
+        | grep -o '"tag_name": "[^"]*"' | head -1 | sed 's/"tag_name": "//;s/"//')
+
+      if [ -z "$TAG" ]; then
+        echo "helium: failed to fetch latest release tag" >&2
+        exit 1
+      fi
 
       if [ ! -f "$DEST" ]; then
-        wget -q -O - "https://github.com/imputnet/helium/releases/latest/download/$ASSET" \
-          | tar -xz -C "$(dirname "$DEST")"
+        curl -fsSL \
+          "https://github.com/imputnet/helium-linux/releases/download/$TAG/helium-$TAG-x86_64_linux.tar.xz" \
+          | tar -xJ -C "$(dirname "$DEST")" --strip-components=1
         chmod +x "$DEST"
       fi
 
