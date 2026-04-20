@@ -1,5 +1,10 @@
 { lib, pkgs, hostSystem ? null, ... }:
 if !(lib.hasInfix "linux" hostSystem) then {} else {
+  programs.appimage = {
+    enable = true;
+    binfmt = true;
+  };
+
   programs.nix-ld = {
     enable = true;
     libraries = with pkgs; [

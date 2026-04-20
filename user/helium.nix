@@ -8,7 +8,7 @@ else
   let
     helium-launcher = pkgs.writeShellApplication {
       name = "helium";
-      runtimeInputs = [ pkgs.coreutils pkgs.curl pkgs.gnugrep pkgs.gnused ];
+      runtimeInputs = [ pkgs.appimage-run pkgs.coreutils pkgs.curl pkgs.gnugrep pkgs.gnused ];
       text = ''
         set -euo pipefail
 
@@ -40,7 +40,7 @@ else
           chmod +x "$dest"
         fi
 
-        exec "$dest" "$@"
+        exec appimage-run "$dest" "$@"
       '';
     };
   in {
