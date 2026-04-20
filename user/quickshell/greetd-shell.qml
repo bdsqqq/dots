@@ -1,21 +1,39 @@
 import Quickshell
 import QtQuick
-import QtQuick.Layouts
+import QtQuick.Effects
 
 import "design" as Design
-import "primitives" as Primitives
-import "controls" as Controls
 import "greetd" as Greet
 
 /**
- * this is a throwaway-looking first frontend on purpose.
+ * wallpaper-first greeter with almost no chrome.
  *
- * why: the one thing we cannot afford here is coupling a risky greetd rollout to
- * a bunch of unresolved visual decisions. prove the contract, keep the surface
- * boring, then get fancy once the login path survives real boots.
+ * why: this host only has one real user, so naming login mechanics on screen is
+ * redundant. keep one small frosted pill for the rare case where fingerprint
+ * needs keyboard fallback.
  */
 ShellRoot {
     id: root
+
+    readonly property bool passwordVisible: Greet.GreetdState.passwordBuffer.length > 0
+        || controller.authState === "fail"
+        || controller.authState === "error"
+        || controller.authState === "max"
+        || controller.pendingPasswordResponse
+    readonly property int pillPaddingX: 4
+    readonly property int pillPaddingY: 2
+
+    function ensurePrimaryUser() {
+        if (!Greet.GreetdState.username) {
+            controller.setUsername("bdsqqq")
+        }
+    }
+
+    function focusPasswordIfNeeded() {
+        if (root.passwordVisible) {
+            passwordInput.forceActiveFocus()
+        }
+    }
 
     Greet.GreetdController {
         id: controller
@@ -30,80 +48,98 @@ ShellRoot {
         color: Design.Theme.t.black
         title: "greeter"
 
-        Rectangle {
-            anchors.fill: parent
-            color: "#0f1115"
+        Component.onCompleted: {
+            root.ensurePrimaryUser()
+            Qt.callLater(root.focusPasswordIfNeeded)
         }
 
-        ColumnLayout {
+        Image {
+            id: wallpaper
+            anchors.fill: parent
+            source: "file:///etc/wallpaper.jpg"
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            cache: true
+            smooth: true
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#12000000"
+        }
+
+        Item {
+            id: pillShell
             anchors.centerIn: parent
-            width: 420
-            spacing: Design.Theme.t.space4
+            visible: root.passwordVisible
+            implicitWidth: pillContent.implicitWidth + root.pillPaddingX * 2
+            implicitHeight: pillContent.implicitHeight + root.pillPaddingY * 2
 
-            Primitives.T {
-                Layout.alignment: Qt.AlignHCenter
-                text: "welcome back"
-                size: "titleLg"
+            Rectangle {
+                id: pillMask
+                anchors.fill: parent
+                radius: height / 2
+                color: "#01ffffff"
+                visible: false
             }
 
-            Primitives.T {
-                Layout.alignment: Qt.AlignHCenter
-                text: controller.currentSessionName ? ("session: " + controller.currentSessionName) : "loading sessions..."
-                tone: "muted"
-                size: "bodySm"
+            ShaderEffectSource {
+                id: wallpaperSource
+                anchors.fill: pillMask
+                sourceItem: wallpaper
+                sourceRect: Qt.rect(pillShell.x, pillShell.y, pillShell.width, pillShell.height)
+                live: true
+                hideSource: false
+                visible: false
             }
 
-            Primitives.Surface {
-                Layout.fillWidth: true
-                implicitHeight: 52
-                showBorder: usernameInput.activeFocus
-
-                TextInput {
-                    id: usernameInput
-
-                    anchors.fill: parent
-                    anchors.leftMargin: Design.Theme.t.space4
-                    anchors.rightMargin: Design.Theme.t.space4
-                    color: Design.Theme.t.fg
-                    font.family: "Berkeley Mono"
-                    font.pixelSize: Design.Theme.t.bodyMd
-                    selectionColor: Design.Theme.t.gray500
-                    selectedTextColor: Design.Theme.t.white
-                    verticalAlignment: TextInput.AlignVCenter
-                    text: Greet.GreetdState.username
-
-                    onTextEdited: controller.setUsername(text)
-                    onAccepted: passwordInput.forceActiveFocus()
-
-                    Component.onCompleted: forceActiveFocus()
-                }
-
-                Primitives.T {
-                    anchors.left: parent.left
-                    anchors.leftMargin: Design.Theme.t.space4
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "username"
-                    tone: "subtle"
-                    visible: usernameInput.text.length === 0 && !usernameInput.activeFocus
-                }
+            MultiEffect {
+                anchors.fill: pillMask
+                source: wallpaperSource
+                maskEnabled: true
+                maskSource: pillMask
+                blurEnabled: true
+                blurMax: 24
+                blurMultiplier: 1.0
+                autoPaddingEnabled: false
             }
 
-            Primitives.Surface {
-                Layout.fillWidth: true
-                implicitHeight: 52
-                showBorder: passwordInput.activeFocus
+            Rectangle {
+                anchors.fill: parent
+                radius: height / 2
+                color: "#14ffffff"
+                border.color: "#99ffffff"
+                border.width: 1
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: height / 2 - 1
+                color: "transparent"
+                border.color: "#33ffffff"
+                border.width: 1
+            }
+
+            Item {
+                id: pillContent
+                anchors.centerIn: parent
+                implicitWidth: passwordInput.implicitWidth + submitHit.implicitWidth + 10
+                implicitHeight: Math.max(passwordInput.implicitHeight, submitHit.implicitHeight)
 
                 TextInput {
                     id: passwordInput
 
-                    anchors.fill: parent
-                    anchors.leftMargin: Design.Theme.t.space4
-                    anchors.rightMargin: Design.Theme.t.space4
-                    color: Design.Theme.t.fg
-                    font.family: "Berkeley Mono"
-                    font.pixelSize: Design.Theme.t.bodyMd
-                    selectionColor: Design.Theme.t.gray500
-                    selectedTextColor: Design.Theme.t.white
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 120
+                    height: 18
+                    color: Design.Theme.t.white
+                    font.family: "Inter"
+                    font.pixelSize: 14
+                    font.weight: Font.Medium
+                    selectionColor: "#66ffffff"
+                    selectedTextColor: Design.Theme.t.black
                     verticalAlignment: TextInput.AlignVCenter
                     echoMode: TextInput.Password
                     text: Greet.GreetdState.passwordBuffer
@@ -112,55 +148,53 @@ ShellRoot {
                     onAccepted: controller.startPasswordAuth()
                 }
 
-                Primitives.T {
-                    anchors.left: parent.left
-                    anchors.leftMargin: Design.Theme.t.space4
+                Item {
+                    id: submitHit
+                    anchors.left: passwordInput.right
+                    anchors.leftMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "password"
-                    tone: "subtle"
-                    visible: passwordInput.text.length === 0 && !passwordInput.activeFocus
+                    implicitWidth: 16
+                    implicitHeight: 16
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: controller.busy ? "…" : "→"
+                        color: "#f2ffffff"
+                        font.family: "Inter"
+                        font.pixelSize: 14
+                        font.weight: Font.Medium
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: !controller.busy
+                        onClicked: controller.startPasswordAuth()
+                    }
                 }
             }
+        }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Design.Theme.t.space2
+        MouseArea {
+            anchors.fill: parent
+            enabled: !root.passwordVisible && !controller.busy
+            onPressed: controller.startPasswordAuth()
+        }
 
-                Controls.Button {
-                    Layout.fillWidth: true
-                    variant: "outline"
-                    text: controller.supportsFingerprint ? "fingerprint" : (controller.supportsU2f ? "u2f" : "external auth")
-                    enabled: controller.supportsExternalAuth && !controller.busy
-                    onClicked: controller.startExternalAuth()
-                }
+        Connections {
+            target: Greet.GreetdState
 
-                Controls.Button {
-                    Layout.fillWidth: true
-                    variant: "fill"
-                    text: controller.busy ? "working..." : "login"
-                    enabled: !controller.busy
-                    onClicked: controller.startPasswordAuth()
-                }
+            function onUsernameChanged() {
+                root.ensurePrimaryUser()
             }
+        }
 
-            Controls.Button {
-                Layout.fillWidth: true
-                variant: "ghost"
-                text: "switch user"
-                enabled: !controller.busy
-                onClicked: {
-                    controller.resetUser()
-                    usernameInput.forceActiveFocus()
+        Connections {
+            target: controller
+
+            function onAuthStateChanged() {
+                if (root.passwordVisible) {
+                    Qt.callLater(root.focusPasswordIfNeeded)
                 }
-            }
-
-            Primitives.T {
-                Layout.fillWidth: true
-                text: controller.authFeedback
-                tone: controller.authState === "" ? "muted" : "fg"
-                wrapMode: Text.WordWrap
-                horizontalAlignment: Text.AlignHCenter
-                visible: text.length > 0
             }
         }
     }
