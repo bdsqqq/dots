@@ -68,7 +68,6 @@ in
       gh
       git-filter-repo
       jq
-      trash-cli
       (git-hunks { inherit pkgs; })
       
       # worktree workflow scripts
