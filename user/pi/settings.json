@@ -1,5 +1,5 @@
 {
-  "defaultProvider": "openrouter",
+  "defaultProvider": "openai-codex",
   "skills": [
     "~/.config/agents/skills"
   ],
@@ -15,7 +15,7 @@
     "enabled": false
   },
   "lastChangelogVersion": "0.67.68",
-  "defaultModel": "openai/gpt-5.4",
+  "defaultModel": "gpt-5.4",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
   "steeringMode": "all",
@@ -24,5 +24,8 @@
   "doubleEscapeAction": "tree",
   "quietStartup": true,
   "enableSkillCommands": true,
-  "showHardwareCursor": true
+  "showHardwareCursor": true,
+  "transport": "auto",
+  "treeFilterMode": "no-tools",
+  "theme": "dark"
 }

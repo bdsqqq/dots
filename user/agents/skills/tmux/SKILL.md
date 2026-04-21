@@ -2,6 +2,7 @@
 name: tmux
 description: "manage background processes in tmux windows. use when running dev servers, build watchers, or any long-running process that shouldn't block the agent. check window before spawning."
 ---
+
 # tmux
 
 manage concurrent processes (servers, builds, watchers) in tmux windows.
@@ -27,5 +28,3 @@ tmux kill-window -t "name"             # terminate
 tmux select-window -t "name"           # switch to
 tmux list-windows                      # list all
 ```
-
-for spawning amp agents with thread linkage, use the `spawn` skill.

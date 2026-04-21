@@ -1,7 +1,7 @@
 # AXM-10608: single-dataset assumptions in axiom console
 
-**authors**: investigation conducted via amp agents, answers provided by igor bedesqui  
-**date**: 2026-01-07  
+**authors**: investigation conducted via agent runs, answers provided by igor bedesqui  
+**date**: 2026-01-07
 
 ---
 
@@ -24,7 +24,7 @@ apl (axiom processing language) supports two multi-dataset patterns:
 - **union**: `['dataset-a'] | union ['dataset-b']`
 - **join**: `['dataset-a'] | join (['dataset-b']) on field`
 
-the syntax `['dataset-a', 'dataset-b']` was not found in [axiom apl docs](https://axiom.co/docs/apl/tabular-operators/overview) or manual testing (per [verification thread](https://ampcode.com/threads/T-019b9564-75c6-72ac-be8d-d8f1ed2422ba)). join is in public preview with limitations: inner join only, 50k row limits (per [axiom docs](https://axiom.co/docs/apl/tabular-operators/join-operator)).
+the syntax `['dataset-a', 'dataset-b']` was not found in [axiom apl docs](https://axiom.co/docs/apl/tabular-operators/overview) or manual testing (per verification thread `T-019b9564-75c6-72ac-be8d-d8f1ed2422ba`). join is in public preview with limitations: inner join only, 50k row limits (per [axiom docs](https://axiom.co/docs/apl/tabular-operators/join-operator)).
 
 ---
 
@@ -40,11 +40,11 @@ igor ran a join query between `plain-support-agent-traces` and `plain-support-ag
 
 the frontend extracts only the first element at these locations:
 
-| location | code | effect |
-|----------|------|--------|
-| [DatasetStore.ts:1514](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/dash/stores/DatasetStore.ts#L1514) | `datasetNames[0]` | sets `selectedDatasetId` after query execution |
-| [ElementsDatasetStore.ts:349](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/dash/stores/ElementsDatasetStore.ts#L349) | `datasetNames?.[0]` | determines which dataset's field metadata to use |
-| [api.ts:250](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/dash/util/api.ts#L250) | discards `datasetNames` | transforms query results for legacy Result type |
+| location                                                                                                                                                 | code                    | effect                                           |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------ |
+| [DatasetStore.ts:1514](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/dash/stores/DatasetStore.ts#L1514)               | `datasetNames[0]`       | sets `selectedDatasetId` after query execution   |
+| [ElementsDatasetStore.ts:349](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/dash/stores/ElementsDatasetStore.ts#L349) | `datasetNames?.[0]`     | determines which dataset's field metadata to use |
+| [api.ts:250](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/dash/util/api.ts#L250)                                     | discards `datasetNames` | transforms query results for legacy Result type  |
 
 ### 2. field types show as "unknown" for join queries
 
@@ -81,11 +81,12 @@ a central root is `DatasetStore.selectedDatasetId: string | undefined` at [line 
 DatasetStore.selectedDatasetId (L162)
        ↓ inheritance
 QueryViewStore extends DatasetStore
-       ↓ 
+       ↓
 ElementsDatasetStore uses QueryResult.datasetId
 ```
 
 15 store files reference `selectedDatasetId` or `activeDataset` (per `grep -l "selectedDatasetId\|activeDataset" apps/console/src/dash/stores/*.ts`):
+
 - [AnalyticsStore.ts](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/dash/stores/AnalyticsStore.ts)
 - [DashboardsStore.ts](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/dash/stores/DashboardsStore.ts)
 - [DatasetStore.ts](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/dash/stores/DatasetStore.ts)
@@ -105,11 +106,13 @@ ElementsDatasetStore uses QueryResult.datasetId
 ### url parameters
 
 **path parameters** (3 top-level routes with singular dataset params):
+
 - [`/$orgId/stream/$datasetId`](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/routes/_authed/_org/%24orgId/stream/%24datasetId.tsx)
 - [`/$orgId/datasets/$dataset`](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/routes/_authed/_org/%24orgId/%28datasets%29/datasets/%24dataset/route.tsx) (with nested field routes)
 - [`/$orgId/settings/datasets/$datasetId`](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/routes/_authed/_org/%24orgId/settings/datasets/%24datasetId/route.tsx) (with nested modal routes)
 
 **search parameters**:
+
 - `did` — defined at [--route.utils.ts:8](file:///Users/bdsqqq/www/AXM-10608-investigate-dataset-tracking/apps/console/src/routes/_authed/_org/%24orgId/--route.utils.ts#L8). consumed by QueryViewStore, DashboardsStore, queryPageMachine.
 - `traceDataset` — trace viewer context.
 
@@ -121,7 +124,7 @@ ElementsDatasetStore uses QueryResult.datasetId
 
 ## open questions
 
-1. why was `selectedDatasetId` designed as singular? (igor joined march 2023, after these patterns were established—earliest commits referencing `selectedDatasetId` date to 2020 per git blame, see [git history analysis thread](https://ampcode.com/threads/T-019b954b-1d1d-718a-b981-84d477b761fb).)
+1. why was `selectedDatasetId` designed as singular? (igor joined march 2023, after these patterns were established—earliest commits referencing `selectedDatasetId` date to 2020 per git blame, see git history analysis thread `T-019b954b-1d1d-718a-b981-84d477b761fb`.)
 
 2. is the dashboard 500 for joins intentional?
 
@@ -155,28 +158,28 @@ all threads are workspace-visible.
 
 ### main threads
 
-| thread | description |
-|--------|-------------|
-| [T-019b998c-25bf-701c-a493-f688af5bd144](https://ampcode.com/threads/T-019b998c-25bf-701c-a493-f688af5bd144) | multi-dataset tracking for regions work (consolidation) |
-| [T-019b9544-b42b-75bf-af3f-c274d150217e](https://ampcode.com/threads/T-019b9544-b42b-75bf-af3f-c274d150217e) | map dataset assumption across codebase (main investigation) |
+| thread                                   | description                                                 |
+| ---------------------------------------- | ----------------------------------------------------------- |
+| `T-019b998c-25bf-701c-a493-f688af5bd144` | multi-dataset tracking for regions work (consolidation)     |
+| `T-019b9544-b42b-75bf-af3f-c274d150217e` | map dataset assumption across codebase (main investigation) |
 
 ### initial analysis agents
 
-| thread | description |
-|--------|-------------|
-| [T-019b954a-9af1-70b8-8d55-4cea02f744cf](https://ampcode.com/threads/T-019b954a-9af1-70b8-8d55-4cea02f744cf) | stores agent single-dataset assumption analysis |
-| [T-019b954a-c4e5-76cd-8245-ec786aadbc78](https://ampcode.com/threads/T-019b954a-c4e5-76cd-8245-ec786aadbc78) | routes agent single-dataset assumption analysis |
-| [T-019b954a-ee7d-774c-be66-2bdcfff25aaa](https://ampcode.com/threads/T-019b954a-ee7d-774c-be66-2bdcfff25aaa) | single-dataset assumption analysis in react components |
-| [T-019b954b-1d1d-718a-b981-84d477b761fb](https://ampcode.com/threads/T-019b954b-1d1d-718a-b981-84d477b761fb) | git history analysis for single-dataset patterns |
+| thread                                   | description                                            |
+| ---------------------------------------- | ------------------------------------------------------ |
+| `T-019b954a-9af1-70b8-8d55-4cea02f744cf` | stores agent single-dataset assumption analysis        |
+| `T-019b954a-c4e5-76cd-8245-ec786aadbc78` | routes agent single-dataset assumption analysis        |
+| `T-019b954a-ee7d-774c-be66-2bdcfff25aaa` | single-dataset assumption analysis in react components |
+| `T-019b954b-1d1d-718a-b981-84d477b761fb` | git history analysis for single-dataset patterns       |
 
 ### verification agents
 
-| thread | description |
-|--------|-------------|
-| [T-019b9563-5760-73ef-a031-fc093c35ba7c](https://ampcode.com/threads/T-019b9563-5760-73ef-a031-fc093c35ba7c) | verify stores-analysis claims |
-| [T-019b9563-860d-704f-b42a-8d4e1c2b8ec1](https://ampcode.com/threads/T-019b9563-860d-704f-b42a-8d4e1c2b8ec1) | fact-check routes-analysis claims |
-| [T-019b9563-b0c9-716f-aa74-dd00a21b7870](https://ampcode.com/threads/T-019b9563-b0c9-716f-aa74-dd00a21b7870) | verify components analysis claims |
-| [T-019b9564-5af0-72df-abad-75cff8000730](https://ampcode.com/threads/T-019b9564-5af0-72df-abad-75cff8000730) | verify git history claims |
-| [T-019b9564-75c6-72ac-be8d-d8f1ed2422ba](https://ampcode.com/threads/T-019b9564-75c6-72ac-be8d-d8f1ed2422ba) | verify APL syntax and backend claims |
-| [T-019b9566-c451-765d-a55c-016b596d481d](https://ampcode.com/threads/T-019b9566-c451-765d-a55c-016b596d481d) | verify components analysis claims |
-| [T-019b9566-c47f-75de-9a05-476670f1a9f1](https://ampcode.com/threads/T-019b9566-c47f-75de-9a05-476670f1a9f1) | git history claims verification |
+| thread                                   | description                          |
+| ---------------------------------------- | ------------------------------------ |
+| `T-019b9563-5760-73ef-a031-fc093c35ba7c` | verify stores-analysis claims        |
+| `T-019b9563-860d-704f-b42a-8d4e1c2b8ec1` | fact-check routes-analysis claims    |
+| `T-019b9563-b0c9-716f-aa74-dd00a21b7870` | verify components analysis claims    |
+| `T-019b9564-5af0-72df-abad-75cff8000730` | verify git history claims            |
+| `T-019b9564-75c6-72ac-be8d-d8f1ed2422ba` | verify APL syntax and backend claims |
+| `T-019b9566-c451-765d-a55c-016b596d481d` | verify components analysis claims    |
+| `T-019b9566-c47f-75de-9a05-476670f1a9f1` | git history claims verification      |

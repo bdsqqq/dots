@@ -6,14 +6,6 @@ in
 {
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: 
   let
-    spawnAssets = ../user/agents/skills/spawn/assets;
-    randomNameScript = pkgs.writeShellScriptBin "tmux-random-name" ''
-      FIRST=$(${pkgs.coreutils}/bin/shuf -n 1 "${spawnAssets}/firstnames.txt")
-      LAST1=$(${pkgs.coreutils}/bin/shuf -n 1 "${spawnAssets}/lastnames_1.txt")
-      LAST2=$(${pkgs.coreutils}/bin/shuf -n 1 "${spawnAssets}/lastnames_2.txt")
-      echo "''${FIRST}_''${LAST1}''${LAST2}"
-    '';
-
     seshConnectScript = pkgs.writeShellScript "tmux-sesh-connect" ''
       selected="$(
         sesh list --icons | fzf-tmux -p 80%,70% \
@@ -266,10 +258,7 @@ in
             # command names (e.g. "nvim" not "/nix/store/abc-neovim/bin/nvim").
             # also strips --cmd ...-vim-pack-dir injected by nixvim's wrapper.
             # ref: https://discourse.nixos.org/t/30819
-            # rewrite amp's node invocation to bare `amp` so resurrect
-            # can restore sessions with `amp t c <thread-id>`.
-            set -g @resurrect-processes '"~amp->amp"'
-            set -g @resurrect-hook-post-save-all '${pkgs.gnused}/bin/sed -i "s| --cmd .*-vim-pack-dir||g; s|/nix/store/.*/bin/||g; s|\tnode\t:node --no-warnings [^\t]*@sourcegraph/amp/dist/main.js|\tamp\t:amp|g" $(readlink -f $resurrect_dir/last)'
+            set -g @resurrect-hook-post-save-all '${pkgs.gnused}/bin/sed -i "s| --cmd .*-vim-pack-dir||g; s|/nix/store/.*/bin/||g" $(readlink -f $resurrect_dir/last)'
           '';
         }
         {
@@ -350,7 +339,7 @@ in
 
     home.shellAliases.tx = "tmux new-session -A -s \"$(basename \"$PWD\" | tr '. ' '_')\"";
     
-    home.packages = [ randomNameScript pkgs.sesh pkgs.fzf ];
+    home.packages = [ pkgs.sesh pkgs.fzf ];
 
     programs.zsh.initContent = ''
       # tmux automatic window renaming
@@ -373,7 +362,7 @@ in
         }
 
         function set_window_to_working_dir() {
-          # don't overwrite custom names (e.g., for amp agents or manual renames)
+          # don't overwrite custom names (e.g., for spawned agent windows or manual renames)
           [[ -n "$TMUX_PANE_CUSTOM_NAME" ]] && return
           [[ -n "$(command tmux show-options -wqv @custom_name 2>/dev/null)" ]] && return
           local title=$(current_dir)
@@ -394,18 +383,6 @@ in
             break
           done
           [[ -z "$cmd" ]] && return
-          
-          # amp gets a random human name, preserved across the session
-          if [[ "$cmd" == "amp" ]]; then
-            local current_name=$(command tmux display-message -p '#W')
-            local current_dir_name=$(current_dir)
-            # only assign new name if window is unnamed or has folder/amp name
-            if [[ -z "$TMUX_PANE_CUSTOM_NAME" && ("$current_name" == "$current_dir_name" || "$current_name" == "amp") ]]; then
-              TMUX_PANE_CUSTOM_NAME=$(tmux-random-name 2>/dev/null || echo "agent_$RANDOM")
-            fi
-            change_window_title "$TMUX_PANE_CUSTOM_NAME"
-            return
-          fi
           
           change_window_title "$cmd"
         }

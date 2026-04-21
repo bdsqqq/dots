@@ -1,6 +1,6 @@
 # documentation philosophy
 
-extracted from amp jsdoc style guide and voice standards.
+extracted from a prior jsdoc style guide and voice standards.
 
 ## core principle: only document the non-obvious why
 
@@ -24,6 +24,7 @@ documentation should explain rationale and design constraints, not describe what
 ## the pattern: why over what
 
 bad example (describes what):
+
 ```typescript
 /**
  * context provider that wraps children in a DisclosureProvider.
@@ -32,6 +33,7 @@ bad example (describes what):
 ```
 
 good example (explains why):
+
 ```typescript
 /**
  * blocks the CompositeContext so nested Lists create their own isolated focus loops.
@@ -46,7 +48,7 @@ good example (explains why):
  */
 ```
 
-the second explains *why blocking exists* and its consequence for the system. that's worth documenting.
+the second explains _why blocking exists_ and its consequence for the system. that's worth documenting.
 
 ## tone and voice
 
@@ -78,13 +80,13 @@ keep `@bdsqqq notes` or similar inline comments when they explain non-obvious de
  */
 ```
 
-this tells future maintainers *why* a choice was constrained, not just what was done.
+this tells future maintainers _why_ a choice was constrained, not just what was done.
 
 ## jsdoc structure
 
 minimal format:
 
-```typescript
+````typescript
 /**
  * one-line description of purpose or behavior.
  *
@@ -96,12 +98,12 @@ minimal format:
  * <Component>content</Component>
  * ```
  */
-```
+````
 
 examples should show one thing and fit the pattern users already know.
 
 ## colocate context with code
 
-jsdocs are the source of truth. external docs are pulled from code at build time (ariakit pattern). this keeps documentation fresh and forces writers to explain *why* to future maintainers reading the code.
+jsdocs are the source of truth. external docs are pulled from code at build time (ariakit pattern). this keeps documentation fresh and forces writers to explain _why_ to future maintainers reading the code.
 
 upon finishing a task, colocate valuable context as jsdocs with the code. only keep notes that explain non-obvious why; delete everything else.

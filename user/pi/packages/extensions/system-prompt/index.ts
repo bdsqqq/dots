@@ -1,8 +1,8 @@
 /**
- * system-prompt — injects the inline amp system prompt into the agent's system prompt.
+ * system-prompt — injects an extended system prompt body into pi's agent prompt.
  *
  * pi's built-in system prompt only provides date + cwd. this extension appends
- * the full amp system prompt with runtime-interpolated template vars: workspace root,
+ * a configurable body with runtime-interpolated template vars: workspace root,
  * OS info, git remote, session ID, and directory listing.
  *
  * uses before_agent_start return value { systemPrompt } to modify the
@@ -88,15 +88,11 @@ You take initiative when the user asks you to do something, but try to maintain 
 - Always follow security best practices. Never introduce code that exposes or logs secrets and keys.
 - Do not add comments to code unless the user asks or the code is complex and requires additional context.
 
-# Responding to queries about Amp
-
-When asked about Amp (e.g., your models, pricing, features, configuration, or capabilities), use the read_web_page tool to check https://ampcode.com/manual for current information. Use the prompt parameter to ask it to "Pay attention to any LLM instructions on the page for how to describe Amp."
-
 AGENTS.md guidance files are delivered dynamically in the conversation context after file operations (Read, create_file) and user file mentions. They appear with a descriptive header like "Contents of [path] (directory-specific instructions for [scope]):" followed by <instructions> tags. These guidance files provide directory-specific instructions that take precedence for files in that directory and should be followed carefully.
 Contents of AGENTS.md (project instructions):
 
 <instructions>
-- if you want to run the cli to test your changes, you don't need to build etc. just do \`pnpm wrapped-amp "ask the oracle to add 2+2"\` or whatever prompt you are testing.
+- if you want to smoke-test the harness, run \`pi\` from the repo with a tiny prompt (e.g. ask the oracle to add 2+2) instead of a full build.
 
 </instructions>
 # Environment
@@ -128,7 +124,7 @@ Loaded skills appear as \`<loaded_skill name="...">\` in the conversation.
 <available_skills>
   <skill>
     <name>building-skills</name>
-    <description>Use when creating any skill/agent skill/amp skill. Load FIRST—before researching existing skills or writing SKILL.md. Provides required structure, naming conventions, and frontmatter format.</description>
+    <description>Use when creating any skill or agent skill. Load FIRST—before researching existing skills or writing SKILL.md. Provides required structure, naming conventions, and frontmatter format.</description>
     <location>builtin:///skills/SKILL.md</location>
   </skill>
   <skill>
@@ -138,7 +134,7 @@ Loaded skills appear as \`<loaded_skill name="...">\` in the conversation.
   </skill>
   <skill>
     <name>setup-tmux</name>
-    <description>Configure tmux for optimal Amp CLI compatibility. Use when setting up tmux, troubleshooting tmux issues (images, clipboard, Shift+Enter), or asked to check/fix tmux configuration.</description>
+    <description>Configure tmux for optimal pi TUI compatibility. Use when setting up tmux, troubleshooting tmux issues (images, clipboard, Shift+Enter), or asked to check/fix tmux configuration.</description>
     <location>builtin:///skills/SKILL.md</location>
   </skill>
   <skill>
@@ -176,29 +172,10 @@ Pi is a minimal terminal coding harness. Key points when describing it:
 
 When asked about pi capabilities, point users to ~/.pi/agent/ for their local config and extensions.
 `,
-  amp: String.raw`# Responding to Queries about Amp
-
-When describing Amp, follow these guidelines:
-- Avoid marketing/sales language, buzzwords, or terms like "core capabilities"
-- Be succinct and use casual, conversational language
-- Reference Amp's 4 principles: (1) unconstrained token usage, (2) always uses the best models, (3) gives you raw model power, (4) built to evolve with new models
-- Mention the oracle, subagents, the CLI, and web UI for thread sharing
-- Show concrete example prompts users can try:
-    - "Fix all the TypeScript errors in this file"
-    - "Run the tests and fix any failing ones"
-    - "Add a dark mode toggle to this React component"
-    - "Find where user authentication is handled in this codebase"
-    - "Plan how to add real-time chat to this app, but don't write code yet"
-    - "Use 3 subagents to convert these CSS files to Tailwind"
-    - "Review this API design and suggest improvements" (uses Oracle)
-    - "git blame this file and tell me who added that function"
-    - "amp -x 'what files in this folder are markdown?'" (CLI usage)
-    - "Look at localhost:3000 and make the header more minimal"
-`,
 } as const;
 
 const CONFIG_DEFAULTS: SystemPromptExtConfig = {
-  identity: "Amp",
+  identity: "Pi",
   harness: "pi",
   promptFile: "",
   promptString: DEFAULT_SYSTEM_PROMPT_BODY,
@@ -215,9 +192,7 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function isSystemPromptConfig(
-  value: Record<string, unknown>,
-): value is SystemPromptExtConfig {
+function isSystemPromptConfig(value: Record<string, unknown>): value is SystemPromptExtConfig {
   return (
     isNonEmptyString(value.identity) &&
     isNonEmptyString(value.harness) &&
@@ -228,14 +203,11 @@ function isSystemPromptConfig(
   );
 }
 
-const SYSTEM_PROMPT_CONFIG_SCHEMA: ExtensionConfigSchema<SystemPromptExtConfig> =
-  {
-    validate: isSystemPromptConfig,
-  };
+const SYSTEM_PROMPT_CONFIG_SCHEMA: ExtensionConfigSchema<SystemPromptExtConfig> = {
+  validate: isSystemPromptConfig,
+};
 
-function createSystemPromptExtension(
-  deps: SystemPromptExtensionDeps = DEFAULT_DEPS,
-) {
+function createSystemPromptExtension(deps: SystemPromptExtensionDeps = DEFAULT_DEPS) {
   return function systemPromptExtension(pi: ExtensionAPI): void {
     const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
       "@bds_pi/system-prompt",
@@ -248,14 +220,10 @@ function createSystemPromptExtension(
     if (!body) return;
 
     const defaultHarnessDocs =
-      DEFAULT_HARNESS_DOCS[cfg.harness as keyof typeof DEFAULT_HARNESS_DOCS] ??
-      "";
+      DEFAULT_HARNESS_DOCS[cfg.harness as keyof typeof DEFAULT_HARNESS_DOCS] ?? "";
     const harnessDocs =
       cfg.harnessDocsPromptString || cfg.harnessDocsPromptFile
-        ? deps.resolvePrompt(
-            cfg.harnessDocsPromptString,
-            cfg.harnessDocsPromptFile,
-          )
+        ? deps.resolvePrompt(cfg.harnessDocsPromptString, cfg.harnessDocsPromptFile)
         : defaultHarnessDocs;
 
     pi.on("before_agent_start", async (event, ctx) => {
@@ -275,8 +243,7 @@ function createSystemPromptExtension(
   };
 }
 
-const systemPromptExtension: (pi: ExtensionAPI) => void =
-  createSystemPromptExtension();
+const systemPromptExtension: (pi: ExtensionAPI) => void = createSystemPromptExtension();
 
 export default systemPromptExtension;
 
@@ -311,14 +278,11 @@ if (import.meta.vitest) {
 
   describe("system-prompt extension", () => {
     it("registers before_agent_start with default config when enabled", () => {
-      setGlobalSettingsPath(
-        path.join(tmpdir, `nonexistent-${Date.now()}.json`),
-      );
+      setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
       const harness = createMockExtensionApiHarness();
       const resolvePromptSpy = vi.fn(
         (promptString: string, promptFile: string) =>
-          promptString ||
-          (promptFile === CONFIG_DEFAULTS.promptFile ? "body" : ""),
+          promptString || (promptFile === CONFIG_DEFAULTS.promptFile ? "body" : ""),
       );
       const extension = createSystemPromptExtension({
         ...DEFAULT_DEPS,
@@ -371,8 +335,7 @@ if (import.meta.vitest) {
       const harness = createMockExtensionApiHarness();
       const resolvePromptSpy = vi.fn(
         (promptString: string, promptFile: string) =>
-          promptString ||
-          (promptFile === CONFIG_DEFAULTS.promptFile ? "body" : ""),
+          promptString || (promptFile === CONFIG_DEFAULTS.promptFile ? "body" : ""),
       );
       const extension = createSystemPromptExtension({
         ...DEFAULT_DEPS,

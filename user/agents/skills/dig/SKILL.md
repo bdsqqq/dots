@@ -33,6 +33,7 @@ scope the problem. identify seeds (entry points) for traversal.
 ```
 
 when to check git:
+
 - `git blame <file>` — who wrote this line? when? why?
 - `git log -p --follow -- <file>` — full history of a file
 - `git log --all --oneline -- <path>` — find when something was introduced
@@ -50,6 +51,7 @@ for each major claim:
 ```
 
 verification agent prompt template:
+
 ```
 verify this claim: "<claim>"
 files to check: <file list>
@@ -58,6 +60,7 @@ check the actual code and report what you find.
 ```
 
 anti-patterns:
+
 - trusting oracle/LLM statements without code verification
 - assuming wrapper names without grep confirmation
 - documenting before extracting
@@ -71,6 +74,7 @@ structure findings for consumption.
 |----------|------|--------|
 
 **trees** for relationships:
+
 ```
 RootComponent
 ├── ChildA → uses Feature
@@ -86,28 +90,36 @@ RootComponent
 # <investigation title>
 
 ## summary
+
 one paragraph. what did we find?
 
 ## context
+
 why are we investigating? link to trigger (slack, ticket, etc.)
 
 ## findings
+
 ### 1. <finding title>
+
 <evidence with file links>
 <code snippets>
 
 ### 2. <finding title>
+
 ...
 
 ## open questions
+
 numbered list of things we couldn't verify
 
 ## appendices
+
 - [detailed-list-a.md](./detailed-list-a.md)
 - [detailed-list-b.md](./detailed-list-b.md)
 
 ## related threads
-table of amp thread links with descriptions
+
+table of source links with descriptions (URLs, tickets, prior write-ups)
 ```
 
 ## verification agent pattern
@@ -117,17 +129,18 @@ when coordinating investigation:
 ```
 1. spawn analysis agents (stores, routes, components, etc.)
    - each produces claims with file:line citations
-   
+
 2. collect claims from all analysis agents
 
 3. spawn verification agents (1 per analysis agent)
    - input: claims + file paths only
    - output: VERIFIED/REFUTED/INCONCLUSIVE for each claim
-   
+
 4. synthesizer combines verified claims into report
 ```
 
 this catches:
+
 - oracle hallucinations
 - outdated information
 - claims about files that changed since analysis started
@@ -144,8 +157,8 @@ SEEDS=$(grep -rl "import.*from.*deprecated-lib" --include="*.ts")
 for seed in $SEEDS; do
   # find importers (reverse)
   grep -rl "import.*from.*$seed" --include="*.ts"
-  
-  # find imports (forward)  
+
+  # find imports (forward)
   grep "^import" "$seed" | extract_paths
 done
 ```
