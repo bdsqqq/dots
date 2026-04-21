@@ -294,34 +294,6 @@ vim.keymap.set("n", "<leader><leader>", builtin.buffers, { desc = "[ ] find exis
 
 require("ts-error-translator").setup({ auto_attach = true, servers = { "ts_ls" } })
 
-require("amp").setup({ auto_start = true, log_level = "info" })
-
-vim.api.nvim_create_user_command("AmpSend", function(opts)
-  local message = opts.args
-  if message == "" then
-    print("please provide a message to send")
-    return
-  end
-  require("amp.message").send_message(message)
-end, { nargs = "*", desc = "send a message to amp" })
-
-vim.api.nvim_create_user_command("AmpSendBuffer", function()
-  local buf = vim.api.nvim_get_current_buf()
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-  require("amp.message").send_message(table.concat(lines, "\n"))
-end, { desc = "send entire buffer contents to amp" })
-
-vim.api.nvim_create_user_command("AmpAddToPrompt", function(opts)
-  local file = vim.fn.expand("%:p")
-  local ref = "@" .. file
-  if opts.range == 2 then
-    ref = ref .. "#L" .. opts.line1 .. "-" .. opts.line2
-  elseif opts.line1 > 1 then
-    ref = ref .. "#L" .. opts.line1
-  end
-  require("amp.message").send_to_prompt(ref)
-end, { range = true, desc = "add file reference (with selection) to amp prompt" })
-
 require("mini.icons").setup({})
 require("mini.icons").mock_nvim_web_devicons()
 require("mini.surround").setup({})

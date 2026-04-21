@@ -20,11 +20,14 @@ before starting any investigation, ensure the worktree is ready to run.
 if working in a fresh worktree created by `wt <name>`:
 
 1. **env files** — `wt` auto-symlinks `.env*` files from the default branch worktree. verify:
+
    ```bash
    ls -la apps/console/.env
    ```
+
    if missing, run `wt env` from inside the worktree.
    if main worktree has no `.env` either, pull from vercel:
+
    ```bash
    vercel link  # select Axiom scope, project "nexus"
    vercel env pull
@@ -34,13 +37,16 @@ if working in a fresh worktree created by `wt <name>`:
 2. **install deps** — `pnpm install`
 
 3. **planetscale auth** — credentials expire silently. if dev server throws `DatabaseError: Unauthorized`:
+
    ```bash
    pscale auth login
    cd apps/console && pnpm run db:switch dev
    ```
+
    for first-time setup: `pnpm run db:init` instead of `db:switch`.
 
 4. **browser auth** — save a session after first manual login:
+
    ```bash
    # first time: login manually in headed browser
    agent-browser --headed --session-name axiom-console open http://localhost:3000
@@ -52,11 +58,13 @@ if working in a fresh worktree created by `wt <name>`:
    agent-browser state load axiom-auth.json
    agent-browser --session-name axiom-console open http://localhost:3000
    ```
+
    **security**: state files contain ALL browser cookies, not just axiom. never commit them.
 
 ### dev server
 
 start in tmux so it doesn't block:
+
 ```bash
 # load tmux skill first
 tmux has-session -t dev 2>/dev/null || tmux new-session -d -s dev
@@ -74,6 +82,7 @@ lnr issue AXM-XXXXX
 ```
 
 extract:
+
 - **repro steps** — exact sequence to trigger the bug
 - **expected vs actual** — what should happen vs what happens
 - **affected area** — which feature, which UI surface
@@ -96,11 +105,13 @@ restate the problem. identify what you don't know.
 ### root cause
 
 for every claim:
+
 - **cite location**: `file:line`
 - **label confidence**: `VERIFIED` | `HUNCH` | `QUESTION`
 - **falsify**: what would prove this wrong? check that first.
 
 format:
+
 ```
 ROOT CAUSE [VERIFIED]
 file: src/dash/components/query/editor.tsx:142

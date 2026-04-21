@@ -27,7 +27,6 @@
         recursive = true;
       };
 
-      ".config/amp/AGENTS.md".source      = agentsMd;
       ".config/opencode/AGENTS.md".source = agentsMd; 
       ".claude/CLAUDE.md".source          = agentsMd; 
       ".pi/agent/AGENTS.md".source        = agentsMd; 

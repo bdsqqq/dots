@@ -37,7 +37,7 @@ $MEMORY_ROOT/YYYY-MM-DD description -- source__agent.md
 
 ```yaml
 ---
-source: https://ampcode.com/threads/T-xxxxx
+source: https://example.com/session/T-xxxxx
 keywords:
   - relevant
   - searchable
@@ -68,11 +68,11 @@ date-prefixed naming makes chronological browsing trivial. insight in body, not 
 ```markdown
 # kanata timing on macos
 
-homerow mods feel laggy with default timing. 150ms tap timeout + 250ms hold 
-works well. the `charmod` template with fast-typing detection prevents 
+homerow mods feel laggy with default timing. 150ms tap timeout + 250ms hold
+works well. the `charmod` template with fast-typing detection prevents
 misfires during rapid typing.
 
-key insight: smart typing detection (`key-timing 3 less-than 250`) disables 
+key insight: smart typing detection (`key-timing 3 less-than 250`) disables
 homerow mods when typing fast, re-enables when pausing.
 ```
 
@@ -84,7 +84,7 @@ gotchas prevent repeat debugging sessions:
 # nix overlay ordering
 
 overlays apply left-to-right. if overlay B depends on packages from overlay A,
-A must come first in the list. this bit us when unstable overlay wasn't 
+A must come first in the list. this bit us when unstable overlay wasn't
 available to later overlays.
 
 fix: ensure `unstable.nix` is first in the overlays list.
@@ -99,6 +99,7 @@ decisions capture the tradeoffs considered, not just the choice made:
 
 considered basic-memory (sqlite + vectors) but it kept corrupting on sync.
 grep on flat files is:
+
 - unbreakable (files are source of truth)
 - syncthing-friendly
 - human-readable

@@ -26,7 +26,6 @@ in
       opencode_zen = { owner = "bdsqqq"; };
       artificial_analysis_api_key = { owner = "bdsqqq"; };
       motion_plus_token = { owner = "bdsqqq"; };
-      AMP_API_KEY = { owner = "bdsqqq"; };
       parallel_api_key = { owner = "bdsqqq"; };
       syncthing_gui_password = { owner = "bdsqqq"; };
       syncthing_gui_password_hash = { owner = "bdsqqq"; };

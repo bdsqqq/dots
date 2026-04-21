@@ -45,7 +45,6 @@ in
           src = inputs.plugin-vim-tpipeline;
           nvimSkipModule = [ "tpipeline.main" ];
         })
-        (p "amp-nvim" inputs.plugin-amp-nvim)
       ] ++ (with pkgs.vimPlugins; [
         blink-cmp
         nvim-treesitter.withAllGrammars

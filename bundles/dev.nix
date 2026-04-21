@@ -14,8 +14,8 @@ in
       ../user/rust.nix
       ../user/go.nix
       ../user/nix.nix
+      ../user/fairy-name.nix
       ../user/tmux.nix
-      ../user/amp
       ../user/opencode
       ../user/pi
       ../user/agents

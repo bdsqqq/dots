@@ -107,7 +107,6 @@
           export AMI_INSTALL="$HOME/.ami"
           export PATH="$AMI_INSTALL/bin:$PATH"
           export GH_TOKEN="$(cat /run/secrets/gh_token 2>/dev/null || echo "$GH_TOKEN")"
-          export AMP_API_KEY="$(cat /run/secrets/AMP_API_KEY 2>/dev/null || echo "$AMP_API_KEY")"
           export HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || echo "$HF_TOKEN")"
           export PARALLEL_API_KEY="$(cat /run/secrets/parallel_api_key 2>/dev/null || echo "$PARALLEL_API_KEY")"
           export artificial_analysis_api_key="$(cat /run/secrets/artificial_analysis_api_key 2>/dev/null || echo "$parallel_api_key")"

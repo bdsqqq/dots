@@ -96,7 +96,6 @@
     plugin-undotree = { url = "github:mbbill/undotree"; flake = false; };
     plugin-ts-error-translator = { url = "github:dmmulroy/ts-error-translator.nvim"; flake = false; };
     plugin-vim-tpipeline = { url = "github:vimpostor/vim-tpipeline"; flake = false; };
-    plugin-amp-nvim = { url = "github:sourcegraph/amp.nvim"; flake = false; };
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:

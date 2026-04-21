@@ -11,16 +11,13 @@
  *
  * shadows pi's built-in `edit` tool via same-name registration.
  * public schema matches pi 0.63+ multi-edit shape so resumed sessions keep
- * working, while `prepareArguments()` preserves amp-style legacy calls.
+ * working, while `prepareArguments()` preserves legacy call shapes.
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import type {
-  ExtensionAPI,
-  ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -68,11 +65,7 @@ function restoreLineEndings(text: string, ending: "\r\n" | "\n"): string {
  * a real newline. this function converts those back.
  */
 function unescapeStr(s: string): string {
-  return s
-    .replace(/\\n/g, "\n")
-    .replace(/\\t/g, "\t")
-    .replace(/\\r/g, "\r")
-    .replace(/\\\\/g, "\\");
+  return s.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r").replace(/\\\\/g, "\\");
 }
 
 // --- fuzzy matching ---
@@ -223,19 +216,13 @@ function computeDiffStats(sections: BoxSection[]): DiffStats {
         if (line.text.startsWith("-")) {
           // count consecutive - lines
           let delCount = 0;
-          while (
-            i < block.lines.length &&
-            block.lines[i]?.text.startsWith("-")
-          ) {
+          while (i < block.lines.length && block.lines[i]?.text.startsWith("-")) {
             delCount++;
             i++;
           }
           // count consecutive + lines immediately after
           let addCount = 0;
-          while (
-            i < block.lines.length &&
-            block.lines[i]?.text.startsWith("+")
-          ) {
+          while (i < block.lines.length && block.lines[i]?.text.startsWith("+")) {
             addCount++;
             i++;
           }
@@ -260,8 +247,7 @@ function formatStats(stats: DiffStats, theme: any): string {
   const parts: string[] = [];
   if (stats.added > 0) parts.push(theme.fg("toolDiffAdded", `+${stats.added}`));
   if (stats.modified > 0) parts.push(theme.fg("warning", `~${stats.modified}`));
-  if (stats.removed > 0)
-    parts.push(theme.fg("toolDiffRemoved", `-${stats.removed}`));
+  if (stats.removed > 0) parts.push(theme.fg("toolDiffRemoved", `-${stats.removed}`));
   return parts.length > 0 ? parts.join(" ") : theme.fg("dim", "no changes");
 }
 
@@ -306,11 +292,7 @@ function prepareEdit(edit: EditInput): PreparedEdit {
   };
 }
 
-function getNotFoundMessage(
-  fileName: string,
-  editIndex: number,
-  total: number,
-): string {
+function getNotFoundMessage(fileName: string, editIndex: number, total: number): string {
   return total === 1
     ? `could not find oldText in ${fileName}. the text must match exactly including whitespace and newlines.`
     : `could not find edits[${editIndex}].oldText in ${fileName}. the text must match exactly including whitespace and newlines.`;
@@ -333,21 +315,13 @@ function getIdenticalMessage(editIndex: number, total: number): string {
     : `edits[${editIndex}] has identical oldText and newText. remove the no-op edit.`;
 }
 
-function getEmptyOldTextMessage(
-  fileName: string,
-  editIndex: number,
-  total: number,
-): string {
+function getEmptyOldTextMessage(fileName: string, editIndex: number, total: number): string {
   return total === 1
     ? `oldText must not be empty in ${fileName}.`
     : `edits[${editIndex}].oldText must not be empty in ${fileName}.`;
 }
 
-function getOverlapMessage(
-  fileName: string,
-  previousIndex: number,
-  currentIndex: number,
-): string {
+function getOverlapMessage(fileName: string, previousIndex: number, currentIndex: number): string {
   return `edits[${previousIndex}] and edits[${currentIndex}] overlap in ${fileName}. merge them into one edit or target disjoint regions.`;
 }
 
@@ -360,9 +334,7 @@ function applyEditsToContent(
   normalizedContent: string,
   edits: EditInput[],
   fileName: string,
-):
-  | { ok: true; baseContent: string; newContent: string }
-  | { ok: false; message: string } {
+): { ok: true; baseContent: string; newContent: string } | { ok: false; message: string } {
   if (edits.length === 0) {
     return { ok: false, message: "at least one edit is required." };
   }
@@ -424,12 +396,7 @@ function applyEditsToContent(
     if (occurrences > 1) {
       return {
         ok: false,
-        message: getDuplicateMessage(
-          fileName,
-          i,
-          preparedEdits.length,
-          occurrences,
-        ),
+        message: getDuplicateMessage(fileName, i, preparedEdits.length, occurrences),
       };
     }
 
@@ -449,11 +416,7 @@ function applyEditsToContent(
     if (previous.matchIndex + previous.matchLength > current.matchIndex) {
       return {
         ok: false,
-        message: getOverlapMessage(
-          fileName,
-          previous.editIndex,
-          current.editIndex,
-        ),
+        message: getOverlapMessage(fileName, previous.editIndex, current.editIndex),
       };
     }
   }
@@ -515,7 +478,7 @@ export function createEditFileTool(): ToolDefinition {
     }),
 
     /**
-     * resumed sessions may still contain our historical amp-style payload.
+     * resumed sessions may still contain our historical legacy payload shape.
      * keep that compatibility here so old session files still replay after the
      * public tool schema moved to pi's edits[] shape.
      */
@@ -545,17 +508,11 @@ export function createEditFileTool(): ToolDefinition {
     renderCall(args: any, theme: any) {
       const filePath = args.path || "...";
       const home = os.homedir();
-      const shortened = filePath.startsWith(home)
-        ? `~${filePath.slice(home.length)}`
-        : filePath;
+      const shortened = filePath.startsWith(home) ? `~${filePath.slice(home.length)}` : filePath;
       const linked = filePath.startsWith("/")
         ? osc8Link(`file://${filePath}`, shortened)
         : shortened;
-      return new Text(
-        theme.fg("toolTitle", theme.bold("Edit ")) + theme.fg("dim", linked),
-        0,
-        0,
-      );
+      return new Text(theme.fg("toolTitle", theme.bold("Edit ")) + theme.fg("dim", linked), 0, 0);
     },
 
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
@@ -587,9 +544,7 @@ export function createEditFileTool(): ToolDefinition {
 
       if (!fs.existsSync(resolved)) {
         return {
-          content: [
-            { type: "text" as const, text: `file not found: ${resolved}` },
-          ],
+          content: [{ type: "text" as const, text: `file not found: ${resolved}` }],
           isError: true,
         } as any;
       }
@@ -608,10 +563,7 @@ export function createEditFileTool(): ToolDefinition {
       }
 
       for (const edit of p.edits) {
-        const redactionMarker = hasNewRedactionMarkers(
-          edit.oldText,
-          edit.newText,
-        );
+        const redactionMarker = hasNewRedactionMarkers(edit.oldText, edit.newText);
         if (redactionMarker) {
           return {
             content: [
@@ -630,11 +582,7 @@ export function createEditFileTool(): ToolDefinition {
         const { bom, text: bomStripped } = stripBom(rawContent);
         const originalEnding = detectLineEnding(bomStripped);
         const normalized = normalizeToLF(bomStripped);
-        const applied = applyEditsToContent(
-          normalized,
-          p.edits,
-          path.basename(resolved),
-        );
+        const applied = applyEditsToContent(normalized, p.edits, path.basename(resolved));
 
         if (!applied.ok) {
           return {
@@ -643,17 +591,12 @@ export function createEditFileTool(): ToolDefinition {
           } as any;
         }
 
-        const finalContent =
-          bom + restoreLineEndings(applied.newContent, originalEnding);
+        const finalContent = bom + restoreLineEndings(applied.newContent, originalEnding);
         fs.writeFileSync(resolved, finalContent, "utf-8");
 
         // track change for undo_edit
         const sessionId = ctx.sessionManager.getSessionId();
-        const trackingDiff = fileTracker.simpleDiff(
-          resolved,
-          rawContent,
-          finalContent,
-        );
+        const trackingDiff = fileTracker.simpleDiff(resolved, rawContent, finalContent);
         fileTracker.saveChange(sessionId, toolCallId, {
           uri: `file://${resolved}`,
           before: rawContent,
@@ -664,11 +607,7 @@ export function createEditFileTool(): ToolDefinition {
         });
 
         // build result from the matched base content so fuzzy edits diff cleanly
-        const text = fileTracker.simpleDiff(
-          resolved,
-          applied.baseContent,
-          applied.newContent,
-        );
+        const text = fileTracker.simpleDiff(resolved, applied.baseContent, applied.newContent);
 
         return {
           content: [{ type: "text" as const, text }],
@@ -710,12 +649,9 @@ export function createEditFileTool(): ToolDefinition {
 
           // collapsed: last hunk only; expanded: all hunks
           const displaySections = sections.map((s) => {
-            const blocks =
-              !expanded && s.blocks.length > 1 ? s.blocks.slice(-1) : s.blocks;
+            const blocks = !expanded && s.blocks.length > 1 ? s.blocks.slice(-1) : s.blocks;
 
-            const header = filePath
-              ? osc8Link(`file://${filePath}`, s.header ?? "")
-              : s.header;
+            const header = filePath ? osc8Link(`file://${filePath}`, s.header ?? "") : s.header;
 
             return { ...s, header, blocks };
           });
@@ -744,8 +680,7 @@ export default function (pi: ExtensionAPI): void {
 }
 
 if (import.meta.vitest) {
-  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta
-    .vitest;
+  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta.vitest;
   let tmpDir: string;
 
   beforeEach(() => {
@@ -831,9 +766,7 @@ if (import.meta.vitest) {
               type: "text",
               text: fileTracker.simpleDiff(
                 "test.txt",
-                Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join(
-                  "\n",
-                ),
+                Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join("\n"),
                 [
                   "line 1 updated",
                   ...Array.from({ length: 38 }, (_, i) => `line ${i + 2}`),
@@ -914,9 +847,7 @@ if (import.meta.vitest) {
       )) as any;
 
       expect(result.isError).toBeUndefined();
-      expect(fs.readFileSync(filePath, "utf-8")).toBe(
-        "ALPHA\nbeta\ngamma\nDELTA\n",
-      );
+      expect(fs.readFileSync(filePath, "utf-8")).toBe("ALPHA\nbeta\ngamma\nDELTA\n");
       expect(result.content[0].text).toContain("@@");
       expect(result.details.filePath).toBe(filePath);
       expect(saveChangeSpy).toHaveBeenCalledTimes(1);

@@ -6,7 +6,7 @@
  * rules are evaluated first-match-wins, matching tool name and params via
  * glob patterns. default action when no rule matches: allow.
  *
- * shape mirrors our existing amp-style rule format:
+ * shape mirrors a simple permission rule format (tool + glob matches + action):
  *   { tool, matches?, action, message? }
  *
  * only "allow" and "reject" actions for now — no "ask" or "delegate"
@@ -51,7 +51,7 @@ export interface ToolPolicyVerdict {
 
 /**
  * convert a simple glob pattern (only `*` wildcards) to a regex.
- * covers all patterns amp documents: `*git push*`, `rm *`, `*`.
+ * covers common cases: `*git push*`, `rm *`, `*`.
  */
 function globToRegex(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
@@ -64,9 +64,7 @@ function toPatterns(patterns: ToolPolicyPattern): string[] {
 }
 
 function matchesGlob(value: string, patterns: ToolPolicyPattern): boolean {
-  return toPatterns(patterns).some((pattern) =>
-    globToRegex(pattern).test(value),
-  );
+  return toPatterns(patterns).some((pattern) => globToRegex(pattern).test(value));
 }
 
 function collectObservedPaths(params: ToolPolicyParams): string[] {
@@ -85,20 +83,14 @@ function collectWithinPaths(params: ToolPolicyParams): string[] {
   return observedPaths;
 }
 
-function resolvePathLike(
-  value: string,
-  sessionCwd: string | undefined,
-): string | null {
+function resolvePathLike(value: string, sessionCwd: string | undefined): string | null {
   if (sessionCwd) return resolveToAbsolute(value, sessionCwd);
 
   const expanded = expandPath(value);
   return path.isAbsolute(expanded) ? expanded : null;
 }
 
-function matchesWithin(
-  params: ToolPolicyParams,
-  roots: ToolPolicyPattern,
-): boolean {
+function matchesWithin(params: ToolPolicyParams, roots: ToolPolicyPattern): boolean {
   const observedPaths = collectWithinPaths(params);
   if (observedPaths.length === 0) return false;
 
@@ -136,9 +128,7 @@ export function evaluateToolPolicy(
       const observedPaths = collectObservedPaths(params);
       if (
         observedPaths.length === 0 ||
-        !observedPaths.some((observedPath) =>
-          matchesGlob(observedPath, rule.matches!.path!),
-        )
+        !observedPaths.some((observedPath) => matchesGlob(observedPath, rule.matches!.path!))
       ) {
         continue;
       }
@@ -156,12 +146,7 @@ export function evaluateToolPolicy(
 
 // --- loading ---
 
-const TOOL_POLICY_PATH = path.join(
-  os.homedir(),
-  ".pi",
-  "agent",
-  "tool-policy.json",
-);
+const TOOL_POLICY_PATH = path.join(os.homedir(), ".pi", "agent", "tool-policy.json");
 
 export function loadToolPolicy(): ToolPolicyRule[] {
   try {
@@ -184,8 +169,7 @@ if (import.meta.vitest) {
       tool: "Bash",
       matches: { cmd: ["*git add -A*", "*git add .*"] },
       action: "reject",
-      message:
-        "stage files explicitly with 'git add <file>' — unstaged changes may not be yours",
+      message: "stage files explicitly with 'git add <file>' — unstaged changes may not be yours",
     },
     {
       tool: "Bash",
@@ -213,9 +197,9 @@ if (import.meta.vitest) {
       expect(evaluateToolPolicy("Bash", { cmd: "ls -la" }, RULES)).toEqual({
         action: "allow",
       });
-      expect(
-        evaluateToolPolicy("Bash", { cmd: "nix build .#foo" }, RULES),
-      ).toEqual({ action: "allow" });
+      expect(evaluateToolPolicy("Bash", { cmd: "nix build .#foo" }, RULES)).toEqual({
+        action: "allow",
+      });
     });
 
     it("rejects git add -A", () => {
@@ -230,65 +214,39 @@ if (import.meta.vitest) {
     });
 
     it("allows explicit git add", () => {
-      const v = evaluateToolPolicy(
-        "Bash",
-        { cmd: "git add src/foo.ts" },
-        RULES,
-      );
+      const v = evaluateToolPolicy("Bash", { cmd: "git add src/foo.ts" }, RULES);
       expect(v.action).toBe("allow");
     });
 
     it("rejects force push variants", () => {
-      expect(
-        evaluateToolPolicy("Bash", { cmd: "git push --force" }, RULES).action,
-      ).toBe("reject");
-      expect(
-        evaluateToolPolicy("Bash", { cmd: "git push -f origin main" }, RULES)
-          .action,
-      ).toBe("reject");
-      expect(
-        evaluateToolPolicy(
-          "Bash",
-          { cmd: "git push --force-with-lease" },
-          RULES,
-        ).action,
-      ).toBe("reject");
+      expect(evaluateToolPolicy("Bash", { cmd: "git push --force" }, RULES).action).toBe("reject");
+      expect(evaluateToolPolicy("Bash", { cmd: "git push -f origin main" }, RULES).action).toBe(
+        "reject",
+      );
+      expect(evaluateToolPolicy("Bash", { cmd: "git push --force-with-lease" }, RULES).action).toBe(
+        "reject",
+      );
     });
 
     it("allows normal git push", () => {
-      expect(
-        evaluateToolPolicy("Bash", { cmd: "git push" }, RULES).action,
-      ).toBe("allow");
-      expect(
-        evaluateToolPolicy("Bash", { cmd: "git push origin main" }, RULES)
-          .action,
-      ).toBe("allow");
+      expect(evaluateToolPolicy("Bash", { cmd: "git push" }, RULES).action).toBe("allow");
+      expect(evaluateToolPolicy("Bash", { cmd: "git push origin main" }, RULES).action).toBe(
+        "allow",
+      );
     });
 
     it("rejects rm commands", () => {
-      expect(
-        evaluateToolPolicy("Bash", { cmd: "rm foo.txt" }, RULES).action,
-      ).toBe("reject");
-      expect(
-        evaluateToolPolicy("Bash", { cmd: "rm -rf /tmp/junk" }, RULES).action,
-      ).toBe("reject");
-      expect(
-        evaluateToolPolicy("Bash", { cmd: "ls && rm foo" }, RULES).action,
-      ).toBe("reject");
-      expect(
-        evaluateToolPolicy("Bash", { cmd: "false || rm foo" }, RULES).action,
-      ).toBe("reject");
-      expect(
-        evaluateToolPolicy("Bash", { cmd: "echo hi ; rm foo" }, RULES).action,
-      ).toBe("reject");
+      expect(evaluateToolPolicy("Bash", { cmd: "rm foo.txt" }, RULES).action).toBe("reject");
+      expect(evaluateToolPolicy("Bash", { cmd: "rm -rf /tmp/junk" }, RULES).action).toBe("reject");
+      expect(evaluateToolPolicy("Bash", { cmd: "ls && rm foo" }, RULES).action).toBe("reject");
+      expect(evaluateToolPolicy("Bash", { cmd: "false || rm foo" }, RULES).action).toBe("reject");
+      expect(evaluateToolPolicy("Bash", { cmd: "echo hi ; rm foo" }, RULES).action).toBe("reject");
     });
 
     it("allows non-Bash tools via wildcard catch-all", () => {
-      expect(evaluateToolPolicy("Read", { cmd: "/etc/passwd" }, RULES)).toEqual(
-        {
-          action: "allow",
-        },
-      );
+      expect(evaluateToolPolicy("Read", { cmd: "/etc/passwd" }, RULES)).toEqual({
+        action: "allow",
+      });
     });
 
     it("allows everything when no rules", () => {
@@ -302,12 +260,8 @@ if (import.meta.vitest) {
         { tool: "mcp__*", action: "reject", message: "no mcp" },
         { tool: "*", action: "allow" },
       ];
-      expect(
-        evaluateToolPolicy("mcp__playwright_click", {}, rules).action,
-      ).toBe("reject");
-      expect(evaluateToolPolicy("Bash", { cmd: "ls" }, rules).action).toBe(
-        "allow",
-      );
+      expect(evaluateToolPolicy("mcp__playwright_click", {}, rules).action).toBe("reject");
+      expect(evaluateToolPolicy("Bash", { cmd: "ls" }, rules).action).toBe("allow");
     });
 
     it("matches cwd globs", () => {
@@ -321,12 +275,8 @@ if (import.meta.vitest) {
         { tool: "*", action: "allow" },
       ];
 
-      expect(
-        evaluateToolPolicy("Read", { cwd: "/repo/app/docs" }, rules).action,
-      ).toBe("reject");
-      expect(
-        evaluateToolPolicy("Read", { cwd: "/repo/app/src" }, rules).action,
-      ).toBe("allow");
+      expect(evaluateToolPolicy("Read", { cwd: "/repo/app/docs" }, rules).action).toBe("reject");
+      expect(evaluateToolPolicy("Read", { cwd: "/repo/app/src" }, rules).action).toBe("allow");
     });
 
     it("matches path globs against path and paths", () => {
@@ -340,15 +290,11 @@ if (import.meta.vitest) {
         { tool: "*", action: "allow" },
       ];
 
-      expect(
-        evaluateToolPolicy("Edit", { path: "src/index.ts" }, rules).action,
-      ).toBe("reject");
-      expect(
-        evaluateToolPolicy("Edit", { paths: ["docs/readme.md"] }, rules).action,
-      ).toBe("reject");
-      expect(
-        evaluateToolPolicy("Edit", { path: "assets/logo.svg" }, rules).action,
-      ).toBe("allow");
+      expect(evaluateToolPolicy("Edit", { path: "src/index.ts" }, rules).action).toBe("reject");
+      expect(evaluateToolPolicy("Edit", { paths: ["docs/readme.md"] }, rules).action).toBe(
+        "reject",
+      );
+      expect(evaluateToolPolicy("Edit", { path: "assets/logo.svg" }, rules).action).toBe("allow");
     });
 
     it("matches within relative to session cwd", () => {
@@ -363,18 +309,12 @@ if (import.meta.vitest) {
       ];
 
       expect(
-        evaluateToolPolicy(
-          "Write",
-          { path: "src/index.ts", sessionCwd: "/repo/project" },
-          rules,
-        ).action,
+        evaluateToolPolicy("Write", { path: "src/index.ts", sessionCwd: "/repo/project" }, rules)
+          .action,
       ).toBe("reject");
       expect(
-        evaluateToolPolicy(
-          "Write",
-          { path: "/tmp/escape.ts", sessionCwd: "/repo/project" },
-          rules,
-        ).action,
+        evaluateToolPolicy("Write", { path: "/tmp/escape.ts", sessionCwd: "/repo/project" }, rules)
+          .action,
       ).toBe("allow");
       expect(
         evaluateToolPolicy(
@@ -430,18 +370,12 @@ if (import.meta.vitest) {
       ];
 
       expect(
-        evaluateToolPolicy(
-          "Read",
-          { path: "@docs/readme.md", sessionCwd: "/repo/project" },
-          rules,
-        ).action,
+        evaluateToolPolicy("Read", { path: "@docs/readme.md", sessionCwd: "/repo/project" }, rules)
+          .action,
       ).toBe("reject");
       expect(
-        evaluateToolPolicy(
-          "Read",
-          { path: "~/notes/todo.md", sessionCwd: "/repo/project" },
-          rules,
-        ).action,
+        evaluateToolPolicy("Read", { path: "~/notes/todo.md", sessionCwd: "/repo/project" }, rules)
+          .action,
       ).toBe("allow");
     });
 
