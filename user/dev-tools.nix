@@ -61,7 +61,6 @@ in
       fastfetch
       ollama
       mkcert
-      trash-cli
     ] ++ lib.optionals isDarwin [
       istat-menus
     ] ++ lib.optionals hasAmdGpu [
