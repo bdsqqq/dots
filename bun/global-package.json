@@ -4,7 +4,7 @@
   "private": true,
   "dependencies": {
     "@mariozechner/pi-coding-agent": "^0.67.5",
-    "@openai/codex": "^0.121.0",
+    "@openai/codex": "^0.122.0",
     "agent-browser": "^0.25.5",
     "biome": "^0.3.3",
     "diff": "^8.0.4",
