@@ -13,6 +13,7 @@ if !(lib.hasInfix "darwin" hostSystem) then {} else {
       # Development tools
       "orbstack"
       "tableplus"
+      "t3-code"
 
       # Creative/Media tools
       "audacity"
