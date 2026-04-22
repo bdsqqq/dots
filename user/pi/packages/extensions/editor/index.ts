@@ -442,6 +442,20 @@ function formatElapsed(ms: number): string {
   return `${m}m${rem > 0 ? `${rem}s` : ""}`;
 }
 
+interface WorkingIndicatorCapableUI {
+  setWorkingIndicator?: (options?: {
+    frames?: string[];
+    intervalMs?: number;
+  }) => void;
+}
+
+function hideNativeWorkingIndicator(ctx: ExtensionContext): void {
+  ctx.ui.setWorkingMessage(" ");
+  (ctx.ui as typeof ctx.ui & WorkingIndicatorCapableUI).setWorkingIndicator?.({
+    frames: [],
+  });
+}
+
 /**
  * shorten a tool name for display: "tool_execution" → "tool_execution",
  * but we also extract a meaningful arg when possible (e.g. file path).
@@ -639,8 +653,8 @@ function editorExtension(pi: ExtensionAPI): void {
   };
 
   pi.on("agent_start", async (_event, ctx) => {
-    // suppress native spinner text — we render our own below the editor
-    ctx.ui.setWorkingMessage(" ");
+    // suppress pi's inline working UI — we render our own below the editor
+    hideNativeWorkingIndicator(ctx);
 
     activity.phase = "thinking";
     activity.turnIndex = 0;
@@ -751,7 +765,7 @@ export {
 };
 
 if (import.meta.vitest) {
-  const { describe, expect, it } = import.meta.vitest;
+  const { describe, expect, it, vi } = import.meta.vitest;
 
   // --- LabeledEditor border tests ---
   // Testing buildBorderLine directly avoids mocking the entire CustomEditor
@@ -946,6 +960,32 @@ if (import.meta.vitest) {
         expect(formatElapsed(60000)).toBe("1m");
         expect(formatElapsed(90000)).toBe("1m30s");
         expect(formatElapsed(125000)).toBe("2m5s");
+      });
+    });
+
+    describe("hideNativeWorkingIndicator", () => {
+      it("hides both the native message and indicator when supported", () => {
+        const setWorkingMessage = vi.fn();
+        const setWorkingIndicator = vi.fn();
+
+        hideNativeWorkingIndicator({
+          ui: { setWorkingMessage, setWorkingIndicator },
+        } as any);
+
+        expect(setWorkingMessage).toHaveBeenCalledWith(" ");
+        expect(setWorkingIndicator).toHaveBeenCalledWith({ frames: [] });
+      });
+
+      it("still hides the message on older pi builds without indicator support", () => {
+        const setWorkingMessage = vi.fn();
+
+        expect(() =>
+          hideNativeWorkingIndicator({
+            ui: { setWorkingMessage },
+          } as any),
+        ).not.toThrow();
+
+        expect(setWorkingMessage).toHaveBeenCalledWith(" ");
       });
     });
 
