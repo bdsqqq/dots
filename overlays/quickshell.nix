@@ -6,21 +6,21 @@
 #
 # contract: if a QML file calls a binary via Process, add it here.
 inputs: final: prev: {
-  quickshellWrapped = 
-    let
-      quickshellPkg = inputs.quickshell.packages.${final.stdenv.hostPlatform.system}.default;
-      runtimeDeps = with final; [
-        bluez           # bluetoothctl (BluetoothModule.qml)
-        networkmanager  # nmcli (NetworkModule.qml)
-        brightnessctl   # brightnessctl (BrightnessModule.qml)
-      ];
-    in final.symlinkJoin {
-      name = "quickshell-wrapped";
-      paths = [ quickshellPkg ];
-      buildInputs = [ final.makeWrapper ];
-      postBuild = ''
-        wrapProgram $out/bin/quickshell \
-          --prefix PATH : ${final.lib.makeBinPath runtimeDeps}
-      '';
-    };
+  quickshellWrapped = let
+    quickshellPkg =
+      inputs.quickshell.packages.${final.stdenv.hostPlatform.system}.default;
+    runtimeDeps = with final; [
+      bluez # bluetoothctl (BluetoothModule.qml)
+      networkmanager # nmcli (NetworkModule.qml)
+      brightnessctl # brightnessctl (BrightnessModule.qml)
+    ];
+  in final.symlinkJoin {
+    name = "quickshell-wrapped";
+    paths = [ quickshellPkg ];
+    buildInputs = [ final.makeWrapper ];
+    postBuild = ''
+      wrapProgram $out/bin/quickshell \
+        --prefix PATH : ${final.lib.makeBinPath runtimeDeps}
+    '';
+  };
 }

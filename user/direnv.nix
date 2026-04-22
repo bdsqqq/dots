@@ -1,5 +1,4 @@
-{ ... }:
-{
+{ ... }: {
   home-manager.users.bdsqqq = { pkgs, ... }: {
     programs.direnv = {
       enable = true;

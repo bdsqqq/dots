@@ -10,19 +10,19 @@ let
     paths = [ pkgs.trash-cli ];
     buildInputs = [ pkgs.makeWrapper ];
     postBuild = ''
-      for cmd in trash trash-put trash-empty trash-list trash-restore trash-rm; do
-        rm "$out/bin/$cmd"
-        makeWrapper ${pkgs.trash-cli}/bin/$cmd "$out/bin/$cmd" \
-          --run 'needs_trash_dir=1
-for arg in "$@"; do
-  case "$arg" in
-    --trash-dir|--trash-dir=*) needs_trash_dir=0 ;;
-  esac
-done
-if [ "$needs_trash_dir" -eq 1 ]; then
-  set -- --trash-dir "$HOME/.Trash" "$@"
-fi'
+            for cmd in trash trash-put trash-empty trash-list trash-restore trash-rm; do
+              rm "$out/bin/$cmd"
+              makeWrapper ${pkgs.trash-cli}/bin/$cmd "$out/bin/$cmd" \
+                --run 'needs_trash_dir=1
+      for arg in "$@"; do
+        case "$arg" in
+          --trash-dir|--trash-dir=*) needs_trash_dir=0 ;;
+        esac
       done
+      if [ "$needs_trash_dir" -eq 1 ]; then
+        set -- --trash-dir "$HOME/.Trash" "$@"
+      fi'
+            done
     '';
   };
 in {

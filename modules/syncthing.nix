@@ -1,24 +1,22 @@
-/*
-Pure Nix module for syncthing device and folder definitions.
+/* Pure Nix module for syncthing device and folder definitions.
 
-Design rationale:
-- Pure Nix (not NixOS module) to work in both system-level and home-manager contexts
-- Single source of truth for device IDs and addresses
-- Composable functions for building host-specific configs
-- Platform-aware folder paths (darwin vs linux)
+   Design rationale:
+   - Pure Nix (not NixOS module) to work in both system-level and home-manager contexts
+   - Single source of truth for device IDs and addresses
+   - Composable functions for building host-specific configs
+   - Platform-aware folder paths (darwin vs linux)
 
-Usage:
-  let syncthing = import ./modules/syncthing.nix;
-  in {
-    services.syncthing.settings.devices = syncthing.devicesFor [ "mbp-m2" "htz-relay" ];
-  }
+   Usage:
+     let syncthing = import ./modules/syncthing.nix;
+     in {
+       services.syncthing.settings.devices = syncthing.devicesFor [ "mbp-m2" "htz-relay" ];
+     }
 */
 { lib }:
 
 rec {
-  /*
-   All device definitions. `introducer` flag marks trusted devices that can
-   introduce new devices to the mesh.
+  /* All device definitions. `introducer` flag marks trusted devices that can
+     introduce new devices to the mesh.
   */
   devices = {
     mbp-m2 = {
@@ -48,60 +46,57 @@ rec {
     };
   };
 
-  /*
-   `devicesFor :: [String] -> AttrSet`
-   Returns subset of devices for a host.
-   Example: devicesFor [ "mbp-m2" "htz-relay" ] => { mbp-m2 = {...}; htz-relay = {...}; }
+  /* `devicesFor :: [String] -> AttrSet`
+     Returns subset of devices for a host.
+     Example: devicesFor [ "mbp-m2" "htz-relay" ] => { mbp-m2 = {...}; htz-relay = {...}; }
   */
   devicesFor = names:
-    builtins.listToAttrs (
-      builtins.map (name: { inherit name; value = devices.${name}; }) names
-    );
+    builtins.listToAttrs (builtins.map (name: {
+      inherit name;
+      value = devices.${name};
+    }) names);
 
-  /*
-   `folderPaths :: String -> String -> Bool -> String`
-   Returns the correct path for a folder given the folder name, home directory,
-   and whether the host is darwin.
+  /* `folderPaths :: String -> String -> Bool -> String`
+     Returns the correct path for a folder given the folder name, home directory,
+     and whether the host is darwin.
 
-   Folder path mapping:
-   - commonplace: `${home}/commonplace`
-   - prism-instances: darwin: `${home}/Library/Application Support/PrismLauncher/instances`
-                       linux: `${home}/.local/share/PrismLauncher/instances`
-   - pi-sessions: `${home}/.pi/agent/sessions`
+     Folder path mapping:
+     - commonplace: `${home}/commonplace`
+     - prism-instances: darwin: `${home}/Library/Application Support/PrismLauncher/instances`
+                         linux: `${home}/.local/share/PrismLauncher/instances`
+     - pi-sessions: `${home}/.pi/agent/sessions`
   */
   folderPaths = name: home: isDarwin:
     let
       paths = {
         commonplace = "${home}/commonplace";
-        prism-instances = if isDarwin
-          then "${home}/Library/Application Support/PrismLauncher/instances"
-          else "${home}/.local/share/PrismLauncher/instances";
+        prism-instances = if isDarwin then
+          "${home}/Library/Application Support/PrismLauncher/instances"
+        else
+          "${home}/.local/share/PrismLauncher/instances";
         pi-sessions = "${home}/.pi/agent/sessions";
       };
     in paths.${name};
 
-  /*
-   Folder ID mapping for syncthing internal use.
-  */
+  # Folder ID mapping for syncthing internal use.
   folderIds = {
     commonplace = "sqz7z-a6tfg";
     prism-instances = "prism-instances";
     pi-sessions = "pi-sessions";
   };
 
-  /*
-   `folderFor :: String -> String -> Bool -> [String] -> AttrSet -> AttrSet`
-   Returns a full folder config.
+  /* `folderFor :: String -> String -> Bool -> [String] -> AttrSet -> AttrSet`
+     Returns a full folder config.
 
-   Parameters:
-   - name: folder name (commonplace, prism-instances, pi-sessions)
-   - home: home directory path
-   - isDarwin: whether the host is darwin
-   - deviceNames: list of device names to share with
-   - extraConfig: additional folder config to merge (optional, default {})
+     Parameters:
+     - name: folder name (commonplace, prism-instances, pi-sessions)
+     - home: home directory path
+     - isDarwin: whether the host is darwin
+     - deviceNames: list of device names to share with
+     - extraConfig: additional folder config to merge (optional, default {})
 
-   Example:
-     folderFor "commonplace" "/home/user" false [ "mbp-m2" "htz-relay" ] { type = "sendonly"; }
+     Example:
+       folderFor "commonplace" "/home/user" false [ "mbp-m2" "htz-relay" ] { type = "sendonly"; }
   */
   folderFor = name: home: isDarwin: deviceNames: extraConfig:
     let

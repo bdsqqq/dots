@@ -12,7 +12,8 @@
     isoImage.makeEfiBootable = true;
     isoImage.makeUsbBootable = true;
     isoImage.squashfsCompression = "zstd -Xcompression-level 10";
-    isoImage.isoName = "${config.isoImage.isoBaseName}-${config.system.nixos.label}-${pkgs.stdenv.hostPlatform.system}.iso";
+    isoImage.isoName =
+      "${config.isoImage.isoBaseName}-${config.system.nixos.label}-${pkgs.stdenv.hostPlatform.system}.iso";
 
     hardware.enableRedistributableFirmware = true;
     hardware.enableAllFirmware = true;
@@ -62,10 +63,7 @@
     programs.zsh.enable = true;
 
     boot.kernelPackages = pkgs.linuxPackages_latest;
-    boot.kernelParams = [ 
-      "amd_pstate=active"
-      "amdgpu.sg_display=0"
-    ];
+    boot.kernelParams = [ "amd_pstate=active" "amdgpu.sg_display=0" ];
 
     system.stateVersion = "25.05";
   };

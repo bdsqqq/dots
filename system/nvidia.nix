@@ -1,6 +1,8 @@
 { lib, config, pkgs, hostSystem ? null, ... }:
 
-if !(lib.hasInfix "linux" hostSystem) then {} else {
+if !(lib.hasInfix "linux" hostSystem) then
+  { }
+else {
   # NVIDIA graphics setup (Linux only)
   services.xserver.videoDrivers = [ "nvidia" ];
 
@@ -24,9 +26,9 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     WLR_NO_HARDWARE_CURSORS = "1";
   };
 
-  environment.systemPackages = with pkgs; [
-    # nvtop provided by user/dev-tools.nix with full gpu support
-  ];
+  environment.systemPackages = with pkgs;
+    [
+      # nvtop provided by user/dev-tools.nix with full gpu support
+    ];
 }
-
 

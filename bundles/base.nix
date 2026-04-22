@@ -1,5 +1,4 @@
-{ lib, config, pkgs, ... }:
-{
+{ lib, config, pkgs, ... }: {
   imports = [
     ../modules/primary-user.nix
     ../system/nix.nix
@@ -21,5 +20,4 @@
     ../system/auto-upgrade.nix
   ];
 }
-
 

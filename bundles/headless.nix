@@ -1,8 +1,2 @@
-{ ... }:
-{
-  imports = [
-    ../system/syncthing.nix
-  ];
-}
-
+{ ... }: { imports = [ ../system/syncthing.nix ]; }
 

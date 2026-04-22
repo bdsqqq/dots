@@ -1,22 +1,23 @@
-{ lib, inputs, hostSystem ? null, config ? {}, ... }:
-{
-  imports = [
-    ./skills/default.nix
-  ];
+{ lib, inputs, hostSystem ? null, config ? { }, ... }: {
+  imports = [ ./skills/default.nix ];
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
     # home.file + mkOutOfStoreSymlink creates a 3-hop chain through /nix/store/
     # that iOS syncthing can't resolve. home.activation + ln -sf bypasses
     # home-manager's indirection to create a direct symlink.
     # (same pattern as bun.nix:33 for the global manifest)
-    home.activation.commonplaceAgents = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      ln -sf "01_files/nix/config/global-agents.md" \
-             "${config.home.homeDirectory}/commonplace/AGENTS.md"
-    '';
+    home.activation.commonplaceAgents =
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        ln -sf "01_files/nix/config/global-agents.md" \
+               "${config.home.homeDirectory}/commonplace/AGENTS.md"
+      '';
 
-    home.file = let 
-      agentsMd = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/config/global-agents.md";
-      skills = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.config/agents/skills";
-      agentPrompts = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/commonplace/01_files/nix/user/agents/agents";
+    home.file = let
+      agentsMd = config.lib.file.mkOutOfStoreSymlink
+        "${config.home.homeDirectory}/commonplace/01_files/nix/config/global-agents.md";
+      skills = config.lib.file.mkOutOfStoreSymlink
+        "${config.home.homeDirectory}/.config/agents/skills";
+      agentPrompts = config.lib.file.mkOutOfStoreSymlink
+        "${config.home.homeDirectory}/commonplace/01_files/nix/user/agents/agents";
 
     in {
       ".config/agents/skills" = {
@@ -27,14 +28,14 @@
         recursive = true;
       };
 
-      ".config/opencode/AGENTS.md".source = agentsMd; 
-      ".claude/CLAUDE.md".source          = agentsMd; 
-      ".pi/agent/AGENTS.md".source        = agentsMd; 
-      ".cursor/rules/AGENTS.md".source    = agentsMd;
+      ".config/opencode/AGENTS.md".source = agentsMd;
+      ".claude/CLAUDE.md".source = agentsMd;
+      ".pi/agent/AGENTS.md".source = agentsMd;
+      ".cursor/rules/AGENTS.md".source = agentsMd;
 
-      ".config/opencode/skills".source  = skills;
-      ".cursor/skills".source           = skills;
-      ".cursor/agents".source           = agentPrompts;
+      ".config/opencode/skills".source = skills;
+      ".cursor/skills".source = skills;
+      ".cursor/agents".source = agentPrompts;
     };
   };
 }

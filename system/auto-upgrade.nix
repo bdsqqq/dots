@@ -1,6 +1,8 @@
 { lib, config, hostSystem ? null, ... }:
 
-if !(lib.hasInfix "linux" hostSystem) then {} else {
+if !(lib.hasInfix "linux" hostSystem) then
+  { }
+else {
   system.autoUpgrade = {
     enable = lib.mkDefault true;
     flake = lib.mkDefault "github:bdsqqq/dots#${config.networking.hostName}";

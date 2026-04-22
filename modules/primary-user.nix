@@ -6,11 +6,16 @@
 {
   options.my.primaryUser = lib.mkOption {
     type = lib.types.str;
-    description = "primary user for this system — used for home-manager alias and path resolution";
+    description =
+      "primary user for this system — used for home-manager alias and path resolution";
   };
 
   # alias `hm` → `home-manager.users.${primaryUser}` for terse access
   imports = [
-    (lib.mkAliasOptionModule [ "hm" ] [ "home-manager" "users" config.my.primaryUser ])
+    (lib.mkAliasOptionModule [ "hm" ] [
+      "home-manager"
+      "users"
+      config.my.primaryUser
+    ])
   ];
 }

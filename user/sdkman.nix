@@ -1,5 +1,4 @@
-{ config, pkgs, ... }:
-{
+{ config, pkgs, ... }: {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
     programs.zsh.initContent = ''
       # sdkman (lazy-load on first use)

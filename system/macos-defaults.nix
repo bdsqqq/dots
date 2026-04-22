@@ -1,6 +1,8 @@
 { lib, hostSystem ? null, ... }:
 
-if !(lib.hasInfix "darwin" hostSystem) then {} else {
+if !(lib.hasInfix "darwin" hostSystem) then
+  { }
+else {
   system.defaults = {
     dock = {
       autohide = true;
@@ -60,5 +62,4 @@ if !(lib.hasInfix "darwin" hostSystem) then {} else {
     };
   };
 }
-
 

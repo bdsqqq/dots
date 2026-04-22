@@ -143,8 +143,7 @@ let
   ];
 
   bashArray = words: lib.concatStringsSep " " (map lib.escapeShellArg words);
-in
-{
+in {
   home-manager.users.bdsqqq = { pkgs, ... }: {
     home.packages = [
       (pkgs.writeScriptBin "fairy-name" ''

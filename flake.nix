@@ -76,53 +76,114 @@
       flake = false;
     };
 
-    plugin-vim-tmux-navigator = { url = "github:christoomey/vim-tmux-navigator"; flake = false; };
-    plugin-oil-nvim = { url = "github:stevearc/oil.nvim"; flake = false; };
-    plugin-nvim-ufo = { url = "github:kevinhwang91/nvim-ufo"; flake = false; };
-    plugin-promise-async = { url = "github:kevinhwang91/promise-async"; flake = false; };
-    plugin-vim-sleuth = { url = "github:tpope/vim-sleuth"; flake = false; };
-    plugin-fidget-nvim = { url = "github:j-hui/fidget.nvim"; flake = false; };
-    plugin-autoclose-nvim = { url = "github:m4xshen/autoclose.nvim"; flake = false; };
-    plugin-lazydev-nvim = { url = "github:folke/lazydev.nvim"; flake = false; };
-    plugin-gitsigns-nvim = { url = "github:lewis6991/gitsigns.nvim"; flake = false; };
-    plugin-which-key-nvim = { url = "github:folke/which-key.nvim"; flake = false; };
-    plugin-plenary-nvim = { url = "github:nvim-lua/plenary.nvim"; flake = false; };
-    plugin-telescope-nvim = { url = "github:nvim-telescope/telescope.nvim"; flake = false; };
-    plugin-telescope-fzf-native-nvim = { url = "github:nvim-telescope/telescope-fzf-native.nvim"; flake = false; };
-    plugin-telescope-ui-select-nvim = { url = "github:nvim-telescope/telescope-ui-select.nvim"; flake = false; };
-    plugin-nvim-lspconfig = { url = "github:neovim/nvim-lspconfig"; flake = false; };
-    plugin-conform-nvim = { url = "github:stevearc/conform.nvim"; flake = false; };
-    plugin-mini-nvim = { url = "github:echasnovski/mini.nvim"; flake = false; };
-    plugin-undotree = { url = "github:mbbill/undotree"; flake = false; };
-    plugin-ts-error-translator = { url = "github:dmmulroy/ts-error-translator.nvim"; flake = false; };
-    plugin-vim-tpipeline = { url = "github:vimpostor/vim-tpipeline"; flake = false; };
+    plugin-vim-tmux-navigator = {
+      url = "github:christoomey/vim-tmux-navigator";
+      flake = false;
+    };
+    plugin-oil-nvim = {
+      url = "github:stevearc/oil.nvim";
+      flake = false;
+    };
+    plugin-nvim-ufo = {
+      url = "github:kevinhwang91/nvim-ufo";
+      flake = false;
+    };
+    plugin-promise-async = {
+      url = "github:kevinhwang91/promise-async";
+      flake = false;
+    };
+    plugin-vim-sleuth = {
+      url = "github:tpope/vim-sleuth";
+      flake = false;
+    };
+    plugin-fidget-nvim = {
+      url = "github:j-hui/fidget.nvim";
+      flake = false;
+    };
+    plugin-autoclose-nvim = {
+      url = "github:m4xshen/autoclose.nvim";
+      flake = false;
+    };
+    plugin-lazydev-nvim = {
+      url = "github:folke/lazydev.nvim";
+      flake = false;
+    };
+    plugin-gitsigns-nvim = {
+      url = "github:lewis6991/gitsigns.nvim";
+      flake = false;
+    };
+    plugin-which-key-nvim = {
+      url = "github:folke/which-key.nvim";
+      flake = false;
+    };
+    plugin-plenary-nvim = {
+      url = "github:nvim-lua/plenary.nvim";
+      flake = false;
+    };
+    plugin-telescope-nvim = {
+      url = "github:nvim-telescope/telescope.nvim";
+      flake = false;
+    };
+    plugin-telescope-fzf-native-nvim = {
+      url = "github:nvim-telescope/telescope-fzf-native.nvim";
+      flake = false;
+    };
+    plugin-telescope-ui-select-nvim = {
+      url = "github:nvim-telescope/telescope-ui-select.nvim";
+      flake = false;
+    };
+    plugin-nvim-lspconfig = {
+      url = "github:neovim/nvim-lspconfig";
+      flake = false;
+    };
+    plugin-conform-nvim = {
+      url = "github:stevearc/conform.nvim";
+      flake = false;
+    };
+    plugin-mini-nvim = {
+      url = "github:echasnovski/mini.nvim";
+      flake = false;
+    };
+    plugin-undotree = {
+      url = "github:mbbill/undotree";
+      flake = false;
+    };
+    plugin-ts-error-translator = {
+      url = "github:dmmulroy/ts-error-translator.nvim";
+      flake = false;
+    };
+    plugin-vim-tpipeline = {
+      url = "github:vimpostor/vim-tpipeline";
+      flake = false;
+    };
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
     let
       # get git revision for configuration tracking
       flakeRevision = self.rev or self.dirtyRev or "unknown";
-    in
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
+    in flake-parts.lib.mkFlake { inherit inputs; } {
+      systems =
+        [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
 
       perSystem = { config, self', inputs', pkgs, system, ... }: {
         devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [
-            nixpkgs-fmt
-            nil
-            statix
-            deadnix
+          buildInputs = with pkgs;
+            [
+              nixpkgs-fmt
+              nil
+              statix
+              deadnix
 
-            cachix
-            direnv
+              cachix
+              direnv
 
-          ] ++ (if pkgs.stdenv.isDarwin then [
-            inputs.nix-darwin.packages.${system}.darwin-rebuild
-          ] else [
-            nixos-rebuild
-            nixos-generators
-          ]);
+            ] ++ (if pkgs.stdenv.isDarwin then
+              [ inputs.nix-darwin.packages.${system}.darwin-rebuild ]
+            else [
+              nixos-rebuild
+              nixos-generators
+            ]);
 
           shellHook = ''
             echo "🚀 nix development environment loaded"
@@ -155,14 +216,15 @@
               # Make system architecture available for conditional logic
               inherit (inputs.nixpkgs.lib) systems;
               # Helper function to get packages for different systems
-              pkgsFor = system: import inputs.nixpkgs {
-                inherit system;
-                config.allowUnfree = true;
-                overlays = [
-                  (import ./overlays/unstable.nix inputs)
-                  (import ./zmx.nix).overlay
-                ];
-              };
+              pkgsFor = system:
+                import inputs.nixpkgs {
+                  inherit system;
+                  config.allowUnfree = true;
+                  overlays = [
+                    (import ./overlays/unstable.nix inputs)
+                    (import ./zmx.nix).overlay
+                  ];
+                };
             };
             modules = [
               inputs.sops-nix.darwinModules.sops
@@ -179,7 +241,7 @@
                 };
                 # track git revision for deploy annotations
                 system.configurationRevision = flakeRevision;
-                
+
                 services.axiom-deploy-annotation = {
                   enable = true;
                   configPath = config.sops.secrets."axiom.toml".path;
@@ -188,12 +250,16 @@
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                 };
               })
-              
+
               ./hosts/mbp-m2/default.nix
 
               {
                 # Ensure all modules receive enhanced specialArgs
-                _module.args = { inherit inputs; isDarwin = true; headMode = "graphical"; };
+                _module.args = {
+                  inherit inputs;
+                  isDarwin = true;
+                  headMode = "graphical";
+                };
               }
             ];
           };
@@ -201,7 +267,11 @@
 
         nixosConfigurations = {
           "r56" = inputs.nixpkgs.lib.nixosSystem {
-            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "graphical"; };
+            specialArgs = {
+              inherit inputs;
+              hostSystem = "x86_64-linux";
+              headMode = "graphical";
+            };
             modules = [
               inputs.sops-nix.nixosModules.sops
               inputs.axiom-deploy-annotation.nixosModules.default
@@ -227,14 +297,19 @@
                   user = "bdsqqq";
                   group = "users";
                 };
-                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome = lib.mkForce "read-only";
+                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome =
+                  lib.mkForce "read-only";
               })
               ./hosts/r56/default.nix
             ];
           };
 
           "htz-relay" = inputs.nixpkgs.lib.nixosSystem {
-            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "headless"; };
+            specialArgs = {
+              inherit inputs;
+              hostSystem = "x86_64-linux";
+              headMode = "headless";
+            };
             modules = [
               inputs.sops-nix.nixosModules.sops
               inputs.axiom-deploy-annotation.nixosModules.default
@@ -250,7 +325,7 @@
                   (import ./zmx.nix).overlay
                 ];
                 system.configurationRevision = flakeRevision;
-                
+
                 services.axiom-deploy-annotation = {
                   enable = true;
                   configPath = config.sops.secrets."axiom.toml".path;
@@ -260,14 +335,19 @@
                   user = "bdsqqq";
                   group = "users";
                 };
-                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome = lib.mkForce "read-only";
+                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome =
+                  lib.mkForce "read-only";
               })
               ./hosts/htz-relay/default.nix
             ];
           };
 
           "lgo-z2e" = inputs.nixpkgs.lib.nixosSystem {
-            specialArgs = { inherit inputs; hostSystem = "x86_64-linux"; headMode = "graphical"; };
+            specialArgs = {
+              inherit inputs;
+              hostSystem = "x86_64-linux";
+              headMode = "graphical";
+            };
             modules = [
               inputs.sops-nix.nixosModules.sops
               inputs.axiom-deploy-annotation.nixosModules.default
@@ -284,7 +364,7 @@
                   (import ./overlays/quickshell.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
-                
+
                 services.axiom-deploy-annotation = {
                   enable = true;
                   configPath = config.sops.secrets."axiom.toml".path;
@@ -294,7 +374,8 @@
                   user = "bdsqqq";
                   group = "users";
                 };
-                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome = lib.mkForce "read-only";
+                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome =
+                  lib.mkForce "read-only";
               })
               ./hosts/lgo-z2e/default.nix
             ];

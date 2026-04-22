@@ -3,8 +3,7 @@ let
   system = hostSystem;
   isLinux = lib.hasInfix "linux" system;
   isDarwin = lib.hasInfix "darwin" system;
-in
-if isLinux then {
+in if isLinux then {
   # NixOS uses system service; declarative folder/device config in host files
   services.syncthing = {
     enable = true;
@@ -13,10 +12,13 @@ if isLinux then {
     configDir = "/home/bdsqqq/.config/syncthing";
     guiAddress = "0.0.0.0:8384";
   };
-  
+
   networking.firewall.interfaces."tailscale0".allowedTCPPorts = [ 8384 22000 ];
   networking.firewall.interfaces."tailscale0".allowedUDPPorts = [ 22000 21027 ];
-} else if isDarwin then {
-  # darwin: syncthing managed entirely by home-manager's services.syncthing
-  # (creates launchd agents for both daemon and config init)
-} else {}
+} else if isDarwin then
+  {
+    # darwin: syncthing managed entirely by home-manager's services.syncthing
+    # (creates launchd agents for both daemon and config init)
+  }
+else
+  { }

@@ -1,9 +1,12 @@
 { lib, config, pkgs, inputs, hostSystem ? null, ... }:
 let
   isLinux = lib.hasInfix "linux" hostSystem;
-  p = name: src: pkgs.vimUtils.buildVimPlugin { inherit name src; doCheck = false; };
-in
-{
+  p = name: src:
+    pkgs.vimUtils.buildVimPlugin {
+      inherit name src;
+      doCheck = false;
+    };
+in {
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
     programs.neovim = {
       enable = true;
@@ -13,8 +16,8 @@ in
 
       initLua = builtins.readFile ./init.lua;
 
-      extraPackages = with pkgs; [ stylua go lazygit ]
-        ++ lib.optionals isLinux [ wl-clipboard xsel ];
+      extraPackages = with pkgs;
+        [ stylua go lazygit ] ++ lib.optionals isLinux [ wl-clipboard xsel ];
 
       plugins = [
         (p "vim-tmux-navigator" inputs.plugin-vim-tmux-navigator)

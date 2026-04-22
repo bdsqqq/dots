@@ -1,9 +1,8 @@
-{ lib, inputs, hostSystem ? null, config ? {}, ... }:
+{ lib, inputs, hostSystem ? null, config ? { }, ... }:
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   homeDir = if isDarwin then "/Users/bdsqqq" else "/home/bdsqqq";
-in
-{
+in {
   sops.templates."opencode.json" = {
     content = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
@@ -22,20 +21,14 @@ in
         };
       };
 
-      instructions = [
-         "${homeDir}/AGENTS.md"
-      ];
+      instructions = [ "${homeDir}/AGENTS.md" ];
 
       provider = {
         opencode = {
-          options = {
-            apiKey = config.sops.placeholder.opencode_zen;
-          };
+          options = { apiKey = config.sops.placeholder.opencode_zen; };
         };
         openrouter = {
-          options = {
-            apiKey = config.sops.placeholder.open_router;
-          };
+          options = { apiKey = config.sops.placeholder.open_router; };
         };
       };
 
@@ -55,6 +48,7 @@ in
   };
 
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
-    home.file.".config/opencode/opencode.json".source = config.lib.file.mkOutOfStoreSymlink "/run/secrets/rendered/opencode.json";
+    home.file.".config/opencode/opencode.json".source =
+      config.lib.file.mkOutOfStoreSymlink "/run/secrets/rendered/opencode.json";
   };
 }

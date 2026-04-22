@@ -32,7 +32,7 @@ in {
       home.homeDirectory = "/Users/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
-      
+
       # declarative syncthing settings (daemon managed by launchd in system/syncthing.nix)
       services.syncthing = {
         enable = true;
@@ -41,11 +41,12 @@ in {
         # use guiAddress (not settings.gui.address) - home-manager's init script
         # PATCHes guiAddress after PUTting settings.gui, so settings.gui.address gets overwritten
         guiAddress = "0.0.0.0:8384";
-        
+
         settings = {
           gui = {
             user = "bdsqqq";
-            password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
+            password =
+              "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
           };
           options = {
             urAccepted = -1;
@@ -54,31 +55,45 @@ in {
             relaysEnabled = false;
             natEnabled = false;
           };
-          
-          devices = syncthing.devicesFor [ "htz-relay" "r56" "lgo-z2e" "iph16" "ipd" ];
-          
+
+          devices =
+            syncthing.devicesFor [ "htz-relay" "r56" "lgo-z2e" "iph16" "ipd" ];
+
           folders = {
-            commonplace = syncthing.folderFor "commonplace" config.home.homeDirectory true [ "htz-relay" "r56" "lgo-z2e" "iph16" "ipd" ] { label = "commonplace"; };
-            prism-instances = syncthing.folderFor "prism-instances" config.home.homeDirectory true [ "r56" "lgo-z2e" ] { label = "PrismLauncher instances"; rescanIntervalS = 120; versioning = null; };
-            pi-sessions = syncthing.folderFor "pi-sessions" config.home.homeDirectory true [ "lgo-z2e" ] {};
+            commonplace =
+              syncthing.folderFor "commonplace" config.home.homeDirectory true [
+                "htz-relay"
+                "r56"
+                "lgo-z2e"
+                "iph16"
+                "ipd"
+              ] { label = "commonplace"; };
+            prism-instances =
+              syncthing.folderFor "prism-instances" config.home.homeDirectory
+              true [ "r56" "lgo-z2e" ] {
+                label = "PrismLauncher instances";
+                rescanIntervalS = 120;
+                versioning = null;
+              };
+            pi-sessions =
+              syncthing.folderFor "pi-sessions" config.home.homeDirectory true
+              [ "lgo-z2e" ] { };
           };
         };
       };
-      
+
       # fix: home-manager syncthing doesn't set RunAtLoad, so manually override
       launchd.agents.syncthing.config.RunAtLoad = true;
       launchd.agents.syncthing-init.config.RunAtLoad = true;
     };
   };
 
-  
-
   # Host-specific settings
   # System identification for multi-host setups
   networking = {
-    hostName = "mbp-m2.local";     # FQDN is fine for HostName
-    localHostName = "mbp-m2";      # must NOT contain dots (mDNS)
-    computerName = "mbp-m2";       # UI name
+    hostName = "mbp-m2.local"; # FQDN is fine for HostName
+    localHostName = "mbp-m2"; # must NOT contain dots (mDNS)
+    computerName = "mbp-m2"; # UI name
   };
 
   # ensure darwin user exists with a concrete home path so HM can derive paths
