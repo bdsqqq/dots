@@ -4,7 +4,8 @@ let
   isLinux = lib.hasInfix "linux" hostSystem;
   cfg = config.my.login;
 
-  tuigreetCommand = "${pkgs.tuigreet}/bin/tuigreet --sessions /run/current-system/sw/share/wayland-sessions --remember --remember-session";
+  tuigreetCommand =
+    "${pkgs.tuigreet}/bin/tuigreet --sessions /run/current-system/sw/share/wayland-sessions --remember --remember-session";
 
   # quickshell-root: a derivation containing the complete quickshell greetd frontend.
   # lives in the nix store alongside the launcher — no dependency on /etc/static, which
@@ -12,7 +13,7 @@ let
   # /home or ~/.config, so everything lives in the store.
   quickshellRoot = pkgs.symlinkJoin {
     name = "quickshell-greeter-root";
-    paths = [ ../user/quickshell ];  # ./greetd-shell.qml etc.
+    paths = [ ../user/quickshell ]; # ./greetd-shell.qml etc.
   };
 
   # launcher: runs the quickshell GUI under cage, falls back to tuigreet on failure.
@@ -48,8 +49,9 @@ let
     # gui crashed or couldn't start — fall back to the known-good tuigreet.
     exec ${tuigreetCommand}
   '';
-in
-if !isLinux then {} else {
+in if !isLinux then
+  { }
+else {
   options.my.login.greeter = lib.mkOption {
     type = lib.types.enum [ "tuigreet" "quickshell" ];
     default = "tuigreet";
@@ -67,13 +69,15 @@ if !isLinux then {} else {
     {
       services.greetd = {
         enable = true;
-        settings.default_session = lib.mkIf (!(config.jovian.steam.autoStart or false)) {
-          # `tuigreet` stays the default. experimental paths must earn their way in.
-          command = if cfg.greeter == "quickshell"
-            then "${quickshellLauncher}/bin/quickshell-greeter-launcher"
-            else tuigreetCommand;
-          user = "greeter";
-        };
+        settings.default_session =
+          lib.mkIf (!(config.jovian.steam.autoStart or false)) {
+            # `tuigreet` stays the default. experimental paths must earn their way in.
+            command = if cfg.greeter == "quickshell" then
+              "${quickshellLauncher}/bin/quickshell-greeter-launcher"
+            else
+              tuigreetCommand;
+            user = "greeter";
+          };
       };
 
       # ensure wayland session desktop files are available to both tuigreet and the
@@ -86,9 +90,8 @@ if !isLinux then {} else {
       # nix store alongside it — no /etc/ involvement, survives nixos-upgrade.timer.
 
       # greetd needs /var/cache before the launcher runs.
-      systemd.tmpfiles.rules = [
-        "d /var/cache/quickshell-greetd 0770 greeter greeter - -"
-      ];
+      systemd.tmpfiles.rules =
+        [ "d /var/cache/quickshell-greetd 0770 greeter greeter - -" ];
     })
   ];
 }

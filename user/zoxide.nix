@@ -1,5 +1,4 @@
-{ config, pkgs, ... }:
-{
+{ config, pkgs, ... }: {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
     programs.zoxide.enable = true;
 

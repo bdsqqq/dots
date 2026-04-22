@@ -3,16 +3,14 @@
 {
   imports = [ (modulesPath + "/installer/scan/not-detected.nix") ];
 
-  boot.initrd.availableKernelModules = [ "xhci_pci" "thunderbolt" "nvme" "usb_storage" "usbhid" "uas" "sd_mod" ];
+  boot.initrd.availableKernelModules =
+    [ "xhci_pci" "thunderbolt" "nvme" "usb_storage" "usbhid" "uas" "sd_mod" ];
   boot.initrd.kernelModules = [ ];
   boot.kernelModules = [ "kvm-amd" ];
   boot.extraModulePackages = [ ];
 
   boot.kernelPackages = pkgs.linuxPackages_latest;
-  boot.kernelParams = [ 
-    "amd_pstate=active"
-    "amdgpu.sg_display=0"
-  ];
+  boot.kernelParams = [ "amd_pstate=active" "amdgpu.sg_display=0" ];
 
   boot.loader = {
     systemd-boot.enable = true;
@@ -33,8 +31,9 @@
   hardware = {
     enableRedistributableFirmware = true;
     enableAllFirmware = true;
-    cpu.amd.updateMicrocode = lib.mkDefault config.hardware.enableRedistributableFirmware;
-    
+    cpu.amd.updateMicrocode =
+      lib.mkDefault config.hardware.enableRedistributableFirmware;
+
     graphics = {
       enable = true;
       enable32Bit = true;

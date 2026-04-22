@@ -3,12 +3,13 @@
 { lib, pkgs, hostSystem ? null, headMode ? "graphical", ... }:
 
 if !(lib.hasInfix "linux" hostSystem) || headMode != "graphical" then
-  {}
+  { }
 else
   let
     helium-launcher = pkgs.writeShellApplication {
       name = "helium";
-      runtimeInputs = [ pkgs.appimage-run pkgs.coreutils pkgs.curl pkgs.gnugrep pkgs.gnused ];
+      runtimeInputs =
+        [ pkgs.appimage-run pkgs.coreutils pkgs.curl pkgs.gnugrep pkgs.gnused ];
       text = ''
         set -euo pipefail
 

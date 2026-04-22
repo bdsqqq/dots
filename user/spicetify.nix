@@ -75,11 +75,13 @@ let
     readme = "README.md";
     usercss = "user.css";
     schemes = "color.ini";
-    authors = [{ name = "bdsqqq"; url = "https://github.com/bdsqqq"; }];
-    tags = ["dark" "minimal"];
+    authors = [{
+      name = "bdsqqq";
+      url = "https://github.com/bdsqqq";
+    }];
+    tags = [ "dark" "minimal" ];
   };
-in
-if isDarwin then {
+in if isDarwin then {
   # Darwin: manual spicetify-cli + declarative theme files
   # (spicetify-nix darwin support is broken upstream)
   home-manager.users.bdsqqq = { lib, ... }: {
@@ -121,15 +123,19 @@ if isDarwin then {
   };
 } else if isLinux then {
   # Linux: use spicetify-nix module
-  nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [ "spotify" ];
+  nixpkgs.config.allowUnfreePredicate = pkg:
+    builtins.elem (lib.getName pkg) [ "spotify" ];
 
   home-manager.users.bdsqqq = let
-    spicePkgs = inputs.spicetify-nix.legacyPackages.${pkgs.stdenv.hostPlatform.system};
+    spicePkgs =
+      inputs.spicetify-nix.legacyPackages.${pkgs.stdenv.hostPlatform.system};
 
-    vesperThemeDir = pkgs.runCommand "vesper-theme" {} ''
+    vesperThemeDir = pkgs.runCommand "vesper-theme" { } ''
       mkdir -p $out
       cp ${pkgs.writeText "color.ini" vesperColorIni} $out/color.ini
-      cp ${pkgs.writeText "user.css" (vesperUserCss + "\n\n" + hoverCss)} $out/user.css
+      cp ${
+        pkgs.writeText "user.css" (vesperUserCss + "\n\n" + hoverCss)
+      } $out/user.css
       cp ${pkgs.writeText "manifest.json" vesperManifest} $out/manifest.json
     '';
   in {
@@ -176,13 +182,10 @@ if isDarwin then {
         roundedImages
       ];
 
-      enabledExtensions = with spicePkgs.extensions; [
-        oneko
-      ];
+      enabledExtensions = with spicePkgs.extensions; [ oneko ];
 
-      enabledCustomApps = with spicePkgs.apps; [
-        marketplace
-      ];
+      enabledCustomApps = with spicePkgs.apps; [ marketplace ];
     };
   };
-} else {}
+} else
+  { }

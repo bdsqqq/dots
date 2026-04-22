@@ -2,8 +2,7 @@
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   prefix = if isDarwin then config.homebrew.prefix or "/opt/homebrew" else "";
-in
-{
+in {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
     programs.zsh.initContent = lib.mkIf isDarwin ''
       # homebrew shellenv (darwin only)

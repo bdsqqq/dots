@@ -1,5 +1,4 @@
-{ lib, ... }:
-{
+{ lib, ... }: {
   home-manager.users.bdsqqq = { config, lib, ... }: {
     # central PATH ordering system
     # modules contribute segments with priority; lower order = earlier in PATH
@@ -16,16 +15,15 @@
           };
         };
       });
-      default = [];
+      default = [ ];
       description = "ordered PATH segments from all modules";
     };
 
     # aggregate all segments into home.sessionPath
-    config.home.sessionPath = 
-      let
-        sorted = builtins.sort (a: b: a.order < b.order) config.custom.path.segments;
-        paths = map (x: x.value) sorted;
-      in
-        lib.unique paths;
+    config.home.sessionPath = let
+      sorted =
+        builtins.sort (a: b: a.order < b.order) config.custom.path.segments;
+      paths = map (x: x.value) sorted;
+    in lib.unique paths;
   };
 }

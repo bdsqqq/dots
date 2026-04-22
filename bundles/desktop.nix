@@ -1,5 +1,4 @@
-{ lib, config, pkgs, ... }:
-{
+{ lib, config, pkgs, ... }: {
   imports = [
     ../system/audio.nix
     ../system/bluetooth.nix
@@ -9,5 +8,4 @@
     ../user/spicetify.nix
   ];
 }
-
 

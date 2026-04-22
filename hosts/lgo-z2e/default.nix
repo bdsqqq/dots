@@ -17,8 +17,7 @@ let
       runHook postInstall
     '';
   };
-in
-{
+in {
   stylix = {
     enable = true;
     image = ../../assets/wallhaven-o5kpmm_3840x2400.png;
@@ -51,9 +50,7 @@ in
       size = 24;
     };
 
-    opacity = {
-      terminal = 0.85;
-    };
+    opacity = { terminal = 0.85; };
   };
 
   # acpi_call for TDP control via hhd/adjustor
@@ -66,7 +63,8 @@ in
     description = "Set AMDGPU power profile to %i";
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${pkgs.bash}/bin/bash -c 'echo %i > /sys/class/drm/card1/device/power_dpm_force_performance_level'";
+      ExecStart =
+        "${pkgs.bash}/bin/bash -c 'echo %i > /sys/class/drm/card1/device/power_dpm_force_performance_level'";
     };
   };
 
@@ -76,7 +74,8 @@ in
     description = "Set CPU TDP to %i watts via ryzenadj";
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${pkgs.bash}/bin/bash -c '${pkgs.ryzenadj}/bin/ryzenadj --stapm-limit=%i000 --fast-limit=%i000 --slow-limit=%i000'";
+      ExecStart =
+        "${pkgs.bash}/bin/bash -c '${pkgs.ryzenadj}/bin/ryzenadj --stapm-limit=%i000 --fast-limit=%i000 --slow-limit=%i000'";
     };
   };
 
@@ -141,7 +140,8 @@ in
 
   # tailscale auth
   services.tailscale = {
-    authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key) config.sops.secrets.tailscale_auth_key.path;
+    authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key)
+      config.sops.secrets.tailscale_auth_key.path;
   };
 
   # syncthing mesh
@@ -149,7 +149,8 @@ in
     settings = {
       gui = {
         user = "bdsqqq";
-        password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
+        password =
+          "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
       };
       options = {
         urAccepted = -1;
@@ -162,9 +163,22 @@ in
       devices = syncthing.devicesFor [ "mbp-m2" "htz-relay" "r56" ];
 
       folders = {
-        commonplace = syncthing.folderFor "commonplace" "/home/bdsqqq" false [ "mbp-m2" "htz-relay" "r56" ] {};
-        prism-instances = syncthing.folderFor "prism-instances" "/home/bdsqqq" false [ "mbp-m2" "r56" ] { rescanIntervalS = 120; versioning = null; };
-        pi-sessions = syncthing.folderFor "pi-sessions" "/home/bdsqqq" false [ "mbp-m2" ] {};
+        commonplace = syncthing.folderFor "commonplace" "/home/bdsqqq" false [
+          "mbp-m2"
+          "htz-relay"
+          "r56"
+        ] { };
+        prism-instances =
+          syncthing.folderFor "prism-instances" "/home/bdsqqq" false [
+            "mbp-m2"
+            "r56"
+          ] {
+            rescanIntervalS = 120;
+            versioning = null;
+          };
+        pi-sessions =
+          syncthing.folderFor "pi-sessions" "/home/bdsqqq" false [ "mbp-m2" ]
+          { };
       };
     };
   };
@@ -190,10 +204,14 @@ in
     useGlobalPkgs = true;
     useUserPackages = true;
     backupFileExtension = "backup";
-    extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "graphical"; torchBackend = "cpu"; };
-    sharedModules = [
-      inputs.vicinae.homeManagerModules.default
-    ];
+    extraSpecialArgs = {
+      inherit inputs;
+      isDarwin = false;
+      hostSystem = "x86_64-linux";
+      headMode = "graphical";
+      torchBackend = "cpu";
+    };
+    sharedModules = [ inputs.vicinae.homeManagerModules.default ];
     users.bdsqqq = {
       home.username = "bdsqqq";
       home.homeDirectory = "/home/bdsqqq";
@@ -248,12 +266,9 @@ in
   };
 
   nix.settings = {
-    extra-substituters = [
-      "https://vicinae.cachix.org"
-    ];
-    extra-trusted-public-keys = [
-      "vicinae.cachix.org-1:1kDrfienkGHPYbkpNj1mWTr7Fm1+zcenzgTizIcI3oc="
-    ];
+    extra-substituters = [ "https://vicinae.cachix.org" ];
+    extra-trusted-public-keys =
+      [ "vicinae.cachix.org-1:1kDrfienkGHPYbkpNj1mWTr7Fm1+zcenzgTizIcI3oc=" ];
   };
 
   services.fprintd.enable = true;
@@ -300,23 +315,23 @@ in
     path = [ pkgs.gnused pkgs.coreutils ];
     script = ''
       set -euo pipefail
-      
+
       SECRET_FILE="/run/secrets/syncthing_gui_password_hash"
       if [ ! -f "$SECRET_FILE" ]; then
         echo "syncthing-gui-password: secret not found, skipping"
         exit 0
       fi
-      
+
       HASH="$(cat "$SECRET_FILE")"
       CFG_FILE="/home/bdsqqq/.config/syncthing/config.xml"
-      
+
       if [ ! -f "$CFG_FILE" ]; then
         echo "syncthing-gui-password: config.xml not found, skipping"
         exit 0
       fi
-      
+
       sed -i "s|<password>.*</password>|<password>$HASH</password>|" "$CFG_FILE"
-      
+
       echo "syncthing-gui-password: hash updated in config.xml"
     '';
   };

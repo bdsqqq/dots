@@ -1,5 +1,4 @@
-{ config, pkgs, ... }:
-{
+{ config, pkgs, ... }: {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
     home.file.".node-version".text = "22";
     programs.zsh.initContent = ''

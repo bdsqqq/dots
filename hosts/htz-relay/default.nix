@@ -1,23 +1,17 @@
-{ config
-, pkgs
-, lib
-, modulesPath
-, inputs
-, ...
-}:
+{ config, pkgs, lib, modulesPath, inputs, ... }:
 
 let
-  mbpPubKey = lib.removeSuffix "\n" (builtins.readFile ../../system/ssh-keys/mbp-m2.pub);
+  mbpPubKey =
+    lib.removeSuffix "\n" (builtins.readFile ../../system/ssh-keys/mbp-m2.pub);
   syncthing = import ../../modules/syncthing.nix { inherit lib; };
 in {
-  imports = (
-    [
-      ../../bundles/base.nix
-      ../../bundles/headless.nix
-      ../../bundles/dev.nix
-      ../../system/vector.nix
-    ]
-  ) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [ ./hardware-configuration.nix ];
+  imports = ([
+    ../../bundles/base.nix
+    ../../bundles/headless.nix
+    ../../bundles/dev.nix
+    ../../system/vector.nix
+  ]) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix)
+    [ ./hardware-configuration.nix ];
 
   networking.hostName = "htz-relay";
   networking.useDHCP = lib.mkDefault true;
@@ -50,7 +44,8 @@ in {
     enable = true;
     useRoutingFeatures = "client";
     extraUpFlags = [ "--ssh" "--accept-dns=false" "--shields-up=false" ];
-    authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key) config.sops.secrets.tailscale_auth_key.path;
+    authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key)
+      config.sops.secrets.tailscale_auth_key.path;
   };
 
   # copyparty file server
@@ -61,12 +56,15 @@ in {
     settings = {
       i = "0.0.0.0";
       p = [ 3923 ];
-      v = [ "/mnt/storage-01/commonplace:/commonplace:r" ]; # read-only for everyone (on tailscale)
+      v = [
+        "/mnt/storage-01/commonplace:/commonplace:r"
+      ]; # read-only for everyone (on tailscale)
       q = true; # quiet mode
     };
   };
 
-  systemd.services.copyparty.serviceConfig.BindPaths = [ "/mnt/storage-01/commonplace" ];
+  systemd.services.copyparty.serviceConfig.BindPaths =
+    [ "/mnt/storage-01/commonplace" ];
 
   # syncthing provided by headless bundle; declarative mesh settings live here
   services.syncthing = {
@@ -75,14 +73,12 @@ in {
     settings = {
       gui = {
         user = "bdsqqq";
-        password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
+        password =
+          "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
       };
       options = {
         urAccepted = -1;
-        listenAddress = [
-          "tcp://0.0.0.0:22000"
-          "quic://0.0.0.0:22000"
-        ];
+        listenAddress = [ "tcp://0.0.0.0:22000" "quic://0.0.0.0:22000" ];
         globalAnnounceEnabled = false;
         localAnnounceEnabled = false;
         relaysEnabled = false;
@@ -96,24 +92,26 @@ in {
       devices = syncthing.devicesFor [ "mbp-m2" "ipd" "iph16" "r56" ];
 
       folders = {
-        commonplace = syncthing.folderFor "commonplace" "/mnt/storage-01/commonplace" false [ "mbp-m2" "ipd" "iph16" "r56" ] {
-          rescanIntervalS = 3600;
-          versioning.params.cleanoutDays = "30";
-        };
+        commonplace =
+          syncthing.folderFor "commonplace" "/mnt/storage-01/commonplace"
+          false [ "mbp-m2" "ipd" "iph16" "r56" ] {
+            rescanIntervalS = 3600;
+            versioning.params.cleanoutDays = "30";
+          };
       };
     };
   };
 
-  systemd.tmpfiles.rules = [
-    "d /mnt/storage-01/commonplace 0700 bdsqqq users -"
-  ];
+  systemd.tmpfiles.rules =
+    [ "d /mnt/storage-01/commonplace 0700 bdsqqq users -" ];
 
   users.users.bdsqqq = {
     isNormalUser = true;
     extraGroups = [ "wheel" ];
     shell = pkgs.zsh;
     openssh.authorizedKeys.keys = [ mbpPubKey ];
-    hashedPassword = "$6$LeozgmV9I6N0QYNf$3BeytD3X/gFNzBJAeWYqFPqD7m9Qz4gn8vORyFtrJopplmZ/pgLZzcktymHLU9CVbR.SkFPg9MAbYNKWLzvaT0";
+    hashedPassword =
+      "$6$LeozgmV9I6N0QYNf$3BeytD3X/gFNzBJAeWYqFPqD7m9Qz4gn8vORyFtrJopplmZ/pgLZzcktymHLU9CVbR.SkFPg9MAbYNKWLzvaT0";
   };
 
   security.sudo = {
@@ -128,7 +126,13 @@ in {
     useGlobalPkgs = true;
     useUserPackages = true;
     backupFileExtension = "backup";
-    extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "headless"; torchBackend = "cpu"; };
+    extraSpecialArgs = {
+      inherit inputs;
+      isDarwin = false;
+      hostSystem = "x86_64-linux";
+      headMode = "headless";
+      torchBackend = "cpu";
+    };
     users.bdsqqq = {
       home.username = "bdsqqq";
       home.homeDirectory = "/home/bdsqqq";
@@ -145,12 +149,7 @@ in {
     device = "/dev/sda";
   };
 
-  environment.systemPackages = with pkgs; [
-    git
-    curl
-    htop
-    tree
-  ];
+  environment.systemPackages = with pkgs; [ git curl htop tree ];
 
   services.qemuGuest.enable = true;
 
@@ -159,6 +158,4 @@ in {
 
   system.stateVersion = "25.05";
 }
-
-
 

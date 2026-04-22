@@ -1,8 +1,4 @@
 { pkgs }:
 
-let
-  extensionSrc = ./extension;
-in
-{
-  inherit extensionSrc;
-}
+let extensionSrc = ./extension;
+in { inherit extensionSrc; }

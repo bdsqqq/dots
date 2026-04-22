@@ -1,6 +1,8 @@
 { lib, hostSystem ? null, ... }:
 
-if !(lib.hasInfix "linux" hostSystem) then {} else {
+if !(lib.hasInfix "linux" hostSystem) then
+  { }
+else {
   services.blueman.enable = true;
   hardware.bluetooth = {
     enable = true;
@@ -12,8 +14,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       };
     };
   };
-  
+
   boot.kernelModules = [ "hid_playstation" ];
 }
-
 

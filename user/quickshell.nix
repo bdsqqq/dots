@@ -3,16 +3,18 @@
 let
   isLinux = lib.hasInfix "linux" hostSystem;
   quickshellDir = "commonplace/01_files/nix/user/quickshell";
-in
-if !isLinux then {} else {
+in if !isLinux then
+  { }
+else {
   home-manager.users.bdsqqq = { config, lib, ... }: {
     home.packages = [ pkgs.quickshellWrapped ];
 
     # no-hop symlink: directly link to working tree for live-reload
     # why: mkOutOfStoreSymlink still creates a store hop; this doesn't.
-    home.activation.quickshellLiveReload = lib.hm.dag.entryAfter ["writeBoundary"] ''
-      ln -sfn "${config.home.homeDirectory}/${quickshellDir}" $HOME/.config/quickshell
-    '';
+    home.activation.quickshellLiveReload =
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        ln -sfn "${config.home.homeDirectory}/${quickshellDir}" $HOME/.config/quickshell
+      '';
 
     # enable sd-switch so home-manager restarts services on config change
     systemd.user.startServices = "sd-switch";
@@ -24,7 +26,8 @@ if !isLinux then {} else {
         After = [ "graphical-session.target" ];
         PartOf = [ "graphical-session.target" ];
         # restart when nix config changes (quickshell has native live-reload for QML files)
-        X-Restart-Triggers = [ "${config.home.homeDirectory}/${quickshellDir}" ];
+        X-Restart-Triggers =
+          [ "${config.home.homeDirectory}/${quickshellDir}" ];
       };
       Service = {
         Type = "simple";
@@ -32,9 +35,7 @@ if !isLinux then {} else {
         Restart = "on-failure";
         RestartSec = 2;
       };
-      Install = {
-        WantedBy = [ "graphical-session.target" ];
-      };
+      Install = { WantedBy = [ "graphical-session.target" ]; };
     };
   };
 }

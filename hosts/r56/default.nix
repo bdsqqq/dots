@@ -17,8 +17,7 @@ let
       runHook postInstall
     '';
   };
-in
-{
+in {
   _module.args.torchBackend = "cu121";
 
   stylix = {
@@ -53,9 +52,7 @@ in
       size = 24;
     };
 
-    opacity = {
-      terminal = 0.7;
-    };
+    opacity = { terminal = 0.7; };
 
   };
 
@@ -95,7 +92,8 @@ in
 
   # tailscale and ssh provided by base bundle; auth key for headless auth
   services.tailscale = {
-    authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key) config.sops.secrets.tailscale_auth_key.path;
+    authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key)
+      config.sops.secrets.tailscale_auth_key.path;
   };
 
   # syncthing provided by headless bundle; declarative mesh settings here
@@ -103,7 +101,8 @@ in
     settings = {
       gui = {
         user = "bdsqqq";
-        password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
+        password =
+          "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
       };
       options = {
         urAccepted = -1;
@@ -116,8 +115,19 @@ in
       devices = syncthing.devicesFor [ "mbp-m2" "htz-relay" "lgo-z2e" ];
 
       folders = {
-        commonplace = syncthing.folderFor "commonplace" "/home/bdsqqq" false [ "mbp-m2" "htz-relay" "lgo-z2e" ] {};
-        prism-instances = syncthing.folderFor "prism-instances" "/home/bdsqqq" false [ "mbp-m2" "lgo-z2e" ] { rescanIntervalS = 120; versioning = null; };
+        commonplace = syncthing.folderFor "commonplace" "/home/bdsqqq" false [
+          "mbp-m2"
+          "htz-relay"
+          "lgo-z2e"
+        ] { };
+        prism-instances =
+          syncthing.folderFor "prism-instances" "/home/bdsqqq" false [
+            "mbp-m2"
+            "lgo-z2e"
+          ] {
+            rescanIntervalS = 120;
+            versioning = null;
+          };
       };
     };
   };
@@ -138,9 +148,7 @@ in
     remotePlay.openFirewall = true;
     dedicatedServer.openFirewall = true;
     package = pkgs.steam.override {
-      extraEnv = {
-        STEAM_FORCE_DESKTOPUI_SCALING = "1.5";
-      };
+      extraEnv = { STEAM_FORCE_DESKTOPUI_SCALING = "1.5"; };
     };
   };
 
@@ -152,10 +160,14 @@ in
     useGlobalPkgs = true;
     useUserPackages = true;
     backupFileExtension = "backup";
-    extraSpecialArgs = { inherit inputs; isDarwin = false; hostSystem = "x86_64-linux"; headMode = "graphical"; torchBackend = "cu121"; };
-    sharedModules = [
-      inputs.vicinae.homeManagerModules.default
-    ];
+    extraSpecialArgs = {
+      inherit inputs;
+      isDarwin = false;
+      hostSystem = "x86_64-linux";
+      headMode = "graphical";
+      torchBackend = "cu121";
+    };
+    sharedModules = [ inputs.vicinae.homeManagerModules.default ];
     users.bdsqqq = {
       home.username = "bdsqqq";
       home.homeDirectory = "/home/bdsqqq";
@@ -211,12 +223,9 @@ in
 
   # binary caches (niri cache auto-enabled by niri-flake module)
   nix.settings = {
-    extra-substituters = [
-      "https://vicinae.cachix.org"
-    ];
-    extra-trusted-public-keys = [
-      "vicinae.cachix.org-1:1kDrfienkGHPYbkpNj1mWTr7Fm1+zcenzgTizIcI3oc="
-    ];
+    extra-substituters = [ "https://vicinae.cachix.org" ];
+    extra-trusted-public-keys =
+      [ "vicinae.cachix.org-1:1kDrfienkGHPYbkpNj1mWTr7Fm1+zcenzgTizIcI3oc=" ];
   };
 
   environment.systemPackages = with pkgs; [
@@ -256,24 +265,24 @@ in
     path = [ pkgs.gnused pkgs.coreutils ];
     script = ''
       set -euo pipefail
-      
+
       SECRET_FILE="/run/secrets/syncthing_gui_password_hash"
       if [ ! -f "$SECRET_FILE" ]; then
         echo "syncthing-gui-password: secret not found, skipping"
         exit 0
       fi
-      
+
       HASH="$(cat "$SECRET_FILE")"
       CFG_FILE="/home/bdsqqq/.config/syncthing/config.xml"
-      
+
       if [ ! -f "$CFG_FILE" ]; then
         echo "syncthing-gui-password: config.xml not found, skipping"
         exit 0
       fi
-      
+
       # update password hash in config.xml
       sed -i "s|<password>.*</password>|<password>$HASH</password>|" "$CFG_FILE"
-      
+
       echo "syncthing-gui-password: hash updated in config.xml"
     '';
   };

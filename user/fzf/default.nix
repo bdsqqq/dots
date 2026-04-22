@@ -2,21 +2,17 @@
 
 let
   awkScript = ./history-format.awk;
-  
-  historyWidget = builtins.replaceStrings
-    [ "@gawk@" "@awkScript@" ]
-    [ "${pkgs.gawk}/bin/gawk" "${awkScript}" ]
-    (builtins.readFile ./history-widget.zsh);
-in
-{
+
+  historyWidget = builtins.replaceStrings [ "@gawk@" "@awkScript@" ] [
+    "${pkgs.gawk}/bin/gawk"
+    "${awkScript}"
+  ] (builtins.readFile ./history-widget.zsh);
+in {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
     programs.fzf = {
       enable = true;
       defaultCommand = "rg --files --hidden --follow";
-      defaultOptions = [
-        "--height=40%"
-        "--layout=reverse"
-      ];
+      defaultOptions = [ "--height=40%" "--layout=reverse" ];
     };
 
     programs.zsh.initContent = ''

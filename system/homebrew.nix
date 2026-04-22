@@ -1,6 +1,8 @@
 { lib, hostSystem ? null, ... }:
 
-if !(lib.hasInfix "darwin" hostSystem) then {} else {
+if !(lib.hasInfix "darwin" hostSystem) then
+  { }
+else {
   homebrew = {
     enable = true;
 
@@ -40,5 +42,4 @@ if !(lib.hasInfix "darwin" hostSystem) then {} else {
     };
   };
 }
-
 

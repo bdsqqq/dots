@@ -2,7 +2,7 @@
 
 let
   toggleTheme = import ./scripts/toggle-theme.nix { inherit pkgs; };
-  
+
   # touchscreen gesture daemon for niri (niri lacks native touchscreen swipe gestures)
   # uses lisgd to translate edge swipes to niri actions
   lisgd-niri = pkgs.writeShellScriptBin "lisgd-niri" ''
@@ -17,11 +17,11 @@ let
       echo "lisgd-niri: no touchscreen device found" >&2
       exit 1
     fi
-    
+
     # find niri socket
     NIRI_SOCK=$(ls /run/user/$(id -u)/niri.*.sock 2>/dev/null | head -1)
     export NIRI_SOCKET="$NIRI_SOCK"
-    
+
     # 3-finger swipes anywhere on screen (natural scrolling style)
     # 1-finger edge swipes mirror phone navigation muscle memory
     # 1-finger top-right edge swipe down for control center
@@ -29,8 +29,12 @@ let
     exec ${pkgs.lisgd}/bin/lisgd -d "$TOUCH_DEV" \
       -t 50 \
       -m 1500 \
-      -g '1,UD,TR,*,R,${inputs.quickshell.packages.${hostSystem}.default}/bin/qs ipc call control-center toggleControlCenter' \
-      -g '1,UD,T,*,R,${inputs.quickshell.packages.${hostSystem}.default}/bin/qs ipc call bar toggle' \
+      -g '1,UD,TR,*,R,${
+        inputs.quickshell.packages.${hostSystem}.default
+      }/bin/qs ipc call control-center toggleControlCenter' \
+      -g '1,UD,T,*,R,${
+        inputs.quickshell.packages.${hostSystem}.default
+      }/bin/qs ipc call bar toggle' \
       -g '1,DU,L,*,R,niri msg action focus-window-or-workspace-down' \
       -g '1,UD,L,*,R,niri msg action focus-window-or-workspace-up' \
       -g '1,DU,R,*,R,niri msg action focus-window-or-workspace-down' \
@@ -43,16 +47,30 @@ let
       -g '3,RL,*,*,R,niri msg action move-column-left' \
       -g '3,LR,*,*,R,niri msg action move-column-right' \
   '';
-in
 
-if !(lib.hasInfix "linux" hostSystem) then {} else {
+in if !(lib.hasInfix "linux" hostSystem) then
+  { }
+else {
   programs.niri = {
     settings = {
       # Startup applications - same as hyprland
       spawn-at-startup = [
-        { argv = [ "${pkgs.swaybg}/bin/swaybg" "-i" "/etc/wallpaper.jpg" "-m" "fill" ]; }
+        {
+          argv = [
+            "${pkgs.swaybg}/bin/swaybg"
+            "-i"
+            "/etc/wallpaper.jpg"
+            "-m"
+            "fill"
+          ];
+        }
         # quickshell and lisgd-niri run as systemd user services for auto-restart on config change
-        { argv = [ "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae" "server" ]; }
+        {
+          argv = [
+            "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae"
+            "server"
+          ];
+        }
         { argv = [ "${pkgs.xwayland-satellite}/bin/xwayland-satellite" ":0" ]; }
       ];
 
@@ -96,14 +114,14 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       # Layout - niri's scrolling layout with gaps matching hyprland
       layout = {
         gaps = 8;
-        
+
         # No borders (matching hyprland border_size = 0)
         border.enable = false;
         focus-ring.enable = false;
-        
+
         # Default column width
         default-column-width.proportion = 0.5;
-        
+
         # Preset column widths for Mod+R cycling
         preset-column-widths = [
           { proportion = 1.0 / 3.0; }
@@ -115,56 +133,52 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
 
       # Window decorations
       prefer-no-csd = true;
-      
+
       # Window rules for rounding (matching hyprland rounding = 8)
-      window-rules = [
-        {
-          geometry-corner-radius = {
-            top-left = 8.0;
-            top-right = 8.0;
-            bottom-right = 8.0;
-            bottom-left = 8.0;
-          };
-          clip-to-geometry = true;
-        }
-      ];
-      
+      window-rules = [{
+        geometry-corner-radius = {
+          top-left = 8.0;
+          top-right = 8.0;
+          bottom-right = 8.0;
+          bottom-left = 8.0;
+        };
+        clip-to-geometry = true;
+      }];
+
       # Layer rules - place swaybg in backdrop so it doesn't move with workspaces
-      layer-rules = [
-        {
-          matches = [{ namespace = "^wallpaper$"; }];
-          place-within-backdrop = true;
-        }
-      ];
-      
+      layer-rules = [{
+        matches = [{ namespace = "^wallpaper$"; }];
+        place-within-backdrop = true;
+      }];
+
       # Make layout background transparent so backdrop wallpaper shows through
       layout.background-color = "transparent";
 
       # Animations - matching hyprland's easeOutQuint feel (using ease-out-expo, closest available)
       animations = {
         slowdown = 1.0;
-        
+
         window-open.kind = {
           easing = {
             duration-ms = 150;
             curve = "ease-out-expo";
           };
         };
-        
+
         window-close.kind = {
           easing = {
             duration-ms = 150;
             curve = "ease-out-expo";
           };
         };
-        
+
         horizontal-view-movement.kind = {
           easing = {
             duration-ms = 150;
             curve = "ease-out-expo";
           };
         };
-        
+
         workspace-switch.kind = {
           easing = {
             duration-ms = 200;
@@ -178,14 +192,18 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         # Core actions
         "Mod+Q".action = close-window;
         "Mod+Return".action = spawn "${pkgs.ghostty}/bin/ghostty";
-        "Mod+Space".action = spawn "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae" "toggle";
+        "Mod+Space".action =
+          spawn "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae"
+          "toggle";
         "Mod+T".action = spawn "${toggleTheme}/bin/toggle-theme";
-        "Mod+Period".action = spawn "${inputs.quickshell.packages.${hostSystem}.default}/bin/qs" "ipc" "call" "bar" "toggle";
-        
+        "Mod+Period".action =
+          spawn "${inputs.quickshell.packages.${hostSystem}.default}/bin/qs"
+          "ipc" "call" "bar" "toggle";
+
         # Window state
         "Mod+V".action = toggle-window-floating;
         "Mod+F".action = fullscreen-window;
-        
+
         # Focus navigation (vim keys and arrows)
         "Mod+Left".action = focus-column-left;
         "Mod+Right".action = focus-column-right;
@@ -195,7 +213,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "Mod+L".action = focus-column-right;
         "Mod+K".action = focus-window-or-workspace-up;
         "Mod+J".action = focus-window-or-workspace-down;
-        
+
         # Move windows
         "Mod+Shift+Left".action = move-column-left;
         "Mod+Shift+Right".action = move-column-right;
@@ -205,12 +223,12 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "Mod+Shift+L".action = move-column-right;
         "Mod+Shift+K".action = move-window-up-or-to-workspace-up;
         "Mod+Shift+J".action = move-window-down-or-to-workspace-down;
-        
+
         # Column width presets
         "Mod+R".action = switch-preset-column-width;
         "Mod+Minus".action = set-column-width "-10%";
         "Mod+Equal".action = set-column-width "+10%";
-        
+
         # Workspaces
         "Mod+1".action = focus-workspace 1;
         "Mod+2".action = focus-workspace 2;
@@ -222,15 +240,18 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "Mod+8".action = focus-workspace 8;
         "Mod+9".action = focus-workspace 9;
         "Mod+0".action = focus-workspace 10;
-        
+
         # Move to workspace (niri only supports relative movement, not absolute indices)
         # Use Mod+Shift+Up/Down/K/J for moving windows between workspaces
-        
+
         # Volume controls
-        "XF86AudioRaiseVolume".action = spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%+";
-        "XF86AudioLowerVolume".action = spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%-";
-        "XF86AudioMute".action = spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SINK@" "toggle";
-        
+        "XF86AudioRaiseVolume".action =
+          spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%+";
+        "XF86AudioLowerVolume".action =
+          spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%-";
+        "XF86AudioMute".action =
+          spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SINK@" "toggle";
+
         # Monitor focus (for multi-monitor setups)
         "Mod+Ctrl+Left".action = focus-monitor-left;
         "Mod+Ctrl+Right".action = focus-monitor-right;
@@ -240,7 +261,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "Mod+Ctrl+L".action = focus-monitor-right;
         "Mod+Ctrl+K".action = focus-monitor-up;
         "Mod+Ctrl+J".action = focus-monitor-down;
-        
+
         # Move window to monitor
         "Mod+Shift+Ctrl+Left".action = move-column-to-monitor-left;
         "Mod+Shift+Ctrl+Right".action = move-column-to-monitor-right;
@@ -250,29 +271,35 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
         "Mod+Shift+Ctrl+L".action = move-column-to-monitor-right;
         "Mod+Shift+Ctrl+K".action = move-column-to-monitor-up;
         "Mod+Shift+Ctrl+J".action = move-column-to-monitor-down;
-        
+
         # Workspace reordering (Hyper = Mod+Ctrl+Alt+Shift)
         "Mod+Ctrl+Alt+Shift+Up".action = move-workspace-up;
         "Mod+Ctrl+Alt+Shift+Down".action = move-workspace-down;
         "Mod+Ctrl+Alt+Shift+K".action = move-workspace-up;
         "Mod+Ctrl+Alt+Shift+J".action = move-workspace-down;
-        
+
         # Move workspace to monitor (Hyper + h/l)
         "Mod+Ctrl+Alt+Shift+Left".action = move-workspace-to-monitor-left;
         "Mod+Ctrl+Alt+Shift+Right".action = move-workspace-to-monitor-right;
         "Mod+Ctrl+Alt+Shift+H".action = move-workspace-to-monitor-left;
         "Mod+Ctrl+Alt+Shift+L".action = move-workspace-to-monitor-right;
-        
+
         # Help overlay
         "Mod+Shift+Slash".action = show-hotkey-overlay;
-        
+
         # Mouse bindings
-        "Mod+WheelScrollDown" = { cooldown-ms = 150; action = focus-workspace-down; };
-        "Mod+WheelScrollUp" = { cooldown-ms = 150; action = focus-workspace-up; };
+        "Mod+WheelScrollDown" = {
+          cooldown-ms = 150;
+          action = focus-workspace-down;
+        };
+        "Mod+WheelScrollUp" = {
+          cooldown-ms = 150;
+          action = focus-workspace-up;
+        };
       };
     };
   };
-  
+
   home.packages = with pkgs; [
     swaybg
     wl-clipboard
@@ -282,7 +309,7 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
     lisgd
     lisgd-niri
   ];
-  
+
   # systemd user service for lisgd - ensures proper group membership (input)
   # niri's spawn-at-startup doesn't inherit login session groups
   systemd.user.services.lisgd-niri = {
@@ -299,11 +326,9 @@ if !(lib.hasInfix "linux" hostSystem) then {} else {
       # note: user already in "input" group via extraGroups in host config
       # SupplementaryGroups doesn't work in user services (can't change group creds)
     };
-    Install = {
-      WantedBy = [ "graphical-session.target" ];
-    };
+    Install = { WantedBy = [ "graphical-session.target" ]; };
   };
-  
+
   dconf.enable = true;
   dconf.settings = {
     "org/gnome/desktop/interface" = {

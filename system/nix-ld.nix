@@ -1,5 +1,7 @@
 { lib, pkgs, hostSystem ? null, ... }:
-if !(lib.hasInfix "linux" hostSystem) then {} else {
+if !(lib.hasInfix "linux" hostSystem) then
+  { }
+else {
   programs.appimage = {
     enable = true;
     binfmt = true;

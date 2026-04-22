@@ -9,16 +9,16 @@
 # The fix: Disable dynamic backend loading and link CUDA statically.
 # This is simpler and more reliable on NixOS.
 self: super:
-let
-  lib = super.lib;
+let lib = super.lib;
 in {
   whisper-cpp = super.whisper-cpp.overrideAttrs (old: {
     # Disable dynamic backend loading - link cuda statically instead
-    cmakeFlags = (builtins.filter (f: !(lib.hasPrefix "-DGGML_BACKEND_DL" f) && 
-                                       !(lib.hasPrefix "-DGGML_CPU_ALL_VARIANTS" f)) 
-                  (old.cmakeFlags or [])) ++ [
-      (lib.cmakeBool "GGML_BACKEND_DL" false)
-      (lib.cmakeBool "GGML_CPU_ALL_VARIANTS" false)
-    ];
+    cmakeFlags = (builtins.filter (f:
+      !(lib.hasPrefix "-DGGML_BACKEND_DL" f)
+      && !(lib.hasPrefix "-DGGML_CPU_ALL_VARIANTS" f)) (old.cmakeFlags or [ ]))
+      ++ [
+        (lib.cmakeBool "GGML_BACKEND_DL" false)
+        (lib.cmakeBool "GGML_CPU_ALL_VARIANTS" false)
+      ];
   });
 }

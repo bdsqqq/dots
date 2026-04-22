@@ -1,21 +1,19 @@
 { lib, inputs, hostSystem ? null, ... }:
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
-  
-  sshKeyPath = if isDarwin 
-    then "/Users/bdsqqq/.ssh/id_ed25519"
-    else "/home/bdsqqq/.ssh/id_ed25519";
-  
-  homeDir = if isDarwin 
-    then "/Users/bdsqqq" 
-    else "/home/bdsqqq";
+
+  sshKeyPath = if isDarwin then
+    "/Users/bdsqqq/.ssh/id_ed25519"
+  else
+    "/home/bdsqqq/.ssh/id_ed25519";
+
+  homeDir = if isDarwin then "/Users/bdsqqq" else "/home/bdsqqq";
 
   bdsPiConfigFile = inputs.self + "/user/agents/bds-pi.json";
-in
-{
+in {
   sops = {
     age.sshKeyPaths = [ sshKeyPath ];
-    
+
     defaultSopsFile = inputs.self + "/secrets.yaml";
     secrets = {
       anthropic_api_key = { owner = "bdsqqq"; };
@@ -41,7 +39,7 @@ in
         mode = "0400";
         path = "${homeDir}/.axiom.toml";
       };
-      
+
       cookies = {
         sopsFile = inputs.self + "/cookies.txt";
         format = "binary";

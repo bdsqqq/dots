@@ -24,10 +24,4 @@ let
       platforms = lib.platforms.all;
     };
   };
-in
-{
-  fonts.packages = [
-    berkeleyMono
-    pkgs.nerd-fonts.jetbrains-mono
-  ];
-}
+in { fonts.packages = [ berkeleyMono pkgs.nerd-fonts.jetbrains-mono ]; }
