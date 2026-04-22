@@ -3,7 +3,7 @@
   home-manager.users.bdsqqq = { pkgs, ... }: {
     home.packages = with pkgs; [
       nil               # LSP
-      nixfmt-classic    # formatter
+      nixfmt            # formatter
       statix            # linter
     ];
   };
