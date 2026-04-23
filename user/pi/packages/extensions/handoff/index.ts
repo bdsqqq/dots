@@ -1,14 +1,9 @@
 /**
- * handoff extension — replace compaction with LLM-driven context transfer.
+ * routes three context-shaping flows through one configurable summary model:
+ * handoff to a new session, in-place compaction, and /tree branch summaries.
  *
- * at ~85% context usage, generates a focused handoff prompt via LLM,
- * stages `/handoff` in the editor. user presses Enter → new session
- * with curated context, agent starts working immediately.
- *
- * manual usage anytime:
- *   /handoff implement this for teams
- *   /handoff execute phase one of the plan
- *   /handoff check other places that need this fix
+ * keeping them together avoids prompt drift between features that serialize the
+ * same session state but need different output shapes.
  */
 
 import {
@@ -38,65 +33,55 @@ import {
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
 import { registerMentionSource } from "@bds_pi/mentions";
-import { resolvePrompt } from "@bds_pi/pi-spawn";
 import { createHandoffMentionSource } from "./handoff-mention-source";
 
-type HandoffExtConfig = {
-  threshold: number;
-  model: { provider: string; id: string };
-  promptFile: string;
-  promptString: string;
+type SummaryPromptSections = {
+  [key: string]: string;
 };
 
-const DEFAULT_HANDOFF_PROMPT = String.raw`
-# extraction-prompt
+interface HandoffExtConfig {
+  threshold: number;
+  model: { provider: string; id: string };
+  prompt: SummaryPromptSections;
+}
 
-Extract relevant context from the conversation above for continuing this work. Write from my perspective (first person: "I did...", "I told you...").
+const DEFAULT_SUMMARY_PROMPT_SECTIONS: SummaryPromptSections = {
+  "shared-principles": String.raw`you are compressing prior work for later continuation. read the serialized conversation as historical record, not as a live chat to continue.
 
-Consider what would be useful to know based on my request below. Questions that might be relevant:
-- What did I just do or implement?
-- What instructions did I already give you which are still relevant (e.g. follow patterns in the codebase)?
-- What files did I already tell you that's important or that I am working on (and should continue working on)?
-- Did I provide a plan or spec that should be included?
-- What did I already tell you that's important (certain libraries, patterns, constraints, preferences)?
-- What important technical details did I discover (APIs, methods, patterns)?
-- What caveats, limitations, or open questions did I find?
+write from first person perspective ("i did...", "i learned...", "the user asked..."). extract only context that will help later work. prioritize:
+- active goals, sub-goals, and success criteria
+- instructions, constraints, preferences, and plans that still apply
+- files, directories, commands, apis, patterns, and architectural facts that matter
+- what i changed, verified, disproved, ruled out, or learned
+- decisions, tradeoffs, blockers, caveats, open questions, and likely next moves
 
-Extract what matters for the specific request below. Don't answer questions that aren't relevant. Pick an appropriate length based on the complexity of the request.
+prefer durable context over chronology. be concrete. avoid filler and variable-level trivia unless it is required to continue. do not invent files or facts.`,
+  "handoff-intent":
+    "this summary is for a successor session. assume the next agent will not see this session directly unless they explicitly read it again. capture what they need to resume with minimal archaeology.",
+  "handoff-format": String.raw`return context by calling create_handoff_context.
+- relevantInformation: plain text bullet list only. no markdown headers, no bold/italic, no code fences. use workspace-relative paths.
+- relevantFiles: array of at most 10 workspace-relative file or directory paths, ordered by importance.`,
+  "tool-description":
+    "extract relevant information from the conversation and select relevant files for another agent to continue the work. use this tool to identify the most important context and files needed.",
+  "field-relevant-information":
+    'extract relevant context from the conversation for a successor session. write from first person perspective ("i did...", "i told you..."). return plain text bullet items only.',
+  "field-relevant-files": String.raw`an array of workspace-relative file or directory paths that are relevant to accomplishing the goal.
 
-Focus on capabilities and behavior, not file-by-file changes. Avoid excessive implementation details (variable names, storage keys, constants) unless critical.
-
-Format: Plain text with bullets. No markdown headers, no bold/italic, no code fences. Use workspace-relative paths for files.
-
-My request:
-
-# tool-description
-
-Extract relevant information from the conversation and select relevant files for another agent to continue the work. Use this tool to identify the most important context and files needed.
-
-# field-relevant-information
-
-Extract relevant context from the conversation. Write from first person perspective ("I did...", "I told you...").
-
-Consider what's useful based on the user's request. Questions that might be relevant: What did I just do or implement? What instructions did I already give you which are still relevant (e.g. follow patterns in the codebase)? Did I provide a plan or spec that should be included? What did I already tell you that's important (certain libraries, patterns, constraints, preferences)? What important technical details did I discover (APIs, methods, patterns)? What caveats, limitations, or open questions did I find? What files did I tell you to edit that I should continue working on?
-
-Extract what matters for the specific request. Don't answer questions that aren't relevant. Pick an appropriate length based on the complexity of the request.
-
-Focus on capabilities and behavior, not file-by-file changes. Avoid excessive implementation details (variable names, storage keys, constants) unless critical.
-
-Format: Plain text with bullets. No markdown headers, no bold/italic, no code fences. Use workspace-relative paths.
-
-# field-relevant-files
-
-An array of file or directory paths (workspace-relative) that are relevant to accomplishing the goal.
-
-Rules:
-- Maximum 10 files. Only include the most critical files needed for the task.
-- You can include directories if multiple files from that directory are needed.
-- Prioritize by importance and relevance. Put the most important files first.
-- Return workspace-relative paths (e.g., "user/pi/extensions/handoff.ts").
-- Do not use absolute paths or invent files.
-`;
+rules:
+- maximum 10 files. only include the most critical files needed for the task.
+- you can include directories if multiple files from that directory are needed.
+- prioritize by importance and relevance. put the most important files first.
+- return workspace-relative paths (e.g., "user/pi/extensions/handoff.ts").
+- do not use absolute paths or invent files.`,
+  "compaction-intent":
+    "this summary is for in-place compaction inside the same session. preserve the state i will need after older turns are dropped. emphasize active work, still-relevant discoveries, and what should stay top-of-mind.",
+  "compaction-format":
+    "output plain text bullet list only. no markdown headers, no bold/italic, no code fences. keep it compact but not skeletal.",
+  "tree-intent":
+    "this summary is for an abandoned branch in /tree. i am returning to another point in the same session. capture what the current branch should remember from this side-quest: what i tried, what worked or failed, and what changed my understanding.",
+  "tree-format":
+    "output plain text bullet list only. no markdown headers, no bold/italic, no code fences. optimize for quick reorientation after the branch switch.",
+};
 
 const CONFIG_DEFAULTS: HandoffExtConfig = {
   threshold: 0.85,
@@ -104,8 +89,7 @@ const CONFIG_DEFAULTS: HandoffExtConfig = {
     provider: "openrouter",
     id: "google/gemini-3-flash-preview",
   },
-  promptFile: "",
-  promptString: DEFAULT_HANDOFF_PROMPT,
+  prompt: DEFAULT_SUMMARY_PROMPT_SECTIONS,
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -124,13 +108,15 @@ function isHandoffConfig(
     return false;
   }
 
+  if (!isPlainObject(value.prompt)) {
+    return false;
+  }
+
   return (
     typeof value.model.provider === "string" &&
     value.model.provider.trim().length > 0 &&
     typeof value.model.id === "string" &&
-    value.model.id.trim().length > 0 &&
-    typeof value.promptFile === "string" &&
-    typeof value.promptString === "string"
+    value.model.id.trim().length > 0
   );
 }
 
@@ -139,23 +125,140 @@ const HANDOFF_CONFIG_SCHEMA: ExtensionConfigSchema<HandoffExtConfig> = {
 };
 
 const MAX_RELEVANT_FILES = 10;
+const COMPACTION_SUMMARY_PREFIX =
+  "The conversation history before this point was compacted into the following summary:\n\n<summary>\n";
+const COMPACTION_SUMMARY_SUFFIX = "\n</summary>";
+const BRANCH_SUMMARY_PREFIX =
+  "The following is a summary of a branch that this conversation came back from:\n\n<summary>\n";
+const BRANCH_SUMMARY_SUFFIX = "\n</summary>";
 
-function parsePromptSections(content: string): Record<string, string> {
-  const sections: Record<string, string> = {};
-  const parts = content.split("\n# ");
-  for (const part of parts) {
-    const nl = part.indexOf("\n");
-    if (nl === -1) continue;
-    const name = part.slice(0, nl).trim();
-    const body = part.slice(nl + 1).trim();
-    if (name) sections[name] = body;
-  }
-  return sections;
+type FileOps = {
+  read: Set<string>;
+  edited: Set<string>;
+  written: Set<string>;
+};
+
+interface SummaryDetails {
+  readFiles: string[];
+  modifiedFiles: string[];
 }
 
 interface HandoffExtraction {
   relevantInformation: string;
   relevantFiles: string[];
+}
+
+function parsePromptSections(content: string): Record<string, string> {
+  const trimmed = content.trim();
+  if (!trimmed) return {};
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (error) {
+    throw new Error(
+      `handoff prompt config must be a json object: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  if (!isPlainObject(parsed)) {
+    throw new Error("handoff prompt config must be a json object");
+  }
+
+  return Object.fromEntries(
+    Object.entries(parsed)
+      .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+      .map(([key, value]) => [key.trim(), value.trim()]),
+  );
+}
+
+function createFileOps(): FileOps {
+  return { read: new Set(), edited: new Set(), written: new Set() };
+}
+
+function addPathValues(target: Set<string>, values: unknown): void {
+  if (!values) return;
+  if (Array.isArray(values) || values instanceof Set) {
+    for (const value of values) {
+      if (typeof value === "string" && value.trim()) target.add(value);
+    }
+  }
+}
+
+function cloneFileOps(fileOps: Partial<FileOps> | undefined): FileOps {
+  const next = createFileOps();
+  if (!fileOps) return next;
+  addPathValues(next.read, fileOps.read);
+  addPathValues(next.edited, fileOps.edited);
+  addPathValues(next.written, fileOps.written);
+  return next;
+}
+
+function addSummaryDetailsToFileOps(fileOps: FileOps, details: unknown): void {
+  if (!isPlainObject(details)) return;
+  addPathValues(fileOps.read, details.readFiles);
+  addPathValues(fileOps.edited, details.modifiedFiles);
+  addPathValues(fileOps.written, details.modifiedFiles);
+}
+
+function addSummaryEntryDetails(fileOps: FileOps, entries: SessionEntry[]): void {
+  for (const entry of entries) {
+    if (
+      entry.type === "compaction" ||
+      entry.type === "branch_summary"
+    ) {
+      addSummaryDetailsToFileOps(fileOps, entry.details);
+    }
+  }
+}
+
+function extractMessageFileOps(fileOps: FileOps, message: SessionEntry["message"]): void {
+  if (message.role !== "assistant" || !Array.isArray(message.content)) return;
+
+  for (const block of message.content) {
+    if (typeof block !== "object" || block === null || block.type !== "toolCall") {
+      continue;
+    }
+
+    const args = block.arguments as Record<string, unknown> | undefined;
+    const path = typeof args?.path === "string" ? args.path : undefined;
+    if (!path) continue;
+
+    switch (block.name) {
+      case "read":
+        fileOps.read.add(path);
+        break;
+      case "edit":
+        fileOps.edited.add(path);
+        break;
+      case "write":
+        fileOps.written.add(path);
+        break;
+    }
+  }
+}
+
+function computeFileLists(fileOps: FileOps): SummaryDetails {
+  const modified = new Set([...fileOps.edited, ...fileOps.written]);
+  return {
+    readFiles: [...fileOps.read].filter((path) => !modified.has(path)).sort(),
+    modifiedFiles: [...modified].sort(),
+  };
+}
+
+function formatFileSections({ readFiles, modifiedFiles }: SummaryDetails): string {
+  const parts: string[] = [];
+  if (readFiles.length > 0) {
+    parts.push(`<read-files>\n${readFiles.join("\n")}\n</read-files>`);
+  }
+  if (modifiedFiles.length > 0) {
+    parts.push(`<modified-files>\n${modifiedFiles.join("\n")}\n</modified-files>`);
+  }
+  return parts.length > 0 ? `\n\n${parts.join("\n\n")}` : "";
+}
+
+function appendFileSections(summary: string, details: SummaryDetails): string {
+  return `${summary.trim()}${formatFileSections(details)}`.trim();
 }
 
 function extractToolCallArgs(response: {
@@ -176,6 +279,139 @@ function extractToolCallArgs(response: {
       : []
     ).slice(0, MAX_RELEVANT_FILES) as string[],
   };
+}
+
+function extractTextContent(response: {
+  content: Array<{ type: string; text?: string }>;
+}): string {
+  return response.content
+    .filter(
+      (block): block is { type: "text"; text: string } =>
+        block.type === "text" && typeof block.text === "string",
+    )
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+}
+
+type SummaryAction = "handoff" | "compaction" | "tree";
+
+function composeActionPrompt(
+  sections: Record<string, string>,
+  action: SummaryAction,
+  conversationText: string,
+  options: {
+    goal?: string;
+    previousSummary?: string;
+    customInstructions?: string;
+    replaceInstructions?: boolean;
+  } = {},
+): string {
+  const parts: string[] = [];
+
+  if (options.replaceInstructions && options.customInstructions?.trim()) {
+    parts.push(options.customInstructions.trim());
+  } else {
+    const shared = sections["shared-principles"]?.trim();
+    const intent = sections[`${action}-intent`]?.trim();
+    const format = sections[`${action}-format`]?.trim();
+
+    if (shared) parts.push(shared);
+    if (intent) parts.push(intent);
+    if (format) parts.push(format);
+    if (options.customInstructions?.trim()) {
+      parts.push(`additional focus instructions:\n${options.customInstructions.trim()}`);
+    }
+  }
+
+  if (options.goal?.trim()) {
+    parts.push(`current goal:\n${options.goal.trim()}`);
+  }
+
+  if (options.previousSummary?.trim()) {
+    parts.push(
+      `previous summary:\n<summary>\n${options.previousSummary.trim()}\n</summary>`,
+    );
+  }
+
+  parts.push(`<conversation>\n${conversationText}\n</conversation>`);
+  return parts.join("\n\n");
+}
+
+function toTimestamp(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return Date.now();
+}
+
+function sessionEntriesToSummaryMessages(entries: SessionEntry[]): Message[] {
+  const messages: Message[] = [];
+
+  for (const entry of entries) {
+    switch (entry.type) {
+      case "message":
+        if (entry.message.role !== "toolResult") {
+          messages.push(entry.message);
+        }
+        break;
+      case "custom_message":
+        messages.push({
+          role: "user",
+          content:
+            typeof entry.content === "string"
+              ? [{ type: "text", text: entry.content }]
+              : entry.content,
+          timestamp: toTimestamp(entry.timestamp),
+        });
+        break;
+      case "branch_summary":
+        messages.push({
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text:
+                BRANCH_SUMMARY_PREFIX +
+                entry.summary +
+                BRANCH_SUMMARY_SUFFIX,
+            },
+          ],
+          timestamp: toTimestamp(entry.timestamp),
+        });
+        break;
+      case "compaction":
+        messages.push({
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text:
+                COMPACTION_SUMMARY_PREFIX +
+                entry.summary +
+                COMPACTION_SUMMARY_SUFFIX,
+            },
+          ],
+          timestamp: toTimestamp(entry.timestamp),
+        });
+        break;
+    }
+  }
+
+  return messages;
+}
+
+function collectTreeSummaryDetails(entries: SessionEntry[]): SummaryDetails {
+  const fileOps = createFileOps();
+  addSummaryEntryDetails(fileOps, entries);
+  for (const entry of entries) {
+    if (entry.type === "message") {
+      extractMessageFileOps(fileOps, entry.message);
+    }
+  }
+  return computeFileLists(fileOps);
 }
 
 function assembleHandoffPrompt(
@@ -208,13 +444,11 @@ const PROVENANCE_ELLIPSIS = "…";
 interface HandoffExtensionDeps {
   getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
   registerMentionSource: typeof registerMentionSource;
-  resolvePrompt: typeof resolvePrompt;
 }
 
 const DEFAULT_DEPS: HandoffExtensionDeps = {
   getEnabledExtensionConfig,
   registerMentionSource,
-  resolvePrompt,
 };
 
 function getParentDescription(parentPath: string, maxWidth: number): string {
@@ -287,23 +521,21 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
 
     deps.registerMentionSource(createHandoffMentionSource());
 
-    const handoffSections = parsePromptSections(
-      deps.resolvePrompt(cfg.promptString, cfg.promptFile),
-    );
+    const promptSections: SummaryPromptSections = cfg.prompt;
 
     const HANDOFF_TOOL: Tool = {
       name: "create_handoff_context",
       description:
-        handoffSections["tool-description"] || "Extract context for handoff",
+        promptSections["tool-description"] || "Extract context for handoff",
       parameters: Type.Object({
         relevantInformation: Type.String({
           description:
-            handoffSections["field-relevant-information"] ||
+            promptSections["field-relevant-information"] ||
             "Extract relevant context",
         }),
         relevantFiles: Type.Array(Type.String(), {
           description:
-            handoffSections["field-relevant-files"] || "Relevant file paths",
+            promptSections["field-relevant-files"] || "Relevant file paths",
         }),
       }),
     };
@@ -312,8 +544,9 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       conversationText: string,
       goal: string,
     ): string {
-      const body = handoffSections["extraction-prompt"] ?? "";
-      return `${conversationText}\n\n${body}\n${goal}\n\nUse the create_handoff_context tool to extract relevant information and files.`;
+      return `${composeActionPrompt(promptSections, "handoff", conversationText, {
+        goal,
+      })}\n\nUse the create_handoff_context tool to extract relevant information and files.`;
     }
 
     let storedHandoffPrompt: string | null = null;
@@ -321,14 +554,61 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
     let parentSessionFile: string | undefined;
     let generating = false;
 
-    /** resolve the dedicated handoff model, fall back to ctx.model */
-    function getHandoffModel(ctx: {
+    function getSummaryModel(ctx: {
       modelRegistry: { find(p: string, id: string): Model<Api> | undefined };
       model: Model<Api> | undefined;
     }): Model<Api> | undefined {
       return (
         ctx.modelRegistry.find(cfg.model.provider, cfg.model.id) ?? ctx.model
       );
+    }
+
+    async function getSummaryAuth(
+      ctx: { modelRegistry: any },
+      summaryModel: Model<Api>,
+    ): Promise<{ apiKey?: string; headers?: Record<string, string> }> {
+      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(summaryModel);
+      if (!auth.ok) {
+        throw new Error(auth.error);
+      }
+      if (!auth.apiKey && !auth.headers) {
+        throw new Error("missing auth for summary model");
+      }
+      return { apiKey: auth.apiKey, headers: auth.headers };
+    }
+
+    async function generatePlainSummary(
+      ctx: { modelRegistry: any },
+      summaryModel: Model<Api>,
+      prompt: string,
+      signal?: AbortSignal,
+    ): Promise<string | null> {
+      const auth = await getSummaryAuth(ctx, summaryModel);
+      const response = await complete(
+        summaryModel,
+        {
+          messages: [
+            {
+              role: "user",
+              content: [{ type: "text", text: prompt }],
+              timestamp: Date.now(),
+            },
+          ],
+        },
+        {
+          apiKey: auth.apiKey,
+          headers: auth.headers,
+          signal,
+        },
+      );
+
+      if (response.stopReason === "aborted") return null;
+      if (response.stopReason === "error") {
+        throw new Error(response.errorMessage ?? "API request failed");
+      }
+
+      const summary = extractTextContent(response);
+      return summary || null;
     }
 
     async function generateHandoffPrompt(
@@ -350,14 +630,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       const llmMessages = convertToLlm(messages);
       const conversationText = serializeConversation(llmMessages);
       const sessionId = ctx.sessionManager.getSessionId();
-
-      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(handoffModel);
-      if (!auth.ok) {
-        throw new Error(auth.error);
-      }
-      if (!auth.apiKey && !auth.headers) {
-        throw new Error("missing auth for handoff model");
-      }
+      const auth = await getSummaryAuth(ctx, handoffModel);
       const userMessage: Message = {
         role: "user",
         content: [
@@ -389,7 +662,6 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       return assembleHandoffPrompt(sessionId, extraction, goal);
     }
 
-    /** switch to a new session and stage the handoff prompt */
     async function executeHandoff(
       prompt: string,
       parent: string | undefined,
@@ -421,31 +693,108 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       if (switchResult.cancelled) return false;
 
       if (!stagedInReplacementSession) {
-        // pre-0.69 pi ignores withSession, but the old command ctx still stages editor text.
+        // older pi builds ignore `withSession`; stage on the current ctx so
+        // the user can still review the generated prompt before switching.
         stagePrompt(ctx);
       }
       return true;
     }
 
-    // --- provenance: show "handed off from" when session has a parent ---
     pi.on("session_start", async (_event, ctx) => {
       const parentPath = ctx.sessionManager.getHeader()?.parentSession;
       if (parentPath) showProvenance(ctx, parentPath);
     });
 
-    // --- always cancel compaction. we handoff instead. ---
-    pi.on("session_before_compact", async (_event, _ctx) => {
-      return { cancel: true };
+    pi.on("session_before_compact", async (event, ctx) => {
+      const summaryModel = getSummaryModel(ctx);
+      if (!summaryModel) return;
+
+      const conversationText = serializeConversation(
+        convertToLlm([
+          ...event.preparation.messagesToSummarize,
+          ...event.preparation.turnPrefixMessages,
+        ]),
+      );
+      const fileOps = cloneFileOps(event.preparation.fileOps);
+      addSummaryEntryDetails(fileOps, event.branchEntries);
+      const nextDetails = computeFileLists(fileOps);
+
+      try {
+        const summary = await generatePlainSummary(
+          ctx,
+          summaryModel,
+          composeActionPrompt(promptSections, "compaction", conversationText, {
+            previousSummary: event.preparation.previousSummary,
+            customInstructions: event.customInstructions,
+          }),
+          event.signal,
+        );
+        if (!summary) return;
+
+        return {
+          compaction: {
+            summary: appendFileSections(summary, nextDetails),
+            firstKeptEntryId: event.preparation.firstKeptEntryId,
+            tokensBefore: event.preparation.tokensBefore,
+            details: nextDetails,
+          },
+        };
+      } catch (error) {
+        ctx.ui.notify(
+          `custom compaction summary failed, using default: ${String(error)}`,
+          "warning",
+        );
+        return;
+      }
     });
 
-    // --- monitor context after each agent turn ---
+    pi.on("session_before_tree", async (event, ctx) => {
+      const { preparation } = event;
+      if (!preparation.userWantsSummary) return;
+      if (preparation.entriesToSummarize.length === 0) return;
+
+      const summaryModel = getSummaryModel(ctx);
+      if (!summaryModel) return;
+
+      const conversationText = serializeConversation(
+        sessionEntriesToSummaryMessages(preparation.entriesToSummarize),
+      );
+      const details = collectTreeSummaryDetails(preparation.entriesToSummarize);
+
+      try {
+        const summary = await generatePlainSummary(
+          ctx,
+          summaryModel,
+          composeActionPrompt(promptSections, "tree", conversationText, {
+            customInstructions: preparation.customInstructions,
+            replaceInstructions: preparation.replaceInstructions,
+          }),
+          event.signal,
+        );
+        if (!summary) return;
+
+        return {
+          summary: {
+            summary: appendFileSections(summary, details),
+            details,
+          },
+        };
+      } catch (error) {
+        ctx.ui.notify(
+          `custom tree summary failed, using default: ${String(error)}`,
+          "warning",
+        );
+        return;
+      }
+    });
+
     pi.on("agent_end", async (_event, ctx) => {
       if (handoffPending || generating) return;
 
       const usage = ctx.getContextUsage();
       if (!usage || usage.percent === null) return;
       if (usage.percent < cfg.threshold * 100) return;
-      const handoffModel = getHandoffModel(ctx);
+      const handoffModel = getSummaryModel(ctx);
       if (!handoffModel) return;
 
       generating = true;
@@ -493,16 +842,14 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       }
     });
 
-    // --- /handoff command: create new session + send prompt ---
     pi.registerCommand("handoff", {
       description:
-        "Transfer context to a new focused session (replaces compaction)",
+        "Transfer context to a new focused session",
       handler: async (args, ctx) => {
         const goal = args.trim();
 
-        // manual invocation with a goal — generate fresh handoff
         if (goal && !handoffPending) {
-          const handoffModel = getHandoffModel(ctx);
+          const handoffModel = getSummaryModel(ctx);
           if (!handoffModel) {
             ctx.ui.notify("no model available for handoff", "error");
             return;
@@ -606,7 +953,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
 
       async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
         const p = params as { goal: string };
-        const handoffModel = getHandoffModel(_ctx);
+        const handoffModel = getSummaryModel(_ctx);
         if (!handoffModel) {
           throw new Error("no model available for handoff extraction");
         }
@@ -689,38 +1036,70 @@ if (import.meta.vitest) {
   // ============================================================================
 
   describe("parsePromptSections", () => {
-    it("extracts named sections from prompt text", () => {
-      const result = parsePromptSections(
-        "# foo\nbar content\n# baz\nqux content",
-      );
-      // The first section keeps the # prefix (split doesn't remove it from first part)
-      expect(result).toEqual({ "# foo": "bar content", baz: "qux content" });
-    });
-
-    it("handles sections with empty bodies", () => {
-      const result = parsePromptSections("# empty\n\n# filled\nhas content");
-      // The function splits by \n# , so # empty\n becomes one part
-      // The name includes the # prefix because split doesn't remove it from the first part
-      expect(result).toEqual({ "# empty": "", filled: "has content" });
-    });
-
-    it("returns empty object for text without sections", () => {
-      const result = parsePromptSections("just some text without headers");
+    it("returns empty object for blank input", () => {
+      const result = parsePromptSections("   ");
       expect(result).toEqual({});
     });
 
-    it("trims section names and bodies", () => {
-      const result = parsePromptSections("#  spaced name  \n  body text  ");
-      // The # prefix is kept because split doesn't remove it from the first part
-      expect(result).toEqual({ "#  spaced name": "body text" });
+    it("parses json prompt objects", () => {
+      const result = parsePromptSections('{"foo":"bar","baz":"qux"}');
+      expect(result).toEqual({ foo: "bar", baz: "qux" });
     });
 
-    it("handles DEFAULT_HANDOFF_PROMPT structure", () => {
-      const result = parsePromptSections(DEFAULT_HANDOFF_PROMPT);
-      expect(result).toHaveProperty("extraction-prompt");
-      expect(result).toHaveProperty("tool-description");
-      expect(result).toHaveProperty("field-relevant-information");
-      expect(result).toHaveProperty("field-relevant-files");
+    it("rejects non-json prompt strings", () => {
+      expect(() => parsePromptSections("# foo\nbar")).toThrow(
+        /handoff prompt config must be a json object/,
+      );
+    });
+
+    it("rejects json arrays", () => {
+      expect(() => parsePromptSections('["foo"]')).toThrow(
+        /handoff prompt config must be a json object/,
+      );
+    });
+
+    it("round-trips DEFAULT_SUMMARY_PROMPT_SECTIONS through JSON", () => {
+      const json = JSON.stringify(DEFAULT_SUMMARY_PROMPT_SECTIONS);
+      const parsed = parsePromptSections(json);
+      expect(parsed).toEqual(DEFAULT_SUMMARY_PROMPT_SECTIONS);
+    });
+
+    it("validates DEFAULT_SUMMARY_PROMPT_SECTIONS has required action keys", () => {
+      const sections = DEFAULT_SUMMARY_PROMPT_SECTIONS;
+      for (const action of ["handoff", "compaction", "tree"] as const) {
+        expect(typeof sections[`${action}-intent`]).toBe("string");
+        expect(typeof sections[`${action}-format`]).toBe("string");
+      }
+      expect(typeof sections["shared-principles"]).toBe("string");
+    });
+  });
+
+  describe("composeActionPrompt", () => {
+    const sections = DEFAULT_SUMMARY_PROMPT_SECTIONS;
+
+    it("combines shared and action-specific sections", () => {
+      const result = composeActionPrompt(sections, "compaction", "[User]: hi");
+      expect(result).toContain(sections["shared-principles"]);
+      expect(result).toContain(sections["compaction-intent"]);
+      expect(result).toContain(sections["compaction-format"]);
+      expect(result).toContain("<conversation>\n[User]: hi\n</conversation>");
+    });
+
+    it("adds goal only for the current action call", () => {
+      const result = composeActionPrompt(sections, "handoff", "[User]: hi", {
+        goal: "finish the refactor",
+      });
+      expect(result).toContain("current goal:\nfinish the refactor");
+    });
+
+    it("replaces default instructions when requested", () => {
+      const result = composeActionPrompt(sections, "tree", "[User]: hi", {
+        customInstructions: "focus on tests only",
+        replaceInstructions: true,
+      });
+      expect(result).toContain("focus on tests only");
+      expect(result).not.toContain(sections["shared-principles"]);
+      expect(result).not.toContain(sections["tree-intent"]);
     });
   });
 
@@ -873,8 +1252,7 @@ if (import.meta.vitest) {
       const config = {
         threshold: 0.85,
         model: { provider: "openrouter", id: "gemini-flash" },
-        promptFile: "",
-        promptString: "test",
+        prompt: { "handoff-intent": "test" },
       };
       expect(isHandoffConfig(config)).toBe(true);
     });
@@ -883,13 +1261,13 @@ if (import.meta.vitest) {
       const config = {
         threshold: 1.5,
         model: { provider: "x", id: "y" },
-        promptFile: "",
-        promptString: "",
+        prompt: {},
       };
       expect(isHandoffConfig(config)).toBe(false);
 
       config.threshold = 0;
       expect(isHandoffConfig(config)).toBe(false);
+
 
       config.threshold = -0.5;
       expect(isHandoffConfig(config)).toBe(false);
@@ -899,8 +1277,7 @@ if (import.meta.vitest) {
       const config = {
         threshold: 0.5,
         model: { provider: "", id: "y" },
-        promptFile: "",
-        promptString: "",
+        prompt: {},
       };
       expect(isHandoffConfig(config)).toBe(false);
     });
@@ -909,8 +1286,7 @@ if (import.meta.vitest) {
       const config = {
         threshold: 0.5,
         model: { provider: "x", id: "" },
-        promptFile: "",
-        promptString: "",
+        prompt: {},
       };
       expect(isHandoffConfig(config)).toBe(false);
     });
@@ -919,18 +1295,16 @@ if (import.meta.vitest) {
       const config = {
         threshold: 0.5,
         model: null,
-        promptFile: "",
-        promptString: "",
+        prompt: {},
       };
       expect(isHandoffConfig(config)).toBe(false);
     });
 
-    it("rejects non-string promptFile", () => {
+    it("rejects non-object prompt", () => {
       const config = {
         threshold: 0.5,
         model: { provider: "x", id: "y" },
-        promptFile: 123,
-        promptString: "",
+        prompt: "not an object",
       };
       expect(isHandoffConfig(config)).toBe(false);
     });
