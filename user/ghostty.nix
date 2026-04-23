@@ -118,7 +118,8 @@ let
 
   ghosttyConfig = ''
     font-family = "Berkeley Mono"
-    # macos-titlebar-style = "hidden"
+    font-size = 14
+    macos-titlebar-style = "hidden"
     window-padding-x = 16
     window-padding-y = 4
     background-opacity = 0.7
@@ -135,6 +136,7 @@ let
     keybind = super+_=new_split:down
     keybind = super+digit_9=goto_tab:9
     keybind = super+9=goto_tab:9
+    keybind = super+k=toggle_command_palette
   '';
 
   ghosttyFiles = {
