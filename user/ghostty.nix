@@ -118,7 +118,7 @@ let
 
   ghosttyConfig = ''
     font-family = "Berkeley Mono"
-    macos-titlebar-style = "hidden"
+    # macos-titlebar-style = "hidden"
     window-padding-x = 16
     window-padding-y = 4
     background-opacity = 0.7
