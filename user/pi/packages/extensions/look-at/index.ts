@@ -37,7 +37,7 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 
-const LOOK_AT_DEFAULT_MODEL = getModel(
+const LOOK_AT_DEFAULT_MODEL: any = getModel(
   "openrouter",
   "google/gemini-3-flash-preview",
 );
@@ -140,7 +140,9 @@ interface LookAtParams {
   referenceFiles?: string[];
 }
 
-export function createLookAtTool(config: LookAtConfig = {}): ToolDefinition {
+export function createLookAtTool(
+  config: LookAtConfig = {},
+): ToolDefinition<any> {
   return {
     name: "look_at",
     label: "Look At",
@@ -368,6 +370,7 @@ if (import.meta.vitest) {
         AuthStorage,
         DefaultResourceLoader,
         SettingsManager,
+        getAgentDir,
       } = await import("@mariozechner/pi-coding-agent");
       const { SessionManager } = await import("@mariozechner/pi-coding-agent");
 
@@ -398,6 +401,7 @@ if (import.meta.vitest) {
       // Create resource loader to load extensions including look-at
       const resourceLoader = new DefaultResourceLoader({
         cwd,
+        agentDir: getAgentDir(),
         settingsManager,
       });
       await resourceLoader.reload();

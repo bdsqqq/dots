@@ -391,7 +391,7 @@ const COLLAPSED_EXCERPTS: Excerpt[] = [
 export function createBashTool(
   backgroundState: BackgroundState = createBackgroundState(),
   config: BashExtConfig = CONFIG_DEFAULTS,
-): ToolDefinition {
+): ToolDefinition<any> {
   return {
     name: "bash",
     label: "Bash",

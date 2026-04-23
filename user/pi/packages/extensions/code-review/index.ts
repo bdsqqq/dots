@@ -39,7 +39,7 @@ import {
 } from "@bds_pi/sub-agent-render";
 import { getModel } from "@mariozechner/pi-ai";
 
-const CODE_REVIEW_DEFAULT_MODEL = getModel(
+const CODE_REVIEW_DEFAULT_MODEL: any = getModel(
   "openrouter",
   "google/gemini-3.1-pro-preview",
 );
@@ -231,7 +231,7 @@ interface CodeReviewParams {
 
 export function createCodeReviewTool(
   config: CodeReviewConfig = {},
-): ToolDefinition {
+): ToolDefinition<any> {
   return {
     name: "code_review",
     label: "Code Review",

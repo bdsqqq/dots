@@ -44,7 +44,7 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 
-const ORACLE_DEFAULT_MODEL = getModel(
+const ORACLE_DEFAULT_MODEL: any = getModel(
   "openrouter",
   "google/gemini-3.1-pro-preview",
 );
@@ -116,7 +116,9 @@ export interface OracleConfig {
   builtinTools?: string[];
 }
 
-export function createOracleTool(config: OracleConfig = {}): ToolDefinition {
+export function createOracleTool(
+  config: OracleConfig = {},
+): ToolDefinition<any> {
   return {
     name: "oracle",
     label: "Oracle",

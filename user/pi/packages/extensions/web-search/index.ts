@@ -270,7 +270,7 @@ interface WebSearchParams {
 
 export function createWebSearchTool(
   config: WebSearchExtConfig = CONFIG_DEFAULTS,
-): ToolDefinition {
+): ToolDefinition<any> {
   return {
     name: "web_search",
     label: "Web Search",

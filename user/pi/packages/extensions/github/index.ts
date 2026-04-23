@@ -99,7 +99,7 @@ interface DiffParams {
 
 // --- read_github ---
 
-export function createReadGithubTool(): ToolDefinition {
+export function createReadGithubTool(): ToolDefinition<any> {
   return {
     name: "read_github",
     label: "Read GitHub",
@@ -225,7 +225,7 @@ export function createReadGithubTool(): ToolDefinition {
 
 // --- search_github ---
 
-export function createSearchGithubTool(): ToolDefinition {
+export function createSearchGithubTool(): ToolDefinition<any> {
   return {
     name: "search_github",
     label: "Search GitHub",
@@ -364,7 +364,7 @@ export function createSearchGithubTool(): ToolDefinition {
 
 // --- list_directory_github ---
 
-export function createListDirectoryGithubTool(): ToolDefinition {
+export function createListDirectoryGithubTool(): ToolDefinition<any> {
   return {
     name: "list_directory_github",
     label: "List Directory GitHub",
@@ -464,7 +464,7 @@ export function createListDirectoryGithubTool(): ToolDefinition {
 
 // --- list_repositories ---
 
-export function createListRepositoriesTool(): ToolDefinition {
+export function createListRepositoriesTool(): ToolDefinition<any> {
   return {
     name: "list_repositories",
     label: "List Repositories",
@@ -590,7 +590,7 @@ export function createListRepositoriesTool(): ToolDefinition {
 
 // --- glob_github ---
 
-export function createGlobGithubTool(): ToolDefinition {
+export function createGlobGithubTool(): ToolDefinition<any> {
   return {
     name: "glob_github",
     label: "Glob GitHub",
@@ -700,7 +700,7 @@ export function createGlobGithubTool(): ToolDefinition {
 
 // --- commit_search ---
 
-export function createCommitSearchTool(): ToolDefinition {
+export function createCommitSearchTool(): ToolDefinition<any> {
   return {
     name: "commit_search",
     label: "Commit Search",
@@ -846,7 +846,7 @@ export function createCommitSearchTool(): ToolDefinition {
 
 // --- diff ---
 
-export function createDiffTool(): ToolDefinition {
+export function createDiffTool(): ToolDefinition<any> {
   return {
     name: "diff",
     label: "Diff",

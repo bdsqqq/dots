@@ -43,7 +43,7 @@ import {
 } from "@bds_pi/sub-agent-render";
 import { getModel } from "@mariozechner/pi-ai";
 
-const FINDER_DEFAULT_MODEL = getModel(
+const FINDER_DEFAULT_MODEL: any = getModel(
   "openrouter",
   "google/gemini-3-flash-preview",
 );
@@ -109,7 +109,9 @@ interface FinderParams {
   query: string;
 }
 
-export function createFinderTool(config: FinderConfig = {}): ToolDefinition {
+export function createFinderTool(
+  config: FinderConfig = {},
+): ToolDefinition<any> {
   return {
     name: "finder",
     label: "Finder",

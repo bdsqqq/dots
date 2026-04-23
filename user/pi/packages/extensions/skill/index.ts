@@ -217,7 +217,7 @@ interface SkillParams {
   arguments?: string;
 }
 
-export function createSkillTool(): ToolDefinition {
+export function createSkillTool(): ToolDefinition<any> {
   return {
     name: "skill",
     label: "Load Skill",

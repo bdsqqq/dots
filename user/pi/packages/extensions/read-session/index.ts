@@ -37,7 +37,7 @@ import {
 } from "@bds_pi/config";
 import { getModel } from "@mariozechner/pi-ai";
 
-const READ_SESSION_DEFAULT_MODEL = getModel(
+const READ_SESSION_DEFAULT_MODEL: any = getModel(
   "openrouter",
   "google/gemini-3-flash-preview",
 );
@@ -339,7 +339,7 @@ function renderSessionTree(
 
 export function createReadSessionTool(
   config: ReadSessionConfig,
-): ToolDefinition {
+): ToolDefinition<any> {
   return {
     name: "read_session",
     label: "Read Session",

@@ -40,7 +40,7 @@ interface CreateFileParams {
   content: string;
 }
 
-export function createCreateFileTool(): ToolDefinition {
+export function createCreateFileTool(): ToolDefinition<any> {
   return {
     name: "write",
     label: "Create File",

@@ -389,7 +389,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       return assembleHandoffPrompt(sessionId, extraction, goal);
     }
 
-    /** switch to a new session and send the handoff prompt */
+    /** switch to a new session and stage the handoff prompt */
     async function executeHandoff(
       prompt: string,
       parent: string | undefined,
@@ -401,19 +401,29 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       ctx.ui?.setStatus?.("handoff", "");
       pi.events.emit("editor:remove-label", { key: "handoff" });
 
-      const switchResult = await ctx.newSession({ parentSession: parent });
+      const stagePrompt = (targetCtx: any): void => {
+        if (parent) showProvenance(targetCtx, parent);
+        targetCtx.ui.setEditorText(prompt);
+        targetCtx.ui.notify(
+          "Handoff ready. Review the prompt and press Enter to submit.",
+          "info",
+        );
+      };
+
+      let stagedInReplacementSession = false;
+      const switchResult = await ctx.newSession({
+        parentSession: parent,
+        withSession: async (nextCtx: any) => {
+          stagedInReplacementSession = true;
+          stagePrompt(nextCtx);
+        },
+      });
       if (switchResult.cancelled) return false;
 
-      if (parent) showProvenance(ctx, parent);
-
-      // pi.sendUserMessage() doesn't work after ctx.newSession() because pi creates
-      // a new runtime for each session but the extension still references the old one.
-      // Stage the prompt in the editor for manual submission instead (like pi's handoff example).
-      ctx.ui.setEditorText(prompt);
-      ctx.ui.notify(
-        "Handoff ready. Review the prompt and press Enter to submit.",
-        "info",
-      );
+      if (!stagedInReplacementSession) {
+        // pre-0.69 pi ignores withSession, but the old command ctx still stages editor text.
+        stagePrompt(ctx);
+      }
       return true;
     }
 
@@ -576,7 +586,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
     });
 
     // --- handoff tool: agent-invokable session transfer ---
-    const handoffTool: ToolDefinition = {
+    const handoffTool: ToolDefinition<any> = {
       name: "handoff",
       label: "Handoff",
       description:

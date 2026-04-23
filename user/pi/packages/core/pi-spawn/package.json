@@ -9,7 +9,7 @@
     "@bds_pi/interpolate": "workspace:*"
   },
   "devDependencies": {
-    "@mariozechner/pi-ai": "^0.67.5",
+    "@mariozechner/pi-ai": "^0.68.1",
     "vitest": "^3.0.0"
   }
 }

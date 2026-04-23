@@ -162,7 +162,7 @@ interface GrepParams {
 
 export function createGrepTool(
   config: GrepExtConfig = CONFIG_DEFAULTS,
-): ToolDefinition {
+): ToolDefinition<any> {
   const maxCollectMatches = config.maxTotalMatches * 2;
 
   return {
