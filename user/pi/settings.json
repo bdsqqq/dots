@@ -1,5 +1,5 @@
 {
-  "defaultProvider": "openai-codex",
+  "defaultProvider": "openrouter",
   "skills": ["~/.config/agents/skills"],
   "extensions": [
     "~/.pi/agent/extensions/editor",
@@ -10,10 +10,10 @@
     "~/.pi/agent/extensions/tools"
   ],
   "compaction": {
-    "enabled": false
+    "enabled": true
   },
-  "lastChangelogVersion": "0.68.1",
-  "defaultModel": "gpt-5.4",
+  "lastChangelogVersion": "0.69.0",
+  "defaultModel": "minimax/minimax-m2.7",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
   "steeringMode": "all",
