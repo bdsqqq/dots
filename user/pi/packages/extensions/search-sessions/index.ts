@@ -32,7 +32,7 @@ import {
   type Excerpt,
   boxRendererWindowed,
 } from "@bds_pi/box-format";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import {
   enumerateBranches,
   listSessionFiles,

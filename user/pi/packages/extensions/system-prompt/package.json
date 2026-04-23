@@ -12,7 +12,7 @@
     "@bds_pi/pi-spawn": "workspace:*"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "^0.68.1"
+    "@mariozechner/pi-coding-agent": "^0.69.0"
   },
   "pi": {
     "extensions": [

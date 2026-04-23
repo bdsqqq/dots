@@ -15,7 +15,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Text } from "@mariozechner/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import {
   listDirectory,
   resolveToAbsolute,

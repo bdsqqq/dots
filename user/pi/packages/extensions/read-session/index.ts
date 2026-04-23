@@ -20,7 +20,7 @@ import type {
 import { walkDirSync } from "@bds_pi/fs";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { isPiSpawnModelValue, piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
 import {
   getFinalOutput,

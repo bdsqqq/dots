@@ -31,7 +31,7 @@ import {
   type Excerpt,
 } from "@bds_pi/box-format";
 import { getText } from "@bds_pi/tui";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { withFileLock } from "@bds_pi/mutex";
 import * as toolPolicy from "@bds_pi/tool-policy";
 import { resolveToAbsolute } from "@bds_pi/fs";

@@ -9,7 +9,7 @@
     "@bds_pi/tool-cost": "workspace:*"
   },
   "devDependencies": {
-    "@mariozechner/pi-ai": "^0.68.1",
+    "@mariozechner/pi-ai": "^0.69.0",
     "vitest": "^3.0.0"
   }
 }
