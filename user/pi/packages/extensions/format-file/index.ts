@@ -112,7 +112,7 @@ function findFormatter(preferred: string, timeoutMs: number): Formatter | null {
 
 export function createFormatFileTool(
   config: FormatFileExtConfig = CONFIG_DEFAULTS,
-): ToolDefinition {
+): ToolDefinition<any> {
   return {
     name: "format_file",
     label: "Format File",

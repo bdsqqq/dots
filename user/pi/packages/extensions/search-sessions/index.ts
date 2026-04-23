@@ -292,7 +292,7 @@ interface SearchSessionsParams {
 
 export function createSearchSessionsTool(
   config: SearchSessionsExtConfig = CONFIG_DEFAULTS,
-): ToolDefinition {
+): ToolDefinition<any> {
   return {
     name: "search_sessions",
     label: "Search Sessions",

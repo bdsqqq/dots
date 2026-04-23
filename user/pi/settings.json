@@ -12,7 +12,7 @@
   "compaction": {
     "enabled": false
   },
-  "lastChangelogVersion": "0.67.68",
+  "lastChangelogVersion": "0.68.1",
   "defaultModel": "gpt-5.4",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
@@ -24,6 +24,9 @@
   "enableSkillCommands": true,
   "showHardwareCursor": true,
   "transport": "auto",
+  "terminal": {
+    "showTerminalProgress": true
+  },
   "treeFilterMode": "no-tools",
   "theme": "dark"
 }

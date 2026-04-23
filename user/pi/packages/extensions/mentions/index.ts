@@ -3,6 +3,7 @@ import {
   registerEditorAutocompleteContributor,
   type EditorAutocompleteContributor,
 } from "@bds_pi/editor-capabilities";
+import type { AutocompleteProvider } from "@mariozechner/pi-tui";
 import {
   MentionAwareProvider,
   renderResolvedMentionsText,
@@ -15,6 +16,14 @@ import {
 const CUSTOM_TYPE = "mentions:resolved";
 
 type MentionProviderFactory = EditorAutocompleteContributor["enhance"];
+
+type NativeAutocompleteFactory = (
+  baseProvider: AutocompleteProvider,
+) => AutocompleteProvider;
+
+interface NativeAutocompleteCapableUI {
+  addAutocompleteProvider?: (factory: NativeAutocompleteFactory) => void;
+}
 
 export interface MentionAdapterDeps {
   registerAutocompleteContributor(
@@ -49,13 +58,20 @@ const DEFAULT_DEPS: MentionAdapterDeps = {
 export function createMentionsExtension(deps: MentionAdapterDeps) {
   return function mentionsExtension(pi: ExtensionAPI): void {
     let activeMentionContext = "";
+    let fallbackRegistered = false;
 
-    deps.registerAutocompleteContributor({
+    const mentionContributor: EditorAutocompleteContributor = {
       id: "mentions",
       enhance(baseProvider, context) {
         return deps.createMentionProvider(baseProvider, context);
       },
-    });
+    };
+
+    const registerFallbackContributor = (): void => {
+      if (fallbackRegistered) return;
+      deps.registerAutocompleteContributor(mentionContributor);
+      fallbackRegistered = true;
+    };
 
     const clearActive = () => {
       activeMentionContext = "";
@@ -101,10 +117,22 @@ export function createMentionsExtension(deps: MentionAdapterDeps) {
       clearActive();
     });
 
-    pi.on("session_start", async () => {
+    pi.on("session_start", async (_event, ctx) => {
       clearActive();
       deps.clearSessionMentionCache();
       deps.clearCommitIndexCache();
+
+      if (!ctx.hasUI) return;
+
+      const ui = ctx.ui as typeof ctx.ui & NativeAutocompleteCapableUI;
+      if (typeof ui.addAutocompleteProvider === "function") {
+        ui.addAutocompleteProvider((baseProvider) =>
+          deps.createMentionProvider(baseProvider, { cwd: ctx.cwd }),
+        );
+        return;
+      }
+
+      registerFallbackContributor();
     });
   };
 }
@@ -175,13 +203,51 @@ if (import.meta.vitest) {
     });
 
     describe("autocomplete registration", () => {
-      it("registers an editor autocomplete contributor", () => {
+      it("uses native autocomplete provider stacking when available", async () => {
         const { deps, registerAutocompleteContributor, createMentionProvider } =
           createTestDeps();
         const ext = createMentionsExtension(deps);
-        const { pi } = createMockPi();
+        const { pi, getHandler } = createMockPi();
+        const addAutocompleteProvider = vi.fn();
 
         ext(pi);
+
+        await getHandler("session_start")(
+          { reason: "startup" },
+          {
+            hasUI: true,
+            cwd: "/repo/app",
+            ui: { addAutocompleteProvider },
+          },
+        );
+
+        expect(registerAutocompleteContributor).not.toHaveBeenCalled();
+        expect(addAutocompleteProvider).toHaveBeenCalledTimes(1);
+
+        const factory = addAutocompleteProvider.mock.calls[0]?.[0];
+        const baseProvider = {
+          getSuggestions: vi.fn(),
+          applyCompletion: vi.fn(),
+        };
+        factory?.(baseProvider);
+
+        expect(createMentionProvider).toHaveBeenCalledWith(baseProvider, {
+          cwd: "/repo/app",
+        });
+      });
+
+      it("falls back to editor contributor registration on older pi builds", async () => {
+        const { deps, registerAutocompleteContributor, createMentionProvider } =
+          createTestDeps();
+        const ext = createMentionsExtension(deps);
+        const { pi, getHandler } = createMockPi();
+
+        ext(pi);
+
+        await getHandler("session_start")(
+          { reason: "startup" },
+          { hasUI: true, cwd: "/repo/app", ui: {} },
+        );
 
         expect(registerAutocompleteContributor).toHaveBeenCalledTimes(1);
         const contributor = registerAutocompleteContributor.mock.calls[0]?.[0];
@@ -455,7 +521,10 @@ if (import.meta.vitest) {
         ext(pi);
         await getHandler("input")({ source: "user", text: "@s" }, { cwd: "/" });
 
-        await getHandler("session_start")({ reason: "startup" });
+        await getHandler("session_start")(
+          { reason: "startup" },
+          { hasUI: false },
+        );
 
         expect(clearSessionMentionCacheMock).toHaveBeenCalledTimes(1);
         expect(clearCommitIndexCacheMock).toHaveBeenCalledTimes(1);

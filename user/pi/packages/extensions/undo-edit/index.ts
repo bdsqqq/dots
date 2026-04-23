@@ -87,7 +87,7 @@ interface UndoEditParams {
   path: string;
 }
 
-export function createUndoEditTool(): ToolDefinition {
+export function createUndoEditTool(): ToolDefinition<any> {
   return {
     name: "undo_edit",
     label: "Undo Edit",

@@ -35,7 +35,7 @@ const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "tail" as const, context: 5 },
 ];
 
-export function createLsTool(limits: ReadLimits): ToolDefinition {
+export function createLsTool(limits: ReadLimits): ToolDefinition<any> {
   return {
     name: "ls",
     label: "List Directory",

@@ -199,7 +199,7 @@ export function readFileContent(
 
 // --- tool factory ---
 
-export function createReadTool(limits: ReadLimits): ToolDefinition {
+export function createReadTool(limits: ReadLimits): ToolDefinition<any> {
   return {
     name: "read",
     label: "Read",

@@ -50,7 +50,7 @@ const MAX_CHARS = 64_000;
 const CURL_TIMEOUT_SECS = 30;
 const MAX_REDIRECTS = 5;
 
-const READ_WEB_PAGE_DEFAULT_MODEL = getModel(
+const READ_WEB_PAGE_DEFAULT_MODEL: any = getModel(
   "openrouter",
   "google/gemini-3-flash-preview",
 );
@@ -187,7 +187,7 @@ export interface ReadWebPageConfig {
 
 export function createReadWebPageTool(
   config: ReadWebPageConfig = {},
-): ToolDefinition {
+): ToolDefinition<any> {
   return {
     name: "read_web_page",
     label: "Read Web Page",

@@ -478,7 +478,7 @@ function applyEditsToContent(
   return { ok: true, baseContent, newContent };
 }
 
-export function createEditFileTool(): ToolDefinition {
+export function createEditFileTool(): ToolDefinition<any> {
   return {
     name: "edit",
     label: "Edit File",

@@ -38,7 +38,7 @@ import {
 } from "@bds_pi/sub-agent-render";
 import { getModel } from "@mariozechner/pi-ai";
 
-const LIBRARIAN_DEFAULT_MODEL = getModel("openai-codex", "gpt-5.3-codex");
+const LIBRARIAN_DEFAULT_MODEL: any = getModel("openai-codex", "gpt-5.3-codex");
 
 type LibrarianExtConfig = {
   model: typeof LIBRARIAN_DEFAULT_MODEL | string;
@@ -117,7 +117,7 @@ interface LibrarianParams {
 
 export function createLibrarianTool(
   config: LibrarianConfig = {},
-): ToolDefinition {
+): ToolDefinition<any> {
   return {
     name: "librarian",
     label: "Librarian",

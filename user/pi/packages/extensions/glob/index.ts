@@ -79,7 +79,7 @@ interface GlobParams {
 
 export function createGlobTool(
   config: GlobExtConfig = CONFIG_DEFAULTS,
-): ToolDefinition {
+): ToolDefinition<any> {
   return {
     name: "find",
     label: "Find Files",

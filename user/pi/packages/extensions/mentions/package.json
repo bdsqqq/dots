@@ -7,7 +7,7 @@
   "dependencies": {
     "@bds_pi/editor-capabilities": "workspace:*",
     "@bds_pi/mentions": "workspace:*",
-    "@mariozechner/pi-coding-agent": "^0.67.5"
+    "@mariozechner/pi-coding-agent": "^0.68.1"
   },
   "devDependencies": {
     "vitest": "^3.0.0"

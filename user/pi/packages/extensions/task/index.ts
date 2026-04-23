@@ -97,7 +97,7 @@ export interface TaskConfig {
   extensionTools?: string[];
 }
 
-export function createTaskTool(config: TaskConfig = {}): ToolDefinition {
+export function createTaskTool(config: TaskConfig = {}): ToolDefinition<any> {
   return {
     name: "Task",
     label: "Task",

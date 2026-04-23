@@ -11,11 +11,11 @@
     "@bds_pi/mutex": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
     "@bds_pi/tool-policy": "workspace:*",
-    "@sinclair/typebox": "^0.34.0"
+    "@sinclair/typebox": "0.34.48"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "^0.67.5",
-    "@mariozechner/pi-tui": "^0.67.5",
+    "@mariozechner/pi-coding-agent": "^0.68.1",
+    "@mariozechner/pi-tui": "^0.68.1",
     "vitest": "^3.0.0"
   },
   "pi": {
