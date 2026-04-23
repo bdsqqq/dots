@@ -18,6 +18,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
   SessionEntry,
+  SessionMessageEntry,
   ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import {
@@ -27,7 +28,7 @@ import {
   SessionManager,
 } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import {
   getEnabledExtensionConfig,
   type ExtensionConfigSchema,
@@ -40,6 +41,7 @@ type SummaryPromptSections = {
 };
 
 interface HandoffExtConfig {
+  [key: string]: unknown;
   threshold: number;
   model: { provider: string; id: string };
   prompt: SummaryPromptSections;
@@ -167,7 +169,9 @@ function parsePromptSections(content: string): Record<string, string> {
 
   return Object.fromEntries(
     Object.entries(parsed)
-      .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+      .filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      )
       .map(([key, value]) => [key.trim(), value.trim()]),
   );
 }
@@ -201,22 +205,29 @@ function addSummaryDetailsToFileOps(fileOps: FileOps, details: unknown): void {
   addPathValues(fileOps.written, details.modifiedFiles);
 }
 
-function addSummaryEntryDetails(fileOps: FileOps, entries: SessionEntry[]): void {
+function addSummaryEntryDetails(
+  fileOps: FileOps,
+  entries: SessionEntry[],
+): void {
   for (const entry of entries) {
-    if (
-      entry.type === "compaction" ||
-      entry.type === "branch_summary"
-    ) {
+    if (entry.type === "compaction" || entry.type === "branch_summary") {
       addSummaryDetailsToFileOps(fileOps, entry.details);
     }
   }
 }
 
-function extractMessageFileOps(fileOps: FileOps, message: SessionEntry["message"]): void {
+function extractMessageFileOps(
+  fileOps: FileOps,
+  message: SessionMessageEntry["message"],
+): void {
   if (message.role !== "assistant" || !Array.isArray(message.content)) return;
 
   for (const block of message.content) {
-    if (typeof block !== "object" || block === null || block.type !== "toolCall") {
+    if (
+      typeof block !== "object" ||
+      block === null ||
+      block.type !== "toolCall"
+    ) {
       continue;
     }
 
@@ -246,13 +257,18 @@ function computeFileLists(fileOps: FileOps): SummaryDetails {
   };
 }
 
-function formatFileSections({ readFiles, modifiedFiles }: SummaryDetails): string {
+function formatFileSections({
+  readFiles,
+  modifiedFiles,
+}: SummaryDetails): string {
   const parts: string[] = [];
   if (readFiles.length > 0) {
     parts.push(`<read-files>\n${readFiles.join("\n")}\n</read-files>`);
   }
   if (modifiedFiles.length > 0) {
-    parts.push(`<modified-files>\n${modifiedFiles.join("\n")}\n</modified-files>`);
+    parts.push(
+      `<modified-files>\n${modifiedFiles.join("\n")}\n</modified-files>`,
+    );
   }
   return parts.length > 0 ? `\n\n${parts.join("\n\n")}` : "";
 }
@@ -320,7 +336,9 @@ function composeActionPrompt(
     if (intent) parts.push(intent);
     if (format) parts.push(format);
     if (options.customInstructions?.trim()) {
-      parts.push(`additional focus instructions:\n${options.customInstructions.trim()}`);
+      parts.push(
+        `additional focus instructions:\n${options.customInstructions.trim()}`,
+      );
     }
   }
 
@@ -352,11 +370,13 @@ function sessionEntriesToSummaryMessages(entries: SessionEntry[]): Message[] {
 
   for (const entry of entries) {
     switch (entry.type) {
-      case "message":
-        if (entry.message.role !== "toolResult") {
-          messages.push(entry.message);
+      case "message": {
+        const msg = entry.message;
+        if (msg.role !== "toolResult") {
+          messages.push(msg as Message);
         }
         break;
+      }
       case "custom_message":
         messages.push({
           role: "user",
@@ -374,9 +394,7 @@ function sessionEntriesToSummaryMessages(entries: SessionEntry[]): Message[] {
             {
               type: "text",
               text:
-                BRANCH_SUMMARY_PREFIX +
-                entry.summary +
-                BRANCH_SUMMARY_SUFFIX,
+                BRANCH_SUMMARY_PREFIX + entry.summary + BRANCH_SUMMARY_SUFFIX,
             },
           ],
           timestamp: toTimestamp(entry.timestamp),
@@ -544,9 +562,14 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       conversationText: string,
       goal: string,
     ): string {
-      return `${composeActionPrompt(promptSections, "handoff", conversationText, {
-        goal,
-      })}\n\nUse the create_handoff_context tool to extract relevant information and files.`;
+      return `${composeActionPrompt(
+        promptSections,
+        "handoff",
+        conversationText,
+        {
+          goal,
+        },
+      )}\n\nUse the create_handoff_context tool to extract relevant information and files.`;
     }
 
     let storedHandoffPrompt: string | null = null;
@@ -843,8 +866,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
     });
 
     pi.registerCommand("handoff", {
-      description:
-        "Transfer context to a new focused session",
+      description: "Transfer context to a new focused session",
       handler: async (args, ctx) => {
         const goal = args.trim();
 
@@ -1267,7 +1289,6 @@ if (import.meta.vitest) {
 
       config.threshold = 0;
       expect(isHandoffConfig(config)).toBe(false);
-
 
       config.threshold = -0.5;
       expect(isHandoffConfig(config)).toBe(false);

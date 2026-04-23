@@ -24,7 +24,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { getModel } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import {
   getEnabledExtensionConfig,
   type ExtensionConfigSchema,

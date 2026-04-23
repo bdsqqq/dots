@@ -36,7 +36,7 @@ import {
   type BoxSection,
   type Excerpt,
 } from "@bds_pi/box-format";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { ToolCostDetails } from "@bds_pi/tool-cost";
 
 type WebSearchExtConfig = {

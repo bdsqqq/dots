@@ -22,7 +22,7 @@ import {
   setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { saveChange, simpleDiff } from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
 import { resolveToAbsolute, resolveWithVariants } from "@bds_pi/fs";

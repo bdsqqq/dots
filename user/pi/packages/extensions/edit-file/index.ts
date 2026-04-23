@@ -31,7 +31,7 @@ import {
   type BoxLine,
   type Excerpt,
 } from "@bds_pi/box-format";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import * as fileTracker from "@bds_pi/file-tracker";
 import { withFileLock } from "@bds_pi/mutex";
 import { resolveToAbsolute, resolveWithVariants } from "@bds_pi/fs";

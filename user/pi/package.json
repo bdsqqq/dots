@@ -17,10 +17,10 @@
       "packages/extensions/*"
     ],
     "catalog": {
-      "@mariozechner/pi-ai": "^0.68.1",
-      "@mariozechner/pi-coding-agent": "^0.68.1",
-      "@mariozechner/pi-tui": "^0.68.1",
-      "@sinclair/typebox": "0.34.48"
+      "@mariozechner/pi-ai": "^0.69.0",
+      "@mariozechner/pi-coding-agent": "^0.69.0",
+      "@mariozechner/pi-tui": "^0.69.0",
+      "typebox": "^1.1.24"
     }
   },
   "files": [
@@ -67,10 +67,10 @@
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": ">=0.67.5",
-    "@mariozechner/pi-coding-agent": ">=0.67.5",
-    "@mariozechner/pi-tui": ">=0.67.5",
-    "@sinclair/typebox": ">=0.34.0"
+    "@mariozechner/pi-ai": ">=0.69.0",
+    "@mariozechner/pi-coding-agent": ">=0.69.0",
+    "@mariozechner/pi-tui": ">=0.69.0",
+    "typebox": ">=1.0.0"
   },
   "pi": {
     "extensions": [

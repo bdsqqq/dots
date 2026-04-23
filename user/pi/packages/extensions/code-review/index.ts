@@ -19,7 +19,7 @@ import type {
   ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import {
   getEnabledExtensionConfig,
   type ExtensionConfigSchema,

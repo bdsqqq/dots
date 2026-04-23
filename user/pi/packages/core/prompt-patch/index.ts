@@ -23,7 +23,7 @@ export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
 
 if (import.meta.vitest) {
   const { describe, it, expect } = await import("vitest");
-  const { Type } = await import("@sinclair/typebox");
+  const { Type } = await import("typebox");
 
   function makeTool(overrides: Partial<ToolDefinition> = {}): ToolDefinition {
     return {

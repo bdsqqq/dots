@@ -27,7 +27,7 @@ import {
   type BoxLine,
   type Excerpt,
 } from "@bds_pi/box-format";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { formatHeadTail } from "@bds_pi/output-buffer";
 import {
   clearConfigCache,

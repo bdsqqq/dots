@@ -8,10 +8,10 @@
   },
   "dependencies": {
     "@bds_pi/config": "workspace:*",
-    "@mariozechner/pi-ai": "^0.68.1"
+    "@mariozechner/pi-ai": "^0.69.0"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "^0.68.1"
+    "@mariozechner/pi-coding-agent": "^0.69.0"
   },
   "pi": {
     "extensions": [
