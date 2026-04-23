@@ -23,7 +23,12 @@ import {
   getEnabledExtensionConfig,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import {
+  isPiSpawnModelValue,
+  piSpawn,
+  resolvePrompt,
+  zeroUsage,
+} from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -31,9 +36,12 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
+import { getModel } from "@mariozechner/pi-ai";
+
+const LIBRARIAN_DEFAULT_MODEL = getModel("openai-codex", "gpt-5.3-codex");
 
 type LibrarianExtConfig = {
-  model: string;
+  model: typeof LIBRARIAN_DEFAULT_MODEL | string;
   extensionTools: string[];
   builtinTools: string[];
   promptFile: string;
@@ -47,7 +55,7 @@ type LibrarianExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: LibrarianExtConfig = {
-  model: "openrouter/openai/gpt-5.4",
+  model: LIBRARIAN_DEFAULT_MODEL,
   extensionTools: [
     "read_github",
     "search_github",
@@ -83,7 +91,7 @@ function isLibrarianConfig(
   value: Record<string, unknown>,
 ): value is LibrarianExtConfig {
   return (
-    isNonEmptyString(value.model) &&
+    isPiSpawnModelValue(value.model) &&
     isStringArray(value.extensionTools) &&
     isStringArray(value.builtinTools) &&
     typeof value.promptFile === "string" &&
@@ -97,7 +105,7 @@ const LIBRARIAN_CONFIG_SCHEMA: ExtensionConfigSchema<LibrarianExtConfig> = {
 
 export interface LibrarianConfig {
   systemPrompt?: string;
-  model?: string;
+  model?: typeof LIBRARIAN_DEFAULT_MODEL | string;
   extensionTools?: string[];
   builtinTools?: string[];
 }
@@ -347,6 +355,18 @@ if (import.meta.vitest) {
       expect(
         isLibrarianConfig({
           model: "openrouter/openai/gpt-4",
+          extensionTools: ["read_github"],
+          builtinTools: [],
+          promptFile: "prompt.md",
+          promptString: "",
+        }),
+      ).toBe(true);
+    });
+
+    it("accepts a getModel() default object", () => {
+      expect(
+        isLibrarianConfig({
+          model: LIBRARIAN_DEFAULT_MODEL,
           extensionTools: ["read_github"],
           builtinTools: [],
           promptFile: "prompt.md",

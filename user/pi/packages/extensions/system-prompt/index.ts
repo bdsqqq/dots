@@ -192,7 +192,9 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function isSystemPromptConfig(value: Record<string, unknown>): value is SystemPromptExtConfig {
+function isSystemPromptConfig(
+  value: Record<string, unknown>,
+): value is SystemPromptExtConfig {
   return (
     isNonEmptyString(value.identity) &&
     isNonEmptyString(value.harness) &&
@@ -203,11 +205,14 @@ function isSystemPromptConfig(value: Record<string, unknown>): value is SystemPr
   );
 }
 
-const SYSTEM_PROMPT_CONFIG_SCHEMA: ExtensionConfigSchema<SystemPromptExtConfig> = {
-  validate: isSystemPromptConfig,
-};
+const SYSTEM_PROMPT_CONFIG_SCHEMA: ExtensionConfigSchema<SystemPromptExtConfig> =
+  {
+    validate: isSystemPromptConfig,
+  };
 
-function createSystemPromptExtension(deps: SystemPromptExtensionDeps = DEFAULT_DEPS) {
+function createSystemPromptExtension(
+  deps: SystemPromptExtensionDeps = DEFAULT_DEPS,
+) {
   return function systemPromptExtension(pi: ExtensionAPI): void {
     const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
       "@bds_pi/system-prompt",
@@ -220,10 +225,14 @@ function createSystemPromptExtension(deps: SystemPromptExtensionDeps = DEFAULT_D
     if (!body) return;
 
     const defaultHarnessDocs =
-      DEFAULT_HARNESS_DOCS[cfg.harness as keyof typeof DEFAULT_HARNESS_DOCS] ?? "";
+      DEFAULT_HARNESS_DOCS[cfg.harness as keyof typeof DEFAULT_HARNESS_DOCS] ??
+      "";
     const harnessDocs =
       cfg.harnessDocsPromptString || cfg.harnessDocsPromptFile
-        ? deps.resolvePrompt(cfg.harnessDocsPromptString, cfg.harnessDocsPromptFile)
+        ? deps.resolvePrompt(
+            cfg.harnessDocsPromptString,
+            cfg.harnessDocsPromptFile,
+          )
         : defaultHarnessDocs;
 
     pi.on("before_agent_start", async (event, ctx) => {
@@ -243,7 +252,8 @@ function createSystemPromptExtension(deps: SystemPromptExtensionDeps = DEFAULT_D
   };
 }
 
-const systemPromptExtension: (pi: ExtensionAPI) => void = createSystemPromptExtension();
+const systemPromptExtension: (pi: ExtensionAPI) => void =
+  createSystemPromptExtension();
 
 export default systemPromptExtension;
 
@@ -278,11 +288,14 @@ if (import.meta.vitest) {
 
   describe("system-prompt extension", () => {
     it("registers before_agent_start with default config when enabled", () => {
-      setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+      setGlobalSettingsPath(
+        path.join(tmpdir, `nonexistent-${Date.now()}.json`),
+      );
       const harness = createMockExtensionApiHarness();
       const resolvePromptSpy = vi.fn(
         (promptString: string, promptFile: string) =>
-          promptString || (promptFile === CONFIG_DEFAULTS.promptFile ? "body" : ""),
+          promptString ||
+          (promptFile === CONFIG_DEFAULTS.promptFile ? "body" : ""),
       );
       const extension = createSystemPromptExtension({
         ...DEFAULT_DEPS,
@@ -335,7 +348,8 @@ if (import.meta.vitest) {
       const harness = createMockExtensionApiHarness();
       const resolvePromptSpy = vi.fn(
         (promptString: string, promptFile: string) =>
-          promptString || (promptFile === CONFIG_DEFAULTS.promptFile ? "body" : ""),
+          promptString ||
+          (promptFile === CONFIG_DEFAULTS.promptFile ? "body" : ""),
       );
       const extension = createSystemPromptExtension({
         ...DEFAULT_DEPS,

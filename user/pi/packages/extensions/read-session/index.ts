@@ -21,7 +21,7 @@ import { walkDirSync } from "@bds_pi/fs";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "@sinclair/typebox";
-import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
+import { isPiSpawnModelValue, piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
 import {
   getFinalOutput,
   renderAgentTree,
@@ -35,15 +35,21 @@ import {
   setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
+import { getModel } from "@mariozechner/pi-ai";
+
+const READ_SESSION_DEFAULT_MODEL = getModel(
+  "openrouter",
+  "google/gemini-3-flash-preview",
+);
 
 type ReadSessionExtConfig = {
-  model: string;
+  model: typeof READ_SESSION_DEFAULT_MODEL | string;
   sessionsDir: string;
   maxChars: number;
 };
 
 const CONFIG_DEFAULTS: ReadSessionExtConfig = {
-  model: "openrouter/google/gemini-3-flash-preview",
+  model: READ_SESSION_DEFAULT_MODEL,
   sessionsDir: path.join(os.homedir(), ".pi", "agent", "sessions"),
   maxChars: 120_000,
 };
@@ -66,7 +72,7 @@ function isReadSessionConfig(
   value: Record<string, unknown>,
 ): value is ReadSessionExtConfig {
   return (
-    isNonEmptyString(value.model) &&
+    isPiSpawnModelValue(value.model) &&
     isNonEmptyString(value.sessionsDir) &&
     typeof value.maxChars === "number" &&
     Number.isInteger(value.maxChars) &&
@@ -83,7 +89,7 @@ const DEFAULT_SYSTEM_PROMPT = `You are analyzing a pi coding agent session trans
 
 export interface ReadSessionConfig {
   systemPrompt?: string;
-  model?: string;
+  model?: typeof READ_SESSION_DEFAULT_MODEL | string;
   sessionsDir: string;
   maxChars: number;
 }
