@@ -28,7 +28,12 @@ import {
   setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import {
+  isPiSpawnModelValue,
+  piSpawn,
+  resolvePrompt,
+  zeroUsage,
+} from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -36,9 +41,15 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
+import { getModel } from "@mariozechner/pi-ai";
+
+const FINDER_DEFAULT_MODEL = getModel(
+  "openrouter",
+  "google/gemini-3-flash-preview",
+);
 
 type FinderExtConfig = {
-  model: string;
+  model: typeof FINDER_DEFAULT_MODEL | string;
   extensionTools: string[];
   builtinTools: string[];
   promptFile: string;
@@ -52,7 +63,7 @@ type FinderExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: FinderExtConfig = {
-  model: "openrouter/google/gemini-3-flash-preview",
+  model: FINDER_DEFAULT_MODEL,
   extensionTools: ["read", "grep", "find", "ls"],
   builtinTools: ["read", "grep", "find", "ls"],
   promptFile: "agent.amp.finder.md",
@@ -65,10 +76,6 @@ const DEFAULT_DEPS: FinderExtensionDeps = {
   withPromptPatch,
 };
 
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
 function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((item) => typeof item === "string")
@@ -79,7 +86,7 @@ function isFinderConfig(
   value: Record<string, unknown>,
 ): value is FinderExtConfig {
   return (
-    isNonEmptyString(value.model) &&
+    isPiSpawnModelValue(value.model) &&
     isStringArray(value.extensionTools) &&
     isStringArray(value.builtinTools) &&
     typeof value.promptFile === "string" &&
@@ -93,7 +100,7 @@ const FINDER_CONFIG_SCHEMA: ExtensionConfigSchema<FinderExtConfig> = {
 
 export interface FinderConfig {
   systemPrompt?: string;
-  model?: string;
+  model?: typeof FINDER_DEFAULT_MODEL | string;
   extensionTools?: string[];
   builtinTools?: string[];
 }

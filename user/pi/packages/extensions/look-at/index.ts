@@ -12,6 +12,7 @@
  * screenshots, two versions of a diagram).
  */
 
+import { getModel } from "@mariozechner/pi-ai";
 import type {
   ExtensionAPI,
   ToolDefinition,
@@ -22,7 +23,12 @@ import {
   getEnabledExtensionConfig,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import {
+  isPiSpawnModelValue,
+  piSpawn,
+  resolvePrompt,
+  zeroUsage,
+} from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -31,8 +37,13 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 
+const LOOK_AT_DEFAULT_MODEL = getModel(
+  "openrouter",
+  "google/gemini-3-flash-preview",
+);
+
 type LookAtExtConfig = {
-  model: string;
+  model: typeof LOOK_AT_DEFAULT_MODEL | string;
   extensionTools: string[];
   builtinTools: string[];
   promptFile: string;
@@ -46,7 +57,7 @@ type LookAtExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: LookAtExtConfig = {
-  model: "openrouter/google/gemini-3-flash-preview",
+  model: LOOK_AT_DEFAULT_MODEL,
   extensionTools: ["read", "ls"],
   builtinTools: ["read", "ls"],
   promptFile: "",
@@ -73,7 +84,7 @@ function isLookAtExtConfig(
   value: Record<string, unknown>,
 ): value is LookAtExtConfig {
   return (
-    isNonEmptyString(value.model) &&
+    isPiSpawnModelValue(value.model) &&
     isStringArray(value.extensionTools) &&
     isStringArray(value.builtinTools) &&
     typeof value.promptFile === "string" &&
@@ -116,11 +127,10 @@ When reference files are provided alongside the main file, you are being asked t
 - Keep responses focused and brief.
 `;
 
-export interface LookAtConfig {
+export interface LookAtConfig extends Partial<
+  Pick<LookAtExtConfig, "model" | "extensionTools" | "builtinTools">
+> {
   systemPrompt?: string;
-  model?: string;
-  extensionTools?: string[];
-  builtinTools?: string[];
 }
 
 interface LookAtParams {

@@ -17,11 +17,51 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Message } from "@mariozechner/pi-ai";
+import {
+  getModel,
+  type KnownApi,
+  type Message,
+  type Model,
+} from "@mariozechner/pi-ai";
 import { resolveGlobalSettingsPath } from "@bds_pi/config";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
 
 // --- types ---
+
+/** sub-agent spawn accepts a registry model or a CLI `provider/modelId` string (JSON config). */
+export type PiSpawnModel = Model<KnownApi> | string;
+
+export function isPiSpawnModelValue(value: unknown): value is PiSpawnModel {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (value !== null && typeof value === "object") {
+    const m = value as Record<string, unknown>;
+    return (
+      typeof m.provider === "string" &&
+      m.provider.trim().length > 0 &&
+      typeof m.id === "string" &&
+      m.id.trim().length > 0
+    );
+  }
+  return false;
+}
+
+export function modelCliString(model: PiSpawnModel): string {
+  return typeof model === "string" ? model : `${model.provider}/${model.id}`;
+}
+
+/**
+ * resolve a `provider/modelId` string (modelId may contain slashes) via the pi-ai registry.
+ * for E2E tests and dynamic env overrides where `getModel` literals are not available.
+ */
+export function getModelFromCliString(cliModel: string): Model<KnownApi> {
+  const i = cliModel.indexOf("/");
+  if (i <= 0) {
+    throw new Error(`[@bds_pi/pi-spawn] invalid model string: ${cliModel}`);
+  }
+  const provider = cliModel.slice(0, i);
+  const modelId = cliModel.slice(i + 1);
+  return getModel(provider as any, modelId as any);
+}
 
 export interface UsageStats {
   input: number;
@@ -38,7 +78,7 @@ export interface PiSpawnResult {
   messages: Message[];
   stderr: string;
   usage: UsageStats;
-  model?: string;
+  model?: PiSpawnModel;
   stopReason?: string;
   errorMessage?: string;
 }
@@ -46,7 +86,7 @@ export interface PiSpawnResult {
 export interface PiSpawnConfig {
   cwd: string;
   task: string;
-  model?: string;
+  model?: PiSpawnModel;
   builtinTools?: string[];
   extensionTools?: string[];
   systemPromptBody?: string;
@@ -153,7 +193,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
     ? ["--mode", "rpc", "--no-session"]
     : ["--mode", "json", "-p", "--no-session"];
 
-  if (config.model) args.push("--model", config.model);
+  if (config.model) args.push("--model", modelCliString(config.model));
   if (config.builtinTools !== undefined) {
     if (config.builtinTools.length === 0) {
       args.push("--no-tools");

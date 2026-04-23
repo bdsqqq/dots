@@ -27,7 +27,12 @@ import {
   setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import {
+  isPiSpawnModelValue,
+  piSpawn,
+  resolvePrompt,
+  zeroUsage,
+} from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -37,6 +42,7 @@ import {
 } from "@bds_pi/sub-agent-render";
 import { OutputBuffer, headTailChars } from "@bds_pi/output-buffer";
 import { osc8Link } from "@bds_pi/box-format";
+import { getModel } from "@mariozechner/pi-ai";
 
 const HEAD_LINES = 500;
 const TAIL_LINES = 500;
@@ -44,8 +50,13 @@ const MAX_CHARS = 64_000;
 const CURL_TIMEOUT_SECS = 30;
 const MAX_REDIRECTS = 5;
 
+const READ_WEB_PAGE_DEFAULT_MODEL = getModel(
+  "openrouter",
+  "google/gemini-3-flash-preview",
+);
+
 type ReadWebPageExtConfig = {
-  model: string;
+  model: typeof READ_WEB_PAGE_DEFAULT_MODEL | string;
   promptFile: string;
   promptString: string;
 };
@@ -57,7 +68,7 @@ type ReadWebPageExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: ReadWebPageExtConfig = {
-  model: "openrouter/google/gemini-3-flash-preview",
+  model: READ_WEB_PAGE_DEFAULT_MODEL,
   promptFile: "",
   promptString: "",
 };
@@ -68,15 +79,11 @@ const DEFAULT_DEPS: ReadWebPageExtensionDeps = {
   withPromptPatch,
 };
 
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
 function isReadWebPageConfig(
   value: Record<string, unknown>,
 ): value is ReadWebPageExtConfig {
   return (
-    isNonEmptyString(value.model) &&
+    isPiSpawnModelValue(value.model) &&
     typeof value.promptFile === "string" &&
     typeof value.promptString === "string"
   );
@@ -175,7 +182,7 @@ interface ReadWebPageParams {
 
 export interface ReadWebPageConfig {
   systemPrompt?: string;
-  model?: string;
+  model?: typeof READ_WEB_PAGE_DEFAULT_MODEL | string;
 }
 
 export function createReadWebPageTool(

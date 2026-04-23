@@ -133,7 +133,13 @@ export const roles: Record<RoleId, RoleProfile> = {
     id: "dayToDay",
     description:
       "general workhorse: fast enough, cost-sensitive, still smart. covers default and task agents.",
-    relevantDimensions: ["coding", "intelligence", "price", "outputSpeed", "ttft"] as const,
+    relevantDimensions: [
+      "coding",
+      "intelligence",
+      "price",
+      "outputSpeed",
+      "ttft",
+    ] as const,
     redFlagDimensions: ["hallucination"] as const,
     guardrails: {
       maxPricePer1mBlended: 5,
@@ -482,13 +488,17 @@ if (import.meta.vitest) {
 
       for (const role of Object.values(roles)) {
         for (const dim of role.relevantDimensions) {
-          expect(validDims.has(dim), `unknown dimension ${dim} in role ${role.id}`).toBe(true);
+          expect(
+            validDims.has(dim),
+            `unknown dimension ${dim} in role ${role.id}`,
+          ).toBe(true);
         }
         if (role.redFlagDimensions) {
           for (const dim of role.redFlagDimensions) {
-            expect(validDims.has(dim), `unknown red flag dimension ${dim} in role ${role.id}`).toBe(
-              true,
-            );
+            expect(
+              validDims.has(dim),
+              `unknown red flag dimension ${dim} in role ${role.id}`,
+            ).toBe(true);
           }
         }
       }
@@ -521,7 +531,8 @@ if (import.meta.vitest) {
         if (agent.currentModel === "inherits-default") continue;
         if (agent.currentModel === undefined) continue;
         expect(
-          modelIdSet.has(agent.currentModel) || agent.currentModel === "gpt-5-2",
+          modelIdSet.has(agent.currentModel) ||
+            agent.currentModel === "gpt-5-2",
           `agent ${agent.id} has invalid currentModel ${agent.currentModel}`,
         ).toBe(true);
       }
@@ -535,7 +546,9 @@ if (import.meta.vitest) {
     });
 
     test("resolves agent file path", () => {
-      expect(resolveAgentSelector("~/.pi/agent/agents/agent.amp.oracle.md")).toBe("oracle");
+      expect(
+        resolveAgentSelector("~/.pi/agent/agents/agent.amp.oracle.md"),
+      ).toBe("oracle");
     });
 
     test("resolves by label", () => {
@@ -544,7 +557,9 @@ if (import.meta.vitest) {
     });
 
     test("throws on unknown selector", () => {
-      expect(() => resolveAgentSelector("unknown-agent")).toThrow("unknown agent selector");
+      expect(() => resolveAgentSelector("unknown-agent")).toThrow(
+        "unknown agent selector",
+      );
     });
   });
 

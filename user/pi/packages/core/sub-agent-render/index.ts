@@ -13,7 +13,11 @@ import * as os from "node:os";
 import type { Message } from "@mariozechner/pi-ai";
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Text, TruncatedText } from "@mariozechner/pi-tui";
-import type { UsageStats } from "@bds_pi/pi-spawn";
+import {
+  modelCliString,
+  type PiSpawnModel,
+  type UsageStats,
+} from "@bds_pi/pi-spawn";
 import type { ToolCostDetails } from "@bds_pi/tool-cost";
 
 // --- types ---
@@ -34,7 +38,7 @@ export interface SingleResult {
   exitCode: number;
   messages: Message[];
   usage: UsageStats;
-  model?: string;
+  model?: PiSpawnModel;
   stopReason?: string;
   errorMessage?: string;
 }
@@ -130,7 +134,7 @@ export function formatUsageStats(
     contextTokens?: number;
     turns?: number;
   },
-  model?: string,
+  model?: PiSpawnModel,
 ): string {
   const parts: string[] = [];
   if (usage.turns)
@@ -142,7 +146,7 @@ export function formatUsageStats(
   if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
   if (usage.contextTokens && usage.contextTokens > 0)
     parts.push(`ctx:${formatTokens(usage.contextTokens)}`);
-  if (model) parts.push(model);
+  if (model) parts.push(modelCliString(model));
   return parts.join(" ");
 }
 

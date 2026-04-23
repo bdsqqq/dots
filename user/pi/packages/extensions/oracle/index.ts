@@ -29,7 +29,13 @@ import {
   getEnabledExtensionConfig,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import {
+  getModelFromCliString,
+  isPiSpawnModelValue,
+  piSpawn,
+  resolvePrompt,
+  zeroUsage,
+} from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -38,8 +44,13 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 
+const ORACLE_DEFAULT_MODEL = getModel(
+  "openrouter",
+  "google/gemini-3.1-pro-preview",
+);
+
 type OracleExtConfig = {
-  model: string;
+  model: typeof ORACLE_DEFAULT_MODEL | string;
   extensionTools: string[];
   builtinTools: string[];
   promptFile: string;
@@ -53,7 +64,7 @@ type OracleExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: OracleExtConfig = {
-  model: "openrouter/google/gemini-3.1-pro-preview",
+  model: ORACLE_DEFAULT_MODEL,
   extensionTools: ["read", "grep", "find", "ls", "bash"],
   builtinTools: ["read", "grep", "find", "ls", "bash"],
   promptFile: "agent.amp.oracle.md",
@@ -80,7 +91,7 @@ function isOracleConfig(
   value: Record<string, unknown>,
 ): value is OracleExtConfig {
   return (
-    isNonEmptyString(value.model) &&
+    isPiSpawnModelValue(value.model) &&
     isStringArray(value.extensionTools) &&
     isStringArray(value.builtinTools) &&
     typeof value.promptFile === "string" &&
@@ -100,7 +111,7 @@ interface OracleParams {
 
 export interface OracleConfig {
   systemPrompt?: string;
-  model?: string;
+  model?: typeof ORACLE_DEFAULT_MODEL | string;
   extensionTools?: string[];
   builtinTools?: string[];
 }
@@ -567,7 +578,7 @@ if (import.meta.vitest) {
 
     describe("isOracleConfig", () => {
       const validConfig = {
-        model: "openrouter/google/gemini-3.1-pro-preview",
+        model: ORACLE_DEFAULT_MODEL,
         extensionTools: ["read", "grep"],
         builtinTools: ["read", "grep"],
         promptFile: "prompt.md",
@@ -612,11 +623,7 @@ if (import.meta.vitest) {
       process.env.PI_E2E_MODEL ?? "openrouter/moonshotai/kimi-k2.5";
 
     it("eval: consults oracle and gets a response", async () => {
-      const [provider, modelId] = E2E_MODEL.split("/").slice(-2) as [
-        string,
-        string,
-      ];
-      const model = (getModel as any)(provider, modelId);
+      const model = getModelFromCliString(E2E_MODEL);
 
       // Create oracle tool with default config
       const oracleTool = createOracleTool();

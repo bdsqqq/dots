@@ -24,7 +24,12 @@ import {
   getEnabledExtensionConfig,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import { piSpawn, resolvePrompt, zeroUsage } from "@bds_pi/pi-spawn";
+import {
+  isPiSpawnModelValue,
+  piSpawn,
+  resolvePrompt,
+  zeroUsage,
+} from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getFinalOutput,
@@ -32,9 +37,15 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
+import { getModel } from "@mariozechner/pi-ai";
+
+const CODE_REVIEW_DEFAULT_MODEL = getModel(
+  "openrouter",
+  "google/gemini-3.1-pro-preview",
+);
 
 type CodeReviewExtConfig = {
-  model: string;
+  model: typeof CODE_REVIEW_DEFAULT_MODEL | string;
   builtinTools: string[];
   extensionTools: string[];
   promptFile: string;
@@ -50,7 +61,7 @@ type CodeReviewExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: CodeReviewExtConfig = {
-  model: "openrouter/google/gemini-3.1-pro-preview",
+  model: CODE_REVIEW_DEFAULT_MODEL,
   builtinTools: ["read", "grep", "find", "ls", "bash"],
   extensionTools: [
     "read",
@@ -134,7 +145,7 @@ function isCodeReviewConfig(
   value: Record<string, unknown>,
 ): value is CodeReviewExtConfig {
   return (
-    isNonEmptyString(value.model) &&
+    isPiSpawnModelValue(value.model) &&
     isStringArray(value.builtinTools) &&
     isStringArray(value.extensionTools) &&
     typeof value.promptFile === "string" &&
@@ -151,7 +162,7 @@ const CODE_REVIEW_CONFIG_SCHEMA: ExtensionConfigSchema<CodeReviewExtConfig> = {
 export interface CodeReviewConfig {
   systemPrompt?: string;
   reportFormat?: string;
-  model?: string;
+  model?: typeof CODE_REVIEW_DEFAULT_MODEL | string;
   builtinTools?: string[];
   extensionTools?: string[];
 }
@@ -693,7 +704,7 @@ if (import.meta.vitest) {
     describe("isCodeReviewConfig", () => {
       it("validates complete config", () => {
         const valid = {
-          model: "openrouter/google/gemini-3.1-pro-preview",
+          model: CODE_REVIEW_DEFAULT_MODEL,
           builtinTools: ["read", "bash"],
           extensionTools: ["read", "web_search"],
           promptFile: "",

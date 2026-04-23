@@ -181,8 +181,10 @@ function getDeps(def: VariableDefinition, knownVars: Set<string>): string[] {
   // alias is a direct var name reference, not a template
   if (def.alias !== undefined && knownVars.has(def.alias)) deps.add(def.alias);
   for (const ref of extractRefs(def.file, knownVars)) deps.add(ref);
-  for (const ref of extractRefs(def.dangerously_evaluate_js, knownVars)) deps.add(ref);
-  for (const ref of extractRefs(def.dangerously_evaluate_sh, knownVars)) deps.add(ref);
+  for (const ref of extractRefs(def.dangerously_evaluate_js, knownVars))
+    deps.add(ref);
+  for (const ref of extractRefs(def.dangerously_evaluate_sh, knownVars))
+    deps.add(ref);
   for (const ref of extractRefs(def.cwd, knownVars)) deps.add(ref);
   for (const ref of extractRefs(def.default, knownVars)) deps.add(ref);
   return [...deps];
@@ -340,7 +342,9 @@ export function interpolatePromptVars(
 ): string {
   // merge variable definitions
   const configVars =
-    variables === undefined ? (getGlobalConfig<PromptVariables>("promptVariables") ?? {}) : {};
+    variables === undefined
+      ? (getGlobalConfig<PromptVariables>("promptVariables") ?? {})
+      : {};
   const merged: PromptVariables = {
     ...DEFAULT_PROMPT_VARIABLES,
     ...configVars,
@@ -356,7 +360,8 @@ export function interpolatePromptVars(
   const resolved: Record<string, string> = {};
   for (const name of order) {
     const def = merged[name];
-    if (def) resolved[name] = resolveVariable(def, resolved, runtimeVars, configDir);
+    if (def)
+      resolved[name] = resolveVariable(def, resolved, runtimeVars, configDir);
   }
 
   // determine which vars are empty and which are filled, respecting dropLineIfEmpty
@@ -376,7 +381,10 @@ export function interpolatePromptVars(
 
   // pass 1: drop entire lines whose var resolved to empty
   if (dropKeys.length > 0) {
-    result = result.replace(new RegExp(`^.*\\{(${dropKeys.join("|")})\\}.*\\n?`, "gm"), "");
+    result = result.replace(
+      new RegExp(`^.*\\{(${dropKeys.join("|")})\\}.*\\n?`, "gm"),
+      "",
+    );
   }
 
   // pass 2: substitute all non-empty vars in one pass
@@ -434,7 +442,8 @@ if (import.meta.vitest) {
     });
 
     test("drops entire line when value is empty", () => {
-      const prompt = "Working directory: {cwd}\nRepository: {repo}\nSession ID: {sessionId}\nDone.";
+      const prompt =
+        "Working directory: {cwd}\nRepository: {repo}\nSession ID: {sessionId}\nDone.";
       const result = interpolatePromptVars(prompt, cwd, {
         repo: "",
         sessionId: "",
@@ -490,10 +499,14 @@ if (import.meta.vitest) {
     test("empty ls drops the line", () => {
       // /tmp has no .git, so findGitRoot falls back to cwd, and listing /nonexistent fails
       const prompt = "Before\n{ls}\nAfter";
-      const result = interpolatePromptVars(prompt, "/nonexistent/path/unlikely", {
-        repo: "x",
-        sessionId: "y",
-      });
+      const result = interpolatePromptVars(
+        prompt,
+        "/nonexistent/path/unlikely",
+        {
+          repo: "x",
+          sessionId: "y",
+        },
+      );
 
       expect(result).toContain("Before");
       expect(result).toContain("After");
