@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.69.0",
+    "@mariozechner/pi-coding-agent": "^0.70.0",
     "@openai/codex": "^0.122.0",
     "agent-browser": "^0.25.5",
     "biome": "^0.3.3",
