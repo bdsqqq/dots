@@ -1,6 +1,8 @@
 {
   "defaultProvider": "openrouter",
-  "skills": ["~/.config/agents/skills"],
+  "skills": [
+    "~/.config/agents/skills"
+  ],
   "extensions": [
     "~/.pi/agent/extensions/editor",
     "~/.pi/agent/extensions/handoff.ts",
@@ -12,7 +14,7 @@
   "compaction": {
     "enabled": true
   },
-  "lastChangelogVersion": "0.69.0",
+  "lastChangelogVersion": "0.70.2",
   "defaultModel": "minimax/minimax-m2.7",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
