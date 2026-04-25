@@ -53,7 +53,6 @@ in if !(lib.hasInfix "linux" hostSystem) then
 else {
   programs.niri = {
     settings = {
-      # Startup applications - same as hyprland
       spawn-at-startup = [
         {
           argv = [
@@ -91,7 +90,6 @@ else {
         STEAM_FORCE_DESKTOPUI_SCALING = "1.5";
       };
 
-      # Input configuration
       input = {
         keyboard.xkb.layout = "us";
         mouse.accel-profile = "flat";
@@ -105,7 +103,6 @@ else {
       # scale is auto-detected from EDID physical dimensions (since 0.1.6)
       # only add explicit output blocks if auto-detection doesn't work for your monitor
 
-      # Cursor
       cursor = {
         theme = "macOS";
         size = 24;
@@ -115,14 +112,11 @@ else {
       layout = {
         gaps = 8;
 
-        # No borders (matching hyprland border_size = 0)
         border.enable = false;
         focus-ring.enable = false;
 
-        # Default column width
         default-column-width.proportion = 0.5;
 
-        # Preset column widths for Mod+R cycling
         preset-column-widths = [
           { proportion = 1.0 / 3.0; }
           { proportion = 0.5; }
@@ -134,7 +128,6 @@ else {
       # Window decorations
       prefer-no-csd = true;
 
-      # Window rules for rounding (matching hyprland rounding = 8)
       window-rules = [{
         geometry-corner-radius = {
           top-left = 8.0;
@@ -145,8 +138,8 @@ else {
         clip-to-geometry = true;
       }];
 
-      # Layer rules - place swaybg in backdrop so it doesn't move with workspaces
       layer-rules = [{
+        # swaybg in backdrop so it doesn't move with workspaces
         matches = [{ namespace = "^wallpaper$"; }];
         place-within-backdrop = true;
       }];
@@ -154,7 +147,6 @@ else {
       # Make layout background transparent so backdrop wallpaper shows through
       layout.background-color = "transparent";
 
-      # Animations - matching hyprland's easeOutQuint feel (using ease-out-expo, closest available)
       animations = {
         slowdown = 1.0;
 
@@ -187,7 +179,6 @@ else {
         };
       };
 
-      # Keybindings - matching hyprland binds
       binds = with config.lib.niri.actions; {
         # Core actions
         "Mod+Q".action = close-window;
