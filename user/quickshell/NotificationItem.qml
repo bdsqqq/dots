@@ -65,8 +65,10 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        root.notification.dismiss()
                         root.dismissed()
+                        if (root.notification) {
+                            root.notification.dismiss()
+                        }
                     }
                 }
             }
