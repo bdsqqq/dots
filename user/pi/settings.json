@@ -1,5 +1,5 @@
 {
-  "defaultProvider": "openrouter",
+  "defaultProvider": "openai-codex",
   "skills": [
     "~/.config/agents/skills"
   ],
@@ -15,8 +15,8 @@
     "enabled": true
   },
   "lastChangelogVersion": "0.70.2",
-  "defaultModel": "minimax/minimax-m2.7",
-  "defaultThinkingLevel": "high",
+  "defaultModel": "gpt-5.5",
+  "defaultThinkingLevel": "low",
   "hideThinkingBlock": true,
   "steeringMode": "all",
   "followUpMode": "all",
