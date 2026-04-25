@@ -47,5 +47,18 @@ else
   in {
     home-manager.users.bdsqqq = { ... }: {
       home.packages = [ helium-launcher ];
+
+      xdg.desktopEntries.helium = {
+        name = "Helium";
+        genericName = "Web Browser";
+        exec = "helium %U";
+        terminal = false;
+        categories = [ "Network" "WebBrowser" ];
+        mimeType = [
+          "x-scheme-handler/http"
+          "x-scheme-handler/https"
+          "text/html"
+        ];
+      };
     };
   }
