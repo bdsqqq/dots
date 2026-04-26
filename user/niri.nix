@@ -62,6 +62,7 @@ let
     state_dir="$HOME/.local/state/cleanshot-niri"
     geom_file="$state_dir/last-area"
     recorder_pid_file="$state_dir/recording.pid"
+    recorder_file="$state_dir/recording.path"
     mkdir -p "$screenshot_dir" "$state_dir"
 
     sanitize() {
@@ -126,6 +127,23 @@ let
       esac
     }
 
+    notify_recording() {
+      file="$1"
+      action="$(${pkgs.libnotify}/bin/notify-send \
+        --app-name="CleanShot niri" \
+        --icon="$file" \
+        --action=copy="Copy" \
+        --action=save="Save" \
+        --action=delete="Delete" \
+        "Recording saved" "$(${pkgs.coreutils}/bin/basename "$file")" || true)"
+
+      case "$action" in
+        copy) ${pkgs.wl-clipboard}/bin/wl-copy --type video/mp4 < "$file" ;;
+        save) ${pkgs.xdg-utils}/bin/xdg-open "$screenshot_dir" >/dev/null 2>&1 & ;;
+        delete) ${pkgs.coreutils}/bin/rm -f "$file" ;;
+      esac
+    }
+
     capture_area() {
       geom="$1"
       file="$(output_path png)"
@@ -155,9 +173,12 @@ let
         ;;
       record)
         if [ -s "$recorder_pid_file" ] && ${pkgs.procps}/bin/kill -0 "$(${pkgs.coreutils}/bin/cat "$recorder_pid_file")" 2>/dev/null; then
-          ${pkgs.procps}/bin/pkill -INT -P "$(${pkgs.coreutils}/bin/cat "$recorder_pid_file")" 2>/dev/null || ${pkgs.procps}/bin/kill -INT "$(${pkgs.coreutils}/bin/cat "$recorder_pid_file")"
-          ${pkgs.coreutils}/bin/rm -f "$recorder_pid_file"
-          ${pkgs.libnotify}/bin/notify-send --app-name="CleanShot niri" "Recording saved" "$screenshot_dir"
+          recorder_pid="$(${pkgs.coreutils}/bin/cat "$recorder_pid_file")"
+          file="$(${pkgs.coreutils}/bin/cat "$recorder_file")"
+          ${pkgs.procps}/bin/pkill -INT -P "$recorder_pid" 2>/dev/null || ${pkgs.procps}/bin/kill -INT "$recorder_pid"
+          wait "$recorder_pid" 2>/dev/null || true
+          ${pkgs.coreutils}/bin/rm -f "$recorder_pid_file" "$recorder_file"
+          [ -s "$file" ] && notify_recording "$file"
           exit 0
         fi
         geom="$(${pkgs.slurp}/bin/slurp)"
@@ -166,6 +187,7 @@ let
         file="$(output_path mp4)"
         ${pkgs.wf-recorder}/bin/wf-recorder -g "$geom" -f "$file" &
         ${pkgs.coreutils}/bin/printf '%s' "$!" > "$recorder_pid_file"
+        ${pkgs.coreutils}/bin/printf '%s' "$file" > "$recorder_file"
         ${pkgs.libnotify}/bin/notify-send --app-name="CleanShot niri" "Recording started" "Press Super+Shift+5 again to stop."
         ;;
       *)
