@@ -1,4 +1,4 @@
-{ lib, inputs, hostSystem ? null, config ? { }, ... }:
+{ lib, inputs, hostSystem ? null, ... }:
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   homeDir = if isDarwin then "/Users/bdsqqq" else "/home/bdsqqq";
@@ -7,32 +7,20 @@ let
   repoExtensions =
     "${homeDir}/commonplace/01_files/nix/user/pi/packages/extensions";
   repoAgentPrompts = "${homeDir}/commonplace/01_files/nix/user/agents/agents";
+  authPath = "${homeDir}/.pi/agent/auth.json";
 in {
-  sops.templates."pi-auth.json" = {
-    content = builtins.toJSON {
-      openrouter = {
-        type = "api_key";
-        key = config.sops.placeholder.open_router;
-      };
-      opencode = {
-        type = "api_key";
-        key = config.sops.placeholder.opencode_zen;
-      };
-      "openai-codex" = {
-        type = "oauth";
-        access = config.sops.placeholder.openai_codex_access;
-        refresh = config.sops.placeholder.openai_codex_refresh;
-        expires = config.sops.placeholder.openai_codex_expires;
-        accountId = config.sops.placeholder.openai_codex_accountId;
-      };
-    };
-    owner = "bdsqqq";
-    mode = "0600";
-  };
-
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
-    home.file.".pi/agent/auth.json".source =
-      config.lib.file.mkOutOfStoreSymlink "/run/secrets/rendered/pi-auth.json";
+    home.activation.piAuthJson = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      if [ ! -e "${authPath}" ]; then
+        mkdir -p "$(dirname "${authPath}")"
+        printf '%s\n' \
+          '{' \
+          '  "openrouter": {"type": "api_key", "key": "!cat /run/secrets/open_router"},' \
+          '  "opencode": {"type": "api_key", "key": "!cat /run/secrets/opencode_zen"}' \
+          '}' > "${authPath}"
+        chmod 0600 "${authPath}"
+      fi
+    '';
     home.file.".pi/agent/settings.json".source =
       config.lib.file.mkOutOfStoreSymlink
       "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/settings.json";

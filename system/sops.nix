@@ -27,11 +27,6 @@ in {
       parallel_api_key = { owner = "bdsqqq"; };
       syncthing_gui_password = { owner = "bdsqqq"; };
       syncthing_gui_password_hash = { owner = "bdsqqq"; };
-      openai_codex_access = { owner = "bdsqqq"; };
-      openai_codex_refresh = { owner = "bdsqqq"; };
-      openai_codex_expires = { owner = "bdsqqq"; };
-      openai_codex_accountId = { owner = "bdsqqq"; };
-
       "axiom.toml" = {
         sopsFile = inputs.self + "/.axiom.toml";
         format = "binary";
