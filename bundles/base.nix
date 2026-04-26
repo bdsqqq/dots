@@ -9,6 +9,7 @@
     ../system/authorized-keys.nix
     ../user/path-order.nix
     ../user/shell.nix
+    ../user/ssh.nix
     ../user/homebrew.nix
     ../user/bun.nix
     ../user/sdkman.nix
