@@ -80,6 +80,13 @@ else {
           };
       };
 
+      services.gnome.gnome-keyring.enable = true;
+
+      security.pam.services = {
+        greetd.enableGnomeKeyring = true;
+        login.enableGnomeKeyring = true;
+      };
+
       # ensure wayland session desktop files are available to both tuigreet and the
       # quickshell controller's session discovery.
       environment.pathsToLink = [ "/share/wayland-sessions" ];

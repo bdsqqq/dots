@@ -14,8 +14,6 @@ in lib.mkIf (headMode == "graphical") {
         inputs.lnr.packages.${hostSystem}.default
       ] ++ lib.optionals isDarwin [ iina ] ++ lib.optionals (!isDarwin) [
         transmission_4 # fmt-9.1.0 fails to compile on darwin with newer clang
-        _1password-gui
-        _1password-cli
         dbeaver-bin
         vlc
         imv
