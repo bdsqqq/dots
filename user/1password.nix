@@ -19,13 +19,4 @@ in lib.mkIf (headMode == "graphical") (lib.mkMerge [
     ];
   } else
     { })
-
-  {
-    home-manager.users.bdsqqq = { ... }: {
-      programs.ssh = {
-        enable = true;
-        matchBlocks."*".identityAgent = "~/.1password/agent.sock";
-      };
-    };
-  }
 ])
