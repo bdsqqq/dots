@@ -89,7 +89,7 @@ in {
         connectionLimitMax = 0;
       };
 
-      devices = syncthing.devicesFor [ "mbp-m2" "ipd" "iph16" "r56" ];
+      devices = syncthing.devicesFor [ "mbp-m2" "ipd" "iph16" "r56" "lgo-z2e" ];
 
       folders = {
         commonplace =
@@ -98,12 +98,19 @@ in {
             rescanIntervalS = 3600;
             versioning.params.cleanoutDays = "30";
           };
+        helium-remotes =
+          syncthing.folderFor "helium-remotes" "/mnt/storage-01/helium-remotes"
+          false [ "mbp-m2" "lgo-z2e" "r56" ] {
+            rescanIntervalS = 60;
+          };
       };
     };
   };
 
-  systemd.tmpfiles.rules =
-    [ "d /mnt/storage-01/commonplace 0700 bdsqqq users -" ];
+  systemd.tmpfiles.rules = [
+    "d /mnt/storage-01/commonplace 0700 bdsqqq users -"
+    "d /mnt/storage-01/helium-remotes 0700 bdsqqq users -"
+  ];
 
   users.users.bdsqqq = {
     isNormalUser = true;

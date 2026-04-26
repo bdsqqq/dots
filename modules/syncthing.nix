@@ -65,6 +65,7 @@ rec {
      - prism-instances: darwin: `${home}/Library/Application Support/PrismLauncher/instances`
                          linux: `${home}/.local/share/PrismLauncher/instances`
      - pi-sessions: `${home}/.pi/agent/sessions`
+     - helium-remotes: `${home}/.local/share/helium-remotes`
   */
   folderPaths = name: home: isDarwin:
     let
@@ -75,6 +76,7 @@ rec {
         else
           "${home}/.local/share/PrismLauncher/instances";
         pi-sessions = "${home}/.pi/agent/sessions";
+        helium-remotes = "${home}/.local/share/helium-remotes";
       };
     in paths.${name};
 
@@ -83,13 +85,14 @@ rec {
     commonplace = "sqz7z-a6tfg";
     prism-instances = "prism-instances";
     pi-sessions = "pi-sessions";
+    helium-remotes = "helium-remotes";
   };
 
   /* `folderFor :: String -> String -> Bool -> [String] -> AttrSet -> AttrSet`
      Returns a full folder config.
 
      Parameters:
-     - name: folder name (commonplace, prism-instances, pi-sessions)
+     - name: folder name (commonplace, prism-instances, pi-sessions, helium-remotes)
      - home: home directory path
      - isDarwin: whether the host is darwin
      - deviceNames: list of device names to share with

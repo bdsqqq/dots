@@ -110,6 +110,10 @@ in {
   my.hardware.gpu.vendors = [ "amd" ];
   my.primaryUser = "bdsqqq";
   my.login.greeter = "quickshell";
+  my.heliumRemotes = {
+    enable = true;
+    tabsExtension.enable = true;
+  };
 
   networking.hostName = "lgo-z2e";
   networking.networkmanager.enable = true;
@@ -179,6 +183,12 @@ in {
         pi-sessions =
           syncthing.folderFor "pi-sessions" "/home/bdsqqq" false [ "mbp-m2" ]
           { };
+        helium-remotes =
+          syncthing.folderFor "helium-remotes" "/home/bdsqqq" false [
+            "mbp-m2"
+            "htz-relay"
+            "r56"
+          ] { };
       };
     };
   };

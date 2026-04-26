@@ -75,6 +75,10 @@ in {
 
   my.hardware.gpu.vendors = [ "nvidia" ];
   my.primaryUser = "bdsqqq";
+  my.heliumRemotes = {
+    enable = true;
+    tabsExtension.enable = true;
+  };
 
   networking.hostName = "r56";
   networking.networkmanager.enable = true;
@@ -128,6 +132,12 @@ in {
             rescanIntervalS = 120;
             versioning = null;
           };
+        helium-remotes =
+          syncthing.folderFor "helium-remotes" "/home/bdsqqq" false [
+            "mbp-m2"
+            "htz-relay"
+            "lgo-z2e"
+          ] { };
       };
     };
   };
