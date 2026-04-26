@@ -32,21 +32,25 @@ let
     }
 
     layer-rule {
-        match layer="overlay"
+        match namespace="quickshell-control-center"
         opacity 0.95
 
         background-effect {
             blur true
-        }
-
-        popups {
-            opacity 0.95
-
-            background-effect {
-                blur true
-            }
+            xray false
         }
     }
+
+    layer-rule {
+        match namespace="quickshell-notifications"
+        opacity 0.95
+
+        background-effect {
+            blur true
+            xray false
+        }
+    }
+
   '';
 
   # touchscreen gesture daemon for niri (niri lacks native touchscreen swipe gestures)
@@ -370,8 +374,11 @@ else {
 
   # niri 26.04 added background effects before niri-flake's nix schema exposed them.
   # keep typed settings above for everything the schema understands, then append raw KDL
-  # at activation so `niri validate` still checks the final file. once upstream exposes
-  # `blur`, `background-effect`, and `popups`, move this into `programs.niri.settings`.
+  # for normal windows and specific material surfaces only. quickshell's overlay host
+  # is a fullscreen transparent mask; blurring all overlays makes the wallpaper look
+  # blurred even when no app is open. keep layer-shell blur opt-in by namespace.
+  # once upstream exposes `blur`, `background-effect`, and `popups`, move this into
+  # `programs.niri.settings` with the same namespace allowlist.
   home.activation.niriBackgroundEffects =
     lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       config_file="$HOME/.config/niri/config.kdl"
