@@ -1,0 +1,5 @@
+{
+  "pointsC": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+  "speedsPercent": [44, 48, 55, 60, 71, 79, 87, 87, 100, 100],
+  "enforceWindowsMinimums": true
+}
