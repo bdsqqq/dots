@@ -289,7 +289,7 @@ in {
     home-manager.users.bdsqqq = { ... }: lib.mkMerge [
       {
         home.packages = [ tabsAgent tabsCli ];
-        home.file.".local/share/helium-remotes/extension".source = extension;
+        home.file.".local/share/helium-remotes-extension".source = extension;
       }
 
       (lib.mkIf (cfg.tabsExtension.enable && isLinux) {

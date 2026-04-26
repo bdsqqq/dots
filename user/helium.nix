@@ -41,7 +41,7 @@ else
           chmod +x "$dest"
         fi
 
-        extension_dir="''${XDG_DATA_HOME:-$HOME/.local/share}/helium-remotes/extension"
+        extension_dir="''${XDG_DATA_HOME:-$HOME/.local/share}/helium-remotes-extension"
         if [ -d "$extension_dir" ]; then
           exec appimage-run "$dest" --load-extension="$extension_dir" "$@"
         fi
