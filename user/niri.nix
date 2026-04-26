@@ -3,6 +3,52 @@
 let
   toggleTheme = import ./scripts/toggle-theme.nix { inherit pkgs; };
 
+  # raw KDL bridge for niri 26.04 background effects. niri-flake still validates
+  # the generated base config; activation validates this by making it the live config.
+  niriBackgroundEffects = pkgs.writeText "niri-background-effects.kdl" ''
+
+    blur {
+        passes 3
+        offset 3.0
+        noise 0.02
+        saturation 1.5
+    }
+
+    window-rule {
+        background-effect {
+            blur true
+            xray true
+        }
+
+        popups {
+            opacity 0.95
+            geometry-corner-radius 8
+
+            background-effect {
+                blur true
+                xray false
+            }
+        }
+    }
+
+    layer-rule {
+        match layer="overlay"
+        opacity 0.95
+
+        background-effect {
+            blur true
+        }
+
+        popups {
+            opacity 0.95
+
+            background-effect {
+                blur true
+            }
+        }
+    }
+  '';
+
   # touchscreen gesture daemon for niri (niri lacks native touchscreen swipe gestures)
   # uses lisgd to translate edge swipes to niri actions
   lisgd-niri = pkgs.writeShellScriptBin "lisgd-niri" ''
@@ -129,6 +175,8 @@ else {
       prefer-no-csd = true;
 
       window-rules = [{
+        draw-border-with-background = false;
+        opacity = 0.95;
         geometry-corner-radius = {
           top-left = 8.0;
           top-right = 8.0;
@@ -319,6 +367,17 @@ else {
     };
     Install = { WantedBy = [ "graphical-session.target" ]; };
   };
+
+  # niri 26.04 added background effects before niri-flake's nix schema exposed them.
+  # keep typed settings above for everything the schema understands, then append raw KDL
+  # at activation so `niri validate` still checks the final file. once upstream exposes
+  # `blur`, `background-effect`, and `popups`, move this into `programs.niri.settings`.
+  home.activation.niriBackgroundEffects =
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      config_file="$HOME/.config/niri/config.kdl"
+      install -Dm0644 "${config.xdg.configFile.niri-config.source}" "$config_file"
+      cat "${niriBackgroundEffects}" >> "$config_file"
+    '';
 
   dconf.enable = true;
   dconf.settings = {
