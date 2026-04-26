@@ -24,8 +24,6 @@ else {
       "obs"
 
       # Productivity applications
-      "1password"
-      "1password-cli"
       "linear-linear"
       "notion-calendar"
       "notion"
