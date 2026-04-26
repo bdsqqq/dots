@@ -53,6 +53,128 @@ let
 
   '';
 
+  screenshotDir = "/home/bdsqqq/commonplace/01_files/_utilities/screenshots";
+
+  cleanshot-niri = pkgs.writeShellScriptBin "cleanshot-niri" ''
+    set -euo pipefail
+
+    screenshot_dir="${screenshotDir}"
+    state_dir="$HOME/.local/state/cleanshot-niri"
+    geom_file="$state_dir/last-area"
+    recorder_pid_file="$state_dir/recording.pid"
+    mkdir -p "$screenshot_dir" "$state_dir"
+
+    sanitize() {
+      ${pkgs.coreutils}/bin/printf '%s' "$1" \
+        | ${pkgs.gnused}/bin/sed 's/[\/\\:*?"<>|]//g; s/[[:space:]]\+/ /g; s/^ //; s/ $//; s/^$/Screen/' \
+        | ${pkgs.coreutils}/bin/cut -c 1-120
+    }
+
+    focused_label() {
+      if window_json="$(${pkgs.niri}/bin/niri msg --json focused-window 2>/dev/null)"; then
+        app="$(${pkgs.jq}/bin/jq -r '.app_id // "Screen"' <<<"$window_json")"
+        title="$(${pkgs.jq}/bin/jq -r '.title // ""' <<<"$window_json")"
+        app="$(sanitize "$app")"
+        title="$(sanitize "$title")"
+        if [ -n "$title" ] && [ "$title" != "Screen" ]; then
+          ${pkgs.coreutils}/bin/printf '%s_%s' "$app" "$title"
+        else
+          ${pkgs.coreutils}/bin/printf '%s' "$app"
+        fi
+      else
+        ${pkgs.coreutils}/bin/printf 'Screen'
+      fi
+    }
+
+    output_path() {
+      ext="$1"
+      label="$(focused_label)"
+      stamp="$(${pkgs.coreutils}/bin/date '+%Y-%m-%dT%H-%M-%S')"
+      path="$screenshot_dir/$stamp $label -- source__screenshot.$ext"
+      if [ ! -e "$path" ]; then
+        ${pkgs.coreutils}/bin/printf '%s' "$path"
+        return
+      fi
+      i=1
+      while [ -e "''${path%.$ext}_$i.$ext" ]; do i=$((i + 1)); done
+      ${pkgs.coreutils}/bin/printf '%s' "''${path%.$ext}_$i.$ext"
+    }
+
+    notify_capture() {
+      file="$1"
+      action="$(${pkgs.libnotify}/bin/notify-send \
+        --app-name="CleanShot niri" \
+        --icon="$file" \
+        --action=copy="Copy" \
+        --action=edit="Annotate" \
+        --action=delete="Delete" \
+        --action=open="Open Folder" \
+        "Screenshot captured" "$(${pkgs.coreutils}/bin/basename "$file")" || true)"
+
+      case "$action" in
+        copy) ${pkgs.wl-clipboard}/bin/wl-copy < "$file" ;;
+        edit)
+          tmp="$state_dir/annotated.png"
+          ${pkgs.satty}/bin/satty --filename "$file" --fullscreen --output-filename "$tmp" --copy-command "${pkgs.wl-clipboard}/bin/wl-copy" --actions-on-enter save-to-clipboard --actions-on-escape exit
+          if [ -s "$tmp" ]; then
+            ${pkgs.coreutils}/bin/mv "$tmp" "$file"
+            ${pkgs.wl-clipboard}/bin/wl-copy < "$file"
+          fi
+          ;;
+        delete) ${pkgs.coreutils}/bin/rm -f "$file" ;;
+        open) ${pkgs.xdg-utils}/bin/xdg-open "$screenshot_dir" >/dev/null 2>&1 & ;;
+      esac
+    }
+
+    capture_area() {
+      geom="$1"
+      file="$(output_path png)"
+      ${pkgs.grim}/bin/grim -g "$geom" "$file"
+      ${pkgs.wl-clipboard}/bin/wl-copy < "$file"
+      notify_capture "$file"
+    }
+
+    case "''${1:-}" in
+      area)
+        geom="$(${pkgs.slurp}/bin/slurp)"
+        [ -n "$geom" ]
+        ${pkgs.coreutils}/bin/printf '%s' "$geom" > "$geom_file"
+        capture_area "$geom"
+        ;;
+      repeat-area)
+        [ -s "$geom_file" ] || geom="$(${pkgs.slurp}/bin/slurp)"
+        geom="''${geom:-$(${pkgs.coreutils}/bin/cat "$geom_file")}"
+        ${pkgs.coreutils}/bin/printf '%s' "$geom" > "$geom_file"
+        capture_area "$geom"
+        ;;
+      window)
+        before="$(${pkgs.coreutils}/bin/date +%s)"
+        ${pkgs.niri}/bin/niri msg action screenshot-window show-pointer=true
+        file="$(${pkgs.findutils}/bin/find "$screenshot_dir" -maxdepth 1 -type f -newermt "@$before" -name '*source__screenshot*' -printf '%T@ %p\n' | ${pkgs.coreutils}/bin/sort -nr | ${pkgs.coreutils}/bin/head -n1 | ${pkgs.coreutils}/bin/cut -d' ' -f2-)"
+        [ -n "$file" ] && notify_capture "$file"
+        ;;
+      record)
+        if [ -s "$recorder_pid_file" ] && ${pkgs.procps}/bin/kill -0 "$(${pkgs.coreutils}/bin/cat "$recorder_pid_file")" 2>/dev/null; then
+          ${pkgs.procps}/bin/pkill -INT -P "$(${pkgs.coreutils}/bin/cat "$recorder_pid_file")" 2>/dev/null || ${pkgs.procps}/bin/kill -INT "$(${pkgs.coreutils}/bin/cat "$recorder_pid_file")"
+          ${pkgs.coreutils}/bin/rm -f "$recorder_pid_file"
+          ${pkgs.libnotify}/bin/notify-send --app-name="CleanShot niri" "Recording saved" "$screenshot_dir"
+          exit 0
+        fi
+        geom="$(${pkgs.slurp}/bin/slurp)"
+        [ -n "$geom" ]
+        ${pkgs.coreutils}/bin/printf '%s' "$geom" > "$geom_file"
+        file="$(output_path mp4)"
+        ${pkgs.wf-recorder}/bin/wf-recorder -g "$geom" -f "$file" &
+        ${pkgs.coreutils}/bin/printf '%s' "$!" > "$recorder_pid_file"
+        ${pkgs.libnotify}/bin/notify-send --app-name="CleanShot niri" "Recording started" "Press Super+Shift+5 again to stop."
+        ;;
+      *)
+        echo "usage: cleanshot-niri {window|area|repeat-area|record}" >&2
+        exit 64
+        ;;
+    esac
+  '';
+
   # touchscreen gesture daemon for niri (niri lacks native touchscreen swipe gestures)
   # uses lisgd to translate edge swipes to niri actions
   lisgd-niri = pkgs.writeShellScriptBin "lisgd-niri" ''
@@ -177,6 +299,7 @@ else {
 
       # Window decorations
       prefer-no-csd = true;
+      screenshot-path = "${screenshotDir}/%Y-%m-%dT%H-%M-%S -- source__screenshot.png";
 
       window-rules = [{
         draw-border-with-background = false;
@@ -330,6 +453,12 @@ else {
         # Help overlay
         "Mod+Shift+Slash".action = show-hotkey-overlay;
 
+        # CleanShot-style capture workflow
+        "Super+Shift+2".action = spawn "${cleanshot-niri}/bin/cleanshot-niri" "window";
+        "Super+Shift+4".action = spawn "${cleanshot-niri}/bin/cleanshot-niri" "area";
+        "Super+Shift+5".action = spawn "${cleanshot-niri}/bin/cleanshot-niri" "record";
+        "Super+Shift+3".action = spawn "${cleanshot-niri}/bin/cleanshot-niri" "repeat-area";
+
         # Mouse bindings
         "Mod+WheelScrollDown" = {
           cooldown-ms = 150;
@@ -348,7 +477,14 @@ else {
     wl-clipboard
     glib
     xdg-desktop-portal-gtk
+    grim
+    slurp
+    wf-recorder
+    satty
+    libnotify
+    xdg-utils
     toggleTheme
+    cleanshot-niri
     lisgd
     lisgd-niri
   ];
@@ -372,13 +508,18 @@ else {
     Install = { WantedBy = [ "graphical-session.target" ]; };
   };
 
+  # activation rewrites niri's generated config to append raw KDL below, so home-manager
+  # must not preserve an edited copy or create backup conflicts on every switch. remove
+  # this force once the raw block is gone and home-manager owns the file normally again.
+  xdg.configFile.niri-config.force = true;
+
   # niri 26.04 added background effects before niri-flake's nix schema exposed them.
   # keep typed settings above for everything the schema understands, then append raw KDL
   # for normal windows and specific material surfaces only. quickshell's overlay host
   # is a fullscreen transparent mask; blurring all overlays makes the wallpaper look
-  # blurred even when no app is open. keep layer-shell blur opt-in by namespace.
-  # once upstream exposes `blur`, `background-effect`, and `popups`, move this into
-  # `programs.niri.settings` with the same namespace allowlist.
+  # blurred even when no app is open. cleanup path: once upstream exposes `blur`,
+  # `background-effect`, and `popups`, move this into `programs.niri.settings`, delete
+  # `niriBackgroundEffects`, this activation hook, and the forced config ownership.
   home.activation.niriBackgroundEffects =
     lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       config_file="$HOME/.config/niri/config.kdl"
