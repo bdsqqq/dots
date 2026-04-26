@@ -8,95 +8,131 @@ let
     text = ''
       exec python3 ${pkgs.writeText "legion-acpi.py" ''
         import json
+        import struct
         import sys
 
         ACPI_CALL = "/proc/acpi/call"
         WMAB = r"\_SB.GZFD.WMAB"
         POINTS_C = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         MIN_CURVE = [44, 48, 55, 60, 71, 79, 87, 87, 100, 100]
+        MAX_FIRMWARE_PERCENT = 115
 
-        def acpi_call(method, args):
-            command = method
-            for arg in args:
-                if isinstance(arg, int):
-                    command += f" 0x{arg:02x}"
-                else:
-                    command += f" b{arg.hex()}"
+        def die(message):
+            raise SystemExit(message)
+
+        def encode_arg(arg):
+            if isinstance(arg, int):
+                return f"0x{arg:02x}"
+            return f"b{arg.hex()}"
+
+        def call_acpi(method, args):
+            command = " ".join([method, *[encode_arg(arg) for arg in args]])
             try:
                 with open(ACPI_CALL, "wb") as f:
                     f.write(command.encode())
             except PermissionError:
-                raise SystemExit(f"permission denied writing {ACPI_CALL}; run as root or through systemd")
+                die(f"permission denied writing {ACPI_CALL}; run as root or through systemd")
 
-        def acpi_read():
+        def parse_acpi_buffer():
             try:
                 with open(ACPI_CALL, "rb") as f:
-                    raw = f.read().decode().strip()
+                    raw = f.read().decode(errors="replace").strip()
             except PermissionError:
-                raise SystemExit(f"permission denied reading {ACPI_CALL}; run as root or through systemd")
+                die(f"permission denied reading {ACPI_CALL}; run as root or through systemd")
+
             if raw == "not called\0":
-                raise SystemExit("acpi_call returned: not called")
-            if raw.startswith("{") and raw.endswith("}\0"):
-                return bytes(int(part, 16) for part in raw[1:-2].split(", "))
-            raise SystemExit(f"unsupported acpi_call response: {raw!r}")
+                die("acpi_call returned: not called")
+            if not raw.startswith("{"):
+                die(f"unsupported acpi_call response: {raw!r}")
 
-        def get_fan_curve():
-            acpi_call(WMAB, [0, 0x05, bytes([0, 0, 0, 0])])
-            data = acpi_read()
-            if len(data) < 44:
-                raise SystemExit(f"fan curve response too short: {len(data)} bytes")
-            return [data[i] for i in range(4, 44, 4)]
+            # /proc/acpi/call renders ACPI buffers as text. on this bios the
+            # buffer may end with a nul byte before a closing brace is emitted,
+            # so parse byte tokens instead of depending on exact punctuation.
+            body = raw[1:].rstrip("\0")
+            if body.endswith("}"):
+                body = body[:-1]
+            try:
+                return bytes(int(part.strip(), 16) for part in body.split(",") if part.strip())
+            except ValueError as error:
+                die(f"invalid acpi buffer response: {raw!r}: {error}")
 
-        def set_fan_curve(curve):
-            payload = bytes([
-                0x00, 0x00, 0x0A, 0x00, 0x00, 0x00,
-                curve[0], 0x00, curve[1], 0x00, curve[2], 0x00, curve[3], 0x00, curve[4], 0x00,
-                curve[5], 0x00, curve[6], 0x00, curve[7], 0x00, curve[8], 0x00, curve[9], 0x00,
-                0x00, 0x0A, 0x00, 0x00, 0x00,
-                0x0A, 0x00, 0x14, 0x00, 0x1E, 0x00, 0x28, 0x00, 0x32, 0x00,
-                0x3C, 0x00, 0x46, 0x00, 0x50, 0x00, 0x5A, 0x00, 0x64, 0x00, 0x00,
-            ])
-            acpi_call(WMAB, [0, 0x06, payload])
+        def read_firmware_curve():
+            call_acpi(WMAB, [0, 0x05, bytes(4)])
+            data = parse_acpi_buffer()
+
+            # legion go firmware returns: count(u32 le) + count speed values
+            # (u32 le). hhd indexes the low byte of each u32; unpacking makes
+            # the format explicit and matches the hwmon driver documentation.
+            if len(data) < 4:
+                die(f"fan curve response too short for count: {len(data)} bytes")
+            count = struct.unpack_from("<I", data, 0)[0]
+            if count < 1 or count > len(POINTS_C):
+                die(f"invalid fan curve point count: {count}")
+            expected_len = 4 + count * 4
+            if len(data) < expected_len:
+                die(f"fan curve response too short: got {len(data)} bytes, expected {expected_len}")
+
+            speeds = [struct.unpack_from("<I", data, 4 + index * 4)[0] for index in range(count)]
+            while len(speeds) < len(POINTS_C):
+                speeds.append(speeds[-1])
+            return speeds
+
+        def write_firmware_curve(speeds):
+            # WMAB method 0x06 takes 52 bytes:
+            # padding(2), speed_count(u32 le), 10 speed values(u16 le),
+            # padding(1), temp_count(u32 le), fixed temps(u16 le), padding(1).
+            # temps are fixed by firmware; callers can only choose speeds.
+            payload = bytearray(52)
+            struct.pack_into("<I", payload, 2, len(POINTS_C))
+            for index, speed in enumerate(speeds):
+                struct.pack_into("<H", payload, 6 + index * 2, speed)
+            struct.pack_into("<I", payload, 27, len(POINTS_C))
+            for index, temp in enumerate(POINTS_C):
+                struct.pack_into("<H", payload, 31 + index * 2, temp)
+
+            call_acpi(WMAB, [0, 0x06, bytes(payload)])
 
         def load_curve(path):
             with open(path) as f:
                 config = json.load(f)
-            points = config.get("pointsC", POINTS_C)
-            if points != POINTS_C:
-                raise SystemExit(f"pointsC must be {POINTS_C}")
-            curve = config.get("speedsPercent")
-            if not isinstance(curve, list) or len(curve) != 10:
-                raise SystemExit("speedsPercent must contain exactly 10 integers")
-            if any(not isinstance(value, int) for value in curve):
-                raise SystemExit("speedsPercent must contain exactly 10 integers")
-            if any(value < 0 or value > 115 for value in curve):
-                raise SystemExit("speedsPercent values must be between 0 and 115")
-            if config.get("enforceWindowsMinimums", True):
-                for value, minimum in zip(curve, MIN_CURVE):
-                    if value < minimum:
-                        raise SystemExit(f"curve below windows minimums: {curve} < {MIN_CURVE}")
-            return curve
 
-        def print_curve(curve):
-            print(json.dumps({"pointsC": POINTS_C, "speedsPercent": curve}, indent=2))
+            if config.get("pointsC", POINTS_C) != POINTS_C:
+                die(f"pointsC must be fixed firmware points: {POINTS_C}")
+
+            speeds = config.get("speedsPercent")
+            if not isinstance(speeds, list) or len(speeds) != len(POINTS_C):
+                die(f"speedsPercent must contain {len(POINTS_C)} integers")
+            if any(not isinstance(value, int) for value in speeds):
+                die("speedsPercent must contain integers only")
+            if any(value < 0 or value > MAX_FIRMWARE_PERCENT for value in speeds):
+                die(f"speedsPercent values must be between 0 and {MAX_FIRMWARE_PERCENT}")
+
+            if config.get("enforceWindowsMinimums", True):
+                for speed, minimum in zip(speeds, MIN_CURVE):
+                    if speed < minimum:
+                        die(f"curve below windows minimums: {speeds} < {MIN_CURVE}")
+            return speeds
+
+        def output(speeds):
+            print(json.dumps({"pointsC": POINTS_C, "speedsPercent": speeds}, indent=2))
 
         match sys.argv[1:]:
             case ["status"]:
-                print_curve(get_fan_curve())
+                output(read_firmware_curve())
             case ["validate", path]:
-                print_curve(load_curve(path))
+                output(load_curve(path))
             case ["apply", path]:
-                curve = load_curve(path)
-                set_fan_curve(curve)
-                print_curve(curve)
+                speeds = load_curve(path)
+                write_firmware_curve(speeds)
+                output(speeds)
             case _:
-                raise SystemExit("usage: legion-acpi status | validate <curve.json> | apply <curve.json>")
+                die("usage: legion-acpi status | validate <curve.json> | apply <curve.json>")
       ''} "$@"
     '';
   };
 in {
-  # Centralize privileged hardware writes used by the handheld shell.
-  # Quickshell should trigger these through systemd/polkit instead of writing
+  # centralize privileged hardware writes used by the handheld shell.
+  # quickshell should trigger these through systemd/polkit instead of writing
   # sysfs or ACPI directly from the user session.
 
   boot.extraModulePackages = [ config.boot.kernelPackages.acpi_call ];
