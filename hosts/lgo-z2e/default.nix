@@ -56,6 +56,7 @@ in {
   imports = [
     ./hardware.nix
     ./acpi.nix
+    ./legion-wmi-fan.nix
     ../../bundles/base.nix
     ../../bundles/headless.nix
     ../../bundles/dev.nix
