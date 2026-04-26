@@ -5,6 +5,9 @@ let
   isLinux = lib.hasInfix "linux" hostSystem;
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isGraphical = headMode == "graphical";
+  port = 39221;
+  syncedStateDir = ".local/share/helium-remotes";
+  extensionDir = ".local/share/helium-remotes-extension";
 
   extension = pkgs.runCommand "helium-remotes-extension" { } ''
     mkdir -p $out
@@ -15,7 +18,7 @@ let
       "version": "0.1.0",
       "description": "Publishes local Helium tabs for cross-host search.",
       "permissions": ["alarms", "tabs"],
-      "host_permissions": ["http://127.0.0.1:39221/*"],
+      "host_permissions": ["http://127.0.0.1:${toString port}/*"],
       "background": { "service_worker": "background.js" },
       "action": { "default_popup": "popup.html" }
     }
@@ -94,7 +97,7 @@ let
     </html>
     HTML
     cat > $out/popup.js <<'JS'
-    const endpoint = "http://127.0.0.1:39221/tabs";
+    const endpoint = "http://127.0.0.1:${toString port}/tabs";
     const filter = document.getElementById("filter");
     const container = document.getElementById("tabs");
     let manifests = [];
@@ -153,7 +156,7 @@ let
     filter.addEventListener("input", render);
     JS
     cat > $out/background.js <<'JS'
-    const endpoint = "http://127.0.0.1:39221/tabs";
+    const endpoint = "http://127.0.0.1:${toString port}/tabs";
 
     async function publishTabs() {
       const tabs = await chrome.tabs.query({});
@@ -201,7 +204,7 @@ let
 
       parser = argparse.ArgumentParser()
       parser.add_argument("query", nargs="?", default="")
-      parser.add_argument("--state-dir", default=os.path.expanduser("~/.local/share/helium-remotes"))
+      parser.add_argument("--state-dir", default=os.path.expanduser("~/${syncedStateDir}"))
       args = parser.parse_args()
 
       needle = args.query.lower()
@@ -230,10 +233,10 @@ let
       from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
       parser = argparse.ArgumentParser()
-      parser.add_argument("--state-dir", default=os.path.expanduser("~/.local/share/helium-remotes"))
+      parser.add_argument("--state-dir", default=os.path.expanduser("~/${syncedStateDir}"))
       parser.add_argument("--host", default=socket.gethostname())
       parser.add_argument("--bind", default="127.0.0.1")
-      parser.add_argument("--port", type=int, default=39221)
+      parser.add_argument("--port", type=int, default=${toString port})
       args = parser.parse_args()
 
       tabs_dir = os.path.join(args.state_dir, "tabs")
@@ -247,12 +250,16 @@ let
                   return
               hosts = []
               for path in sorted(glob.glob(os.path.join(tabs_dir, "*.json"))):
-                  with open(path) as f:
-                      hosts.append(json.load(f))
+                  try:
+                      with open(path) as f:
+                          hosts.append(json.load(f))
+                  except (OSError, json.JSONDecodeError):
+                      continue
               body = json.dumps({"hosts": hosts}, sort_keys=True).encode()
               self.send_response(200)
               self.send_header("content-type", "application/json")
               self.send_header("content-length", str(len(body)))
+              self.send_header("access-control-allow-origin", "*")
               self.end_headers()
               self.wfile.write(body)
 
@@ -289,14 +296,17 @@ in {
     home-manager.users.bdsqqq = { ... }: lib.mkMerge [
       {
         home.packages = [ tabsAgent tabsCli ];
-        home.file.".local/share/helium-remotes-extension".source = extension;
+
+        # keep the unpacked extension out of the synced tree. syncthing can
+        # propagate nix-store symlink targets that only exist on one host.
+        home.file."${extensionDir}".source = extension;
       }
 
       (lib.mkIf (cfg.tabsExtension.enable && isLinux) {
         systemd.user.services.helium-tabs-agent = {
           Unit.Description = "Helium tabs publisher sink";
           Service = {
-            ExecStart = "${tabsAgent}/bin/helium-tabs-agent --state-dir %h/.local/share/helium-remotes";
+            ExecStart = "${tabsAgent}/bin/helium-tabs-agent --state-dir %h/${syncedStateDir}";
             Restart = "on-failure";
           };
           Install.WantedBy = [ "default.target" ];
@@ -310,7 +320,7 @@ in {
             ProgramArguments = [
               "${tabsAgent}/bin/helium-tabs-agent"
               "--state-dir"
-              "/Users/bdsqqq/.local/share/helium-remotes"
+              "/Users/bdsqqq/${syncedStateDir}"
             ];
             RunAtLoad = true;
             KeepAlive = true;
