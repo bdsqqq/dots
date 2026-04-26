@@ -15,6 +15,8 @@ let
 
     nativeBuildInputs = kernel.moduleBuildDependencies;
 
+    patches = [ ./legion-wmi-fan-percent.patch ];
+
     makeFlags = [
       "KERNELDIR=${kernel.dev}/lib/modules/${kernel.modDirVersion}/build"
       "KVER=${kernel.modDirVersion}"
@@ -39,6 +41,13 @@ in {
   # binary ACPI buffer (`count + 10 speeds`) that /proc/acpi/call can truncate
   # when rendered as text. this module calls acpi_evaluate_object in kernel
   # space, then exposes normal hwmon files for quickshell and shell scripts.
+  #
+  # we carry one local patch: `fan_curve_percent` exposes the firmware's native
+  # percent values directly. standard hwmon pwm files are 0..255 and this driver
+  # maps them to firmware percent with integer math, which is lossy for low
+  # values. quickshell should use `fan_curve_percent`; generic tools can still
+  # use the standard hwmon attrs.
+  #
   # source: honjow/lenovo-legion-go-wmi-fan README protocol notes.
   boot.extraModulePackages = [ legionWmiFan ];
   boot.kernelModules = [ "lenovo-legion-wmi-fan" ];
