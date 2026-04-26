@@ -41,6 +41,8 @@ else
           chmod +x "$dest"
         fi
 
+        # this must stay outside the syncthing folder; synced nix-store symlinks
+        # can point at store paths missing on the receiving host.
         extension_dir="''${XDG_DATA_HOME:-$HOME/.local/share}/helium-remotes-extension"
         if [ -d "$extension_dir" ]; then
           exec appimage-run "$dest" --load-extension="$extension_dir" "$@"
