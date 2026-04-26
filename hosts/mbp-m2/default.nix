@@ -78,6 +78,12 @@ in {
             pi-sessions =
               syncthing.folderFor "pi-sessions" config.home.homeDirectory true
               [ "lgo-z2e" ] { };
+            helium-remotes =
+              syncthing.folderFor "helium-remotes" config.home.homeDirectory true [
+                "htz-relay"
+                "r56"
+                "lgo-z2e"
+              ] { };
           };
         };
       };
@@ -100,6 +106,10 @@ in {
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+  my.heliumRemotes = {
+    enable = true;
+    tabsExtension.enable = true;
+  };
 
   # required by nix-darwin
   system.stateVersion = 6;
