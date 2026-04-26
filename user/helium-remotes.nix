@@ -16,9 +16,142 @@ let
       "description": "Publishes local Helium tabs for cross-host search.",
       "permissions": ["alarms", "tabs"],
       "host_permissions": ["http://127.0.0.1:39221/*"],
-      "background": { "service_worker": "background.js" }
+      "background": { "service_worker": "background.js" },
+      "action": { "default_popup": "popup.html" }
     }
     JSON
+    cat > $out/popup.html <<'HTML'
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          :root { color-scheme: dark; }
+          body {
+            width: 420px;
+            margin: 0;
+            font: 13px system-ui, sans-serif;
+            background: #111;
+            color: #eee;
+          }
+          header {
+            position: sticky;
+            top: 0;
+            padding: 10px;
+            background: #181818;
+            border-bottom: 1px solid #333;
+          }
+          input {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 7px 9px;
+            border: 1px solid #444;
+            border-radius: 6px;
+            background: #0b0b0b;
+            color: #eee;
+          }
+          h2 {
+            margin: 12px 10px 6px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+          }
+          button {
+            display: block;
+            width: 100%;
+            padding: 8px 10px;
+            border: 0;
+            border-top: 1px solid #222;
+            background: transparent;
+            color: inherit;
+            text-align: left;
+            cursor: pointer;
+          }
+          button:hover { background: #242424; }
+          .title {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .url {
+            margin-top: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #8a8a8a;
+            font-size: 12px;
+          }
+          .empty { padding: 16px 10px; color: #999; }
+        </style>
+      </head>
+      <body>
+        <header><input id="filter" placeholder="search remote tabs" autofocus /></header>
+        <main id="tabs"><div class="empty">loading…</div></main>
+        <script src="popup.js"></script>
+      </body>
+    </html>
+    HTML
+    cat > $out/popup.js <<'JS'
+    const endpoint = "http://127.0.0.1:39221/tabs";
+    const filter = document.getElementById("filter");
+    const container = document.getElementById("tabs");
+    let manifests = [];
+
+    function render() {
+      const query = filter.value.trim().toLowerCase();
+      container.textContent = "";
+      let count = 0;
+
+      for (const manifest of manifests) {
+        const tabs = (manifest.tabs || []).filter((tab) => {
+          const haystack = `''${manifest.host || ""} ''${tab.title || ""} ''${tab.url || ""}`.toLowerCase();
+          return !query || haystack.includes(query);
+        });
+        if (!tabs.length) continue;
+
+        const heading = document.createElement("h2");
+        heading.textContent = manifest.host || "unknown host";
+        container.appendChild(heading);
+
+        for (const tab of tabs) {
+          const button = document.createElement("button");
+          const title = document.createElement("div");
+          const url = document.createElement("div");
+          title.className = "title";
+          url.className = "url";
+          title.textContent = tab.title || tab.url || "untitled";
+          url.textContent = tab.url || "";
+          button.append(title, url);
+          button.addEventListener("click", () => {
+            if (tab.url) chrome.tabs.create({ url: tab.url });
+          });
+          container.appendChild(button);
+          count += 1;
+        }
+      }
+
+      if (!count) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = query ? "no matching tabs" : "no remote tabs yet";
+        container.appendChild(empty);
+      }
+    }
+
+    fetch(endpoint)
+      .then((response) => response.json())
+      .then((payload) => {
+        manifests = payload.hosts || [];
+        render();
+      })
+      .catch(() => {
+        container.innerHTML = '<div class="empty">helium-tabs-agent is not reachable</div>';
+      });
+
+    filter.addEventListener("input", render);
+    JS
     cat > $out/background.js <<'JS'
     const endpoint = "http://127.0.0.1:39221/tabs";
 
@@ -93,7 +226,7 @@ let
     text = ''
       set -euo pipefail
       exec ${pkgs.python3}/bin/python3 - "$@" <<'PY'
-      import argparse, json, os, socket, tempfile
+      import argparse, glob, json, os, socket, tempfile
       from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
       parser = argparse.ArgumentParser()
@@ -108,6 +241,21 @@ let
       output = os.path.join(tabs_dir, f"{args.host}.json")
 
       class Handler(BaseHTTPRequestHandler):
+          def do_GET(self):
+              if self.path != "/tabs":
+                  self.send_error(404)
+                  return
+              hosts = []
+              for path in sorted(glob.glob(os.path.join(tabs_dir, "*.json"))):
+                  with open(path) as f:
+                      hosts.append(json.load(f))
+              body = json.dumps({"hosts": hosts}, sort_keys=True).encode()
+              self.send_response(200)
+              self.send_header("content-type", "application/json")
+              self.send_header("content-length", str(len(body)))
+              self.end_headers()
+              self.wfile.write(body)
+
           def do_POST(self):
               if self.path != "/tabs":
                   self.send_error(404)
