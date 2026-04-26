@@ -39,6 +39,7 @@
     axiom-deploy-annotation.inputs.nixpkgs.follows = "nixpkgs";
 
     niri.url = "github:sodiboo/niri-flake";
+    niri.inputs.niri-unstable.url = "github:niri-wm/niri/v26.04";
 
     quickshell = {
       url = "git+https://git.outfoxxed.me/outfoxxed/quickshell";
