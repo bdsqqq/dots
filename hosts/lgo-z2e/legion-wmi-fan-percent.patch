@@ -1,0 +1,64 @@
+diff --git a/lenovo-legion-wmi-fan.c b/lenovo-legion-wmi-fan.c
+index df9aa66..68b2cf9 100644
+--- a/lenovo-legion-wmi-fan.c
++++ b/lenovo-legion-wmi-fan.c
+@@ -516,8 +516,59 @@ static ssize_t fan_fullspeed_store(struct device *dev,
+ 
+ static DEVICE_ATTR_RW(fan_fullspeed);
+ 
++static ssize_t fan_curve_percent_show(struct device *dev,
++                                      struct device_attribute *attr, char *buf)
++{
++	struct legion_wmi_fan *lf = dev_get_drvdata(dev);
++	ssize_t len;
++	int i;
++
++	mutex_lock(&lf->lock);
++	len = sysfs_emit(buf, "%u", lf->curve.speeds[0]);
++	for (i = 1; i < FAN_CURVE_POINTS; i++)
++		len += sysfs_emit_at(buf, len, " %u", lf->curve.speeds[i]);
++	len += sysfs_emit_at(buf, len, "\n");
++	mutex_unlock(&lf->lock);
++
++	return len;
++}
++
++static ssize_t fan_curve_percent_store(struct device *dev,
++                                       struct device_attribute *attr,
++                                       const char *buf, size_t count)
++{
++	struct legion_wmi_fan *lf = dev_get_drvdata(dev);
++	unsigned int speeds[FAN_CURVE_POINTS];
++	int parsed, ret = 0, i;
++
++	parsed = sscanf(buf, "%u %u %u %u %u %u %u %u %u %u",
++			&speeds[0], &speeds[1], &speeds[2], &speeds[3], &speeds[4],
++			&speeds[5], &speeds[6], &speeds[7], &speeds[8], &speeds[9]);
++	if (parsed != FAN_CURVE_POINTS)
++		return -EINVAL;
++
++	for (i = 0; i < FAN_CURVE_POINTS; i++) {
++		/* Legion firmware accepts percent-like values above 100; hhd exposes 115. */
++		if (speeds[i] > 115)
++			return -EINVAL;
++	}
++
++	mutex_lock(&lf->lock);
++	for (i = 0; i < FAN_CURVE_POINTS; i++)
++		lf->curve.speeds[i] = speeds[i];
++
++	if (lf->pwm_enable == PWM_ENABLE_MANUAL)
++		ret = legion_set_fan_curve(lf);
++	mutex_unlock(&lf->lock);
++
++	return ret ? ret : (ssize_t)count;
++}
++
++static DEVICE_ATTR_RW(fan_curve_percent);
++
+ static struct attribute *legion_wmi_fan_attrs[] = {
+ 	&dev_attr_fan_fullspeed.attr,
++	&dev_attr_fan_curve_percent.attr,
+ 	NULL,
+ };
+ 
