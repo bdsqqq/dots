@@ -13,7 +13,6 @@ else {
       "raycast"
 
       # Development tools
-      "orbstack"
       "tableplus"
       "t3-code"
 
