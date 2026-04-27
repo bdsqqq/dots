@@ -186,12 +186,14 @@ let
           }
 
           zx() {
-            local session_name
+            local session_name session_arg
             if [[ $# -gt 0 ]]; then
+              session_arg="$1"
+              shift
               if [[ -n "$ZMX_SESSION" ]]; then
-                session_name=$(_zmx_child_name "$1")
+                session_name=$(_zmx_child_name "$session_arg")
               else
-                session_name=$(_zmx_sanitize "$1")
+                session_name=$(_zmx_sanitize "$session_arg")
               fi
             elif [[ -n "$ZMX_SESSION" ]]; then
               session_name=$(_zmx_pick scoped) || return $?
@@ -200,8 +202,9 @@ let
             fi
 
             # construct full names here. inheriting zmx's global prefix would make
-            # nested names depend on ambient shell state.
-            ZMX_SESSION_PREFIX= zmx attach "$session_name"
+            # nested names depend on ambient shell state. only the session segment is
+            # sanitized; command args must pass through unchanged.
+            ZMX_SESSION_PREFIX= zmx attach "$session_name" "$@"
           }
 
           zxs() {
