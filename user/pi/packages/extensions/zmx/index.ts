@@ -6,6 +6,7 @@ import type {
 } from "@mariozechner/pi-tui";
 
 const MAX_SUGGESTIONS = 20;
+const STATUS_VALUE_PREFIX = "__zmx_status__:";
 const ZMX_TOKEN = /(?:^|[ \t])@zmx\/([^\s@]*)$/;
 
 export interface ZmxSession {
@@ -26,8 +27,8 @@ type ExecZmx = (command: string, args: readonly string[]) => Promise<ExecResult>
 
 type LoadZmxSessionsResult =
   | { status: "ok"; sessions: ZmxSession[] }
-  | { status: "unavailable"; message: string }
-  | { status: "empty"; message: string };
+  | { status: "unavailable" }
+  | { status: "empty" };
 
 function extractZmxFragment(textBeforeCursor: string): string | undefined {
   return textBeforeCursor.match(ZMX_TOKEN)?.[1];
@@ -102,7 +103,7 @@ export function filterZmxSessions(
 
 function formatStatusItem(fragment: string, message: string): AutocompleteItem {
   return {
-    value: fragment ? `zmx session ${fragment}` : "zmx session",
+    value: `${STATUS_VALUE_PREFIX}${fragment}`,
     label: `@zmx/${fragment}`,
     description: message,
   };
@@ -127,9 +128,7 @@ async function loadZmxSessions(execZmx: ExecZmx): Promise<LoadZmxSessionsResult>
     }
   }
 
-  return sawSuccessfulCommand
-    ? { status: "empty", message: "zmx returned no parseable sessions" }
-    : { status: "unavailable", message: "zmx unavailable: install zmx or add it to PATH" };
+  return sawSuccessfulCommand ? { status: "empty" } : { status: "unavailable" };
 }
 
 export function createZmxAutocompleteProvider(
@@ -159,10 +158,7 @@ export function createZmxAutocompleteProvider(
       }
 
       if (result.status !== "ok") {
-        return {
-          prefix: `@zmx/${fragment}`,
-          items: [formatStatusItem(fragment, result.message)],
-        };
+        return current.getSuggestions(lines, cursorLine, cursorCol, options);
       }
 
       const items = filterZmxSessions(result.sessions, fragment);
@@ -176,6 +172,10 @@ export function createZmxAutocompleteProvider(
     },
 
     applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
+      if (item.value.startsWith(STATUS_VALUE_PREFIX)) {
+        return { lines, cursorLine, cursorCol };
+      }
+
       return current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
     },
 
@@ -295,7 +295,7 @@ if (import.meta.vitest) {
       expect(current.getSuggestions).not.toHaveBeenCalled();
     });
 
-    it("shows a status completion when zmx commands fail", async () => {
+    it("delegates silently when zmx commands fail", async () => {
       const current = baseProvider();
       const provider = createZmxAutocompleteProvider(
         current,
@@ -306,17 +306,8 @@ if (import.meta.vitest) {
         provider.getSuggestions(["@zmx/ni"], 0, 7, {
           signal: new AbortController().signal,
         }),
-      ).resolves.toEqual({
-        prefix: "@zmx/ni",
-        items: [
-          {
-            value: "zmx session ni",
-            label: "@zmx/ni",
-            description: "zmx unavailable: install zmx or add it to PATH",
-          },
-        ],
-      });
-      expect(current.getSuggestions).not.toHaveBeenCalled();
+      ).resolves.toEqual({ prefix: "base", items: [{ value: "base" }] });
+      expect(current.getSuggestions).toHaveBeenCalledTimes(1);
     });
 
     it("shows a status completion when no sessions match", async () => {
@@ -335,13 +326,30 @@ if (import.meta.vitest) {
         prefix: "@zmx/web",
         items: [
           {
-            value: "zmx session web",
+            value: "__zmx_status__:web",
             label: "@zmx/web",
             description: 'no zmx sessions match "web"',
           },
         ],
       });
       expect(current.getSuggestions).not.toHaveBeenCalled();
+    });
+
+    it("leaves editor state unchanged when applying a status completion", () => {
+      const current = baseProvider();
+      const provider = createZmxAutocompleteProvider(current, vi.fn());
+      const lines = ["check @zmx/web"];
+
+      expect(
+        provider.applyCompletion(
+          lines,
+          0,
+          14,
+          { value: "__zmx_status__:web", label: "@zmx/web" },
+          "@zmx/web",
+        ),
+      ).toEqual({ lines, cursorLine: 0, cursorCol: 14 });
+      expect(current.applyCompletion).not.toHaveBeenCalled();
     });
   });
 }
