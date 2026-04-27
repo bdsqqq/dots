@@ -72,29 +72,33 @@ let
         ...
       }:
       let
-        # fzf reloads run in a child shell, so they cannot see zsh functions from
-        # initContent. keep list parsing in a real command used by both zsh and fzf.
-        # zmx 0.5.0 emits name=/start_dir=; older builds used
-        # session_name=/started_in=, so parse by key instead of column position.
+        piZmxPackageDir = ./user/pi/packages/extensions/zmx;
+        piZmxPackage = builtins.fromJSON (builtins.readFile (piZmxPackageDir + "/package.json"));
+        zmxRowsBin =
+          piZmxPackage.bin."zmx-rows"
+            or (throw "@bds_pi/zmx must declare bin.zmx-rows for the nix zmx picker");
+        zmxRowsExport =
+          piZmxPackage.exports."./zmx-rows"
+            or (throw "@bds_pi/zmx must export ./zmx-rows for the shared parser contract");
+        zmxRowsScript =
+          if zmxRowsBin == zmxRowsExport then
+            piZmxPackageDir + "/${zmxRowsBin}"
+          else
+            throw "@bds_pi/zmx bin.zmx-rows and exports.\"./zmx-rows\" must point at the same script";
+
+        # the fzf picker lives in this nix module, while the pi autocomplete
+        # provider lives in a bun package. package.json is the boundary contract:
+        # nix reads the declared bin/export instead of reaching into a private
+        # source path, so renames fail during flake evaluation rather than after
+        # activation when fzf tries to run `zmx-rows`.
         zmxRows = pkgs.writeShellApplication {
           name = "zmx-rows";
-          runtimeInputs = [ pkgs.zmx ];
+          runtimeInputs = [
+            pkgs.bun
+            pkgs.zmx
+          ];
           text = ''
-            zmx list 2>/dev/null | awk -F '\t' '
-              {
-                delete f
-                for (i = 1; i <= NF; i++) {
-                  key = $i
-                  val = $i
-                  sub("=.*", "", key)
-                  sub("^[^=]*=", "", val)
-                  f[key] = val
-                }
-                name = f["name"] ? f["name"] : f["session_name"]
-                dir = f["start_dir"] ? f["start_dir"] : f["started_in"]
-                if (name != "") printf "%s\tclients:%s\tpid:%s\tcreated:%s\t%s\n", name, f["clients"], f["pid"], f["created"], dir
-              }
-            ' | sort -t $'\t' -k1,1
+            exec bun ${zmxRowsScript} "$@"
           '';
         };
       in
