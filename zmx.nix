@@ -71,8 +71,38 @@ let
         pkgs,
         ...
       }:
+      let
+        # fzf reloads run in a child shell, so they cannot see zsh functions from
+        # initContent. keep list parsing in a real command used by both zsh and fzf.
+        # zmx 0.5.0 emits name=/start_dir=; older builds used
+        # session_name=/started_in=, so parse by key instead of column position.
+        zmxRows = pkgs.writeShellApplication {
+          name = "zmx-rows";
+          runtimeInputs = [ pkgs.zmx ];
+          text = ''
+            zmx list 2>/dev/null | awk -F '\t' '
+              {
+                delete f
+                for (i = 1; i <= NF; i++) {
+                  key = $i
+                  val = $i
+                  sub("=.*", "", key)
+                  sub("^[^=]*=", "", val)
+                  f[key] = val
+                }
+                name = f["name"] ? f["name"] : f["session_name"]
+                dir = f["start_dir"] ? f["start_dir"] : f["started_in"]
+                if (name != "") printf "%s\tclients:%s\tpid:%s\tcreated:%s\t%s\n", name, f["clients"], f["pid"], f["created"], dir
+              }
+            ' | sort -t $'\t' -k1,1
+          '';
+        };
+      in
       {
-        home.packages = [ pkgs.zmx ];
+        home.packages = [
+          pkgs.zmx
+          zmxRows
+        ];
         home.sessionVariables.ZMX_DIR = "$HOME/.zmx";
 
         programs.zsh.initContent = lib.mkIf config.programs.zsh.enable ''
@@ -92,37 +122,16 @@ let
             _zmx_sanitize "$name"
           }
 
-          # nested sessions inherit the current zmx scope. outside zmx, explicit
-          # args stay literal so `zx scratch` does not surprise-create repo.scratch.
+          # child creation is only scoped after zmx has injected ZMX_SESSION.
+          # outside zmx, `zx scratch` stays literal to avoid surprise repo.scratch names.
           _zmx_child_name() {
             local child
             child=$(_zmx_sanitize "$1")
-            if [[ -n "$ZMX_SESSION" ]]; then
-              printf '%s.%s\n' "$ZMX_SESSION" "$child"
-            else
-              printf '%s.%s\n' "$(_zmx_root)" "$child"
-            fi
+            printf '%s.%s\n' "$ZMX_SESSION" "$child"
           }
 
-          # zmx 0.5.0 emits key=value fields, but older builds used
-          # session_name=/started_in=. parse by key so list rendering survives
-          # field order changes and the 0.4 -> 0.5 rename.
           _zmx_rows() {
-            zmx list 2>/dev/null | awk -F '\t' '
-              {
-                delete f
-                for (i = 1; i <= NF; i++) {
-                  key = $i
-                  val = $i
-                  sub("=.*", "", key)
-                  sub("^[^=]*=", "", val)
-                  f[key] = val
-                }
-                name = f["name"] ? f["name"] : f["session_name"]
-                dir = f["start_dir"] ? f["start_dir"] : f["started_in"]
-                if (name != "") printf "%s\tclients:%s\tpid:%s\tcreated:%s\t%s\n", name, f["clients"], f["pid"], f["created"], dir
-              }
-            ' | sort -t $'\t' -k1,1
+            zmx-rows
           }
 
           # inside a session, picker default should show local children first;
@@ -152,7 +161,7 @@ let
               --border-label ' zmx ' \
               --prompt='zmx> ' \
               --header='enter attach  ctrl+n create from query  ctrl+a all' \
-              --bind 'ctrl-a:reload(zsh -ic _zmx_rows)' \
+              --bind 'ctrl-a:reload(zmx-rows)' \
               --preview='zmx history {1} 2>/dev/null | tail -200' \
               --preview-window='right:60%:follow')
             rc=$?
@@ -238,7 +247,7 @@ let
             read 'ans?type yes to kill: '
             [[ "$ans" == yes ]] || return 1
             printf '%s\n' "$names" | while IFS= read -r name; do
-              zmx kill "$name" --force
+              zmx kill --force "$name"
             done
           }
 
