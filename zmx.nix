@@ -1,42 +1,40 @@
 let
-  overlay = final: prev:
+  overlay =
+    final: prev:
     let
-      version = "0.4.2";
+      version = "0.5.0";
       src = prev.fetchFromGitHub {
         owner = "neurosnap";
         repo = "zmx";
         rev = "v${version}";
-        hash = "sha256-ehbriI3xW40oVUbokhNuxYvueqFhkmHCVNZpqxQLr3A=";
+        hash = "sha256-eVp9Lgpx4Dn60NH17zZ+VOUy1VVK73A17bIkPFDKuz4=";
       };
 
-      artifact = if final.stdenv.hostPlatform.isDarwin
-      && final.stdenv.hostPlatform.isAarch64 then
-        prev.fetchurl {
-          url = "https://zmx.sh/a/zmx-0.4.2-macos-aarch64.tar.gz";
-          hash = "sha256-V9SYOm6n7VwEt4ebkNQ0zCAtwLY3ysgK59WuCbQesWA=";
-        }
-      else if final.stdenv.hostPlatform.isDarwin
-      && final.stdenv.hostPlatform.isx86_64 then
-        prev.fetchurl {
-          url = "https://zmx.sh/a/zmx-0.4.2-macos-x86_64.tar.gz";
-          hash = "sha256-GunNG+i69eUaaci6kVZpip+DPgiRFmQoEbhaRE4mJ8c=";
-        }
-      else if final.stdenv.hostPlatform.isLinux
-      && final.stdenv.hostPlatform.isAarch64 then
-        prev.fetchurl {
-          url = "https://zmx.sh/a/zmx-0.4.2-linux-aarch64.tar.gz";
-          hash = "sha256-Lj/CpiV0CGJmNEgOWmhMwk5ys0+BPQiwCKNZ+VDvyjs=";
-        }
-      else if final.stdenv.hostPlatform.isLinux
-      && final.stdenv.hostPlatform.isx86_64 then
-        prev.fetchurl {
-          url = "https://zmx.sh/a/zmx-0.4.2-linux-x86_64.tar.gz";
-          hash = "sha256-JSPSkAbo4NdoyA9APK0pROkNWMuj9oqRJ3sLgNDB8jc=";
-        }
-      else
-        throw
-        "unsupported platform for zmx: ${final.stdenv.hostPlatform.system}";
-    in {
+      artifact =
+        if final.stdenv.hostPlatform.isDarwin && final.stdenv.hostPlatform.isAarch64 then
+          prev.fetchurl {
+            url = "https://zmx.sh/a/zmx-${version}-macos-aarch64.tar.gz";
+            hash = "sha256-O5N58P8M8Qf3+HBI0sRfb76r7ViNZ2rYasIYvtko0Qc=";
+          }
+        else if final.stdenv.hostPlatform.isDarwin && final.stdenv.hostPlatform.isx86_64 then
+          prev.fetchurl {
+            url = "https://zmx.sh/a/zmx-${version}-macos-x86_64.tar.gz";
+            hash = "sha256-d27kjv1Q0L2Xtm+ktDA6JmKVwKDhYwRbc6xmJo1XgbY=";
+          }
+        else if final.stdenv.hostPlatform.isLinux && final.stdenv.hostPlatform.isAarch64 then
+          prev.fetchurl {
+            url = "https://zmx.sh/a/zmx-${version}-linux-aarch64.tar.gz";
+            hash = "sha256-youXaIO9bdahR9kUD9b2JewpEMs6chCCGksoWND8nVw=";
+          }
+        else if final.stdenv.hostPlatform.isLinux && final.stdenv.hostPlatform.isx86_64 then
+          prev.fetchurl {
+            url = "https://zmx.sh/a/zmx-${version}-linux-x86_64.tar.gz";
+            hash = "sha256-TMH2uFTczcq65MuRvQN5oj5vghAEivXYHgZh5ZSlDCg=";
+          }
+        else
+          throw "unsupported platform for zmx: ${final.stdenv.hostPlatform.system}";
+    in
+    {
       zmx = final.stdenv.mkDerivation {
         pname = "zmx";
         inherit version src;
@@ -54,80 +52,206 @@ let
         meta = with final.lib; {
           description = "session persistence for terminal processes";
           homepage = "https://github.com/neurosnap/zmx";
-          changelog =
-            "https://github.com/neurosnap/zmx/blob/v${version}/CHANGELOG.md";
+          changelog = "https://github.com/neurosnap/zmx/blob/v${version}/CHANGELOG.md";
           license = licenses.mit;
           mainProgram = "zmx";
           platforms = platforms.darwin ++ platforms.linux;
+          # upstream ships per-platform release artifacts; this wrapper keeps the
+          # nix build small instead of compiling zmx from source on every host.
           sourceProvenance = [ sourceTypes.binaryNativeCode ];
         };
       };
     };
 
   module = {
-    home-manager.users.bdsqqq = { lib, config, pkgs, ... }: {
-      home.packages = [ pkgs.zmx ];
-      home.sessionVariables.ZMX_DIR = "$HOME/.zmx";
-      home.shellAliases = {
-        zx = "zmx attach";
-        zxl = "zmx list";
+    home-manager.users.bdsqqq =
+      {
+        lib,
+        config,
+        pkgs,
+        ...
+      }:
+      {
+        home.packages = [ pkgs.zmx ];
+        home.sessionVariables.ZMX_DIR = "$HOME/.zmx";
+
+        programs.zsh.initContent = lib.mkIf config.programs.zsh.enable ''
+          # stable names matter because agents refer to sessions by mention-like
+          # paths, e.g. @zmx/nix.build. keep the grammar conservative so shell
+          # snippets, fzf placeholders, and future mention resolvers agree.
+          _zmx_sanitize() {
+            printf '%s' "$*" \
+              | tr '[:upper:]' '[:lower:]' \
+              | sed -E 's#[/[:space:]]+#-#g; s#[^a-z0-9._-]+##g; s#[-.]+$##; s#^[-.]+##'
+          }
+
+          _zmx_root() {
+            local root name
+            root=$(git rev-parse --show-toplevel 2>/dev/null) || root=$PWD
+            name=''${root:t}
+            _zmx_sanitize "$name"
+          }
+
+          # nested sessions inherit the current zmx scope. outside zmx, explicit
+          # args stay literal so `zx scratch` does not surprise-create repo.scratch.
+          _zmx_child_name() {
+            local child
+            child=$(_zmx_sanitize "$1")
+            if [[ -n "$ZMX_SESSION" ]]; then
+              printf '%s.%s\n' "$ZMX_SESSION" "$child"
+            else
+              printf '%s.%s\n' "$(_zmx_root)" "$child"
+            fi
+          }
+
+          # zmx 0.5.0 emits key=value fields, but older builds used
+          # session_name=/started_in=. parse by key so list rendering survives
+          # field order changes and the 0.4 -> 0.5 rename.
+          _zmx_rows() {
+            zmx list 2>/dev/null | awk -F '\t' '
+              {
+                delete f
+                for (i = 1; i <= NF; i++) {
+                  key = $i
+                  val = $i
+                  sub("=.*", "", key)
+                  sub("^[^=]*=", "", val)
+                  f[key] = val
+                }
+                name = f["name"] ? f["name"] : f["session_name"]
+                dir = f["start_dir"] ? f["start_dir"] : f["started_in"]
+                if (name != "") printf "%s\tclients:%s\tpid:%s\tcreated:%s\t%s\n", name, f["clients"], f["pid"], f["created"], dir
+              }
+            ' | sort -t $'\t' -k1,1
+          }
+
+          # inside a session, picker default should show local children first;
+          # ctrl+a still exposes the full graph for cross-project jumps.
+          _zmx_scoped_rows() {
+            if [[ -n "$ZMX_SESSION" ]]; then
+              _zmx_rows | awk -F '\t' -v prefix="$ZMX_SESSION." 'index($1, prefix) == 1'
+            else
+              _zmx_rows
+            fi
+          }
+
+          _zmx_pick() {
+            local scoped="''${1:-auto}" output query key selected rc source session_name
+            source='_zmx_rows'
+            if [[ "$scoped" == scoped || ( "$scoped" == auto && -n "$ZMX_SESSION" ) ]]; then
+              source='_zmx_scoped_rows'
+            fi
+
+            output=$(eval "$source" | fzf \
+              --print-query \
+              --expect=ctrl-n \
+              --delimiter='\t' \
+              --with-nth='1,2,3,4,5' \
+              --height=80% \
+              --reverse \
+              --border-label ' zmx ' \
+              --prompt='zmx> ' \
+              --header='enter attach  ctrl+n create from query  ctrl+a all' \
+              --bind 'ctrl-a:reload(zsh -ic _zmx_rows)' \
+              --preview='zmx history {1} 2>/dev/null | tail -200' \
+              --preview-window='right:60%:follow')
+            rc=$?
+
+            query=$(printf '%s\n' "$output" | sed -n '1p')
+            key=$(printf '%s\n' "$output" | sed -n '2p')
+            selected=$(printf '%s\n' "$output" | sed -n '3p')
+
+            if [[ "$key" == ctrl-n && -n "$query" ]]; then
+              session_name=$(_zmx_sanitize "$query")
+              [[ -n "$ZMX_SESSION" && "$session_name" != "$ZMX_SESSION".* ]] && session_name="$ZMX_SESSION.$session_name"
+            elif [[ $rc -eq 0 && -n "$selected" ]]; then
+              session_name=''${selected%%$'\t'*}
+            elif [[ -n "$query" ]]; then
+              session_name=$(_zmx_sanitize "$query")
+              [[ -n "$ZMX_SESSION" && "$session_name" != "$ZMX_SESSION".* ]] && session_name="$ZMX_SESSION.$session_name"
+            else
+              return 130
+            fi
+
+            printf '%s\n' "$session_name"
+          }
+
+          zx() {
+            local session_name
+            if [[ $# -gt 0 ]]; then
+              if [[ -n "$ZMX_SESSION" ]]; then
+                session_name=$(_zmx_child_name "$1")
+              else
+                session_name=$(_zmx_sanitize "$1")
+              fi
+            elif [[ -n "$ZMX_SESSION" ]]; then
+              session_name=$(_zmx_pick scoped) || return $?
+            else
+              session_name=$(_zmx_root)
+            fi
+
+            # construct full names here. inheriting zmx's global prefix would make
+            # nested names depend on ambient shell state.
+            ZMX_SESSION_PREFIX= zmx attach "$session_name"
+          }
+
+          zxs() {
+            local session_name
+            session_name=$(_zmx_pick auto) || return $?
+            ZMX_SESSION_PREFIX= zmx attach "$session_name"
+          }
+
+          zxl() {
+            _zmx_rows | awk -F '\t' '{ printf "%-32s  %-10s  %-12s  %-24s  %s\n", $1, $2, $3, $4, $5 }'
+          }
+
+          zxh() {
+            local session_name="''${1:-$ZMX_SESSION}"
+            [[ -n "$session_name" ]] || { echo 'zxh: missing session name' >&2; return 2; }
+            zmx history "$session_name"
+          }
+
+          zxt() {
+            local session_name="''${1:-$ZMX_SESSION}"
+            [[ -n "$session_name" ]] || { echo 'zxt: missing session name' >&2; return 2; }
+            zmx tail "$session_name"
+          }
+
+          # gc is intentionally confirm-only. detached sessions often contain
+          # useful scrollback, so deletion needs an explicit typed confirmation.
+          zgc() {
+            local selected names ans
+            selected=$(_zmx_rows | awk -F '\t' '$2 == "clients:0"' | fzf \
+              --multi \
+              --delimiter='\t' \
+              --with-nth='1,2,3,4,5' \
+              --height=80% \
+              --reverse \
+              --border-label ' zmx gc ' \
+              --prompt='zgc> ' \
+              --header='tab select detached sessions; enter confirm list' \
+              --preview='zmx history {1} 2>/dev/null | tail -200' \
+              --preview-window='right:60%:follow') || return $?
+            names=$(printf '%s\n' "$selected" | awk -F '\t' 'NF { print $1 }')
+            [[ -n "$names" ]] || return 0
+            printf 'kill these zmx sessions?\n%s\n' "$names"
+            read 'ans?type yes to kill: '
+            [[ "$ans" == yes ]] || return 1
+            printf '%s\n' "$names" | while IFS= read -r name; do
+              zmx kill "$name" --force
+            done
+          }
+
+          _zmx_connect() {
+            zxs
+            zle reset-prompt
+          }
+          zle -N _zmx_connect
+          bindkey '^s' _zmx_connect
+        '';
       };
-
-      programs.zsh.initContent = lib.mkIf config.programs.zsh.enable ''
-        # ctrl+s: fuzzy zmx session picker with live scrollback preview
-        _zmx_list() {
-          zmx list 2>/dev/null | awk -F '\t' '
-            {
-              name=$1; sub(/^session_name=/, "", name)
-              pid=$2; sub(/^pid=/, "", pid)
-              clients=$3; sub(/^clients=/, "", clients)
-              dir=$5; sub(/^started_in=/, "", dir)
-              printf "%-20s  pid:%-8s  clients:%-2s  %s\\n", name, pid, clients, dir
-            }
-          '
-        }
-
-        zmx-select() {
-          local output query key selected session_name rc
-          output=$(_zmx_list | fzf \
-            --print-query \
-            --expect=ctrl-n \
-            --height=80% \
-            --reverse \
-            --border-label ' zmx ' \
-            --prompt='zmx> ' \
-            --header='  enter attach  ctrl+n new  ctrl+x kill' \
-            --bind 'ctrl-x:execute-silent(zmx kill {1})+reload(_zmx_list)' \
-            --preview='zmx history {1} 2>/dev/null' \
-            --preview-window='right:60%:follow')
-          rc=$?
-
-          query=$(echo "$output" | sed -n '1p')
-          key=$(echo "$output" | sed -n '2p')
-          selected=$(echo "$output" | sed -n '3p')
-
-          if [[ "$key" == 'ctrl-n' && -n "$query" ]]; then
-            session_name="$query"
-          elif [[ "$key" == 'ctrl-x' ]]; then
-            return 0
-          elif [[ $rc -eq 0 && -n "$selected" ]]; then
-            session_name=$(echo "$selected" | awk '{print $1}')
-          elif [[ -n "$query" ]]; then
-            session_name="$query"
-          else
-            return 130
-          fi
-
-          zmx attach "$session_name"
-        }
-
-        _zmx_connect() {
-          zmx-select
-          zle reset-prompt
-        }
-        zle -N _zmx_connect
-        bindkey '^s' _zmx_connect
-      '';
-    };
   };
-in { inherit overlay module; }
+in
+{
+  inherit overlay module;
+}
