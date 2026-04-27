@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { parseZmxList } from "./zmx-rows";
 import type {
   AutocompleteItem,
   AutocompleteProvider,
@@ -34,26 +35,6 @@ function extractZmxFragment(textBeforeCursor: string): string | undefined {
   return textBeforeCursor.match(ZMX_TOKEN)?.[1];
 }
 
-function parseKeyValueFields(line: string): ZmxSession | undefined {
-  const fields = new Map<string, string>();
-  for (const field of line.split("\t")) {
-    const index = field.indexOf("=");
-    if (index === -1) continue;
-    fields.set(field.slice(0, index), field.slice(index + 1));
-  }
-
-  const name = fields.get("name") ?? fields.get("session_name");
-  if (!name) return undefined;
-
-  return {
-    name,
-    clients: fields.get("clients") ?? "?",
-    pid: fields.get("pid") ?? "?",
-    created: fields.get("created"),
-    startDir: fields.get("start_dir") ?? fields.get("started_in") ?? "",
-  };
-}
-
 function parseRowsFields(line: string): ZmxSession | undefined {
   const [name, clientsField, pidField, createdField, startDir = ""] =
     line.split("\t");
@@ -69,13 +50,21 @@ function parseRowsFields(line: string): ZmxSession | undefined {
 }
 
 export function parseZmxSessions(output: string): ZmxSession[] {
+  if (output.includes("=")) {
+    return parseZmxList(output).map((row) => ({
+      name: row.name,
+      clients: row.clients,
+      pid: row.pid,
+      created: row.created || undefined,
+      startDir: row.startDir,
+    }));
+  }
+
   return output
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) =>
-      line.includes("=") ? parseKeyValueFields(line) : parseRowsFields(line),
-    )
+    .map(parseRowsFields)
     .filter((session): session is ZmxSession => Boolean(session?.name));
 }
 
