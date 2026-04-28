@@ -1,7 +1,7 @@
 { lib, pkgs, config, hostSystem ? null, ... }:
 
 let
-  cfg = config.services.axiom;
+  cfg = config.services.o11y;
   deployCfg = config.services.axiom-deploy-annotation;
   isLinux = lib.hasInfix "linux" hostSystem;
   isDarwin = lib.hasInfix "darwin" hostSystem;
@@ -37,6 +37,11 @@ ${eventFilesYaml}
         operators:
           - type: json_parser
             parse_from: body
+
+      otlp:
+        protocols:
+          http:
+            endpoint: 127.0.0.1:4318
 
       hostmetrics:
         collection_interval: 30s
@@ -90,7 +95,7 @@ ${eventFilesYaml}
           processors: [memory_limiter, resource, batch]
           exporters: [otlphttp/axiom_logs]
         metrics:
-          receivers: [hostmetrics]
+          receivers: [hostmetrics, otlp]
           processors: [memory_limiter, resource, batch]
           exporters: [otlphttp/axiom_metrics]
   '';
@@ -154,8 +159,8 @@ ${eventFilesYaml}
     fi
   '';
 in {
-  options.services.axiom = {
-    enable = lib.mkEnableOption "Axiom forwarding";
+  options.services.o11y = {
+    enable = lib.mkEnableOption "host observability forwarding";
 
     papertrail.eventFiles = lib.mkOption {
       type = lib.types.listOf lib.types.str;
@@ -236,6 +241,7 @@ in {
         systemd.services.otelcol-axiom = {
           description = "OpenTelemetry Collector - logs and metrics to Axiom";
           wantedBy = [ "multi-user.target" ];
+          restartTriggers = [ otelcolConfig ];
           after = [ "network-online.target" ];
           requires = [ "network-online.target" ];
 

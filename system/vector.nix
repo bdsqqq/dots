@@ -2,6 +2,11 @@
 { ... }:
 
 {
-  imports = [ ./axiom ];
-  services.axiom.enable = true;
+  imports = [
+    ./o11y
+    ./hwmon-metrics.nix
+  ];
+
+  services.o11y.enable = true;
+  services.hwmon-metrics.enable = true;
 }

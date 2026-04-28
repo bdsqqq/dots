@@ -57,6 +57,7 @@ in {
     ./hardware.nix
     ./acpi.nix
     ./legion-wmi-fan.nix
+    ./legion-metrics.nix
     ../../bundles/base.nix
     ../../bundles/headless.nix
     ../../bundles/dev.nix
