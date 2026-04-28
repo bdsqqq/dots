@@ -246,8 +246,8 @@
                 services.axiom-deploy-annotation = {
                   enable = true;
                   configPath = config.sops.secrets."axiom.toml".path;
-                  dataset = "papertrail";
-                  datasets = [ "papertrail" "host-metrics" ];
+                  dataset = "deployments.personal";
+                  datasets = [ "papertrail" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                 };
               })
@@ -292,8 +292,8 @@
                 services.axiom-deploy-annotation = {
                   enable = true;
                   configPath = config.sops.secrets."axiom.toml".path;
-                  dataset = "papertrail";
-                  datasets = [ "papertrail" "host-metrics" ];
+                  dataset = "deployments.personal";
+                  datasets = [ "papertrail" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                   user = "bdsqqq";
                   group = "users";
@@ -330,8 +330,8 @@
                 services.axiom-deploy-annotation = {
                   enable = true;
                   configPath = config.sops.secrets."axiom.toml".path;
-                  dataset = "papertrail";
-                  datasets = [ "papertrail" "host-metrics" ];
+                  dataset = "deployments.personal";
+                  datasets = [ "papertrail" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                   user = "bdsqqq";
                   group = "users";
@@ -369,8 +369,8 @@
                 services.axiom-deploy-annotation = {
                   enable = true;
                   configPath = config.sops.secrets."axiom.toml".path;
-                  dataset = "papertrail";
-                  datasets = [ "papertrail" "host-metrics" ];
+                  dataset = "deployments.personal";
+                  datasets = [ "papertrail" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                   user = "bdsqqq";
                   group = "users";

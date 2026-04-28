@@ -5,7 +5,7 @@ keys:
   - &host_r56 age1wzdqusx4v0wpn7lgda4x4tw3qkd4jlcyy89pxrh4g679m0ajadtsh49e6t
   - &host_lgo_z2e age1qepnuljqzftv5sg72nj4wt0njcnezvnlhsq0dg8zqls5e2twzuwsyxklww
 creation_rules:
-  - path_regex: secrets\.yaml$
+  - path_regex: (^|/)secrets\.yaml$
     key_groups:
       - age:
           - *user_bdsqqq
