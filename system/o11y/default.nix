@@ -7,16 +7,59 @@ let
   isDarwin = lib.hasInfix "darwin" hostSystem;
 
   homeDir = if isDarwin then "/Users/bdsqqq" else "/home/bdsqqq";
-  dataDir = if isDarwin then
-    "${homeDir}/Library/Application Support/otelcol"
-  else
-    "/var/lib/otelcol";
+  dataDir =
+    if isDarwin then
+      "${homeDir}/Library/Application Support/otelcol"
+    else
+      "/var/lib/otelcol";
 
   edgeUrl = "https://us-east-1.aws.edge.axiom.co";
   secret = name: "/run/secrets/axiom/${name}";
   defaultEventFiles = if isDarwin then [ ] else [ "/var/lib/papertrail/events/*.jsonl" ];
   eventFiles = cfg.papertrail.eventFiles ++ defaultEventFiles;
-  eventFilesYaml = lib.concatMapStringsSep "\n" (path: "        - ${path}") eventFiles;
+  eventFilesYaml = lib.concatMapStringsSep "\n" (path: "      - ${path}") eventFiles;
+  darwinLogFilesYaml = lib.concatMapStringsSep "\n" (path: "      - ${path}") [
+    "${homeDir}/Library/Logs/**/*.log"
+    "/Library/Logs/**/*.log"
+    "/var/log/**/*.log"
+  ];
+  darwinLogExcludeFilesYaml = lib.concatMapStringsSep "\n" (path: "      - ${path}") [
+    "${homeDir}/Library/Logs/DiagnosticReports/**"
+    "${homeDir}/Library/Logs/Zed/.tmp*"
+    "/var/log/asl/**"
+    "/var/log/DiagnosticMessages/**"
+    "/var/log/powermanagement/**"
+  ];
+  processScraperYaml =
+    "      process:\n"
+    + "        mute_process_name_error: true\n"
+    + "        mute_process_exe_error: true\n"
+    + "        mute_process_io_error: true\n";
+  logReceiversYaml =
+    if isDarwin then ''
+        filelog/darwin_services:
+          include:
+      ${darwinLogFilesYaml}
+          exclude:
+      ${darwinLogExcludeFilesYaml}
+          include_file_name: true
+          include_file_path: true
+          start_at: end
+          storage: file_storage
+    '' else ''
+        journald:
+          directory: /var/log/journal
+
+        filelog/papertrail:
+          include:
+      ${eventFilesYaml}
+          start_at: end
+          storage: file_storage
+          operators:
+            - type: json_parser
+              parse_from: body
+    '';
+  logReceivers = if isDarwin then "filelog/darwin_services" else "journald, filelog/papertrail";
   deployDatasetsJson = builtins.toJSON deployCfg.datasets;
 
   otelcolConfig = pkgs.writeText "otelcol-axiom.yaml" ''
@@ -26,18 +69,7 @@ let
         create_directory: true
 
     receivers:
-      journald:
-        directory: /var/log/journal
-
-      filelog/papertrail:
-        include:
-${eventFilesYaml}
-        start_at: end
-        storage: file_storage
-        operators:
-          - type: json_parser
-            parse_from: body
-
+    ${logReceiversYaml}
       otlp:
         protocols:
           http:
@@ -59,7 +91,10 @@ ${eventFilesYaml}
               match_type: regexp
           load:
           network:
-
+          paging:
+          processes:
+          system:
+    ${processScraperYaml}
     processors:
       batch:
       memory_limiter:
@@ -87,17 +122,38 @@ ${eventFilesYaml}
           authorization: Bearer ''${env:AXIOM_TOKEN_METRICS}
           x-axiom-metrics-dataset: host-metrics
 
+      otlphttp/axiom_traces:
+        endpoint: ''${env:AXIOM_URL}
+        compression: zstd
+        headers:
+          authorization: Bearer ''${env:AXIOM_TOKEN_LOGS}
+          x-axiom-dataset: papertrail-traces
+
     service:
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          readers:
+            - periodic:
+                exporter:
+                  otlp:
+                    protocol: http/protobuf
+                    endpoint: http://127.0.0.1:4318
       extensions: [file_storage]
       pipelines:
         logs:
-          receivers: [journald, filelog/papertrail]
+          receivers: [${logReceivers}]
           processors: [memory_limiter, resource, batch]
           exporters: [otlphttp/axiom_logs]
         metrics:
           receivers: [hostmetrics, otlp]
           processors: [memory_limiter, resource, batch]
           exporters: [otlphttp/axiom_metrics]
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters: [otlphttp/axiom_traces]
   '';
 
   deployAnnotate = pkgs.writeShellScript "axiom-deploy-annotate" ''
@@ -158,7 +214,8 @@ ${eventFilesYaml}
       echo "$response" | head -n -1 >&2
     fi
   '';
-in {
+in
+{
   options.services.o11y = {
     enable = lib.mkEnableOption "host observability forwarding";
 
@@ -170,100 +227,103 @@ in {
     };
   };
 
-  config = lib.mkIf cfg.enable (let
-    common = {
-      sops.secrets = {
-        "axiom/personal_url" = {
-          sopsFile = ./secrets.yaml;
-          key = "personal_url";
-          owner = "bdsqqq";
+  config = lib.mkIf cfg.enable (
+    let
+      common = {
+        sops.secrets = {
+          "axiom/personal_url" = {
+            sopsFile = ./secrets.yaml;
+            key = "personal_url";
+            owner = "bdsqqq";
+          };
+          "axiom/personal_org_id" = {
+            sopsFile = ./secrets.yaml;
+            key = "personal_org_id";
+            owner = "bdsqqq";
+          };
+          "axiom/personal_token" = {
+            sopsFile = ./secrets.yaml;
+            key = "personal_token";
+            owner = "bdsqqq";
+          };
+          "axiom/papertrail_token" = {
+            sopsFile = ./secrets.yaml;
+            key = "papertrail_token";
+            owner = "bdsqqq";
+          };
+          "axiom/host_metrics_token" = {
+            sopsFile = ./secrets.yaml;
+            key = "host_metrics_token";
+            owner = "bdsqqq";
+          };
         };
-        "axiom/personal_org_id" = {
-          sopsFile = ./secrets.yaml;
-          key = "personal_org_id";
-          owner = "bdsqqq";
-        };
-        "axiom/personal_token" = {
-          sopsFile = ./secrets.yaml;
-          key = "personal_token";
-          owner = "bdsqqq";
-        };
-        "axiom/papertrail_token" = {
-          sopsFile = ./secrets.yaml;
-          key = "papertrail_token";
-          owner = "bdsqqq";
-        };
-        "axiom/host_metrics_token" = {
-          sopsFile = ./secrets.yaml;
-          key = "host_metrics_token";
-          owner = "bdsqqq";
-        };
+
+        environment.systemPackages = [ pkgs.opentelemetry-collector-contrib ];
+        environment.etc."otelcol/axiom.yaml".source = otelcolConfig;
       };
-
-      environment.systemPackages = [ pkgs.opentelemetry-collector-contrib ];
-      environment.etc."otelcol/axiom.yaml".source = otelcolConfig;
-    };
-  in if isDarwin then
-    lib.mkMerge [
-      common
-      {
-        launchd.daemons.otelcol-axiom = {
-          script = ''
-            export AXIOM_URL="${edgeUrl}"
-            export AXIOM_TOKEN_LOGS="$(cat ${secret "papertrail_token"})"
-            export AXIOM_TOKEN_METRICS="$(cat ${secret "host_metrics_token"})"
-            exec ${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config /etc/otelcol/axiom.yaml
-          '';
-          serviceConfig = {
-            Label = "dev.otelcol.axiom";
-            RunAtLoad = true;
-            StandardOutPath = "${homeDir}/Library/Logs/otelcol-axiom.log";
-            StandardErrorPath = "${homeDir}/Library/Logs/otelcol-axiom-error.log";
-            UserName = "root";
-            GroupName = "wheel";
+    in
+    if isDarwin then
+      lib.mkMerge [
+        common
+        {
+          launchd.daemons.otelcol-axiom = {
+            script = ''
+              export AXIOM_URL="${edgeUrl}"
+              export AXIOM_TOKEN_LOGS="$(cat ${secret "papertrail_token"})"
+              export AXIOM_TOKEN_METRICS="$(cat ${secret "host_metrics_token"})"
+              exec ${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config /etc/otelcol/axiom.yaml
+            '';
+            serviceConfig = {
+              Label = "dev.otelcol.axiom";
+              RunAtLoad = true;
+              StandardOutPath = "${homeDir}/Library/Logs/otelcol-axiom.log";
+              StandardErrorPath = "${homeDir}/Library/Logs/otelcol-axiom-error.log";
+              UserName = "root";
+              GroupName = "wheel";
+            };
           };
-        };
-      }
-    ]
-  else if isLinux then
-    lib.mkMerge [
-      common
-      {
-        systemd.tmpfiles.rules = [
-          "d /var/lib/papertrail/events 0750 bdsqqq users -"
-          "d /var/lib/otelcol 0750 bdsqqq users -"
-          "Z /var/lib/otelcol 0750 bdsqqq users -"
-        ];
+        }
+      ]
+    else if isLinux then
+      lib.mkMerge [
+        common
+        {
+          systemd.tmpfiles.rules = [
+            "d /var/lib/papertrail/events 0750 bdsqqq users -"
+            "d /var/lib/otelcol 0750 bdsqqq users -"
+            "Z /var/lib/otelcol 0750 bdsqqq users -"
+          ];
 
-        systemd.services.vector.enable = lib.mkForce false;
-        systemd.services.axiom-deploy-annotation.serviceConfig.ExecStart = lib.mkForce deployAnnotate;
+          systemd.services.vector.enable = lib.mkForce false;
+          systemd.services.axiom-deploy-annotation.serviceConfig.ExecStart = lib.mkForce deployAnnotate;
 
-        systemd.services.otelcol-axiom = {
-          description = "OpenTelemetry Collector - logs and metrics to Axiom";
-          wantedBy = [ "multi-user.target" ];
-          restartTriggers = [ otelcolConfig ];
-          after = [ "network-online.target" ];
-          requires = [ "network-online.target" ];
+          systemd.services.otelcol-axiom = {
+            description = "OpenTelemetry Collector - logs and metrics to Axiom";
+            wantedBy = [ "multi-user.target" ];
+            restartTriggers = [ otelcolConfig ];
+            after = [ "network-online.target" ];
+            requires = [ "network-online.target" ];
 
-          script = ''
-            export AXIOM_URL="${edgeUrl}"
-            export AXIOM_TOKEN_LOGS="$(cat ${secret "papertrail_token"})"
-            export AXIOM_TOKEN_METRICS="$(cat ${secret "host_metrics_token"})"
-            exec ${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config /etc/otelcol/axiom.yaml
-          '';
+            script = ''
+              export AXIOM_URL="${edgeUrl}"
+              export AXIOM_TOKEN_LOGS="$(cat ${secret "papertrail_token"})"
+              export AXIOM_TOKEN_METRICS="$(cat ${secret "host_metrics_token"})"
+              exec ${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config /etc/otelcol/axiom.yaml
+            '';
 
-          serviceConfig = {
-            Type = "simple";
-            User = "bdsqqq";
-            Group = "users";
-            StateDirectory = "otelcol";
-            SupplementaryGroups = [ "systemd-journal" ];
-            Restart = "always";
-            RestartSec = "5s";
+            serviceConfig = {
+              Type = "simple";
+              User = "bdsqqq";
+              Group = "users";
+              StateDirectory = "otelcol";
+              SupplementaryGroups = [ "systemd-journal" ];
+              Restart = "always";
+              RestartSec = "5s";
+            };
           };
-        };
-      }
-    ]
-  else
-    common);
+        }
+      ]
+    else
+      common
+  );
 }
