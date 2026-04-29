@@ -323,7 +323,6 @@ function composeActionPrompt(
   action: SummaryAction,
   conversationText: string,
   options: {
-    goal?: string;
     previousSummary?: string;
     customInstructions?: string;
     replaceInstructions?: boolean;
@@ -341,13 +340,9 @@ function composeActionPrompt(
     if (shared) parts.push(shared);
     if (intent) parts.push(intent);
     if (format) parts.push(format);
-    if (
-      options.customInstructions?.trim() &&
-      action === "handoff" &&
-      !options.goal?.trim()
-    ) {
+    if (options.customInstructions?.trim() && action === "handoff") {
       parts.push(
-        `additional focus instructions:\n${options.customInstructions.trim()}`,
+        `summary goal:\n${options.customInstructions.trim()}`,
       );
     }
   }
@@ -358,10 +353,6 @@ function composeActionPrompt(
     !options.replaceInstructions
   ) {
     parts.splice(2, 0, `summary goal:\n${options.customInstructions.trim()}`);
-  }
-
-  if (options.goal?.trim()) {
-    parts.splice(2, 0, `summary goal:\n${options.goal.trim()}`);
   }
 
   if (options.previousSummary?.trim()) {
@@ -576,14 +567,14 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
 
     function buildExtractionPrompt(
       conversationText: string,
-      goal: string,
+      customInstructions: string,
     ): string {
       return `${composeActionPrompt(
         promptSections,
         "handoff",
         conversationText,
         {
-          goal,
+          customInstructions,
         },
       )}\n\nUse the create_handoff_context tool to extract relevant information and files.`;
     }
@@ -653,7 +644,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
     async function generateHandoffPrompt(
       ctx: { sessionManager: any; modelRegistry: any },
       handoffModel: Model<Api>,
-      goal: string,
+      customInstructions: string,
       signal?: AbortSignal,
     ): Promise<string | null> {
       const branch = ctx.sessionManager.getBranch();
@@ -673,7 +664,10 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       const userMessage: Message = {
         role: "user",
         content: [
-          { type: "text", text: buildExtractionPrompt(conversationText, goal) },
+          {
+            type: "text",
+            text: buildExtractionPrompt(conversationText, customInstructions),
+          },
         ],
         timestamp: Date.now(),
       };
@@ -698,7 +692,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       const extraction = extractToolCallArgs(response);
       if (!extraction) return null;
 
-      return assembleHandoffPrompt(sessionId, extraction, goal);
+      return assembleHandoffPrompt(sessionId, extraction, customInstructions);
     }
 
     async function executeHandoff(
@@ -895,9 +889,9 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
     pi.registerCommand("handoff", {
       description: "Transfer context to a new focused session",
       handler: async (args, ctx) => {
-        const goal = args.trim();
+        const customInstructions = args.trim();
 
-        if (goal && !handoffPending) {
+        if (customInstructions && !handoffPending) {
           const handoffModel = getSummaryModel(ctx);
           if (!handoffModel) {
             ctx.ui.notify("no model available for handoff", "error");
@@ -915,7 +909,12 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
               );
               loader.onAbort = () => done(null);
 
-              generateHandoffPrompt(ctx, handoffModel, goal, loader.signal)
+              generateHandoffPrompt(
+                ctx,
+                handoffModel,
+                customInstructions,
+                loader.signal,
+              )
                 .then(done)
                 .catch((err) => {
                   console.error("handoff generation failed:", err);
@@ -936,7 +935,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
 
         if (!storedHandoffPrompt) {
           ctx.ui.notify(
-            "no handoff prompt available. usage: /handoff <goal>",
+            "no handoff prompt available. usage: /handoff <customInstructions>",
             "error",
           );
           return;
@@ -991,17 +990,17 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
         "Hand off to a new session with a generated context transfer prompt",
       promptGuidelines: [
         "Use this when context is getting crowded or the user asks to continue in a fresh session.",
-        "Set goal to a specific next task, not a vague continuation.",
+        "Set customInstructions to a specific next task, not a vague continuation.",
       ],
       parameters: Type.Object({
-        goal: Type.String({
+        customInstructions: Type.String({
           description:
             "What should be accomplished in the new session. Be specific about the next task.",
         }),
       }),
 
       async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-        const p = params as { goal: string };
+        const p = params as { customInstructions: string };
         const handoffModel = getSummaryModel(_ctx);
         if (!handoffModel) {
           throw new Error("no model available for handoff extraction");
@@ -1012,7 +1011,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
         const prompt = await generateHandoffPrompt(
           _ctx,
           handoffModel,
-          p.goal,
+          p.customInstructions,
           _signal ?? undefined,
         );
         if (!prompt) {
@@ -1037,7 +1036,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
           content: [
             {
               type: "text",
-              text: `handoff prompt generated for: "${p.goal}". staged /handoff — press Enter to continue in a new session.`,
+              text: `handoff prompt generated for: "${p.customInstructions}". staged /handoff — press Enter to continue in a new session.`,
             },
           ],
           details: undefined,
@@ -1135,9 +1134,9 @@ if (import.meta.vitest) {
       expect(result).toContain("<conversation>\n[User]: hi\n</conversation>");
     });
 
-    it("adds goal only for the current action call", () => {
+    it("adds handoff instructions as the summary goal", () => {
       const result = composeActionPrompt(sections, "handoff", "[User]: hi", {
-        goal: "finish the refactor",
+        customInstructions: "finish the refactor",
       });
       expect(result).toContain("summary goal:\nfinish the refactor");
     });
