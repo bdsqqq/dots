@@ -1147,7 +1147,7 @@ if (import.meta.vitest) {
       });
       expect(result).toContain("summary goal:\nwork on x next");
       expect(result.indexOf("summary goal:")).toBeLessThan(
-        result.indexOf(sections["compaction-format"]),
+        result.indexOf(sections["compaction-format"]!),
       );
       expect(result).not.toContain("additional focus instructions");
     });
@@ -1160,7 +1160,7 @@ if (import.meta.vitest) {
         "summary goal:\ncarry this branch insight forward",
       );
       expect(result.indexOf("summary goal:")).toBeLessThan(
-        result.indexOf(sections["tree-format"]),
+        result.indexOf(sections["tree-format"]!)
       );
       expect(result).not.toContain("additional focus instructions");
     });

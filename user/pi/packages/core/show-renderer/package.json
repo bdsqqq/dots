@@ -6,7 +6,7 @@
     "@bds_pi/show": "workspace:*"
   },
   "devDependencies": {
-    "@mariozechner/pi-tui": "^0.69.0",
+    "@mariozechner/pi-tui": "^0.70.6",
     "vitest": "^3.0.0"
   }
 }

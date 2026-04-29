@@ -8,7 +8,7 @@
     ".": "./index.ts"
   },
   "dependencies": {
-    "@mariozechner/pi-tui": "^0.69.0"
+    "@mariozechner/pi-tui": "^0.70.6"
   },
   "devDependencies": {
     "vitest": "^3.0.0"

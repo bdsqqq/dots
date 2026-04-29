@@ -1,8 +1,8 @@
 { lib, pkgs, config, hostSystem ? null, ... }:
 
+if !(lib.hasInfix "linux" hostSystem) then { } else
 let
   cfg = config.services.hwmon-metrics;
-  isLinux = lib.hasInfix "linux" hostSystem;
 
   sample = pkgs.writeShellScript "hwmon-metrics-sample" ''
     set -euo pipefail
@@ -65,11 +65,12 @@ let
       exit 0
     fi
   '';
-in {
+in
+{
   options.services.hwmon-metrics.enable =
     lib.mkEnableOption "sysfs hwmon temperature metrics via local OTLP";
 
-  config = lib.mkIf (cfg.enable && isLinux) {
+  config = lib.mkIf cfg.enable {
     systemd.services.hwmon-metrics-sample = {
       description = "Sample sysfs hwmon temperatures into local OpenTelemetry Collector";
       after = [ "otelcol-axiom.service" ];
