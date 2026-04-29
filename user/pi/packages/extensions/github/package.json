@@ -11,8 +11,8 @@
     "typebox": "^1.1.24"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "^0.69.0",
-    "@mariozechner/pi-tui": "^0.69.0",
+    "@mariozechner/pi-coding-agent": "^0.70.6",
+    "@mariozechner/pi-tui": "^0.70.6",
     "vitest": "^3.0.0"
   },
   "pi": {
