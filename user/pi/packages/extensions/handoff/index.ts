@@ -277,6 +277,12 @@ function appendFileSections(summary: string, details: SummaryDetails): string {
   return `${summary.trim()}${formatFileSections(details)}`.trim();
 }
 
+function materializeSummaryGoal(summary: string, goal: string | undefined): string {
+  const trimmedGoal = goal?.trim();
+  if (!trimmedGoal) return summary.trim();
+  return `${summary.trim()}\n\n${trimmedGoal}`.trim();
+}
+
 function extractToolCallArgs(response: {
   content: ({ type: string } | ToolCall)[];
 }): HandoffExtraction | null {
@@ -335,15 +341,19 @@ function composeActionPrompt(
     if (shared) parts.push(shared);
     if (intent) parts.push(intent);
     if (format) parts.push(format);
-    if (options.customInstructions?.trim()) {
+    if (options.customInstructions?.trim() && action !== "compaction") {
       parts.push(
         `additional focus instructions:\n${options.customInstructions.trim()}`,
       );
     }
   }
 
+  if (options.customInstructions?.trim() && action === "compaction") {
+    parts.splice(2, 0, `summary goal:\n${options.customInstructions.trim()}`);
+  }
+
   if (options.goal?.trim()) {
-    parts.push(`current goal:\n${options.goal.trim()}`);
+    parts.splice(2, 0, `current goal:\n${options.goal.trim()}`);
   }
 
   if (options.previousSummary?.trim()) {
@@ -756,7 +766,10 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
 
         return {
           compaction: {
-            summary: appendFileSections(summary, nextDetails),
+            summary: appendFileSections(
+              materializeSummaryGoal(summary, event.customInstructions),
+              nextDetails,
+            ),
             firstKeptEntryId: event.preparation.firstKeptEntryId,
             tokensBefore: event.preparation.tokensBefore,
             details: nextDetails,
@@ -1035,6 +1048,7 @@ export {
   isPlainObject,
   getParentDescription,
   showProvenance,
+  materializeSummaryGoal,
   createHandoffExtension,
   DEFAULT_DEPS,
   CONFIG_DEFAULTS,
@@ -1112,6 +1126,24 @@ if (import.meta.vitest) {
         goal: "finish the refactor",
       });
       expect(result).toContain("current goal:\nfinish the refactor");
+    });
+
+    it("treats manual /compact text as the summary goal", () => {
+      const result = composeActionPrompt(sections, "compaction", "[User]: hi", {
+        customInstructions: "work on x next",
+      });
+      expect(result).toContain("summary goal:\nwork on x next");
+      expect(result.indexOf("summary goal:")).toBeLessThan(
+        result.indexOf(sections["compaction-format"]),
+      );
+      expect(result).not.toContain("additional focus instructions");
+    });
+
+    it("materializes summary goals into compaction summaries", () => {
+      expect(materializeSummaryGoal("- did x", "work on y next")).toBe(
+        "- did x\n\nwork on y next",
+      );
+      expect(materializeSummaryGoal("- did x", "   ")).toBe("- did x");
     });
 
     it("replaces default instructions when requested", () => {
