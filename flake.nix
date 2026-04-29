@@ -163,7 +163,8 @@
     let
       # get git revision for configuration tracking
       flakeRevision = self.rev or self.dirtyRev or "unknown";
-    in flake-parts.lib.mkFlake { inherit inputs; } {
+    in
+    flake-parts.lib.mkFlake { inherit inputs; } {
       systems =
         [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
 
@@ -245,9 +246,9 @@
 
                 services.axiom-deploy-annotation = {
                   enable = true;
-                  configPath = config.sops.secrets."axiom.toml".path;
-                  dataset = "deployments.personal";
-                  datasets = [ "papertrail" ];
+                  tokenPath = config.sops.secrets."axiom/personal_token".path;
+                  apiEndpoint = "https://api.axiom.co/v2/annotations";
+                  datasets = [ "papertrail" "papertrail-traces" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                 };
               })
@@ -291,9 +292,9 @@
 
                 services.axiom-deploy-annotation = {
                   enable = true;
-                  configPath = config.sops.secrets."axiom.toml".path;
-                  dataset = "deployments.personal";
-                  datasets = [ "papertrail" ];
+                  tokenPath = config.sops.secrets."axiom/personal_token".path;
+                  apiEndpoint = "https://api.axiom.co/v2/annotations";
+                  datasets = [ "papertrail" "papertrail-traces" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                   user = "bdsqqq";
                   group = "users";
@@ -329,9 +330,9 @@
 
                 services.axiom-deploy-annotation = {
                   enable = true;
-                  configPath = config.sops.secrets."axiom.toml".path;
-                  dataset = "deployments.personal";
-                  datasets = [ "papertrail" ];
+                  tokenPath = config.sops.secrets."axiom/personal_token".path;
+                  apiEndpoint = "https://api.axiom.co/v2/annotations";
+                  datasets = [ "papertrail" "papertrail-traces" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                   user = "bdsqqq";
                   group = "users";
@@ -368,9 +369,9 @@
 
                 services.axiom-deploy-annotation = {
                   enable = true;
-                  configPath = config.sops.secrets."axiom.toml".path;
-                  dataset = "deployments.personal";
-                  datasets = [ "papertrail" ];
+                  tokenPath = config.sops.secrets."axiom/personal_token".path;
+                  apiEndpoint = "https://api.axiom.co/v2/annotations";
+                  datasets = [ "papertrail" "papertrail-traces" "host-metrics" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                   user = "bdsqqq";
                   group = "users";
