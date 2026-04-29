@@ -248,7 +248,7 @@
                   enable = true;
                   tokenPath = config.sops.secrets."axiom/personal_token".path;
                   apiEndpoint = "https://api.axiom.co/v2/annotations";
-                  datasets = [ "papertrail" "papertrail-traces" "host-metrics" ];
+                  datasets = [ "papertrail" "papertrail-traces" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                 };
               })
@@ -294,7 +294,7 @@
                   enable = true;
                   tokenPath = config.sops.secrets."axiom/personal_token".path;
                   apiEndpoint = "https://api.axiom.co/v2/annotations";
-                  datasets = [ "papertrail" "papertrail-traces" "host-metrics" ];
+                  datasets = [ "papertrail" "papertrail-traces" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                   user = "bdsqqq";
                   group = "users";
@@ -332,7 +332,7 @@
                   enable = true;
                   tokenPath = config.sops.secrets."axiom/personal_token".path;
                   apiEndpoint = "https://api.axiom.co/v2/annotations";
-                  datasets = [ "papertrail" "papertrail-traces" "host-metrics" ];
+                  datasets = [ "papertrail" "papertrail-traces" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                   user = "bdsqqq";
                   group = "users";
@@ -371,7 +371,7 @@
                   enable = true;
                   tokenPath = config.sops.secrets."axiom/personal_token".path;
                   apiEndpoint = "https://api.axiom.co/v2/annotations";
-                  datasets = [ "papertrail" "papertrail-traces" "host-metrics" ];
+                  datasets = [ "papertrail" "papertrail-traces" ];
                   repositoryUrl = "https://github.com/bdsqqq/dots";
                   user = "bdsqqq";
                   group = "users";
