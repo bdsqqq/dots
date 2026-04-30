@@ -41,11 +41,15 @@ let
 
         dontUnpack = true;
 
+        nativeBuildInputs = [ final.installShellFiles ];
+
         installPhase = ''
           runHook preInstall
           mkdir -p "$out/bin"
           tar -xzf "${artifact}" -C "$out/bin"
           chmod +x "$out/bin/zmx"
+          "$out/bin/zmx" completions zsh > zmx.zsh
+          installShellCompletion --cmd zmx --zsh zmx.zsh
           runHook postInstall
         '';
 
