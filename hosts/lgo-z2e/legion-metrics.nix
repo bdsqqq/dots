@@ -63,11 +63,14 @@ let
       exit 0
     fi
   '';
-in {
+in
+{
+  services.o11y.enable = true;
+
   systemd.services.legion-metrics-sample = {
     description = "Sample Legion sysfs metrics into local OpenTelemetry Collector";
     after = [ "otelcol-axiom.service" ];
-    requires = [ "otelcol-axiom.service" ];
+    wants = [ "otelcol-axiom.service" ];
     serviceConfig = {
       Type = "oneshot";
       ExecStart = sample;

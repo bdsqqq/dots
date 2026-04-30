@@ -17,7 +17,8 @@ let
       runHook postInstall
     '';
   };
-in {
+in
+{
   _module.args.torchBackend = "cu121";
 
   stylix = {
@@ -66,7 +67,8 @@ in {
     ../../system/nvidia.nix
     ../../system/bluetooth.nix
     ../../system/audio.nix
-    ../../system/vector.nix
+    ../../system/o11y
+    ../../system/o11y/hwmon.nix
     ../../user/ghostty.nix
     ../../user/quickshell.nix
     ../../user/gaming.nix
@@ -75,6 +77,7 @@ in {
 
   my.hardware.gpu.vendors = [ "nvidia" ];
   my.primaryUser = "bdsqqq";
+  services.hwmon-metrics.enable = true;
   my.heliumRemotes = {
     enable = true;
     tabsExtension.enable = true;
@@ -123,21 +126,24 @@ in {
           "mbp-m2"
           "htz-relay"
           "lgo-z2e"
-        ] { };
+        ]
+          { };
         prism-instances =
           syncthing.folderFor "prism-instances" "/home/bdsqqq" false [
             "mbp-m2"
             "lgo-z2e"
-          ] {
-            rescanIntervalS = 120;
-            versioning = null;
-          };
+          ]
+            {
+              rescanIntervalS = 120;
+              versioning = null;
+            };
         helium-remotes =
           syncthing.folderFor "helium-remotes" "/home/bdsqqq" false [
             "mbp-m2"
             "htz-relay"
             "lgo-z2e"
-          ] { };
+          ]
+            { };
       };
     };
   };

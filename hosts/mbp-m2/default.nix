@@ -13,7 +13,7 @@ in {
     ../../system/homebrew.nix
     ../../system/macos-defaults.nix
     ../../system/kanata.nix
-    ../../system/vector.nix
+    ../../system/o11y
     ../../user/gaming.nix
   ];
 
@@ -67,23 +67,27 @@ in {
                 "lgo-z2e"
                 "iph16"
                 "ipd"
-              ] { label = "commonplace"; };
+              ]
+                { label = "commonplace"; };
             prism-instances =
               syncthing.folderFor "prism-instances" config.home.homeDirectory
-              true [ "r56" "lgo-z2e" ] {
-                label = "PrismLauncher instances";
-                rescanIntervalS = 120;
-                versioning = null;
-              };
+                true [ "r56" "lgo-z2e" ]
+                {
+                  label = "PrismLauncher instances";
+                  rescanIntervalS = 120;
+                  versioning = null;
+                };
             pi-sessions =
               syncthing.folderFor "pi-sessions" config.home.homeDirectory true
-              [ "lgo-z2e" ] { };
+                [ "lgo-z2e" ]
+                { };
             helium-remotes =
               syncthing.folderFor "helium-remotes" config.home.homeDirectory true [
                 "htz-relay"
                 "r56"
                 "lgo-z2e"
-              ] { };
+              ]
+                { };
           };
         };
       };

@@ -17,7 +17,8 @@ let
       runHook postInstall
     '';
   };
-in {
+in
+{
   stylix = {
     enable = true;
     image = ../../assets/wallhaven-o5kpmm_3840x2400.png;
@@ -65,7 +66,8 @@ in {
     ../../bundles/wm/niri.nix
     ../../system/bluetooth.nix
     ../../system/audio.nix
-    ../../system/vector.nix
+    ../../system/o11y
+    ../../system/o11y/hwmon.nix
     ../../user/ghostty.nix
     ../../user/gaming.nix
     ../../user/quickshell.nix
@@ -75,6 +77,7 @@ in {
   my.hardware.gpu.vendors = [ "amd" ];
   my.primaryUser = "bdsqqq";
   my.login.greeter = "quickshell";
+  services.hwmon-metrics.enable = true;
   my.heliumRemotes = {
     enable = true;
     tabsExtension.enable = true;
@@ -136,24 +139,27 @@ in {
           "mbp-m2"
           "htz-relay"
           "r56"
-        ] { };
+        ]
+          { };
         prism-instances =
           syncthing.folderFor "prism-instances" "/home/bdsqqq" false [
             "mbp-m2"
             "r56"
-          ] {
-            rescanIntervalS = 120;
-            versioning = null;
-          };
+          ]
+            {
+              rescanIntervalS = 120;
+              versioning = null;
+            };
         pi-sessions =
           syncthing.folderFor "pi-sessions" "/home/bdsqqq" false [ "mbp-m2" ]
-          { };
+            { };
         helium-remotes =
           syncthing.folderFor "helium-remotes" "/home/bdsqqq" false [
             "mbp-m2"
             "htz-relay"
             "r56"
-          ] { };
+          ]
+            { };
       };
     };
   };
