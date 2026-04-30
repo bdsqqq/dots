@@ -123,6 +123,7 @@ let
     window-padding-x = 16
     window-padding-y = 4
     background-opacity = 0.7
+    background-blur = "macos-glass-clear"
     background-blur-radius = 8
     background-opacity-cells = true
 
