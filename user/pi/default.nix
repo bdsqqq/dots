@@ -79,10 +79,6 @@ in {
         fi
       '';
 
-    # handoff skill — teaches the agent about context management via handoff
-    home.file.".pi/agent/skills/handoff/SKILL.md".source =
-      ./skills/handoff/SKILL.md;
-
     # agent definitions — shared plaintext prompt files from the repo
     home.file.".pi/agent/agents".source =
       config.lib.file.mkOutOfStoreSymlink "${repoAgentPrompts}";
