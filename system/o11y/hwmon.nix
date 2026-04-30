@@ -71,10 +71,12 @@ in
     lib.mkEnableOption "sysfs hwmon temperature metrics via local OTLP";
 
   config = lib.mkIf cfg.enable {
+    services.o11y.enable = true;
+
     systemd.services.hwmon-metrics-sample = {
       description = "Sample sysfs hwmon temperatures into local OpenTelemetry Collector";
       after = [ "otelcol-axiom.service" ];
-      requires = [ "otelcol-axiom.service" ];
+      wants = [ "otelcol-axiom.service" ];
       serviceConfig = {
         Type = "oneshot";
         ExecStart = sample;

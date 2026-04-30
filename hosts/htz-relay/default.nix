@@ -4,12 +4,14 @@ let
   mbpPubKey =
     lib.removeSuffix "\n" (builtins.readFile ../../system/ssh-keys/mbp-m2.pub);
   syncthing = import ../../modules/syncthing.nix { inherit lib; };
-in {
+in
+{
   imports = ([
     ../../bundles/base.nix
     ../../bundles/headless.nix
     ../../bundles/dev.nix
-    ../../system/vector.nix
+    ../../system/o11y
+    ../../system/o11y/hwmon.nix
   ]) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix)
     [ ./hardware-configuration.nix ];
 
@@ -18,6 +20,7 @@ in {
   networking.networkmanager.enable = false;
 
   my.primaryUser = "bdsqqq";
+  services.hwmon-metrics.enable = true;
 
   networking.firewall = {
     enable = true;
@@ -94,15 +97,17 @@ in {
       folders = {
         commonplace =
           syncthing.folderFor "commonplace" "/mnt/storage-01/commonplace"
-          false [ "mbp-m2" "ipd" "iph16" "r56" ] {
-            rescanIntervalS = 3600;
-            versioning.params.cleanoutDays = "30";
-          };
+            false [ "mbp-m2" "ipd" "iph16" "r56" ]
+            {
+              rescanIntervalS = 3600;
+              versioning.params.cleanoutDays = "30";
+            };
         helium-remotes =
           syncthing.folderFor "helium-remotes" "/mnt/storage-01/helium-remotes"
-          false [ "mbp-m2" "lgo-z2e" "r56" ] {
-            rescanIntervalS = 60;
-          };
+            false [ "mbp-m2" "lgo-z2e" "r56" ]
+            {
+              rescanIntervalS = 60;
+            };
       };
     };
   };
