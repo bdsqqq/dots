@@ -41,7 +41,7 @@ when to check git:
 
 ### phase 2: verify
 
-spawn verification agents to fact-check analysis claims.
+spawn verification agents to fact-check analysis claims; to avoid confirmation bias, use neutral claims, or invert your question: instead of asking what you believe, ask the opposite.
 
 ```
 for each major claim:
@@ -139,12 +139,6 @@ when coordinating investigation:
 4. synthesizer combines verified claims into report
 ```
 
-this catches:
-
-- oracle hallucinations
-- outdated information
-- claims about files that changed since analysis started
-
 ## autonomous discovery
 
 never hardcode component lists. instead:
@@ -164,14 +158,6 @@ done
 ```
 
 bidirectional traversal discovers components you didn't know existed.
-
-## when to use
-
-- production incident with unclear root cause
-- "how does this feature actually work?"
-- dependency upgrade impact assessment
-- "why was this designed this way?" (git archaeology)
-- mapping blast radius of a refactor
 
 ## references
 
