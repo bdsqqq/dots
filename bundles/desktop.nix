@@ -6,6 +6,7 @@
     ../user/apps.nix
     ../user/1password.nix
     ../user/orbstack.nix
+    ../user/obs
     ../user/helium.nix
     ../user/helium-remotes.nix
     ../user/spicetify.nix
