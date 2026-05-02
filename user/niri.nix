@@ -296,6 +296,14 @@ else {
       # Output/monitor config
       # scale is auto-detected from EDID physical dimensions (since 0.1.6)
       # only add explicit output blocks if auto-detection doesn't work for your monitor
+      outputs."Samsung Electric Company SAMSUNG 0x01000E00" = {
+        mode = {
+          width = 3840;
+          height = 2160;
+          refresh = 60.000;
+        };
+        scale = 2;
+      };
 
       cursor = {
         theme = "macOS";
