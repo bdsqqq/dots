@@ -8,7 +8,7 @@ in lib.mkIf (headMode == "graphical") {
         vscode
         code-cursor
         # blender  # disabled: triggers OpenUSD compile with cudaSupport
-        obsidian
+        # obsidian
         rclone
         qpdf
         inputs.lnr.packages.${hostSystem}.default
