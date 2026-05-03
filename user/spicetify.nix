@@ -182,7 +182,7 @@ in if isDarwin then {
         roundedImages
       ];
 
-      enabledExtensions = with spicePkgs.extensions; [ oneko ];
+      enabledExtensions = [ ];
 
       enabledCustomApps = with spicePkgs.apps; [ marketplace ];
     };
