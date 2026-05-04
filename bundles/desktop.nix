@@ -9,7 +9,6 @@
     ../user/obs
     ../user/helium.nix
     ../user/helium-remotes.nix
-    ../user/spicetify.nix
   ];
 }
 
