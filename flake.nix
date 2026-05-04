@@ -222,6 +222,7 @@
                   overlays = [
                     (import ./overlays/unstable.nix inputs)
                     (import ./zmx.nix).overlay
+                    (import ./overlays/libplist-darwin.nix)
                   ];
                 };
             };
@@ -236,6 +237,7 @@
                   overlays = [
                     (import ./overlays/unstable.nix inputs)
                     (import ./zmx.nix).overlay
+                    (import ./overlays/libplist-darwin.nix)
                   ];
                 };
                 # track git revision for deploy annotations
