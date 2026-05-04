@@ -80,9 +80,6 @@
           "${config.home.homeDirectory}/commonplace/01_files/nix/config/ignore-common";
       };
 
-      # home.file creates symlinks through /nix/store/ — iOS syncthing can't
-      # resolve those. home.activation bypasses the indirection.
-      # (same pattern as bun.nix:33)
       home.activation.commonplaceScaffold =
         lib.hm.dag.entryAfter [ "writeBoundary" ] ''
           mkdir -p "${config.home.homeDirectory}/commonplace/00_inbox" \
@@ -91,8 +88,6 @@
           touch "${config.home.homeDirectory}/commonplace/00_inbox/.keep" \
                 "${config.home.homeDirectory}/commonplace/01_files/.keep" \
                 "${config.home.homeDirectory}/commonplace/02_temp/.keep" || true
-          ln -sf "01_files/nix/config/stignore" \
-                 "${config.home.homeDirectory}/commonplace/.stignore"
         '';
 
       programs = {

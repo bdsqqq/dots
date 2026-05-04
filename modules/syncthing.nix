@@ -80,6 +80,78 @@ rec {
       };
     in paths.${name};
 
+  stignoreDeletePatterns = [
+    "**/node_modules/"
+    "**/.pnpm/"
+    "**/.pnpm-store/"
+    "**/.yarn/"
+    "**/.npm/"
+    "**/.bun/"
+    "**/go/pkg/"
+    "**/go/bin/"
+    "**/.cargo/"
+    "**/.stack/"
+    "**/dist/"
+    "**/build/"
+    "**/out/"
+    "**/coverage/"
+    "**/target/"
+    "**/generated/"
+    "**/.next/"
+    "**/.nuxt/"
+    "**/.astro/"
+    "**/.vite/"
+    "**/.parcel-cache/"
+    "**/.cache/"
+    "**/cache/"
+    "**/.turbo/"
+    "**/.vercel/"
+    "**/.netlify/"
+    "**/.million/"
+    "**/.svelte-kit/"
+    "**/.pytest_cache/"
+    "**/.mypy_cache/"
+    "**/.tox/"
+    "**/.venv/"
+    "**/.direnv/"
+    "**/.expo/"
+    "**/.angular/"
+    "**/.gradle/"
+    "**/tmp/"
+    "**/temp/"
+    "**/*.tmp"
+    "**/*.temp"
+    "**/*.log"
+    "*.log"
+    "**/*.swp"
+    "**/*.swo"
+    "**/*~"
+    "**/result/"
+    "**/result-*"
+    "01_files/nix/result"
+    "01_files/nix/result-*"
+  ];
+
+  mkStignore = commonIgnore:
+    let
+      lines = lib.splitString "\n" commonIgnore;
+      deletePatternSet = lib.genAttrs stignoreDeletePatterns (_: true);
+      transformLine = line:
+        if builtins.hasAttr line deletePatternSet then "(?d)${line}" else line;
+    in lib.concatStringsSep "\n"
+    ((builtins.map transformLine lines) ++ [
+      ""
+      "(?d).Trash/"
+      "(?d)**/.Trash/**"
+      "(?d).Trashes/"
+      "(?d)**/.Trashes/**"
+      "(?d)**/.DS_Store"
+      "(?d)**/Thumbs.db"
+      "(?d)**/desktop.ini"
+      "**/.keep"
+      ""
+    ]);
+
   # Folder ID mapping for syncthing internal use.
   folderIds = {
     commonplace = "sqz7z-a6tfg";
