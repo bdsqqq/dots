@@ -28,7 +28,6 @@ else {
       "notion"
 
       # Entertainment/Gaming
-      "spotify"
       "steam"
     ];
 

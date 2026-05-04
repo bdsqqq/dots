@@ -28,9 +28,6 @@
 
     nix-flatpak.url = "github:gmodena/nix-flatpak";
 
-    spicetify-nix.url = "github:Gerg-L/spicetify-nix";
-    spicetify-nix.inputs.nixpkgs.follows = "nixpkgs";
-
     # Vicinae launcher (no nixpkgs.follows to preserve cachix cache hits)
     # testing focus-loss fix - revert to vicinaehq/vicinae after PR merged
     vicinae.url = "github:bdsqqq/vicinae/f1afea89";
