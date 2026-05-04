@@ -61,8 +61,11 @@ in {
         fastfetch
         ollama
         mkcert
-      ] ++ lib.optionals isDarwin [ istat-menus ]
-      ++ lib.optionals hasAmdGpu [ nvtopPackages.amd radeontop ]
+      ] ++ lib.optionals isDarwin [
+        istat-menus
+        libimobiledevice
+        ifuse
+      ] ++ lib.optionals hasAmdGpu [ nvtopPackages.amd radeontop ]
       ++ lib.optionals hasIntelGpu [ nvtopPackages.intel ]
       ++ lib.optionals hasNvidiaGpu [ nvtopPackages.nvidia ];
 
