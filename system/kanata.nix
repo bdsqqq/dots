@@ -165,7 +165,7 @@ in if isDarwin then {
     mkdir -p /usr/local/bin
     cp ${pkgs.kanata}/bin/kanata ${kanataStablePath}
     chmod 755 ${kanataStablePath}
-    /usr/bin/codesign -fs - ${kanataStablePath} 2>/dev/null || true
+    /usr/bin/codesign -fs - -i com.bdsqqq.kanata ${kanataStablePath} 2>/dev/null || true
 
     launchctl bootout system/${kanataLabel} 2>/dev/null || true
     sleep 1
