@@ -8,12 +8,12 @@
     "agent-browser": "^0.25.5",
     "biome": "^0.3.3",
     "diff": "^8.0.4",
-    "npm": "^11.12.1",
-    "opencode-ai": "^1.4.6",
+    "npm": "^11.13.0",
+    "opencode-ai": "^1.14.33",
     "openportal": "^0.1.30",
     "parallel-web-cli": "^0.2.0",
-    "turbo": "^2.9.6",
-    "typescript": "^6.0.2",
+    "turbo": "^2.9.8",
+    "typescript": "^6.0.3",
     "vercel": "^52.2.1"
   },
   "trustedDependencies": [
