@@ -9,9 +9,10 @@ let
   virtualhidLabel = "com.bdsqqq.karabiner-virtualhid-daemon";
   kanataPlist = "/Library/LaunchDaemons/${kanataLabel}.plist";
   virtualhidPlist = "/Library/LaunchDaemons/${virtualhidLabel}.plist";
-  # stable path so macOS TCC (Input Monitoring) permission can survive nix rebuilds.
+  # stable path so macOS TCC grants can survive nix rebuilds.
   # this must be a real file, not a symlink into /nix/store, because TCC resolves
-  # symlinks and would still see the versioned store path.
+  # symlinks and would still see the versioned store path. after first install or
+  # codesign changes, grant this path both input monitoring and accessibility.
   kanataStablePath = "/usr/local/bin/kanata";
 
   toggleKanata = pkgs.writeShellScriptBin "toggle-kanata" ''
