@@ -18,6 +18,9 @@ let
   defaultEventFiles = if isDarwin then [ ] else [ "/var/lib/papertrail/events/*.jsonl" ];
   eventFiles = cfg.papertrail.eventFiles ++ defaultEventFiles;
   eventFilesYaml = lib.concatMapStringsSep "\n" (path: "      - ${path}") eventFiles;
+  linuxUserLogFilesYaml = lib.concatMapStringsSep "\n" (path: "      - ${path}") [
+    "${homeDir}/.local/state/**/*.log"
+  ];
   darwinLogFilesYaml = lib.concatMapStringsSep "\n" (path: "      - ${path}") [
     "${homeDir}/Library/Logs/**/*.log"
     "/Library/Logs/**/*.log"
@@ -46,9 +49,36 @@ let
           include_file_path: true
           start_at: end
           storage: file_storage
+          operators:
+            - type: regex_parser
+              if: 'attributes["log.file.path"] matches "^${homeDir}/Library/Logs/[^/]+/.*[.]log$"'
+              parse_from: attributes["log.file.path"]
+              regex: '^${homeDir}/Library/Logs/(?P<app>[^/]+)/.*[.]log$'
+            - type: add
+              if: 'attributes["log.file.path"] matches "^${homeDir}/Library/Logs/"'
+              field: attributes.user
+              value: bdsqqq
+            - type: add
+              field: attributes.log_source
+              value: file
     '' else ''
         journald:
           directory: /var/log/journal
+
+        filelog/user_logs:
+          include:
+      ${linuxUserLogFilesYaml}
+          include_file_name: true
+          include_file_path: true
+          start_at: end
+          storage: file_storage
+          operators:
+            - type: add
+              field: attributes.user
+              value: bdsqqq
+            - type: add
+              field: attributes.log_source
+              value: file
 
         filelog/papertrail:
           include:
@@ -59,7 +89,7 @@ let
             - type: json_parser
               parse_from: body
     '';
-  logReceivers = if isDarwin then "filelog/darwin_services" else "journald, filelog/papertrail";
+  logReceivers = if isDarwin then "filelog/darwin_services" else "journald, filelog/user_logs, filelog/papertrail";
   deployDatasetsJson = builtins.toJSON deployCfg.datasets;
 
   otelcolConfig = pkgs.writeText "otelcol-axiom.yaml" ''
@@ -132,7 +162,7 @@ let
     service:
       telemetry:
         logs:
-          level: info
+          level: warn
         metrics:
           readers:
             - periodic:
@@ -217,7 +247,11 @@ let
 in
 {
   options.services.o11y = {
-    enable = lib.mkEnableOption "host observability forwarding";
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Whether to forward host observability data to Axiom.";
+    };
 
     papertrail.eventFiles = lib.mkOption {
       type = lib.types.listOf lib.types.str;
@@ -317,6 +351,8 @@ in
               Group = "users";
               StateDirectory = "otelcol";
               SupplementaryGroups = [ "systemd-journal" ];
+              StandardOutput = "null";
+              StandardError = "journal";
               Restart = "always";
               RestartSec = "5s";
             };
