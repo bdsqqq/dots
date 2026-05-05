@@ -9,10 +9,36 @@ let
       "/home/bdsqqq/commonplace/01_files/nix";
   systemSubject = if isDarwin then "darwin" else "os";
   nhWrapped = pkgs.writeShellScriptBin "nh" ''
+    set -o pipefail
+
     real="${pkgs.nh}/bin/nh"
+    log_dir="${if isDarwin then "$HOME/Library/Logs/nh" else "$HOME/.local/state/nh/logs"}"
+
     case "''${1:-}" in
-      os|darwin|home|clean|search|-*|--*|"") exec "$real" "$@" ;;
-      *) exec "$real" "${systemSubject}" "$@" ;;
+      os|darwin|home|clean|search)
+        args=("$@")
+        ;;
+      -*|--*|"")
+        exec "$real" "$@"
+        ;;
+      *)
+        args=("${systemSubject}" "$@")
+        ;;
+    esac
+
+    subject="''${args[0]:-}"
+    action="''${args[1]:-}"
+    case "$action" in
+      switch|boot|test|build)
+        mkdir -p "$log_dir"
+        timestamp="$(${pkgs.coreutils}/bin/date -u +%Y%m%dT%H%M%SZ)"
+        log_file="$log_dir/$timestamp-$subject-$action.log"
+        "$real" "''${args[@]}" 2>&1 | ${pkgs.coreutils}/bin/tee "$log_file"
+        exit ''${PIPESTATUS[0]}
+        ;;
+      *)
+        exec "$real" "''${args[@]}"
+        ;;
     esac
   '';
 in
