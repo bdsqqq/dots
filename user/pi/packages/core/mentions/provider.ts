@@ -3,37 +3,28 @@ import type {
   AutocompleteProvider,
   AutocompleteSuggestions,
 } from "@mariozechner/pi-tui";
-import { resolveGitRoot } from "./commit-index";
 import { detectMentionPrefix } from "./parse";
-import {
-  getMentionKindDescription,
-  getMentionSource,
-  listEnabledMentionKinds,
-  type MentionSourceContext,
-} from "./sources";
-import type { MentionKind } from "./types";
+import type { MentionSource, MentionSourceContext } from "./sources";
 
-export interface MentionAwareProviderOptions {
+export interface MentionAutocompleteProviderOptions {
   baseProvider: AutocompleteProvider;
-  cwd: string;
-  sessionsDir?: string;
+  source: MentionSource;
+  context: MentionSourceContext;
   maxItems?: number;
 }
 
-export class MentionAwareProvider implements AutocompleteProvider {
+export class MentionAutocompleteProvider implements AutocompleteProvider {
   private readonly baseProvider: AutocompleteProvider;
-  private readonly cwd: string;
-  private readonly sessionsDir?: string;
+  private readonly source: MentionSource;
+  private readonly context: MentionSourceContext;
   private readonly maxItems: number;
   private readonly specialItems = new WeakSet<AutocompleteItem>();
-  private readonly gitEnabled: boolean;
 
-  constructor(options: MentionAwareProviderOptions) {
+  constructor(options: MentionAutocompleteProviderOptions) {
     this.baseProvider = options.baseProvider;
-    this.cwd = options.cwd;
-    this.sessionsDir = options.sessionsDir;
+    this.source = options.source;
+    this.context = options.context;
     this.maxItems = options.maxItems ?? 8;
-    this.gitEnabled = resolveGitRoot(this.cwd) !== null;
   }
 
   async getSuggestions(
@@ -54,8 +45,9 @@ export class MentionAwareProvider implements AutocompleteProvider {
     if (!prefix) return base;
 
     if (prefix.kind) {
+      if (prefix.kind !== this.source.kind) return base;
       return {
-        items: this.getValueSuggestions(prefix.kind, prefix.valueQuery),
+        items: this.getValueSuggestions(prefix.valueQuery),
         prefix: prefix.raw,
       };
     }
@@ -112,42 +104,25 @@ export class MentionAwareProvider implements AutocompleteProvider {
   }
 
   private getKindSuggestions(query: string): AutocompleteItem[] {
-    return this.getEnabledKinds()
-      .filter((kind) => kind.startsWith(query.toLowerCase()))
-      .map((kind) =>
-        this.trackItem({
-          value: `@${kind}/`,
-          label: `@${kind}/`,
-          description: getMentionKindDescription(kind),
-        }),
-      )
-      .slice(0, this.maxItems);
+    if (!(this.source.isEnabled?.(this.context) ?? true)) return [];
+    if (!this.source.kind.startsWith(query.toLowerCase())) return [];
+
+    return [
+      this.trackItem({
+        value: `@${this.source.kind}/`,
+        label: `@${this.source.kind}/`,
+        description: this.source.description,
+      }),
+    ];
   }
 
-  private getValueSuggestions(
-    kind: MentionKind,
-    query: string,
-  ): AutocompleteItem[] {
-    const source = getMentionSource(kind);
-    if (!source) return [];
-    if (!(source.isEnabled?.(this.getSourceContext()) ?? true)) return [];
+  private getValueSuggestions(query: string): AutocompleteItem[] {
+    if (!(this.source.isEnabled?.(this.context) ?? true)) return [];
 
-    return source
-      .getSuggestions(query, this.getSourceContext())
+    return this.source
+      .getSuggestions(query, this.context)
       .slice(0, this.maxItems)
       .map((item) => this.trackItem(item));
-  }
-
-  private getEnabledKinds(): MentionKind[] {
-    return listEnabledMentionKinds(this.getSourceContext());
-  }
-
-  private getSourceContext(): MentionSourceContext {
-    return {
-      cwd: this.cwd,
-      sessionsDir: this.sessionsDir,
-      gitEnabled: this.gitEnabled,
-    };
   }
 
   private trackItem(item: AutocompleteItem): AutocompleteItem {

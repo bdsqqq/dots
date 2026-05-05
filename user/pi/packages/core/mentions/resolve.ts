@@ -1,21 +1,16 @@
-import type { CommitIndex } from "./commit-index";
 import { parseMentions } from "./parse";
-import { getMentionSource, type MentionSourceContext } from "./sources";
-import type { MentionableSession } from "./session-index";
+import type { MentionSource, MentionSourceContext } from "./sources";
 import type { MentionToken, ResolvedMention } from "./types";
 
 export interface ResolveMentionsOptions extends MentionSourceContext {
-  cwd: string;
-  commitIndex?: CommitIndex | null;
-  sessionsDir?: string;
-  sessions?: MentionableSession[] | null;
+  sources: MentionSource[];
 }
 
 export async function resolveMention(
   token: MentionToken,
   options: ResolveMentionsOptions,
 ): Promise<ResolvedMention> {
-  const source = getMentionSource(token.kind);
+  const source = options.sources.find((candidate) => candidate.kind === token.kind);
   if (!source) {
     return {
       token,
