@@ -25,8 +25,16 @@ import {
   setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import { MentionAutocompleteProvider, parseMentions } from "@bds_pi/mentions";
-import { createSessionMentionSource } from "./session-mention-source";
+import {
+  DEFAULT_MENTION_SESSIONS_DIR,
+  getSessionMentionsIndex,
+  MentionAutocompleteProvider,
+  parseMentions,
+  resolveMentionableSession,
+  toResolvedSessionMention,
+  type MentionSource,
+  type MentionSourceContext,
+} from "@bds_pi/mentions";
 import {
   type BoxSection,
   type Excerpt,
@@ -81,6 +89,60 @@ const DEFAULT_EXTENSION_DEPS: SearchSessionsExtensionDeps = {
   getEnabledExtensionConfig,
   withPromptPatch,
 };
+
+function getSessions(context: MentionSourceContext) {
+  return (
+    context.sessions ??
+    getSessionMentionsIndex(context.sessionsDir ?? DEFAULT_MENTION_SESSIONS_DIR)
+  );
+}
+
+function createSessionMentionSource(): MentionSource {
+  return {
+    kind: "session",
+    description: "previous pi session",
+    getSuggestions(query, context) {
+      return getSessions(context)
+        .filter(
+          (session) =>
+            query.length === 0 ||
+            session.sessionId.toLowerCase().startsWith(query.toLowerCase()),
+        )
+        .slice(0, 8)
+        .map((session) => ({
+          value: `@session/${session.sessionId}`,
+          label: `@session/${session.sessionId}`,
+          description:
+            session.sessionName || session.firstUserMessage || session.workspace,
+        }));
+    },
+    resolve(token, context) {
+      const result = resolveMentionableSession(
+        getSessions(context),
+        token.value,
+        "session",
+      );
+
+      if (result.status === "resolved") {
+        return {
+          token,
+          status: "resolved",
+          kind: "session",
+          session: toResolvedSessionMention(result.session),
+        };
+      }
+
+      return {
+        token,
+        status: "unresolved",
+        reason:
+          result.status === "ambiguous"
+            ? "session_prefix_ambiguous"
+            : "session_not_found",
+      };
+    },
+  };
+}
 
 /** per-block excerpts for collapsed display — first 5 visual lines */
 const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
