@@ -25,7 +25,7 @@ import {
   setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import { registerMentionSource } from "@bds_pi/mentions";
+import { MentionAutocompleteProvider, parseMentions } from "@bds_pi/mentions";
 import { createSessionMentionSource } from "./session-mention-source";
 import {
   type BoxSection,
@@ -48,7 +48,6 @@ type SearchSessionsExtConfig = {
 
 type SearchSessionsExtensionDeps = {
   getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
-  registerMentionSource: typeof registerMentionSource;
   withPromptPatch: typeof withPromptPatch;
 };
 
@@ -80,7 +79,6 @@ const SEARCH_SESSIONS_CONFIG_SCHEMA: ExtensionConfigSchema<SearchSessionsExtConf
 
 const DEFAULT_EXTENSION_DEPS: SearchSessionsExtensionDeps = {
   getEnabledExtensionConfig,
-  registerMentionSource,
   withPromptPatch,
 };
 
@@ -536,7 +534,32 @@ function createSearchSessionsExtension(
     );
     if (!enabled) return;
 
-    deps.registerMentionSource(createSessionMentionSource());
+    const source = createSessionMentionSource();
+
+    pi.on("session_start", async (_event, ctx) => {
+      if (!ctx.hasUI) return;
+      ctx.ui.addAutocompleteProvider(
+        (baseProvider) =>
+          new MentionAutocompleteProvider({
+            baseProvider,
+            source,
+            context: { cwd: ctx.cwd, sessionsDir: cfg.sessionsDir },
+          }),
+      );
+    });
+
+    pi.on("before_agent_start", async (event) => {
+      if (!parseMentions(event.prompt).some((mention) => mention.kind === "session")) {
+        return;
+      }
+
+      return {
+        systemPrompt:
+          event.systemPrompt +
+          '\n\nWhen the user includes `@session/<id-or-prefix>`, treat it as a pointer to a prior Pi session. Resolve it with the `read_session` tool before relying on its contents.',
+      };
+    });
+
     pi.registerTool(deps.withPromptPatch(createSearchSessionsTool(cfg)));
   };
 }
@@ -572,14 +595,18 @@ if (import.meta.vitest) {
 
   function createMockExtensionApiHarness() {
     const tools: unknown[] = [];
+    const handlers: Record<string, unknown[]> = {};
 
     const pi = {
       registerTool(tool: unknown) {
         tools.push(tool);
       },
+      on(event: string, handler: unknown) {
+        handlers[event] = [...(handlers[event] ?? []), handler];
+      },
     } as unknown as ExtensionAPI;
 
-    return { pi, tools };
+    return { pi, tools, handlers };
   }
 
   afterEach(() => {
@@ -589,8 +616,7 @@ if (import.meta.vitest) {
   });
 
   describe("search-sessions extension", () => {
-    it("registers mention source and tool with default config when enabled", () => {
-      const registerMentionSourceSpy = vi.fn();
+    it("registers autocomplete, prompt guidance, and tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
         <T extends Record<string, unknown>>(
           _namespace: string,
@@ -602,8 +628,6 @@ if (import.meta.vitest) {
       );
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createSearchSessionsExtension({
-        registerMentionSource:
-          registerMentionSourceSpy as typeof DEFAULT_EXTENSION_DEPS.registerMentionSource,
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_EXTENSION_DEPS.getEnabledExtensionConfig,
         withPromptPatch:
@@ -613,21 +637,8 @@ if (import.meta.vitest) {
 
       extension(harness.pi);
 
-      expect(registerMentionSourceSpy).toHaveBeenCalledTimes(1);
-      const source = registerMentionSourceSpy.mock.calls[0]?.[0];
-      expect(source?.kind).toBe("session");
-      expect(
-        source?.getSuggestions("alpha", {
-          cwd: "/repo/app",
-          sessions: [SESSION_FIXTURE],
-        }),
-      ).toEqual([
-        {
-          value: "@session/alpha1234",
-          label: "@session/alpha1234",
-          description: "alpha work",
-        },
-      ]);
+      expect(harness.handlers.session_start).toHaveLength(1);
+      expect(harness.handlers.before_agent_start).toHaveLength(1);
       expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
         "@bds_pi/search-sessions",
         CONFIG_DEFAULTS,
@@ -637,8 +648,7 @@ if (import.meta.vitest) {
       expect(harness.tools).toHaveLength(1);
     });
 
-    it("registers neither mention source nor tool when disabled", () => {
-      const registerMentionSourceSpy = vi.fn();
+    it("registers neither autocomplete nor tool when disabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
         <T extends Record<string, unknown>>(
           _namespace: string,
@@ -650,8 +660,6 @@ if (import.meta.vitest) {
       );
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createSearchSessionsExtension({
-        registerMentionSource:
-          registerMentionSourceSpy as typeof DEFAULT_EXTENSION_DEPS.registerMentionSource,
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_EXTENSION_DEPS.getEnabledExtensionConfig,
         withPromptPatch:
@@ -661,7 +669,8 @@ if (import.meta.vitest) {
 
       extension(harness.pi);
 
-      expect(registerMentionSourceSpy).not.toHaveBeenCalled();
+      expect(harness.handlers.session_start).toBeUndefined();
+      expect(harness.handlers.before_agent_start).toBeUndefined();
       expect(withPromptPatchSpy).not.toHaveBeenCalled();
       expect(harness.tools).toHaveLength(0);
     });
@@ -679,12 +688,9 @@ if (import.meta.vitest) {
       const errorSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => undefined);
-      const registerMentionSourceSpy = vi.fn();
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createSearchSessionsExtension({
         ...DEFAULT_EXTENSION_DEPS,
-        registerMentionSource:
-          registerMentionSourceSpy as typeof DEFAULT_EXTENSION_DEPS.registerMentionSource,
         withPromptPatch:
           withPromptPatchSpy as typeof DEFAULT_EXTENSION_DEPS.withPromptPatch,
       });
@@ -695,7 +701,7 @@ if (import.meta.vitest) {
       expect(errorSpy).toHaveBeenCalledWith(
         "[@bds_pi/config] invalid config for @bds_pi/search-sessions; falling back to defaults.",
       );
-      expect(registerMentionSourceSpy).toHaveBeenCalledTimes(1);
+      expect(harness.handlers.session_start).toHaveLength(1);
       expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
       expect(harness.tools).toHaveLength(1);
       expect(harness.tools[0]).toMatchObject({ name: "search_sessions" });

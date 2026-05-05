@@ -9,9 +9,6 @@
       "@bds_pi/model-evals": ["./packages/core/model-evals/index.ts"],
       "@bds_pi/box-format": ["./packages/core/box-format/index.ts"],
       "@bds_pi/config": ["./packages/core/config/index.ts"],
-      "@bds_pi/editor-capabilities": [
-        "./packages/core/editor-capabilities/index.ts"
-      ],
       "@bds_pi/file-tracker": ["./packages/core/file-tracker/index.ts"],
       "@bds_pi/fs": ["./packages/core/fs/index.ts"],
       "@bds_pi/github-api": ["./packages/core/github-api/index.ts"],
@@ -39,6 +36,7 @@
       "@bds_pi/finder": ["./packages/extensions/finder/index.ts"],
       "@bds_pi/format-file": ["./packages/extensions/format-file/index.ts"],
       "@bds_pi/github": ["./packages/extensions/github/index.ts"],
+      "@bds_pi/git": ["./packages/extensions/git/index.ts"],
       "@bds_pi/glob": ["./packages/extensions/glob/index.ts"],
       "@bds_pi/grep": ["./packages/extensions/grep/index.ts"],
       "@bds_pi/handoff": ["./packages/extensions/handoff/index.ts"],

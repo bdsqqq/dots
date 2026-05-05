@@ -33,7 +33,7 @@ import {
   getEnabledExtensionConfig,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import { registerMentionSource } from "@bds_pi/mentions";
+import { MentionAutocompleteProvider, parseMentions } from "@bds_pi/mentions";
 import { createHandoffMentionSource } from "./handoff-mention-source";
 
 type SummaryPromptSections = {
@@ -468,12 +468,10 @@ const PROVENANCE_ELLIPSIS = "…";
 
 interface HandoffExtensionDeps {
   getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
-  registerMentionSource: typeof registerMentionSource;
 }
 
 const DEFAULT_DEPS: HandoffExtensionDeps = {
   getEnabledExtensionConfig,
-  registerMentionSource,
 };
 
 function getParentDescription(parentPath: string, maxWidth: number): string {
@@ -548,7 +546,31 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
     );
     if (!enabled) return;
 
-    deps.registerMentionSource(createHandoffMentionSource());
+    const source = createHandoffMentionSource();
+
+    pi.on("session_start", async (_event, ctx) => {
+      if (!ctx.hasUI) return;
+      ctx.ui.addAutocompleteProvider(
+        (baseProvider) =>
+          new MentionAutocompleteProvider({
+            baseProvider,
+            source,
+            context: { cwd: ctx.cwd },
+          }),
+      );
+    });
+
+    pi.on("before_agent_start", async (event) => {
+      if (!parseMentions(event.prompt).some((mention) => mention.kind === "handoff")) {
+        return;
+      }
+
+      return {
+        systemPrompt:
+          event.systemPrompt +
+          '\n\nWhen the user includes `@handoff/<id-or-prefix>`, treat it as a pointer to a prior handoff session. Resolve it with the `read_session` tool before relying on its contents, and preserve its parent-session lineage when relevant.',
+      };
+    });
 
     const promptSections: SummaryPromptSections = cfg.prompt;
 

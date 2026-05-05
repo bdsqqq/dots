@@ -61,13 +61,6 @@
         "vitest": "^3.0.0",
       },
     },
-    "packages/core/editor-capabilities": {
-      "name": "@bds_pi/editor-capabilities",
-      "version": "0.0.0",
-      "devDependencies": {
-        "vitest": "^3.0.0",
-      },
-    },
     "packages/core/file-tracker": {
       "name": "@bds_pi/file-tracker",
       "dependencies": {
@@ -306,9 +299,6 @@
     },
     "packages/extensions/editor": {
       "name": "@bds_pi/editor",
-      "dependencies": {
-        "@bds_pi/editor-capabilities": "workspace:*",
-      },
       "devDependencies": {
         "@mariozechner/pi-ai": "^0.73.0",
         "@mariozechner/pi-coding-agent": "^0.73.0",
@@ -350,6 +340,17 @@
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "^0.73.0",
         "@mariozechner/pi-tui": "^0.73.0",
+        "vitest": "^3.0.0",
+      },
+    },
+    "packages/extensions/git": {
+      "name": "@bds_pi/git",
+      "version": "0.0.1",
+      "dependencies": {
+        "@bds_pi/mentions": "workspace:*",
+      },
+      "devDependencies": {
+        "@mariozechner/pi-coding-agent": "^0.73.0",
         "vitest": "^3.0.0",
       },
     },
@@ -463,18 +464,6 @@
       "devDependencies": {
         "@mariozechner/pi-coding-agent": "^0.73.0",
         "@mariozechner/pi-tui": "^0.73.0",
-        "vitest": "^3.0.0",
-      },
-    },
-    "packages/extensions/mentions": {
-      "name": "@bds_pi/mentions-extension",
-      "version": "0.0.1",
-      "dependencies": {
-        "@bds_pi/editor-capabilities": "workspace:*",
-        "@bds_pi/mentions": "workspace:*",
-        "@mariozechner/pi-coding-agent": "^0.73.0",
-      },
-      "devDependencies": {
         "vitest": "^3.0.0",
       },
     },
@@ -802,8 +791,6 @@
 
     "@bds_pi/editor": ["@bds_pi/editor@workspace:packages/extensions/editor"],
 
-    "@bds_pi/editor-capabilities": ["@bds_pi/editor-capabilities@workspace:packages/core/editor-capabilities"],
-
     "@bds_pi/file-tracker": ["@bds_pi/file-tracker@workspace:packages/core/file-tracker"],
 
     "@bds_pi/finder": ["@bds_pi/finder@workspace:packages/extensions/finder"],
@@ -811,6 +798,8 @@
     "@bds_pi/format-file": ["@bds_pi/format-file@workspace:packages/extensions/format-file"],
 
     "@bds_pi/fs": ["@bds_pi/fs@workspace:packages/core/fs"],
+
+    "@bds_pi/git": ["@bds_pi/git@workspace:packages/extensions/git"],
 
     "@bds_pi/github": ["@bds_pi/github@workspace:packages/extensions/github"],
 
@@ -833,8 +822,6 @@
     "@bds_pi/ls": ["@bds_pi/ls@workspace:packages/extensions/ls"],
 
     "@bds_pi/mentions": ["@bds_pi/mentions@workspace:packages/core/mentions"],
-
-    "@bds_pi/mentions-extension": ["@bds_pi/mentions-extension@workspace:packages/extensions/mentions"],
 
     "@bds_pi/model-evals": ["@bds_pi/model-evals@workspace:packages/core/model-evals"],
 
