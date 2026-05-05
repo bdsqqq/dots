@@ -29,6 +29,7 @@ let
   darwinLogExcludeFilesYaml = lib.concatMapStringsSep "\n" (path: "      - ${path}") [
     "${homeDir}/Library/Logs/DiagnosticReports/**"
     "${homeDir}/Library/Logs/Zed/.tmp*"
+    "${homeDir}/Library/Logs/otelcol-axiom*.log"
     "/var/log/asl/**"
     "/var/log/DiagnosticMessages/**"
     "/var/log/powermanagement/**"
@@ -310,7 +311,7 @@ in
             serviceConfig = {
               Label = "dev.otelcol.axiom";
               RunAtLoad = true;
-              StandardOutPath = "${homeDir}/Library/Logs/otelcol-axiom.log";
+              StandardOutPath = "/dev/null";
               StandardErrorPath = "${homeDir}/Library/Logs/otelcol-axiom-error.log";
               UserName = "root";
               GroupName = "wheel";
