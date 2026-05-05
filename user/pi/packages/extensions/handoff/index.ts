@@ -33,8 +33,16 @@ import {
   getEnabledExtensionConfig,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import { MentionAutocompleteProvider, parseMentions } from "@bds_pi/mentions";
-import { createHandoffMentionSource } from "./handoff-mention-source";
+import {
+  DEFAULT_MENTION_SESSIONS_DIR,
+  getSessionMentionsIndex,
+  MentionAutocompleteProvider,
+  parseMentions,
+  resolveMentionableSession,
+  toResolvedSessionMention,
+  type MentionSource,
+  type MentionSourceContext,
+} from "@bds_pi/mentions";
 
 type SummaryPromptSections = {
   [key: string]: string;
@@ -45,6 +53,61 @@ interface HandoffExtConfig {
   threshold: number;
   model: { provider: string; id: string };
   prompt: SummaryPromptSections;
+}
+
+function getSessions(context: MentionSourceContext) {
+  return (
+    context.sessions ??
+    getSessionMentionsIndex(context.sessionsDir ?? DEFAULT_MENTION_SESSIONS_DIR)
+  );
+}
+
+function createHandoffMentionSource(): MentionSource {
+  return {
+    kind: "handoff",
+    description: "forked session with resumable context",
+    getSuggestions(query, context) {
+      return getSessions(context)
+        .filter((session) => session.isHandoffCandidate)
+        .filter(
+          (session) =>
+            query.length === 0 ||
+            session.sessionId.toLowerCase().startsWith(query.toLowerCase()),
+        )
+        .slice(0, 8)
+        .map((session) => ({
+          value: `@handoff/${session.sessionId}`,
+          label: `@handoff/${session.sessionId}`,
+          description:
+            session.sessionName || session.firstUserMessage || session.workspace,
+        }));
+    },
+    resolve(token, context) {
+      const result = resolveMentionableSession(
+        getSessions(context),
+        token.value,
+        "handoff",
+      );
+
+      if (result.status === "resolved") {
+        return {
+          token,
+          status: "resolved",
+          kind: "handoff",
+          session: toResolvedSessionMention(result.session),
+        };
+      }
+
+      return {
+        token,
+        status: "unresolved",
+        reason:
+          result.status === "ambiguous"
+            ? "handoff_prefix_ambiguous"
+            : "handoff_not_found",
+      };
+    },
+  };
 }
 
 const DEFAULT_SUMMARY_PROMPT_SECTIONS: SummaryPromptSections = {
