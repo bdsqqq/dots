@@ -185,8 +185,7 @@ export function findLatestChange(
 
 /**
  * graceful require for the `diff` package — falls back to a naive
- * line-by-line diff when the package isn't resolvable (same pattern
- * as cheerio in html-to-md.ts).
+ * line-by-line diff when the package isn't resolvable.
  */
 let createPatchFn:
   | ((

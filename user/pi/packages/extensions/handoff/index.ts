@@ -517,6 +517,10 @@ function getParentDescription(parentPath: string, maxWidth: number): string {
   }
 }
 
+function isStaleExtensionContextError(error: unknown): boolean {
+  return String(error).includes("This extension ctx is stale");
+}
+
 function showProvenance(ctx: ExtensionContext, parentPath: string): void {
   ctx.ui.setWidget("handoff-provenance", (_tui, theme) => ({
     render(width: number): string[] {
@@ -734,8 +738,13 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
     }
 
     pi.on("session_start", async (_event, ctx) => {
-      const parentPath = ctx.sessionManager.getHeader()?.parentSession;
-      if (parentPath) showProvenance(ctx, parentPath);
+      try {
+        if (!ctx.hasUI) return;
+        const parentPath = ctx.sessionManager.getHeader()?.parentSession;
+        if (parentPath) showProvenance(ctx, parentPath);
+      } catch (error) {
+        if (!isStaleExtensionContextError(error)) throw error;
+      }
     });
 
     pi.on("session_before_compact", async (event, ctx) => {
@@ -833,56 +842,61 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
     });
 
     pi.on("agent_end", async (_event, ctx) => {
-      if (handoffPending || generating) return;
-
-      const usage = ctx.getContextUsage();
-      if (!usage || usage.percent === null) return;
-      if (usage.percent < cfg.threshold * 100) return;
-      const handoffModel = getSummaryModel(ctx);
-      if (!handoffModel) return;
-
-      generating = true;
-      parentSessionFile = ctx.sessionManager.getSessionFile();
-
       try {
-        const prompt = await generateHandoffPrompt(
-          ctx,
-          handoffModel,
-          "continue the most specific pending task from the conversation",
-          ctx.signal,
-        );
+        if (!ctx.hasUI) return;
+        if (handoffPending || generating) return;
 
-        if (!prompt) {
-          generating = false;
-          ctx.ui.notify(
-            "handoff generation failed: no extraction result",
-            "error",
+        const usage = ctx.getContextUsage();
+        if (!usage || usage.percent === null) return;
+        if (usage.percent < cfg.threshold * 100) return;
+        const handoffModel = getSummaryModel(ctx);
+        if (!handoffModel) return;
+
+        generating = true;
+        parentSessionFile = ctx.sessionManager.getSessionFile();
+
+        try {
+          const prompt = await generateHandoffPrompt(
+            ctx,
+            handoffModel,
+            "continue the most specific pending task from the conversation",
+            ctx.signal,
           );
-          return;
+
+          if (!prompt) {
+            generating = false;
+            ctx.ui.notify(
+              "handoff generation failed: no extraction result",
+              "error",
+            );
+            return;
+          }
+
+          storedHandoffPrompt = prompt;
+          handoffPending = true;
+          generating = false;
+
+          ctx.ui.setEditorText("/handoff");
+          ctx.ui.setStatus(
+            "handoff",
+            `handoff ready (${Math.round(usage.percent)}%)`,
+          );
+          pi.events.emit("editor:set-label", {
+            key: "handoff",
+            text: `handoff ready (${Math.round(usage.percent)}%)`,
+            position: "top",
+            align: "right",
+          });
+          ctx.ui.notify(
+            `context at ${Math.round(usage.percent)}% — handoff prompt generated. press enter to continue in a new session.`,
+            "warning",
+          );
+        } catch (err) {
+          generating = false;
+          ctx.ui.notify(`handoff generation failed: ${String(err)}`, "error");
         }
-
-        storedHandoffPrompt = prompt;
-        handoffPending = true;
-        generating = false;
-
-        ctx.ui.setEditorText("/handoff");
-        ctx.ui.setStatus(
-          "handoff",
-          `handoff ready (${Math.round(usage.percent)}%)`,
-        );
-        pi.events.emit("editor:set-label", {
-          key: "handoff",
-          text: `handoff ready (${Math.round(usage.percent)}%)`,
-          position: "top",
-          align: "right",
-        });
-        ctx.ui.notify(
-          `context at ${Math.round(usage.percent)}% — handoff prompt generated. press enter to continue in a new session.`,
-          "warning",
-        );
-      } catch (err) {
-        generating = false;
-        ctx.ui.notify(`handoff generation failed: ${String(err)}`, "error");
+      } catch (error) {
+        if (!isStaleExtensionContextError(error)) throw error;
       }
     });
 
@@ -967,16 +981,21 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
 
     // reset state on manual session switch
     pi.on("session_start", async (event, ctx) => {
-      if (
-        event.reason === "new" ||
-        event.reason === "resume" ||
-        event.reason === "fork"
-      ) {
-        storedHandoffPrompt = null;
-        handoffPending = false;
-        generating = false;
-        pi.events.emit("editor:remove-label", { key: "handoff" });
-        ctx.ui.setWidget("handoff-provenance", undefined);
+      try {
+        if (
+          event.reason === "new" ||
+          event.reason === "resume" ||
+          event.reason === "fork"
+        ) {
+          storedHandoffPrompt = null;
+          handoffPending = false;
+          generating = false;
+          if (!ctx.hasUI) return;
+          pi.events.emit("editor:remove-label", { key: "handoff" });
+          ctx.ui.setWidget("handoff-provenance", undefined);
+        }
+      } catch (error) {
+        if (!isStaleExtensionContextError(error)) throw error;
       }
     });
 

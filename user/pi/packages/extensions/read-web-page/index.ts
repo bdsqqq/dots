@@ -1,8 +1,8 @@
 /**
- * v3: cheerio HTML→markdown + LLM Q&A + pagination + raw mode.
+ * v3: defuddle HTML→markdown + LLM Q&A + pagination + raw mode.
  *
- * cheerio strips chrome (nav, footer, scripts), finds main content area,
- * converts to clean markdown. ~95% size reduction on typical pages.
+ * defuddle strips page chrome, extracts main content, and converts to
+ * markdown. tiny/sparse HTML falls back to defuddle's markdown converter.
  *
  * `prompt` spawns a gemini flash sub-agent that receives page content
  * and returns AI-generated prose (36/1202 calls use this pattern).
@@ -280,7 +280,7 @@ export function createReadWebPageTool(
         return { content: [{ type: "text" as const, text: content }] } as any;
       }
 
-      const md = htmlToMarkdown(html);
+      const md = await htmlToMarkdown(html);
       let content = md ?? html;
 
       // pagination: slice before truncation so offsets are stable
