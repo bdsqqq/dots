@@ -114,7 +114,8 @@ cat ~/.config/sops/age/keys.txt
 ```
 .sops.yaml          ✓ (public keys)
 secrets.yaml        ✓ (encrypted)
-home.nix           ✓ (config)
+system/sops.nix    ✓ (secret declarations)
+user/shell.nix     ✓ (shell exports)
 ~/.config/sops/age/keys.txt  ✗ (NEVER)
 ```
 
@@ -141,14 +142,14 @@ fallback handles this - uses env vars instead.
 ## adding secrets
 
 1. `sops secrets.yaml`
-2. declare in `home.nix`:
+2. declare it in `system/sops.nix`:
    ```nix
-   sops.secrets.new_secret = {};
+   sops.secrets.new_secret = { owner = "bdsqqq"; };
    ```
-3. use in shell:
+3. if a shell command needs it as an env var, export it from `user/shell.nix`:
    ```nix
-   initExtra = ''
-     export NEW_SECRET="$(cat ${config.sops.secrets.new_secret.path} 2>/dev/null || echo "$NEW_SECRET")"
+   initContent = ''
+     export NEW_SECRET="$(cat /run/secrets/new_secret 2>/dev/null || echo "$NEW_SECRET")"
    '';
    ```
 4. `sudo darwin-rebuild switch --flake .`

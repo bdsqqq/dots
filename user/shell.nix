@@ -114,6 +114,7 @@
                    export GH_TOKEN="$(cat /run/secrets/gh_token 2>/dev/null || echo "$GH_TOKEN")"
                    export HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || echo "$HF_TOKEN")"
                    export PARALLEL_API_KEY="$(cat /run/secrets/parallel_api_key 2>/dev/null || echo "$PARALLEL_API_KEY")"
+                   export SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || echo "$SENTRY_AUTH_TOKEN")"
                    export artificial_analysis_api_key="$(cat /run/secrets/artificial_analysis_api_key 2>/dev/null || echo "$parallel_api_key")"
 
                    export NIX_CONFIG="access-tokens = github.com=$(cat /run/secrets/gh_token 2>/dev/null || echo "")"
