@@ -5,6 +5,7 @@
   "dependencies": {
     "@mariozechner/pi-coding-agent": "^0.73.0",
     "@openai/codex": "^0.122.0",
+    "@sentry/cli": "^3.4.1",
     "agent-browser": "^0.25.5",
     "biome": "^0.3.3",
     "diff": "^8.0.4",
