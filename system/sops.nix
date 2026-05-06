@@ -27,6 +27,7 @@ in
       artificial_analysis_api_key = { owner = "bdsqqq"; };
       motion_plus_token = { owner = "bdsqqq"; };
       parallel_api_key = { owner = "bdsqqq"; };
+      sentry_auth_token = { owner = "bdsqqq"; };
       syncthing_gui_password = { owner = "bdsqqq"; };
       syncthing_gui_password_hash = { owner = "bdsqqq"; };
       "axiom/personal_url" = {
