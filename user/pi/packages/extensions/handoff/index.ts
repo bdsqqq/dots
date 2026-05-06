@@ -33,16 +33,6 @@ import {
   getEnabledExtensionConfig,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import {
-  DEFAULT_MENTION_SESSIONS_DIR,
-  getSessionMentionsIndex,
-  MentionAutocompleteProvider,
-  parseMentions,
-  resolveMentionableSession,
-  toResolvedSessionMention,
-  type MentionSource,
-  type MentionSourceContext,
-} from "@bds_pi/mentions";
 
 type SummaryPromptSections = {
   [key: string]: string;
@@ -53,61 +43,6 @@ interface HandoffExtConfig {
   threshold: number;
   model: { provider: string; id: string };
   prompt: SummaryPromptSections;
-}
-
-function getSessions(context: MentionSourceContext) {
-  return (
-    context.sessions ??
-    getSessionMentionsIndex(context.sessionsDir ?? DEFAULT_MENTION_SESSIONS_DIR)
-  );
-}
-
-function createHandoffMentionSource(): MentionSource {
-  return {
-    kind: "handoff",
-    description: "forked session with resumable context",
-    getSuggestions(query, context) {
-      return getSessions(context)
-        .filter((session) => session.isHandoffCandidate)
-        .filter(
-          (session) =>
-            query.length === 0 ||
-            session.sessionId.toLowerCase().startsWith(query.toLowerCase()),
-        )
-        .slice(0, 8)
-        .map((session) => ({
-          value: `@handoff/${session.sessionId}`,
-          label: `@handoff/${session.sessionId}`,
-          description:
-            session.sessionName || session.firstUserMessage || session.workspace,
-        }));
-    },
-    resolve(token, context) {
-      const result = resolveMentionableSession(
-        getSessions(context),
-        token.value,
-        "handoff",
-      );
-
-      if (result.status === "resolved") {
-        return {
-          token,
-          status: "resolved",
-          kind: "handoff",
-          session: toResolvedSessionMention(result.session),
-        };
-      }
-
-      return {
-        token,
-        status: "unresolved",
-        reason:
-          result.status === "ambiguous"
-            ? "handoff_prefix_ambiguous"
-            : "handoff_not_found",
-      };
-    },
-  };
 }
 
 const DEFAULT_SUMMARY_PROMPT_SECTIONS: SummaryPromptSections = {
@@ -608,32 +543,6 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
       { schema: HANDOFF_CONFIG_SCHEMA },
     );
     if (!enabled) return;
-
-    const source = createHandoffMentionSource();
-
-    pi.on("session_start", async (_event, ctx) => {
-      if (!ctx.hasUI) return;
-      ctx.ui.addAutocompleteProvider(
-        (baseProvider) =>
-          new MentionAutocompleteProvider({
-            baseProvider,
-            source,
-            context: { cwd: ctx.cwd },
-          }),
-      );
-    });
-
-    pi.on("before_agent_start", async (event) => {
-      if (!parseMentions(event.prompt).some((mention) => mention.kind === "handoff")) {
-        return;
-      }
-
-      return {
-        systemPrompt:
-          event.systemPrompt +
-          '\n\nWhen the user includes `@handoff/<id-or-prefix>`, treat it as a pointer to a prior handoff session. Resolve it with the `read_session` tool before relying on its contents, and preserve its parent-session lineage when relevant.',
-      };
-    });
 
     const promptSections: SummaryPromptSections = cfg.prompt;
 
