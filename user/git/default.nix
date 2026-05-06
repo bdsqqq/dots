@@ -19,14 +19,6 @@ let
         runHook postInstall
       '';
     };
-
-  # helper to create script with nix path substitution
-  mkScript = { pkgs, name, src, substitutions ? { } }:
-    let
-      keys = builtins.attrNames substitutions;
-      vals = builtins.attrValues substitutions;
-      content = builtins.replaceStrings keys vals (builtins.readFile src);
-    in pkgs.writeScriptBin name content;
 in {
   home-manager.users.bdsqqq = { pkgs, ... }: {
     programs.git = {
@@ -69,16 +61,6 @@ in {
       git-filter-repo
       jq
       (git-hunks { inherit pkgs; })
-
-      # worktree workflow scripts
-      # bun script - no substitutions needed (bun is self-contained)
-      (pkgs.writeScriptBin "wt" (builtins.readFile ./wt.ts))
-      (mkScript {
-        inherit pkgs;
-        name = "g";
-        src = ./g.sh;
-        substitutions = { "@lazygit@" = "${lazygit}/bin/lazygit"; };
-      })
     ];
   };
 }
