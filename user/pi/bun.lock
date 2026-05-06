@@ -154,6 +154,10 @@
         "@mariozechner/pi-coding-agent": "^0.73.0",
       },
     },
+    "packages/core/sessions": {
+      "name": "@bds_pi/sessions",
+      "version": "0.0.0",
+    },
     "packages/core/show": {
       "name": "@bds_pi/show",
       "version": "0.0.0",
@@ -844,6 +848,8 @@
     "@bds_pi/search-sessions": ["@bds_pi/search-sessions@workspace:packages/extensions/search-sessions"],
 
     "@bds_pi/session-name": ["@bds_pi/session-name@workspace:packages/extensions/session-name"],
+
+    "@bds_pi/sessions": ["@bds_pi/sessions@workspace:packages/core/sessions"],
 
     "@bds_pi/show": ["@bds_pi/show@workspace:packages/core/show"],
 
