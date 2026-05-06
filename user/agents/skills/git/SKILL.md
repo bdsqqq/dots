@@ -1,6 +1,6 @@
 ---
 name: git
-description: "git workflows for agents: ship (stage → commit → push), worktree (parallel branches), hunks (selective staging). never force push, never git add -A, conventional commits. triggers on: commit, push, stage, ship, git add, worktree, hunks, selective staging."
+description: "git workflows for agents: ship (stage → commit → push), hunks (selective staging). never force push, never git add -A, conventional commits. triggers on: commit, push, stage, ship, git add, hunks, selective staging."
 ---
 # git
 
@@ -38,18 +38,3 @@ git hunks add 1 3 5      # stage multiple hunks
 ```
 
 use when you need to split changes across commits.
-
-## worktree
-
-parallel branches in sibling directories.
-
-```bash
-wt <name>                               # create worktree + new branch (authoring)
-wt pr <number>                          # create worktree from PR's remote branch (reviewing)
-git worktree list                       # see all
-git worktree remove ../<name>           # cleanup
-```
-
-`wt` checks for `./bare-repo.git` and uses it as git dir if present.
-
-naming: `axm-{id}` / `ai-{id}` for authoring (Linear issue), `pr-{number}` for reviewing.
