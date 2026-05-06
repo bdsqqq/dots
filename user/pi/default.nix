@@ -54,7 +54,7 @@ in {
     # child processes use the bun CLI, not the node_modules/.bin/pi symlink
     # (which points to the Node.js CLI and fails with ES module extensions).
     home.activation.piBunWrapper =
-      lib.hm.dag.entryAfter [ "installPiExtensionDeps" ] ''
+      lib.hm.dag.entryAfter [ "installBunGlobals" "installPiExtensionDeps" ] ''
         PI_WRAPPER="${homeDir}/.bun/bin/pi"
         PI_BUN_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/bun/cli.js"
         PI_LEGACY_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
