@@ -16,7 +16,7 @@ in
   sops = {
     age.sshKeyPaths = [ sshKeyPath ];
 
-    defaultSopsFile = inputs.self + "/secrets.yaml";
+    defaultSopsFile = ../secrets.yaml;
     secrets = {
       anthropic_api_key = { owner = "bdsqqq"; };
       tailscale_auth_key = { owner = "bdsqqq"; };
