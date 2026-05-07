@@ -59,12 +59,18 @@ in {
     home.activation.piBunWrapper =
       lib.hm.dag.entryAfter [ "installBunGlobals" "installPiExtensionDeps" ] ''
         PI_WRAPPER="${homeDir}/.bun/bin/pi"
-        PI_BUN_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/bun/cli.js"
-        PI_LEGACY_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
+        PI_BUN_CLI="${homeDir}/.bun/install/global/node_modules/@earendil-works/pi-coding-agent/dist/bun/cli.js"
+        PI_LEGACY_CLI="${homeDir}/.bun/install/global/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
+        PI_MARIO_BUN_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/bun/cli.js"
+        PI_MARIO_LEGACY_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
         if [ -e "$PI_BUN_CLI" ]; then
           PI_CLI="$PI_BUN_CLI"
-        else
+        elif [ -e "$PI_LEGACY_CLI" ]; then
           PI_CLI="$PI_LEGACY_CLI"
+        elif [ -e "$PI_MARIO_BUN_CLI" ]; then
+          PI_CLI="$PI_MARIO_BUN_CLI"
+        else
+          PI_CLI="$PI_MARIO_LEGACY_CLI"
         fi
         if [ -e "$PI_CLI" ]; then
           rm -f "$PI_WRAPPER"
