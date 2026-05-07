@@ -23,6 +23,8 @@ else {
   homebrew = {
     enable = true;
 
+    taps = [ "homebrew/cask" ];
+
     casks = [
       # System utilities
       "handy"
@@ -47,9 +49,9 @@ else {
     ];
 
     onActivation = {
-      autoUpdate = true;
+      autoUpdate = false;
       upgrade = true;
-      cleanup = "uninstall";
+      cleanup = "none";
     };
   };
 }
