@@ -1,0 +1,11 @@
+{
+  "providers": {
+    "openai-codex": {
+      "modelOverrides": {
+        "gpt-5.4": {
+          "contextWindow": 1000000
+        }
+      }
+    }
+  }
+}

@@ -42,18 +42,13 @@ import {
 } from "@bds_pi/sub-agent-render";
 import { OutputBuffer, headTailChars } from "@bds_pi/output-buffer";
 import { osc8Link } from "@bds_pi/box-format";
-import { getModel } from "@mariozechner/pi-ai";
-
 const HEAD_LINES = 500;
 const TAIL_LINES = 500;
 const MAX_CHARS = 64_000;
 const CURL_TIMEOUT_SECS = 30;
 const MAX_REDIRECTS = 5;
 
-const READ_WEB_PAGE_DEFAULT_MODEL: any = getModel(
-  "openrouter",
-  "google/gemini-3-flash-preview",
-);
+const READ_WEB_PAGE_DEFAULT_MODEL = "openai-codex/gpt-5.4-mini:low";
 
 type ReadWebPageExtConfig = {
   model: typeof READ_WEB_PAGE_DEFAULT_MODEL | string;

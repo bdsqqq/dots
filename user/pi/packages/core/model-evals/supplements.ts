@@ -64,12 +64,12 @@ export const supplementalMetrics: Partial<
     },
   },
 
-  // gemini 3.1 pro
-  "gemini-3-1-pro": {
+  // gpt-5.5 high
+  "gpt-5-5-high": {
     toolCalling: {
       value: true,
       confidence: "verified",
-      source: "google ai docs - native function calling",
+      source: "openai docs - native function calling",
     },
   },
 

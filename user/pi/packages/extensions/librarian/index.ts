@@ -1,11 +1,11 @@
 /**
- * librarian tool — cross-repo codebase understanding via gemini flash sub-agent.
+ * librarian tool — cross-repo codebase understanding via gpt-5.5 sub-agent.
  *
  * replaces the generic subagent pattern with a dedicated tool. the model
  * calls librarian(query: "...", context?: "...")
  * directly.
  *
- * spawns `pi --mode json` with gemini flash, constrained to the 7
+ * spawns `pi --mode json` with gpt-5.5, constrained to the
  * github tools (read_github, search_github, list_directory_github,
  * list_repositories, glob_github, commit_search, diff). the librarian
  * explores repos thoroughly before providing comprehensive answers.
@@ -36,9 +36,7 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-import { getModel } from "@mariozechner/pi-ai";
-
-const LIBRARIAN_DEFAULT_MODEL: any = getModel("openai-codex", "gpt-5.3-codex");
+const LIBRARIAN_DEFAULT_MODEL = "openai-codex/gpt-5.5:low";
 
 type LibrarianExtConfig = {
   model: typeof LIBRARIAN_DEFAULT_MODEL | string;
