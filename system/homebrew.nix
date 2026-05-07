@@ -3,6 +3,8 @@
 if !(lib.hasInfix "darwin" hostSystem) then
   { }
 else {
+  environment.variables.HOMEBREW_NO_INSTALL_FROM_API = "1";
+
   homebrew = {
     enable = true;
 
@@ -23,7 +25,7 @@ else {
       "obs"
 
       # Productivity applications
-      "linear-linear"
+      "linear"
       "notion-calendar"
       "notion"
 
