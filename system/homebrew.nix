@@ -25,7 +25,7 @@ else {
 
     casks = [
       # System utilities
-      "superwhisper"
+      "handy"
       "cleanshot"
       "raycast"
 
@@ -34,8 +34,6 @@ else {
       "t3-code"
 
       # Creative/Media tools
-      "audacity"
-      "blackhole-2ch"
       "figma"
       "obs"
 
