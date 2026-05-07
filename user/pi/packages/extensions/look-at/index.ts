@@ -1,8 +1,8 @@
 /**
- * look_at tool — multimodal file analysis via gemini flash sub-agent.
+ * look_at tool — multimodal file analysis via gpt-5.4 mini sub-agent.
  *
  * hooks into pi's existing read tool pipeline: the sub-agent calls
- * read(path) which returns images as base64 content parts. gemini
+ * read(path) which returns images as base64 content parts. the sub-agent
  * sees the image and analyzes it per the user's objective.
  *
  * for text files, the sub-agent reads and summarizes/extracts per
@@ -12,7 +12,6 @@
  * screenshots, two versions of a diagram).
  */
 
-import { getModel } from "@mariozechner/pi-ai";
 import type {
   ExtensionAPI,
   ToolDefinition,
@@ -37,10 +36,7 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 
-const LOOK_AT_DEFAULT_MODEL: any = getModel(
-  "openrouter",
-  "google/gemini-3-flash-preview",
-);
+const LOOK_AT_DEFAULT_MODEL = "openai-codex/gpt-5.4-mini:low";
 
 type LookAtExtConfig = {
   model: typeof LOOK_AT_DEFAULT_MODEL | string;

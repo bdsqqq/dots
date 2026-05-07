@@ -86,8 +86,8 @@ rules:
 const CONFIG_DEFAULTS: HandoffExtConfig = {
   threshold: 0.85,
   model: {
-    provider: "openrouter",
-    id: "google/gemini-3-flash-preview",
+    provider: "openai-codex",
+    id: "gpt-5.4-mini",
   },
   prompt: DEFAULT_SUMMARY_PROMPT_SECTIONS,
 };

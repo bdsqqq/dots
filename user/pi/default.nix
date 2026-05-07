@@ -30,6 +30,9 @@ in {
     home.file.".pi/agent/keybindings.json".source =
       config.lib.file.mkOutOfStoreSymlink
       "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/keybindings.json";
+    home.file.".pi/agent/models.json".source =
+      config.lib.file.mkOutOfStoreSymlink
+      "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/models.json";
 
     # extensions — single directory symlink, pi scans subdirectories for package.json with pi.extensions
     home.file.".pi/agent/extensions".source =

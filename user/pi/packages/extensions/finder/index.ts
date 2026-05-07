@@ -41,12 +41,7 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-import { getModel } from "@mariozechner/pi-ai";
-
-const FINDER_DEFAULT_MODEL: any = getModel(
-  "openrouter",
-  "google/gemini-3-flash-preview",
-);
+const FINDER_DEFAULT_MODEL = "openai-codex/gpt-5.4-mini:low";
 
 type FinderExtConfig = {
   model: typeof FINDER_DEFAULT_MODEL | string;

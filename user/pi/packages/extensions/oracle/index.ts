@@ -1,5 +1,5 @@
 /**
- * oracle tool — expert technical advisor via gpt-5.2 sub-agent.
+ * oracle tool — expert technical advisor via gpt-5.5 high sub-agent.
  *
  * replaces the generic subagent(agent: "oracle", task: ...) pattern
  * with a dedicated tool. the model calls
@@ -23,7 +23,6 @@ import {
   SessionManager,
 } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
-import { getModel } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
 import {
   getEnabledExtensionConfig,
@@ -44,10 +43,7 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 
-const ORACLE_DEFAULT_MODEL: any = getModel(
-  "openrouter",
-  "google/gemini-3.1-pro-preview",
-);
+const ORACLE_DEFAULT_MODEL = "openai-codex/gpt-5.5:high";
 
 type OracleExtConfig = {
   model: typeof ORACLE_DEFAULT_MODEL | string;

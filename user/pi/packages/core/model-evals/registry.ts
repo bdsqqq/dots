@@ -58,14 +58,11 @@ export const candidateModels: readonly CandidateModel[] = [
     aliases: ["gpt5.4-nano", "gpt-5.4-nano"],
   },
   {
-    id: "gemini-3-1-pro",
-    providerModel: "google/gemini-3.1-pro-preview",
-    displayName: "Gemini 3.1 Pro",
-    aaMatch: {
-      apiSlug: "gemini-3-1-pro-preview",
-      siteSlugs: ["gemini-3-1-pro-preview", "gemini-3-1-pro"],
-    },
-    aliases: ["gemini3.1pro", "gemini-3.1-pro"],
+    id: "gpt-5-5-high",
+    providerModel: "openai-codex/gpt-5.5:high",
+    displayName: "GPT-5.5 High",
+    aaMatch: { apiSlug: "gpt-5-5", siteSlugs: ["gpt-5-5"] },
+    aliases: ["gpt5.5-high", "gpt-5.5-high", "gpt-5.5:high"],
   },
   {
     id: "gemini-3-flash",
@@ -308,13 +305,13 @@ export const agents: Record<AgentId, AgentProfile> = {
     id: "oracle",
     role: "deepReasoning",
     label: "Oracle",
-    currentModel: "gemini-3-1-pro",
+    currentModel: "gpt-5-5-high",
   },
   "code-review": {
     id: "code-review",
     role: "deepReasoning",
     label: "Code Review",
-    currentModel: "gemini-3-1-pro",
+    currentModel: "gpt-5-5-high",
   },
   finder: {
     id: "finder",
@@ -574,7 +571,7 @@ if (import.meta.vitest) {
     });
 
     test("resolves partial display name", () => {
-      expect(resolveModelSelector("gemini 3.1")).toBe("gemini-3-1-pro");
+      expect(resolveModelSelector("gpt 5.5 high")).toBe("gpt-5-5-high");
     });
 
     test("returns null for unknown", () => {

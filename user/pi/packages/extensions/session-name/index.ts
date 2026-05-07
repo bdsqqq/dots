@@ -4,7 +4,7 @@
  * fires on the `input` event so the name appears while the agent is still
  * thinking. names the session on the first message, then re-evaluates
  * every `renameInterval` messages (default 10) as the conversation topic
- * may drift. uses gemini flash for speed/cost.
+ * may drift. uses gpt-5.4 mini for speed/cost.
  */
 
 import * as fs from "node:fs";
@@ -27,8 +27,8 @@ type SessionNameExtConfig = {
 
 const CONFIG_DEFAULTS: SessionNameExtConfig = {
   model: {
-    provider: "openrouter",
-    id: "google/gemini-3-flash-preview",
+    provider: "openai-codex",
+    id: "gpt-5.4-mini",
   },
   renameInterval: 10,
 };

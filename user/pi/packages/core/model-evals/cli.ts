@@ -385,10 +385,10 @@ function createSyntheticModels(): EvaluatedModel[] {
       baseMetrics.price = 96 + Math.random() * 3; // ~$1-4/1M, passes $5 guardrail
       baseMetrics.outputSpeed = 90 + Math.random() * 8;
     }
-    if (id.includes("gemini-3-1-pro")) {
-      baseMetrics.intelligence = 80 + Math.random() * 12;
-      baseMetrics.coding = 78 + Math.random() * 12;
-      baseMetrics.price = 60 + Math.random() * 20; // competitive
+    if (id.includes("gpt-5-5-high")) {
+      baseMetrics.intelligence = 82 + Math.random() * 12;
+      baseMetrics.coding = 80 + Math.random() * 12;
+      baseMetrics.price = 50 + Math.random() * 25; // premium pricing
     }
     if (id.includes("flash")) {
       baseMetrics.outputSpeed = 85 + Math.random() * 10;
