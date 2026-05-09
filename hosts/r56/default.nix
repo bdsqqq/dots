@@ -199,7 +199,12 @@ in
           .popup,
           tooltip.background,
           popover.background > contents,
-          popover.menu > contents {
+          popover.menu > contents,
+          window.messagedialog,
+          window.dialog-window.alert,
+          dialog-host > dialog.alert sheet,
+          dialog-host > dialog.background sheet,
+          floating-sheet > sheet {
             padding: 10px;
             border-radius: 15px;
             background-color: rgba(16, 16, 16, 0.72);
