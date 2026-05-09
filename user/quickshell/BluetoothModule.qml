@@ -10,11 +10,11 @@ import "primitives" as Primitives
 Item {
     id: bluetoothModule
 
-    property bool bluetoothOn: false
-    property bool togglePending: false
-    property string connectedDevice: ""
+    property alias bluetoothOn: bluez.powered
+    property alias togglePending: bluez.togglePending
+    property alias connectedDevice: bluez.connectedDevice
+    property alias scanning: bluez.scanning
     property bool expanded: false
-    property bool scanning: false
 
     ListModel {
         id: pairedDevicesModel
@@ -23,154 +23,193 @@ Item {
     implicitWidth: parent ? parent.width : 248
     implicitHeight: card.implicitHeight
 
-    Process {
-        id: adapterCheck
-        command: ["bluetoothctl", "show"]
+    Item {
+        id: bluez
 
-        property string buffer: ""
+        readonly property string service: "org.bluez"
+        readonly property string adapterPath: "/org/bluez/hci0"
+        readonly property string adapterInterface: "org.bluez.Adapter1"
+        property bool powered: false
+        property bool togglePending: false
+        property string connectedDevice: ""
+        property bool scanning: false
+        property int connectionCheckIndex: 0
 
-        stdout: SplitParser {
-            splitMarker: ""
-            onRead: function(data) {
-                adapterCheck.buffer += data;
+        function devicePath(mac) {
+            return adapterPath + "/dev_" + mac.replace(/:/g, "_");
+        }
+
+        function refresh() {
+            adapterPowered.running = true;
+            pairedDevices.running = true;
+        }
+
+        function togglePower() {
+            togglePending = true;
+            setPower.running = true;
+        }
+
+        function connect(mac) {
+            connectDevice.targetMac = mac;
+            connectDevice.running = true;
+        }
+
+        function disconnect(mac) {
+            disconnectDevice.targetMac = mac;
+            disconnectDevice.running = true;
+        }
+
+        function startScan() {
+            startDiscovery.running = true;
+        }
+
+        function stopScan() {
+            scanTimer.running = false;
+            stopDiscovery.running = true;
+        }
+
+        function checkNextConnection() {
+            if (connectionCheckIndex < pairedDevicesModel.count) {
+                connectedState.targetMac = pairedDevicesModel.get(connectionCheckIndex).mac;
+                connectedState.running = true;
             }
         }
 
-        onExited: function(code, status) {
-            bluetoothModule.bluetoothOn = adapterCheck.buffer.indexOf("Powered: yes") !== -1;
-            adapterCheck.buffer = "";
-        }
-    }
+        Process {
+            id: adapterPowered
+            command: ["busctl", "get-property", bluez.service, bluez.adapterPath, bluez.adapterInterface, "Powered"]
 
-    Process {
-        id: devicesCheck
-        command: ["bluetoothctl", "devices", "Paired"]
+            property string buffer: ""
 
-        property string buffer: ""
+            stdout: SplitParser {
+                splitMarker: ""
+                onRead: function(data) {
+                    adapterPowered.buffer += data;
+                }
+            }
 
-        stdout: SplitParser {
-            splitMarker: ""
-            onRead: function(data) {
-                devicesCheck.buffer += data;
+            onExited: function(code, status) {
+                bluez.powered = code === 0 && adapterPowered.buffer.indexOf("true") !== -1;
+                adapterPowered.buffer = "";
             }
         }
 
-        onExited: function(code, status) {
-            if (code === 0) {
-                let lines = devicesCheck.buffer.trim().split('\n');
-                let devices = [];
-                for (let i = 0; i < lines.length; i++) {
-                    let line = lines[i].trim();
-                    if (line === "") continue;
-                    let match = line.match(/^Device\s+([0-9A-Fa-f:]+)\s+(.+)$/);
-                    if (match) {
-                        devices.push({ mac: match[1], name: match[2] });
+        Process {
+            id: pairedDevices
+            command: ["bash", "-lc", "for path in $(busctl tree org.bluez | sed -n 's/.*\\(\\/org\\/bluez\\/hci[0-9]\\/dev_[0-9A-Fa-f_]*\\).*/\\1/p' | sort -u); do paired=$(busctl get-property org.bluez \"$path\" org.bluez.Device1 Paired 2>/dev/null | awk '{print $2}'); [ \"$paired\" = true ] || continue; alias=$(busctl get-property org.bluez \"$path\" org.bluez.Device1 Alias 2>/dev/null | sed 's/^s \"//; s/\"$//'); mac=${path##*/dev_}; mac=${mac//_/:}; printf 'Device %s %s\\n' \"$mac\" \"$alias\"; done"]
+
+            property string buffer: ""
+
+            stdout: SplitParser {
+                splitMarker: ""
+                onRead: function(data) {
+                    pairedDevices.buffer += data;
+                }
+            }
+
+            onExited: function(code, status) {
+                if (code === 0) {
+                    let lines = pairedDevices.buffer.trim().split("\n");
+                    let devices = [];
+                    for (let i = 0; i < lines.length; i++) {
+                        let match = lines[i].trim().match(/^Device\s+([0-9A-Fa-f:]+)\s+(.+)$/);
+                        if (match) {
+                            devices.push({ mac: match[1], name: match[2] });
+                        }
+                    }
+
+                    pairedDevicesModel.clear();
+                    bluez.connectedDevice = "";
+                    for (let j = 0; j < devices.length; j++) {
+                        pairedDevicesModel.append(devices[j]);
+                    }
+
+                    if (devices.length > 0) {
+                        bluez.connectionCheckIndex = 0;
+                        bluez.checkNextConnection();
                     }
                 }
-                devicesCheck.buffer = "";
-                
-                pairedDevicesModel.clear();
-                for (let j = 0; j < devices.length; j++) {
-                    pairedDevicesModel.append(devices[j]);
+                pairedDevices.buffer = "";
+            }
+        }
+
+        Process {
+            id: connectedState
+            property string targetMac: ""
+            command: ["bash", "-lc", "path=/org/bluez/hci0/dev_${0//:/_}; busctl get-property org.bluez \"$path\" org.bluez.Device1 Connected", targetMac]
+
+            property string buffer: ""
+
+            stdout: SplitParser {
+                splitMarker: ""
+                onRead: function(data) {
+                    connectedState.buffer += data;
                 }
-                
-                if (devices.length > 0) {
-                    checkConnectionIndex = 0;
-                    checkNextConnection();
+            }
+
+            onExited: function(code, status) {
+                if (code === 0 && connectedState.buffer.indexOf("true") !== -1) {
+                    bluez.connectedDevice = connectedState.targetMac;
+                }
+                connectedState.buffer = "";
+                bluez.connectionCheckIndex++;
+                bluez.checkNextConnection();
+            }
+        }
+
+        Process {
+            id: setPower
+            command: ["busctl", "set-property", bluez.service, bluez.adapterPath, bluez.adapterInterface, "Powered", "b", bluez.powered ? "false" : "true"]
+            onExited: function(code, status) {
+                bluez.togglePending = false;
+                bluez.refresh();
+            }
+        }
+
+        Process {
+            id: connectDevice
+            property string targetMac: ""
+            command: ["bash", "-lc", "path=/org/bluez/hci0/dev_${0//:/_}; busctl call org.bluez \"$path\" org.bluez.Device1 Connect", targetMac]
+            onExited: function(code, status) {
+                bluez.refresh();
+            }
+        }
+
+        Process {
+            id: disconnectDevice
+            property string targetMac: ""
+            command: ["bash", "-lc", "path=/org/bluez/hci0/dev_${0//:/_}; busctl call org.bluez \"$path\" org.bluez.Device1 Disconnect", targetMac]
+            onExited: function(code, status) {
+                bluez.connectedDevice = "";
+                bluez.refresh();
+            }
+        }
+
+        Process {
+            id: startDiscovery
+            command: ["busctl", "call", bluez.service, bluez.adapterPath, bluez.adapterInterface, "StartDiscovery"]
+            onExited: function(code, status) {
+                if (code === 0) {
+                    bluez.scanning = true;
+                    scanTimer.running = true;
                 }
             }
         }
-    }
 
-    property int checkConnectionIndex: 0
-
-    function checkNextConnection() {
-        if (checkConnectionIndex < pairedDevicesModel.count) {
-            connectionCheck.targetMac = pairedDevicesModel.get(checkConnectionIndex).mac;
-            connectionCheck.running = true;
-        }
-    }
-
-    Process {
-        id: connectionCheck
-        property string targetMac: ""
-        command: ["bluetoothctl", "info", targetMac]
-
-        property string buffer: ""
-
-        stdout: SplitParser {
-            splitMarker: ""
-            onRead: function(data) {
-                connectionCheck.buffer += data;
+        Process {
+            id: stopDiscovery
+            command: ["busctl", "call", bluez.service, bluez.adapterPath, bluez.adapterInterface, "StopDiscovery"]
+            onExited: function(code, status) {
+                bluez.scanning = false;
+                bluez.refresh();
             }
         }
 
-        onExited: function(code, status) {
-            if (connectionCheck.buffer.indexOf("Connected: yes") !== -1) {
-                bluetoothModule.connectedDevice = connectionCheck.targetMac;
-            }
-            connectionCheck.buffer = "";
-            checkConnectionIndex++;
-            if (checkConnectionIndex < pairedDevicesModel.count) {
-                checkNextConnection();
-            }
-        }
-    }
-
-    Process {
-        id: toggleBluetooth
-        command: ["bluetoothctl", "power", bluetoothOn ? "off" : "on"]
-        onExited: function(code, status) {
-            togglePending = false;
-            adapterCheck.running = true;
-        }
-    }
-
-    Process {
-        id: connectDevice
-        property string targetMac: ""
-        command: ["bluetoothctl", "connect", targetMac]
-        onExited: function(code, status) {
-            devicesCheck.running = true;
-        }
-    }
-
-    Process {
-        id: disconnectDevice
-        property string targetMac: ""
-        command: ["bluetoothctl", "disconnect", targetMac]
-        onExited: function(code, status) {
-            bluetoothModule.connectedDevice = "";
-            devicesCheck.running = true;
-        }
-    }
-
-    Process {
-        id: scanOn
-        command: ["bluetoothctl", "scan", "on"]
-        onExited: function(code, status) {
-            if (code === 0) {
-                bluetoothModule.scanning = true;
-                scanTimer.running = true;
-            }
-        }
-    }
-
-    Process {
-        id: scanOff
-        command: ["bluetoothctl", "scan", "off"]
-        onExited: function(code, status) {
-            bluetoothModule.scanning = false;
-            devicesCheck.running = true;
-        }
-    }
-
-    Timer {
-        id: scanTimer
-        interval: 10000
-        repeat: false
-        onTriggered: {
-            scanOff.running = true;
+        Timer {
+            id: scanTimer
+            interval: 10000
+            repeat: false
+            onTriggered: bluez.stopScan()
         }
     }
 
@@ -179,10 +218,7 @@ Item {
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: {
-            adapterCheck.running = true;
-            devicesCheck.running = true;
-        }
+        onTriggered: bluez.refresh()
     }
 
     Primitives.Surface {
@@ -226,8 +262,7 @@ Item {
                     text: togglePending ? "switching..." : (bluetoothOn ? "on" : "off")
                     enabled: !togglePending
                     onClicked: {
-                        togglePending = true;
-                        toggleBluetooth.running = true;
+                        bluez.togglePower();
                     }
                 }
 
@@ -237,10 +272,9 @@ Item {
                     visible: bluetoothOn
                     onClicked: {
                         if (scanning) {
-                            scanTimer.running = false;
-                            scanOff.running = true;
+                            bluez.stopScan();
                         } else {
-                            scanOn.running = true;
+                            bluez.startScan();
                         }
                     }
                 }
@@ -307,11 +341,9 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 if (bluetoothModule.connectedDevice === deviceCard.model.mac) {
-                                    disconnectDevice.targetMac = deviceCard.model.mac;
-                                    disconnectDevice.running = true;
+                                    bluez.disconnect(deviceCard.model.mac);
                                 } else {
-                                    connectDevice.targetMac = deviceCard.model.mac;
-                                    connectDevice.running = true;
+                                    bluez.connect(deviceCard.model.mac);
                                 }
                             }
                         }
