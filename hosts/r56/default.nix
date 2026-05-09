@@ -191,7 +191,21 @@ in
       programs.home-manager.enable = true;
 
       # disable stylix targets we manage manually
-      stylix.targets.ghostty.enable = false;
+      stylix.targets = {
+        ghostty.enable = false;
+        gtk.extraCss = ''
+          menu,
+          .context-menu,
+          .popup,
+          tooltip.background,
+          popover.background > contents,
+          popover.menu > contents {
+            padding: 10px;
+            border-radius: 15px;
+            background-color: rgba(16, 16, 16, 0.72);
+          }
+        '';
+      };
 
       # fontconfig for crisp font rendering at 1.5x
       fonts.fontconfig = {
@@ -205,6 +219,18 @@ in
 
       gtk = {
         enable = true;
+        theme = {
+          name = lib.mkForce "adw-gtk3-dark";
+          package = lib.mkForce pkgs.adw-gtk3;
+        };
+        iconTheme = {
+          name = lib.mkForce "Papirus-Dark";
+          package = lib.mkForce pkgs.papirus-icon-theme;
+        };
+        font = {
+          name = lib.mkForce "Inter";
+          size = lib.mkForce 12;
+        };
         gtk3.extraConfig = {
           gtk-xft-antialias = 1;
           gtk-xft-hinting = 1;
