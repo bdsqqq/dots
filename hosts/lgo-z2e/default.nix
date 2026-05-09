@@ -199,7 +199,21 @@ in
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
 
-      stylix.targets.ghostty.enable = false;
+      stylix.targets = {
+        ghostty.enable = false;
+        gtk.extraCss = ''
+          menu,
+          .context-menu,
+          .popup,
+          tooltip.background,
+          popover.background > contents,
+          popover.menu > contents {
+            padding: 10px;
+            border-radius: 15px;
+            background-color: rgba(16, 16, 16, 0.72);
+          }
+        '';
+      };
 
       programs.niri.settings.outputs."eDP-1".scale = 1.5;
 
@@ -214,6 +228,18 @@ in
 
       gtk = {
         enable = true;
+        theme = {
+          name = lib.mkForce "adw-gtk3-dark";
+          package = lib.mkForce pkgs.adw-gtk3;
+        };
+        iconTheme = {
+          name = lib.mkForce "Papirus-Dark";
+          package = lib.mkForce pkgs.papirus-icon-theme;
+        };
+        font = {
+          name = lib.mkForce "Inter";
+          size = lib.mkForce 12;
+        };
         gtk3.extraConfig = {
           gtk-xft-antialias = 1;
           gtk-xft-hinting = 1;

@@ -21,8 +21,7 @@ let
         }
 
         popups {
-            opacity 0.95
-            geometry-corner-radius 8
+            geometry-corner-radius 15
 
             background-effect {
                 blur true
