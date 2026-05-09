@@ -33,7 +33,7 @@ let
       for percent in $(cat "$legion/fan_curve_percent"); do
         temp_c=$((i * 10))
         add_gauge "legion.fan.curve.percent" "$percent" "%" \
-          "$(${pkgs.jq}/bin/jq -n --arg point "$i" --arg temp "$temp_c" '[{key:"point",value:{intValue:$point}},{key:"temperature.celsius",value:{intValue:$temp}}]')"
+          "$(${pkgs.jq}/bin/jq -n --arg point "$i" --arg temp "$temp_c" '[{key:"point",value:{intValue:$point}},{key:"threshold.celsius",value:{intValue:$temp}}]')"
         i=$((i + 1))
       done
     fi
