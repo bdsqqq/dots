@@ -40,7 +40,6 @@ in
         pull.rebase = true;
         rebase.autoStash = true;
 
-        core.pager = "${pkgs.delta}/bin/delta";
         core.excludesFile = "~/.gitignore_global";
         interactive.diffFilter = "${pkgs.delta}/bin/delta --color-only";
         delta = {
@@ -59,6 +58,7 @@ in
 
     programs.hunk = {
       enable = true;
+      enableGitIntegration = true;
       package = inputs.hunk.packages.${pkgs.stdenv.hostPlatform.system}.default;
     };
 
