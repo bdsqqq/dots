@@ -5,6 +5,11 @@
         source = "${inputs.lnr}/SKILL.md";
       };
 
+      ".config/agents/skills/hunk-review" = {
+        source = "${inputs.hunk}/skills/hunk-review";
+        recursive = true;
+      };
+
       ".config/agents/skills/react-best-practices" = {
         source = "${inputs.vercel-skills}/skills/react-best-practices";
         recursive = true;
