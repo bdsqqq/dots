@@ -23,7 +23,10 @@ else {
   homebrew = {
     enable = true;
 
-    taps = [ "homebrew/cask" ];
+    taps = [
+      "homebrew/cask"
+      "pluk-inc/tap"
+    ];
 
     casks = [
       # System utilities
@@ -41,6 +44,7 @@ else {
 
       # Productivity applications
       "linear"
+      "markdown-preview"
       "notion-calendar"
       "notion"
 
