@@ -62,5 +62,9 @@ in {
       jq
       (git-hunks { inherit pkgs; })
     ];
+
+    home.shellAliases = {
+      g = "lazygit";
+    };
   };
 }
