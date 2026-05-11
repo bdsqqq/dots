@@ -1,4 +1,4 @@
-{ ... }:
+{ inputs, ... }:
 let
   git-hunks = { pkgs }:
     pkgs.stdenv.mkDerivation {
@@ -19,8 +19,11 @@ let
         runHook postInstall
       '';
     };
-in {
+in
+{
   home-manager.users.bdsqqq = { pkgs, ... }: {
+    imports = [ inputs.hunk.homeManagerModules.default ];
+
     programs.git = {
       enable = true;
 
@@ -52,6 +55,11 @@ in {
         gpg.format = "ssh";
         user.signingKey = "~/.ssh/id_ed25519.pub";
       };
+    };
+
+    programs.hunk = {
+      enable = true;
+      package = inputs.hunk.packages.${pkgs.stdenv.hostPlatform.system}.default;
     };
 
     home.packages = with pkgs; [
