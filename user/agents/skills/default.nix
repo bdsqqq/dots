@@ -1,7 +1,7 @@
 { lib, inputs, hostSystem ? null, config ? { }, ... }: {
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
     home.file = {
-      ".config/agents/skills/lnr/SKILL.md" = {
+      ".config/agents/skills/linear/SKILL.md" = {
         source = "${inputs.lnr}/SKILL.md";
       };
 
