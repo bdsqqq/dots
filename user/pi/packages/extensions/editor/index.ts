@@ -15,18 +15,18 @@ import type {
   ExtensionAPI,
   ExtensionContext,
   SessionEntry,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import {
   CustomEditor,
   Theme,
   estimateTokens,
-} from "@mariozechner/pi-coding-agent";
-import type { TUI, EditorTheme } from "@mariozechner/pi-tui";
-import { visibleWidth } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import type { TUI, EditorTheme } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { boxBorderLR, boxRow } from "@bds_pi/box-chrome";
 import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row";
-import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
-import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
+import type { KeybindingsManager } from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { hasToolCost } from "@bds_pi/tool-cost";

@@ -10,9 +10,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as piAi from "@mariozechner/pi-ai";
-import type { Api, Model, Message } from "@mariozechner/pi-ai";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import * as piAi from "@earendil-works/pi-ai";
+import type { Api, Model, Message } from "@earendil-works/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   clearConfigCache,
   getEnabledExtensionConfig,

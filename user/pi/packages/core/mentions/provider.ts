@@ -2,7 +2,7 @@ import type {
   AutocompleteItem,
   AutocompleteProvider,
   AutocompleteSuggestions,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import { detectMentionPrefix } from "./parse";
 import type { MentionSource, MentionSourceContext } from "./sources";
 

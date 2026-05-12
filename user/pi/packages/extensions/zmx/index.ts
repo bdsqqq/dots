@@ -1,10 +1,10 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parseZmxList } from "./zmx-rows";
 import type {
   AutocompleteItem,
   AutocompleteProvider,
   AutocompleteSuggestions,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 
 const MAX_SUGGESTIONS = 20;
 const STATUS_VALUE_PREFIX = "__zmx_status__:";

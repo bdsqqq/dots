@@ -16,9 +16,9 @@ import * as path from "node:path";
 import type {
   ExtensionAPI,
   ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { walkDirSync } from "@bds_pi/fs";
-import { Container, Text } from "@mariozechner/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "typebox";
 import { isPiSpawnModelValue, piSpawn, zeroUsage } from "@bds_pi/pi-spawn";

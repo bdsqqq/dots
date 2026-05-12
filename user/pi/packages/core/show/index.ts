@@ -14,7 +14,7 @@
  * gaps get an elision marker via the caller-provided makeElision factory.
  */
 
-import { Text } from "@mariozechner/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 
 export interface Excerpt {
   focus: number | "head" | "tail";

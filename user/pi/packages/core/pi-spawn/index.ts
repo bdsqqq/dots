@@ -22,7 +22,7 @@ import {
   type KnownApi,
   type Message,
   type Model,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 import { resolveGlobalSettingsPath } from "@bds_pi/config";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
 

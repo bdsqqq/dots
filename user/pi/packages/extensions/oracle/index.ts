@@ -17,12 +17,12 @@ import * as path from "node:path";
 import type {
   ExtensionAPI,
   ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import {
   createAgentSession,
   SessionManager,
-} from "@mariozechner/pi-coding-agent";
-import { Container, Text } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   getEnabledExtensionConfig,

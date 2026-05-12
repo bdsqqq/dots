@@ -8,13 +8,13 @@
  *
  * also registered as `/palette` command for non-shortcut access.
  */
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildRootView } from "./adapters";
 import { StackPalette } from "./palette";
 
 export default function commandPaletteExtension(pi: ExtensionAPI): void {
   async function openPalette(
-    ctx: import("@mariozechner/pi-coding-agent").ExtensionContext,
+    ctx: import("@earendil-works/pi-coding-agent").ExtensionContext,
   ) {
     if (!ctx.hasUI) return;
 

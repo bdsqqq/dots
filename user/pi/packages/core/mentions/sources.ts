@@ -1,4 +1,4 @@
-import type { AutocompleteItem } from "@mariozechner/pi-tui";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type { CommitIndex } from "./commit-index";
 import type { MentionableSession } from "./session-index";
 import type { MentionKind, MentionToken, ResolvedMention } from "./types";

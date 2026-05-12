@@ -15,8 +15,8 @@
 import type {
   ExtensionAPI,
   ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
-import { Container, Text } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   getEnabledExtensionConfig,
@@ -367,8 +367,8 @@ if (import.meta.vitest) {
         DefaultResourceLoader,
         SettingsManager,
         getAgentDir,
-      } = await import("@mariozechner/pi-coding-agent");
-      const { SessionManager } = await import("@mariozechner/pi-coding-agent");
+      } = await import("@earendil-works/pi-coding-agent");
+      const { SessionManager } = await import("@earendil-works/pi-coding-agent");
 
       // Parse model string: "provider/model-id"
       const [provider, ...modelIdParts] = E2E_MODEL.split("/");

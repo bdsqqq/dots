@@ -1,5 +1,5 @@
 /**
- * lazy re-exports of @mariozechner/pi-tui components.
+ * lazy re-exports of @earendil-works/pi-tui components.
  *
  * pi-tui is provided by pi's runtime and isn't resolvable in
  * standalone test environments (bun test). lazy-loading via
@@ -14,7 +14,7 @@
 let _piTui: any;
 function tui() {
   if (!_piTui) {
-    _piTui = require("@mariozechner/pi-tui");
+    _piTui = require("@earendil-works/pi-tui");
   }
   return _piTui;
 }

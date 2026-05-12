@@ -20,8 +20,8 @@ import * as path from "node:path";
 import type {
   ExtensionAPI,
   ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
-import { Container, Text } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   clearConfigCache,
@@ -410,7 +410,7 @@ if (import.meta.vitest) {
 
     it("eval: spawns sub-agent and completes a simple task", async () => {
       const { createAgentSession, SessionManager, AuthStorage, ModelRegistry } =
-        await import("@mariozechner/pi-coding-agent");
+        await import("@earendil-works/pi-coding-agent");
 
       const authStorage = AuthStorage.create();
       const modelRegistry = ModelRegistry.create(authStorage);
@@ -470,7 +470,7 @@ if (import.meta.vitest) {
 
     it("eval: child sessions respect PI_BDS_CONFIG_PATH gating for builtin-shadowed tools", async () => {
       const { createAgentSession, SessionManager, AuthStorage, ModelRegistry } =
-        await import("@mariozechner/pi-coding-agent");
+        await import("@earendil-works/pi-coding-agent");
 
       // set up sandbox with custom config that disables @bds_pi/bash
       const sandboxDir = fs.mkdtempSync(
