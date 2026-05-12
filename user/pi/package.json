@@ -78,7 +78,6 @@
     "extensions": [
       "./dist/extensions/bash.js",
       "./dist/extensions/code-review.js",
-      "./dist/extensions/command-palette.js",
       "./dist/extensions/create-file.js",
       "./dist/extensions/edit-file.js",
       "./dist/extensions/editor.js",

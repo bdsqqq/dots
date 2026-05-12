@@ -1,6 +1,5 @@
 export { default as bash } from "../packages/extensions/bash/index";
 export { default as codeReview } from "../packages/extensions/code-review/index";
-export { default as commandPalette } from "../packages/extensions/command-palette/index";
 export { default as createFile } from "../packages/extensions/create-file/index";
 export { default as editFile } from "../packages/extensions/edit-file/index";
 export { default as editor } from "../packages/extensions/editor/index";
