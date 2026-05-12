@@ -258,13 +258,6 @@
         "vitest": "^3.0.0",
       },
     },
-    "packages/extensions/command-palette": {
-      "name": "@bds_pi/command-palette",
-      "devDependencies": {
-        "@earendil-works/pi-coding-agent": "^0.74.0",
-        "@earendil-works/pi-tui": "^0.74.0",
-      },
-    },
     "packages/extensions/create-file": {
       "name": "@bds_pi/create-file",
       "version": "0.0.1",
@@ -784,8 +777,6 @@
     "@bds_pi/box-format": ["@bds_pi/box-format@workspace:packages/core/box-format"],
 
     "@bds_pi/code-review": ["@bds_pi/code-review@workspace:packages/extensions/code-review"],
-
-    "@bds_pi/command-palette": ["@bds_pi/command-palette@workspace:packages/extensions/command-palette"],
 
     "@bds_pi/config": ["@bds_pi/config@workspace:packages/core/config"],
 

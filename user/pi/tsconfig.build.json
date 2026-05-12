@@ -28,9 +28,6 @@
       "@bds_pi/tui": ["./packages/core/tui/index.ts"],
       "@bds_pi/bash": ["./packages/extensions/bash/index.ts"],
       "@bds_pi/code-review": ["./packages/extensions/code-review/index.ts"],
-      "@bds_pi/command-palette": [
-        "./packages/extensions/command-palette/index.ts"
-      ],
       "@bds_pi/create-file": ["./packages/extensions/create-file/index.ts"],
       "@bds_pi/edit-file": ["./packages/extensions/edit-file/index.ts"],
       "@bds_pi/editor": ["./packages/extensions/editor/index.ts"],
