@@ -17,9 +17,9 @@
       "packages/extensions/*"
     ],
     "catalog": {
-      "@mariozechner/pi-ai": "^0.73.1",
-      "@mariozechner/pi-coding-agent": "^0.73.1",
-      "@mariozechner/pi-tui": "^0.73.1",
+      "@earendil-works/pi-ai": "^0.74.0",
+      "@earendil-works/pi-coding-agent": "^0.74.0",
+      "@earendil-works/pi-tui": "^0.74.0",
       "typebox": "^1.1.24"
     }
   },
@@ -69,9 +69,9 @@
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": ">=0.73.1",
-    "@mariozechner/pi-coding-agent": ">=0.73.1",
-    "@mariozechner/pi-tui": ">=0.73.1",
+    "@earendil-works/pi-ai": ">=0.74.0",
+    "@earendil-works/pi-coding-agent": ">=0.74.0",
+    "@earendil-works/pi-tui": ">=0.74.0",
     "typebox": ">=1.0.0"
   },
   "pi": {

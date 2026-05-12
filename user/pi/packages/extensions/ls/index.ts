@@ -12,9 +12,9 @@ import * as os from "node:os";
 import type {
   ExtensionAPI,
   ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
-import { Text } from "@mariozechner/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   listDirectory,

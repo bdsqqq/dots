@@ -14,7 +14,7 @@
  * PI_INCLUDE_TOOLS in the child process env to control tool visibility.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 /**
  * backward-compat alias map: old names -> registered names.

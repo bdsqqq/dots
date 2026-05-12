@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.73.1",
+    "@earendil-works/pi-coding-agent": "^0.74.0",
     "@openai/codex": "^0.122.0",
     "@sentry/cli": "^3.4.1",
     "agent-browser": "^0.25.5",

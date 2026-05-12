@@ -2,7 +2,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
   Theme,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import {
   type Component,
   CURSOR_MARKER,
@@ -12,7 +12,7 @@ import {
   matchesKey,
   truncateToWidth,
   visibleWidth,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import { boxBottom, boxRow, boxTop } from "@bds_pi/box-chrome";
 import type { PaletteActionContext, PaletteItem, PaletteView } from "./types";
 

@@ -7,7 +7,7 @@
     ".": "./index.ts"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "^0.73.1",
+    "@earendil-works/pi-coding-agent": "^0.74.0",
     "vitest": "^3.0.0"
   },
   "pi": {

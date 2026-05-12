@@ -15,8 +15,8 @@ import * as path from "node:path";
 import type {
   ExtensionAPI,
   ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "typebox";
 import { saveChange, simpleDiff } from "@bds_pi/file-tracker";

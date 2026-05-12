@@ -23,9 +23,9 @@ import * as path from "node:path";
 import type {
   ExtensionAPI,
   ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { Text } from "@mariozechner/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   boxRendererWindowed,

@@ -23,7 +23,7 @@ import { spawn } from "node:child_process";
 import type {
   ExtensionAPI,
   ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   boxRendererWindowed,

@@ -23,7 +23,7 @@
  * rendered line exceeds terminal width.
  */
 
-import { Text, type Component } from "@mariozechner/pi-tui";
+import { Text, type Component } from "@earendil-works/pi-tui";
 import { boxBottom, boxTop } from "@bds_pi/box-chrome";
 import { windowItems, type Excerpt } from "@bds_pi/show";
 
