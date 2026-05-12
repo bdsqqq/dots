@@ -10,7 +10,7 @@
         recursive = true;
       };
 
-      ".config/agents/skills/react-best-practices" = {
+      ".config/agents/skills/vercel-react-best-practices" = {
         source = "${inputs.vercel-skills}/skills/react-best-practices";
         recursive = true;
       };
