@@ -15,7 +15,7 @@
     "parallel-web-cli": "^0.2.0",
     "turbo": "^2.9.12",
     "typescript": "^6.0.3",
-    "vercel": "^52.2.1"
+    "vercel": "^54.0.0"
   },
   "trustedDependencies": [
     "agent-browser",
