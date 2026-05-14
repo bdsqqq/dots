@@ -19,6 +19,10 @@ in {
   };
 
   config.home-manager.users.bdsqqq = { pkgs, ... }: {
+    xdg.configFile."pnpm/rc".text = ''
+      minimum-release-age=2880
+    '';
+
     programs = {
       yt-dlp = {
         enable = true;
