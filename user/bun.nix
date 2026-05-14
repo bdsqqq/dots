@@ -42,7 +42,8 @@
 
           # install globals; bun resolves deps into $GLOBAL_DIR/node_modules
           "${pkgs.bun}/bin/bun" install \
-            --cwd "$GLOBAL_DIR" || true
+            --cwd "$GLOBAL_DIR" \
+            --minimum-release-age=172800 || true
 
           # bun install --cwd doesn't create bin stubs in ~/.bun/bin (only bun add -g does)
           # mirror what pnpm --global did: link node_modules/.bin/* → ~/.bun/bin/
@@ -64,6 +65,7 @@
         [install]
         globalDir = "${globalDir}"
         globalBinDir = "${bunBin}"
+        minimumReleaseAge = 172800
       '';
 
       # zsh-specific: re-assert bun precedence after fnm's dynamic PATH prepend
