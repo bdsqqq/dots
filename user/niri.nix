@@ -1,7 +1,46 @@
-{ pkgs, lib, config, inputs, hostSystem ? null, ... }:
+{ pkgs, lib, config, inputs, hostSystem ? null, osConfig ? null, ... }:
 
 let
   toggleTheme = import ./scripts/toggle-theme.nix { inherit pkgs; };
+  touchPrimaryHost = osConfig != null && osConfig.networking.hostName == "lgo-z2e";
+
+  evdevRightClickEmulation = pkgs.stdenv.mkDerivation {
+    pname = "evdev-right-click-emulation";
+    version = "unstable-2019-03-13";
+
+    src = pkgs.fetchFromGitHub {
+      owner = "PeterCxy";
+      repo = "evdev-right-click-emulation";
+      rev = "350939b8d2e95ed1be352f1ac734bdedf14e43c7";
+      sha256 = "08289annb7ksng095a23n3z106mmsls97g19i4kc771bsxs6fmap";
+    };
+
+    dontConfigure = true;
+
+    buildInputs = [ pkgs.libevdev ];
+
+    buildPhase = ''
+      runHook preBuild
+      $CC -Wall -std=c11 -D_POSIX_C_SOURCE=199309L -I${pkgs.libevdev}/include/libevdev-1.0 -c uinput.c -o uinput.o
+      $CC -Wall -std=c11 -D_POSIX_C_SOURCE=199309L -I${pkgs.libevdev}/include/libevdev-1.0 -c input.c -o input.o
+      $CC -Wall -std=c11 -D_POSIX_C_SOURCE=199309L -I${pkgs.libevdev}/include/libevdev-1.0 -c rce.c -o rce.o
+      $CC uinput.o input.o rce.o -L${pkgs.libevdev}/lib -levdev -o evdev-rce
+      runHook postBuild
+    '';
+
+    installPhase = ''
+      runHook preInstall
+      install -Dm755 evdev-rce $out/bin/evdev-rce
+      runHook postInstall
+    '';
+
+    meta = {
+      description = "Long-press-to-right-click emulation for Linux touchscreens";
+      homepage = "https://github.com/PeterCxy/evdev-right-click-emulation";
+      license = lib.licenses.wtfpl;
+      platforms = lib.platforms.linux;
+    };
+  };
 
   # raw KDL bridge for niri 26.04 background effects. niri-flake still validates
   # the generated base config; activation validates this by making it the live config.
@@ -516,7 +555,26 @@ else {
     cleanshot-niri
     lisgd
     lisgd-niri
-  ];
+  ] ++ lib.optionals touchPrimaryHost [ evdevRightClickEmulation ];
+
+  systemd.user.services.evdev-right-click-emulation = lib.mkIf touchPrimaryHost {
+    Unit = {
+      Description = "Long-press right-click emulation for touchscreen";
+      After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStart = "${evdevRightClickEmulation}/bin/evdev-rce";
+      Environment = [
+        "LONG_CLICK_INTERVAL=650"
+        "LONG_CLICK_FUZZ=70"
+      ];
+      Restart = "on-failure";
+      RestartSec = 2;
+    };
+    Install = { WantedBy = [ "graphical-session.target" ]; };
+  };
 
   # systemd user service for lisgd - ensures proper group membership (input)
   # niri's spawn-at-startup doesn't inherit login session groups
