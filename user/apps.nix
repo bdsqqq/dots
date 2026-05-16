@@ -17,7 +17,6 @@ in lib.mkIf (headMode == "graphical") {
         dbeaver-bin
         vlc
         imv
-        pcmanfm-qt
         overskride
         superfile
         xwayland-satellite
