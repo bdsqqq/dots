@@ -35,7 +35,7 @@
         browser = "app.zen_browser.zen.desktop"; # flatpak
         imageViewer = "imv.desktop";
         videoPlayer = "vlc.desktop";
-        fileManager = "pcmanfm-qt.desktop";
+        fileManager = "yazi.desktop";
       in if pkgs.stdenv.isDarwin then
         { }
       else {
@@ -64,6 +64,19 @@
 
           # file manager
           "inode/directory" = fileManager;
+        };
+      };
+
+      xdg.desktopEntries = if pkgs.stdenv.isDarwin then
+        { }
+      else {
+        yazi = {
+          name = "Yazi";
+          genericName = "File Manager";
+          exec = "${pkgs.ghostty}/bin/ghostty --title=yazi -e ${pkgs.yazi}/bin/yazi %U";
+          terminal = false;
+          categories = [ "System" "FileManager" ];
+          mimeType = [ "inode/directory" ];
         };
       };
 
