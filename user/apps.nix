@@ -17,14 +17,15 @@ in lib.mkIf (headMode == "graphical") {
         dbeaver-bin
         vlc
         imv
-        nautilus
+        pcmanfm-qt
+        overskride
+        superfile
         xwayland-satellite
         fuzzel
-        blueman
         pavucontrol
         playerctl
         brightnessctl
-        networkmanager_dmenu
+        impala
 
         # TUI utilities for desktop
         bluetuith

@@ -35,7 +35,7 @@
         browser = "app.zen_browser.zen.desktop"; # flatpak
         imageViewer = "imv.desktop";
         videoPlayer = "vlc.desktop";
-        fileManager = "yazi.desktop";
+        fileManager = "pcmanfm-qt.desktop";
       in if pkgs.stdenv.isDarwin then
         { }
       else {
