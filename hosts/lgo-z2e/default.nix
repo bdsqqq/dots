@@ -258,6 +258,34 @@ in
         };
       };
 
+      qt = {
+        enable = true;
+        platformTheme.name = "qtct";
+        style.name = "kvantum";
+        qt5ctSettings = {
+          Appearance = {
+            style = lib.mkForce "kvantum";
+            icon_theme = lib.mkForce "Papirus-Dark";
+            standard_dialogs = lib.mkForce "xdgdesktopportal";
+          };
+          Fonts = {
+            fixed = lib.mkForce ''"Berkeley Mono,12,-1,5,50,0,0,0,0,0"'';
+            general = lib.mkForce ''"Inter,12,-1,5,50,0,0,0,0,0"'';
+          };
+        };
+        qt6ctSettings = {
+          Appearance = {
+            style = lib.mkForce "kvantum";
+            icon_theme = lib.mkForce "Papirus-Dark";
+            standard_dialogs = lib.mkForce "xdgdesktopportal";
+          };
+          Fonts = {
+            fixed = lib.mkForce ''"Berkeley Mono,12,-1,5,50,0,0,0,0,0"'';
+            general = lib.mkForce ''"Inter,12,-1,5,50,0,0,0,0,0"'';
+          };
+        };
+      };
+
       services.vicinae = {
         enable = true;
         systemd.enable = true;
