@@ -4,6 +4,7 @@
     ../system/bluetooth.nix
     ../system/flatpak.nix
     ../user/apps.nix
+    ../user/e-ink-glass.nix
     ../user/1password.nix
     ../user/orbstack.nix
     ../user/obs

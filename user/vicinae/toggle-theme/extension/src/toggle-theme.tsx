@@ -30,8 +30,7 @@ export default async function ToggleTheme() {
 		let newTheme: string;
 
 		if (overrideCmd) {
-			execSync(overrideCmd);
-			newTheme = "toggled";
+			newTheme = execSync(overrideCmd, { encoding: "utf-8" }).trim();
 		} else {
 			newTheme = toggleViaGsettings();
 		}
