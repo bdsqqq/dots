@@ -2,6 +2,25 @@
 
 let
   syncthing = import ../../modules/syncthing.nix { inherit lib; };
+  homeManagerBackupCommand = pkgs.writeShellScript "home-manager-unique-backup" ''
+    set -eu
+
+    target="$1"
+    ext="''${HOME_MANAGER_BACKUP_EXT:-backup}"
+    candidate="$target.$ext"
+
+    if [ -e "$candidate" ]; then
+      stamp="$(${pkgs.coreutils}/bin/date +%Y%m%d%H%M%S)"
+      candidate="$target.$ext.$stamp"
+      i=1
+      while [ -e "$candidate" ]; do
+        candidate="$target.$ext.$stamp.$i"
+        i=$((i + 1))
+      done
+    fi
+
+    ${pkgs.coreutils}/bin/mv "$target" "$candidate"
+  '';
   berkeleyMono = pkgs.stdenv.mkDerivation {
     pname = "berkeley-mono";
     version = "1.0.0";
@@ -176,6 +195,7 @@ in
     useGlobalPkgs = true;
     useUserPackages = true;
     backupFileExtension = "backup";
+    backupCommand = homeManagerBackupCommand;
     extraSpecialArgs = {
       inherit inputs;
       isDarwin = false;
