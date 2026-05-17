@@ -196,11 +196,11 @@ PanelWindow {
                                 }
 
                                 Controls.Switch {
-                                    checked: Pipewire.defaultAudioSink?.audio.muted ?? false
+                                    checked: !(Pipewire.defaultAudioSink?.audio.muted ?? true)
                                     disabled: Pipewire.defaultAudioSink?.audio === null
                                     onToggled: function(next) {
                                         if (Pipewire.defaultAudioSink?.audio) {
-                                            Pipewire.defaultAudioSink.audio.muted = next;
+                                            Pipewire.defaultAudioSink.audio.muted = !next;
                                         }
                                     }
                                 }
