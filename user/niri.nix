@@ -70,16 +70,6 @@ let
     }
 
     layer-rule {
-        match namespace="quickshell-control-center"
-        opacity 0.95
-
-        background-effect {
-            blur true
-            xray false
-        }
-    }
-
-    layer-rule {
         match namespace="quickshell-notifications"
         opacity 0.95
 

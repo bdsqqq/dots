@@ -224,7 +224,6 @@ Item {
     Primitives.Surface {
         id: card
         anchors.fill: parent
-        surfaceColor: Design.Theme.t.bg
         showBorder: true
 
         implicitHeight: contentLayout.implicitHeight + Design.Theme.t.space3 * 2
@@ -237,114 +236,66 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 32
+                spacing: Design.Theme.t.space2
+
+                Item { width: 12; Layout.fillHeight: true }
 
                 Primitives.T {
                     text: "bluetooth"
                     tone: "muted"
                     size: "bodySm"
-                }
-
-                Item { Layout.fillWidth: true }
-
-                Primitives.T {
-                    text: bluetoothOn ? (connectedDevice !== "" ? "connected" : "on") : "off"
-                    tone: bluetoothOn ? "fg" : "subtle"
-                    size: "bodySm"
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Design.Theme.t.space2
-
-                Controls.Button {
-                    variant: bluetoothOn ? "outline" : "ghost"
-                    text: togglePending ? "switching..." : (bluetoothOn ? "on" : "off")
-                    enabled: !togglePending
-                    onClicked: {
-                        bluez.togglePower();
-                    }
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
                 Controls.Button {
-                    variant: scanning ? "outline" : "ghost"
+                    size: "sm"
+                    variant: "ghost"
+                    active: scanning
                     text: scanning ? "stop scan" : "scan"
                     visible: bluetoothOn
-                    onClicked: {
-                        if (scanning) {
-                            bluez.stopScan();
-                        } else {
-                            bluez.startScan();
-                        }
-                    }
+                    onClicked: scanning ? bluez.stopScan() : bluez.startScan()
                 }
 
-                Controls.Button {
-                    variant: expanded ? "outline" : "ghost"
-                    text: expanded ? "hide" : "devices"
-                    enabled: bluetoothOn
-                    onClicked: bluetoothModule.expanded = !bluetoothModule.expanded
+                Controls.Switch {
+                    checked: bluetoothOn
+                    disabled: togglePending
+                    onToggled: bluez.togglePower()
                 }
+
+                Item { width: 12; Layout.fillHeight: true }
             }
 
-            Item {
+            Controls.Accordion {
                 Layout.fillWidth: true
-                Layout.preferredHeight: expanded ? deviceList.implicitHeight : 0
-                clip: true
-
-                Behavior on Layout.preferredHeight {
-                    NumberAnimation { duration: Design.Theme.t.durationSlow; easing.type: Easing.OutQuint }
-                }
+                title: "devices"
+                expanded: bluetoothModule.expanded
+                disabled: !bluetoothOn
+                onToggled: function(next) { bluetoothModule.expanded = next }
 
                 ListView {
                     id: deviceList
-                    width: parent.width
+                    Layout.fillWidth: true
                     implicitHeight: Math.min(contentHeight, 108)
                     clip: true
-                    spacing: 4
+                    spacing: 2
                     model: pairedDevicesModel
                     visible: bluetoothOn && pairedDevicesModel.count > 0
 
-                    delegate: Primitives.Surface {
-                        id: deviceCard
+                    delegate: Controls.MenuItem {
+                        id: deviceRow
                         required property var model
                         width: deviceList.width
-                        implicitHeight: deviceRow.implicitHeight + 8
-                        radiusToken: "sm"
-                        surfaceColor: deviceMouse.containsMouse ? Design.Theme.t.bgHover : "transparent"
+                        label: model.name
+                        detail: bluetoothModule.connectedDevice === model.mac ? "connected" : "paired"
+                        checked: bluetoothModule.connectedDevice === model.mac
 
-                        RowLayout {
-                            id: deviceRow
-                            anchors.fill: parent
-                            anchors.margins: 4
-                            spacing: Design.Theme.t.space2
-
-                            Primitives.T {
-                                text: deviceCard.model.name
-                                tone: bluetoothModule.connectedDevice === deviceCard.model.mac ? "fg" : "muted"
-                                size: "bodySm"
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
-                            }
-
-                            Primitives.T {
-                                text: bluetoothModule.connectedDevice === deviceCard.model.mac ? "connected" : "paired"
-                                tone: bluetoothModule.connectedDevice === deviceCard.model.mac ? "fg" : "subtle"
-                                size: "bodySm"
-                            }
-                        }
-
-                        MouseArea {
-                            id: deviceMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (bluetoothModule.connectedDevice === deviceCard.model.mac) {
-                                    bluez.disconnect(deviceCard.model.mac);
-                                } else {
-                                    bluez.connect(deviceCard.model.mac);
-                                }
+                        onSelected: {
+                            if (bluetoothModule.connectedDevice === model.mac) {
+                                bluez.disconnect(model.mac);
+                            } else {
+                                bluez.connect(model.mac);
                             }
                         }
                     }

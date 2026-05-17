@@ -14,12 +14,33 @@ ShellRoot {
     property bool barVisible: false
 
     function showVolumeOsd(): void {
+        if (controlCenterOpen) {
+            return
+        }
+
         const hosts = overlayHosts.instances
         for (let i = 0; i < hosts.length; i++) {
             const host = hosts[i]
             if (host && host.show) {
                 host.show(volumeOsdComponent, { availableWidth: host.screen?.width ?? 0 }, { timeoutMs: 2000 })
             }
+        }
+    }
+
+    function hideVolumeOsd(): void {
+        const hosts = overlayHosts.instances
+        for (let i = 0; i < hosts.length; i++) {
+            const host = hosts[i]
+            if (host && host.hide) {
+                host.hide()
+            }
+        }
+    }
+
+    onControlCenterOpenChanged: {
+        if (controlCenterOpen) {
+            volumeOsdDebounce.stop()
+            hideVolumeOsd()
         }
     }
 

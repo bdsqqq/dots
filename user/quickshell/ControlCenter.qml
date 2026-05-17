@@ -14,12 +14,15 @@ PanelWindow {
 
     required property var screen
     property bool isOpen: false
+    property bool soundOutputExpanded: false
 
     readonly property int panelPadding: Design.Theme.t.space4
+    readonly property int panelVerticalPadding: 0
+    readonly property int panelTopGap: Design.Theme.t.space2
     readonly property int panelMargin: 0
     readonly property int oneColumnMinWidth: 320
     readonly property int twoColumnMinWidth: 560
-    readonly property int panelMaxHeightPadding: Design.Theme.t.space6
+    readonly property int panelMaxHeightPadding: 0
     readonly property bool canUseTwoColumns: screen.width >= twoColumnMinWidth + panelPadding * 2 + panelMargin * 2
 
     anchors {
@@ -36,7 +39,7 @@ PanelWindow {
     )
     // surface loses `cornerRadius` height to preserve the bottom-right concave join.
     // compensate here so last card content doesn't get clipped.
-    implicitHeight: Math.min(contentColumn.implicitHeight + panelPadding * 2 + panelMargin * 2 + Design.Theme.t.radiusMd, screen.height - panelMaxHeightPadding)
+    implicitHeight: screen.height
 
     visible: isOpen
     color: "transparent"
@@ -68,7 +71,7 @@ PanelWindow {
 
             ShapePath {
                 strokeWidth: -1
-                fillColor: Design.Theme.t.black
+                fillColor: "transparent"
 
                 startX: panel.cornerRadius
                 startY: 0
@@ -94,7 +97,7 @@ PanelWindow {
 
             ShapePath {
                 strokeWidth: -1
-                fillColor: Design.Theme.t.black
+                fillColor: "transparent"
 
                 startX: panel.width - 1
                 startY: surface.height
@@ -116,8 +119,8 @@ PanelWindow {
             x: panel.cornerRadius
             y: 0
             width: panel.width - panel.cornerRadius
-            height: panel.height - panel.cornerRadius
-            color: Design.Theme.t.black
+            height: panel.height
+            color: "transparent"
             topLeftRadius: 0
             topRightRadius: panel.cornerRadius
             bottomLeftRadius: panel.cornerRadius
@@ -127,14 +130,18 @@ PanelWindow {
             Flickable {
             id: flickable
             anchors.fill: parent
-            anchors.margins: controlCenter.panelPadding
+            anchors.leftMargin: controlCenter.panelPadding
+            anchors.rightMargin: controlCenter.panelPadding
+            anchors.topMargin: controlCenter.panelVerticalPadding
+            anchors.bottomMargin: controlCenter.panelVerticalPadding
             contentWidth: width
-            contentHeight: contentColumn.implicitHeight
+            contentHeight: contentColumn.implicitHeight + controlCenter.panelTopGap
             clip: true
             boundsBehavior: Flickable.StopAtBounds
 
             ColumnLayout {
                 id: contentColumn
+                y: controlCenter.panelTopGap
                 width: flickable.width
                 spacing: Design.Theme.t.space4
 
@@ -142,13 +149,6 @@ PanelWindow {
                 // - connectivity cards: wifi + bluetooth
                 // - media/display cards: sound + brightness
                 // - status/performance card: battery + tdp/gpu detail
-                Primitives.T {
-                    text: "control center"
-                    tone: "subtle"
-                    size: "bodySm"
-                    Layout.fillWidth: true
-                }
-
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: Design.Theme.t.space2
@@ -163,7 +163,6 @@ PanelWindow {
 
                     Primitives.Surface {
                         Layout.fillWidth: true
-                        surfaceColor: Design.Theme.t.bg
                         showBorder: true
                         implicitHeight: volumeContent.implicitHeight + Design.Theme.t.space3 * 2
 
@@ -175,20 +174,38 @@ PanelWindow {
 
                             RowLayout {
                                 Layout.fillWidth: true
+                                Layout.preferredHeight: 32
+                                spacing: Design.Theme.t.space2
+
+                                Item { width: 12; Layout.fillHeight: true }
 
                                 Primitives.T {
                                     text: "sound"
                                     tone: "muted"
                                     size: "bodySm"
+                                    Layout.alignment: Qt.AlignVCenter
                                 }
-
-                                Item { Layout.fillWidth: true }
 
                                 Primitives.T {
                                     text: Math.round(Math.max(0, Math.min(1, Pipewire.defaultAudioSink?.audio.volume ?? 0)) * 100) + "%"
                                     tone: Pipewire.defaultAudioSink?.audio.muted ? "subtle" : "fg"
                                     size: "bodySm"
+                                    horizontalAlignment: Text.AlignRight
+                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignVCenter
                                 }
+
+                                Controls.Switch {
+                                    checked: Pipewire.defaultAudioSink?.audio.muted ?? false
+                                    disabled: Pipewire.defaultAudioSink?.audio === null
+                                    onToggled: function(next) {
+                                        if (Pipewire.defaultAudioSink?.audio) {
+                                            Pipewire.defaultAudioSink.audio.muted = next;
+                                        }
+                                    }
+                                }
+
+                                Item { width: 12; Layout.fillHeight: true }
                             }
 
                             Controls.Slider {
@@ -202,65 +219,31 @@ PanelWindow {
                                 }
                             }
 
-                            RowLayout {
+                            Controls.Accordion {
                                 Layout.fillWidth: true
-                                spacing: Design.Theme.t.space2
+                                title: "output"
+                                detail: Pipewire.defaultAudioSink?.nickname || Pipewire.defaultAudioSink?.description || Pipewire.defaultAudioSink?.name || "unknown"
+                                expanded: controlCenter.soundOutputExpanded
+                                onToggled: function(next) { controlCenter.soundOutputExpanded = next }
 
-                                Controls.Button {
-                                    variant: Pipewire.defaultAudioSink?.audio.muted ? "outline" : "ghost"
-                                    text: Pipewire.defaultAudioSink?.audio.muted ? "unmute" : "mute"
-                                    onClicked: function() {
-                                        if (Pipewire.defaultAudioSink?.audio) {
-                                            Pipewire.defaultAudioSink.audio.muted = !Pipewire.defaultAudioSink.audio.muted;
-                                        }
-                                    }
-                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
 
-                                Item { Layout.fillWidth: true }
-                            }
+                                    Repeater {
+                                        model: Pipewire.nodes
 
-                            Primitives.T {
-                                text: "output"
-                                tone: "subtle"
-                                size: "bodySm"
-                            }
+                                        Controls.MenuItem {
+                                            id: sinkItem
+                                            required property PwNode modelData
+                                            visible: modelData.isSink && modelData.audio && !modelData.isStream
+                                            Layout.fillWidth: true
+                                            implicitHeight: visible ? 32 : 0
+                                            label: modelData.nickname || modelData.description || modelData.name || "unknown"
+                                            checked: modelData === Pipewire.defaultAudioSink
 
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 2
-
-                                Repeater {
-                                    model: Pipewire.nodes
-
-                                    Primitives.Surface {
-                                        id: sinkItem
-                                        required property PwNode modelData
-                                        visible: modelData.isSink && modelData.audio && !modelData.isStream
-                                        Layout.fillWidth: true
-                                        implicitHeight: visible ? sinkText.implicitHeight + Design.Theme.t.space2 + 2 : 0
-                                        radiusToken: "sm"
-                                        surfaceColor: sinkMouse.containsMouse ? Design.Theme.t.bgHover : "transparent"
-                                        showBorder: modelData === Pipewire.defaultAudioSink
-
-                                        Primitives.T {
-                                            id: sinkText
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            anchors.margins: Design.Theme.t.space2
-                                            text: sinkItem.modelData.nickname || sinkItem.modelData.description || sinkItem.modelData.name || "unknown"
-                                            tone: sinkItem.modelData === Pipewire.defaultAudioSink ? "fg" : "muted"
-                                            size: "bodySm"
-                                            elide: Text.ElideRight
-                                        }
-
-                                        MouseArea {
-                                            id: sinkMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                Pipewire.preferredDefaultAudioSink = sinkItem.modelData;
+                                            onSelected: {
+                                                Pipewire.preferredDefaultAudioSink = modelData;
                                             }
                                         }
                                     }

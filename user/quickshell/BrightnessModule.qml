@@ -12,6 +12,7 @@ Item {
     id: brightnessModule
 
     property real brightness: 0.5
+    readonly property int minimumBrightnessPercent: 3
 
     implicitHeight: card.implicitHeight
     Layout.fillWidth: true
@@ -25,7 +26,12 @@ Item {
                 let parts = data.trim().split(",");
                 if (parts.length >= 4) {
                     let percent = parseInt(parts[3].replace("%", ""));
-                    brightnessModule.brightness = percent / 100;
+                    let clampedPercent = Math.max(brightnessModule.minimumBrightnessPercent, percent);
+                    brightnessModule.brightness = clampedPercent / 100;
+                    if (percent < brightnessModule.minimumBrightnessPercent) {
+                        brightnessSetter.targetPercent = brightnessModule.minimumBrightnessPercent;
+                        brightnessSetter.running = true;
+                    }
                 }
             }
         }
@@ -34,7 +40,7 @@ Item {
     Process {
         id: brightnessSetter
         property int targetPercent: 50
-        command: ["brightnessctl", "set", targetPercent + "%"]
+        command: ["brightnessctl", "set", Math.max(brightnessModule.minimumBrightnessPercent, targetPercent) + "%"]
     }
 
     Timer {
@@ -48,7 +54,6 @@ Item {
     Primitives.Surface {
         id: card
         anchors.fill: parent
-        surfaceColor: Design.Theme.t.bg
         showBorder: true
 
         implicitHeight: content.implicitHeight + Design.Theme.t.space3 * 2
@@ -61,52 +66,40 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 32
+                spacing: Design.Theme.t.space2
+
+                Item { width: 12; Layout.fillHeight: true }
 
                 Primitives.T {
                     text: "display"
                     tone: "muted"
                     size: "bodySm"
+                    Layout.alignment: Qt.AlignVCenter
                 }
-
-                Item { Layout.fillWidth: true }
 
                 Primitives.T {
                     text: Math.round(brightnessModule.brightness * 100) + "%"
                     tone: "fg"
                     size: "bodySm"
+                    horizontalAlignment: Text.AlignRight
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
                 }
+
+                Item { width: 12; Layout.fillHeight: true }
             }
 
             Controls.Slider {
                 id: slider
                 Layout.fillWidth: true
-                minimumValue: 0.05
+                minimumValue: brightnessModule.minimumBrightnessPercent / 100
                 value: brightnessModule.brightness
                 onChangeEnd: function (val) {
-                    brightnessModule.brightness = val;
-                    brightnessSetter.targetPercent = Math.round(val * 100);
+                    let clampedValue = Math.max(brightnessModule.minimumBrightnessPercent / 100, val);
+                    brightnessModule.brightness = clampedValue;
+                    brightnessSetter.targetPercent = Math.max(brightnessModule.minimumBrightnessPercent, Math.round(clampedValue * 100));
                     brightnessSetter.running = true;
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Design.Theme.t.space2
-
-                Repeater {
-                    model: [25, 50, 75, 100]
-
-                    Controls.Button {
-                        required property int modelData
-                        variant: Math.abs(Math.round(brightnessModule.brightness * 100) - modelData) <= 5 ? "outline" : "ghost"
-                        text: modelData + "%"
-                        onClicked: {
-                            const target = modelData / 100;
-                            brightnessModule.brightness = target;
-                            brightnessSetter.targetPercent = modelData;
-                            brightnessSetter.running = true;
-                        }
-                    }
                 }
             }
         }

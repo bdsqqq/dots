@@ -18,7 +18,7 @@ Item {
     property string mode: "dark"
     readonly property bool isLight: mode === "light"
 
-    // e-ink base16 colors
+    // e-ink base16 colors retained for host theme bridges and older components.
     property color base00: isLight ? "#CCCCCC" : "#101010"
     property color base01: isLight ? "#C2C2C2" : "#3D3D3D"
     property color base02: isLight ? "#B8B8B8" : "#4A4A4A"
@@ -28,22 +28,45 @@ Item {
     property color base06: isLight ? "#5E5E5E" : "#CCCCCC"
     property color base07: isLight ? "#333333" : "#EEEEEE"
 
-    // e-ink-glass material colors
-    property color black: isLight ? base07 : base00
-    property color white: isLight ? base00 : base07
-    property color glass: isLight ? Qt.rgba(0.8, 0.8, 0.8, 0.72) : Qt.rgba(0.063, 0.063, 0.063, 0.72)
-    property color glassHover: isLight ? Qt.rgba(0.761, 0.761, 0.761, 0.82) : Qt.rgba(0.239, 0.239, 0.239, 0.82)
-    property color glassBorder: isLight ? Qt.rgba(0.682, 0.682, 0.682, 0.45) : Qt.rgba(0.369, 0.369, 0.369, 0.45)
+    // Fluid Functionalism surface ladder, ported from app/globals.css.
+    // why: components should consume the same elevation model as the upstream library:
+    //      light mode uses subtle floor colors + shadows; dark mode uses additive lightness.
+    property color surface1: isLight ? "#FAFAFA" : "#171717"
+    property color surface2: isLight ? "#FCFCFC" : "#1E1E1E"
+    property color surface3: isLight ? "#FFFFFF" : "#252525"
+    property color surface4: isLight ? "#FFFFFF" : "#2C2C2C"
+    property color surface5: isLight ? "#FFFFFF" : "#333333"
+    property color surface6: isLight ? "#FFFFFF" : "#3A3A3A"
+    property color surface7: isLight ? "#FFFFFF" : "#414141"
+    property color surface8: isLight ? "#FFFFFF" : "#484848"
 
-    // semantic colors - use these in components
-    property color fg: base05
-    property color muted: base04
-    property color subtle: base03
-    property color bg: glass
-    property color bgHover: glassHover
-    property color border: glassBorder
-    property color active: base07
-    property color inactive: isLight ? Qt.rgba(0.8, 0.8, 0.8, 0.55) : Qt.rgba(0.063, 0.063, 0.063, 0.55)
+    property color background: surface1
+    property color foreground: isLight ? "#171717" : "#F5F5F5"
+    property color card: surface3
+    property color cardForeground: foreground
+    property color mutedSurface: surface2
+    property color mutedForeground: isLight ? "#737373" : "#A3A3A3"
+    property color accent: isLight ? "#E5E5E5" : "#525252"
+    property color accentForeground: foreground
+    property color selected: isLight ? "#D4D4D4" : "#525252"
+    property color ring: isLight ? "#E5E5E5" : "#404040"
+    property color input: isLight ? "#E5E5E5" : "#404040"
+    property color border: overlayColor(isLight ? 0.12 : 0.12)
+    property color hover: overlayColor(0.06)
+    property color activeOverlay: overlayColor(0.10)
+    // Compatibility semantic colors - mapped to Fluid tokens.
+    property color black: background
+    property color white: foreground
+    property color glass: card
+    property color glassHover: overlayOn(card, 0.06)
+    property color glassBorder: border
+    property color fg: foreground
+    property color muted: mutedForeground
+    property color subtle: isLight ? "#A3A3A3" : "#737373"
+    property color bg: card
+    property color bgHover: hover
+    property color active: selected
+    property color inactive: accent
 
     // spacing scale
     property int space1: 4
@@ -65,14 +88,69 @@ Item {
     property int bodyMd: textSm
     property int titleLg: text2xl
 
-    // radius scale
-    property int radiusSm: 4
-    property int radiusMd: 8
+    // radius scale. Fluid's default shape is pill; rounded is available for denser surfaces.
+    property int radiusSm: 8
+    property int radiusMd: 20
+    property int radiusLg: 24
+    property int radiusXl: 28
+    property int radiusRoundedSm: 8
+    property int radiusRoundedMd: 12
+    property int radiusPill: 20
 
-    // motion timing
-    property int durationFast: 50
-    property int durationMed: 100
-    property int durationSlow: 150
+    // motion timing from Fluid Functionalism spring tokens.
+    property int durationFast: 80
+    property int durationMed: 160
+    property int durationSlow: 240
+
+    function overlayColor(alpha) {
+        return isLight ? Qt.rgba(0, 0, 0, alpha) : Qt.rgba(1, 1, 1, alpha)
+    }
+
+    function overlayOn(base, alpha) {
+        const overlay = isLight ? 0 : 1
+        return Qt.rgba(
+            base.r * (1 - alpha) + overlay * alpha,
+            base.g * (1 - alpha) + overlay * alpha,
+            base.b * (1 - alpha) + overlay * alpha,
+            base.a
+        )
+    }
+
+    function surfaceLevel(level) {
+        return Math.max(1, Math.min(8, level))
+    }
+
+    function elevatedLevel(substrate, offset, cap) {
+        return surfaceLevel(Math.min(substrate + offset, cap ?? 8))
+    }
+
+    function surface(level) {
+        switch (surfaceLevel(level)) {
+            case 1: return surface1
+            case 2: return surface2
+            case 3: return surface3
+            case 4: return surface4
+            case 5: return surface5
+            case 6: return surface6
+            case 7: return surface7
+            case 8: return surface8
+            default: return surface3
+        }
+    }
+
+    function elevatedSurface(substrate, offset, cap) {
+        return surface(elevatedLevel(substrate, offset, cap))
+    }
+
+    function shadowOpacity(level) {
+        const clamped = Math.max(1, Math.min(8, level))
+        return isLight ? 0.035 + clamped * 0.012 : 0.12 + clamped * 0.018
+    }
+
+    function shadowRadius(level) {
+        const clamped = Math.max(1, Math.min(8, level))
+        return Math.pow(2, clamped - 1)
+    }
 
     function applyMode(content) {
         const next = (content || "").trim()
