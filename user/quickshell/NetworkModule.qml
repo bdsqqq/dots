@@ -160,7 +160,6 @@ Item {
     Primitives.Surface {
         id: card
         anchors.fill: parent
-        surfaceColor: Design.Theme.t.bg
         showBorder: true
 
         implicitHeight: contentColumn.implicitHeight + Design.Theme.t.space3 * 2
@@ -173,119 +172,75 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 32
+                spacing: Design.Theme.t.space2
+
+                Item { width: 12; Layout.fillHeight: true }
 
                 Primitives.T {
                     text: "wifi"
                     tone: "muted"
                     size: "bodySm"
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
-                Item { Layout.fillWidth: true }
-
                 Primitives.T {
-                    text: wifiEnabled ? currentSSID : "off"
-                    tone: (wifiEnabled && currentSSID !== "disconnected") ? "fg" : "subtle"
+                    text: (wifiEnabled && currentSSID !== "disconnected") ? currentSSID : ""
+                    tone: "fg"
                     size: "bodySm"
                     elide: Text.ElideRight
                     horizontalAlignment: Text.AlignRight
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
                 }
-            }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Design.Theme.t.space2
-
-                Controls.Button {
-                    variant: wifiEnabled ? "outline" : "ghost"
-                    text: wifiTogglePending ? "switching..." : (wifiEnabled ? "on" : "off")
-                    enabled: !wifiTogglePending
-                    onClicked: {
+                Controls.Switch {
+                    checked: wifiEnabled
+                    disabled: wifiTogglePending
+                    onToggled: function(next) {
                         wifiTogglePending = true;
-                        toggleWifi.enabling = !wifiEnabled;
+                        toggleWifi.enabling = next;
                         toggleWifi.running = true;
                     }
                 }
 
-                Controls.Button {
-                    variant: expanded ? "outline" : "ghost"
-                    text: expanded ? "hide" : "networks"
-                    enabled: wifiEnabled
-                    onClicked: expanded = !expanded
-                }
-
-                Item { Layout.fillWidth: true }
+                Item { width: 12; Layout.fillHeight: true }
             }
 
-            Item {
+            Controls.Accordion {
                 Layout.fillWidth: true
-                Layout.preferredHeight: expanded ? Math.max(networkListContainer.implicitHeight, scanStatus.implicitHeight) : 0
-                clip: true
-
-                Behavior on Layout.preferredHeight {
-                    NumberAnimation { duration: Design.Theme.t.durationSlow; easing.type: Easing.OutQuint }
-                }
+                title: "networks"
+                expanded: networkModule.expanded
+                disabled: !wifiEnabled
+                onToggled: function(next) { networkModule.expanded = next }
 
                 ColumnLayout {
                     id: networkListContainer
-                    width: parent.width
-                    spacing: Design.Theme.t.space2
+                    Layout.fillWidth: true
+                    spacing: 2
 
-                    Primitives.Surface {
+                    ListView {
+                        id: networkListView
                         Layout.fillWidth: true
-                        implicitHeight: Math.min(networkListView.contentHeight + Design.Theme.t.space2, 132)
-                        radiusToken: "sm"
-                        surfaceColor: Design.Theme.t.inactive
+                        implicitHeight: Math.min(contentHeight, 132)
+                        model: networkList
+                        clip: true
+                        spacing: 2
                         visible: wifiEnabled && networkList.length > 0
 
-                        ListView {
-                            id: networkListView
-                            anchors.fill: parent
-                            anchors.margins: Design.Theme.t.space1
-                            model: networkList
-                            clip: true
-                            spacing: 2
+                        delegate: Controls.MenuItem {
+                            id: networkRow
+                            required property var modelData
+                            width: networkListView.width
+                            label: networkModule.connectingTo === modelData.ssid ? "connecting..." : modelData.ssid
+                            detail: signalIcon(modelData.signal)
+                            checked: networkModule.currentSSID === modelData.ssid
 
-                            delegate: Primitives.Surface {
-                                id: delegateCard
-                                required property var modelData
-                                width: networkListView.width
-                                implicitHeight: networkRow.implicitHeight + 6
-                                radiusToken: "sm"
-                                surfaceColor: delegateMouse.containsMouse ? Design.Theme.t.bgHover : "transparent"
-
-                                RowLayout {
-                                    id: networkRow
-                                    anchors.fill: parent
-                                    anchors.margins: 4
-                                    spacing: Design.Theme.t.space2
-
-                                    Primitives.T {
-                                        text: networkModule.connectingTo === delegateCard.modelData.ssid ? "connecting..." : delegateCard.modelData.ssid
-                                        tone: networkModule.currentSSID === delegateCard.modelData.ssid ? "fg" : "muted"
-                                        size: "bodySm"
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
-
-                                    Primitives.T {
-                                        text: signalIcon(modelData.signal)
-                                        tone: "subtle"
-                                        size: "bodySm"
-                                    }
-                                }
-
-                                MouseArea {
-                                    id: delegateMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (networkModule.currentSSID !== delegateCard.modelData.ssid && networkModule.connectingTo === "") {
-                                            networkModule.connectingTo = delegateCard.modelData.ssid;
-                                            connectNetwork.targetSSID = delegateCard.modelData.ssid;
-                                            connectNetwork.running = true;
-                                        }
-                                    }
+                            onSelected: {
+                                if (networkModule.currentSSID !== modelData.ssid && networkModule.connectingTo === "") {
+                                    networkModule.connectingTo = modelData.ssid;
+                                    connectNetwork.targetSSID = modelData.ssid;
+                                    connectNetwork.running = true;
                                 }
                             }
                         }

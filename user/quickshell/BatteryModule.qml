@@ -111,7 +111,6 @@ Item {
     Primitives.Surface {
         id: card
         anchors.fill: parent
-        surfaceColor: Design.Theme.t.bg
         showBorder: true
 
         implicitHeight: contentColumn.implicitHeight + Design.Theme.t.space3 * 2
@@ -124,119 +123,142 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 32
+                spacing: Design.Theme.t.space2
+
+                Item { width: 12; Layout.fillHeight: true }
 
                 Primitives.T {
                     text: "power"
                     tone: "muted"
                     size: "bodySm"
+                    Layout.alignment: Qt.AlignVCenter
                 }
-
-                Item { Layout.fillWidth: true }
-
-                Primitives.T {
-                    text: batteryIcon(batteryPercent, batteryStatus) + " " + batteryPercent + "%"
-                    tone: "fg"
-                    size: "bodySm"
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Design.Theme.t.space2
 
                 Primitives.T {
                     text: batteryStatus
                     tone: "subtle"
                     size: "bodySm"
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
-                Item { Layout.fillWidth: true }
-
                 Primitives.T {
-                    text: powerDraw.toFixed(1) + "W"
+                    text: powerDraw > 0 ? "drain " + powerDraw.toFixed(1) + "W" : ""
                     tone: "subtle"
                     size: "bodySm"
                     visible: powerDraw > 0
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
-                Controls.Button {
-                    variant: expanded ? "outline" : "ghost"
-                    text: expanded ? "hide" : "performance"
-                    onClicked: expanded = !expanded
+                Primitives.T {
+                    text: batteryPercent + "%"
+                    tone: "fg"
+                    size: "bodySm"
+                    Layout.alignment: Qt.AlignVCenter
                 }
+
+                Item { width: 12; Layout.fillHeight: true }
             }
 
-            Item {
+            Controls.Accordion {
                 Layout.fillWidth: true
-                Layout.preferredHeight: expanded ? expandedContentColumn.implicitHeight : 0
-                clip: true
-
-                Behavior on Layout.preferredHeight {
-                    NumberAnimation { duration: Design.Theme.t.durationSlow; easing.type: Easing.OutQuint }
-                }
+                title: "performance"
+                detail: currentTdp + "W · " + currentGpuProfile
+                expanded: batteryModule.expanded
+                onToggled: function(next) { batteryModule.expanded = next }
 
                 ColumnLayout {
                     id: expandedContentColumn
-                    width: parent.width
-                    spacing: Design.Theme.t.space2
+                    Layout.fillWidth: true
+                    spacing: Design.Theme.t.space3
 
-                    Primitives.T {
-                        text: "tdp"
-                        tone: "subtle"
-                        size: "bodySm"
-                    }
-
-                    RowLayout {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: Design.Theme.t.space2
+                        spacing: Design.Theme.t.space1
 
-                        Repeater {
-                            model: [
-                                { watts: 8, label: "8W" },
-                                { watts: 15, label: "15W" },
-                                { watts: 25, label: "25W" },
-                                { watts: 30, label: "30W" }
-                            ]
+                        Item {
+                            Layout.fillWidth: true
+                            implicitHeight: 24
 
-                            Controls.Button {
-                                required property var modelData
-                                variant: currentTdp === modelData.watts ? "outline" : "ghost"
-                                text: modelData.label
-                                onClicked: {
-                                    if (currentTdp !== modelData.watts) {
-                                        tdpSetter.targetTdp = modelData.watts;
-                                        tdpSetter.running = true;
+                            Primitives.T {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "apu limit"
+                                tone: "subtle"
+                                size: "bodySm"
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Design.Theme.t.space2
+
+                            Repeater {
+                                model: [
+                                    { watts: 8, label: "8W" },
+                                    { watts: 15, label: "15W" },
+                                    { watts: 25, label: "25W" },
+                                    { watts: 30, label: "30W" }
+                                ]
+
+                                Controls.Button {
+                                    required property var modelData
+                                    size: "sm"
+                                    variant: "ghost"
+                                    active: currentTdp === modelData.watts
+                                    text: modelData.label
+                                    onClicked: {
+                                        if (currentTdp !== modelData.watts) {
+                                            tdpSetter.targetTdp = modelData.watts;
+                                            tdpSetter.running = true;
+                                        }
                                     }
                                 }
                             }
                         }
                     }
 
-                    Primitives.T {
-                        text: "gpu"
-                        tone: "subtle"
-                        size: "bodySm"
-                    }
-
-                    RowLayout {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: Design.Theme.t.space2
+                        spacing: Design.Theme.t.space1
 
-                        Repeater {
-                            model: [
-                                { id: "low", label: "low" },
-                                { id: "auto", label: "auto" },
-                                { id: "high", label: "high" }
-                            ]
+                        Item {
+                            Layout.fillWidth: true
+                            implicitHeight: 24
 
-                            Controls.Button {
-                                required property var modelData
-                                variant: currentGpuProfile === modelData.id ? "outline" : "ghost"
-                                text: modelData.label
-                                onClicked: {
-                                    if (currentGpuProfile !== modelData.id) {
-                                        gpuProfileSetter.targetProfile = modelData.id;
-                                        gpuProfileSetter.running = true;
+                            Primitives.T {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "gpu mode"
+                                tone: "subtle"
+                                size: "bodySm"
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Design.Theme.t.space2
+
+                            Repeater {
+                                model: [
+                                    { id: "low", label: "low" },
+                                    { id: "auto", label: "auto" },
+                                    { id: "high", label: "high" }
+                                ]
+
+                                Controls.Button {
+                                    required property var modelData
+                                    size: "sm"
+                                    variant: "ghost"
+                                    active: currentGpuProfile === modelData.id
+                                    text: modelData.label
+                                    onClicked: {
+                                        if (currentGpuProfile !== modelData.id) {
+                                            gpuProfileSetter.targetProfile = modelData.id;
+                                            gpuProfileSetter.running = true;
+                                        }
                                     }
                                 }
                             }

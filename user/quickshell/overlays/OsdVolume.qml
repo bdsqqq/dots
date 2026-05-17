@@ -10,8 +10,9 @@ import QtQuick.Layouts
 
 import "../design" as Design
 import "../controls" as Controls
+import "../primitives" as Primitives
 
-Rectangle {
+Primitives.Surface {
     id: root
 
     readonly property int panelPadding: Design.Theme.t.space4
@@ -25,8 +26,7 @@ Rectangle {
     width: implicitWidth
     height: implicitHeight
 
-    color: Design.Theme.t.black
-    radius: Design.Theme.t.radiusMd
+    showBorder: true
 
     // track sink for volume/muted updates
     PwObjectTracker {
