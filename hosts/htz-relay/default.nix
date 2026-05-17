@@ -117,10 +117,7 @@ in
         commonplace =
           syncthing.folderFor "commonplace" "/mnt/storage-01/commonplace"
             false [ "mbp-m2" "ipd" "iph16" "r56" ]
-            {
-              rescanIntervalS = 3600;
-              versioning.params.cleanoutDays = "30";
-            };
+            { rescanIntervalS = 3600; };
         helium-remotes =
           syncthing.folderFor "helium-remotes" "/mnt/storage-01/helium-remotes"
             false [ "mbp-m2" "lgo-z2e" "r56" ]

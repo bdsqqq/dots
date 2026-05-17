@@ -185,7 +185,7 @@ rec {
         devices = deviceNames;
         versioning = {
           type = "trashcan";
-          params.cleanoutDays = "0";
+          params.cleanoutDays = "30";
         };
       };
     in lib.recursiveUpdate baseConfig extraConfig;
