@@ -6,6 +6,9 @@
     "pi-package"
   ],
   "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bdsqqq/dots.git",
