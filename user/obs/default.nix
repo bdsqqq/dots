@@ -6,17 +6,15 @@ let
 in lib.mkIf (headMode == "graphical" && isDarwin) {
   home-manager.users.bdsqqq = { lib, ... }: {
     home.activation.obsCallRecordingConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      mkdir -p "${obsState}/basic/scenes" \
-               "${obsState}/basic/profiles/call-recording"
+      mkdir -p "${obsState}/basic/profiles"
 
-      ln -sf "${obsConfig}/basic/scenes/call-recording.json" \
-             "${obsState}/basic/scenes/call-recording.json"
-      ln -sf "${obsConfig}/basic/profiles/call-recording/basic.ini" \
-             "${obsState}/basic/profiles/call-recording/basic.ini"
-      ln -sf "${obsConfig}/basic/profiles/call-recording/service.json" \
-             "${obsState}/basic/profiles/call-recording/service.json"
-      ln -sf "${obsConfig}/basic/profiles/call-recording/streamEncoder.json" \
-             "${obsState}/basic/profiles/call-recording/streamEncoder.json"
+      rm -rf "${obsState}/basic/scenes"
+      rm -rf "${obsState}/basic/profiles/call-recording"
+
+      ln -sfn "${obsConfig}/basic/scenes" \
+              "${obsState}/basic/scenes"
+      ln -sfn "${obsConfig}/basic/profiles/call-recording" \
+              "${obsState}/basic/profiles/call-recording"
     '';
   };
 }
