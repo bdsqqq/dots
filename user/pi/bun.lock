@@ -115,13 +115,6 @@
         "vitest": "^3.0.0",
       },
     },
-    "packages/core/model-evals": {
-      "name": "@bds_pi/model-evals",
-      "version": "0.0.0",
-      "devDependencies": {
-        "vitest": "^3.0.0",
-      },
-    },
     "packages/core/mutex": {
       "name": "@bds_pi/mutex",
       "version": "0.0.0",
@@ -817,8 +810,6 @@
     "@bds_pi/ls": ["@bds_pi/ls@workspace:packages/extensions/ls"],
 
     "@bds_pi/mentions": ["@bds_pi/mentions@workspace:packages/core/mentions"],
-
-    "@bds_pi/model-evals": ["@bds_pi/model-evals@workspace:packages/core/model-evals"],
 
     "@bds_pi/mutex": ["@bds_pi/mutex@workspace:packages/core/mutex"],
 
