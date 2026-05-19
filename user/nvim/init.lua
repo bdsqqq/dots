@@ -431,6 +431,40 @@ require("mini.completion").setup({
 		auto_setup = true,
 	},
 })
+
+vim.keymap.set("i", "<Down>", [[pumvisible() ? "\<C-n>" : "\<Down>"]], { expr = true, desc = "completion focus next" })
+vim.keymap.set("i", "<Up>", [[pumvisible() ? "\<C-p>" : "\<Up>"]], { expr = true, desc = "completion focus previous" })
+vim.keymap.set("i", "<Esc>", [[pumvisible() ? "\<C-e>" : "\<Esc>"]], { expr = true, desc = "dismiss completion" })
+vim.keymap.set("i", "<CR>", function()
+	if vim.fn.pumvisible() == 0 then
+		return "\r"
+	end
+	return vim.fn.complete_info().selected == -1 and "\14\25" or "\25"
+end, { expr = true, desc = "accept completion" })
+vim.keymap.set("i", "<C-.>", function()
+	require("mini.completion").complete_twostage(true, true)
+	return ""
+end, { expr = true, desc = "request completion" })
+
+vim.keymap.set(
+	"c",
+	"<Down>",
+	[[wildmenumode() ? "\<C-n>" : "\<Down>"]],
+	{ expr = true, desc = "completion focus next" }
+)
+vim.keymap.set(
+	"c",
+	"<Up>",
+	[[wildmenumode() ? "\<C-p>" : "\<Up>"]],
+	{ expr = true, desc = "completion focus previous" }
+)
+vim.keymap.set("c", "<Esc>", [[wildmenumode() ? "\<C-e>" : "\<Esc>"]], { expr = true, desc = "dismiss completion" })
+vim.keymap.set("c", "<CR>", [[wildmenumode() ? "\<C-y>" : "\<CR>"]], { expr = true, desc = "accept completion" })
+vim.keymap.set("c", "<C-.>", function()
+	vim.fn.wildtrigger()
+	return ""
+end, { expr = true, desc = "request completion" })
+
 local MiniPick = require("mini.pick")
 local MiniExtra = require("mini.extra")
 MiniPick.setup()
