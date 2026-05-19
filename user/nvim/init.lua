@@ -61,28 +61,7 @@ vim.api.nvim_create_autocmd("PackChanged", {
 	end,
 })
 
-vim.pack.add({
-	{ src = "https://github.com/stevearc/oil.nvim" },
-	{ src = "https://github.com/kevinhwang91/promise-async" },
-	{ src = "https://github.com/kevinhwang91/nvim-ufo" },
-	{ src = "https://github.com/tpope/vim-sleuth" },
-	{ src = "https://github.com/j-hui/fidget.nvim" },
-	{ src = "https://github.com/m4xshen/autoclose.nvim" },
-	{ src = "https://github.com/folke/lazydev.nvim" },
-	{ src = "https://github.com/lewis6991/gitsigns.nvim" },
-	{ src = "https://github.com/folke/which-key.nvim" },
-	{ src = "https://github.com/nvim-lua/plenary.nvim" },
-	{ src = "https://github.com/nvim-telescope/telescope.nvim" },
-	{ src = "https://github.com/nvim-telescope/telescope-fzf-native.nvim" },
-	{ src = "https://github.com/nvim-telescope/telescope-ui-select.nvim" },
-	{ src = "https://github.com/neovim/nvim-lspconfig" },
-	{ src = "https://github.com/stevearc/conform.nvim" },
-	{ src = "https://github.com/echasnovski/mini.nvim" },
-	{ src = "https://github.com/mbbill/undotree" },
-	{ src = "https://github.com/dmmulroy/ts-error-translator.nvim" },
-	{ src = "https://github.com/Saghen/blink.cmp", version = vim.version.range("1.*") },
-	{ src = "https://github.com/nvim-treesitter/nvim-treesitter" },
-}, { confirm = false })
+local pack_opts = { confirm = false }
 
 local o = vim.opt
 o.number = true
@@ -277,6 +256,12 @@ end, 100)
 
 -- plugins
 
+vim.pack.add({
+	{ src = "https://github.com/tpope/vim-sleuth" },
+	{ src = "https://github.com/mbbill/undotree" },
+}, pack_opts)
+
+vim.pack.add({ { src = "https://github.com/stevearc/oil.nvim" } }, pack_opts)
 require("oil").setup({
 	default_file_explorer = true,
 	delete_to_trash = true,
@@ -284,6 +269,10 @@ require("oil").setup({
 	view_options = { show_hidden = true },
 })
 
+vim.pack.add({
+	{ src = "https://github.com/kevinhwang91/promise-async" },
+	{ src = "https://github.com/kevinhwang91/nvim-ufo" },
+}, pack_opts)
 local function ufo_fold_virt_text_handler(virtText, lnum, endLnum, width, truncate)
 	local newVirtText = {}
 	local curWidth = 0
@@ -309,13 +298,18 @@ require("ufo").setup({
 	fold_virt_text_handler = ufo_fold_virt_text_handler,
 })
 
+vim.pack.add({ { src = "https://github.com/j-hui/fidget.nvim" } }, pack_opts)
 require("fidget").setup({})
+
+vim.pack.add({ { src = "https://github.com/m4xshen/autoclose.nvim" } }, pack_opts)
 require("autoclose").setup({})
 
+vim.pack.add({ { src = "https://github.com/folke/lazydev.nvim" } }, pack_opts)
 require("lazydev").setup({
 	library = { { path = "${3rd}/luv/library", words = { "vim%.uv" } } },
 })
 
+vim.pack.add({ { src = "https://github.com/lewis6991/gitsigns.nvim" } }, pack_opts)
 require("gitsigns").setup({
 	signs = {
 		add = { text = "+" },
@@ -381,6 +375,7 @@ require("gitsigns").setup({
 	end,
 })
 
+vim.pack.add({ { src = "https://github.com/folke/which-key.nvim" } }, pack_opts)
 require("which-key").setup({})
 require("which-key").add({
 	{ "<leader>s", group = "[s]earch" },
@@ -389,6 +384,12 @@ require("which-key").add({
 	{ "<leader>l", group = "[l]sp" },
 })
 
+vim.pack.add({
+	{ src = "https://github.com/nvim-lua/plenary.nvim" },
+	{ src = "https://github.com/nvim-telescope/telescope.nvim" },
+	{ src = "https://github.com/nvim-telescope/telescope-fzf-native.nvim" },
+	{ src = "https://github.com/nvim-telescope/telescope-ui-select.nvim" },
+}, pack_opts)
 require("telescope").setup({
 	defaults = { file_ignore_patterns = {}, hidden = true },
 	pickers = { find_files = { hidden = true } },
@@ -409,8 +410,10 @@ vim.keymap.set("n", "<leader>sr", builtin.resume, { desc = "[s]earch [r]esume" }
 vim.keymap.set("n", "<leader>s.", builtin.oldfiles, { desc = "[s]earch recent files ('.' for repeat)" })
 vim.keymap.set("n", "<leader><leader>", builtin.buffers, { desc = "[ ] find existing buffers" })
 
+vim.pack.add({ { src = "https://github.com/dmmulroy/ts-error-translator.nvim" } }, pack_opts)
 require("ts-error-translator").setup({ auto_attach = true, servers = { "ts_ls" } })
 
+vim.pack.add({ { src = "https://github.com/echasnovski/mini.nvim" } }, pack_opts)
 require("mini.icons").setup({})
 require("mini.icons").mock_nvim_web_devicons()
 require("mini.surround").setup({})
@@ -424,12 +427,14 @@ require("mini.files").setup({
 	},
 })
 
+vim.pack.add({ { src = "https://github.com/nvim-treesitter/nvim-treesitter" } }, pack_opts)
 vim.api.nvim_create_autocmd("FileType", {
 	callback = function(args)
 		pcall(vim.treesitter.start, args.buf)
 	end,
 })
 
+vim.pack.add({ { src = "https://github.com/stevearc/conform.nvim" } }, pack_opts)
 require("conform").setup({
 	notify_on_error = false,
 	format_on_save = function(bufnr)
@@ -463,6 +468,7 @@ require("conform").setup({
 	},
 })
 
+vim.pack.add({ { src = "https://github.com/Saghen/blink.cmp", version = vim.version.range("1.*") } }, pack_opts)
 require("blink.cmp").setup({
 	keymap = {
 		preset = "default",
@@ -488,6 +494,8 @@ require("blink.cmp").setup({
 	snippets = { preset = "default" },
 	signature = { enabled = true },
 })
+
+vim.pack.add({ { src = "https://github.com/neovim/nvim-lspconfig" } }, pack_opts)
 
 -- lsp
 
