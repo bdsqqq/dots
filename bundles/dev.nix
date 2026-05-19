@@ -11,6 +11,8 @@ in {
     ../user/direnv.nix
     ../user/rust.nix
     ../user/go.nix
+    ../user/lua.nix
+    ../user/typescript.nix
     ../user/nix.nix
     ../user/fairy-name.nix
     ../user/tmux.nix
