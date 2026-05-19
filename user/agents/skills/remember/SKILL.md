@@ -5,7 +5,7 @@ description: "record context that would help in future sessions. use after learn
 
 # remember
 
-record memories for future retrieval. no database—files are the memory, retrieved via grep.
+record memories for future retrieval. files are the source of truth; qmd is the search index, with grep as the exact-match fallback.
 
 ## configuration
 
@@ -113,10 +113,14 @@ tradeoff: no semantic search. acceptable given good naming/tagging.
 check for relevant memories before starting work:
 
 ```bash
-# find agent memories about a topic
-ls "$MEMORY_ROOT" | grep source__agent | grep -i topic
+# ranked search, when qmd is installed and indexed
+qmd search -c agent-memories "topic" -n 10
+qmd get "qmd://agent-memories/file-name.md" --full
 
-# search memory content
+# refresh the lexical index after adding/editing memories
+qmd update
+
+# exact fallback when qmd is unavailable or misses literal terms
 rg "topic" "$MEMORY_ROOT"/*source__agent*.md
 
 # recent memories

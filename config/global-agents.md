@@ -60,10 +60,10 @@ falsify first: ask "what would prove me wrong?" then try that.
 
 before ANY work:
 ```bash
-rg "KEYWORDS" ~/commonplace/01_files/_utilities/agent-memories/*source__agent*.md
+qmd search -c agent-memories "KEYWORDS" -n 10 || rg "KEYWORDS" ~/commonplace/01_files/_utilities/agent-memories/*source__agent*.md
 ```
 
-use memory as constraints, prior solutions, failure modes.
+use memory as constraints, prior solutions, failure modes. qmd is a search index; files remain the source of truth.
 
 **steering**: REMEMBER user preferences, codebase conventions, correction patterns. these are learnings too.
 - cross-cutting/personal → personal memory with trigger condition + example

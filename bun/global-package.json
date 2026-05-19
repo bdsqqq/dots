@@ -6,6 +6,7 @@
     "@earendil-works/pi-coding-agent": "^0.74.0",
     "@openai/codex": "^0.122.0",
     "@sentry/cli": "^3.4.2",
+    "@tobilu/qmd": "^2.1.0",
     "agent-browser": "^0.25.5",
     "biome": "^0.3.3",
     "diff": "^8.0.4",
@@ -19,6 +20,7 @@
   },
   "trustedDependencies": [
     "agent-browser",
+    "better-sqlite3",
     "bun",
     "core-js",
     "cpu-features",
@@ -26,9 +28,16 @@
     "esbuild",
     "geckodriver",
     "koffi",
+    "node-llama-cpp",
     "opencode-ai",
     "parallel-web-cli",
     "protobufjs",
-    "ssh2"
+    "sqlite-vec",
+    "ssh2",
+    "tree-sitter-go",
+    "tree-sitter-javascript",
+    "tree-sitter-python",
+    "tree-sitter-rust",
+    "tree-sitter-typescript"
   ]
 }

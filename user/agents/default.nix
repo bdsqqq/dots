@@ -32,6 +32,15 @@
       ".claude/CLAUDE.md".source = agentsMd;
       ".pi/agent/AGENTS.md".source = agentsMd;
       ".cursor/rules/AGENTS.md".source = agentsMd;
+      ".config/qmd/index.yml".text = ''
+global_context: "agent-authored memories for future coding-agent sessions. cite source paths before relying on a memory."
+collections:
+  agent-memories:
+    path: ${config.home.homeDirectory}/commonplace/01_files/_utilities/agent-memories
+    pattern: "*source__agent*.md"
+    context:
+      "/": "cross-project agent memories: user preferences, reusable implementation patterns, previous failures, and durable gotchas."
+      '';
 
       ".config/opencode/skills".source = skills;
       ".cursor/skills".source = skills;
