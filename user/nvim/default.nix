@@ -12,8 +12,6 @@ in {
           neovim
           (writeShellScriptBin "vi" ''exec ${neovim}/bin/nvim "$@"'')
           (writeShellScriptBin "vim" ''exec ${neovim}/bin/nvim "$@"'')
-          stylua
-          go
           lazygit
           git
           curl
