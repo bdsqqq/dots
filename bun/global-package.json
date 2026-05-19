@@ -11,12 +11,12 @@
     "biome": "^0.3.3",
     "diff": "^8.0.4",
     "npm": "^11.14.1",
-    "opencode-ai": "^1.14.48",
+    "opencode-ai": "^1.15.5",
     "openportal": "^0.1.32",
     "parallel-web-cli": "^0.2.0",
-    "turbo": "^2.9.12",
+    "turbo": "^2.9.14",
     "typescript": "^6.0.3",
-    "vercel": "^54.0.0"
+    "vercel": "^54.2.0"
   },
   "trustedDependencies": [
     "agent-browser",
