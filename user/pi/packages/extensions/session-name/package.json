@@ -8,10 +8,10 @@
   },
   "dependencies": {
     "@bds_pi/config": "workspace:*",
-    "@earendil-works/pi-ai": "^0.74.0"
+    "@earendil-works/pi-ai": "^0.75.3"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0"
+    "@earendil-works/pi-coding-agent": "^0.75.3"
   },
   "pi": {
     "extensions": [

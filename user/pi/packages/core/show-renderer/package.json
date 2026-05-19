@@ -6,7 +6,7 @@
     "@bds_pi/show": "workspace:*"
   },
   "devDependencies": {
-    "@earendil-works/pi-tui": "^0.74.0",
+    "@earendil-works/pi-tui": "^0.75.3",
     "vitest": "^3.0.0"
   }
 }
