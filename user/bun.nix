@@ -52,8 +52,8 @@
           if [ -d "$GLOBAL_DIR/node_modules/.bin" ]; then
             for bin in "$GLOBAL_DIR/node_modules/.bin"/*; do
               name="$(basename "$bin")"
-              # don't clobber bun/bunx themselves
-              [ "$name" = "bun" ] || [ "$name" = "bunx" ] && continue
+              # don't clobber bun/bunx themselves or pi's bun wrapper
+              [ "$name" = "bun" ] || [ "$name" = "bunx" ] || [ "$name" = "pi" ] && continue
               ln -sf "$bin" "$BUN_BIN/$name"
             done
           fi
