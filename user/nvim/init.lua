@@ -11,11 +11,13 @@ local treesitter_languages = {
 	"bash",
 	"c",
 	"css",
+	"dockerfile",
 	"go",
 	"gomod",
 	"gosum",
 	"gowork",
 	"html",
+	"http",
 	"javascript",
 	"json",
 	"lua",
@@ -414,11 +416,37 @@ vim.pack.add({ { src = "https://github.com/dmmulroy/ts-error-translator.nvim" } 
 require("ts-error-translator").setup({ auto_attach = true, servers = { "ts_ls" } })
 
 vim.pack.add({ { src = "https://github.com/echasnovski/mini.nvim" } }, pack_opts)
+require("mini.notify").setup({
+	content = {
+		format = function(notif)
+			return notif.msg
+		end,
+	},
+})
+require("mini.cmdline").setup({
+	autocorrect = { enable = false },
+})
+require("mini.completion").setup({
+	lsp_completion = {
+		auto_setup = true,
+	},
+})
+local MiniPick = require("mini.pick")
+local MiniExtra = require("mini.extra")
+MiniPick.setup()
+MiniExtra.setup()
 require("mini.icons").setup({})
 require("mini.icons").mock_nvim_web_devicons()
 require("mini.surround").setup({})
 require("mini.comment").setup({})
-require("mini.files").setup({
+local MiniFiles = require("mini.files")
+MiniFiles.setup({
+	mappings = {
+		go_in = "<CR>",
+		go_in_plus = "L",
+		go_out = "_",
+		go_out_plus = "H",
+	},
 	options = { permanent_delete = true, use_as_default_explorer = true },
 	content = {
 		filter = function()
@@ -427,10 +455,45 @@ require("mini.files").setup({
 	},
 })
 
+vim.keymap.set("n", "<leader>pf", function()
+	MiniPick.builtin.files()
+end, { desc = "mini file picker" })
+vim.keymap.set("n", "<leader>ps", function()
+	MiniPick.builtin.grep({ pattern = vim.fn.expand("<cword>") })
+end, { desc = "grep word/search word" })
+vim.keymap.set("n", "<leader>vh", function()
+	MiniPick.builtin.help()
+end, { desc = "mini help" })
+vim.keymap.set("n", "<leader>xx", function()
+	MiniExtra.pickers.diagnostic()
+end, { desc = "mini picker diagnostics" })
+vim.keymap.set("n", "<leader>pk", function()
+	MiniExtra.pickers.keymaps()
+end, { desc = "search keymaps" })
+vim.keymap.set("n", "-", function()
+	MiniFiles.open()
+end, { desc = "toggle mini file explorer" })
+vim.keymap.set("n", "<leader>-", function()
+	MiniFiles.open(vim.api.nvim_buf_get_name(0), false)
+	MiniFiles.reveal_cwd()
+end, { desc = "toggle into currently opened file" })
+
 vim.pack.add({ { src = "https://github.com/nvim-treesitter/nvim-treesitter" } }, pack_opts)
+local treesitter = require("nvim-treesitter")
+treesitter.install(treesitter_languages)
 vim.api.nvim_create_autocmd("FileType", {
+	pattern = "*",
 	callback = function(args)
-		pcall(vim.treesitter.start, args.buf)
+		local buf = args.buf
+		local ft = vim.bo[buf].filetype
+		local lang = vim.treesitter.language.get_lang(ft)
+		if not lang then
+			return
+		end
+		if not pcall(vim.treesitter.language.add, lang) then
+			return
+		end
+		pcall(vim.treesitter.start, buf, lang)
 	end,
 })
 
@@ -470,32 +533,6 @@ require("conform").setup({
 
 o.completeopt = "menuone,noselect,fuzzy,nosort"
 o.shortmess:append("c")
-vim.pack.add({ { src = "https://github.com/Saghen/blink.cmp", version = vim.version.range("1.*") } }, pack_opts)
-require("blink.cmp").setup({
-	keymap = {
-		preset = "default",
-		["<Tab>"] = { "snippet_forward", "fallback" },
-		["<S-Tab>"] = { "snippet_backward", "fallback" },
-		["<CR>"] = { "accept", "fallback" },
-		["<Down>"] = { "select_next", "fallback" },
-		["<Up>"] = { "select_prev", "fallback" },
-		["<Esc>"] = { "hide", "fallback" },
-	},
-	appearance = { nerd_font_variant = "mono" },
-	completion = {
-		documentation = { auto_show = true, auto_show_delay_ms = 500 },
-		ghost_text = { enabled = true },
-		menu = { auto_show = true, draw = { treesitter = { "lsp" } } },
-	},
-	sources = {
-		default = { "lsp", "path", "snippets", "buffer" },
-		providers = {
-			lazydev = { name = "LazyDev", module = "lazydev.integrations.blink", score_offset = 100 },
-		},
-	},
-	snippets = { preset = "default" },
-	signature = { enabled = true },
-})
 
 vim.pack.add({ { src = "https://github.com/neovim/nvim-lspconfig" } }, pack_opts)
 
@@ -552,7 +589,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 })
 
 vim.lsp.config("*", {
-	capabilities = require("blink.cmp").get_lsp_capabilities(),
+	capabilities = require("mini.completion").get_lsp_capabilities(),
 })
 
 vim.lsp.config("lua_ls", {
