@@ -468,6 +468,8 @@ require("conform").setup({
 	},
 })
 
+o.completeopt = "menuone,noselect,fuzzy,nosort"
+o.shortmess:append("c")
 vim.pack.add({ { src = "https://github.com/Saghen/blink.cmp", version = vim.version.range("1.*") } }, pack_opts)
 require("blink.cmp").setup({
 	keymap = {
