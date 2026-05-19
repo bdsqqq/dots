@@ -8,7 +8,7 @@
     "@bds_pi/mentions": "workspace:*"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@earendil-works/pi-coding-agent": "^0.75.3",
     "vitest": "^3.0.0"
   },
   "pi": {
