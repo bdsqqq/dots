@@ -439,6 +439,18 @@ require("mini.icons").setup({})
 require("mini.icons").mock_nvim_web_devicons()
 require("mini.surround").setup({})
 require("mini.comment").setup({})
+require("mini.move").setup({
+	mappings = {
+		left = "<C-Left>",
+		right = "<C-Right>",
+		down = "<C-Down>",
+		up = "<C-Up>",
+		line_left = "<C-Left>",
+		line_right = "<C-Right>",
+		line_down = "<C-Down>",
+		line_up = "<C-Up>",
+	},
+})
 local MiniFiles = require("mini.files")
 MiniFiles.setup({
 	mappings = {
@@ -477,6 +489,9 @@ vim.keymap.set("n", "<leader>-", function()
 	MiniFiles.open(vim.api.nvim_buf_get_name(0), false)
 	MiniFiles.reveal_cwd()
 end, { desc = "toggle into currently opened file" })
+
+vim.keymap.set("x", "<C-S-Up>", ":t'<-1<CR>gv", { desc = "duplicate selection up" })
+vim.keymap.set("x", "<C-S-Down>", ":t'><CR>gv", { desc = "duplicate selection down" })
 
 vim.pack.add({ { src = "https://github.com/nvim-treesitter/nvim-treesitter" } }, pack_opts)
 local treesitter = require("nvim-treesitter")
