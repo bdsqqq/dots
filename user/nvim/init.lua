@@ -7,13 +7,91 @@ vim.g.have_nerd_font = true
 vim.g.undotree_FloatDiff = 1
 vim.g.undotree_FocusOnToggle = 1
 
+local treesitter_languages = {
+	"bash",
+	"c",
+	"css",
+	"go",
+	"gomod",
+	"gosum",
+	"gowork",
+	"html",
+	"javascript",
+	"json",
+	"lua",
+	"markdown",
+	"markdown_inline",
+	"nix",
+	"python",
+	"regex",
+	"rust",
+	"toml",
+	"tsx",
+	"typescript",
+	"vim",
+	"vimdoc",
+	"yaml",
+}
+
+vim.api.nvim_create_autocmd("PackChanged", {
+	callback = function(ev)
+		local name = ev.data.spec.name
+		local kind = ev.data.kind
+		if kind ~= "install" and kind ~= "update" then
+			return
+		end
+
+		if name == "telescope-fzf-native.nvim" then
+			local result = vim.system({ "make" }, { cwd = ev.data.path }):wait()
+			if result.code ~= 0 then
+				vim.notify("telescope-fzf-native.nvim build failed", vim.log.levels.ERROR)
+			end
+		elseif name == "nvim-treesitter" then
+			pcall(vim.cmd.packadd, "nvim-treesitter")
+			local ok, treesitter = pcall(require, "nvim-treesitter")
+			if not ok then
+				return
+			end
+			local task = kind == "install" and treesitter.install(treesitter_languages)
+				or treesitter.update(treesitter_languages)
+			if task and task.wait then
+				task:wait(300000)
+			end
+		end
+	end,
+})
+
+vim.pack.add({
+	{ src = "https://github.com/stevearc/oil.nvim" },
+	{ src = "https://github.com/kevinhwang91/promise-async" },
+	{ src = "https://github.com/kevinhwang91/nvim-ufo" },
+	{ src = "https://github.com/tpope/vim-sleuth" },
+	{ src = "https://github.com/j-hui/fidget.nvim" },
+	{ src = "https://github.com/m4xshen/autoclose.nvim" },
+	{ src = "https://github.com/folke/lazydev.nvim" },
+	{ src = "https://github.com/lewis6991/gitsigns.nvim" },
+	{ src = "https://github.com/folke/which-key.nvim" },
+	{ src = "https://github.com/nvim-lua/plenary.nvim" },
+	{ src = "https://github.com/nvim-telescope/telescope.nvim" },
+	{ src = "https://github.com/nvim-telescope/telescope-fzf-native.nvim" },
+	{ src = "https://github.com/nvim-telescope/telescope-ui-select.nvim" },
+	{ src = "https://github.com/neovim/nvim-lspconfig" },
+	{ src = "https://github.com/stevearc/conform.nvim" },
+	{ src = "https://github.com/echasnovski/mini.nvim" },
+	{ src = "https://github.com/mbbill/undotree" },
+	{ src = "https://github.com/dmmulroy/ts-error-translator.nvim" },
+	{ src = "https://github.com/Saghen/blink.cmp", version = vim.version.range("1.*") },
+	{ src = "https://github.com/nvim-treesitter/nvim-treesitter" },
+}, { confirm = false })
+
 local o = vim.opt
 o.number = true
-o.mouse = "a"
-o.showmode = false
-o.laststatus = 0
 o.ruler = false
 o.cmdheight = 0
+o.mouse = "a"
+o.listchars = { tab = "» ", trail = "·", nbsp = "␣" }
+o.showmode = false
+o.laststatus = 0
 o.breakindent = true
 o.undofile = true
 o.ignorecase = true
@@ -24,20 +102,21 @@ o.timeoutlen = 300
 o.splitright = true
 o.splitbelow = true
 o.list = true
-o.listchars = { tab = "» ", trail = "·", nbsp = "␣" }
 o.inccommand = "split"
 o.cursorline = false
 o.scrolloff = 10
 o.confirm = true
 o.hlsearch = true
 o.clipboard = "unnamedplus"
+o.winblend = 0
+o.pumblend = 0
+o.isfname:append("@-@")
+
 o.foldcolumn = "0"
 o.foldlevel = 99
 o.foldlevelstart = 99
 o.foldenable = true
 o.statuscolumn = "%{foldclosed(v:lnum) > 0 ? '>  ' : ''}%{foldclosed(v:lnum) == -1 ? v:lnum . ' ' : ''}"
-o.winblend = 0
-o.pumblend = 0
 
 -- floating terminal
 
