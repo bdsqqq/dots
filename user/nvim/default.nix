@@ -20,7 +20,6 @@ in {
         [ stylua go lazygit ] ++ lib.optionals isLinux [ wl-clipboard xsel ];
 
       plugins = [
-        (p "vim-tmux-navigator" inputs.plugin-vim-tmux-navigator)
         (p "oil-nvim" inputs.plugin-oil-nvim)
         (p "nvim-ufo" inputs.plugin-nvim-ufo)
         (p "promise-async" inputs.plugin-promise-async)
@@ -43,11 +42,6 @@ in {
         (p "mini-nvim" inputs.plugin-mini-nvim)
         (p "undotree" inputs.plugin-undotree)
         (p "ts-error-translator" inputs.plugin-ts-error-translator)
-        (pkgs.vimUtils.buildVimPlugin {
-          name = "vim-tpipeline";
-          src = inputs.plugin-vim-tpipeline;
-          nvimSkipModule = [ "tpipeline.main" ];
-        })
       ] ++ (with pkgs.vimPlugins; [
         blink-cmp
         nvim-treesitter.withAllGrammars
