@@ -60,7 +60,8 @@ falsify first: ask "what would prove me wrong?" then try that.
 
 before ANY work:
 ```bash
-qmd search -c agent-memories "KEYWORDS" -n 10 || rg "KEYWORDS" ~/commonplace/01_files/_utilities/agent-memories/*source__agent*.md
+MEMORY_ROOT="${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}"
+(cd "$MEMORY_ROOT" && qmd search -c agent-memories "KEYWORDS" -n 10) || rg "KEYWORDS" "$MEMORY_ROOT"/*source__agent*.md
 ```
 
 use memory as constraints, prior solutions, failure modes. qmd is a search index; files remain the source of truth.

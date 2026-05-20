@@ -114,17 +114,17 @@ check for relevant memories before starting work:
 
 ```bash
 # ranked search, when qmd is installed and indexed
-qmd search -c agent-memories "topic" -n 10
-qmd get "qmd://agent-memories/file-name.md" --full
+(cd "${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}" && qmd search -c agent-memories "topic" -n 10)
+(cd "${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}" && qmd get "qmd://agent-memories/file-name.md" --full)
 
 # refresh the lexical index after adding/editing memories
-qmd update
+(cd "${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}" && qmd update)
 
 # exact fallback when qmd is unavailable or misses literal terms
-rg "topic" "$MEMORY_ROOT"/*source__agent*.md
+rg "topic" "${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}"/*source__agent*.md
 
 # recent memories
-ls -t "$MEMORY_ROOT"/*source__agent*.md | head -20
+ls -t "${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}"/*source__agent*.md | head -20
 ```
 
 ## what NOT to remember
