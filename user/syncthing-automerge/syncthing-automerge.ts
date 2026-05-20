@@ -1,19 +1,20 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * syncthing-automerge - automatic conflict resolution for Syncthing
  *
  * Watches for Syncthing conflict files and performs git three-way merges
  * using the original file and the latest backup from .stversions/
  *
- * Ported from Python (scripts/syncthing-automerge.py) to TypeScript/Bun
+ * Ported from Python (scripts/syncthing-automerge.py) to TypeScript
  *
  * Original: https://gist.github.com/solarkraft/26fe291a3de075ae8d96e1ada928fb7d
  *
  * MIT License - Copyright 2024 solarkraft
  */
 
-import { existsSync, readdirSync, rmSync, statSync, watch } from "fs";
-import { join, relative, resolve } from "path";
+import { spawn } from "node:child_process";
+import { existsSync, readdirSync, rmSync, statSync, watch } from "node:fs";
+import { join, relative, resolve } from "node:path";
 
 // ============================================================================
 // TYPES
@@ -133,12 +134,17 @@ function escapeRegex(s: string): string {
  * Perform git three-way merge.
  */
 async function mergeFiles(original: string, backup: string, conflict: string, cwd: string): Promise<boolean> {
-  const result = await Bun.$`git merge-file --union ${original} ${backup} ${conflict}`
-    .cwd(cwd)
-    .quiet()
-    .nothrow();
+  const exitCode = await new Promise<number>((resolve, reject) => {
+    const child = spawn("git", ["merge-file", "--union", original, backup, conflict], {
+      cwd,
+      stdio: "ignore",
+    });
 
-  return result.exitCode === 0;
+    child.on("error", reject);
+    child.on("close", (code) => resolve(code ?? 1));
+  });
+
+  return exitCode === 0;
 }
 
 /**

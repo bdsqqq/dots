@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/node": "^24.0.0"
   }
 }

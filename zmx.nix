@@ -98,11 +98,11 @@ let
         zmxRows = pkgs.writeShellApplication {
           name = "zmx-rows";
           runtimeInputs = [
-            pkgs.bun
+            pkgs.nodejs
             pkgs.zmx
           ];
           text = ''
-            exec bun ${zmxRowsScript} "$@"
+            exec node ${zmxRowsScript} "$@"
           '';
         };
       in
