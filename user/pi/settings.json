@@ -16,7 +16,7 @@
   },
   "lastChangelogVersion": "0.75.3",
   "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "high",
+  "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "steeringMode": "all",
   "followUpMode": "all",
