@@ -17,27 +17,5 @@
     "turbo": "^2.9.14",
     "typescript": "^6.0.3",
     "vercel": "^54.2.0"
-  },
-  "trustedDependencies": [
-    "agent-browser",
-    "better-sqlite3",
-    "bun",
-    "core-js",
-    "cpu-features",
-    "edgedriver",
-    "esbuild",
-    "geckodriver",
-    "koffi",
-    "node-llama-cpp",
-    "opencode-ai",
-    "parallel-web-cli",
-    "protobufjs",
-    "sqlite-vec",
-    "ssh2",
-    "tree-sitter-go",
-    "tree-sitter-javascript",
-    "tree-sitter-python",
-    "tree-sitter-rust",
-    "tree-sitter-typescript"
-  ]
+  }
 }

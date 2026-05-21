@@ -5,4 +5,4 @@ dist/
 # local benchmark scrape cache
 .cache/
 # lockfile is tracked — needed for --frozen-lockfile determinism
-!**/bun.lock
+!**/pnpm-lock.yaml
