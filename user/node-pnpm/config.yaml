@@ -1,0 +1,5 @@
+# pnpm 11 reads pnpm-specific global config from this yaml file.
+# pnpm 10 still needs ./rc; keep both until nixpkgs moves to pnpm 11.
+globalDir: "${PNPM_HOME}/global"
+globalBinDir: "${PNPM_HOME}"
+minimumReleaseAge: 2880

@@ -1,0 +1,8 @@
+# pnpm 10 reads pnpm-specific global config from this rc file.
+# pnpm 11 keeps only registry/auth settings here; see ./config.yaml for v11.
+global-dir=${PNPM_HOME}/global
+global-bin-dir=${PNPM_HOME}
+minimum-release-age=2880
+minimum-release-age-exclude[]=@tobilu/qmd
+minimum-release-age-exclude[]=vercel
+minimum-release-age-exclude[]=@vercel/cli-config

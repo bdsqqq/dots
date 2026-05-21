@@ -4,7 +4,7 @@ in {
   imports = [
     ../user/nvim
     ../user/git
-    ../user/node-pnpm.nix
+    ../user/node-pnpm
     ../user/dev-tools.nix
     ../user/trash.nix
     (import ../zmx.nix).module
