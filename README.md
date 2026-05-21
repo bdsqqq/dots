@@ -5,7 +5,7 @@ quick decision tree:
 - need a root-managed service/daemon?
   - put it in `nix/system/<name>.nix` (e.g., `ssh.nix`, `tailscale.nix`, `syncthing.nix`, `nvidia.nix`, `bluetooth.nix`, `flatpak.nix`, `audio.nix`, `login.nix`, `fonts.nix`, `nix.nix`).
 - need user-level app/dotfiles/home-manager config?
-  - put it in `nix/user/<name>.nix` (e.g., `shell.nix`, `nvim.nix`, `ghostty.nix`, `node-pnpm.nix`, `apps.nix`, `hyprland.nix`).
+  - put it in `nix/user/<name>.nix` or `nix/user/<name>/` (e.g., `shell.nix`, `nvim.nix`, `ghostty.nix`, `node-pnpm/`, `apps.nix`, `hyprland.nix`).
 - want to share a set of capabilities across machines?
   - compose them in `nix/bundles/*.nix` (import-only):
     - `base.nix`: `system/nix`, `system/ssh`, `system/tailscale`, `user/shell`, `system/fonts`.
@@ -19,7 +19,7 @@ quick decision tree:
   - host-only helpers (e.g., `syncthing-automerge`) are imported here, not in bundles.
 
 notes:
-- node globals are managed via `user/node-pnpm.nix`; `pnpm add --dir ~/.local/share/pnpm/global <pkg>` writes to `01_files/nix/pnpm/global-package.json`.
+- node globals are managed via `user/node-pnpm/`; pnpm global manifest/config files are symlinked from that directory for bidirectional edits.
 - flatpak/zen-browser provided via `system/flatpak.nix` imported in `desktop.nix`.
 - ghostty: brew cask in `user/ghostty.nix` (exception: broken nix pkg on darwin); linux uses nix package.
 

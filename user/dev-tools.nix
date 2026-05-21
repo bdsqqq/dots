@@ -80,9 +80,6 @@ in {
 
   config.home-manager.users.bdsqqq = { config, pkgs, ... }: {
     xdg.configFile = {
-      "pnpm/rc".text = ''
-        minimum-release-age=2880
-      '';
       "wikiman/wikiman.conf".text = ''
         sources = man, arch
         fuzzy_finder = fzf

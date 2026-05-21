@@ -22,4 +22,6 @@ allowBuilds:
   tree-sitter-typescript: true
 
 minimumReleaseAgeExclude:
-  - "@tobilu/qmd@2.5.1"
+  - "@tobilu/qmd"
+  - "vercel"
+  - "@vercel/cli-config"

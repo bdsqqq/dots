@@ -55,7 +55,7 @@ in {
     home.activation.piNodeWrapper =
       lib.hm.dag.entryAfter [ "installPnpmGlobals" "installPiExtensionDeps" ] ''
         PNPM_HOME="${homeDir}/.local/share/pnpm"
-        GLOBAL_DIR="$PNPM_HOME/global"
+        GLOBAL_DIR="$PNPM_HOME/global/5"
         PI_WRAPPER="$PNPM_HOME/pi"
         PI_CLI="$GLOBAL_DIR/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
         PI_MARIO_CLI="$GLOBAL_DIR/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"

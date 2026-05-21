@@ -12,7 +12,7 @@
     ../user/shell.nix
     ../user/ssh.nix
     ../user/homebrew.nix
-    ../user/node-pnpm.nix
+    ../user/node-pnpm
     ../user/sdkman.nix
     ../user/fnm.nix
     ../user/fzf
