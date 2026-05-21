@@ -2,7 +2,7 @@
  * lazy re-exports of @earendil-works/pi-tui components.
  *
  * pi-tui is provided by pi's runtime and isn't resolvable in
- * standalone test environments (bun test). lazy-loading via
+ * standalone test environments. lazy-loading via
  * require() defers resolution to first use — which only happens
  * inside renderCall/renderResult at runtime, never during
  * execute()-only tests.
