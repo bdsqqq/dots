@@ -91,7 +91,7 @@ let
             throw "@bds_pi/zmx bin.zmx-rows and exports.\"./zmx-rows\" must point at the same script";
 
         # the fzf picker lives in this nix module, while the pi autocomplete
-        # provider lives in a bun package. package.json is the boundary contract:
+        # provider lives in a node package. package.json is the boundary contract:
         # nix reads the declared bin/export instead of reaching into a private
         # source path, so renames fail during flake evaluation rather than after
         # activation when fzf tries to run `zmx-rows`.

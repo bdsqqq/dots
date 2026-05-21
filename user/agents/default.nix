@@ -4,7 +4,7 @@
     # home.file + mkOutOfStoreSymlink creates a 3-hop chain through /nix/store/
     # that iOS syncthing can't resolve. home.activation + ln -sf bypasses
     # home-manager's indirection to create a direct symlink.
-    # (same pattern as bun.nix:33 for the global manifest)
+    # (same direct-symlink pattern used for repo-owned manifests)
     home.activation.commonplaceAgents =
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         ln -sf "01_files/nix/config/global-agents.md" \
