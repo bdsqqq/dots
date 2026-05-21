@@ -38,43 +38,33 @@ in {
     home.file.".pi/agent/extensions".source =
       config.lib.file.mkOutOfStoreSymlink "${repoExtensions}";
 
-    # pi wrapper — run under bun instead of node for workspace resolution.
+    # pi wrapper — run under node while resolving repo-local pnpm workspace packages.
     # pi's jiti extension loader creates require() scoped to the SYMLINK path
     # (~/.pi/agent/extensions/...), not the realpath (repo/extensions/...).
-    # under node, jiti transpiles TS → CJS but fails in ESM context.
-    # under bun, jiti uses tryNative mode (native import) which resolves
-    # @bds_pi/* workspace packages via bun's native workspace support.
+    # pnpm puts workspace package links in node_modules/.pnpm/node_modules, so
+    # NODE_PATH must include that virtual root or symlinked extensions cannot
+    # resolve @bds_pi/* imports under node.
     #
-    # overwrites ~/.bun/bin/pi (the node-shebang symlink created by bun install)
-    # with a wrapper script. no PATH ordering needed — same location, just runs
-    # bun instead of node. pi 0.62 still ships a bun-specific cli entrypoint; prefer
-    # that when present because running bun against dist/cli.js regressed custom
-    # extension loading (`exports is not defined in ES module scope`). keep the
-    # legacy dist/cli.js path as fallback for older installs.
+    # overwrites ~/.local/share/pnpm/pi with a wrapper script instead of using the
+    # package-manager-generated bin shim. the wrapper preserves repo-local
+    # extension resolution and keeps sub-agent spawns on the same runtime.
     #
     # CRITICAL: the wrapper exports PI_BIN pointing to itself. pi-spawn and
     # other sub-agent spawners must use $PI_BIN instead of "pi" to ensure
-    # child processes use the bun CLI, not the node_modules/.bin/pi symlink
-    # (which points to the Node.js CLI and fails with ES module extensions).
-    home.activation.piBunWrapper =
-      lib.hm.dag.entryAfter [ "installBunGlobals" "installPiExtensionDeps" ] ''
-        PI_WRAPPER="${homeDir}/.bun/bin/pi"
-        PI_BUN_CLI="${homeDir}/.bun/install/global/node_modules/@earendil-works/pi-coding-agent/dist/bun/cli.js"
-        PI_LEGACY_CLI="${homeDir}/.bun/install/global/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
-        PI_MARIO_BUN_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/bun/cli.js"
-        PI_MARIO_LEGACY_CLI="${homeDir}/.bun/install/global/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
-        if [ -e "$PI_BUN_CLI" ]; then
-          PI_CLI="$PI_BUN_CLI"
-        elif [ -e "$PI_LEGACY_CLI" ]; then
-          PI_CLI="$PI_LEGACY_CLI"
-        elif [ -e "$PI_MARIO_BUN_CLI" ]; then
-          PI_CLI="$PI_MARIO_BUN_CLI"
-        else
-          PI_CLI="$PI_MARIO_LEGACY_CLI"
+    # child processes use the same wrapper and NODE_PATH.
+    home.activation.piNodeWrapper =
+      lib.hm.dag.entryAfter [ "installPnpmGlobals" "installPiExtensionDeps" ] ''
+        PNPM_HOME="${homeDir}/.local/share/pnpm"
+        GLOBAL_DIR="$PNPM_HOME/global"
+        PI_WRAPPER="$PNPM_HOME/pi"
+        PI_CLI="$GLOBAL_DIR/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
+        PI_MARIO_CLI="$GLOBAL_DIR/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
+        if [ ! -e "$PI_CLI" ]; then
+          PI_CLI="$PI_MARIO_CLI"
         fi
         if [ -e "$PI_CLI" ]; then
           rm -f "$PI_WRAPPER"
-          printf '%s\n' '#!/usr/bin/env bash' "export NODE_PATH=\"${repoPi}/node_modules\"" "export PI_BIN=\"$PI_WRAPPER\"" "exec bun \"$PI_CLI\" \"\$@\"" > "$PI_WRAPPER"
+          printf '%s\n' '#!/usr/bin/env bash' "export NODE_PATH=\"${repoPi}/node_modules/.pnpm/node_modules:${repoPi}/node_modules\"" "export PI_BIN=\"$PI_WRAPPER\"" "exec ${pkgs.nodejs}/bin/node \"$PI_CLI\" \"\$@\"" > "$PI_WRAPPER"
           chmod +x "$PI_WRAPPER"
         fi
       '';
@@ -83,8 +73,7 @@ in {
     home.activation.installPiExtensionDeps =
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         if [ -f "${repoPi}/package.json" ]; then
-          "${pkgs.bun}/bin/bun" install --cwd "${repoPi}" --frozen-lockfile 2>/dev/null \
-            || "${pkgs.bun}/bin/bun" install --cwd "${repoPi}" || true
+          "${pkgs.pnpm}/bin/pnpm" install --dir "${repoPi}" --frozen-lockfile || true
         fi
       '';
 

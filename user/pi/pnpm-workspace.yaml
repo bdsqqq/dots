@@ -1,0 +1,8 @@
+packages:
+  - packages/core/*
+  - packages/extensions/*
+
+allowBuilds:
+  esbuild: true
+  koffi: true
+  protobufjs: true
