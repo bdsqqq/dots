@@ -18,6 +18,7 @@
 **/dist/
 **/build/
 **/out/
+**/.output/
 **/coverage/
 **/target/
 **/generated/
