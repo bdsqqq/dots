@@ -10,6 +10,6 @@
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "^0.75.3",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.0"
   }
 }

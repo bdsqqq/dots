@@ -69,7 +69,7 @@
     "oxlint-tsgolint": "^0.15.0",
     "tsdown": "^0.21.0",
     "typescript": "^5.9.2",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": ">=0.75.3",
