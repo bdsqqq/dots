@@ -24,6 +24,7 @@
 **/dist/
 **/build/
 **/out/
+**/.output/
 **/coverage/
 **/.next/
 **/.nuxt/

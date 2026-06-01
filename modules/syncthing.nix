@@ -104,6 +104,7 @@ rec {
     "**/.parcel-cache/"
     "**/.cache/"
     "**/cache/"
+    "**/.output/"
     "**/.turbo/"
     "**/.vercel/"
     "**/.netlify/"
