@@ -10,12 +10,12 @@
     "@bds_pi/config": "workspace:*",
     "@bds_pi/mentions": "workspace:*",
     "@bds_pi/pi-spawn": "workspace:*",
-    "@earendil-works/pi-ai": "^0.75.3",
+    "@earendil-works/pi-ai": "^0.78.1",
     "typebox": "^1.1.24"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.3",
-    "@earendil-works/pi-tui": "^0.75.3"
+    "@earendil-works/pi-coding-agent": "^0.78.1",
+    "@earendil-works/pi-tui": "^0.78.1"
   },
   "pi": {
     "extensions": [

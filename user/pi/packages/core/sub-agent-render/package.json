@@ -9,7 +9,7 @@
     "@bds_pi/tool-cost": "workspace:*"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.75.3",
+    "@earendil-works/pi-ai": "^0.78.1",
     "vitest": "^3.0.0"
   }
 }
