@@ -138,17 +138,17 @@ rec {
       lines = lib.splitString "\n" commonIgnore;
       deletePatternSet = lib.genAttrs stignoreDeletePatterns (_: true);
       transformLine = line:
-        if builtins.hasAttr line deletePatternSet then "(?d)${line}" else line;
+        if builtins.hasAttr line deletePatternSet then "(?d)(?i)${line}" else line;
     in lib.concatStringsSep "\n"
     ((builtins.map transformLine lines) ++ [
       ""
-      "(?d).Trash/"
-      "(?d)**/.Trash/**"
-      "(?d).Trashes/"
-      "(?d)**/.Trashes/**"
-      "(?d)**/.DS_Store"
-      "(?d)**/Thumbs.db"
-      "(?d)**/desktop.ini"
+      "(?d)(?i).Trash/"
+      "(?d)(?i)**/.Trash/**"
+      "(?d)(?i).Trashes/"
+      "(?d)(?i)**/.Trashes/**"
+      "(?d)(?i)**/.DS_Store"
+      "(?d)(?i)**/Thumbs.db"
+      "(?d)(?i)**/desktop.ini"
       "**/.keep"
       ""
     ]);
