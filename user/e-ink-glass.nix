@@ -12,7 +12,7 @@ in lib.mkIf (isLinux && headMode == "graphical") {
            [General]
            theme=EInkGlass
           '';
-          override = true;
+          force = true;
         };
         "Kvantum/EInkGlass" = {
           source = config.lib.file.mkOutOfStoreSymlink "${themeDir}/Kvantum/EInkGlass";
