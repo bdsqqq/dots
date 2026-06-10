@@ -115,12 +115,12 @@ in
 
       folders = {
         commonplace =
-          syncthing.folderFor "commonplace" "/mnt/storage-01/commonplace"
-            false [ "mbp-m2" "ipd" "iph16" "r56" ]
+          syncthing.folderForPath "commonplace" "/mnt/storage-01/commonplace"
+            [ "mbp-m2" "ipd" "iph16" "r56" ]
             { rescanIntervalS = 3600; };
         helium-remotes =
-          syncthing.folderFor "helium-remotes" "/mnt/storage-01/helium-remotes"
-            false [ "mbp-m2" "lgo-z2e" "r56" ]
+          syncthing.folderForPath "helium-remotes" "/mnt/storage-01/helium-remotes"
+            [ "mbp-m2" "lgo-z2e" "r56" ]
             {
               rescanIntervalS = 60;
             };

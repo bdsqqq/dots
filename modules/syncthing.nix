@@ -57,8 +57,12 @@ rec {
     }) names);
 
   /* `folderPaths :: String -> String -> Bool -> String`
-     Returns the correct path for a folder given the folder name, home directory,
-     and whether the host is darwin.
+     Returns the correct path for a folder given a host's home directory and
+     whether the host is darwin.
+
+     This is for home-relative folders. Hosts that sync a folder outside home
+     should use `folderForPath`, otherwise folder names get appended twice
+     (for example `/mnt/storage-01/commonplace/commonplace`).
 
      Folder path mapping:
      - commonplace: `${home}/commonplace`
@@ -161,8 +165,30 @@ rec {
     helium-remotes = "helium-remotes";
   };
 
+  /* `mkFolder :: String -> String -> [String] -> AttrSet -> AttrSet`
+     Returns a full folder config for an explicit Syncthing folder path.
+
+     Prefer this when the folder is not rooted at the user's home directory.
+  */
+  mkFolder = name: path: deviceNames: extraConfig:
+    let
+      baseConfig = {
+        enable = true;
+        id = folderIds.${name};
+        label = name;
+        inherit path;
+        type = "sendreceive";
+        rescanIntervalS = 60;
+        devices = deviceNames;
+        versioning = {
+          type = "trashcan";
+          params.cleanoutDays = "30";
+        };
+      };
+    in lib.recursiveUpdate baseConfig extraConfig;
+
   /* `folderFor :: String -> String -> Bool -> [String] -> AttrSet -> AttrSet`
-     Returns a full folder config.
+     Returns a full folder config for a home-relative Syncthing folder.
 
      Parameters:
      - name: folder name (commonplace, prism-instances, pi-sessions, helium-remotes)
@@ -175,19 +201,10 @@ rec {
        folderFor "commonplace" "/home/user" false [ "mbp-m2" "htz-relay" ] { type = "sendonly"; }
   */
   folderFor = name: home: isDarwin: deviceNames: extraConfig:
-    let
-      baseConfig = {
-        enable = true;
-        id = folderIds.${name};
-        label = name;
-        path = folderPaths name home isDarwin;
-        type = "sendreceive";
-        rescanIntervalS = 60;
-        devices = deviceNames;
-        versioning = {
-          type = "trashcan";
-          params.cleanoutDays = "30";
-        };
-      };
-    in lib.recursiveUpdate baseConfig extraConfig;
+    mkFolder name (folderPaths name home isDarwin) deviceNames extraConfig;
+
+  /* `folderForPath :: String -> String -> [String] -> AttrSet -> AttrSet`
+     Backwards-compatible alias for explicit-path folder configs.
+  */
+  folderForPath = mkFolder;
 }
