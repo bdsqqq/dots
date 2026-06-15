@@ -16,7 +16,6 @@
  */
 
 import * as fs from "node:fs";
-import { existsSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
@@ -24,6 +23,7 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { getShellConfig } from "@earendil-works/pi-coding-agent";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   boxRendererWindowed,
@@ -99,14 +99,8 @@ const BASH_CONFIG_SCHEMA: ExtensionConfigSchema<BashExtConfig> = {
 // --- shell config ---
 
 /**
- * pi's getShellConfig() lives in utils/shell.js, not re-exported
- * from the main package. reimplemented here — on macOS (our target)
- * this is always /bin/bash.
+ * uses pi's getShellConfig() for cross-platform shell resolution.
  */
-function getShell(): { shell: string; args: string[] } {
-  if (existsSync("/bin/bash")) return { shell: "/bin/bash", args: ["-c"] };
-  return { shell: "sh", args: ["-c"] };
-}
 
 // --- command preprocessing ---
 
@@ -534,7 +528,7 @@ export function createBashTool(
         throw new Error(msg);
       }
 
-      if (!existsSync(effectiveCwd)) {
+      if (!fs.existsSync(effectiveCwd)) {
         throw new Error(`working directory does not exist: ${effectiveCwd}`);
       }
 
@@ -584,7 +578,7 @@ async function runForegroundCommand(
   onUpdate: ((update: any) => void) | undefined,
   config: BashExtConfig,
 ): Promise<any> {
-  const { shell, args } = getShell();
+  const { shell, args } = getShellConfig();
 
   return new Promise((resolve, reject) => {
     const child = spawn(shell, [...args, command], {
@@ -679,7 +673,7 @@ async function runBackgroundCommand(
   backgroundState: BackgroundState,
   config: BashExtConfig,
 ): Promise<any> {
-  const { shell, args } = getShell();
+  const { shell, args } = getShellConfig();
   const id = `bg-${backgroundState.nextId++}`;
   const logPath = getBackgroundLogPath(id);
   const logFd = fs.openSync(logPath, "a");

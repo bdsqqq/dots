@@ -4,7 +4,6 @@
     "isolatedDeclarations": true,
     "declaration": true,
     "paths": {
-      "@bds_pi/agents-md": ["./packages/core/agents-md/index.ts"],
       "@bds_pi/box-chrome": ["./packages/core/box-chrome/index.ts"],
       "@bds_pi/box-format": ["./packages/core/box-format/index.ts"],
       "@bds_pi/config": ["./packages/core/config/index.ts"],
