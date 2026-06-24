@@ -9,6 +9,7 @@ let
   virtualhidLabel = "com.bdsqqq.karabiner-virtualhid-daemon";
   kanataPlist = "/Library/LaunchDaemons/${kanataLabel}.plist";
   virtualhidPlist = "/Library/LaunchDaemons/${virtualhidLabel}.plist";
+  virtualhidDaemon = "/Library/Application Support/org.pqrs/Karabiner-DriverKit-VirtualHIDDevice/Applications/Karabiner-VirtualHIDDevice-Daemon.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Daemon";
   # stable path so macOS TCC grants can survive nix rebuilds.
   # this must be a real file, not a symlink into /nix/store, because TCC resolves
   # symlinks and would still see the versioned store path. after first install or
@@ -120,7 +121,8 @@ let
             fi ;;
     esac
   '';
-in if isDarwin then {
+in
+if isDarwin then {
   environment.systemPackages = [
     pkgs.kanata
     toggleKanata
@@ -154,30 +156,24 @@ in if isDarwin then {
   environment.etc."kanata/kanata.kbd".source = ../assets/kanata.kbd;
 
   system.activationScripts.extraActivation.text = ''
-    if [ ! -d "/Applications/.Karabiner-VirtualHIDDevice-Manager.app" ]; then
-      echo "Installing Karabiner-DriverKit-VirtualHIDDevice..."
-      /usr/bin/curl -L https://github.com/pqrs-org/Karabiner-DriverKit-VirtualHIDDevice/releases/download/v6.0.0/Karabiner-DriverKit-VirtualHIDDevice-6.0.0.pkg -o /tmp/karabiner-virtualhid.pkg
-      /usr/sbin/installer -pkg /tmp/karabiner-virtualhid.pkg -target /
-      /bin/rm -f /tmp/karabiner-virtualhid.pkg
-      echo "Activating VirtualHIDDevice..."
-      /Applications/.Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager activate
+    if [ ! -x ${lib.escapeShellArg virtualhidDaemon} ]; then
+      echo "warning: Karabiner VirtualHIDDevice daemon missing; install/activate it manually before starting kanata" >&2
     fi
 
     mkdir -p /usr/local/bin
-    cp ${pkgs.kanata}/bin/kanata ${kanataStablePath}
-    chmod 755 ${kanataStablePath}
-    /usr/bin/codesign -fs - -i com.bdsqqq.kanata ${kanataStablePath} 2>/dev/null || true
-
-    launchctl bootout system/${kanataLabel} 2>/dev/null || true
-    sleep 1
-    launchctl bootstrap system ${kanataPlist} 2>/dev/null || true
+    if [ ! -x ${kanataStablePath} ]; then
+      install -m 0755 ${pkgs.kanata}/bin/kanata ${kanataStablePath}
+      /usr/bin/codesign -fs - -i com.bdsqqq.kanata ${kanataStablePath} 2>/dev/null || true
+    elif ! cmp -s ${pkgs.kanata}/bin/kanata ${kanataStablePath}; then
+      echo "warning: ${kanataStablePath} differs from nixpkgs kanata; not replacing it because macOS TCC grants are cdhash-bound" >&2
+    fi
   '';
 
   launchd.daemons.karabiner-virtualhid-daemon = {
     serviceConfig = {
       Label = virtualhidLabel;
       ProgramArguments = [
-        "/Library/Application Support/org.pqrs/Karabiner-DriverKit-VirtualHIDDevice/Applications/Karabiner-VirtualHIDDevice-Daemon.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Daemon"
+        virtualhidDaemon
       ];
       RunAtLoad = true;
       KeepAlive = true;
@@ -193,7 +189,7 @@ in if isDarwin then {
       ProgramArguments = [
         "/bin/bash"
         "-c"
-        "sleep 5 && ${kanataStablePath} --cfg /etc/kanata/kanata.kbd"
+        "sleep 5 && ${kanataStablePath} --no-wait --cfg /etc/kanata/kanata.kbd"
       ];
       RunAtLoad = true;
       KeepAlive = true;
