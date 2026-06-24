@@ -32,11 +32,9 @@ else {
       # System utilities
       "handy"
       "cleanshot"
-      "raycast"
 
       # Development tools
       "tableplus"
-      "t3-code"
 
       # Creative/Media tools
       "figma"
@@ -55,7 +53,7 @@ else {
     onActivation = {
       autoUpdate = false;
       upgrade = true;
-      cleanup = "none";
+      cleanup = "zap";
     };
   };
 }
