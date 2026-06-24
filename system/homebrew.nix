@@ -53,7 +53,6 @@ else {
     onActivation = {
       autoUpdate = false;
       upgrade = true;
-      cleanup = "zap";
     };
   };
 }
