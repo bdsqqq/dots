@@ -1,5 +1,5 @@
 {
-  "defaultProvider": "opencode",
+  "defaultProvider": "openai-codex",
   "skills": [
     "~/.config/agents/skills"
   ],
@@ -15,7 +15,7 @@
     "enabled": true
   },
   "lastChangelogVersion": "0.78.1",
-  "defaultModel": "big-pickle",
+  "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
   "steeringMode": "all",
