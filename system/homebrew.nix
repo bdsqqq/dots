@@ -55,6 +55,7 @@ else
         # System utilities
         "handy"
         "cleanshot"
+        "tailscale"
 
         # Development tools
         "tableplus"
@@ -79,4 +80,3 @@ else
       };
     };
   }
-
