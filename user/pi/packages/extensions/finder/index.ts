@@ -582,7 +582,7 @@ if (import.meta.vitest) {
   // Uses piSpawn which spawns CLI and loads extensions from user's settings
   describe.skipIf(!process.env.PI_E2E)("eval: finder tool", () => {
     const E2E_MODEL =
-      process.env.PI_E2E_MODEL ?? "openrouter/moonshotai/kimi-k2.5";
+      process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
 
     it("eval: searches codebase and returns results", async () => {
       const { piSpawn } = await import("@bds_pi/pi-spawn");

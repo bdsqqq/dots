@@ -10,7 +10,6 @@ allowBuilds:
   geckodriver: true
   koffi: true
   node-llama-cpp: true
-  opencode-ai: true
   parallel-web-cli: true
   protobufjs: true
   sqlite-vec: true

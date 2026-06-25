@@ -404,7 +404,7 @@ if (import.meta.vitest) {
 
   describe.skipIf(!process.env.PI_E2E)("eval: task tool", () => {
     const E2E_MODEL =
-      process.env.PI_E2E_MODEL ?? "openrouter/moonshotai/kimi-k2.5";
+      process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
     // pi repo root (3 levels up from this file: task -> extensions -> packages -> pi)
     const PI_ROOT = path.resolve(__dirname, "..", "..", "..");
 

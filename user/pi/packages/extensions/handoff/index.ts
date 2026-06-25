@@ -6,13 +6,13 @@
  * same session state but need different output shapes.
  */
 
-import {
-  complete,
-  type Api,
-  type Model,
-  type Message,
-  type Tool,
-  type ToolCall,
+import { complete } from "@earendil-works/pi-ai/compat";
+import type {
+  Api,
+  Model,
+  Message,
+  Tool,
+  ToolCall,
 } from "@earendil-works/pi-ai";
 import type {
   ExtensionAPI,
@@ -1344,7 +1344,7 @@ if (import.meta.vitest) {
     it("validates correct config", () => {
       const config = {
         threshold: 0.85,
-        model: { provider: "openrouter", id: "gemini-flash" },
+        model: { provider: "openai-codex", id: "gpt-5.4-mini" },
         prompt: { "handoff-intent": "test" },
       };
       expect(isHandoffConfig(config)).toBe(true);

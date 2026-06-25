@@ -1,16 +1,18 @@
 ## verification
 
-this is a nix-darwin + home-manager config. changes must be verified by building.
+this is a nix-darwin + home-manager config. changes must be verified by building the config for the current host platform.
 
 ```bash
-# dry-run build (evaluates config, catches most errors)
-nix build .#darwinConfigurations.mbp-m2.system --dry-run   # darwin
-nix build .#nixosConfigurations.lgo-z2e.config.system.build.toplevel --dry-run  # nixos
+# on darwin
+nix build .#darwinConfigurations.mbp-m2.system --dry-run
+nix build .#darwinConfigurations.mbp-m2.system
 
-# full build (required before shipping)
-nix build .#darwinConfigurations.mbp-m2.system   # darwin
-nix build .#nixosConfigurations.lgo-z2e.config.system.build.toplevel  # nixos
+# on linux
+nix build .#nixosConfigurations.lgo-z2e.config.system.build.toplevel --dry-run
+nix build .#nixosConfigurations.lgo-z2e.config.system.build.toplevel
 ```
+
+do not cross-build by default. when running on darwin, skip linux builds unless the user asks. when running on linux, skip darwin builds unless the user asks.
 
 **do not assume changes work.** nix evaluation errors, hash mismatches, and derivation failures only surface at build time. run the build yourself before asking the user to verify.
 
