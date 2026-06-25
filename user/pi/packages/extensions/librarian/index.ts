@@ -352,7 +352,7 @@ if (import.meta.vitest) {
     it("validates a complete config", () => {
       expect(
         isLibrarianConfig({
-          model: "openrouter/openai/gpt-4",
+          model: "openai-codex/gpt-5.5:low",
           extensionTools: ["read_github"],
           builtinTools: [],
           promptFile: "prompt.md",
@@ -400,7 +400,7 @@ if (import.meta.vitest) {
     it("rejects non-array extensionTools", () => {
       expect(
         isLibrarianConfig({
-          model: "openrouter/openai/gpt-4",
+          model: "openai-codex/gpt-5.5:low",
           extensionTools: "read_github",
           builtinTools: [],
           promptFile: "prompt.md",
@@ -412,7 +412,7 @@ if (import.meta.vitest) {
     it("rejects extensionTools array with non-strings", () => {
       expect(
         isLibrarianConfig({
-          model: "openrouter/openai/gpt-4",
+          model: "openai-codex/gpt-5.5:low",
           extensionTools: ["read_github", 123],
           builtinTools: [],
           promptFile: "prompt.md",
@@ -424,7 +424,7 @@ if (import.meta.vitest) {
     it("rejects non-array builtinTools", () => {
       expect(
         isLibrarianConfig({
-          model: "openrouter/openai/gpt-4",
+          model: "openai-codex/gpt-5.5:low",
           extensionTools: [],
           builtinTools: "bash",
           promptFile: "prompt.md",
@@ -436,7 +436,7 @@ if (import.meta.vitest) {
     it("accepts empty arrays for tools", () => {
       expect(
         isLibrarianConfig({
-          model: "openrouter/openai/gpt-4",
+          model: "openai-codex/gpt-5.5:low",
           extensionTools: [],
           builtinTools: [],
           promptFile: "",
@@ -448,7 +448,7 @@ if (import.meta.vitest) {
     it("rejects non-string promptFile", () => {
       expect(
         isLibrarianConfig({
-          model: "openrouter/openai/gpt-4",
+          model: "openai-codex/gpt-5.5:low",
           extensionTools: [],
           builtinTools: [],
           promptFile: 123,
@@ -460,7 +460,7 @@ if (import.meta.vitest) {
     it("rejects non-string promptString", () => {
       expect(
         isLibrarianConfig({
-          model: "openrouter/openai/gpt-4",
+          model: "openai-codex/gpt-5.5:low",
           extensionTools: [],
           builtinTools: [],
           promptFile: "",

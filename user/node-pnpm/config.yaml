@@ -3,3 +3,11 @@
 globalDir: "${PNPM_HOME}/global"
 globalBinDir: "${PNPM_HOME}"
 minimumReleaseAge: 2880
+minimumReleaseAgeExclude:
+  - "@tobilu/qmd"
+  - "vercel"
+  - "@vercel/cli-config"
+  - "@earendil-works/pi-ai"
+  - "@earendil-works/pi-agent-core"
+  - "@earendil-works/pi-coding-agent"
+  - "@earendil-works/pi-tui"

@@ -10,7 +10,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as piAi from "@earendil-works/pi-ai";
+import { complete } from "@earendil-works/pi-ai/compat";
 import type { Api, Model, Message } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
@@ -157,7 +157,7 @@ async function generateName(
     timestamp: Date.now(),
   };
 
-  const response = await piAi.complete(
+  const response = await complete(
     model,
     { messages: [message] },
     {
@@ -205,7 +205,7 @@ if (import.meta.vitest) {
       expect(
         isSessionNameConfig({
           renameInterval: 10,
-          model: { provider: "openrouter", id: "gemini-3-flash" },
+          model: { provider: "openai-codex", id: "gpt-5.4-mini" },
         }),
       ).toBe(true);
     });
@@ -234,7 +234,7 @@ if (import.meta.vitest) {
       expect(
         isSessionNameConfig({
           renameInterval: 10,
-          model: { provider: "openrouter", id: "  " },
+          model: { provider: "openai-codex", id: "  " },
         }),
       ).toBe(false);
     });

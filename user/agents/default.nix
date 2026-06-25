@@ -28,7 +28,6 @@
         recursive = true;
       };
 
-      ".config/opencode/AGENTS.md".source = agentsMd;
       ".claude/CLAUDE.md".source = agentsMd;
       ".pi/agent/AGENTS.md".source = agentsMd;
       ".cursor/rules/AGENTS.md".source = agentsMd;
@@ -37,7 +36,6 @@
         force = true;
       };
 
-      ".config/opencode/skills".source = skills;
       ".agents/skills".source = skills;
       ".cursor/skills".source = skills;
       ".cursor/agents".source = agentPrompts;

@@ -8,7 +8,7 @@
     ".": "./index.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-tui": "^0.78.1"
+    "@earendil-works/pi-tui": "^0.80.2"
   },
   "devDependencies": {
     "vitest": "^3.0.0"

@@ -10,17 +10,6 @@ let
   authPath = "${homeDir}/.pi/agent/auth.json";
 in {
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
-    home.activation.piAuthJson = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      if [ ! -e "${authPath}" ]; then
-        mkdir -p "$(dirname "${authPath}")"
-        printf '%s\n' \
-          '{' \
-          '  "openrouter": {"type": "api_key", "key": "!cat /run/secrets/open_router"},' \
-          '  "opencode": {"type": "api_key", "key": "!cat /run/secrets/opencode_zen"}' \
-          '}' > "${authPath}"
-        chmod 0600 "${authPath}"
-      fi
-    '';
     home.file.".pi/agent/settings.json".source =
       config.lib.file.mkOutOfStoreSymlink
       "${config.home.homeDirectory}/commonplace/01_files/nix/user/pi/settings.json";

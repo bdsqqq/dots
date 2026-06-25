@@ -618,7 +618,7 @@ if (import.meta.vitest) {
   // E2E eval test - requires PI_E2E=1 and real API keys
   describe.skipIf(!process.env.PI_E2E)("eval: oracle", () => {
     const E2E_MODEL =
-      process.env.PI_E2E_MODEL ?? "openrouter/moonshotai/kimi-k2.5";
+      process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
 
     it("eval: consults oracle and gets a response", async () => {
       const model = getModelFromCliString(E2E_MODEL);

@@ -357,7 +357,7 @@ if (import.meta.vitest) {
   // Layer 2: E2E eval tests (gated by PI_E2E env var)
   describe.skipIf(!process.env.PI_E2E)("eval: look-at tool", () => {
     const E2E_MODEL =
-      process.env.PI_E2E_MODEL ?? "openrouter/moonshotai/kimi-k2.5";
+      process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
 
     it("eval: analyzes a file with real AI", async () => {
       const {

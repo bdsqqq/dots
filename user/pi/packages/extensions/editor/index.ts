@@ -905,8 +905,8 @@ if (import.meta.vitest) {
 
         expect(formatModelDisplay("openai", "gpt-4o")).toBe("(openai) gpt-4o");
 
-        expect(formatModelDisplay("openrouter", "z-ai/glm-5")).toBe(
-          "(openrouter) z-ai/glm-5",
+        expect(formatModelDisplay("openai-codex", "gpt-5.5")).toBe(
+          "(openai-codex) gpt-5.5",
         );
 
         expect(formatModelDisplay(undefined, "some-model")).toBe("some-model");
