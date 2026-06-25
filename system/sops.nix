@@ -18,16 +18,12 @@ in
 
     defaultSopsFile = ../secrets.yaml;
     secrets = {
-      anthropic_api_key = { owner = "bdsqqq"; };
       tailscale_auth_key = { owner = "bdsqqq"; };
       gh_token = { owner = "bdsqqq"; };
       hf_token = { owner = "bdsqqq"; };
-      open_router = { owner = "bdsqqq"; };
-      opencode_zen = { owner = "bdsqqq"; };
       artificial_analysis_api_key = { owner = "bdsqqq"; };
       motion_plus_token = { owner = "bdsqqq"; };
       parallel_api_key = { owner = "bdsqqq"; };
-      sentry_auth_token = { owner = "bdsqqq"; };
       syncthing_gui_password = { owner = "bdsqqq"; };
       syncthing_gui_password_hash = { owner = "bdsqqq"; };
       "axiom/personal_url" = {
