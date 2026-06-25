@@ -134,7 +134,6 @@ in {
         jq
         yq
         tree
-        tailscale
         p7zip
         cloc
         stow
@@ -147,6 +146,8 @@ in {
         mkcert
         wikimanPackage
         wikimanUpdate
+      ] ++ lib.optionals isLinux [
+        tailscale
       ] ++ lib.optionals isDarwin [
         istat-menus
         libimobiledevice
