@@ -267,6 +267,26 @@
             ];
           };
 
+          "gru-relay" = inputs.nixpkgs.lib.nixosSystem {
+            specialArgs = {
+              inherit inputs;
+              hostSystem = "x86_64-linux";
+              headMode = "headless";
+            };
+            modules = [
+              inputs.home-manager.nixosModules.home-manager
+              ({ pkgs, config, lib, ... }: {
+                nixpkgs.hostPlatform = "x86_64-linux";
+                nixpkgs.overlays = [
+                  (import ./overlays/unstable.nix inputs)
+                  (import ./zmx.nix).overlay
+                ];
+                system.configurationRevision = flakeRevision;
+              })
+              ./hosts/gru-relay/default.nix
+            ];
+          };
+
           "lgo-z2e" = inputs.nixpkgs.lib.nixosSystem {
             specialArgs = {
               inherit inputs;
