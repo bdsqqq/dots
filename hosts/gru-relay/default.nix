@@ -1,16 +1,36 @@
-{ config, pkgs, lib, inputs, ... }:
+{ config, pkgs, lib, ... }:
 
 {
   imports = [
-    ../../modules/primary-user.nix
-    ../../system/nix.nix
-    ../../system/nh.nix
-    ../../system/nix-ld.nix
     ../../system/ssh.nix
     ../../system/tailscale.nix
     ../../system/authorized-keys.nix
     ./hardware-configuration.nix
   ];
+
+  boot.kernelParams = [
+    "console=ttyS0,19200n8"
+    "console=tty0"
+  ];
+
+  nix = {
+    settings = {
+      experimental-features = [ "nix-command" "flakes" ];
+      substituters = [
+        "https://cache.nixos.org/"
+        "https://nix-community.cachix.org"
+      ];
+      trusted-public-keys = [
+        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+        "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+      ];
+    };
+    optimise.automatic = true;
+    gc = {
+      automatic = true;
+      options = "--delete-older-than 14d";
+    };
+  };
 
   networking = {
     hostName = "gru-relay";
@@ -51,8 +71,6 @@
     };
   };
 
-  my.primaryUser = "bdsqqq";
-
   services.tailscale = {
     enable = true;
     openFirewall = false;
@@ -86,32 +104,17 @@
       "$6$LeozgmV9I6N0QYNf$3BeytD3X/gFNzBJAeWYqFPqD7m9Qz4gn8vORyFtrJopplmZ/pgLZzcktymHLU9CVbR.SkFPg9MAbYNKWLzvaT0";
   };
 
+  users.users.root.openssh.authorizedKeys.keys =
+    config.users.users.bdsqqq.openssh.authorizedKeys.keys;
+
+  services.openssh.settings.PermitRootLogin = lib.mkForce "prohibit-password";
+
   security.sudo = {
     enable = true;
     wheelNeedsPassword = false;
   };
 
   programs.zsh.enable = true;
-
-  home-manager = {
-    useGlobalPkgs = true;
-    useUserPackages = true;
-    backupFileExtension = "backup";
-    extraSpecialArgs = {
-      inherit inputs;
-      isDarwin = false;
-      hostSystem = "x86_64-linux";
-      headMode = "headless";
-      torchBackend = "cpu";
-    };
-    users.bdsqqq = {
-      home.username = "bdsqqq";
-      home.homeDirectory = "/home/bdsqqq";
-      home.stateVersion = "25.05";
-      programs.home-manager.enable = true;
-      programs.zsh.enable = true;
-    };
-  };
 
   time.timeZone = "America/Sao_Paulo";
   i18n.defaultLocale = "en_US.UTF-8";
