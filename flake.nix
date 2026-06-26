@@ -274,7 +274,6 @@
               headMode = "headless";
             };
             modules = [
-              inputs.home-manager.nixosModules.home-manager
               ({ pkgs, config, lib, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [
