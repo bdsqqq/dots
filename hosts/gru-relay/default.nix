@@ -81,8 +81,37 @@
       "--advertise-exit-node"
       "--accept-dns=false"
       "--shields-up=false"
+      "--netfilter-mode=nodivert"
     ];
   };
+
+  # Keep public ingress owned by the NixOS firewall while still letting
+  # Tailscale's exit-node forwarding and masquerade chains do their job.
+  systemd.services.tailscaled.postStart = ''
+    for _ in $(${pkgs.coreutils}/bin/seq 1 20); do
+      if ${pkgs.iptables}/bin/iptables -S ts-forward >/dev/null 2>&1 \
+        && ${pkgs.iptables}/bin/iptables -t nat -S ts-postrouting >/dev/null 2>&1 \
+        && ${pkgs.iptables}/bin/ip6tables -S ts-forward >/dev/null 2>&1 \
+        && ${pkgs.iptables}/bin/ip6tables -t nat -S ts-postrouting >/dev/null 2>&1; then
+        break
+      fi
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+
+    ${pkgs.iptables}/bin/iptables -S ts-forward >/dev/null
+    ${pkgs.iptables}/bin/iptables -t nat -S ts-postrouting >/dev/null
+    ${pkgs.iptables}/bin/ip6tables -S ts-forward >/dev/null
+    ${pkgs.iptables}/bin/ip6tables -t nat -S ts-postrouting >/dev/null
+
+    ${pkgs.iptables}/bin/iptables -C FORWARD -j ts-forward 2>/dev/null \
+      || ${pkgs.iptables}/bin/iptables -A FORWARD -j ts-forward
+    ${pkgs.iptables}/bin/iptables -t nat -C POSTROUTING -j ts-postrouting 2>/dev/null \
+      || ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -j ts-postrouting
+    ${pkgs.iptables}/bin/ip6tables -C FORWARD -j ts-forward 2>/dev/null \
+      || ${pkgs.iptables}/bin/ip6tables -A FORWARD -j ts-forward
+    ${pkgs.iptables}/bin/ip6tables -t nat -C POSTROUTING -j ts-postrouting 2>/dev/null \
+      || ${pkgs.iptables}/bin/ip6tables -t nat -A POSTROUTING -j ts-postrouting
+  '';
 
   systemd.services.tailscale-udp-gro-forwarding = {
     description = "Enable UDP GRO forwarding for Tailscale exit-node throughput";
