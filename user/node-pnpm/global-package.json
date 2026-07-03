@@ -4,17 +4,17 @@
   "private": true,
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.80.2",
-    "@openai/codex": "^0.122.0",
-    "@tobilu/qmd": "^2.5.1",
+    "@openai/codex": "^0.142.4",
+    "@tobilu/qmd": "^2.5.3",
     "agent-browser": "^0.25.5",
     "biome": "^0.3.3",
     "diff": "^8.0.4",
-    "npm": "^11.14.1",
+    "npm": "^11.18.0",
     "openportal": "^0.1.32",
     "parallel-web-cli": "^0.2.0",
     "t3": "0.0.29-nightly.20260703.719",
-    "turbo": "^2.9.14",
+    "turbo": "^2.10.0",
     "typescript": "^6.0.3",
-    "vercel": "^54.2.0"
+    "vercel": "^54.18.3"
   }
 }
