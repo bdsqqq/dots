@@ -9,6 +9,8 @@ allowBuilds:
   esbuild: true
   geckodriver: true
   koffi: true
+  msgpackr-extract: true
+  node-pty: true
   node-llama-cpp: true
   parallel-web-cli: true
   protobufjs: true
@@ -24,3 +26,4 @@ minimumReleaseAgeExclude:
   - "@tobilu/qmd"
   - "vercel"
   - "@vercel/cli-config"
+  - "t3"

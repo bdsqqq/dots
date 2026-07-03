@@ -12,6 +12,7 @@
     "npm": "^11.14.1",
     "openportal": "^0.1.32",
     "parallel-web-cli": "^0.2.0",
+    "t3": "0.0.29-nightly.20260703.719",
     "turbo": "^2.9.14",
     "typescript": "^6.0.3",
     "vercel": "^54.2.0"
