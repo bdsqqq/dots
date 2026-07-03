@@ -17,6 +17,17 @@
       workspacePath = "${configDir}/pnpm-workspace.yaml";
       configYamlPath = "${configDir}/config.yaml";
       configRcPath = "${configDir}/rc";
+      activationPath = lib.makeBinPath (
+        [
+          pkgs.nodejs
+          pkgs.pnpm
+          pkgs.python3
+          pkgs.unzip
+        ] ++ lib.optionals pkgs.stdenv.isLinux [
+          pkgs.gcc
+          pkgs.gnumake
+        ]
+      );
     in
     {
       home.sessionVariables.PNPM_HOME = pnpmHome;
@@ -51,7 +62,7 @@
         export PNPM_HOME
         export CI=true
         export PYTHON="${pkgs.python3}/bin/python3"
-        export PATH="${pnpmHome}:${pkgs.nodejs}/bin:${pkgs.pnpm}/bin:${pkgs.python3}/bin:${pkgs.unzip}/bin:$PATH"
+        export PATH="${pnpmHome}:${activationPath}:$PATH"
 
         mkdir -p "$PNPM_HOME" "$GLOBAL_PROJECT_DIR" "${config.xdg.configHome}/pnpm"
 
