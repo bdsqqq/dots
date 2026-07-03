@@ -50,7 +50,8 @@
         CONFIG_RC="${configRcPath}"
         export PNPM_HOME
         export CI=true
-        export PATH="${pnpmHome}:${pkgs.nodejs}/bin:${pkgs.pnpm}/bin:${pkgs.unzip}/bin:$PATH"
+        export PYTHON="${pkgs.python3}/bin/python3"
+        export PATH="${pnpmHome}:${pkgs.nodejs}/bin:${pkgs.pnpm}/bin:${pkgs.python3}/bin:${pkgs.unzip}/bin:$PATH"
 
         mkdir -p "$PNPM_HOME" "$GLOBAL_PROJECT_DIR" "${config.xdg.configHome}/pnpm"
 
