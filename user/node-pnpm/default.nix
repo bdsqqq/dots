@@ -61,7 +61,7 @@
         ln -sf "$MANIFEST" "$GLOBAL_PROJECT_DIR/package.json"
         ln -sf "$WORKSPACE" "$GLOBAL_PROJECT_DIR/pnpm-workspace.yaml"
 
-        "${pkgs.pnpm}/bin/pnpm" install --dir "$GLOBAL_PROJECT_DIR" --prod || true
+        "${pkgs.pnpm}/bin/pnpm" install --dir "$GLOBAL_PROJECT_DIR" --prod --no-frozen-lockfile || true
 
         if [ -d "$GLOBAL_PROJECT_DIR/node_modules/.bin" ]; then
           for bin in "$GLOBAL_PROJECT_DIR/node_modules/.bin"/*; do
