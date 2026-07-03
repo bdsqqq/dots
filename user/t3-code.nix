@@ -14,6 +14,7 @@ in
         runtimeInputs = with pkgs; [
           coreutils
           git
+          gnused
           nodejs
           openssh
           pnpm
@@ -76,6 +77,6 @@ in
       };
     };
 }
-// lib.optionalAttrs isLinux {
+  // lib.optionalAttrs isLinux {
   users.users.bdsqqq.linger = true;
 }
