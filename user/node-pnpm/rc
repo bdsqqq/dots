@@ -10,3 +10,4 @@ minimum-release-age-exclude[]=@earendil-works/pi-ai
 minimum-release-age-exclude[]=@earendil-works/pi-agent-core
 minimum-release-age-exclude[]=@earendil-works/pi-coding-agent
 minimum-release-age-exclude[]=@earendil-works/pi-tui
+minimum-release-age-exclude[]=t3

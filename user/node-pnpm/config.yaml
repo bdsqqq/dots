@@ -11,3 +11,4 @@ minimumReleaseAgeExclude:
   - "@earendil-works/pi-agent-core"
   - "@earendil-works/pi-coding-agent"
   - "@earendil-works/pi-tui"
+  - "t3"
