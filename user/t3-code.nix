@@ -7,6 +7,7 @@ in
     let
       pnpmHome = config.home.sessionVariables.PNPM_HOME;
       pnpmGlobalBin = "${pnpmHome}/global/5/node_modules/.bin";
+      t3Bin = "${pnpmGlobalBin}/t3";
       t3CodeServe = pkgs.writeShellApplication {
         name = "t3-code-serve";
         runtimeInputs = with pkgs; [
@@ -22,21 +23,21 @@ in
           export PNPM_HOME="${pnpmHome}"
           export T3CODE_HOME="${config.home.homeDirectory}/.t3"
           export T3CODE_NO_BROWSER=true
-          export PATH="${pnpmHome}:${pnpmGlobalBin}:/opt/homebrew/bin:/usr/local/bin:$PATH"
+          export PATH="${pnpmGlobalBin}:${pnpmHome}:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
           for _ in $(seq 1 60); do
-            if command -v t3 >/dev/null 2>&1; then
+            if [ -x "${t3Bin}" ]; then
               break
             fi
             sleep 1
           done
 
-          if ! command -v t3 >/dev/null 2>&1; then
-            echo "t3-code-serve: t3 command not found; run home-manager activation first" >&2
+          if [ ! -x "${t3Bin}" ]; then
+            echo "t3-code-serve: ${t3Bin} not found; run home-manager activation first" >&2
             exit 127
           fi
 
-          exec t3 serve \
+          exec "${t3Bin}" serve \
             --host 127.0.0.1 \
             --port 3773 \
             --tailscale-serve \
