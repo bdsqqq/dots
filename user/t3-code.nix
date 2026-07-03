@@ -1,6 +1,7 @@
 { lib, hostSystem ? null, ... }:
 let
   isDarwin = hostSystem != null && lib.hasInfix "darwin" hostSystem;
+  isLinux = hostSystem != null && lib.hasInfix "linux" hostSystem;
 in
 {
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }:
@@ -16,7 +17,7 @@ in
           nodejs
           openssh
           pnpm
-        ];
+        ] ++ lib.optionals isLinux [ tailscale ];
         text = ''
           set -euo pipefail
 
@@ -48,8 +49,21 @@ in
     in
     {
       home.packages = [ t3CodeServe ];
-
-      launchd.agents.t3-code = lib.mkIf isDarwin {
+    }
+    // lib.optionalAttrs isLinux {
+      systemd.user.services.t3-code = {
+        Unit.Description = "T3 Code daemon";
+        Service = {
+          ExecStart = "${t3CodeServe}/bin/t3-code-serve";
+          Restart = "on-failure";
+          RestartSec = "10s";
+          WorkingDirectory = config.home.homeDirectory;
+        };
+        Install.WantedBy = [ "default.target" ];
+      };
+    }
+    // lib.optionalAttrs isDarwin {
+      launchd.agents.t3-code = {
         enable = true;
         config = {
           ProgramArguments = [ "${t3CodeServe}/bin/t3-code-serve" ];
@@ -61,4 +75,7 @@ in
         };
       };
     };
+}
+// lib.optionalAttrs isLinux {
+  users.users.bdsqqq.linger = true;
 }
