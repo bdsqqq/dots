@@ -1,11 +1,10 @@
 { ... }:
 {
   home-manager.users.bdsqqq =
-    {
-      config,
-      pkgs,
-      lib,
-      ...
+    { config
+    , pkgs
+    , lib
+    , ...
     }:
     let
       pnpmHome = "${config.home.homeDirectory}/.local/share/pnpm";
@@ -50,6 +49,7 @@
         CONFIG_YAML="${configYamlPath}"
         CONFIG_RC="${configRcPath}"
         export PNPM_HOME
+        export CI=true
         export PATH="${pnpmHome}:${pkgs.nodejs}/bin:${pkgs.pnpm}/bin:${pkgs.unzip}/bin:$PATH"
 
         mkdir -p "$PNPM_HOME" "$GLOBAL_PROJECT_DIR" "${config.xdg.configHome}/pnpm"
