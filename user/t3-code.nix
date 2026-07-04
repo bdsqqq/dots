@@ -39,12 +39,47 @@ in
             exit 127
           fi
 
-          exec "${t3Bin}" serve \
+          runtimeStatePath="$T3CODE_HOME/userdata/server-runtime.json"
+          mkdir -p "$(dirname "$runtimeStatePath")"
+
+          childPid=""
+          runtimeStatePid=""
+          cleanup() {
+            exitStatus=$?
+            trap - EXIT INT TERM
+
+            if [ -n "$childPid" ] && kill -0 "$childPid" 2>/dev/null; then
+              kill "$childPid" 2>/dev/null || true
+              wait "$childPid" 2>/dev/null || true
+            fi
+
+            if [ -n "$runtimeStatePid" ] && [ -f "$runtimeStatePath" ]; then
+              currentRuntimePid="$(sed -n 's/.*"pid":\([0-9][0-9]*\).*/\1/p' "$runtimeStatePath")"
+              if [ "$currentRuntimePid" = "$runtimeStatePid" ]; then
+                rm -f "$runtimeStatePath"
+              fi
+            fi
+
+            exit "$exitStatus"
+          }
+          trap cleanup EXIT INT TERM
+
+          "${t3Bin}" serve \
             --host 127.0.0.1 \
             --port 3773 \
+            --base-dir "$T3CODE_HOME" \
             --tailscale-serve \
             --tailscale-serve-port 443 \
-            "${config.home.homeDirectory}"
+            "${config.home.homeDirectory}" &
+
+          childPid="$!"
+          runtimeStatePid="$childPid"
+          startedAt="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          runtimeStateTmp="$runtimeStatePath.tmp.$$"
+          printf '{"version":1,"pid":%s,"host":"127.0.0.1","port":3773,"origin":"http://127.0.0.1:3773","startedAt":"%s"}\n' "$runtimeStatePid" "$startedAt" > "$runtimeStateTmp"
+          mv "$runtimeStateTmp" "$runtimeStatePath"
+
+          wait "$childPid"
         '';
       };
     in
