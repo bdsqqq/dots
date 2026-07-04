@@ -173,65 +173,67 @@
                        return 1  # prevent default history add
                      }
 
-                     # prompt (minimal with async git)
-                     autoload -U colors && colors
-                     setopt PROMPT_SUBST
+                     if [[ -t 1 ]]; then
+                       # prompt (minimal with async git)
+                       autoload -U colors && colors
+                       setopt PROMPT_SUBST
 
-                     typeset -g _git_prompt_info=""
-                     typeset -g _git_prompt_fd=0
+                       typeset -g _git_prompt_info=""
+                       typeset -g _git_prompt_fd=0
 
-                     _git_prompt_done() {
-                       local fd=$1
-                       _git_prompt_info="$(<&$fd)"
-                       zle -F $fd
-                       exec {fd}>&-
-                       _git_prompt_fd=0
-                       zle && zle reset-prompt
-                     }
+                       _git_prompt_done() {
+                         local fd=$1
+                         _git_prompt_info="$(<&$fd)"
+                         zle -F $fd
+                         exec {fd}>&-
+                         _git_prompt_fd=0
+                         zle && zle reset-prompt
+                       }
 
-                     _async_git_prompt() {
-                       # close previous fd if still open
-                       (( _git_prompt_fd )) && { zle -F $_git_prompt_fd; exec {_git_prompt_fd}>&-; }
-                       
-                       # start async job, open fd to read output
-                       exec {_git_prompt_fd}< <(
-                         local b dirty=""
-                         b=$(git symbolic-ref --short HEAD 2>/dev/null) || b=$(git rev-parse --short HEAD 2>/dev/null) || exit 0
-                         if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
-                           dirty="*"
+                       _async_git_prompt() {
+                         # close previous fd if still open
+                         (( _git_prompt_fd )) && { zle -F $_git_prompt_fd; exec {_git_prompt_fd}>&-; }
+
+                         # start async job, open fd to read output
+                         exec {_git_prompt_fd}< <(
+                           local b dirty=""
+                           b=$(git symbolic-ref --short HEAD 2>/dev/null) || b=$(git rev-parse --short HEAD 2>/dev/null) || exit 0
+                           if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+                             dirty="*"
+                           fi
+                           print -r -- "[$b]$dirty"
+                         )
+
+                         # register callback for when data is ready
+                         zle -F $_git_prompt_fd _git_prompt_done
+                       }
+
+                       precmd_functions+=(_async_git_prompt)
+
+                       # auto-reload shell when nix generation changes
+                       typeset -g _nix_gen_cached=""
+                       _nix_gen_check() {
+                         local gen_file="/run/current-system/sw/darwin-version"
+                         local current=$(cat "$gen_file" 2>/dev/null)
+                         if [[ -n "$_nix_gen_cached" && -n "$current" && "$current" != "$_nix_gen_cached" ]]; then
+                           exec zsh
                          fi
-                         print -r -- "[$b]$dirty"
-                       )
-                       
-                       # register callback for when data is ready
-                       zle -F $_git_prompt_fd _git_prompt_done
-                     }
+                         _nix_gen_cached="$current"
+                       }
+                       precmd_functions+=(_nix_gen_check)
 
-                     precmd_functions+=(_async_git_prompt)
+                       # strip logfmt tag from history recall (up arrow)
+                       _strip_history_tag() {
+                         zle up-line-or-history
+                         BUFFER="''${BUFFER%  \# *=*}"
+                       }
+                       zle -N up-line-or-history-clean _strip_history_tag
+                       bindkey '^[[A' up-line-or-history-clean  # up arrow
+                       bindkey '^[OA' up-line-or-history-clean  # up arrow (alternate)
 
-                     # auto-reload shell when nix generation changes
-                     typeset -g _nix_gen_cached=""
-                     _nix_gen_check() {
-                       local gen_file="/run/current-system/sw/darwin-version"
-                       local current=$(cat "$gen_file" 2>/dev/null)
-                       if [[ -n "$_nix_gen_cached" && -n "$current" && "$current" != "$_nix_gen_cached" ]]; then
-                         exec zsh
-                       fi
-                       _nix_gen_cached="$current"
-                     }
-                     precmd_functions+=(_nix_gen_check)
-
-                     # strip logfmt tag from history recall (up arrow)
-                     _strip_history_tag() {
-                       zle up-line-or-history
-                       BUFFER="''${BUFFER%  \# *=*}"
-                     }
-                     zle -N up-line-or-history-clean _strip_history_tag
-                     bindkey '^[[A' up-line-or-history-clean  # up arrow
-                     bindkey '^[OA' up-line-or-history-clean  # up arrow (alternate)
-
-                     PROMPT='%{$fg_bold[white]%}⁂ %c%{$reset_color%}$_git_prompt_info
+                       PROMPT='%{$fg_bold[white]%}⁂ %c%{$reset_color%}$_git_prompt_info
             %{$fg[white]%}└ %{$reset_color%}'
+                     fi
           '';
         };
       };

@@ -11,21 +11,24 @@ in {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
     programs.fzf = {
       enable = true;
+      enableZshIntegration = false;
       defaultCommand = "rg --files --hidden --follow";
       defaultOptions = [ "--height=40%" "--layout=reverse" ];
     };
 
     programs.zsh.initContent = ''
-      # custom fzf file widget (ctrl+f)
-      _fzf_files() {
-        local selected=$(rg --files --hidden --follow | fzf)
-        LBUFFER="''${LBUFFER}''${selected}"
-        zle reset-prompt
-      }
-      zle -N _fzf_files
-      bindkey '^F' _fzf_files
+      if [[ -t 1 ]]; then
+        # custom fzf file widget (ctrl+f)
+        _fzf_files() {
+          local selected=$(rg --files --hidden --follow | fzf)
+          LBUFFER="''${LBUFFER}''${selected}"
+          zle reset-prompt
+        }
+        zle -N _fzf_files
+        bindkey '^F' _fzf_files
 
-      ${historyWidget}
+        ${historyWidget}
+      fi
     '';
   };
 }
