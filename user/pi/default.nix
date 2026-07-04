@@ -62,6 +62,16 @@ in {
     home.activation.installPiExtensionDeps =
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         if [ -f "${repoPi}/package.json" ]; then
+          export PATH="${lib.makeBinPath (
+            [
+              pkgs.nodejs
+              pkgs.pnpm
+              pkgs.python3
+            ] ++ lib.optionals pkgs.stdenv.isLinux [
+              pkgs.gcc
+              pkgs.gnumake
+            ]
+          )}:$PATH"
           "${pkgs.pnpm}/bin/pnpm" install --dir "${repoPi}" --frozen-lockfile || true
         fi
       '';

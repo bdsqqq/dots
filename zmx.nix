@@ -266,8 +266,10 @@ let
             zxs
             zle reset-prompt
           }
-          zle -N _zmx_connect
-          bindkey '^s' _zmx_connect
+          if [[ -t 1 ]]; then
+            zle -N _zmx_connect
+            bindkey '^s' _zmx_connect
+          fi
         '';
       };
   };
