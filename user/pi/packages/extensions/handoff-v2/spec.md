@@ -200,7 +200,7 @@ expected behavior:
 target implementation should reuse pi’s compaction preparation if available from exports:
 
 ```ts
-import { prepareCompaction } from "@mariozechner/pi-coding-agent";
+import { prepareCompaction } from "@earendil-works/pi-coding-agent";
 
 const pathEntries = ctx.sessionManager.getBranch();
 const settings = ctx.settingsManager.getCompactionSettings(); // exact API availability to verify

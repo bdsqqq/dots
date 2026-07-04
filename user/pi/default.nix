@@ -7,7 +7,6 @@ let
   repoExtensions =
     "${homeDir}/commonplace/01_files/nix/user/pi/packages/extensions";
   repoAgentPrompts = "${homeDir}/commonplace/01_files/nix/user/agents/agents";
-  authPath = "${homeDir}/.pi/agent/auth.json";
 in {
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
     home.file.".pi/agent/settings.json".source =
@@ -47,10 +46,6 @@ in {
         GLOBAL_DIR="$PNPM_HOME/global/5"
         PI_WRAPPER="$PNPM_HOME/pi"
         PI_CLI="$GLOBAL_DIR/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
-        PI_MARIO_CLI="$GLOBAL_DIR/node_modules/@mariozechner/pi-coding-agent/dist/cli.js"
-        if [ ! -e "$PI_CLI" ]; then
-          PI_CLI="$PI_MARIO_CLI"
-        fi
         if [ -e "$PI_CLI" ]; then
           rm -f "$PI_WRAPPER"
           printf '%s\n' '#!/usr/bin/env bash' "export NODE_PATH=\"${repoPi}/node_modules/.pnpm/node_modules:${repoPi}/node_modules\"" "export PI_BIN=\"$PI_WRAPPER\"" "exec ${pkgs.nodejs}/bin/node \"$PI_CLI\" \"\$@\"" > "$PI_WRAPPER"
