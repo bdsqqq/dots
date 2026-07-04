@@ -10,6 +10,7 @@ on:
       - "user/pi/tsdown.config.ts"
       - "user/pi/tsconfig.build.json"
       - "user/pi/package.json"
+      - "user/pi/pnpm-lock.yaml"
   workflow_dispatch:
 
 concurrency:
@@ -28,19 +29,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v1
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+          cache: pnpm
+          cache-dependency-path: user/pi/pnpm-lock.yaml
 
-      - run: bun install
+      - run: pnpm install --frozen-lockfile
 
-      - run: bun run build
+      - run: pnpm run build
 
       - name: test
-        run: bunx vitest run --exclude 'packages/extensions/github/**'
+        run: pnpm exec vitest run --exclude 'packages/extensions/github/**'
         env:
           GH_TOKEN: ${{ github.token }}
 

@@ -46,7 +46,7 @@ export default defineConfig({
   dts: { resolver: "oxc" },
   tsconfig: "tsconfig.build.json",
   deps: {
-    neverBundle: [/^@mariozechner\//, /^@sinclair\//],
+    neverBundle: [/^@earendil-works\//, /^@sinclair\//],
   },
   // resolve @bds_pi/* to source so they get bundled in
   alias: bdsPiAlias,
