@@ -1,10 +1,11 @@
 { ... }:
 {
   home-manager.users.bdsqqq =
-    { config
-    , pkgs
-    , lib
-    , ...
+    {
+      config,
+      pkgs,
+      lib,
+      ...
     }:
     let
       pnpmHome = "${config.home.homeDirectory}/.local/share/pnpm";
@@ -23,7 +24,8 @@
           pkgs.pnpm
           pkgs.python3
           pkgs.unzip
-        ] ++ lib.optionals pkgs.stdenv.isLinux [
+        ]
+        ++ lib.optionals pkgs.stdenv.isLinux [
           pkgs.gcc
           pkgs.gnumake
         ]
@@ -79,7 +81,13 @@
           for bin in "$GLOBAL_PROJECT_DIR/node_modules/.bin"/*; do
             name="$(basename "$bin")"
             [ "$name" = "pi" ] && continue
-            ln -sf "$bin" "$PNPM_HOME/$name"
+            wrapper="$PNPM_HOME/$name"
+            rm -f "$wrapper"
+            printf '%s\n' \
+              '#!/usr/bin/env bash' \
+              "exec \"$bin\" \"\$@\"" \
+              > "$wrapper"
+            chmod +x "$wrapper"
           done
         fi
       '';
