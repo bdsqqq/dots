@@ -15,6 +15,7 @@ in
           coreutils
           git
           gnused
+          jq
           nodejs
           openssh
           pnpm
@@ -41,6 +42,29 @@ in
 
           runtimeStatePath="$T3CODE_HOME/userdata/server-runtime.json"
           mkdir -p "$(dirname "$runtimeStatePath")"
+
+          settingsPath="$T3CODE_HOME/userdata/settings.json"
+          if [ ! -s "$settingsPath" ]; then
+            printf '{}\n' > "$settingsPath"
+          fi
+
+          # Keep provider probes quiet unless this daemon can actually run the CLI.
+          settingsFilter="."
+          if ! command -v claude >/dev/null 2>&1; then
+            settingsFilter="$settingsFilter | .providers.claudeAgent.enabled = false"
+          fi
+          if ! command -v grok >/dev/null 2>&1; then
+            settingsFilter="$settingsFilter | .providers.grok.enabled = false"
+          fi
+          if [ "$settingsFilter" != "." ]; then
+            settingsTmp="$settingsPath.tmp.$$"
+            if jq "$settingsFilter" "$settingsPath" > "$settingsTmp"; then
+              mv "$settingsTmp" "$settingsPath"
+            else
+              rm -f "$settingsTmp"
+              echo "t3-code-serve: failed to update provider settings" >&2
+            fi
+          fi
 
           childPid=""
           runtimeStatePid=""
