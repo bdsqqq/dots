@@ -62,6 +62,7 @@ in {
     home.activation.installPiExtensionDeps =
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         if [ -f "${repoPi}/package.json" ]; then
+          export PNPM_HOME="${homeDir}/.local/share/pnpm"
           export PATH="${lib.makeBinPath (
             [
               pkgs.nodejs
