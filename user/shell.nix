@@ -97,9 +97,11 @@
         lib.hm.dag.entryAfter [ "writeBoundary" ] ''
           mkdir -p "${config.home.homeDirectory}/commonplace/00_inbox" \
                    "${config.home.homeDirectory}/commonplace/01_files" \
+                   "${config.home.homeDirectory}/commonplace/01_files/_utilities/agent-memories" \
                    "${config.home.homeDirectory}/commonplace/02_temp"
           touch "${config.home.homeDirectory}/commonplace/00_inbox/.keep" \
                 "${config.home.homeDirectory}/commonplace/01_files/.keep" \
+                "${config.home.homeDirectory}/commonplace/01_files/_utilities/agent-memories/.keep" \
                 "${config.home.homeDirectory}/commonplace/02_temp/.keep" || true
         '';
 

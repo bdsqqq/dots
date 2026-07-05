@@ -51,6 +51,20 @@
         pkgs.unzip
       ];
 
+      xdg.configFile."qmd/index.yml" = {
+        force = true;
+        text = ''
+          collections:
+            agent-memories:
+              path: ${config.home.homeDirectory}/commonplace/01_files/_utilities/agent-memories
+              pattern: "**/*.md"
+          models:
+            embed: hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf
+            generate: hf:tobil/qmd-query-expansion-1.7B-gguf/qmd-query-expansion-1.7B-q4_k_m.gguf
+            rerank: hf:ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/qwen3-reranker-0.6b-q8_0.gguf
+        '';
+      };
+
       home.activation.installPnpmGlobals = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         set -euo pipefail
 
@@ -76,6 +90,13 @@
         ln -sf "$WORKSPACE" "$GLOBAL_PROJECT_DIR/pnpm-workspace.yaml"
 
         "${pkgs.pnpm}/bin/pnpm" install --dir "$GLOBAL_PROJECT_DIR" --prod --no-frozen-lockfile || true
+
+        NODE_MODULE_ABI="$(${pkgs.nodejs}/bin/node -p 'process.versions.modules')"
+        ABI_STAMP="$GLOBAL_PROJECT_DIR/.node-module-abi"
+        if [ -d "$GLOBAL_PROJECT_DIR/node_modules/.pnpm" ] && [ "$(cat "$ABI_STAMP" 2>/dev/null || true)" != "$NODE_MODULE_ABI" ]; then
+          "${pkgs.pnpm}/bin/pnpm" rebuild --dir "$GLOBAL_PROJECT_DIR" better-sqlite3
+          printf '%s\n' "$NODE_MODULE_ABI" > "$ABI_STAMP"
+        fi
 
         if [ -d "$GLOBAL_PROJECT_DIR/node_modules/.bin" ]; then
           for bin in "$GLOBAL_PROJECT_DIR/node_modules/.bin"/*; do
