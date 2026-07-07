@@ -31,7 +31,6 @@ in
     ../../bundles/dev.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
-    ../../user/t3-code.nix
   ]) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix)
     [ ./hardware-configuration.nix ];
 
