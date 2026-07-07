@@ -15,7 +15,6 @@ in {
     ../../system/kanata.nix
     ../../system/o11y
     ../../user/gaming.nix
-    ../../user/t3-code.nix
   ];
 
   # home-manager module enabled at flake level; user-layer provided via bundles
