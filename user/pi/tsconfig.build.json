@@ -49,7 +49,7 @@
       "@bds_pi/session-name": ["./packages/extensions/session-name/index.ts"],
       "@bds_pi/skill": ["./packages/extensions/skill/index.ts"],
       "@bds_pi/system-prompt": ["./packages/extensions/system-prompt/index.ts"],
-      "@bds_pi/task": ["./packages/extensions/task/index.ts"],
+      "@bds_pi/delegate": ["./packages/extensions/delegate/index.ts"],
       "@bds_pi/tool-harness": ["./packages/extensions/tool-harness/index.ts"],
       "@bds_pi/undo-edit": ["./packages/extensions/undo-edit/index.ts"],
       "@bds_pi/web-search": ["./packages/extensions/web-search/index.ts"],

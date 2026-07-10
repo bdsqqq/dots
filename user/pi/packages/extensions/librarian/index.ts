@@ -31,6 +31,7 @@ import {
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
+  applySessionMeta,
   getFinalOutput,
   renderAgentTree,
   subAgentResult,
@@ -155,9 +156,9 @@ export function createLibrarianTool(
     }),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      let sessionId = "";
+      let parentSession: string | undefined;
       try {
-        sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
+        parentSession = ctx.sessionManager?.getSessionFile?.() ?? undefined;
       } catch {
         /* graceful */
       }
@@ -183,13 +184,14 @@ export function createLibrarianTool(
         extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
         systemPromptBody: config.systemPrompt,
         signal,
-        sessionId,
+        session: { persist: false, parentSession },
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
           singleResult.model = partial.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
+          applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
             onUpdate({
               content: [
@@ -210,6 +212,7 @@ export function createLibrarianTool(
       singleResult.model = result.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
+      applySessionMeta(singleResult, result.session);
 
       const isError =
         result.exitCode !== 0 ||

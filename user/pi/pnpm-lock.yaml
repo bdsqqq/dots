@@ -161,6 +161,9 @@ importers:
       '@bds_pi/interpolate':
         specifier: workspace:*
         version: link:../interpolate
+      '@earendil-works/pi-coding-agent':
+        specifier: ^0.80.2
+        version: 0.80.2(ws@8.21.0)(zod@4.4.3)
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: ^0.80.2
@@ -347,6 +350,64 @@ importers:
       '@bds_pi/tool-policy':
         specifier: workspace:*
         version: link:../../core/tool-policy
+      typebox:
+        specifier: ^1.1.24
+        version: 1.1.38
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: ^0.80.2
+        version: 0.80.2(ws@8.21.0)(zod@4.4.3)
+      '@earendil-works/pi-tui':
+        specifier: ^0.80.2
+        version: 0.80.2
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@26.0.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+
+  packages/extensions/delegate:
+    dependencies:
+      '@bds_pi/bash':
+        specifier: workspace:*
+        version: link:../bash
+      '@bds_pi/config':
+        specifier: workspace:*
+        version: link:../../core/config
+      '@bds_pi/create-file':
+        specifier: workspace:*
+        version: link:../create-file
+      '@bds_pi/edit-file':
+        specifier: workspace:*
+        version: link:../edit-file
+      '@bds_pi/finder':
+        specifier: workspace:*
+        version: link:../finder
+      '@bds_pi/format-file':
+        specifier: workspace:*
+        version: link:../format-file
+      '@bds_pi/glob':
+        specifier: workspace:*
+        version: link:../glob
+      '@bds_pi/grep':
+        specifier: workspace:*
+        version: link:../grep
+      '@bds_pi/ls':
+        specifier: workspace:*
+        version: link:../ls
+      '@bds_pi/pi-spawn':
+        specifier: workspace:*
+        version: link:../../core/pi-spawn
+      '@bds_pi/prompt-patch':
+        specifier: workspace:*
+        version: link:../../core/prompt-patch
+      '@bds_pi/read':
+        specifier: workspace:*
+        version: link:../read
+      '@bds_pi/skill':
+        specifier: workspace:*
+        version: link:../skill
+      '@bds_pi/sub-agent-render':
+        specifier: workspace:*
+        version: link:../../core/sub-agent-render
       typebox:
         specifier: ^1.1.24
         version: 1.1.38
@@ -922,64 +983,6 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: ^0.80.2
         version: 0.80.2(ws@8.21.0)(zod@4.4.3)
-
-  packages/extensions/task:
-    dependencies:
-      '@bds_pi/bash':
-        specifier: workspace:*
-        version: link:../bash
-      '@bds_pi/config':
-        specifier: workspace:*
-        version: link:../../core/config
-      '@bds_pi/create-file':
-        specifier: workspace:*
-        version: link:../create-file
-      '@bds_pi/edit-file':
-        specifier: workspace:*
-        version: link:../edit-file
-      '@bds_pi/finder':
-        specifier: workspace:*
-        version: link:../finder
-      '@bds_pi/format-file':
-        specifier: workspace:*
-        version: link:../format-file
-      '@bds_pi/glob':
-        specifier: workspace:*
-        version: link:../glob
-      '@bds_pi/grep':
-        specifier: workspace:*
-        version: link:../grep
-      '@bds_pi/ls':
-        specifier: workspace:*
-        version: link:../ls
-      '@bds_pi/pi-spawn':
-        specifier: workspace:*
-        version: link:../../core/pi-spawn
-      '@bds_pi/prompt-patch':
-        specifier: workspace:*
-        version: link:../../core/prompt-patch
-      '@bds_pi/read':
-        specifier: workspace:*
-        version: link:../read
-      '@bds_pi/skill':
-        specifier: workspace:*
-        version: link:../skill
-      '@bds_pi/sub-agent-render':
-        specifier: workspace:*
-        version: link:../../core/sub-agent-render
-      typebox:
-        specifier: ^1.1.24
-        version: 1.1.38
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: ^0.80.2
-        version: 0.80.2(ws@8.21.0)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: ^0.80.2
-        version: 0.80.2
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.4(@types/node@26.0.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
 
   packages/extensions/tool-harness:
     devDependencies:
