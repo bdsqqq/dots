@@ -3,7 +3,7 @@
  *
  * extracts DisplayItem, message parsing, and TUI tree rendering
  * from the generic subagent extension. dedicated tools (finder,
- * oracle, Task) use these for consistent renderResult display.
+ * oracle, delegate) use these for consistent renderResult display.
  *
  * reimplemented here because tools/ can't import from sub-agents/
  * (separate nix store paths).
@@ -12,10 +12,16 @@
 import * as os from "node:os";
 import type { Message } from "@earendil-works/pi-ai";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
-import { Container, Markdown, Text, TruncatedText } from "@earendil-works/pi-tui";
+import {
+  Container,
+  Markdown,
+  Text,
+  TruncatedText,
+} from "@earendil-works/pi-tui";
 import {
   modelCliString,
   type PiSpawnModel,
+  type PiSpawnSessionMeta,
   type UsageStats,
 } from "@bds_pi/pi-spawn";
 import type { ToolCostDetails } from "@bds_pi/tool-cost";
@@ -41,9 +47,23 @@ export interface SingleResult {
   model?: PiSpawnModel;
   stopReason?: string;
   errorMessage?: string;
+  continueId?: string;
+  sessionId?: string;
+  sessionFile?: string;
+  leafId?: string;
 }
 
 // --- message parsing ---
+
+export function applySessionMeta(
+  target: SingleResult,
+  session: PiSpawnSessionMeta | undefined,
+): void {
+  target.continueId = session?.continueId;
+  target.sessionId = session?.sessionId;
+  target.sessionFile = session?.sessionFile;
+  target.leafId = session?.leafId;
+}
 
 export function getFinalOutput(messages: Message[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {

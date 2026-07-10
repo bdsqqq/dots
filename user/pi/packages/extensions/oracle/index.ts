@@ -37,6 +37,7 @@ import {
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
+  applySessionMeta,
   getFinalOutput,
   renderAgentTree,
   subAgentResult,
@@ -131,7 +132,7 @@ export function createOracleTool(
       "You should NOT consult the oracle for:\n" +
       "- File reads or simple keyword searches (use Read or Grep directly)\n" +
       "- Codebase searches (use finder)\n" +
-      "- Basic code modifications (do it yourself or use Task)\n\n" +
+      "- Basic code modifications (do it yourself or use delegate)\n\n" +
       "Usage guidelines:\n" +
       "- Be specific about what you want reviewed, planned, or debugged\n" +
       "- Provide relevant context. If you know which files are involved, list them.",
@@ -156,9 +157,9 @@ export function createOracleTool(
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as OracleParams;
-      let sessionId = "";
+      let parentSession: string | undefined;
       try {
-        sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
+        parentSession = ctx.sessionManager?.getSessionFile?.() ?? undefined;
       } catch {
         /* graceful */
       }
@@ -197,13 +198,14 @@ export function createOracleTool(
         extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
         systemPromptBody: config.systemPrompt,
         signal,
-        sessionId,
+        session: { persist: true, parentSession },
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
           singleResult.model = partial.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
+          applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
             onUpdate({
               content: [
@@ -224,6 +226,7 @@ export function createOracleTool(
       singleResult.model = result.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
+      applySessionMeta(singleResult, result.session);
 
       const isError =
         result.exitCode !== 0 ||
@@ -617,8 +620,7 @@ if (import.meta.vitest) {
 
   // E2E eval test - requires PI_E2E=1 and real API keys
   describe.skipIf(!process.env.PI_E2E)("eval: oracle", () => {
-    const E2E_MODEL =
-      process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
+    const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
 
     it("eval: consults oracle and gets a response", async () => {
       const model = getModelFromCliString(E2E_MODEL);

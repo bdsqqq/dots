@@ -23,6 +23,7 @@ import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "typebox";
 import { isPiSpawnModelValue, piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
 import {
+  applySessionMeta,
   getFinalOutput,
   renderAgentTree,
   subAgentResult,
@@ -399,9 +400,10 @@ export function createReadSessionTool(
       }
 
       // spawn sub-agent to extract relevant content
-      let sessionId = "";
+      let parentSession: string | undefined;
       try {
-        sessionId = (ctx as any).sessionManager?.getSessionId?.() ?? "";
+        parentSession =
+          (ctx as any).sessionManager?.getSessionFile?.() ?? undefined;
       } catch {}
 
       const task = `Here is a pi coding agent session transcript:\n\n${markdown}\n\n---\n\nExtract the information relevant to this goal: ${p.goal}`;
@@ -424,13 +426,14 @@ export function createReadSessionTool(
         extensionTools: [],
         systemPromptBody: systemPrompt,
         signal,
-        sessionId,
+        session: { persist: false, parentSession },
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
           singleResult.model = partial.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
+          applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
             onUpdate({
               content: [
@@ -452,6 +455,7 @@ export function createReadSessionTool(
       singleResult.model = result.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
+      applySessionMeta(singleResult, result.session);
 
       const isError =
         result.exitCode !== 0 ||

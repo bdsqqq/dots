@@ -3,7 +3,7 @@
  *
  * extracts the spawn-parse-collect loop from the generic subagent
  * extension into a reusable function. each dedicated tool (finder,
- * oracle, Task) calls piSpawn() with its own config.
+ * oracle, delegate) calls piSpawn() with its own config.
  *
  * uses shared interpolation from @bds_pi/interpolate for template variables
  * ({cwd}, {roots}, {date}, etc.) in system prompts.
@@ -19,6 +19,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { getModel } from "@earendil-works/pi-ai/compat";
 import type { KnownApi, Message, Model } from "@earendil-works/pi-ai";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveGlobalSettingsPath } from "@bds_pi/config";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
 
@@ -69,6 +70,22 @@ export interface UsageStats {
   turns: number;
 }
 
+export interface PiSpawnSession {
+  id?: string;
+  leafId?: string;
+  persist?: boolean;
+  /** source session file to link from a fresh child session header. */
+  parentSession?: string;
+}
+
+export interface PiSpawnSessionMeta {
+  continueId?: string;
+  sessionId?: string;
+  sessionFile?: string;
+  leafId?: string;
+  unsupported?: string;
+}
+
 export interface PiSpawnResult {
   exitCode: number;
   messages: Message[];
@@ -77,6 +94,7 @@ export interface PiSpawnResult {
   model?: PiSpawnModel;
   stopReason?: string;
   errorMessage?: string;
+  session?: PiSpawnSessionMeta;
 }
 
 export interface PiSpawnConfig {
@@ -88,7 +106,7 @@ export interface PiSpawnConfig {
   systemPromptBody?: string;
   signal?: AbortSignal;
   onUpdate?: (result: PiSpawnResult) => void;
-  sessionId?: string;
+  session?: PiSpawnSession;
   repo?: string;
   /**
    * override the global bds config path for the child process.
@@ -181,13 +199,186 @@ export function readAgentPrompt(filename: string): string {
   }
 }
 
+interface ResolvedSessionRouting {
+  args: string[];
+  meta?: PiSpawnSessionMeta;
+  sessionIdForPrompt?: string;
+  unsupported?: string;
+}
+
+function normalizedSessionValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function configuredSessionDir(
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  const sessionDir = normalizedSessionValue(env.PI_CODING_AGENT_SESSION_DIR);
+  if (!sessionDir) return undefined;
+  return sessionDir === "~" || sessionDir.startsWith("~/")
+    ? path.join(os.homedir(), sessionDir.slice(2))
+    : sessionDir;
+}
+
+function readSessionHeaderId(filePath: string): string | undefined {
+  try {
+    const firstLine = fs.readFileSync(filePath, "utf-8").split("\n")[0];
+    if (!firstLine) return undefined;
+    const header = JSON.parse(firstLine) as { type?: unknown; id?: unknown };
+    return header.type === "session" && typeof header.id === "string"
+      ? header.id
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function findLocalSessionFileByExactId(
+  cwd: string,
+  sessionId: string,
+  sessionDir?: string,
+): Promise<string | undefined> {
+  if (!sessionId) return undefined;
+  const sessions = await SessionManager.list(cwd, sessionDir);
+  return sessions.find((session) => session.id === sessionId)?.path;
+}
+
+function materializeSessionFile(sessionManager: SessionManager): void {
+  const sessionFile = sessionManager.getSessionFile();
+  const header = sessionManager.getHeader();
+  if (!sessionFile || !header) {
+    throw new Error("[@bds_pi/pi-spawn] failed to create child session header");
+  }
+
+  try {
+    const fd = fs.openSync(sessionFile, "wx", 0o600);
+    try {
+      fs.writeFileSync(fd, `${JSON.stringify(header)}\n`);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    if (readSessionHeaderId(sessionFile) === header.id) return;
+    throw new Error(
+      `[@bds_pi/pi-spawn] session file already exists with a different id: ${sessionFile}`,
+    );
+  }
+}
+
+async function createLinkedSessionFile(
+  cwd: string,
+  sessionDir: string | undefined,
+  sessionId: string | undefined,
+  parentSession: string | undefined,
+): Promise<{ sessionId: string; sessionFile: string }> {
+  if (sessionId) {
+    const existing = await findLocalSessionFileByExactId(
+      cwd,
+      sessionId,
+      sessionDir,
+    );
+    if (existing) return { sessionId, sessionFile: existing };
+  }
+
+  const sessionManager = SessionManager.create(cwd, sessionDir, {
+    ...(sessionId ? { id: sessionId } : {}),
+    ...(parentSession ? { parentSession } : {}),
+  });
+  materializeSessionFile(sessionManager);
+
+  const createdSessionId = sessionManager.getSessionId();
+  const sessionFile = sessionManager.getSessionFile();
+  if (!sessionFile) {
+    throw new Error("[@bds_pi/pi-spawn] failed to resolve child session file");
+  }
+  return { sessionId: createdSessionId, sessionFile };
+}
+
+function sessionMeta(
+  sessionId: string | undefined,
+  sessionFile: string | undefined,
+  leafId: string | undefined,
+): PiSpawnSessionMeta | undefined {
+  const meta: PiSpawnSessionMeta = {};
+  if (sessionId) {
+    meta.sessionId = sessionId;
+    meta.continueId = sessionId;
+  }
+  if (sessionFile) meta.sessionFile = sessionFile;
+  if (leafId) meta.leafId = leafId;
+  return Object.keys(meta).length > 0 ? meta : undefined;
+}
+
+async function resolveSessionRouting(
+  cwd: string,
+  session: PiSpawnSession | undefined,
+  env: Record<string, string | undefined> = process.env,
+): Promise<ResolvedSessionRouting> {
+  const sessionId = normalizedSessionValue(session?.id);
+  const leafId = normalizedSessionValue(session?.leafId);
+
+  if (leafId) {
+    return {
+      args: [],
+      meta: {
+        ...(sessionId ? { sessionId, continueId: sessionId } : {}),
+        leafId,
+        unsupported: "leafId",
+      },
+      sessionIdForPrompt: sessionId,
+      unsupported:
+        "session.leafId is not supported yet; stable branch-target continuation is not wired.",
+    };
+  }
+
+  if (session?.persist === false) {
+    return { args: ["--no-session"] };
+  }
+
+  const linkedSession = await createLinkedSessionFile(
+    cwd,
+    configuredSessionDir(env),
+    sessionId,
+    normalizedSessionValue(session?.parentSession),
+  );
+  return {
+    args: ["--session", linkedSession.sessionFile],
+    meta: sessionMeta(
+      linkedSession.sessionId,
+      linkedSession.sessionFile,
+      undefined,
+    ),
+    sessionIdForPrompt: linkedSession.sessionId,
+  };
+}
+
 // --- spawn ---
 
 export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
   const useRpc = !!config.followUp;
+  const spawnEnv: Record<string, string | undefined> = {
+    ...process.env,
+    PI_BDS_CONFIG_PATH: config.configPath ?? resolveGlobalSettingsPath(),
+    ...config.env,
+  };
+  if (config.extensionTools !== undefined) {
+    if (config.extensionTools.length === 0) {
+      spawnEnv.PI_INCLUDE_TOOLS = "NONE";
+    } else {
+      spawnEnv.PI_INCLUDE_TOOLS = config.extensionTools.join(",");
+    }
+  }
+
+  const sessionRouting = await resolveSessionRouting(
+    config.cwd,
+    config.session,
+    spawnEnv,
+  );
   const args: string[] = useRpc
-    ? ["--mode", "rpc", "--no-session"]
-    : ["--mode", "json", "-p", "--no-session"];
+    ? ["--mode", "rpc", ...sessionRouting.args]
+    : ["--mode", "json", "-p", ...sessionRouting.args];
 
   if (config.model) args.push("--model", modelCliString(config.model));
   if (config.builtinTools !== undefined) {
@@ -202,18 +393,24 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
   let tmpPromptPath: string | null = null;
 
   const result: PiSpawnResult = {
-    exitCode: 0,
+    exitCode: sessionRouting.unsupported ? 1 : 0,
     messages: [],
     stderr: "",
     usage: zeroUsage(),
+    ...(sessionRouting.meta ? { session: sessionRouting.meta } : {}),
+    ...(sessionRouting.unsupported
+      ? { stopReason: "error", errorMessage: sessionRouting.unsupported }
+      : {}),
   };
+
+  if (sessionRouting.unsupported) return result;
 
   try {
     if (config.systemPromptBody?.trim()) {
       const interpolated = interpolatePromptVars(
         config.systemPromptBody,
         config.cwd,
-        { sessionId: config.sessionId, repo: config.repo },
+        { sessionId: sessionRouting.sessionIdForPrompt, repo: config.repo },
       );
       const tmp = writePromptToTempFile("subagent", interpolated);
       tmpPromptDir = tmp.dir;
@@ -223,20 +420,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
     // in print mode, task is a CLI arg. in RPC mode, sent via stdin prompt command.
     if (!useRpc) {
-      args.push(`Task: ${config.task}`);
-    }
-
-    const spawnEnv: Record<string, string | undefined> = {
-      ...process.env,
-      PI_BDS_CONFIG_PATH: config.configPath ?? resolveGlobalSettingsPath(),
-      ...config.env,
-    };
-    if (config.extensionTools !== undefined) {
-      if (config.extensionTools.length === 0) {
-        spawnEnv.PI_INCLUDE_TOOLS = "NONE";
-      } else {
-        spawnEnv.PI_INCLUDE_TOOLS = config.extensionTools.join(",");
-      }
+      args.push(`Delegated task: ${config.task}`);
     }
 
     let wasAborted = false;
@@ -267,7 +451,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       if (useRpc && proc.stdin) {
         const promptCmd = JSON.stringify({
           type: "prompt",
-          message: `Task: ${config.task}`,
+          message: `Delegated task: ${config.task}`,
         });
         debug("send_prompt");
         proc.stdin.write(promptCmd + "\n");
@@ -432,4 +616,89 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
         /* ignore */
       }
   }
+}
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it } = import.meta.vitest;
+  const tmpRoots: string[] = [];
+
+  const makeTmpDir = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-spawn-test-"));
+    tmpRoots.push(dir);
+    return dir;
+  };
+
+  afterEach(() => {
+    for (const dir of tmpRoots.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  describe("resolveSessionRouting", () => {
+    it("creates a header-only linked session and routes via --session", async () => {
+      const cwd = makeTmpDir();
+      const sessionDir = path.join(cwd, "sessions");
+      const parentSession = path.join(sessionDir, "parent.jsonl");
+
+      const routing = await resolveSessionRouting(
+        cwd,
+        { id: "child-session", parentSession },
+        { PI_CODING_AGENT_SESSION_DIR: sessionDir },
+      );
+
+      expect(routing.args).toEqual(["--session", routing.meta?.sessionFile]);
+      expect(routing.meta).toMatchObject({
+        sessionId: "child-session",
+        continueId: "child-session",
+      });
+
+      const lines = fs
+        .readFileSync(routing.meta!.sessionFile!, "utf-8")
+        .trim()
+        .split("\n");
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0]!)).toMatchObject({
+        type: "session",
+        id: "child-session",
+        cwd,
+        parentSession,
+      });
+    });
+
+    it("resumes only exact ids", async () => {
+      const cwd = makeTmpDir();
+      const sessionDir = path.join(cwd, "sessions");
+      const existing = SessionManager.create(cwd, sessionDir, {
+        id: "existing",
+      });
+      materializeSessionFile(existing);
+
+      const prefixRouting = await resolveSessionRouting(
+        cwd,
+        { id: "exist" },
+        { PI_CODING_AGENT_SESSION_DIR: sessionDir },
+      );
+      const exactRouting = await resolveSessionRouting(
+        cwd,
+        { id: "existing" },
+        { PI_CODING_AGENT_SESSION_DIR: sessionDir },
+      );
+
+      expect(prefixRouting.meta?.sessionId).toBe("exist");
+      expect(prefixRouting.meta?.sessionFile).not.toBe(
+        existing.getSessionFile(),
+      );
+      expect(exactRouting.meta?.sessionFile).toBe(existing.getSessionFile());
+    });
+
+    it("keeps non-persistent sessions ephemeral", async () => {
+      const routing = await resolveSessionRouting(
+        makeTmpDir(),
+        { persist: false },
+        {},
+      );
+
+      expect(routing).toEqual({ args: ["--no-session"] });
+    });
+  });
 }

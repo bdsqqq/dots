@@ -36,6 +36,7 @@ import {
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
+  applySessionMeta,
   getFinalOutput,
   renderAgentTree,
   subAgentResult,
@@ -141,9 +142,9 @@ export function createFinderTool(
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const p = params as FinderParams;
-      let sessionId = "";
+      let parentSession: string | undefined;
       try {
-        sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
+        parentSession = ctx.sessionManager?.getSessionFile?.() ?? undefined;
       } catch {
         /* graceful */
       }
@@ -164,13 +165,14 @@ export function createFinderTool(
         extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
         systemPromptBody: config.systemPrompt,
         signal,
-        sessionId,
+        session: { persist: false, parentSession },
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
           singleResult.model = partial.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
+          applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
             onUpdate({
               content: [
@@ -191,6 +193,7 @@ export function createFinderTool(
       singleResult.model = result.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
+      applySessionMeta(singleResult, result.session);
 
       const isError =
         result.exitCode !== 0 ||
@@ -581,8 +584,7 @@ if (import.meta.vitest) {
   // Layer 2: E2E eval tests (gated by PI_E2E env var)
   // Uses piSpawn which spawns CLI and loads extensions from user's settings
   describe.skipIf(!process.env.PI_E2E)("eval: finder tool", () => {
-    const E2E_MODEL =
-      process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
+    const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
 
     it("eval: searches codebase and returns results", async () => {
       const { piSpawn } = await import("@bds_pi/pi-spawn");
@@ -593,6 +595,7 @@ if (import.meta.vitest) {
         model: E2E_MODEL,
         extensionTools: ["read", "grep", "find", "ls"],
         builtinTools: ["read", "grep", "find", "ls"],
+        session: { persist: false },
       });
 
       expect(result.exitCode).toBe(0);

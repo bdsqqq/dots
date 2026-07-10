@@ -1,6 +1,7 @@
 export { default as bash } from "../packages/extensions/bash/index";
 export { default as codeReview } from "../packages/extensions/code-review/index";
 export { default as createFile } from "../packages/extensions/create-file/index";
+export { default as delegate } from "../packages/extensions/delegate/index";
 export { default as editFile } from "../packages/extensions/edit-file/index";
 export { default as editor } from "../packages/extensions/editor/index";
 export { default as finder } from "../packages/extensions/finder/index";
@@ -21,7 +22,6 @@ export { default as searchSessions } from "../packages/extensions/search-session
 export { default as sessionName } from "../packages/extensions/session-name/index";
 export { default as skill } from "../packages/extensions/skill/index";
 export { default as systemPrompt } from "../packages/extensions/system-prompt/index";
-export { default as task } from "../packages/extensions/task/index";
 export { default as toolHarness } from "../packages/extensions/tool-harness/index";
 export { default as undoEdit } from "../packages/extensions/undo-edit/index";
 export { default as webSearch } from "../packages/extensions/web-search/index";

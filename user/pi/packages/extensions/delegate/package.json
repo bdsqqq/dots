@@ -1,5 +1,5 @@
 {
-  "name": "@bds_pi/task",
+  "name": "@bds_pi/delegate",
   "version": "0.0.1",
   "private": true,
   "main": "./index.ts",

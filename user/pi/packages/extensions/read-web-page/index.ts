@@ -35,6 +35,7 @@ import {
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
+  applySessionMeta,
   getFinalOutput,
   renderAgentTree,
   subAgentResult,
@@ -295,9 +296,9 @@ export function createReadWebPageTool(
 
       // prompt mode: spawn sub-agent to answer a question about the page
       if (p.prompt) {
-        let sessionId = "";
+        let parentSession: string | undefined;
         try {
-          sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
+          parentSession = ctx.sessionManager?.getSessionFile?.() ?? undefined;
         } catch {}
 
         const task = `Here is the content of ${url}:\n\n${content}\n\n---\n\nAnswer this question: ${p.prompt}`;
@@ -320,13 +321,14 @@ export function createReadWebPageTool(
           extensionTools: [],
           systemPromptBody: promptSystem,
           signal,
-          sessionId,
+          session: { persist: false, parentSession },
           onUpdate: (partial) => {
             singleResult.messages = partial.messages;
             singleResult.usage = partial.usage;
             singleResult.model = partial.model;
             singleResult.stopReason = partial.stopReason;
             singleResult.errorMessage = partial.errorMessage;
+            applySessionMeta(singleResult, partial.session);
             if (onUpdate) {
               onUpdate({
                 content: [
@@ -347,6 +349,7 @@ export function createReadWebPageTool(
         singleResult.model = result.model;
         singleResult.stopReason = result.stopReason;
         singleResult.errorMessage = result.errorMessage;
+        applySessionMeta(singleResult, result.session);
 
         const isError =
           result.exitCode !== 0 ||

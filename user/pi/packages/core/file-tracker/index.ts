@@ -66,7 +66,7 @@ function ensureDir(sessionId: string): void {
  * the toolCallId comes from the execute() function's first argument.
  * returns the change ID (UUID) for the written record.
  *
- * one tool call can produce multiple changes (e.g., Task sub-agent
+ * one tool call can produce multiple changes (e.g., delegate sub-agent
  * creating several files). each gets a unique UUID, stored as
  * {toolCallId}.{uuid}.
  */

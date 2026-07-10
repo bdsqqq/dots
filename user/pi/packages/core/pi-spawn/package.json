@@ -6,7 +6,8 @@
   "types": "index.ts",
   "dependencies": {
     "@bds_pi/config": "workspace:*",
-    "@bds_pi/interpolate": "workspace:*"
+    "@bds_pi/interpolate": "workspace:*",
+    "@earendil-works/pi-coding-agent": "^0.80.2"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "^0.80.2",

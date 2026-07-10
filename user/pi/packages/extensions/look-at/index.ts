@@ -30,6 +30,7 @@ import {
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
+  applySessionMeta,
   getFinalOutput,
   renderAgentTree,
   subAgentResult,
@@ -179,9 +180,9 @@ export function createLookAtTool(
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const p = params as LookAtParams;
-      let sessionId = "";
+      let parentSession: string | undefined;
       try {
-        sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
+        parentSession = ctx.sessionManager?.getSessionFile?.() ?? undefined;
       } catch {}
 
       // build the task prompt: read file(s), then analyze
@@ -227,13 +228,14 @@ export function createLookAtTool(
         extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
         systemPromptBody: systemPrompt,
         signal,
-        sessionId,
+        session: { persist: false, parentSession },
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
           singleResult.model = partial.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
+          applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
             onUpdate({
               content: [
@@ -254,6 +256,7 @@ export function createLookAtTool(
       singleResult.model = result.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
+      applySessionMeta(singleResult, result.session);
 
       const isError =
         result.exitCode !== 0 ||
@@ -356,8 +359,7 @@ if (import.meta.vitest) {
 
   // Layer 2: E2E eval tests (gated by PI_E2E env var)
   describe.skipIf(!process.env.PI_E2E)("eval: look-at tool", () => {
-    const E2E_MODEL =
-      process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
+    const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
 
     it("eval: analyzes a file with real AI", async () => {
       const {
@@ -368,7 +370,8 @@ if (import.meta.vitest) {
         SettingsManager,
         getAgentDir,
       } = await import("@earendil-works/pi-coding-agent");
-      const { SessionManager } = await import("@earendil-works/pi-coding-agent");
+      const { SessionManager } =
+        await import("@earendil-works/pi-coding-agent");
 
       // Parse model string: "provider/model-id"
       const [provider, ...modelIdParts] = E2E_MODEL.split("/");

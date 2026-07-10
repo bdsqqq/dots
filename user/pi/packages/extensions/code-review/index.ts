@@ -32,6 +32,7 @@ import {
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
+  applySessionMeta,
   getFinalOutput,
   renderAgentTree,
   subAgentResult,
@@ -262,9 +263,9 @@ export function createCodeReviewTool(
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const p = params as CodeReviewParams;
-      let sessionId = "";
+      let parentSession: string | undefined;
       try {
-        sessionId = ctx.sessionManager?.getSessionId?.() ?? "";
+        parentSession = ctx.sessionManager?.getSessionFile?.() ?? undefined;
       } catch {}
 
       // compose task prompt
@@ -300,13 +301,14 @@ export function createCodeReviewTool(
         systemPromptBody: systemPrompt,
         followUp: reportFormat,
         signal,
-        sessionId,
+        session: { persist: true, parentSession },
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
           singleResult.model = partial.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
+          applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
             onUpdate({
               content: [
@@ -327,6 +329,7 @@ export function createCodeReviewTool(
       singleResult.model = result.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
+      applySessionMeta(singleResult, result.session);
 
       const isError =
         result.exitCode !== 0 ||
