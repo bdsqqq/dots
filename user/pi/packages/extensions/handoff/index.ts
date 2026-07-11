@@ -87,7 +87,7 @@ const CONFIG_DEFAULTS: HandoffExtConfig = {
   threshold: 0.85,
   model: {
     provider: "openai-codex",
-    id: "gpt-5.4-mini",
+    id: "gpt-5.6-luna",
   },
   prompt: DEFAULT_SUMMARY_PROMPT_SECTIONS,
 };
@@ -1344,7 +1344,7 @@ if (import.meta.vitest) {
     it("validates correct config", () => {
       const config = {
         threshold: 0.85,
-        model: { provider: "openai-codex", id: "gpt-5.4-mini" },
+        model: { provider: "openai-codex", id: "gpt-5.6-luna" },
         prompt: { "handoff-intent": "test" },
       };
       expect(isHandoffConfig(config)).toBe(true);

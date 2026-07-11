@@ -36,7 +36,7 @@ import {
   setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-const READ_SESSION_DEFAULT_MODEL = "openai-codex/gpt-5.4-mini:low";
+const READ_SESSION_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 type ReadSessionExtConfig = {
   model: typeof READ_SESSION_DEFAULT_MODEL | string;

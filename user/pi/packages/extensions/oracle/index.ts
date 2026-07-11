@@ -1,5 +1,5 @@
 /**
- * oracle tool — expert technical advisor via gpt-5.5 high sub-agent.
+ * oracle tool — expert technical advisor via gpt-5.6-sol high sub-agent.
  *
  * replaces the generic subagent(agent: "oracle", task: ...) pattern
  * with a dedicated tool. the model calls
@@ -44,7 +44,7 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 
-const ORACLE_DEFAULT_MODEL = "openai-codex/gpt-5.5:xhigh";
+const ORACLE_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:xhigh";
 
 type OracleExtConfig = {
   model: typeof ORACLE_DEFAULT_MODEL | string;
@@ -620,7 +620,7 @@ if (import.meta.vitest) {
 
   // E2E eval test - requires PI_E2E=1 and real API keys
   describe.skipIf(!process.env.PI_E2E)("eval: oracle", () => {
-    const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
+    const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.6-sol";
 
     it("eval: consults oracle and gets a response", async () => {
       const model = getModelFromCliString(E2E_MODEL);

@@ -441,7 +441,7 @@ if (import.meta.vitest) {
   });
 
   describe.skipIf(!process.env.PI_E2E)("eval: delegate tool", () => {
-    const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
+    const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.6-sol";
     // pi repo root (3 levels up from this file: delegate -> extensions -> packages -> pi)
     const PI_ROOT = path.resolve(__dirname, "..", "..", "..");
 

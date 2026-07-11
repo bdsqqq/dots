@@ -49,7 +49,7 @@ const MAX_CHARS = 64_000;
 const CURL_TIMEOUT_SECS = 30;
 const MAX_REDIRECTS = 5;
 
-const READ_WEB_PAGE_DEFAULT_MODEL = "openai-codex/gpt-5.4-mini:low";
+const READ_WEB_PAGE_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 type ReadWebPageExtConfig = {
   model: typeof READ_WEB_PAGE_DEFAULT_MODEL | string;

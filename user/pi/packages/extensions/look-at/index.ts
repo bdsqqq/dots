@@ -1,5 +1,5 @@
 /**
- * look_at tool — multimodal file analysis via gpt-5.4 mini sub-agent.
+ * look_at tool — multimodal file analysis via gpt-5.6-luna sub-agent.
  *
  * hooks into pi's existing read tool pipeline: the sub-agent calls
  * read(path) which returns images as base64 content parts. the sub-agent
@@ -37,7 +37,7 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 
-const LOOK_AT_DEFAULT_MODEL = "openai-codex/gpt-5.4-mini:low";
+const LOOK_AT_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 type LookAtExtConfig = {
   model: typeof LOOK_AT_DEFAULT_MODEL | string;
@@ -359,7 +359,7 @@ if (import.meta.vitest) {
 
   // Layer 2: E2E eval tests (gated by PI_E2E env var)
   describe.skipIf(!process.env.PI_E2E)("eval: look-at tool", () => {
-    const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
+    const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.6-sol";
 
     it("eval: analyzes a file with real AI", async () => {
       const {

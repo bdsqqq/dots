@@ -42,7 +42,7 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-const FINDER_DEFAULT_MODEL = "openai-codex/gpt-5.4-mini:low";
+const FINDER_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 type FinderExtConfig = {
   model: typeof FINDER_DEFAULT_MODEL | string;
@@ -584,7 +584,7 @@ if (import.meta.vitest) {
   // Layer 2: E2E eval tests (gated by PI_E2E env var)
   // Uses piSpawn which spawns CLI and loads extensions from user's settings
   describe.skipIf(!process.env.PI_E2E)("eval: finder tool", () => {
-    const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.5";
+    const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.6-sol";
 
     it("eval: searches codebase and returns results", async () => {
       const { piSpawn } = await import("@bds_pi/pi-spawn");
