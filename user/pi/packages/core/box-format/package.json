@@ -9,10 +9,10 @@
   "dependencies": {
     "@bds_pi/box-chrome": "workspace:*",
     "@bds_pi/show": "workspace:*",
-    "@earendil-works/pi-tui": "^0.80.2"
+    "@earendil-works/pi-tui": "^0.80.6"
   },
   "devDependencies": {
-    "@earendil-works/pi-tui": "^0.80.2",
+    "@earendil-works/pi-tui": "^0.80.6",
     "vitest": "^3.0.0"
   }
 }

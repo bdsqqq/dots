@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.2",
+    "@earendil-works/pi-coding-agent": "^0.80.6",
     "@openai/codex": "^0.142.4",
     "@tobilu/qmd": "^2.5.3",
     "agent-browser": "^0.25.5",

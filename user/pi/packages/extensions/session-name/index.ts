@@ -19,6 +19,7 @@ import {
   setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
+import { clearSessionMentionCache } from "@bds_pi/mentions";
 
 type SessionNameExtConfig = {
   model: { provider: string; id: string };
@@ -123,6 +124,10 @@ function sessionNameExtension(pi: ExtensionAPI): void {
       messageCount = 0;
       pending = false;
     }
+  });
+
+  pi.on("session_info_changed", () => {
+    clearSessionMentionCache();
   });
 }
 
@@ -308,6 +313,7 @@ if (import.meta.vitest) {
 
       expect([...harness.handlers.keys()].sort()).toEqual([
         "input",
+        "session_info_changed",
         "session_start",
       ]);
     });
@@ -342,6 +348,7 @@ if (import.meta.vitest) {
 
       expect([...harness.handlers.keys()].sort()).toEqual([
         "input",
+        "session_info_changed",
         "session_start",
       ]);
 

@@ -415,6 +415,8 @@ export function createBashTool(
       timeout: Type.Optional(
         Type.Number({
           description: "Timeout in seconds.",
+          minimum: 1,
+          maximum: 2147483,
         }),
       ),
     }),
@@ -493,6 +495,13 @@ export function createBashTool(
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as { cmd: string; cwd?: string; timeout?: number };
+      if (
+        p.timeout !== undefined &&
+        (!Number.isFinite(p.timeout) || p.timeout <= 0 || p.timeout > 2147483)
+      ) {
+        throw new Error("timeout must be between 1 and 2147483 seconds");
+      }
+
       const parsed = parseBackgroundCommand(p.cmd);
       let command = parsed.command;
       let effectiveCwd = p.cwd ? resolveToAbsolute(p.cwd, ctx.cwd) : ctx.cwd;
