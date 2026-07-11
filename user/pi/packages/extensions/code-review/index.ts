@@ -1,7 +1,7 @@
 /**
- * code_review tool — structured diff review via gpt-5.5 high sub-agent.
+ * code_review tool — structured diff review via gpt-5.6-sol high sub-agent.
  *
- * spawns a gpt-5.5 high sub-agent that:
+ * spawns a gpt-5.6-sol high sub-agent that:
  * 1. runs git diff (or other bash command) based on diff_description
  * 2. reads changed files for context
  * 3. produces XML <codeReview> report with per-comment severity/type
@@ -38,7 +38,7 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-const CODE_REVIEW_DEFAULT_MODEL = "openai-codex/gpt-5.5:xhigh";
+const CODE_REVIEW_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:xhigh";
 
 type CodeReviewExtConfig = {
   model: typeof CODE_REVIEW_DEFAULT_MODEL | string;

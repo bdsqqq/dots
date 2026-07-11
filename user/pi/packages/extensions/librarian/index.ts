@@ -1,11 +1,11 @@
 /**
- * librarian tool — cross-repo codebase understanding via gpt-5.5 sub-agent.
+ * librarian tool — cross-repo codebase understanding via gpt-5.6-sol sub-agent.
  *
  * replaces the generic subagent pattern with a dedicated tool. the model
  * calls librarian(query: "...", context?: "...")
  * directly.
  *
- * spawns `pi --mode json` with gpt-5.5, constrained to the
+ * spawns `pi --mode json` with gpt-5.6-sol, constrained to the
  * github tools (read_github, search_github, list_directory_github,
  * list_repositories, glob_github, commit_search, diff). the librarian
  * explores repos thoroughly before providing comprehensive answers.
@@ -37,7 +37,7 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-const LIBRARIAN_DEFAULT_MODEL = "openai-codex/gpt-5.5:low";
+const LIBRARIAN_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:low";
 
 type LibrarianExtConfig = {
   model: typeof LIBRARIAN_DEFAULT_MODEL | string;
@@ -355,7 +355,7 @@ if (import.meta.vitest) {
     it("validates a complete config", () => {
       expect(
         isLibrarianConfig({
-          model: "openai-codex/gpt-5.5:low",
+          model: "openai-codex/gpt-5.6-sol:low",
           extensionTools: ["read_github"],
           builtinTools: [],
           promptFile: "prompt.md",
@@ -403,7 +403,7 @@ if (import.meta.vitest) {
     it("rejects non-array extensionTools", () => {
       expect(
         isLibrarianConfig({
-          model: "openai-codex/gpt-5.5:low",
+          model: "openai-codex/gpt-5.6-sol:low",
           extensionTools: "read_github",
           builtinTools: [],
           promptFile: "prompt.md",
@@ -415,7 +415,7 @@ if (import.meta.vitest) {
     it("rejects extensionTools array with non-strings", () => {
       expect(
         isLibrarianConfig({
-          model: "openai-codex/gpt-5.5:low",
+          model: "openai-codex/gpt-5.6-sol:low",
           extensionTools: ["read_github", 123],
           builtinTools: [],
           promptFile: "prompt.md",
@@ -427,7 +427,7 @@ if (import.meta.vitest) {
     it("rejects non-array builtinTools", () => {
       expect(
         isLibrarianConfig({
-          model: "openai-codex/gpt-5.5:low",
+          model: "openai-codex/gpt-5.6-sol:low",
           extensionTools: [],
           builtinTools: "bash",
           promptFile: "prompt.md",
@@ -439,7 +439,7 @@ if (import.meta.vitest) {
     it("accepts empty arrays for tools", () => {
       expect(
         isLibrarianConfig({
-          model: "openai-codex/gpt-5.5:low",
+          model: "openai-codex/gpt-5.6-sol:low",
           extensionTools: [],
           builtinTools: [],
           promptFile: "",
@@ -451,7 +451,7 @@ if (import.meta.vitest) {
     it("rejects non-string promptFile", () => {
       expect(
         isLibrarianConfig({
-          model: "openai-codex/gpt-5.5:low",
+          model: "openai-codex/gpt-5.6-sol:low",
           extensionTools: [],
           builtinTools: [],
           promptFile: 123,
@@ -463,7 +463,7 @@ if (import.meta.vitest) {
     it("rejects non-string promptString", () => {
       expect(
         isLibrarianConfig({
-          model: "openai-codex/gpt-5.5:low",
+          model: "openai-codex/gpt-5.6-sol:low",
           extensionTools: [],
           builtinTools: [],
           promptFile: "",

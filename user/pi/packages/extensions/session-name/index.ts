@@ -4,7 +4,7 @@
  * fires on the `input` event so the name appears while the agent is still
  * thinking. names the session on the first message, then re-evaluates
  * every `renameInterval` messages (default 10) as the conversation topic
- * may drift. uses gpt-5.4 mini for speed/cost.
+ * may drift. uses gpt-5.6 luna for speed/cost.
  */
 
 import * as fs from "node:fs";
@@ -29,7 +29,7 @@ type SessionNameExtConfig = {
 const CONFIG_DEFAULTS: SessionNameExtConfig = {
   model: {
     provider: "openai-codex",
-    id: "gpt-5.4-mini",
+    id: "gpt-5.6-luna",
   },
   renameInterval: 10,
 };
@@ -210,7 +210,7 @@ if (import.meta.vitest) {
       expect(
         isSessionNameConfig({
           renameInterval: 10,
-          model: { provider: "openai-codex", id: "gpt-5.4-mini" },
+          model: { provider: "openai-codex", id: "gpt-5.6-luna" },
         }),
       ).toBe(true);
     });

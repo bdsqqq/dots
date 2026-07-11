@@ -15,7 +15,7 @@
     "enabled": true
   },
   "lastChangelogVersion": "0.80.6",
-  "defaultModel": "gpt-5.5",
+  "defaultModel": "gpt-5.6-sol",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "steeringMode": "all",
