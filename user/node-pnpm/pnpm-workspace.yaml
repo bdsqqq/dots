@@ -21,9 +21,3 @@ allowBuilds:
   tree-sitter-python: true
   tree-sitter-rust: true
   tree-sitter-typescript: true
-
-minimumReleaseAgeExclude:
-  - "@tobilu/qmd"
-  - "vercel"
-  - "@vercel/cli-config"
-  - "t3"
