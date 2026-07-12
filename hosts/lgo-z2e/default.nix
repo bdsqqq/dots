@@ -118,7 +118,7 @@ in
       autoStart = false;
       user = "bdsqqq";
     };
-    decky-loader.enable = true;
+    decky-loader.enable = false;
     hardware.has.amd.gpu = true;
   };
 
