@@ -2,6 +2,7 @@
   imports = [
     ../system/audio.nix
     ../system/bluetooth.nix
+    ../system/cmux.nix
     ../system/flatpak.nix
     ../user/apps.nix
     ../user/e-ink-glass.nix

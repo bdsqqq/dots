@@ -4,24 +4,15 @@ if !(lib.hasInfix "darwin" hostSystem) then
   { }
 else
   {
-    system.activationScripts.extraActivation.text = lib.mkAfter ''
-      mkdir -p /usr/local/bin
-      ln -sfn "/Applications/cmux.app/Contents/Resources/bin/cmux" /usr/local/bin/cmux
-    '';
-
     homebrew = {
       enable = true;
 
-      taps = [
-        "homebrew/cask"
-        "manaflow-ai/cmux"
-      ];
+      taps = [ "homebrew/cask" ];
 
       casks = [
         # System utilities
         "handy"
         "cleanshot"
-        "cmux"
         "tailscale-app"
 
         # Development tools
