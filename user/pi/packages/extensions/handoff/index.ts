@@ -87,7 +87,7 @@ const CONFIG_DEFAULTS: HandoffExtConfig = {
   threshold: 0.85,
   model: {
     provider: "openai-codex",
-    id: "gpt-5.6-luna",
+    id: "gpt-5.6-terra",
   },
   prompt: DEFAULT_SUMMARY_PROMPT_SECTIONS,
 };
