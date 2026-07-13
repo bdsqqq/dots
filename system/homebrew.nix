@@ -24,7 +24,7 @@ else
         ln -s ${homebrewTrustFile} "$homebrew_config_home/homebrew/trust.json"
         chown -h ${lib.escapeShellArg config.homebrew.user}:staff "$homebrew_config_home/homebrew/trust.json"
 
-        PATH="${config.homebrew.prefix}/bin:${lib.makeBinPath [ pkgs.mas ]}:$PATH" \
+        export PATH="${config.homebrew.prefix}/bin:${lib.makeBinPath [ pkgs.mas ]}:$PATH"
         sudo \
           --preserve-env=PATH \
           --user=${lib.escapeShellArg config.homebrew.user} \
@@ -32,7 +32,7 @@ else
           env \
             HOMEBREW_NO_INSTALL_FROM_API=1 \
             XDG_CONFIG_HOME=${lib.escapeShellArg homebrewConfigHome} \
-            ${config.homebrew.onActivation.brewBundleCmd}
+            ${config.homebrew.onActivation.brewBundleCmd { onlyCheck = false; }}
       else
         echo -e "\e[1;31merror: Homebrew is not installed, skipping...\e[0m" >&2
       fi
