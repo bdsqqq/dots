@@ -1,6 +1,5 @@
 globalDir: "${PNPM_HOME}/global"
 globalBinDir: "${PNPM_HOME}/bin"
-virtualStoreDir: ".pnpm"
 minimumReleaseAge: 2880
 minimumReleaseAgeExclude:
   - "@tobilu/qmd"
