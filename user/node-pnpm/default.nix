@@ -45,11 +45,11 @@
           pkgs.node-gyp
           pkgs.pnpm
           pkgs.python3
+          pkgs.gnumake
           pkgs.unzip
         ]
         ++ lib.optionals pkgs.stdenv.isLinux [
           pkgs.gcc
-          pkgs.gnumake
         ]
       );
     in
@@ -91,7 +91,7 @@
         CONFIG_YAML="${configYamlPath}"
         export PNPM_HOME
         export CI=true
-        export npm_config_build_from_source=true
+        export NODE_NO_WARNINGS=1
         export npm_config_python="${pkgs.python3}/bin/python3"
         export PYTHON="${pkgs.python3}/bin/python3"
         export PATH="$PNPM_BIN:${activationPath}:$PATH"
@@ -99,7 +99,7 @@
         mkdir -p "$PNPM_HOME" "$PNPM_BIN" "${config.xdg.configHome}/pnpm"
         ln -sf "$CONFIG_YAML" "${config.xdg.configHome}/pnpm/config.yaml"
 
-        "${pkgs.pnpm}/bin/pnpm" add --global \
+        "${pkgs.pnpm}/bin/pnpm" add --global --reporter=append-only \
           ${lib.escapeShellArgs allowBuildArgs} \
           ${lib.escapeShellArgs globalPackageSpecs}
       '';
