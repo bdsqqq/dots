@@ -4,7 +4,7 @@
  * spawns a gpt-5.6-sol high sub-agent that:
  * 1. runs git diff (or other bash command) based on diff_description
  * 2. reads changed files for context
- * 3. produces XML <codeReview> report with per-comment severity/type
+ * 3. produces a Markdown report with per-comment severity/type
  *
  * review system prompt defines the expert reviewer role. report format
  * is injected as a follow-up message after exploration via piSpawn's
@@ -87,21 +87,29 @@ Today's date: {date}
 Current working directory (cwd): {cwd}
 `;
 
-const DEFAULT_REPORT_FORMAT = String.raw`Emit your final report in the following format:
+const DEFAULT_REPORT_FORMAT = String.raw`Emit your final report as Markdown using this structure:
 
-<codeReview>
-<comment>
-  <filename>the absolute file path (starting with the working directory)</filename>
-  <startLine>the starting line number (see line number rules below)</startLine>
-  <endLine>the ending line number (see line number rules below)</endLine>
-  <severity>one of: critical, high, medium, low</severity>
-  <commentType>one of: bug, suggested_edit, compliment, non_actionable</commentType>
-  <text>text describing the issue and/or the proposed change to code</text>
-  <why>brief explanation of why this matters</why>
-  <fix>brief suggestion for how to fix it (optional for compliments)</fix>
-</comment>
-<comment>...</comment>
-</codeReview>
+# Code review
+
+## Summary
+
+A concise summary of the changes and overall assessment.
+
+## Comments
+
+### Comment
+
+- **Filename:** the absolute file path (starting with the working directory)
+- **Start line:** the starting line number (see line number rules below)
+- **End line:** the ending line number (see line number rules below)
+- **Severity:** one of: critical, high, medium, low
+- **Comment type:** one of: bug, suggested_edit, compliment, non_actionable
+- **Text:** text describing the issue and/or the proposed change to code
+- **Why:** brief explanation of why this matters
+- **Fix:** brief suggestion for how to fix it (optional for compliments)
+
+Repeat the \`### Comment\` section for each comment. If there are no comments, write \`No comments.\` under \`## Comments\`.
+Keep every labeled value on the same line as its label.
 
 Line number rules:
 - For MODIFIED files: use line numbers from the NEW version (the + side in unified diff headers like @@ -old,count +NEW,count @@)
@@ -163,7 +171,7 @@ export interface CodeReviewConfig {
   extensionTools?: string[];
 }
 
-// --- XML parsing ---
+// --- Markdown parsing ---
 
 interface ReviewComment {
   filename: string;
@@ -176,23 +184,27 @@ interface ReviewComment {
   fix: string;
 }
 
-function parseReviewXml(output: string): ReviewComment[] {
+function parseReviewMarkdown(output: string): ReviewComment[] {
   const comments: ReviewComment[] = [];
-  const commentRegex = /<comment>([\s\S]*?)<\/comment>/g;
+  const commentRegex =
+    /^### comment\s*$([\s\S]*?)(?=^### comment\s*$|$(?![\s\S]))/gim;
   let match: RegExpExecArray | null;
 
   while ((match = commentRegex.exec(output)) !== null) {
     const block = match[1]!;
-    const get = (tag: string): string => {
-      const m = block.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
-      return m && m[1] ? m[1].trim() : "";
+    const get = (label: string): string => {
+      const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const value = block.match(
+        new RegExp(`^- \\*\\*${escapedLabel}:\\*\\*[ \\t]*(.*)$`, "im"),
+      );
+      return value?.[1]?.trim() ?? "";
     };
     comments.push({
       filename: get("filename"),
-      startLine: parseInt(get("startLine"), 10) || 0,
-      endLine: parseInt(get("endLine"), 10) || 0,
+      startLine: parseInt(get("start line"), 10) || 0,
+      endLine: parseInt(get("end line"), 10) || 0,
       severity: get("severity"),
-      commentType: get("commentType"),
+      commentType: get("comment type"),
       text: get("text"),
       why: get("why"),
       fix: get("fix"),
@@ -376,9 +388,9 @@ export function createCodeReviewTool(
 
       const container = new Container();
 
-      // parse XML comments from output for summary line
+      // parse Markdown comments from output for summary line
       const output = getFinalOutput(details.messages);
-      const comments = parseReviewXml(output);
+      const comments = parseReviewMarkdown(output);
       if (comments.length > 0) {
         const summary = formatReviewSummary(comments);
         container.addChild(new Text(theme.fg("accent", summary), 0, 0));
@@ -428,7 +440,7 @@ export default codeReviewExtension;
 
 // Export for testing
 export {
-  parseReviewXml,
+  parseReviewMarkdown,
   formatReviewSummary,
   isCodeReviewConfig,
   isNonEmptyString,
@@ -446,22 +458,24 @@ if (import.meta.vitest) {
   // PURE FUNCTION TESTS
   // ============================================================================
 
-  describe("parseReviewXml", () => {
-    it("extracts single comment from XML output", () => {
-      const xml = `<codeReview>
-<comment>
-  <filename>/src/index.ts</filename>
-  <startLine>42</startLine>
-  <endLine>45</endLine>
-  <severity>high</severity>
-  <commentType>bug</commentType>
-  <text>Potential null pointer</text>
-  <why>Could cause runtime error</why>
-  <fix>Add null check</fix>
-</comment>
-</codeReview>`;
+  describe("parseReviewMarkdown", () => {
+    it("extracts a single comment from Markdown output", () => {
+      const markdown = `# Code review
 
-      const result = parseReviewXml(xml);
+## Comments
+
+### Comment
+
+- **Filename:** /src/index.ts
+- **Start line:** 42
+- **End line:** 45
+- **Severity:** high
+- **Comment type:** bug
+- **Text:** Potential null pointer
+- **Why:** Could cause runtime error
+- **Fix:** Add null check`;
+
+      const result = parseReviewMarkdown(markdown);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -476,56 +490,55 @@ if (import.meta.vitest) {
       });
     });
 
-    it("extracts multiple comments from XML output", () => {
-      const xml = `<codeReview>
-<comment>
-  <filename>/src/a.ts</filename>
-  <startLine>1</startLine>
-  <endLine>5</endLine>
-  <severity>low</severity>
-  <commentType>compliment</commentType>
-  <text>Good code</text>
-  <why>Nice pattern</why>
-  <fix></fix>
-</comment>
-<comment>
-  <filename>/src/b.ts</filename>
-  <startLine>10</startLine>
-  <endLine>15</endLine>
-  <severity>critical</severity>
-  <commentType>bug</commentType>
-  <text>Security issue</text>
-  <why>SQL injection</why>
-  <fix>Use parameterized query</fix>
-</comment>
-</codeReview>`;
+    it("extracts multiple comments from Markdown output", () => {
+      const markdown = `### Comment
 
-      const result = parseReviewXml(xml);
+- **Filename:** /src/a.ts
+- **Start line:** 1
+- **End line:** 5
+- **Severity:** low
+- **Comment type:** compliment
+- **Text:** Good code
+- **Why:** Nice pattern
+- **Fix:**
+
+### Comment
+
+- **Filename:** /src/b.ts
+- **Start line:** 10
+- **End line:** 15
+- **Severity:** critical
+- **Comment type:** bug
+- **Text:** Security issue
+- **Why:** SQL injection
+- **Fix:** Use parameterized query`;
+
+      const result = parseReviewMarkdown(markdown);
 
       expect(result).toHaveLength(2);
       expect(result[0]?.filename).toBe("/src/a.ts");
       expect(result[1]?.filename).toBe("/src/b.ts");
     });
 
-    it("returns empty array for XML with no comments", () => {
-      expect(parseReviewXml("<codeReview></codeReview>")).toEqual([]);
-      expect(parseReviewXml("")).toEqual([]);
-      expect(parseReviewXml("no xml here")).toEqual([]);
+    it("returns an empty array when there are no comments", () => {
+      expect(parseReviewMarkdown("## Comments\n\nNo comments.")).toEqual([]);
+      expect(parseReviewMarkdown("")).toEqual([]);
+      expect(parseReviewMarkdown("plain text")).toEqual([]);
     });
 
     it("handles missing optional fields gracefully", () => {
-      const xml = `<comment>
-  <filename>/src/test.ts</filename>
-  <startLine>1</startLine>
-  <endLine>2</endLine>
-  <severity>medium</severity>
-  <commentType>suggested_edit</commentType>
-  <text>Minor tweak</text>
-  <why></why>
-  <fix></fix>
-</comment>`;
+      const markdown = `### Comment
 
-      const result = parseReviewXml(xml);
+- **Filename:** /src/test.ts
+- **Start line:** 1
+- **End line:** 2
+- **Severity:** medium
+- **Comment type:** suggested_edit
+- **Text:** Minor tweak
+- **Why:**
+- **Fix:**`;
+
+      const result = parseReviewMarkdown(markdown);
 
       expect(result).toHaveLength(1);
       expect(result[0]?.why).toBe("");
@@ -533,18 +546,18 @@ if (import.meta.vitest) {
     });
 
     it("handles malformed line numbers (defaults to 0)", () => {
-      const xml = `<comment>
-  <filename>/src/test.ts</filename>
-  <startLine>invalid</startLine>
-  <endLine>also-invalid</endLine>
-  <severity>low</severity>
-  <commentType>non_actionable</commentType>
-  <text>Test</text>
-  <why>Reason</why>
-  <fix></fix>
-</comment>`;
+      const markdown = `### Comment
 
-      const result = parseReviewXml(xml);
+- **Filename:** /src/test.ts
+- **Start line:** invalid
+- **End line:** also-invalid
+- **Severity:** low
+- **Comment type:** non_actionable
+- **Text:** Test
+- **Why:** Reason
+- **Fix:**`;
+
+      const result = parseReviewMarkdown(markdown);
 
       expect(result[0]?.startLine).toBe(0);
       expect(result[0]?.endLine).toBe(0);
@@ -934,29 +947,27 @@ if (import.meta.vitest) {
     });
 
     describe("renderResult", () => {
-      it("renders review summary from XML", () => {
+      it("renders review summary from Markdown", () => {
         const tool = createCodeReviewTool();
         const mockTheme = {
           fg: (_color: string, text: string) => text,
           bold: (text: string) => text,
         };
 
-        const xmlOutput = `<codeReview>
-<comment>
-  <filename>/src/a.ts</filename>
-  <startLine>1</startLine>
-  <endLine>5</endLine>
-  <severity>high</severity>
-  <commentType>bug</commentType>
-  <text>Issue</text>
-  <why>Reason</why>
-  <fix>Fix</fix>
-</comment>
-</codeReview>`;
+        const markdownOutput = `### Comment
+
+- **Filename:** /src/a.ts
+- **Start line:** 1
+- **End line:** 5
+- **Severity:** high
+- **Comment type:** bug
+- **Text:** Issue
+- **Why:** Reason
+- **Fix:** Fix`;
 
         const result = tool.renderResult!(
           {
-            content: [{ type: "text", text: xmlOutput }],
+            content: [{ type: "text", text: markdownOutput }],
             details: {
               agent: "code_review",
               task: "test",
@@ -964,7 +975,7 @@ if (import.meta.vitest) {
               messages: [
                 {
                   role: "assistant",
-                  content: [{ type: "text", text: xmlOutput }],
+                  content: [{ type: "text", text: markdownOutput }],
                 },
               ],
               usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
@@ -975,7 +986,7 @@ if (import.meta.vitest) {
           {} as any,
         );
 
-        const lines = result.render(80);
+        const lines = (result as any).children[0].render(80);
         expect(lines.join("\n")).toContain("1 comment");
       });
 
