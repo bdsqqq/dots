@@ -25,6 +25,7 @@ export interface WorkflowNodeRecord {
   status: WorkflowNodeStatus;
   phase?: string;
   label?: string;
+  recipe?: "delegate" | "oracle" | "librarian" | "finder";
   childSessionId?: string;
   childSessionFile?: string;
   result?: unknown;
@@ -41,6 +42,7 @@ export interface WorkflowRunJournal {
     name: string;
     description: string;
     phases?: string[];
+    agents?: Array<"delegate" | "oracle" | "librarian" | "finder">;
     source: string;
     scriptHash: string;
   };

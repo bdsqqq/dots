@@ -58,7 +58,8 @@
   "dependencies": {
     "defuddle": "^0.18.1",
     "diff": "^8.0.0",
-    "jsdom": "^29.1.1"
+    "jsdom": "^29.1.1",
+    "typescript": "^5.9.2"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -68,7 +69,6 @@
     "oxlint": "^1.50.0",
     "oxlint-tsgolint": "^0.15.0",
     "tsdown": "^0.21.0",
-    "typescript": "^5.9.2",
     "vitest": "^3.0.0"
   },
   "peerDependencies": {

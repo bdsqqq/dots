@@ -1,222 +1,52 @@
-import { createHash } from "node:crypto";
 import { access, readFile, readdir } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
+import {
+  compileWorkflowSource,
+  type CompiledWorkflowMeta,
+} from "./compiler.js";
 
-export interface WorkflowMeta {
-  name: string;
-  description: string;
-  phases?: string[];
+export type { WorkflowMeta } from "./api.js";
+
+const MAX_WORKFLOW_SOURCE_BYTES = 256 * 1024;
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted)
+    throw new DOMException("workflow cancelled", "AbortError");
+}
+
+function validateSourceSize(source: string): void {
+  if (Buffer.byteLength(source, "utf8") > MAX_WORKFLOW_SOURCE_BYTES)
+    throw new Error(
+      `workflow source exceeds ${MAX_WORKFLOW_SOURCE_BYTES} UTF-8 bytes`,
+    );
 }
 
 export interface WorkflowSource {
   source: string;
-  text?: string;
-  body: string;
-  meta: WorkflowMeta;
+  text: string;
+  code: string;
+  meta: CompiledWorkflowMeta;
   hash: string;
   path?: string;
   projectLocal: boolean;
 }
 
-const META_PREFIX = "export const meta = ";
-const MAX_DECLARED_PHASES = 64;
-const MAX_PHASE_NAME_BYTES = 256;
-
-class MetaParser {
-  private index: number;
-
-  constructor(
-    private readonly source: string,
-    start: number,
-  ) {
-    this.index = start;
-  }
-
-  parse(): { meta: WorkflowMeta; end: number } {
-    const values = new Map<string, string | string[]>();
-    this.expect("{");
-    this.skipTrivia();
-    while (this.peek() !== "}") {
-      const key = this.parseKey();
-      if (!new Set(["name", "description", "phases"]).has(key))
-        throw new Error(`unknown workflow meta field: ${key}`);
-      if (values.has(key))
-        throw new Error(`duplicate workflow meta field: ${key}`);
-      this.skipTrivia();
-      this.expect(":");
-      this.skipTrivia();
-      values.set(
-        key,
-        key === "phases" ? this.parseStringArray() : this.parseString(),
-      );
-      this.skipTrivia();
-      if (this.peek() === ",") {
-        this.index++;
-        this.skipTrivia();
-        if (this.peek() === "}") break;
-      } else if (this.peek() !== "}") {
-        throw new Error("workflow meta fields must be separated by commas");
-      }
-    }
-    this.expect("}");
-    const name = values.get("name");
-    const description = values.get("description");
-    const phases = values.get("phases");
-    if (Array.isArray(phases)) {
-      if (phases.length > MAX_DECLARED_PHASES)
-        throw new Error(
-          `workflow meta.phases supports at most ${MAX_DECLARED_PHASES} entries`,
-        );
-      const invalidPhase = phases.find(
-        (phase) =>
-          phase.trim() === "" ||
-          Buffer.byteLength(phase, "utf8") > MAX_PHASE_NAME_BYTES,
-      );
-      if (invalidPhase !== undefined)
-        throw new Error(
-          `workflow phase names must be non-empty and at most ${MAX_PHASE_NAME_BYTES} UTF-8 bytes`,
-        );
-    }
-    if (typeof name !== "string" || name.trim() === "")
-      throw new Error("workflow meta.name must be a non-empty string");
-    if (typeof description !== "string" || description.trim() === "")
-      throw new Error("workflow meta.description must be a non-empty string");
-    return {
-      meta: {
-        name,
-        description,
-        ...(Array.isArray(phases) ? { phases } : {}),
-      },
-      end: this.index,
-    };
-  }
-
-  private parseKey(): string {
-    this.skipTrivia();
-    if (this.peek() === '"' || this.peek() === "'") return this.parseString();
-    const match = this.source.slice(this.index).match(/^[A-Za-z_$][\w$]*/);
-    if (!match)
-      throw new Error("workflow meta keys must be identifiers or strings");
-    this.index += match[0].length;
-    return match[0];
-  }
-
-  private parseStringArray(): string[] {
-    const values: string[] = [];
-    this.expect("[");
-    this.skipTrivia();
-    while (this.peek() !== "]") {
-      values.push(this.parseString());
-      this.skipTrivia();
-      if (this.peek() === ",") {
-        this.index++;
-        this.skipTrivia();
-        if (this.peek() === "]") break;
-      } else if (this.peek() !== "]") {
-        throw new Error("workflow meta.phases must contain only strings");
-      }
-    }
-    this.expect("]");
-    return values;
-  }
-
-  private parseString(): string {
-    const quote = this.peek();
-    if (quote !== '"' && quote !== "'")
-      throw new Error("workflow meta values must be static strings");
-    this.index++;
-    let value = "";
-    while (this.index < this.source.length) {
-      const char = this.source[this.index++]!;
-      if (char === quote) return value;
-      if (char !== "\\") {
-        if (char === "\n" || char === "\r")
-          throw new Error("workflow meta strings may not contain raw newlines");
-        value += char;
-        continue;
-      }
-      const escaped = this.source[this.index++];
-      if (escaped === undefined) break;
-      const simple: Record<string, string> = {
-        b: "\b",
-        f: "\f",
-        n: "\n",
-        r: "\r",
-        t: "\t",
-        v: "\v",
-        "0": "\0",
-        "\\": "\\",
-        '"': '"',
-        "'": "'",
-      };
-      if (escaped in simple) value += simple[escaped];
-      else if (escaped === "u" || escaped === "x") {
-        const digits = escaped === "u" ? 4 : 2;
-        const hex = this.source.slice(this.index, this.index + digits);
-        if (!new RegExp(`^[0-9a-fA-F]{${digits}}$`).test(hex))
-          throw new Error("invalid escape in workflow meta string");
-        value += String.fromCodePoint(Number.parseInt(hex, 16));
-        this.index += digits;
-      } else {
-        value += escaped;
-      }
-    }
-    throw new Error("workflow meta string is not closed");
-  }
-
-  private skipTrivia(): void {
-    while (this.index < this.source.length) {
-      const rest = this.source.slice(this.index);
-      const whitespace = rest.match(/^\s+/);
-      if (whitespace) {
-        this.index += whitespace[0].length;
-        continue;
-      }
-      const lineComment = rest.match(/^\/\/[^\n]*(?:\n|$)/);
-      if (lineComment) {
-        this.index += lineComment[0].length;
-        continue;
-      }
-      const blockComment = rest.match(/^\/\*[\s\S]*?\*\//);
-      if (blockComment) {
-        this.index += blockComment[0].length;
-        continue;
-      }
-      break;
-    }
-  }
-
-  private peek(): string | undefined {
-    return this.source[this.index];
-  }
-
-  private expect(value: string): void {
-    if (!this.source.startsWith(value, this.index))
-      throw new Error(`expected '${value}' in workflow meta`);
-    this.index += value.length;
-  }
-}
-
 /**
- * workflow scripts are approved trusted code. the vm context limits accidental capability
- * access, but node:vm is NOT a security boundary and must not be used for hostile scripts.
+ * workflow scripts are approved trusted code. compilation rejects capabilities outside
+ * the workflow API, but the eventual node:vm execution is not a hostile-code boundary.
  */
 export function parseWorkflowSource(
   source: string,
-  _filename = "workflow.js",
+  filename = "inline-workflow.ts",
 ): Omit<WorkflowSource, "source" | "path" | "projectLocal"> {
-  if (!source.startsWith(META_PREFIX))
-    throw new Error(`workflow must begin with literal ${META_PREFIX}{ ... }`);
-  const parsedMeta = new MetaParser(source, META_PREFIX.length).parse();
-  const meta = parsedMeta.meta;
-  const rest = source.slice(parsedMeta.end);
-  const match = rest.match(/^\s*;?\s*/);
-  const body = rest.slice(match?.[0].length ?? 0);
+  validateSourceSize(source);
+  const compiled = compileWorkflowSource(source, filename);
   return {
-    body,
-    meta,
-    hash: createHash("sha256").update(source).digest("hex"),
+    text: source,
+    code: compiled.code,
+    meta: compiled.meta,
+    hash: compiled.hash,
   };
 }
 
@@ -238,7 +68,9 @@ export async function resolveWorkflowSource(
   input: { scriptPath?: string; script?: string; name?: string },
   cwd: string,
   projectTrusted: boolean,
+  signal?: AbortSignal,
 ): Promise<WorkflowSource> {
+  throwIfAborted(signal);
   let path: string | undefined;
   let source: string;
   let projectLocal = false;
@@ -246,6 +78,8 @@ export async function resolveWorkflowSource(
 
   if (input.scriptPath) {
     path = resolve(cwd, input.scriptPath.replace(/^@/, ""));
+    if (!path.endsWith(".ts"))
+      throw new Error("workflow script paths must end in .ts");
     const globalRoot = join(getAgentDir(), "workflows");
     projectLocal = !isWithin(path, globalRoot);
     if (projectLocal && !projectTrusted)
@@ -256,8 +90,8 @@ export async function resolveWorkflowSource(
     source = input.script;
   } else if (input.name) {
     const name = validateWorkflowName(input.name);
-    const projectPath = join(cwd, CONFIG_DIR_NAME, "workflows", `${name}.js`);
-    const globalPath = join(getAgentDir(), "workflows", `${name}.js`);
+    const projectPath = join(cwd, CONFIG_DIR_NAME, "workflows", `${name}.ts`);
+    const globalPath = join(getAgentDir(), "workflows", `${name}.ts`);
     try {
       await access(projectPath);
       if (!projectTrusted)
@@ -283,8 +117,12 @@ export async function resolveWorkflowSource(
     throw new Error("provide scriptPath, script, or name");
   }
 
-  const parsed = parseWorkflowSource(source, path ?? "inline-workflow.js");
-  return { ...parsed, source: sourceLabel, text: source, path, projectLocal };
+  validateSourceSize(source);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  throwIfAborted(signal);
+  const parsed = parseWorkflowSource(source, path ?? "inline-workflow.ts");
+  throwIfAborted(signal);
+  return { ...parsed, source: sourceLabel, path, projectLocal };
 }
 
 export async function listWorkflowFiles(cwd: string): Promise<string[]> {
@@ -296,8 +134,8 @@ export async function listWorkflowFiles(cwd: string): Promise<string[]> {
   for (const root of roots) {
     try {
       for (const entry of await readdir(root, { withFileTypes: true })) {
-        if (entry.isFile() && entry.name.endsWith(".js"))
-          names.add(basename(entry.name, ".js"));
+        if (entry.isFile() && entry.name.endsWith(".ts"))
+          names.add(basename(entry.name, ".ts"));
       }
     } catch {
       // An absent workflow directory is an empty source.
@@ -311,6 +149,14 @@ if (import.meta.vitest) {
   const { mkdtemp, mkdir, rm, writeFile } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const dirs: string[] = [];
+  const workflow = `
+    import { defineWorkflow, finder } from "@bds_pi/workflow";
+    export const meta = { name: "demo", description: "project", agents: ["finder"] } as const;
+    export default defineWorkflow(meta, {
+      run: ({ agent }) => agent(finder({ query: "x" })),
+    });
+  `;
+
   afterEach(async () =>
     Promise.all(
       dirs
@@ -320,103 +166,42 @@ if (import.meta.vitest) {
   );
 
   describe("workflow source", () => {
-    it("parses literal metadata and leaves a top-level-return body", () => {
-      const parsed = parseWorkflowSource(
-        'export const meta = { name: "fanout", description: "does work", phases: ["a"] };\nreturn args;',
-      );
-      expect(parsed.meta).toEqual({
-        name: "fanout",
-        description: "does work",
-        phases: ["a"],
-      });
-      expect(parsed.body).toBe("return args;");
-    });
-
-    it("bounds declared phases for complete inline draft rendering", () => {
-      const tooMany = Array.from(
-        { length: MAX_DECLARED_PHASES + 1 },
-        (_, index) => `phase-${index}`,
-      );
+    it("bounds source compilation and honors pre-aborted requests", async () => {
       expect(() =>
-        parseWorkflowSource(
-          `export const meta = { name: "x", description: "x", phases: ${JSON.stringify(tooMany)} }; return 1`,
+        parseWorkflowSource(" ".repeat(MAX_WORKFLOW_SOURCE_BYTES + 1)),
+      ).toThrow("source exceeds");
+      const controller = new AbortController();
+      controller.abort();
+      await expect(
+        resolveWorkflowSource(
+          { script: workflow },
+          process.cwd(),
+          true,
+          controller.signal,
         ),
-      ).toThrow("at most 64 entries");
-      expect(() =>
-        parseWorkflowSource(
-          `export const meta = { name: "x", description: "x", phases: [${JSON.stringify("🫠".repeat(65))}] }; return 1`,
-        ),
-      ).toThrow("at most 256 UTF-8 bytes");
+      ).rejects.toThrow("workflow cancelled");
     });
 
-    it("rejects non-literal prefixes, active metadata, and traversal names", () => {
-      expect(() =>
-        parseWorkflowSource('const meta = { name: "x" }; return 1'),
-      ).toThrow("begin with literal");
-      expect(() =>
-        parseWorkflowSource(
-          'export const meta = { get name() { while (true) {} }, description: "x" }; return 1',
-        ),
-      ).toThrow("unknown workflow meta field");
-      expect(() => validateWorkflowName("../secret")).toThrow("workflow name");
-    });
-
-    it("lists global workflows from the configured agent directory", async () => {
-      const agentDir = await mkdtemp(join(tmpdir(), "workflow-agent-dir-"));
-      const cwd = await mkdtemp(join(tmpdir(), "workflow-list-cwd-"));
-      dirs.push(agentDir, cwd);
-      await mkdir(join(agentDir, "workflows"), { recursive: true });
-      await writeFile(join(agentDir, "workflows", "global-demo.js"), "");
-      const previous = process.env.PI_CODING_AGENT_DIR;
-      process.env.PI_CODING_AGENT_DIR = agentDir;
-      try {
-        expect(await listWorkflowFiles(cwd)).toContain("global-demo");
-      } finally {
-        if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
-        else process.env.PI_CODING_AGENT_DIR = previous;
-      }
-    });
-
-    it("prefers project names and requires trust", async () => {
+    it("lists and resolves only TypeScript workflows", async () => {
       const cwd = await mkdtemp(join(tmpdir(), "workflow-source-"));
       dirs.push(cwd);
       const root = join(cwd, CONFIG_DIR_NAME, "workflows");
       await mkdir(root, { recursive: true });
-      await writeFile(
-        join(root, "demo.js"),
-        'export const meta = { name: "demo", description: "project" }; return 1',
-      );
-      await expect(
-        resolveWorkflowSource({ name: "demo" }, cwd, false),
-      ).rejects.toThrow("trusted project");
-      expect(
-        (await resolveWorkflowSource({ name: "demo" }, cwd, true)).meta
-          .description,
-      ).toBe("project");
-    });
+      await writeFile(join(root, "demo.ts"), workflow);
+      await writeFile(join(root, "legacy.js"), workflow);
 
-    it("honors scriptPath precedence and gates arbitrary paths on project trust", async () => {
-      const cwd = await mkdtemp(join(tmpdir(), "workflow-precedence-"));
-      const outside = await mkdtemp(join(tmpdir(), "workflow-outside-"));
-      dirs.push(cwd, outside);
-      const file = join(outside, "chosen.js");
-      await writeFile(
-        file,
-        'export const meta = { name: "path", description: "path" }; return 1',
-      );
+      expect(await listWorkflowFiles(cwd)).toContain("demo");
+      expect(await listWorkflowFiles(cwd)).not.toContain("legacy");
+      const resolved = await resolveWorkflowSource({ name: "demo" }, cwd, true);
+      expect(resolved.text).toBe(workflow);
+      expect(resolved.code).toContain('require("@bds_pi/workflow")');
       await expect(
-        resolveWorkflowSource({ scriptPath: file }, cwd, false),
-      ).rejects.toThrow("trusted project");
-      const resolved = await resolveWorkflowSource(
-        {
-          scriptPath: file,
-          script:
-            'export const meta = { name: "inline", description: "inline" }; return 2',
-        },
-        cwd,
-        true,
-      );
-      expect(resolved.meta.name).toBe("path");
+        resolveWorkflowSource(
+          { scriptPath: join(root, "legacy.js") },
+          cwd,
+          true,
+        ),
+      ).rejects.toThrow("must end in .ts");
     });
   });
 }

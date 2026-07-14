@@ -522,7 +522,8 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
                 debug("kill_after_turn", { endTurnCount });
                 proc.kill("SIGTERM");
                 setTimeout(() => {
-                  if (!proc.killed) proc.kill("SIGKILL");
+                  if (proc.exitCode === null && proc.signalCode === null)
+                    proc.kill("SIGKILL");
                 }, 5000);
               }
             }
@@ -535,7 +536,8 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
               debug("kill_after_error", { stopReason });
               proc.kill("SIGTERM");
               setTimeout(() => {
-                if (!proc.killed) proc.kill("SIGKILL");
+                if (proc.exitCode === null && proc.signalCode === null)
+                  proc.kill("SIGKILL");
               }, 5000);
             }
           }
@@ -565,7 +567,8 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
         wasAborted = true;
         proc.kill("SIGTERM");
         killTimer = setTimeout(() => {
-          if (!proc.killed) proc.kill("SIGKILL");
+          if (proc.exitCode === null && proc.signalCode === null)
+            proc.kill("SIGKILL");
         }, 5000);
       };
 

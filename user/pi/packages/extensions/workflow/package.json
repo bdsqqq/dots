@@ -8,10 +8,16 @@
     ".": "./index.ts"
   },
   "dependencies": {
+    "@bds_pi/delegate": "workspace:*",
+    "@bds_pi/finder": "workspace:*",
+    "@bds_pi/librarian": "workspace:*",
+    "@bds_pi/oracle": "workspace:*",
+    "@bds_pi/workflow-api": "workspace:*",
     "@earendil-works/pi-coding-agent": "^0.80.6",
     "@earendil-works/pi-tui": "^0.80.6",
     "proper-lockfile": "^4.1.2",
-    "typebox": "^1.1.38"
+    "typebox": "^1.1.38",
+    "typescript": "^5.9.2"
   },
   "devDependencies": {
     "@types/proper-lockfile": "^4.1.4",

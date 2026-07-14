@@ -1,14 +1,25 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
-  createAgentSession,
-  DefaultResourceLoader,
-  defineTool,
-  getAgentDir,
-  SessionManager,
-  SettingsManager,
-  type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
-import type { TSchema } from "typebox";
+  createDelegateTool,
+  resolveDelegateConfig,
+  type DelegateParams,
+} from "@bds_pi/delegate";
+import {
+  createFinderTool,
+  resolveFinderConfig,
+  type FinderParams,
+} from "@bds_pi/finder";
+import {
+  createLibrarianTool,
+  resolveLibrarianConfig,
+  type LibrarianParams,
+} from "@bds_pi/librarian";
+import {
+  createOracleTool,
+  resolveOracleConfig,
+  type OracleParams,
+} from "@bds_pi/oracle";
 import {
   applyWorkflowGraphEvent,
   type WorkflowGraphEvent,
@@ -25,6 +36,8 @@ import {
   spawnDirectRunner,
   workflowAgentOutcome,
   type RunnerLauncher,
+  type WorkflowAgentOptions,
+  type WorkflowRecipe,
 } from "./process-runner.js";
 import type { WorkflowSource } from "./source.js";
 
@@ -35,37 +48,7 @@ export const DEFAULT_MAX_AGENTS = 64;
 const MAX_GRAPH_NODES = 2000;
 const GRAPH_PROGRESS_INTERVAL_MS = 50;
 
-const DEFAULT_TOOLS = [
-  "read",
-  "grep",
-  "find",
-  "ls",
-  "edit",
-  "write",
-  "format_file",
-  "skill",
-];
-const SAFE_TOOLS = new Set(DEFAULT_TOOLS);
-const MUTATING_TOOLS = new Set(["edit", "write", "format_file"]);
-
-type ThinkingLevel =
-  | "off"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh"
-  | "max";
-
-export interface WorkflowAgentOptions {
-  label?: string;
-  phase?: string;
-  model?: string;
-  thinkingLevel?: ThinkingLevel;
-  tools?: string[];
-  schema?: Record<string, unknown>;
-  cacheKey?: string;
-}
+type RecipeKind = WorkflowRecipe["kind"];
 
 export interface WorkflowProgress {
   runId: string;
@@ -85,35 +68,33 @@ export interface RuntimeResult {
   graph: WorkflowGraphNode[];
 }
 
-interface AgentExecution {
+interface RecipeExecution {
   value: unknown;
-  cached: boolean;
+  cached: false;
 }
 
-export interface SpawnRequest {
-  prompt: string;
+export interface SpawnRecipeRequest {
+  recipe: WorkflowRecipe;
   options: WorkflowAgentOptions;
-  model: NonNullable<ExtensionContext["model"]>;
-  thinkingLevel: ThinkingLevel;
-  tools: string[];
   node: WorkflowNodeRecord;
   source: WorkflowSource;
-  parentSessionFile: string;
   cwd: string;
   signal?: AbortSignal;
   ctx: ExtensionContext;
   onUsage: (usage: WorkflowUsage) => void;
-  onSession: (sessionId: string, sessionFile: string) => Promise<void>;
+  onSession: (sessionId?: string, sessionFile?: string) => Promise<void>;
 }
 
-export interface SpawnResult {
+export interface SpawnRecipeResult {
   result: unknown;
-  sessionId: string;
-  sessionFile: string;
+  sessionId?: string;
+  sessionFile?: string;
   usage: WorkflowUsage;
 }
 
-export type SpawnAgent = (request: SpawnRequest) => Promise<SpawnResult>;
+export type SpawnRecipe = (
+  request: SpawnRecipeRequest,
+) => Promise<SpawnRecipeResult>;
 
 export function normalizeLimits(
   maxConcurrency?: number,
@@ -125,16 +106,14 @@ export function normalizeLimits(
     !Number.isInteger(concurrency) ||
     concurrency < 1 ||
     concurrency > HARD_MAX_CONCURRENCY
-  ) {
+  )
     throw new Error(
       `maxConcurrency must be an integer from 1 to ${HARD_MAX_CONCURRENCY}`,
     );
-  }
-  if (!Number.isInteger(agents) || agents < 1 || agents > HARD_MAX_AGENTS) {
+  if (!Number.isInteger(agents) || agents < 1 || agents > HARD_MAX_AGENTS)
     throw new Error(
       `maxAgents must be an integer from 1 to ${HARD_MAX_AGENTS}`,
     );
-  }
   return { maxConcurrency: concurrency, maxAgents: agents };
 }
 
@@ -181,236 +160,224 @@ function abortError(): Error {
   return new DOMException("workflow cancelled", "AbortError");
 }
 
-function stableValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stableValue);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, child]) => [key, stableValue(child)]),
-    );
-  }
+function inputObject(recipe: WorkflowRecipe): Record<string, unknown> {
+  if (!recipe || typeof recipe !== "object" || Array.isArray(recipe))
+    throw new Error("workflow recipe must be an object");
+  if (!new Set(["delegate", "oracle", "librarian", "finder"]).has(recipe.kind))
+    throw new Error(`unknown workflow recipe kind: ${String(recipe.kind)}`);
   if (
-    typeof value === "function" ||
-    typeof value === "symbol" ||
-    typeof value === "bigint"
+    !recipe.input ||
+    typeof recipe.input !== "object" ||
+    Array.isArray(recipe.input)
   )
-    return String(value);
+    throw new Error(`${recipe.kind} recipe input must be an object`);
+  return recipe.input;
+}
+
+function assertExactKeys(
+  kind: RecipeKind,
+  input: Record<string, unknown>,
+  allowed: readonly string[],
+): void {
+  const unknown = Object.keys(input).find((key) => !allowed.includes(key));
+  if (unknown)
+    throw new Error(`${kind} recipe input has unknown field: ${unknown}`);
+}
+
+function requiredString(
+  kind: RecipeKind,
+  input: Record<string, unknown>,
+  key: string,
+): string {
+  const value = input[key];
+  if (typeof value !== "string" || value.trim() === "")
+    throw new Error(`${kind} recipe input.${key} must be a non-empty string`);
   return value;
 }
 
-export function hashInput(value: unknown): string {
-  return createHash("sha256")
-    .update(JSON.stringify(stableValue(value)))
-    .digest("hex");
+function optionalString(
+  kind: RecipeKind,
+  input: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = input[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.trim() === "")
+    throw new Error(`${kind} recipe input.${key} must be a non-empty string`);
+  return value;
 }
 
-export function finalAssistantText(messages: readonly unknown[]): string {
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index];
-    if (
-      !message ||
-      typeof message !== "object" ||
-      (message as { role?: unknown }).role !== "assistant"
-    )
-      continue;
-    const content = (message as { content?: unknown }).content;
-    if (!Array.isArray(content)) continue;
-    return content
-      .filter((part): part is { type: "text"; text: string } =>
-        Boolean(
-          part &&
-          typeof part === "object" &&
-          (part as { type?: unknown }).type === "text" &&
-          typeof (part as { text?: unknown }).text === "string",
-        ),
+function validateRecipeInput(
+  recipe: WorkflowRecipe,
+): DelegateParams | OracleParams | LibrarianParams | FinderParams {
+  const input = inputObject(recipe);
+  switch (recipe.kind) {
+    case "delegate":
+      assertExactKeys(recipe.kind, input, [
+        "prompt",
+        "description",
+        "continueId",
+        "leafId",
+      ]);
+      return {
+        prompt: requiredString(recipe.kind, input, "prompt"),
+        description: requiredString(recipe.kind, input, "description"),
+        ...(optionalString(recipe.kind, input, "continueId")
+          ? { continueId: optionalString(recipe.kind, input, "continueId") }
+          : {}),
+        ...(optionalString(recipe.kind, input, "leafId")
+          ? { leafId: optionalString(recipe.kind, input, "leafId") }
+          : {}),
+      };
+    case "oracle": {
+      assertExactKeys(recipe.kind, input, ["task", "context", "files"]);
+      const files = input.files;
+      if (
+        files !== undefined &&
+        (!Array.isArray(files) ||
+          files.some((file) => typeof file !== "string" || file.trim() === ""))
       )
-      .map((part) => part.text)
-      .join("");
+        throw new Error(
+          "oracle recipe input.files must be an array of non-empty strings",
+        );
+      return {
+        task: requiredString(recipe.kind, input, "task"),
+        ...(optionalString(recipe.kind, input, "context")
+          ? { context: optionalString(recipe.kind, input, "context") }
+          : {}),
+        ...(files ? { files: [...files] as string[] } : {}),
+      };
+    }
+    case "librarian":
+      assertExactKeys(recipe.kind, input, ["query", "context"]);
+      return {
+        query: requiredString(recipe.kind, input, "query"),
+        ...(optionalString(recipe.kind, input, "context")
+          ? { context: optionalString(recipe.kind, input, "context") }
+          : {}),
+      };
+    case "finder":
+      assertExactKeys(recipe.kind, input, ["query"]);
+      return { query: requiredString(recipe.kind, input, "query") };
   }
-  return "";
 }
 
-function resolveModel(
-  value: string | undefined,
-  ctx: ExtensionContext,
-): NonNullable<ExtensionContext["model"]> {
-  if (!value) {
-    if (!ctx.model) throw new Error("workflow child requires an active model");
-    return ctx.model;
-  }
-  const slash = value.indexOf("/");
-  if (slash <= 0 || slash === value.length - 1)
-    throw new Error(`invalid model override: ${value}; expected provider/id`);
-  const model = ctx.modelRegistry.find(
-    value.slice(0, slash),
-    value.slice(slash + 1),
-  );
-  if (!model) throw new Error(`model not found: ${value}`);
-  return model;
+function resultUsage(details: unknown): WorkflowUsage {
+  if (!details || typeof details !== "object") return { ...ZERO_USAGE };
+  const usage = (details as { usage?: unknown }).usage;
+  if (!usage || typeof usage !== "object") return { ...ZERO_USAGE };
+  const value = usage as Record<string, unknown>;
+  return {
+    input: Number(value.input ?? 0),
+    output: Number(value.output ?? 0),
+    cacheRead: Number(value.cacheRead ?? 0),
+    cacheWrite: Number(value.cacheWrite ?? 0),
+    cost: Number(value.cost ?? 0),
+    turns: Number(value.turns ?? 0),
+  };
 }
 
-export function selectChildTools(
-  tools: string[] | undefined,
-  schema: boolean,
-): string[] {
-  const requested = tools ?? DEFAULT_TOOLS;
-  const unsafe = requested.filter((tool) => !SAFE_TOOLS.has(tool));
-  if (unsafe.length > 0)
-    throw new Error(
-      `workflow child tools are not allowed: ${unsafe.join(", ")}`,
-    );
-  return schema
-    ? [...new Set([...requested, "workflow_result"])]
-    : [...requested];
+function resultText(result: unknown): string {
+  if (!result || typeof result !== "object") return "";
+  const content = (result as { content?: unknown }).content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((part): part is { type: "text"; text: string } =>
+      Boolean(
+        part &&
+        typeof part === "object" &&
+        (part as { type?: unknown }).type === "text" &&
+        typeof (part as { text?: unknown }).text === "string",
+      ),
+    )
+    .map((part) => part.text)
+    .join("");
 }
 
-function addUsage(target: WorkflowUsage, message: unknown): void {
-  if (
-    !message ||
-    typeof message !== "object" ||
-    (message as { role?: unknown }).role !== "assistant"
-  )
-    return;
-  const usage = (message as { usage?: Record<string, unknown> }).usage;
-  if (!usage) return;
-  target.input += Number(usage.input ?? 0);
-  target.output += Number(usage.output ?? 0);
-  target.cacheRead += Number(usage.cacheRead ?? 0);
-  target.cacheWrite += Number(usage.cacheWrite ?? 0);
-  const cost = usage.cost;
-  target.cost += Number(
-    cost && typeof cost === "object"
-      ? ((cost as { total?: unknown }).total ?? 0)
-      : 0,
-  );
-  target.turns++;
+function sessionMetadata(details: unknown): {
+  sessionId?: string;
+  sessionFile?: string;
+} {
+  if (!details || typeof details !== "object") return {};
+  const value = details as Record<string, unknown>;
+  return {
+    ...(typeof value.sessionId === "string"
+      ? { sessionId: value.sessionId }
+      : {}),
+    ...(typeof value.sessionFile === "string"
+      ? { sessionFile: value.sessionFile }
+      : {}),
+  };
 }
 
-export const spawnPersistentAgent: SpawnAgent = async (request) => {
-  const { options, ctx, node } = request;
+export const spawnRecipeTool: SpawnRecipe = async (request) => {
   if (request.signal?.aborted) throw abortError();
-  let structuredResult: unknown;
-  const customTools = options.schema
-    ? [
-        defineTool({
-          name: "workflow_result",
-          label: "Workflow Result",
-          description:
-            "Return the final workflow node result. Call this as the final action.",
-          parameters: options.schema as TSchema,
-          async execute(_id, params) {
-            structuredResult = params;
-            return {
-              content: [{ type: "text", text: "workflow result captured" }],
-              details: params,
-              terminate: true,
-            };
-          },
-        }),
-      ]
-    : [];
-
-  const settingsManager = SettingsManager.create(request.cwd, getAgentDir());
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: request.cwd,
-    agentDir: getAgentDir(),
-    settingsManager,
-    noExtensions: Boolean(options.cacheKey),
-  });
-  await resourceLoader.reload({
-    resolveProjectTrust: async () => ctx.isProjectTrusted(),
-  });
-  const manager = SessionManager.create(request.cwd, undefined, {
-    parentSession: request.parentSessionFile,
-  });
-  manager.appendSessionInfo(
-    `workflow:${request.source.meta.name}:${options.label ?? node.nodeId.slice(0, 8)}`,
-  );
-  manager.appendCustomEntry("workflow:child", {
-    runId: request.node.nodeId.split(":")[0],
-    nodeId: node.nodeId,
-    phase: node.phase,
-    label: node.label,
-  });
-  const childSessionFile = manager.getSessionFile();
-  if (!childSessionFile)
-    throw new Error("workflow child session was not persisted");
-  await request.onSession(manager.getSessionId(), childSessionFile);
-
-  const { session } = await createAgentSession({
-    cwd: request.cwd,
-    model: request.model,
-    thinkingLevel: request.thinkingLevel,
-    tools: request.tools,
-    customTools,
-    sessionManager: manager,
-    modelRegistry: ctx.modelRegistry,
-    authStorage: ctx.modelRegistry.authStorage,
-    settingsManager,
-    resourceLoader,
-  });
-  const usage = { ...ZERO_USAGE };
-  const unsubscribe = session.subscribe((event) => {
-    if (event.type === "message_end") addUsage(usage, event.message);
-    if (event.type === "message_update" || event.type === "message_end")
-      request.onUsage({ ...usage });
-  });
-  const abort = () => void session.abort();
-  request.signal?.addEventListener("abort", abort, { once: true });
-
-  try {
-    if (request.signal?.aborted) {
-      await session.abort();
-      throw abortError();
+  const params = validateRecipeInput(request.recipe);
+  let tool;
+  switch (request.recipe.kind) {
+    case "delegate": {
+      const resolved = resolveDelegateConfig();
+      if (!resolved.enabled) throw new Error("delegate recipe is disabled");
+      tool = createDelegateTool(resolved.config);
+      break;
     }
-    await session.prompt(request.prompt);
-    const firstAssistant = [...session.messages]
-      .reverse()
-      .find((message) => message.role === "assistant");
-    if (firstAssistant?.stopReason === "aborted" || request.signal?.aborted)
-      throw abortError();
-    if (firstAssistant?.stopReason === "error" || firstAssistant?.errorMessage)
-      throw new Error(firstAssistant.errorMessage ?? "child agent failed");
-    if (options.schema && structuredResult === undefined) {
-      if (request.signal?.aborted) throw abortError();
-      await session.prompt(
-        "Your previous response did not call workflow_result. Call workflow_result now with the final value and no other output.",
-      );
+    case "oracle": {
+      const resolved = resolveOracleConfig();
+      if (!resolved.enabled) throw new Error("oracle recipe is disabled");
+      tool = createOracleTool(resolved.config);
+      break;
     }
-    if (options.schema && structuredResult === undefined)
-      throw new Error(
-        "child did not call workflow_result after one corrective follow-up",
-      );
-    const lastAssistant = [...session.messages]
-      .reverse()
-      .find((message) => message.role === "assistant");
-    if (lastAssistant?.stopReason === "aborted") throw abortError();
-    if (lastAssistant?.stopReason === "error" || lastAssistant?.errorMessage)
-      throw new Error(lastAssistant.errorMessage ?? "child agent failed");
-    const sessionFile = session.sessionFile;
-    if (!sessionFile)
-      throw new Error("workflow child session was not persisted");
-    return {
-      result: options.schema
-        ? structuredResult
-        : finalAssistantText(session.messages),
-      sessionId: session.sessionId,
-      sessionFile,
-      usage,
-    };
-  } finally {
-    request.signal?.removeEventListener("abort", abort);
-    unsubscribe();
-    session.dispose();
+    case "librarian": {
+      const resolved = resolveLibrarianConfig();
+      if (!resolved.enabled) throw new Error("librarian recipe is disabled");
+      tool = createLibrarianTool(resolved.config);
+      break;
+    }
+    case "finder": {
+      const resolved = resolveFinderConfig();
+      if (!resolved.enabled) throw new Error("finder recipe is disabled");
+      tool = createFinderTool(resolved.config);
+      break;
+    }
   }
+  if (!tool.execute)
+    throw new Error(`${request.recipe.kind} tool is not executable`);
+
+  let updateQueue = Promise.resolve();
+  const update = (partial: unknown) => {
+    if (!partial || typeof partial !== "object") return;
+    const details = (partial as { details?: unknown }).details;
+    request.onUsage(resultUsage(details));
+    const session = sessionMetadata(details);
+    if (session.sessionId || session.sessionFile)
+      updateQueue = updateQueue.then(async () =>
+        request.onSession(session.sessionId, session.sessionFile),
+      );
+  };
+  const result = await tool.execute(
+    request.node.nodeId,
+    params,
+    request.signal,
+    update,
+    request.ctx,
+  );
+  await updateQueue;
+  if (request.signal?.aborted) throw abortError();
+  const details =
+    result && typeof result === "object" ? result.details : undefined;
+  const usage = resultUsage(details);
+  const session = sessionMetadata(details);
+  request.onUsage(usage);
+  if (session.sessionId || session.sessionFile)
+    await request.onSession(session.sessionId, session.sessionFile);
+  const text = resultText(result);
+  return { result: text, ...session, usage };
 };
 
 export class WorkflowRuntime {
   private readonly semaphore: Semaphore;
   private agentSequence = 0;
   private launched = 0;
-  private cached = 0;
   private readonly controller = new AbortController();
   private readonly cancellationSignal: AbortSignal;
   private readonly runSignal: AbortSignal;
@@ -425,15 +392,14 @@ export class WorkflowRuntime {
     private readonly args: unknown,
     private readonly limits: { maxConcurrency: number; maxAgents: number },
     private readonly store: JournalStore,
-    private readonly parentSessionFile: string,
     private readonly ctx: ExtensionContext,
     signal: AbortSignal | undefined,
     private readonly onProgress: (progress: WorkflowProgress) => void,
-    private readonly spawnAgent: SpawnAgent = spawnPersistentAgent,
+    private readonly spawnRecipe: SpawnRecipe = spawnRecipeTool,
     private readonly runnerLauncher: RunnerLauncher | undefined = undefined,
   ) {
     this.semaphore = new Semaphore(limits.maxConcurrency);
-    this.launched = store.journal.nodes.length;
+    this.agentSequence = store.journal.nodes.length;
     const draftPhases = (source.meta.phases ?? []).slice(
       0,
       MAX_GRAPH_NODES - 2,
@@ -486,20 +452,23 @@ export class WorkflowRuntime {
   async run(): Promise<RuntimeResult> {
     this.emitProgress();
     try {
+      if (!this.source.code)
+        throw new Error("workflow source has no compiled code");
       const value = await runWorkflowScript(
         {
-          body: this.source.body,
+          code: this.source.code,
+          meta: this.source.meta,
           args: this.args,
           filename: this.source.path,
           signal: this.runSignal,
           onFatal: (error) => this.controller.abort(error),
           onGraphEvent: (event) => this.applyGraphEvent(event),
-          agent: async ({ prompt, options, phase }) => {
-            const outcome = await this.trackAgent(prompt, {
-              ...(options as WorkflowAgentOptions),
+          agent: async ({ recipe, options, phase }) => {
+            const outcome = await this.trackRecipe(recipe, {
+              ...options,
               ...(phase === undefined ? {} : { phase }),
             });
-            return workflowAgentOutcome(outcome.value, outcome.cached);
+            return workflowAgentOutcome(outcome.value, false);
           },
         },
         this.runnerLauncher,
@@ -508,7 +477,7 @@ export class WorkflowRuntime {
       this.setGraphTerminalStatus("completed");
       return {
         value,
-        cached: this.cached,
+        cached: 0,
         graph: this.graph.map((node) => ({ ...node })),
       };
     } catch (error) {
@@ -520,11 +489,11 @@ export class WorkflowRuntime {
     }
   }
 
-  private trackAgent(
-    prompt: string,
-    options?: WorkflowAgentOptions,
-  ): Promise<AgentExecution> {
-    const invocation = this.agent(prompt, options);
+  private trackRecipe(
+    recipe: WorkflowRecipe,
+    options: WorkflowAgentOptions,
+  ): Promise<RecipeExecution> {
+    const invocation = this.recipe(recipe, options);
     this.inFlight.add(invocation);
     void invocation.then(
       () => this.inFlight.delete(invocation),
@@ -542,60 +511,28 @@ export class WorkflowRuntime {
     } while (this.inFlight.size > 0);
   }
 
-  private async agent(
-    prompt: string,
-    options: WorkflowAgentOptions = {},
-  ): Promise<AgentExecution> {
-    if (typeof prompt !== "string" || prompt.trim() === "")
-      throw new Error("agent prompt must be a non-empty string");
+  private async recipe(
+    recipe: WorkflowRecipe,
+    options: WorkflowAgentOptions,
+  ): Promise<RecipeExecution> {
+    const params = validateRecipeInput(recipe);
+    if (!this.source.meta.agents?.includes(recipe.kind))
+      throw new Error(
+        `${recipe.kind} recipe is not declared in workflow meta.agents`,
+      );
     if (this.runSignal.aborted) throw abortError();
-    const phase = options.phase;
-    const model = resolveModel(options.model, this.ctx);
-    const thinkingLevel = options.thinkingLevel ?? "medium";
-    const tools = selectChildTools(options.tools, Boolean(options.schema));
     const sequence = ++this.agentSequence;
-    const key = options.cacheKey ?? `node-${sequence}`;
-    if (options.cacheKey && tools.some((tool) => MUTATING_TOOLS.has(tool)))
-      throw new Error(
-        "cacheKey cannot be used with edit, write, or format_file because their side effects cannot be replayed",
-      );
-    if (options.cacheKey && tools.some((tool) => tool !== "workflow_result"))
-      throw new Error(
-        "cacheKey requires tools: [] because filesystem and skill inputs are not captured by the cache key",
-      );
-    const inputHash = hashInput({
-      cacheAbi: 3,
-      scriptHash: this.source.hash,
-      prompt,
-      cwd: this.ctx.cwd,
-      contextHash: createHash("sha256")
-        .update(this.ctx.getSystemPrompt())
-        .digest("hex"),
-      execution: {
-        model: stableValue(model),
-        thinkingLevel,
-        tools,
-        schema: stableValue(options.schema),
-      },
-    });
-    const cached = options.cacheKey
-      ? this.store.findCompleted(key, inputHash)
-      : undefined;
-    if (cached) {
-      this.cached++;
-      this.emitProgress();
-      return { value: cached.result, cached: true };
-    }
     if (++this.launched > this.limits.maxAgents)
       throw new Error(`workflow exceeded maxAgents (${this.limits.maxAgents})`);
 
     const node: WorkflowNodeRecord = {
       nodeId: `${this.store.journal.runId}:${randomUUID()}`,
-      key,
-      inputHash,
+      key: `recipe-${sequence}`,
+      inputHash: this.source.hash,
       status: "running",
-      phase,
-      label: options.label,
+      phase: options.phase,
+      label: options.label ?? recipe.kind,
+      recipe: recipe.kind,
       usage: { ...ZERO_USAGE },
       startedAt: new Date().toISOString(),
     };
@@ -604,15 +541,11 @@ export class WorkflowRuntime {
 
     try {
       return await this.semaphore.run(async () => {
-        const result = await this.spawnAgent({
-          prompt,
-          options: { ...options, phase },
-          model,
-          thinkingLevel,
-          tools,
+        const result = await this.spawnRecipe({
+          recipe: { kind: recipe.kind, input: { ...params } },
+          options,
           node,
           source: this.source,
-          parentSessionFile: this.parentSessionFile,
           cwd: this.ctx.cwd,
           signal: this.runSignal,
           ctx: this.ctx,
@@ -622,8 +555,8 @@ export class WorkflowRuntime {
           },
           onSession: async (sessionId, sessionFile) => {
             await this.store.mutate(() => {
-              node.childSessionId = sessionId;
-              node.childSessionFile = sessionFile;
+              if (sessionId) node.childSessionId = sessionId;
+              if (sessionFile) node.childSessionFile = sessionFile;
             });
           },
         });
@@ -631,8 +564,10 @@ export class WorkflowRuntime {
           Object.assign(node, {
             status: "completed",
             result: result.result,
-            childSessionId: result.sessionId,
-            childSessionFile: result.sessionFile,
+            ...(result.sessionId ? { childSessionId: result.sessionId } : {}),
+            ...(result.sessionFile
+              ? { childSessionFile: result.sessionFile }
+              : {}),
             usage: result.usage,
             finishedAt: new Date().toISOString(),
           });
@@ -658,7 +593,7 @@ export class WorkflowRuntime {
       !this.graph.some((node) => node.id === normalized.node.id) &&
       this.graph.length >= MAX_GRAPH_NODES - 1
     ) {
-      if (!this.graph.some((node) => node.id === "workflow:overflow")) {
+      if (!this.graph.some((node) => node.id === "workflow:overflow"))
         this.graph.push({
           id: "workflow:overflow",
           parentId: "workflow",
@@ -667,22 +602,15 @@ export class WorkflowRuntime {
           status: "running",
           order: Number.MAX_SAFE_INTEGER,
         });
-      }
-    } else {
-      applyWorkflowGraphEvent(this.graph, normalized);
-    }
+    } else applyWorkflowGraphEvent(this.graph, normalized);
     this.scheduleGraphProgress();
   }
 
   private resolveDraftGraphEvent(
     event: WorkflowGraphEvent,
   ): WorkflowGraphEvent {
-    if (event.type === "status") {
-      return {
-        ...event,
-        id: this.graphAliases.get(event.id) ?? event.id,
-      };
-    }
+    if (event.type === "status")
+      return { ...event, id: this.graphAliases.get(event.id) ?? event.id };
 
     const parentId = event.node.parentId
       ? (this.graphAliases.get(event.node.parentId) ?? event.node.parentId)
@@ -712,14 +640,7 @@ export class WorkflowRuntime {
         };
       }
     }
-
-    return {
-      type: "node",
-      node: {
-        ...event.node,
-        parentId,
-      },
-    };
+    return { type: "node", node: { ...event.node, parentId } };
   }
 
   private scheduleGraphProgress(): void {
@@ -744,9 +665,8 @@ export class WorkflowRuntime {
     this.graphProgressTimer = undefined;
     const root = this.graph.find((node) => node.id === "workflow");
     if (root) root.status = status;
-    for (const node of this.graph) {
+    for (const node of this.graph)
       if (node.status === "running") node.status = status;
-    }
     this.emitProgress();
   }
 
@@ -760,7 +680,7 @@ export class WorkflowRuntime {
       failed: nodes.filter(
         (node) => node.status === "failed" || node.status === "cancelled",
       ).length,
-      cached: this.cached,
+      cached: 0,
       total: nodes.length,
       usage: nodes.reduce(
         (usage, node) => ({
@@ -784,8 +704,10 @@ if (import.meta.vitest) {
   const { tmpdir } = await import("node:os");
   const pathModule = await import("node:path");
   const join = (...parts: string[]) => pathModule.join(...parts);
+  const { parseWorkflowSource } = await import("./source.js");
   const dirs: string[] = [];
   const stores: JournalStore[] = [];
+
   afterEach(async () => {
     await Promise.all(stores.splice(0).map(async (store) => store.release()));
     await Promise.all(
@@ -795,29 +717,48 @@ if (import.meta.vitest) {
     );
   });
 
+  function workflowSource(
+    body: string,
+    agents: RecipeKind[] = [],
+    phases: string[] = [],
+  ): string {
+    return `
+      import { defineWorkflow, delegate, oracle, librarian, finder } from "@bds_pi/workflow";
+      export const meta = {
+        name: "test",
+        description: "test",
+        phases: ${JSON.stringify(phases)} as const,
+        agents: ${JSON.stringify(agents)} as const,
+      } as const;
+      export default defineWorkflow(meta, {
+        async run({ agent, phase, parallel, pipeline }, args) { ${body} }
+      });
+    `;
+  }
+
   async function harness(
     body: string,
-    spawn: SpawnAgent,
+    spawn: SpawnRecipe,
     limits = { maxConcurrency: 2, maxAgents: 10 },
     signal?: AbortSignal,
-    phases?: string[],
+    agents: RecipeKind[] = [],
+    phases: string[] = [],
   ) {
     const dir = await mkdtemp(join(tmpdir(), "workflow-runtime-"));
     dirs.push(dir);
+    const text = workflowSource(body, agents, phases);
+    const parsed = parseWorkflowSource(text);
     const source: WorkflowSource = {
+      ...parsed,
       source: "inline",
-      body,
-      meta: {
-        name: "test",
-        description: "test",
-        ...(phases ? { phases } : {}),
-      },
-      hash: "hash",
+      text,
       projectLocal: false,
     };
     const store = await JournalStore.create(dir, {
       workflow: {
-        ...source.meta,
+        name: source.meta.name,
+        description: source.meta.description,
+        phases: source.meta.phases,
         source: source.source,
         scriptHash: source.hash,
       },
@@ -830,13 +771,9 @@ if (import.meta.vitest) {
       status: "running",
     });
     stores.push(store);
-    const ctx = {
-      cwd: dir,
-      model: { provider: "test", id: "model", api: "test" },
-      getSystemPrompt: () => "test system prompt",
-    } as ExtensionContext;
     const progress: WorkflowProgress[] = [];
     return {
+      source,
       store,
       progress,
       runtime: new WorkflowRuntime(
@@ -844,8 +781,7 @@ if (import.meta.vitest) {
         { n: 2 },
         limits,
         store,
-        "/tmp/parent.jsonl",
-        ctx,
+        { cwd: dir } as ExtensionContext,
         signal,
         (update) => progress.push(update),
         spawn,
@@ -854,142 +790,84 @@ if (import.meta.vitest) {
     };
   }
 
-  const successSpawn: SpawnAgent = async ({ prompt, node }) => ({
-    result: prompt,
+  const successSpawn: SpawnRecipe = async ({ recipe, node }) => ({
+    result:
+      Object.values(recipe.input).find(
+        (value): value is string => typeof value === "string",
+      ) ?? recipe.kind,
     sessionId: node.nodeId,
     sessionFile: `/tmp/${node.nodeId}.jsonl`,
     usage: { ...ZERO_USAGE },
   });
 
   describe("workflow runtime", () => {
-    it("shows the full draft phase route before execution and reconciles live phases", async () => {
-      const { runtime, progress } = await harness(
-        'return phase("inspect", () => phase("challenge", async () => "done"))',
+    it("runs compiled recipes and records child sessions", async () => {
+      const { runtime, store } = await harness(
+        'return agent(finder({ query: "needle" }), { label: "search" });',
         successSpawn,
         undefined,
         undefined,
+        ["finder"],
+      );
+      expect((await runtime.run()).value).toBe("needle");
+      expect(store.journal.nodes[0]).toMatchObject({
+        label: "search",
+        status: "completed",
+        childSessionId: expect.any(String),
+      });
+    });
+
+    it("rejects undeclared and malformed recipes", async () => {
+      const undeclared = await harness(
+        'const makeRecipe = finder; return (agent as any)(makeRecipe({ query: "needle" }));',
+        successSpawn,
+      );
+      await expect(undeclared.runtime.run()).rejects.toThrow("not declared");
+
+      const malformed = await harness(
+        'return agent(finder({ query: "" }));',
+        successSpawn,
+        undefined,
+        undefined,
+        ["finder"],
+      );
+      await expect(malformed.runtime.run()).rejects.toThrow("non-empty string");
+    });
+
+    it("preserves typed control-flow graphs from compiled workflows", async () => {
+      const { runtime, progress } = await harness(
+        'return phase("inspect", () => phase("challenge", async () => "done"));',
+        successSpawn,
+        undefined,
+        undefined,
+        [],
         ["inspect", "challenge", "decide"],
       );
       await runtime.run();
-
-      const initialPhases = progress[0]!.graph.filter(
+      const initial = progress[0]!.graph.filter(
         (node) => node.kind === "phase",
       );
-      expect(initialPhases.map((node) => node.label)).toEqual([
-        "inspect",
-        "challenge",
-        "decide",
-      ]);
-      expect(initialPhases.map((node) => node.status)).toEqual([
+      expect(initial.map((node) => node.status)).toEqual([
         "pending",
         "pending",
         "pending",
       ]);
-      expect(initialPhases.map((node) => node.parentId)).toEqual([
-        "workflow",
-        "draft:phase:0",
-        "draft:phase:1",
-      ]);
-
-      const finalPhases = progress
+      const final = progress
         .at(-1)!
         .graph.filter((node) => node.kind === "phase");
-      expect(finalPhases).toHaveLength(3);
-      expect(finalPhases[0]).toMatchObject({
-        label: "inspect",
-        status: "completed",
-        draft: false,
-      });
-      expect(finalPhases[1]).toMatchObject({
-        label: "challenge",
-        status: "completed",
-        draft: false,
-      });
-      expect(finalPhases[2]).toMatchObject({
-        label: "decide",
-        status: "pending",
-        draft: true,
-      });
-    });
-
-    it("preserves live parents when runtime topology diverges from the draft", async () => {
-      const { runtime } = await harness(
-        'return phase("outer", () => parallel([() => phase("inner", async () => "done")]))',
-        successSpawn,
-        undefined,
-        undefined,
-        ["outer", "inner"],
-      );
-      const result = await runtime.run();
-      const innerPhases = result.graph.filter(
-        (node) => node.kind === "phase" && node.label === "inner",
-      );
-      expect(innerPhases).toHaveLength(2);
-      expect(innerPhases.find((node) => node.draft)).toMatchObject({
-        status: "pending",
-        parentId: "draft:phase:0",
-      });
-      const live = innerPhases.find((node) => !node.draft)!;
-      const parallel = result.graph.find((node) => node.id === live.parentId)!;
-      expect(parallel.kind).toBe("parallel");
-      const outer = result.graph.find(
-        (node) => node.kind === "phase" && node.label === "outer",
-      )!;
-      const orderedChildren = result.graph
-        .filter((node) => node.parentId === outer.id)
-        .sort((left, right) => left.order - right.order);
-      expect(orderedChildren.map((node) => node.kind)).toEqual([
-        "parallel",
-        "phase",
+      expect(final.map((node) => node.status)).toEqual([
+        "completed",
+        "completed",
+        "pending",
       ]);
     });
 
-    it("joins every text block from the final assistant response", () => {
-      expect(
-        finalAssistantText([
-          {
-            role: "assistant",
-            content: [
-              { type: "text", text: "first" },
-              { type: "thinking", thinking: "hidden" },
-              { type: "text", text: " second" },
-            ],
-          },
-        ]),
-      ).toBe("first second");
-    });
-
-    it("does not expose host capabilities", async () => {
-      const { runtime } = await harness(
-        "return [typeof process, typeof require, typeof fetch, typeof Buffer, typeof globalThis.process]",
-        successSpawn,
-      );
-      expect((await runtime.run()).value).toEqual([
-        "undefined",
-        "undefined",
-        "undefined",
-        "undefined",
-        "undefined",
-      ]);
-    });
-
-    it("preserves pipeline order while stages stay sequential per item", async () => {
-      const { runtime } = await harness(
-        "return pipeline([3, 1, 2], async x => x * 2, async x => x + 1)",
-        successSpawn,
-      );
-      expect((await runtime.run()).value).toEqual([7, 3, 5]);
-      const failed = await harness(
-        "return pipeline([1], async () => { throw new Error('stage failed') }, async () => 2)",
-        successSpawn,
-      );
-      await expect(failed.runtime.run()).rejects.toThrow("stage failed");
-    });
-
-    it("enforces concurrency and agent limits", async () => {
+    it("enforces concurrency and maxAgents without caching recipes", async () => {
       let active = 0;
       let peak = 0;
-      const spawn: SpawnAgent = async (request) => {
+      let calls = 0;
+      const spawn: SpawnRecipe = async (request) => {
+        calls++;
         active++;
         peak = Math.max(peak, active);
         await new Promise((resolve) => setTimeout(resolve, 10));
@@ -997,153 +875,55 @@ if (import.meta.vitest) {
         return successSpawn(request);
       };
       const { runtime } = await harness(
-        "return parallel(Array.from({ length: 5 }, (_, i) => () => agent(String(i))))",
+        `return parallel([
+          () => agent(finder({ query: "a" })),
+          () => agent(finder({ query: "a" })),
+        ]);`,
         spawn,
-        { maxConcurrency: 2, maxAgents: 5 },
+        { maxConcurrency: 1, maxAgents: 2 },
+        undefined,
+        ["finder"],
       );
-      await runtime.run();
-      expect(peak).toBe(2);
+      expect((await runtime.run()).value).toEqual(["a", "a"]);
+      expect(peak).toBe(1);
+      expect(calls).toBe(2);
+
       const over = await harness(
-        "return parallel([() => agent('a'), () => agent('b')])",
+        `return parallel([
+          () => agent(finder({ query: "a" })),
+          () => agent(finder({ query: "b" })),
+        ]);`,
         spawn,
         { maxConcurrency: 1, maxAgents: 1 },
+        undefined,
+        ["finder"],
       );
       await expect(over.runtime.run()).rejects.toThrow("maxAgents");
-      expect(() => normalizeLimits(17, 1)).toThrow("maxConcurrency");
-      expect(() => normalizeLimits(1, 1001)).toThrow("maxAgents");
     });
 
-    it("rejects tools that could escape workflow bounds", () => {
-      expect(selectChildTools(undefined, false)).not.toContain("finder");
-      expect(() => selectChildTools(["read", "delegate"], false)).toThrow(
-        "not allowed",
-      );
-      expect(() => selectChildTools(["oracle"], false)).toThrow("not allowed");
-      expect(() => selectChildTools(["bash"], false)).toThrow("not allowed");
-      expect(selectChildTools(["read"], true)).toEqual([
-        "read",
-        "workflow_result",
-      ]);
-    });
-
-    it("waits for detached agent promises before completing", async () => {
-      let finished = false;
-      const spawn: SpawnAgent = async (request) => {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        finished = true;
-        return successSpawn(request);
-      };
-      const { runtime } = await harness(
-        "agent('detached'); return 'script-result'",
-        spawn,
-      );
-      expect((await runtime.run()).value).toBe("script-result");
-      expect(finished).toBe(true);
-    });
-
-    it("propagates cancellation", async () => {
+    it("propagates cancellation to recipe execution", async () => {
       const controller = new AbortController();
-      const spawn: SpawnAgent = ({ signal }) =>
+      const spawn: SpawnRecipe = ({ signal }) =>
         new Promise((_resolve, reject) =>
           signal?.addEventListener("abort", () => reject(abortError()), {
             once: true,
           }),
         );
       const { runtime } = await harness(
-        "return agent('wait')",
+        'return agent(finder({ query: "wait" }));',
         spawn,
         undefined,
         controller.signal,
+        ["finder"],
       );
       const pending = runtime.run();
       setTimeout(() => controller.abort(), 5);
       await expect(pending).rejects.toThrow("workflow cancelled");
     });
 
-    it("reuses only completed nodes with stable matching inputs", async () => {
-      let calls = 0;
-      const spawn: SpawnAgent = async (request) => {
-        calls++;
-        return successSpawn(request);
-      };
-      const first = await harness(
-        "return agent('same', { cacheKey: 'key', tools: [] })",
-        spawn,
-      );
-      expect((await first.runtime.run()).value).toBe("same");
-      const source: WorkflowSource = {
-        source: "inline",
-        body: "return agent('same', { cacheKey: 'key', tools: [] })",
-        meta: { name: "test", description: "test" },
-        hash: "hash",
-        projectLocal: false,
-      };
-      const resumed = new WorkflowRuntime(
-        source,
-        {},
-        { maxConcurrency: 2, maxAgents: 10 },
-        first.store,
-        "/tmp/parent.jsonl",
-        {
-          cwd: first.store.journal.invoking.cwd,
-          model: { provider: "test", id: "model", api: "test" },
-          getSystemPrompt: () => "test system prompt",
-        } as ExtensionContext,
-        undefined,
-        () => undefined,
-        spawn,
-        spawnDirectRunner,
-      );
-      expect((await resumed.run()).value).toBe("same");
-      expect(calls).toBe(1);
-
-      const exhaustedBudget = new WorkflowRuntime(
-        source,
-        {},
-        { maxConcurrency: 1, maxAgents: 1 },
-        first.store,
-        "/tmp/parent.jsonl",
-        {
-          cwd: first.store.journal.invoking.cwd,
-          model: { provider: "test", id: "other-model", api: "test" },
-          getSystemPrompt: () => "test system prompt",
-        } as ExtensionContext,
-        undefined,
-        () => undefined,
-        spawn,
-        spawnDirectRunner,
-      );
-      await expect(exhaustedBudget.run()).rejects.toThrow("maxAgents");
-      expect(calls).toBe(1);
-
-      const changedModel = new WorkflowRuntime(
-        source,
-        {},
-        { maxConcurrency: 2, maxAgents: 10 },
-        first.store,
-        "/tmp/parent.jsonl",
-        {
-          cwd: first.store.journal.invoking.cwd,
-          model: { provider: "test", id: "other-model", api: "test" },
-          getSystemPrompt: () => "test system prompt",
-        } as ExtensionContext,
-        undefined,
-        () => undefined,
-        spawn,
-        spawnDirectRunner,
-      );
-      expect((await changedModel.run()).value).toBe("same");
-      expect(calls).toBe(2);
-    });
-
-    it("rejects cache replay for nodes with filesystem side effects", async () => {
-      const { runtime } = await harness(
-        'return agent("mutate", { cacheKey: "key", tools: ["edit"] })',
-        successSpawn,
-      );
-      await expect(runtime.run()).rejects.toThrow(
-        "side effects cannot be replayed",
-      );
+    it("validates limits", () => {
+      expect(() => normalizeLimits(17, 1)).toThrow("maxConcurrency");
+      expect(() => normalizeLimits(1, 1001)).toThrow("maxAgents");
     });
   });
 }

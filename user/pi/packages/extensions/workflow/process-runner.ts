@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import type { WorkflowGraphEvent } from "./graph.js";
 import { WORKFLOW_RUNNER_SOURCE } from "./runner-source.js";
 
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 const MAX_STDERR_BYTES = 64 * 1024;
 const HEARTBEAT_TIMEOUT_MS = 5_000;
@@ -16,11 +16,11 @@ interface WireError {
 }
 
 interface AgentFrame {
-  v: 1;
+  v: 2;
   type: "agent";
   id: string;
-  prompt: string;
-  options: unknown;
+  recipe: WorkflowRecipe;
+  options: WorkflowAgentOptions;
   phase?: string;
 }
 
@@ -39,12 +39,20 @@ export function workflowAgentOutcome(
   return { [AGENT_OUTCOME]: true, value, cached };
 }
 
+export interface WorkflowModuleMeta {
+  name: string;
+  description: string;
+  phases?: string[];
+  agents?: Array<WorkflowRecipe["kind"]>;
+}
+
 interface RunnerFrame {
-  v: 1;
+  v: 2;
   type: "ready" | "heartbeat" | "complete" | "fatal" | "agent" | "graph";
   id?: string;
-  prompt?: string;
-  options?: unknown;
+  recipe?: WorkflowRecipe;
+  meta?: WorkflowModuleMeta;
+  options?: WorkflowAgentOptions;
   phase?: string;
   pending?: number;
   hasValue?: boolean;
@@ -54,14 +62,25 @@ interface RunnerFrame {
   cached?: boolean;
 }
 
+export interface WorkflowRecipe {
+  kind: "delegate" | "oracle" | "librarian" | "finder";
+  input: Record<string, unknown>;
+}
+
+export interface WorkflowAgentOptions {
+  label?: string;
+  phase?: string;
+}
+
 export interface ScriptAgentRequest {
-  prompt: string;
-  options: unknown;
+  recipe: WorkflowRecipe;
+  options: WorkflowAgentOptions;
   phase?: string;
 }
 
 export interface ScriptRunRequest {
-  body: string;
+  code: string;
+  meta: WorkflowModuleMeta;
   args: unknown;
   filename?: string;
   signal?: AbortSignal;
@@ -217,11 +236,25 @@ export async function runWorkflowScript(
   const handleAgent = (frame: RunnerFrame): void => {
     if (
       typeof frame.id !== "string" ||
-      typeof frame.prompt !== "string" ||
+      !frame.recipe ||
+      typeof frame.recipe !== "object" ||
+      !["delegate", "oracle", "librarian", "finder"].includes(
+        frame.recipe.kind,
+      ) ||
+      !frame.recipe.input ||
+      typeof frame.recipe.input !== "object" ||
+      Array.isArray(frame.recipe.input) ||
       (frame.phase !== undefined && typeof frame.phase !== "string") ||
       !frame.options ||
       typeof frame.options !== "object" ||
-      Array.isArray(frame.options)
+      Array.isArray(frame.options) ||
+      Object.keys(frame.options).some(
+        (key) => key !== "label" && key !== "phase",
+      ) ||
+      (frame.options.label !== undefined &&
+        typeof frame.options.label !== "string") ||
+      (frame.options.phase !== undefined &&
+        typeof frame.options.phase !== "string")
     ) {
       throw new Error("invalid workflow agent request");
     }
@@ -229,7 +262,7 @@ export async function runWorkflowScript(
     let operation!: Promise<void>;
     operation = request
       .agent({
-        prompt: agentFrame.prompt,
+        recipe: agentFrame.recipe,
         options: agentFrame.options,
         phase: agentFrame.phase,
       })
@@ -278,7 +311,8 @@ export async function runWorkflowScript(
       ready = true;
       write({
         type: "start",
-        body: request.body,
+        code: request.code,
+        meta: request.meta,
         args: request.args,
         filename: request.filename,
       });
@@ -374,24 +408,47 @@ export async function runWorkflowScript(
   });
 }
 
+const executeWorkflowScriptForTest = runWorkflowScript;
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest;
+  const testMeta: WorkflowModuleMeta = {
+    name: "test",
+    description: "runner test",
+    phases: ["test", "inspect"],
+    agents: ["delegate", "oracle", "librarian", "finder"],
+  };
+  const runWorkflowScript = (
+    request: Omit<ScriptRunRequest, "meta">,
+    launcher?: RunnerLauncher,
+  ) => executeWorkflowScriptForTest({ ...request, meta: testMeta }, launcher);
+
+  const workflowCode = (body: string, parseArgs?: string): string => `
+    "use strict";
+    const { defineWorkflow, delegate, oracle, librarian, finder } = require("@bds_pi/workflow");
+    const meta = { name: "test", description: "runner test", phases: ["test", "inspect"], agents: ["delegate", "oracle", "librarian", "finder"] };
+    exports.meta = meta;
+    exports.default = defineWorkflow(meta, {
+      ${parseArgs ? `parseArgs: ${parseArgs},` : ""}
+      async run({ agent, phase, parallel, pipeline }, args) { ${body} }
+    });
+  `;
 
   describe("workflow script runner", () => {
     it("keeps workflow globals in the runner and proxies agent calls", async () => {
       const prompts: string[] = [];
       const value = await runWorkflowScript(
         {
-          body: `
-            const result = await agent("work");
+          code: workflowCode(`
+            const result = await agent(delegate({ prompt: "work" }));
             let escapeError;
             try { result.constructor.constructor("return process")(); }
             catch (error) { escapeError = error.name; }
             return [typeof process, escapeError, result.value];
-          `,
+          `),
           args: null,
-          agent: async ({ prompt }) => {
-            prompts.push(prompt);
+          agent: async ({ recipe }) => {
+            prompts.push(String(recipe.input.prompt));
             return { value: "done" };
           },
         },
@@ -401,14 +458,110 @@ if (import.meta.vitest) {
       expect(prompts).toEqual(["work"]);
     });
 
+    it("frames serializable recipes and restricted options", async () => {
+      const requests: ScriptAgentRequest[] = [];
+      const value = await runWorkflowScript(
+        {
+          code: workflowCode(`
+            return Promise.all([
+              agent(delegate({ prompt: args.prompt }), { label: "delegate" }),
+              agent(oracle({ task: "reason" }), { phase: "analysis" }),
+              agent(librarian({ query: "docs" })),
+              agent(finder({ query: "files" }))
+            ]);
+          `),
+          args: { prompt: "work" },
+          agent: async (request) => {
+            requests.push(request);
+            return request.recipe.kind;
+          },
+        },
+        spawnDirectRunner,
+      );
+      expect(value).toEqual(["delegate", "oracle", "librarian", "finder"]);
+      expect(requests.map(({ recipe }) => recipe)).toEqual([
+        { kind: "delegate", input: { prompt: "work" } },
+        { kind: "oracle", input: { task: "reason" } },
+        { kind: "librarian", input: { query: "docs" } },
+        { kind: "finder", input: { query: "files" } },
+      ]);
+      expect(requests[1]?.phase).toBe("analysis");
+    });
+
+    it("rejects parseArgs before launching an agent", async () => {
+      let launches = 0;
+      await expect(
+        runWorkflowScript(
+          {
+            code: workflowCode(
+              'return agent(delegate({ prompt: "must not run" }))',
+              '() => { throw new Error("invalid args") }',
+            ),
+            args: { invalid: true },
+            agent: async () => {
+              launches++;
+            },
+          },
+          spawnDirectRunner,
+        ),
+      ).rejects.toThrow("invalid args");
+      expect(launches).toBe(0);
+    });
+
+    it("rejects arbitrary CommonJS requires", async () => {
+      await expect(
+        runWorkflowScript(
+          {
+            code: 'require("node:fs");',
+            args: null,
+            agent: async () => undefined,
+          },
+          spawnDirectRunner,
+        ),
+      ).rejects.toThrow("workflow require is not allowed: node:fs");
+    });
+
+    it("keeps execution controls unreachable from workflow modules", async () => {
+      let launches = 0;
+      const value = await runWorkflowScript(
+        {
+          code: workflowCode(`
+            if (globalThis.__workflowExecute) await globalThis.__workflowExecute();
+            return agent(delegate({ prompt: "once" }));
+          `),
+          args: null,
+          agent: async () => {
+            launches++;
+            return "done";
+          },
+        },
+        spawnDirectRunner,
+      );
+      expect(value).toBe("done");
+      expect(launches).toBe(1);
+    });
+
+    it("rejects metadata changed after static approval", async () => {
+      await expect(
+        runWorkflowScript(
+          {
+            code: `${workflowCode('return phase("hidden", () => "nope")')}\nexports.meta.phases.push("hidden");`,
+            args: null,
+            agent: async () => undefined,
+          },
+          spawnDirectRunner,
+        ),
+      ).rejects.toThrow("metadata changed after approval");
+    });
+
     it("does not leak host promises through phase callbacks", async () => {
       const value = await runWorkflowScript(
         {
-          body: `
+          code: workflowCode(`
             const result = await phase("test", async () => ({ value: "done" }));
             try { result.constructor.constructor("return process")(); }
             catch (error) { return [error.name, result.value]; }
-          `,
+          `),
           args: null,
           agent: async () => undefined,
         },
@@ -420,12 +573,12 @@ if (import.meta.vitest) {
     it("rejects unserializable agent options without leaking pending work", async () => {
       const value = await runWorkflowScript(
         {
-          body: `
-            const options = {};
-            options.self = options;
-            try { await agent("work", options); }
+          code: workflowCode(`
+            const input = {};
+            input.self = input;
+            try { await agent({ kind: "delegate", input }); }
             catch (error) { return error.message; }
-          `,
+          `),
           args: null,
           agent: async () => undefined,
         },
@@ -438,15 +591,15 @@ if (import.meta.vitest) {
       const events: WorkflowGraphEvent[] = [];
       await runWorkflowScript(
         {
-          body: `
+          code: workflowCode(`
             return phase("inspect", () => parallel([
-              () => agent("first", { label: "first" }),
-              () => agent("second", { label: "second" })
+              () => agent(delegate({ prompt: "first" }), { label: "first" }),
+              () => agent(delegate({ prompt: "second" }), { label: "second" })
             ]));
-          `,
+          `),
           args: null,
           onGraphEvent: (event) => events.push(event),
-          agent: async ({ prompt }) => prompt,
+          agent: async ({ recipe }) => recipe.input.prompt,
         },
         spawnDirectRunner,
       );
@@ -470,10 +623,10 @@ if (import.meta.vitest) {
     it("preserves handled agent rejection semantics", async () => {
       const value = await runWorkflowScript(
         {
-          body: `
-            try { await agent("expected failure"); }
+          code: workflowCode(`
+            try { await agent(delegate({ prompt: "expected failure" })); }
             catch { return "recovered"; }
-          `,
+          `),
           args: null,
           agent: async () => {
             throw new Error("expected failure");
@@ -488,7 +641,9 @@ if (import.meta.vitest) {
       await expect(
         runWorkflowScript(
           {
-            body: 'agent("detached failure"); return "premature"',
+            code: workflowCode(
+              'agent(delegate({ prompt: "detached failure" })); return "premature"',
+            ),
             args: null,
             agent: async () => {
               throw new Error("detached failure");
@@ -501,13 +656,13 @@ if (import.meta.vitest) {
 
     it("rejects unobserved failures in derived agent chains", async () => {
       for (const body of [
-        'agent("then failure").then(() => "ignored"); return "premature"',
-        'agent("finally failure").finally(() => undefined); return "premature"',
+        'agent(delegate({ prompt: "then failure" })).then(() => "ignored"); return "premature"',
+        'agent(delegate({ prompt: "finally failure" })).finally(() => undefined); return "premature"',
       ]) {
         await expect(
           runWorkflowScript(
             {
-              body,
+              code: workflowCode(body),
               args: null,
               agent: async () => {
                 throw new Error("derived failure");
@@ -523,7 +678,7 @@ if (import.meta.vitest) {
       const events: WorkflowGraphEvent[] = [];
       await runWorkflowScript(
         {
-          body: 'return agent("cached")',
+          code: workflowCode('return agent(delegate({ prompt: "cached" }))'),
           args: null,
           onGraphEvent: (event) => events.push(event),
           agent: async () => workflowAgentOutcome("reused", true),
@@ -539,7 +694,9 @@ if (import.meta.vitest) {
       const events: WorkflowGraphEvent[] = [];
       await runWorkflowScript(
         {
-          body: 'return agent("bounded", { label: "🫠".repeat(100000) })',
+          code: workflowCode(
+            'return agent(delegate({ prompt: "bounded" }), { label: "🫠".repeat(100000) })',
+          ),
           args: null,
           onGraphEvent: (event) => events.push(event),
           agent: async () => "done",
@@ -563,12 +720,12 @@ if (import.meta.vitest) {
       const events: WorkflowGraphEvent[] = [];
       await runWorkflowScript(
         {
-          body: `
+          code: workflowCode(`
             return pipeline(
               Array.from({ length: 3000 }, (_, index) => index),
               value => value
             );
-          `,
+          `),
           args: null,
           onGraphEvent: (event) => events.push(event),
           agent: async () => undefined,
@@ -587,7 +744,7 @@ if (import.meta.vitest) {
     it("accepts completion after an agent outlives a heartbeat", async () => {
       const value = await runWorkflowScript(
         {
-          body: 'return agent("slow")',
+          code: workflowCode('return agent(delegate({ prompt: "slow" }))'),
           args: null,
           agent: async () => {
             await new Promise((resolve) => setTimeout(resolve, 1_100));
@@ -603,9 +760,12 @@ if (import.meta.vitest) {
       const prompts: string[] = [];
       const value = await runWorkflowScript(
         {
-          body: 'agent("a").then(() => agent("b")); return "script-result"',
+          code: workflowCode(
+            'agent(delegate({ prompt: "a" })).then(() => agent(delegate({ prompt: "b" }))); return "script-result"',
+          ),
           args: null,
-          agent: async ({ prompt }) => {
+          agent: async ({ recipe }) => {
+            const prompt = String(recipe.input.prompt);
             prompts.push(prompt);
             return prompt;
           },
@@ -620,7 +780,7 @@ if (import.meta.vitest) {
       const controller = new AbortController();
       const pending = runWorkflowScript(
         {
-          body: 'return agent("wait")',
+          code: workflowCode('return agent(delegate({ prompt: "wait" }))'),
           args: null,
           signal: controller.signal,
           onFatal: () => controller.abort(),
@@ -646,7 +806,9 @@ if (import.meta.vitest) {
       const controller = new AbortController();
       const pending = runWorkflowScript(
         {
-          body: 'agent("wait"); throw new Error("boom")',
+          code: workflowCode(
+            'agent(delegate({ prompt: "wait" })); throw new Error("boom")',
+          ),
           args: null,
           signal: controller.signal,
           onFatal: () => controller.abort(),
@@ -668,7 +830,7 @@ if (import.meta.vitest) {
       const controller = new AbortController();
       const pending = runWorkflowScript(
         {
-          body: "return new Promise(() => {})",
+          code: workflowCode("return new Promise(() => {})"),
           args: null,
           signal: controller.signal,
           agent: async () => undefined,

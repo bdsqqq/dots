@@ -3,7 +3,7 @@ export const WORKFLOW_RUNNER_SOURCE: string = String.raw`
 const { AsyncLocalStorage } = require("node:async_hooks");
 const { createContext, Script } = require("node:vm");
 
-const VERSION = 1;
+const VERSION = 2;
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 let input = Buffer.alloc(0);
 let started = false;
@@ -14,6 +14,7 @@ const inFlight = new Set();
 const contexts = new AsyncLocalStorage();
 let currentPhase;
 let currentPhaseNodeId;
+let declaredPhases = new Set();
 let graphSequence = 0;
 let emittedGraphNodes = 0;
 let emittedGraphBytes = 0;
@@ -128,22 +129,45 @@ function graphStatus(id, status) {
   if (id) emitGraphEvent({ type: "status", id, status });
 }
 
-function trackedAgent(prompt, options = {}) {
-  if (typeof prompt !== "string" || prompt.trim() === "") {
-    return Promise.reject(new Error("agent prompt must be a non-empty string"));
+function trackedAgent(recipe, options = {}) {
+  if (!recipe || typeof recipe !== "object" || Array.isArray(recipe)) {
+    return Promise.reject(new Error("agent recipe must be an object"));
+  }
+  if (!new Set(["delegate", "oracle", "librarian", "finder"]).has(recipe.kind)) {
+    return Promise.reject(new Error("agent recipe kind is invalid"));
+  }
+  if (!recipe.input || typeof recipe.input !== "object" || Array.isArray(recipe.input)) {
+    return Promise.reject(new Error("agent recipe input must be an object"));
   }
   if (!options || typeof options !== "object" || Array.isArray(options)) {
     return Promise.reject(new Error("agent options must be an object"));
   }
+  if (Object.keys(options).some(key => key !== "label" && key !== "phase")) {
+    return Promise.reject(new Error("agent options support only label and phase"));
+  }
+  if (options.label !== undefined && typeof options.label !== "string") {
+    return Promise.reject(new Error("agent option label must be a string"));
+  }
+  if (options.phase !== undefined && typeof options.phase !== "string") {
+    return Promise.reject(new Error("agent option phase must be a string"));
+  }
+  let wireRecipe;
+  let wireOptions;
+  try {
+    wireRecipe = JSON.parse(JSON.stringify(recipe));
+    wireOptions = JSON.parse(JSON.stringify(options));
+  } catch (error) {
+    return Promise.reject(new Error("agent request must be JSON-serializable: " + error.message));
+  }
   const id = String(++nextRequestId);
   const context = activeContext();
-  const phase = options.phase ?? context.phase ?? currentPhase;
-  const label = typeof options.label === "string" && options.label.trim()
-    ? options.label.trim()
-    : prompt.trim().split("\n")[0].slice(0, 80);
+  const phase = wireOptions.phase ?? context.phase ?? currentPhase;
+  const label = typeof wireOptions.label === "string" && wireOptions.label.trim()
+    ? wireOptions.label.trim()
+    : wireRecipe.kind;
   const graphNodeId = graphNode("agent", label, context.parentId, phase);
   try {
-    send({ type: "agent", id, prompt, options, phase, graphNodeId });
+    send({ type: "agent", id, recipe: wireRecipe, options: wireOptions, phase, graphNodeId });
   } catch (error) {
     graphStatus(graphNodeId, "failed");
     throw error;
@@ -163,6 +187,9 @@ function trackedAgent(prompt, options = {}) {
 function phaseDispatch(name, fn) {
   if (typeof name !== "string" || name.trim() === "") {
     throw new Error("phase name must be a non-empty string");
+  }
+  if (!declaredPhases.has(name)) {
+    throw new Error("workflow phase is not declared in meta.phases: " + name);
   }
   if (fn === undefined) {
     graphStatus(currentPhaseNodeId, "completed");
@@ -278,6 +305,8 @@ async function run(frame) {
     __phaseDispatch: phaseDispatch,
     __parallelDispatch: parallelDispatch,
     __pipelineDispatch: pipelineDispatch,
+    __setDeclaredPhases: phases => { declaredPhases = new Set(phases); },
+    __metaJson: JSON.stringify(frame.meta),
     __argsJson: frame.args === undefined ? undefined : JSON.stringify(frame.args),
   };
   const context = createContext(Object.assign(Object.create(null), bridge), {
@@ -285,11 +314,13 @@ async function run(frame) {
     codeGeneration: { strings: false, wasm: false },
   });
   const bootstrapSource = [
-    "((agentDispatch, phaseDispatch, parallelDispatch, pipelineDispatch, argsJson) => {",
+    "((agentDispatch, phaseDispatch, parallelDispatch, pipelineDispatch, setDeclaredPhases, metaJson, argsJson) => {",
     "const SafeError = Error;",
     "const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));",
+    "const deepFreeze = value => { if (value && typeof value === 'object' && !Object.isFrozen(value)) { Object.freeze(value); for (const child of Object.values(value)) deepFreeze(child); } return value; };",
     "const cleanError = error => new SafeError(error && typeof error.message === 'string' ? error.message : String(error));",
     "const agentStates = new Set();",
+    "const workflowDefinitions = new WeakSet();",
     "const trackPromise = promise => {",
     "const state = { observed: false, error: undefined };",
     "agentStates.add(state);",
@@ -301,8 +332,8 @@ async function run(frame) {
     "finally(callback) { return derive(promise.finally(callback)); },",
     "});",
     "};",
-    "const agent = (prompt, options = {}) => trackPromise((async () => {",
-    "try { return clone(await agentDispatch(prompt, options)); }",
+    "const agent = (recipe, options = {}) => trackPromise((async () => {",
+    "try { return clone(await agentDispatch(clone(recipe), clone(options))); }",
     "catch (error) { throw cleanError(error); }",
     "})());",
     "const drainAgentErrors = () => {",
@@ -323,32 +354,78 @@ async function run(frame) {
     "catch (error) { throw cleanError(error); }",
     "})();",
     "};",
-    "Object.defineProperties(globalThis, {",
-    "agent: { value: agent, enumerable: true },",
-    "parallel: { value: parallel, enumerable: true },",
-    "pipeline: { value: pipeline, enumerable: true },",
-    "phase: { value: phase, enumerable: true },",
-    "args: { value: argsJson === undefined ? undefined : JSON.parse(argsJson), enumerable: true },",
-    "__workflowDrainAgentErrors: { value: drainAgentErrors },",
+    "const recipe = kind => input => Object.freeze({ kind, input: deepFreeze(clone(input)) });",
+    "const defineWorkflow = (meta, definition) => {",
+    "if (!definition || typeof definition !== 'object' || typeof definition.run !== 'function') throw new SafeError('workflow definition must provide run');",
+    "if (definition.parseArgs !== undefined && typeof definition.parseArgs !== 'function') throw new SafeError('workflow parseArgs must be a function');",
+    "const workflow = Object.freeze({ meta, parseArgs: definition.parseArgs, run: definition.run });",
+    "workflowDefinitions.add(workflow);",
+    "return workflow;",
+    "};",
+    "const runtime = Object.freeze({",
+    "defineWorkflow,",
+    "delegate: recipe('delegate'),",
+    "oracle: recipe('oracle'),",
+    "librarian: recipe('librarian'),",
+    "finder: recipe('finder'),",
     "});",
-    "})(__agentDispatch, __phaseDispatch, __parallelDispatch, __pipelineDispatch, __argsJson);",
+    "const module = { exports: {} };",
+    "const restrictedRequire = specifier => {",
+    "if (specifier !== '@bds_pi/workflow') throw new SafeError('workflow require is not allowed: ' + String(specifier));",
+    "return runtime;",
+    "};",
+    "const validateMeta = meta => {",
+    "if (!meta || typeof meta !== 'object' || Array.isArray(meta)) throw new SafeError('workflow module meta must be an object');",
+    "if (typeof meta.name !== 'string' || meta.name.trim() === '') throw new SafeError('workflow module meta.name must be a non-empty string');",
+    "if (typeof meta.description !== 'string' || meta.description.trim() === '') throw new SafeError('workflow module meta.description must be a non-empty string');",
+    "if (meta.phases !== undefined && (!Array.isArray(meta.phases) || !meta.phases.every(value => typeof value === 'string'))) throw new SafeError('workflow module meta.phases must be an array of strings');",
+    "if (meta.agents !== undefined && (!Array.isArray(meta.agents) || !meta.agents.every(value => ['delegate', 'oracle', 'librarian', 'finder'].includes(value)))) throw new SafeError('workflow module meta.agents contains an unknown recipe');",
+    "};",
+    "const expectedMeta = deepFreeze(JSON.parse(metaJson));",
+    "validateMeta(expectedMeta);",
+    "const execute = async () => {",
+    "const exported = module.exports;",
+    "if (!exported || typeof exported !== 'object' || Array.isArray(exported)) throw new SafeError('workflow CommonJS module must export an object');",
+    "validateMeta(exported.meta);",
+    "const sameMeta = exported.meta.name === expectedMeta.name && exported.meta.description === expectedMeta.description && JSON.stringify(exported.meta.phases || []) === JSON.stringify(expectedMeta.phases || []) && JSON.stringify(exported.meta.agents || []) === JSON.stringify(expectedMeta.agents || []);",
+    "if (!sameMeta) throw new SafeError('workflow module metadata changed after approval');",
+    "deepFreeze(exported.meta);",
+    "setDeclaredPhases(expectedMeta.phases || []);",
+    "const workflow = exported.default;",
+    "if (!workflowDefinitions.has(workflow)) throw new SafeError('workflow module default must be created by defineWorkflow');",
+    "if (workflow.meta !== exported.meta) throw new SafeError('workflow module default meta must match its named meta export');",
+    "let parsedArgs = argsJson === undefined ? undefined : JSON.parse(argsJson);",
+    "if (workflow.parseArgs) parsedArgs = await workflow.parseArgs(parsedArgs);",
+    "parsedArgs = clone(parsedArgs);",
+    "const workflowContext = Object.freeze({ agent, phase, parallel, pipeline });",
+    "return workflow.run(workflowContext, parsedArgs);",
+    "};",
+    "Object.defineProperties(globalThis, {",
+    "module: { value: module },",
+    "exports: { value: module.exports },",
+    "require: { value: restrictedRequire },",
+    "});",
     "delete globalThis.__agentDispatch;",
     "delete globalThis.__phaseDispatch;",
     "delete globalThis.__parallelDispatch;",
     "delete globalThis.__pipelineDispatch;",
+    "delete globalThis.__setDeclaredPhases;",
+    "delete globalThis.__metaJson;",
     "delete globalThis.__argsJson;",
+    "return Object.freeze({ execute, drainAgentErrors });",
+    "})(__agentDispatch, __phaseDispatch, __parallelDispatch, __pipelineDispatch, __setDeclaredPhases, __metaJson, __argsJson);",
   ].join("\n");
-  new Script(bootstrapSource, { filename: "workflow-bootstrap.js" }).runInContext(context);
-  const script = new Script("(async () => {\n" + frame.body + "\n})()", {
+  const controls = new Script(bootstrapSource, {
+    filename: "workflow-bootstrap.js",
+  }).runInContext(context);
+  new Script(frame.code, {
     filename: frame.filename || "inline-workflow.js",
-  });
-  const value = await script.runInContext(context);
+  }).runInContext(context);
+  const value = await controls.execute();
   await drainAgents();
   await new Promise(resolve => setImmediate(resolve));
   await drainAgents();
-  new Script("globalThis.__workflowDrainAgentErrors()", {
-    filename: "workflow-drain.js",
-  }).runInContext(context);
+  controls.drainAgentErrors();
   graphStatus(currentPhaseNodeId, "completed");
   finish({
     type: "complete",
@@ -363,7 +440,7 @@ function handle(frame) {
     throw new Error("invalid workflow protocol frame");
   }
   if (frame.type === "start") {
-    if (started || typeof frame.body !== "string") throw new Error("invalid workflow start frame");
+    if (started || typeof frame.code !== "string" || !frame.meta || typeof frame.meta !== "object" || Array.isArray(frame.meta)) throw new Error("invalid workflow start frame");
     started = true;
     void run(frame).catch(error => finish({ type: "fatal", error: wireError(error) }));
     return;
