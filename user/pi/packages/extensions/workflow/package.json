@@ -1,0 +1,25 @@
+{
+  "name": "@bds_pi/workflow",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.6",
+    "@earendil-works/pi-tui": "^0.80.6",
+    "proper-lockfile": "^4.1.2",
+    "typebox": "^1.1.38"
+  },
+  "devDependencies": {
+    "@types/proper-lockfile": "^4.1.4",
+    "vitest": "^3.0.0"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
