@@ -15,7 +15,29 @@ import {
   type TString,
   type TUnknown,
 } from "typebox";
-import { approveWorkflowRun } from "./approval.js";
+export {
+  defineWorkflow,
+  delegate,
+  finder,
+  librarian,
+  oracle,
+  type DelegateInput,
+  type FinderInput,
+  type JsonValue,
+  type LibrarianInput,
+  type OracleInput,
+  type WorkflowAgent,
+  type WorkflowAgentOptions,
+  type WorkflowContext,
+  type WorkflowDefinition,
+  type WorkflowMeta,
+  type WorkflowRecipe,
+} from "./api.js";
+
+import {
+  approveWorkflowRun,
+  type WorkflowApprovalDecision,
+} from "./approval.js";
 import { renderWorkflowGraph, type WorkflowGraphNode } from "./graph.js";
 import {
   aggregateUsage,
@@ -34,19 +56,32 @@ import {
   resolveWorkflowSource,
 } from "./source.js";
 
+const WORKFLOW_FEEDBACK_PREFIX = "workflow revision requested";
+
+function workflowGoalPrompt(goal: string): string {
+  return [
+    `Create and propose a typed workflow for this goal: ${goal}`,
+    "Use the workflow tool with a complete inline TypeScript module.",
+    "Import defineWorkflow and the smallest suitable set of typed delegate, finder, librarian, or oracle recipes from @bds_pi/workflow.",
+    "Declare every phase and recipe in static meta, validate dynamic args with parseArgs when needed, and keep the workflow bounded.",
+    "Submit the workflow for approval; do not replace orchestration with raw sub-agent tool calls.",
+  ].join("\n");
+}
+
 const WorkflowParams: TObject<{
   script: TOptional<TString>;
   name: TOptional<TString>;
   scriptPath: TOptional<TString>;
   args: TOptional<TUnknown>;
   resumeFromRunId: TOptional<TString>;
+  revisionOf: TOptional<TString>;
   maxConcurrency: TOptional<TInteger>;
   maxAgents: TOptional<TInteger>;
 }> = Type.Object({
   script: Type.Optional(
     Type.String({
       description:
-        "Inline workflow JavaScript. Used after scriptPath and before name.",
+        "Inline TypeScript workflow module. Used after scriptPath and before name.",
     }),
   ),
   name: Type.Optional(
@@ -58,7 +93,7 @@ const WorkflowParams: TObject<{
   scriptPath: Type.Optional(
     Type.String({
       description:
-        "Path to a workflow JavaScript file. Takes precedence over script and name.",
+        "Path to a .ts workflow module. Takes precedence over script and name.",
     }),
   ),
   args: Type.Optional(
@@ -66,7 +101,14 @@ const WorkflowParams: TObject<{
   ),
   resumeFromRunId: Type.Optional(
     Type.String({
-      description: "Resume cached completed nodes from this workflow run.",
+      description:
+        "Append a fresh execution to an earlier workflow journal from this session.",
+    }),
+  ),
+  revisionOf: Type.Optional(
+    Type.String({
+      description:
+        "Source hash returned with workflow feedback. Required only for the next revised proposal.",
     }),
   ),
   maxConcurrency: Type.Optional(
@@ -81,14 +123,28 @@ const WorkflowParams: TObject<{
       minimum: 1,
       maximum: 1000,
       description:
-        "Maximum fresh direct child sessions created by agent(). Default 64; hard cap 1000.",
+        "Maximum agent recipe invocations. Default 64; hard cap 1000.",
     }),
   ),
 });
 
 export type WorkflowParams = Static<typeof WorkflowParams>;
 
-export interface WorkflowDetails {
+export interface WorkflowApprovalCancelledDetails {
+  status: "cancelled";
+  workflow: string;
+  approvalCancelled: true;
+}
+
+export interface WorkflowFeedbackDetails {
+  status: "feedback";
+  workflow: string;
+  iteration: number;
+  sourceHash: string;
+  feedback: string;
+}
+
+interface WorkflowDetails {
   runId: string;
   status: WorkflowRunJournal["status"];
   workflow: string;
@@ -106,6 +162,49 @@ export interface WorkflowDetails {
     label?: string;
     status: string;
   }>;
+}
+
+function escapeToolText(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, (character) => {
+    if (character === "\n") return "\\n";
+    if (character === "\r") return "\\r";
+    if (character === "\t") return "\\t";
+    return `\\x${character.codePointAt(0)!.toString(16).padStart(2, "0")}`;
+  });
+}
+
+function cancellationResult(sourceName: string) {
+  return {
+    content: [
+      { type: "text" as const, text: "workflow cancelled before execution" },
+    ],
+    details: {
+      status: "cancelled" as const,
+      workflow: sourceName,
+      approvalCancelled: true as const,
+    },
+  };
+}
+
+function feedbackResult(
+  decision: Extract<WorkflowApprovalDecision, { type: "feedback" }>,
+  sourceName: string,
+) {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: `${WORKFLOW_FEEDBACK_PREFIX}; execution cancelled.\nworkflow: ${sourceName}\niteration: ${decision.iteration}\nsource hash: ${decision.sourceHash}\nfeedback: ${decision.feedback}\n\nrevise the complete workflow script and call workflow again with revisionOf: ${decision.sourceHash}.`,
+      },
+    ],
+    details: {
+      status: "feedback" as const,
+      workflow: sourceName,
+      iteration: decision.iteration,
+      sourceHash: decision.sourceHash,
+      feedback: decision.feedback,
+    },
+  };
 }
 
 function progressText(progress: WorkflowProgress): string {
@@ -170,25 +269,31 @@ async function recentRuns(
 
 export function createWorkflowTool(): ToolDefinition<
   typeof WorkflowParams,
-  WorkflowDetails
+  WorkflowDetails | WorkflowFeedbackDetails | WorkflowApprovalCancelledDetails
 > {
   return {
     name: "workflow",
     label: "Workflow",
     description: [
-      "Run a bounded JavaScript workflow that orchestrates persistent direct-child Pi sessions.",
+      "Compile, type-check, approve, and run a bounded TypeScript workflow.",
       "Provide scriptPath, script, or name (precedence in that order).",
-      "Scripts begin with `export const meta = { name, description, phases? }` and may use agent, parallel, pipeline, phase, args, and top-level return.",
-      "Use resumeFromRunId to reuse completed nodes only when their stable key and inputs are unchanged.",
+      "Modules import defineWorkflow and typed agent recipes from @bds_pi/workflow, export static meta, and default-export defineWorkflow(meta, { parseArgs?, run }).",
+      "run receives { agent, phase, parallel, pipeline }; agent accepts delegate(...), oracle(...), librarian(...), or finder(...) recipes declared in meta.agents.",
+      "Recipe defaults come from their dedicated Pi extensions; workflow code does not configure raw models or tool lists.",
+      "Declared phases and agent recipes are enforced at compile time and runtime.",
+      "Use resumeFromRunId to append a fresh execution to an earlier journal from this session.",
+      "When approval feedback requests a revision, submit the complete revised script with the returned revisionOf source hash.",
     ].join(" "),
     promptSnippet: "Run a bounded code-driven orchestration workflow",
     parameters: WorkflowParams,
+    executionMode: "sequential",
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const limits = normalizeLimits(params.maxConcurrency, params.maxAgents);
       const source = await resolveWorkflowSource(
         params,
         ctx.cwd,
         ctx.isProjectTrusted(),
+        signal,
       );
       const parentSessionFile = ctx.sessionManager.getSessionFile();
       if (!parentSessionFile)
@@ -217,14 +322,22 @@ export function createWorkflowTool(): ToolDefinition<
             const changeNote = changedApproval
               ? "script or limits changed since the original approval"
               : "fresh uncached work may create additional direct sessions";
-            const confirmed = await approveWorkflowRun(
+            const decision = await approveWorkflowRun(
               ctx,
               source,
               limits,
               "resume",
               changeNote,
+              params.revisionOf,
             );
-            if (!confirmed) throw new Error("workflow cancelled before resume");
+            if (decision.type === "cancel") {
+              await store.release();
+              return cancellationResult(source.meta.name);
+            }
+            if (decision.type === "feedback") {
+              await store.release();
+              return feedbackResult(decision, source.meta.name);
+            }
           }
           await store.mutate((journal) => {
             const resumedAt = new Date().toISOString();
@@ -254,14 +367,18 @@ export function createWorkflowTool(): ToolDefinition<
             "workflow execution requires interactive TUI source approval",
           );
         {
-          const confirmed = await approveWorkflowRun(
+          const decision = await approveWorkflowRun(
             ctx,
             source,
             limits,
             "run",
+            undefined,
+            params.revisionOf,
           );
-          if (!confirmed)
-            throw new Error("workflow cancelled before execution");
+          if (decision.type === "cancel")
+            return cancellationResult(source.meta.name);
+          if (decision.type === "feedback")
+            return feedbackResult(decision, source.meta.name);
         }
         store = await JournalStore.create(directory, {
           workflow: {
@@ -286,7 +403,6 @@ export function createWorkflowTool(): ToolDefinition<
           params.args,
           limits,
           store,
-          parentSessionFile,
           ctx,
           signal,
           (progress) =>
@@ -338,24 +454,58 @@ export function createWorkflowTool(): ToolDefinition<
       container.addChild(
         new Text(
           theme.fg("toolTitle", theme.bold("workflow ")) +
-            theme.fg("accent", name),
+            theme.fg("accent", escapeToolText(name)),
           0,
           0,
         ),
       );
       if (description)
-        container.addChild(new Text(theme.fg("dim", description), 0, 0));
+        container.addChild(
+          new Text(theme.fg("dim", escapeToolText(description)), 0, 0),
+        );
       return container;
     },
     renderResult(result, { isPartial, expanded }, theme) {
       const container = new Container();
       const details = result.details;
-      if (!details) {
-        const text = result.content[0];
+      if (details && "approvalCancelled" in details) {
         container.addChild(
           new Text(
             theme.fg(
-              isPartial ? "warning" : "error",
+              "muted",
+              `${escapeToolText(details.workflow)} · cancelled before execution`,
+            ),
+            0,
+            0,
+          ),
+        );
+        return container;
+      }
+      if (details && "feedback" in details) {
+        container.addChild(
+          new Text(
+            theme.fg(
+              "warning",
+              `${escapeToolText(details.workflow)} · revision requested · iteration ${details.iteration}`,
+            ),
+            0,
+            0,
+          ),
+        );
+        container.addChild(
+          new Text(theme.fg("text", escapeToolText(details.feedback)), 0, 0),
+        );
+        return container;
+      }
+      if (!details) {
+        const text = result.content[0];
+        const isFeedback =
+          text?.type === "text" &&
+          text.text.startsWith(WORKFLOW_FEEDBACK_PREFIX);
+        container.addChild(
+          new Text(
+            theme.fg(
+              isPartial || isFeedback ? "warning" : "error",
               text?.type === "text"
                 ? text.text
                 : isPartial
@@ -376,7 +526,7 @@ export function createWorkflowTool(): ToolDefinition<
               : details.status === "running"
                 ? "warning"
                 : "error",
-            `${details.workflow} · ${details.status} · ${details.runId.slice(0, 8)}`,
+            `${escapeToolText(details.workflow)} · ${details.status} · ${details.runId.slice(0, 8)}`,
           ),
           0,
           0,
@@ -393,7 +543,7 @@ export function createWorkflowTool(): ToolDefinition<
           new Text(
             theme.fg(
               "dim",
-              `source ${details.source} · journal ${details.journalFile}`,
+              `source ${escapeToolText(details.source)} · journal ${escapeToolText(details.journalFile)}`,
             ),
             0,
             0,
@@ -405,7 +555,7 @@ export function createWorkflowTool(): ToolDefinition<
             new TruncatedText(
               theme.fg(
                 "dim",
-                `  ${child.label ?? child.nodeId.slice(-8)} → ${child.sessionFile}`,
+                `  ${escapeToolText(child.label ?? child.nodeId.slice(-8))} → ${escapeToolText(child.sessionFile)}`,
               ),
               0,
               0,
@@ -447,6 +597,20 @@ function makeDetails(
 export function createWorkflowExtension(): (pi: ExtensionAPI) => void {
   return (pi) => {
     pi.registerTool(createWorkflowTool());
+    pi.registerCommand("workflow", {
+      description: "Create and propose a typed workflow for a goal",
+      handler: async (args, ctx) => {
+        const goal = args.trim();
+        if (!goal) {
+          ctx.ui.notify("usage: /workflow <goal>", "warning");
+          return;
+        }
+        pi.sendUserMessage(
+          workflowGoalPrompt(goal),
+          ctx.isIdle() ? undefined : { deliverAs: "followUp" },
+        );
+      },
+    });
     pi.registerCommand("workflows", {
       description: "List available workflows and recent workflow runs",
       handler: async (_args, ctx) => {
@@ -454,12 +618,14 @@ export function createWorkflowExtension(): (pi: ExtensionAPI) => void {
           listWorkflowFiles(ctx.cwd),
           recentRuns(join(getAgentDir(), "workflow-runs")),
         ]);
-        const available = workflows.length ? workflows.join(", ") : "none";
+        const available = workflows.length
+          ? workflows.map(escapeToolText).join(", ")
+          : "none";
         const history = runs.length
           ? runs
               .map(
                 (run) =>
-                  `${run.runId.slice(0, 8)} ${run.status} ${run.workflow.name}`,
+                  `${run.runId.slice(0, 8)} ${run.status} ${escapeToolText(run.workflow.name)}`,
               )
               .join("; ")
           : "none";
@@ -498,7 +664,40 @@ if (import.meta.vitest) {
         registerCommand: (name: string) => commands.push(name),
       } as unknown as ExtensionAPI);
       expect((tools[0] as { name: string }).name).toBe("workflow");
-      expect(commands).toEqual(["workflows"]);
+      expect(commands).toEqual(["workflow", "workflows"]);
+    });
+
+    it("turns /workflow goals into typed workflow proposals", async () => {
+      const commands = new Map<
+        string,
+        { handler: (args: string, ctx: unknown) => Promise<void> }
+      >();
+      const messages: Array<{
+        content: string;
+        options?: { deliverAs: string };
+      }> = [];
+      const notifications: string[] = [];
+      createWorkflowExtension()({
+        registerTool: () => undefined,
+        registerCommand: (name: string, command: unknown) =>
+          commands.set(name, command as never),
+        sendUserMessage: (content: string, options?: { deliverAs: string }) =>
+          messages.push({ content, options }),
+      } as unknown as ExtensionAPI);
+      const command = commands.get("workflow")!;
+      await command.handler("audit auth boundaries", {
+        isIdle: () => true,
+        ui: { notify: (message: string) => notifications.push(message) },
+      });
+      expect(messages[0]?.content).toContain(
+        "Create and propose a typed workflow for this goal: audit auth boundaries",
+      );
+      expect(messages[0]?.content).toContain("@bds_pi/workflow");
+      await command.handler("  ", {
+        isIdle: () => true,
+        ui: { notify: (message: string) => notifications.push(message) },
+      });
+      expect(notifications).toEqual(["usage: /workflow <goal>"]);
     });
 
     it("renders a live connected graph from partial tool results", () => {
@@ -509,7 +708,9 @@ if (import.meta.vitest) {
       } as unknown as ExtensionAPI);
       const tool = tools[0] as ToolDefinition<
         typeof WorkflowParams,
-        WorkflowDetails
+        | WorkflowDetails
+        | WorkflowFeedbackDetails
+        | WorkflowApprovalCancelledDetails
       >;
       const theme = {
         fg: (_color: string, text: string) => text,

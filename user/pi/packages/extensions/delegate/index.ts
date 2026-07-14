@@ -78,7 +78,9 @@ function isStringArray(value: unknown): value is string[] {
   );
 }
 
-function isDelegateConfig(value: Record<string, unknown>): value is DelegateExtConfig {
+function isDelegateConfig(
+  value: Record<string, unknown>,
+): value is DelegateExtConfig {
   return (
     isStringArray(value.builtinTools) && isStringArray(value.extensionTools)
   );
@@ -88,7 +90,7 @@ const DELEGATE_CONFIG_SCHEMA: ExtensionConfigSchema<DelegateExtConfig> = {
   validate: isDelegateConfig,
 };
 
-interface DelegateParams {
+export interface DelegateParams {
   prompt: string;
   description: string;
   continueId?: string;
@@ -111,7 +113,9 @@ function withRoutingMetadata(text: string, result: SingleResult): string {
     : text;
 }
 
-export function createDelegateTool(config: DelegateConfig = {}): ToolDefinition<any> {
+export function createDelegateTool(
+  config: DelegateConfig = {},
+): ToolDefinition<any> {
   return {
     name: "delegate",
     label: "Delegate",
@@ -226,16 +230,13 @@ export function createDelegateTool(config: DelegateConfig = {}): ToolDefinition<
       const output = getFinalOutput(result.messages) || "(no output)";
       const text = withRoutingMetadata(output, singleResult);
 
-      if (isError) {
-        return subAgentResult(
+      if (isError)
+        throw new Error(
           withRoutingMetadata(
             result.errorMessage || result.stderr || output,
             singleResult,
           ),
-          singleResult,
-          true,
         );
-      }
 
       return subAgentResult(text, singleResult);
     },
@@ -244,7 +245,8 @@ export function createDelegateTool(config: DelegateConfig = {}): ToolDefinition<
       const desc = args.description || "...";
       const preview = desc.length > 80 ? `${desc.slice(0, 80)}...` : desc;
       return new Text(
-        theme.fg("toolTitle", theme.bold("Delegate ")) + theme.fg("dim", preview),
+        theme.fg("toolTitle", theme.bold("Delegate ")) +
+          theme.fg("dim", preview),
         0,
         0,
       );
@@ -270,25 +272,32 @@ export function createDelegateTool(config: DelegateConfig = {}): ToolDefinition<
   };
 }
 
+export function resolveDelegateConfig(
+  deps: Pick<DelegateExtensionDeps, "getEnabledExtensionConfig"> = DEFAULT_DEPS,
+): { enabled: boolean; config: DelegateConfig } {
+  const { enabled, config } = deps.getEnabledExtensionConfig(
+    "@bds_pi/delegate",
+    CONFIG_DEFAULTS,
+    { schema: DELEGATE_CONFIG_SCHEMA },
+  );
+
+  return {
+    enabled,
+    config: {
+      builtinTools: config.builtinTools,
+      extensionTools: config.extensionTools,
+    },
+  };
+}
+
 function createDelegateExtension(
   deps: DelegateExtensionDeps = DEFAULT_DEPS,
 ): (pi: ExtensionAPI) => void {
   return function delegateExtension(pi: ExtensionAPI): void {
-    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
-      "@bds_pi/delegate",
-      CONFIG_DEFAULTS,
-      { schema: DELEGATE_CONFIG_SCHEMA },
-    );
+    const { enabled, config } = resolveDelegateConfig(deps);
     if (!enabled) return;
 
-    pi.registerTool(
-      deps.withPromptPatch(
-        deps.createDelegateTool({
-          builtinTools: cfg.builtinTools,
-          extensionTools: cfg.extensionTools,
-        }),
-      ),
-    );
+    pi.registerTool(deps.withPromptPatch(deps.createDelegateTool(config)));
   };
 }
 
@@ -336,6 +345,29 @@ if (import.meta.vitest) {
   });
 
   describe("delegate extension", () => {
+    it("resolves the effective tool config", () => {
+      const config = {
+        builtinTools: ["read"],
+        extensionTools: ["finder"],
+      };
+      const getEnabledExtensionConfigSpy = vi.fn(() => ({
+        enabled: true,
+        config,
+      }));
+
+      expect(
+        resolveDelegateConfig({
+          getEnabledExtensionConfig:
+            getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        }),
+      ).toEqual({ enabled: true, config });
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/delegate",
+        CONFIG_DEFAULTS,
+        { schema: DELEGATE_CONFIG_SCHEMA },
+      );
+    });
+
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
         <T extends Record<string, unknown>>(
@@ -350,7 +382,8 @@ if (import.meta.vitest) {
       const createDelegateToolSpy = vi.fn(() => tool);
       const withPromptPatchSpy = vi.fn((nextTool: ToolDefinition) => nextTool);
       const extension = createDelegateExtension({
-        createDelegateTool: createDelegateToolSpy as typeof DEFAULT_DEPS.createDelegateTool,
+        createDelegateTool:
+          createDelegateToolSpy as typeof DEFAULT_DEPS.createDelegateTool,
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
         withPromptPatch:
@@ -388,7 +421,8 @@ if (import.meta.vitest) {
       );
       const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
       const extension = createDelegateExtension({
-        createDelegateTool: createDelegateToolSpy as typeof DEFAULT_DEPS.createDelegateTool,
+        createDelegateTool:
+          createDelegateToolSpy as typeof DEFAULT_DEPS.createDelegateTool,
         getEnabledExtensionConfig:
           getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
         withPromptPatch:
@@ -420,7 +454,8 @@ if (import.meta.vitest) {
       const withPromptPatchSpy = vi.fn((nextTool: ToolDefinition) => nextTool);
       const extension = createDelegateExtension({
         ...DEFAULT_DEPS,
-        createDelegateTool: createDelegateToolSpy as typeof DEFAULT_DEPS.createDelegateTool,
+        createDelegateTool:
+          createDelegateToolSpy as typeof DEFAULT_DEPS.createDelegateTool,
         withPromptPatch:
           withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
       });
@@ -708,7 +743,8 @@ if (import.meta.vitest) {
 
       // Find the delegate tool call and result in messages
       const delegateResultMsg = result.messages.find(
-        (msg) => msg.role === "toolResult" && (msg as any).toolName === "delegate",
+        (msg) =>
+          msg.role === "toolResult" && (msg as any).toolName === "delegate",
       );
       expect(delegateResultMsg).toBeDefined();
 

@@ -101,7 +101,7 @@ export interface FinderConfig {
   builtinTools?: string[];
 }
 
-interface FinderParams {
+export interface FinderParams {
   query: string;
 }
 
@@ -201,13 +201,8 @@ export function createFinderTool(
         result.stopReason === "aborted";
       const output = getFinalOutput(result.messages) || "(no output)";
 
-      if (isError) {
-        return subAgentResult(
-          result.errorMessage || result.stderr || output,
-          singleResult,
-          true,
-        );
-      }
+      if (isError)
+        throw new Error(result.errorMessage || result.stderr || output);
 
       return subAgentResult(output, singleResult);
     },
@@ -245,27 +240,39 @@ export function createFinderTool(
   };
 }
 
+export function resolveFinderConfig(
+  deps: Pick<
+    FinderExtensionDeps,
+    "getEnabledExtensionConfig" | "resolvePrompt"
+  > = DEFAULT_DEPS,
+): { enabled: boolean; config: FinderConfig } {
+  const { enabled, config } = deps.getEnabledExtensionConfig(
+    "@bds_pi/finder",
+    CONFIG_DEFAULTS,
+    { schema: FINDER_CONFIG_SCHEMA },
+  );
+
+  return {
+    enabled,
+    config: {
+      systemPrompt: enabled
+        ? deps.resolvePrompt(config.promptString, config.promptFile)
+        : undefined,
+      model: config.model,
+      extensionTools: config.extensionTools,
+      builtinTools: config.builtinTools,
+    },
+  };
+}
+
 function createFinderExtension(
   deps: FinderExtensionDeps = DEFAULT_DEPS,
 ): (pi: ExtensionAPI) => void {
   return function finderExtension(pi: ExtensionAPI): void {
-    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
-      "@bds_pi/finder",
-      CONFIG_DEFAULTS,
-      { schema: FINDER_CONFIG_SCHEMA },
-    );
+    const { enabled, config } = resolveFinderConfig(deps);
     if (!enabled) return;
 
-    pi.registerTool(
-      deps.withPromptPatch(
-        createFinderTool({
-          systemPrompt: deps.resolvePrompt(cfg.promptString, cfg.promptFile),
-          model: cfg.model,
-          extensionTools: cfg.extensionTools,
-          builtinTools: cfg.builtinTools,
-        }),
-      ),
-    );
+    pi.registerTool(deps.withPromptPatch(createFinderTool(config)));
   };
 }
 
@@ -303,6 +310,38 @@ if (import.meta.vitest) {
   });
 
   describe("finder extension", () => {
+    it("resolves the effective tool config", () => {
+      const extensionConfig = {
+        model: "custom/model",
+        extensionTools: ["read"],
+        builtinTools: ["grep"],
+        promptFile: "custom.md",
+        promptString: "inline",
+      };
+      const getEnabledExtensionConfigSpy = vi.fn(() => ({
+        enabled: true,
+        config: extensionConfig,
+      }));
+      const resolvePromptSpy = vi.fn(() => "resolved prompt");
+
+      expect(
+        resolveFinderConfig({
+          getEnabledExtensionConfig:
+            getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+          resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        }),
+      ).toEqual({
+        enabled: true,
+        config: {
+          systemPrompt: "resolved prompt",
+          model: extensionConfig.model,
+          extensionTools: extensionConfig.extensionTools,
+          builtinTools: extensionConfig.builtinTools,
+        },
+      });
+      expect(resolvePromptSpy).toHaveBeenCalledWith("inline", "custom.md");
+    });
+
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
         <T extends Record<string, unknown>>(

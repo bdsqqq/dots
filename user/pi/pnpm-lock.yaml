@@ -29,6 +29,9 @@ importers:
       typebox:
         specifier: '>=1.1.38'
         version: 1.1.38
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
     devDependencies:
       '@types/jsdom':
         specifier: ^28.0.1
@@ -51,9 +54,6 @@ importers:
       tsdown:
         specifier: ^0.21.0
         version: 0.21.4(typescript@5.9.3)
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
       vitest:
         specifier: ^3.0.0
         version: 3.2.4(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -240,6 +240,8 @@ importers:
       vitest:
         specifier: '*'
         version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+
+  packages/core/workflow-api: {}
 
   packages/extensions/bash:
     dependencies:
@@ -1060,6 +1062,21 @@ importers:
 
   packages/extensions/workflow:
     dependencies:
+      '@bds_pi/delegate':
+        specifier: workspace:*
+        version: link:../delegate
+      '@bds_pi/finder':
+        specifier: workspace:*
+        version: link:../finder
+      '@bds_pi/librarian':
+        specifier: workspace:*
+        version: link:../librarian
+      '@bds_pi/oracle':
+        specifier: workspace:*
+        version: link:../oracle
+      '@bds_pi/workflow-api':
+        specifier: workspace:*
+        version: link:../../core/workflow-api
       '@earendil-works/pi-coding-agent':
         specifier: ^0.80.6
         version: 0.80.6(ws@8.21.0)(zod@4.4.3)
@@ -1072,6 +1089,9 @@ importers:
       typebox:
         specifier: ^1.1.38
         version: 1.1.38
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
     devDependencies:
       '@types/proper-lockfile':
         specifier: ^4.1.4
@@ -4259,6 +4279,14 @@ snapshots:
     optionalDependencies:
       vite: 7.3.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)
 
+  '@vitest/mocker@3.2.4(vite@7.3.1(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))':
+    dependencies:
+      '@vitest/spy': 3.2.4
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 7.3.1(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
+
   '@vitest/pretty-format@3.2.4':
     dependencies:
       tinyrainbow: 2.0.0
@@ -5282,7 +5310,7 @@ snapshots:
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.4
-      '@vitest/mocker': 3.2.4(vite@7.3.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
+      '@vitest/mocker': 3.2.4(vite@7.3.1(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
       '@vitest/pretty-format': 3.2.4
       '@vitest/runner': 3.2.4
       '@vitest/snapshot': 3.2.4

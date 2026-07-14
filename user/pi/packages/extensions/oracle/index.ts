@@ -100,7 +100,7 @@ const ORACLE_CONFIG_SCHEMA: ExtensionConfigSchema<OracleExtConfig> = {
   validate: isOracleConfig,
 };
 
-interface OracleParams {
+export interface OracleParams {
   task: string;
   context?: string;
   files?: string[];
@@ -234,13 +234,8 @@ export function createOracleTool(
         result.stopReason === "aborted";
       const output = getFinalOutput(result.messages) || "(no output)";
 
-      if (isError) {
-        return subAgentResult(
-          result.errorMessage || result.stderr || output,
-          singleResult,
-          true,
-        );
-      }
+      if (isError)
+        throw new Error(result.errorMessage || result.stderr || output);
 
       return subAgentResult(output, singleResult);
     },
@@ -282,27 +277,39 @@ export function createOracleTool(
   };
 }
 
+export function resolveOracleConfig(
+  deps: Pick<
+    OracleExtensionDeps,
+    "getEnabledExtensionConfig" | "resolvePrompt"
+  > = DEFAULT_DEPS,
+): { enabled: boolean; config: OracleConfig } {
+  const { enabled, config } = deps.getEnabledExtensionConfig(
+    "@bds_pi/oracle",
+    CONFIG_DEFAULTS,
+    { schema: ORACLE_CONFIG_SCHEMA },
+  );
+
+  return {
+    enabled,
+    config: {
+      systemPrompt: enabled
+        ? deps.resolvePrompt(config.promptString, config.promptFile)
+        : undefined,
+      model: config.model,
+      extensionTools: config.extensionTools,
+      builtinTools: config.builtinTools,
+    },
+  };
+}
+
 function createOracleExtension(
   deps: OracleExtensionDeps = DEFAULT_DEPS,
 ): (pi: ExtensionAPI) => void {
   return function oracleExtension(pi: ExtensionAPI): void {
-    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
-      "@bds_pi/oracle",
-      CONFIG_DEFAULTS,
-      { schema: ORACLE_CONFIG_SCHEMA },
-    );
+    const { enabled, config } = resolveOracleConfig(deps);
     if (!enabled) return;
 
-    pi.registerTool(
-      deps.withPromptPatch(
-        createOracleTool({
-          systemPrompt: deps.resolvePrompt(cfg.promptString, cfg.promptFile),
-          model: cfg.model,
-          extensionTools: cfg.extensionTools,
-          builtinTools: cfg.builtinTools,
-        }),
-      ),
-    );
+    pi.registerTool(deps.withPromptPatch(createOracleTool(config)));
   };
 }
 
@@ -336,6 +343,39 @@ if (import.meta.vitest) {
 
   describe("oracle extension (SDK integration)", () => {
     describe("extension registration", () => {
+      it("resolves the effective tool config", () => {
+        const extensionConfig = {
+          model: "custom/model",
+          extensionTools: ["read"],
+          builtinTools: ["bash"],
+          promptFile: "custom.md",
+          promptString: "inline",
+        };
+        const getEnabledExtensionConfigSpy = vi.fn(() => ({
+          enabled: true,
+          config: extensionConfig,
+        }));
+        const resolvePromptSpy = vi.fn(() => "resolved prompt");
+
+        expect(
+          resolveOracleConfig({
+            getEnabledExtensionConfig:
+              getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+            resolvePrompt:
+              resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+          }),
+        ).toEqual({
+          enabled: true,
+          config: {
+            systemPrompt: "resolved prompt",
+            model: extensionConfig.model,
+            extensionTools: extensionConfig.extensionTools,
+            builtinTools: extensionConfig.builtinTools,
+          },
+        });
+        expect(resolvePromptSpy).toHaveBeenCalledWith("inline", "custom.md");
+      });
+
       it("registers the oracle tool when enabled", () => {
         const mockConfig = vi.fn(() => ({
           enabled: true,
