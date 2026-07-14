@@ -25,3 +25,4 @@ export { default as systemPrompt } from "../packages/extensions/system-prompt/in
 export { default as toolHarness } from "../packages/extensions/tool-harness/index";
 export { default as undoEdit } from "../packages/extensions/undo-edit/index";
 export { default as webSearch } from "../packages/extensions/web-search/index";
+export { default as workflow } from "../packages/extensions/workflow/index";
