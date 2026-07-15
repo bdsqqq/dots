@@ -1,0 +1,20 @@
+# this stays inert until an authorized task is added under `tasks`.
+tasks: {}
+
+# example:
+# tasks:
+#   not-nyaa:
+#     rss:
+#       url: https://example.invalid/authorized-feed.xml
+#       link:
+#         - link
+#         - magneturi
+#     series:
+#       - Authorized Series Name:
+#           identified_by: sequence
+#           sequence_regexp: '(?i)chapter[ ._-]*([0-9]+(?:\.[0-9]+)?)'
+#           begin: 1171
+#     transmission:
+#       host: 127.0.0.1
+#       port: 9091
+#       path: '/Users/bdsqqq/commonplace/03_media/one piece manga/not-nyaa/complete'
