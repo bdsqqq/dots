@@ -1,6 +1,6 @@
 { config, pkgs, ... }: {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
-    home.file.".node-version".text = "24.15.0";
+    home.file.".node-version".text = "24.18.0";
     programs.zsh.initContent = ''
       # fnm
       if [[ -t 1 ]] && command -v fnm >/dev/null 2>&1; then
