@@ -21,6 +21,7 @@ else
         # Creative/Media tools
         "figma"
         "obs"
+        "transmission"
 
         # Productivity applications
         "linear"
