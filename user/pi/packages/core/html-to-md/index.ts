@@ -3,9 +3,13 @@
  * HTML or extraction fails, so callers can fall back to raw output.
  */
 
-import { createMarkdownContent } from "defuddle/full";
+import { createRequire } from "node:module";
 import { Defuddle } from "defuddle/node";
 import { JSDOM } from "jsdom";
+
+const { createMarkdownContent } = createRequire(import.meta.url)(
+  "defuddle/full",
+) as typeof import("defuddle/full");
 
 export function isHtml(text: string): boolean {
   const trimmed = text.trimStart().slice(0, 200).toLowerCase();
