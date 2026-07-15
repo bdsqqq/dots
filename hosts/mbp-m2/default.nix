@@ -15,6 +15,7 @@ in {
     ../../system/kanata.nix
     ../../system/o11y
     ../../user/gaming.nix
+    ../../user/media-feeds.nix
   ];
 
   # home-manager module enabled at flake level; user-layer provided via bundles
@@ -113,6 +114,11 @@ in {
   my.heliumRemotes = {
     enable = true;
     tabsExtension.enable = true;
+  };
+  my.mediaFeeds = {
+    enable = true;
+    root = "/Users/bdsqqq/commonplace/03_media/one piece manga";
+    feeds = [ "not-nyaa" ];
   };
 
   # required by nix-darwin
