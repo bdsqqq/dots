@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Value } from "typebox/value";
+import {
+  createCodeReviewTool,
+  resolveCodeReviewConfig,
+  type CodeReviewParams,
+} from "@bds_pi/code-review";
 import {
   createDelegateTool,
   resolveDelegateConfig,
@@ -11,6 +17,11 @@ import {
   type FinderParams,
 } from "@bds_pi/finder";
 import {
+  createLookAtTool,
+  resolveLookAtConfig,
+  type LookAtParams,
+} from "@bds_pi/look-at";
+import {
   createLibrarianTool,
   resolveLibrarianConfig,
   type LibrarianParams,
@@ -20,6 +31,16 @@ import {
   resolveOracleConfig,
   type OracleParams,
 } from "@bds_pi/oracle";
+import {
+  createReadSessionTool,
+  resolveReadSessionConfig,
+  type ReadSessionParams,
+} from "@bds_pi/read-session";
+import {
+  createReadWebPageTool,
+  resolveReadWebPageConfig,
+  type ReadWebPageParams,
+} from "@bds_pi/read-web-page";
 import {
   applyWorkflowGraphEvent,
   type WorkflowGraphEvent,
@@ -163,7 +184,18 @@ function abortError(): Error {
 function inputObject(recipe: WorkflowRecipe): Record<string, unknown> {
   if (!recipe || typeof recipe !== "object" || Array.isArray(recipe))
     throw new Error("workflow recipe must be an object");
-  if (!new Set(["delegate", "oracle", "librarian", "finder"]).has(recipe.kind))
+  if (
+    !new Set([
+      "delegate",
+      "oracle",
+      "librarian",
+      "finder",
+      "codeReview",
+      "lookAt",
+      "readSession",
+      "readWebPage",
+    ]).has(recipe.kind)
+  )
     throw new Error(`unknown workflow recipe kind: ${String(recipe.kind)}`);
   if (
     !recipe.input ||
@@ -174,24 +206,14 @@ function inputObject(recipe: WorkflowRecipe): Record<string, unknown> {
   return recipe.input;
 }
 
-function assertExactKeys(
-  kind: RecipeKind,
-  input: Record<string, unknown>,
-  allowed: readonly string[],
-): void {
-  const unknown = Object.keys(input).find((key) => !allowed.includes(key));
-  if (unknown)
-    throw new Error(`${kind} recipe input has unknown field: ${unknown}`);
-}
-
 function requiredString(
   kind: RecipeKind,
   input: Record<string, unknown>,
   key: string,
 ): string {
   const value = input[key];
-  if (typeof value !== "string" || value.trim() === "")
-    throw new Error(`${kind} recipe input.${key} must be a non-empty string`);
+  if (typeof value !== "string")
+    throw new Error(`${kind} recipe input.${key} must be a string`);
   return value;
 }
 
@@ -202,63 +224,149 @@ function optionalString(
 ): string | undefined {
   const value = input[key];
   if (value === undefined) return undefined;
-  if (typeof value !== "string" || value.trim() === "")
-    throw new Error(`${kind} recipe input.${key} must be a non-empty string`);
+  if (typeof value !== "string")
+    throw new Error(`${kind} recipe input.${key} must be a string`);
   return value;
 }
 
 function validateRecipeInput(
   recipe: WorkflowRecipe,
-): DelegateParams | OracleParams | LibrarianParams | FinderParams {
+):
+  | DelegateParams
+  | OracleParams
+  | LibrarianParams
+  | FinderParams
+  | CodeReviewParams
+  | LookAtParams
+  | ReadSessionParams
+  | ReadWebPageParams {
   const input = inputObject(recipe);
   switch (recipe.kind) {
     case "delegate":
-      assertExactKeys(recipe.kind, input, [
-        "prompt",
-        "description",
-        "continueId",
-        "leafId",
-      ]);
       return {
         prompt: requiredString(recipe.kind, input, "prompt"),
         description: requiredString(recipe.kind, input, "description"),
-        ...(optionalString(recipe.kind, input, "continueId")
-          ? { continueId: optionalString(recipe.kind, input, "continueId") }
-          : {}),
-        ...(optionalString(recipe.kind, input, "leafId")
-          ? { leafId: optionalString(recipe.kind, input, "leafId") }
-          : {}),
+        ...(input.continueId === undefined
+          ? {}
+          : { continueId: optionalString(recipe.kind, input, "continueId") }),
+        ...(input.leafId === undefined
+          ? {}
+          : { leafId: optionalString(recipe.kind, input, "leafId") }),
       };
     case "oracle": {
-      assertExactKeys(recipe.kind, input, ["task", "context", "files"]);
       const files = input.files;
       if (
         files !== undefined &&
         (!Array.isArray(files) ||
-          files.some((file) => typeof file !== "string" || file.trim() === ""))
+          files.some((file) => typeof file !== "string"))
       )
         throw new Error(
-          "oracle recipe input.files must be an array of non-empty strings",
+          "oracle recipe input.files must be an array of strings",
         );
       return {
         task: requiredString(recipe.kind, input, "task"),
-        ...(optionalString(recipe.kind, input, "context")
-          ? { context: optionalString(recipe.kind, input, "context") }
-          : {}),
+        ...(input.context === undefined
+          ? {}
+          : { context: optionalString(recipe.kind, input, "context") }),
         ...(files ? { files: [...files] as string[] } : {}),
       };
     }
     case "librarian":
-      assertExactKeys(recipe.kind, input, ["query", "context"]);
       return {
         query: requiredString(recipe.kind, input, "query"),
-        ...(optionalString(recipe.kind, input, "context")
-          ? { context: optionalString(recipe.kind, input, "context") }
-          : {}),
+        ...(input.context === undefined
+          ? {}
+          : { context: optionalString(recipe.kind, input, "context") }),
       };
     case "finder":
-      assertExactKeys(recipe.kind, input, ["query"]);
       return { query: requiredString(recipe.kind, input, "query") };
+    case "codeReview": {
+      const files = input.files;
+      if (
+        files !== undefined &&
+        (!Array.isArray(files) ||
+          files.some((file) => typeof file !== "string"))
+      )
+        throw new Error(
+          "codeReview recipe input.files must be an array of strings",
+        );
+      return {
+        diff_description: requiredString(
+          recipe.kind,
+          input,
+          "diff_description",
+        ),
+        ...(files ? { files: [...files] as string[] } : {}),
+        ...(input.instructions === undefined
+          ? {}
+          : {
+              instructions: optionalString(recipe.kind, input, "instructions"),
+            }),
+      };
+    }
+    case "lookAt": {
+      const referenceFiles = input.referenceFiles;
+      if (
+        referenceFiles !== undefined &&
+        (!Array.isArray(referenceFiles) ||
+          referenceFiles.some((file) => typeof file !== "string"))
+      )
+        throw new Error(
+          "lookAt recipe input.referenceFiles must be an array of strings",
+        );
+      return {
+        path: requiredString(recipe.kind, input, "path"),
+        objective: requiredString(recipe.kind, input, "objective"),
+        context: requiredString(recipe.kind, input, "context"),
+        ...(referenceFiles
+          ? { referenceFiles: [...referenceFiles] as string[] }
+          : {}),
+      };
+    }
+    case "readSession":
+      return {
+        session_id: requiredString(recipe.kind, input, "session_id"),
+        goal: requiredString(recipe.kind, input, "goal"),
+        ...(input.leaf_id === undefined
+          ? {}
+          : { leaf_id: optionalString(recipe.kind, input, "leaf_id") }),
+      };
+    case "readWebPage": {
+      for (const key of ["start_index", "max_length"] as const) {
+        const value = input[key];
+        if (
+          value !== undefined &&
+          (typeof value !== "number" || !Number.isFinite(value))
+        )
+          throw new Error(
+            `readWebPage recipe input.${key} must be a finite number`,
+          );
+      }
+      for (const key of ["raw", "forceRefetch"] as const) {
+        const value = input[key];
+        if (value !== undefined && typeof value !== "boolean")
+          throw new Error(`readWebPage recipe input.${key} must be a boolean`);
+      }
+      return {
+        url: requiredString(recipe.kind, input, "url"),
+        ...(input.objective === undefined
+          ? {}
+          : { objective: optionalString(recipe.kind, input, "objective") }),
+        ...(input.prompt === undefined
+          ? {}
+          : { prompt: optionalString(recipe.kind, input, "prompt") }),
+        ...(input.start_index === undefined
+          ? {}
+          : { start_index: input.start_index as number }),
+        ...(input.max_length === undefined
+          ? {}
+          : { max_length: input.max_length as number }),
+        ...(input.raw === undefined ? {} : { raw: input.raw as boolean }),
+        ...(input.forceRefetch === undefined
+          ? {}
+          : { forceRefetch: input.forceRefetch as boolean }),
+      };
+    }
   }
 }
 
@@ -339,7 +447,35 @@ export const spawnRecipeTool: SpawnRecipe = async (request) => {
       tool = createFinderTool(resolved.config);
       break;
     }
+    case "codeReview": {
+      const resolved = resolveCodeReviewConfig();
+      if (!resolved.enabled) throw new Error("codeReview recipe is disabled");
+      tool = createCodeReviewTool(resolved.config);
+      break;
+    }
+    case "lookAt": {
+      const resolved = resolveLookAtConfig();
+      if (!resolved.enabled) throw new Error("lookAt recipe is disabled");
+      tool = createLookAtTool(resolved.config);
+      break;
+    }
+    case "readSession": {
+      const resolved = resolveReadSessionConfig();
+      if (!resolved.enabled) throw new Error("readSession recipe is disabled");
+      tool = createReadSessionTool(resolved.config);
+      break;
+    }
+    case "readWebPage": {
+      const resolved = resolveReadWebPageConfig();
+      if (!resolved.enabled) throw new Error("readWebPage recipe is disabled");
+      tool = createReadWebPageTool(resolved.config);
+      break;
+    }
   }
+  if (!Value.Check(tool.parameters, params))
+    throw new Error(
+      `${request.recipe.kind} recipe input does not match its tool schema`,
+    );
   if (!tool.execute)
     throw new Error(`${request.recipe.kind} tool is not executable`);
 
@@ -723,7 +859,7 @@ if (import.meta.vitest) {
     phases: string[] = [],
   ): string {
     return `
-      import { defineWorkflow, delegate, oracle, librarian, finder } from "@bds_pi/workflow";
+      import { codeReview, defineWorkflow, delegate, finder, librarian, lookAt, oracle, readSession, readWebPage } from "@bds_pi/workflow";
       export const meta = {
         name: "test",
         description: "test",
@@ -817,6 +953,34 @@ if (import.meta.vitest) {
       });
     });
 
+    it("runs every specialized agent recipe through the typed broker", async () => {
+      const { runtime, store } = await harness(
+        `const reviewInput = { diff_description: "review", instructions: "", ignored: true };
+        return parallel([
+          () => agent(codeReview(reviewInput)),
+          () => agent(lookAt({ path: "diagram.png", objective: "inspect", context: "demo" })),
+          () => agent(readSession({ session_id: "session", goal: "extract" })),
+          () => agent(readWebPage({ url: "https://example.com", prompt: "answer" })),
+        ]);`,
+        successSpawn,
+        { maxConcurrency: 4, maxAgents: 4 },
+        undefined,
+        ["codeReview", "lookAt", "readSession", "readWebPage"],
+      );
+      expect((await runtime.run()).value).toEqual([
+        "review",
+        "diagram.png",
+        "session",
+        "https://example.com",
+      ]);
+      expect(store.journal.nodes.map((node) => node.recipe)).toEqual([
+        "codeReview",
+        "lookAt",
+        "readSession",
+        "readWebPage",
+      ]);
+    });
+
     it("rejects undeclared and malformed recipes", async () => {
       const undeclared = await harness(
         'const makeRecipe = finder; return (agent as any)(makeRecipe({ query: "needle" }));',
@@ -825,13 +989,13 @@ if (import.meta.vitest) {
       await expect(undeclared.runtime.run()).rejects.toThrow("not declared");
 
       const malformed = await harness(
-        'return agent(finder({ query: "" }));',
+        "return agent((finder as any)({ query: 42 })) as Promise<string>;",
         successSpawn,
         undefined,
         undefined,
         ["finder"],
       );
-      await expect(malformed.runtime.run()).rejects.toThrow("non-empty string");
+      await expect(malformed.runtime.run()).rejects.toThrow("must be a string");
     });
 
     it("preserves typed control-flow graphs from compiled workflows", async () => {

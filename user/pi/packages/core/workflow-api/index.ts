@@ -6,7 +6,15 @@ export type JsonValue =
   | { readonly [key: string]: JsonValue }
   | readonly JsonValue[];
 
-export type WorkflowAgent = "delegate" | "oracle" | "librarian" | "finder";
+export type WorkflowAgent =
+  | "delegate"
+  | "oracle"
+  | "librarian"
+  | "finder"
+  | "codeReview"
+  | "lookAt"
+  | "readSession"
+  | "readWebPage";
 
 export interface WorkflowMeta {
   name: string;
@@ -35,6 +43,35 @@ export interface LibrarianInput {
 
 export interface FinderInput {
   readonly query: string;
+}
+
+export interface CodeReviewInput {
+  readonly diff_description: string;
+  readonly files?: readonly string[];
+  readonly instructions?: string;
+}
+
+export interface LookAtInput {
+  readonly path: string;
+  readonly objective: string;
+  readonly context: string;
+  readonly referenceFiles?: readonly string[];
+}
+
+export interface ReadSessionInput {
+  readonly session_id: string;
+  readonly goal: string;
+  readonly leaf_id?: string;
+}
+
+export interface ReadWebPageInput {
+  readonly url: string;
+  readonly objective?: string;
+  readonly prompt?: string;
+  readonly start_index?: number;
+  readonly max_length?: number;
+  readonly raw?: boolean;
+  readonly forceRefetch?: boolean;
 }
 
 export interface WorkflowRecipe<
@@ -181,6 +218,30 @@ export function finder(
   input: FinderInput,
 ): WorkflowRecipe<string, "finder", FinderInput> {
   return recipe("finder", input);
+}
+
+export function codeReview(
+  input: CodeReviewInput,
+): WorkflowRecipe<string, "codeReview", CodeReviewInput> {
+  return recipe("codeReview", input);
+}
+
+export function lookAt(
+  input: LookAtInput,
+): WorkflowRecipe<string, "lookAt", LookAtInput> {
+  return recipe("lookAt", input);
+}
+
+export function readSession(
+  input: ReadSessionInput,
+): WorkflowRecipe<string, "readSession", ReadSessionInput> {
+  return recipe("readSession", input);
+}
+
+export function readWebPage(
+  input: ReadWebPageInput,
+): WorkflowRecipe<string, "readWebPage", ReadWebPageInput> {
+  return recipe("readWebPage", input);
 }
 
 export function defineWorkflow<

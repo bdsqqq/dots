@@ -130,7 +130,7 @@ export interface LookAtConfig extends Partial<
   systemPrompt?: string;
 }
 
-interface LookAtParams {
+export interface LookAtParams {
   path: string;
   objective: string;
   context: string;
@@ -264,13 +264,8 @@ export function createLookAtTool(
         result.stopReason === "aborted";
       const output = getFinalOutput(result.messages) || "(no output)";
 
-      if (isError) {
-        return subAgentResult(
-          result.errorMessage || result.stderr || output,
-          singleResult,
-          true,
-        );
-      }
+      if (isError)
+        throw new Error(result.errorMessage || result.stderr || output);
 
       return subAgentResult(output, singleResult);
     },
@@ -314,27 +309,39 @@ export function createLookAtTool(
   };
 }
 
+export function resolveLookAtConfig(
+  deps: Pick<
+    LookAtExtensionDeps,
+    "getEnabledExtensionConfig" | "resolvePrompt"
+  > = DEFAULT_DEPS,
+): { enabled: boolean; config: LookAtConfig } {
+  const { enabled, config } = deps.getEnabledExtensionConfig(
+    "@bds_pi/look-at",
+    CONFIG_DEFAULTS,
+    { schema: LOOK_AT_CONFIG_SCHEMA },
+  );
+
+  return {
+    enabled,
+    config: {
+      systemPrompt: enabled
+        ? deps.resolvePrompt(config.promptString, config.promptFile)
+        : undefined,
+      model: config.model,
+      extensionTools: config.extensionTools,
+      builtinTools: config.builtinTools,
+    },
+  };
+}
+
 function createLookAtExtension(
   deps: LookAtExtensionDeps = DEFAULT_DEPS,
 ): (pi: ExtensionAPI) => void {
   return function lookAtExtension(pi: ExtensionAPI): void {
-    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
-      "@bds_pi/look-at",
-      CONFIG_DEFAULTS,
-      { schema: LOOK_AT_CONFIG_SCHEMA },
-    );
+    const { enabled, config } = resolveLookAtConfig(deps);
     if (!enabled) return;
 
-    pi.registerTool(
-      deps.withPromptPatch(
-        createLookAtTool({
-          systemPrompt: deps.resolvePrompt(cfg.promptString, cfg.promptFile),
-          model: cfg.model,
-          extensionTools: cfg.extensionTools,
-          builtinTools: cfg.builtinTools,
-        }),
-      ),
-    );
+    pi.registerTool(deps.withPromptPatch(createLookAtTool(config)));
   };
 }
 
@@ -355,7 +362,41 @@ export {
 };
 
 if (import.meta.vitest) {
-  const { describe, expect, it } = import.meta.vitest;
+  const { describe, expect, it, vi } = import.meta.vitest;
+
+  describe("resolveLookAtConfig", () => {
+    it("resolves the effective tool config", () => {
+      const extensionConfig = {
+        model: "custom/model",
+        extensionTools: ["read"],
+        builtinTools: ["ls"],
+        promptFile: "custom.md",
+        promptString: "inline",
+      };
+      const getEnabledExtensionConfigSpy = vi.fn(() => ({
+        enabled: true,
+        config: extensionConfig,
+      }));
+      const resolvePromptSpy = vi.fn(() => "resolved prompt");
+
+      expect(
+        resolveLookAtConfig({
+          getEnabledExtensionConfig:
+            getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+          resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        }),
+      ).toEqual({
+        enabled: true,
+        config: {
+          systemPrompt: "resolved prompt",
+          model: extensionConfig.model,
+          extensionTools: extensionConfig.extensionTools,
+          builtinTools: extensionConfig.builtinTools,
+        },
+      });
+      expect(resolvePromptSpy).toHaveBeenCalledWith("inline", "custom.md");
+    });
+  });
 
   // Layer 2: E2E eval tests (gated by PI_E2E env var)
   describe.skipIf(!process.env.PI_E2E)("eval: look-at tool", () => {

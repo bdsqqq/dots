@@ -1062,6 +1062,9 @@ importers:
 
   packages/extensions/workflow:
     dependencies:
+      '@bds_pi/code-review':
+        specifier: workspace:*
+        version: link:../code-review
       '@bds_pi/delegate':
         specifier: workspace:*
         version: link:../delegate
@@ -1071,9 +1074,18 @@ importers:
       '@bds_pi/librarian':
         specifier: workspace:*
         version: link:../librarian
+      '@bds_pi/look-at':
+        specifier: workspace:*
+        version: link:../look-at
       '@bds_pi/oracle':
         specifier: workspace:*
         version: link:../oracle
+      '@bds_pi/read-session':
+        specifier: workspace:*
+        version: link:../read-session
+      '@bds_pi/read-web-page':
+        specifier: workspace:*
+        version: link:../read-web-page
       '@bds_pi/workflow-api':
         specifier: workspace:*
         version: link:../../core/workflow-api

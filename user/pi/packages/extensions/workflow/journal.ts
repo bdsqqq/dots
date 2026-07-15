@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { lock } from "proper-lockfile";
+import type { WorkflowAgent } from "@bds_pi/workflow-api";
 
 export interface WorkflowUsage {
   input: number;
@@ -25,7 +26,7 @@ export interface WorkflowNodeRecord {
   status: WorkflowNodeStatus;
   phase?: string;
   label?: string;
-  recipe?: "delegate" | "oracle" | "librarian" | "finder";
+  recipe?: WorkflowAgent;
   childSessionId?: string;
   childSessionFile?: string;
   result?: unknown;
@@ -42,7 +43,7 @@ export interface WorkflowRunJournal {
     name: string;
     description: string;
     phases?: string[];
-    agents?: Array<"delegate" | "oracle" | "librarian" | "finder">;
+    agents?: WorkflowAgent[];
     source: string;
     scriptHash: string;
   };

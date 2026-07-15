@@ -166,7 +166,7 @@ function fetchUrl(
 
 // --- typed params interfaces ---
 
-interface ReadWebPageParams {
+export interface ReadWebPageParams {
   url: string;
   objective?: string;
   prompt?: string;
@@ -241,25 +241,14 @@ export function createReadWebPageTool(
       const url = p.url;
 
       if (!url.startsWith("http://") && !url.startsWith("https://")) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `invalid URL: "${url}" — must start with http:// or https://`,
-            },
-          ],
-          isError: true,
-        } as any;
+        throw new Error(
+          `invalid URL: "${url}" — must start with http:// or https://`,
+        );
       }
 
       const { html, error } = await fetchUrl(url, signal);
 
-      if (error) {
-        return {
-          content: [{ type: "text" as const, text: error }],
-          isError: true,
-        } as any;
-      }
+      if (error) throw new Error(error);
 
       if (!html.trim()) {
         return {
@@ -357,13 +346,8 @@ export function createReadWebPageTool(
           result.stopReason === "aborted";
         const output = getFinalOutput(result.messages) || "(no output)";
 
-        if (isError) {
-          return subAgentResult(
-            result.errorMessage || result.stderr || output,
-            singleResult,
-            true,
-          );
-        }
+        if (isError)
+          throw new Error(result.errorMessage || result.stderr || output);
 
         return subAgentResult(output, singleResult);
       }
@@ -408,25 +392,38 @@ export function createReadWebPageTool(
   };
 }
 
+export function resolveReadWebPageConfig(
+  deps: Pick<
+    ReadWebPageExtensionDeps,
+    "getEnabledExtensionConfig" | "resolvePrompt"
+  > = DEFAULT_DEPS,
+): { enabled: boolean; config: ReadWebPageConfig } {
+  const { enabled, config } = deps.getEnabledExtensionConfig(
+    "@bds_pi/read-web-page",
+    CONFIG_DEFAULTS,
+    { schema: READ_WEB_PAGE_CONFIG_SCHEMA },
+  );
+
+  return {
+    enabled,
+    config: {
+      systemPrompt: enabled
+        ? deps.resolvePrompt(config.promptString, config.promptFile) ||
+          DEFAULT_PROMPT_SYSTEM
+        : undefined,
+      model: config.model,
+    },
+  };
+}
+
 function createReadWebPageExtension(
   deps: ReadWebPageExtensionDeps = DEFAULT_DEPS,
 ): (pi: ExtensionAPI) => void {
   return function readWebPageExtension(pi: ExtensionAPI): void {
-    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
-      "@bds_pi/read-web-page",
-      CONFIG_DEFAULTS,
-      { schema: READ_WEB_PAGE_CONFIG_SCHEMA },
-    );
+    const { enabled, config } = resolveReadWebPageConfig(deps);
     if (!enabled) return;
 
-    pi.registerTool(
-      deps.withPromptPatch(
-        createReadWebPageTool({
-          systemPrompt: deps.resolvePrompt(cfg.promptString, cfg.promptFile),
-          model: cfg.model,
-        }),
-      ),
-    );
+    pi.registerTool(deps.withPromptPatch(createReadWebPageTool(config)));
   };
 }
 
@@ -465,6 +462,56 @@ if (import.meta.vitest) {
   });
 
   describe("read-web-page extension", () => {
+    it("resolves the effective model and custom system prompt", () => {
+      const extensionConfig = {
+        ...CONFIG_DEFAULTS,
+        model: "custom/model",
+        promptFile: "custom.md",
+        promptString: "inline",
+      };
+      const getEnabledExtensionConfigSpy = vi.fn(() => ({
+        enabled: true,
+        config: extensionConfig,
+      }));
+      const resolvePromptSpy = vi.fn(() => "resolved prompt");
+
+      expect(
+        resolveReadWebPageConfig({
+          getEnabledExtensionConfig:
+            getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+          resolvePrompt: resolvePromptSpy as typeof DEFAULT_DEPS.resolvePrompt,
+        }),
+      ).toEqual({
+        enabled: true,
+        config: {
+          systemPrompt: "resolved prompt",
+          model: extensionConfig.model,
+        },
+      });
+      expect(resolvePromptSpy).toHaveBeenCalledWith("inline", "custom.md");
+    });
+
+    it("uses the built-in system prompt when no configured prompt resolves", () => {
+      const getEnabledExtensionConfigSpy = vi.fn(() => ({
+        enabled: true,
+        config: CONFIG_DEFAULTS,
+      }));
+
+      expect(
+        resolveReadWebPageConfig({
+          getEnabledExtensionConfig:
+            getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+          resolvePrompt: vi.fn(() => "") as typeof DEFAULT_DEPS.resolvePrompt,
+        }),
+      ).toEqual({
+        enabled: true,
+        config: {
+          systemPrompt: DEFAULT_PROMPT_SYSTEM,
+          model: CONFIG_DEFAULTS.model,
+        },
+      });
+    });
+
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
         <T extends Record<string, unknown>>(

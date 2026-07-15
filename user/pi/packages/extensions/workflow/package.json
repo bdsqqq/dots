@@ -8,10 +8,14 @@
     ".": "./index.ts"
   },
   "dependencies": {
+    "@bds_pi/code-review": "workspace:*",
     "@bds_pi/delegate": "workspace:*",
     "@bds_pi/finder": "workspace:*",
     "@bds_pi/librarian": "workspace:*",
+    "@bds_pi/look-at": "workspace:*",
     "@bds_pi/oracle": "workspace:*",
+    "@bds_pi/read-session": "workspace:*",
+    "@bds_pi/read-web-page": "workspace:*",
     "@bds_pi/workflow-api": "workspace:*",
     "@earendil-works/pi-coding-agent": "^0.80.6",
     "@earendil-works/pi-tui": "^0.80.6",
