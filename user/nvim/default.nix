@@ -3,6 +3,7 @@ let isLinux = lib.hasInfix "linux" hostSystem;
 in {
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }:
     let
+      neovim = pkgs.unstable.neovim;
       nvimConfig =
         "${config.home.homeDirectory}/commonplace/01_files/nix/user/nvim";
     in
