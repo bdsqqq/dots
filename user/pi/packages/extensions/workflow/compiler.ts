@@ -24,6 +24,10 @@ const AGENTS = new Set<WorkflowAgent>([
   "oracle",
   "librarian",
   "finder",
+  "codeReview",
+  "lookAt",
+  "readSession",
+  "readWebPage",
 ]);
 
 export interface CompiledWorkflowMeta {
@@ -396,6 +400,31 @@ if (import.meta.vitest) {
       expect(result.meta.phases).toEqual(["inspect"]);
       expect(result.code).toContain('require("@bds_pi/workflow")');
       expect(result.code).toContain("exports.meta");
+    });
+
+    it("type-checks every specialized agent recipe", () => {
+      const result = compile(`
+        import { codeReview, defineWorkflow, lookAt, readSession, readWebPage } from "@bds_pi/workflow";
+        export const meta = {
+          name: "specialized",
+          description: "specialized recipes",
+          agents: ["codeReview", "lookAt", "readSession", "readWebPage"],
+        } as const;
+        export default defineWorkflow(meta, {
+          run: () => [
+            codeReview({ diff_description: "review" }).kind,
+            lookAt({ path: "diagram.png", objective: "inspect", context: "demo" }).kind,
+            readSession({ session_id: "session", goal: "extract" }).kind,
+            readWebPage({ url: "https://example.com", prompt: "answer" }).kind,
+          ],
+        });
+      `);
+      expect(result.meta.agents).toEqual([
+        "codeReview",
+        "lookAt",
+        "readSession",
+        "readWebPage",
+      ]);
     });
 
     it("reports semantic errors for invalid recipe input", () => {

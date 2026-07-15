@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { defineWorkflow, finder, oracle } from "./api.js";
+import {
+  codeReview,
+  defineWorkflow,
+  finder,
+  lookAt,
+  oracle,
+  readSession,
+  readWebPage,
+} from "./api.js";
 
 describe("workflow authoring API", () => {
   it("builds frozen serializable recipes and definitions", () => {
@@ -34,5 +42,13 @@ describe("workflow authoring API", () => {
 
     expect(stringRecipe.kind).toBe("oracle");
     expect(Object.isFrozen(recipe.input.files)).toBe(true);
+    expect(
+      [
+        codeReview({ diff_description: "review" }),
+        lookAt({ path: "a.png", objective: "inspect", context: "demo" }),
+        readSession({ session_id: "session", goal: "extract" }),
+        readWebPage({ url: "https://example.com", prompt: "answer" }),
+      ].map((entry) => entry.kind),
+    ).toEqual(["codeReview", "lookAt", "readSession", "readWebPage"]);
   });
 });

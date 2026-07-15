@@ -63,7 +63,15 @@ interface RunnerFrame {
 }
 
 export interface WorkflowRecipe {
-  kind: "delegate" | "oracle" | "librarian" | "finder";
+  kind:
+    | "delegate"
+    | "oracle"
+    | "librarian"
+    | "finder"
+    | "codeReview"
+    | "lookAt"
+    | "readSession"
+    | "readWebPage";
   input: Record<string, unknown>;
 }
 
@@ -238,9 +246,16 @@ export async function runWorkflowScript(
       typeof frame.id !== "string" ||
       !frame.recipe ||
       typeof frame.recipe !== "object" ||
-      !["delegate", "oracle", "librarian", "finder"].includes(
-        frame.recipe.kind,
-      ) ||
+      ![
+        "delegate",
+        "oracle",
+        "librarian",
+        "finder",
+        "codeReview",
+        "lookAt",
+        "readSession",
+        "readWebPage",
+      ].includes(frame.recipe.kind) ||
       !frame.recipe.input ||
       typeof frame.recipe.input !== "object" ||
       Array.isArray(frame.recipe.input) ||
@@ -416,7 +431,16 @@ if (import.meta.vitest) {
     name: "test",
     description: "runner test",
     phases: ["test", "inspect"],
-    agents: ["delegate", "oracle", "librarian", "finder"],
+    agents: [
+      "delegate",
+      "oracle",
+      "librarian",
+      "finder",
+      "codeReview",
+      "lookAt",
+      "readSession",
+      "readWebPage",
+    ],
   };
   const runWorkflowScript = (
     request: Omit<ScriptRunRequest, "meta">,
@@ -425,8 +449,8 @@ if (import.meta.vitest) {
 
   const workflowCode = (body: string, parseArgs?: string): string => `
     "use strict";
-    const { defineWorkflow, delegate, oracle, librarian, finder } = require("@bds_pi/workflow");
-    const meta = { name: "test", description: "runner test", phases: ["test", "inspect"], agents: ["delegate", "oracle", "librarian", "finder"] };
+    const { codeReview, defineWorkflow, delegate, finder, librarian, lookAt, oracle, readSession, readWebPage } = require("@bds_pi/workflow");
+    const meta = { name: "test", description: "runner test", phases: ["test", "inspect"], agents: ["delegate", "oracle", "librarian", "finder", "codeReview", "lookAt", "readSession", "readWebPage"] };
     exports.meta = meta;
     exports.default = defineWorkflow(meta, {
       ${parseArgs ? `parseArgs: ${parseArgs},` : ""}
@@ -467,7 +491,11 @@ if (import.meta.vitest) {
               agent(delegate({ prompt: args.prompt }), { label: "delegate" }),
               agent(oracle({ task: "reason" }), { phase: "analysis" }),
               agent(librarian({ query: "docs" })),
-              agent(finder({ query: "files" }))
+              agent(finder({ query: "files" })),
+              agent(codeReview({ diff_description: "review" })),
+              agent(lookAt({ path: "image.png", objective: "inspect", context: "demo" })),
+              agent(readSession({ session_id: "session", goal: "extract" })),
+              agent(readWebPage({ url: "https://example.com", prompt: "answer" }))
             ]);
           `),
           args: { prompt: "work" },
@@ -478,12 +506,34 @@ if (import.meta.vitest) {
         },
         spawnDirectRunner,
       );
-      expect(value).toEqual(["delegate", "oracle", "librarian", "finder"]);
+      expect(value).toEqual([
+        "delegate",
+        "oracle",
+        "librarian",
+        "finder",
+        "codeReview",
+        "lookAt",
+        "readSession",
+        "readWebPage",
+      ]);
       expect(requests.map(({ recipe }) => recipe)).toEqual([
         { kind: "delegate", input: { prompt: "work" } },
         { kind: "oracle", input: { task: "reason" } },
         { kind: "librarian", input: { query: "docs" } },
         { kind: "finder", input: { query: "files" } },
+        { kind: "codeReview", input: { diff_description: "review" } },
+        {
+          kind: "lookAt",
+          input: { path: "image.png", objective: "inspect", context: "demo" },
+        },
+        {
+          kind: "readSession",
+          input: { session_id: "session", goal: "extract" },
+        },
+        {
+          kind: "readWebPage",
+          input: { url: "https://example.com", prompt: "answer" },
+        },
       ]);
       expect(requests[1]?.phase).toBe("analysis");
     });

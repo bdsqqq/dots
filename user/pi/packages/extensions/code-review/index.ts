@@ -231,7 +231,7 @@ function formatReviewSummary(comments: ReviewComment[]): string {
 
 // --- tool ---
 
-interface CodeReviewParams {
+export interface CodeReviewParams {
   diff_description: string;
   files?: string[];
   instructions?: string;
@@ -349,13 +349,8 @@ export function createCodeReviewTool(
         result.stopReason === "aborted";
       const output = getFinalOutput(result.messages) || "(no output)";
 
-      if (isError) {
-        return subAgentResult(
-          result.errorMessage || result.stderr || output,
-          singleResult,
-          true,
-        );
-      }
+      if (isError)
+        throw new Error(result.errorMessage || result.stderr || output);
 
       return subAgentResult(output, singleResult);
     },
@@ -405,31 +400,42 @@ export function createCodeReviewTool(
   };
 }
 
+export function resolveCodeReviewConfig(
+  deps: Pick<
+    CodeReviewExtensionDeps,
+    "getEnabledExtensionConfig" | "resolvePrompt"
+  > = DEFAULT_DEPS,
+): { enabled: boolean; config: CodeReviewConfig } {
+  const { enabled, config } = deps.getEnabledExtensionConfig(
+    "@bds_pi/code-review",
+    CONFIG_DEFAULTS,
+    { schema: CODE_REVIEW_CONFIG_SCHEMA },
+  );
+
+  return {
+    enabled,
+    config: {
+      systemPrompt: enabled
+        ? deps.resolvePrompt(config.promptString, config.promptFile)
+        : undefined,
+      reportFormat: enabled
+        ? deps.resolvePrompt(config.reportPromptString, config.reportPromptFile)
+        : undefined,
+      model: config.model,
+      builtinTools: config.builtinTools,
+      extensionTools: config.extensionTools,
+    },
+  };
+}
+
 function createCodeReviewExtension(
   deps: CodeReviewExtensionDeps = DEFAULT_DEPS,
 ): (pi: ExtensionAPI) => void {
   return function codeReviewExtension(pi: ExtensionAPI): void {
-    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
-      "@bds_pi/code-review",
-      CONFIG_DEFAULTS,
-      { schema: CODE_REVIEW_CONFIG_SCHEMA },
-    );
+    const { enabled, config } = resolveCodeReviewConfig(deps);
     if (!enabled) return;
 
-    pi.registerTool(
-      deps.withPromptPatch(
-        createCodeReviewTool({
-          systemPrompt: deps.resolvePrompt(cfg.promptString, cfg.promptFile),
-          reportFormat: deps.resolvePrompt(
-            cfg.reportPromptString,
-            cfg.reportPromptFile,
-          ),
-          model: cfg.model,
-          builtinTools: cfg.builtinTools,
-          extensionTools: cfg.extensionTools,
-        }),
-      ),
-    );
+    pi.registerTool(deps.withPromptPatch(createCodeReviewTool(config)));
   };
 }
 
@@ -759,6 +765,62 @@ if (import.meta.vitest) {
   // ============================================================================
 
   describe("code-review extension (SDK integration)", () => {
+    describe("resolveCodeReviewConfig", () => {
+      it("resolves the effective tool config", () => {
+        const config = {
+          ...CONFIG_DEFAULTS,
+          model: "provider/model",
+          builtinTools: ["read"],
+          extensionTools: ["grep"],
+          promptString: "system source",
+          promptFile: "system.md",
+          reportPromptString: "report source",
+          reportPromptFile: "report.md",
+        };
+        const resolvePrompt = vi.fn(
+          (promptString: string, promptFile: string) =>
+            `${promptString}:${promptFile}`,
+        );
+
+        const resolved = resolveCodeReviewConfig({
+          getEnabledExtensionConfig: vi.fn(() => ({
+            enabled: true,
+            config,
+          })) as any,
+          resolvePrompt,
+        });
+
+        expect(resolved).toEqual({
+          enabled: true,
+          config: {
+            systemPrompt: "system source:system.md",
+            reportFormat: "report source:report.md",
+            model: "provider/model",
+            builtinTools: ["read"],
+            extensionTools: ["grep"],
+          },
+        });
+        expect(resolvePrompt).toHaveBeenCalledTimes(2);
+      });
+
+      it("does not resolve prompts when disabled", () => {
+        const resolvePrompt = vi.fn();
+
+        const resolved = resolveCodeReviewConfig({
+          getEnabledExtensionConfig: vi.fn(() => ({
+            enabled: false,
+            config: CONFIG_DEFAULTS,
+          })) as any,
+          resolvePrompt,
+        });
+
+        expect(resolved.enabled).toBe(false);
+        expect(resolved.config.systemPrompt).toBeUndefined();
+        expect(resolved.config.reportFormat).toBeUndefined();
+        expect(resolvePrompt).not.toHaveBeenCalled();
+      });
+    });
+
     describe("extension registration", () => {
       it("does not register anything when disabled", () => {
         const mockConfig = vi.fn(() => ({

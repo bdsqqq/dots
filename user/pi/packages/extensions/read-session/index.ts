@@ -118,7 +118,7 @@ interface MessageContent {
 
 // --- session rendering ---
 
-interface ReadSessionParams {
+export interface ReadSessionParams {
   session_id: string;
   goal: string;
   leaf_id?: string;
@@ -128,7 +128,7 @@ function findSessionFile(
   sessionId: string,
   sessionsDir: string,
 ): string | null {
-  if (!fs.existsSync(sessionsDir)) return null;
+  if (sessionId.length === 0 || !fs.existsSync(sessionsDir)) return null;
 
   // fast path: check filename contains session id
   const byFilename = walkDirSync(sessionsDir, {
@@ -375,15 +375,7 @@ export function createReadSessionTool(
       // find the session file
       const sessionFile = findSessionFile(p.session_id, config.sessionsDir);
       if (!sessionFile) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `session not found: ${p.session_id}`,
-            },
-          ],
-          isError: true,
-        } as any;
+        throw new Error(`session not found: ${p.session_id}`);
       }
 
       // render session tree
@@ -463,13 +455,8 @@ export function createReadSessionTool(
         result.stopReason === "aborted";
       const output = getFinalOutput(result.messages) || "(no output)";
 
-      if (isError) {
-        return subAgentResult(
-          result.errorMessage || result.stderr || output,
-          singleResult,
-          true,
-        );
-      }
+      if (isError)
+        throw new Error(result.errorMessage || result.stderr || output);
 
       return subAgentResult(output, singleResult);
     },
@@ -509,6 +496,26 @@ export function createReadSessionTool(
         header: "statusOnly",
       });
       return container;
+    },
+  };
+}
+
+export function resolveReadSessionConfig(
+  deps: ReadSessionExtensionDeps = DEFAULT_DEPS,
+): { enabled: boolean; config: ReadSessionConfig } {
+  const { enabled, config } = deps.getEnabledExtensionConfig(
+    "@bds_pi/read-session",
+    CONFIG_DEFAULTS,
+    { schema: READ_SESSION_CONFIG_SCHEMA },
+  );
+
+  return {
+    enabled,
+    config: {
+      systemPrompt: DEFAULT_SYSTEM_PROMPT,
+      model: config.model,
+      sessionsDir: config.sessionsDir,
+      maxChars: config.maxChars,
     },
   };
 }
@@ -594,9 +601,49 @@ if (import.meta.vitest) {
 
       expect(findSessionFile("beta-session", sessionsDir)).toBe(filePath);
     });
+
+    it("does not treat an empty id as matching every session filename", () => {
+      const sessionsDir = makeTmpDir();
+      writeSessionJsonl(path.join(sessionsDir, "session.jsonl"), [
+        { type: "session", id: "session" },
+      ]);
+
+      expect(findSessionFile("", sessionsDir)).toBeNull();
+    });
   });
 
   describe("read-session extension", () => {
+    it("resolves the effective tool config", () => {
+      const config = {
+        model: "custom/model",
+        sessionsDir: "/custom/sessions",
+        maxChars: 42_000,
+      };
+      const getEnabledExtensionConfigSpy = vi.fn(() => ({
+        enabled: true,
+        config,
+      }));
+
+      expect(
+        resolveReadSessionConfig({
+          ...DEFAULT_DEPS,
+          getEnabledExtensionConfig:
+            getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        }),
+      ).toEqual({
+        enabled: true,
+        config: {
+          systemPrompt: DEFAULT_SYSTEM_PROMPT,
+          ...config,
+        },
+      });
+      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
+        "@bds_pi/read-session",
+        CONFIG_DEFAULTS,
+        { schema: READ_SESSION_CONFIG_SCHEMA },
+      );
+    });
+
     it("registers the tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
         <T extends Record<string, unknown>>(
@@ -688,22 +735,10 @@ export function createReadSessionExtension(
   deps: ReadSessionExtensionDeps = DEFAULT_DEPS,
 ): (pi: ExtensionAPI) => void {
   return function readSessionExtension(pi: ExtensionAPI): void {
-    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
-      "@bds_pi/read-session",
-      CONFIG_DEFAULTS,
-      { schema: READ_SESSION_CONFIG_SCHEMA },
-    );
+    const { enabled, config } = resolveReadSessionConfig(deps);
     if (!enabled) return;
 
-    pi.registerTool(
-      deps.withPromptPatch(
-        createReadSessionTool({
-          model: cfg.model,
-          sessionsDir: cfg.sessionsDir,
-          maxChars: cfg.maxChars,
-        }),
-      ),
-    );
+    pi.registerTool(deps.withPromptPatch(createReadSessionTool(config)));
   };
 }
 

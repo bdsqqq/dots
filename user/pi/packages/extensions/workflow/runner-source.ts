@@ -133,7 +133,7 @@ function trackedAgent(recipe, options = {}) {
   if (!recipe || typeof recipe !== "object" || Array.isArray(recipe)) {
     return Promise.reject(new Error("agent recipe must be an object"));
   }
-  if (!new Set(["delegate", "oracle", "librarian", "finder"]).has(recipe.kind)) {
+  if (!new Set(["delegate", "oracle", "librarian", "finder", "codeReview", "lookAt", "readSession", "readWebPage"]).has(recipe.kind)) {
     return Promise.reject(new Error("agent recipe kind is invalid"));
   }
   if (!recipe.input || typeof recipe.input !== "object" || Array.isArray(recipe.input)) {
@@ -368,6 +368,10 @@ async function run(frame) {
     "oracle: recipe('oracle'),",
     "librarian: recipe('librarian'),",
     "finder: recipe('finder'),",
+    "codeReview: recipe('codeReview'),",
+    "lookAt: recipe('lookAt'),",
+    "readSession: recipe('readSession'),",
+    "readWebPage: recipe('readWebPage'),",
     "});",
     "const module = { exports: {} };",
     "const restrictedRequire = specifier => {",
@@ -379,7 +383,7 @@ async function run(frame) {
     "if (typeof meta.name !== 'string' || meta.name.trim() === '') throw new SafeError('workflow module meta.name must be a non-empty string');",
     "if (typeof meta.description !== 'string' || meta.description.trim() === '') throw new SafeError('workflow module meta.description must be a non-empty string');",
     "if (meta.phases !== undefined && (!Array.isArray(meta.phases) || !meta.phases.every(value => typeof value === 'string'))) throw new SafeError('workflow module meta.phases must be an array of strings');",
-    "if (meta.agents !== undefined && (!Array.isArray(meta.agents) || !meta.agents.every(value => ['delegate', 'oracle', 'librarian', 'finder'].includes(value)))) throw new SafeError('workflow module meta.agents contains an unknown recipe');",
+    "if (meta.agents !== undefined && (!Array.isArray(meta.agents) || !meta.agents.every(value => ['delegate', 'oracle', 'librarian', 'finder', 'codeReview', 'lookAt', 'readSession', 'readWebPage'].includes(value)))) throw new SafeError('workflow module meta.agents contains an unknown recipe');",
     "};",
     "const expectedMeta = deepFreeze(JSON.parse(metaJson));",
     "validateMeta(expectedMeta);",
