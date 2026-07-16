@@ -2,6 +2,8 @@ globalDir: "${PNPM_HOME}/global"
 globalBinDir: "${PNPM_HOME}/bin"
 minimumReleaseAge: 2880
 minimumReleaseAgeExclude:
+  - "@openai/codex"
+  - "@openai/codex-*"
   - "@tobilu/qmd"
   - "vercel"
   - "@vercel/cli-config"

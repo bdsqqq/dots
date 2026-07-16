@@ -67,6 +67,7 @@ in
         set -euo pipefail
 
         if [ -f "${repoPi}/package.json" ]; then
+          export CI=true
           export PNPM_HOME="${homeDir}/.local/share/pnpm"
           export PATH="${
             lib.makeBinPath (
