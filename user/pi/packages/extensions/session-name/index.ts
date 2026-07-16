@@ -170,6 +170,7 @@ async function generateName(
       headers: auth.headers,
       signal,
       maxTokens: 20,
+      reasoningEffort: "low",
     },
   );
   if (response.stopReason === "aborted") return null;

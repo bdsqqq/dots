@@ -44,7 +44,7 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 
-const ORACLE_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:xhigh";
+const ORACLE_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:high";
 
 type OracleExtConfig = {
   model: typeof ORACLE_DEFAULT_MODEL | string;
