@@ -82,13 +82,11 @@ export interface MentionableSession {
   searchableText: string;
   branchCount: number;
   parentSessionPath?: string;
-  isHandoffCandidate: boolean;
 }
 
 export interface MentionableSessionQuery {
   text?: string;
   workspace?: string;
-  kind?: "session" | "handoff";
   limit?: number;
 }
 
@@ -375,9 +373,6 @@ export function summarizeMentionableSession(
     searchableText,
     branchCount: branches.length,
     parentSessionPath: parsed.header.parentSession,
-    isHandoffCandidate:
-      typeof parsed.header.parentSession === "string" &&
-      firstUserMessage.length > 0,
   };
 }
 
@@ -418,10 +413,6 @@ export function searchMentionableSessions(
     );
   }
 
-  if (query.kind === "handoff") {
-    filtered = filtered.filter((session) => session.isHandoffCandidate);
-  }
-
   if (query.text) {
     filtered = filtered.filter((session) =>
       matchesMentionableText(session, query.text!),
@@ -442,13 +433,12 @@ export function searchMentionableSessions(
 export function resolveMentionableSession(
   sessions: MentionableSession[],
   value: string,
-  kind: "session" | "handoff" = "session",
 ):
   | { status: "resolved"; session: MentionableSession }
   | { status: "ambiguous"; sessions: MentionableSession[] }
   | { status: "not_found" } {
   const normalized = value.toLowerCase();
-  const candidates = searchMentionableSessions(sessions, { kind }).filter(
+  const candidates = searchMentionableSessions(sessions).filter(
     (session) =>
       session.sessionId.toLowerCase() === normalized ||
       session.sessionId.toLowerCase().startsWith(normalized),
@@ -582,89 +572,8 @@ if (import.meta.vitest) {
     });
   });
 
-  describe("summarizeMentionableSession", () => {
-    it("marks forked sessions with a first user message as handoff candidates", () => {
-      const parsed = parseSessionFile(
-        writeSessionFile(
-          createSessionsDir(),
-          "2026-03-06T17-10-00-000Z_handoff-1.jsonl",
-          [
-            {
-              type: "session",
-              version: 1,
-              id: "handoff-1",
-              timestamp: "2026-03-06T17:10:00.000Z",
-              cwd: "/repo/app",
-              parentSession: "/sessions/2026-03-06T17-00-00-000Z_parent.jsonl",
-            },
-            {
-              type: "session_info",
-              id: "info-1",
-              parentId: null,
-              timestamp: "2026-03-06T17:10:01.000Z",
-              name: "follow-up",
-            },
-            {
-              type: "message",
-              id: "msg-user-1",
-              parentId: "info-1",
-              timestamp: "2026-03-06T17:10:02.000Z",
-              message: {
-                role: "user",
-                content: [{ type: "text", text: "continue from the handoff" }],
-              },
-            },
-          ],
-        ),
-      );
-
-      expect(summarizeMentionableSession(parsed)).toEqual(
-        expect.objectContaining({
-          sessionId: "handoff-1",
-          sessionName: "follow-up",
-          firstUserMessage: "continue from the handoff",
-          isHandoffCandidate: true,
-        }),
-      );
-    });
-
-    it("keeps forked sessions without a user message out of handoff results", () => {
-      const parsed = parseSessionFile(
-        writeSessionFile(
-          createSessionsDir(),
-          "2026-03-06T17-20-00-000Z_handoff-2.jsonl",
-          [
-            {
-              type: "session",
-              version: 1,
-              id: "handoff-2",
-              timestamp: "2026-03-06T17:20:00.000Z",
-              cwd: "/repo/app",
-              parentSession: "/sessions/2026-03-06T17-00-00-000Z_parent.jsonl",
-            },
-            {
-              type: "session_info",
-              id: "info-1",
-              parentId: null,
-              timestamp: "2026-03-06T17:20:01.000Z",
-              name: "empty follow-up",
-            },
-          ],
-        ),
-      );
-
-      expect(summarizeMentionableSession(parsed)).toEqual(
-        expect.objectContaining({
-          sessionId: "handoff-2",
-          firstUserMessage: "",
-          isHandoffCandidate: false,
-        }),
-      );
-    });
-  });
-
   describe("listMentionableSessions + resolveMentionableSession", () => {
-    it("filters handoff sessions and resolves unique prefixes", () => {
+    it("resolves unique session prefixes", () => {
       const dir = createSessionsDir();
 
       writeSessionFile(dir, "2026-03-06T17-30-00-000Z_alpha1234.jsonl", [
@@ -694,50 +603,14 @@ if (import.meta.vitest) {
         },
       ]);
 
-      writeSessionFile(dir, "2026-03-06T17-31-00-000Z_handoffabcd.jsonl", [
-        {
-          type: "session",
-          version: 1,
-          id: "handoffabcd",
-          timestamp: "2026-03-06T17:31:00.000Z",
-          cwd: "/repo/app",
-          parentSession: "/sessions/parent.jsonl",
-        },
-        {
-          type: "session_info",
-          id: "info-1",
-          parentId: null,
-          timestamp: "2026-03-06T17:31:01.000Z",
-          name: "handoff alpha",
-        },
-        {
-          type: "message",
-          id: "msg-user-1",
-          parentId: "info-1",
-          timestamp: "2026-03-06T17:31:02.000Z",
-          message: {
-            role: "user",
-            content: [{ type: "text", text: "resume alpha" }],
-          },
-        },
-      ]);
-
       const sessions = listMentionableSessions(dir);
       expect(sessions.map((session) => session.sessionId)).toEqual([
-        "handoffabcd",
         "alpha1234",
       ]);
 
-      const handoffs = listMentionableSessions(dir, { kind: "handoff" });
-      expect(handoffs.map((session) => session.sessionId)).toEqual([
-        "handoffabcd",
-      ]);
-
-      expect(
-        resolveMentionableSession(sessions, "handoffa", "handoff"),
-      ).toEqual({
+      expect(resolveMentionableSession(sessions, "alpha")).toEqual({
         status: "resolved",
-        session: expect.objectContaining({ sessionId: "handoffabcd" }),
+        session: expect.objectContaining({ sessionId: "alpha1234" }),
       });
     });
   });

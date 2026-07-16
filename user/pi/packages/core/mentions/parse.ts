@@ -77,9 +77,7 @@ if (import.meta.vitest) {
   describe("parseMentions", () => {
     it("parses canonical mention tokens", () => {
       expect(
-        parseMentions(
-          "use @commit/abc1234 then check @session/123e4567-e89b and @handoff/run-42",
-        ),
+        parseMentions("use @commit/abc1234 then check @session/123e4567-e89b"),
       ).toEqual([
         {
           kind: "commit",
@@ -94,13 +92,6 @@ if (import.meta.vitest) {
           value: "123e4567-e89b",
           start: 31,
           end: 53,
-        },
-        {
-          kind: "handoff",
-          raw: "@handoff/run-42",
-          value: "run-42",
-          start: 58,
-          end: 73,
         },
       ]);
     });

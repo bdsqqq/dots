@@ -638,31 +638,6 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
 
-  packages/extensions/handoff:
-    dependencies:
-      '@bds_pi/config':
-        specifier: workspace:*
-        version: link:../../core/config
-      '@bds_pi/mentions':
-        specifier: workspace:*
-        version: link:../../core/mentions
-      '@bds_pi/pi-spawn':
-        specifier: workspace:*
-        version: link:../../core/pi-spawn
-      '@earendil-works/pi-ai':
-        specifier: ^0.80.6
-        version: 0.80.6(ws@8.21.0)(zod@4.4.3)
-      typebox:
-        specifier: ^1.1.24
-        version: 1.1.38
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: ^0.80.6
-        version: 0.80.6(ws@8.21.0)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: ^0.80.6
-        version: 0.80.6
-
   packages/extensions/librarian:
     dependencies:
       '@bds_pi/config':
@@ -4291,14 +4266,6 @@ snapshots:
     optionalDependencies:
       vite: 7.3.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)
 
-  '@vitest/mocker@3.2.4(vite@7.3.1(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))':
-    dependencies:
-      '@vitest/spy': 3.2.4
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      vite: 7.3.1(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
-
   '@vitest/pretty-format@3.2.4':
     dependencies:
       tinyrainbow: 2.0.0
@@ -5322,7 +5289,7 @@ snapshots:
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.4
-      '@vitest/mocker': 3.2.4(vite@7.3.1(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
+      '@vitest/mocker': 3.2.4(vite@7.3.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
       '@vitest/pretty-format': 3.2.4
       '@vitest/runner': 3.2.4
       '@vitest/snapshot': 3.2.4

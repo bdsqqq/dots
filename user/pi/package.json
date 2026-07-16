@@ -91,7 +91,6 @@
       "./dist/extensions/github.js",
       "./dist/extensions/glob.js",
       "./dist/extensions/grep.js",
-      "./dist/extensions/handoff.js",
       "./dist/extensions/librarian.js",
       "./dist/extensions/look-at.js",
       "./dist/extensions/ls.js",

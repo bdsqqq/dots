@@ -141,11 +141,7 @@ function createSessionMentionSource(): MentionSource {
         }));
     },
     resolve(token, context) {
-      const result = resolveMentionableSession(
-        getSessions(context),
-        token.value,
-        "session",
-      );
+      const result = resolveMentionableSession(getSessions(context), token.value);
 
       if (result.status === "resolved") {
         return {
@@ -744,7 +740,6 @@ if (import.meta.vitest) {
     firstUserMessage: "alpha task",
     searchableText: "alpha task",
     branchCount: 1,
-    isHandoffCandidate: false,
   };
 
   function writeTmpJson(dir: string, filename: string, data: unknown): string {

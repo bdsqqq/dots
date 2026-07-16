@@ -58,7 +58,7 @@ if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest;
 
   describe("renderResolvedMentions", () => {
-    it("renders commit, session, and handoff summaries", () => {
+    it("renders commit and session summaries", () => {
       expect(
         renderResolvedMentionsText([
           {
@@ -95,25 +95,6 @@ if (import.meta.vitest) {
               startedAt: "2026-03-06T17:00:00.000Z",
               updatedAt: "2026-03-06T17:10:00.000Z",
               firstUserMessage: "alpha task",
-            },
-          },
-          {
-            token: {
-              kind: "handoff",
-              raw: "@handoff/handoffabcd",
-              value: "handoffabcd",
-              start: 35,
-              end: 55,
-            },
-            status: "resolved",
-            kind: "handoff",
-            session: {
-              sessionId: "handoffabcd",
-              sessionName: "handoff alpha",
-              workspace: "/repo/app",
-              startedAt: "2026-03-06T17:00:00.000Z",
-              updatedAt: "2026-03-06T17:20:00.000Z",
-              firstUserMessage: "resume alpha",
               parentSessionPath: "/sessions/parent.jsonl",
             },
           },
@@ -122,8 +103,7 @@ if (import.meta.vitest) {
         [
           "resolved mention context:",
           '@commit/abc1234\tcommit\tabc1234def5678abc1234def5678abc1234def5\t2026-03-06T16:00:00.000Z\t"fix mention parser"',
-          '@session/alpha1234\tsession\talpha1234\t2026-03-06T17:10:00.000Z\t"alpha work"\t"/repo/app"\t"alpha task"',
-          '@handoff/handoffabcd\thandoff\thandoffabcd\t2026-03-06T17:20:00.000Z\t"handoff alpha"\t"/repo/app"\t"resume alpha"\t"/sessions/parent.jsonl"',
+          '@session/alpha1234\tsession\talpha1234\t2026-03-06T17:10:00.000Z\t"alpha work"\t"/repo/app"\t"alpha task"\t"/sessions/parent.jsonl"',
         ].join("\n"),
       );
     });

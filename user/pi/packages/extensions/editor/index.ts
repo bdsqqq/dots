@@ -4,8 +4,8 @@
  * replaces pi's default editor with ╭╮╰╯ borders. other extensions can inject
  * labels into the top/bottom border lines via the shared EventBus:
  *
- *   pi.events.emit("editor:set-label", { key: "handoff", text: "↳ handed off", position: "top", align: "left" })
- *   pi.events.emit("editor:remove-label", { key: "handoff" })
+ *   pi.events.emit("editor:set-label", { key: "status", text: "↳ ready", position: "top", align: "left" })
+ *   pi.events.emit("editor:remove-label", { key: "status" })
  *
  * multiple labels on the same border are separated by " · ". left labels fill
  * from the left edge, right labels from the right edge.
