@@ -87,6 +87,7 @@ in
     ../../system/audio.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
+    ../../system/t3-code-server.nix
     ../../user/ghostty.nix
     ../../user/gaming.nix
     ../../user/quickshell.nix
