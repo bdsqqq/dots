@@ -627,6 +627,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
           apiKey: auth.apiKey,
           headers: auth.headers,
           signal,
+          reasoningEffort: "low",
         },
       );
 
@@ -677,6 +678,7 @@ function createHandoffExtension(deps: HandoffExtensionDeps = DEFAULT_DEPS) {
           apiKey: auth.apiKey,
           headers: auth.headers,
           signal,
+          reasoningEffort: "low",
           toolChoice: "any",
         },
       );

@@ -37,7 +37,7 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-const LIBRARIAN_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:low";
+const LIBRARIAN_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:high";
 
 type LibrarianExtConfig = {
   model: typeof LIBRARIAN_DEFAULT_MODEL | string;

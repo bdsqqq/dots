@@ -38,7 +38,7 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-const CODE_REVIEW_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:xhigh";
+const CODE_REVIEW_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:high";
 
 type CodeReviewExtConfig = {
   model: typeof CODE_REVIEW_DEFAULT_MODEL | string;
