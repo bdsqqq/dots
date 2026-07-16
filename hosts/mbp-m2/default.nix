@@ -58,13 +58,12 @@ in {
           };
 
           devices =
-            syncthing.devicesFor [ "htz-relay" "r56" "lgo-z2e" "iph16" "ipd" ];
+            syncthing.devicesFor [ "htz-relay" "lgo-z2e" "iph16" "ipd" ];
 
           folders = {
             commonplace =
               syncthing.folderFor "commonplace" config.home.homeDirectory true [
                 "htz-relay"
-                "r56"
                 "lgo-z2e"
                 "iph16"
                 "ipd"
@@ -72,7 +71,7 @@ in {
                 { label = "commonplace"; };
             prism-instances =
               syncthing.folderFor "prism-instances" config.home.homeDirectory
-                true [ "r56" "lgo-z2e" ]
+                true [ "lgo-z2e" ]
                 {
                   label = "PrismLauncher instances";
                   rescanIntervalS = 120;
@@ -85,7 +84,6 @@ in {
             helium-remotes =
               syncthing.folderFor "helium-remotes" config.home.homeDirectory true [
                 "htz-relay"
-                "r56"
                 "lgo-z2e"
               ]
                 { };

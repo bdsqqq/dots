@@ -113,16 +113,16 @@ in
         connectionLimitMax = 0;
       };
 
-      devices = syncthing.devicesFor [ "mbp-m2" "ipd" "iph16" "r56" "lgo-z2e" ];
+      devices = syncthing.devicesFor [ "mbp-m2" "ipd" "iph16" "lgo-z2e" ];
 
       folders = {
         commonplace =
           syncthing.folderForPath "commonplace" "/mnt/storage-01/commonplace"
-            [ "mbp-m2" "ipd" "iph16" "r56" ]
+            [ "mbp-m2" "ipd" "iph16" ]
             { rescanIntervalS = 3600; };
         helium-remotes =
           syncthing.folderForPath "helium-remotes" "/mnt/storage-01/helium-remotes"
-            [ "mbp-m2" "lgo-z2e" "r56" ]
+            [ "mbp-m2" "lgo-z2e" ]
             {
               rescanIntervalS = 60;
             };
