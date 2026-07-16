@@ -69,14 +69,6 @@ in {
                 "ipd"
               ]
                 { label = "commonplace"; };
-            prism-instances =
-              syncthing.folderFor "prism-instances" config.home.homeDirectory
-                true [ "lgo-z2e" ]
-                {
-                  label = "PrismLauncher instances";
-                  rescanIntervalS = 120;
-                  versioning = null;
-                };
             pi-sessions =
               syncthing.folderFor "pi-sessions" config.home.homeDirectory true
                 [ "lgo-z2e" ]
