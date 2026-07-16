@@ -3,7 +3,7 @@ import type { CommitIndex } from "./commit-index";
 import type { MentionableSession } from "./session-index";
 import type { MentionKind, MentionToken, ResolvedMention } from "./types";
 
-const mentionKinds = ["commit", "session", "handoff"] as const satisfies readonly MentionKind[];
+const mentionKinds = ["commit", "session"] as const satisfies readonly MentionKind[];
 
 export function listMentionKinds(): MentionKind[] {
   return [...mentionKinds];

@@ -5,7 +5,6 @@
   ],
   "extensions": [
     "~/.pi/agent/extensions/editor",
-    "~/.pi/agent/extensions/handoff.ts",
     "~/.pi/agent/extensions/session-name.ts",
     "~/.pi/agent/extensions/tool-harness.ts",
     "~/.pi/agent/extensions/system-prompt.ts",

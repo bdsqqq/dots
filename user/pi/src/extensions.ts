@@ -10,7 +10,6 @@ export { default as github } from "../packages/extensions/github/index";
 export { default as git } from "../packages/extensions/git/index";
 export { default as glob } from "../packages/extensions/glob/index";
 export { default as grep } from "../packages/extensions/grep/index";
-export { default as handoff } from "../packages/extensions/handoff/index";
 export { default as librarian } from "../packages/extensions/librarian/index";
 export { default as lookAt } from "../packages/extensions/look-at/index";
 export { default as ls } from "../packages/extensions/ls/index";
