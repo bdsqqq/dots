@@ -16,10 +16,8 @@ in
   systemd.services.t3-code = {
     description = "T3 Code server";
     wantedBy = [ "multi-user.target" ];
-    wants = [
-      "tailscaled.service"
-      "home-manager-bdsqqq.service"
-    ];
+    wants = [ "tailscaled.service" ];
+    requires = [ "home-manager-bdsqqq.service" ];
     after = [
       "tailscaled.service"
       "home-manager-bdsqqq.service"
