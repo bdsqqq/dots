@@ -1,7 +1,6 @@
 { lib, pkgs, inputs, config, modulesPath, ... }:
 
 let
-  syncthing = import ../../modules/syncthing.nix { inherit lib; };
   homeManagerBackupCommand = pkgs.writeShellScript "home-manager-unique-backup" ''
     set -eu
 
@@ -79,7 +78,6 @@ in
   imports = [
     ./hardware.nix
     ../../bundles/base.nix
-    ../../bundles/headless.nix
     ../../bundles/dev.nix
     ../../bundles/desktop.nix
     ../../bundles/wm/niri.nix
@@ -120,51 +118,6 @@ in
   services.tailscale = {
     authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key)
       config.sops.secrets.tailscale_auth_key.path;
-  };
-
-  # syncthing provided by headless bundle; declarative mesh settings here
-  services.syncthing = {
-    settings = {
-      gui = {
-        user = "bdsqqq";
-        password =
-          "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
-      };
-      options = {
-        urAccepted = -1;
-        globalAnnounceEnabled = false;
-        localAnnounceEnabled = false;
-        relaysEnabled = false;
-        natEnabled = false;
-      };
-
-      devices = syncthing.devicesFor [ "mbp-m2" "htz-relay" "lgo-z2e" ];
-
-      folders = {
-        commonplace = syncthing.folderFor "commonplace" "/home/bdsqqq" false [
-          "mbp-m2"
-          "htz-relay"
-          "lgo-z2e"
-        ]
-          { };
-        prism-instances =
-          syncthing.folderFor "prism-instances" "/home/bdsqqq" false [
-            "mbp-m2"
-            "lgo-z2e"
-          ]
-            {
-              rescanIntervalS = 120;
-              versioning = null;
-            };
-        helium-remotes =
-          syncthing.folderFor "helium-remotes" "/home/bdsqqq" false [
-            "mbp-m2"
-            "htz-relay"
-            "lgo-z2e"
-          ]
-            { };
-      };
-    };
   };
 
   # Your user
@@ -345,40 +298,4 @@ in
 
   # System state version
   system.stateVersion = "25.05";
-
-  # set syncthing GUI password hash from sops secret (writes directly to config.xml)
-  systemd.services.syncthing-gui-password = {
-    description = "Set Syncthing GUI password hash from sops secret";
-    after = [ "syncthing-init.service" "sops-install-secrets.service" ];
-    before = [ "syncthing.service" ];
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      Type = "oneshot";
-      User = "bdsqqq";
-      RemainAfterExit = true;
-    };
-    path = [ pkgs.gnused pkgs.coreutils ];
-    script = ''
-      set -euo pipefail
-
-      SECRET_FILE="/run/secrets/syncthing_gui_password_hash"
-      if [ ! -f "$SECRET_FILE" ]; then
-        echo "syncthing-gui-password: secret not found, skipping"
-        exit 0
-      fi
-
-      HASH="$(cat "$SECRET_FILE")"
-      CFG_FILE="/home/bdsqqq/.config/syncthing/config.xml"
-
-      if [ ! -f "$CFG_FILE" ]; then
-        echo "syncthing-gui-password: config.xml not found, skipping"
-        exit 0
-      fi
-
-      # update password hash in config.xml
-      sed -i "s|<password>.*</password>|<password>$HASH</password>|" "$CFG_FILE"
-
-      echo "syncthing-gui-password: hash updated in config.xml"
-    '';
-  };
 }

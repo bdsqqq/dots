@@ -152,19 +152,17 @@ in
         natEnabled = false;
       };
 
-      devices = syncthing.devicesFor [ "mbp-m2" "htz-relay" "r56" ];
+      devices = syncthing.devicesFor [ "mbp-m2" "htz-relay" ];
 
       folders = {
         commonplace = syncthing.folderFor "commonplace" "/home/bdsqqq" false [
           "mbp-m2"
           "htz-relay"
-          "r56"
         ]
           { };
         prism-instances =
           syncthing.folderFor "prism-instances" "/home/bdsqqq" false [
             "mbp-m2"
-            "r56"
           ]
             {
               rescanIntervalS = 120;
@@ -177,7 +175,6 @@ in
           syncthing.folderFor "helium-remotes" "/home/bdsqqq" false [
             "mbp-m2"
             "htz-relay"
-            "r56"
           ]
             { };
       };

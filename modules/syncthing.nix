@@ -32,10 +32,6 @@ rec {
       id = "HPMO7GH-P5UX4LC-OYSWWVP-XTMOUWL-QXUDAYH-ZJXXQDJ-QN677MY-QNQACQH";
       addresses = [ "tcp://htz-relay:22000" "quic://htz-relay:22000" ];
     };
-    r56 = {
-      id = "JOWDMTJ-LQKWV6K-5V37UTD-EKJBBHS-3FJPKWD-HRONTJC-F4NZGJN-VKJTZAQ";
-      addresses = [ "tcp://r56:22000" "quic://r56:22000" ];
-    };
     iph16 = {
       id = "L2PJ4F3-BZUZ4RX-3BCPIYB-V544M22-P3WDZBF-ZEVYT5A-GPTX5ZF-ZM5KTQK";
       addresses = [ "dynamic" ];
