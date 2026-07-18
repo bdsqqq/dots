@@ -16,6 +16,7 @@ in {
     ../user/nix.nix
     ../user/fairy-name.nix
     ../user/tmux.nix
+    ../user/amp.nix
     ../user/pi
     ../user/agents
   ] ++ lib.optionals isGraphical [ ../user/ghostty.nix ];
