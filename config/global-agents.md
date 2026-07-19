@@ -79,7 +79,7 @@ choose the collection by question:
 - `pi-sessions`: episodic evidence about what happened in prior pi sessions
 - both, queried separately: when prior events and their durable lesson both matter
 
-pi session projections are generated caches, not memories. background consolidation may create candidates under `~/.local/share/agent-memory/candidates`; candidates do not become durable memory until explicitly promoted with `agent-memory promote <candidate>`.
+pi session projections are generated caches, not memories. background consolidation may create candidates under `~/.local/share/pi-memory/candidates`; candidates do not become durable memory until explicitly promoted with `pi-memory promote <candidate>`.
 
 **steering**: REMEMBER user preferences, codebase conventions, correction patterns. these are learnings too.
 - cross-cutting/personal → personal memory with trigger condition + example

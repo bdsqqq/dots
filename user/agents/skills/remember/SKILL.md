@@ -138,16 +138,16 @@ qmd search -c pi-sessions "what happened" -n 10
 pi checkpoints completed branches and projects authored user/assistant text without tool results or reasoning. maintenance consolidates those checkpoints into reviewable candidates; it never edits active memories automatically.
 
 ```bash
-agent-memory project
-agent-memory consolidate --limit 10
-agent-memory reconcile
-agent-memory maintain
+pi-memory project
+pi-memory consolidate --limit 10
+pi-memory reconcile
+pi-memory maintain
 
 # after reviewing the candidate
-agent-memory promote candidate-file.md
+pi-memory promote candidate-file.md
 ```
 
-generated state lives under `~/.local/share/agent-memory`; retry and cadence state lives under `~/.local/state/agent-memory`. `reconcile` reports duplicates and metadata gaps without rewriting active notes.
+generated state lives under `~/.local/share/pi-memory`; retry and cadence state lives under `~/.local/state/pi-memory`. `reconcile` reports duplicates and metadata gaps without rewriting active notes.
 
 ## what NOT to remember
 
