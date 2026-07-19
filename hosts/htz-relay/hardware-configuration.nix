@@ -12,7 +12,7 @@
   fileSystems."/mnt/storage-01" = {
     device = "/dev/disk/by-id/scsi-0HC_Volume_104047902";
     fsType = "ext4";
-    options = [ "discard" "defaults" "nofail" ];
+    options = [ "discard" "defaults" ];
   };
 
 }

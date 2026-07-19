@@ -1,45 +1,16 @@
-{ ... }:
+{ config, ... }:
+let
+  toolsDir = "${config.my.paths.commonplace}/01_files/nix/user/node-pnpm";
+  toolsBin = "${toolsDir}/node_modules/.bin";
+  homeDir = builtins.dirOf config.my.paths.commonplace;
+in
 {
   home-manager.users.bdsqqq =
-    {
-      config,
-      pkgs,
-      lib,
-      ...
+    { pkgs
+    , lib
+    , ...
     }:
     let
-      pnpmHome = "${config.home.homeDirectory}/.local/share/pnpm";
-      pnpmBin = "${pnpmHome}/bin";
-      configDir = "${config.home.homeDirectory}/commonplace/01_files/nix/user/node-pnpm";
-      configYamlPath = "${configDir}/config.yaml";
-      globalPackages = (builtins.fromJSON (builtins.readFile ./global-package.json)).dependencies;
-      globalPackageSpecs = lib.mapAttrsToList (name: version: "${name}@${version}") globalPackages;
-      allowedBuildPackages = [
-        "@google/genai"
-        "@sentry/cli"
-        "agent-browser"
-        "better-sqlite3"
-        "bun"
-        "core-js"
-        "cpu-features"
-        "edgedriver"
-        "esbuild"
-        "geckodriver"
-        "koffi"
-        "msgpackr-extract"
-        "node-pty"
-        "node-llama-cpp"
-        "parallel-web-cli"
-        "protobufjs"
-        "sqlite-vec"
-        "ssh2"
-        "tree-sitter-go"
-        "tree-sitter-javascript"
-        "tree-sitter-python"
-        "tree-sitter-rust"
-        "tree-sitter-typescript"
-      ];
-      allowBuildArgs = map (name: "--allow-build=${name}") allowedBuildPackages;
       activationPath = lib.makeBinPath (
         [
           pkgs.nodejs
@@ -55,12 +26,10 @@
       );
     in
     {
-      home.sessionVariables.PNPM_HOME = pnpmHome;
-
       custom.path.segments = [
         {
           order = 100;
-          value = pnpmBin;
+          value = toolsBin;
         }
       ];
 
@@ -70,12 +39,20 @@
         pkgs.unzip
       ];
 
+      xdg.configFile."pnpm/config.yaml" = {
+        force = true;
+        source = ./config.yaml;
+      };
+
       xdg.configFile."qmd/index.yml" = {
         force = true;
         text = ''
           collections:
             agent-memories:
-              path: ${config.home.homeDirectory}/commonplace/01_files/_utilities/agent-memories
+              path: ${config.my.paths.commonplace}/01_files/_utilities/agent-memories
+              pattern: "**/*.md"
+            pi-sessions:
+              path: ${homeDir}/.local/share/agent-memory/pi-sessions
               pattern: "**/*.md"
           models:
             embed: hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf
@@ -84,25 +61,19 @@
         '';
       };
 
-      home.activation.installPnpmGlobals = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      home.activation.installPnpmTools = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
         set -euo pipefail
 
-        PNPM_HOME="${pnpmHome}"
-        PNPM_BIN="${pnpmBin}"
-        CONFIG_YAML="${configYamlPath}"
-        export PNPM_HOME
         export CI=true
         export NODE_NO_WARNINGS=1
         export npm_config_python="${pkgs.python3}/bin/python3"
         export PYTHON="${pkgs.python3}/bin/python3"
-        export PATH="$PNPM_BIN:${activationPath}:$PATH"
+        export PATH="${activationPath}:$PATH"
 
-        mkdir -p "$PNPM_HOME" "$PNPM_BIN" "${config.xdg.configHome}/pnpm"
-        ln -sf "$CONFIG_YAML" "${config.xdg.configHome}/pnpm/config.yaml"
-
-        "${pkgs.pnpm}/bin/pnpm" add --global --config.enable-global-virtual-store=false --reporter=append-only \
-          ${lib.escapeShellArgs allowBuildArgs} \
-          ${lib.escapeShellArgs globalPackageSpecs}
+        "${pkgs.pnpm}/bin/pnpm" install \
+          --dir "${toolsDir}" \
+          --frozen-lockfile \
+          --reporter=append-only
       '';
     };
 }

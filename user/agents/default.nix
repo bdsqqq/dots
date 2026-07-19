@@ -6,7 +6,7 @@
     # home-manager's indirection to create a direct symlink.
     # (same direct-symlink pattern used for repo-owned manifests)
     home.activation.commonplaceAgents =
-      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      lib.hm.dag.entryAfter [ "commonplaceScaffold" ] ''
         ln -sf "01_files/nix/config/global-agents.md" \
                "${config.home.homeDirectory}/commonplace/AGENTS.md"
       '';

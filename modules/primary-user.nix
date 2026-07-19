@@ -10,6 +10,12 @@
       "primary user for this system — used for home-manager alias and path resolution";
   };
 
+  options.my.paths.commonplace = lib.mkOption {
+    type = lib.types.str;
+    default = "${config.home-manager.users.${config.my.primaryUser}.home.homeDirectory}/commonplace";
+    description = "canonical commonplace directory for this host";
+  };
+
   # alias `hm` → `home-manager.users.${primaryUser}` for terse access
   imports = [
     (lib.mkAliasOptionModule [ "hm" ] [

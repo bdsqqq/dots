@@ -1,9 +1,9 @@
 {
-  "name": "global",
+  "name": "@bdsqqq/global-tools",
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.10",
+    "@bdsqqq/pi-cli": "workspace:*",
     "@openai/codex": "^0.144.5",
     "@tobilu/qmd": "^2.5.3",
     "agent-browser": "^0.25.5",
