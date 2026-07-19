@@ -100,7 +100,7 @@
         mkdir -p "$PNPM_HOME" "$PNPM_BIN" "${config.xdg.configHome}/pnpm"
         ln -sf "$CONFIG_YAML" "${config.xdg.configHome}/pnpm/config.yaml"
 
-        "${pkgs.pnpm}/bin/pnpm" add --global --reporter=append-only \
+        "${pkgs.pnpm}/bin/pnpm" add --global --config.enable-global-virtual-store=false --reporter=append-only \
           ${lib.escapeShellArgs allowBuildArgs} \
           ${lib.escapeShellArgs globalPackageSpecs}
       '';
