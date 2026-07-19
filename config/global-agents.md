@@ -58,13 +58,28 @@ falsify first: ask "what would prove me wrong?" then try that.
 
 ## memory
 
-before ANY work:
+memory retrieval is signal-driven, not a ritual. search before work when the task depends on context that may live outside the current prompt and repository:
+- the user refers to prior work, preferences, decisions, or earlier attempts
+- resuming a project or entering an area with known memory
+- prior rationale could materially change the approach
+- blocked by missing historical context
+
+skip retrieval for greetings, status updates, self-contained questions or transformations, and tasks fully specified by current context. search at most once per coherent work unit; reuse the result until the topic changes.
+
+when retrieval is warranted, use narrow keywords:
 ```bash
 MEMORY_ROOT="${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}"
 (cd "$MEMORY_ROOT" && qmd search -c agent-memories "KEYWORDS" -n 10) || rg "KEYWORDS" "$MEMORY_ROOT"/*source__agent*.md
 ```
 
-use memory as constraints, prior solutions, failure modes. qmd is a search index; files remain the source of truth.
+use relevant memory as constraints, prior solutions, and failure modes. qmd is an on-demand search index; files remain the source of truth.
+
+choose the collection by question:
+- `agent-memories`: durable preferences, decisions, patterns, and gotchas
+- `pi-sessions`: episodic evidence about what happened in prior pi sessions
+- both, queried separately: when prior events and their durable lesson both matter
+
+pi session projections are generated caches, not memories. background consolidation may create candidates under `~/.local/share/agent-memory/candidates`; candidates do not become durable memory until explicitly promoted with `agent-memory promote <candidate>`.
 
 **steering**: REMEMBER user preferences, codebase conventions, correction patterns. these are learnings too.
 - cross-cutting/personal → personal memory with trigger condition + example
