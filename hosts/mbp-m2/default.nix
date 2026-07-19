@@ -12,6 +12,7 @@ in {
     ../../system/sops.nix
     ../../system/homebrew.nix
     ../../system/macos-defaults.nix
+    ../../system/sleepless.nix
     ../../system/kanata.nix
     ../../system/o11y
     ../../user/gaming.nix
