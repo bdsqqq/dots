@@ -19,6 +19,7 @@
         "@sentry/cli"
         "agent-browser"
         "better-sqlite3"
+        "bun"
         "core-js"
         "cpu-features"
         "edgedriver"
