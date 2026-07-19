@@ -405,8 +405,7 @@ if (import.meta.vitest) {
     it("eval: analyzes a file with real AI", async () => {
       const {
         createAgentSession,
-        ModelRegistry,
-        AuthStorage,
+        ModelRuntime,
         DefaultResourceLoader,
         SettingsManager,
         getAgentDir,
@@ -425,13 +424,13 @@ if (import.meta.vitest) {
 
       const cwd = process.cwd();
 
-      // Create auth storage and model registry
-      const authStorage = AuthStorage.create();
-      const modelRegistry = ModelRegistry.create(authStorage);
-      const model = modelRegistry.find(provider, modelId);
+      const modelRuntime = await ModelRuntime.create();
+      const model = modelRuntime.getModel(provider, modelId);
       if (!model) {
         throw new Error(
-          `Model not found: ${provider}/${modelId}. Available providers: ${[...new Set(modelRegistry.getAll().map((m) => m.provider))].join(", ")}`,
+          `Model not found: ${provider}/${modelId}. Available providers: ${[
+            ...new Set(modelRuntime.getModels().map((model) => model.provider)),
+          ].join(", ")}`,
         );
       }
 
@@ -450,8 +449,7 @@ if (import.meta.vitest) {
         cwd,
         model,
         sessionManager: SessionManager.inMemory(cwd),
-        modelRegistry,
-        authStorage,
+        modelRuntime,
         settingsManager,
         resourceLoader,
       });
