@@ -62,16 +62,10 @@ const config = () => ({
     "PI_CODING_AGENT_SESSION_DIR",
     join(HOME, ".pi/agent/sessions"),
   ),
-  state: envPath(
-    "AGENT_MEMORY_STATE_DIR",
-    join(HOME, ".local/state/agent-memory"),
-  ),
-  data: envPath(
-    "AGENT_MEMORY_DATA_DIR",
-    join(HOME, ".local/share/agent-memory"),
-  ),
+  state: envPath("PI_MEMORY_STATE_DIR", join(HOME, ".local/state/pi-memory")),
+  data: envPath("PI_MEMORY_DATA_DIR", join(HOME, ".local/share/pi-memory")),
   root: envPath(
-    "AGENT_MEMORY_ROOT",
+    "PI_MEMORY_ROOT",
     join(HOME, "commonplace/01_files/_utilities/agent-memories"),
   ),
 });
@@ -444,7 +438,7 @@ function run(
   binary: string,
   args: string[],
   input?: string,
-  timeout = Number(process.env.AGENT_MEMORY_COMMAND_TIMEOUT_MS || 120_000),
+  timeout = Number(process.env.PI_MEMORY_COMMAND_TIMEOUT_MS || 120_000),
 ): string {
   const result = spawnSync(binary, args, {
     cwd: HOME,
@@ -683,7 +677,7 @@ function consolidateUnlocked(limit: number): boolean {
         externalStarted = true;
         const qmd = process.env.QMD_BIN || "qmd";
         const search =
-          process.env.AGENT_MEMORY_SKIP_EXTERNAL === "1"
+          process.env.PI_MEMORY_SKIP_EXTERNAL === "1"
             ? "[]"
             : run(qmd, [
                 "search",
@@ -694,7 +688,7 @@ function consolidateUnlocked(limit: number): boolean {
               ]).slice(0, 32_000);
         const prompt = `return exactly one json object. create only durable memory; otherwise skip. create schema: {"action":"create","title":"","kind":"preference|decision|gotcha|pattern","triggers":[],"keywords":[],"body":""}. skip schema: {"action":"skip"}.\n\nsession:\n${projection.slice(-48_000)}\n\nexisting bounded search:\n${search}`;
         const response =
-          process.env.AGENT_MEMORY_SKIP_EXTERNAL === "1"
+          process.env.PI_MEMORY_SKIP_EXTERNAL === "1"
             ? '{"action":"skip"}'
             : run(
                 process.env.PI_BIN || "pi",
@@ -707,7 +701,7 @@ function consolidateUnlocked(limit: number): boolean {
                   "--no-prompt-templates",
                   "--no-context-files",
                   "--model",
-                  process.env.AGENT_MEMORY_MODEL ||
+                  process.env.PI_MEMORY_MODEL ||
                     "openai-codex/gpt-5.6-luna:low",
                 ],
                 prompt,
@@ -808,7 +802,7 @@ function reconcile(): void {
     .join("\n");
   atomic(
     join(cfg.data, "top-of-mind.md"),
-    `<!-- agent-memory:top-of-mind:start -->\n# top of mind\n\n${topOfMind}\n<!-- agent-memory:top-of-mind:end -->\n`,
+    `<!-- pi-memory:top-of-mind:start -->\n# top of mind\n\n${topOfMind}\n<!-- pi-memory:top-of-mind:end -->\n`,
   );
 }
 
@@ -825,11 +819,11 @@ function maintainUnlocked(): boolean {
   let ok = true;
   if (now - (gates.consolidation || 0) >= 2 * 60 * 60_000) {
     ok = consolidateUnlocked(
-      Number(process.env.AGENT_MEMORY_MAINTAIN_LIMIT || 10),
+      Number(process.env.PI_MEMORY_MAINTAIN_LIMIT || 10),
     );
     if (ok) gates.consolidation = now;
   }
-  if (process.env.AGENT_MEMORY_SKIP_EXTERNAL !== "1") {
+  if (process.env.PI_MEMORY_SKIP_EXTERNAL !== "1") {
     try {
       run(process.env.QMD_BIN || "qmd", ["update"]);
     } catch {
@@ -838,7 +832,7 @@ function maintainUnlocked(): boolean {
     if (now - (gates.qmd || 0) >= 2 * 60 * 60_000)
       try {
         const timeout = Number(
-          process.env.AGENT_MEMORY_EMBED_TIMEOUT_MS || 15 * 60_000,
+          process.env.PI_MEMORY_EMBED_TIMEOUT_MS || 15 * 60_000,
         );
         run(
           process.env.QMD_BIN || "qmd",
@@ -919,7 +913,7 @@ function promote(candidate: string): void {
   if (existsSync(receipt) && readFileSync(receipt, "utf8") !== receiptValue)
     throw new Error("promotion receipt collision");
   if (!existsSync(receipt)) atomic(receipt, receiptValue);
-  if (process.env.AGENT_MEMORY_SKIP_EXTERNAL !== "1")
+  if (process.env.PI_MEMORY_SKIP_EXTERNAL !== "1")
     run(process.env.QMD_BIN || "qmd", ["update"]);
 }
 
@@ -950,7 +944,7 @@ async function main(): Promise<void> {
     });
   else
     throw new Error(
-      "usage: agent-memory project|consolidate [--limit N]|reconcile|maintain|promote <candidate>",
+      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|promote <candidate>",
     );
   if (result === false) process.exitCode = 1;
 }
