@@ -17,8 +17,8 @@
     "@bds_pi/read-session": "workspace:*",
     "@bds_pi/read-web-page": "workspace:*",
     "@bds_pi/workflow-api": "workspace:*",
-    "@earendil-works/pi-coding-agent": "^0.80.6",
-    "@earendil-works/pi-tui": "^0.80.6",
+    "@earendil-works/pi-coding-agent": "^0.80.10",
+    "@earendil-works/pi-tui": "^0.80.10",
     "proper-lockfile": "^4.1.2",
     "typebox": "^1.1.38",
     "typescript": "^5.9.2"

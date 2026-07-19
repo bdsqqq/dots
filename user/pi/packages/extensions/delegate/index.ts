@@ -481,15 +481,14 @@ if (import.meta.vitest) {
     const PI_ROOT = path.resolve(__dirname, "..", "..", "..");
 
     it("eval: spawns sub-agent and completes a simple task", async () => {
-      const { createAgentSession, SessionManager, AuthStorage, ModelRegistry } =
+      const { createAgentSession, SessionManager, ModelRuntime } =
         await import("@earendil-works/pi-coding-agent");
 
-      const authStorage = AuthStorage.create();
-      const modelRegistry = ModelRegistry.create(authStorage);
+      const modelRuntime = await ModelRuntime.create();
       const slashIdx = E2E_MODEL.indexOf("/");
       const provider = E2E_MODEL.slice(0, slashIdx);
       const modelId = E2E_MODEL.slice(slashIdx + 1);
-      const model = modelRegistry.find(provider, modelId);
+      const model = modelRuntime.getModel(provider, modelId);
       if (!model) throw new Error(`model not found: ${E2E_MODEL}`);
 
       const delegateTool = createDelegateTool();
@@ -497,8 +496,7 @@ if (import.meta.vitest) {
       const { session } = await createAgentSession({
         sessionManager: SessionManager.inMemory(),
         model,
-        authStorage,
-        modelRegistry,
+        modelRuntime,
         customTools: [delegateTool],
       });
 
@@ -541,7 +539,7 @@ if (import.meta.vitest) {
     }, 120_000);
 
     it("eval: child sessions respect PI_BDS_CONFIG_PATH gating for builtin-shadowed tools", async () => {
-      const { createAgentSession, SessionManager, AuthStorage, ModelRegistry } =
+      const { createAgentSession, SessionManager, ModelRuntime } =
         await import("@earendil-works/pi-coding-agent");
 
       // set up sandbox with custom config that disables @bds_pi/bash
@@ -562,12 +560,11 @@ if (import.meta.vitest) {
       // set global settings path so piSpawn propagates it to child
       setGlobalSettingsPath(childConfigPath);
 
-      const authStorage = AuthStorage.create();
-      const modelRegistry = ModelRegistry.create(authStorage);
+      const modelRuntime = await ModelRuntime.create();
       const slashIdx = E2E_MODEL.indexOf("/");
       const provider = E2E_MODEL.slice(0, slashIdx);
       const modelId = E2E_MODEL.slice(slashIdx + 1);
-      const model = modelRegistry.find(provider, modelId);
+      const model = modelRuntime.getModel(provider, modelId);
       if (!model) throw new Error(`model not found: ${E2E_MODEL}`);
 
       const delegateTool = createDelegateTool();
@@ -575,8 +572,7 @@ if (import.meta.vitest) {
       const { session } = await createAgentSession({
         sessionManager: SessionManager.inMemory(),
         model,
-        authStorage,
-        modelRegistry,
+        modelRuntime,
         customTools: [delegateTool],
         cwd: sandboxDir,
       });
