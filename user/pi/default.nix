@@ -51,13 +51,12 @@ in
           ''
             PNPM_HOME="${homeDir}/.local/share/pnpm"
             PNPM_BIN="$PNPM_HOME/bin"
-            GLOBAL_DIR="$PNPM_HOME/global/5"
             PI_WRAPPER="$PNPM_BIN/pi"
-            PI_CLI="$GLOBAL_DIR/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
-            if [ -e "$PI_CLI" ]; then
+            PI_UNWRAPPED="$PNPM_BIN/pi-unwrapped"
+            if [ -e "$PI_WRAPPER" ]; then
               mkdir -p "$PNPM_BIN"
-              rm -f "$PI_WRAPPER"
-              printf '%s\n' '#!/usr/bin/env bash' "export NODE_PATH=\"${repoPi}/node_modules/.pnpm/node_modules:${repoPi}/node_modules\"" "export PI_BIN=\"$PI_WRAPPER\"" "exec ${pkgs.nodejs}/bin/node \"$PI_CLI\" \"\$@\"" > "$PI_WRAPPER"
+              mv -f "$PI_WRAPPER" "$PI_UNWRAPPED"
+              printf '%s\n' '#!/usr/bin/env bash' "export NODE_PATH=\"${repoPi}/node_modules/.pnpm/node_modules:${repoPi}/node_modules\"" "export PI_BIN=\"$PI_WRAPPER\"" "exec \"$PI_UNWRAPPED\" \"\$@\"" > "$PI_WRAPPER"
               chmod +x "$PI_WRAPPER"
             fi
           '';
