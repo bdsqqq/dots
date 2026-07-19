@@ -94,7 +94,7 @@
       };
 
       home.activation.commonplaceScaffold =
-        lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        lib.hm.dag.entryAfter [ "linkGeneration" ] ''
           mkdir -p "${config.home.homeDirectory}/commonplace/00_inbox" \
                    "${config.home.homeDirectory}/commonplace/01_files" \
                    "${config.home.homeDirectory}/commonplace/01_files/_utilities/agent-memories" \

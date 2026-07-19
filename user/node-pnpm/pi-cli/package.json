@@ -1,0 +1,11 @@
+{
+  "name": "@bdsqqq/pi-cli",
+  "version": "0.0.0",
+  "private": true,
+  "bin": {
+    "pi": "bin/pi"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.10"
+  }
+}

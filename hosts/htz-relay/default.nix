@@ -40,7 +40,13 @@ in
   networking.networkmanager.enable = false;
 
   my.primaryUser = "bdsqqq";
+  my.paths.commonplace = "/mnt/storage-01/commonplace";
   services.hwmon-metrics.enable = true;
+
+  systemd.services.home-manager-bdsqqq = {
+    requires = [ "mnt-storage\\x2d01.mount" ];
+    after = [ "mnt-storage\\x2d01.mount" ];
+  };
 
   networking.firewall = {
     enable = true;
@@ -89,6 +95,8 @@ in
 
   systemd.services.copyparty.serviceConfig.BindPaths =
     [ "/mnt/storage-01/commonplace" ];
+  systemd.services.copyparty.requires = [ "mnt-storage\\x2d01.mount" ];
+  systemd.services.copyparty.after = [ "mnt-storage\\x2d01.mount" ];
 
   # syncthing provided by headless bundle; declarative mesh settings live here
   services.syncthing = {
@@ -135,6 +143,11 @@ in
     "d /mnt/storage-01/helium-remotes 0700 bdsqqq users -"
   ];
 
+  systemd.services.syncthing = {
+    requires = [ "mnt-storage\\x2d01.mount" ];
+    after = [ "mnt-storage\\x2d01.mount" ];
+  };
+
   users.users.bdsqqq = {
     isNormalUser = true;
     extraGroups = [ "wheel" ];
@@ -169,6 +182,10 @@ in
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
+      home.file."commonplace" = {
+        force = true;
+        source = config.hm.lib.file.mkOutOfStoreSymlink config.my.paths.commonplace;
+      };
     };
   };
 
