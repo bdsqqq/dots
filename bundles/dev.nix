@@ -6,7 +6,7 @@ let
   repoRoot = "${config.my.paths.commonplace}/01_files/nix";
   toolsBin = "${repoRoot}/user/node-pnpm/node_modules/.bin";
   agentMemory = pkgs.writeShellApplication {
-    name = "agent-memory";
+    name = "pi-memory";
     runtimeInputs = [ pkgs.bun pkgs.coreutils pkgs.nodejs ];
     text = ''
       set -euo pipefail
@@ -21,6 +21,7 @@ in
   imports = [
     ../user/nvim
     ../user/git
+    ../user/google-workspace
     ../user/node-pnpm
     ../user/dev-tools.nix
     ../user/trash.nix
@@ -41,27 +42,27 @@ in
   home-manager.users.bdsqqq = { config, ... }: {
     home.packages = [ agentMemory ];
 
-    launchd.agents.agent-memory = lib.mkIf isDarwin {
+    launchd.agents.pi-memory = lib.mkIf isDarwin {
       enable = true;
       config = {
-        ProgramArguments = [ "${agentMemory}/bin/agent-memory" "maintain" ];
+        ProgramArguments = [ "${agentMemory}/bin/pi-memory" "maintain" ];
         RunAtLoad = true;
         StartInterval = 900;
         ProcessType = "Background";
-        StandardOutPath = "${config.home.homeDirectory}/Library/Logs/agent-memory.log";
-        StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/agent-memory.log";
+        StandardOutPath = "${config.home.homeDirectory}/Library/Logs/pi-memory.log";
+        StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/pi-memory.log";
       };
     };
 
-    systemd.user.services.agent-memory = lib.mkIf isLinux {
+    systemd.user.services.pi-memory = lib.mkIf isLinux {
       Unit.Description = "Project pi sessions and maintain agent memory candidates";
       Service = {
         Type = "oneshot";
-        ExecStart = "${agentMemory}/bin/agent-memory maintain";
+        ExecStart = "${agentMemory}/bin/pi-memory maintain";
       };
     };
 
-    systemd.user.timers.agent-memory = lib.mkIf isLinux {
+    systemd.user.timers.pi-memory = lib.mkIf isLinux {
       Unit.Description = "Periodic pi session and agent memory maintenance";
       Timer = {
         OnBootSec = "5m";
