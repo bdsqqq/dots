@@ -110,7 +110,7 @@ tradeoff: no semantic search. acceptable given good naming/tagging.
 
 ## retrieval
 
-check for relevant memories before starting work:
+retrieve memory when the current task signals a dependency on prior work, preferences, decisions, or missing historical context. skip retrieval when current context fully specifies the task. search at most once per coherent work unit, then reuse the result until the topic changes.
 
 ```bash
 # ranked search, when qmd is installed and indexed
@@ -126,6 +126,28 @@ rg "topic" "${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}
 # recent memories
 ls -t "${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}"/*source__agent*.md | head -20
 ```
+
+use `pi-sessions` for episodic history rather than durable guidance:
+
+```bash
+qmd search -c pi-sessions "what happened" -n 10
+```
+
+## background candidates
+
+pi checkpoints completed branches and projects authored user/assistant text without tool results or reasoning. maintenance consolidates those checkpoints into reviewable candidates; it never edits active memories automatically.
+
+```bash
+agent-memory project
+agent-memory consolidate --limit 10
+agent-memory reconcile
+agent-memory maintain
+
+# after reviewing the candidate
+agent-memory promote candidate-file.md
+```
+
+generated state lives under `~/.local/share/agent-memory`; retry and cadence state lives under `~/.local/state/agent-memory`. `reconcile` reports duplicates and metadata gaps without rewriting active notes.
 
 ## what NOT to remember
 
