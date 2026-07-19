@@ -37,3 +37,12 @@ export function getContainer(): new (...args: any[]) => any {
 export function getMarkdown(): new (...args: any[]) => any {
   return tui().Markdown;
 }
+
+/** lazy ANSI-aware single-line truncation */
+export function getTruncateToWidth(): (
+  text: string,
+  maxWidth: number,
+  ellipsis?: string,
+) => string {
+  return tui().truncateToWidth;
+}

@@ -23,14 +23,14 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { getShellConfig } from "@earendil-works/pi-coding-agent";
+import { getShellConfig, highlightCode } from "@earendil-works/pi-coding-agent";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   boxRendererWindowed,
   type BoxSection,
   type Excerpt,
 } from "@bds_pi/box-format";
-import { getText } from "@bds_pi/tui";
+import { getText, getTruncateToWidth } from "@bds_pi/tui";
 import { Type } from "typebox";
 import { withFileLock } from "@bds_pi/mutex";
 import * as toolPolicy from "@bds_pi/tool-policy";
@@ -105,12 +105,8 @@ const BASH_CONFIG_SCHEMA: ExtensionConfigSchema<BashExtConfig> = {
 // --- command preprocessing ---
 
 /**
- * `cd dir && cmd` is the one chained shape worth accepting.
- *
- * one bash tool call should map to one visible execution step so progress,
- * retries, and blame stay legible. models still emit leading `cd ... &&`
- * out of unix habit, so we normalize that case into `cwd + command` instead
- * of rejecting it.
+ * models often emit leading `cd ... &&` out of unix habit. normalize that
+ * prefix into `cwd + command` so execution metadata keeps the real directory.
  */
 function splitCdCommand(cmd: string): { cwd: string; command: string } | null {
   const match = cmd.match(
@@ -174,30 +170,123 @@ function extractExplicitPathArgs(cmd: string, cwd: string): string[] {
   return [...paths];
 }
 
+type CommandDisplayRow = {
+  text: string;
+  separator?: string;
+  command?: false;
+};
+
+type Heredoc = {
+  delimiter: string;
+  stripTabs: boolean;
+};
+
+function unquoteShellWord(word: string): string {
+  let result = "";
+  let quote: "'" | '"' | undefined;
+  let escaped = false;
+
+  for (const char of word) {
+    if (escaped) {
+      result += char;
+      escaped = false;
+    } else if (char === "\\" && quote !== "'") {
+      escaped = true;
+    } else if (quote) {
+      if (char === quote) quote = undefined;
+      else result += char;
+    } else if (char === "'" || char === '"') {
+      quote = char;
+    } else {
+      result += char;
+    }
+  }
+  if (escaped) result += "\\";
+  return result;
+}
+
+function matchHeredoc(cmd: string, index: number): Heredoc | null {
+  const match = cmd.slice(index).match(/^<<(-)?[ \t]*([^\s;|&<>]+)/);
+  const word = match?.[2];
+  return word === undefined
+    ? null
+    : { delimiter: unquoteShellWord(word), stripTabs: match?.[1] === "-" };
+}
+
+function isCommentOnly(text: string): boolean {
+  return /^(?:[({]\s*)*#/.test(text.trimStart());
+}
+
 /**
- * reject top-level chaining so one tool call remains one observable step.
+ * split compound shell input into display rows without changing execution.
  *
- * this is intentionally conservative, not a full shell parser. it ignores
- * operators inside quotes, escapes, and nested grouping. if this scanner ever
- * flags valid single-step shell syntax, that would be a bug in our policy
- * layer, not a reason to silently allow multi-step chains again.
+ * amp treats control operators as visual boundaries: each command or pipeline
+ * stage gets one collapsed row, while quoted operators remain ordinary args.
+ * this lexer is display-only; bash remains the source of truth for semantics.
  */
-function findTopLevelChainOperator(
-  cmd: string,
-): { operator: ";" | "&&" | "||"; index: number } | null {
+function splitCommandDisplayRows(cmd: string): CommandDisplayRow[] {
+  const rows: CommandDisplayRow[] = [];
+  const pendingHeredocs: Heredoc[] = [];
+  let activeHeredoc: Heredoc | undefined;
+  let start = 0;
   let inSingle = false;
   let inDouble = false;
   let inBacktick = false;
+  let inComment = false;
   let escaped = false;
-  let parenDepth = 0;
-  let braceDepth = 0;
-  let bracketDepth = 0;
+  let nestedParenDepth = 0;
+
+  const push = (end: number, separator?: string, command = true) => {
+    const text = cmd
+      .slice(start, end)
+      .replace(/[ \t]*\\\r?\n[ \t]*/g, " ")
+      .trim();
+    if (text) {
+      rows.push({
+        text,
+        ...(separator ? { separator } : {}),
+        ...(!command ? { command: false as const } : {}),
+      });
+    }
+  };
 
   for (let i = 0; i < cmd.length; i++) {
+    if (activeHeredoc) {
+      const newline = cmd.indexOf("\n", i);
+      const end = newline === -1 ? cmd.length : newline;
+      const rawLine = cmd.slice(i, end).replace(/\r$/, "");
+      const comparable = activeHeredoc.stripTabs
+        ? rawLine.replace(/^\t+/, "")
+        : rawLine;
+
+      push(end, newline === -1 ? undefined : "\n", false);
+      if (comparable === activeHeredoc.delimiter) {
+        activeHeredoc = pendingHeredocs.shift();
+      }
+      start = end + 1;
+      if (newline === -1) break;
+      i = end;
+      continue;
+    }
+
     const ch = cmd[i];
     const next = cmd[i + 1];
-
     if (!ch) continue;
+
+    if (inComment) {
+      if (ch !== "\n") continue;
+      const commentOnly = isCommentOnly(cmd.slice(start, i));
+      push(i, "\n", !commentOnly);
+      start = i + 1;
+      inComment = false;
+      activeHeredoc = pendingHeredocs.shift();
+      continue;
+    }
+
+    if (inSingle) {
+      if (ch === "'") inSingle = false;
+      continue;
+    }
 
     if (escaped) {
       escaped = false;
@@ -206,11 +295,6 @@ function findTopLevelChainOperator(
 
     if (ch === "\\") {
       escaped = true;
-      continue;
-    }
-
-    if (inSingle) {
-      if (ch === "'") inSingle = false;
       continue;
     }
 
@@ -228,57 +312,132 @@ function findTopLevelChainOperator(
       inSingle = true;
       continue;
     }
-
     if (ch === '"') {
       inDouble = true;
       continue;
     }
-
     if (ch === "`") {
       inBacktick = true;
       continue;
     }
 
-    if (ch === "(") {
-      parenDepth++;
+    if (nestedParenDepth > 0) {
+      if (ch === "(") nestedParenDepth++;
+      if (ch === ")") nestedParenDepth--;
+      continue;
+    }
+    if (ch === "$" && next === "(") {
+      nestedParenDepth = 1;
+      i++;
+      continue;
+    }
+    if (ch === "(" && next === "(") {
+      nestedParenDepth = 2;
+      i++;
       continue;
     }
 
-    if (ch === ")") {
-      parenDepth = Math.max(0, parenDepth - 1);
+    if (ch === "#" && (i === start || /[\s;|&(){}]/.test(cmd[i - 1] ?? ""))) {
+      inComment = true;
       continue;
     }
 
-    if (ch === "{") {
-      braceDepth++;
-      continue;
+    if (ch === "<" && next === "<") {
+      const heredoc = matchHeredoc(cmd, i);
+      if (heredoc) pendingHeredocs.push(heredoc);
     }
 
-    if (ch === "}") {
-      braceDepth = Math.max(0, braceDepth - 1);
-      continue;
+    let separator: string | undefined;
+    let separatorLength = 1;
+    if (ch === "&" && next === "&") {
+      separator = "&&";
+      separatorLength = 2;
+    } else if (ch === "|" && next === "|") {
+      separator = "||";
+      separatorLength = 2;
+    } else if (ch === "|" && next === "&") {
+      separator = "|&";
+      separatorLength = 2;
+    } else if (ch === "|") {
+      separator = "|";
+    } else if (ch === ";" && next === ";") {
+      separator = ";;";
+      separatorLength = 2;
+    } else if (ch === ";") {
+      separator = ";";
+    } else if (ch === "\n") {
+      separator = "\n";
     }
 
-    if (ch === "[") {
-      bracketDepth++;
-      continue;
-    }
+    if (!separator) continue;
 
-    if (ch === "]") {
-      bracketDepth = Math.max(0, bracketDepth - 1);
-      continue;
-    }
-
-    if (parenDepth > 0 || braceDepth > 0 || bracketDepth > 0) {
-      continue;
-    }
-
-    if (ch === ";") return { operator: ";", index: i };
-    if (ch === "&" && next === "&") return { operator: "&&", index: i };
-    if (ch === "|" && next === "|") return { operator: "||", index: i };
+    push(i, separator);
+    i += separatorLength - 1;
+    start = i + 1;
+    if (separator === "\n") activeHeredoc = pendingHeredocs.shift();
   }
 
-  return null;
+  const commentOnly = inComment && isCommentOnly(cmd.slice(start));
+  push(cmd.length, undefined, !commentOnly);
+  return rows.length > 0 ? rows : [{ text: cmd.trim() || "..." }];
+}
+
+function styleCollapsedCommandRow(
+  row: CommandDisplayRow,
+  first: boolean,
+  theme: any,
+): string {
+  const prefix = first ? `${theme.fg("accent", "$")} ` : "  ";
+  const separator = row.separator
+    ? row.separator === "\n"
+      ? " \\"
+      : ` ${row.separator} \\`
+    : "";
+  if (row.command === false) {
+    return prefix + theme.fg("muted", row.text + separator);
+  }
+
+  const match = row.text.match(/^((?:(?:\{|\(|!)\s+)*)(\S+)(.*)$/s);
+  if (!match) return prefix + theme.fg("muted", row.text + separator);
+
+  const structure = match[1] ?? "";
+  const command = match[2] ?? row.text;
+  const args = match[3] ?? "";
+  return (
+    prefix +
+    theme.fg("text", structure) +
+    theme.fg("text", theme.bold(command)) +
+    theme.fg("muted", args + separator)
+  );
+}
+
+function normalizeCommandPolicyStage(text: string): string {
+  let stage = text.trim();
+  const caseCommand = stage.match(/^case\b.*\bin\b.*\)\s*(.+)$/s)?.[1];
+  if (caseCommand) stage = caseCommand;
+
+  while (stage) {
+    const normalized = stage
+      .replace(/^[{}()]\s*/, "")
+      .replace(/^!\s*/, "")
+      .replace(/^(?:if|while|until|elif|then|do|else)\b\s*/, "")
+      .replace(/^[A-Za-z_][A-Za-z0-9_]*=\S+\s+/, "");
+    if (normalized === stage) break;
+    stage = normalized;
+  }
+  return stage;
+}
+
+function getCommandPolicyCandidates(command: string): string[] {
+  return [
+    ...new Set([
+      command,
+      ...splitCommandDisplayRows(command)
+        .filter((row) => row.command !== false)
+        .map((row) => normalizeCommandPolicyStage(row.text))
+        .filter(Boolean),
+    ]),
+  ];
 }
 
 function isGitCommand(cmd: string): boolean {
@@ -391,7 +550,7 @@ export function createBashTool(
     label: "Bash",
     description:
       "Executes the given shell command using bash.\n\n" +
-      "- Top-level command chains using `;`, `&&`, or `||` are rejected; make separate tool calls instead\n" +
+      "- Compound commands run in one shell invocation and display one stage per line\n" +
       "- A leading `cd dir && cmd` is normalized into `cwd` + `cmd` for compatibility with model habits\n" +
       "- A trailing `&` runs the command in the background and returns immediately with a PID and log path\n" +
       "- Do NOT use interactive commands (REPLs, editors, password prompts)\n" +
@@ -421,24 +580,35 @@ export function createBashTool(
       ),
     }),
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const Text = getText();
       const cmd = args.cmd || args.command || "...";
-      const timeout = args.timeout;
-      const timeoutSuffix = timeout
-        ? theme.fg("muted", ` (timeout ${timeout}s)`)
+      const timeoutSuffix = args.timeout
+        ? theme.fg("muted", ` (timeout ${args.timeout}s)`)
         : "";
-      // show first line only for multiline commands
-      const lines = cmd.split("\n");
-      const firstLine = lines[0];
-      const multiSuffix = lines.length > 1 ? theme.fg("muted", " …") : "";
-      return new Text(
-        theme.fg("toolTitle", theme.bold(`$ ${firstLine}`)) +
-          multiSuffix +
-          timeoutSuffix,
-        0,
-        0,
+
+      if (context.expanded) {
+        const highlighted = highlightCode(cmd, "bash");
+        highlighted[0] = `${theme.fg("accent", "$")} ${highlighted[0] ?? ""}`;
+        if (timeoutSuffix) {
+          const last = highlighted.length - 1;
+          highlighted[last] = `${highlighted[last] ?? ""}${timeoutSuffix}`;
+        }
+        return new Text(highlighted.join("\n"), 0, 0);
+      }
+
+      const rows = splitCommandDisplayRows(cmd).map((row, index) =>
+        styleCollapsedCommandRow(row, index === 0, theme),
       );
+      if (timeoutSuffix) rows[rows.length - 1] += timeoutSuffix;
+
+      return {
+        render(width: number): string[] {
+          const truncateToWidth = getTruncateToWidth();
+          return rows.map((row) => truncateToWidth(row, width, "…"));
+        },
+        invalidate() {},
+      };
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
@@ -512,29 +682,25 @@ export function createBashTool(
         command = cdSplit.command;
       }
 
-      const chainOperator = findTopLevelChainOperator(command);
-      if (chainOperator) {
-        throw new Error(
-          `top-level command chaining with ${chainOperator.operator} is not supported. run one command per bash call so progress stays visible.`,
-        );
-      }
-
       const pathTargets = extractExplicitPathArgs(command, effectiveCwd);
-      const verdict = toolPolicy.evaluateToolPolicy(
-        "bash",
-        {
-          cmd: command,
-          cwd: effectiveCwd,
-          paths: pathTargets,
-          sessionCwd: ctx.cwd,
-        },
-        toolPolicy.loadToolPolicy(),
-      );
-      if (verdict.action === "reject") {
-        const msg = verdict.message
-          ? `command rejected: ${verdict.message}`
-          : `command rejected by tool policy. command: ${command}`;
-        throw new Error(msg);
+      const policyRules = toolPolicy.loadToolPolicy();
+      for (const policyCommand of getCommandPolicyCandidates(command)) {
+        const verdict = toolPolicy.evaluateToolPolicy(
+          "bash",
+          {
+            cmd: policyCommand,
+            cwd: effectiveCwd,
+            paths: pathTargets,
+            sessionCwd: ctx.cwd,
+          },
+          policyRules,
+        );
+        if (verdict.action === "reject") {
+          const msg = verdict.message
+            ? `command rejected: ${verdict.message}`
+            : `command rejected by tool policy. command: ${policyCommand}`;
+          throw new Error(msg);
+        }
       }
 
       if (!fs.existsSync(effectiveCwd)) {
@@ -810,6 +976,134 @@ if (import.meta.vitest) {
   });
 
   describe("bash tool output formatting", () => {
+    describe("command display", () => {
+      const theme = {
+        fg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+      };
+
+      it("splits compound commands and pipelines into display rows", () => {
+        expect(
+          splitCommandDisplayRows(
+            "rm -rf /tmp/x && { git log -1; rg term docs | head -5; } || cat /tmp/log",
+          ),
+        ).toEqual([
+          { text: "rm -rf /tmp/x", separator: "&&" },
+          { text: "{ git log -1", separator: ";" },
+          { text: "rg term docs", separator: "|" },
+          { text: "head -5", separator: ";" },
+          { text: "}", separator: "||" },
+          { text: "cat /tmp/log" },
+        ]);
+      });
+
+      it("keeps quoted operators and line continuations within a row", () => {
+        expect(
+          splitCommandDisplayRows(
+            "printf '%s' 'one && two; three | four' \\\n  tail",
+          ),
+        ).toEqual([{ text: "printf '%s' 'one && two; three | four' tail" }]);
+      });
+
+      it("does not split operators in comments or nested expressions", () => {
+        expect(
+          splitCommandDisplayRows(
+            "echo start # && ignored\nfor ((i=0; i<2; i++)); do echo $(printf 'a;b'); done",
+          ),
+        ).toEqual([
+          { text: "echo start # && ignored", separator: "\n" },
+          { text: "for ((i=0; i<2; i++))", separator: ";" },
+          { text: "do echo $(printf 'a;b')", separator: ";" },
+          { text: "done" },
+        ]);
+      });
+
+      it("treats heredoc bodies as data rather than commands", () => {
+        expect(
+          splitCommandDisplayRows("cat <<'EOF'\na && b; c\nEOF\necho done"),
+        ).toEqual([
+          { text: "cat <<'EOF'", separator: "\n" },
+          { text: "a && b; c", separator: "\n", command: false },
+          { text: "EOF", separator: "\n", command: false },
+          { text: "echo done" },
+        ]);
+      });
+
+      it("removes backslash quoting from heredoc delimiters", () => {
+        expect(
+          splitCommandDisplayRows("cat <<\\EOF\na && b\nEOF\necho done"),
+        ).toEqual([
+          { text: "cat <<\\EOF", separator: "\n" },
+          { text: "a && b", separator: "\n", command: false },
+          { text: "EOF", separator: "\n", command: false },
+          { text: "echo done" },
+        ]);
+      });
+
+      it("supports empty quoted heredoc delimiters", () => {
+        expect(
+          splitCommandDisplayRows("cat <<''\nbody\n\nrm nope; true"),
+        ).toEqual([
+          { text: "cat <<''", separator: "\n" },
+          { text: "body", separator: "\n", command: false },
+          { text: "rm nope", separator: ";" },
+          { text: "true" },
+        ]);
+      });
+
+      it("marks comments after shell token boundaries as non-commands", () => {
+        expect(splitCommandDisplayRows("true;# ignored;rm nope")).toEqual([
+          { text: "true", separator: ";" },
+          { text: "# ignored;rm nope", command: false },
+        ]);
+        expect(splitCommandDisplayRows("(# ignored;rm nope\ntrue\n)")).toEqual([
+          { text: "(# ignored;rm nope", separator: "\n", command: false },
+          { text: "true", separator: "\n" },
+          { text: ")" },
+        ]);
+      });
+
+      it("renders one continuation marker for newline boundaries", () => {
+        const rows = splitCommandDisplayRows("echo one\necho two").map(
+          (row, index) => styleCollapsedCommandRow(row, index === 0, theme),
+        );
+
+        expect(rows).toEqual(["$ echo one \\", "  echo two"]);
+      });
+
+      it("truncates every collapsed row with a one-character ellipsis", () => {
+        const component = tool.renderCall!(
+          {
+            cmd: "echo a-very-long-argument && printf another-long-argument",
+          },
+          theme as any,
+          { expanded: false } as any,
+        );
+        const lines = component.render(18);
+
+        const visibleLines = lines.map((line) =>
+          line.replace(/\x1b\[[0-9;]*m/g, ""),
+        );
+        expect(visibleLines).toHaveLength(2);
+        expect(visibleLines.every((line) => line.length <= 18)).toBe(true);
+        expect(visibleLines.every((line) => line.endsWith("…"))).toBe(true);
+      });
+
+      it("shows the full syntax-highlighted command when expanded", () => {
+        const component = tool.renderCall!(
+          { cmd: 'echo one && printf "two"' },
+          theme as any,
+          { expanded: true } as any,
+        );
+        const rendered = component
+          .render(120)
+          .join("\n")
+          .replace(/\x1b\[[0-9;]*m/g, "");
+
+        expect(rendered).toContain('$ echo one && printf "two"');
+      });
+    });
+
     describe("command header", () => {
       it("shows command in output header", async () => {
         const result = await execute(`echo "hello world"`);
@@ -885,11 +1179,53 @@ if (import.meta.vitest) {
       });
     });
 
-    describe("command chaining policy", () => {
-      it("rejects top-level && chains", async () => {
-        await expect(execute(`echo one && echo two`)).rejects.toThrow(
-          "top-level command chaining with && is not supported",
+    describe("compound commands", () => {
+      it("executes top-level && chains", async () => {
+        const result = await execute(`echo one && echo two`);
+        expect(result.content[0].text).toContain("one\ntwo");
+      });
+
+      it.each([
+        "echo ok;rm -f /tmp/pi-bash-policy-nonexistent",
+        "echo ok &&rm -f /tmp/pi-bash-policy-nonexistent",
+        "echo ok\nrm -f /tmp/pi-bash-policy-nonexistent",
+        "cat <<\\EOF\nbody\nEOF\nrm -f /tmp/pi-bash-policy-nonexistent",
+        "cat <<''\nbody\n\nrm -f /tmp/pi-bash-policy-nonexistent; true",
+        "if rm /tmp/pi-bash-policy-nonexistent; then :; fi",
+        "while rm /tmp/pi-bash-policy-nonexistent; do :; done",
+        "case x in x) rm /tmp/pi-bash-policy-nonexistent;; esac",
+      ])("applies tool policy to every command stage: %s", async (cmd) => {
+        vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([
+          {
+            tool: "bash",
+            matches: { cmd: "rm *" },
+            action: "reject",
+            message: "rm blocked",
+          },
+          { tool: "*", action: "allow" },
+        ]);
+
+        await expect(execute(cmd)).rejects.toThrow(
+          "command rejected: rm blocked",
         );
+      });
+
+      it("does not apply command policy to comment text", async () => {
+        vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([
+          {
+            tool: "bash",
+            matches: { cmd: "rm *" },
+            action: "reject",
+            message: "rm blocked",
+          },
+          { tool: "*", action: "allow" },
+        ]);
+
+        const inline = await execute("true;# ignored;rm nope");
+        expect(inline.content[0].text).toContain("(no output)");
+
+        const subshell = await execute("(# ignored;rm nope\ntrue\n)");
+        expect(subshell.content[0].text).toContain("(no output)");
       });
 
       it("rejects commands with /tmp path escapes before spawn", async () => {
@@ -956,16 +1292,14 @@ if (import.meta.vitest) {
         );
       });
 
-      it("rejects top-level semicolon chains", async () => {
-        await expect(execute(`echo one; echo two`)).rejects.toThrow(
-          "top-level command chaining with ; is not supported",
-        );
+      it("executes top-level semicolon chains", async () => {
+        const result = await execute(`echo one; echo two`);
+        expect(result.content[0].text).toContain("one\ntwo");
       });
 
-      it("rejects top-level || chains", async () => {
-        await expect(execute(`false || echo two`)).rejects.toThrow(
-          "top-level command chaining with || is not supported",
-        );
+      it("executes top-level || chains", async () => {
+        const result = await execute(`false || echo two`);
+        expect(result.content[0].text).toContain("two");
       });
 
       it("allows quoted chain operators", async () => {
@@ -980,12 +1314,9 @@ if (import.meta.vitest) {
         expect(result.content[0].text).toContain("ok");
       });
 
-      it("still rejects extra chaining after cd normalization", async () => {
-        await expect(
-          execute(`cd /tmp && echo one && echo two`),
-        ).rejects.toThrow(
-          "top-level command chaining with && is not supported",
-        );
+      it("executes extra chaining after cd normalization", async () => {
+        const result = await execute(`cd /tmp && echo one && echo two`);
+        expect(result.content[0].text).toContain("one\ntwo");
       });
     });
 
