@@ -12,6 +12,7 @@ in
   home-manager.users.bdsqqq = { pkgs, ... }: {
     home.packages = [
       inputs.google-workspace-cli.packages.${pkgs.stdenv.hostPlatform.system}.gws
+      pkgs.google-cloud-sdk
     ];
 
     home.file = skillFiles;
