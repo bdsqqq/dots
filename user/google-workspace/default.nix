@@ -12,7 +12,8 @@ in
   home-manager.users.bdsqqq = { pkgs, ... }: {
     home.packages = [
       inputs.google-workspace-cli.packages.${pkgs.stdenv.hostPlatform.system}.gws
-      pkgs.google-cloud-sdk
+      # Python 3.14's libffi aborts during gcloud startup on Apple Silicon.
+      (pkgs.google-cloud-sdk.override { python314 = pkgs.python313; })
     ];
 
     home.file = skillFiles;
