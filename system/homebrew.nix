@@ -11,7 +11,6 @@ else
 
       casks = [
         # System utilities
-        "handy"
         "cleanshot"
         "tailscale-app"
 
@@ -25,8 +24,7 @@ else
 
         # Productivity applications
         "linear"
-        "notion-calendar"
-        "notion"
+        "vscodium"
 
         # Entertainment/Gaming
         "steam"
