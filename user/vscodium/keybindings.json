@@ -1,0 +1,94 @@
+// Place your key bindings in this file to override the default
+[
+  // pi
+  {
+    "key": "cmd+k",
+    "command": "piSelection.submit",
+    "when": "editorTextFocus"
+  },
+
+  // ui
+  {
+    "key": "cmd+;",
+    "command": "workbench.action.toggleSidebarVisibility"
+  },
+  {
+    "key": "cmd+shift+;",
+    "command": "workbench.action.toggleAuxiliaryBar"
+  },
+  {
+    "key": "cmd+g b",
+    "command": "toggle",
+    "args": {
+      "id": "blame",
+      "value": [
+        {
+          "git.blame.editorDecoration.enabled": true
+        },
+        {
+          "git.blame.editorDecoration.enabled": false
+        }
+      ]
+    },
+    "when": "editorTextFocus"
+  },
+
+  // go to macros
+  {
+    "key": "cmd+g d",
+    "command": "editor.action.revealDefinition",
+    "when": "editorHasDefinitionProvider && editorTextFocus && !isInEmbeddedEditor"
+  },
+  {
+    "key": "cmd+g t",
+    "command": "editor.action.goToTypeDefinition"
+  },
+  {
+    "key": "cmd+g s",
+    "command": "typescript.goToSourceDefinition"
+  },
+
+  // navigation
+  {
+    "key": "ctrl+up",
+    "command": "cursorMove",
+    "args": {
+      "to": "up",
+      "by": "line",
+      "value": 3
+    },
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+down",
+    "command": "cursorMove",
+    "args": {
+      "to": "down",
+      "by": "line",
+      "value": 3
+    },
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "shift+ctrl+up",
+    "command": "cursorMove",
+    "args": {
+      "to": "up",
+      "by": "line",
+      "value": 3,
+      "select": true
+    },
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "shift+ctrl+down",
+    "command": "cursorMove",
+    "args": {
+      "to": "down",
+      "by": "line",
+      "value": 3,
+      "select": true
+    },
+    "when": "editorTextFocus"
+  }
+]

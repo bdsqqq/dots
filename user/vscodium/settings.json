@@ -1,0 +1,222 @@
+{
+  // vscodium meta stuff
+  "chat.disableAIFeatures": true, // keep upstream AI, agent, and MCP UI out of the workbench
+  "workbench.startupEditor": "none",
+  "editor.accessibilitySupport": "off",
+  "workbench.editor.closeOnFileDelete": true,
+  "workbench.editor.decorations.badges": false,
+  "workbench.editor.enablePreview": false,
+  "extensions.ignoreRecommendations": true,
+  // text editing stuff
+  "files.autoSave": "afterDelay",
+  "editor.formatOnSave": true,
+  "prettier.requireConfig": true,
+  "editor.linkedEditing": true,
+  "editor.inlineSuggest.enabled": true,
+  "editor.unicodeHighlight.nonBasicASCII": false,
+  "vim.useSystemClipboard": true,
+  "editor.lineNumbers": "on",
+  // ui stuff
+  //     font
+  "editor.fontFamily": "Berkeley Mono, Geist Mono, monospace",
+  "editor.fontSize": 14,
+  "editor.lineHeight": 1.42857,
+  "custom-ui-style.font.sansSerif": "Berkeley Mono", // apply the editor font across the workbench UI
+  "custom-ui-style.font.monospace": "Berkeley Mono",
+  "workbench.fontAliasing": "auto", // text looks sharp on high-dpi screens
+  //     cursor
+  "editor.cursorBlinking": "smooth", // smol cursor animation, looks nice
+  "editor.cursorSmoothCaretAnimation": "on", // move cursor smoothly
+  //     window
+  "custom-ui-style.electron": {
+    "frame": false,
+    "transparent": true,
+    "titleBarStyle": "hiddenInset",
+    "vibrancy": "ultra-dark",
+    "opacity": 0.98,
+    "visualEffectState": "active"
+  },
+  //     title bar
+  "window.title": "${dirty}neovim${separator}${activeEditorShort}",
+  "workbench.editor.showTabs": "none", // hide tabs
+  "breadcrumbs.enabled": false, // hide layout controls
+  "workbench.navigationControl.enabled": false, // use cmd+shift+p instead
+  "workbench.browser.showInTitleBar": false,
+  "workbench.agentsWindowButton.enabled": false,
+  //     minimap
+  "editor.minimap.renderCharacters": false, // make minimap blockish
+  "editor.hideCursorInOverviewRuler": true, // don't highlight the current line in the scrollbar
+  "editor.minimap.autohide": "mouseover", // embeds it in the sidebar instead of reserving a standalone strip
+  "workbench.sideBar.location": "right", // opening it does not move the code's left edge
+  "explorer.compactFolders": false, // keep project structure explicit
+  "workbench.tree.indent": 20,
+  //     bottom bar and panel
+  "workbench.statusBar.visible": false,
+  "workbench.panel.opensMaximized": "always",
+  //     editor
+  "editor.stickyScroll.enabled": true,
+  "editor.wordWrap": "on",
+  "editor.inlineSuggest.edits.renderSideBySide": "auto",
+  "diffEditor.diffAlgorithm": "advanced",
+  "diffEditor.experimental.useTrueInlineView": true,
+  "diffEditor.experimental.showMoves": true,
+  "terminal.integrated.minimumContrastRatio": 1,
+  "workbench.editor.autoLockGroups": {
+    "terminalEditor": false,
+    "mainThreadWebview-simpleBrowser.view": false,
+    "mainThreadWebview-browserPreview": false
+  },
+  // theme
+  "workbench.iconTheme": "chalice-icon-theme",
+  "window.autoDetectColorScheme": true,
+  "workbench.colorTheme": "Vesper",
+  "workbench.preferredDarkColorTheme": "Vesper",
+  "workbench.preferredLightColorTheme": "Vesper",
+  // vesper overrides
+  "workbench.colorCustomizations": {
+    "[Vesper]": {
+      "editorGutter.addedBackground": "#A0A0A0",
+      "editorGutter.deletedBackground": "#A0A0A0",
+      "editorGutter.modifiedBackground": "#A0A0A0"
+    },
+    "editorStickyScroll.border": "#ffffff10",
+    "editor.lineHighlightBorder": "#00000000", // no border on active line, caret, and line number are enough.
+  },
+  "editor.tokenColorCustomizations": {
+    "[Vesper]": {
+      "textMateRules": [
+        // remove peppermint flavor
+        {
+          "name": "String, Symbols, Inherited Class",
+          "scope": [
+            "string",
+            "constant.other.symbol",
+            "constant.other.key",
+            "meta.group.braces.curly constant.other.object.key.js string.unquoted.label.js"
+          ],
+          "settings": {
+            "foreground": "#A0A0A0"
+          }
+        },
+        {
+          "name": "CSS ID's",
+          "scope": [
+            "source.sass keyword.control",
+            "meta.attribute-selector.scss"
+          ],
+          "settings": {
+            "foreground": "#ffffff"
+          }
+        },
+        {
+          "name": "Inserted",
+          "scope": [
+            "markup.inserted"
+          ],
+          "settings": {
+            "foreground": "#ffffff"
+          }
+        }
+      ]
+    }
+  },
+  // git stuff
+  "git.openRepositoryInParentFolders": "always",
+  "git.autofetch": true,
+  "git.confirmNoVerifyCommit": false,
+  "git.confirmSync": false,
+  "diffEditor.ignoreTrimWhitespace": false,
+  "git.ignoreMissingGitWarning": true,
+  "git.blame.editorDecoration.template": "${authorDateAgo} by ${authorName}, ${subject}",
+  "git.blame.editorDecoration.enabled": true,
+  "gitlens.mode.active": "zen",
+  "gitlens.gitCommands.skipConfirmations": [
+    "fetch:command",
+    "stash-push:command",
+    "switch:command",
+    "push:command"
+  ],
+  "gitlens.hovers.currentLine.over": "line",
+  "githubPullRequests.fileListLayout": "flat",
+  "githubPullRequests.pullBranch": "never",
+  // js tooling stuff
+  // Run Oxfmt before Oxlint's safe fixes; keep global format-on-save behavior for other languages.
+  "[javascript][javascriptreact][typescript][typescriptreact]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": false,
+    "editor.codeActionsOnSave": {
+      "source.format.oxc": "always",
+      "source.fixAll.oxc": "always"
+    }
+  },
+  "oxc.enable.oxfmt": true,
+  "oxc.enable.oxlint": true,
+  "oxc.path.node": "/Users/bdsqqq/Library/Application Support/fnm/node-versions/v24.18.0/installation/bin/node",
+  "oxc.lint.run": "onType",
+  "oxc.fixKind": "safe_fix",
+  "oxc.requireConfig": true,
+  "js/ts.preferences.importModuleSpecifier": "non-relative", // prefer aliases when importing
+  "tailwindCSS.experimental.classRegex": [
+    // enable tailwind autocomplete for these helpers
+    [
+      "cva\\(([^)]*)\\)",
+      "[\"'`]([^\"'`]*).*?[\"'`]"
+    ],
+    [
+      "cn\\(([^)]*)\\)",
+      "[\"'`]([^\"'`]*).*?[\"'`]"
+    ],
+    [
+      "cx\\(([^)]*)\\)",
+      "[\"'`]([^\"'`]*).*?[\"'`]"
+    ],
+    [
+      "clsx\\(([^)]*)\\)",
+      "[\"'`]([^\"'`]*).*?[\"'`]"
+    ],
+    [
+      "classnames\\(([^)]*)\\)",
+      "[\"'`]([^\"'`]*).*?[\"'`]"
+    ],
+    // and variables or props containing `class`
+    [
+      ".*[cC]lass.*=\\s*[\"'`]([^\"'`]*)[\"'`]"
+    ],
+    [
+      ".*[cC]lass.*:\\s*[\"'`]([^\"'`]*)[\"'`]"
+    ],
+    [
+      "className\\s*=\\s*[\"'`]([^\"'`]*)[\"'`]"
+    ],
+    [
+      "className\\s*:\\s*[\"'`]([^\"'`]*)[\"'`]"
+    ],
+  ],
+  "playwright.reuseBrowser": false,
+  // legacy vim bridge; inert unless the Vim extension is installed
+  "vim.neovimPath": "/usr/bin/nvim",
+  "vim.enableNeovim": true,
+  "vim.leader": " ",
+  "vim.neovimConfigPath": "~/.config/nvim/init.lua",
+  "vim.neovimUseConfigFile": true,
+  // Custom UI Style patches the workbench CSS; reapply it after VSCodium updates.
+  "custom-ui-style.stylesheet": {
+    // Modal editors keep their draggable/resizable surface, but no longer block or dim the workspace around it.
+    ".monaco-modal-editor-block": {
+      "background": "transparent !important",
+      "pointer-events": "none !important"
+    },
+    ".monaco-modal-editor-block .modal-editor-resizable": {
+      "pointer-events": "auto !important"
+    },
+    ".monaco-modal-editor-block .modal-editor-shadow": {
+      "box-shadow": "0 12px 40px #00000066 !important"
+    }
+  },
+  "workbench.activityBar.location": "hidden",
+  "extensions.experimental.affinity": {
+    "asvetliakov.vscode-neovim": 1
+  },
+  "window.commandCenter": false,
+  "workbench.editor.editorActionsLocation": "hidden"
+}
