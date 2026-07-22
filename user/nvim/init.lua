@@ -258,6 +258,11 @@ end, 100)
 
 -- plugins
 
+if vim.g.vscode then
+	vim.pack.add({ { src = "https://github.com/vscode-neovim/vscode-multi-cursor.nvim" } }, pack_opts)
+	require("vscode-multi-cursor").setup({})
+end
+
 vim.pack.add({
 	{ src = "https://github.com/tpope/vim-sleuth" },
 	{ src = "https://github.com/mbbill/undotree" },
