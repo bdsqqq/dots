@@ -34,11 +34,11 @@
     "titleBarStyle": "hiddenInset",
     "vibrancy": "ultra-dark",
     "opacity": 0.98,
-    "visualEffectState": "active"
+    "visualEffectState": "active",
   },
   //     title bar
-  "window.title": "${dirty}neovim${separator}${activeEditorShort}",
-  "workbench.editor.showTabs": "none", // hide tabs
+  "window.title": "${dirty}neovim${separator}${activeEditorShort}", 
+  "workbench.editor.showTabs": "none",// hide tabs
   "breadcrumbs.enabled": false, // hide layout controls
   "workbench.navigationControl.enabled": false, // use cmd+shift+p instead
   "workbench.browser.showInTitleBar": false,
@@ -64,7 +64,7 @@
   "workbench.editor.autoLockGroups": {
     "terminalEditor": false,
     "mainThreadWebview-simpleBrowser.view": false,
-    "mainThreadWebview-browserPreview": false
+    "mainThreadWebview-browserPreview": false,
   },
   // theme
   "workbench.iconTheme": "chalice-icon-theme",
@@ -77,7 +77,7 @@
     "[Vesper]": {
       "editorGutter.addedBackground": "#A0A0A0",
       "editorGutter.deletedBackground": "#A0A0A0",
-      "editorGutter.modifiedBackground": "#A0A0A0"
+      "editorGutter.modifiedBackground": "#A0A0A0",
     },
     "editorStickyScroll.border": "#ffffff10",
     "editor.lineHighlightBorder": "#00000000", // no border on active line, caret, and line number are enough.
@@ -92,33 +92,28 @@
             "string",
             "constant.other.symbol",
             "constant.other.key",
-            "meta.group.braces.curly constant.other.object.key.js string.unquoted.label.js"
+            "meta.group.braces.curly constant.other.object.key.js string.unquoted.label.js",
           ],
           "settings": {
-            "foreground": "#A0A0A0"
-          }
+            "foreground": "#A0A0A0",
+          },
         },
         {
           "name": "CSS ID's",
-          "scope": [
-            "source.sass keyword.control",
-            "meta.attribute-selector.scss"
-          ],
+          "scope": ["source.sass keyword.control", "meta.attribute-selector.scss"],
           "settings": {
-            "foreground": "#ffffff"
-          }
+            "foreground": "#ffffff",
+          },
         },
         {
           "name": "Inserted",
-          "scope": [
-            "markup.inserted"
-          ],
+          "scope": ["markup.inserted"],
           "settings": {
-            "foreground": "#ffffff"
-          }
-        }
-      ]
-    }
+            "foreground": "#ffffff",
+          },
+        },
+      ],
+    },
   },
   // git stuff
   "git.openRepositoryInParentFolders": "always",
@@ -134,7 +129,7 @@
     "fetch:command",
     "stash-push:command",
     "switch:command",
-    "push:command"
+    "push:command",
   ],
   "gitlens.hovers.currentLine.over": "line",
   "githubPullRequests.fileListLayout": "flat",
@@ -146,8 +141,8 @@
     "editor.formatOnSave": false,
     "editor.codeActionsOnSave": {
       "source.format.oxc": "always",
-      "source.fixAll.oxc": "always"
-    }
+      "source.fixAll.oxc": "always",
+    },
   },
   "oxc.enable.oxfmt": true,
   "oxc.enable.oxlint": true,
@@ -158,39 +153,16 @@
   "js/ts.preferences.importModuleSpecifier": "non-relative", // prefer aliases when importing
   "tailwindCSS.experimental.classRegex": [
     // enable tailwind autocomplete for these helpers
-    [
-      "cva\\(([^)]*)\\)",
-      "[\"'`]([^\"'`]*).*?[\"'`]"
-    ],
-    [
-      "cn\\(([^)]*)\\)",
-      "[\"'`]([^\"'`]*).*?[\"'`]"
-    ],
-    [
-      "cx\\(([^)]*)\\)",
-      "[\"'`]([^\"'`]*).*?[\"'`]"
-    ],
-    [
-      "clsx\\(([^)]*)\\)",
-      "[\"'`]([^\"'`]*).*?[\"'`]"
-    ],
-    [
-      "classnames\\(([^)]*)\\)",
-      "[\"'`]([^\"'`]*).*?[\"'`]"
-    ],
+    ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+    ["cn\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+    ["cx\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+    ["clsx\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+    ["classnames\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
     // and variables or props containing `class`
-    [
-      ".*[cC]lass.*=\\s*[\"'`]([^\"'`]*)[\"'`]"
-    ],
-    [
-      ".*[cC]lass.*:\\s*[\"'`]([^\"'`]*)[\"'`]"
-    ],
-    [
-      "className\\s*=\\s*[\"'`]([^\"'`]*)[\"'`]"
-    ],
-    [
-      "className\\s*:\\s*[\"'`]([^\"'`]*)[\"'`]"
-    ],
+    [".*[cC]lass.*=\\s*[\"'`]([^\"'`]*)[\"'`]"],
+    [".*[cC]lass.*:\\s*[\"'`]([^\"'`]*)[\"'`]"],
+    ["className\\s*=\\s*[\"'`]([^\"'`]*)[\"'`]"],
+    ["className\\s*:\\s*[\"'`]([^\"'`]*)[\"'`]"],
   ],
   "playwright.reuseBrowser": false,
   // legacy vim bridge; inert unless the Vim extension is installed
@@ -204,19 +176,19 @@
     // Modal editors keep their draggable/resizable surface, but no longer block or dim the workspace around it.
     ".monaco-modal-editor-block": {
       "background": "transparent !important",
-      "pointer-events": "none !important"
+      "pointer-events": "none !important",
     },
     ".monaco-modal-editor-block .modal-editor-resizable": {
-      "pointer-events": "auto !important"
+      "pointer-events": "auto !important",
     },
     ".monaco-modal-editor-block .modal-editor-shadow": {
-      "box-shadow": "0 12px 40px #00000066 !important"
-    }
+      "box-shadow": "0 12px 40px #00000066 !important",
+    },
   },
   "workbench.activityBar.location": "hidden",
   "extensions.experimental.affinity": {
-    "asvetliakov.vscode-neovim": 1
+    "asvetliakov.vscode-neovim": 1,
   },
   "window.commandCenter": false,
-  "workbench.editor.editorActionsLocation": "hidden"
+  "workbench.editor.editorActionsLocation": "hidden",
 }
