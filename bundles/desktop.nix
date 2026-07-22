@@ -5,6 +5,7 @@
     ../system/cmux.nix
     ../system/flatpak.nix
     ../user/apps.nix
+    ../user/vscodium
     ../user/e-ink-glass.nix
     ../user/1password.nix
     ../user/orbstack.nix
