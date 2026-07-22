@@ -9,6 +9,34 @@
     "key": "cmd+shift+;",
     "command": "workbench.action.toggleAuxiliaryBar"
   },
+
+  // focus
+  {
+    "key": "ctrl+cmd+left",
+    "command": "workbench.action.navigateLeft"
+  },
+  {
+    "key": "ctrl+cmd+down",
+    "command": "workbench.action.navigateDown"
+  },
+  {
+    "key": "ctrl+cmd+up",
+    "command": "workbench.action.navigateUp"
+  },
+  {
+    "key": "ctrl+cmd+right",
+    "command": "workbench.action.navigateRight"
+  },
+
+  // splits
+  {
+    "key": "cmd+shift+\\",
+    "command": "workbench.action.splitEditorRight"
+  },
+  {
+    "key": "cmd+shift+-",
+    "command": "workbench.action.splitEditorDown"
+  },
   {
     "key": "cmd+g b",
     "command": "toggle",
