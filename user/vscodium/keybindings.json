@@ -1,12 +1,5 @@
 // Place your key bindings in this file to override the default
 [
-  // pi
-  {
-    "key": "cmd+k",
-    "command": "piSelection.submit",
-    "when": "editorTextFocus"
-  },
-
   // ui
   {
     "key": "cmd+;",
