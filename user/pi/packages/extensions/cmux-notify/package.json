@@ -1,0 +1,15 @@
+{
+  "name": "@bds_pi/cmux-notify",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.10"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

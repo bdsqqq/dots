@@ -289,6 +289,12 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
 
+  packages/extensions/cmux-notify:
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: ^0.80.10
+        version: 0.80.10(ws@8.21.0)(zod@4.4.3)
+
   packages/extensions/code-review:
     dependencies:
       '@bds_pi/bash':

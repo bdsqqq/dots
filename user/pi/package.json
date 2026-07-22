@@ -80,6 +80,7 @@
   "pi": {
     "extensions": [
       "./dist/extensions/bash.js",
+      "./dist/extensions/cmux-notify.js",
       "./dist/extensions/code-review.js",
       "./dist/extensions/create-file.js",
       "./dist/extensions/delegate.js",
