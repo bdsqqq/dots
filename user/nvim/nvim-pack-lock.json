@@ -77,6 +77,10 @@
       "rev": "be69bff86754b1aa5adcbb527d7fcd1635a84080",
       "src": "https://github.com/tpope/vim-sleuth"
     },
+    "vscode-multi-cursor.nvim": {
+      "rev": "210d64a6d190383a81b8dcdf8779d357006f3a69",
+      "src": "https://github.com/vscode-neovim/vscode-multi-cursor.nvim"
+    },
     "which-key.nvim": {
       "rev": "3aab2147e74890957785941f0c1ad87d0a44c15a",
       "src": "https://github.com/folke/which-key.nvim"
