@@ -12,20 +12,73 @@
 
   // focus
   {
-    "key": "ctrl+cmd+left",
+    "key": "ctrl+shift+left",
     "command": "workbench.action.navigateLeft"
   },
   {
-    "key": "ctrl+cmd+down",
+    "key": "ctrl+shift+down",
     "command": "workbench.action.navigateDown"
   },
   {
-    "key": "ctrl+cmd+up",
+    "key": "ctrl+shift+up",
     "command": "workbench.action.navigateUp"
   },
   {
-    "key": "ctrl+cmd+right",
+    "key": "ctrl+shift+right",
     "command": "workbench.action.navigateRight"
+  },
+  {
+    "key": "ctrl+shift+left",
+    "command": "edgeNavigation.left",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+shift+down",
+    "command": "edgeNavigation.down",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+shift+up",
+    "command": "edgeNavigation.up",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+shift+right",
+    "command": "edgeNavigation.right",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+shift+right",
+    "command": "runCommands",
+    "args": {
+      "commands": [
+        "workbench.action.toggleAuxiliaryBar",
+        "workbench.action.focusActiveEditorGroup"
+      ]
+    },
+    "when": "auxiliaryBarFocus"
+  },
+  {
+    "key": "ctrl+shift+left",
+    "command": "runCommands",
+    "args": {
+      "commands": [
+        "workbench.action.toggleSidebarVisibility",
+        "workbench.action.focusActiveEditorGroup"
+      ]
+    },
+    "when": "sideBarFocus"
+  },
+  {
+    "key": "ctrl+shift+up",
+    "command": "runCommands",
+    "args": {
+      "commands": [
+        "workbench.action.togglePanel",
+        "workbench.action.focusActiveEditorGroup"
+      ]
+    },
+    "when": "panelFocus"
   },
 
   // splits
