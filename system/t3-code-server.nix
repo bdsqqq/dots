@@ -4,7 +4,7 @@ let
   isLinux = lib.hasSuffix "-linux" hostSystem;
   toolsDir = "${config.my.paths.commonplace}/01_files/nix/user/node-pnpm";
   toolsBin = "${toolsDir}/node_modules/.bin";
-  developmentServer = "${toolsDir}/t3-pi/dist/bin.mjs";
+  developmentServer = "${config.users.users.bdsqqq.home}/.local/share/t3-pi/dist/bin.mjs";
   tailscaleServePort = if isDarwin then 8443 else 443;
   t3Serve = pkgs.writeShellScript "t3-code-serve" ''
     set -eu
