@@ -24,7 +24,10 @@ interface ExecResult {
   stderr: string;
 }
 
-type ExecZmx = (command: string, args: readonly string[]) => Promise<ExecResult>;
+type ExecZmx = (
+  command: string,
+  args: readonly string[],
+) => Promise<ExecResult>;
 
 type LoadZmxSessionsResult =
   | { status: "ok"; sessions: ZmxSession[] }
@@ -98,7 +101,9 @@ function formatStatusItem(fragment: string, message: string): AutocompleteItem {
   };
 }
 
-async function loadZmxSessions(execZmx: ExecZmx): Promise<LoadZmxSessionsResult> {
+async function loadZmxSessions(
+  execZmx: ExecZmx,
+): Promise<LoadZmxSessionsResult> {
   let sawSuccessfulCommand = false;
 
   for (const [command, args] of [
@@ -156,7 +161,12 @@ export function createZmxAutocompleteProvider(
         items:
           items.length > 0
             ? items
-            : [formatStatusItem(fragment, `no zmx sessions match "${fragment}"`)],
+            : [
+                formatStatusItem(
+                  fragment,
+                  `no zmx sessions match "${fragment}"`,
+                ),
+              ],
       };
     },
 
@@ -165,12 +175,19 @@ export function createZmxAutocompleteProvider(
         return { lines, cursorLine, cursorCol };
       }
 
-      return current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+      return current.applyCompletion(
+        lines,
+        cursorLine,
+        cursorCol,
+        item,
+        prefix,
+      );
     },
 
     shouldTriggerFileCompletion(lines, cursorLine, cursorCol) {
       return (
-        current.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? true
+        current.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ??
+        true
       );
     },
   };
@@ -191,13 +208,17 @@ export default function zmxExtension(pi: ExtensionAPI): void {
 if (import.meta.vitest) {
   const { describe, expect, it, vi } = import.meta.vitest;
 
-  function baseProvider(): AutocompleteProvider {
+  function baseProvider() {
     return {
       getSuggestions: vi.fn().mockResolvedValue({
         prefix: "base",
         items: [{ value: "base" }],
       }),
-      applyCompletion: vi.fn((lines) => ({ lines, cursorLine: 0, cursorCol: 0 })),
+      applyCompletion: vi.fn((lines) => ({
+        lines,
+        cursorLine: 0,
+        cursorCol: 0,
+      })),
     };
   }
 
@@ -261,11 +282,14 @@ if (import.meta.vitest) {
   describe("createZmxAutocompleteProvider", () => {
     it("returns zmx completions with a full mention prefix", async () => {
       const current = baseProvider();
-      const provider = createZmxAutocompleteProvider(current, vi.fn().mockResolvedValue({
-        code: 0,
-        stdout: "nix.build\tclients:0\tpid:123\tcreated:177\t/repo\n",
-        stderr: "",
-      }));
+      const provider = createZmxAutocompleteProvider(
+        current,
+        vi.fn().mockResolvedValue({
+          code: 0,
+          stdout: "nix.build\tclients:0\tpid:123\tcreated:177\t/repo\n",
+          stderr: "",
+        }),
+      );
 
       await expect(
         provider.getSuggestions(["the build in @zmx/ni"], 0, 22, {
@@ -301,11 +325,14 @@ if (import.meta.vitest) {
 
     it("shows a status completion when no sessions match", async () => {
       const current = baseProvider();
-      const provider = createZmxAutocompleteProvider(current, vi.fn().mockResolvedValue({
-        code: 0,
-        stdout: "nix.build\tclients:0\tpid:123\tcreated:177\t/repo\n",
-        stderr: "",
-      }));
+      const provider = createZmxAutocompleteProvider(
+        current,
+        vi.fn().mockResolvedValue({
+          code: 0,
+          stdout: "nix.build\tclients:0\tpid:123\tcreated:177\t/repo\n",
+          stderr: "",
+        }),
+      );
 
       await expect(
         provider.getSuggestions(["@zmx/web"], 0, 8, {

@@ -113,11 +113,16 @@ function createSessionMentionSource(): MentionSource {
           value: `@session/${session.sessionId}`,
           label: `@session/${session.sessionId}`,
           description:
-            session.sessionName || session.firstUserMessage || session.workspace,
+            session.sessionName ||
+            session.firstUserMessage ||
+            session.workspace,
         }));
     },
     resolve(token, context) {
-      const result = resolveMentionableSession(getSessions(context), token.value);
+      const result = resolveMentionableSession(
+        getSessions(context),
+        token.value,
+      );
 
       if (result.status === "resolved") {
         return {
@@ -607,14 +612,18 @@ function createSearchSessionsExtension(
     });
 
     pi.on("before_agent_start", async (event) => {
-      if (!parseMentions(event.prompt).some((mention) => mention.kind === "session")) {
+      if (
+        !parseMentions(event.prompt).some(
+          (mention) => mention.kind === "session",
+        )
+      ) {
         return;
       }
 
       return {
         systemPrompt:
           event.systemPrompt +
-          '\n\nWhen the user includes `@session/<id-or-prefix>`, treat it as a pointer to a prior Pi session. Resolve it with the `read_session` tool before relying on its contents.',
+          "\n\nWhen the user includes `@session/<id-or-prefix>`, treat it as a pointer to a prior Pi session. Resolve it with the `read_session` tool before relying on its contents.",
       };
     });
 
@@ -630,18 +639,6 @@ export default searchSessionsExtension;
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it, vi } = import.meta.vitest;
   const tmpdir = os.tmpdir();
-
-  const SESSION_FIXTURE = {
-    sessionId: "alpha1234",
-    sessionName: "alpha work",
-    workspace: "/repo/app",
-    filePath: "/sessions/alpha.jsonl",
-    startedAt: "2026-03-06T17:00:00.000Z",
-    updatedAt: "2026-03-06T17:10:00.000Z",
-    firstUserMessage: "alpha task",
-    searchableText: "alpha task",
-    branchCount: 1,
-  };
 
   function writeTmpJson(dir: string, filename: string, data: unknown): string {
     const filePath = path.join(dir, filename);

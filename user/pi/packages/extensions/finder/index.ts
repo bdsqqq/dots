@@ -33,6 +33,7 @@ import {
   piSpawn,
   resolvePrompt,
   zeroUsage,
+  type PiSpawnModel,
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -45,7 +46,7 @@ import {
 const FINDER_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 type FinderExtConfig = {
-  model: typeof FINDER_DEFAULT_MODEL | string;
+  model: PiSpawnModel;
   extensionTools: string[];
   builtinTools: string[];
   promptFile: string;
@@ -96,7 +97,7 @@ const FINDER_CONFIG_SCHEMA: ExtensionConfigSchema<FinderExtConfig> = {
 
 export interface FinderConfig {
   systemPrompt?: string;
-  model?: typeof FINDER_DEFAULT_MODEL | string;
+  model?: PiSpawnModel;
   extensionTools?: string[];
   builtinTools?: string[];
 }

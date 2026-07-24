@@ -29,6 +29,7 @@ import {
   piSpawn,
   resolvePrompt,
   zeroUsage,
+  type PiSpawnModel,
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -41,7 +42,7 @@ import {
 const CODE_REVIEW_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:high";
 
 type CodeReviewExtConfig = {
-  model: typeof CODE_REVIEW_DEFAULT_MODEL | string;
+  model: PiSpawnModel;
   builtinTools: string[];
   extensionTools: string[];
   promptFile: string;
@@ -166,7 +167,7 @@ const CODE_REVIEW_CONFIG_SCHEMA: ExtensionConfigSchema<CodeReviewExtConfig> = {
 export interface CodeReviewConfig {
   systemPrompt?: string;
   reportFormat?: string;
-  model?: typeof CODE_REVIEW_DEFAULT_MODEL | string;
+  model?: PiSpawnModel;
   builtinTools?: string[];
   extensionTools?: string[];
 }
