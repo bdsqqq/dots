@@ -45,7 +45,10 @@ export async function htmlToMarkdown(html: string): Promise<string | null> {
     const dom = new JSDOM(html, { url: "about:blank" });
     const document = dom.window.document;
     const result = await Defuddle(document, "about:blank", { markdown: true });
-    const fallback = convertHtmlFragment(document.body?.innerHTML || html, document);
+    const fallback = convertHtmlFragment(
+      document.body?.innerHTML || html,
+      document,
+    );
     const heading = result.title ? `# ${result.title}` : "";
     const content = result.content || fallback;
     const withTitle =

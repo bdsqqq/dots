@@ -49,7 +49,8 @@ function getSkillPathsFromSettings(): string[] {
     if (Array.isArray(settings.skills)) {
       return settings.skills.map((p: string) => {
         if (p === "~") return require("node:os").homedir();
-        if (p.startsWith("~/")) return require("node:os").homedir() + p.slice(1);
+        if (p.startsWith("~/"))
+          return require("node:os").homedir() + p.slice(1);
         return p;
       });
     }
@@ -267,5 +268,3 @@ export {
 export default function (pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createSkillTool()));
 }
-
-

@@ -99,7 +99,6 @@ class LabeledEditor extends CustomEditor {
     super.invalidate();
   }
 
-
   private getLabelsFor(
     position: "top" | "bottom",
     align: "left" | "right",
@@ -516,12 +515,7 @@ function editorExtension(pi: ExtensionAPI): void {
     // replace editor with labeled box-drawing version
     ctx.ui.setEditorComponent(
       (tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
-        editor = new LabeledEditor(
-          tui,
-          editorTheme,
-          keybindings,
-          ctx.ui.theme,
-        );
+        editor = new LabeledEditor(tui, editorTheme, keybindings, ctx.ui.theme);
         return editor;
       },
     );
