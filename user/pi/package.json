@@ -50,7 +50,7 @@
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
     "test": "vitest run",
-    "check": "pnpm run format && pnpm run lint && pnpm run test"
+    "check": "pnpm run format:check && pnpm run lint && pnpm run test"
   },
   "dependencies": {
     "defuddle": "^0.18.1",
