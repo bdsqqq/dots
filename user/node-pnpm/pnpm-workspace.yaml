@@ -27,7 +27,7 @@ allowBuilds:
   tree-sitter-typescript: true
 
 minimumReleaseAgeExclude:
-  - "@earendil-works/pi-agent-core@0.82.0"
-  - "@earendil-works/pi-ai@0.82.0"
-  - "@earendil-works/pi-coding-agent@0.82.0"
-  - "@earendil-works/pi-tui@0.82.0"
+  - "@earendil-works/pi-agent-core"
+  - "@earendil-works/pi-ai"
+  - "@earendil-works/pi-coding-agent"
+  - "@earendil-works/pi-tui"
