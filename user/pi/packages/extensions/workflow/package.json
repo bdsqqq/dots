@@ -14,6 +14,7 @@
     "@bds_pi/librarian": "workspace:*",
     "@bds_pi/look-at": "workspace:*",
     "@bds_pi/oracle": "workspace:*",
+    "@bds_pi/pi-spawn": "workspace:*",
     "@bds_pi/read-session": "workspace:*",
     "@bds_pi/read-web-page": "workspace:*",
     "@bds_pi/workflow-api": "workspace:*",

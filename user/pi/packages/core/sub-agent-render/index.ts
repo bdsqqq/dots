@@ -10,7 +10,7 @@
  */
 
 import * as os from "node:os";
-import type { Message } from "@earendil-works/pi-ai";
+import type { Message, Usage } from "@earendil-works/pi-ai";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import {
   Container,
@@ -20,6 +20,7 @@ import {
 } from "@earendil-works/pi-tui";
 import {
   modelCliString,
+  toToolUsage,
   type PiSpawnModel,
   type PiSpawnSessionMeta,
   type UsageStats,
@@ -126,11 +127,13 @@ export function subAgentResult(
 ): {
   content: { type: "text"; text: string }[];
   details: SingleResult & ToolCostDetails;
+  usage: Usage;
   isError?: boolean;
 } {
   return {
     content: [{ type: "text" as const, text }],
     details: { ...details, cost: details.usage.cost },
+    usage: toToolUsage(details.usage),
     ...(isError && { isError: true }),
   };
 }
@@ -747,6 +750,20 @@ if (import.meta.vitest) {
       expect(result.content).toEqual([{ type: "text", text: "found it" }]);
       expect(result.details.cost).toBe(0.002);
       expect(result.details.model).toBe("gemini-flash");
+      expect(result.usage).toEqual({
+        input: 100,
+        output: 50,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 150,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0.002,
+        },
+      });
       expect(result.isError).toBeUndefined();
     });
 

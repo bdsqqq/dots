@@ -1067,6 +1067,9 @@ importers:
       '@bds_pi/oracle':
         specifier: workspace:*
         version: link:../oracle
+      '@bds_pi/pi-spawn':
+        specifier: workspace:*
+        version: link:../../core/pi-spawn
       '@bds_pi/read-session':
         specifier: workspace:*
         version: link:../read-session

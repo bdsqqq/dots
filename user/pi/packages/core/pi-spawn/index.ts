@@ -18,7 +18,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getModel } from "@earendil-works/pi-ai/compat";
-import type { KnownApi, Message, Model } from "@earendil-works/pi-ai";
+import type { KnownApi, Message, Model, Usage } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveGlobalSettingsPath } from "@bds_pi/config";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
@@ -157,6 +157,29 @@ export function zeroUsage(): UsageStats {
     cost: 0,
     contextTokens: 0,
     turns: 0,
+  };
+}
+
+export function toToolUsage(
+  usage: Pick<
+    UsageStats,
+    "input" | "output" | "cacheRead" | "cacheWrite" | "cost"
+  >,
+): Usage {
+  return {
+    input: usage.input,
+    output: usage.output,
+    cacheRead: usage.cacheRead,
+    cacheWrite: usage.cacheWrite,
+    totalTokens:
+      usage.input + usage.output + usage.cacheRead + usage.cacheWrite,
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: usage.cost,
+    },
   };
 }
 
