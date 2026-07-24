@@ -7,7 +7,7 @@
     ".": "./index.ts"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.10",
+    "@earendil-works/pi-coding-agent": "^0.82.0",
     "vitest": "^3.0.0"
   },
   "pi": {
