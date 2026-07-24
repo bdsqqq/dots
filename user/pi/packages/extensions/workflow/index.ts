@@ -295,7 +295,8 @@ export function createWorkflowTool(): ToolDefinition<
     ].join(" "),
     promptSnippet: "Run a bounded code-driven orchestration workflow",
     parameters: WorkflowParams,
-    constrainedSampling: { type: "json_schema", strict: "prefer" },
+    // args accepts arbitrary JSON, which cannot be represented by OpenAI strict schemas.
+    constrainedSampling: false,
     executionMode: "sequential",
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const limits = normalizeLimits(params.maxConcurrency, params.maxAgents);

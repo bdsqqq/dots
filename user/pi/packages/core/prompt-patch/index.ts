@@ -1,4 +1,63 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type, type TSchema } from "typebox";
+
+function closeObjectSchemas<T>(
+  value: T,
+  seen = new WeakMap<object, unknown>(),
+): T {
+  if (value === null || typeof value !== "object") return value;
+  const cached = seen.get(value);
+  if (cached) return cached as T;
+
+  if (Array.isArray(value)) {
+    const clone: unknown[] = [];
+    seen.set(value, clone);
+    for (const item of value) clone.push(closeObjectSchemas(item, seen));
+    return clone as T;
+  }
+
+  const clone = Object.create(Object.getPrototypeOf(value)) as Record<
+    PropertyKey,
+    unknown
+  >;
+  seen.set(value, clone);
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+    if ("value" in descriptor) {
+      descriptor.value = closeObjectSchemas(descriptor.value, seen);
+    }
+    Object.defineProperty(clone, key, descriptor);
+  }
+  if (clone.type === "object") {
+    if (clone.additionalProperties === undefined) {
+      clone.additionalProperties = false;
+    }
+    const properties = clone.properties as Record<string, TSchema> | undefined;
+    if (properties) {
+      const originallyRequired = new Set(
+        Array.isArray(clone.required) ? clone.required : [],
+      );
+      for (const [key, schema] of Object.entries(properties)) {
+        if (!originallyRequired.has(key)) {
+          properties[key] = Type.Union([schema, Type.Null()]);
+        }
+      }
+      clone.required = Object.keys(properties);
+    }
+  }
+  return clone as T;
+}
+
+function omitOptionalNulls<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(omitOptionalNulls) as T;
+  if (value === null || typeof value !== "object") return value;
+
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (child !== null) cleaned[key] = omitOptionalNulls(child);
+  }
+  return cleaned as T;
+}
 
 /**
  * derives promptSnippet and promptGuidelines from a tool's description
@@ -18,6 +77,10 @@ export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
     patched.promptGuidelines = guidelines;
   }
   if (patched.constrainedSampling === undefined) {
+    patched.parameters = closeObjectSchemas(patched.parameters);
+    const execute = patched.execute.bind(patched);
+    patched.execute = (toolCallId, params, signal, onUpdate, ctx) =>
+      execute(toolCallId, omitOptionalNulls(params), signal, onUpdate, ctx);
     patched.constrainedSampling = {
       type: "json_schema",
       strict: "prefer",
@@ -138,12 +201,34 @@ if (import.meta.vitest) {
       expect(patched.promptGuidelines).toBeUndefined();
     });
 
-    it("prefers strict JSON-schema sampling", () => {
-      const patched = withPromptPatch(makeTool());
+    it("prefers strict JSON-schema sampling with closed object schemas", () => {
+      const tool = makeTool({
+        parameters: Type.Object({
+          nested: Type.Object({ value: Type.String() }),
+          optionalNested: Type.Optional(
+            Type.Object({ value: Type.Optional(Type.String()) }),
+          ),
+        }),
+      });
+      const patched = withPromptPatch(tool);
       expect(patched.constrainedSampling).toEqual({
         type: "json_schema",
         strict: "prefer",
       });
+      expect(patched.parameters).not.toBe(tool.parameters);
+      expect((patched.parameters as any).additionalProperties).toBe(false);
+      expect((patched.parameters as any).required).toEqual([
+        "nested",
+        "optionalNested",
+      ]);
+      const nested = (patched.parameters as any).properties.nested;
+      expect(nested.additionalProperties).toBe(false);
+      expect(nested.required).toEqual(["value"]);
+      const optionalNested = (patched.parameters as any).properties
+        .optionalNested.anyOf[0];
+      expect(optionalNested.additionalProperties).toBe(false);
+      expect(optionalNested.required).toEqual(["value"]);
+      expect((tool.parameters as any).additionalProperties).toBeUndefined();
     });
 
     it("preserves an explicit constrained-sampling choice", () => {
@@ -151,12 +236,36 @@ if (import.meta.vitest) {
       expect(patched.constrainedSampling).toBe(false);
     });
 
+    it("removes strict-schema null placeholders before execution", async () => {
+      let received: unknown;
+      const tool = makeTool({
+        parameters: Type.Object({ value: Type.Optional(Type.String()) }),
+        async execute(_id, params, _signal, _onUpdate, _ctx) {
+          received = params;
+          return {
+            content: [{ type: "text", text: "ok" }],
+            details: undefined,
+          };
+        },
+      });
+      const patched = withPromptPatch(tool);
+
+      await patched.execute(
+        "id",
+        { value: null } as any,
+        undefined,
+        undefined,
+        {} as any,
+      );
+
+      expect(received).toEqual({});
+    });
+
     it("preserves all other tool properties", () => {
       const tool = makeTool({ description: "Desc.\n\n- Guide" });
       const patched = withPromptPatch(tool);
       expect(patched.name).toBe("test_tool");
-      // eslint-disable-next-line typescript-eslint/unbound-method
-      expect(patched.execute).toBe(tool.execute);
+      expect(patched.label).toBe(tool.label);
     });
   });
 }
