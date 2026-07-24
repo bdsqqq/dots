@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Text, TruncatedText } from "@earendil-works/pi-tui";
+import { toToolUsage } from "@bds_pi/pi-spawn";
 import {
   Type,
   type Static,
@@ -414,11 +415,14 @@ export function createWorkflowTool(): ToolDefinition<
           store,
           ctx,
           signal,
-          (progress) =>
+          (progress) => {
+            const details = makeDetails(store, progress.cached, progress.graph);
             onUpdate?.({
               content: [{ type: "text", text: progressText(progress) }],
-              details: makeDetails(store, progress.cached, progress.graph),
-            }),
+              details,
+              usage: toToolUsage(details.usage),
+            });
+          },
         );
         const output = await runtime.run();
         cached = output.cached;
@@ -432,6 +436,7 @@ export function createWorkflowTool(): ToolDefinition<
         return {
           content: [{ type: "text", text: resultText(output.value) }],
           details,
+          usage: toToolUsage(details.usage),
         };
       } catch (error) {
         if (!store.signal.aborted) {
