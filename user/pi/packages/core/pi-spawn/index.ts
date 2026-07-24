@@ -17,8 +17,8 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getModel } from "@earendil-works/pi-ai/compat";
 import type { KnownApi, Message, Model, Usage } from "@earendil-works/pi-ai";
+import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveGlobalSettingsPath } from "@bds_pi/config";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
@@ -47,8 +47,8 @@ export function modelCliString(model: PiSpawnModel): string {
 }
 
 /**
- * resolve a `provider/modelId` string (modelId may contain slashes) via the pi-ai registry.
- * for E2E tests and dynamic env overrides where `getModel` literals are not available.
+ * resolve a built-in `provider/modelId` string (modelId may contain slashes).
+ * dynamic models should be resolved through ModelRuntime instead.
  */
 export function getModelFromCliString(cliModel: string): Model<KnownApi> {
   const i = cliModel.indexOf("/");
@@ -57,7 +57,13 @@ export function getModelFromCliString(cliModel: string): Model<KnownApi> {
   }
   const provider = cliModel.slice(0, i);
   const modelId = cliModel.slice(i + 1);
-  return getModel(provider as any, modelId as any);
+  const model = getBuiltinModel(provider as any, modelId as any) as
+    | Model<KnownApi>
+    | undefined;
+  if (!model) {
+    throw new Error(`[@bds_pi/pi-spawn] model not found: ${cliModel}`);
+  }
+  return model;
 }
 
 export interface UsageStats {
@@ -658,6 +664,23 @@ if (import.meta.vitest) {
     for (const dir of tmpRoots.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  describe("getModelFromCliString", () => {
+    it("resolves built-in models without the compat API", () => {
+      const model = getModelFromCliString("openai-codex/gpt-5.6-sol");
+      expect(model.provider).toBe("openai-codex");
+      expect(model.id).toBe("gpt-5.6-sol");
+    });
+
+    it("rejects malformed and unknown model strings", () => {
+      expect(() => getModelFromCliString("gpt-5.6-sol")).toThrow(
+        "invalid model string",
+      );
+      expect(() => getModelFromCliString("unknown/model")).toThrow(
+        "model not found",
+      );
+    });
   });
 
   describe("resolveSessionRouting", () => {
