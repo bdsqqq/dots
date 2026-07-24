@@ -710,6 +710,7 @@ export function createBashTool(
       const sessionId = ctx.sessionManager.getSessionId();
       command = injectGitTrailers(command, sessionId);
       const displayCommand = parsed.background ? `${command} &` : command;
+      const env = createBashSessionEnvironment(ctx);
 
       const run = () =>
         parsed.background
@@ -721,6 +722,7 @@ export function createBashTool(
               signal,
               backgroundState,
               config,
+              env,
             )
           : runForegroundCommand(
               command,
@@ -730,6 +732,7 @@ export function createBashTool(
               signal,
               onUpdate,
               config,
+              env,
             );
 
       if (isGitCommand(command)) {
@@ -744,6 +747,29 @@ export function createBashTool(
 
 // --- execution ---
 
+const PI_SESSION_ENV_KEYS = [
+  "PI_SESSION_ID",
+  "PI_SESSION_FILE",
+  "PI_PROVIDER",
+  "PI_MODEL",
+  "PI_REASONING_LEVEL",
+] as const;
+
+function createBashSessionEnvironment(ctx: any): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of PI_SESSION_ENV_KEYS) delete env[key];
+
+  const sessionId = ctx.sessionManager?.getSessionId?.();
+  const sessionFile = ctx.sessionManager?.getSessionFile?.();
+  if (sessionId) env.PI_SESSION_ID = sessionId;
+  if (sessionFile) env.PI_SESSION_FILE = sessionFile;
+  if (ctx.model?.provider) env.PI_PROVIDER = ctx.model.provider;
+  if (ctx.model?.id) env.PI_MODEL = ctx.model.id;
+  if (ctx.thinkingLevel) env.PI_REASONING_LEVEL = ctx.thinkingLevel;
+
+  return env;
+}
+
 async function runForegroundCommand(
   command: string,
   displayCommand: string,
@@ -752,6 +778,7 @@ async function runForegroundCommand(
   signal: AbortSignal | undefined,
   onUpdate: ((update: any) => void) | undefined,
   config: BashExtConfig,
+  env: NodeJS.ProcessEnv,
 ): Promise<any> {
   const { shell, args } = getShellConfig();
 
@@ -759,7 +786,7 @@ async function runForegroundCommand(
     const child = spawn(shell, [...args, command], {
       cwd,
       detached: true,
-      env: process.env,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -847,6 +874,7 @@ async function runBackgroundCommand(
   signal: AbortSignal | undefined,
   backgroundState: BackgroundState,
   config: BashExtConfig,
+  env: NodeJS.ProcessEnv,
 ): Promise<any> {
   const { shell, args } = getShellConfig();
   const id = `bg-${backgroundState.nextId++}`;
@@ -857,7 +885,7 @@ async function runBackgroundCommand(
     const child = spawn(shell, [...args, command], {
       cwd,
       detached: true,
-      env: process.env,
+      env,
       stdio: ["ignore", logFd, logFd],
     });
     fs.closeSync(logFd);
@@ -1176,6 +1204,37 @@ if (import.meta.vitest) {
         const text = result.content[0].text;
         expect(text).toContain("stdout");
         expect(text).toContain("stderr");
+      });
+    });
+
+    describe("session environment", () => {
+      it("exposes current session and model metadata", async () => {
+        const result = await executeWithCtx(
+          'printf \'%s|%s|%s|%s|%s\' "$PI_SESSION_ID" "$PI_SESSION_FILE" "$PI_PROVIDER" "$PI_MODEL" "$PI_REASONING_LEVEL"',
+          {
+            sessionManager: {
+              getSessionId: () => "session-123",
+              getSessionFile: () => "/tmp/session-123.jsonl",
+            },
+            model: { provider: "openai-codex", id: "gpt-5.6-sol" },
+            thinkingLevel: "medium",
+          } as any,
+        );
+
+        expect(result.content[0].text).toContain(
+          "session-123|/tmp/session-123.jsonl|openai-codex|gpt-5.6-sol|medium",
+        );
+      });
+
+      it("removes stale inherited metadata", () => {
+        vi.stubEnv("PI_SESSION_FILE", "/tmp/parent.jsonl");
+        vi.stubEnv("PI_PROVIDER", "parent-provider");
+
+        const env = createBashSessionEnvironment(mockCtx);
+
+        expect(env.PI_SESSION_ID).toBe("test-session-id");
+        expect(env.PI_SESSION_FILE).toBeUndefined();
+        expect(env.PI_PROVIDER).toBeUndefined();
       });
     });
 
