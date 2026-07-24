@@ -4,18 +4,30 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@earendil-works/pi-ai':
+      specifier: ^0.82.0
+      version: 0.82.0
+    '@earendil-works/pi-coding-agent':
+      specifier: ^0.82.0
+      version: 0.82.0
+    '@earendil-works/pi-tui':
+      specifier: ^0.82.0
+      version: 0.82.0
+
 importers:
 
   .:
     dependencies:
       '@earendil-works/pi-ai':
-        specifier: '>=0.82.0'
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
-        specifier: '>=0.82.0'
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: '>=0.82.0'
+        specifier: 'catalog:'
         version: 0.82.0
       defuddle:
         specifier: ^0.18.1
@@ -79,7 +91,7 @@ importers:
         specifier: workspace:*
         version: link:../show
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
     devDependencies:
       vitest:
@@ -168,11 +180,11 @@ importers:
         specifier: workspace:*
         version: link:../interpolate
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
     devDependencies:
       '@earendil-works/pi-ai':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
@@ -181,7 +193,7 @@ importers:
   packages/core/prompt-patch:
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
 
   packages/core/sessions: {}
@@ -189,7 +201,7 @@ importers:
   packages/core/show:
     dependencies:
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
     devDependencies:
       vitest:
@@ -203,7 +215,7 @@ importers:
         version: link:../show
     devDependencies:
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -219,7 +231,7 @@ importers:
         version: link:../tool-cost
     devDependencies:
       '@earendil-works/pi-ai':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
@@ -280,10 +292,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -292,7 +304,7 @@ importers:
   packages/extensions/cmux-notify:
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
 
   packages/extensions/code-review:
@@ -335,10 +347,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -369,10 +381,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -427,10 +439,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -461,10 +473,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -473,13 +485,13 @@ importers:
   packages/extensions/editor:
     devDependencies:
       '@earendil-works/pi-ai':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
 
   packages/extensions/finder:
@@ -513,10 +525,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -547,10 +559,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -563,7 +575,7 @@ importers:
         version: link:../../core/mentions
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
@@ -585,10 +597,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -613,10 +625,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -641,10 +653,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -672,10 +684,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -706,10 +718,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -737,10 +749,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -780,10 +792,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -814,10 +826,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -848,10 +860,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -885,10 +897,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -913,10 +925,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -931,11 +943,11 @@ importers:
         specifier: workspace:*
         version: link:../../core/mentions
       '@earendil-works/pi-ai':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
 
   packages/extensions/skill:
@@ -951,10 +963,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -973,13 +985,13 @@ importers:
         version: link:../../core/pi-spawn
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
 
   packages/extensions/tool-harness:
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
@@ -1010,10 +1022,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -1038,10 +1050,10 @@ importers:
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       vitest:
         specifier: ^3.0.0
@@ -1080,10 +1092,10 @@ importers:
         specifier: workspace:*
         version: link:../../core/workflow-api
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
       proper-lockfile:
         specifier: ^4.1.2
@@ -1105,10 +1117,10 @@ importers:
   packages/extensions/zmx:
     devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
+        specifier: 'catalog:'
         version: 0.82.0
 
 packages:
