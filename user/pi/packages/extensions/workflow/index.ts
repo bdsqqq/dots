@@ -294,6 +294,7 @@ export function createWorkflowTool(): ToolDefinition<
     ].join(" "),
     promptSnippet: "Run a bounded code-driven orchestration workflow",
     parameters: WorkflowParams,
+    constrainedSampling: { type: "json_schema", strict: "prefer" },
     executionMode: "sequential",
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const limits = normalizeLimits(params.maxConcurrency, params.maxAgents);

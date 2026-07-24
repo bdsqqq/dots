@@ -17,6 +17,12 @@ export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
   if (!patched.promptGuidelines && guidelines.length > 0) {
     patched.promptGuidelines = guidelines;
   }
+  if (patched.constrainedSampling === undefined) {
+    patched.constrainedSampling = {
+      type: "json_schema",
+      strict: "prefer",
+    };
+  }
 
   return patched;
 }
@@ -130,6 +136,19 @@ if (import.meta.vitest) {
       const patched = withPromptPatch(tool);
       expect(patched.promptSnippet).toBe("");
       expect(patched.promptGuidelines).toBeUndefined();
+    });
+
+    it("prefers strict JSON-schema sampling", () => {
+      const patched = withPromptPatch(makeTool());
+      expect(patched.constrainedSampling).toEqual({
+        type: "json_schema",
+        strict: "prefer",
+      });
+    });
+
+    it("preserves an explicit constrained-sampling choice", () => {
+      const patched = withPromptPatch(makeTool({ constrainedSampling: false }));
+      expect(patched.constrainedSampling).toBe(false);
     });
 
     it("preserves all other tool properties", () => {
