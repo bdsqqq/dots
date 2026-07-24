@@ -71,7 +71,13 @@ export interface UsageStats {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  cacheWrite1h?: number;
+  reasoning?: number;
   cost: number;
+  costInput?: number;
+  costOutput?: number;
+  costCacheRead?: number;
+  costCacheWrite?: number;
   contextTokens: number;
   turns: number;
 }
@@ -169,7 +175,17 @@ export function zeroUsage(): UsageStats {
 export function toToolUsage(
   usage: Pick<
     UsageStats,
-    "input" | "output" | "cacheRead" | "cacheWrite" | "cost"
+    | "input"
+    | "output"
+    | "cacheRead"
+    | "cacheWrite"
+    | "cacheWrite1h"
+    | "reasoning"
+    | "cost"
+    | "costInput"
+    | "costOutput"
+    | "costCacheRead"
+    | "costCacheWrite"
   >,
 ): Usage {
   return {
@@ -177,13 +193,17 @@ export function toToolUsage(
     output: usage.output,
     cacheRead: usage.cacheRead,
     cacheWrite: usage.cacheWrite,
+    ...(usage.cacheWrite1h !== undefined
+      ? { cacheWrite1h: usage.cacheWrite1h }
+      : {}),
+    ...(usage.reasoning !== undefined ? { reasoning: usage.reasoning } : {}),
     totalTokens:
       usage.input + usage.output + usage.cacheRead + usage.cacheWrite,
     cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
+      input: usage.costInput ?? 0,
+      output: usage.costOutput ?? 0,
+      cacheRead: usage.costCacheRead ?? 0,
+      cacheWrite: usage.costCacheWrite ?? 0,
       total: usage.cost,
     },
   };
@@ -521,7 +541,25 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
               result.usage.output += usage.output || 0;
               result.usage.cacheRead += usage.cacheRead || 0;
               result.usage.cacheWrite += usage.cacheWrite || 0;
+              if (usage.cacheWrite1h !== undefined) {
+                result.usage.cacheWrite1h =
+                  (result.usage.cacheWrite1h ?? 0) + usage.cacheWrite1h;
+              }
+              if (usage.reasoning !== undefined) {
+                result.usage.reasoning =
+                  (result.usage.reasoning ?? 0) + usage.reasoning;
+              }
               result.usage.cost += usage.cost?.total || 0;
+              result.usage.costInput =
+                (result.usage.costInput ?? 0) + (usage.cost?.input || 0);
+              result.usage.costOutput =
+                (result.usage.costOutput ?? 0) + (usage.cost?.output || 0);
+              result.usage.costCacheRead =
+                (result.usage.costCacheRead ?? 0) +
+                (usage.cost?.cacheRead || 0);
+              result.usage.costCacheWrite =
+                (result.usage.costCacheWrite ?? 0) +
+                (usage.cost?.cacheWrite || 0);
               result.usage.contextTokens = usage.totalTokens || 0;
             }
             if (!result.model && (msg as any).model)
@@ -664,6 +702,41 @@ if (import.meta.vitest) {
     for (const dir of tmpRoots.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  describe("toToolUsage", () => {
+    it("preserves token and cost breakdowns", () => {
+      expect(
+        toToolUsage({
+          input: 100,
+          output: 25,
+          cacheRead: 50,
+          cacheWrite: 10,
+          cacheWrite1h: 4,
+          reasoning: 8,
+          cost: 1.85,
+          costInput: 1,
+          costOutput: 0.5,
+          costCacheRead: 0.1,
+          costCacheWrite: 0.25,
+        }),
+      ).toEqual({
+        input: 100,
+        output: 25,
+        cacheRead: 50,
+        cacheWrite: 10,
+        cacheWrite1h: 4,
+        reasoning: 8,
+        totalTokens: 185,
+        cost: {
+          input: 1,
+          output: 0.5,
+          cacheRead: 0.1,
+          cacheWrite: 0.25,
+          total: 1.85,
+        },
+      });
+    });
   });
 
   describe("getModelFromCliString", () => {
