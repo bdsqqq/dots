@@ -10,7 +10,9 @@ export async function resolveMention(
   token: MentionToken,
   options: ResolveMentionsOptions,
 ): Promise<ResolvedMention> {
-  const source = options.sources.find((candidate) => candidate.kind === token.kind);
+  const source = options.sources.find(
+    (candidate) => candidate.kind === token.kind,
+  );
   if (!source) {
     return {
       token,

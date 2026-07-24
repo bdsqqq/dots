@@ -27,7 +27,13 @@ const KNOWN_KEYS = new Set([
 
 const PREFIX_BEFORE_KNOWN_KEY = /.*?\b(name|session_name)=/;
 
-type KnownKey = keyof typeof KEY_ALIASES | "name" | "pid" | "clients" | "created" | "start_dir";
+type KnownKey =
+  | keyof typeof KEY_ALIASES
+  | "name"
+  | "pid"
+  | "clients"
+  | "created"
+  | "start_dir";
 
 function normalizeKey(key: string): string {
   return KEY_ALIASES[key as keyof typeof KEY_ALIASES] ?? key;

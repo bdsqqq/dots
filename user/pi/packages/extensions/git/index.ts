@@ -84,7 +84,11 @@ export function createGitExtension() {
     });
 
     pi.on("before_agent_start", async (event) => {
-      if (!parseMentions(event.prompt).some((mention) => mention.kind === "commit")) {
+      if (
+        !parseMentions(event.prompt).some(
+          (mention) => mention.kind === "commit",
+        )
+      ) {
         return;
       }
 

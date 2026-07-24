@@ -1,15 +1,15 @@
 {
   "name": "@bds_pi/zmx",
   "private": true,
+  "bin": {
+    "zmx-rows": "./zmx-rows.ts"
+  },
   "type": "module",
   "main": "./index.ts",
   "types": "./index.ts",
   "exports": {
     ".": "./index.ts",
     "./zmx-rows": "./zmx-rows.ts"
-  },
-  "bin": {
-    "zmx-rows": "./zmx-rows.ts"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.82.0",
