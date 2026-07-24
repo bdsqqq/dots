@@ -6,6 +6,9 @@
   "exports": {
     ".": "./index.ts"
   },
+  "dependencies": {
+    "typebox": "^1.1.38"
+  },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "catalog:"
   }
