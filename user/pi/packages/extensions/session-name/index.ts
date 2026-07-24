@@ -3,8 +3,14 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as piAiCompat from "@earendil-works/pi-ai/compat";
-import type { Api, Model, Message } from "@earendil-works/pi-ai";
+import type {
+  Api,
+  AssistantMessage,
+  Context,
+  Model,
+  Message,
+  SimpleStreamOptions,
+} from "@earendil-works/pi-ai";
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -180,10 +186,14 @@ function parseSummary(text: string): string | null {
   return summary ? summary.slice(0, SUMMARY_MAX_CHARS) : null;
 }
 
-type Complete = typeof piAiCompat.complete;
+type Complete = (
+  model: Model<Api>,
+  context: Context,
+  options: SimpleStreamOptions,
+) => Promise<AssistantMessage>;
 
 async function modelText(
-  complete: Complete,
+  complete: Complete | undefined,
   model: Model<Api>,
   registry: ExtensionContext["modelRegistry"],
   prompt: string,
@@ -197,17 +207,21 @@ async function modelText(
     content: [{ type: "text", text: prompt }],
     timestamp: Date.now(),
   };
-  const response = await complete(
-    model,
-    { messages: [message] },
-    {
-      apiKey: auth.apiKey,
-      headers: auth.headers,
-      signal,
-      maxTokens,
-      reasoningEffort: "low",
-    },
-  );
+  const context = { messages: [message] };
+  const options: SimpleStreamOptions = {
+    apiKey: auth.apiKey,
+    headers: auth.headers,
+    signal,
+    maxTokens,
+    reasoning: "low",
+  };
+  const response = complete
+    ? await complete(model, context, options)
+    : await registry
+        .getProvider(model.provider)
+        ?.streamSimple(model, context, options)
+        .result();
+  if (!response) return null;
   if (response.stopReason !== "stop") return null;
   return response.content
     .filter(
@@ -217,10 +231,7 @@ async function modelText(
     .join("");
 }
 
-function sessionNameExtension(
-  pi: ExtensionAPI,
-  complete: Complete = piAiCompat.complete,
-): void {
+function sessionNameExtension(pi: ExtensionAPI, complete?: Complete): void {
   const { enabled, config: cfg } = getEnabledExtensionConfig(
     "@bds_pi/session-name",
     CONFIG_DEFAULTS,
