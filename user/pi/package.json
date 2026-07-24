@@ -11,18 +11,6 @@
     "url": "git+https://github.com/bdsqqq/dots.git",
     "directory": "user/pi"
   },
-  "workspaces": {
-    "packages": [
-      "packages/core/*",
-      "packages/extensions/*"
-    ],
-    "catalog": {
-      "@earendil-works/pi-ai": "^0.82.0",
-      "@earendil-works/pi-coding-agent": "^0.82.0",
-      "@earendil-works/pi-tui": "^0.82.0",
-      "typebox": "^1.1.38"
-    }
-  },
   "files": [
     "dist"
   ],
@@ -69,9 +57,9 @@
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.82.0",
-    "@earendil-works/pi-coding-agent": ">=0.82.0",
-    "@earendil-works/pi-tui": ">=0.82.0",
+    "@earendil-works/pi-ai": "catalog:",
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "@earendil-works/pi-tui": "catalog:",
     "typebox": ">=1.1.38"
   },
   "engines": {

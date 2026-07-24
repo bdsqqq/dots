@@ -12,7 +12,7 @@
     "@bds_pi/pi-spawn": "workspace:*"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.82.0"
+    "@earendil-works/pi-coding-agent": "catalog:"
   },
   "pi": {
     "extensions": [
