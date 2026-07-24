@@ -157,7 +157,7 @@ export function walkDirSync(
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it } = import.meta.vitest;
   const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = fs;
-  const { join } = path;
+  const join = (...parts: string[]) => path.join(...parts);
   const tmpRoots: string[] = [];
 
   function makeTmpDir(): string {

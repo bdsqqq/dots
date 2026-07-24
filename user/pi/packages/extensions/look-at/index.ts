@@ -27,6 +27,7 @@ import {
   piSpawn,
   resolvePrompt,
   zeroUsage,
+  type PiSpawnModel,
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -40,7 +41,7 @@ import {
 const LOOK_AT_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 type LookAtExtConfig = {
-  model: typeof LOOK_AT_DEFAULT_MODEL | string;
+  model: PiSpawnModel;
   extensionTools: string[];
   builtinTools: string[];
   promptFile: string;

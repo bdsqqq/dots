@@ -32,6 +32,7 @@ import {
   piSpawn,
   resolvePrompt,
   zeroUsage,
+  type PiSpawnModel,
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -52,7 +53,7 @@ const MAX_REDIRECTS = 5;
 const READ_WEB_PAGE_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 type ReadWebPageExtConfig = {
-  model: typeof READ_WEB_PAGE_DEFAULT_MODEL | string;
+  model: PiSpawnModel;
   promptFile: string;
   promptString: string;
 };
@@ -178,7 +179,7 @@ export interface ReadWebPageParams {
 
 export interface ReadWebPageConfig {
   systemPrompt?: string;
-  model?: typeof READ_WEB_PAGE_DEFAULT_MODEL | string;
+  model?: PiSpawnModel;
 }
 
 export function createReadWebPageTool(

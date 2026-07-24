@@ -137,11 +137,16 @@ function createSessionMentionSource(): MentionSource {
           value: `@session/${session.sessionId}`,
           label: `@session/${session.sessionId}`,
           description:
-            session.sessionName || session.firstUserMessage || session.workspace,
+            session.sessionName ||
+            session.firstUserMessage ||
+            session.workspace,
         }));
     },
     resolve(token, context) {
-      const result = resolveMentionableSession(getSessions(context), token.value);
+      const result = resolveMentionableSession(
+        getSessions(context),
+        token.value,
+      );
 
       if (result.status === "resolved") {
         return {
@@ -388,7 +393,8 @@ export function searchSessionBranches(
       config.sessionsDir,
       config.rgTimeoutMs,
     );
-    if (matches !== null) sessionFiles = sessionFiles.filter((f) => matches.has(f));
+    if (matches !== null)
+      sessionFiles = sessionFiles.filter((f) => matches.has(f));
   }
 
   const branches: BranchResult[] = [];
@@ -419,8 +425,12 @@ export function getSessionAutocompleteItems(
   prefix: string,
   opts: { sessionsDir?: string; limit?: number } = {},
 ): AutocompleteItem[] {
-  return getSessionMentionsIndex(opts.sessionsDir ?? DEFAULT_MENTION_SESSIONS_DIR)
-    .filter((session) => session.sessionId.toLowerCase().startsWith(prefix.toLowerCase()))
+  return getSessionMentionsIndex(
+    opts.sessionsDir ?? DEFAULT_MENTION_SESSIONS_DIR,
+  )
+    .filter((session) =>
+      session.sessionId.toLowerCase().startsWith(prefix.toLowerCase()),
+    )
     .slice(0, opts.limit ?? 8)
     .map((session) => ({
       value: `@session/${session.sessionId}`,
@@ -702,21 +712,28 @@ export function createSessionsExtension(
     });
 
     pi.on("before_agent_start", async (event) => {
-      if (!parseMentions(event.prompt).some((mention) => mention.kind === "session")) {
+      if (
+        !parseMentions(event.prompt).some(
+          (mention) => mention.kind === "session",
+        )
+      ) {
         return;
       }
 
       return {
         systemPrompt:
           event.systemPrompt +
-          '\n\nWhen the user includes `@session/<id-or-prefix>`, treat it as a pointer to a prior Pi session. Resolve it with the `read_session` tool before relying on its contents.',
+          "\n\nWhen the user includes `@session/<id-or-prefix>`, treat it as a pointer to a prior Pi session. Resolve it with the `read_session` tool before relying on its contents.",
       };
     });
 
     pi.registerTool(deps.withPromptPatch(createSearchSessionsTool(cfg)));
     pi.registerTool(
       deps.withPromptPatch(
-        createReadSessionTool({ sessionsDir: cfg.sessionsDir, maxChars: 120_000 }),
+        createReadSessionTool({
+          sessionsDir: cfg.sessionsDir,
+          maxChars: 120_000,
+        }),
       ),
     );
   };
@@ -729,18 +746,6 @@ export default sessionsExtension;
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it, vi } = import.meta.vitest;
   const tmpdir = os.tmpdir();
-
-  const SESSION_FIXTURE = {
-    sessionId: "alpha1234",
-    sessionName: "alpha work",
-    workspace: "/repo/app",
-    filePath: "/sessions/alpha.jsonl",
-    startedAt: "2026-03-06T17:00:00.000Z",
-    updatedAt: "2026-03-06T17:10:00.000Z",
-    firstUserMessage: "alpha task",
-    searchableText: "alpha task",
-    branchCount: 1,
-  };
 
   function writeTmpJson(dir: string, filename: string, data: unknown): string {
     const filePath = path.join(dir, filename);

@@ -34,6 +34,7 @@ import {
   piSpawn,
   resolvePrompt,
   zeroUsage,
+  type PiSpawnModel,
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -47,7 +48,7 @@ import {
 const ORACLE_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:high";
 
 type OracleExtConfig = {
-  model: typeof ORACLE_DEFAULT_MODEL | string;
+  model: PiSpawnModel;
   extensionTools: string[];
   builtinTools: string[];
   promptFile: string;
@@ -108,7 +109,7 @@ export interface OracleParams {
 
 export interface OracleConfig {
   systemPrompt?: string;
-  model?: typeof ORACLE_DEFAULT_MODEL | string;
+  model?: PiSpawnModel;
   extensionTools?: string[];
   builtinTools?: string[];
 }

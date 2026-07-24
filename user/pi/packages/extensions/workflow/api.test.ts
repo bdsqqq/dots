@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   codeReview,
   defineWorkflow,
@@ -22,10 +22,7 @@ describe("workflow authoring API", () => {
         context.phase("inspect", () => context.agent(finder({ query: "one" }))),
     });
     const recipe = finder({ query: "one" });
-    if (false) {
-      // @ts-expect-error workflow recipe inputs are immutable after construction
-      recipe.input.query = "two";
-    }
+    expectTypeOf(recipe.input).toEqualTypeOf<Readonly<{ query: string }>>();
 
     expect(Object.isFrozen(definition)).toBe(true);
     expect(Object.isFrozen(definition.meta.phases)).toBe(true);

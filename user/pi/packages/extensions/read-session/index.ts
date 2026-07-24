@@ -21,7 +21,12 @@ import { walkDirSync } from "@bds_pi/fs";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "typebox";
-import { isPiSpawnModelValue, piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
+import {
+  isPiSpawnModelValue,
+  piSpawn,
+  zeroUsage,
+  type PiSpawnModel,
+} from "@bds_pi/pi-spawn";
 import {
   applySessionMeta,
   getFinalOutput,
@@ -39,7 +44,7 @@ import {
 const READ_SESSION_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 type ReadSessionExtConfig = {
-  model: typeof READ_SESSION_DEFAULT_MODEL | string;
+  model: PiSpawnModel;
   sessionsDir: string;
   maxChars: number;
 };
@@ -85,7 +90,7 @@ const DEFAULT_SYSTEM_PROMPT = `You are analyzing a pi coding agent session trans
 
 export interface ReadSessionConfig {
   systemPrompt?: string;
-  model?: typeof READ_SESSION_DEFAULT_MODEL | string;
+  model?: PiSpawnModel;
   sessionsDir: string;
   maxChars: number;
 }

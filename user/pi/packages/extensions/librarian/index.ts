@@ -28,6 +28,7 @@ import {
   piSpawn,
   resolvePrompt,
   zeroUsage,
+  type PiSpawnModel,
 } from "@bds_pi/pi-spawn";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
@@ -40,7 +41,7 @@ import {
 const LIBRARIAN_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:high";
 
 type LibrarianExtConfig = {
-  model: typeof LIBRARIAN_DEFAULT_MODEL | string;
+  model: PiSpawnModel;
   extensionTools: string[];
   builtinTools: string[];
   promptFile: string;
@@ -104,7 +105,7 @@ const LIBRARIAN_CONFIG_SCHEMA: ExtensionConfigSchema<LibrarianExtConfig> = {
 
 export interface LibrarianConfig {
   systemPrompt?: string;
-  model?: typeof LIBRARIAN_DEFAULT_MODEL | string;
+  model?: PiSpawnModel;
   extensionTools?: string[];
   builtinTools?: string[];
 }
