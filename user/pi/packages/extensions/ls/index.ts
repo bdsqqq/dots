@@ -174,16 +174,18 @@ if (import.meta.vitest) {
         .mockReturnValue({ action: "reject", message: "workspace only" });
       vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([]);
 
-      const result = (await tool.execute!(
+      const result = await tool.execute!(
         "test-id",
         { path: "../sibling" },
         undefined,
         undefined,
         { cwd: "/repo/project" } as any,
-      )) as any;
+      );
 
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toBe("path rejected: workspace only");
+      expect("isError" in result && result.isError).toBe(true);
+      expect(result.content.find((part) => part.type === "text")?.text).toBe(
+        "path rejected: workspace only",
+      );
       expect(evaluateToolPolicySpy).toHaveBeenCalledWith(
         "ls",
         { path: "/repo/sibling", sessionCwd: "/repo/project" },

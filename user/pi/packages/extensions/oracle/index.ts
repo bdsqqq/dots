@@ -20,7 +20,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 import { Container, Text } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
+import { Type, type TObject } from "typebox";
 import {
   getEnabledExtensionConfig,
   type ExtensionConfigSchema,
@@ -503,14 +503,13 @@ if (import.meta.vitest) {
 
     it("has correct parameter schema", () => {
       const tool = createOracleTool();
-      const params = tool.parameters as any;
+      const params = tool.parameters as TObject;
 
       expect(params.type).toBe("object");
-      expect(params.properties.task).toBeDefined();
-      expect(params.properties.task.type).toBe("string");
-      expect(params.properties.context).toBeDefined();
-      expect(params.properties.files).toBeDefined();
-      expect(params.properties.files.type).toBe("array");
+      const properties = params.properties as Record<string, { type?: string }>;
+      expect(properties.task?.type).toBe("string");
+      expect(properties.context).toBeDefined();
+      expect(properties.files?.type).toBe("array");
     });
 
     it("applies custom config to tool", () => {

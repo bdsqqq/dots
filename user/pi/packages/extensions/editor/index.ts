@@ -504,12 +504,14 @@ function editorExtension(pi: ExtensionAPI): void {
     // chrome that ToolExecutionComponent forces via Box(1,1,bgFn).
     // the Box padding (1char/1row) remains but is invisible against
     // the terminal's default background.
-    const themeAny = ctx.ui.theme as any;
-    if (themeAny.bgColors instanceof Map) {
+    const theme = ctx.ui.theme as unknown as {
+      bgColors?: Map<string, string>;
+    };
+    if (theme.bgColors instanceof Map) {
       const transparent = "\x1b[49m"; // ANSI bg reset = terminal default
-      themeAny.bgColors.set("toolPendingBg", transparent);
-      themeAny.bgColors.set("toolSuccessBg", transparent);
-      themeAny.bgColors.set("toolErrorBg", transparent);
+      theme.bgColors.set("toolPendingBg", transparent);
+      theme.bgColors.set("toolSuccessBg", transparent);
+      theme.bgColors.set("toolErrorBg", transparent);
     }
 
     // replace editor with labeled box-drawing version
@@ -650,7 +652,7 @@ function editorExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("message_start", async (event, _ctx) => {
-    if ((event.message as any).role === "assistant") {
+    if ("role" in event.message && event.message.role === "assistant") {
       activity.phase = activity.activeTools.size > 0 ? "tool" : "streaming";
       syncActivitySegment();
     }

@@ -1049,7 +1049,10 @@ if (import.meta.vitest) {
           {} as any,
         );
 
-        const lines = (result as any).children[0].render(80);
+        expect(result).toBeInstanceOf(Container);
+        if (!(result instanceof Container))
+          throw new Error("expected container");
+        const lines = result.children[0]?.render(80) ?? [];
         expect(lines.join("\n")).toContain("1 comment");
       });
 

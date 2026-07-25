@@ -18,8 +18,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 // allow test injection via global — checked at runtime, not import
+const fileTrackerGlobal = globalThis as typeof globalThis & {
+  __PI_FILE_CHANGES_DIR__?: string;
+};
 const getFileChangesDir = () =>
-  (globalThis as any).__PI_FILE_CHANGES_DIR__ ??
+  fileTrackerGlobal.__PI_FILE_CHANGES_DIR__ ??
   path.join(os.homedir(), ".pi", "file-changes");
 
 export interface FileChange {
@@ -284,7 +287,7 @@ if (import.meta.vitest) {
     tmpDir = path.join(os.tmpdir(), `pi-file-tracker-test-${Date.now()}`);
     fs.mkdirSync(tmpDir, { recursive: true });
     sessionId = `test-session-${Date.now()}`;
-    (globalThis as any).__PI_FILE_CHANGES_DIR__ = tmpDir;
+    fileTrackerGlobal.__PI_FILE_CHANGES_DIR__ = tmpDir;
   });
 
   afterEach(() => {

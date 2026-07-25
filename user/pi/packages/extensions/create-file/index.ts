@@ -183,16 +183,18 @@ if (import.meta.vitest) {
       vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([]);
       const getSessionId = vi.fn(() => "s");
 
-      const result = (await tool.execute!(
+      const result = await tool.execute!(
         "test-id",
         { path: "../sibling/new.txt", content: "hello" },
         undefined,
         undefined,
         { cwd: "/repo/project", sessionManager: { getSessionId } } as any,
-      )) as any;
+      );
 
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toBe("path rejected: workspace only");
+      expect("isError" in result && result.isError).toBe(true);
+      expect(result.content.find((part) => part.type === "text")?.text).toBe(
+        "path rejected: workspace only",
+      );
       expect(evaluateToolPolicySpy).toHaveBeenCalledWith(
         "write",
         { path: "/repo/sibling/new.txt", sessionCwd: "/repo/project" },
