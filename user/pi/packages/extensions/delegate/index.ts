@@ -58,15 +58,14 @@ type DelegateExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: DelegateExtConfig = {
-  builtinTools: ["read", "grep", "find", "ls", "bash", "edit", "write"],
+  builtinTools: ["read", "grep", "find", "ls", "bash"],
   extensionTools: [
     "read",
     "grep",
     "find",
     "ls",
     "bash",
-    "edit",
-    "write",
+    "apply_patch",
     "format_file",
     "skill",
     "finder",

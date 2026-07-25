@@ -71,7 +71,10 @@ function getActiveToolCallIds(sessionManager: any): string[] {
       // also check content array for tool_use blocks (anthropic format)
       if (Array.isArray(msg.content)) {
         for (const block of msg.content) {
-          if (block.type === "tool_use" && block.id) {
+          if (
+            (block.type === "toolCall" || block.type === "tool_use") &&
+            block.id
+          ) {
             ids.push(block.id);
           }
         }
@@ -221,7 +224,7 @@ export function createUndoEditTool(): ToolDefinition<any> {
 
         let result = diff;
         if (reverted.isNewFile) {
-          result += `\n\n(file was created by the reverted edit — file restored to empty)`;
+          result += `\n\n(file was created by the reverted patch — file removed)`;
         }
 
         return {

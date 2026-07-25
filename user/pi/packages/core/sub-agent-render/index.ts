@@ -216,6 +216,14 @@ function toolArgSummary(
     }
     case "edit":
       return shortenPath((args.file_path || args.path || "...") as string);
+    case "apply_patch": {
+      const input = typeof args.input === "string" ? args.input : "";
+      const paths = input.split("\n").flatMap((line) => {
+        const match = line.match(/^\*\*\* (?:Add|Delete|Update) File: (.+)$/);
+        return match?.[1] ? [shortenPath(match[1])] : [];
+      });
+      return paths.length > 0 ? paths.join(", ") : "patch";
+    }
     case "ls":
       return shortenPath((args.path || ".") as string);
     case "find": {
