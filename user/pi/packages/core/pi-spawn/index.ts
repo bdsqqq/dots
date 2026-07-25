@@ -17,8 +17,13 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { KnownApi, Message, Model, Usage } from "@earendil-works/pi-ai";
-import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
+import type {
+  KnownApi,
+  Message,
+  Model,
+  ToolResultMessage,
+  Usage,
+} from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveGlobalSettingsPath } from "@bds_pi/config";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
@@ -46,24 +51,58 @@ export function modelCliString(model: PiSpawnModel): string {
   return typeof model === "string" ? model : `${model.provider}/${model.id}`;
 }
 
-/**
- * resolve a built-in `provider/modelId` string (modelId may contain slashes).
- * dynamic models should be resolved through ModelRuntime instead.
- */
-export function getModelFromCliString(cliModel: string): Model<KnownApi> {
-  const i = cliModel.indexOf("/");
-  if (i <= 0) {
-    throw new Error(`[@bds_pi/pi-spawn] invalid model string: ${cliModel}`);
-  }
-  const provider = cliModel.slice(0, i);
-  const modelId = cliModel.slice(i + 1);
-  const model = getBuiltinModel(provider as any, modelId as any) as
-    | Model<KnownApi>
-    | undefined;
-  if (!model) {
-    throw new Error(`[@bds_pi/pi-spawn] model not found: ${cliModel}`);
-  }
-  return model;
+export function getToolCalls(messages: Message[]): RecordedToolCall[] {
+  return messages.flatMap((message) => {
+    if (message.role !== "assistant") return [];
+    return message.content.flatMap((part) =>
+      part.type === "toolCall"
+        ? [
+            {
+              id: part.id,
+              name: part.name,
+              arguments: part.arguments,
+            },
+          ]
+        : [],
+    );
+  });
+}
+
+export function getToolResults(
+  messages: Message[],
+  toolName?: string,
+): ToolResultMessage<unknown>[] {
+  return messages.filter(
+    (message): message is ToolResultMessage<unknown> =>
+      message.role === "toolResult" &&
+      (toolName === undefined || message.toolName === toolName),
+  );
+}
+
+export function getToolResultText(
+  result: ToolResultMessage<unknown> | undefined,
+): string {
+  return (
+    result?.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("") ?? ""
+  );
+}
+
+export function getNestedMessages(
+  result: ToolResultMessage<unknown> | undefined,
+): Message[] {
+  if (!result?.details || typeof result.details !== "object") return [];
+  const messages = (result.details as { messages?: unknown }).messages;
+  if (!Array.isArray(messages)) return [];
+  return messages.filter(
+    (message): message is Message =>
+      typeof message === "object" &&
+      message !== null &&
+      "role" in message &&
+      ["user", "assistant", "toolResult"].includes(String(message.role)),
+  );
 }
 
 export interface UsageStats {
@@ -74,10 +113,7 @@ export interface UsageStats {
   cacheWrite1h?: number;
   reasoning?: number;
   cost: number;
-  costInput?: number;
-  costOutput?: number;
-  costCacheRead?: number;
-  costCacheWrite?: number;
+  costBreakdown?: Usage["cost"];
   contextTokens: number;
   turns: number;
 }
@@ -96,6 +132,12 @@ export interface PiSpawnSessionMeta {
   sessionFile?: string;
   leafId?: string;
   unsupported?: string;
+}
+
+export interface RecordedToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
 }
 
 export interface PiSpawnResult {
@@ -182,10 +224,7 @@ export function toToolUsage(
     | "cacheWrite1h"
     | "reasoning"
     | "cost"
-    | "costInput"
-    | "costOutput"
-    | "costCacheRead"
-    | "costCacheWrite"
+    | "costBreakdown"
   >,
 ): Usage {
   return {
@@ -200,10 +239,10 @@ export function toToolUsage(
     totalTokens:
       usage.input + usage.output + usage.cacheRead + usage.cacheWrite,
     cost: {
-      input: usage.costInput ?? 0,
-      output: usage.costOutput ?? 0,
-      cacheRead: usage.costCacheRead ?? 0,
-      cacheWrite: usage.costCacheWrite ?? 0,
+      input: usage.costBreakdown?.input ?? 0,
+      output: usage.costBreakdown?.output ?? 0,
+      cacheRead: usage.costBreakdown?.cacheRead ?? 0,
+      cacheWrite: usage.costBreakdown?.cacheWrite ?? 0,
       total: usage.cost,
     },
   };
@@ -519,9 +558,9 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
       const processLine = (line: string) => {
         if (!line.trim()) return;
-        let event: any;
+        let event: { type?: string; message?: Message };
         try {
-          event = JSON.parse(line);
+          event = JSON.parse(line) as { type?: string; message?: Message };
         } catch {
           return;
         }
@@ -535,7 +574,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
           if (msg.role === "assistant") {
             result.usage.turns++;
-            const usage = (msg as any).usage;
+            const { usage } = msg;
             if (usage) {
               result.usage.input += usage.input || 0;
               result.usage.output += usage.output || 0;
@@ -550,28 +589,27 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
                   (result.usage.reasoning ?? 0) + usage.reasoning;
               }
               result.usage.cost += usage.cost?.total || 0;
-              result.usage.costInput =
-                (result.usage.costInput ?? 0) + (usage.cost?.input || 0);
-              result.usage.costOutput =
-                (result.usage.costOutput ?? 0) + (usage.cost?.output || 0);
-              result.usage.costCacheRead =
-                (result.usage.costCacheRead ?? 0) +
-                (usage.cost?.cacheRead || 0);
-              result.usage.costCacheWrite =
-                (result.usage.costCacheWrite ?? 0) +
-                (usage.cost?.cacheWrite || 0);
+              const previousCost = result.usage.costBreakdown;
+              result.usage.costBreakdown = {
+                input: (previousCost?.input ?? 0) + (usage.cost?.input || 0),
+                output: (previousCost?.output ?? 0) + (usage.cost?.output || 0),
+                cacheRead:
+                  (previousCost?.cacheRead ?? 0) + (usage.cost?.cacheRead || 0),
+                cacheWrite:
+                  (previousCost?.cacheWrite ?? 0) +
+                  (usage.cost?.cacheWrite || 0),
+                total: (previousCost?.total ?? 0) + (usage.cost?.total || 0),
+              };
               result.usage.contextTokens = usage.totalTokens || 0;
             }
-            if (!result.model && (msg as any).model)
-              result.model = (msg as any).model;
-            if ((msg as any).stopReason)
-              result.stopReason = (msg as any).stopReason;
-            if ((msg as any).errorMessage)
-              result.errorMessage = (msg as any).errorMessage;
+            if (!result.model && msg.model) {
+              result.model = `${msg.provider}/${msg.model}`;
+            }
+            if (msg.stopReason) result.stopReason = msg.stopReason;
+            if (msg.errorMessage) result.errorMessage = msg.errorMessage;
 
-            const stopReason = (msg as any).stopReason as string | undefined;
-            const isTurnEnd =
-              stopReason === "end_turn" || stopReason === "stop";
+            const { stopReason } = msg;
+            const isTurnEnd = stopReason === "stop";
             const expectedTurns = config.followUp ? 2 : 1;
             debug("turn_end", {
               stopReason,
@@ -715,10 +753,13 @@ if (import.meta.vitest) {
           cacheWrite1h: 4,
           reasoning: 8,
           cost: 1.85,
-          costInput: 1,
-          costOutput: 0.5,
-          costCacheRead: 0.1,
-          costCacheWrite: 0.25,
+          costBreakdown: {
+            input: 1,
+            output: 0.5,
+            cacheRead: 0.1,
+            cacheWrite: 0.25,
+            total: 1.85,
+          },
         }),
       ).toEqual({
         input: 100,
@@ -736,23 +777,6 @@ if (import.meta.vitest) {
           total: 1.85,
         },
       });
-    });
-  });
-
-  describe("getModelFromCliString", () => {
-    it("resolves built-in models without the compat API", () => {
-      const model = getModelFromCliString("openai-codex/gpt-5.6-sol");
-      expect(model.provider).toBe("openai-codex");
-      expect(model.id).toBe("gpt-5.6-sol");
-    });
-
-    it("rejects malformed and unknown model strings", () => {
-      expect(() => getModelFromCliString("gpt-5.6-sol")).toThrow(
-        "invalid model string",
-      );
-      expect(() => getModelFromCliString("unknown/model")).toThrow(
-        "model not found",
-      );
     });
   });
 

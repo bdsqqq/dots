@@ -1,5 +1,5 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type, type TSchema } from "typebox";
+import { Type, type TObject, type TSchema, type TUnion } from "typebox";
 
 function closeObjectSchemas<T>(
   value: T,
@@ -48,15 +48,50 @@ function closeObjectSchemas<T>(
   return clone as T;
 }
 
-function omitOptionalNulls<T>(value: T): T {
-  if (Array.isArray(value)) return value.map(omitOptionalNulls) as T;
-  if (value === null || typeof value !== "object") return value;
+function schemaAllowsNull(schema: unknown): boolean {
+  if (schema === null || typeof schema !== "object") return false;
+  const value = schema as Record<string, unknown>;
+  if (value.const === null) return true;
+  if (Array.isArray(value.enum) && value.enum.includes(null)) return true;
+  if (value.type === "null") return true;
+  if (Array.isArray(value.type) && value.type.includes("null")) return true;
+  return [value.anyOf, value.oneOf].some(
+    (variants) =>
+      Array.isArray(variants) &&
+      variants.some((item) => schemaAllowsNull(item)),
+  );
+}
 
-  const cleaned: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(value)) {
-    if (child !== null) cleaned[key] = omitOptionalNulls(child);
+function restoreOptionalArguments<T>(value: T, schema: unknown): T {
+  if (value === null || typeof value !== "object") return value;
+  const shape =
+    schema !== null && typeof schema === "object"
+      ? (schema as Record<string, unknown>)
+      : undefined;
+
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      restoreOptionalArguments(item, shape?.items),
+    ) as T;
   }
-  return cleaned as T;
+
+  const properties = shape?.properties as Record<string, unknown> | undefined;
+  const required = new Set(
+    Array.isArray(shape?.required) ? (shape.required as string[]) : [],
+  );
+  const restored: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    const propertySchema = properties?.[key];
+    const syntheticNull =
+      child === null &&
+      propertySchema !== undefined &&
+      !required.has(key) &&
+      !schemaAllowsNull(propertySchema);
+    if (!syntheticNull) {
+      restored[key] = restoreOptionalArguments(child, propertySchema);
+    }
+  }
+  return restored as T;
 }
 
 /**
@@ -77,10 +112,17 @@ export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
     patched.promptGuidelines = guidelines;
   }
   if (patched.constrainedSampling === undefined) {
-    patched.parameters = closeObjectSchemas(patched.parameters);
+    const originalParameters = patched.parameters;
+    patched.parameters = closeObjectSchemas(originalParameters);
     const execute = patched.execute.bind(patched);
     patched.execute = (toolCallId, params, signal, onUpdate, ctx) =>
-      execute(toolCallId, omitOptionalNulls(params), signal, onUpdate, ctx);
+      execute(
+        toolCallId,
+        restoreOptionalArguments(params, originalParameters),
+        signal,
+        onUpdate,
+        ctx,
+      );
     patched.constrainedSampling = {
       type: "json_schema",
       strict: "prefer",
@@ -216,19 +258,20 @@ if (import.meta.vitest) {
         strict: "prefer",
       });
       expect(patched.parameters).not.toBe(tool.parameters);
-      expect((patched.parameters as any).additionalProperties).toBe(false);
-      expect((patched.parameters as any).required).toEqual([
-        "nested",
-        "optionalNested",
-      ]);
-      const nested = (patched.parameters as any).properties.nested;
+      type ClosedObject = TObject & { additionalProperties?: boolean };
+      const parameters = patched.parameters as ClosedObject;
+      expect(parameters.additionalProperties).toBe(false);
+      expect(parameters.required).toEqual(["nested", "optionalNested"]);
+      const nested = parameters.properties.nested as ClosedObject;
       expect(nested.additionalProperties).toBe(false);
       expect(nested.required).toEqual(["value"]);
-      const optionalNested = (patched.parameters as any).properties
-        .optionalNested.anyOf[0];
+      const optional = parameters.properties.optionalNested as TUnion;
+      const optionalNested = optional.anyOf[0] as ClosedObject;
       expect(optionalNested.additionalProperties).toBe(false);
       expect(optionalNested.required).toEqual(["value"]);
-      expect((tool.parameters as any).additionalProperties).toBeUndefined();
+      expect(
+        (tool.parameters as ClosedObject).additionalProperties,
+      ).toBeUndefined();
     });
 
     it("preserves an explicit constrained-sampling choice", () => {
@@ -236,10 +279,17 @@ if (import.meta.vitest) {
       expect(patched.constrainedSampling).toBe(false);
     });
 
-    it("removes strict-schema null placeholders before execution", async () => {
+    it("removes only synthetic optional null placeholders", async () => {
       let received: unknown;
       const tool = makeTool({
-        parameters: Type.Object({ value: Type.Optional(Type.String()) }),
+        parameters: Type.Object({
+          omitted: Type.Optional(Type.String()),
+          nullable: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+          requiredNullable: Type.Union([Type.String(), Type.Null()]),
+          rows: Type.Array(
+            Type.Object({ omitted: Type.Optional(Type.String()) }),
+          ),
+        }),
         async execute(_id, params, _signal, _onUpdate, _ctx) {
           received = params;
           return {
@@ -252,13 +302,22 @@ if (import.meta.vitest) {
 
       await patched.execute(
         "id",
-        { value: null } as any,
+        {
+          omitted: null,
+          nullable: null,
+          requiredNullable: null,
+          rows: [{ omitted: null }],
+        } as never,
         undefined,
         undefined,
-        {} as any,
+        {} as never,
       );
 
-      expect(received).toEqual({});
+      expect(received).toEqual({
+        nullable: null,
+        requiredNullable: null,
+        rows: [{}],
+      });
     });
 
     it("preserves all other tool properties", () => {
