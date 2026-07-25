@@ -866,7 +866,7 @@ if (import.meta.vitest) {
         .mockReturnValue({ action: "reject", message: "workspace only" });
       vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([]);
 
-      const result = (await tool.execute!(
+      const result = await tool.execute!(
         "test-id",
         {
           path: "../sibling/file.txt",
@@ -875,10 +875,12 @@ if (import.meta.vitest) {
         undefined,
         undefined,
         { cwd: "/repo/project" } as any,
-      )) as any;
+      );
 
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toBe("path rejected: workspace only");
+      expect("isError" in result && result.isError).toBe(true);
+      expect(result.content.find((part) => part.type === "text")?.text).toBe(
+        "path rejected: workspace only",
+      );
       expect(evaluateToolPolicySpy).toHaveBeenCalledWith(
         "edit",
         { path: "/repo/sibling/file.txt", sessionCwd: "/repo/project" },
@@ -896,7 +898,7 @@ if (import.meta.vitest) {
       vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([]);
       const saveChangeSpy = vi.spyOn(fileTracker, "saveChange");
 
-      const result = (await tool.execute!(
+      const result = await tool.execute!(
         "tool-1",
         {
           path: filePath,
@@ -911,14 +913,16 @@ if (import.meta.vitest) {
           cwd: tmpDir,
           sessionManager: { getSessionId: () => "session-1" },
         } as any,
-      )) as any;
+      );
 
-      expect(result.isError).toBeUndefined();
+      expect("isError" in result ? result.isError : undefined).toBeUndefined();
       expect(fs.readFileSync(filePath, "utf-8")).toBe(
         "ALPHA\nbeta\ngamma\nDELTA\n",
       );
-      expect(result.content[0].text).toContain("@@");
-      expect(result.details.filePath).toBe(filePath);
+      expect(
+        result.content.find((part) => part.type === "text")?.text,
+      ).toContain("@@");
+      expect((result.details as { filePath?: string }).filePath).toBe(filePath);
       expect(saveChangeSpy).toHaveBeenCalledTimes(1);
     });
   });

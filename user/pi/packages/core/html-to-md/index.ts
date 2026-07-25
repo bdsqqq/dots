@@ -27,8 +27,8 @@ function normalizeMarkdown(text: string): string {
     .trim();
 }
 
-function convertHtmlFragment(html: string, document: any): string {
-  const globals = globalThis as any;
+function convertHtmlFragment(html: string, document: Document): string {
+  const globals = globalThis as typeof globalThis & { document?: Document };
   const previousDocument = globals.document;
   globals.document = document;
   try {

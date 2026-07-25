@@ -89,7 +89,7 @@ export function getDisplayItems(messages: Message[]): DisplayItem[] {
   const errorMap = new Map<string, boolean>();
   for (const msg of messages) {
     if (msg.role === "toolResult") {
-      errorMap.set((msg as any).toolCallId, (msg as any).isError);
+      errorMap.set(msg.toolCallId, msg.isError);
     }
   }
 
@@ -101,10 +101,10 @@ export function getDisplayItems(messages: Message[]): DisplayItem[] {
         else if (part.type === "toolCall") {
           items.push({
             type: "toolCall",
-            id: (part as any).id,
-            name: (part as any).name,
-            args: (part as any).arguments,
-            isError: errorMap.get((part as any).id),
+            id: part.id,
+            name: part.name,
+            args: part.arguments,
+            isError: errorMap.get(part.id),
           });
         }
       }
@@ -363,6 +363,25 @@ export function renderAgentTree(
 
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
+  const assistantMessage = (
+    content: Extract<Message, { role: "assistant" }>["content"],
+  ): Message => ({
+    role: "assistant",
+    content,
+    api: "anthropic-messages",
+    provider: "anthropic",
+    model: "test",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: 0,
+  });
 
   describe("formatUsageStats", () => {
     it("formats all fields when present", () => {
@@ -582,7 +601,7 @@ if (import.meta.vitest) {
   describe("getDisplayItems", () => {
     it("extracts text and tool calls from messages", () => {
       const messages: Message[] = [
-        { role: "user", content: [{ type: "text", text: "q" }] },
+        { role: "user", content: [{ type: "text", text: "q" }] } as Message,
         {
           role: "assistant",
           content: [
@@ -592,14 +611,14 @@ if (import.meta.vitest) {
               id: "tc1",
               name: "read",
               arguments: { path: "/file" },
-            } as any,
+            },
           ],
-        },
+        } as Message,
         {
           role: "toolResult",
           toolCallId: "tc1",
           content: [{ type: "text", text: "file content" }],
-        } as any,
+        } as Message,
       ];
 
       const items = getDisplayItems(messages);
@@ -617,23 +636,20 @@ if (import.meta.vitest) {
 
     it("marks tool calls as error when toolResult has isError", () => {
       const messages: Message[] = [
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "toolCall",
-              id: "tc1",
-              name: "bash",
-              arguments: { cmd: "false" },
-            } as any,
-          ],
-        },
+        assistantMessage([
+          {
+            type: "toolCall",
+            id: "tc1",
+            name: "bash",
+            arguments: { cmd: "false" },
+          },
+        ]),
         {
           role: "toolResult",
           toolCallId: "tc1",
           content: [{ type: "text", text: "error" }],
           isError: true,
-        } as any,
+        } as Message,
       ];
 
       const items = getDisplayItems(messages);
@@ -648,23 +664,20 @@ if (import.meta.vitest) {
 
     it("marks tool calls as success when isError is false", () => {
       const messages: Message[] = [
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "toolCall",
-              id: "tc1",
-              name: "bash",
-              arguments: { cmd: "true" },
-            } as any,
-          ],
-        },
+        assistantMessage([
+          {
+            type: "toolCall",
+            id: "tc1",
+            name: "bash",
+            arguments: { cmd: "true" },
+          },
+        ]),
         {
           role: "toolResult",
           toolCallId: "tc1",
           content: [{ type: "text", text: "done" }],
           isError: false,
-        } as any,
+        } as Message,
       ];
 
       const items = getDisplayItems(messages);

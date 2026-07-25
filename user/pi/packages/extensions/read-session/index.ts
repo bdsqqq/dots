@@ -246,7 +246,7 @@ function renderSessionTree(
     }
 
     if (entry.type === "message") {
-      const msg = (entry as any).message as MessageContent | undefined;
+      const msg = entry.message as MessageContent | undefined;
       if (!msg) return;
 
       if (msg.role === "user") {
@@ -399,8 +399,11 @@ export function createReadSessionTool(
       // spawn sub-agent to extract relevant content
       let parentSession: string | undefined;
       try {
-        parentSession =
-          (ctx as any).sessionManager?.getSessionFile?.() ?? undefined;
+        parentSession = (
+          ctx as typeof ctx & {
+            sessionManager?: { getSessionFile(): string | undefined };
+          }
+        ).sessionManager?.getSessionFile();
       } catch {}
 
       const task = `Here is a pi coding agent session transcript:\n\n${markdown}\n\n---\n\nExtract the information relevant to this goal: ${p.goal}`;
