@@ -6,6 +6,7 @@ catalog:
   "@earendil-works/pi-ai": ^0.82.0
   "@earendil-works/pi-coding-agent": ^0.82.0
   "@earendil-works/pi-tui": ^0.82.0
+  typebox: ^1.1.38
 
 allowBuilds:
   "@google/genai": true
@@ -13,8 +14,9 @@ allowBuilds:
   koffi: true
   protobufjs: true
 
+# Remove after Pi 0.82.0 clears the 48-hour release-age policy.
 minimumReleaseAgeExclude:
-  - "@earendil-works/pi-agent-core"
-  - "@earendil-works/pi-ai"
-  - "@earendil-works/pi-coding-agent"
-  - "@earendil-works/pi-tui"
+  - "@earendil-works/pi-agent-core@0.82.0"
+  - "@earendil-works/pi-ai@0.82.0"
+  - "@earendil-works/pi-coding-agent@0.82.0"
+  - "@earendil-works/pi-tui@0.82.0"

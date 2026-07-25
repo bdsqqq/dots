@@ -14,7 +14,7 @@
     "@bds_pi/prompt-patch": "workspace:*",
     "@bds_pi/read": "workspace:*",
     "@bds_pi/sub-agent-render": "workspace:*",
-    "typebox": "^1.1.24"
+    "typebox": "catalog:"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "catalog:",

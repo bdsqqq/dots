@@ -8,7 +8,7 @@
     "@bds_pi/box-format": "workspace:*",
     "@bds_pi/github-api": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
-    "typebox": "^1.1.24"
+    "typebox": "catalog:"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "catalog:",
