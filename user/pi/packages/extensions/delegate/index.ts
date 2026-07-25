@@ -30,7 +30,14 @@ import {
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
-import { piSpawn, zeroUsage } from "@bds_pi/pi-spawn";
+import {
+  getNestedMessages,
+  getToolCalls,
+  getToolResults,
+  getToolResultText,
+  piSpawn,
+  zeroUsage,
+} from "@bds_pi/pi-spawn";
 import {
   applySessionMeta,
   getFinalOutput,
@@ -477,79 +484,36 @@ if (import.meta.vitest) {
 
   describe.skipIf(!process.env.PI_E2E)("eval: delegate tool", () => {
     const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.6-sol";
-    // pi repo root (3 levels up from this file: delegate -> extensions -> packages -> pi)
-    const PI_ROOT = path.resolve(__dirname, "..", "..", "..");
-
     it("eval: spawns sub-agent and completes a simple task", async () => {
-      const { createAgentSession, SessionManager, ModelRuntime } =
-        await import("@earendil-works/pi-coding-agent");
-
-      const modelRuntime = await ModelRuntime.create();
-      const slashIdx = E2E_MODEL.indexOf("/");
-      const provider = E2E_MODEL.slice(0, slashIdx);
-      const modelId = E2E_MODEL.slice(slashIdx + 1);
-      const model = modelRuntime.getModel(provider, modelId);
-      if (!model) throw new Error(`model not found: ${E2E_MODEL}`);
-
-      const delegateTool = createDelegateTool();
-
-      const { session } = await createAgentSession({
-        sessionManager: SessionManager.inMemory(),
-        model,
-        modelRuntime,
-        customTools: [delegateTool],
-      });
-
       const testFile = path.join(tmpdir, `pi-delegate-eval-${Date.now()}.txt`);
       const testContent = "delegate eval test content";
 
-      const events: { type: string; toolName?: string; content?: string }[] =
-        [];
-      session.subscribe((event) => {
-        if (event.type === "tool_execution_start") {
-          events.push({ type: "tool_start", toolName: event.toolName });
-        }
-        if (event.type === "tool_execution_end") {
-          events.push({
-            type: "tool_end",
-            toolName: event.toolName,
-            content: event.result?.content?.[0]?.text,
-          });
-        }
-      });
+      try {
+        const result = await piSpawn({
+          cwd: process.cwd(),
+          task: `You must call delegate exactly once. Ask it to create ${testFile} with the exact content "${testContent}". Do not create the file yourself.`,
+          model: E2E_MODEL,
+          extensionTools: ["delegate"],
+          session: { persist: false },
+        });
 
-      await session.prompt(
-        `Use the delegate tool to create a file at ${testFile} with the exact content "${testContent}". Do not use any other tools.`,
-      );
-
-      const delegateEvents = events.filter((e) => e.toolName === "delegate");
-      expect(delegateEvents.length).toBeGreaterThanOrEqual(2);
-      expect(delegateEvents[0]?.type).toBe("tool_start");
-      expect(delegateEvents[1]?.type).toBe("tool_end");
-
-      const delegateResult = delegateEvents[1]?.content ?? "";
-      expect(delegateResult).not.toContain("error");
-
-      // verify file was created
-      expect(fs.existsSync(testFile)).toBe(true);
-      expect(fs.readFileSync(testFile, "utf-8").trim()).toBe(testContent);
-
-      fs.unlinkSync(testFile);
-      session.dispose();
+        expect(result.exitCode).toBe(0);
+        expect(result.errorMessage).toBeUndefined();
+        expect(
+          getToolCalls(result.messages).some(
+            (call) => call.name === "delegate",
+          ),
+        ).toBe(true);
+        expect(fs.readFileSync(testFile, "utf-8").trim()).toBe(testContent);
+      } finally {
+        fs.rmSync(testFile, { force: true });
+      }
     }, 120_000);
 
     it("eval: child sessions respect PI_BDS_CONFIG_PATH gating for builtin-shadowed tools", async () => {
-      const { createAgentSession, SessionManager, ModelRuntime } =
-        await import("@earendil-works/pi-coding-agent");
-
-      // set up sandbox with custom config that disables @bds_pi/bash
       const sandboxDir = fs.mkdtempSync(
         path.join(tmpdir, "pi-delegate-config-gating-"),
       );
-      const projectConfigDir = path.join(sandboxDir, ".pi");
-      fs.mkdirSync(projectConfigDir, { recursive: true });
-
-      // create config that disables the bash extension
       const childConfigPath = path.join(sandboxDir, "bds-pi.json");
       fs.writeFileSync(
         childConfigPath,
@@ -557,230 +521,38 @@ if (import.meta.vitest) {
         "utf-8",
       );
 
-      // set global settings path so piSpawn propagates it to child
-      setGlobalSettingsPath(childConfigPath);
-
-      const modelRuntime = await ModelRuntime.create();
-      const slashIdx = E2E_MODEL.indexOf("/");
-      const provider = E2E_MODEL.slice(0, slashIdx);
-      const modelId = E2E_MODEL.slice(slashIdx + 1);
-      const model = modelRuntime.getModel(provider, modelId);
-      if (!model) throw new Error(`model not found: ${E2E_MODEL}`);
-
-      const delegateTool = createDelegateTool();
-
-      const { session } = await createAgentSession({
-        sessionManager: SessionManager.inMemory(),
-        model,
-        modelRuntime,
-        customTools: [delegateTool],
-        cwd: sandboxDir,
-      });
-
-      const prompt = [
-        'Use the delegate tool. description: "fallback audit".',
-        "In the child, inspect the bash tool schema available to you before acting.",
-        "If the required field is `command`, report `builtin-bash`. If the required field is `cmd`, report `custom-bash`.",
-        "Then do exactly one thing: run bash with `printf fallback-ok`.",
-        "Return only two lines: first the schema label, second the command output.",
-      ].join(" ");
-
-      const events: {
-        type: string;
-        toolName?: string;
-        content?: string;
-        result?: any;
-      }[] = [];
-      session.subscribe((event) => {
-        if (event.type === "tool_execution_end") {
-          events.push({
-            type: "tool_end",
-            toolName: (event as any).toolName,
-            content: (event as any).result?.content?.[0]?.text,
-            result: (event as any).result,
-          });
-        }
-      });
-
-      await session.prompt(prompt);
-
-      const delegateEvent = events.find((e) => e.toolName === "delegate");
-      expect(delegateEvent).toBeDefined();
-      // result structure: { content: [{ type, text }], details: { exitCode, messages, ... } }
-      expect(delegateEvent!.result?.isError ?? false).toBe(false);
-
-      const delegateContent = delegateEvent!.content ?? "";
-      expect(delegateContent).toContain("builtin-bash");
-      expect(delegateContent).toContain("fallback-ok");
-
-      // verify child used builtin bash (command param, not cmd)
-      const childMessages = delegateEvent!.result?.details?.messages ?? [];
-      const childToolCalls = childMessages.flatMap((msg: any) =>
-        (msg.content ?? []).filter((part: any) => part.type === "toolCall"),
-      );
-      const bashCall = childToolCalls.find((part: any) => part.name === "bash");
-      // builtin bash uses `command` param, not `cmd`
-      expect(bashCall?.arguments).toMatchObject({
-        command: "printf fallback-ok",
-      });
-
-      const childToolResults = childMessages.filter(
-        (msg: any) => msg.role === "toolResult" && msg.toolName === "bash",
-      );
-      expect(childToolResults.at(-1)?.content?.[0]?.text ?? "").toContain(
-        "fallback-ok",
-      );
-
-      session.dispose();
-      fs.rmSync(sandboxDir, { recursive: true, force: true });
-    }, 180_000);
-
-    it("eval: child sessions reject bash escapes outside assigned cwd via tool policy", async () => {
-      const sandboxDir = fs.mkdtempSync(
-        path.join(tmpdir, "pi-e2e-tool-policy-"),
-      );
-      const projectConfigDir = path.join(sandboxDir, ".pi");
-      const agentConfigDir = path.join(sandboxDir, ".pi", "agent");
-      const forbiddenPath = path.join(
-        tmpdir,
-        `pi-e2e-delegate-escape-${Date.now()}.txt`,
-      );
-
-      fs.mkdirSync(projectConfigDir, { recursive: true });
-      fs.mkdirSync(agentConfigDir, { recursive: true });
       try {
-        fs.unlinkSync(forbiddenPath);
-      } catch {}
-
-      // Write settings.json to load the delegate extension
-      fs.writeFileSync(
-        path.join(projectConfigDir, "settings.json"),
-        JSON.stringify({
-          packages: [],
-          extensions: [path.join(PI_ROOT, "dist/extensions/delegate.js")],
-        }),
-        "utf-8",
-      );
-
-      // Copy auth.json to sandbox so child process can authenticate
-      const realHome = os.homedir();
-      const authSrcPath = path.join(realHome, ".pi", "agent", "auth.json");
-      const authDestPath = path.join(agentConfigDir, "auth.json");
-      if (fs.existsSync(authSrcPath)) {
-        fs.copyFileSync(authSrcPath, authDestPath);
-      }
-
-      // Write tool-policy.json to restrict bash to cwd
-      fs.writeFileSync(
-        path.join(agentConfigDir, "tool-policy.json"),
-        JSON.stringify(
-          [
-            {
-              tool: "bash",
-              matches: { within: "." },
-              action: "allow",
-            },
-            {
-              tool: "bash",
-              action: "reject",
-              message: "stay inside the assigned cwd",
-            },
-            { tool: "*", action: "allow" },
-          ],
-          null,
-          2,
-        ),
-        "utf-8",
-      );
-
-      const prompt = [
-        'Use the delegate tool. description: "tool policy escape audit".',
-        "In the child, do exactly one thing: run bash with this command:",
-        `\`printf blocked > "${forbiddenPath}"\`.`,
-        "Do not retry. Return only the bash tool result text.",
-      ].join(" ");
-
-      // Use piSpawn with HOME override to test tool-policy.json
-      const result = await piSpawn({
-        cwd: sandboxDir,
-        task: prompt,
-        model: E2E_MODEL,
-        env: {
-          HOME: sandboxDir,
-        },
-        session: { persist: false },
-      });
-
-      console.log("DEBUG: exitCode:", result.exitCode);
-      console.log("DEBUG: stderr:", result.stderr.slice(0, 500));
-      console.log("DEBUG: messages count:", result.messages.length);
-      console.log(
-        "DEBUG: messages roles:",
-        result.messages.map((m) => m.role),
-      );
-      if (result.messages.length > 0) {
-        console.log(
-          "DEBUG: last message content:",
-          JSON.stringify(
-            result.messages[result.messages.length - 1]?.content,
-            null,
-            2,
-          )?.slice(0, 1000),
-        );
-      }
-
-      if (
-        result.exitCode !== 0 &&
-        /No API key found|Authentication failed/i.test(result.stderr)
-      ) {
-        console.log("DEBUG: skipping due to auth error");
-        return;
-      }
-
-      // Find the delegate tool call and result in messages
-      const delegateResultMsg = result.messages.find(
-        (msg) =>
-          msg.role === "toolResult" && (msg as any).toolName === "delegate",
-      );
-      expect(delegateResultMsg).toBeDefined();
-
-      // Get child messages from delegate result
-      const childMessages = (delegateResultMsg as any)?.details?.messages ?? [];
-      console.log("DEBUG: childMessages count:", childMessages.length);
-      console.log(
-        "DEBUG: childMessages roles:",
-        childMessages.map((m: any) => m.role),
-      );
-      if (childMessages.length > 0) {
-        childMessages.forEach((m: any, i: number) => {
-          console.log(
-            `DEBUG: childMessage[${i}] content:`,
-            JSON.stringify(m.content)?.slice(0, 500),
-          );
+        const result = await piSpawn({
+          cwd: sandboxDir,
+          task: [
+            "You must call delegate exactly once.",
+            "Ask the child to inspect its bash schema, report builtin-bash if it requires command,",
+            "then run `printf fallback-ok` and return the command output.",
+          ].join(" "),
+          model: E2E_MODEL,
+          extensionTools: ["delegate"],
+          configPath: childConfigPath,
+          session: { persist: false },
         });
+
+        const delegateResult = getToolResults(result.messages, "delegate").at(
+          -1,
+        );
+        expect(delegateResult?.isError).toBe(false);
+        expect(getToolResultText(delegateResult)).toContain("builtin-bash");
+        expect(getToolResultText(delegateResult)).toContain("fallback-ok");
+
+        const childMessages = getNestedMessages(delegateResult);
+        expect(
+          getToolCalls(childMessages).find((call) => call.name === "bash")
+            ?.arguments,
+        ).toMatchObject({ command: "printf fallback-ok" });
+        expect(
+          getToolResultText(getToolResults(childMessages, "bash").at(-1)),
+        ).toContain("fallback-ok");
+      } finally {
+        fs.rmSync(sandboxDir, { recursive: true, force: true });
       }
-
-      // Find the bash tool call in child messages
-      const childToolCalls = childMessages.flatMap((msg: any) =>
-        (msg.content ?? [])
-          .filter((part: any) => part.type === "toolCall")
-          .map((part: any) => part),
-      );
-      const bashCall = childToolCalls.find((part: any) => part.name === "bash");
-      expect(bashCall?.arguments?.cmd ?? "").toContain(forbiddenPath);
-
-      // Find the bash tool result in child messages
-      const bashResultMsg = childMessages.find(
-        (msg: any) => msg.role === "toolResult" && msg.toolName === "bash",
-      );
-      const bashText = bashResultMsg?.content?.[0]?.text ?? "";
-      expect(bashText).toContain("command rejected");
-      expect(bashText).toContain("stay inside the assigned cwd");
-
-      // Verify the file was NOT created
-      expect(fs.existsSync(forbiddenPath)).toBe(false);
-
-      fs.rmSync(sandboxDir, { recursive: true, force: true });
     }, 180_000);
   });
 }

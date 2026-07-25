@@ -627,43 +627,25 @@ if (import.meta.vitest) {
     const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.6-sol";
 
     it("eval: searches codebase and returns results", async () => {
-      const { piSpawn } = await import("@bds_pi/pi-spawn");
+      const { getToolCalls, piSpawn } = await import("@bds_pi/pi-spawn");
 
       const result = await piSpawn({
         cwd: process.cwd(),
-        task: "Use the finder tool to search for where SessionManager class is defined in this codebase. Tell me the file path.",
+        task: 'You must call finder exactly once with query "where is SessionManager defined?". Do not answer from memory.',
         model: E2E_MODEL,
-        extensionTools: ["read", "grep", "find", "ls"],
-        builtinTools: ["read", "grep", "find", "ls"],
+        extensionTools: ["finder"],
         session: { persist: false },
       });
 
       expect(result.exitCode).toBe(0);
       expect(result.errorMessage).toBeUndefined();
 
-      // Check that finder was called by looking at messages
-      const messages = result.messages;
-      const toolCalls = messages
-        .filter((m) => m.role === "assistant")
-        .flatMap(
-          (m) =>
-            m.content?.filter(
-              (
-                c,
-              ): c is {
-                type: "toolCall";
-                id: string;
-                name: string;
-                arguments: Record<string, unknown>;
-              } => c.type === "toolCall",
-            ) ?? [],
-        );
-      const finderCall = toolCalls.find((c) => c.name === "finder");
-
-      expect(finderCall).toBeDefined();
+      expect(
+        getToolCalls(result.messages).some((c) => c.name === "finder"),
+      ).toBe(true);
 
       // Check the final output mentions session-manager
-      const lastAssistant = [...messages]
+      const lastAssistant = [...result.messages]
         .reverse()
         .find((m) => m.role === "assistant");
       const textContent =

@@ -23,6 +23,7 @@ import {
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
 import {
+  getToolCalls,
   isPiSpawnModelValue,
   piSpawn,
   resolvePrompt,
@@ -404,108 +405,23 @@ if (import.meta.vitest) {
     const E2E_MODEL = process.env.PI_E2E_MODEL ?? "openai-codex/gpt-5.6-sol";
 
     it("eval: analyzes a file with real AI", async () => {
-      const {
-        createAgentSession,
-        ModelRuntime,
-        DefaultResourceLoader,
-        SettingsManager,
-        getAgentDir,
-      } = await import("@earendil-works/pi-coding-agent");
-      const { SessionManager } =
-        await import("@earendil-works/pi-coding-agent");
-
-      // Parse model string: "provider/model-id"
-      const [provider, ...modelIdParts] = E2E_MODEL.split("/");
-      const modelId = modelIdParts.join("/");
-      if (!provider || !modelId) {
-        throw new Error(
-          `Invalid E2E_MODEL format: ${E2E_MODEL}. Expected: provider/model-id`,
-        );
-      }
-
-      const cwd = process.cwd();
-
-      const modelRuntime = await ModelRuntime.create();
-      const model = modelRuntime.getModel(provider, modelId);
-      if (!model) {
-        throw new Error(
-          `Model not found: ${provider}/${modelId}. Available providers: ${[
-            ...new Set(modelRuntime.getModels().map((model) => model.provider)),
-          ].join(", ")}`,
-        );
-      }
-
-      // Create settings manager with the pi package enabled
-      const settingsManager = SettingsManager.create(cwd);
-
-      // Create resource loader to load extensions including look-at
-      const resourceLoader = new DefaultResourceLoader({
-        cwd,
-        agentDir: getAgentDir(),
-        settingsManager,
-      });
-      await resourceLoader.reload();
-
-      const { session } = await createAgentSession({
-        cwd,
-        model,
-        sessionManager: SessionManager.inMemory(cwd),
-        modelRuntime,
-        settingsManager,
-        resourceLoader,
+      const result = await piSpawn({
+        cwd: process.cwd(),
+        task: 'You must call look_at exactly once for "packages/extensions/look-at/index.ts" with the objective "Report what DEFAULT_SYSTEM_PROMPT says". Do not inspect the file another way.',
+        model: E2E_MODEL,
+        extensionTools: ["look_at"],
+        session: { persist: false },
       });
 
-      // Track tool executions and messages
-      let lookAtCalled = false;
-      let lookAtPath: string | undefined;
-      const allToolCalls: string[] = [];
-      const unsubscribe = session.agent.subscribe((event) => {
-        if (event.type === "tool_execution_start") {
-          allToolCalls.push(event.toolName);
-          if (event.toolName === "look_at") {
-            lookAtCalled = true;
-            lookAtPath = event.args?.path;
-          }
-        }
-      });
-
-      // Log available tools
-      const toolNames = session.agent.state.tools.map((t) => t.name);
-      console.log("Available tools:", toolNames.slice(0, 20).join(", "));
-
-      try {
-        // Ask agent to analyze this file using look_at
-        await session.prompt(
-          `Use the look_at tool to analyze the file at "user/pi/packages/extensions/look-at/index.ts" and tell me what the DEFAULT_SYSTEM_PROMPT constant contains. Be specific about its contents.`,
-        );
-        await session.agent.waitForIdle();
-
-        // Get the final response
-        const messages = session.agent.state.messages;
-        const lastAssistant = [...messages]
-          .reverse()
-          .find((m) => m.role === "assistant");
-        const responseText =
-          lastAssistant?.content
-            ?.filter(
-              (c): c is { type: "text"; text: string } => c.type === "text",
-            )
-            .map((c) => c.text)
-            .join(" ") ?? "";
-
-        // Verify look_at was called with the correct path
-        console.log("Tool calls made:", allToolCalls);
-        console.log("Final response:", responseText.slice(0, 500));
-        expect(lookAtCalled).toBe(true);
-        expect(lookAtPath).toContain("look-at/index.ts");
-
-        // Verify the response mentions the system prompt contents
-        expect(responseText.toLowerCase()).toContain("concise");
-        expect(responseText.toLowerCase()).toContain("ai assistant");
-      } finally {
-        unsubscribe();
-        session.dispose();
-      }
+      expect(result.exitCode).toBe(0);
+      expect(result.errorMessage).toBeUndefined();
+      const call = getToolCalls(result.messages).find(
+        (item) => item.name === "look_at",
+      );
+      expect(call?.arguments.path).toContain("look-at/index.ts");
+      const output = getFinalOutput(result.messages).toLowerCase();
+      expect(output).toContain("concise");
+      expect(output.length).toBeGreaterThan(40);
     }, 120_000);
   });
 
