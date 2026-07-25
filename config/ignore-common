@@ -101,3 +101,5 @@ rclone_*.txt
 pack-toolbox/temp/
 */assets/minecraft/textures/
 **/*.mcmeta
+
+**/.claude/.cc-writes/
