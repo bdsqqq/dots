@@ -6,6 +6,31 @@ let
   toolsBin = "${toolsDir}/node_modules/.bin";
   developmentServer = "${config.users.users.bdsqqq.home}/.local/share/t3-pi/dist/bin.mjs";
   tailscaleServePort = if isDarwin then 8443 else 443;
+  nativeRuntimePackages =
+    if hostSystem == "aarch64-darwin" then
+      [
+        "@anthropic-ai/claude-agent-sdk-darwin-arm64"
+        "@ff-labs/fff-bin-darwin-arm64"
+        "@yuuang/ffi-rs-darwin-arm64"
+      ]
+    else if hostSystem == "x86_64-darwin" then
+      [
+        "@anthropic-ai/claude-agent-sdk-darwin-x64"
+        "@ff-labs/fff-bin-darwin-x64"
+        "@yuuang/ffi-rs-darwin-x64"
+      ]
+    else if hostSystem == "aarch64-linux" then
+      [
+        "@anthropic-ai/claude-agent-sdk-linux-arm64"
+        "@ff-labs/fff-bin-linux-arm64-gnu"
+        "@yuuang/ffi-rs-linux-arm64-gnu"
+      ]
+    else
+      [
+        "@anthropic-ai/claude-agent-sdk-linux-x64"
+        "@ff-labs/fff-bin-linux-x64-gnu"
+        "@yuuang/ffi-rs-linux-x64-gnu"
+      ];
   t3Serve = pkgs.writeShellScript "t3-code-serve" ''
     set -eu
 
@@ -22,9 +47,128 @@ let
       --tailscale-serve-port ${toString tailscaleServePort} \
       --no-browser
   '';
+  t3PiDeploy = pkgs.writeShellApplication {
+    name = "t3-pi-deploy";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.curl
+      pkgs.gnused
+      pkgs.git
+      pkgs.nodejs
+      pkgs.pnpm
+    ];
+    text = ''
+      repo="''${T3CODE_FORK_DIR:-${config.my.paths.commonplace}/02_temp/t3code}"
+      runtime_dir="$HOME/.local/share/t3-pi"
+      mkdir -p "$runtime_dir"
+      next="$(mktemp -d "$runtime_dir/.dist-next.XXXXXX")"
+      previous="$runtime_dir/.dist-previous"
+      replacement_installed=false
+      previous_saved=false
+      deployment_verified=false
+
+      restart_service() {
+        ${if isDarwin then
+          ''launchctl kickstart -k "gui/$(id -u)/dev.t3-code.server"''
+        else
+          ''systemctl restart t3-code.service''}
+      }
+
+      rollback() {
+        set +e
+        if [ "$replacement_installed" = true ]; then
+          rm -rf "$runtime_dir/dist"
+        fi
+        if [ "$previous_saved" = true ] && [ -e "$previous" ]; then
+          mv "$previous" "$runtime_dir/dist"
+        fi
+        restart_service
+        set -e
+      }
+
+      cleanup() {
+        status=$?
+        trap - EXIT HUP INT TERM
+        if [ "$deployment_verified" != true ] && \
+          { [ "$replacement_installed" = true ] || [ "$previous_saved" = true ]; }; then
+          rollback
+        fi
+        rm -rf "$next"
+        exit "$status"
+      }
+      trap cleanup EXIT
+      trap 'exit 1' HUP INT TERM
+
+      # Recover the last known-good deployment if an earlier process was killed
+      # after the swap but before verification completed.
+      if [ -e "$previous" ]; then
+        rm -rf "$runtime_dir/dist"
+        mv "$previous" "$runtime_dir/dist"
+      fi
+
+      test -x "$repo/node_modules/.bin/vp"
+      (
+        cd "$repo"
+        ./node_modules/.bin/vp run --filter t3 build
+      )
+
+      package="$next/.package"
+      (
+        cd "$repo"
+        pnpm --filter t3 deploy --prod --legacy --no-optional "$package"
+      )
+      cp -R "$package/dist/." "$next/"
+      mv "$package/node_modules" "$next/node_modules"
+      rm -rf "$package"
+
+      for native_package in ${lib.concatMapStringsSep " " lib.escapeShellArg nativeRuntimePackages}; do
+        scope="''${native_package%%/*}"
+        source="$repo/node_modules/.pnpm/node_modules/$native_package"
+        test -e "$source"
+        mkdir -p "$next/node_modules/$scope"
+        cp -RL "$source" "$next/node_modules/$scope/"
+      done
+
+      ${lib.getExe pkgs.git} -C "$repo" rev-parse HEAD > "$next/source-revision"
+      if ! ${lib.getExe pkgs.git} -C "$repo" diff --quiet; then
+        printf '%s\n' dirty >> "$next/source-revision"
+      fi
+
+      rm -rf "$previous"
+      if [ -e "$runtime_dir/dist" ]; then
+        previous_saved=true
+        mv "$runtime_dir/dist" "$previous"
+      fi
+      replacement_installed=true
+      mv "$next" "$runtime_dir/dist"
+
+      if ! restart_service; then
+        exit 1
+      fi
+
+      ready=false
+      for _ in $(seq 1 30); do
+        if ${lib.getExe pkgs.curl} --fail --silent --max-time 1 \
+          http://127.0.0.1:3773/.well-known/t3/environment >/dev/null; then
+          ready=true
+          break
+        fi
+        sleep 1
+      done
+      if [ "$ready" != true ]; then
+        exit 1
+      fi
+
+      deployment_verified=true
+      rm -rf "$previous"
+      printf 'deployed %s\n' "$(cat "$runtime_dir/dist/source-revision")"
+    '';
+  };
 in
 if isLinux then
   {
+    environment.systemPackages = [ t3PiDeploy ];
+
     systemd.services.t3-code = {
       description = "T3 Code server";
       wantedBy = [ "multi-user.target" ];
@@ -60,6 +204,8 @@ if isLinux then
   }
 else if isDarwin then
   {
+    environment.systemPackages = [ t3PiDeploy ];
+
     launchd.user.agents.t3-code = {
       path = [
         pkgs.coreutils
