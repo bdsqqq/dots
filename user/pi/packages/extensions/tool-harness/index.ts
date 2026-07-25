@@ -21,12 +21,12 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
  */
 const TOOL_ALIASES: Record<string, string> = {
   glob: "find",
-  edit_file: "edit",
-  create_file: "write",
+  edit_file: "apply_patch",
+  create_file: "apply_patch",
 };
 
 export function resolveAliases(names: string[]): string[] {
-  return names.map((name) => TOOL_ALIASES[name] ?? name);
+  return [...new Set(names.map((name) => TOOL_ALIASES[name] ?? name))];
 }
 
 export const TOOL_ALIASES_EXPORT: typeof TOOL_ALIASES = TOOL_ALIASES;
@@ -87,18 +87,15 @@ if (import.meta.vitest) {
       expect(resolveAliases(["glob", "read"])).toEqual(["find", "read"]);
     });
 
-    it("resolves edit_file -> edit", () => {
-      expect(resolveAliases(["edit_file"])).toEqual(["edit"]);
-    });
-
-    it("resolves create_file -> write", () => {
-      expect(resolveAliases(["create_file"])).toEqual(["write"]);
+    it("resolves legacy mutation aliases to apply_patch", () => {
+      expect(resolveAliases(["edit_file"])).toEqual(["apply_patch"]);
+      expect(resolveAliases(["create_file"])).toEqual(["apply_patch"]);
     });
 
     it("resolves multiple aliases in one call", () => {
       expect(
         resolveAliases(["glob", "edit_file", "create_file", "bash"]),
-      ).toEqual(["find", "edit", "write", "bash"]);
+      ).toEqual(["find", "apply_patch", "bash"]);
     });
 
     it("returns empty array unchanged", () => {
@@ -246,7 +243,7 @@ if (import.meta.vitest) {
 
         handlers["session_start"]!();
 
-        expect(calls[0]!.tools).toEqual(["find", "edit", "write"]);
+        expect(calls[0]!.tools).toEqual(["find", "apply_patch"]);
       });
 
       it("handles mixed aliases and non-aliases", async () => {
@@ -266,7 +263,12 @@ if (import.meta.vitest) {
 
         handlers["session_start"]!();
 
-        expect(calls[0]!.tools).toEqual(["find", "read", "edit", "bash"]);
+        expect(calls[0]!.tools).toEqual([
+          "find",
+          "read",
+          "apply_patch",
+          "bash",
+        ]);
       });
     });
 

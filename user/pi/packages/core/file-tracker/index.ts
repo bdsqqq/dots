@@ -146,7 +146,12 @@ export function revertChange(
 
   // restore the file to its pre-edit state
   const filePath = change.uri.replace(/^file:\/\//, "");
-  fs.writeFileSync(filePath, change.before, "utf-8");
+  if (change.isNewFile) {
+    fs.rmSync(filePath, { force: true });
+  } else {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, change.before, "utf-8");
+  }
 
   // mark as reverted on disk
   change.reverted = true;
@@ -160,7 +165,7 @@ export function revertChange(
  * filtered to only the given tool call IDs (branch awareness).
  *
  * the caller gets activeToolCallIds by scanning the current
- * session branch for edit_file/create_file tool calls.
+ * session branch for file-mutation tool calls such as apply_patch.
  */
 export function findLatestChange(
   sessionId: string,
@@ -523,7 +528,7 @@ if (import.meta.vitest) {
       const result = revertChange(sessionId, toolCallId, changeId);
 
       expect(result).not.toBeNull();
-      expect(fs.readFileSync(filePath, "utf-8")).toBe("");
+      expect(fs.existsSync(filePath)).toBe(false);
     });
   });
 
