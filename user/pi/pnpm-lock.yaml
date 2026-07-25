@@ -15,6 +15,9 @@ catalogs:
     '@earendil-works/pi-tui':
       specifier: ^0.82.0
       version: 0.82.0
+    typebox:
+      specifier: ^1.1.38
+      version: 1.1.38
 
 importers:
 
@@ -39,7 +42,7 @@ importers:
         specifier: ^29.1.1
         version: 29.1.1
       typebox:
-        specifier: '>=1.1.38'
+        specifier: 'catalog:'
         version: 1.1.38
       typescript:
         specifier: ^5.9.2
@@ -193,7 +196,7 @@ importers:
   packages/core/prompt-patch:
     dependencies:
       typebox:
-        specifier: ^1.1.38
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -292,7 +295,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/tui
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -347,7 +350,7 @@ importers:
         specifier: workspace:*
         version: link:../web-search
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -381,7 +384,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/tool-policy
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -439,7 +442,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/sub-agent-render
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -473,7 +476,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/tool-policy
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -525,7 +528,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/sub-agent-render
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -559,7 +562,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/tool-policy
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -597,7 +600,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/prompt-patch
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -625,7 +628,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/prompt-patch
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -653,7 +656,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/prompt-patch
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -684,7 +687,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/sub-agent-render
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -718,7 +721,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/sub-agent-render
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -749,7 +752,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/tool-policy
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -792,7 +795,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/sub-agent-render
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -826,7 +829,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/tool-policy
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -860,7 +863,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/sub-agent-render
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -897,7 +900,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/sub-agent-render
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -925,7 +928,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/prompt-patch
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -963,7 +966,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/prompt-patch
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -1022,7 +1025,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/tool-policy
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -1050,7 +1053,7 @@ importers:
         specifier: workspace:*
         version: link:../../core/tool-cost
       typebox:
-        specifier: ^1.1.24
+        specifier: 'catalog:'
         version: 1.1.38
     devDependencies:
       '@earendil-works/pi-coding-agent':
@@ -1105,7 +1108,7 @@ importers:
         specifier: ^4.1.2
         version: 4.1.2
       typebox:
-        specifier: ^1.1.38
+        specifier: 'catalog:'
         version: 1.1.38
       typescript:
         specifier: ^5.9.2

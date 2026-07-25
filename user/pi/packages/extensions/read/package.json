@@ -11,7 +11,7 @@
     "@bds_pi/output-buffer": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
     "@bds_pi/tool-policy": "workspace:*",
-    "typebox": "^1.1.24"
+    "typebox": "catalog:"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "catalog:",

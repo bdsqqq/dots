@@ -5,8 +5,4 @@ minimumReleaseAgeExclude:
   - "@tobilu/qmd"
   - "vercel"
   - "@vercel/cli-config"
-  - "@earendil-works/pi-ai"
-  - "@earendil-works/pi-agent-core"
-  - "@earendil-works/pi-coding-agent"
-  - "@earendil-works/pi-tui"
   - "t3"
