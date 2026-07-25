@@ -1,9 +1,8 @@
+export { default as applyPatch } from "../packages/extensions/apply-patch/index";
 export { default as bash } from "../packages/extensions/bash/index";
 export { default as codeReview } from "../packages/extensions/code-review/index";
 export { default as cmuxNotify } from "../packages/extensions/cmux-notify/index";
-export { default as createFile } from "../packages/extensions/create-file/index";
 export { default as delegate } from "../packages/extensions/delegate/index";
-export { default as editFile } from "../packages/extensions/edit-file/index";
 export { default as editor } from "../packages/extensions/editor/index";
 export { default as finder } from "../packages/extensions/finder/index";
 export { default as formatFile } from "../packages/extensions/format-file/index";

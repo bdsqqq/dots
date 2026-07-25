@@ -39,6 +39,21 @@ export async function withFileLock<T>(
   }
 }
 
+/** Acquire multiple path locks in stable order to avoid cross-file deadlocks. */
+export async function withFileLocks<T>(
+  filePaths: string[],
+  fn: () => Promise<T>,
+): Promise<T> {
+  const paths = [
+    ...new Set(filePaths.map((file) => path.resolve(file))),
+  ].sort();
+  const acquire = (index: number): Promise<T> => {
+    const file = paths[index];
+    return file ? withFileLock(file, () => acquire(index + 1)) : fn();
+  };
+  return acquire(0);
+}
+
 // inline tests
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest;
@@ -92,6 +107,28 @@ if (import.meta.vitest) {
         "b-end",
         "c-start",
         "c-end",
+      ]);
+    });
+
+    it("locks multiple paths without deadlocking across argument order", async () => {
+      const order: string[] = [];
+      const run = (name: string, paths: string[]) =>
+        withFileLocks(paths, async () => {
+          order.push(`${name}-start`);
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          order.push(`${name}-end`);
+        });
+
+      await Promise.all([
+        run("first", ["/tmp/a", "/tmp/b"]),
+        run("second", ["/tmp/b", "/tmp/a"]),
+      ]);
+
+      expect(order).toEqual([
+        "first-start",
+        "first-end",
+        "second-start",
+        "second-end",
       ]);
     });
 
