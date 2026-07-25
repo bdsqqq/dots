@@ -101,6 +101,12 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
 
+  packages/core/codex-patch:
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+
   packages/core/config:
     devDependencies:
       vitest:
@@ -268,6 +274,37 @@ importers:
 
   packages/core/workflow-api: {}
 
+  packages/extensions/apply-patch:
+    dependencies:
+      '@bds_pi/codex-patch':
+        specifier: workspace:*
+        version: link:../../core/codex-patch
+      '@bds_pi/file-tracker':
+        specifier: workspace:*
+        version: link:../../core/file-tracker
+      '@bds_pi/fs':
+        specifier: workspace:*
+        version: link:../../core/fs
+      '@bds_pi/mutex':
+        specifier: workspace:*
+        version: link:../../core/mutex
+      '@bds_pi/tool-policy':
+        specifier: workspace:*
+        version: link:../../core/tool-policy
+      typebox:
+        specifier: 'catalog:'
+        version: 1.1.38
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: 'catalog:'
+        version: 0.82.0(ws@8.21.0)(zod@4.4.3)
+      '@earendil-works/pi-tui':
+        specifier: 'catalog:'
+        version: 0.82.0
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+
   packages/extensions/bash:
     dependencies:
       '@bds_pi/box-format':
@@ -363,54 +400,17 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
 
-  packages/extensions/create-file:
-    dependencies:
-      '@bds_pi/box-format':
-        specifier: workspace:*
-        version: link:../../core/box-format
-      '@bds_pi/file-tracker':
-        specifier: workspace:*
-        version: link:../../core/file-tracker
-      '@bds_pi/fs':
-        specifier: workspace:*
-        version: link:../../core/fs
-      '@bds_pi/mutex':
-        specifier: workspace:*
-        version: link:../../core/mutex
-      '@bds_pi/prompt-patch':
-        specifier: workspace:*
-        version: link:../../core/prompt-patch
-      '@bds_pi/tool-policy':
-        specifier: workspace:*
-        version: link:../../core/tool-policy
-      typebox:
-        specifier: 'catalog:'
-        version: 1.1.38
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 0.82.0(ws@8.21.0)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 0.82.0
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
-
   packages/extensions/delegate:
     dependencies:
+      '@bds_pi/apply-patch':
+        specifier: workspace:*
+        version: link:../apply-patch
       '@bds_pi/bash':
         specifier: workspace:*
         version: link:../bash
       '@bds_pi/config':
         specifier: workspace:*
         version: link:../../core/config
-      '@bds_pi/create-file':
-        specifier: workspace:*
-        version: link:../create-file
-      '@bds_pi/edit-file':
-        specifier: workspace:*
-        version: link:../edit-file
       '@bds_pi/finder':
         specifier: workspace:*
         version: link:../finder
@@ -441,40 +441,6 @@ importers:
       '@bds_pi/sub-agent-render':
         specifier: workspace:*
         version: link:../../core/sub-agent-render
-      typebox:
-        specifier: 'catalog:'
-        version: 1.1.38
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 0.82.0(ws@8.21.0)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 0.82.0
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
-
-  packages/extensions/edit-file:
-    dependencies:
-      '@bds_pi/box-format':
-        specifier: workspace:*
-        version: link:../../core/box-format
-      '@bds_pi/file-tracker':
-        specifier: workspace:*
-        version: link:../../core/file-tracker
-      '@bds_pi/fs':
-        specifier: workspace:*
-        version: link:../../core/fs
-      '@bds_pi/mutex':
-        specifier: workspace:*
-        version: link:../../core/mutex
-      '@bds_pi/prompt-patch':
-        specifier: workspace:*
-        version: link:../../core/prompt-patch
-      '@bds_pi/tool-policy':
-        specifier: workspace:*
-        version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
         version: 1.1.38
