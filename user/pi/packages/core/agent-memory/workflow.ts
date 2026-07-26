@@ -1,15 +1,12 @@
 import {
   chmodSync,
-  closeSync,
-  constants,
   copyFileSync,
   existsSync,
-  openSync,
+  linkSync,
   readFileSync,
   readdirSync,
   renameSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import {
@@ -51,17 +48,17 @@ function v2(cfg: MemoryConfig, ...parts: string[]): string {
 
 function exclusive(path: string, value: string): void {
   secureDir(dirname(path));
-  const fd = openSync(
-    path,
-    constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
-    0o600,
+  const temporary = join(
+    dirname(path),
+    `.${basename(path)}.${process.pid}.${Date.now()}.exclusive`,
   );
+  atomicWrite(temporary, value);
   try {
-    writeFileSync(fd, value);
+    linkSync(temporary, path);
+    chmodSync(path, 0o600);
   } finally {
-    closeSync(fd);
+    rmSync(temporary, { force: true });
   }
-  chmodSync(path, 0o600);
 }
 
 export function ensureWorkflowDirs(cfg: MemoryConfig): void {
@@ -489,6 +486,14 @@ type Transaction = {
   reviewId: string;
   state: "prepared" | "applied" | "rollback-prepared" | "rolled-back";
   actions: TransactionAction[];
+  review?: {
+    proposalId: string;
+    decision: "accepted" | "edited";
+    reason: { code: ReviewReasonCode; text: string };
+    reviewedAt: string;
+    originalProposalSha256: string;
+    editedProposalSha256?: string;
+  };
   rollback?: { reviewId: string; reason: string; startedAt: string };
 };
 
@@ -605,25 +610,84 @@ function actionsFor(
 }
 
 function restoreTransactionActions(transaction: Transaction): void {
-  for (const action of transaction.actions.slice().reverse()) {
+  const reversed = transaction.actions.slice().reverse();
+  for (const action of reversed) {
     if (existsSync(action.to)) {
       const currentHash = sha256(readFileSync(action.to));
-      const afterHash = sha256(action.after);
       const beforeHash =
         action.before === undefined ? undefined : sha256(action.before);
-      if (currentHash === afterHash) rmSync(action.to);
-      else if (
-        action.from !== action.to ||
-        beforeHash === undefined ||
-        currentHash !== beforeHash
+      if (
+        currentHash !== sha256(action.after) &&
+        (action.from !== action.to ||
+          beforeHash === undefined ||
+          currentHash !== beforeHash)
       )
         throw new Error(
           `cannot restore transaction with changed artifact ${action.to}`,
         );
     }
-    if (action.from && action.before !== undefined)
+    if (
+      action.from &&
+      action.from !== action.to &&
+      action.before !== undefined &&
+      existsSync(action.from) &&
+      sha256(readFileSync(action.from)) !== sha256(action.before)
+    )
+      throw new Error(
+        `cannot restore transaction over changed source ${action.from}`,
+      );
+  }
+  for (const action of reversed) {
+    if (
+      existsSync(action.to) &&
+      sha256(readFileSync(action.to)) === sha256(action.after)
+    )
+      rmSync(action.to);
+    if (action.from && action.before !== undefined && !existsSync(action.from))
       atomicWrite(action.from, action.before);
   }
+}
+
+function persistAppliedReceipt(
+  cfg: MemoryConfig,
+  transaction: Transaction,
+): ReviewReceipt {
+  if (!transaction.review)
+    throw new Error("transaction is missing review recovery metadata");
+  const receipt: ReviewReceipt = {
+    version: 1,
+    reviewId: transaction.reviewId,
+    proposalId: transaction.review.proposalId,
+    decision: transaction.review.decision,
+    reason: transaction.review.reason,
+    reviewedAt: transaction.review.reviewedAt,
+    reviewer: "local-cli",
+    originalProposalSha256: transaction.review.originalProposalSha256,
+    ...(transaction.review.editedProposalSha256
+      ? { editedProposalSha256: transaction.review.editedProposalSha256 }
+      : {}),
+    transactionId: transaction.id,
+    finalArtifacts: finalArtifacts(cfg, transaction),
+  };
+  const path = v2(cfg, "reviews", `${receipt.reviewId}.json`);
+  const value = `${JSON.stringify(receipt, null, 2)}\n`;
+  if (existsSync(path)) {
+    const current = readFileSync(path, "utf8");
+    if (current !== value) {
+      try {
+        JSON.parse(current);
+        throw new Error("review receipt collision");
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "review receipt collision"
+        )
+          throw error;
+        atomicWrite(path, value);
+      }
+    }
+  } else atomicWrite(path, value);
+  return receipt;
 }
 
 function persistRollbackReceipt(
@@ -632,14 +696,7 @@ function persistRollbackReceipt(
 ): ReviewReceipt | undefined {
   if (!transaction.rollback) return undefined;
   const path = v2(cfg, "reviews", `${transaction.rollback.reviewId}.json`);
-  if (existsSync(path))
-    return JSON.parse(readFileSync(path, "utf8")) as ReviewReceipt;
-  const originalPath = v2(cfg, "reviews", `${transaction.reviewId}.json`);
-  if (!existsSync(originalPath))
-    throw new Error("rollback recovery is missing the original review");
-  const original = JSON.parse(
-    readFileSync(originalPath, "utf8"),
-  ) as ReviewReceipt;
+  const original = persistAppliedReceipt(cfg, transaction);
   const receipt: ReviewReceipt = {
     version: 1,
     reviewId: transaction.rollback.reviewId,
@@ -652,7 +709,23 @@ function persistRollbackReceipt(
     transactionId: transaction.id,
     finalArtifacts: [],
   };
-  exclusive(path, `${JSON.stringify(receipt, null, 2)}\n`);
+  const value = `${JSON.stringify(receipt, null, 2)}\n`;
+  if (existsSync(path)) {
+    const current = readFileSync(path, "utf8");
+    if (current !== value) {
+      try {
+        JSON.parse(current);
+        throw new Error("rollback receipt collision");
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "rollback receipt collision"
+        )
+          throw error;
+        atomicWrite(path, value);
+      }
+    }
+  } else atomicWrite(path, value);
   return receipt;
 }
 
@@ -669,11 +742,8 @@ export function recoverTransactions(cfg: MemoryConfig): number {
       persistRollbackReceipt(cfg, transaction);
       continue;
     }
-    const receiptPath = v2(cfg, "reviews", `${transaction.reviewId}.json`);
-    if (transaction.state === "applied" && existsSync(receiptPath)) {
-      const receipt = JSON.parse(
-        readFileSync(receiptPath, "utf8"),
-      ) as ReviewReceipt;
+    if (transaction.state === "applied") {
+      const receipt = persistAppliedReceipt(cfg, transaction);
       try {
         const found = findProposal(cfg, receipt.proposalId);
         if (found.path.includes("/pending/"))
@@ -683,7 +753,6 @@ export function recoverTransactions(cfg: MemoryConfig): number {
     }
     if (
       transaction.state !== "prepared" &&
-      transaction.state !== "applied" &&
       transaction.state !== "rollback-prepared"
     )
       continue;
@@ -704,18 +773,32 @@ function applyTransaction(cfg: MemoryConfig, transaction: Transaction): void {
   try {
     for (const action of transaction.actions) {
       completed.push(action);
-      atomicWrite(action.to, action.after);
-      if (action.from && action.from !== action.to && existsSync(action.from))
+      if (!action.from) exclusive(action.to, action.after);
+      else if (action.from === action.to) {
+        if (
+          action.before === undefined ||
+          !existsSync(action.from) ||
+          sha256(readFileSync(action.from)) !== sha256(action.before)
+        )
+          throw new Error(`transaction source changed ${action.from}`);
+        atomicWrite(action.to, action.after);
+      } else {
+        if (
+          action.before === undefined ||
+          !existsSync(action.from) ||
+          sha256(readFileSync(action.from)) !== sha256(action.before)
+        )
+          throw new Error(`transaction source changed ${action.from}`);
+        exclusive(action.to, action.after);
+        if (sha256(readFileSync(action.from)) !== sha256(action.before))
+          throw new Error(`transaction source changed ${action.from}`);
         rmSync(action.from);
+      }
     }
     transaction.state = "applied";
     atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
   } catch (error) {
-    for (const action of completed.reverse()) {
-      if (existsSync(action.to)) rmSync(action.to);
-      if (action.from && action.before !== undefined)
-        atomicWrite(action.from, action.before);
-    }
+    restoreTransactionActions({ ...transaction, actions: completed });
     transaction.state = "rolled-back";
     atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
     throw error;
@@ -775,6 +858,14 @@ export function reviewProposal(options: {
       id: `tx_${sha256(`${reviewId}:${JSON.stringify(proposal.operation)}`).slice(0, 24)}`,
       reviewId,
       state: "prepared",
+      review: {
+        proposalId: proposal.id,
+        decision: options.editPath ? "edited" : "accepted",
+        reason: { code: options.reasonCode, text: options.reason.trim() },
+        reviewedAt,
+        originalProposalSha256: sha256(originalRaw),
+        ...(editedHash ? { editedProposalSha256: editedHash } : {}),
+      },
       actions: actionsFor(
         options.cfg,
         proposal.operation as MemoryOperation,
@@ -863,10 +954,12 @@ export function reviewProposal(options: {
     ...(transaction ? { transactionId: transaction.id } : {}),
     finalArtifacts: finals,
   };
-  exclusive(
-    v2(options.cfg, "reviews", `${reviewId}.json`),
-    `${JSON.stringify(receipt, null, 2)}\n`,
-  );
+  if (transaction) persistAppliedReceipt(options.cfg, transaction);
+  else
+    atomicWrite(
+      v2(options.cfg, "reviews", `${reviewId}.json`),
+      `${JSON.stringify(receipt, null, 2)}\n`,
+    );
   if (options.editPath)
     atomicWrite(found.path, `${JSON.stringify(proposal, null, 2)}\n`);
   renameSync(found.path, proposalPath(options.cfg, proposal, "reviewed"));
@@ -897,6 +990,14 @@ export function rollbackReview(
       sha256(readFileSync(action.to)) !== sha256(action.after)
     )
       throw new Error(`rollback blocked by changed artifact ${action.to}`);
+    if (
+      action.from &&
+      action.from !== action.to &&
+      existsSync(action.from) &&
+      (action.before === undefined ||
+        sha256(readFileSync(action.from)) !== sha256(action.before))
+    )
+      throw new Error(`rollback blocked by changed source ${action.from}`);
   }
   const at = new Date().toISOString();
   transaction.rollback = {
