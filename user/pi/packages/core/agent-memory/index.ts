@@ -24,8 +24,24 @@ import {
 } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import {
+  renderPromptCatalog,
+  scanCatalog,
+  writeCatalog,
+  type MemoryConfig,
+} from "./catalog.js";
+import {
+  findProposal,
+  listProposals,
+  migrateV1,
+  reviewProposal,
+  rollbackReview,
+} from "./workflow.js";
+import { REVIEW_REASON_CODES, type ReviewReasonCode } from "./schema.js";
 
 process.umask(0o077);
+
+export { renderPromptCatalog } from "./catalog.js";
 
 type Entry = {
   type: string;
@@ -57,7 +73,7 @@ type Job = {
 const HOME = homedir();
 const envPath = (name: string, fallback: string): string =>
   resolve((process.env[name] || fallback).replace(/^~(?=$|\/)/, HOME));
-const config = () => ({
+const config = (): MemoryConfig & { sessions: string } => ({
   sessions: envPath(
     "PI_CODING_AGENT_SESSION_DIR",
     join(HOME, ".pi/agent/sessions"),
@@ -67,6 +83,10 @@ const config = () => ({
   root: envPath(
     "PI_MEMORY_ROOT",
     join(HOME, "commonplace/01_files/_utilities/agent-memories"),
+  ),
+  skillsRoot: envPath(
+    "PI_MEMORY_SKILLS_ROOT",
+    join(HOME, "commonplace/01_files/nix/user/agents/skills"),
   ),
 });
 const MAX_SOURCE = 128 * 1024 * 1024;
@@ -794,16 +814,7 @@ function reconcile(): void {
     join(cfg.data, "reconcile-report.json"),
     `${JSON.stringify({ version: 1, duplicates, memories: records }, null, 2)}\n`,
   );
-  const topOfMind = records
-    .slice()
-    .reverse()
-    .slice(0, 20)
-    .map((record) => `- ${record.title} — ${record.file}`)
-    .join("\n");
-  atomic(
-    join(cfg.data, "top-of-mind.md"),
-    `<!-- pi-memory:top-of-mind:start -->\n# top of mind\n\n${topOfMind}\n<!-- pi-memory:top-of-mind:end -->\n`,
-  );
+  writeCatalog(cfg);
 }
 
 function maintainUnlocked(): boolean {
@@ -942,9 +953,77 @@ async function main(): Promise<void> {
       promote(args[0]!);
       return true;
     });
-  else
+  else if (command === "catalog") {
+    const cwdIndex = args.indexOf("--cwd");
+    const cwd =
+      cwdIndex >= 0 && args[cwdIndex + 1]
+        ? resolve(args[cwdIndex + 1]!)
+        : process.cwd();
+    const catalog = scanCatalog(config().root);
+    console.log(
+      args.includes("--json")
+        ? JSON.stringify(catalog, null, 2)
+        : renderPromptCatalog(catalog, cwd),
+    );
+  } else if (command === "migrate")
+    result = lock(() => {
+      console.log(
+        JSON.stringify(
+          migrateV1(config(), args.includes("--dry-run")),
+          null,
+          2,
+        ),
+      );
+      return true;
+    });
+  else if (command === "proposals") {
+    const laneIndex = args.indexOf("--lane");
+    const lane = laneIndex >= 0 ? args[laneIndex + 1] : undefined;
+    if (lane !== undefined && lane !== "memory" && lane !== "skill")
+      throw new Error("invalid proposal lane");
+    const statusIndex = args.indexOf("--status");
+    const status = statusIndex >= 0 ? args[statusIndex + 1] : "pending";
+    if (status !== "pending" && status !== "reviewed")
+      throw new Error("invalid proposal status");
+    console.log(JSON.stringify(listProposals(config(), lane, status), null, 2));
+  } else if (command === "show" && args[0])
+    console.log(
+      JSON.stringify(findProposal(config(), args[0]).proposal, null, 2),
+    );
+  else if (command === "review" && args[0] && args[1]) {
+    const reasonCodeIndex = args.indexOf("--reason-code");
+    const reasonIndex = args.indexOf("--reason");
+    const editIndex = args.indexOf("--edit");
+    const reasonCode = args[reasonCodeIndex + 1] as
+      | ReviewReasonCode
+      | undefined;
+    if (!reasonCode || !REVIEW_REASON_CODES.includes(reasonCode))
+      throw new Error("review requires --reason-code");
+    const decision = args[1];
+    if (decision !== "accept" && decision !== "reject")
+      throw new Error("review decision must be accept or reject");
+    const receipt = lock(() =>
+      reviewProposal({
+        cfg: config(),
+        id: args[0]!,
+        decision,
+        reasonCode,
+        reason: args[reasonIndex + 1] || "",
+        ...(editIndex >= 0 && args[editIndex + 1]
+          ? { editPath: args[editIndex + 1] }
+          : {}),
+      }),
+    );
+    if (receipt) console.log(JSON.stringify(receipt, null, 2));
+  } else if (command === "rollback" && args[0]) {
+    const reasonIndex = args.indexOf("--reason");
+    const receipt = lock(() =>
+      rollbackReview(config(), args[0]!, args[reasonIndex + 1] || ""),
+    );
+    if (receipt) console.log(JSON.stringify(receipt, null, 2));
+  } else
     throw new Error(
-      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|promote <candidate>",
+      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|promote <candidate>|catalog [--cwd PATH] [--json]|migrate [--dry-run]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|rollback <review-id> --reason TEXT",
     );
   if (result === false) process.exitCode = 1;
 }
