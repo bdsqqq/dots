@@ -240,7 +240,9 @@ function skillOperation(value: unknown): SkillDraftOperation {
     throw new Error("invalid skill files");
   const files = value.files.map((item) => {
     if (!object(item)) throw new Error("invalid skill file");
-    exactKeys(item, ["content", "path", "sha256"]);
+    const keys = Object.keys(item).sort().join(",");
+    if (keys !== "content,path" && keys !== "content,path,sha256")
+      throw new Error("invalid skill file fields");
     const path = boundedString(item.path, "skill file path", 240);
     const content = boundedString(item.content, "skill file content", 20_000);
     if (
@@ -249,9 +251,10 @@ function skillOperation(value: unknown): SkillDraftOperation {
       !path.startsWith(`${skillName}/`)
     )
       throw new Error("invalid skill file path");
-    if (item.sha256 !== sha256(content))
+    const contentHash = sha256(content);
+    if (item.sha256 !== undefined && item.sha256 !== contentHash)
       throw new Error("invalid skill file hash");
-    return { path, content, sha256: String(item.sha256) };
+    return { path, content, sha256: contentHash };
   });
   return {
     type: "skill-draft",
