@@ -55,6 +55,7 @@ import {
 } from "./history.js";
 import { buildSafeEvidence, type SafeEvidence } from "./evidence.js";
 import { processPipelineBatch } from "./pipeline.js";
+import { scanCorpusHealth } from "./maintenance.js";
 import {
   exportEvalDataset,
   gradeReplay,
@@ -1381,6 +1382,8 @@ async function main(): Promise<void> {
     else result = undefined;
   } else if (command === "metrics")
     console.log(JSON.stringify(memoryMetrics(config()), null, 2));
+  else if (command === "health")
+    console.log(JSON.stringify(scanCorpusHealth(config()), null, 2));
   else if (command === "eval" && args[0] === "export") {
     const outIndex = args.indexOf("--out");
     if (outIndex < 0 || !args[outIndex + 1])
