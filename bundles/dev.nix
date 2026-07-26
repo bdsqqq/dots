@@ -7,13 +7,14 @@ let
   toolsBin = "${repoRoot}/user/node-pnpm/node_modules/.bin";
   agentMemory = pkgs.writeShellApplication {
     name = "pi-memory";
-    runtimeInputs = [ pkgs.bun pkgs.coreutils pkgs.nodejs ];
+    runtimeInputs = [ pkgs.bun pkgs.coreutils pkgs.git pkgs.nodejs ];
     text = ''
       set -euo pipefail
 
       export PI_BIN="${toolsBin}/pi"
       export QMD_BIN="${toolsBin}/qmd"
       export PI_MEMORY_SKILLS_ROOT="${repoRoot}/user/agents/skills"
+      export PI_MEMORY_GIT_REMOTE="git@github.com:bdsqqq/pi-memory.git"
       exec bun run "${repoRoot}/user/pi/packages/core/agent-memory/index.ts" "$@"
     '';
   };

@@ -181,6 +181,7 @@ export function buildEvalCases(cfg: MemoryConfig): EvalCase[] {
   );
   for (const review of reviews) {
     if (
+      review.reviewer !== "local-cli" ||
       (review.decision !== "accepted" && review.decision !== "edited") ||
       (review.transactionId && rolledBackTransactions.has(review.transactionId))
     )
@@ -406,6 +407,9 @@ export function memoryMetrics(cfg: MemoryConfig): Record<string, unknown> {
     },
     reviews: {
       total: reviews.length,
+      autonomous: reviews.filter((review) => review.reviewer !== "local-cli")
+        .length,
+      human: reviews.filter((review) => review.reviewer === "local-cli").length,
       accepted: reviews.filter((review) => review.decision === "accepted")
         .length,
       edited: reviews.filter((review) => review.decision === "edited").length,

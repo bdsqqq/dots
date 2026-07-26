@@ -71,6 +71,7 @@ describe("memory evaluation dataset", () => {
       evidence: [evidence],
       model: "test",
       invoke: () => proposalResponse,
+      autoApplyMemory: false,
     });
     const accepted = reviewProposal({
       cfg,
@@ -122,6 +123,7 @@ describe("memory evaluation dataset", () => {
       scope: "global",
       evidence: [evidence],
       model: "test",
+      autoApplyMemory: false,
       invoke: () =>
         JSON.stringify({
           action: "propose",

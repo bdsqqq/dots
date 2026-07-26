@@ -1,0 +1,847 @@
+import { randomUUID } from "node:crypto";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+} from "node:fs";
+import { dirname, isAbsolute, join, relative } from "node:path";
+import { spawnSync } from "node:child_process";
+import {
+  atomicWrite,
+  contained,
+  sha256,
+  type MemoryConfig,
+} from "./catalog.js";
+
+export type HistoryChange = {
+  path: string;
+  memoryId?: string;
+  beforeSha256?: string;
+  afterSha256?: string;
+  status: string;
+};
+export type HistoryReceiptCore = {
+  version: 2;
+  mutationId: string;
+  kind: string;
+  transactionId?: string;
+  proposalId?: string;
+  reviewId?: string;
+  reason: string;
+  parentCommit?: string;
+  changes: HistoryChange[];
+  provenance: unknown;
+};
+export type HistoryReceipt = HistoryReceiptCore & { commit: string };
+export type InitHistoryReport = {
+  initialized: boolean;
+  dryRun: boolean;
+  gitDir: string;
+  commit?: string;
+  remote?: string;
+};
+export type HistoryEntry = { commit: string; receipt: HistoryReceiptCore };
+export type VerifyHistoryReport = { ok: boolean; issues: string[] };
+export type SyncHistoryReport = {
+  ok: boolean;
+  pushed: boolean;
+  fastForwarded?: boolean;
+  diverged?: boolean;
+  error?: string;
+};
+export type RepairHistoryReport = {
+  mode: "adopt" | "discard";
+  commit?: string;
+};
+
+const TRAILER = "Pi-Memory-Receipt:";
+const PATHS = [":(glob)**/*.md", ":(exclude,glob).qmd/**"];
+const gitDir = (cfg: MemoryConfig) => join(cfg.data, "v2/history.git");
+const receiptsDir = (cfg: MemoryConfig) => join(cfg.data, "v2/mutations");
+const gitEnv = {
+  ...process.env,
+  GIT_AUTHOR_NAME: "pi-memory",
+  GIT_AUTHOR_EMAIL: "pi-memory@local",
+  GIT_COMMITTER_NAME: "pi-memory",
+  GIT_COMMITTER_EMAIL: "pi-memory@local",
+};
+
+function git(cfg: MemoryConfig, args: string[], tolerate = false): string {
+  const result = spawnSync(
+    "git",
+    [`--git-dir=${gitDir(cfg)}`, `--work-tree=${cfg.root}`, ...args],
+    { encoding: "utf8", env: gitEnv },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0 && !tolerate)
+    throw new Error((result.stderr || result.stdout || "git failed").trim());
+  return result.status === 0 ? result.stdout : "";
+}
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object)
+    .sort()
+    .filter((key) => object[key] !== undefined)
+    .map((key) => `${JSON.stringify(key)}:${canonical(object[key])}`)
+    .join(",")}}`;
+}
+const encode = (receipt: HistoryReceiptCore) =>
+  Buffer.from(canonical(receipt)).toString("base64url");
+function decode(message: string): HistoryReceiptCore {
+  const lines = message.split("\n").filter((line) => line.startsWith(TRAILER));
+  if (lines.length !== 1)
+    throw new Error("commit must contain exactly one receipt");
+  const receipt: unknown = JSON.parse(
+    Buffer.from(lines[0]!.slice(TRAILER.length).trim(), "base64url").toString(
+      "utf8",
+    ),
+  );
+  if (
+    !receipt ||
+    typeof receipt !== "object" ||
+    (receipt as HistoryReceiptCore).version !== 2 ||
+    !/^[A-Za-z0-9_.-]+$/.test(
+      String((receipt as HistoryReceiptCore).mutationId ?? ""),
+    ) ||
+    typeof (receipt as HistoryReceiptCore).kind !== "string" ||
+    typeof (receipt as HistoryReceiptCore).reason !== "string" ||
+    !Array.isArray((receipt as HistoryReceiptCore).changes)
+  )
+    throw new Error("invalid history receipt");
+  for (const change of (receipt as HistoryReceiptCore).changes) {
+    if (
+      !change ||
+      typeof change !== "object" ||
+      typeof change.path !== "string" ||
+      typeof change.status !== "string"
+    )
+      throw new Error("invalid history receipt change");
+    memoryPath(change.path);
+  }
+  return receipt as HistoryReceiptCore;
+}
+function revision(value: string): string {
+  if (value !== "HEAD" && !/^[0-9a-f]{40,64}$/.test(value))
+    throw new Error("invalid history revision");
+  return value;
+}
+function memoryPath(value: string): string {
+  if (
+    isAbsolute(value) ||
+    value.startsWith(":") ||
+    value.includes(":") ||
+    /[\0\r\n]/.test(value) ||
+    !value.endsWith(".md") ||
+    value.split(/[/\\]/).includes("..") ||
+    value.includes("\\")
+  )
+    throw new Error("invalid memory path");
+  return value;
+}
+function allowedTrackedPath(value: string): boolean {
+  try {
+    return memoryPath(value) === value && !value.startsWith(".qmd/");
+  } catch {
+    return false;
+  }
+}
+const literalPath = (value: string): string => `:(literal)${memoryPath(value)}`;
+function assertRealMemoryRoot(cfg: MemoryConfig): void {
+  const stat = lstatSync(cfg.root, { throwIfNoEntry: false });
+  if (stat?.isSymbolicLink())
+    throw new Error("memory root cannot be a symlink");
+}
+function markdown(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory() && !entry.isSymbolicLink() && entry.name !== ".qmd"
+      ? markdown(join(dir, entry.name))
+      : entry.isFile() && !entry.isSymbolicLink() && entry.name.endsWith(".md")
+        ? [join(dir, entry.name)]
+        : [],
+  );
+}
+
+function directories(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return [
+    dir,
+    ...readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory() && !entry.isSymbolicLink() && entry.name !== ".qmd"
+        ? directories(join(dir, entry.name))
+        : [],
+    ),
+  ];
+}
+
+export function sealMemoryRoot(cfg: MemoryConfig): void {
+  if (!existsSync(cfg.root)) return;
+  assertRealMemoryRoot(cfg);
+  const qmd = join(cfg.root, ".qmd");
+  if (existsSync(qmd) && lstatSync(qmd).isSymbolicLink())
+    throw new Error("qmd state directory cannot be a symlink");
+  for (const file of markdown(cfg.root)) chmodSync(file, 0o400);
+  for (const dir of directories(cfg.root).reverse()) chmodSync(dir, 0o500);
+  if (existsSync(qmd))
+    for (const dir of directories(qmd)) chmodSync(dir, 0o700);
+}
+export function withWritableMemoryRoot<T>(cfg: MemoryConfig, fn: () => T): T {
+  assertRealMemoryRoot(cfg);
+  mkdirSync(cfg.root, { recursive: true, mode: 0o700 });
+  const qmd = join(cfg.root, ".qmd");
+  if (existsSync(qmd) && lstatSync(qmd).isSymbolicLink())
+    throw new Error("qmd state directory cannot be a symlink");
+  for (const dir of directories(cfg.root)) chmodSync(dir, 0o700);
+  for (const file of markdown(cfg.root)) chmodSync(file, 0o600);
+  try {
+    return fn();
+  } finally {
+    sealMemoryRoot(cfg);
+  }
+}
+export function isHistoryInitialized(cfg: MemoryConfig): boolean {
+  return (
+    existsSync(join(gitDir(cfg), "HEAD")) &&
+    !!git(cfg, ["rev-parse", "--verify", "HEAD"], true).trim()
+  );
+}
+export function initHistory(
+  cfg: MemoryConfig,
+  options: { remote?: string; dryRun?: boolean } = {},
+): InitHistoryReport {
+  assertRealMemoryRoot(cfg);
+  if (isHistoryInitialized(cfg)) {
+    if (options.remote && !options.dryRun) configureRemote(cfg, options.remote);
+    if (!options.dryRun) sealMemoryRoot(cfg);
+    return {
+      initialized: false,
+      dryRun: !!options.dryRun,
+      gitDir: gitDir(cfg),
+      remote: options.remote,
+    };
+  }
+  if (options.remote && /[\r\n\0]/.test(options.remote))
+    throw new Error("invalid remote");
+  if (options.dryRun)
+    return {
+      initialized: true,
+      dryRun: true,
+      gitDir: gitDir(cfg),
+      remote: options.remote,
+    };
+  mkdirSync(dirname(gitDir(cfg)), { recursive: true, mode: 0o700 });
+  mkdirSync(cfg.root, { recursive: true, mode: 0o700 });
+  if (!existsSync(join(gitDir(cfg), "HEAD"))) {
+    const result = spawnSync(
+      "git",
+      ["init", "--bare", "--initial-branch=main", gitDir(cfg)],
+      { encoding: "utf8" },
+    );
+    if (result.error || result.status !== 0)
+      throw result.error ?? new Error(result.stderr);
+  }
+  git(cfg, ["config", "core.bareRepository", "true"]);
+  if (options.remote) configureRemote(cfg, options.remote);
+  const remoteHead = options.remote ? resolveRemoteMain(cfg) : undefined;
+  if (remoteHead) {
+    git(cfg, ["fetch", "origin", "refs/heads/main:refs/remotes/origin/main"]);
+    const remoteIssues = committedHistoryIssues(cfg, remoteHead);
+    if (remoteIssues.length)
+      throw new Error(
+        `remote memory history verification failed: ${remoteIssues.join(", ")}`,
+      );
+    git(cfg, ["update-ref", "refs/heads/main", remoteHead]);
+    git(cfg, ["symbolic-ref", "HEAD", "refs/heads/main"]);
+    if (markdown(cfg.root).length === 0)
+      withWritableMemoryRoot(cfg, () => git(cfg, ["reset", "--hard", "HEAD"]));
+    else {
+      git(cfg, ["reset", "--mixed", "HEAD"]);
+      if (git(cfg, ["status", "--porcelain", "--", ...PATHS]).trim())
+        throw new Error(
+          "existing memory root differs from private remote history",
+        );
+    }
+    const verification = verifyHistory(cfg);
+    if (!verification.ok)
+      throw new Error(
+        `remote memory history verification failed: ${verification.issues.join(", ")}`,
+      );
+    sealMemoryRoot(cfg);
+    return {
+      initialized: true,
+      dryRun: false,
+      gitDir: gitDir(cfg),
+      commit: remoteHead,
+      remote: options.remote,
+    };
+  }
+  const changes = markdown(cfg.root).map((file) => ({
+    path: relative(cfg.root, file),
+    afterSha256: sha256(readFileSync(file)),
+    status: statusFor(relative(cfg.root, file)),
+  }));
+  const commit = withWritableMemoryRoot(
+    cfg,
+    () =>
+      commitInternal(
+        cfg,
+        {
+          version: 2,
+          mutationId: `baseline_${randomUUID().replaceAll("-", "")}`,
+          kind: "baseline",
+          reason: "initial history baseline",
+          changes,
+          provenance: { source: "pi-memory init" },
+        },
+        true,
+      ).commit,
+  );
+  return {
+    initialized: true,
+    dryRun: false,
+    gitDir: gitDir(cfg),
+    commit,
+    remote: options.remote,
+  };
+}
+
+function resolveRemoteMain(cfg: MemoryConfig): string | undefined {
+  const result = spawnSync(
+    "git",
+    [
+      `--git-dir=${gitDir(cfg)}`,
+      `--work-tree=${cfg.root}`,
+      "ls-remote",
+      "--exit-code",
+      "origin",
+      "refs/heads/main",
+    ],
+    { encoding: "utf8", env: gitEnv },
+  );
+  if (result.error) throw result.error;
+  if (result.status === 2) return undefined;
+  if (result.status !== 0)
+    throw new Error(
+      (
+        result.stderr ||
+        result.stdout ||
+        "could not inspect history remote"
+      ).trim(),
+    );
+  const hash = result.stdout.trim().split(/\s+/)[0];
+  if (!hash || !/^[0-9a-f]{40,64}$/.test(hash))
+    throw new Error("invalid remote history head");
+  return hash;
+}
+
+function configureRemote(cfg: MemoryConfig, remote: string): void {
+  if (!remote.trim() || /[\r\n\0]/.test(remote))
+    throw new Error("invalid remote");
+  const existing = remoteUrls(cfg, false);
+  const push = remoteUrls(cfg, true);
+  if (
+    existing.length > 1 ||
+    push.length > 1 ||
+    (existing.length === 1 && (existing[0] !== remote || push[0] !== remote))
+  )
+    throw new Error("history origin does not match configured remote");
+  if (existing.length === 0) git(cfg, ["remote", "add", "origin", remote]);
+  git(cfg, ["config", "piMemory.expectedRemote", remote]);
+}
+
+function remoteUrls(cfg: MemoryConfig, push: boolean): string[] {
+  return git(
+    cfg,
+    ["remote", "get-url", ...(push ? ["--push"] : []), "--all", "origin"],
+    true,
+  )
+    .split("\n")
+    .map((url) => url.trim())
+    .filter(Boolean);
+}
+
+function expectedRemote(cfg: MemoryConfig): string | undefined {
+  return (
+    git(cfg, ["config", "--get", "piMemory.expectedRemote"], true).trim() ||
+    undefined
+  );
+}
+
+function validateRemote(cfg: MemoryConfig): string | undefined {
+  const expected = expectedRemote(cfg);
+  const remotes = git(cfg, ["remote"]).trim();
+  if (!remotes) {
+    if (expected) throw new Error("configured history remote is missing");
+    return undefined;
+  }
+  if (remotes !== "origin" || !expected)
+    throw new Error("unexpected git remotes");
+  const fetch = remoteUrls(cfg, false);
+  const push = remoteUrls(cfg, true);
+  if (
+    fetch.length !== 1 ||
+    push.length !== 1 ||
+    fetch[0] !== expected ||
+    push[0] !== expected
+  )
+    throw new Error("history origin does not match configured remote");
+  return expected;
+}
+
+function readRevisionFile(
+  cfg: MemoryConfig,
+  rev: string,
+  path: string,
+): Buffer | undefined {
+  const object = rev === ":" ? `:${path}` : `${rev}:${path}`;
+  const exists = spawnSync(
+    "git",
+    [
+      `--git-dir=${gitDir(cfg)}`,
+      `--work-tree=${cfg.root}`,
+      "cat-file",
+      "-e",
+      object,
+    ],
+    { encoding: "utf8", env: gitEnv },
+  );
+  if (exists.status !== 0) return undefined;
+  const result = spawnSync(
+    "git",
+    [`--git-dir=${gitDir(cfg)}`, `--work-tree=${cfg.root}`, "show", object],
+    { env: gitEnv },
+  );
+  if (result.error || result.status !== 0) return undefined;
+  return result.stdout;
+}
+
+function statusFor(path: string): string {
+  return path.startsWith(".archive/archived/")
+    ? "archived"
+    : path.startsWith(".archive/retired/")
+      ? "retired"
+      : "active";
+}
+
+function memoryId(text: Buffer | undefined): string | undefined {
+  return /^memory_id:\s*["']?([^"'\n]+)["']?$/m.exec(
+    text?.toString("utf8") ?? "",
+  )?.[1];
+}
+
+function stagedChanges(cfg: MemoryConfig): HistoryChange[] {
+  const fields = git(cfg, [
+    "diff",
+    "--cached",
+    "--name-status",
+    "--no-renames",
+    "-z",
+    "--",
+    ...PATHS,
+  ])
+    .split("\0")
+    .filter(Boolean);
+  const changes: HistoryChange[] = [];
+  for (let index = 0; index < fields.length; index += 2) {
+    const status = fields[index]!;
+    const path = fields[index + 1]!;
+    const before = readRevisionFile(cfg, "HEAD", path);
+    const after = status === "D" ? undefined : readRevisionFile(cfg, ":", path);
+    if (status !== "D" && after === undefined)
+      throw new Error(`staged memory is missing ${path}`);
+    changes.push({
+      path,
+      ...(memoryId(after ?? before)
+        ? { memoryId: memoryId(after ?? before) }
+        : {}),
+      ...(before === undefined ? {} : { beforeSha256: sha256(before) }),
+      ...(after === undefined ? {} : { afterSha256: sha256(after) }),
+      status: statusFor(path),
+    });
+  }
+  return changes;
+}
+
+function committedChanges(cfg: MemoryConfig, commit: string): HistoryChange[] {
+  const fields = git(cfg, [
+    "diff-tree",
+    "--root",
+    "--no-commit-id",
+    "--name-status",
+    "--no-renames",
+    "-r",
+    "-z",
+    commit,
+  ])
+    .split("\0")
+    .filter(Boolean);
+  const parent = git(cfg, ["rev-parse", `${commit}^`], true).trim();
+  const changes: HistoryChange[] = [];
+  for (let index = 0; index < fields.length; index += 2) {
+    const status = fields[index]!;
+    const path = fields[index + 1]!;
+    if (!allowedTrackedPath(path))
+      throw new Error(`history contains disallowed path ${path}`);
+    const before = parent ? readRevisionFile(cfg, parent, path) : undefined;
+    const after =
+      status === "D" ? undefined : readRevisionFile(cfg, commit, path);
+    changes.push({
+      path,
+      ...(memoryId(after ?? before)
+        ? { memoryId: memoryId(after ?? before) }
+        : {}),
+      ...(before === undefined ? {} : { beforeSha256: sha256(before) }),
+      ...(after === undefined ? {} : { afterSha256: sha256(after) }),
+      status: statusFor(path),
+    });
+  }
+  return changes;
+}
+
+function normalizedChanges(changes: HistoryChange[]): string {
+  return canonical(
+    changes
+      .map(({ memoryId: _, ...change }) => change)
+      .sort((left, right) => left.path.localeCompare(right.path)),
+  );
+}
+
+function committedHistoryIssues(cfg: MemoryConfig, ref: string): string[] {
+  const issues: string[] = [];
+  const commits = git(cfg, ["rev-list", revision(ref)])
+    .split("\n")
+    .map((commit) => commit.trim())
+    .filter(Boolean);
+  for (const commit of commits) {
+    const parents = git(cfg, ["rev-list", "--parents", "-n", "1", commit])
+      .trim()
+      .split(/\s+/);
+    if (parents.length > 2) {
+      issues.push(`merge commit is not allowed ${commit}`);
+      continue;
+    }
+    const receipt = decode(git(cfg, ["show", "-s", "--format=%B", commit]));
+    const parent = git(cfg, ["rev-parse", `${commit}^`], true).trim();
+    if ((receipt.parentCommit ?? "") !== parent)
+      issues.push(`receipt parent mismatch ${commit}`);
+    if (
+      normalizedChanges(receipt.changes) !==
+      normalizedChanges(committedChanges(cfg, commit))
+    )
+      issues.push(`receipt diff mismatch ${commit}`);
+  }
+  return issues;
+}
+
+function writeReceiptCache(cfg: MemoryConfig, receipt: HistoryReceipt): void {
+  atomicWrite(
+    contained(
+      receiptsDir(cfg),
+      join(receiptsDir(cfg), `${receipt.mutationId}.json`),
+    ),
+    `${canonical(receipt)}\n`,
+  );
+}
+
+function commitInternal(
+  cfg: MemoryConfig,
+  core: HistoryReceiptCore,
+  empty = false,
+): { commit: string; mutationId: string } {
+  if (core.version !== 2 || !/^[A-Za-z0-9_.-]+$/.test(core.mutationId))
+    throw new Error("invalid history receipt");
+  const parent = git(cfg, ["rev-parse", "HEAD"], true).trim() || undefined;
+  if (core.parentCommit && core.parentCommit !== parent)
+    throw new Error("receipt parent does not match HEAD");
+  let receipt = { ...core, parentCommit: core.parentCommit ?? parent };
+  git(cfg, ["add", "-A", "--", ...PATHS], empty);
+  const actualChanges = stagedChanges(cfg);
+  if (
+    core.kind !== "baseline" &&
+    !core.kind.startsWith("repair-") &&
+    normalizedChanges(core.changes) !== normalizedChanges(actualChanges)
+  )
+    throw new Error("history receipt changes do not match staged memory diff");
+  receipt = { ...receipt, changes: actualChanges };
+  if (!empty && git(cfg, ["diff", "--cached", "--quiet"], true) === "") {
+    const changed = git(cfg, ["diff", "--cached", "--name-only"]);
+    if (!changed.trim()) throw new Error("no memory changes to commit");
+  }
+  git(cfg, [
+    "commit",
+    ...(empty ? ["--allow-empty"] : []),
+    "-m",
+    `pi-memory ${core.kind}
+
+${TRAILER} ${encode(receipt)}`,
+  ]);
+  const hash = git(cfg, ["rev-parse", "HEAD"]).trim();
+  writeReceiptCache(cfg, { ...receipt, commit: hash });
+  return { commit: hash, mutationId: core.mutationId };
+}
+export function commitHistory(
+  cfg: MemoryConfig,
+  receiptCore: HistoryReceiptCore,
+  options: { allowEmpty?: boolean } = {},
+): { commit: string; mutationId: string } {
+  if (!isHistoryInitialized(cfg)) throw new Error("history not initialized");
+  return withWritableMemoryRoot(cfg, () => {
+    try {
+      return commitInternal(cfg, receiptCore, options.allowEmpty);
+    } catch (error) {
+      git(cfg, ["reset", "--mixed", "HEAD"], true);
+      throw error;
+    }
+  });
+}
+export function headHistoryReceipt(cfg: MemoryConfig): HistoryReceipt | null {
+  if (!isHistoryInitialized(cfg)) return null;
+  const commit = git(cfg, ["rev-parse", "HEAD"]).trim();
+  return { ...decode(git(cfg, ["show", "-s", "--format=%B", "HEAD"])), commit };
+}
+export function listHistory(
+  cfg: MemoryConfig,
+  options: { memory?: string; limit?: number } = {},
+): HistoryEntry[] {
+  const limit = options.limit ?? 50;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
+    throw new Error("invalid history limit");
+  const args = ["log", `--max-count=${limit}`, "--format=%H%x00%B%x00"];
+  if (options.memory) args.push("--", literalPath(options.memory));
+  const fields = git(cfg, args)
+    .split("\0")
+    .filter((field) => field.length);
+  const entries: HistoryEntry[] = [];
+  for (let i = 0; i + 1 < fields.length; i += 2)
+    entries.push({
+      commit: fields[i]!.trim(),
+      receipt: decode(fields[i + 1]!),
+    });
+  return entries;
+}
+export function showHistory(
+  cfg: MemoryConfig,
+  rev: string,
+  path?: string,
+): string {
+  return path
+    ? git(cfg, ["show", `${revision(rev)}:${memoryPath(path)}`])
+    : git(cfg, ["show", "--stat", "--patch", revision(rev)]);
+}
+export function diffHistory(
+  cfg: MemoryConfig,
+  from?: string,
+  to = "HEAD",
+  memory?: string,
+): string {
+  const resolvedFrom = from ?? git(cfg, ["rev-parse", "HEAD^"], true).trim();
+  if (!resolvedFrom) throw new Error("history has no parent commit");
+  const args = ["diff", revision(resolvedFrom), revision(to)];
+  if (memory) args.push("--", literalPath(memory));
+  return git(cfg, args);
+}
+export function verifyHistory(cfg: MemoryConfig): VerifyHistoryReport {
+  const issues: string[] = [];
+  if (!isHistoryInitialized(cfg))
+    return { ok: false, issues: ["history not initialized"] };
+  if (git(cfg, ["status", "--porcelain", "--", ...PATHS], true).trim())
+    issues.push("dirty memory worktree");
+  try {
+    validateRemote(cfg);
+  } catch (error) {
+    issues.push(error instanceof Error ? error.message : String(error));
+  }
+  try {
+    const tracked = git(cfg, ["ls-files", "-z"]).split("\0").filter(Boolean);
+    for (const path of tracked)
+      if (!allowedTrackedPath(path))
+        issues.push(`history contains disallowed path ${path}`);
+    const commits = git(cfg, ["rev-list", "HEAD"])
+      .split("\n")
+      .map((commit) => commit.trim())
+      .filter(Boolean);
+    for (const commit of commits) {
+      const parents = git(cfg, ["rev-list", "--parents", "-n", "1", commit])
+        .trim()
+        .split(/\s+/);
+      if (parents.length > 2) {
+        issues.push(`merge commit is not allowed ${commit}`);
+        continue;
+      }
+      const receipt = decode(git(cfg, ["show", "-s", "--format=%B", commit]));
+      const parent = git(cfg, ["rev-parse", `${commit}^`], true).trim();
+      let valid = true;
+      if ((receipt.parentCommit ?? "") !== parent) {
+        issues.push(`receipt parent mismatch ${commit}`);
+        valid = false;
+      }
+      if (
+        normalizedChanges(receipt.changes) !==
+        normalizedChanges(committedChanges(cfg, commit))
+      ) {
+        issues.push(`receipt diff mismatch ${commit}`);
+        valid = false;
+      }
+      if (!valid) continue;
+      const file = join(receiptsDir(cfg), `${receipt.mutationId}.json`);
+      contained(receiptsDir(cfg), file);
+      if (!existsSync(file)) {
+        writeReceiptCache(cfg, {
+          ...receipt,
+          commit,
+        });
+        continue;
+      }
+      const saved = JSON.parse(readFileSync(file, "utf8"));
+      const { commit: savedCommit, ...savedCore } = saved;
+      if (savedCommit !== commit || canonical(savedCore) !== canonical(receipt))
+        issues.push(`receipt cache mismatch ${receipt.mutationId}`);
+    }
+  } catch {
+    issues.push("invalid history receipt");
+  }
+  return { ok: issues.length === 0, issues };
+}
+export function syncHistory(cfg: MemoryConfig): SyncHistoryReport {
+  if (!isHistoryInitialized(cfg))
+    return { ok: false, pushed: false, error: "history not initialized" };
+  try {
+    const refreshed = refreshHistory(cfg);
+    if (!refreshed.ok) return refreshed;
+    const verification = verifyHistory(cfg);
+    if (!verification.ok)
+      throw new Error(
+        `history verification failed: ${verification.issues.join(", ")}`,
+      );
+    if (!validateRemote(cfg))
+      return {
+        ok: true,
+        pushed: false,
+        ...(refreshed.fastForwarded ? { fastForwarded: true } : {}),
+      };
+    git(cfg, ["push", "origin", "main"]);
+    return {
+      ok: true,
+      pushed: true,
+      ...(refreshed.fastForwarded ? { fastForwarded: true } : {}),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      pushed: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function isAncestor(
+  cfg: MemoryConfig,
+  ancestor: string,
+  descendant: string,
+): boolean {
+  const result = spawnSync(
+    "git",
+    [
+      `--git-dir=${gitDir(cfg)}`,
+      `--work-tree=${cfg.root}`,
+      "merge-base",
+      "--is-ancestor",
+      ancestor,
+      descendant,
+    ],
+    { encoding: "utf8", env: gitEnv },
+  );
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  throw result.error ?? new Error(result.stderr || "could not compare history");
+}
+
+export function refreshHistory(cfg: MemoryConfig): SyncHistoryReport {
+  if (!isHistoryInitialized(cfg))
+    return { ok: false, pushed: false, error: "history not initialized" };
+  try {
+    if (!validateRemote(cfg)) return { ok: true, pushed: false };
+    const remoteHead = resolveRemoteMain(cfg);
+    if (!remoteHead) return { ok: true, pushed: false };
+    git(cfg, ["fetch", "origin", "refs/heads/main:refs/remotes/origin/main"]);
+    const localHead = git(cfg, ["rev-parse", "HEAD"]).trim();
+    if (localHead === remoteHead) return { ok: true, pushed: false };
+    if (isAncestor(cfg, remoteHead, localHead))
+      return { ok: true, pushed: false };
+    if (!isAncestor(cfg, localHead, remoteHead))
+      return {
+        ok: false,
+        pushed: false,
+        diverged: true,
+        error: "local and remote memory history diverged",
+      };
+    const remoteIssues = committedHistoryIssues(cfg, remoteHead);
+    if (remoteIssues.length)
+      throw new Error(
+        `remote memory history verification failed: ${remoteIssues.join(", ")}`,
+      );
+    if (git(cfg, ["status", "--porcelain", "--", ...PATHS]).trim())
+      throw new Error("cannot fast-forward a dirty memory worktree");
+    withWritableMemoryRoot(cfg, () =>
+      git(cfg, ["reset", "--hard", remoteHead]),
+    );
+    const verification = verifyHistory(cfg);
+    if (!verification.ok) {
+      withWritableMemoryRoot(cfg, () =>
+        git(cfg, ["reset", "--hard", localHead]),
+      );
+      throw new Error(
+        `remote memory history verification failed: ${verification.issues.join(", ")}`,
+      );
+    }
+    return { ok: true, pushed: false, fastForwarded: true };
+  } catch (error) {
+    return {
+      ok: false,
+      pushed: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+export function repairHistory(
+  cfg: MemoryConfig,
+  options: { mode: "adopt" | "discard"; reason: string },
+): RepairHistoryReport {
+  if (!options.reason.trim()) throw new Error("repair reason is required");
+  const refreshed = refreshHistory(cfg);
+  if (!refreshed.ok)
+    throw new Error(`memory history refresh failed: ${refreshed.error}`);
+  if (options.mode === "adopt") {
+    const result = commitHistory(cfg, {
+      version: 2,
+      mutationId: `repair_${randomUUID().replaceAll("-", "")}`,
+      kind: "repair-adopt",
+      reason: options.reason,
+      changes: [],
+      provenance: { source: "pi-memory repair" },
+    });
+    return { mode: "adopt", commit: result.commit };
+  }
+  withWritableMemoryRoot(cfg, () => {
+    git(cfg, ["checkout", "-f", "HEAD", "--", ...PATHS]);
+    git(cfg, ["clean", "-f", "-d", "--", ...PATHS], true);
+  });
+  const result = commitHistory(
+    cfg,
+    {
+      version: 2,
+      mutationId: `repair_${randomUUID().replaceAll("-", "")}`,
+      kind: "repair-discard",
+      reason: options.reason,
+      changes: [],
+      provenance: { source: "pi-memory repair" },
+    },
+    { allowEmpty: true },
+  );
+  return { mode: "discard", commit: result.commit };
+}

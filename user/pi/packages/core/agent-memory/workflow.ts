@@ -2,6 +2,7 @@ import {
   chmodSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   linkSync,
   readFileSync,
   readdirSync,
@@ -14,6 +15,7 @@ import {
   contained,
   secureDir,
   sha256,
+  scanCatalog,
   writeCatalog,
   type Catalog,
   type CatalogEntry,
@@ -27,6 +29,7 @@ import {
   renderMemory,
   type EvidenceRef,
   type MemoryArtifact,
+  type MemoryMutationActor,
   type MemoryOperation,
   type ModelProposal,
   type Proposal,
@@ -34,12 +37,33 @@ import {
   type ReviewReceipt,
   type SkillDraftOperation,
 } from "./schema.js";
+import {
+  commitHistory,
+  headHistoryReceipt,
+  initHistory,
+  isHistoryInitialized,
+  refreshHistory,
+  syncHistory,
+  verifyHistory,
+  withWritableMemoryRoot,
+  type HistoryChange,
+} from "./history.js";
 
 const V2 = "v2";
 const PROMPT_VERSION = 2;
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (object(value))
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+      .join(",")}}`;
+  return JSON.stringify(value) ?? "null";
 }
 
 function v2(cfg: MemoryConfig, ...parts: string[]): string {
@@ -273,7 +297,13 @@ export function parseStoredProposal(raw: string): Proposal {
     typeof value.provenance.promptVersion !== "number" ||
     typeof value.provenance.model !== "string" ||
     typeof value.provenance.createdAt !== "string" ||
-    typeof value.provenance.corpusAware !== "boolean"
+    typeof value.provenance.corpusAware !== "boolean" ||
+    (value.provenance.autonomous !== undefined &&
+      typeof value.provenance.autonomous !== "boolean") ||
+    (value.provenance.source !== undefined &&
+      (typeof value.provenance.source !== "string" ||
+        value.provenance.source.length > 500 ||
+        !/^(?:pi|https):\/\//.test(value.provenance.source)))
   )
     throw new Error("invalid stored proposal");
   if (value.operation.type === "skill-draft" && value.lane !== "skill")
@@ -322,6 +352,9 @@ export function materializeModelProposals(options: {
   catalog: Catalog;
   pending: Proposal[];
   createdAt?: string;
+  corpusAware?: boolean;
+  autonomous?: boolean;
+  source?: string;
 }): Proposal[] {
   const createdAt = options.createdAt ?? new Date().toISOString();
   const targets = new Map(
@@ -427,9 +460,112 @@ export function materializeModelProposals(options: {
         promptVersion: PROMPT_VERSION,
         model: options.model,
         createdAt,
-        corpusAware: true,
+        corpusAware: options.corpusAware ?? true,
+        ...(options.autonomous !== undefined
+          ? { autonomous: options.autonomous }
+          : {}),
+        ...(options.source ? { source: options.source } : {}),
       },
     };
+  });
+}
+
+export function assertNonOverlappingMemoryProposals(
+  cfg: MemoryConfig,
+  proposals: Proposal[],
+): void {
+  const touched = new Set<string>();
+  const destinations = new Set<string>();
+  for (const proposal of proposals) {
+    if (proposal.lane !== "memory") continue;
+    const operation = proposal.operation as MemoryOperation;
+    const ids =
+      operation.type === "create"
+        ? []
+        : operation.type === "merge"
+          ? [
+              operation.primary.memoryId,
+              ...operation.targets.map((target) => target.memoryId),
+            ]
+          : [operation.target.memoryId];
+    if (ids.some((id) => touched.has(id)))
+      throw new Error("memory proposal batch contains overlapping targets");
+    ids.forEach((id) => touched.add(id));
+    for (const action of actionsFor(cfg, operation, "review_preflight")) {
+      if (destinations.has(action.to))
+        throw new Error("memory proposal batch contains overlapping paths");
+      destinations.add(action.to);
+    }
+  }
+}
+
+export function submitManualProposal(
+  cfg: MemoryConfig,
+  raw: string,
+  source?: string,
+): Proposal[] {
+  if (
+    source !== undefined &&
+    (!source.trim() ||
+      source.length > 500 ||
+      !/^(?:pi|https):\/\//.test(source))
+  )
+    throw new Error("manual proposal source must be a pi:// or https:// URI");
+  const result = parseModelProposal(raw);
+  if (result.action !== "propose")
+    throw new Error("manual proposal payload must propose at least one change");
+  if (result.proposals.some((proposal) => proposal.lane !== "memory"))
+    throw new Error("manual proposal submission only supports memory changes");
+  const first = result.proposals[0];
+  const scope =
+    first?.lane === "memory" && "artifact" in first.operation
+      ? first.operation.artifact.scope
+      : "global";
+  const runId = `manual_${sha256(`${canonical(result)}:${source ?? ""}`).slice(
+    0,
+    24,
+  )}`;
+  const existingBatch = [
+    ...listProposals(cfg, undefined, "pending"),
+    ...listProposals(cfg, undefined, "reviewed"),
+  ].filter((proposal) => proposal.provenance.runId === runId);
+  const existing = new Map(
+    existingBatch.map((proposal) => [proposal.id, proposal]),
+  );
+  const proposals = materializeModelProposals({
+    result,
+    runId,
+    model: "manual-cli",
+    scope,
+    evidence: [],
+    catalog: scanCatalog(cfg.root),
+    pending: listProposals(cfg),
+    corpusAware: false,
+    ...(existingBatch[0]
+      ? { createdAt: existingBatch[0].provenance.createdAt }
+      : {}),
+    ...(source ? { source } : {}),
+  });
+  assertNonOverlappingMemoryProposals(
+    cfg,
+    proposals.filter((proposal) => !existing.has(proposal.id)),
+  );
+  return proposals.map((proposal) => {
+    if (source && proposal.lane === "memory") {
+      const operation = proposal.operation as MemoryOperation;
+      if ("artifact" in operation) operation.artifact.sources = [source];
+    }
+    const saved = existing.get(proposal.id);
+    if (saved) {
+      if (
+        saved.lane !== proposal.lane ||
+        JSON.stringify(saved.operation) !== JSON.stringify(proposal.operation)
+      )
+        throw new Error("manual proposal retry conflicts with saved proposal");
+      return saved;
+    }
+    saveProposal(cfg, proposal);
+    return proposal;
   });
 }
 
@@ -507,11 +643,71 @@ type Transaction = {
     decision: "accepted" | "edited";
     reason: { code: ReviewReasonCode; text: string };
     reviewedAt: string;
+    reviewer?: MemoryMutationActor;
     originalProposalSha256: string;
     editedProposalSha256?: string;
   };
   rollback?: { reviewId: string; reason: string; startedAt: string };
+  history?: { mutationId: string; commit: string };
+  rollbackHistory?: { mutationId: string; commit: string };
 };
+
+function parseTransaction(
+  cfg: MemoryConfig,
+  raw: string,
+  expectedId?: string,
+): Transaction {
+  const value: unknown = JSON.parse(raw);
+  if (
+    !object(value) ||
+    value.version !== 1 ||
+    typeof value.id !== "string" ||
+    (expectedId !== undefined && value.id !== expectedId) ||
+    typeof value.reviewId !== "string" ||
+    !["prepared", "applied", "rollback-prepared", "rolled-back"].includes(
+      String(value.state),
+    ) ||
+    !Array.isArray(value.actions)
+  )
+    throw new Error("invalid memory transaction");
+  for (const action of value.actions) {
+    if (
+      !object(action) ||
+      typeof action.to !== "string" ||
+      typeof action.after !== "string" ||
+      (action.from !== undefined && typeof action.from !== "string") ||
+      (action.before !== undefined && typeof action.before !== "string")
+    )
+      throw new Error("invalid memory transaction action");
+    for (const path of [action.from, action.to]) {
+      if (path === undefined) continue;
+      let safe = false;
+      try {
+        assertSafeMemoryPath(cfg, path);
+        safe = true;
+      } catch {}
+      if (!safe)
+        throw new Error("memory transaction path escapes configured root");
+    }
+  }
+  return value as Transaction;
+}
+
+function assertSafeMemoryPath(cfg: MemoryConfig, path: string): void {
+  const root = resolve(cfg.root);
+  if (resolve(path) !== path || contained(root, path) !== path)
+    throw new Error("memory path escapes configured root");
+  const parts = relative(root, path).split(/[/\\]/).filter(Boolean);
+  let current = root;
+  if (existsSync(current) && lstatSync(current).isSymbolicLink())
+    throw new Error("memory root cannot be a symlink");
+  for (const part of parts) {
+    current = join(current, part);
+    if (!existsSync(current)) break;
+    if (lstatSync(current).isSymbolicLink())
+      throw new Error(`memory path contains symlink ${current}`);
+  }
+}
 
 function archivedPath(
   cfg: MemoryConfig,
@@ -664,6 +860,54 @@ function restoreTransactionActions(transaction: Transaction): void {
   }
 }
 
+function restoreAppliedTransactionActions(transaction: Transaction): void {
+  for (const action of transaction.actions) {
+    const beforeHash =
+      action.before === undefined ? undefined : sha256(action.before);
+    const afterHash = sha256(action.after);
+    if (action.from && action.from !== action.to) {
+      if (existsSync(action.from)) {
+        if (
+          beforeHash === undefined ||
+          sha256(readFileSync(action.from)) !== beforeHash
+        )
+          throw new Error(
+            `cannot recover rollback over changed source ${action.from}`,
+          );
+        if (existsSync(action.to))
+          throw new Error(
+            `cannot recover rollback with both paths present ${action.to}`,
+          );
+      } else if (
+        !existsSync(action.to) ||
+        sha256(readFileSync(action.to)) !== afterHash
+      )
+        throw new Error(
+          `cannot recover rollback with changed artifact ${action.to}`,
+        );
+    } else if (existsSync(action.to)) {
+      const current = sha256(readFileSync(action.to));
+      if (current !== afterHash && current !== beforeHash)
+        throw new Error(
+          `cannot recover rollback over changed artifact ${action.to}`,
+        );
+    } else if (action.before !== undefined && action.from === action.to)
+      throw new Error(
+        `cannot recover rollback with missing artifact ${action.to}`,
+      );
+  }
+  for (const action of transaction.actions) {
+    if (action.from && action.from !== action.to) {
+      if (existsSync(action.from)) rmSync(action.from);
+      if (!existsSync(action.to)) atomicWrite(action.to, action.after);
+    } else if (
+      !existsSync(action.to) ||
+      sha256(readFileSync(action.to)) !== sha256(action.after)
+    )
+      atomicWrite(action.to, action.after);
+  }
+}
+
 function persistAppliedReceipt(
   cfg: MemoryConfig,
   transaction: Transaction,
@@ -677,12 +921,18 @@ function persistAppliedReceipt(
     decision: transaction.review.decision,
     reason: transaction.review.reason,
     reviewedAt: transaction.review.reviewedAt,
-    reviewer: "local-cli",
+    reviewer: transaction.review.reviewer ?? "local-cli",
     originalProposalSha256: transaction.review.originalProposalSha256,
     ...(transaction.review.editedProposalSha256
       ? { editedProposalSha256: transaction.review.editedProposalSha256 }
       : {}),
     transactionId: transaction.id,
+    ...(transaction.history
+      ? {
+          mutationId: transaction.history.mutationId,
+          historyCommit: transaction.history.commit,
+        }
+      : {}),
     finalArtifacts: finalArtifacts(cfg, transaction),
   };
   const path = v2(cfg, "reviews", `${receipt.reviewId}.json`);
@@ -723,6 +973,12 @@ function persistRollbackReceipt(
     reviewer: "local-cli",
     originalProposalSha256: original.originalProposalSha256,
     transactionId: transaction.id,
+    ...(transaction.rollbackHistory
+      ? {
+          mutationId: transaction.rollbackHistory.mutationId,
+          historyCommit: transaction.rollbackHistory.commit,
+        }
+      : {}),
     finalArtifacts: [],
   };
   const value = `${JSON.stringify(receipt, null, 2)}\n`;
@@ -753,7 +1009,11 @@ export function recoverTransactions(cfg: MemoryConfig): number {
     .filter((item) => item.endsWith(".json"))
     .sort()) {
     const path = join(dir, name);
-    const transaction = JSON.parse(readFileSync(path, "utf8")) as Transaction;
+    const transaction = parseTransaction(
+      cfg,
+      readFileSync(path, "utf8"),
+      name.slice(0, -".json".length),
+    );
     if (transaction.state === "rolled-back" && transaction.rollback) {
       persistRollbackReceipt(cfg, transaction);
       continue;
@@ -772,49 +1032,132 @@ export function recoverTransactions(cfg: MemoryConfig): number {
       transaction.state !== "rollback-prepared"
     )
       continue;
-    restoreTransactionActions(transaction);
-    transaction.state = "rolled-back";
+    const head = headHistoryReceipt(cfg);
+    if (head?.transactionId === transaction.id) {
+      if (
+        transaction.state === "rollback-prepared" &&
+        transaction.rollback &&
+        head.reviewId === transaction.rollback.reviewId
+      ) {
+        transaction.rollbackHistory = {
+          mutationId: head.mutationId,
+          commit: head.commit,
+        };
+        transaction.state = "rolled-back";
+        atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
+        persistRollbackReceipt(cfg, transaction);
+        recovered += 1;
+        continue;
+      }
+      if (
+        transaction.state === "prepared" &&
+        head.reviewId === transaction.reviewId
+      ) {
+        transaction.history = {
+          mutationId: head.mutationId,
+          commit: head.commit,
+        };
+        transaction.state = "applied";
+        atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
+        const receipt = persistAppliedReceipt(cfg, transaction);
+        try {
+          const found = findProposal(cfg, receipt.proposalId);
+          if (found.path.includes("/pending/"))
+            renameSync(
+              found.path,
+              proposalPath(cfg, found.proposal, "reviewed"),
+            );
+        } catch {}
+        recovered += 1;
+        continue;
+      }
+    }
+    withWritableMemoryRoot(cfg, () => {
+      if (transaction.state === "rollback-prepared")
+        restoreAppliedTransactionActions(transaction);
+      else restoreTransactionActions(transaction);
+    });
+    if (transaction.state === "rollback-prepared") {
+      transaction.state = "applied";
+      delete transaction.rollback;
+      delete transaction.rollbackHistory;
+    } else transaction.state = "rolled-back";
     atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
-    persistRollbackReceipt(cfg, transaction);
+    if (transaction.state === "rolled-back")
+      persistRollbackReceipt(cfg, transaction);
+    else persistAppliedReceipt(cfg, transaction);
     recovered += 1;
   }
-  if (recovered) writeCatalog(cfg);
+  writeCatalog(cfg);
   return recovered;
 }
 
-function applyTransaction(cfg: MemoryConfig, transaction: Transaction): void {
+function applyTransaction(
+  cfg: MemoryConfig,
+  transaction: Transaction,
+  kind: string,
+  reason: string,
+): void {
+  for (const action of transaction.actions) {
+    if (action.from) assertSafeMemoryPath(cfg, action.from);
+    assertSafeMemoryPath(cfg, action.to);
+  }
   const path = v2(cfg, "transactions", `${transaction.id}.json`);
   atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
   const completed: TransactionAction[] = [];
   try {
-    for (const action of transaction.actions) {
-      completed.push(action);
-      if (!action.from) exclusive(action.to, action.after);
-      else if (action.from === action.to) {
-        if (
-          action.before === undefined ||
-          !existsSync(action.from) ||
-          sha256(readFileSync(action.from)) !== sha256(action.before)
-        )
-          throw new Error(`transaction source changed ${action.from}`);
-        atomicWrite(action.to, action.after);
-      } else {
-        if (
-          action.before === undefined ||
-          !existsSync(action.from) ||
-          sha256(readFileSync(action.from)) !== sha256(action.before)
-        )
-          throw new Error(`transaction source changed ${action.from}`);
-        exclusive(action.to, action.after);
-        if (sha256(readFileSync(action.from)) !== sha256(action.before))
-          throw new Error(`transaction source changed ${action.from}`);
-        rmSync(action.from);
+    withWritableMemoryRoot(cfg, () => {
+      for (const action of transaction.actions) {
+        completed.push(action);
+        if (!action.from) exclusive(action.to, action.after);
+        else if (action.from === action.to) {
+          if (
+            action.before === undefined ||
+            !existsSync(action.from) ||
+            sha256(readFileSync(action.from)) !== sha256(action.before)
+          )
+            throw new Error(`transaction source changed ${action.from}`);
+          atomicWrite(action.to, action.after);
+        } else {
+          if (
+            action.before === undefined ||
+            !existsSync(action.from) ||
+            sha256(readFileSync(action.from)) !== sha256(action.before)
+          )
+            throw new Error(`transaction source changed ${action.from}`);
+          exclusive(action.to, action.after);
+          if (sha256(readFileSync(action.from)) !== sha256(action.before))
+            throw new Error(`transaction source changed ${action.from}`);
+          rmSync(action.from);
+        }
       }
-    }
+      commitTransactionHistory(
+        cfg,
+        transaction,
+        kind,
+        transaction.reviewId,
+        reason,
+      );
+    });
     transaction.state = "applied";
     atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
   } catch (error) {
-    restoreTransactionActions({ ...transaction, actions: completed });
+    const head = headHistoryReceipt(cfg);
+    if (
+      head?.transactionId === transaction.id &&
+      head.reviewId === transaction.reviewId
+    ) {
+      transaction.history = {
+        mutationId: head.mutationId,
+        commit: head.commit,
+      };
+      transaction.state = "applied";
+      atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
+      return;
+    }
+    withWritableMemoryRoot(cfg, () =>
+      restoreTransactionActions({ ...transaction, actions: completed }),
+    );
     transaction.state = "rolled-back";
     atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
     throw error;
@@ -836,6 +1179,98 @@ function finalArtifacts(
   }));
 }
 
+function historyStatus(path: string): "active" | "archived" | "retired" {
+  return path.includes("/.archive/archived/")
+    ? "archived"
+    : path.includes("/.archive/retired/")
+      ? "retired"
+      : "active";
+}
+
+function historyChanges(
+  cfg: MemoryConfig,
+  transaction: Transaction,
+  rollback = false,
+): HistoryChange[] {
+  const changes: HistoryChange[] = [];
+  for (const action of transaction.actions) {
+    const beforeSha256 =
+      action.before === undefined ? undefined : sha256(action.before);
+    const afterSha256 = sha256(action.after);
+    if (action.from && action.from !== action.to) {
+      changes.push({
+        path: relative(cfg.root, action.from),
+        ...(rollback ? { afterSha256: beforeSha256 } : { beforeSha256 }),
+        status: rollback ? "active" : historyStatus(action.from),
+      });
+      changes.push({
+        path: relative(cfg.root, action.to),
+        ...(rollback ? { beforeSha256: afterSha256 } : { afterSha256 }),
+        status: historyStatus(action.to),
+      });
+    } else {
+      changes.push({
+        path: relative(cfg.root, action.to),
+        ...(rollback
+          ? { beforeSha256: afterSha256, afterSha256: beforeSha256 }
+          : { beforeSha256, afterSha256 }),
+        status: historyStatus(action.to),
+      });
+    }
+  }
+  return changes;
+}
+
+function requireCleanHistory(cfg: MemoryConfig): void {
+  if (!isHistoryInitialized(cfg))
+    initHistory(cfg, {
+      ...(process.env.PI_MEMORY_GIT_REMOTE
+        ? { remote: process.env.PI_MEMORY_GIT_REMOTE }
+        : {}),
+    });
+  const refresh = refreshHistory(cfg);
+  if (!refresh.ok)
+    throw new Error(`memory history refresh failed: ${refresh.error}`);
+  const report = verifyHistory(cfg);
+  if (!report.ok)
+    throw new Error(
+      `memory history verification failed: ${report.issues.join(", ")}`,
+    );
+}
+
+function commitTransactionHistory(
+  cfg: MemoryConfig,
+  transaction: Transaction,
+  kind: string,
+  reviewId: string,
+  reason: string,
+  rollback = false,
+): void {
+  const mutationId = `mut_${sha256(`${transaction.id}:${reviewId}:${kind}`).slice(0, 24)}`;
+  const result = commitHistory(cfg, {
+    version: 2,
+    mutationId,
+    kind,
+    transactionId: transaction.id,
+    ...(transaction.review
+      ? { proposalId: transaction.review.proposalId }
+      : {}),
+    reviewId,
+    reason,
+    changes: historyChanges(cfg, transaction, rollback),
+    provenance: {
+      reviewer: rollback
+        ? "local-cli"
+        : (transaction.review?.reviewer ?? "local-cli"),
+      reviewedAt:
+        transaction.review?.reviewedAt ?? transaction.rollback?.startedAt,
+    },
+  });
+  if (rollback)
+    transaction.rollbackHistory = { mutationId, commit: result.commit };
+  else transaction.history = { mutationId, commit: result.commit };
+}
+
 export function reviewProposal(options: {
   cfg: MemoryConfig;
   id: string;
@@ -843,6 +1278,8 @@ export function reviewProposal(options: {
   reasonCode: ReviewReasonCode;
   reason: string;
   editPath?: string;
+  reviewer?: MemoryMutationActor;
+  reviewedAt?: string;
 }): ReviewReceipt {
   recoverTransactions(options.cfg);
   if (
@@ -864,11 +1301,13 @@ export function reviewProposal(options: {
     proposal = edited;
     editedHash = sha256(editedRaw);
   }
-  const reviewedAt = new Date().toISOString();
-  const reviewId = `review_${sha256(`${proposal.id}:${reviewedAt}:${options.reason}`).slice(0, 24)}`;
+  const reviewer = options.reviewer ?? "local-cli";
+  const reviewedAt = options.reviewedAt ?? new Date().toISOString();
+  const reviewId = `review_${sha256(`${proposal.id}:${reviewer}:${reviewedAt}:${options.reason}`).slice(0, 24)}`;
   let transaction: Transaction | undefined;
   let finals: ReviewReceipt["finalArtifacts"] = [];
   if (options.decision === "accept" && proposal.lane === "memory") {
+    requireCleanHistory(options.cfg);
     transaction = {
       version: 1,
       id: `tx_${sha256(`${reviewId}:${JSON.stringify(proposal.operation)}`).slice(0, 24)}`,
@@ -879,6 +1318,7 @@ export function reviewProposal(options: {
         decision: options.editPath ? "edited" : "accepted",
         reason: { code: options.reasonCode, text: options.reason.trim() },
         reviewedAt,
+        reviewer,
         originalProposalSha256: sha256(originalRaw),
         ...(editedHash ? { editedProposalSha256: editedHash } : {}),
       },
@@ -906,7 +1346,12 @@ export function reviewProposal(options: {
         if (!existsSync(beforePath)) exclusive(beforePath, action.before);
       }
     }
-    applyTransaction(options.cfg, transaction);
+    applyTransaction(
+      options.cfg,
+      transaction,
+      `review-${proposal.operation.type}`,
+      options.reason.trim(),
+    );
     finals = finalArtifacts(options.cfg, transaction);
     writeCatalog(options.cfg);
   } else if (options.decision === "accept") {
@@ -964,14 +1409,16 @@ export function reviewProposal(options: {
           : "accepted",
     reason: { code: options.reasonCode, text: options.reason.trim() },
     reviewedAt,
-    reviewer: "local-cli",
+    reviewer,
     originalProposalSha256: sha256(originalRaw),
     ...(editedHash ? { editedProposalSha256: editedHash } : {}),
     ...(transaction ? { transactionId: transaction.id } : {}),
     finalArtifacts: finals,
   };
-  if (transaction) persistAppliedReceipt(options.cfg, transaction);
-  else
+  const persistedReceipt = transaction
+    ? persistAppliedReceipt(options.cfg, transaction)
+    : receipt;
+  if (!transaction)
     atomicWrite(
       v2(options.cfg, "reviews", `${reviewId}.json`),
       `${JSON.stringify(receipt, null, 2)}\n`,
@@ -979,7 +1426,44 @@ export function reviewProposal(options: {
   if (options.editPath)
     atomicWrite(found.path, `${JSON.stringify(proposal, null, 2)}\n`);
   renameSync(found.path, proposalPath(options.cfg, proposal, "reviewed"));
-  return receipt;
+  if (transaction) syncHistory(options.cfg);
+  return persistedReceipt;
+}
+
+export function applyMemoryProposal(options: {
+  cfg: MemoryConfig;
+  id: string;
+  actor: Exclude<MemoryMutationActor, "local-cli">;
+}): ReviewReceipt {
+  recoverTransactions(options.cfg);
+  const found = findProposal(options.cfg, options.id);
+  if (found.proposal.lane !== "memory")
+    throw new Error("autonomous application only supports memory proposals");
+  const existing = readReviewReceipts(options.cfg)
+    .filter((receipt) => receipt.proposalId === found.proposal.id)
+    .sort(
+      (left, right) =>
+        left.reviewedAt.localeCompare(right.reviewedAt) ||
+        left.reviewId.localeCompare(right.reviewId),
+    )
+    .at(-1);
+  if (existing) {
+    if (found.path.includes("/pending/"))
+      renameSync(
+        found.path,
+        proposalPath(options.cfg, found.proposal, "reviewed"),
+      );
+    return existing;
+  }
+  return reviewProposal({
+    cfg: options.cfg,
+    id: found.proposal.id,
+    decision: "accept",
+    reasonCode: "correct",
+    reason: "autonomously applied from bounded durable-memory evidence",
+    reviewer: options.actor,
+    reviewedAt: found.proposal.provenance.createdAt,
+  });
 }
 
 export function rollbackReview(
@@ -988,6 +1472,7 @@ export function rollbackReview(
   reason: string,
 ): ReviewReceipt {
   recoverTransactions(cfg);
+  requireCleanHistory(cfg);
   if (!reason.trim()) throw new Error("rollback requires a reason");
   const path = v2(cfg, "reviews", `${reviewId}.json`);
   if (!existsSync(path)) throw new Error("review not found");
@@ -995,7 +1480,11 @@ export function rollbackReview(
   if (!original.transactionId)
     throw new Error("review has no memory transaction");
   const txPath = v2(cfg, "transactions", `${original.transactionId}.json`);
-  const transaction = JSON.parse(readFileSync(txPath, "utf8")) as Transaction;
+  const transaction = parseTransaction(
+    cfg,
+    readFileSync(txPath, "utf8"),
+    original.transactionId,
+  );
   if (transaction.state === "rolled-back" && transaction.rollback)
     return persistRollbackReceipt(cfg, transaction)!;
   if (transaction.state !== "applied")
@@ -1023,11 +1512,23 @@ export function rollbackReview(
   };
   transaction.state = "rollback-prepared";
   atomicWrite(txPath, `${JSON.stringify(transaction, null, 2)}\n`);
-  restoreTransactionActions(transaction);
+  withWritableMemoryRoot(cfg, () => {
+    restoreTransactionActions(transaction);
+    commitTransactionHistory(
+      cfg,
+      transaction,
+      "rollback",
+      transaction.rollback!.reviewId,
+      transaction.rollback!.reason,
+      true,
+    );
+  });
   transaction.state = "rolled-back";
   atomicWrite(txPath, `${JSON.stringify(transaction, null, 2)}\n`);
   writeCatalog(cfg);
-  return persistRollbackReceipt(cfg, transaction)!;
+  const receipt = persistRollbackReceipt(cfg, transaction)!;
+  syncHistory(cfg);
+  return receipt;
 }
 
 function legacyCandidate(path: string): {

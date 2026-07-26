@@ -80,6 +80,8 @@ export type Proposal = {
     createdAt: string;
     migration?: boolean;
     corpusAware: boolean;
+    autonomous?: boolean;
+    source?: string;
   };
 };
 
@@ -93,6 +95,10 @@ export const REVIEW_REASON_CODES = [
   "other",
 ] as const;
 export type ReviewReasonCode = (typeof REVIEW_REASON_CODES)[number];
+export type MemoryMutationActor =
+  | "local-cli"
+  | "background-reflection"
+  | "remember-skill";
 
 export type ReviewReceipt = {
   version: 1;
@@ -101,10 +107,12 @@ export type ReviewReceipt = {
   decision: "accepted" | "edited" | "rejected" | "rolled-back";
   reason: { code: ReviewReasonCode; text: string };
   reviewedAt: string;
-  reviewer: "local-cli";
+  reviewer: MemoryMutationActor;
   originalProposalSha256: string;
   editedProposalSha256?: string;
   transactionId?: string;
+  mutationId?: string;
+  historyCommit?: string;
   finalArtifacts: Array<{
     path: string;
     memoryId?: string;
