@@ -4,7 +4,6 @@ import {
   constants,
   copyFileSync,
   existsSync,
-  mkdirSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -12,18 +11,10 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-} from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import {
   atomicWrite,
   contained,
-  scanCatalog,
   secureDir,
   sha256,
   writeCatalog,
@@ -479,6 +470,35 @@ function actionsFor(
   ];
 }
 
+export function recoverTransactions(cfg: MemoryConfig): number {
+  ensureWorkflowDirs(cfg);
+  const dir = v2(cfg, "transactions");
+  let recovered = 0;
+  for (const name of readdirSync(dir)
+    .filter((item) => item.endsWith(".json"))
+    .sort()) {
+    const path = join(dir, name);
+    const transaction = JSON.parse(readFileSync(path, "utf8")) as Transaction;
+    if (transaction.state !== "prepared") continue;
+    for (const action of transaction.actions.slice().reverse()) {
+      if (existsSync(action.to)) {
+        if (sha256(readFileSync(action.to)) !== sha256(action.after))
+          throw new Error(
+            `cannot recover transaction with changed artifact ${action.to}`,
+          );
+        rmSync(action.to);
+      }
+      if (action.from && action.before !== undefined)
+        atomicWrite(action.from, action.before);
+    }
+    transaction.state = "rolled-back";
+    atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
+    recovered += 1;
+  }
+  if (recovered) writeCatalog(cfg);
+  return recovered;
+}
+
 function applyTransaction(cfg: MemoryConfig, transaction: Transaction): void {
   const path = v2(cfg, "transactions", `${transaction.id}.json`);
   atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
@@ -527,6 +547,7 @@ export function reviewProposal(options: {
   reason: string;
   editPath?: string;
 }): ReviewReceipt {
+  recoverTransactions(options.cfg);
   if (
     !REVIEW_REASON_CODES.includes(options.reasonCode) ||
     !options.reason.trim()
@@ -618,6 +639,8 @@ export function reviewProposal(options: {
     v2(options.cfg, "reviews", `${reviewId}.json`),
     `${JSON.stringify(receipt, null, 2)}\n`,
   );
+  if (options.editPath)
+    atomicWrite(found.path, `${JSON.stringify(proposal, null, 2)}\n`);
   renameSync(found.path, proposalPath(options.cfg, proposal, "reviewed"));
   return receipt;
 }
@@ -627,6 +650,7 @@ export function rollbackReview(
   reviewId: string,
   reason: string,
 ): ReviewReceipt {
+  recoverTransactions(cfg);
   if (!reason.trim()) throw new Error("rollback requires a reason");
   const path = v2(cfg, "reviews", `${reviewId}.json`);
   if (!existsSync(path)) throw new Error("review not found");

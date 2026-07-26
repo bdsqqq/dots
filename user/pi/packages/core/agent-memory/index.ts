@@ -41,6 +41,12 @@ import {
 import { REVIEW_REASON_CODES, type ReviewReasonCode } from "./schema.js";
 import { buildSafeEvidence, type SafeEvidence } from "./evidence.js";
 import { processPipelineBatch } from "./pipeline.js";
+import {
+  exportEvalDataset,
+  gradeReplay,
+  memoryMetrics,
+  replayDataset,
+} from "./evaluation.js";
 
 process.umask(0o077);
 
@@ -1190,9 +1196,89 @@ async function main(): Promise<void> {
       rollbackReview(config(), args[0]!, args[reasonIndex + 1] || ""),
     );
     if (receipt) console.log(JSON.stringify(receipt, null, 2));
+  } else if (command === "metrics")
+    console.log(JSON.stringify(memoryMetrics(config()), null, 2));
+  else if (command === "eval" && args[0] === "export") {
+    const outIndex = args.indexOf("--out");
+    if (outIndex < 0 || !args[outIndex + 1])
+      throw new Error("eval export requires --out");
+    console.log(
+      JSON.stringify(exportEvalDataset(config(), args[outIndex + 1]!), null, 2),
+    );
+  } else if (command === "eval" && args[0] === "replay") {
+    const datasetIndex = args.indexOf("--dataset");
+    const modesIndex = args.indexOf("--modes");
+    const limitIndex = args.indexOf("--limit");
+    if (datasetIndex < 0 || !args[datasetIndex + 1])
+      throw new Error("eval replay requires --dataset");
+    const modes = (args[modesIndex + 1] || "memory-off,current,gold").split(
+      ",",
+    );
+    if (
+      !modes.every(
+        (mode) =>
+          mode === "memory-off" || mode === "current" || mode === "gold",
+      )
+    )
+      throw new Error("invalid replay modes");
+    const limit = limitIndex >= 0 ? Number(args[limitIndex + 1]) : 20;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
+      throw new Error("invalid replay limit");
+    const model =
+      process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-luna:low";
+    console.log(
+      JSON.stringify(
+        replayDataset({
+          cfg: config(),
+          dataset: args[datasetIndex + 1]!,
+          modes: modes as Array<"memory-off" | "current" | "gold">,
+          limit,
+          model,
+          invoke: (prompt) =>
+            run(
+              process.env.PI_BIN || "pi",
+              [
+                "-p",
+                "--no-session",
+                "--no-tools",
+                "--no-extensions",
+                "--no-skills",
+                "--no-prompt-templates",
+                "--no-context-files",
+                "--model",
+                model,
+              ],
+              prompt,
+            ),
+        }),
+        null,
+        2,
+      ),
+    );
+  } else if (command === "eval" && args[0] === "grade" && args[1]) {
+    const caseIndex = args.indexOf("--case");
+    const modeIndex = args.indexOf("--mode");
+    const scoreIndex = args.indexOf("--score");
+    const reasonIndex = args.indexOf("--reason");
+    const mode = args[modeIndex + 1];
+    if (
+      !args[caseIndex + 1] ||
+      (mode !== "memory-off" && mode !== "current" && mode !== "gold")
+    )
+      throw new Error("eval grade requires --case and --mode");
+    console.log(
+      gradeReplay({
+        cfg: config(),
+        replayId: args[1],
+        caseId: args[caseIndex + 1]!,
+        mode,
+        score: Number(args[scoreIndex + 1]),
+        reason: args[reasonIndex + 1] || "",
+      }),
+    );
   } else
     throw new Error(
-      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|promote <candidate>|catalog [--cwd PATH] [--json]|migrate [--dry-run]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|rollback <review-id> --reason TEXT",
+      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|promote <candidate>|catalog [--cwd PATH] [--json]|migrate [--dry-run]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|rollback <review-id> --reason TEXT|metrics|eval export|replay|grade",
     );
   if (result === false) process.exitCode = 1;
 }

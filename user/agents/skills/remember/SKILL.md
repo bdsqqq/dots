@@ -133,21 +133,45 @@ use `pi-sessions` for episodic history rather than durable guidance:
 qmd search -c pi-sessions "what happened" -n 10
 ```
 
-## background candidates
+## background reflection
 
-pi checkpoints completed branches and projects authored user/assistant text without tool results or reasoning. maintenance consolidates those checkpoints into reviewable candidates; it never edits active memories automatically.
+pi checkpoints completed branches, then groups ancestor checkpoints into branch-safe windows. reflection receives authored text plus redacted tool outcome counts; reasoning, tool arguments, and raw tool output are excluded. it compares evidence with active memory and pending proposals, but background work stops at a reviewable proposal.
 
 ```bash
 pi-memory project
 pi-memory consolidate --limit 10
-pi-memory reconcile
 pi-memory maintain
 
-# after reviewing the candidate
-pi-memory promote candidate-file.md
+# inspect pending memory and skill proposals
+pi-memory proposals --status pending
+pi-memory show prop_id
+
+# every review requires a reason
+pi-memory review prop_id accept \
+  --reason-code correct --reason "captures the durable constraint"
+pi-memory review prop_id reject \
+  --reason-code duplicate --reason "already covered elsewhere"
+
+# accepted memory changes are hash-guarded and reversible
+pi-memory rollback review_id --reason "later shown incorrect"
 ```
 
-generated state lives under `~/.local/share/pi-memory`; retry and cadence state lives under `~/.local/state/pi-memory`. `reconcile` reports duplicates and metadata gaps without rewriting active notes.
+memory proposals can create, update, merge, archive, or retire flat markdown notes. accepted skill proposals become draft bundles under `~/.local/share/pi-memory/v2/approved-skills`; pi-memory NEVER edits installed skills. install a draft only through the normal code-review, test, and git workflow.
+
+`pi-memory catalog` shows the bounded pointer catalog injected into agent prompts. full contents remain on-demand through qmd/grep. `pi-memory metrics` reports pipeline activity without pretending acceptance is a quality reward.
+
+```bash
+# one-time, non-destructive import of legacy candidates
+pi-memory migrate --dry-run
+pi-memory migrate
+
+# build and replay a local reviewed-example dataset
+pi-memory eval export --out ~/.local/share/pi-memory/eval/reviewed-v1.jsonl
+pi-memory eval replay --dataset ~/.local/share/pi-memory/eval/reviewed-v1.jsonl \
+  --modes memory-off,current,gold --limit 20
+```
+
+generated workflow state lives under `~/.local/share/pi-memory/v2`; retry and cadence state lives under `~/.local/state/pi-memory`. active markdown remains the source of truth.
 
 ## what NOT to remember
 
