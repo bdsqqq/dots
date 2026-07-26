@@ -957,6 +957,9 @@ importers:
       '@bds_pi/interpolate':
         specifier: workspace:*
         version: link:../../core/interpolate
+      '@bds_pi/pi-memory':
+        specifier: workspace:*
+        version: link:../../core/agent-memory
       '@bds_pi/pi-spawn':
         specifier: workspace:*
         version: link:../../core/pi-spawn
