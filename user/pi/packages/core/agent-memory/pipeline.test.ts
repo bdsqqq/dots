@@ -56,7 +56,9 @@ describe("memory reflection pipeline", () => {
       skipExternal: true,
     });
     expect(result.action).toBe("skip");
-    expect(existsSync(join(cfg.data, "v2/ledger/checkpoint.json"))).toBe(true);
+    expect(
+      existsSync(join(cfg.data, "v2/ledger/session--checkpoint.json")),
+    ).toBe(true);
     expect(
       readFileSync(
         join(cfg.data, `v2/runs/${result.runId}/input.json`),

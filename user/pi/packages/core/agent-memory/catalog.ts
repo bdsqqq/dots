@@ -144,7 +144,7 @@ function regularRootMarkdown(root: string): string[] {
 
 export function scanCatalog(
   root: string,
-  generatedAt = new Date().toISOString(),
+  generatedAt: string = new Date().toISOString(),
 ): Catalog {
   const entries = regularRootMarkdown(root).map((path): CatalogEntry => {
     const text = readFileSync(path, "utf8");
@@ -218,8 +218,8 @@ export function rankCatalog(catalog: Catalog, cwd: string): CatalogEntry[] {
 export function renderPromptCatalog(
   catalog: Catalog,
   cwd: string,
-  maxEntries = 30,
-  maxChars = 8_192,
+  maxEntries: number = 30,
+  maxChars: number = 8_192,
 ): string {
   const header = [
     "<memory_catalog>",
@@ -240,7 +240,10 @@ export function renderPromptCatalog(
   return lines.join("\n");
 }
 
-export function writeCatalog(cfg: MemoryConfig, cwd = process.cwd()): Catalog {
+export function writeCatalog(
+  cfg: MemoryConfig,
+  cwd: string = process.cwd(),
+): Catalog {
   secureDir(cfg.data);
   const catalog = scanCatalog(cfg.root);
   atomicWrite(

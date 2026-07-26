@@ -242,25 +242,28 @@ function markLedger(
 ): void {
   const ledger = contained(cfg.data, join(cfg.data, "v2", "ledger"));
   secureDir(ledger);
-  for (const checkpoint of result.coveredCheckpointIds) {
-    const record = {
-      version: 2,
-      checkpointEntryId: checkpoint,
-      runId: input.runId,
-      action: result.action,
-      proposalIds: result.proposalIds,
-      coveredAt: new Date().toISOString(),
-    };
-    const path = join(ledger, `${checkpoint}.json`);
-    const value = `${JSON.stringify(record, null, 2)}\n`;
-    if (existsSync(path)) {
-      const previous = JSON.parse(readFileSync(path, "utf8")) as {
-        runId?: string;
+  for (const evidence of input.evidence)
+    for (const checkpoint of evidence.window.checkpointEntryIds) {
+      const record = {
+        version: 2,
+        sessionId: evidence.window.sessionId,
+        checkpointEntryId: checkpoint,
+        runId: input.runId,
+        action: result.action,
+        proposalIds: result.proposalIds,
+        coveredAt: new Date().toISOString(),
       };
-      if (previous.runId !== input.runId)
-        throw new Error(`checkpoint ledger collision ${checkpoint}`);
-    } else atomicWrite(path, value);
-  }
+      const identity = `${evidence.window.sessionId}--${checkpoint}`;
+      const path = join(ledger, `${identity}.json`);
+      const value = `${JSON.stringify(record, null, 2)}\n`;
+      if (existsSync(path)) {
+        const previous = JSON.parse(readFileSync(path, "utf8")) as {
+          runId?: string;
+        };
+        if (previous.runId !== input.runId)
+          throw new Error(`checkpoint ledger collision ${identity}`);
+      } else atomicWrite(path, value);
+    }
 }
 
 export function processPipelineBatch(options: {
