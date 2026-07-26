@@ -50,7 +50,8 @@ import {
 
 type SearchSessionsExtConfig = {
   maxResults: number;
-  sessionsDir: string;
+  sessionsDir?: string;
+  sessionsDirs?: string[];
   rgTimeoutMs: number;
 };
 
@@ -61,7 +62,7 @@ type SearchSessionsExtensionDeps = {
 
 const CONFIG_DEFAULTS: SearchSessionsExtConfig = {
   maxResults: 50,
-  sessionsDir: path.join(os.homedir(), ".pi", "agent", "sessions"),
+  sessionsDirs: [path.join(os.homedir(), ".pi", "agent", "sessions")],
   rgTimeoutMs: 10000,
 };
 
@@ -72,8 +73,17 @@ function isSearchSessionsConfig(
     typeof value.maxResults === "number" &&
     Number.isInteger(value.maxResults) &&
     value.maxResults >= 1 &&
-    typeof value.sessionsDir === "string" &&
-    value.sessionsDir.trim().length > 0 &&
+    (value.sessionsDir === undefined ||
+      (typeof value.sessionsDir === "string" &&
+        value.sessionsDir.trim().length > 0)) &&
+    (value.sessionsDirs === undefined ||
+      (Array.isArray(value.sessionsDirs) &&
+        value.sessionsDirs.length > 0 &&
+        value.sessionsDirs.every(
+          (sessionsDir) =>
+            typeof sessionsDir === "string" && sessionsDir.trim().length > 0,
+        ))) &&
+    (value.sessionsDir !== undefined || value.sessionsDirs !== undefined) &&
     typeof value.rgTimeoutMs === "number" &&
     Number.isInteger(value.rgTimeoutMs) &&
     value.rgTimeoutMs >= 1
@@ -89,6 +99,55 @@ const DEFAULT_EXTENSION_DEPS: SearchSessionsExtensionDeps = {
   getEnabledExtensionConfig,
   withPromptPatch,
 };
+
+function resolveSessionsDirs(config: SearchSessionsExtConfig): string[] {
+  const configured = config.sessionsDir
+    ? [config.sessionsDir]
+    : (config.sessionsDirs ?? CONFIG_DEFAULTS.sessionsDirs!);
+  return [
+    ...new Set(
+      configured.map((sessionsDir) =>
+        path.resolve(sessionsDir.replace(/^~(?=$|\/)/, os.homedir())),
+      ),
+    ),
+  ];
+}
+
+function uniqueBy<T>(values: T[], key: (value: T) => string): T[] {
+  const claimed = new Set<string>();
+  return values.filter((value) => {
+    const identity = key(value);
+    if (claimed.has(identity)) return false;
+    claimed.add(identity);
+    return true;
+  });
+}
+
+function claimCanonicalSessionFiles(sessionFiles: string[]): string[] {
+  const claimed = new Set<string>();
+  return sessionFiles.filter((sessionFile) => {
+    try {
+      const fd = fs.openSync(sessionFile, "r");
+      const buffer = Buffer.alloc(64 * 1024);
+      let bytesRead: number;
+      try {
+        bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
+      } finally {
+        fs.closeSync(fd);
+      }
+      const firstLine = buffer.subarray(0, bytesRead).toString().split("\n")[0];
+      if (!firstLine) return true;
+      const header = JSON.parse(firstLine);
+      if (header.type !== "session" || typeof header.id !== "string")
+        return true;
+      if (claimed.has(header.id)) return false;
+      claimed.add(header.id);
+    } catch {
+      return true;
+    }
+    return true;
+  });
+}
 
 function getSessions(context: MentionSourceContext) {
   return (
@@ -354,6 +413,7 @@ interface SearchSessionsParams {
 export function createSearchSessionsTool(
   config: SearchSessionsExtConfig = CONFIG_DEFAULTS,
 ): ToolDefinition<any> {
+  const sessionsDirs = resolveSessionsDirs(config);
   return {
     name: "search_sessions",
     label: "Search Sessions",
@@ -413,7 +473,10 @@ export function createSearchSessionsTool(
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const p = params as SearchSessionsParams;
-      if (!fs.existsSync(config.sessionsDir)) {
+      const existingDirs = sessionsDirs.filter((sessionsDir) =>
+        fs.existsSync(sessionsDir),
+      );
+      if (existingDirs.length === 0) {
         return {
           content: [
             { type: "text" as const, text: "(no sessions directory found)" },
@@ -424,7 +487,14 @@ export function createSearchSessionsTool(
       // 1. glob all session files
       let sessionFiles: string[] = [];
       try {
-        sessionFiles = listSessionFiles(config.sessionsDir);
+        sessionFiles = [
+          ...new Set(
+            existingDirs.flatMap((sessionsDir) =>
+              listSessionFiles(sessionsDir),
+            ),
+          ),
+        ];
+        sessionFiles = claimCanonicalSessionFiles(sessionFiles);
       } catch {
         return {
           content: [
@@ -445,12 +515,13 @@ export function createSearchSessionsTool(
 
       // 2. rg pre-filter if keyword set
       if (p.keyword) {
-        const matches = rgFilterFiles(
-          p.keyword,
-          config.sessionsDir,
-          config.rgTimeoutMs,
+        const matchesByDir = existingDirs.map((sessionsDir) =>
+          rgFilterFiles(p.keyword!, sessionsDir, config.rgTimeoutMs),
         );
-        if (matches !== null) {
+        if (matchesByDir.every((matches) => matches !== null)) {
+          const matches = new Set(
+            matchesByDir.flatMap((result) => [...result!]),
+          );
           sessionFiles = sessionFiles.filter((f) => matches.has(f));
         }
       }
@@ -499,9 +570,13 @@ export function createSearchSessionsTool(
         const branches = enumerateBranches(header, entries, sessionName, file);
         allBranches.push(...branches);
       }
+      const uniqueBranches = uniqueBy(
+        allBranches,
+        (branch) => `${branch.sessionId}\0${branch.leafId}`,
+      );
 
       // 5. filter branches
-      let filtered = allBranches;
+      let filtered = uniqueBranches;
 
       if (p.keyword) {
         filtered = filtered.filter((b) => matchesKeyword(b, p.keyword!));
@@ -598,15 +673,22 @@ function createSearchSessionsExtension(
     if (!enabled) return;
 
     const source = createSessionMentionSource();
+    const sessionsDirs = resolveSessionsDirs(cfg);
 
     pi.on("session_start", async (_event, ctx) => {
       if (!ctx.hasUI) return;
+      const sessions = uniqueBy(
+        sessionsDirs.flatMap((sessionsDir) =>
+          getSessionMentionsIndex(sessionsDir),
+        ),
+        (session) => session.sessionId,
+      );
       ctx.ui.addAutocompleteProvider(
         (baseProvider) =>
           new MentionAutocompleteProvider({
             baseProvider,
             source,
-            context: { cwd: ctx.cwd, sessionsDir: cfg.sessionsDir },
+            context: { cwd: ctx.cwd, sessions },
           }),
       );
     });
@@ -670,6 +752,115 @@ if (import.meta.vitest) {
   });
 
   describe("search-sessions extension", () => {
+    it("searches every configured session root", async () => {
+      const firstRoot = fs.mkdtempSync(
+        path.join(tmpdir, "pi-search-sessions-first-"),
+      );
+      const secondRoot = fs.mkdtempSync(
+        path.join(tmpdir, "pi-search-sessions-second-"),
+      );
+      for (const [root, id] of [
+        [firstRoot, "first"],
+        [secondRoot, "second"],
+      ] as const) {
+        fs.writeFileSync(
+          path.join(root, `2026-07-26T00-00-00-000Z_${id}.jsonl`),
+          [
+            JSON.stringify({
+              type: "session",
+              version: 3,
+              id,
+              timestamp: "2026-07-26T00:00:00.000Z",
+              cwd: "/tmp/project",
+            }),
+            JSON.stringify({
+              type: "message",
+              id: `${id}-message`,
+              parentId: null,
+              timestamp: "2026-07-26T00:00:01.000Z",
+              message: {
+                role: "user",
+                content: [{ type: "text", text: `${id} session` }],
+              },
+            }),
+          ].join("\n"),
+        );
+      }
+      const tool = createSearchSessionsTool({
+        maxResults: 50,
+        sessionsDirs: [firstRoot, secondRoot],
+        rgTimeoutMs: 1000,
+      });
+
+      const result = await (tool.execute as any)(
+        "tool-call",
+        { all_workspaces: true },
+        undefined,
+        undefined,
+        { cwd: "/tmp/project" },
+      );
+
+      expect(result.content[0].text).toContain("found 2 matching branches");
+    });
+
+    it("uses first-root precedence for duplicate session ids", async () => {
+      const roots = ["first", "second"].map((name) =>
+        fs.mkdtempSync(path.join(tmpdir, `pi-search-${name}-`)),
+      );
+      roots.forEach((root, index) => {
+        fs.writeFileSync(
+          path.join(root, `duplicate-${index}.jsonl`),
+          [
+            JSON.stringify({
+              type: "session",
+              version: 3,
+              id: "duplicate",
+              timestamp: "2026-07-26T00:00:00.000Z",
+              cwd: "/tmp/project",
+            }),
+            JSON.stringify({
+              type: "message",
+              id: `leaf-${index}`,
+              parentId: null,
+              timestamp: "2026-07-26T00:00:01.000Z",
+              message: {
+                role: "user",
+                content: [{ type: "text", text: `root ${index}` }],
+              },
+            }),
+          ].join("\n"),
+        );
+      });
+      const tool = createSearchSessionsTool({
+        maxResults: 50,
+        sessionsDirs: roots,
+        rgTimeoutMs: 1000,
+      });
+
+      const result = await (tool.execute as any)(
+        "tool-call",
+        { all_workspaces: true },
+        undefined,
+        undefined,
+        { cwd: "/tmp/project" },
+      );
+
+      expect(result.content[0].text).toContain("found 1 matching branch:");
+      expect(result.content[0].text).toContain("root 0");
+      expect(result.content[0].text).not.toContain("root 1");
+
+      const secondaryOnly = await (tool.execute as any)(
+        "tool-call",
+        { keyword: "root 1", all_workspaces: true },
+        undefined,
+        undefined,
+        { cwd: "/tmp/project" },
+      );
+      expect(secondaryOnly.content[0].text).toBe(
+        "(no matching sessions found)",
+      );
+    });
+
     it("registers autocomplete, prompt guidance, and tool with default config when enabled", () => {
       const getEnabledExtensionConfigSpy = vi.fn(
         <T extends Record<string, unknown>>(
@@ -735,6 +926,7 @@ if (import.meta.vitest) {
         "@bds_pi/search-sessions": {
           maxResults: 0,
           sessionsDir: "",
+          sessionsDirs: [],
           rgTimeoutMs: "fast",
         },
       });

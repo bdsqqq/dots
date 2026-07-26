@@ -1,0 +1,20 @@
+{
+  "@bds_pi/pi-memory": {
+    "sessionsDirs": [
+      "~/.pi/agent/sessions",
+      "~/.t3/userdata/providers/pi"
+    ]
+  },
+  "@bds_pi/read-session": {
+    "sessionsDirs": [
+      "~/.pi/agent/sessions",
+      "~/.t3/userdata/providers/pi"
+    ]
+  },
+  "@bds_pi/search-sessions": {
+    "sessionsDirs": [
+      "~/.pi/agent/sessions",
+      "~/.t3/userdata/providers/pi"
+    ]
+  }
+}

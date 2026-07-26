@@ -25,6 +25,7 @@ import {
 } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { clearConfigCache, getExtensionConfigWithSchema } from "@bds_pi/config";
 import {
   renderPromptCatalog,
   scanCatalog,
@@ -83,22 +84,44 @@ type Job = {
 const HOME = homedir();
 const envPath = (name: string, fallback: string): string =>
   resolve((process.env[name] || fallback).replace(/^~(?=$|\/)/, HOME));
-const config = (): MemoryConfig & { sessions: string } => ({
-  sessions: envPath(
-    "PI_CODING_AGENT_SESSION_DIR",
-    join(HOME, ".pi/agent/sessions"),
-  ),
-  state: envPath("PI_MEMORY_STATE_DIR", join(HOME, ".local/state/pi-memory")),
-  data: envPath("PI_MEMORY_DATA_DIR", join(HOME, ".local/share/pi-memory")),
-  root: envPath(
-    "PI_MEMORY_ROOT",
-    join(HOME, "commonplace/01_files/_utilities/agent-memories"),
-  ),
-  skillsRoot: envPath(
-    "PI_MEMORY_SKILLS_ROOT",
-    join(HOME, "commonplace/01_files/nix/user/agents/skills"),
-  ),
-});
+type PiMemoryExtConfig = { sessionsDirs: string[] };
+const PI_MEMORY_CONFIG_DEFAULTS: PiMemoryExtConfig = {
+  sessionsDirs: [join(HOME, ".pi/agent/sessions")],
+};
+const isPiMemoryExtConfig = (
+  value: Record<string, unknown>,
+): value is PiMemoryExtConfig =>
+  Array.isArray(value.sessionsDirs) &&
+  value.sessionsDirs.length > 0 &&
+  value.sessionsDirs.every(
+    (sessionsDir) =>
+      typeof sessionsDir === "string" && sessionsDir.trim().length > 0,
+  );
+const config = (): MemoryConfig & { sessions: string[] } => {
+  const configured = getExtensionConfigWithSchema(
+    "@bds_pi/pi-memory",
+    PI_MEMORY_CONFIG_DEFAULTS,
+    { schema: { validate: isPiMemoryExtConfig } },
+  );
+  const sessions = process.env.PI_CODING_AGENT_SESSION_DIR
+    ? [envPath("PI_CODING_AGENT_SESSION_DIR", "")]
+    : configured.sessionsDirs.map((sessionsDir) =>
+        resolve(sessionsDir.replace(/^~(?=$|\/)/, HOME)),
+      );
+  return {
+    sessions: [...new Set(sessions)],
+    state: envPath("PI_MEMORY_STATE_DIR", join(HOME, ".local/state/pi-memory")),
+    data: envPath("PI_MEMORY_DATA_DIR", join(HOME, ".local/share/pi-memory")),
+    root: envPath(
+      "PI_MEMORY_ROOT",
+      join(HOME, "commonplace/01_files/_utilities/agent-memories"),
+    ),
+    skillsRoot: envPath(
+      "PI_MEMORY_SKILLS_ROOT",
+      join(HOME, "commonplace/01_files/nix/user/agents/skills"),
+    ),
+  };
+};
 const MAX_SOURCE = 128 * 1024 * 1024;
 const MAX_PROJECTION = 64 * 1024;
 
@@ -411,9 +434,22 @@ function projectUnlocked(): void {
   const pending = contained(cfg.data, join(cfg.data, "queue/pending"));
   const quarantine = contained(cfg.data, join(cfg.data, "quarantine"));
   [cfg.state, cfg.data, projectionDir, pending, quarantine].forEach(secureDir);
-  for (const source of walkJsonl(cfg.sessions)) {
+  const sources = [...new Set(cfg.sessions.flatMap(walkJsonl))];
+  const claimedSessions = new Map<string, { source: string; digest: string }>();
+  for (const source of sources) {
     try {
       const snapshot = parseStableSnapshot(source);
+      const digest = createHash("sha256")
+        .update(JSON.stringify([snapshot.header, snapshot.entries]))
+        .digest("hex");
+      const claimed = claimedSessions.get(snapshot.header.id);
+      if (claimed) {
+        if (claimed.digest === digest) continue;
+        throw new Error(
+          `session id ${snapshot.header.id} conflicts with ${claimed.source}`,
+        );
+      }
+      claimedSessions.set(snapshot.header.id, { source, digest });
       const output = contained(
         projectionDir,
         join(projectionDir, `${snapshot.header.id}.md`),
@@ -1295,6 +1331,37 @@ if (import.meta.vitest) {
     content: unknown,
   ): Entry => ({ type: "message", id, parentId, message: { role, content } });
   describe("session projection invariants", () => {
+    it("loads multiple session roots from global config", () => {
+      const dir = mkdtempSync(join(tmpdir(), "pi-memory-config-"));
+      const settings = join(dir, "bds-pi.json");
+      writeFileSync(
+        settings,
+        JSON.stringify({
+          "@bds_pi/pi-memory": {
+            sessionsDirs: ["~/first", "~/second"],
+          },
+        }),
+      );
+      const previousConfig = process.env.PI_BDS_CONFIG_PATH;
+      const previousSessions = process.env.PI_CODING_AGENT_SESSION_DIR;
+      process.env.PI_BDS_CONFIG_PATH = settings;
+      delete process.env.PI_CODING_AGENT_SESSION_DIR;
+      clearConfigCache();
+      try {
+        expect(config().sessions).toEqual([
+          join(HOME, "first"),
+          join(HOME, "second"),
+        ]);
+      } finally {
+        if (previousConfig === undefined) delete process.env.PI_BDS_CONFIG_PATH;
+        else process.env.PI_BDS_CONFIG_PATH = previousConfig;
+        if (previousSessions === undefined)
+          delete process.env.PI_CODING_AGENT_SESSION_DIR;
+        else process.env.PI_CODING_AGENT_SESSION_DIR = previousSessions;
+        clearConfigCache();
+      }
+    });
+
     it("projects only authored text", () => {
       const snapshot: Snapshot = {
         source: "/tmp/s",

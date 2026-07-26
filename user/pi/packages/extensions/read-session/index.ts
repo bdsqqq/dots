@@ -45,13 +45,14 @@ const READ_SESSION_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 type ReadSessionExtConfig = {
   model: PiSpawnModel;
-  sessionsDir: string;
+  sessionsDir?: string;
+  sessionsDirs?: string[];
   maxChars: number;
 };
 
 const CONFIG_DEFAULTS: ReadSessionExtConfig = {
   model: READ_SESSION_DEFAULT_MODEL,
-  sessionsDir: path.join(os.homedir(), ".pi", "agent", "sessions"),
+  sessionsDirs: [path.join(os.homedir(), ".pi", "agent", "sessions")],
   maxChars: 120_000,
 };
 
@@ -74,7 +75,12 @@ function isReadSessionConfig(
 ): value is ReadSessionExtConfig {
   return (
     isPiSpawnModelValue(value.model) &&
-    isNonEmptyString(value.sessionsDir) &&
+    (value.sessionsDir === undefined || isNonEmptyString(value.sessionsDir)) &&
+    (value.sessionsDirs === undefined ||
+      (Array.isArray(value.sessionsDirs) &&
+        value.sessionsDirs.length > 0 &&
+        value.sessionsDirs.every(isNonEmptyString))) &&
+    (value.sessionsDir !== undefined || value.sessionsDirs !== undefined) &&
     typeof value.maxChars === "number" &&
     Number.isInteger(value.maxChars) &&
     value.maxChars >= 1
@@ -91,7 +97,8 @@ const DEFAULT_SYSTEM_PROMPT = `You are analyzing a pi coding agent session trans
 export interface ReadSessionConfig {
   systemPrompt?: string;
   model?: PiSpawnModel;
-  sessionsDir: string;
+  sessionsDir?: string;
+  sessionsDirs?: string[];
   maxChars: number;
 }
 
@@ -131,23 +138,14 @@ export interface ReadSessionParams {
 
 function findSessionFile(
   sessionId: string,
-  sessionsDir: string,
+  sessionsDirs: string[],
 ): string | null {
-  if (sessionId.length === 0 || !fs.existsSync(sessionsDir)) return null;
+  if (sessionId.length === 0) return null;
+  for (const sessionsDir of sessionsDirs) {
+    if (!fs.existsSync(sessionsDir)) continue;
 
-  // fast path: check filename contains session id
-  const byFilename = walkDirSync(sessionsDir, {
-    stopWhen: (entry) =>
-      entry.isFile() &&
-      entry.name.endsWith(".jsonl") &&
-      entry.name.includes(sessionId),
-  })[0];
-  if (byFilename) return byFilename;
-
-  // slow path: parse headers
-  return (
-    walkDirSync(sessionsDir, {
-      stopWhen: (entry, absolutePath) => {
+    const matches = walkDirSync(sessionsDir, {
+      filter: (entry, absolutePath) => {
         if (!entry.isFile() || !entry.name.endsWith(".jsonl")) return false;
         try {
           const firstLine = fs
@@ -155,13 +153,37 @@ function findSessionFile(
             .split("\n")[0];
           if (!firstLine) return false;
           const header = JSON.parse(firstLine);
-          return header.type === "session" && header.id === sessionId;
+          return (
+            header.type === "session" &&
+            typeof header.id === "string" &&
+            header.id.startsWith(sessionId)
+          );
         } catch {
           return false;
         }
       },
-    })[0] ?? null
-  );
+    });
+    if (matches.length > 1)
+      throw new Error(`ambiguous session id prefix: ${sessionId}`);
+    if (matches[0]) return matches[0];
+  }
+  return null;
+}
+
+function resolveSessionsDirs(config: {
+  sessionsDir?: string;
+  sessionsDirs?: string[];
+}): string[] {
+  const configured = config.sessionsDir
+    ? [config.sessionsDir]
+    : (config.sessionsDirs ?? CONFIG_DEFAULTS.sessionsDirs!);
+  return [
+    ...new Set(
+      configured.map((sessionsDir) =>
+        path.resolve(sessionsDir.replace(/^~(?=$|\/)/, os.homedir())),
+      ),
+    ),
+  ];
 }
 
 function renderSessionTree(
@@ -341,6 +363,7 @@ function renderSessionTree(
 export function createReadSessionTool(
   config: ReadSessionConfig,
 ): ToolDefinition<any> {
+  const sessionsDirs = resolveSessionsDirs(config);
   return {
     name: "read_session",
     label: "Read Session",
@@ -378,7 +401,7 @@ export function createReadSessionTool(
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as ReadSessionParams;
       // find the session file
-      const sessionFile = findSessionFile(p.session_id, config.sessionsDir);
+      const sessionFile = findSessionFile(p.session_id, sessionsDirs);
       if (!sessionFile) {
         throw new Error(`session not found: ${p.session_id}`);
       }
@@ -522,7 +545,7 @@ export function resolveReadSessionConfig(
     config: {
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
       model: config.model,
-      sessionsDir: config.sessionsDir,
+      sessionsDirs: resolveSessionsDirs(config),
       maxChars: config.maxChars,
     },
   };
@@ -592,7 +615,7 @@ if (import.meta.vitest) {
         },
       ]);
 
-      expect(findSessionFile("alpha-session", sessionsDir)).toBe(filePath);
+      expect(findSessionFile("alpha-session", [sessionsDir])).toBe(filePath);
     });
 
     it("falls back to parsing headers when filenames do not include the session id", () => {
@@ -607,7 +630,38 @@ if (import.meta.vitest) {
         },
       ]);
 
-      expect(findSessionFile("beta-session", sessionsDir)).toBe(filePath);
+      expect(findSessionFile("beta-session", [sessionsDir])).toBe(filePath);
+    });
+
+    it("finds sessions in secondary roots", () => {
+      const firstRoot = makeTmpDir();
+      const secondRoot = makeTmpDir();
+      const filePath = path.join(secondRoot, "t3-session.jsonl");
+      writeSessionJsonl(filePath, [
+        {
+          type: "session",
+          id: "t3-session",
+          timestamp: "2026-07-26T00:00:00.000Z",
+          cwd: "/repo/app",
+        },
+      ]);
+
+      expect(findSessionFile("t3-sess", [firstRoot, secondRoot])).toBe(
+        filePath,
+      );
+    });
+
+    it("rejects ambiguous session id prefixes", () => {
+      const sessionsDir = makeTmpDir();
+      for (const id of ["shared-first", "shared-second"]) {
+        writeSessionJsonl(path.join(sessionsDir, `${id}.jsonl`), [
+          { type: "session", id },
+        ]);
+      }
+
+      expect(() => findSessionFile("shared-", [sessionsDir])).toThrow(
+        "ambiguous session id prefix: shared-",
+      );
     });
 
     it("does not treat an empty id as matching every session filename", () => {
@@ -616,7 +670,7 @@ if (import.meta.vitest) {
         { type: "session", id: "session" },
       ]);
 
-      expect(findSessionFile("", sessionsDir)).toBeNull();
+      expect(findSessionFile("", [sessionsDir])).toBeNull();
     });
   });
 
@@ -624,7 +678,7 @@ if (import.meta.vitest) {
     it("resolves the effective tool config", () => {
       const config = {
         model: "custom/model",
-        sessionsDir: "/custom/sessions",
+        sessionsDirs: ["/custom/sessions"],
         maxChars: 42_000,
       };
       const getEnabledExtensionConfigSpy = vi.fn(() => ({
