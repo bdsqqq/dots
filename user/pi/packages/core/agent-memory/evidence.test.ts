@@ -7,6 +7,7 @@ describe("safe trajectory evidence", () => {
       "Bearer tiny Basic YQ== password is short " +
         "aws_secret_access_key: OnlyLettersCanStillBeAValidAwsSecretKeyHere " +
         '{"password":"json-tiny","aws_secret_access_key":"JsonLettersOnlySecret"} ' +
+        '{"password":"abc\\"def"} PASSWORD="shell\\"secret" ' +
         "authorization: Bearer abcdefghijklmnopqrstuvwxyz and sk-abcdefghijklmnop " +
         "AKIAIOSFODNN7EXAMPLE 4f3d2a1b0c9e8d7f6a5b4c3d2e1f0a9b " +
         "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
@@ -19,6 +20,8 @@ describe("safe trajectory evidence", () => {
     );
     expect(result.text).not.toContain("json-tiny");
     expect(result.text).not.toContain("JsonLettersOnlySecret");
+    expect(result.text).not.toContain('abc\\"def');
+    expect(result.text).not.toContain('shell\\"secret');
     expect(result.text).not.toContain("abcdefghijklmnopqrstuvwxyz");
     expect(result.text).not.toContain("AKIAIOSFODNN7EXAMPLE");
     expect(result.text).not.toContain("4f3d2a1b0c9e8d7f6a5b4c3d2e1f0a9b");
