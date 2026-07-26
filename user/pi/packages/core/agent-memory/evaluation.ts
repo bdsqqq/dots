@@ -59,8 +59,8 @@ function goldContext(
   };
   const operation = candidate.operation;
   if (operation.type === "skill-draft") {
-    const skillFile = operation.files.find((file) =>
-      file.path.endsWith("/SKILL.md"),
+    const skillFile = operation.files.find(
+      (file) => file.path === operation.targetPath,
     );
     const description = skillFile?.content
       ? /^description:\s*["']?(.+?)["']?$/m.exec(skillFile.content)?.[1]?.trim()
