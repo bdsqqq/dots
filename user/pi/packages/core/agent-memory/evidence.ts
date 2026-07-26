@@ -49,7 +49,7 @@ const REDACTIONS: Array<[string, RegExp]> = [
   ["credential-url", /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:]+:[^\s/@]+@[^\s]+/gi],
   [
     "secret-field",
-    /(?<![A-Za-z0-9_])(["']?)(token|secret|password|passwd|api[_-]?key|cookie|authorization|client[_-]?secret|access[_-]?key|(?:aws[_-]?)?secret[_-]?access[_-]?key|private[_-]?key|session[_-]?token)\1(?:\s*[:=]\s*|\s+is\s+)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+    /(?<![A-Za-z0-9_])(["']?)(token|secret|password|passwd|api[_-]?key|cookie|authorization|client[_-]?secret|access[_-]?key|(?:aws[_-]?)?secret[_-]?access[_-]?key|private[_-]?key|session[_-]?token)\1(?:\s*[:=]\s*|\s+is\s+)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi,
   ],
 ];
 
