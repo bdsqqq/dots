@@ -75,6 +75,9 @@ importers:
 
   packages/core/agent-memory:
     dependencies:
+      '@bds_pi/config':
+        specifier: workspace:*
+        version: link:../config
       '@letta-ai/trajectory':
         specifier: https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83
         version: https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83

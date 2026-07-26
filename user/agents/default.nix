@@ -18,6 +18,8 @@
         "${config.home.homeDirectory}/.config/agents/skills";
       agentPrompts = config.lib.file.mkOutOfStoreSymlink
         "${config.home.homeDirectory}/commonplace/01_files/nix/user/agents/agents";
+      bdsPiConfig = config.lib.file.mkOutOfStoreSymlink
+        "${config.home.homeDirectory}/commonplace/01_files/nix/user/agents/bds-pi.json";
 
     in {
       ".config/agents/skills" = {
@@ -30,6 +32,7 @@
 
       ".claude/CLAUDE.md".source = agentsMd;
       ".pi/agent/AGENTS.md".source = agentsMd;
+      ".pi/agent/bds-pi.json".source = bdsPiConfig;
       ".cursor/rules/AGENTS.md".source = agentsMd;
       ".codex/AGENTS.md" = {
         source = agentsMd;
