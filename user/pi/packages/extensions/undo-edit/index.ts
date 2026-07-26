@@ -18,10 +18,12 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "typebox";
 import {
+  canonicalFilePath,
   findLatestChange,
   revertChange,
   simpleDiff,
@@ -145,10 +147,12 @@ export function createUndoEditTool(): ToolDefinition<any> {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const p = params as UndoEditParams;
       const requestedPath = resolveToAbsolute(p.path, ctx.cwd);
+      const resolved = resolveWithVariants(requestedPath, ctx.cwd);
+      const canonical = canonicalFilePath(resolved);
       const verdict = toolPolicy.evaluateToolPolicy(
         "undo_edit",
         {
-          path: requestedPath,
+          path: canonical,
           sessionCwd: ctx.cwd,
         },
         toolPolicy.loadToolPolicy(),
@@ -167,71 +171,71 @@ export function createUndoEditTool(): ToolDefinition<any> {
         } as any;
       }
 
-      const resolved = resolveWithVariants(p.path, ctx.cwd);
+      return withFileMutationQueue(canonical, () =>
+        withFileLock(canonical, async () => {
+          const sessionId = ctx.sessionManager.getSessionId();
+          const activeIds = getActiveToolCallIds(ctx.sessionManager);
 
-      return withFileLock(resolved, async () => {
-        const sessionId = ctx.sessionManager.getSessionId();
-        const activeIds = getActiveToolCallIds(ctx.sessionManager);
+          if (activeIds.length === 0) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "no edits found to undo (no tool calls in current branch).",
+                },
+              ],
+              isError: true,
+            } as any;
+          }
 
-        if (activeIds.length === 0) {
+          const latest = findLatestChange(sessionId, canonical, activeIds);
+          if (!latest) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `no edits found to undo for ${path.basename(resolved)}.`,
+                },
+              ],
+              isError: true,
+            } as any;
+          }
+
+          const reverted = revertChange(
+            sessionId,
+            latest.toolCallId,
+            latest.change.id,
+          );
+          if (!reverted) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `failed to revert — change may have already been undone.`,
+                },
+              ],
+              isError: true,
+            } as any;
+          }
+
+          // show reverse diff (after → before)
+          const diff = simpleDiff(
+            path.basename(resolved),
+            reverted.after,
+            reverted.before,
+          );
+
+          let result = diff;
+          if (reverted.isNewFile) {
+            result += `\n\n(file was created by the reverted patch — file removed)`;
+          }
+
           return {
-            content: [
-              {
-                type: "text" as const,
-                text: "no edits found to undo (no tool calls in current branch).",
-              },
-            ],
-            isError: true,
+            content: [{ type: "text" as const, text: result }],
+            details: { header: resolved },
           } as any;
-        }
-
-        const latest = findLatestChange(sessionId, resolved, activeIds);
-        if (!latest) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `no edits found to undo for ${path.basename(resolved)}.`,
-              },
-            ],
-            isError: true,
-          } as any;
-        }
-
-        const reverted = revertChange(
-          sessionId,
-          latest.toolCallId,
-          latest.change.id,
-        );
-        if (!reverted) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `failed to revert — change may have already been undone.`,
-              },
-            ],
-            isError: true,
-          } as any;
-        }
-
-        // show reverse diff (after → before)
-        const diff = simpleDiff(
-          path.basename(resolved),
-          reverted.after,
-          reverted.before,
-        );
-
-        let result = diff;
-        if (reverted.isNewFile) {
-          result += `\n\n(file was created by the reverted patch — file removed)`;
-        }
-
-        return {
-          content: [{ type: "text" as const, text: result }],
-          details: { header: resolved },
-        } as any;
-      });
+        }),
+      );
     },
   };
 }

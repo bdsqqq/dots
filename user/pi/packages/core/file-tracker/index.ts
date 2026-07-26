@@ -38,6 +38,12 @@ export interface FileChange {
   diff: string;
   /** true if this was a newly created file */
   isNewFile: boolean;
+  /** whether the path existed before and after the mutation */
+  beforeExists?: boolean;
+  afterExists?: boolean;
+  /** permission bits before and after the mutation */
+  beforeMode?: number;
+  afterMode?: number;
   /** true if undo_edit has reverted this change */
   reverted: boolean;
   /** epoch ms when the edit occurred */
@@ -55,6 +61,31 @@ function changePath(
 ): string {
   return path.join(sessionDir(sessionId), `${toolCallId}.${changeId}`);
 }
+
+export function canonicalFilePath(filePath: string): string {
+  const suffix: string[] = [];
+  let ancestor = path.resolve(filePath);
+  while (!fs.existsSync(ancestor)) {
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    suffix.unshift(path.basename(ancestor));
+    ancestor = parent;
+  }
+  return path.join(fs.realpathSync(ancestor), ...suffix);
+}
+
+function canonicalFileUri(uri: string): string {
+  return `file://${canonicalFilePath(uri.replace(/^file:\/\//, ""))}`;
+}
+
+const trackerFs = {
+  writeFileSync(file: string, content: string): void {
+    fs.writeFileSync(file, content, "utf-8");
+  },
+  renameSync(source: string, destination: string): void {
+    fs.renameSync(source, destination);
+  },
+};
 
 /** ensure the session's file-changes directory exists. */
 function ensureDir(sessionId: string): void {
@@ -78,19 +109,53 @@ export function saveChange(
   toolCallId: string,
   change: Omit<FileChange, "id" | "reverted">,
 ): string {
+  return saveChanges(sessionId, toolCallId, [change])[0]!;
+}
+
+/**
+ * Persist every record for one tool call as a unit. A failed write removes
+ * earlier records so callers can roll back the corresponding filesystem
+ * transaction without leaving discoverable partial undo state.
+ */
+export function saveChanges(
+  sessionId: string,
+  toolCallId: string,
+  changes: Array<Omit<FileChange, "id" | "reverted">>,
+): string[] {
   ensureDir(sessionId);
-  const id = crypto.randomUUID();
-  const record: FileChange = {
-    ...change,
-    id,
-    reverted: false,
-  };
-  fs.writeFileSync(
-    changePath(sessionId, toolCallId, id),
-    JSON.stringify(record, null, 2),
-    "utf-8",
-  );
-  return id;
+  const records = changes.map((change) => {
+    const id = crypto.randomUUID();
+    return {
+      path: changePath(sessionId, toolCallId, id),
+      record: {
+        ...change,
+        uri: canonicalFileUri(change.uri),
+        id,
+        reverted: false,
+      } satisfies FileChange,
+    };
+  });
+  try {
+    for (const { path: recordPath, record } of records) {
+      writeRecord(recordPath, record);
+    }
+  } catch (error) {
+    for (const { path: recordPath } of records) {
+      fs.rmSync(recordPath, { force: true });
+    }
+    throw error;
+  }
+  return records.map(({ record }) => record.id);
+}
+
+function writeRecord(recordPath: string, record: FileChange): void {
+  const temporary = `${recordPath}.tmp-${crypto.randomUUID()}`;
+  try {
+    trackerFs.writeFileSync(temporary, JSON.stringify(record, null, 2));
+    trackerFs.renameSync(temporary, recordPath);
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
 }
 
 /**
@@ -144,20 +209,86 @@ export function revertChange(
   }
   if (change.reverted) return null;
 
-  // restore the file to its pre-edit state
   const filePath = change.uri.replace(/^file:\/\//, "");
-  if (change.isNewFile) {
-    fs.rmSync(filePath, { force: true });
-  } else {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, change.before, "utf-8");
+  const beforeExists = change.beforeExists ?? !change.isNewFile;
+  const afterExists =
+    change.afterExists ?? (fs.existsSync(filePath) || change.after !== "");
+  assertTrackedAfterState(
+    filePath,
+    afterExists,
+    change.after,
+    change.afterMode,
+  );
+  restoreTrackedState(filePath, beforeExists, change.before, change.beforeMode);
+
+  change.reverted = true;
+  try {
+    writeRecord(p, change);
+  } catch (error) {
+    restoreTrackedState(filePath, afterExists, change.after, change.afterMode);
+    throw error;
   }
 
-  // mark as reverted on disk
-  change.reverted = true;
-  fs.writeFileSync(p, JSON.stringify(change, null, 2), "utf-8");
-
   return change;
+}
+
+function assertTrackedAfterState(
+  filePath: string,
+  expectedExists: boolean,
+  expectedContent: string,
+  expectedMode?: number,
+): void {
+  let current: fs.Stats | undefined;
+  try {
+    current = fs.lstatSync(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  if (current?.isSymbolicLink()) {
+    throw new Error(`refusing to undo symbolic link: ${filePath}`);
+  }
+  if (current && current.nlink > 1) {
+    throw new Error(`refusing to undo hard-linked file: ${filePath}`);
+  }
+  if (!expectedExists) {
+    if (current) throw new Error(`refusing to undo changed path: ${filePath}`);
+    return;
+  }
+  if (
+    !current ||
+    !current.isFile() ||
+    fs.readFileSync(filePath, "utf-8") !== expectedContent ||
+    (expectedMode !== undefined &&
+      (current.mode & 0o7777) !== (expectedMode & 0o7777))
+  ) {
+    throw new Error(`refusing to undo changed file: ${filePath}`);
+  }
+}
+
+function restoreTrackedState(
+  filePath: string,
+  exists: boolean,
+  content: string,
+  mode?: number,
+): void {
+  if (!exists) {
+    fs.rmSync(filePath, { force: true });
+    return;
+  }
+  try {
+    const current = fs.lstatSync(filePath);
+    if (current.isSymbolicLink()) {
+      throw new Error(`refusing to restore through symbolic link: ${filePath}`);
+    }
+    if (current.nlink > 1) {
+      throw new Error(`refusing to restore a hard-linked file: ${filePath}`);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, "utf-8");
+  if (mode !== undefined) fs.chmodSync(filePath, mode);
 }
 
 /**
@@ -172,7 +303,7 @@ export function findLatestChange(
   filePath: string,
   activeToolCallIds: string[],
 ): { toolCallId: string; change: FileChange } | null {
-  const uri = `file://${path.resolve(filePath)}`;
+  const uri = `file://${canonicalFilePath(filePath)}`;
 
   // check in reverse order (most recent first)
   for (let i = activeToolCallIds.length - 1; i >= 0; i--) {
@@ -181,7 +312,14 @@ export function findLatestChange(
     const changes = loadChanges(sessionId, toolCallId);
     // within a tool call, find the matching file (most recent by timestamp)
     const match = changes
-      .filter((c) => !c.reverted && c.uri === uri)
+      .filter((change) => {
+        if (change.reverted) return false;
+        try {
+          return canonicalFileUri(change.uri) === uri;
+        } catch {
+          return false;
+        }
+      })
       .sort((a, b) => b.timestamp - a.timestamp)[0];
     if (match) {
       return { toolCallId, change: match };
@@ -284,7 +422,8 @@ export function simpleDiff(
 
 // inline tests
 if (import.meta.vitest) {
-  const { describe, it, expect, beforeEach, afterEach } = import.meta.vitest;
+  const { describe, it, expect, beforeEach, afterEach, vi } = import.meta
+    .vitest;
   let tmpDir: string;
   let sessionId: string;
 
@@ -296,6 +435,7 @@ if (import.meta.vitest) {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {}
@@ -390,7 +530,7 @@ if (import.meta.vitest) {
       const changes = loadChanges(sessionId, toolCallId);
       expect(changes).toHaveLength(1);
       expect(changes[0]!.id).toBe(changeId);
-      expect(changes[0]!.uri).toBe(`file://${filePath}`);
+      expect(changes[0]!.uri).toBe(canonicalFileUri(`file://${filePath}`));
       expect(changes[0]!.before).toBe("");
       expect(changes[0]!.after).toBe(content);
       expect(changes[0]!.isNewFile).toBe(true);
@@ -425,8 +565,42 @@ if (import.meta.vitest) {
       const changes = loadChanges(sessionId, toolCallId);
       expect(changes).toHaveLength(2);
       const uris = changes.map((c) => c.uri);
-      expect(uris).toContain(`file://${file1}`);
-      expect(uris).toContain(`file://${file2}`);
+      expect(uris).toContain(canonicalFileUri(`file://${file1}`));
+      expect(uris).toContain(canonicalFileUri(`file://${file2}`));
+    });
+
+    it("removes every record when a later batch write fails", () => {
+      const toolCallId = "tc-atomic";
+      let renames = 0;
+      vi.spyOn(trackerFs, "renameSync").mockImplementation(
+        (source, destination) => {
+          renames++;
+          if (renames === 2) throw new Error("injected tracker failure");
+          fs.renameSync(source, destination);
+        },
+      );
+
+      expect(() =>
+        saveChanges(sessionId, toolCallId, [
+          {
+            uri: `file://${path.join(tmpDir, "one.txt")}`,
+            before: "",
+            after: "one",
+            diff: "",
+            isNewFile: true,
+            timestamp: Date.now(),
+          },
+          {
+            uri: `file://${path.join(tmpDir, "two.txt")}`,
+            before: "",
+            after: "two",
+            diff: "",
+            isNewFile: true,
+            timestamp: Date.now(),
+          },
+        ]),
+      ).toThrow("injected tracker failure");
+      expect(loadChanges(sessionId, toolCallId)).toEqual([]);
     });
 
     it("returns empty array when no changes exist", () => {
@@ -502,6 +676,7 @@ if (import.meta.vitest) {
         isNewFile: false,
         timestamp: Date.now(),
       });
+      fs.writeFileSync(filePath, "after", "utf-8");
 
       const first = revertChange(sessionId, toolCallId, changeId);
       expect(first).not.toBeNull();
@@ -529,6 +704,126 @@ if (import.meta.vitest) {
 
       expect(result).not.toBeNull();
       expect(fs.existsSync(filePath)).toBe(false);
+    });
+
+    it("restores executable mode", () => {
+      const toolCallId = "tc-mode";
+      const filePath = path.join(tmpDir, "script.sh");
+      fs.writeFileSync(filePath, "after\n", "utf-8");
+      fs.chmodSync(filePath, 0o644);
+      const changeId = saveChange(sessionId, toolCallId, {
+        uri: `file://${filePath}`,
+        before: "before\n",
+        after: "after\n",
+        diff: "",
+        isNewFile: false,
+        beforeExists: true,
+        afterExists: true,
+        beforeMode: 0o755,
+        afterMode: 0o644,
+        timestamp: Date.now(),
+      });
+
+      revertChange(sessionId, toolCallId, changeId);
+
+      expect(fs.readFileSync(filePath, "utf-8")).toBe("before\n");
+      expect(fs.statSync(filePath).mode & 0o777).toBe(0o755);
+    });
+
+    it("refuses to restore through a symbolic link", () => {
+      const toolCallId = "tc-symlink";
+      const filePath = path.join(tmpDir, "tracked.txt");
+      const target = path.join(tmpDir, "outside.txt");
+      const changeId = saveChange(sessionId, toolCallId, {
+        uri: `file://${filePath}`,
+        before: "before",
+        after: "",
+        diff: "",
+        isNewFile: false,
+        beforeExists: true,
+        afterExists: false,
+        timestamp: Date.now(),
+      });
+      fs.symlinkSync(target, filePath);
+
+      expect(() => revertChange(sessionId, toolCallId, changeId)).toThrow(
+        "symbolic link",
+      );
+      expect(fs.readlinkSync(filePath)).toBe(target);
+      expect(fs.existsSync(target)).toBe(false);
+      expect(loadChanges(sessionId, toolCallId)[0]?.reverted).toBe(false);
+    });
+
+    it("refuses to restore a file with hard-link aliases", () => {
+      const toolCallId = "tc-hardlink";
+      const filePath = path.join(tmpDir, "tracked.txt");
+      const alias = path.join(tmpDir, "alias.txt");
+      fs.writeFileSync(filePath, "after");
+      const changeId = saveChange(sessionId, toolCallId, {
+        uri: `file://${filePath}`,
+        before: "before",
+        after: "after",
+        diff: "",
+        isNewFile: false,
+        beforeExists: true,
+        afterExists: true,
+        timestamp: Date.now(),
+      });
+      fs.linkSync(filePath, alias);
+
+      expect(() => revertChange(sessionId, toolCallId, changeId)).toThrow(
+        "hard-linked",
+      );
+      expect(fs.readFileSync(filePath, "utf8")).toBe("after");
+      expect(fs.readFileSync(alias, "utf8")).toBe("after");
+      expect(loadChanges(sessionId, toolCallId)[0]?.reverted).toBe(false);
+    });
+
+    it("refuses to overwrite changes made after the tracked mutation", () => {
+      const toolCallId = "tc-diverged";
+      const filePath = path.join(tmpDir, "tracked.txt");
+      fs.writeFileSync(filePath, "v3");
+      const changeId = saveChange(sessionId, toolCallId, {
+        uri: `file://${filePath}`,
+        before: "v1",
+        after: "v2",
+        diff: "",
+        isNewFile: false,
+        beforeExists: true,
+        afterExists: true,
+        timestamp: Date.now(),
+      });
+
+      expect(() => revertChange(sessionId, toolCallId, changeId)).toThrow(
+        "changed file",
+      );
+      expect(fs.readFileSync(filePath, "utf8")).toBe("v3");
+      expect(loadChanges(sessionId, toolCallId)[0]?.reverted).toBe(false);
+    });
+
+    it("restores the after state when marking the record reverted fails", () => {
+      const toolCallId = "tc-mark-failure";
+      const filePath = path.join(tmpDir, "tracked.txt");
+      fs.writeFileSync(filePath, "after", "utf-8");
+      const changeId = saveChange(sessionId, toolCallId, {
+        uri: `file://${filePath}`,
+        before: "before",
+        after: "after",
+        diff: "",
+        isNewFile: false,
+        beforeExists: true,
+        afterExists: true,
+        timestamp: Date.now(),
+      });
+      vi.spyOn(trackerFs, "renameSync").mockImplementation(() => {
+        throw new Error("injected mark failure");
+      });
+
+      expect(() => revertChange(sessionId, toolCallId, changeId)).toThrow(
+        "injected mark failure",
+      );
+      expect(fs.readFileSync(filePath, "utf-8")).toBe("after");
+      expect(loadChanges(sessionId, toolCallId)[0]?.reverted).toBe(false);
     });
   });
 
@@ -562,6 +857,58 @@ if (import.meta.vitest) {
       expect(result?.change.before).toBe("v2");
       expect(result?.change.after).toBe("v3");
       expect(result?.toolCallId).toBe(tc2);
+    });
+
+    it("matches equivalent paths through a symlinked parent", () => {
+      const toolCallId = "tc-path-alias";
+      const real = path.join(tmpDir, "real");
+      const alias = path.join(tmpDir, "alias");
+      fs.mkdirSync(real);
+      fs.symlinkSync(real, alias);
+      const realFile = path.join(real, "file.txt");
+      fs.writeFileSync(realFile, "after");
+      saveChange(sessionId, toolCallId, {
+        uri: `file://${realFile}`,
+        before: "before",
+        after: "after",
+        diff: "",
+        isNewFile: false,
+        timestamp: Date.now(),
+      });
+
+      expect(
+        findLatestChange(sessionId, path.join(alias, "file.txt"), [toolCallId])
+          ?.change.after,
+      ).toBe("after");
+    });
+
+    it("matches legacy records with non-canonical file URIs", () => {
+      const toolCallId = "tc-legacy-alias";
+      const real = path.join(tmpDir, "legacy-real");
+      const alias = path.join(tmpDir, "legacy-alias");
+      fs.mkdirSync(real);
+      fs.symlinkSync(real, alias);
+      const realFile = path.join(real, "file.txt");
+      fs.writeFileSync(realFile, "after");
+      ensureDir(sessionId);
+      const record: FileChange = {
+        id: "legacy",
+        uri: `file://${path.join(alias, "file.txt")}`,
+        before: "before",
+        after: "after",
+        diff: "",
+        isNewFile: false,
+        reverted: false,
+        timestamp: Date.now(),
+      };
+      fs.writeFileSync(
+        changePath(sessionId, toolCallId, record.id),
+        JSON.stringify(record),
+      );
+
+      expect(
+        findLatestChange(sessionId, realFile, [toolCallId])?.change.after,
+      ).toBe("after");
     });
 
     it("skips reverted changes", () => {
