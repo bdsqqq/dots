@@ -91,7 +91,23 @@ export function saveProposal(cfg: MemoryConfig, proposal: Proposal): string {
   if (existsSync(path)) {
     if (readFileSync(path, "utf8") !== value)
       throw new Error(`proposal collision ${proposal.id}`);
-  } else exclusive(path, value);
+  } else {
+    const reviewedDir = v2(cfg, "proposals/reviewed");
+    const reviewed = readdirSync(reviewedDir)
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => {
+        const reviewedPath = join(reviewedDir, name);
+        return {
+          path: reviewedPath,
+          proposal: parseStoredProposal(readFileSync(reviewedPath, "utf8")),
+        };
+      })
+      .filter((item) => item.proposal.id === proposal.id);
+    if (reviewed.length > 1)
+      throw new Error(`proposal collision ${proposal.id}`);
+    if (reviewed[0]) return reviewed[0].path;
+    exclusive(path, value);
+  }
   return path;
 }
 
