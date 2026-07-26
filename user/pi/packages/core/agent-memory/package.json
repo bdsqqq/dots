@@ -5,6 +5,9 @@
   "type": "module",
   "main": "./index.ts",
   "types": "./index.ts",
+  "dependencies": {
+    "@letta-ai/trajectory": "https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83"
+  },
   "devDependencies": {
     "vitest": "^3.0.0"
   }

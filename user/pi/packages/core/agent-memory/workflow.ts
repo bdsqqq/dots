@@ -505,10 +505,11 @@ function applyTransaction(cfg: MemoryConfig, transaction: Transaction): void {
 }
 
 function finalArtifacts(
+  cfg: MemoryConfig,
   transaction: Transaction,
 ): ReviewReceipt["finalArtifacts"] {
   return transaction.actions.map((action) => ({
-    path: action.to,
+    path: relative(cfg.root, action.to),
     sha256: sha256(action.after),
     status: action.to.includes("/.archive/archived/")
       ? "archived"
@@ -562,10 +563,14 @@ export function reviewProposal(options: {
       ),
     };
     for (const action of transaction.actions) {
-      exclusive(
-        v2(options.cfg, "artifacts", `${sha256(action.after)}.md`),
-        action.after,
+      const afterPath = v2(
+        options.cfg,
+        "artifacts",
+        `${sha256(action.after)}.md`,
       );
+      if (!existsSync(afterPath)) exclusive(afterPath, action.after);
+      else if (readFileSync(afterPath, "utf8") !== action.after)
+        throw new Error("artifact hash collision");
       if (action.before !== undefined) {
         const beforePath = v2(
           options.cfg,
@@ -576,7 +581,7 @@ export function reviewProposal(options: {
       }
     }
     applyTransaction(options.cfg, transaction);
-    finals = finalArtifacts(transaction);
+    finals = finalArtifacts(options.cfg, transaction);
     writeCatalog(options.cfg);
   } else if (options.decision === "accept") {
     const operation = proposal.operation as SkillDraftOperation;
@@ -728,6 +733,25 @@ export function migrateV1(
         .filter((name) => name.endsWith(".json"))
         .sort()
     : [];
+  const processedDir = join(cfg.data, "queue/processed");
+  const processed = existsSync(processedDir)
+    ? readdirSync(processedDir)
+        .filter((name) => name.endsWith(".json"))
+        .sort()
+    : [];
+  const outputs = new Set([
+    ...candidates.map((name) => basename(name, ".md")),
+    ...receipts.map((name) => basename(name, ".json")),
+  ]);
+  const missing = processed.filter(
+    (name) => !outputs.has(basename(name, ".json")),
+  );
+  if (missing.length)
+    throw new Error(
+      `legacy migration missing outputs for ${missing.slice(0, 5).join(", ")}`,
+    );
+  if (processed.length !== outputs.size)
+    throw new Error("legacy migration output/processed count mismatch");
   if (dryRun)
     return { candidates: candidates.length, receipts: receipts.length };
   for (const name of candidates) {

@@ -4,6 +4,7 @@ import {
   constants,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -12,7 +13,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import {
   basename,
   dirname,
@@ -38,6 +39,8 @@ import {
   rollbackReview,
 } from "./workflow.js";
 import { REVIEW_REASON_CODES, type ReviewReasonCode } from "./schema.js";
+import { buildSafeEvidence, type SafeEvidence } from "./evidence.js";
+import { processPipelineBatch } from "./pipeline.js";
 
 process.umask(0o077);
 
@@ -651,7 +654,7 @@ function validateJob(job: Job): string {
   return rendered.slice(0, MAX_PROJECTION);
 }
 
-function consolidateUnlocked(limit: number): boolean {
+function consolidateV1Unlocked(limit: number): boolean {
   const cfg = config();
   const dirs = {
     pending: join(cfg.data, "queue/pending"),
@@ -751,6 +754,172 @@ function consolidateUnlocked(limit: number): boolean {
     }
   }
   return !externalFailure;
+}
+
+type PendingWindow = {
+  evidence: SafeEvidence;
+  jobs: Array<{ job: Job; name: string }>;
+};
+
+function pendingWindows(limit: number): PendingWindow[] {
+  const cfg = config();
+  const pending = join(cfg.data, "queue/pending");
+  if (!existsSync(pending)) return [];
+  const items: Array<{
+    job: Job;
+    name: string;
+    chain: Entry[];
+    checkpointIndex: number;
+  }> = [];
+  for (const name of readdirSync(pending)
+    .filter((item) => item.endsWith(".json"))
+    .sort()) {
+    const value: unknown = JSON.parse(
+      readFileSync(join(pending, name), "utf8"),
+    );
+    if (!isJob(value)) throw new Error(`invalid job schema ${name}`);
+    const snapshot = parseStableSnapshot(value.sourcePath);
+    if (
+      snapshot.header.id !== value.sessionId ||
+      snapshot.header.cwd !== value.workspace
+    )
+      throw new Error(`job source/header mismatch ${name}`);
+    const chain = snapshot.chains.find((candidate) =>
+      candidate.some((entry) => entry.id === value.checkpointEntryId),
+    );
+    const checkpointIndex =
+      chain?.findIndex((entry) => entry.id === value.checkpointEntryId) ?? -1;
+    if (!chain || checkpointIndex < 0 || !checkpoint(chain[checkpointIndex]!))
+      throw new Error(`invalid checkpoint job ${name}`);
+    items.push({ job: value, name, chain, checkpointIndex });
+  }
+  const maxima = items
+    .filter(
+      (item) =>
+        !items.some(
+          (other) =>
+            other !== item &&
+            other.job.sessionId === item.job.sessionId &&
+            other.chain
+              .slice(0, other.checkpointIndex + 1)
+              .some((entry) => entry.id === item.job.checkpointEntryId),
+        ),
+    )
+    .sort((a, b) =>
+      `${a.job.workspace}:${a.job.sessionId}:${a.job.checkpointEntryId}`.localeCompare(
+        `${b.job.workspace}:${b.job.sessionId}:${b.job.checkpointEntryId}`,
+      ),
+    );
+  const assigned = new Set<string>();
+  const windows: PendingWindow[] = [];
+  for (const maximum of maxima) {
+    if (windows.length >= limit) break;
+    const ancestry = new Set(
+      maximum.chain
+        .slice(0, maximum.checkpointIndex + 1)
+        .map((entry) => entry.id),
+    );
+    const covered = items.filter(
+      (item) =>
+        item.job.sessionId === maximum.job.sessionId &&
+        ancestry.has(item.job.checkpointEntryId) &&
+        !assigned.has(item.job.checkpointEntryId),
+    );
+    if (!covered.length) continue;
+    covered.forEach((item) => assigned.add(item.job.checkpointEntryId));
+    const coveredIds = new Set(
+      covered.map((item) => item.job.checkpointEntryId),
+    );
+    let start = 0;
+    for (let index = 0; index < maximum.checkpointIndex; index++) {
+      const entry = maximum.chain[index]!;
+      if (checkpoint(entry) && !coveredIds.has(entry.id)) start = index + 1;
+    }
+    const cp = checkpoint(maximum.chain[maximum.checkpointIndex]!)!;
+    const throughLeafId = String(cp.throughLeafId);
+    const throughIndex = maximum.chain.findIndex(
+      (entry) => entry.id === throughLeafId,
+    );
+    if (throughIndex < start)
+      throw new Error(`checkpoint leaf precedes window ${maximum.name}`);
+    windows.push({
+      evidence: buildSafeEvidence({
+        sessionId: maximum.job.sessionId,
+        workspace: maximum.job.workspace,
+        entries: maximum.chain.slice(start, throughIndex + 1),
+        checkpointEntryIds: covered.map((item) => item.job.checkpointEntryId),
+        throughLeafId,
+        branchEntryIds: maximum.chain
+          .slice(0, throughIndex + 1)
+          .map((entry) => entry.id),
+      }),
+      jobs: covered.map(({ job, name }) => ({ job, name })),
+    });
+  }
+  return windows;
+}
+
+function consolidateV2Unlocked(limit: number): boolean {
+  const cfg = config();
+  const windows = pendingWindows(limit);
+  const batches = new Map<string, PendingWindow[]>();
+  for (const window of windows) {
+    const key = window.jobs[0]!.job.workspace;
+    const batch = batches.get(key) || [];
+    if (batch.length >= 5) batches.set(`${key}#${batches.size}`, [window]);
+    else {
+      batch.push(window);
+      batches.set(key, batch);
+    }
+  }
+  let ok = true;
+  for (const batch of batches.values()) {
+    const workspace = batch[0]!.jobs[0]!.job.workspace;
+    try {
+      const model =
+        process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-luna:low";
+      processPipelineBatch({
+        cfg,
+        scope: scopeFor(workspace),
+        evidence: batch.map((window) => window.evidence),
+        model,
+        skipExternal: process.env.PI_MEMORY_SKIP_EXTERNAL === "1",
+        invoke: (prompt) =>
+          run(
+            process.env.PI_BIN || "pi",
+            [
+              "-p",
+              "--no-session",
+              "--no-tools",
+              "--no-extensions",
+              "--no-skills",
+              "--no-prompt-templates",
+              "--no-context-files",
+              "--model",
+              model,
+            ],
+            prompt,
+          ),
+      });
+      secureDir(join(cfg.data, "queue/processed"));
+      for (const window of batch)
+        for (const { name } of window.jobs)
+          renameSync(
+            join(cfg.data, "queue/pending", name),
+            join(cfg.data, "queue/processed", name),
+          );
+    } catch (error) {
+      ok = false;
+      console.error(error instanceof Error ? error.message : String(error));
+    }
+  }
+  return ok;
+}
+
+function consolidateUnlocked(limit: number): boolean {
+  return process.env.PI_MEMORY_PIPELINE_VERSION === "1"
+    ? consolidateV1Unlocked(limit)
+    : consolidateV2Unlocked(limit);
 }
 
 function reconcile(): void {
@@ -1138,6 +1307,87 @@ if (import.meta.vitest) {
       expect(markdown).toContain("[earlier authored text truncated]");
       expect(markdown).toContain("newest-checkpoint-result");
       expect(markdown).not.toContain("old-start");
+    });
+
+    it("keeps sibling branches in separate reflection windows", () => {
+      const base = mkdtempSync(join(tmpdir(), "memory-windows-"));
+      const data = join(base, "data");
+      const sessions = join(base, "sessions");
+      const source = join(sessions, "session.jsonl");
+      mkdirSync(join(data, "queue/pending"), { recursive: true });
+      mkdirSync(sessions, { recursive: true });
+      const records = [
+        { type: "session", id: "forked", cwd: "/tmp/project" },
+        message("u1", null, "user", "shared"),
+        {
+          type: "custom",
+          customType: "@bds_pi/agent-memory/checkpoint",
+          data: { version: 1, throughLeafId: "u1", acceptedUserTurns: 1 },
+          id: "cp1",
+          parentId: "u1",
+        },
+        message("a", "cp1", "assistant", "branch-a"),
+        {
+          type: "custom",
+          customType: "@bds_pi/agent-memory/checkpoint",
+          data: { version: 1, throughLeafId: "a", acceptedUserTurns: 2 },
+          id: "cpa",
+          parentId: "a",
+        },
+        message("b", "cp1", "assistant", "branch-b"),
+        {
+          type: "custom",
+          customType: "@bds_pi/agent-memory/checkpoint",
+          data: { version: 1, throughLeafId: "b", acceptedUserTurns: 2 },
+          id: "cpb",
+          parentId: "b",
+        },
+      ];
+      writeFileSync(
+        source,
+        `${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+      );
+      for (const checkpointEntryId of ["cp1", "cpa", "cpb"])
+        writeFileSync(
+          join(data, "queue/pending", `forked--${checkpointEntryId}.json`),
+          JSON.stringify({
+            version: 1,
+            sessionId: "forked",
+            checkpointEntryId,
+            sourcePath: source,
+            projectionPath: "",
+            workspace: "/tmp/project",
+          }),
+        );
+      const previousData = process.env.PI_MEMORY_DATA_DIR;
+      const previousSessions = process.env.PI_CODING_AGENT_SESSION_DIR;
+      process.env.PI_MEMORY_DATA_DIR = data;
+      process.env.PI_CODING_AGENT_SESSION_DIR = sessions;
+      try {
+        const windows = pendingWindows(10);
+        expect(windows).toHaveLength(2);
+        const serialized = windows.map((window) =>
+          JSON.stringify(window.evidence),
+        );
+        expect(
+          serialized.filter((value) => value.includes("branch-a")),
+        ).toHaveLength(1);
+        expect(
+          serialized.filter((value) => value.includes("branch-b")),
+        ).toHaveLength(1);
+        expect(
+          windows
+            .flatMap((window) => window.jobs)
+            .map((item) => item.job.checkpointEntryId)
+            .sort(),
+        ).toEqual(["cp1", "cpa", "cpb"]);
+      } finally {
+        if (previousData === undefined) delete process.env.PI_MEMORY_DATA_DIR;
+        else process.env.PI_MEMORY_DATA_DIR = previousData;
+        if (previousSessions === undefined)
+          delete process.env.PI_CODING_AGENT_SESSION_DIR;
+        else process.env.PI_CODING_AGENT_SESSION_DIR = previousSessions;
+      }
     });
 
     it("strictly validates durable-memory candidates", () => {
