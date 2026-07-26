@@ -995,6 +995,7 @@ function reconcile(): void {
 function maintainUnlocked(): boolean {
   const cfg = config();
   projectUnlocked();
+  writeCatalog(cfg);
   secureDir(cfg.state);
   const gatesPath = join(cfg.state, "maintain-gates.json");
   let gates: { consolidation?: number; qmd?: number; reconcile?: number } = {};

@@ -26,7 +26,7 @@ import {
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
 import { resolvePrompt } from "@bds_pi/pi-spawn";
-import { renderPromptCatalog } from "@bds_pi/pi-memory";
+import { renderPromptCatalog } from "../../core/agent-memory/catalog.js";
 
 type SystemPromptExtConfig = {
   identity: string;

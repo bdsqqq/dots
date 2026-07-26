@@ -24,6 +24,7 @@ export type PipelineInput = {
   runId: string;
   batchId: string;
   promptVersion: 2;
+  createdAt: string;
   scope: string;
   evidence: SafeEvidence[];
   catalog: Catalog;
@@ -132,7 +133,7 @@ export function freezePipelineInput(
   scope: string,
   evidence: SafeEvidence[],
 ): PipelineInput {
-  const catalog = scanCatalog(cfg.root);
+  const catalog = scanCatalog(cfg.root, "1970-01-01T00:00:00.000Z");
   const pending = listProposals(cfg)
     .filter((proposal) => {
       const op = proposal.operation;
@@ -175,6 +176,7 @@ export function freezePipelineInput(
     runId,
     batchId,
     promptVersion: 2,
+    createdAt: new Date().toISOString(),
     scope,
     evidence,
     catalog,
@@ -213,6 +215,26 @@ function runDir(cfg: MemoryConfig, runId: string): string {
   return contained(cfg.data, join(cfg.data, "v2", "runs", runId));
 }
 
+function existingFrozenInput(
+  cfg: MemoryConfig,
+  fresh: PipelineInput,
+): PipelineInput | undefined {
+  const root = contained(cfg.data, join(cfg.data, "v2", "runs"));
+  if (!existsSync(root)) return undefined;
+  const evidenceHash = sha256(JSON.stringify(fresh.evidence));
+  for (const name of readdirSync(root).sort()) {
+    const path = join(root, name, "input.json");
+    if (!existsSync(path)) continue;
+    const candidate = JSON.parse(readFileSync(path, "utf8")) as PipelineInput;
+    if (
+      candidate.batchId === fresh.batchId &&
+      sha256(JSON.stringify(candidate.evidence)) === evidenceHash
+    )
+      return candidate;
+  }
+  return undefined;
+}
+
 function markLedger(
   cfg: MemoryConfig,
   input: PipelineInput,
@@ -249,11 +271,12 @@ export function processPipelineBatch(options: {
   invoke: (prompt: string) => string;
   skipExternal?: boolean;
 }): PipelineResult {
-  const input = freezePipelineInput(
+  const fresh = freezePipelineInput(
     options.cfg,
     options.scope,
     options.evidence,
   );
+  const input = existingFrozenInput(options.cfg, fresh) || fresh;
   const dir = runDir(options.cfg, input.runId);
   secureDir(dir);
   const inputPath = join(dir, "input.json");
@@ -282,6 +305,7 @@ export function processPipelineBatch(options: {
       evidence: input.evidence.map((item) => item.window),
       catalog: input.catalog,
       pending: listProposals(options.cfg),
+      createdAt: input.createdAt,
     });
     for (const proposal of proposals) {
       saveProposal(options.cfg, proposal);

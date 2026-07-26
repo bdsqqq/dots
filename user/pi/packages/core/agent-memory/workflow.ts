@@ -268,15 +268,17 @@ export function materializeModelProposals(options: {
       evidence: options.evidence,
       runId: options.runId,
     });
+    const proposalId = `prop_${sha256(canonical).slice(0, 32)}`;
     return {
       version: 2,
-      id: `prop_${sha256(canonical).slice(0, 32)}`,
+      id: proposalId,
       lane: draft.lane,
       status: "pending",
       operation,
       supersedes: options.pending
         .filter(
           (item) =>
+            item.id !== proposalId &&
             pendingIds.has(item.id) &&
             JSON.stringify(item.operation) === JSON.stringify(operation),
         )
@@ -479,7 +481,20 @@ export function recoverTransactions(cfg: MemoryConfig): number {
     .sort()) {
     const path = join(dir, name);
     const transaction = JSON.parse(readFileSync(path, "utf8")) as Transaction;
-    if (transaction.state !== "prepared") continue;
+    const receiptPath = v2(cfg, "reviews", `${transaction.reviewId}.json`);
+    if (transaction.state === "applied" && existsSync(receiptPath)) {
+      const receipt = JSON.parse(
+        readFileSync(receiptPath, "utf8"),
+      ) as ReviewReceipt;
+      try {
+        const found = findProposal(cfg, receipt.proposalId);
+        if (found.path.includes("/pending/"))
+          renameSync(found.path, proposalPath(cfg, found.proposal, "reviewed"));
+      } catch {}
+      continue;
+    }
+    if (transaction.state !== "prepared" && transaction.state !== "applied")
+      continue;
     for (const action of transaction.actions.slice().reverse()) {
       if (existsSync(action.to)) {
         if (sha256(readFileSync(action.to)) !== sha256(action.after))
@@ -763,18 +778,28 @@ export function migrateV1(
         .filter((name) => name.endsWith(".json"))
         .sort()
     : [];
+  const v2LedgerDir = v2(cfg, "ledger");
+  const v2Covered = existsSync(v2LedgerDir)
+    ? readdirSync(v2LedgerDir)
+        .filter((name) => name.endsWith(".json") && !name.startsWith("v1-"))
+        .map((name) => basename(name, ".json"))
+    : [];
   const outputs = new Set([
     ...candidates.map((name) => basename(name, ".md")),
     ...receipts.map((name) => basename(name, ".json")),
   ]);
-  const missing = processed.filter(
-    (name) => !outputs.has(basename(name, ".json")),
-  );
+  const missing = processed.filter((name) => {
+    const id = basename(name, ".json");
+    return (
+      !outputs.has(id) &&
+      !v2Covered.some((checkpoint) => id.endsWith(`--${checkpoint}`))
+    );
+  });
   if (missing.length)
     throw new Error(
       `legacy migration missing outputs for ${missing.slice(0, 5).join(", ")}`,
     );
-  if (processed.length !== outputs.size)
+  if (processed.length < candidates.length + receipts.length)
     throw new Error("legacy migration output/processed count mismatch");
   if (dryRun)
     return { candidates: candidates.length, receipts: receipts.length };

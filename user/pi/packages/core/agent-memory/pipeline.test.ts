@@ -1,4 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -93,5 +99,20 @@ describe("memory reflection pipeline", () => {
       lane: "memory",
       operation: { type: "create" },
     });
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(
+      join(cfg.root, "2026-07-25-other--source__agent.md"),
+      "# changed corpus\n",
+    );
+    const retried = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-create")],
+      model: "test",
+      invoke: () => {
+        throw new Error("frozen output must be reused");
+      },
+    });
+    expect(retried.runId).toBe(result.runId);
   });
 });

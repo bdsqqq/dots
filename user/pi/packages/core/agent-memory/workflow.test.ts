@@ -14,6 +14,7 @@ import type { MemoryConfig } from "./catalog.js";
 import type { Proposal } from "./schema.js";
 import {
   listProposals,
+  recoverTransactions,
   reviewProposal,
   rollbackReview,
   saveProposal,
@@ -93,6 +94,27 @@ describe("memory proposal review", () => {
     });
     expect(listProposals(cfg, undefined, "pending")).toHaveLength(0);
     expect(existsSync(cfg.root)).toBe(false);
+  });
+
+  it("recovers an interrupted prepared transaction", () => {
+    const cfg = config();
+    const target = join(cfg.root, "interrupted--source__agent.md");
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(target, "after\n");
+    const txDir = join(cfg.data, "v2/transactions");
+    mkdirSync(txDir, { recursive: true });
+    writeFileSync(
+      join(txDir, "tx_interrupted.json"),
+      JSON.stringify({
+        version: 1,
+        id: "tx_interrupted",
+        reviewId: "review_interrupted",
+        state: "prepared",
+        actions: [{ to: target, after: "after\n" }],
+      }),
+    );
+    expect(recoverTransactions(cfg)).toBe(1);
+    expect(existsSync(target)).toBe(false);
   });
 
   it("approves skill drafts without modifying installed skills", () => {
