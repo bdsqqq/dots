@@ -792,7 +792,9 @@ export function migrateV1(
     const id = basename(name, ".json");
     return (
       !outputs.has(id) &&
-      !v2Covered.some((checkpoint) => id.endsWith(`--${checkpoint}`))
+      !v2Covered.some(
+        (covered) => covered === id || id.endsWith(`--${covered}`),
+      )
     );
   });
   if (missing.length)

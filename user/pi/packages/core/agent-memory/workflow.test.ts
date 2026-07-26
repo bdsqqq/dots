@@ -14,6 +14,7 @@ import type { MemoryConfig } from "./catalog.js";
 import type { Proposal } from "./schema.js";
 import {
   listProposals,
+  migrateV1,
   recoverTransactions,
   reviewProposal,
   rollbackReview,
@@ -94,6 +95,22 @@ describe("memory proposal review", () => {
     });
     expect(listProposals(cfg, undefined, "pending")).toHaveLength(0);
     expect(existsSync(cfg.root)).toBe(false);
+  });
+
+  it("migrates legacy candidates without rewriting them", () => {
+    const cfg = config();
+    mkdirSync(join(cfg.data, "candidates"), { recursive: true });
+    mkdirSync(join(cfg.data, "queue/processed"), { recursive: true });
+    const name = "session--checkpoint";
+    const legacy = `---\nversion: 1\nstatus: candidate\ntitle: "Legacy rule"\nkind: pattern\nscope: "global"\ntriggers: ["legacy work"]\nkeywords: ["legacy"]\nsource: pi://session/checkpoint\ncreated: 2026-07-25\nupdated: 2026-07-25\n---\n\nKeep the legacy rule.\n`;
+    writeFileSync(join(cfg.data, "candidates", `${name}.md`), legacy);
+    writeFileSync(join(cfg.data, "queue/processed", `${name}.json`), "{}\n");
+    expect(migrateV1(cfg)).toEqual({ candidates: 1, receipts: 0 });
+    expect(migrateV1(cfg)).toEqual({ candidates: 1, receipts: 0 });
+    expect(
+      readFileSync(join(cfg.data, "candidates", `${name}.md`), "utf8"),
+    ).toBe(legacy);
+    expect(listProposals(cfg)).toHaveLength(1);
   });
 
   it("recovers an interrupted prepared transaction", () => {

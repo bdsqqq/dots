@@ -363,7 +363,7 @@ export function memoryRef(entry: CatalogEntry): MemoryRef {
 export function renderMemory(
   artifact: MemoryArtifact,
   reviewId: string,
-  status = "active",
+  status: string = "active",
 ): string {
   return `---\nmemory_version: 2\nmemory_id: ${JSON.stringify(artifact.memoryId)}\nstatus: ${JSON.stringify(status)}\ntitle: ${JSON.stringify(artifact.title)}\nkind: ${artifact.kind}\nscope: ${JSON.stringify(artifact.scope)}\ndescription: ${JSON.stringify(artifact.description)}\ntriggers: ${JSON.stringify(artifact.triggers)}\nkeywords: ${JSON.stringify(artifact.keywords)}\nsources: ${JSON.stringify(artifact.sources)}\ncreated: ${JSON.stringify(artifact.created)}\nupdated: ${JSON.stringify(artifact.updated)}\nreview_id: ${JSON.stringify(reviewId)}\n---\n\n${artifact.body.trim()}\n`;
 }
