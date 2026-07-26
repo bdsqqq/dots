@@ -59,6 +59,12 @@ interface Snapshot {
   mode?: number;
 }
 
+const mutationFs = {
+  writeFileSync(file: string, content: string): void {
+    fs.writeFileSync(file, content, "utf8");
+  },
+};
+
 export interface ApplyPatchChange {
   path: string;
   kind: "added" | "modified" | "deleted";
@@ -83,30 +89,45 @@ const REDACTION_PATTERNS = [
 ];
 
 function assertNoRedaction(operation: PatchOperation): void {
-  const before =
+  const beforeLines =
     operation.type === "update"
-      ? operation.chunks.flatMap((chunk) => chunk.oldLines).join("\n")
-      : "";
-  const additions =
+      ? operation.chunks.flatMap((chunk) => chunk.oldLines)
+      : [];
+  const afterLines =
     operation.type === "add"
-      ? operation.content
+      ? operation.content.split("\n")
       : operation.type === "update"
-        ? operation.chunks.flatMap((chunk) => chunk.newLines).join("\n")
-        : "";
+        ? operation.chunks.flatMap((chunk) => chunk.newLines)
+        : [];
   for (const pattern of REDACTION_PATTERNS) {
-    const match = additions.match(pattern);
-    if (match && !pattern.test(before)) {
+    const beforeCount = beforeLines.filter((line) => pattern.test(line)).length;
+    const matches = afterLines.filter((line) => pattern.test(line));
+    if (matches.length > beforeCount) {
       throw new Error(
-        `patch rejected: added content contains placeholder '${match[0]}'; include the actual content`,
+        `patch rejected: added content contains placeholder '${matches[0]}'; include the actual content`,
       );
     }
   }
 }
 
 function snapshot(file: string): Snapshot {
-  if (!fs.existsSync(file)) return { path: file, exists: false };
+  let pathStat: fs.Stats;
+  try {
+    pathStat = fs.lstatSync(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { path: file, exists: false };
+    }
+    throw error;
+  }
+  if (pathStat.isSymbolicLink()) {
+    throw new Error(`symbolic link paths are not supported: ${file}`);
+  }
   const stat = fs.statSync(file);
   if (!stat.isFile()) throw new Error(`${file} is not a regular file`);
+  if (stat.nlink > 1) {
+    throw new Error(`hard-linked files are not supported: ${file}`);
+  }
   return {
     path: file,
     exists: true,
@@ -119,10 +140,10 @@ function operationPaths(
   operation: PatchOperation,
   cwd: string,
 ): { source: string; destination?: string } {
-  const source = resolveToAbsolute(operation.path, cwd);
+  const source = path.resolve(resolveToAbsolute(operation.path, cwd));
   const destination =
     operation.type === "update" && operation.movePath
-      ? resolveToAbsolute(operation.movePath, cwd)
+      ? path.resolve(resolveToAbsolute(operation.movePath, cwd))
       : undefined;
   if (destination === source) {
     throw new Error(
@@ -130,6 +151,71 @@ function operationPaths(
     );
   }
   return { source, destination };
+}
+
+function canonicalMutationPath(file: string): string {
+  const suffix: string[] = [];
+  let ancestor = file;
+  while (!fs.existsSync(ancestor)) {
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    suffix.unshift(path.basename(ancestor));
+    ancestor = parent;
+  }
+  return path.join(fs.realpathSync(ancestor), ...suffix);
+}
+
+function usesCaseInsensitivePaths(file: string): boolean {
+  let ancestor = file;
+  while (!fs.existsSync(ancestor)) {
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) return false;
+    ancestor = parent;
+  }
+  while (true) {
+    const name = path.basename(ancestor);
+    const index = name.search(/[a-z]/i);
+    if (index >= 0) {
+      const character = name[index]!;
+      const swapped =
+        character === character.toLowerCase()
+          ? character.toUpperCase()
+          : character.toLowerCase();
+      const variant = path.join(
+        path.dirname(ancestor),
+        `${name.slice(0, index)}${swapped}${name.slice(index + 1)}`,
+      );
+      if (variant !== ancestor && fs.existsSync(variant)) {
+        return fs.realpathSync(variant) === fs.realpathSync(ancestor);
+      }
+    }
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) return false;
+    ancestor = parent;
+  }
+}
+
+function pathComparisonKey(file: string): string {
+  return usesCaseInsensitivePaths(file) ? file.toLowerCase() : file;
+}
+
+function assertNoPathHierarchyConflicts(files: string[]): void {
+  for (const ancestor of files) {
+    for (const descendant of files) {
+      if (ancestor === descendant) continue;
+      const relative = path.relative(ancestor, descendant);
+      if (
+        relative &&
+        !relative.startsWith(`..${path.sep}`) &&
+        relative !== ".." &&
+        !path.isAbsolute(relative)
+      ) {
+        throw new Error(
+          `patch paths cannot contain one another: ${ancestor}, ${descendant}`,
+        );
+      }
+    }
+  }
 }
 
 function describeCall(input: string): string {
@@ -147,15 +233,49 @@ function formatResult(changes: ApplyPatchChange[]): string {
     .join("\n");
 }
 
-function restoreSnapshots(snapshots: Snapshot[]): void {
-  for (const before of snapshots) {
-    if (!before.exists) {
-      fs.rmSync(before.path, { force: true });
-      continue;
+function missingParentDirectories(files: string[]): string[] {
+  const missing = new Set<string>();
+  for (const file of files) {
+    let directory = path.dirname(file);
+    while (!fs.existsSync(directory)) {
+      missing.add(directory);
+      const parent = path.dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
     }
-    fs.mkdirSync(path.dirname(before.path), { recursive: true });
-    fs.writeFileSync(before.path, before.content ?? "", "utf8");
-    if (before.mode !== undefined) fs.chmodSync(before.path, before.mode);
+  }
+  return [...missing].sort((a, b) => b.length - a.length);
+}
+
+function restoreSnapshots(
+  snapshots: Snapshot[],
+  createdDirectories: string[] = [],
+): void {
+  const errors: unknown[] = [];
+  for (const before of snapshots) {
+    try {
+      if (!before.exists) {
+        fs.rmSync(before.path, { force: true });
+        continue;
+      }
+      fs.mkdirSync(path.dirname(before.path), { recursive: true });
+      mutationFs.writeFileSync(before.path, before.content ?? "");
+      if (before.mode !== undefined) fs.chmodSync(before.path, before.mode);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  for (const directory of createdDirectories) {
+    try {
+      fs.rmdirSync(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        errors.push(error);
+      }
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "apply_patch rollback was incomplete");
   }
 }
 
@@ -174,6 +294,8 @@ function withMutationQueues<T>(
 function commitChanges(
   snapshots: Snapshot[],
   finalContents: Map<string, string | undefined>,
+  finalModes: Map<string, number | undefined>,
+  createdDirectories: string[],
 ): void {
   try {
     for (const before of snapshots) {
@@ -182,12 +304,20 @@ function commitChanges(
         fs.rmSync(before.path, { force: true });
       } else {
         fs.mkdirSync(path.dirname(before.path), { recursive: true });
-        fs.writeFileSync(before.path, after, "utf8");
-        if (before.mode !== undefined) fs.chmodSync(before.path, before.mode);
+        mutationFs.writeFileSync(before.path, after);
+        const mode = finalModes.get(before.path);
+        if (mode !== undefined) fs.chmodSync(before.path, mode);
       }
     }
   } catch (error) {
-    restoreSnapshots(snapshots);
+    try {
+      restoreSnapshots(snapshots, createdDirectories);
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        "apply_patch failed and rollback was incomplete",
+      );
+    }
     throw error;
   }
 }
@@ -200,7 +330,7 @@ export function createApplyPatchTool(): ToolDefinition<
     name: "apply_patch",
     label: "Apply Patch",
     description:
-      "Apply a Codex-format patch transactionally. Supports Add File, Update File, Delete File, Move to, multiple files, and multiple hunks. Every update must match existing context or the entire patch fails without changing files.",
+      "Apply a Codex-format patch as a validated batch. Supports Add File, Update File, Delete File, Move to, multiple files, and multiple hunks. Every update must match before commit; ordinary write or tracking failures are rolled back. Process termination during commit is not crash-safe.",
     promptSnippet: "Apply precise Codex-format patches to one or more files",
     promptGuidelines: [
       "Use apply_patch for all text file creation, modification, deletion, and moves instead of edit, write, or shell redirection.",
@@ -237,33 +367,44 @@ export function createApplyPatchTool(): ToolDefinition<
         operation,
         ...operationPaths(operation, ctx.cwd),
       }));
-      const allPaths = resolved.flatMap(({ source, destination }) =>
-        destination ? [source, destination] : [source],
+      const allPaths = [
+        ...new Set(
+          resolved.flatMap(({ source, destination }) =>
+            destination ? [source, destination] : [source],
+          ),
+        ),
+      ];
+      const canonicalPaths = allPaths.map(canonicalMutationPath);
+      const comparisonPaths = canonicalPaths.map(pathComparisonKey);
+      assertNoPathHierarchyConflicts(comparisonPaths);
+      const aliases = comparisonPaths.filter(
+        (file, index) => comparisonPaths.indexOf(file) !== index,
       );
-      const duplicates = allPaths.filter(
-        (file, index) => allPaths.indexOf(file) !== index,
-      );
-      if (duplicates.length > 0) {
+      if (aliases.length > 0) {
         throw new Error(
-          `patch touches a path more than once: ${[...new Set(duplicates)].join(", ")}`,
+          `patch paths resolve to the same file: ${[...new Set(aliases)].join(", ")}`,
         );
       }
 
       const verdict = toolPolicy.evaluateToolPolicy(
         "apply_patch",
-        { paths: allPaths, sessionCwd: ctx.cwd },
+        { paths: canonicalPaths, sessionCwd: ctx.cwd },
         toolPolicy.loadToolPolicy(),
       );
       if (verdict.action === "reject") {
         throw new Error(verdict.message ?? "patch rejected by tool policy");
       }
 
-      return withMutationQueues(allPaths, () =>
-        withFileLocks(allPaths, async () => {
+      return withMutationQueues(canonicalPaths, () =>
+        withFileLocks(canonicalPaths, async () => {
           const snapshots = allPaths.map(snapshot);
+          const createdDirectories = missingParentDirectories(allPaths);
           const byPath = new Map(snapshots.map((item) => [item.path, item]));
           const finalContents = new Map<string, string | undefined>(
             snapshots.map((item) => [item.path, item.content]),
+          );
+          const finalModes = new Map<string, number | undefined>(
+            snapshots.map((item) => [item.path, item.mode]),
           );
 
           for (const { operation, source, destination } of resolved) {
@@ -275,6 +416,7 @@ export function createApplyPatchTool(): ToolDefinition<
               if (current === undefined)
                 throw new Error(`file not found: ${source}`);
               finalContents.set(source, undefined);
+              finalModes.set(source, undefined);
             } else {
               if (current === undefined)
                 throw new Error(`file not found: ${source}`);
@@ -284,8 +426,11 @@ export function createApplyPatchTool(): ToolDefinition<
                 source,
               );
               if (destination) {
+                const sourceMode = finalModes.get(source);
                 finalContents.set(source, undefined);
+                finalModes.set(source, undefined);
                 finalContents.set(destination, updated);
+                finalModes.set(destination, sourceMode);
               } else {
                 finalContents.set(source, updated);
               }
@@ -295,7 +440,15 @@ export function createApplyPatchTool(): ToolDefinition<
           const changes: PlannedChange[] = [];
           for (const before of snapshots) {
             const after = finalContents.get(before.path);
-            if (before.content === after) continue;
+            const afterExists = after !== undefined;
+            const afterMode = finalModes.get(before.path);
+            if (
+              before.content === after &&
+              before.exists === afterExists &&
+              before.mode === afterMode
+            ) {
+              continue;
+            }
             const beforeContent = before.content ?? "";
             const afterContent = after ?? "";
             changes.push({
@@ -317,17 +470,43 @@ export function createApplyPatchTool(): ToolDefinition<
           if (changes.length === 0) throw new Error("patch made no changes");
           if (signal?.aborted) throw new Error("apply_patch aborted");
 
-          commitChanges(snapshots, finalContents);
+          commitChanges(
+            snapshots,
+            finalContents,
+            finalModes,
+            createdDirectories,
+          );
           const sessionId = ctx.sessionManager.getSessionId();
-          for (const change of changes) {
-            fileTracker.saveChange(sessionId, toolCallId, {
-              uri: `file://${change.path}`,
-              before: change.before,
-              after: change.after,
-              diff: change.diff,
-              isNewFile: !byPath.get(change.path)?.exists,
-              timestamp: Date.now(),
-            });
+          try {
+            fileTracker.saveChanges(
+              sessionId,
+              toolCallId,
+              changes.map((change) => ({
+                uri: `file://${change.path}`,
+                before: change.before,
+                after: change.after,
+                diff: change.diff,
+                isNewFile: !byPath.get(change.path)?.exists,
+                beforeExists: byPath.get(change.path)?.exists ?? false,
+                afterExists: finalContents.get(change.path) !== undefined,
+                beforeMode: byPath.get(change.path)?.mode,
+                afterMode:
+                  finalContents.get(change.path) === undefined
+                    ? undefined
+                    : fs.statSync(change.path).mode,
+                timestamp: Date.now(),
+              })),
+            );
+          } catch (error) {
+            try {
+              restoreSnapshots(snapshots, createdDirectories);
+            } catch (rollbackError) {
+              throw new AggregateError(
+                [error, rollbackError],
+                "apply_patch tracking failed and rollback was incomplete",
+              );
+            }
+            throw error;
           }
 
           const resultChanges = changes.map(
@@ -387,19 +566,46 @@ if (import.meta.vitest) {
 
   beforeEach(() => {
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-apply-patch-"));
-    vi.spyOn(fileTracker, "saveChange").mockReturnValue("change-id");
+    (
+      globalThis as typeof globalThis & {
+        __PI_FILE_CHANGES_DIR__?: string;
+      }
+    ).__PI_FILE_CHANGES_DIR__ = path.join(cwd, ".changes");
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    delete (
+      globalThis as typeof globalThis & {
+        __PI_FILE_CHANGES_DIR__?: string;
+      }
+    ).__PI_FILE_CHANGES_DIR__;
     fs.rmSync(cwd, { recursive: true, force: true });
   });
 
-  function context() {
+  function context(sessionCwd = cwd) {
     return {
-      cwd,
+      cwd: sessionCwd,
       sessionManager: { getSessionId: () => "test-session" },
     } as never;
+  }
+
+  function fileTree(root: string): Record<string, string> {
+    if (!fs.existsSync(root)) return {};
+    const tree: Record<string, string> = {};
+    const visit = (directory: string): void => {
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const absolute = path.join(directory, entry.name);
+        if (entry.isDirectory()) visit(absolute);
+        else {
+          tree[path.relative(root, absolute)] = fs
+            .readFileSync(absolute)
+            .toString("base64");
+        }
+      }
+    };
+    visit(root);
+    return tree;
   }
 
   it("applies multi-file patches and tracks add, update, delete, and move", async () => {
@@ -440,6 +646,7 @@ if (import.meta.vitest) {
       "after\n",
     );
     expect(result.details?.changes).toHaveLength(5);
+    expect(fileTracker.loadChanges("test-session", "call")).toHaveLength(5);
   });
 
   it("does not commit any file when one hunk fails", async () => {
@@ -471,7 +678,308 @@ if (import.meta.vitest) {
     expect(fs.readFileSync(path.join(cwd, "b.txt"), "utf8")).toBe("b\n");
   });
 
+  it("applies repeated operations to one path in order", async () => {
+    fs.writeFileSync(path.join(cwd, "x.txt"), "one\n", "utf8");
+
+    await createApplyPatchTool().execute(
+      "call",
+      {
+        input: `*** Begin Patch
+*** Update File: x.txt
+@@
+-one
++two
+*** Update File: x.txt
+@@
+-two
++three
+*** End Patch`,
+      },
+      undefined,
+      undefined,
+      context(),
+    );
+
+    expect(fs.readFileSync(path.join(cwd, "x.txt"), "utf8")).toBe("three\n");
+    expect(fileTracker.loadChanges("test-session", "call")).toHaveLength(1);
+  });
+
+  it("rejects lexical paths that resolve to the same file without hanging", async () => {
+    fs.writeFileSync(path.join(cwd, "target.txt"), "old\n", "utf8");
+    fs.symlinkSync("target.txt", path.join(cwd, "alias.txt"));
+
+    await expect(
+      createApplyPatchTool().execute(
+        "call",
+        {
+          input: `*** Begin Patch
+*** Update File: target.txt
+@@
+-old
++target
+*** Update File: alias.txt
+@@
+-old
++alias
+*** End Patch`,
+        },
+        undefined,
+        undefined,
+        context(),
+      ),
+    ).rejects.toThrow("resolve to the same file");
+    expect(fs.readFileSync(path.join(cwd, "target.txt"), "utf8")).toBe("old\n");
+  });
+
+  it("rejects paths that are hard links to the same file", async () => {
+    fs.writeFileSync(path.join(cwd, "one.txt"), "old\n", "utf8");
+    fs.linkSync(path.join(cwd, "one.txt"), path.join(cwd, "two.txt"));
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: one.txt",
+      "@@",
+      "-old",
+      "+one",
+      "*** Update File: two.txt",
+      "@@",
+      "-old",
+      "+two",
+      "*** End Patch",
+    ].join("\n");
+
+    await expect(
+      createApplyPatchTool().execute(
+        "call",
+        { input: patch },
+        undefined,
+        undefined,
+        context(),
+      ),
+    ).rejects.toThrow("hard-linked");
+    expect(fs.readFileSync(path.join(cwd, "one.txt"), "utf8")).toBe("old\n");
+    expect(fs.readFileSync(path.join(cwd, "two.txt"), "utf8")).toBe("old\n");
+  });
+
+  it("rejects dangling symbolic links before writing their targets", async () => {
+    fs.symlinkSync("missing-target.txt", path.join(cwd, "alias.txt"));
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: alias.txt",
+      "+content",
+      "*** End Patch",
+    ].join("\n");
+
+    await expect(
+      createApplyPatchTool().execute(
+        "call",
+        { input: patch },
+        undefined,
+        undefined,
+        context(),
+      ),
+    ).rejects.toThrow("symbolic link");
+    expect(fs.readlinkSync(path.join(cwd, "alias.txt"))).toBe(
+      "missing-target.txt",
+    );
+    expect(fs.existsSync(path.join(cwd, "missing-target.txt"))).toBe(false);
+  });
+
+  it("rejects paths that are ancestors of other patch paths", async () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: a/b.txt",
+      "+nested",
+      "*** Add File: a",
+      "+file",
+      "*** End Patch",
+    ].join("\n");
+
+    await expect(
+      createApplyPatchTool().execute(
+        "call",
+        { input: patch },
+        undefined,
+        undefined,
+        context(),
+      ),
+    ).rejects.toThrow("cannot contain one another");
+    expect(fs.existsSync(path.join(cwd, "a"))).toBe(false);
+  });
+
+  it("rejects case-folded path hierarchy conflicts", async () => {
+    if (!usesCaseInsensitivePaths(cwd)) return;
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: a/b.txt",
+      "+nested",
+      "*** Add File: A",
+      "+file",
+      "*** End Patch",
+    ].join("\n");
+
+    await expect(
+      createApplyPatchTool().execute(
+        "call",
+        { input: patch },
+        undefined,
+        undefined,
+        context(),
+      ),
+    ).rejects.toThrow("cannot contain one another");
+    expect(fs.existsSync(path.join(cwd, "a"))).toBe(false);
+  });
+
+  it("normalizes dot segments before creating parent directories", async () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: ghost/../target.txt",
+      "+content",
+      "*** End Patch",
+    ].join("\n");
+
+    await createApplyPatchTool().execute(
+      "call",
+      { input: patch },
+      undefined,
+      undefined,
+      context(),
+    );
+
+    expect(fs.readFileSync(path.join(cwd, "target.txt"), "utf8")).toBe(
+      "content\n",
+    );
+    expect(fs.existsSync(path.join(cwd, "ghost"))).toBe(false);
+  });
+
+  it("rolls back committed files and directories when tracking fails", async () => {
+    fs.writeFileSync(path.join(cwd, "existing.txt"), "old\n", "utf8");
+    vi.spyOn(fileTracker, "saveChanges").mockImplementation(() => {
+      throw new Error("tracker unavailable");
+    });
+
+    await expect(
+      createApplyPatchTool().execute(
+        "call",
+        {
+          input: `*** Begin Patch
+*** Update File: existing.txt
+@@
+-old
++new
+*** Add File: nested/new.txt
++new
+*** End Patch`,
+        },
+        undefined,
+        undefined,
+        context(),
+      ),
+    ).rejects.toThrow("tracker unavailable");
+    expect(fs.readFileSync(path.join(cwd, "existing.txt"), "utf8")).toBe(
+      "old\n",
+    );
+    expect(fs.existsSync(path.join(cwd, "nested"))).toBe(false);
+  });
+
+  it("rolls back earlier writes when a later filesystem write fails", async () => {
+    fs.writeFileSync(path.join(cwd, "existing.txt"), "old\n", "utf8");
+    let writes = 0;
+    vi.spyOn(mutationFs, "writeFileSync").mockImplementation(
+      (file, content) => {
+        writes++;
+        if (writes === 2) throw new Error("injected write failure");
+        fs.writeFileSync(file, content, "utf8");
+      },
+    );
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: existing.txt",
+      "@@",
+      "-old",
+      "+new",
+      "*** Add File: nested/new.txt",
+      "+new",
+      "*** End Patch",
+    ].join("\n");
+
+    await expect(
+      createApplyPatchTool().execute(
+        "call",
+        { input: patch },
+        undefined,
+        undefined,
+        context(),
+      ),
+    ).rejects.toThrow("injected write failure");
+    expect(fs.readFileSync(path.join(cwd, "existing.txt"), "utf8")).toBe(
+      "old\n",
+    );
+    expect(fs.existsSync(path.join(cwd, "nested"))).toBe(false);
+  });
+
+  it("preserves source mode when moving a file", async () => {
+    const source = path.join(cwd, "script.sh");
+    fs.writeFileSync(source, "#!/bin/sh\nold\n", "utf8");
+    fs.chmodSync(source, 0o755);
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: script.sh",
+      "*** Move to: nested/script.sh",
+      "@@",
+      "-old",
+      "+new",
+      "*** End Patch",
+    ].join("\n");
+
+    await createApplyPatchTool().execute(
+      "call",
+      { input: patch },
+      undefined,
+      undefined,
+      context(),
+    );
+
+    expect(fs.statSync(path.join(cwd, "nested/script.sh")).mode & 0o777).toBe(
+      0o755,
+    );
+  });
+
+  it("tracks a mode-only change when moving over identical content", async () => {
+    const source = path.join(cwd, "source.sh");
+    const destination = path.join(cwd, "destination.sh");
+    fs.writeFileSync(source, "same\n", "utf8");
+    fs.chmodSync(source, 0o755);
+    fs.writeFileSync(destination, "same\n", "utf8");
+    fs.chmodSync(destination, 0o644);
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: source.sh",
+      "*** Move to: destination.sh",
+      "*** End Patch",
+    ].join("\n");
+
+    await createApplyPatchTool().execute(
+      "call",
+      { input: patch },
+      undefined,
+      undefined,
+      context(),
+    );
+
+    expect(fs.statSync(destination).mode & 0o777).toBe(0o755);
+    const destinationChange = fileTracker
+      .loadChanges("test-session", "call")
+      .find((change) => change.uri.endsWith("/destination.sh"));
+    expect(destinationChange).toMatchObject({
+      beforeMode: expect.any(Number),
+      afterMode: expect.any(Number),
+    });
+    expect(destinationChange!.beforeMode! & 0o777).toBe(0o644);
+    expect(destinationChange!.afterMode! & 0o777).toBe(0o755);
+  });
+
   it("rejects newly introduced placeholders without rejecting existing context", async () => {
+    const placeholder = `[${"REDACTED"}]`;
     fs.writeFileSync(path.join(cwd, "x.txt"), "// [REDACTED]\nold\n", "utf8");
     const tool = createApplyPatchTool();
     await tool.execute(
@@ -505,6 +1013,25 @@ if (import.meta.vitest) {
         context(),
       ),
     ).rejects.toThrow("contains placeholder");
+
+    await expect(
+      tool.execute(
+        "call-3",
+        {
+          input: `*** Begin Patch
+*** Update File: x.txt
+@@
+ // ${placeholder}
+-new
++new
++// ${placeholder}
+*** End Patch`,
+        },
+        undefined,
+        undefined,
+        context(),
+      ),
+    ).rejects.toThrow("contains placeholder");
   });
 
   it("checks every touched path against tool policy before mutation", async () => {
@@ -525,7 +1052,10 @@ if (import.meta.vitest) {
     ).rejects.toThrow("workspace only");
     expect(evaluate).toHaveBeenCalledWith(
       "apply_patch",
-      { paths: [path.join(cwd, "x.txt")], sessionCwd: cwd },
+      {
+        paths: [canonicalMutationPath(path.join(cwd, "x.txt"))],
+        sessionCwd: cwd,
+      },
       [],
     );
     expect(fs.existsSync(path.join(cwd, "x.txt"))).toBe(false);
@@ -566,4 +1096,57 @@ if (import.meta.vitest) {
     expect(registered).toEqual(["apply_patch"]);
     expect(active).toEqual(["read", "bash", "apply_patch"]);
   });
+
+  it.runIf(Boolean(process.env.CODEX_APPLY_PATCH_FIXTURES))(
+    "matches the upstream Codex filesystem scenarios",
+    async () => {
+      const fixtures = process.env.CODEX_APPLY_PATCH_FIXTURES!;
+      const successful = new Set([
+        "001_add_file",
+        "002_multiple_operations",
+        "003_multiple_chunks",
+        "004_move_to_new_directory",
+        "010_move_overwrites_existing_destination",
+        "011_add_overwrites_existing_file",
+        "014_update_file_appends_trailing_newline",
+        "016_pure_addition_update_chunk",
+        "017_whitespace_padded_hunk_header",
+        "018_whitespace_padded_patch_markers",
+        "019_unicode_simple",
+        "020_delete_file_success",
+        "020_whitespace_padded_patch_marker_lines",
+        "021_update_file_deletion_only",
+        "022_update_file_end_of_file_marker",
+      ]);
+
+      for (const name of fs.readdirSync(fixtures)) {
+        const fixture = path.join(fixtures, name);
+        if (!fs.statSync(fixture).isDirectory()) continue;
+        const work = path.join(cwd, name);
+        const input = path.join(fixture, "input");
+        fs.mkdirSync(work, { recursive: true });
+        if (fs.existsSync(input)) {
+          fs.cpSync(input, work, { recursive: true });
+        }
+        const initial = fileTree(work);
+        const execution = createApplyPatchTool().execute(
+          `fixture-${name}`,
+          { input: fs.readFileSync(path.join(fixture, "patch.txt"), "utf8") },
+          undefined,
+          undefined,
+          context(work),
+        );
+
+        if (successful.has(name)) {
+          await execution;
+          expect(fileTree(work), name).toEqual(
+            fileTree(path.join(fixture, "expected")),
+          );
+        } else {
+          await expect(execution, name).rejects.toThrow();
+          expect(fileTree(work), name).toEqual(initial);
+        }
+      }
+    },
+  );
 }

@@ -14,6 +14,7 @@
     "typebox": "catalog:"
   },
   "devDependencies": {
+    "@bds_pi/apply-patch": "workspace:*",
     "@earendil-works/pi-coding-agent": "catalog:",
     "@earendil-works/pi-tui": "catalog:",
     "vitest": "^3.0.0"

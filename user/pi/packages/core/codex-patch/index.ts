@@ -56,12 +56,8 @@ function headerPath(line: string, marker: string, lineNumber: number): string {
 }
 
 function isOperationHeader(line: string): boolean {
-  const value = line.trim();
   return (
-    value === END ||
-    value.startsWith(ADD) ||
-    value.startsWith(DELETE) ||
-    value.startsWith(UPDATE)
+    line.startsWith(ADD) || line.startsWith(DELETE) || line.startsWith(UPDATE)
   );
 }
 
@@ -79,7 +75,10 @@ export function parseCodexPatch(input: string): PatchOperation[] {
       const path = headerPath(line, ADD, lineNumber);
       index++;
       const added: string[] = [];
-      while (index < lines.length && !isOperationHeader(lines[index] ?? "")) {
+      while (
+        index < lines.length - 1 &&
+        !isOperationHeader(lines[index] ?? "")
+      ) {
         const addedLine = lines[index] ?? "";
         if (!addedLine.startsWith("+")) {
           fail(index + 1, "every Add File content line must start with '+'");
@@ -118,7 +117,10 @@ export function parseCodexPatch(input: string): PatchOperation[] {
         return current;
       };
 
-      while (index < lines.length && !isOperationHeader(lines[index] ?? "")) {
+      while (
+        index < lines.length - 1 &&
+        !isOperationHeader(lines[index] ?? "")
+      ) {
         const updateLine = lines[index] ?? "";
         const trimmed = updateLine.trimEnd();
         if (trimmed === "@@" || trimmed.startsWith("@@ ")) {
@@ -357,6 +359,55 @@ if (import.meta.vitest) {
       expect(() => parseCodexPatch(`${BEGIN}\n${ADD}x\nplain\n${END}`)).toThrow(
         "must start with '+'",
       );
+    });
+
+    it("treats marker-like lines with a context prefix as file content", () => {
+      const [operation] = parseCodexPatch(`*** Begin Patch
+*** Update File: target.txt
+@@
+ *** Update File: literal.txt
+-old
++new
+*** End Patch`);
+
+      expect(operation).toMatchObject({
+        type: "update",
+        chunks: [
+          {
+            oldLines: ["*** Update File: literal.txt", "old"],
+            newLines: ["*** Update File: literal.txt", "new"],
+          },
+        ],
+      });
+    });
+
+    it("treats the end marker with a context prefix as file content", () => {
+      const [operation] = parseCodexPatch(`*** Begin Patch
+*** Update File: target.txt
+@@
+ *** End Patch
+-old
++new
+*** End Patch`);
+
+      expect(operation).toMatchObject({
+        type: "update",
+        chunks: [
+          {
+            oldLines: ["*** End Patch", "old"],
+            newLines: ["*** End Patch", "new"],
+          },
+        ],
+      });
+    });
+
+    it("accepts whitespace-padded patch envelope markers", () => {
+      expect(
+        parseCodexPatch(` *** Begin Patch
+*** Add File: x.txt
++x
+ *** End Patch `),
+      ).toEqual([{ type: "add", path: "x.txt", content: "x\n" }]);
     });
   });
 
