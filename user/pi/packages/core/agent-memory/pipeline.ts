@@ -14,6 +14,8 @@ import {
 import type { SafeEvidence } from "./evidence.js";
 import { parseModelProposal } from "./schema.js";
 import {
+  applyMemoryProposal,
+  assertNonOverlappingMemoryProposals,
   findProposal,
   listProposals,
   materializeModelProposals,
@@ -52,6 +54,59 @@ export type PipelineResult = {
   proposalIds: string[];
   coveredCheckpointIds: string[];
 };
+
+function storedPipelineResult(
+  raw: string,
+  input: PipelineInput,
+): PipelineResult {
+  const value: unknown = JSON.parse(raw);
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    throw new Error("invalid stored pipeline result");
+  const record = value as Record<string, unknown>;
+  const expectedCheckpoints = input.evidence.flatMap(
+    (item) => item.window.checkpointEntryIds,
+  );
+  if (
+    Object.keys(record).sort().join(",") !==
+      "action,coveredCheckpointIds,proposalIds,runId" ||
+    record.runId !== input.runId ||
+    (record.action !== "skip" && record.action !== "propose") ||
+    !Array.isArray(record.proposalIds) ||
+    !record.proposalIds.every((id: unknown) => typeof id === "string") ||
+    new Set(record.proposalIds).size !== record.proposalIds.length ||
+    !Array.isArray(record.coveredCheckpointIds) ||
+    JSON.stringify(record.coveredCheckpointIds) !==
+      JSON.stringify(expectedCheckpoints) ||
+    (record.action === "skip" && record.proposalIds.length !== 0) ||
+    (record.action === "propose" &&
+      (record.proposalIds.length < 1 || record.proposalIds.length > 8))
+  )
+    throw new Error("invalid stored pipeline result");
+  return record as PipelineResult;
+}
+
+function expectedStoredResult(
+  cfg: MemoryConfig,
+  input: PipelineInput,
+  outputPath: string,
+): Pick<PipelineResult, "action" | "proposalIds"> {
+  const parsed = parseModelProposal(readFileSync(outputPath, "utf8"));
+  if (parsed.action === "skip") return { action: "skip", proposalIds: [] };
+  return {
+    action: "propose",
+    proposalIds: materializeModelProposals({
+      result: parsed,
+      runId: input.runId,
+      model: "cached-result-validation",
+      scope: input.scope,
+      evidence: input.evidence.map((item) => item.window),
+      catalog: input.catalog,
+      pending: listProposals(cfg),
+      createdAt: input.createdAt,
+      autonomous: true,
+    }).map((proposal) => proposal.id),
+  };
+}
 
 function words(value: string): Set<string> {
   return new Set(
@@ -179,6 +234,7 @@ export function freezePipelineInput(
       summary: operationSummary(proposal.operation),
     }));
   const reviewSignals = readReviewReceipts(cfg)
+    .filter((review) => review.reviewer === "local-cli")
     .slice(-40)
     .flatMap((review) => {
       try {
@@ -327,6 +383,7 @@ export function processPipelineBatch(options: {
   model: string;
   invoke: (prompt: string) => string;
   skipExternal?: boolean;
+  autoApplyMemory?: boolean;
 }): PipelineResult {
   const fresh = freezePipelineInput(
     options.cfg,
@@ -341,15 +398,38 @@ export function processPipelineBatch(options: {
   if (existsSync(inputPath) && readFileSync(inputPath, "utf8") !== inputValue)
     throw new Error("frozen pipeline input collision");
   if (!existsSync(inputPath)) atomicWrite(inputPath, inputValue);
+  const outputPath = join(dir, "output.json");
   const resultPath = join(dir, "result.json");
   if (existsSync(resultPath)) {
-    const result = JSON.parse(
+    const result = storedPipelineResult(
       readFileSync(resultPath, "utf8"),
-    ) as PipelineResult;
+      input,
+    );
+    const expected = expectedStoredResult(options.cfg, input, outputPath);
+    if (
+      result.action !== expected.action ||
+      JSON.stringify(result.proposalIds) !==
+        JSON.stringify(expected.proposalIds)
+    )
+      throw new Error("stored pipeline result does not match model output");
+    for (const id of options.autoApplyMemory === false
+      ? []
+      : result.proposalIds) {
+      const proposal = findProposal(options.cfg, id).proposal;
+      if (
+        proposal.lane === "memory" &&
+        proposal.provenance.autonomous === true &&
+        proposal.provenance.runId === result.runId
+      )
+        applyMemoryProposal({
+          cfg: options.cfg,
+          id,
+          actor: "background-reflection",
+        });
+    }
     markLedger(options.cfg, input, result);
     return result;
   }
-  const outputPath = join(dir, "output.json");
   const raw = existsSync(outputPath)
     ? readFileSync(outputPath, "utf8")
     : options.skipExternal
@@ -372,7 +452,9 @@ export function processPipelineBatch(options: {
       catalog: input.catalog,
       pending: listProposals(options.cfg),
       createdAt: input.createdAt,
+      autonomous: true,
     });
+    assertNonOverlappingMemoryProposals(options.cfg, proposals);
     for (const proposal of proposals) {
       saveProposal(options.cfg, proposal);
       proposalIds.push(proposal.id);
@@ -385,6 +467,16 @@ export function processPipelineBatch(options: {
     coveredCheckpointIds,
   };
   atomicWrite(resultPath, `${JSON.stringify(result, null, 2)}\n`);
+  if (parsed.action === "propose")
+    for (const id of options.autoApplyMemory === false ? [] : proposalIds) {
+      const proposal = findProposal(options.cfg, id).proposal;
+      if (proposal.lane === "memory")
+        applyMemoryProposal({
+          cfg: options.cfg,
+          id,
+          actor: "background-reflection",
+        });
+    }
   markLedger(options.cfg, input, result);
   return result;
 }

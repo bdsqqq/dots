@@ -33,14 +33,26 @@ import {
   type MemoryConfig,
 } from "./catalog.js";
 import {
+  applyMemoryProposal,
   findProposal,
   listProposals,
   migrateV1,
   recoverTransactions,
   reviewProposal,
   rollbackReview,
+  submitManualProposal,
 } from "./workflow.js";
 import { REVIEW_REASON_CODES, type ReviewReasonCode } from "./schema.js";
+import {
+  diffHistory,
+  initHistory,
+  isHistoryInitialized,
+  listHistory,
+  repairHistory,
+  showHistory,
+  syncHistory,
+  verifyHistory,
+} from "./history.js";
 import { buildSafeEvidence, type SafeEvidence } from "./evidence.js";
 import { processPipelineBatch } from "./pipeline.js";
 import {
@@ -955,8 +967,25 @@ function batchWindows(windows: PendingWindow[]): PendingWindow[][] {
 
 function consolidateV2Unlocked(limit: number): boolean {
   const cfg = config();
-  const batches = batchWindows(pendingWindows(limit));
   let ok = true;
+  for (const proposal of listProposals(cfg, "memory").filter(
+    (item) => item.provenance.autonomous === true,
+  ))
+    try {
+      applyMemoryProposal({
+        cfg,
+        id: proposal.id,
+        actor: "background-reflection",
+      });
+    } catch (error) {
+      ok = false;
+      console.error(
+        `autonomous memory application deferred for ${proposal.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  const batches = batchWindows(pendingWindows(limit));
   for (const batch of batches) {
     const workspace = batch[0]!.jobs[0]!.job.workspace;
     try {
@@ -1066,9 +1095,35 @@ function reconcile(): void {
   writeCatalog(cfg);
 }
 
+function finalizeHistorySync(
+  cfg: MemoryConfig,
+  sync: ReturnType<typeof syncHistory>,
+): boolean {
+  if (!sync.fastForwarded) return true;
+  writeCatalog(cfg);
+  if (process.env.PI_MEMORY_SKIP_EXTERNAL === "1") return true;
+  try {
+    run(process.env.QMD_BIN || "qmd", ["update"]);
+    run(
+      process.env.QMD_BIN || "qmd",
+      ["embed", "-c", "agent-memories"],
+      undefined,
+      Number(process.env.PI_MEMORY_EMBED_TIMEOUT_MS || 15 * 60_000),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function maintainUnlocked(): boolean {
   const cfg = config();
   recoverTransactions(cfg);
+  initHistory(cfg, {
+    ...(process.env.PI_MEMORY_GIT_REMOTE
+      ? { remote: process.env.PI_MEMORY_GIT_REMOTE }
+      : {}),
+  });
   projectUnlocked();
   writeCatalog(cfg);
   secureDir(cfg.state);
@@ -1117,12 +1172,26 @@ function maintainUnlocked(): boolean {
     reconcile();
     gates.reconcile = now;
   }
+  if (isHistoryInitialized(cfg)) {
+    const sync = syncHistory(cfg);
+    if (!sync.ok) console.error(`memory history sync deferred: ${sync.error}`);
+    if (!finalizeHistorySync(cfg, sync)) ok = false;
+  }
   atomic(gatesPath, `${JSON.stringify(gates)}\n`);
   return ok;
 }
 
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
+  const option = (name: string): string | undefined => {
+    const indexes = args.flatMap((arg, index) => (arg === name ? [index] : []));
+    if (indexes.length > 1) throw new Error(`duplicate option ${name}`);
+    if (indexes.length === 0) return undefined;
+    const value = args[indexes[0]! + 1];
+    if (!value || value.startsWith("--"))
+      throw new Error(`${name} requires a value`);
+    return value;
+  };
   let result: boolean | undefined = true;
   if (command === "project")
     result = lock(() => {
@@ -1168,7 +1237,97 @@ async function main(): Promise<void> {
       );
       return true;
     });
-  else if (command === "proposals") {
+  else if (command === "propose") {
+    const json = option("--json");
+    const file = option("--file");
+    const source = option("--source");
+    if (json && file)
+      throw new Error("propose accepts either --json or --file");
+    const raw = file
+      ? readFileSync(resolve(file), "utf8")
+      : json
+        ? json
+        : readFileSync(0, "utf8");
+    const submitted = lock(() => {
+      const cfg = config();
+      const proposals = submitManualProposal(cfg, raw, source);
+      const receipts = proposals.map((proposal) =>
+        applyMemoryProposal({
+          cfg,
+          id: proposal.id,
+          actor: "remember-skill",
+        }),
+      );
+      return { proposals, receipts };
+    });
+    if (submitted) console.log(JSON.stringify(submitted, null, 2));
+    else result = undefined;
+  } else if (command === "history") {
+    const cfg = config();
+    const action = args[0] ?? "list";
+    if (action === "init") {
+      const remote = option("--remote") ?? process.env.PI_MEMORY_GIT_REMOTE;
+      const report = lock(() =>
+        initHistory(cfg, {
+          ...(remote ? { remote } : {}),
+          dryRun: args.includes("--dry-run"),
+        }),
+      );
+      if (report) {
+        const sync =
+          !report.dryRun && isHistoryInitialized(cfg)
+            ? syncHistory(cfg)
+            : undefined;
+        console.log(JSON.stringify({ ...report, sync }, null, 2));
+        if (sync && (!sync.ok || !finalizeHistorySync(cfg, sync)))
+          result = false;
+      } else result = undefined;
+    } else if (action === "verify") {
+      const report = verifyHistory(cfg);
+      console.log(JSON.stringify(report, null, 2));
+      result = report.ok;
+    } else if (action === "sync") {
+      const report = syncHistory(cfg);
+      console.log(JSON.stringify(report, null, 2));
+      result = report.ok && finalizeHistorySync(cfg, report);
+    } else if (action === "list") {
+      const memory = option("--memory");
+      const limit = option("--limit");
+      console.log(
+        JSON.stringify(
+          listHistory(cfg, {
+            ...(memory ? { memory } : {}),
+            ...(limit ? { limit: Number(limit) } : {}),
+          }),
+          null,
+          2,
+        ),
+      );
+    } else if (action === "show" && args[1]) {
+      console.log(showHistory(cfg, args[1], option("--path")));
+    } else if (action === "diff") {
+      const from = option("--from");
+      const to = option("--to");
+      const memory = option("--memory");
+      console.log(diffHistory(cfg, from, to ?? "HEAD", memory));
+    } else throw new Error("invalid history command");
+  } else if (command === "repair" && args[0]) {
+    const reasonIndex = args.indexOf("--reason");
+    if (reasonIndex < 0 || !args[reasonIndex + 1]?.trim())
+      throw new Error("repair requires --reason");
+    if (args[0] !== "adopt" && args[0] !== "discard")
+      throw new Error("repair mode must be adopt or discard");
+    const report = lock(() => {
+      const cfg = config();
+      recoverTransactions(cfg);
+      return repairHistory(cfg, {
+        mode: args[0] as "adopt" | "discard",
+        reason: args[reasonIndex + 1]!,
+      });
+    });
+    if (report) console.log(JSON.stringify(report, null, 2));
+    else result = undefined;
+  } else if (command === "proposals") {
     const laneIndex = args.indexOf("--lane");
     const lane = laneIndex >= 0 ? args[laneIndex + 1] : undefined;
     if (lane !== undefined && lane !== "memory" && lane !== "skill")
@@ -1309,7 +1468,7 @@ async function main(): Promise<void> {
     );
   } else
     throw new Error(
-      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|catalog [--cwd PATH] [--json]|migrate [--dry-run]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|rollback <review-id> --reason TEXT|metrics|eval export|replay|grade",
+      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|catalog [--cwd PATH] [--json]|migrate [--dry-run]|propose --json JSON [--source URI]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|rollback <review-id> --reason TEXT|history init|list|show|diff|verify|sync|repair adopt|discard --reason TEXT|metrics|eval export|replay|grade",
     );
   if (result === false) process.exitCode = 1;
   else if (result === undefined) process.exitCode = 75;

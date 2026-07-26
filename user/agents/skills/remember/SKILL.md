@@ -5,17 +5,17 @@ description: "record context that would help in future sessions. use after learn
 
 # remember
 
-record memories for future retrieval. files are the source of truth; qmd is the search index, with grep as the exact-match fallback.
+record memories for future retrieval. submit through `pi-memory`; never write memory markdown directly. memory changes commit autonomously with receipts, private git history, and rollback support.
 
 ## configuration
 
-set `$MEMORY_ROOT` to your memory directory:
+the active memory root defaults to:
 
 ```bash
 export MEMORY_ROOT="$HOME/commonplace/01_files/_utilities/agent-memories"
 ```
 
-if unset, defaults to `~/commonplace/01_files/_utilities/agent-memories/`. customize paths in examples below to match your setup.
+`pi-memory` owns mutations inside this directory. read it for retrieval, but use `pi-memory propose`, `rollback`, or `repair` for changes.
 
 ## when to use
 
@@ -26,26 +26,32 @@ if unset, defaults to `~/commonplace/01_files/_utilities/agent-memories/`. custo
 
 ## memory anatomy
 
-memories follow date-prefixed naming with two agent-specific requirements:
+memory submissions declare `title`, `kind`, `scope`, `description`, `triggers`, `keywords`, and `body`. `pi-memory` assigns identity, filename, dates, provenance, mutation receipt, and git commit.
 
-1. **`source__agent` tag** — required, marks this as agent-generated
-2. **frontmatter with thread URL** — records where learning happened
+submit one strict JSON payload:
 
+```bash
+pi-memory propose --source "pi://${PI_SESSION_ID:-manual}" --json '{
+  "action": "propose",
+  "proposals": [{
+    "lane": "memory",
+    "operation": {
+      "type": "create",
+      "artifact": {
+        "title": "concise durable title",
+        "kind": "pattern",
+        "scope": "global",
+        "description": "Use when this guidance applies",
+        "triggers": ["concrete trigger"],
+        "keywords": ["searchable", "terms"],
+        "body": "The durable insight, why it matters, and how to apply it."
+      }
+    }
+  }]
+}'
 ```
-$MEMORY_ROOT/YYYY-MM-DD description -- source__agent.md
-```
 
-```yaml
----
-source: https://example.com/session/T-xxxxx
-keywords:
-  - relevant
-  - searchable
-  - terms
----
-```
-
-`keywords` are freeform tags for retrieval.
+valid kinds: `preference`, `decision`, `gotcha`, `pattern`. prefer project scope for repository-specific guidance and `global` only for cross-project behavior. memory submissions apply immediately; executable skill drafts remain review-gated.
 
 ## content
 
@@ -117,7 +123,7 @@ retrieve memory when the current task signals a dependency on prior work, prefer
 (cd "${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}" && qmd search -c agent-memories "topic" -n 10)
 (cd "${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}" && qmd get "qmd://agent-memories/file-name.md" --full)
 
-# refresh the lexical index after adding/editing memories
+# refresh the lexical index after accepted mutations
 (cd "${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}" && qmd update)
 
 # exact fallback when qmd is unavailable or misses literal terms
@@ -135,28 +141,28 @@ qmd search -c pi-sessions "what happened" -n 10
 
 ## background reflection
 
-pi checkpoints completed branches, then groups ancestor checkpoints into branch-safe windows. reflection receives authored text plus redacted tool outcome counts; reasoning, tool arguments, and raw tool output are excluded. it compares evidence with active memory and pending proposals, but background work stops at a reviewable proposal.
+pi checkpoints completed branches, then groups ancestor checkpoints into branch-safe windows. reflection receives authored text plus redacted tool outcome counts; reasoning, tool arguments, and raw tool output are excluded. it compares evidence with active memory and pending proposals, then autonomously commits memory changes through the same receipt-backed transaction engine. executable skill drafts remain pending.
 
 ```bash
 pi-memory project
 pi-memory consolidate --limit 10
 pi-memory maintain
 
-# inspect pending memory and skill proposals
+# inspect pending skill drafts or deferred memory conflicts
 pi-memory proposals --status pending
 pi-memory show prop_id
 
-# every review requires a reason
-pi-memory review prop_id accept \
-  --reason-code correct --reason "captures the durable constraint"
-pi-memory review prop_id reject \
-  --reason-code duplicate --reason "already covered elsewhere"
-
-# accepted memory changes are hash-guarded and reversible
+# autonomous memory changes are hash-guarded and reversible
 pi-memory rollback review_id --reason "later shown incorrect"
+
+# inspect receipt-backed private git history
+pi-memory history list --limit 20
+pi-memory history show HEAD
+pi-memory history diff
+pi-memory history verify
 ```
 
-memory proposals can create, update, merge, archive, or retire flat markdown notes. accepted skill proposals become draft bundles under `~/.local/share/pi-memory/v2/approved-skills`; pi-memory NEVER edits installed skills. install a draft only through the normal code-review, test, and git workflow.
+autonomous memory mutations can create, update, merge, archive, or retire flat markdown notes. accepted skill proposals become draft bundles under `~/.local/share/pi-memory/v2/approved-skills`; pi-memory NEVER edits installed skills. install a draft only through the normal code-review, test, and git workflow.
 
 `pi-memory catalog` shows the bounded pointer catalog injected into agent prompts. full contents remain on-demand through qmd/grep. `pi-memory metrics` reports pipeline activity without pretending acceptance is a quality reward.
 
@@ -172,7 +178,7 @@ pi-memory eval replay --dataset ~/.local/share/pi-memory/eval/reviewed-v1.jsonl 
   --modes memory-off,current,gold --limit 20 --allow-model-invocation
 ```
 
-generated workflow state lives under `~/.local/share/pi-memory/v2`; retry and cadence state lives under `~/.local/state/pi-memory`. active markdown remains the source of truth.
+generated workflow state and the private git database live under `~/.local/share/pi-memory/v2`; retry and cadence state lives under `~/.local/state/pi-memory`. github sync is private and retryable. active markdown remains the readable worktree, but direct edits are rejected until explicitly adopted or discarded with `pi-memory repair`.
 
 ## what NOT to remember
 

@@ -1,24 +1,29 @@
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
 import type { Proposal } from "./schema.js";
 import {
+  applyMemoryProposal,
   listProposals,
   migrateV1,
   recoverTransactions,
+  readReviewReceipts,
   reviewProposal,
   rollbackReview,
   saveProposal,
+  submitManualProposal,
 } from "./workflow.js";
 
 function config(): MemoryConfig {
@@ -76,6 +81,8 @@ describe("memory proposal review", () => {
       reasonCode: "correct",
       reason: "verified durable rule",
     });
+    expect(receipt.historyCommit).toMatch(/^[0-9a-f]{40,64}$/);
+    expect(receipt.mutationId).toMatch(/^mut_/);
     const active = readdirSync(cfg.root).find((name) => name.endsWith(".md"));
     expect(active).toBeTruthy();
     expect(readFileSync(join(cfg.root, active!), "utf8")).toContain(
@@ -85,7 +92,144 @@ describe("memory proposal review", () => {
     expect(existsSync(join(cfg.root, active!))).toBe(false);
   });
 
-  it("completes an interrupted rollback from its journal", () => {
+  it("applies manual memory proposals idempotently", () => {
+    const cfg = config();
+    const raw = JSON.stringify({
+      action: "propose",
+      proposals: [
+        {
+          lane: "memory",
+          operation: {
+            type: "create",
+            artifact: {
+              title: "Manual rule",
+              kind: "pattern",
+              scope: "global",
+              description: "Use when manually preserving a rule",
+              triggers: ["manual memory"],
+              keywords: ["manual"],
+              body: "Preserve this through review.",
+            },
+          },
+        },
+        {
+          lane: "memory",
+          operation: {
+            type: "create",
+            artifact: {
+              title: "Second manual rule",
+              kind: "gotcha",
+              scope: "global",
+              description: "Use when preserving the second manual rule",
+              triggers: ["second manual memory"],
+              keywords: ["manual", "second"],
+              body: "Preserve the second rule through review.",
+            },
+          },
+        },
+      ],
+    });
+    const submitted = submitManualProposal(cfg, raw, "pi://manual/session");
+    expect(submitManualProposal(cfg, raw, "pi://manual/session")).toEqual(
+      submitted,
+    );
+    expect(
+      submitManualProposal(
+        cfg,
+        JSON.stringify(JSON.parse(raw), null, 2),
+        "pi://manual/session",
+      ),
+    ).toEqual(submitted);
+
+    expect(submitted).toHaveLength(2);
+    expect(submitted[0]?.provenance).toMatchObject({
+      model: "manual-cli",
+      corpusAware: false,
+    });
+    expect(
+      submitted[0]?.lane === "memory" && "artifact" in submitted[0].operation
+        ? submitted[0].operation.artifact.sources
+        : [],
+    ).toEqual(["pi://manual/session"]);
+    expect(existsSync(cfg.root)).toBe(false);
+    const receipts = submitted.map((item) =>
+      applyMemoryProposal({
+        cfg,
+        id: item.id,
+        actor: "remember-skill",
+      }),
+    );
+    expect(
+      receipts.every((receipt) => receipt.reviewer === "remember-skill"),
+    ).toBe(true);
+    expect(
+      submitted.map((item) =>
+        applyMemoryProposal({
+          cfg,
+          id: item.id,
+          actor: "remember-skill",
+        }),
+      ),
+    ).toEqual(receipts);
+    expect(readReviewReceipts(cfg)).toHaveLength(2);
+    expect(
+      readdirSync(cfg.root).filter((name) => name.endsWith(".md")),
+    ).toHaveLength(2);
+  });
+
+  it("rejects a conflicting manual batch before saving proposals", () => {
+    const cfg = config();
+    const artifact = {
+      title: "Conflicting rule",
+      kind: "pattern",
+      scope: "global",
+      description: "Use while testing conflicts",
+      triggers: ["conflict"],
+      keywords: ["conflict"],
+      body: "Only one memory may own a destination.",
+    };
+    const created = submitManualProposal(
+      cfg,
+      JSON.stringify({
+        action: "propose",
+        proposals: [
+          { lane: "memory", operation: { type: "create", artifact } },
+        ],
+      }),
+      "pi://manual/conflict-seed",
+    )[0]!;
+    applyMemoryProposal({
+      cfg,
+      id: created.id,
+      actor: "remember-skill",
+    });
+    const memoryId =
+      created.operation.type === "create"
+        ? created.operation.artifact.memoryId
+        : "";
+    expect(() =>
+      submitManualProposal(
+        cfg,
+        JSON.stringify({
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              operation: { type: "update", targetId: memoryId, artifact },
+            },
+            {
+              lane: "memory",
+              operation: { type: "update", targetId: memoryId, artifact },
+            },
+          ],
+        }),
+        "pi://manual/conflict",
+      ),
+    ).toThrow("overlapping targets");
+    expect(listProposals(cfg)).toHaveLength(0);
+  });
+
+  it("aborts an interrupted rollback before its history commit", () => {
     const cfg = config();
     saveProposal(cfg, proposal("prop_interrupted_rollback"));
     const accepted = reviewProposal({
@@ -115,7 +259,7 @@ describe("memory proposal review", () => {
     expect(recoverTransactions(cfg)).toBe(1);
     expect(
       existsSync(join(cfg.data, "v2/reviews/review_interrupted_rollback.json")),
-    ).toBe(true);
+    ).toBe(false);
     expect(() =>
       JSON.parse(
         readFileSync(
@@ -126,7 +270,7 @@ describe("memory proposal review", () => {
     ).not.toThrow();
     expect(
       readdirSync(cfg.root).filter((name) => name.endsWith(".md")),
-    ).toEqual([]);
+    ).toHaveLength(1);
   });
 
   it("records rejection without mutating active memory", () => {
@@ -207,10 +351,11 @@ describe("memory proposal review", () => {
       reasonCode: "correct",
       reason: "archive stale rule",
     });
+    chmodSync(cfg.root, 0o700);
     writeFileSync(active, "new unrelated memory\n");
     expect(() =>
       rollbackReview(cfg, accepted.reviewId, "restore old rule"),
-    ).toThrow("changed source");
+    ).toThrow("dirty memory worktree");
     expect(readFileSync(active, "utf8")).toBe("new unrelated memory\n");
     expect(
       existsSync(
@@ -285,6 +430,61 @@ describe("memory proposal review", () => {
     expect(recoverTransactions(cfg)).toBe(2);
     expect(existsSync(target)).toBe(false);
     expect(readFileSync(updateTarget, "utf8")).toBe("before\n");
+  });
+
+  it("rejects transaction journals outside the configured memory root", () => {
+    const cfg = config();
+    const outside = join(dirname(cfg.root), "outside.md");
+    writeFileSync(outside, "keep\n");
+    const txDir = join(cfg.data, "v2/transactions");
+    mkdirSync(txDir, { recursive: true });
+    writeFileSync(
+      join(txDir, "tx_escape.json"),
+      JSON.stringify({
+        version: 1,
+        id: "tx_escape",
+        reviewId: "review_escape",
+        state: "prepared",
+        actions: [{ to: outside, after: "overwrite\n" }],
+      }),
+    );
+
+    expect(() => recoverTransactions(cfg)).toThrow(
+      "memory transaction path escapes configured root",
+    );
+    expect(readFileSync(outside, "utf8")).toBe("keep\n");
+  });
+
+  it("rejects transaction paths through symlink ancestors", () => {
+    const cfg = config();
+    const outside = join(dirname(cfg.root), "outside");
+    mkdirSync(cfg.root, { recursive: true });
+    mkdirSync(outside, { recursive: true });
+    const target = join(outside, "keep.md");
+    writeFileSync(target, "keep\n");
+    symlinkSync(outside, join(cfg.root, ".archive"));
+    const txDir = join(cfg.data, "v2/transactions");
+    mkdirSync(txDir, { recursive: true });
+    writeFileSync(
+      join(txDir, "tx_symlink.json"),
+      JSON.stringify({
+        version: 1,
+        id: "tx_symlink",
+        reviewId: "review_symlink",
+        state: "prepared",
+        actions: [
+          {
+            to: join(cfg.root, ".archive", "keep.md"),
+            after: "overwrite\n",
+          },
+        ],
+      }),
+    );
+
+    expect(() => recoverTransactions(cfg)).toThrow(
+      "memory transaction path escapes configured root",
+    );
+    expect(readFileSync(target, "utf8")).toBe("keep\n");
   });
 
   it("approves skill drafts without modifying installed skills", () => {

@@ -3,9 +3,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
-  renameSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
 import { freezePipelineInput, processPipelineBatch } from "./pipeline.js";
-import { listProposals, reviewProposal } from "./workflow.js";
+import { listProposals, readReviewReceipts } from "./workflow.js";
 
 function config(): MemoryConfig {
   const base = mkdtempSync(join(tmpdir(), "memory-pipeline-"));
@@ -90,7 +87,7 @@ describe("memory reflection pipeline", () => {
     ).not.toContain("raw private output");
   });
 
-  it("materializes a strict reviewable proposal", () => {
+  it("autonomously commits a strict memory proposal", () => {
     const cfg = config();
     const result = processPipelineBatch({
       cfg,
@@ -120,42 +117,19 @@ describe("memory reflection pipeline", () => {
         }),
     });
     expect(result.proposalIds).toHaveLength(1);
-    expect(listProposals(cfg)[0]).toMatchObject({
+    expect(listProposals(cfg)).toHaveLength(0);
+    expect(listProposals(cfg, undefined, "reviewed")[0]).toMatchObject({
       lane: "memory",
       operation: { type: "create" },
     });
-    reviewProposal({
-      cfg,
-      id: result.proposalIds[0]!,
-      decision: "reject",
-      reasonCode: "ephemeral",
-      reason: "private reviewer explanation",
+    expect(readReviewReceipts(cfg)[0]).toMatchObject({
+      decision: "accepted",
+      reviewer: "background-reflection",
     });
     const withFeedback = freezePipelineInput(cfg, "global", [
       evidence("cp-feedback"),
     ]);
-    expect(withFeedback.reviewSignals).toEqual([
-      {
-        decision: "rejected",
-        reasonCode: "ephemeral",
-        lane: "memory",
-        operation: "create",
-      },
-    ]);
-    expect(JSON.stringify(withFeedback)).not.toContain(
-      "private reviewer explanation",
-    );
-    const reviewedDir = join(cfg.data, "v2/proposals/reviewed");
-    renameSync(
-      join(reviewedDir, readdirSync(reviewedDir)[0]!),
-      join(reviewedDir, "memory-edited-proposal.json"),
-    );
-    rmSync(join(cfg.data, `v2/runs/${result.runId}/result.json`));
-    mkdirSync(cfg.root, { recursive: true });
-    writeFileSync(
-      join(cfg.root, "2026-07-25-other--source__agent.md"),
-      "# changed corpus\n",
-    );
+    expect(withFeedback.reviewSignals).toEqual([]);
     const retried = processPipelineBatch({
       cfg,
       scope: "global",
@@ -168,5 +142,105 @@ describe("memory reflection pipeline", () => {
     expect(retried.runId).toBe(result.runId);
     expect(listProposals(cfg, undefined, "pending")).toHaveLength(0);
     expect(listProposals(cfg, undefined, "reviewed")).toHaveLength(1);
+    expect(readReviewReceipts(cfg)).toHaveLength(1);
+  });
+
+  it("keeps executable skill drafts review-gated", () => {
+    const cfg = config();
+    const second = evidence("cp-second");
+    second.window.sessionId = "session-two";
+    const result = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-memory"), second],
+      model: "test",
+      invoke: () =>
+        JSON.stringify({
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              operation: {
+                type: "create",
+                artifact: {
+                  title: "Autonomous memory",
+                  kind: "pattern",
+                  scope: "global",
+                  description: "Use when testing autonomous memory",
+                  triggers: ["autonomous memory"],
+                  keywords: ["memory"],
+                  body: "Commit durable memory without human review.",
+                },
+              },
+            },
+            {
+              lane: "skill",
+              operation: {
+                type: "skill-draft",
+                mode: "create",
+                skillName: "memory-check",
+                targetPath: "memory-check/SKILL.md",
+                files: [
+                  {
+                    path: "memory-check/SKILL.md",
+                    content:
+                      '---\nname: memory-check\ndescription: "check memory"\n---\n',
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+    });
+    expect(result.proposalIds).toHaveLength(2);
+    expect(listProposals(cfg, "memory")).toHaveLength(0);
+    expect(listProposals(cfg, "skill")).toHaveLength(1);
+    expect(readReviewReceipts(cfg)).toHaveLength(1);
+  });
+
+  it("recovers after result publication but before memory application", () => {
+    const cfg = config();
+    const invoke = () =>
+      JSON.stringify({
+        action: "propose",
+        proposals: [
+          {
+            lane: "memory",
+            operation: {
+              type: "create",
+              artifact: {
+                title: "Recover autonomous memory",
+                kind: "gotcha",
+                scope: "global",
+                description: "Use when retrying interrupted reflection",
+                triggers: ["reflection retry"],
+                keywords: ["recovery"],
+                body: "Published results must remain safely replayable.",
+              },
+            },
+          },
+        ],
+      });
+    const interrupted = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-interrupted")],
+      model: "test",
+      invoke,
+      autoApplyMemory: false,
+    });
+    expect(listProposals(cfg, "memory")).toHaveLength(1);
+    const recovered = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-interrupted")],
+      model: "test",
+      invoke: () => {
+        throw new Error("cached result must be reused");
+      },
+    });
+    expect(recovered).toEqual(interrupted);
+    expect(listProposals(cfg, "memory")).toHaveLength(0);
+    expect(readReviewReceipts(cfg)).toHaveLength(1);
   });
 });
