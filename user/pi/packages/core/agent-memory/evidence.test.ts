@@ -4,14 +4,24 @@ import { buildSafeEvidence, redact, type BranchEntry } from "./evidence.js";
 describe("safe trajectory evidence", () => {
   it("redacts secrets before preserving authored text", () => {
     const result = redact(
-      "authorization: Bearer abcdefghijklmnopqrstuvwxyz and sk-abcdefghijklmnop " +
+      "Bearer tiny Basic YQ== password is short " +
+        "aws_secret_access_key: OnlyLettersCanStillBeAValidAwsSecretKeyHere " +
+        "authorization: Bearer abcdefghijklmnopqrstuvwxyz and sk-abcdefghijklmnop " +
         "AKIAIOSFODNN7EXAMPLE 4f3d2a1b0c9e8d7f6a5b4c3d2e1f0a9b " +
-        "9dIdz2oRaMEB1ES0lmgSamdtIC6p3g==",
+        "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
+    );
+    expect(result.text).not.toContain("tiny");
+    expect(result.text).not.toContain("YQ==");
+    expect(result.text).not.toContain("short");
+    expect(result.text).not.toContain(
+      "OnlyLettersCanStillBeAValidAwsSecretKeyHere",
     );
     expect(result.text).not.toContain("abcdefghijklmnopqrstuvwxyz");
     expect(result.text).not.toContain("AKIAIOSFODNN7EXAMPLE");
     expect(result.text).not.toContain("4f3d2a1b0c9e8d7f6a5b4c3d2e1f0a9b");
-    expect(result.text).not.toContain("9dIdz2oRaMEB1ES0lmgSamdtIC6p3g==");
+    expect(result.text).not.toContain(
+      "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
+    );
     expect(
       Object.values(result.counts).reduce((sum, count) => sum + count, 0),
     ).toBeGreaterThan(0);

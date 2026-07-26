@@ -30,8 +30,8 @@ const REDACTIONS: Array<[string, RegExp]> = [
     "pem",
     /-----BEGIN [^-\n]+PRIVATE KEY-----[\s\S]*?-----END [^-\n]+PRIVATE KEY-----/gi,
   ],
-  ["bearer", /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi],
-  ["basic-auth", /\bBasic\s+[A-Za-z0-9+/=]{12,}/gi],
+  ["bearer", /\bBearer\s+[^\s,;]+/gi],
+  ["basic-auth", /\bBasic\s+[^\s,;]+/gi],
   ["jwt", /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g],
   ["aws-access-key", /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g],
   [
@@ -42,10 +42,14 @@ const REDACTIONS: Array<[string, RegExp]> = [
     "opaque-token",
     /(?<![A-Za-z0-9_+/=-])(?=[A-Za-z0-9_+/=-]{32,}(?![A-Za-z0-9_+/=-]))(?=[A-Za-z0-9_+/=-]*[A-Za-z])(?=[A-Za-z0-9_+/=-]*[0-9])[A-Za-z0-9_+/=-]{32,}(?![A-Za-z0-9_+/=-])/g,
   ],
+  [
+    "padded-base64",
+    /(?<![A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4}){3,}(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)(?![A-Za-z0-9+/=])/g,
+  ],
   ["credential-url", /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:]+:[^\s/@]+@[^\s]+/gi],
   [
     "secret-field",
-    /\b(token|secret|password|passwd|api[_-]?key|cookie|authorization)\b\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+    /\b(token|secret|password|passwd|api[_-]?key|cookie|authorization|client[_-]?secret|access[_-]?key|(?:aws[_-]?)?secret[_-]?access[_-]?key|private[_-]?key|session[_-]?token)\b(?:\s*[:=]\s*|\s+is\s+)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
   ],
 ];
 

@@ -184,6 +184,11 @@ describe("memory evaluation dataset", () => {
                 targetPath: "verify-memory/SKILL.md",
                 files: [
                   {
+                    path: "verify-memory/reference/SKILL.md",
+                    content:
+                      '---\nname: decoy\ndescription: "wrong gold skill"\n---\n',
+                  },
+                  {
                     path: "verify-memory/SKILL.md",
                     content:
                       '---\nname: verify-memory\ndescription: "verify memory changes"\n---\n\n# verify memory\n',
