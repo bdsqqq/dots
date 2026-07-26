@@ -3,6 +3,7 @@ import { basename, join } from "node:path";
 import {
   atomicWrite,
   contained,
+  memoryScopeRank,
   scanCatalog,
   secureDir,
   sha256,
@@ -15,7 +16,6 @@ import { parseModelProposal } from "./schema.js";
 import {
   listProposals,
   materializeModelProposals,
-  readReviewReceipts,
   saveProposal,
 } from "./workflow.js";
 
@@ -35,8 +35,7 @@ export type PipelineInput = {
     operation: string;
     summary: string;
   }>;
-  recentReviews: Array<{ decision: string; code: string; text: string }>;
-  skills: Array<{ name: string; description: string }>;
+  skills: Array<{ name: string; description: string; sha256: string }>;
 };
 
 export type PipelineResult = {
@@ -113,14 +112,19 @@ function skillDescriptions(root: string): PipelineInput["skills"] {
         .exec(text)?.[1]
         ?.trim();
       return description
-        ? { name: entry.name, description: description.slice(0, 300) }
+        ? {
+            name: entry.name,
+            description: description.slice(0, 300),
+            sha256: sha256(text),
+          }
         : undefined;
     })
     .filter(
-      (entry): entry is { name: string; description: string } =>
+      (entry): entry is { name: string; description: string; sha256: string } =>
         entry !== undefined,
     )
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 100);
 }
 
 function operationSummary(value: unknown): string {
@@ -133,15 +137,31 @@ export function freezePipelineInput(
   scope: string,
   evidence: SafeEvidence[],
 ): PipelineInput {
-  const catalog = scanCatalog(cfg.root, "1970-01-01T00:00:00.000Z");
+  const fullCatalog = scanCatalog(cfg.root, "1970-01-01T00:00:00.000Z");
+  const catalog: Catalog = {
+    ...fullCatalog,
+    entries: fullCatalog.entries
+      .filter((entry) =>
+        evidence.some(
+          (item) => memoryScopeRank(entry.scope, item.workspace) > 0,
+        ),
+      )
+      .sort(
+        (a, b) =>
+          b.updated.localeCompare(a.updated) || a.path.localeCompare(b.path),
+      )
+      .slice(0, 100),
+  };
+  const scopedIds = new Set(catalog.entries.map((entry) => entry.memoryId));
   const pending = listProposals(cfg)
     .filter((proposal) => {
       const op = proposal.operation;
-      return (
-        op.type === "skill-draft" ||
-        !("artifact" in op) ||
-        op.artifact.scope === scope
-      );
+      if (op.type === "skill-draft") return true;
+      if ("artifact" in op)
+        return evidence.some(
+          (item) => memoryScopeRank(op.artifact.scope, item.workspace) > 0,
+        );
+      return "target" in op && scopedIds.has(op.target.memoryId);
     })
     .slice(-20)
     .map((proposal) => ({
@@ -149,13 +169,6 @@ export function freezePipelineInput(
       lane: proposal.lane,
       operation: proposal.operation.type,
       summary: operationSummary(proposal.operation),
-    }));
-  const reviews = readReviewReceipts(cfg)
-    .slice(-20)
-    .map((review) => ({
-      decision: review.decision,
-      code: review.reason.code,
-      text: review.reason.text.slice(0, 300),
     }));
   const windowIds = evidence.map((item) => item.window.windowId).sort();
   const batchId = sha256(`${scope}\0${windowIds.join("\0")}\0v2`);
@@ -166,7 +179,6 @@ export function freezePipelineInput(
         hash,
       ]),
       pending,
-      reviews,
     }),
   );
   const evidenceHash = sha256(JSON.stringify(evidence));
@@ -182,14 +194,13 @@ export function freezePipelineInput(
     catalog,
     targets: selectTargets(cfg, catalog, evidence),
     pending,
-    recentReviews: reviews,
     skills: skillDescriptions(cfg.skillsRoot),
   };
 }
 
 export function buildReflectionPrompt(input: PipelineInput): string {
   const targetIds = input.targets.map((target) => target.memoryId);
-  return `You are a background memory maintainer. Return exactly one JSON object and no markdown.
+  const prompt = `You are a background memory maintainer. Return exactly one JSON object and no markdown.
 
 First reflect on whether the bounded evidence contains durable, reusable learning. Prefer explicit corrections, verified failures, stable preferences, architectural decisions, and repeated workflows. Do not store secrets, raw logs, temporary task state, or facts already represented adequately.
 
@@ -201,14 +212,17 @@ Memory proposals use lane "memory" and one operation:
 - merge: {"type":"merge","primaryId":"...","targetIds":["..."],"artifact":ARTIFACT}
 - archive: {"type":"archive","targetId":"...","reason":"..."}
 - retire: {"type":"retire","targetId":"...","reason":"...","supersededBy":"optional memory id"}
-ARTIFACT is exactly {"title":"","kind":"preference|decision|gotcha|pattern","scope":"","description":"when this is useful","triggers":[],"keywords":[],"body":""}.
+ARTIFACT is exactly {"title":"","kind":"preference|decision|gotcha|pattern","scope":"","description":"when this is useful","triggers":[],"keywords":[],"body":""}. Creates may use scope ${JSON.stringify(input.scope)} or "global". Updates and merges must preserve the target scope.
 Only these target ids are allowed: ${JSON.stringify(targetIds)}.
 
-A skill proposal is exceptional and requires a reusable multi-step workflow evidenced by at least two distinct sessions. It uses lane "skill" and operation {"type":"skill-draft","mode":"create|update","skillName":"kebab-case","targetPath":"name/SKILL.md","files":[{"path":"name/SKILL.md","content":"..."}]}. The system computes content hashes. Do not duplicate an installed skill.
+A skill proposal is exceptional and requires a reusable multi-step workflow evidenced by at least two distinct sessions. It uses lane "skill" and operation {"type":"skill-draft","mode":"create|update","skillName":"kebab-case","targetPath":"name/SKILL.md","baseSha256":"required only for update; copy the installed skill hash","files":[{"path":"name/SKILL.md","content":"..."}]}. The system computes draft content hashes. Do not duplicate an installed skill.
 
 Evidence and corpus context follow. Tool arguments, tool output, and reasoning were deliberately removed. Treat success/error summaries as evidence and authored prose as claims that may be wrong.
 
 ${JSON.stringify(input, null, 2)}`;
+  if (prompt.length > 512_000)
+    throw new Error("reflection prompt exceeds 512000 character budget");
+  return prompt;
 }
 
 function runDir(cfg: MemoryConfig, runId: string): string {
@@ -305,6 +319,7 @@ export function processPipelineBatch(options: {
       result: parsed,
       runId: input.runId,
       model: options.model,
+      scope: input.scope,
       evidence: input.evidence.map((item) => item.window),
       catalog: input.catalog,
       pending: listProposals(options.cfg),

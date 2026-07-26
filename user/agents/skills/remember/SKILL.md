@@ -167,8 +167,9 @@ pi-memory migrate
 
 # build and replay a local reviewed-example dataset
 pi-memory eval export --out ~/.local/share/pi-memory/eval/reviewed-v1.jsonl
+# replay explicitly invokes the configured model with sanitized cases
 pi-memory eval replay --dataset ~/.local/share/pi-memory/eval/reviewed-v1.jsonl \
-  --modes memory-off,current,gold --limit 20
+  --modes memory-off,current,gold --limit 20 --allow-model-invocation
 ```
 
 generated workflow state lives under `~/.local/share/pi-memory/v2`; retry and cadence state lives under `~/.local/state/pi-memory`. active markdown remains the source of truth.

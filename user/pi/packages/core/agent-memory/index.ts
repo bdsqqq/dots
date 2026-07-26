@@ -767,6 +767,22 @@ type PendingWindow = {
   jobs: Array<{ job: Job; name: string }>;
 };
 
+function finalizeQueuedJob(
+  cfg: ReturnType<typeof config>,
+  name: string,
+  destination: "processed" | "failed",
+): void {
+  const source = join(cfg.data, "queue/pending", name);
+  const targetDir = join(cfg.data, `queue/${destination}`);
+  secureDir(targetDir);
+  const target = join(targetDir, name);
+  if (existsSync(target)) {
+    if (readFileSync(target, "utf8") !== readFileSync(source, "utf8"))
+      throw new Error(`queue destination collision ${name}`);
+    rmSync(source);
+  } else renameSync(source, target);
+}
+
 function pendingWindows(limit: number): PendingWindow[] {
   const cfg = config();
   const pending = join(cfg.data, "queue/pending");
@@ -780,24 +796,40 @@ function pendingWindows(limit: number): PendingWindow[] {
   for (const name of readdirSync(pending)
     .filter((item) => item.endsWith(".json"))
     .sort()) {
-    const value: unknown = JSON.parse(
-      readFileSync(join(pending, name), "utf8"),
-    );
-    if (!isJob(value)) throw new Error(`invalid job schema ${name}`);
-    const snapshot = parseStableSnapshot(value.sourcePath);
-    if (
-      snapshot.header.id !== value.sessionId ||
-      snapshot.header.cwd !== value.workspace
-    )
-      throw new Error(`job source/header mismatch ${name}`);
-    const chain = snapshot.chains.find((candidate) =>
-      candidate.some((entry) => entry.id === value.checkpointEntryId),
-    );
-    const checkpointIndex =
-      chain?.findIndex((entry) => entry.id === value.checkpointEntryId) ?? -1;
-    if (!chain || checkpointIndex < 0 || !checkpoint(chain[checkpointIndex]!))
-      throw new Error(`invalid checkpoint job ${name}`);
-    items.push({ job: value, name, chain, checkpointIndex });
+    try {
+      const value: unknown = JSON.parse(
+        readFileSync(join(pending, name), "utf8"),
+      );
+      if (!isJob(value)) throw new Error(`invalid job schema ${name}`);
+      const ledger = join(
+        cfg.data,
+        "v2/ledger",
+        `${value.sessionId}--${value.checkpointEntryId}.json`,
+      );
+      if (existsSync(ledger)) {
+        finalizeQueuedJob(cfg, name, "processed");
+        continue;
+      }
+      const snapshot = parseStableSnapshot(value.sourcePath);
+      if (
+        snapshot.header.id !== value.sessionId ||
+        snapshot.header.cwd !== value.workspace
+      )
+        throw new Error(`job source/header mismatch ${name}`);
+      const chain = snapshot.chains.find((candidate) =>
+        candidate.some((entry) => entry.id === value.checkpointEntryId),
+      );
+      const checkpointIndex =
+        chain?.findIndex((entry) => entry.id === value.checkpointEntryId) ?? -1;
+      if (!chain || checkpointIndex < 0 || !checkpoint(chain[checkpointIndex]!))
+        throw new Error(`invalid checkpoint job ${name}`);
+      items.push({ job: value, name, chain, checkpointIndex });
+    } catch (error) {
+      console.error(
+        `${name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      finalizeQueuedJob(cfg, name, "failed");
+    }
   }
   const maxima = items
     .filter(
@@ -865,21 +897,28 @@ function pendingWindows(limit: number): PendingWindow[] {
   return windows;
 }
 
+function batchWindows(windows: PendingWindow[]): PendingWindow[][] {
+  const batches: PendingWindow[][] = [];
+  for (const window of windows) {
+    const workspace = window.jobs[0]!.job.workspace;
+    const sessionId = window.jobs[0]!.job.sessionId;
+    const batch = batches.find(
+      (candidate) =>
+        candidate.length < 5 &&
+        candidate[0]!.jobs[0]!.job.workspace === workspace &&
+        candidate.every((item) => item.jobs[0]!.job.sessionId !== sessionId),
+    );
+    if (batch) batch.push(window);
+    else batches.push([window]);
+  }
+  return batches;
+}
+
 function consolidateV2Unlocked(limit: number): boolean {
   const cfg = config();
-  const windows = pendingWindows(limit);
-  const batches = new Map<string, PendingWindow[]>();
-  for (const window of windows) {
-    const key = window.jobs[0]!.job.workspace;
-    const batch = batches.get(key) || [];
-    if (batch.length >= 5) batches.set(`${key}#${batches.size}`, [window]);
-    else {
-      batch.push(window);
-      batches.set(key, batch);
-    }
-  }
+  const batches = batchWindows(pendingWindows(limit));
   let ok = true;
-  for (const batch of batches.values()) {
+  for (const batch of batches) {
     const workspace = batch[0]!.jobs[0]!.job.workspace;
     try {
       const model =
@@ -907,13 +946,9 @@ function consolidateV2Unlocked(limit: number): boolean {
             prompt,
           ),
       });
-      secureDir(join(cfg.data, "queue/processed"));
       for (const window of batch)
         for (const { name } of window.jobs)
-          renameSync(
-            join(cfg.data, "queue/pending", name),
-            join(cfg.data, "queue/processed", name),
-          );
+          finalizeQueuedJob(cfg, name, "processed");
     } catch (error) {
       ok = false;
       console.error(error instanceof Error ? error.message : String(error));
@@ -1046,64 +1081,6 @@ function maintainUnlocked(): boolean {
   return ok;
 }
 
-function promote(candidate: string): void {
-  const cfg = config();
-  const candidates = join(cfg.data, "candidates");
-  const source = contained(
-    candidates,
-    isAbsolute(candidate) ? candidate : join(candidates, candidate),
-  );
-  const text = readFileSync(source, "utf8");
-  const parsed = parseCandidate(text);
-  const slug =
-    parsed.title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 80) || "memory";
-  const identity = createHash("sha256")
-    .update(parsed.source)
-    .digest("hex")
-    .slice(0, 12);
-  secureDir(cfg.root);
-  const destination = contained(
-    cfg.root,
-    join(cfg.root, `${parsed.created}-${slug}-${identity}--source__agent.md`),
-  );
-  const promoted = text.replace(/^status: candidate$/m, "status: active");
-  const promotionReceipts = contained(
-    cfg.data,
-    join(cfg.data, "promotion-receipts"),
-  );
-  secureDir(promotionReceipts);
-  const receipt = contained(
-    promotionReceipts,
-    join(promotionReceipts, `${identity}.json`),
-  );
-  if (existsSync(destination)) {
-    if (readFileSync(destination, "utf8") !== promoted)
-      throw new Error("active memory identity collision");
-  } else {
-    const fd = openSync(
-      destination,
-      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
-      0o600,
-    );
-    try {
-      writeFileSync(fd, promoted);
-    } finally {
-      closeSync(fd);
-    }
-    chmodSync(destination, 0o600);
-  }
-  const receiptValue = `${JSON.stringify({ version: 1, source: parsed.source, destination: basename(destination), sha256: createHash("sha256").update(promoted).digest("hex") })}\n`;
-  if (existsSync(receipt) && readFileSync(receipt, "utf8") !== receiptValue)
-    throw new Error("promotion receipt collision");
-  if (!existsSync(receipt)) atomic(receipt, receiptValue);
-  if (process.env.PI_MEMORY_SKIP_EXTERNAL !== "1")
-    run(process.env.QMD_BIN || "qmd", ["update"]);
-}
-
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   let result: boolean | undefined = true;
@@ -1124,11 +1101,10 @@ async function main(): Promise<void> {
       return true;
     });
   else if (command === "maintain") result = lock(maintainUnlocked);
-  else if (command === "promote" && args[0])
-    result = lock(() => {
-      promote(args[0]!);
-      return true;
-    });
+  else if (command === "promote")
+    throw new Error(
+      "promote was removed because it bypassed reversible review; run pi-memory migrate, then review the imported proposal",
+    );
   else if (command === "catalog") {
     const cwdIndex = args.indexOf("--cwd");
     const cwd =
@@ -1170,11 +1146,14 @@ async function main(): Promise<void> {
     const reasonCodeIndex = args.indexOf("--reason-code");
     const reasonIndex = args.indexOf("--reason");
     const editIndex = args.indexOf("--edit");
-    const reasonCode = args[reasonCodeIndex + 1] as
-      | ReviewReasonCode
-      | undefined;
+    const reasonCode =
+      reasonCodeIndex >= 0
+        ? (args[reasonCodeIndex + 1] as ReviewReasonCode | undefined)
+        : undefined;
     if (!reasonCode || !REVIEW_REASON_CODES.includes(reasonCode))
       throw new Error("review requires --reason-code");
+    if (reasonIndex < 0 || !args[reasonIndex + 1]?.trim())
+      throw new Error("review requires --reason");
     const decision = args[1];
     if (decision !== "accept" && decision !== "reject")
       throw new Error("review decision must be accept or reject");
@@ -1184,19 +1163,23 @@ async function main(): Promise<void> {
         id: args[0]!,
         decision,
         reasonCode,
-        reason: args[reasonIndex + 1] || "",
+        reason: args[reasonIndex + 1]!,
         ...(editIndex >= 0 && args[editIndex + 1]
           ? { editPath: args[editIndex + 1] }
           : {}),
       }),
     );
     if (receipt) console.log(JSON.stringify(receipt, null, 2));
+    else result = undefined;
   } else if (command === "rollback" && args[0]) {
     const reasonIndex = args.indexOf("--reason");
+    if (reasonIndex < 0 || !args[reasonIndex + 1]?.trim())
+      throw new Error("rollback requires --reason");
     const receipt = lock(() =>
-      rollbackReview(config(), args[0]!, args[reasonIndex + 1] || ""),
+      rollbackReview(config(), args[0]!, args[reasonIndex + 1]!),
     );
     if (receipt) console.log(JSON.stringify(receipt, null, 2));
+    else result = undefined;
   } else if (command === "metrics")
     console.log(JSON.stringify(memoryMetrics(config()), null, 2));
   else if (command === "eval" && args[0] === "export") {
@@ -1212,9 +1195,13 @@ async function main(): Promise<void> {
     const limitIndex = args.indexOf("--limit");
     if (datasetIndex < 0 || !args[datasetIndex + 1])
       throw new Error("eval replay requires --dataset");
-    const modes = (args[modesIndex + 1] || "memory-off,current,gold").split(
-      ",",
-    );
+    if (!args.includes("--allow-model-invocation"))
+      throw new Error(
+        "eval replay sends sanitized cases to the configured model; pass --allow-model-invocation to confirm",
+      );
+    const modes = (
+      modesIndex >= 0 ? args[modesIndex + 1] || "" : "memory-off,current,gold"
+    ).split(",");
     if (
       !modes.every(
         (mode) =>
@@ -1261,12 +1248,15 @@ async function main(): Promise<void> {
     const modeIndex = args.indexOf("--mode");
     const scoreIndex = args.indexOf("--score");
     const reasonIndex = args.indexOf("--reason");
-    const mode = args[modeIndex + 1];
+    const mode = modeIndex >= 0 ? args[modeIndex + 1] : undefined;
     if (
+      caseIndex < 0 ||
       !args[caseIndex + 1] ||
+      reasonIndex < 0 ||
+      !args[reasonIndex + 1]?.trim() ||
       (mode !== "memory-off" && mode !== "current" && mode !== "gold")
     )
-      throw new Error("eval grade requires --case and --mode");
+      throw new Error("eval grade requires --case, --mode, and --reason");
     console.log(
       gradeReplay({
         cfg: config(),
@@ -1274,14 +1264,15 @@ async function main(): Promise<void> {
         caseId: args[caseIndex + 1]!,
         mode,
         score: Number(args[scoreIndex + 1]),
-        reason: args[reasonIndex + 1] || "",
+        reason: args[reasonIndex + 1]!,
       }),
     );
   } else
     throw new Error(
-      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|promote <candidate>|catalog [--cwd PATH] [--json]|migrate [--dry-run]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|rollback <review-id> --reason TEXT|metrics|eval export|replay|grade",
+      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|catalog [--cwd PATH] [--json]|migrate [--dry-run]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|rollback <review-id> --reason TEXT|metrics|eval export|replay|grade",
     );
   if (result === false) process.exitCode = 1;
+  else if (result === undefined) process.exitCode = 75;
 }
 
 if (import.meta.main)
@@ -1453,6 +1444,7 @@ if (import.meta.vitest) {
       try {
         const windows = pendingWindows(10);
         expect(windows).toHaveLength(2);
+        expect(batchWindows(windows)).toHaveLength(2);
         const serialized = windows.map((window) =>
           JSON.stringify(window.evidence),
         );
@@ -1468,6 +1460,19 @@ if (import.meta.vitest) {
             .map((item) => item.job.checkpointEntryId)
             .sort(),
         ).toEqual(["cp1", "cpa", "cpb"]);
+        mkdirSync(join(data, "v2/ledger"), { recursive: true });
+        writeFileSync(join(data, "v2/ledger/forked--cpa.json"), "{}\n");
+        writeFileSync(join(data, "queue/pending/bad.json"), "not json\n");
+        const recovered = pendingWindows(10);
+        expect(
+          recovered
+            .flatMap((window) => window.jobs)
+            .map((item) => item.job.checkpointEntryId),
+        ).not.toContain("cpa");
+        expect(existsSync(join(data, "queue/processed/forked--cpa.json"))).toBe(
+          true,
+        );
+        expect(existsSync(join(data, "queue/failed/bad.json"))).toBe(true);
       } finally {
         if (previousData === undefined) delete process.env.PI_MEMORY_DATA_DIR;
         else process.env.PI_MEMORY_DATA_DIR = previousData;

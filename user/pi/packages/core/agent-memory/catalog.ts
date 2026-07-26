@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
 export type MemoryConfig = {
@@ -183,36 +184,38 @@ export function scanCatalog(
   return { version: 2, generatedAt, entries };
 }
 
-function pathSegments(path: string): string[] {
-  return resolve(path).split(sep).filter(Boolean);
-}
-
-function scopeRank(scope: string, cwd: string): number {
+export function memoryScopeRank(scope: string, cwd: string): number {
   if (scope === "global") return 2;
-  if (scope === "unknown") return 1;
-  const cwdParts = pathSegments(cwd);
-  const scopeParts = scope.includes("/")
-    ? scope.split("/").filter(Boolean)
-    : pathSegments(scope);
-  if (scopeParts.length > cwdParts.length) return 0;
-  const offset = cwdParts.length - scopeParts.length;
-  return scopeParts.every((part, index) => cwdParts[offset + index] === part)
+  if (scope === "unknown") return 0;
+  const cwdPath = resolve(cwd);
+  const scopePath = resolve(
+    scope.startsWith(sep) ? scope : join(homedir(), scope),
+  );
+  return cwdPath === scopePath || cwdPath.startsWith(`${scopePath}${sep}`)
     ? 4
     : 0;
 }
 
 export function rankCatalog(catalog: Catalog, cwd: string): CatalogEntry[] {
   return catalog.entries
-    .filter((entry) => scopeRank(entry.scope, cwd) > 0)
+    .filter((entry) => memoryScopeRank(entry.scope, cwd) > 0)
     .slice()
     .sort((a, b) => {
-      const rank = scopeRank(b.scope, cwd) - scopeRank(a.scope, cwd);
+      const rank =
+        memoryScopeRank(b.scope, cwd) - memoryScopeRank(a.scope, cwd);
       return (
         rank ||
         b.updated.localeCompare(a.updated) ||
         a.path.localeCompare(b.path)
       );
     });
+}
+
+function promptField(value: string): string {
+  return value
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[<>]/g, "")
+    .trim();
 }
 
 export function renderPromptCatalog(
@@ -229,9 +232,9 @@ export function renderPromptCatalog(
   for (const entry of rankCatalog(catalog, cwd).slice(0, maxEntries)) {
     const triggers = entry.triggers
       .slice(0, 5)
-      .map((item) => item.slice(0, 80))
+      .map((item) => promptField(item).slice(0, 80))
       .join(", ");
-    const line = `- ${entry.path} | ${entry.title} | ${entry.description}${triggers ? ` | triggers: ${triggers}` : ""}`;
+    const line = `- ${promptField(entry.path)} | ${promptField(entry.title)} | ${promptField(entry.description)}${triggers ? ` | triggers: ${triggers}` : ""}`;
     if ([...lines, line, "</memory_catalog>"].join("\n").length > maxChars)
       break;
     lines.push(line);

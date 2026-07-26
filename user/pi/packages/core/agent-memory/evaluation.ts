@@ -56,8 +56,19 @@ function runInput(cfg: MemoryConfig, runId: string): PipelineInput | undefined {
 
 export function buildEvalCases(cfg: MemoryConfig): EvalCase[] {
   const cases: EvalCase[] = [];
-  for (const review of readReviewReceipts(cfg)) {
-    if (review.decision === "rolled-back") continue;
+  const reviews = readReviewReceipts(cfg);
+  const rolledBackTransactions = new Set(
+    reviews
+      .filter((review) => review.decision === "rolled-back")
+      .map((review) => review.transactionId)
+      .filter((id): id is string => typeof id === "string"),
+  );
+  for (const review of reviews) {
+    if (
+      (review.decision !== "accepted" && review.decision !== "edited") ||
+      (review.transactionId && rolledBackTransactions.has(review.transactionId))
+    )
+      continue;
     let candidate: Proposal;
     try {
       candidate = findProposal(cfg, review.proposalId).proposal;
@@ -132,7 +143,6 @@ function replayInput(
       catalog: { ...current.catalog, entries: [] },
       targets: [],
       pending: [],
-      recentReviews: [],
       skills: [],
     };
   const operation = item.gold.operation;

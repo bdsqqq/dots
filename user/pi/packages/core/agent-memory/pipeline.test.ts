@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
-import { processPipelineBatch } from "./pipeline.js";
+import { freezePipelineInput, processPipelineBatch } from "./pipeline.js";
 import { listProposals } from "./workflow.js";
 
 function config(): MemoryConfig {
@@ -43,6 +43,26 @@ function evidence(checkpoint = "checkpoint"): SafeEvidence {
 }
 
 describe("memory reflection pipeline", () => {
+  it("excludes memories from unrelated scopes", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    const note = (id: string, scope: string) =>
+      `---\nmemory_version: 2\nmemory_id: "${id}"\nstatus: "active"\ntitle: "Scoped"\nkind: pattern\nscope: ${JSON.stringify(scope)}\ndescription: "Scoped rule"\ntriggers: ["rule"]\nkeywords: []\nupdated: "2026-07-25"\n---\n\nRule.\n`;
+    writeFileSync(
+      join(cfg.root, "2026-global--source__agent.md"),
+      note("mem_cccccccccccccccccccccccc", "global"),
+    );
+    writeFileSync(
+      join(cfg.root, "2026-other--source__agent.md"),
+      note("mem_dddddddddddddddddddddddd", "/tmp/other"),
+    );
+    const input = freezePipelineInput(cfg, "tmp/project", [evidence()]);
+    expect(input.catalog.entries.map((entry) => entry.memoryId)).toEqual([
+      "mem_cccccccccccccccccccccccc",
+    ]);
+    expect(JSON.stringify(input)).not.toContain("mem_dddddddddddddddddddddddd");
+  });
+
   it("freezes inputs and covers checkpoints only after a valid skip", () => {
     const cfg = config();
     const result = processPipelineBatch({

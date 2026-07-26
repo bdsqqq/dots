@@ -5,13 +5,14 @@ import { describe, expect, it } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
 import {
+  buildEvalCases,
   exportEvalDataset,
   gradeReplay,
   memoryMetrics,
   replayDataset,
 } from "./evaluation.js";
 import { processPipelineBatch } from "./pipeline.js";
-import { reviewProposal } from "./workflow.js";
+import { reviewProposal, rollbackReview } from "./workflow.js";
 
 function config(): MemoryConfig {
   const base = mkdtempSync(join(tmpdir(), "memory-eval-"));
@@ -71,7 +72,7 @@ describe("memory evaluation dataset", () => {
       model: "test",
       invoke: () => proposalResponse,
     });
-    reviewProposal({
+    const accepted = reviewProposal({
       cfg,
       id: run.proposalIds[0]!,
       decision: "accept",
@@ -104,5 +105,7 @@ describe("memory evaluation dataset", () => {
       eval: { cases: 1 },
       reviews: { accepted: 1 },
     });
+    rollbackReview(cfg, accepted.reviewId, "gold was invalidated");
+    expect(buildEvalCases(cfg)).toHaveLength(0);
   });
 });
