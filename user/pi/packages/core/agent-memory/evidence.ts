@@ -31,10 +31,16 @@ const REDACTIONS: Array<[string, RegExp]> = [
     /-----BEGIN [^-\n]+PRIVATE KEY-----[\s\S]*?-----END [^-\n]+PRIVATE KEY-----/gi,
   ],
   ["bearer", /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi],
+  ["basic-auth", /\bBasic\s+[A-Za-z0-9+/=]{12,}/gi],
   ["jwt", /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g],
+  ["aws-access-key", /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g],
   [
     "provider-token",
-    /\b(?:sk|ghp|github_pat|xox[baprs]|AIza)[-_A-Za-z0-9]{12,}\b/g,
+    /\b(?:sk|rk|ghp|github_pat|glpat|npm|pypi|xox[baprs]|AIza)[-_A-Za-z0-9]{12,}\b/g,
+  ],
+  [
+    "opaque-token",
+    /(?<![A-Za-z0-9_+/=-])(?=[A-Za-z0-9_+/=-]{32,}(?![A-Za-z0-9_+/=-]))(?=[A-Za-z0-9_+/=-]*[A-Za-z])(?=[A-Za-z0-9_+/=-]*[0-9])[A-Za-z0-9_+/=-]{32,}(?![A-Za-z0-9_+/=-])/g,
   ],
   ["credential-url", /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:]+:[^\s/@]+@[^\s]+/gi],
   [

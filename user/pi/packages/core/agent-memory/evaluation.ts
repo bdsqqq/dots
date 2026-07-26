@@ -22,7 +22,7 @@ import {
 import { findProposal, listProposals, readReviewReceipts } from "./workflow.js";
 
 export type EvalCase = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   caseId: string;
   source: {
     runId: string;
@@ -36,9 +36,125 @@ export type EvalCase = {
     operation: Proposal["operation"];
     artifactSha256?: string;
     artifactPath?: string;
+    context: Pick<
+      PipelineInput,
+      "catalog" | "targets" | "pending" | "reviewSignals" | "skills"
+    >;
   };
   retrieval: { targetIds: string[]; catalogSha256: string };
 };
+
+function goldContext(
+  cfg: MemoryConfig,
+  input: PipelineInput,
+  candidate: Proposal,
+  review: ReviewReceipt,
+): EvalCase["gold"]["context"] {
+  const context = {
+    catalog: { ...input.catalog, entries: [...input.catalog.entries] },
+    targets: [...input.targets],
+    pending: [...input.pending],
+    reviewSignals: [...input.reviewSignals],
+    skills: [...input.skills],
+  };
+  const operation = candidate.operation;
+  if (operation.type === "skill-draft") {
+    const skillFile = operation.files.find((file) =>
+      file.path.endsWith("/SKILL.md"),
+    );
+    const description = skillFile?.content
+      ? /^description:\s*["']?(.+?)["']?$/m.exec(skillFile.content)?.[1]?.trim()
+      : undefined;
+    if (skillFile && description) {
+      context.skills = context.skills.filter(
+        (skill) => skill.name !== operation.skillName,
+      );
+      context.skills.push({
+        name: operation.skillName,
+        description: description.slice(0, 300),
+        sha256: skillFile.sha256,
+      });
+      context.skills.sort((a, b) => a.name.localeCompare(b.name));
+      if (context.skills.length > 100) {
+        const gold = context.skills.find(
+          (skill) => skill.name === operation.skillName,
+        )!;
+        context.skills = context.skills
+          .filter((skill) => skill.name !== operation.skillName)
+          .slice(0, 99);
+        context.skills.push(gold);
+        context.skills.sort((a, b) => a.name.localeCompare(b.name));
+      }
+    }
+    return context;
+  }
+
+  const removed = new Set<string>();
+  if (operation.type === "update") removed.add(operation.target.memoryId);
+  else if (operation.type === "merge") {
+    removed.add(operation.primary.memoryId);
+    for (const target of operation.targets) removed.add(target.memoryId);
+  } else if (operation.type === "archive" || operation.type === "retire")
+    removed.add(operation.target.memoryId);
+  context.catalog.entries = context.catalog.entries.filter(
+    (entry) => !removed.has(entry.memoryId),
+  );
+  context.targets = context.targets.filter(
+    (entry) => !removed.has(entry.memoryId),
+  );
+
+  if ("artifact" in operation) {
+    const artifact = operation.artifact;
+    const final = review.finalArtifacts.find(
+      (item) => item.status === "active",
+    );
+    const snapshot = final
+      ? contained(
+          cfg.data,
+          join(cfg.data, "v2", "artifacts", `${final.sha256}.md`),
+        )
+      : undefined;
+    const entry = {
+      memoryId: artifact.memoryId,
+      path: final?.path || "gold.md",
+      title: artifact.title,
+      description: artifact.description,
+      kind: artifact.kind,
+      scope: artifact.scope,
+      triggers: artifact.triggers,
+      keywords: artifact.keywords,
+      status: "active" as const,
+      sha256: final?.sha256 || sha256(artifact.body),
+      updated: artifact.updated,
+      legacy: false,
+    };
+    context.catalog.entries.push(entry);
+    context.catalog.entries.sort(
+      (a, b) =>
+        b.updated.localeCompare(a.updated) || a.path.localeCompare(b.path),
+    );
+    if (context.catalog.entries.length > 100) {
+      const bounded = context.catalog.entries.slice(0, 100);
+      if (!bounded.some((item) => item.memoryId === entry.memoryId))
+        bounded[bounded.length - 1] = entry;
+      context.catalog.entries = bounded.sort(
+        (a, b) =>
+          b.updated.localeCompare(a.updated) || a.path.localeCompare(b.path),
+      );
+    }
+    const target = {
+      ...entry,
+      body:
+        snapshot && existsSync(snapshot)
+          ? readFileSync(snapshot, "utf8").slice(0, 12_000)
+          : artifact.body,
+    };
+    context.targets.push(target);
+    if (context.targets.length > 8)
+      context.targets = [...context.targets.slice(0, 7), target];
+  }
+  return context;
+}
 
 function evalRoot(cfg: MemoryConfig, ...parts: string[]): string {
   return contained(cfg.data, join(cfg.data, "v2", "eval", ...parts));
@@ -81,7 +197,7 @@ export function buildEvalCases(cfg: MemoryConfig): EvalCase[] {
       (item) => item.status === "active",
     );
     cases.push({
-      schemaVersion: 1,
+      schemaVersion: 2,
       caseId: `case_${sha256(`${review.reviewId}:${candidate.id}`).slice(0, 24)}`,
       source: {
         runId: candidate.provenance.runId,
@@ -93,6 +209,7 @@ export function buildEvalCases(cfg: MemoryConfig): EvalCase[] {
       review,
       gold: {
         operation: candidate.operation,
+        context: goldContext(cfg, input, candidate, review),
         ...(artifact
           ? { artifactSha256: artifact.sha256, artifactPath: artifact.path }
           : {}),
@@ -123,7 +240,12 @@ function readDataset(path: string): EvalCase[] {
   return readFileSync(resolve(path), "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as EvalCase);
+    .map((line) => {
+      const item = JSON.parse(line) as Partial<EvalCase>;
+      if (item.schemaVersion !== 2 || !item.gold?.context)
+        throw new Error("unsupported evaluation dataset; export it again");
+      return item as EvalCase;
+    });
 }
 
 function replayInput(
@@ -146,28 +268,9 @@ function replayInput(
       reviewSignals: [],
       skills: [],
     };
-  const operation = item.gold.operation;
-  if (!("artifact" in operation)) return current;
-  const artifact = operation.artifact;
   return {
     ...current,
-    targets: [
-      {
-        memoryId: artifact.memoryId,
-        path: item.gold.artifactPath || "gold.md",
-        title: artifact.title,
-        description: artifact.description,
-        kind: artifact.kind,
-        scope: artifact.scope,
-        triggers: artifact.triggers,
-        keywords: artifact.keywords,
-        status: "active",
-        sha256: item.gold.artifactSha256 || sha256(artifact.body),
-        updated: artifact.updated,
-        legacy: false,
-        body: artifact.body,
-      },
-    ],
+    ...item.gold.context,
   };
 }
 

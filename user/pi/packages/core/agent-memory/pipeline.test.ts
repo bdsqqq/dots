@@ -3,6 +3,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -142,6 +145,12 @@ describe("memory reflection pipeline", () => {
     expect(JSON.stringify(withFeedback)).not.toContain(
       "private reviewer explanation",
     );
+    const reviewedDir = join(cfg.data, "v2/proposals/reviewed");
+    renameSync(
+      join(reviewedDir, readdirSync(reviewedDir)[0]!),
+      join(reviewedDir, "memory-edited-proposal.json"),
+    );
+    rmSync(join(cfg.data, `v2/runs/${result.runId}/result.json`));
     mkdirSync(cfg.root, { recursive: true });
     writeFileSync(
       join(cfg.root, "2026-07-25-other--source__agent.md"),
@@ -157,5 +166,7 @@ describe("memory reflection pipeline", () => {
       },
     });
     expect(retried.runId).toBe(result.runId);
+    expect(listProposals(cfg, undefined, "pending")).toHaveLength(0);
+    expect(listProposals(cfg, undefined, "reviewed")).toHaveLength(1);
   });
 });
