@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -85,5 +93,41 @@ describe("memory proposal review", () => {
     });
     expect(listProposals(cfg, undefined, "pending")).toHaveLength(0);
     expect(existsSync(cfg.root)).toBe(false);
+  });
+
+  it("approves skill drafts without modifying installed skills", () => {
+    const cfg = config();
+    mkdirSync(join(cfg.skillsRoot, "existing"), { recursive: true });
+    const installed = join(cfg.skillsRoot, "existing/SKILL.md");
+    writeFileSync(installed, "installed\n");
+    const content =
+      "---\nname: reusable-check\ndescription: Use for checks\n---\n\n# Check\n";
+    const skill: Proposal = {
+      ...proposal("prop_skill"),
+      lane: "skill",
+      operation: {
+        type: "skill-draft",
+        mode: "create",
+        skillName: "reusable-check",
+        targetPath: "reusable-check/SKILL.md",
+        files: [
+          {
+            path: "reusable-check/SKILL.md",
+            content,
+            sha256: createHash("sha256").update(content).digest("hex"),
+          },
+        ],
+      },
+    };
+    saveProposal(cfg, skill);
+    const receipt = reviewProposal({
+      cfg,
+      id: skill.id,
+      decision: "accept",
+      reasonCode: "correct",
+      reason: "workflow is reusable",
+    });
+    expect(readFileSync(installed, "utf8")).toBe("installed\n");
+    expect(receipt.finalArtifacts[0]?.status).toBe("approved-skill-draft");
   });
 });
