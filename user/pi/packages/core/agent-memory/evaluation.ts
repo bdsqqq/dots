@@ -143,6 +143,7 @@ function replayInput(
       catalog: { ...current.catalog, entries: [] },
       targets: [],
       pending: [],
+      reviewSignals: [],
       skills: [],
     };
   const operation = item.gold.operation;
