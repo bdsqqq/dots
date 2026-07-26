@@ -22,6 +22,8 @@ describe("safe trajectory evidence", () => {
     expect(result.text).not.toContain("JsonLettersOnlySecret");
     expect(result.text).not.toContain('abc\\"def');
     expect(result.text).not.toContain('shell\\"secret');
+    expect(result.text).not.toContain('def"}');
+    expect(result.text).not.toContain('secret"');
     expect(result.text).not.toContain("abcdefghijklmnopqrstuvwxyz");
     expect(result.text).not.toContain("AKIAIOSFODNN7EXAMPLE");
     expect(result.text).not.toContain("4f3d2a1b0c9e8d7f6a5b4c3d2e1f0a9b");
