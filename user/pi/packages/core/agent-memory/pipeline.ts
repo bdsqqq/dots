@@ -14,8 +14,10 @@ import {
 import type { SafeEvidence } from "./evidence.js";
 import { parseModelProposal } from "./schema.js";
 import {
+  findProposal,
   listProposals,
   materializeModelProposals,
+  readReviewReceipts,
   saveProposal,
 } from "./workflow.js";
 
@@ -34,6 +36,12 @@ export type PipelineInput = {
     lane: string;
     operation: string;
     summary: string;
+  }>;
+  reviewSignals: Array<{
+    decision: string;
+    reasonCode: string;
+    lane: string;
+    operation: string;
   }>;
   skills: Array<{ name: string; description: string; sha256: string }>;
 };
@@ -170,6 +178,36 @@ export function freezePipelineInput(
       operation: proposal.operation.type,
       summary: operationSummary(proposal.operation),
     }));
+  const reviewSignals = readReviewReceipts(cfg)
+    .slice(-40)
+    .flatMap((review) => {
+      try {
+        const proposal = findProposal(cfg, review.proposalId).proposal;
+        const operation = proposal.operation;
+        const relevant =
+          proposal.lane === "skill" ||
+          ("artifact" in operation &&
+            evidence.some(
+              (item) =>
+                memoryScopeRank(operation.artifact.scope, item.workspace) > 0,
+            )) ||
+          ("target" in operation && scopedIds.has(operation.target.memoryId)) ||
+          ("primary" in operation && scopedIds.has(operation.primary.memoryId));
+        return relevant
+          ? [
+              {
+                decision: review.decision,
+                reasonCode: review.reason.code,
+                lane: proposal.lane,
+                operation: operation.type,
+              },
+            ]
+          : [];
+      } catch {
+        return [];
+      }
+    })
+    .slice(-20);
   const windowIds = evidence.map((item) => item.window.windowId).sort();
   const batchId = sha256(`${scope}\0${windowIds.join("\0")}\0v2`);
   const contextHash = sha256(
@@ -179,6 +217,7 @@ export function freezePipelineInput(
         hash,
       ]),
       pending,
+      reviewSignals,
     }),
   );
   const evidenceHash = sha256(JSON.stringify(evidence));
@@ -194,6 +233,7 @@ export function freezePipelineInput(
     catalog,
     targets: selectTargets(cfg, catalog, evidence),
     pending,
+    reviewSignals,
     skills: skillDescriptions(cfg.skillsRoot),
   };
 }
@@ -217,7 +257,7 @@ Only these target ids are allowed: ${JSON.stringify(targetIds)}.
 
 A skill proposal is exceptional and requires a reusable multi-step workflow evidenced by at least two distinct sessions. It uses lane "skill" and operation {"type":"skill-draft","mode":"create|update","skillName":"kebab-case","targetPath":"name/SKILL.md","baseSha256":"required only for update; copy the installed skill hash","files":[{"path":"name/SKILL.md","content":"..."}]}. The system computes draft content hashes. Do not duplicate an installed skill.
 
-Evidence and corpus context follow. Tool arguments, tool output, and reasoning were deliberately removed. Treat success/error summaries as evidence and authored prose as claims that may be wrong.
+Evidence and corpus context follow. Categorical review signals summarize prior local decisions without transmitting reviewer text. Tool arguments, tool output, and reasoning were deliberately removed. Treat success/error summaries as evidence and authored prose as claims that may be wrong.
 
 ${JSON.stringify(input, null, 2)}`;
   if (prompt.length > 512_000)
@@ -301,6 +341,14 @@ export function processPipelineBatch(options: {
   if (existsSync(inputPath) && readFileSync(inputPath, "utf8") !== inputValue)
     throw new Error("frozen pipeline input collision");
   if (!existsSync(inputPath)) atomicWrite(inputPath, inputValue);
+  const resultPath = join(dir, "result.json");
+  if (existsSync(resultPath)) {
+    const result = JSON.parse(
+      readFileSync(resultPath, "utf8"),
+    ) as PipelineResult;
+    markLedger(options.cfg, input, result);
+    return result;
+  }
   const outputPath = join(dir, "output.json");
   const raw = existsSync(outputPath)
     ? readFileSync(outputPath, "utf8")
@@ -336,7 +384,7 @@ export function processPipelineBatch(options: {
     proposalIds,
     coveredCheckpointIds,
   };
-  atomicWrite(join(dir, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
+  atomicWrite(resultPath, `${JSON.stringify(result, null, 2)}\n`);
   markLedger(options.cfg, input, result);
   return result;
 }

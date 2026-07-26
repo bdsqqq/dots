@@ -487,8 +487,9 @@ type Transaction = {
   version: 1;
   id: string;
   reviewId: string;
-  state: "prepared" | "applied" | "rolled-back";
+  state: "prepared" | "applied" | "rollback-prepared" | "rolled-back";
   actions: TransactionAction[];
+  rollback?: { reviewId: string; reason: string; startedAt: string };
 };
 
 function archivedPath(
@@ -575,9 +576,12 @@ function actionsFor(
     for (const ref of operation.targets) {
       const from = currentTarget(cfg, ref);
       const old = readFileSync(from, "utf8");
+      const to = archivedPath(cfg, from, "retired");
+      if (existsSync(to))
+        throw new Error(`archive destination exists ${relative(cfg.root, to)}`);
       actions.push({
         from,
-        to: archivedPath(cfg, from, "retired"),
+        to,
         before: old,
         after: withStatus(old, "retired", reviewId),
       });
@@ -587,14 +591,69 @@ function actionsFor(
   const from = currentTarget(cfg, operation.target);
   const before = readFileSync(from, "utf8");
   const status = operation.type === "archive" ? "archived" : "retired";
+  const to = archivedPath(cfg, from, status);
+  if (existsSync(to))
+    throw new Error(`archive destination exists ${relative(cfg.root, to)}`);
   return [
     {
       from,
-      to: archivedPath(cfg, from, status),
+      to,
       before,
       after: withStatus(before, status, reviewId),
     },
   ];
+}
+
+function restoreTransactionActions(transaction: Transaction): void {
+  for (const action of transaction.actions.slice().reverse()) {
+    if (existsSync(action.to)) {
+      const currentHash = sha256(readFileSync(action.to));
+      const afterHash = sha256(action.after);
+      const beforeHash =
+        action.before === undefined ? undefined : sha256(action.before);
+      if (currentHash === afterHash) rmSync(action.to);
+      else if (
+        action.from !== action.to ||
+        beforeHash === undefined ||
+        currentHash !== beforeHash
+      )
+        throw new Error(
+          `cannot restore transaction with changed artifact ${action.to}`,
+        );
+    }
+    if (action.from && action.before !== undefined)
+      atomicWrite(action.from, action.before);
+  }
+}
+
+function persistRollbackReceipt(
+  cfg: MemoryConfig,
+  transaction: Transaction,
+): ReviewReceipt | undefined {
+  if (!transaction.rollback) return undefined;
+  const path = v2(cfg, "reviews", `${transaction.rollback.reviewId}.json`);
+  if (existsSync(path))
+    return JSON.parse(readFileSync(path, "utf8")) as ReviewReceipt;
+  const originalPath = v2(cfg, "reviews", `${transaction.reviewId}.json`);
+  if (!existsSync(originalPath))
+    throw new Error("rollback recovery is missing the original review");
+  const original = JSON.parse(
+    readFileSync(originalPath, "utf8"),
+  ) as ReviewReceipt;
+  const receipt: ReviewReceipt = {
+    version: 1,
+    reviewId: transaction.rollback.reviewId,
+    proposalId: original.proposalId,
+    decision: "rolled-back",
+    reason: { code: "other", text: transaction.rollback.reason },
+    reviewedAt: transaction.rollback.startedAt,
+    reviewer: "local-cli",
+    originalProposalSha256: original.originalProposalSha256,
+    transactionId: transaction.id,
+    finalArtifacts: [],
+  };
+  exclusive(path, `${JSON.stringify(receipt, null, 2)}\n`);
+  return receipt;
 }
 
 export function recoverTransactions(cfg: MemoryConfig): number {
@@ -606,6 +665,10 @@ export function recoverTransactions(cfg: MemoryConfig): number {
     .sort()) {
     const path = join(dir, name);
     const transaction = JSON.parse(readFileSync(path, "utf8")) as Transaction;
+    if (transaction.state === "rolled-back" && transaction.rollback) {
+      persistRollbackReceipt(cfg, transaction);
+      continue;
+    }
     const receiptPath = v2(cfg, "reviews", `${transaction.reviewId}.json`);
     if (transaction.state === "applied" && existsSync(receiptPath)) {
       const receipt = JSON.parse(
@@ -618,29 +681,16 @@ export function recoverTransactions(cfg: MemoryConfig): number {
       } catch {}
       continue;
     }
-    if (transaction.state !== "prepared" && transaction.state !== "applied")
+    if (
+      transaction.state !== "prepared" &&
+      transaction.state !== "applied" &&
+      transaction.state !== "rollback-prepared"
+    )
       continue;
-    for (const action of transaction.actions.slice().reverse()) {
-      if (existsSync(action.to)) {
-        const currentHash = sha256(readFileSync(action.to));
-        const afterHash = sha256(action.after);
-        const beforeHash =
-          action.before === undefined ? undefined : sha256(action.before);
-        if (currentHash === afterHash) rmSync(action.to);
-        else if (
-          action.from !== action.to ||
-          beforeHash === undefined ||
-          currentHash !== beforeHash
-        )
-          throw new Error(
-            `cannot recover transaction with changed artifact ${action.to}`,
-          );
-      }
-      if (action.from && action.before !== undefined)
-        atomicWrite(action.from, action.before);
-    }
+    restoreTransactionActions(transaction);
     transaction.state = "rolled-back";
     atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
+    persistRollbackReceipt(cfg, transaction);
     recovered += 1;
   }
   if (recovered) writeCatalog(cfg);
@@ -768,18 +818,25 @@ export function reviewProposal(options: {
     const parent = v2(options.cfg, "approved-skills");
     const root = contained(parent, join(parent, proposal.id));
     const temporary = contained(parent, join(parent, `.${proposal.id}.tmp`));
-    if (existsSync(root) || existsSync(temporary))
-      throw new Error("approved skill draft destination exists");
-    secureDir(temporary);
-    try {
+    if (existsSync(root)) {
       for (const file of operation.files) {
-        const path = contained(temporary, join(temporary, file.path));
-        exclusive(path, file.content);
+        const path = contained(root, join(root, file.path));
+        if (!existsSync(path) || sha256(readFileSync(path)) !== file.sha256)
+          throw new Error("approved skill draft destination collision");
       }
-      renameSync(temporary, root);
-    } catch (error) {
+    } else {
       rmSync(temporary, { recursive: true, force: true });
-      throw error;
+      secureDir(temporary);
+      try {
+        for (const file of operation.files) {
+          const path = contained(temporary, join(temporary, file.path));
+          exclusive(path, file.content);
+        }
+        renameSync(temporary, root);
+      } catch (error) {
+        rmSync(temporary, { recursive: true, force: true });
+        throw error;
+      }
     }
     for (const file of operation.files)
       finals.push({
@@ -830,6 +887,8 @@ export function rollbackReview(
     throw new Error("review has no memory transaction");
   const txPath = v2(cfg, "transactions", `${original.transactionId}.json`);
   const transaction = JSON.parse(readFileSync(txPath, "utf8")) as Transaction;
+  if (transaction.state === "rolled-back" && transaction.rollback)
+    return persistRollbackReceipt(cfg, transaction)!;
   if (transaction.state !== "applied")
     throw new Error("transaction is not applied");
   for (const action of transaction.actions) {
@@ -839,32 +898,19 @@ export function rollbackReview(
     )
       throw new Error(`rollback blocked by changed artifact ${action.to}`);
   }
-  for (const action of transaction.actions.slice().reverse()) {
-    rmSync(action.to);
-    if (action.from && action.before !== undefined)
-      atomicWrite(action.from, action.before);
-  }
+  const at = new Date().toISOString();
+  transaction.rollback = {
+    reviewId: `review_${sha256(`${reviewId}:rollback:${at}`).slice(0, 24)}`,
+    reason: reason.trim(),
+    startedAt: at,
+  };
+  transaction.state = "rollback-prepared";
+  atomicWrite(txPath, `${JSON.stringify(transaction, null, 2)}\n`);
+  restoreTransactionActions(transaction);
   transaction.state = "rolled-back";
   atomicWrite(txPath, `${JSON.stringify(transaction, null, 2)}\n`);
   writeCatalog(cfg);
-  const at = new Date().toISOString();
-  const receipt: ReviewReceipt = {
-    version: 1,
-    reviewId: `review_${sha256(`${reviewId}:rollback:${at}`).slice(0, 24)}`,
-    proposalId: original.proposalId,
-    decision: "rolled-back",
-    reason: { code: "other", text: reason.trim() },
-    reviewedAt: at,
-    reviewer: "local-cli",
-    originalProposalSha256: original.originalProposalSha256,
-    transactionId: transaction.id,
-    finalArtifacts: [],
-  };
-  exclusive(
-    v2(cfg, "reviews", `${receipt.reviewId}.json`),
-    `${JSON.stringify(receipt, null, 2)}\n`,
-  );
-  return receipt;
+  return persistRollbackReceipt(cfg, transaction)!;
 }
 
 function legacyCandidate(path: string): {

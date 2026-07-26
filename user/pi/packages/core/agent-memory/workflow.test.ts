@@ -85,6 +85,38 @@ describe("memory proposal review", () => {
     expect(existsSync(join(cfg.root, active!))).toBe(false);
   });
 
+  it("completes an interrupted rollback from its journal", () => {
+    const cfg = config();
+    saveProposal(cfg, proposal("prop_interrupted_rollback"));
+    const accepted = reviewProposal({
+      cfg,
+      id: "prop_interrupted_rollback",
+      decision: "accept",
+      reasonCode: "correct",
+      reason: "initially accepted",
+    });
+    const txPath = join(
+      cfg.data,
+      "v2/transactions",
+      `${accepted.transactionId}.json`,
+    );
+    const transaction = JSON.parse(readFileSync(txPath, "utf8"));
+    transaction.state = "rollback-prepared";
+    transaction.rollback = {
+      reviewId: "review_interrupted_rollback",
+      reason: "later invalidated",
+      startedAt: "2026-07-25T01:00:00.000Z",
+    };
+    writeFileSync(txPath, JSON.stringify(transaction));
+    expect(recoverTransactions(cfg)).toBe(1);
+    expect(
+      existsSync(join(cfg.data, "v2/reviews/review_interrupted_rollback.json")),
+    ).toBe(true);
+    expect(
+      readdirSync(cfg.root).filter((name) => name.endsWith(".md")),
+    ).toEqual([]);
+  });
+
   it("records rejection without mutating active memory", () => {
     const cfg = config();
     saveProposal(cfg, proposal("prop_reject"));
@@ -105,7 +137,12 @@ describe("memory proposal review", () => {
     const active = join(cfg.root, "2026-07-25-rule--source__agent.md");
     const text = `---\nmemory_version: 2\nmemory_id: "mem_bbbbbbbbbbbbbbbbbbbbbbbb"\nstatus: "active"\ntitle: "Rule"\nkind: pattern\nscope: "global"\ndescription: "Use for rule"\ntriggers: []\nkeywords: []\nsources: []\ncreated: "2026-07-25"\nupdated: "2026-07-25"\nreview_id: "review_old"\n---\n\nRule.\n`;
     writeFileSync(active, text);
-    writeFileSync(join(cfg.root, ".archive"), "blocks directory creation\n");
+    const archived = join(
+      cfg.root,
+      ".archive/archived/2026-07-25-rule--source__agent.md",
+    );
+    mkdirSync(join(cfg.root, ".archive/archived"), { recursive: true });
+    writeFileSync(archived, "older archive\n");
     const archive: Proposal = {
       ...proposal("prop_archive"),
       operation: {
@@ -127,8 +164,9 @@ describe("memory proposal review", () => {
         reasonCode: "correct",
         reason: "archive stale rule",
       }),
-    ).toThrow();
+    ).toThrow("archive destination exists");
     expect(readFileSync(active, "utf8")).toBe(text);
+    expect(readFileSync(archived, "utf8")).toBe("older archive\n");
   });
 
   it("migrates legacy candidates without rewriting them", () => {

@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
 import { freezePipelineInput, processPipelineBatch } from "./pipeline.js";
-import { listProposals } from "./workflow.js";
+import { listProposals, reviewProposal } from "./workflow.js";
 
 function config(): MemoryConfig {
   const base = mkdtempSync(join(tmpdir(), "memory-pipeline-"));
@@ -121,6 +121,27 @@ describe("memory reflection pipeline", () => {
       lane: "memory",
       operation: { type: "create" },
     });
+    reviewProposal({
+      cfg,
+      id: result.proposalIds[0]!,
+      decision: "reject",
+      reasonCode: "ephemeral",
+      reason: "private reviewer explanation",
+    });
+    const withFeedback = freezePipelineInput(cfg, "global", [
+      evidence("cp-feedback"),
+    ]);
+    expect(withFeedback.reviewSignals).toEqual([
+      {
+        decision: "rejected",
+        reasonCode: "ephemeral",
+        lane: "memory",
+        operation: "create",
+      },
+    ]);
+    expect(JSON.stringify(withFeedback)).not.toContain(
+      "private reviewer explanation",
+    );
     mkdirSync(cfg.root, { recursive: true });
     writeFileSync(
       join(cfg.root, "2026-07-25-other--source__agent.md"),

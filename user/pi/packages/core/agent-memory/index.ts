@@ -35,6 +35,7 @@ import {
   findProposal,
   listProposals,
   migrateV1,
+  recoverTransactions,
   reviewProposal,
   rollbackReview,
 } from "./workflow.js";
@@ -861,10 +862,12 @@ function pendingWindows(limit: number): PendingWindow[] {
       (item) =>
         item.job.sessionId === maximum.job.sessionId &&
         ancestry.has(item.job.checkpointEntryId) &&
-        !assigned.has(item.job.checkpointEntryId),
+        !assigned.has(`${item.job.sessionId}--${item.job.checkpointEntryId}`),
     );
     if (!covered.length) continue;
-    covered.forEach((item) => assigned.add(item.job.checkpointEntryId));
+    covered.forEach((item) =>
+      assigned.add(`${item.job.sessionId}--${item.job.checkpointEntryId}`),
+    );
     const coveredIds = new Set(
       covered.map((item) => item.job.checkpointEntryId),
     );
@@ -1029,6 +1032,7 @@ function reconcile(): void {
 
 function maintainUnlocked(): boolean {
   const cfg = config();
+  recoverTransactions(cfg);
   projectUnlocked();
   writeCatalog(cfg);
   secureDir(cfg.state);
