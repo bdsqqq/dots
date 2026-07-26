@@ -40,7 +40,7 @@ function proposal(id = "prop_one"): Proposal {
     operation: {
       type: "create",
       artifact: {
-        memoryId: "mem_one",
+        memoryId: "mem_aaaaaaaaaaaaaaaaaaaaaaaa",
         title: "Durable rule",
         kind: "pattern",
         scope: "global",
@@ -78,7 +78,9 @@ describe("memory proposal review", () => {
     });
     const active = readdirSync(cfg.root).find((name) => name.endsWith(".md"));
     expect(active).toBeTruthy();
-    expect(readFileSync(join(cfg.root, active!), "utf8")).toContain("mem_one");
+    expect(readFileSync(join(cfg.root, active!), "utf8")).toContain(
+      "mem_aaaaaaaaaaaaaaaaaaaaaaaa",
+    );
     rollbackReview(cfg, receipt.reviewId, "later shown incorrect");
     expect(existsSync(join(cfg.root, active!))).toBe(false);
   });
@@ -97,6 +99,38 @@ describe("memory proposal review", () => {
     expect(existsSync(cfg.root)).toBe(false);
   });
 
+  it("preserves active memory when archive destination creation fails", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    const active = join(cfg.root, "2026-07-25-rule--source__agent.md");
+    const text = `---\nmemory_version: 2\nmemory_id: "mem_bbbbbbbbbbbbbbbbbbbbbbbb"\nstatus: "active"\ntitle: "Rule"\nkind: pattern\nscope: "global"\ndescription: "Use for rule"\ntriggers: []\nkeywords: []\nsources: []\ncreated: "2026-07-25"\nupdated: "2026-07-25"\nreview_id: "review_old"\n---\n\nRule.\n`;
+    writeFileSync(active, text);
+    writeFileSync(join(cfg.root, ".archive"), "blocks directory creation\n");
+    const archive: Proposal = {
+      ...proposal("prop_archive"),
+      operation: {
+        type: "archive",
+        target: {
+          memoryId: "mem_bbbbbbbbbbbbbbbbbbbbbbbb",
+          path: "2026-07-25-rule--source__agent.md",
+          sha256: createHash("sha256").update(text).digest("hex"),
+        },
+        reason: "superseded",
+      },
+    };
+    saveProposal(cfg, archive);
+    expect(() =>
+      reviewProposal({
+        cfg,
+        id: archive.id,
+        decision: "accept",
+        reasonCode: "correct",
+        reason: "archive stale rule",
+      }),
+    ).toThrow();
+    expect(readFileSync(active, "utf8")).toBe(text);
+  });
+
   it("migrates legacy candidates without rewriting them", () => {
     const cfg = config();
     mkdirSync(join(cfg.data, "candidates"), { recursive: true });
@@ -105,12 +139,23 @@ describe("memory proposal review", () => {
     const legacy = `---\nversion: 1\nstatus: candidate\ntitle: "Legacy rule"\nkind: pattern\nscope: "global"\ntriggers: ["legacy work"]\nkeywords: ["legacy"]\nsource: pi://session/checkpoint\ncreated: 2026-07-25\nupdated: 2026-07-25\n---\n\nKeep the legacy rule.\n`;
     writeFileSync(join(cfg.data, "candidates", `${name}.md`), legacy);
     writeFileSync(join(cfg.data, "queue/processed", `${name}.json`), "{}\n");
-    expect(migrateV1(cfg)).toEqual({ candidates: 1, receipts: 0 });
-    expect(migrateV1(cfg)).toEqual({ candidates: 1, receipts: 0 });
+    const second = "session-two--checkpoint-two";
+    writeFileSync(
+      join(cfg.data, "candidates", `${second}.md`),
+      "---\nversion: 1\n---\n\ninvalid\n",
+    );
+    writeFileSync(join(cfg.data, "queue/processed", `${second}.json`), "{}\n");
+    expect(() => migrateV1(cfg)).toThrow("legacy candidate missing");
+    writeFileSync(
+      join(cfg.data, "candidates", `${second}.md`),
+      legacy.replaceAll("session/checkpoint", "session-two/checkpoint-two"),
+    );
+    expect(migrateV1(cfg)).toEqual({ candidates: 2, receipts: 0 });
+    expect(migrateV1(cfg)).toEqual({ candidates: 2, receipts: 0 });
     expect(
       readFileSync(join(cfg.data, "candidates", `${name}.md`), "utf8"),
     ).toBe(legacy);
-    expect(listProposals(cfg)).toHaveLength(1);
+    expect(listProposals(cfg)).toHaveLength(2);
   });
 
   it("recovers an interrupted prepared transaction", () => {
@@ -130,8 +175,28 @@ describe("memory proposal review", () => {
         actions: [{ to: target, after: "after\n" }],
       }),
     );
-    expect(recoverTransactions(cfg)).toBe(1);
+    const updateTarget = join(cfg.root, "update--source__agent.md");
+    writeFileSync(updateTarget, "before\n");
+    writeFileSync(
+      join(txDir, "tx_update.json"),
+      JSON.stringify({
+        version: 1,
+        id: "tx_update",
+        reviewId: "review_update",
+        state: "prepared",
+        actions: [
+          {
+            from: updateTarget,
+            to: updateTarget,
+            before: "before\n",
+            after: "after\n",
+          },
+        ],
+      }),
+    );
+    expect(recoverTransactions(cfg)).toBe(2);
     expect(existsSync(target)).toBe(false);
+    expect(readFileSync(updateTarget, "utf8")).toBe("before\n");
   });
 
   it("approves skill drafts without modifying installed skills", () => {

@@ -174,6 +174,12 @@ function boundedString(value: unknown, name: string, max: number): string {
   return value.trim();
 }
 
+function singleLine(value: unknown, name: string, max: number): string {
+  const result = boundedString(value, name, max);
+  if (/[\r\n]/.test(result)) throw new Error(`invalid ${name}`);
+  return result;
+}
+
 function strings(
   value: unknown,
   name: string,
@@ -184,7 +190,11 @@ function strings(
     !Array.isArray(value) ||
     value.length > count ||
     !value.every(
-      (item) => typeof item === "string" && item.trim() && item.length <= max,
+      (item) =>
+        typeof item === "string" &&
+        item.trim() &&
+        item.length <= max &&
+        !/[\r\n]/.test(item),
     )
   )
     throw new Error(`invalid ${name}`);
@@ -204,14 +214,14 @@ function artifact(
     "title",
     "triggers",
   ]);
-  const kind = boundedString(value.kind, "kind", 20);
+  const kind = singleLine(value.kind, "kind", 20);
   if (!MEMORY_KINDS.includes(kind as MemoryKind))
     throw new Error("invalid kind");
   return {
-    title: boundedString(value.title, "title", 120),
+    title: singleLine(value.title, "title", 120),
     kind: kind as MemoryKind,
-    scope: boundedString(value.scope, "scope", 500),
-    description: boundedString(value.description, "description", 240),
+    scope: singleLine(value.scope, "scope", 500),
+    description: singleLine(value.description, "description", 240),
     triggers: strings(value.triggers, "triggers", 20, 200),
     keywords: strings(value.keywords, "keywords", 30, 100),
     body: boundedString(value.body, "body", 8_000),
@@ -220,18 +230,33 @@ function artifact(
 
 function skillOperation(value: unknown): SkillDraftOperation {
   if (!object(value)) throw new Error("invalid skill operation");
-  exactKeys(value, ["files", "mode", "skillName", "targetPath", "type"]);
+  const operationKeys = Object.keys(value).sort().join(",");
+  if (
+    operationKeys !== "files,mode,skillName,targetPath,type" &&
+    operationKeys !== "baseSha256,files,mode,skillName,targetPath,type"
+  )
+    throw new Error("invalid skill operation fields");
   if (
     value.type !== "skill-draft" ||
     (value.mode !== "create" && value.mode !== "update")
   )
     throw new Error("invalid skill operation");
-  const skillName = boundedString(value.skillName, "skillName", 80);
+  const skillName = singleLine(value.skillName, "skillName", 80);
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skillName))
     throw new Error("invalid skill name");
-  const targetPath = boundedString(value.targetPath, "targetPath", 200);
+  const targetPath = singleLine(value.targetPath, "targetPath", 200);
   if (targetPath !== `${skillName}/SKILL.md`)
     throw new Error("invalid skill target");
+  const baseSha256 =
+    value.baseSha256 === undefined
+      ? undefined
+      : singleLine(value.baseSha256, "baseSha256", 64);
+  if (
+    (value.mode === "update" &&
+      (!baseSha256 || !/^[a-f0-9]{64}$/.test(baseSha256))) ||
+    (value.mode === "create" && baseSha256 !== undefined)
+  )
+    throw new Error("invalid skill base hash");
   if (
     !Array.isArray(value.files) ||
     value.files.length < 1 ||
@@ -243,8 +268,14 @@ function skillOperation(value: unknown): SkillDraftOperation {
     const keys = Object.keys(item).sort().join(",");
     if (keys !== "content,path" && keys !== "content,path,sha256")
       throw new Error("invalid skill file fields");
-    const path = boundedString(item.path, "skill file path", 240);
-    const content = boundedString(item.content, "skill file content", 20_000);
+    const path = singleLine(item.path, "skill file path", 240);
+    if (
+      typeof item.content !== "string" ||
+      !item.content.trim() ||
+      item.content.length > 20_000
+    )
+      throw new Error("invalid skill file content");
+    const content = item.content;
     if (
       path.startsWith("/") ||
       path.includes("..") ||
@@ -256,11 +287,16 @@ function skillOperation(value: unknown): SkillDraftOperation {
       throw new Error("invalid skill file hash");
     return { path, content, sha256: contentHash };
   });
+  if (new Set(files.map((file) => file.path)).size !== files.length)
+    throw new Error("duplicate skill file path");
+  if (!files.some((file) => file.path === targetPath))
+    throw new Error("skill target file is missing");
   return {
     type: "skill-draft",
     mode: value.mode,
     skillName,
     targetPath,
+    ...(baseSha256 ? { baseSha256 } : {}),
     files,
   };
 }
@@ -310,7 +346,7 @@ export function parseModelProposal(raw: string): ModelProposal {
           lane: "memory",
           operation: {
             type,
-            targetId: boundedString(operation.targetId, "targetId", 100),
+            targetId: singleLine(operation.targetId, "targetId", 100),
             artifact: artifact(operation.artifact),
           },
         };
@@ -321,7 +357,7 @@ export function parseModelProposal(raw: string): ModelProposal {
           lane: "memory",
           operation: {
             type,
-            primaryId: boundedString(operation.primaryId, "primaryId", 100),
+            primaryId: singleLine(operation.primaryId, "primaryId", 100),
             targetIds: strings(operation.targetIds, "targetIds", 8, 100),
             artifact: artifact(operation.artifact),
           },
@@ -337,11 +373,11 @@ export function parseModelProposal(raw: string): ModelProposal {
           lane: "memory",
           operation: {
             type,
-            targetId: boundedString(operation.targetId, "targetId", 100),
+            targetId: singleLine(operation.targetId, "targetId", 100),
             reason: boundedString(operation.reason, "reason", 500),
             ...(type === "retire" && operation.supersededBy !== undefined
               ? {
-                  supersededBy: boundedString(
+                  supersededBy: singleLine(
                     operation.supersededBy,
                     "supersededBy",
                     100,

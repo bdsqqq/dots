@@ -208,7 +208,7 @@ export function buildSafeEvidence(options: {
     },
     filters: { toolResults: "include" },
   });
-  const records = normalized.records.filter(
+  const allRecords = normalized.records.filter(
     (record) => record.role !== "reasoning",
   );
   const tools = new Map<
@@ -216,7 +216,7 @@ export function buildSafeEvidence(options: {
     { name: string; calls: number; successes: number; errors: number }
   >();
   const callNames = new Map<string, string>();
-  for (const record of records) {
+  for (const record of allRecords) {
     if (
       record.role === "assistant" &&
       "tool_calls" in record &&
@@ -246,7 +246,7 @@ export function buildSafeEvidence(options: {
       tools.set(name, summary);
     }
   }
-  const authored = records
+  const authored = allRecords
     .filter(
       (record) =>
         record.role === "user" ||
@@ -255,6 +255,17 @@ export function buildSafeEvidence(options: {
     .map((record) => ("content" in record ? record.content || "" : ""))
     .join("\n");
   const excerpt = authored.slice(-400);
+  const records: unknown[] = [];
+  let recordChars = 0;
+  for (const record of allRecords.slice().reverse()) {
+    if (records.length >= 200) break;
+    const size = JSON.stringify(record).length;
+    if (recordChars + size > 48_000) continue;
+    records.unshift(record);
+    recordChars += size;
+  }
+  const meta = allRecords.find((record) => record.role === "meta");
+  if (meta && !records.includes(meta)) records.unshift(meta);
   const window: EvidenceRef = {
     windowId,
     sessionId: options.sessionId,

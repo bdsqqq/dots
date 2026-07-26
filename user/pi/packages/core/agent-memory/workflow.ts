@@ -25,6 +25,7 @@ import {
 import {
   REVIEW_REASON_CODES,
   memoryRef,
+  parseModelProposal,
   proposalFileName,
   renderMemory,
   type EvidenceRef,
@@ -135,10 +136,103 @@ export function findProposal(
   return matches[0]!;
 }
 
+function validateMemoryRef(value: unknown): void {
+  if (
+    !object(value) ||
+    Object.keys(value).sort().join(",") !== "memoryId,path,sha256" ||
+    typeof value.memoryId !== "string" ||
+    typeof value.path !== "string" ||
+    value.path.startsWith("/") ||
+    value.path.includes("..") ||
+    typeof value.sha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(value.sha256)
+  )
+    throw new Error("invalid stored memory ref");
+}
+
+function validateFullArtifact(value: unknown): void {
+  if (
+    !object(value) ||
+    typeof value.memoryId !== "string" ||
+    !/^mem_[a-f0-9]{24}$/.test(value.memoryId) ||
+    !Array.isArray(value.sources) ||
+    !value.sources.every(
+      (source) => typeof source === "string" && source.length <= 500,
+    ) ||
+    typeof value.created !== "string" ||
+    typeof value.updated !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value.created) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value.updated)
+  )
+    throw new Error("invalid stored artifact");
+  const {
+    memoryId: _memoryId,
+    sources: _sources,
+    created: _created,
+    updated: _updated,
+    ...draft
+  } = value;
+  parseModelProposal(
+    JSON.stringify({
+      action: "propose",
+      proposals: [
+        { lane: "memory", operation: { type: "create", artifact: draft } },
+      ],
+    }),
+  );
+}
+
+function validateStoredOperation(
+  lane: "memory" | "skill",
+  value: Record<string, unknown>,
+): void {
+  if (lane === "skill") {
+    parseModelProposal(
+      JSON.stringify({
+        action: "propose",
+        proposals: [{ lane: "skill", operation: value }],
+      }),
+    );
+    return;
+  }
+  if (value.type === "create") {
+    if (Object.keys(value).sort().join(",") !== "artifact,type")
+      throw new Error("invalid stored create fields");
+    validateFullArtifact(value.artifact);
+  } else if (value.type === "update") {
+    if (Object.keys(value).sort().join(",") !== "artifact,target,type")
+      throw new Error("invalid stored update fields");
+    validateMemoryRef(value.target);
+    validateFullArtifact(value.artifact);
+  } else if (value.type === "merge") {
+    if (Object.keys(value).sort().join(",") !== "artifact,primary,targets,type")
+      throw new Error("invalid stored merge fields");
+    validateMemoryRef(value.primary);
+    if (!Array.isArray(value.targets) || value.targets.length < 1)
+      throw new Error("invalid stored merge targets");
+    value.targets.forEach(validateMemoryRef);
+    validateFullArtifact(value.artifact);
+  } else if (value.type === "archive" || value.type === "retire") {
+    const keys = Object.keys(value).sort().join(",");
+    if (
+      (value.type === "archive" && keys !== "reason,target,type") ||
+      (value.type === "retire" &&
+        keys !== "reason,target,type" &&
+        keys !== "reason,supersededBy,target,type")
+    )
+      throw new Error("invalid stored lifecycle fields");
+    validateMemoryRef(value.target);
+    if (typeof value.reason !== "string" || !value.reason.trim())
+      throw new Error("invalid stored operation reason");
+  } else throw new Error("invalid stored operation type");
+}
+
 export function parseStoredProposal(raw: string): Proposal {
   const value: unknown = JSON.parse(raw);
   if (
     !object(value) ||
+    Object.keys(value).sort().join(",") !==
+      "evidence,id,lane,operation,provenance,status,supersedes,version" ||
     value.version !== 2 ||
     typeof value.id !== "string" ||
     (value.lane !== "memory" && value.lane !== "skill") ||
@@ -146,13 +240,34 @@ export function parseStoredProposal(raw: string): Proposal {
     !object(value.operation) ||
     !Array.isArray(value.evidence) ||
     !Array.isArray(value.supersedes) ||
-    !object(value.provenance)
+    !object(value.provenance) ||
+    !value.supersedes.every((item) => typeof item === "string") ||
+    !value.evidence.every(
+      (item) =>
+        object(item) &&
+        typeof item.windowId === "string" &&
+        typeof item.sessionId === "string" &&
+        Array.isArray(item.checkpointEntryIds) &&
+        item.checkpointEntryIds.every(
+          (id) => typeof id === "string" && id.length > 0,
+        ) &&
+        typeof item.throughLeafId === "string" &&
+        typeof item.branchDigest === "string" &&
+        typeof item.excerpt === "string" &&
+        typeof item.excerptSha256 === "string",
+    ) ||
+    typeof value.provenance.runId !== "string" ||
+    typeof value.provenance.promptVersion !== "number" ||
+    typeof value.provenance.model !== "string" ||
+    typeof value.provenance.createdAt !== "string" ||
+    typeof value.provenance.corpusAware !== "boolean"
   )
     throw new Error("invalid stored proposal");
   if (value.operation.type === "skill-draft" && value.lane !== "skill")
     throw new Error("proposal lane mismatch");
   if (value.operation.type !== "skill-draft" && value.lane !== "memory")
     throw new Error("proposal lane mismatch");
+  validateStoredOperation(value.lane, value.operation);
   return value as Proposal;
 }
 
@@ -189,6 +304,7 @@ export function materializeModelProposals(options: {
   result: Extract<ModelProposal, { action: "propose" }>;
   runId: string;
   model: string;
+  scope: string;
   evidence: EvidenceRef[];
   catalog: Catalog;
   pending: Proposal[];
@@ -211,7 +327,12 @@ export function materializeModelProposals(options: {
     } else {
       const op = draft.operation;
       const seed = sha256(`${options.runId}:${index}:${JSON.stringify(op)}`);
-      if (op.type === "create")
+      if (op.type === "create") {
+        if (
+          op.artifact.scope !== "global" &&
+          op.artifact.scope !== options.scope
+        )
+          throw new Error("create proposal uses an unavailable scope");
         operation = {
           type: "create",
           artifact: completeArtifact(
@@ -221,8 +342,10 @@ export function materializeModelProposals(options: {
             createdAt,
           ),
         };
-      else if (op.type === "update") {
+      } else if (op.type === "update") {
         const current = target(targets, op.targetId);
+        if (op.artifact.scope !== current.scope)
+          throw new Error("update proposal changes target scope");
         operation = {
           type: "update",
           target: memoryRef(current),
@@ -235,6 +358,8 @@ export function materializeModelProposals(options: {
         };
       } else if (op.type === "merge") {
         const primary = target(targets, op.primaryId);
+        if (op.artifact.scope !== primary.scope)
+          throw new Error("merge proposal changes primary scope");
         const mergeTargets = [...new Set(op.targetIds)]
           .filter((id) => id !== op.primaryId)
           .map((id) => memoryRef(target(targets, id)));
@@ -497,11 +622,19 @@ export function recoverTransactions(cfg: MemoryConfig): number {
       continue;
     for (const action of transaction.actions.slice().reverse()) {
       if (existsSync(action.to)) {
-        if (sha256(readFileSync(action.to)) !== sha256(action.after))
+        const currentHash = sha256(readFileSync(action.to));
+        const afterHash = sha256(action.after);
+        const beforeHash =
+          action.before === undefined ? undefined : sha256(action.before);
+        if (currentHash === afterHash) rmSync(action.to);
+        else if (
+          action.from !== action.to ||
+          beforeHash === undefined ||
+          currentHash !== beforeHash
+        )
           throw new Error(
             `cannot recover transaction with changed artifact ${action.to}`,
           );
-        rmSync(action.to);
       }
       if (action.from && action.before !== undefined)
         atomicWrite(action.from, action.before);
@@ -520,10 +653,10 @@ function applyTransaction(cfg: MemoryConfig, transaction: Transaction): void {
   const completed: TransactionAction[] = [];
   try {
     for (const action of transaction.actions) {
+      completed.push(action);
+      atomicWrite(action.to, action.after);
       if (action.from && action.from !== action.to && existsSync(action.from))
         rmSync(action.from);
-      atomicWrite(action.to, action.after);
-      completed.push(action);
     }
     transaction.state = "applied";
     atomicWrite(path, `${JSON.stringify(transaction, null, 2)}\n`);
@@ -621,16 +754,39 @@ export function reviewProposal(options: {
     writeCatalog(options.cfg);
   } else if (options.decision === "accept") {
     const operation = proposal.operation as SkillDraftOperation;
-    const root = v2(options.cfg, "approved-skills", proposal.id);
-    for (const file of operation.files) {
-      const path = contained(root, join(root, file.path));
-      exclusive(path, file.content);
+    if (operation.mode === "update") {
+      const installed = contained(
+        options.cfg.skillsRoot,
+        join(options.cfg.skillsRoot, operation.targetPath),
+      );
+      if (
+        !existsSync(installed) ||
+        sha256(readFileSync(installed)) !== operation.baseSha256
+      )
+        throw new Error("stale installed skill target");
+    }
+    const parent = v2(options.cfg, "approved-skills");
+    const root = contained(parent, join(parent, proposal.id));
+    const temporary = contained(parent, join(parent, `.${proposal.id}.tmp`));
+    if (existsSync(root) || existsSync(temporary))
+      throw new Error("approved skill draft destination exists");
+    secureDir(temporary);
+    try {
+      for (const file of operation.files) {
+        const path = contained(temporary, join(temporary, file.path));
+        exclusive(path, file.content);
+      }
+      renameSync(temporary, root);
+    } catch (error) {
+      rmSync(temporary, { recursive: true, force: true });
+      throw error;
+    }
+    for (const file of operation.files)
       finals.push({
-        path: relative(options.cfg.data, path),
+        path: relative(options.cfg.data, join(root, file.path)),
         sha256: file.sha256,
         status: "approved-skill-draft",
       });
-    }
   }
   const receipt: ReviewReceipt = {
     version: 1,
@@ -826,7 +982,7 @@ export function migrateV1(
         runId: `migration_${seed.slice(0, 24)}`,
         promptVersion: 1,
         model: "legacy-v1",
-        createdAt: new Date().toISOString(),
+        createdAt: `${parsed.artifact.created}T00:00:00.000Z`,
         migration: true,
         corpusAware: false,
       },
