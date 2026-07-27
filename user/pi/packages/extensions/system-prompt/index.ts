@@ -26,12 +26,6 @@ import {
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
 import { resolvePrompt } from "@bds_pi/pi-spawn";
-import {
-  generateHotManifest,
-  loadHotManifest,
-  renderHotManifest,
-  renderPromptCatalog,
-} from "@bds_pi/pi-memory/catalog";
 
 type SystemPromptExtConfig = {
   identity: string;
@@ -251,35 +245,8 @@ function createSystemPromptExtension(
 
       if (!interpolated.trim()) return;
 
-      let memoryCatalog = "";
-      try {
-        const dataDir = path.resolve(
-          (
-            process.env.PI_MEMORY_DATA_DIR ||
-            path.join(os.homedir(), ".local/share/pi-memory")
-          ).replace(/^~(?=$|\/)/, os.homedir()),
-        );
-        const catalog = JSON.parse(
-          fs.readFileSync(path.join(dataDir, "catalog.json"), "utf8"),
-        );
-        memoryCatalog =
-          loadHotManifest({ data: dataDir }, catalog, ctx.cwd) ?? "";
-        if (!memoryCatalog)
-          try {
-            memoryCatalog = renderHotManifest(
-              generateHotManifest({ data: dataDir }, catalog, ctx.cwd),
-            );
-          } catch {
-            memoryCatalog = renderPromptCatalog(catalog, ctx.cwd);
-          }
-      } catch {}
-
       return {
-        systemPrompt:
-          event.systemPrompt +
-          "\n\n" +
-          interpolated +
-          (memoryCatalog ? "\n\n" + memoryCatalog : ""),
+        systemPrompt: event.systemPrompt + "\n\n" + interpolated,
       };
     });
   };
