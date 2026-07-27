@@ -12,17 +12,21 @@ import {
   memoryScopeRank,
   scanCatalog,
   secureDir,
+  writeCatalog,
   sha256,
   type Catalog,
   type MemoryConfig,
 } from "./catalog.js";
 import {
+  commitHistory,
   historyContainsAncestor,
+  historyEntryByMutationId,
   historyReceiptAt,
   isHistoryInitialized,
   listHistoryByKind,
   verifyHistory,
 } from "./history.js";
+import { redact } from "./evidence.js";
 import { verifyPersistedRollbackLinkage } from "./workflow.js";
 import {
   parseTurnReceipt,
@@ -30,12 +34,15 @@ import {
   type MemoryRef,
   type TurnReceipt,
 } from "./receipt.js";
+import { canonicalProposalId, type Proposal } from "./schema.js";
+import { applyMemoryProposal, findProposal, saveProposal } from "./workflow.js";
 
 export type TurnObservation = {
   kind: "turn-observation";
   evidenceId: string;
   entryId: string;
   receipt: TurnReceipt;
+  authoredUserText?: Array<{ entryId: string; text: string }>;
 };
 export type RollbackEvidence = {
   kind: "verified-rollback";
@@ -46,25 +53,68 @@ export type RollbackEvidence = {
   proposalId: string;
   reason: string;
   affectedRefs: MemoryRef[];
+  condemnedRefs: MemoryRef[];
+  restoredRefs: MemoryRef[];
   targets: MemoryRef[];
 };
 export type AdaptationEvidence = TurnObservation | RollbackEvidence;
 type TargetedAction = "reinforce" | "repair" | "demote" | "archive";
+import { deriveAdaptationQuality } from "./quality.js";
+export { deriveAdaptationQuality } from "./quality.js";
+export const PRODUCTION_ADAPTATION_VERSION = 2 as const;
+export const ADAPTATION_PROMPT_VERSION = 2 as const;
+
+type RepairMutation = {
+  type: "replace";
+  oldSpan: string;
+  newSpan: string;
+  authoredCorrection: string;
+};
 export type AdaptationDecision =
   | {
-      action: TargetedAction;
+      action: "reinforce";
       target: MemoryRef;
       evidenceIds: string[];
       reason: string;
     }
+  | {
+      action: "demote";
+      target: MemoryRef;
+      evidenceIds: string[];
+      reason: string;
+    }
+  | {
+      action: "archive";
+      target: MemoryRef;
+      evidenceIds: string[];
+      reason: string;
+    }
+  | {
+      action: "repair";
+      target: MemoryRef;
+      evidenceIds: string[];
+      reason: string;
+      mutation: RepairMutation;
+    }
   | { action: "no-op"; evidenceIds: string[]; reason: string };
-export type ShadowAdaptation = {
+export type LegacyShadowAdaptation = {
   version: 1;
   id: string;
   eventId: string;
   model: string;
   promptVersion: 1;
   createdAt: string;
+  evidence: AdaptationEvidence[];
+  decisions: unknown[];
+};
+export type ShadowAdaptation = {
+  version: typeof PRODUCTION_ADAPTATION_VERSION;
+  id: string;
+  eventId: string;
+  model: string;
+  promptVersion: typeof ADAPTATION_PROMPT_VERSION;
+  createdAt: string;
+  catalog: Catalog;
   evidence: AdaptationEvidence[];
   decisions: AdaptationDecision[];
 };
@@ -85,7 +135,13 @@ const exactKeys = (value: Record<string, unknown>, keys: string[]): boolean =>
 export function parseTurnObservation(value: unknown): TurnObservation {
   if (
     !object(value) ||
-    !exactKeys(value, ["kind", "evidenceId", "entryId", "receipt"]) ||
+    !exactKeys(value, [
+      "kind",
+      "evidenceId",
+      "entryId",
+      "receipt",
+      ...(value.authoredUserText === undefined ? [] : ["authoredUserText"]),
+    ]) ||
     value.kind !== "turn-observation" ||
     typeof value.evidenceId !== "string" ||
     typeof value.entryId !== "string" ||
@@ -93,6 +149,20 @@ export function parseTurnObservation(value: unknown): TurnObservation {
   )
     throw new Error("invalid turn observation");
   const receipt = parseTurnReceipt(value.receipt);
+  if (
+    value.authoredUserText !== undefined &&
+    (!Array.isArray(value.authoredUserText) ||
+      value.authoredUserText.some(
+        (item) =>
+          !object(item) ||
+          !exactKeys(item, ["entryId", "text"]) ||
+          typeof item.entryId !== "string" ||
+          !receipt.userEntryIds.includes(item.entryId) ||
+          typeof item.text !== "string" ||
+          !item.text.trim(),
+      ))
+  )
+    throw new Error("invalid authored user text");
   if (value.evidenceId !== `turn:${value.entryId}:${receipt.receiptId}`)
     throw new Error("turn observation id does not match content");
   return {
@@ -100,6 +170,14 @@ export function parseTurnObservation(value: unknown): TurnObservation {
     evidenceId: value.evidenceId,
     entryId: value.entryId,
     receipt,
+    ...(value.authoredUserText === undefined
+      ? {}
+      : {
+          authoredUserText: value.authoredUserText as Array<{
+            entryId: string;
+            text: string;
+          }>,
+        }),
   };
 }
 
@@ -194,6 +272,21 @@ export function collectTurnObservations(options: {
   const through = new Set(
     options.entries.slice(0, options.end + 1).map((entry) => entry.id),
   );
+  const text = (entry: SessionEntry): string => {
+    if (!object(entry.message)) return "";
+    const content = entry.message.content;
+    return typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .filter(object)
+            .filter(
+              (part) => part.type === "text" && typeof part.text === "string",
+            )
+            .map((part) => String(part.text))
+            .join("\n")
+        : "";
+  };
   const observations = options.entries
     .slice(0, receiptEnd + 1)
     .flatMap((entry) => {
@@ -224,6 +317,13 @@ export function collectTurnObservations(options: {
         evidenceId: `turn:${entry.id}:${receipt.receiptId}`,
         entryId: entry.id,
         receipt,
+        authoredUserText: options.entries
+          .slice(0, options.end + 1)
+          .filter((candidate) => receipt.userEntryIds.includes(candidate.id))
+          .flatMap((candidate) => {
+            const value = redact(text(candidate)).text.trim().slice(0, 12_000);
+            return value ? [{ entryId: candidate.id, text: value }] : [];
+          }),
       };
       try {
         validateTurnObservationRefs(observation, options.catalog);
@@ -241,20 +341,36 @@ export function parseRollbackEvidence(
   value: unknown,
   catalog?: Catalog,
 ): RollbackEvidence {
+  if (!object(value) || value.kind !== "verified-rollback")
+    throw new Error("invalid rollback evidence");
+  const legacy = "affectedRefs" in value && !("condemnedRefs" in value);
+  const keys = legacy
+    ? [
+        "kind",
+        "affectedRefs",
+        "evidenceId",
+        "historyCommit",
+        "mutationId",
+        "reviewId",
+        "proposalId",
+        "reason",
+        "targets",
+      ]
+    : [
+        "kind",
+        "affectedRefs",
+        "condemnedRefs",
+        "restoredRefs",
+        "evidenceId",
+        "historyCommit",
+        "mutationId",
+        "reviewId",
+        "proposalId",
+        "reason",
+        "targets",
+      ];
   if (
-    !object(value) ||
-    !exactKeys(value, [
-      "kind",
-      "affectedRefs",
-      "evidenceId",
-      "historyCommit",
-      "mutationId",
-      "reviewId",
-      "proposalId",
-      "reason",
-      "targets",
-    ]) ||
-    value.kind !== "verified-rollback" ||
+    !exactKeys(value, keys) ||
     typeof value.historyCommit !== "string" ||
     !/^[0-9a-f]{40,64}$/.test(value.historyCommit) ||
     typeof value.mutationId !== "string" ||
@@ -269,6 +385,9 @@ export function parseRollbackEvidence(
     value.evidenceId !==
       `rollback:${value.historyCommit}:${value.mutationId}` ||
     !Array.isArray(value.affectedRefs) ||
+    (!legacy &&
+      (!Array.isArray(value.condemnedRefs) ||
+        !Array.isArray(value.restoredRefs))) ||
     !Array.isArray(value.targets)
   )
     throw new Error("invalid rollback evidence");
@@ -285,6 +404,12 @@ export function parseRollbackEvidence(
     return target as MemoryRef;
   };
   const affectedRefs = value.affectedRefs.map(storedRef);
+  const condemnedRefs = legacy
+    ? []
+    : (value.condemnedRefs as unknown[]).map(storedRef);
+  const restoredRefs = legacy
+    ? []
+    : (value.restoredRefs as unknown[]).map(storedRef);
   if (
     catalog &&
     affectedRefs.some(
@@ -296,7 +421,19 @@ export function parseRollbackEvidence(
   const targets = value.targets.map((target) =>
     catalog ? parseRef(target, catalog) : storedRef(target),
   );
-  return { ...value, affectedRefs, targets } as RollbackEvidence;
+  return {
+    kind: "verified-rollback",
+    evidenceId: value.evidenceId,
+    historyCommit: value.historyCommit,
+    mutationId: value.mutationId,
+    reviewId: value.reviewId,
+    proposalId: value.proposalId,
+    reason: value.reason,
+    affectedRefs,
+    condemnedRefs,
+    restoredRefs,
+    targets,
+  };
 }
 
 export function verifiedRollbackEvidence(
@@ -329,22 +466,26 @@ export function verifiedRollbackEvidence(
   )
     throw new Error("rollback evidence linkage does not match history");
   const catalog = scanCatalog(cfg.root);
-  const affectedRefs = receipt.changes.flatMap((change) =>
-    change.memoryId
-      ? [
-          ...new Set(
-            [change.beforeSha256, change.afterSha256].filter(
-              (hash): hash is string => !!hash,
-            ),
-          ),
-        ].map((artifactSha256) => ({
-          memoryId: change.memoryId!,
-          path: change.path,
-          artifactSha256,
-        }))
-      : [],
-  );
-  const targets = affectedRefs.flatMap((ref) => {
+  const refs = (side: "beforeSha256" | "afterSha256"): MemoryRef[] =>
+    receipt.changes.flatMap((change) =>
+      change.memoryId && change[side]
+        ? [
+            {
+              memoryId: change.memoryId,
+              path: change.path,
+              artifactSha256: change[side],
+            },
+          ]
+        : [],
+    );
+  const condemnedRefs = refs("beforeSha256");
+  const restoredRefs = refs("afterSha256");
+  const affectedRefs = [
+    ...new Map(
+      [...condemnedRefs, ...restoredRefs].map((ref) => [refKey(ref), ref]),
+    ).values(),
+  ];
+  const targets = restoredRefs.flatMap((ref) => {
     const current = currentRef(catalog, ref.memoryId, ref.artifactSha256);
     return current && current.path === ref.path ? [current] : [];
   });
@@ -357,6 +498,8 @@ export function verifiedRollbackEvidence(
     proposalId: receipt.proposalId!,
     reason: receipt.reason,
     affectedRefs,
+    condemnedRefs,
+    restoredRefs,
     targets,
   };
 }
@@ -388,12 +531,37 @@ export function listVerifiedRollbackEvidence(
             ref.path,
         );
         return affectedRefs.length
-          ? [{ ...evidence, affectedRefs, targets }]
+          ? [
+              {
+                ...evidence,
+                affectedRefs,
+                condemnedRefs: evidence.condemnedRefs.filter((ref) =>
+                  scopedIds.has(ref.memoryId),
+                ),
+                restoredRefs: evidence.restoredRefs.filter((ref) =>
+                  scopedIds.has(ref.memoryId),
+                ),
+                targets,
+              },
+            ]
           : [];
       } catch {
         return [];
       }
     });
+}
+
+function storedAdaptationRef(value: unknown): MemoryRef {
+  if (
+    !object(value) ||
+    !exactKeys(value, ["memoryId", "path", "artifactSha256"]) ||
+    typeof value.memoryId !== "string" ||
+    typeof value.path !== "string" ||
+    typeof value.artifactSha256 !== "string" ||
+    !HASH.test(value.artifactSha256)
+  )
+    throw new Error("invalid adaptation target");
+  return value as MemoryRef;
 }
 
 function parseRef(value: unknown, catalog: Catalog): MemoryRef {
@@ -424,14 +592,45 @@ function evidenceAuthorizes(
   const exact = refKey(target);
   return selected.some((item) => {
     if (item.kind === "verified-rollback")
-      return item.affectedRefs.some((ref) => refKey(ref) === exact);
-    if (action !== "reinforce") return false;
-    return item.receipt.exposures.some(
-      (exposure) =>
-        exposure.memoryId === target.memoryId &&
-        exposure.artifactSha256 === target.artifactSha256,
+      return item.condemnedRefs.some((ref) => refKey(ref) === exact);
+    if (action === "reinforce")
+      return item.receipt.exposures.some(
+        (exposure) =>
+          exposure.memoryId === target.memoryId &&
+          exposure.artifactSha256 === target.artifactSha256,
+      );
+    if (!item.receipt.responseToReceiptId) return false;
+    const prior = selected.find(
+      (candidate) =>
+        candidate.kind === "turn-observation" &&
+        candidate.receipt.receiptId === item.receipt.responseToReceiptId,
+    );
+    return (
+      prior?.kind === "turn-observation" &&
+      prior.receipt.exposures.some(
+        (exposure) =>
+          exposure.memoryId === target.memoryId &&
+          exposure.artifactSha256 === target.artifactSha256,
+      )
     );
   });
+}
+
+function parseMutation(value: unknown): RepairMutation {
+  if (
+    !object(value) ||
+    !exactKeys(value, ["type", "oldSpan", "newSpan", "authoredCorrection"]) ||
+    value.type !== "replace" ||
+    typeof value.oldSpan !== "string" ||
+    !value.oldSpan ||
+    typeof value.newSpan !== "string" ||
+    !value.newSpan ||
+    value.oldSpan === value.newSpan ||
+    typeof value.authoredCorrection !== "string" ||
+    !value.authoredCorrection.trim()
+  )
+    throw new Error("invalid adaptation replacement");
+  return value as RepairMutation;
 }
 
 export function parseAdaptationDecisions(
@@ -448,7 +647,7 @@ export function parseAdaptationDecisions(
   if (
     !object(value) ||
     !exactKeys(value, ["version", "decisions"]) ||
-    value.version !== 1 ||
+    value.version !== PRODUCTION_ADAPTATION_VERSION ||
     !Array.isArray(value.decisions) ||
     value.decisions.length < 1 ||
     value.decisions.length > 20
@@ -460,13 +659,17 @@ export function parseAdaptationDecisions(
     const targeted = ["reinforce", "repair", "demote", "archive"].includes(
       String(candidate.action),
     );
+    const keys = targeted
+      ? [
+          "action",
+          "target",
+          "evidenceIds",
+          "reason",
+          ...(candidate.action === "repair" ? ["mutation"] : []),
+        ]
+      : ["action", "evidenceIds", "reason"];
     if (
-      !exactKeys(
-        candidate,
-        targeted
-          ? ["action", "target", "evidenceIds", "reason"]
-          : ["action", "evidenceIds", "reason"],
-      ) ||
+      !exactKeys(candidate, keys) ||
       (!targeted && candidate.action !== "no-op") ||
       !Array.isArray(candidate.evidenceIds) ||
       candidate.evidenceIds.length === 0 ||
@@ -479,55 +682,69 @@ export function parseAdaptationDecisions(
       candidate.reason !== candidate.reason.trim()
     )
       throw new Error("invalid adaptation decision");
-    if (targeted) {
-      const target = parseRef(candidate.target, catalog);
-      const evidenceIds = candidate.evidenceIds as string[];
-      const selected = evidence.filter((item) =>
-        evidenceIds.includes(item.evidenceId),
-      );
-      if (
-        !evidenceAuthorizes(
-          candidate.action as TargetedAction,
-          target,
-          selected,
-        )
-      )
-        throw new Error("adaptation evidence does not authorize exact target");
+    if (!targeted)
       return {
-        action: candidate.action,
-        target,
-        evidenceIds: candidate.evidenceIds,
+        action: "no-op",
+        evidenceIds: candidate.evidenceIds as string[],
         reason: candidate.reason,
-      } as AdaptationDecision;
-    }
+      };
+    const target = storedAdaptationRef(candidate.target);
+    const evidenceIds = candidate.evidenceIds as string[];
+    const selected = evidence.filter((item) =>
+      evidenceIds.includes(item.evidenceId),
+    );
+    const current = currentRef(catalog, target.memoryId, target.artifactSha256);
+    const historical = selected.some(
+      (item) =>
+        item.kind === "verified-rollback" &&
+        item.condemnedRefs.some((ref) => refKey(ref) === refKey(target)),
+    );
+    if ((!current || current.path !== target.path) && !historical)
+      throw new Error("stale adaptation target");
+    if (
+      !evidenceAuthorizes(candidate.action as TargetedAction, target, selected)
+    )
+      throw new Error("adaptation evidence does not authorize exact target");
+    if (candidate.action === "repair")
+      return {
+        action: "repair",
+        target,
+        evidenceIds,
+        reason: candidate.reason,
+        mutation: parseMutation(candidate.mutation),
+      };
     return {
-      action: "no-op",
-      evidenceIds: candidate.evidenceIds,
+      action: candidate.action as "reinforce" | "demote" | "archive",
+      target,
+      evidenceIds,
       reason: candidate.reason,
-    } as AdaptationDecision;
+    };
   });
 }
 
 export function buildAdaptationPrompt(
+  cfg: MemoryConfig,
   catalog: Catalog,
   evidence: AdaptationEvidence[],
 ): string {
-  const refs = catalog.entries.map((entry) => ({
-    memoryId: entry.memoryId,
-    path: entry.path,
-    artifactSha256: entry.sha256,
+  const artifacts = catalog.entries.map((entry) => ({
+    ref: {
+      memoryId: entry.memoryId,
+      path: entry.path,
+      artifactSha256: entry.sha256,
+    },
+    content: readFileSync(
+      contained(cfg.root, join(cfg.root, entry.path)),
+      "utf8",
+    ),
   }));
-  return `You are making shadow-only memory adaptation decisions. Return exactly one JSON object and no markdown.
+  return `You are making production-gated memory adaptation decisions. Return exactly one JSON object and no markdown.
 
-Return {"version":1,"decisions":[...]}. Each decision is exactly reinforce|repair|demote|archive with target {memoryId,path,artifactSha256}, nonempty unique evidenceIds, and a reason; or no-op with nonempty unique evidenceIds and a reason. Use only the exact current refs and evidence IDs supplied.
+Return {"version":2,"decisions":[...]}. Every targeted decision uses an exact frozen ref and evidence IDs. Repair MUST include mutation {"type":"replace","oldSpan":"exact bytes occurring once in the frozen artifact","newSpan":"exact corrected bytes from authored user feedback","authoredCorrection":"exact user span containing newSpan"}. Production repair only replaces that exact oldSpan with newSpan; it preserves every byte outside oldSpan and rejects missing or repeated oldSpan values. no-op has evidenceIds and reason.
 
-Turn observations are non-authoritative correlation metadata. Tool success and exposure do not prove a memory was useful, correct, or causal. Repair, demote, and archive require selected verified rollback evidence containing the exact target ref and hash. Reinforce remains shadow-only and requires a selected turn exposure or verified rollback containing the exact target ref and hash. Explicit authored user corrections and cryptographically verified local rollback history are stronger evidence. Do not grade your own earlier response and do not infer quality from model behavior alone. These decisions are shadow analysis: never propose or perform corpus or ranking mutations.
+Reinforce requires explicit artifact-linked authored user positive feedback. Objective tool outcomes remain diagnostic shadow metadata until trusted typed verifier receipts exist; they cannot authorize production reinforcement. Turn observations are non-authoritative correlation metadata. Opening, citing, injection, search, model behavior, and tool success are not quality evidence. Do not grade your own output. Rollback condemnedRefs identify bad historical hashes; restoredRefs identify restored good hashes. Negative or destructive rollback authority applies ONLY to condemnedRefs. Never repair, demote, or archive a restored ref merely because it appears in rollback evidence. Model decisions are non-gold and policy gates may reject every decision.
 
-Current refs:
-${JSON.stringify(refs, null, 2)}
-
-Evidence:
-${JSON.stringify(evidence, null, 2)}`;
+Frozen artifacts:\n${JSON.stringify(artifacts, null, 2)}\n\nEvidence:\n${JSON.stringify(evidence, null, 2)}`;
 }
 
 export function publishShadowAdaptation(options: {
@@ -535,15 +752,17 @@ export function publishShadowAdaptation(options: {
   eventId: string;
   model: string;
   createdAt: string;
+  catalog: Catalog;
   evidence: AdaptationEvidence[];
   decisions: AdaptationDecision[];
 }): ShadowAdaptation {
   const identity = {
-    version: 1 as const,
+    version: PRODUCTION_ADAPTATION_VERSION,
     eventId: options.eventId,
     model: options.model,
-    promptVersion: 1 as const,
+    promptVersion: ADAPTATION_PROMPT_VERSION,
     createdAt: options.createdAt,
+    catalog: options.catalog,
     evidence: options.evidence,
     decisions: options.decisions,
   };
@@ -557,8 +776,7 @@ export function publishShadowAdaptation(options: {
   );
   secureDir(dir);
   const path = contained(dir, join(dir, `${shadow.id}.json`));
-  const value = `${JSON.stringify(shadow, null, 2)}
-`;
+  const value = `${JSON.stringify(shadow, null, 2)}\n`;
   if (existsSync(path)) {
     if (readFileSync(path, "utf8") !== value)
       throw new Error("shadow adaptation collision");
@@ -594,20 +812,37 @@ export function findShadowAdaptation(
       if (!object(value) || value.eventId !== eventId) return [];
       const { id, ...identity } = value;
       if (
-        value.version !== 1 ||
         typeof id !== "string" ||
-        id !== `adapt_${sha256(JSON.stringify(identity))}` ||
+        id !== `adapt_${sha256(JSON.stringify(identity))}`
+      )
+        throw new Error("invalid stored shadow adaptation");
+      if (value.version === 1 && value.promptVersion === 1) return [];
+      if (
+        value.version !== PRODUCTION_ADAPTATION_VERSION ||
+        value.promptVersion !== ADAPTATION_PROMPT_VERSION ||
         typeof value.model !== "string" ||
-        value.promptVersion !== 1 ||
         typeof value.createdAt !== "string" ||
+        !object(value.catalog) ||
         !Array.isArray(value.evidence) ||
         !Array.isArray(value.decisions)
       )
         throw new Error("invalid stored shadow adaptation");
-      return [value as ShadowAdaptation];
+      const evidence = (value.evidence as unknown[]).map((item) =>
+        object(item) && item.kind === "turn-observation"
+          ? parseTurnObservation(item)
+          : parseRollbackEvidence(item),
+      );
+      const decisions = parseAdaptationDecisions(
+        JSON.stringify({ version: 2, decisions: value.decisions }),
+        value.catalog as Catalog,
+        evidence,
+      );
+      return [
+        { ...(value as unknown as ShadowAdaptation), evidence, decisions },
+      ];
     });
   if (matches.length > 1)
-    throw new Error("multiple shadow adaptations for event");
+    throw new Error("multiple production shadow adaptations for event");
   return matches[0];
 }
 
@@ -619,10 +854,415 @@ export function markShadowAdaptationLedger(
   const dir = contained(cfg.data, join(cfg.data, "v2/adaptation/ledger"));
   secureDir(dir);
   const path = contained(dir, join(dir, `${eventId}.json`));
-  const value = `${JSON.stringify({ version: 1, eventId, shadowId }, null, 2)}
+  const value = `${JSON.stringify({ version: 2, eventId, shadowId }, null, 2)}
 `;
   if (existsSync(path)) {
-    if (readFileSync(path, "utf8") !== value)
-      throw new Error("adaptation ledger collision");
+    const previous = JSON.parse(readFileSync(path, "utf8")) as {
+      version?: number;
+      shadowId?: string;
+    };
+    if (previous.shadowId === shadowId && previous.version === 2) return;
+    const oldPath = previous.shadowId
+      ? contained(
+          cfg.data,
+          join(cfg.data, "v2/adaptation/shadow", `${previous.shadowId}.json`),
+        )
+      : "";
+    const nextPath = contained(
+      cfg.data,
+      join(cfg.data, "v2/adaptation/shadow", `${shadowId}.json`),
+    );
+    const oldShadow =
+      oldPath && existsSync(oldPath)
+        ? JSON.parse(readFileSync(oldPath, "utf8"))
+        : undefined;
+    const nextShadow = existsSync(nextPath)
+      ? JSON.parse(readFileSync(nextPath, "utf8"))
+      : undefined;
+    if (
+      previous.version === 1 &&
+      oldShadow?.version === 1 &&
+      nextShadow?.version === PRODUCTION_ADAPTATION_VERSION
+    )
+      atomicWrite(path, value);
+    else throw new Error("adaptation ledger collision");
   } else atomicWrite(path, value);
+}
+
+export type AdaptationTerminal = {
+  version: 2;
+  shadowId: string;
+  decisionIndex: number;
+  action: AdaptationDecision["action"] | "legacy";
+  outcome: "applied" | "stale" | "error";
+  historyCommit?: string;
+  proposalId?: string;
+  error?: string;
+};
+
+type QualityProvenance = {
+  source: "adaptation-policy";
+  action: "reinforce" | "demote";
+  shadowId: string;
+  decisionIndex: number;
+  target: MemoryRef;
+  evidenceIds: string[];
+};
+
+const positiveFeedback =
+  /\b(?:thank you|thanks|that worked|works now|solved|fixed it|exactly right|helpful)\b/i;
+const correctionFeedback =
+  /\b(?:wrong|incorrect|actually|correction|should|instead|does not|doesn.t|do not|don.t)\b/i;
+
+function selectedEvidence(
+  shadow: ShadowAdaptation,
+  decision: AdaptationDecision,
+): AdaptationEvidence[] {
+  const ids = new Set(decision.evidenceIds);
+  return shadow.evidence.filter((item) => ids.has(item.evidenceId));
+}
+
+function exactExposure(observation: TurnObservation, target: MemoryRef) {
+  return observation.receipt.exposures.filter(
+    (item) =>
+      item.memoryId === target.memoryId &&
+      item.artifactSha256 === target.artifactSha256,
+  );
+}
+
+function authored(observation: TurnObservation): string[] {
+  return (observation.authoredUserText ?? []).map((item) => item.text);
+}
+
+function linkedFeedback(
+  shadow: ShadowAdaptation,
+  selected: AdaptationEvidence[],
+  target: MemoryRef,
+  pattern: RegExp,
+): TurnObservation[] {
+  const turns = shadow.evidence.filter(
+    (item): item is TurnObservation => item.kind === "turn-observation",
+  );
+  const selectedIds = new Set(selected.map((item) => item.evidenceId));
+  return turns.filter((candidate) => {
+    if (
+      !selectedIds.has(candidate.evidenceId) ||
+      !candidate.receipt.responseToReceiptId
+    )
+      return false;
+    const prior = turns.find(
+      (item) =>
+        item.receipt.receiptId === candidate.receipt.responseToReceiptId,
+    );
+    return (
+      !!prior &&
+      selectedIds.has(prior.evidenceId) &&
+      exactExposure(prior, target).length > 0 &&
+      authored(candidate).some((text) => pattern.test(text))
+    );
+  });
+}
+
+function condemnedRollback(
+  selected: AdaptationEvidence[],
+  target: MemoryRef,
+): boolean {
+  return selected.some(
+    (item) =>
+      item.kind === "verified-rollback" &&
+      item.condemnedRefs.some((ref) => refKey(ref) === refKey(target)),
+  );
+}
+
+function restoredRollback(
+  selected: AdaptationEvidence[],
+  target: MemoryRef,
+): boolean {
+  return selected.some(
+    (item) =>
+      item.kind === "verified-rollback" &&
+      item.restoredRefs.some((ref) => refKey(ref) === refKey(target)),
+  );
+}
+
+function validateRepairMutation(
+  cfg: MemoryConfig,
+  decision: Extract<AdaptationDecision, { action: "repair" }>,
+  corrections: TurnObservation[],
+): void {
+  const { oldSpan, newSpan, authoredCorrection } = decision.mutation;
+  if (
+    !corrections.some((item) =>
+      authored(item).some(
+        (text) =>
+          text.includes(authoredCorrection) &&
+          authoredCorrection.includes(newSpan),
+      ),
+    )
+  )
+    throw new Error("repair replacement lacks exact authored correction");
+  const text = readFileSync(
+    contained(cfg.root, join(cfg.root, decision.target.path)),
+    "utf8",
+  );
+  if (sha256(text) !== decision.target.artifactSha256)
+    throw new Error("stale adaptation target");
+  const first = text.indexOf(oldSpan);
+  if (first < 0 || first !== text.lastIndexOf(oldSpan))
+    throw new Error("repair old span must occur exactly once");
+}
+
+export function adaptationGate(
+  cfg: MemoryConfig,
+  shadow: ShadowAdaptation,
+  decision: AdaptationDecision,
+): { allowed: boolean; historicalOnly?: boolean } {
+  if (decision.action === "no-op") return { allowed: true };
+  const selected = selectedEvidence(shadow, decision);
+  const target = decision.target;
+  if (decision.action === "reinforce") {
+    const explicit =
+      linkedFeedback(shadow, selected, target, positiveFeedback).length > 0;
+    return { allowed: explicit };
+  }
+  if (
+    restoredRollback(selected, target) &&
+    !condemnedRollback(selected, target)
+  )
+    return { allowed: false };
+  const corrections = linkedFeedback(
+    shadow,
+    selected,
+    target,
+    correctionFeedback,
+  );
+  if (decision.action === "demote")
+    return {
+      allowed: corrections.length > 0 || condemnedRollback(selected, target),
+      historicalOnly: condemnedRollback(selected, target),
+    };
+  if (decision.action === "archive")
+    return {
+      allowed:
+        condemnedRollback(selected, target) ||
+        new Set(corrections.map((item) => item.receipt.sessionId)).size >= 2,
+    };
+  if (condemnedRollback(selected, target))
+    return { allowed: false, historicalOnly: true };
+  validateRepairMutation(cfg, decision, corrections);
+  return { allowed: corrections.length > 0 };
+}
+
+function terminalPath(
+  cfg: MemoryConfig,
+  shadowId: string,
+  decisionIndex: number,
+): string {
+  const root = contained(
+    cfg.data,
+    join(cfg.data, "v2/adaptation/production", shadowId),
+  );
+  secureDir(root);
+  return contained(root, join(root, `${decisionIndex}.json`));
+}
+
+function writeTerminal(
+  cfg: MemoryConfig,
+  terminal: AdaptationTerminal,
+): AdaptationTerminal {
+  const path = terminalPath(cfg, terminal.shadowId, terminal.decisionIndex);
+  const value = `${JSON.stringify(terminal, null, 2)}\n`;
+  if (existsSync(path)) {
+    if (readFileSync(path, "utf8") !== value)
+      throw new Error("adaptation terminal collision");
+  } else atomicWrite(path, value);
+  return terminal;
+}
+
+function qualityMutationId(shadowId: string, decisionIndex: number): string {
+  return `adaptq_${sha256(`${shadowId}:${decisionIndex}`).slice(0, 24)}`;
+}
+
+function adaptationProposal(
+  shadow: ShadowAdaptation,
+  decision: Extract<AdaptationDecision, { action: "repair" | "archive" }>,
+  decisionIndex: number,
+): Proposal {
+  const target = {
+    memoryId: decision.target.memoryId,
+    path: decision.target.path,
+    sha256: decision.target.artifactSha256,
+  };
+  const operation =
+    decision.action === "archive"
+      ? { type: "archive" as const, target, reason: decision.reason }
+      : {
+          type: "replace" as const,
+          target,
+          oldSpan: decision.mutation.oldSpan,
+          newSpan: decision.mutation.newSpan,
+        };
+  const identity = {
+    version: 2 as const,
+    digestVersion: 2 as const,
+    lane: "memory" as const,
+    status: "pending" as const,
+    operation,
+    supersedes: [],
+    evidence: [],
+    provenance: {
+      runId: `adaptation_${shadow.id}_${decisionIndex}`,
+      promptVersion: ADAPTATION_PROMPT_VERSION,
+      model: "adaptation-policy",
+      createdAt: shadow.createdAt,
+      corpusAware: true,
+      autonomous: true,
+    },
+  };
+  return { ...identity, id: canonicalProposalId(identity) };
+}
+
+function existingProposal(cfg: MemoryConfig, proposal: Proposal): boolean {
+  try {
+    return findProposal(cfg, proposal.id).proposal.id === proposal.id;
+  } catch {
+    return false;
+  }
+}
+
+function promoteDecision(
+  cfg: MemoryConfig,
+  shadow: ShadowAdaptation,
+  decision: AdaptationDecision,
+  decisionIndex: number,
+): AdaptationTerminal {
+  const base = {
+    version: 2 as const,
+    shadowId: shadow.id,
+    decisionIndex,
+    action: decision.action,
+  };
+  if (decision.action === "no-op")
+    return writeTerminal(cfg, { ...base, outcome: "applied" });
+  const proposal =
+    decision.action === "repair" || decision.action === "archive"
+      ? adaptationProposal(shadow, decision, decisionIndex)
+      : undefined;
+  if (proposal && existingProposal(cfg, proposal)) {
+    applyMemoryProposal({
+      cfg,
+      id: proposal.id,
+      actor: "background-reflection",
+    });
+    return writeTerminal(cfg, {
+      ...base,
+      outcome: "applied",
+      proposalId: proposal.id,
+    });
+  }
+  const gate = adaptationGate(cfg, shadow, decision);
+  const current = scanCatalog(cfg.root).entries.some(
+    (entry) =>
+      entry.memoryId === decision.target.memoryId &&
+      entry.path === decision.target.path &&
+      entry.sha256 === decision.target.artifactSha256,
+  );
+  if (!current && !(decision.action === "demote" && gate.historicalOnly))
+    return writeTerminal(cfg, { ...base, outcome: "stale" });
+  if (!gate.allowed) throw new Error("adaptation policy gate denied decision");
+  if (decision.action === "reinforce" || decision.action === "demote") {
+    deriveAdaptationQuality(cfg);
+    const mutationId = qualityMutationId(shadow.id, decisionIndex);
+    const provenance: QualityProvenance = {
+      source: "adaptation-policy",
+      action: decision.action,
+      shadowId: shadow.id,
+      decisionIndex,
+      target: decision.target,
+      evidenceIds: decision.evidenceIds,
+    };
+    const existing = historyEntryByMutationId(cfg, mutationId);
+    if (
+      existing &&
+      (existing.receipt.kind !== "adaptation-quality" ||
+        JSON.stringify(existing.receipt.provenance) !==
+          JSON.stringify(provenance) ||
+        existing.receipt.changes.length !== 0)
+    )
+      throw new Error("adaptation quality mutation collision");
+    const result =
+      existing ??
+      commitHistory(
+        cfg,
+        {
+          version: 2,
+          mutationId,
+          kind: "adaptation-quality",
+          reason: decision.reason,
+          changes: [],
+          provenance,
+        },
+        { allowEmpty: true },
+      );
+    writeCatalog(cfg);
+    return writeTerminal(cfg, {
+      ...base,
+      outcome: "applied",
+      historyCommit: result.commit,
+    });
+  }
+  saveProposal(cfg, proposal!);
+  applyMemoryProposal({
+    cfg,
+    id: proposal!.id,
+    actor: "background-reflection",
+  });
+  return writeTerminal(cfg, {
+    ...base,
+    outcome: "applied",
+    proposalId: proposal!.id,
+  });
+}
+
+export function promoteShadowAdaptation(
+  cfg: MemoryConfig,
+  shadow: ShadowAdaptation | LegacyShadowAdaptation,
+): AdaptationTerminal[] {
+  if (shadow.version !== PRODUCTION_ADAPTATION_VERSION) {
+    return [
+      writeTerminal(cfg, {
+        version: 2,
+        shadowId: shadow.id,
+        decisionIndex: 0,
+        action: "legacy",
+        outcome: "error",
+        error: "legacy shadow adaptation requires regeneration",
+      }),
+    ];
+  }
+  const terminals: AdaptationTerminal[] = [];
+  for (const [decisionIndex, decision] of shadow.decisions.entries()) {
+    const path = terminalPath(cfg, shadow.id, decisionIndex);
+    if (existsSync(path)) {
+      terminals.push(
+        JSON.parse(readFileSync(path, "utf8")) as AdaptationTerminal,
+      );
+      continue;
+    }
+    try {
+      terminals.push(promoteDecision(cfg, shadow, decision, decisionIndex));
+    } catch (error) {
+      terminals.push(
+        writeTerminal(cfg, {
+          version: 2,
+          shadowId: shadow.id,
+          decisionIndex,
+          action: decision.action,
+          outcome: "error",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  }
+  return terminals;
 }

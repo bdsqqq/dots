@@ -368,6 +368,17 @@ function validateStoredOperation(
       throw new Error("invalid stored patch fields");
     validateMemoryRef(value.target);
     validatePatch(value.changes);
+  } else if (value.type === "replace") {
+    if (Object.keys(value).sort().join(",") !== "newSpan,oldSpan,target,type")
+      throw new Error("invalid stored replace fields");
+    validateMemoryRef(value.target);
+    if (
+      typeof value.oldSpan !== "string" ||
+      !value.oldSpan ||
+      typeof value.newSpan !== "string" ||
+      !value.newSpan
+    )
+      throw new Error("invalid stored replacement spans");
   } else if (value.type === "deduplicate") {
     if (Object.keys(value).sort().join(",") !== "primary,targets,type")
       throw new Error("invalid stored deduplicate fields");
@@ -1121,6 +1132,21 @@ function actionsFor(
           patchedArtifact(memoryArtifact(before), operation.changes),
           reviewId,
         ),
+      },
+    ];
+  }
+  if (operation.type === "replace") {
+    const from = currentTarget(cfg, operation.target);
+    const before = readFileSync(from, "utf8");
+    const first = before.indexOf(operation.oldSpan);
+    if (first < 0 || first !== before.lastIndexOf(operation.oldSpan))
+      throw new Error("replacement old span must occur exactly once");
+    return [
+      {
+        from,
+        to: from,
+        before,
+        after: `${before.slice(0, first)}${operation.newSpan}${before.slice(first + operation.oldSpan.length)}`,
       },
     ];
   }

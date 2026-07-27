@@ -78,6 +78,7 @@ import {
   findShadowAdaptation,
   markShadowAdaptationLedger,
   parseAdaptationDecisions,
+  promoteShadowAdaptation,
   publishShadowAdaptation,
   verifiedRollbackEvidence,
   turnObservationMatchesRefs,
@@ -186,6 +187,7 @@ const config = (): MemoryConfig & { sessions: string[] } => {
 };
 const MAX_SOURCE = 128 * 1024 * 1024;
 const MAX_PROJECTION = 64 * 1024;
+const CONSOLIDATION_SKIP_RECEIPT_VERSION = 2;
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -848,7 +850,8 @@ function validateReceipt(path: string, jobId: string): void {
   if (
     !object(value) ||
     Object.keys(value).sort().join(",") !== "action,createdAt,jobId,version" ||
-    value.version !== 1 ||
+    (value.version !== 1 &&
+      value.version !== CONSOLIDATION_SKIP_RECEIPT_VERSION) ||
     value.action !== "skip" ||
     value.jobId !== jobId ||
     typeof value.createdAt !== "string"
@@ -986,7 +989,7 @@ function consolidateV1Unlocked(limit: number): boolean {
         if (action.action === "skip")
           atomic(
             receiptPath,
-            `${JSON.stringify({ version: 1, action: "skip", jobId: key, createdAt: now })}\n`,
+            `${JSON.stringify({ version: CONSOLIDATION_SKIP_RECEIPT_VERSION, action: "skip", jobId: key, createdAt: now })}\n`,
           );
         else
           atomic(
@@ -1694,7 +1697,7 @@ async function processAdaptationEvents(
         const raw =
           process.env.PI_MEMORY_SKIP_EXTERNAL === "1"
             ? JSON.stringify({
-                version: 1,
+                version: 2,
                 decisions: [
                   {
                     action: "no-op",
@@ -1716,7 +1719,7 @@ async function processAdaptationEvents(
                   "--model",
                   model,
                 ],
-                buildAdaptationPrompt(catalog, evidence),
+                buildAdaptationPrompt(cfg, catalog, evidence),
               );
         const decisions = parseAdaptationDecisions(raw, catalog, evidence);
         shadow = publishShadowAdaptation({
@@ -1724,10 +1727,12 @@ async function processAdaptationEvents(
           eventId: event.id,
           model,
           createdAt: event.createdAt,
+          catalog,
           evidence,
           decisions,
         });
       }
+      promoteShadowAdaptation(cfg, shadow);
       markShadowAdaptationLedger(cfg, event.id, shadow.id);
       completeMaintenanceEvent(cfg, event.id, event.claimToken!);
     } catch (error) {
@@ -3031,6 +3036,109 @@ if (import.meta.vitest) {
         else process.env.PI_MEMORY_DATA_DIR = previousData;
         if (previousRoot === undefined) delete process.env.PI_MEMORY_ROOT;
         else process.env.PI_MEMORY_ROOT = previousRoot;
+      }
+    });
+
+    it("accepts legacy and current consolidation skip receipts", () => {
+      const base = mkdtempSync(join(tmpdir(), "memory-skip-receipts-"));
+      const path = join(base, "job.json");
+      for (const version of [1, 2]) {
+        writeFileSync(
+          path,
+          JSON.stringify({
+            version,
+            action: "skip",
+            jobId: "job",
+            createdAt: "2026-07-27T00:00:00.000Z",
+          }),
+        );
+        expect(() => validateReceipt(path, "job")).not.toThrow();
+      }
+      writeFileSync(
+        path,
+        JSON.stringify({
+          version: 3,
+          action: "skip",
+          jobId: "job",
+          createdAt: "2026-07-27T00:00:00.000Z",
+        }),
+      );
+      expect(() => validateReceipt(path, "job")).toThrow(
+        "invalid skip receipt",
+      );
+    });
+
+    it("settles production adaptation as v2 no-op when external work is disabled", async () => {
+      const base = mkdtempSync(join(tmpdir(), "memory-adaptation-skip-"));
+      const previousData = process.env.PI_MEMORY_DATA_DIR;
+      const previousRoot = process.env.PI_MEMORY_ROOT;
+      const previousSkip = process.env.PI_MEMORY_SKIP_EXTERNAL;
+      process.env.PI_MEMORY_DATA_DIR = join(base, "data");
+      process.env.PI_MEMORY_ROOT = join(base, "memories");
+      process.env.PI_MEMORY_SKIP_EXTERNAL = "1";
+      try {
+        const cfg = config();
+        mkdirSync(cfg.root, { recursive: true });
+        initHistory(cfg);
+        const proposal = submitManualProposal(
+          cfg,
+          JSON.stringify({
+            action: "propose",
+            proposals: [
+              {
+                lane: "memory",
+                operation: {
+                  type: "create",
+                  artifact: {
+                    title: "Adaptation skip fixture",
+                    kind: "pattern",
+                    scope: "global",
+                    description: "Use while testing skipped adaptation",
+                    triggers: ["adaptation skip"],
+                    keywords: [],
+                    body: "This body is rolled back.",
+                  },
+                },
+              },
+            ],
+          }),
+          "pi://manual/adaptation-skip",
+        )[0]!;
+        const accepted = applyMemoryProposal({
+          cfg,
+          id: proposal.id,
+          actor: "remember-skill",
+        });
+        rollbackReview(cfg, accepted.reviewId, "test rollback");
+        const event = listMaintenanceEvents(cfg, ["pending"]).find(
+          ({ event }) => event.kind === "adaptation-ready",
+        )!.event;
+
+        expect(await processAdaptationEvents(cfg)).toBe(true);
+
+        const shadow = findShadowAdaptation(cfg, event.id)!;
+        expect(shadow).toMatchObject({
+          version: 2,
+          promptVersion: 2,
+          decisions: [
+            {
+              action: "no-op",
+              reason: "external processing disabled",
+            },
+          ],
+        });
+        expect(listMaintenanceEvents(cfg)).toContainEqual({
+          status: "done",
+          event: expect.objectContaining({ id: event.id }),
+        });
+      } finally {
+        if (previousData === undefined) delete process.env.PI_MEMORY_DATA_DIR;
+        else process.env.PI_MEMORY_DATA_DIR = previousData;
+        if (previousRoot === undefined) delete process.env.PI_MEMORY_ROOT;
+        else process.env.PI_MEMORY_ROOT = previousRoot;
+        if (previousSkip === undefined)
+          delete process.env.PI_MEMORY_SKIP_EXTERNAL;
+        else process.env.PI_MEMORY_SKIP_EXTERNAL = previousSkip;
       }
     });
 

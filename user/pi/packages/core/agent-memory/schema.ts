@@ -53,6 +53,12 @@ export type MemoryOperation =
   | { type: "update"; target: MemoryRef; artifact: MemoryArtifact }
   | { type: "patch"; target: MemoryRef; changes: MemoryPatch }
   | {
+      type: "replace";
+      target: MemoryRef;
+      oldSpan: string;
+      newSpan: string;
+    }
+  | {
       type: "deduplicate";
       primary: MemoryRef;
       targets: MemoryRef[];

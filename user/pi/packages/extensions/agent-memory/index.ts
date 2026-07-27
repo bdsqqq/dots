@@ -20,6 +20,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
+  deriveAdaptationQuality,
   generateHotManifest,
   loadHotManifestData,
   renderHotManifest,
@@ -112,9 +113,17 @@ function ref(entry: CatalogEntry): MemoryRef {
 }
 
 function currentManifest(catalog: Catalog, cwd: string): HotManifest {
+  const data = memoryData();
+  const root = memoryRoot();
+  const quality = deriveAdaptationQuality({
+    data,
+    root,
+    state: data,
+    skillsRoot: root,
+  });
   return (
-    loadHotManifestData({ data: memoryData() }, catalog, cwd) ??
-    generateHotManifest({ data: memoryData() }, catalog, cwd)
+    loadHotManifestData({ data }, catalog, cwd, quality) ??
+    generateHotManifest({ data }, catalog, cwd, quality)
   );
 }
 

@@ -14,6 +14,12 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
+import {
+  adaptationQualityKey,
+  deriveAdaptationQuality,
+  type AdaptationQuality,
+} from "./quality.js";
+export { deriveAdaptationQuality } from "./quality.js";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
 export type MemoryConfig = {
@@ -44,9 +50,10 @@ export type HotManifestEntry = Pick<
 > & { reasons: string[] };
 
 export type HotManifest = {
-  version: 1;
+  version: 2;
   cwd: string;
   catalogSha256: string;
+  qualitySha256: string;
   entries: HotManifestEntry[];
 };
 
@@ -271,6 +278,18 @@ export function renderedPromptCatalogEntryCount(
 const HOT_MAX_ENTRIES = 20;
 const HOT_MAX_CHARS = 8_192;
 
+export function adaptationQualityDigest(
+  quality: Map<string, AdaptationQuality>,
+): string {
+  return sha256(
+    JSON.stringify(
+      [...quality.entries()].sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    ),
+  );
+}
+
 function catalogDigest(catalog: Catalog): string {
   return sha256(JSON.stringify(catalog.entries));
 }
@@ -301,6 +320,7 @@ export function generateHotManifest(
   cfg: Pick<MemoryConfig, "data">,
   catalog: Catalog,
   cwd: string,
+  quality: Map<string, AdaptationQuality> = new Map(),
 ): HotManifest {
   const churn = churnByPath(cfg);
   const ranked = catalog.entries
@@ -309,18 +329,30 @@ export function generateHotManifest(
       entry,
       scopeRank: memoryScopeRank(entry.scope, cwd),
       churn: churn.get(entry.path) ?? 0,
+      quality:
+        quality.get(
+          adaptationQualityKey({
+            memoryId: entry.memoryId,
+            path: entry.path,
+            artifactSha256: entry.sha256,
+          }),
+        ) ?? "neutral",
     }))
+    .filter((item) => item.quality !== "demoted")
     .sort(
       (a, b) =>
         b.scopeRank - a.scopeRank ||
+        Number(b.quality === "reinforced") -
+          Number(a.quality === "reinforced") ||
         b.entry.updated.localeCompare(a.entry.updated) ||
         a.churn - b.churn ||
         a.entry.path.localeCompare(b.entry.path),
     );
   const manifest: HotManifest = {
-    version: 1,
+    version: 2,
     cwd: resolve(cwd),
     catalogSha256: catalogDigest(catalog),
+    qualitySha256: adaptationQualityDigest(quality),
     entries: [],
   };
   for (const item of ranked.slice(0, HOT_MAX_ENTRIES)) {
@@ -332,6 +364,7 @@ export function generateHotManifest(
       triggers: item.entry.triggers,
       reasons: [
         item.scopeRank > 2 ? "scope:project" : "scope:global",
+        `quality:${item.quality}`,
         `mutation-recency:${item.entry.updated}`,
         `mutation-count:${item.churn}`,
       ],
@@ -363,15 +396,17 @@ export function loadHotManifestData(
   cfg: Pick<MemoryConfig, "data">,
   catalog: Catalog,
   cwd: string,
+  quality: Map<string, AdaptationQuality> = new Map(),
 ): HotManifest | undefined {
   try {
     const value: unknown = JSON.parse(readFileSync(hotPath(cfg, cwd), "utf8"));
     if (!value || typeof value !== "object") return undefined;
     const manifest = value as HotManifest;
     if (
-      manifest.version !== 1 ||
+      manifest.version !== 2 ||
       manifest.cwd !== resolve(cwd) ||
       manifest.catalogSha256 !== catalogDigest(catalog) ||
+      manifest.qualitySha256 !== adaptationQualityDigest(quality) ||
       !Array.isArray(manifest.entries) ||
       manifest.entries.length > HOT_MAX_ENTRIES ||
       manifest.entries.some((entry) => {
@@ -402,8 +437,9 @@ export function loadHotManifest(
   cfg: Pick<MemoryConfig, "data">,
   catalog: Catalog,
   cwd: string,
+  quality: Map<string, AdaptationQuality> = new Map(),
 ): string | undefined {
-  const manifest = loadHotManifestData(cfg, catalog, cwd);
+  const manifest = loadHotManifestData(cfg, catalog, cwd, quality);
   return manifest ? renderHotManifest(manifest) : undefined;
 }
 
@@ -413,7 +449,7 @@ export function writeCatalog(
 ): Catalog {
   secureDir(cfg.data);
   const catalog = scanCatalog(cfg.root);
-  generateHotManifest(cfg, catalog, cwd);
+  generateHotManifest(cfg, catalog, cwd, deriveAdaptationQuality(cfg));
   atomicWrite(
     join(cfg.data, "catalog.json"),
     `${JSON.stringify(catalog, null, 2)}\n`,
