@@ -5,6 +5,7 @@
   "main": "./index.ts",
   "types": "./index.ts",
   "dependencies": {
+    "@bds_pi/editor": "workspace:*",
     "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
