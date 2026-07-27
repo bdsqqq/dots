@@ -56,6 +56,7 @@ import {
 import { buildSafeEvidence, type SafeEvidence } from "./evidence.js";
 import { processPipelineBatch } from "./pipeline.js";
 import { scanCorpusHealth } from "./maintenance.js";
+import { enqueueMaintenanceEvent, listMaintenanceEvents } from "./events.js";
 import {
   exportEvalDataset,
   gradeReplay,
@@ -66,6 +67,7 @@ import {
 process.umask(0o077);
 
 export { renderPromptCatalog } from "./catalog.js";
+export * from "./events.js";
 
 type Entry = {
   type: string;
@@ -1263,6 +1265,30 @@ async function main(): Promise<void> {
     });
     if (submitted) console.log(JSON.stringify(submitted, null, 2));
     else result = undefined;
+  } else if (command === "events") {
+    if (args.length === 0)
+      console.log(JSON.stringify(listMaintenanceEvents(config()), null, 2));
+    else if (args[0] === "enqueue") {
+      const kind = option("--kind");
+      if (kind !== "manual" || args.length !== 3 || args[1] !== "--kind")
+        throw new Error("events enqueue requires --kind manual");
+      const requestedAt = new Date().toISOString();
+      console.log(
+        JSON.stringify(
+          enqueueMaintenanceEvent(
+            config(),
+            {
+              kind,
+              cause: "manual cli request",
+              basis: { requestedAt },
+            },
+            () => requestedAt,
+          ),
+          null,
+          2,
+        ),
+      );
+    } else throw new Error("invalid events command");
   } else if (command === "history") {
     const cfg = config();
     const action = args[0] ?? "list";
@@ -1471,7 +1497,7 @@ async function main(): Promise<void> {
     );
   } else
     throw new Error(
-      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|catalog [--cwd PATH] [--json]|migrate [--dry-run]|propose --json JSON [--source URI]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|rollback <review-id> --reason TEXT|history init|list|show|diff|verify|sync|repair adopt|discard --reason TEXT|metrics|eval export|replay|grade",
+      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|catalog [--cwd PATH] [--json]|events [enqueue --kind manual]|migrate [--dry-run]|propose --json JSON [--source URI]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|rollback <review-id> --reason TEXT|history init|list|show|diff|verify|sync|repair adopt|discard --reason TEXT|metrics|eval export|replay|grade",
     );
   if (result === false) process.exitCode = 1;
   else if (result === undefined) process.exitCode = 75;
