@@ -32,3 +32,5 @@ minimumReleaseAgeExclude:
   - "@earendil-works/pi-ai@0.82.0"
   - "@earendil-works/pi-coding-agent@0.82.0"
   - "@earendil-works/pi-tui@0.82.0"
+  # Required by the Hark Pi extension; remove after 2026-07-28.
+  - "harkctl@0.3.0"
