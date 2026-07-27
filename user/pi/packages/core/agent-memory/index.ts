@@ -43,7 +43,11 @@ import {
   saveProposal,
   submitManualProposal,
 } from "./workflow.js";
-import { REVIEW_REASON_CODES, type ReviewReasonCode } from "./schema.js";
+import {
+  renderMemory,
+  REVIEW_REASON_CODES,
+  type ReviewReasonCode,
+} from "./schema.js";
 import {
   diffHistory,
   initHistory,
@@ -1054,6 +1058,138 @@ function batchWindows(windows: PendingWindow[]): PendingWindow[][] {
   return batches;
 }
 
+const MAX_MAINTENANCE_EVENT_ATTEMPTS = 3;
+
+function checkpointEventIds(
+  cfg: ReturnType<typeof config>,
+  windows: PendingWindow[],
+): string[] {
+  const checkpoints = new Set(
+    windows.flatMap((window) =>
+      window.jobs.map(
+        ({ job }) => `${job.sessionId}--${job.checkpointEntryId}`,
+      ),
+    ),
+  );
+  return listMaintenanceEvents(cfg, ["pending"])
+    .filter(
+      ({ event }) =>
+        event.kind === "checkpoint-ready" &&
+        typeof event.basis.sessionId === "string" &&
+        typeof event.basis.checkpointEntryId === "string" &&
+        checkpoints.has(
+          `${event.basis.sessionId}--${event.basis.checkpointEntryId}`,
+        ),
+    )
+    .map(({ event }) => event.id);
+}
+
+function settleCheckpointClaims(
+  cfg: ReturnType<typeof config>,
+  claims: NonNullable<ReturnType<typeof claimMaintenanceEvent>>[],
+  outcome: "complete" | "error",
+): void {
+  for (const event of claims) {
+    const covered =
+      typeof event.basis.sessionId === "string" &&
+      typeof event.basis.checkpointEntryId === "string" &&
+      existsSync(
+        join(
+          cfg.data,
+          "v2/ledger",
+          `${event.basis.sessionId}--${event.basis.checkpointEntryId}.json`,
+        ),
+      );
+    if (outcome === "complete" || covered)
+      completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+    else if (event.attempt >= MAX_MAINTENANCE_EVENT_ATTEMPTS) {
+      failMaintenanceEvent(cfg, event.id, event.claimToken!);
+      const pending = join(cfg.data, "queue/pending");
+      if (existsSync(pending))
+        for (const name of readdirSync(pending).filter((item) =>
+          item.endsWith(".json"),
+        )) {
+          let value: unknown;
+          try {
+            value = JSON.parse(readFileSync(join(pending, name), "utf8"));
+          } catch {
+            continue;
+          }
+          if (
+            isJob(value) &&
+            value.sessionId === event.basis.sessionId &&
+            value.checkpointEntryId === event.basis.checkpointEntryId
+          )
+            finalizeQueuedJob(cfg, name, "failed");
+        }
+    } else retryMaintenanceEvent(cfg, event.id, event.claimToken!);
+  }
+}
+
+function reconcileCoveredCheckpointEvents(
+  cfg: ReturnType<typeof config>,
+): void {
+  const ids = listMaintenanceEvents(cfg, ["pending"])
+    .filter(
+      ({ event }) =>
+        event.kind === "checkpoint-ready" &&
+        typeof event.basis.sessionId === "string" &&
+        typeof event.basis.checkpointEntryId === "string" &&
+        existsSync(
+          join(
+            cfg.data,
+            "v2/ledger",
+            `${event.basis.sessionId}--${event.basis.checkpointEntryId}.json`,
+          ),
+        ),
+    )
+    .map(({ event }) => event.id);
+  for (;;) {
+    const event = claimMaintenanceEvent(cfg, {
+      kinds: ["checkpoint-ready"],
+      ids,
+    });
+    if (!event) return;
+    completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+  }
+}
+
+function reconcileFailedCheckpointJobs(cfg: ReturnType<typeof config>): void {
+  const failed = listMaintenanceEvents(cfg, ["failed"])
+    .filter(
+      ({ event }) =>
+        event.kind === "checkpoint-ready" &&
+        typeof event.basis.sessionId === "string" &&
+        typeof event.basis.checkpointEntryId === "string",
+    )
+    .map(({ event }) => ({
+      sessionId: event.basis.sessionId,
+      checkpointEntryId: event.basis.checkpointEntryId,
+    }));
+  if (failed.length === 0) return;
+  const pending = join(cfg.data, "queue/pending");
+  if (!existsSync(pending)) return;
+  for (const name of readdirSync(pending).filter((item) =>
+    item.endsWith(".json"),
+  )) {
+    let value: unknown;
+    try {
+      value = JSON.parse(readFileSync(join(pending, name), "utf8"));
+    } catch {
+      continue;
+    }
+    if (
+      isJob(value) &&
+      failed.some(
+        (event) =>
+          event.sessionId === value.sessionId &&
+          event.checkpointEntryId === value.checkpointEntryId,
+      )
+    )
+      finalizeQueuedJob(cfg, name, "failed");
+  }
+}
+
 async function consolidateV2Unlocked(limit: number): Promise<boolean> {
   const cfg = config();
   let ok = true;
@@ -1073,6 +1209,12 @@ async function consolidateV2Unlocked(limit: number): Promise<boolean> {
       );
     }
   const batches = batchWindows(pendingWindows(limit));
+  if (process.env.PI_MEMORY_SKIP_EXTERNAL === "1") return ok;
+  const claims = checkpointEventIds(cfg, batches.flat())
+    .map((id) =>
+      claimMaintenanceEvent(cfg, { kinds: ["checkpoint-ready"], ids: [id] }),
+    )
+    .filter((event): event is NonNullable<typeof event> => event !== null);
   const model = process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-luna:low";
   try {
     await processPipelineBatches(
@@ -1104,7 +1246,9 @@ async function consolidateV2Unlocked(limit: number): Promise<boolean> {
       for (const window of batch)
         for (const { name } of window.jobs)
           finalizeQueuedJob(cfg, name, "processed");
+    settleCheckpointClaims(cfg, claims, "complete");
   } catch (error) {
+    settleCheckpointClaims(cfg, claims, "error");
     ok = false;
     console.error(error instanceof Error ? error.message : String(error));
   }
@@ -1202,9 +1346,41 @@ function finalizeHistorySync(
   }
 }
 
+function applyDeterministicMaintenance(cfg: ReturnType<typeof config>) {
+  let health = scanCorpusHealth(cfg);
+  for (let cycle = 0; cycle < 100; cycle++) {
+    const proposals = maintenanceProposals(health);
+    if (proposals.length === 0) {
+      enqueueMaintenanceEvent(cfg, {
+        kind: "corpus-changed",
+        cause: health.catalogSha256,
+        basis: {
+          catalogSha256: health.catalogSha256,
+          ...(health.historyCommit
+            ? { historyCommit: health.historyCommit }
+            : {}),
+        },
+      });
+      return health;
+    }
+    for (const proposal of proposals) {
+      saveProposal(cfg, proposal);
+      applyMemoryProposal({
+        cfg,
+        id: proposal.id,
+        actor: "background-reflection",
+      });
+    }
+    health = scanCorpusHealth(cfg);
+  }
+  throw new Error("deterministic corpus maintenance did not converge");
+}
+
 async function maintainUnlocked(): Promise<boolean> {
   const cfg = config();
   recoverTransactions(cfg);
+  recoverMaintenanceEvents(cfg);
+  reconcileFailedCheckpointJobs(cfg);
   initHistory(cfg, {
     ...(process.env.PI_MEMORY_GIT_REMOTE
       ? { remote: process.env.PI_MEMORY_GIT_REMOTE }
@@ -1220,54 +1396,13 @@ async function maintainUnlocked(): Promise<boolean> {
   } catch {}
   const now = Date.now();
   let ok = true;
-  if (pendingWindows(1).length > 0) {
+  reconcileCoveredCheckpointEvents(cfg);
+  if (pendingWindows(1).length > 0)
     ok = await consolidateUnlocked(
       Number(process.env.PI_MEMORY_MAINTAIN_LIMIT || 10),
     );
-    if (ok) {
-      recoverMaintenanceEvents(cfg);
-      const processedEventIds = listMaintenanceEvents(cfg, ["pending"])
-        .filter(
-          ({ event }) =>
-            event.kind === "checkpoint-ready" &&
-            typeof event.basis.sessionId === "string" &&
-            typeof event.basis.checkpointEntryId === "string" &&
-            existsSync(
-              join(
-                cfg.data,
-                "v2/ledger",
-                `${event.basis.sessionId}--${event.basis.checkpointEntryId}.json`,
-              ),
-            ),
-        )
-        .map(({ event }) => event.id);
-      for (;;) {
-        const event = claimMaintenanceEvent(cfg, {
-          kinds: ["checkpoint-ready"],
-          ids: processedEventIds,
-        });
-        if (!event) break;
-        completeMaintenanceEvent(cfg, event.id, event.claimToken!);
-      }
-    }
-  }
-  const health = scanCorpusHealth(cfg);
-  enqueueMaintenanceEvent(cfg, {
-    kind: "corpus-changed",
-    cause: health.catalogSha256,
-    basis: {
-      catalogSha256: health.catalogSha256,
-      ...(health.historyCommit ? { historyCommit: health.historyCommit } : {}),
-    },
-  });
-  for (const proposal of maintenanceProposals(health)) {
-    saveProposal(cfg, proposal);
-    applyMemoryProposal({
-      cfg,
-      id: proposal.id,
-      actor: "background-reflection",
-    });
-  }
+  reconcileCoveredCheckpointEvents(cfg);
+  const health = applyDeterministicMaintenance(cfg);
   const corpusEvent =
     process.env.PI_MEMORY_SKIP_EXTERNAL === "1"
       ? null
@@ -1306,7 +1441,7 @@ async function maintainUnlocked(): Promise<boolean> {
           (diagnostic) => diagnostic.code === "model-skip",
         )
       ) {
-        retryMaintenanceEvent(cfg, corpusEvent.id, corpusEvent.claimToken!);
+        completeMaintenanceEvent(cfg, corpusEvent.id, corpusEvent.claimToken!);
       } else {
         assertFreshMaintenanceBasis(cfg, analysis.report);
         for (const proposal of analysis.proposals) {
@@ -1924,6 +2059,137 @@ if (import.meta.vitest) {
         if (previousSessions === undefined)
           delete process.env.PI_CODING_AGENT_SESSION_DIR;
         else process.env.PI_CODING_AGENT_SESSION_DIR = previousSessions;
+      }
+    });
+
+    it("settles ledger-covered checkpoint events without pending jobs", () => {
+      const base = mkdtempSync(join(tmpdir(), "memory-covered-events-"));
+      const previousData = process.env.PI_MEMORY_DATA_DIR;
+      process.env.PI_MEMORY_DATA_DIR = join(base, "data");
+      try {
+        const cfg = config();
+        const event = enqueueMaintenanceEvent(cfg, {
+          kind: "checkpoint-ready",
+          cause: "session:checkpoint",
+          basis: { sessionId: "session", checkpointEntryId: "checkpoint" },
+        });
+        mkdirSync(join(cfg.data, "v2/ledger"), { recursive: true });
+        writeFileSync(
+          join(cfg.data, "v2/ledger/session--checkpoint.json"),
+          "{}\n",
+        );
+        reconcileCoveredCheckpointEvents(cfg);
+        expect(listMaintenanceEvents(cfg)).toEqual([
+          { status: "done", event: expect.objectContaining({ id: event.id }) },
+        ]);
+      } finally {
+        if (previousData === undefined) delete process.env.PI_MEMORY_DATA_DIR;
+        else process.env.PI_MEMORY_DATA_DIR = previousData;
+      }
+    });
+
+    it("retries checkpoint failures twice, then fails terminally", () => {
+      const base = mkdtempSync(join(tmpdir(), "memory-bounded-events-"));
+      const previousData = process.env.PI_MEMORY_DATA_DIR;
+      process.env.PI_MEMORY_DATA_DIR = join(base, "data");
+      try {
+        const cfg = config();
+        enqueueMaintenanceEvent(cfg, {
+          kind: "checkpoint-ready",
+          cause: "session:checkpoint",
+          basis: { sessionId: "session", checkpointEntryId: "checkpoint" },
+        });
+        mkdirSync(join(cfg.data, "queue/pending"), { recursive: true });
+        writeFileSync(
+          join(cfg.data, "queue/pending/session--checkpoint.json"),
+          JSON.stringify({
+            version: 1,
+            sessionId: "session",
+            checkpointEntryId: "checkpoint",
+            sourcePath: "/tmp/session.jsonl",
+            projectionPath: "/tmp/session.md",
+            workspace: "/tmp",
+          }),
+        );
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const claim = claimMaintenanceEvent(cfg, {
+            kinds: ["checkpoint-ready"],
+          })!;
+          settleCheckpointClaims(cfg, [claim], "error");
+          expect(listMaintenanceEvents(cfg)[0]?.status).toBe(
+            attempt < 3 ? "pending" : "failed",
+          );
+        }
+        expect(
+          existsSync(join(cfg.data, "queue/failed/session--checkpoint.json")),
+        ).toBe(true);
+        expect(
+          existsSync(join(cfg.data, "queue/pending/session--checkpoint.json")),
+        ).toBe(false);
+      } finally {
+        if (previousData === undefined) delete process.env.PI_MEMORY_DATA_DIR;
+        else process.env.PI_MEMORY_DATA_DIR = previousData;
+      }
+    });
+
+    it("deduplicates three exact memories to a fixed point before enqueueing corpus basis", () => {
+      const base = mkdtempSync(join(tmpdir(), "memory-fixed-point-"));
+      const previousData = process.env.PI_MEMORY_DATA_DIR;
+      const previousRoot = process.env.PI_MEMORY_ROOT;
+      process.env.PI_MEMORY_DATA_DIR = join(base, "data");
+      process.env.PI_MEMORY_ROOT = join(base, "memories");
+      try {
+        const cfg = config();
+        mkdirSync(cfg.root, { recursive: true });
+        const body =
+          "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu";
+        for (const [id, title] of [
+          ["mem_aaaaaaaaaaaaaaaaaaaaaaaa", "one"],
+          ["mem_bbbbbbbbbbbbbbbbbbbbbbbb", "two"],
+          ["mem_cccccccccccccccccccccccc", "three"],
+        ])
+          writeFileSync(
+            join(cfg.root, `${id}--source__agent.md`),
+            renderMemory(
+              {
+                memoryId: id!,
+                title: title!,
+                kind: "pattern",
+                scope: "global",
+                description: title!,
+                triggers: [title!],
+                keywords: [],
+                sources: ["pi://session/checkpoint"],
+                created: "2026-07-26",
+                updated: "2026-07-26",
+                body,
+              },
+              "review_test",
+            ),
+          );
+
+        const health = applyDeterministicMaintenance(cfg);
+
+        expect(maintenanceProposals(health)).toEqual([]);
+        expect(
+          readdirSync(cfg.root).filter((name) => name.endsWith(".md")),
+        ).toHaveLength(1);
+        expect(listMaintenanceEvents(cfg, ["pending"])).toEqual([
+          expect.objectContaining({
+            event: expect.objectContaining({
+              kind: "corpus-changed",
+              cause: health.catalogSha256,
+              basis: expect.objectContaining({
+                catalogSha256: health.catalogSha256,
+              }),
+            }),
+          }),
+        ]);
+      } finally {
+        if (previousData === undefined) delete process.env.PI_MEMORY_DATA_DIR;
+        else process.env.PI_MEMORY_DATA_DIR = previousData;
+        if (previousRoot === undefined) delete process.env.PI_MEMORY_ROOT;
+        else process.env.PI_MEMORY_ROOT = previousRoot;
       }
     });
 
