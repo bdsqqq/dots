@@ -785,6 +785,7 @@ export function createAgentMemoryExtension(
       const native = receiptEntries(branch, consumption(ctx)).filter(
         (item) => item.receipt.sessionId === ctx.sessionManager.getSessionId(),
       );
+      let appended = 0;
       for (const item of native) {
         const throughLeafId = item.receipt.assistantEntryIds.at(-1)!;
         if (
@@ -802,8 +803,9 @@ export function createAgentMemoryExtension(
           throughLeafId,
           acceptedUserTurns: acceptedUserTurns(branch, throughLeafId),
         });
+        appended += 1;
       }
-      return native.length;
+      return appended;
     };
 
     pi.registerTool({
@@ -985,6 +987,10 @@ export function createAgentMemoryExtension(
     });
 
     pi.on("agent_settled", (_event, ctx) => {
+      if (!ctx.isIdle()) {
+        agentActive = true;
+        return;
+      }
       agentActive = false;
       if (settling) return;
       if (!sessionPrompt) {
@@ -993,6 +999,7 @@ export function createAgentMemoryExtension(
       }
       settling = true;
       try {
+        let receiptAppended = false;
         let branch = ctx.sessionManager.getBranch();
         initializeAncestry(branch, ctx.sessionManager.getSessionId());
         const catalog = loadCatalog();
@@ -1050,12 +1057,13 @@ export function createAgentMemoryExtension(
           });
           if (receipt) {
             pi.appendEntry(TURN_RECEIPT_ENTRY_TYPE, receipt);
+            receiptAppended = true;
             pending = undefined;
             branch = ctx.sessionManager.getBranch();
           }
         }
-        const nativeCount = reconcile(branch, ctx);
-        if (nativeCount > 0) requestMaintenance();
+        const checkpointCount = reconcile(branch, ctx);
+        if (receiptAppended || checkpointCount > 0) requestMaintenance();
       } finally {
         settling = false;
         scheduleMaintenance();
@@ -1210,6 +1218,7 @@ if (import.meta.vitest) {
     } as unknown as ExtensionAPI;
     const ctx = {
       cwd: "/workspace",
+      isIdle: () => true,
       sessionManager: {
         getBranch: () => branch,
         getEntry: (id: string) => branch.find((entry) => entry.id === id),
@@ -1415,7 +1424,7 @@ if (import.meta.vitest) {
         assistantEntryIds: ["a1"],
       });
       h.handlers.get("agent_settled")!({}, h.ctx);
-      expect(wake).toHaveBeenCalledTimes(2);
+      expect(wake).toHaveBeenCalledOnce();
     });
 
     it("runs maintenance only after the session stays idle", async () => {
@@ -1440,13 +1449,42 @@ if (import.meta.vitest) {
       h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
       vi.advanceTimersByTime(50);
       expect(wake).not.toHaveBeenCalled();
+      branch.push(user("u2"), assistant("a2"));
       h.handlers.get("agent_settled")!({}, h.ctx);
       vi.advanceTimersByTime(50);
       expect(wake).toHaveBeenCalledOnce();
+      h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
+      branch.push(user("u3"), assistant("a3"));
       h.handlers.get("agent_settled")!({}, h.ctx);
       h.handlers.get("session_shutdown")!({}, h.ctx);
       vi.advanceTimersByTime(50);
       expect(wake).toHaveBeenCalledTimes(2);
+    });
+
+    it("waits for a nested run to settle before publishing receipts", async () => {
+      const setup = setupCatalog();
+      const branch: SessionEntry[] = [];
+      const h = harness(branch);
+      let idle = false;
+      h.ctx.isIdle = () => idle;
+      createAgentMemoryExtension({
+        wake: vi.fn(),
+        preparePrompt: async () => preparedPrompt(setup),
+        maintenanceIdleMs: 0,
+      })(h.pi);
+      h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
+      await settlePromptPreparation();
+      h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
+      branch.push(user("u1"), assistant("a1"));
+      h.handlers.get("agent_settled")!({}, h.ctx);
+      expect(h.actions).toEqual([]);
+      idle = true;
+      h.handlers.get("agent_settled")!({}, h.ctx);
+      expect(h.actions).toEqual([
+        INJECTION_ENTRY_TYPE,
+        TURN_RECEIPT_ENTRY_TYPE,
+        CHECKPOINT_ENTRY_TYPE,
+      ]);
     });
 
     it("keeps the session ancestry boundary separate from each turn cursor", async () => {
@@ -1702,7 +1740,7 @@ if (import.meta.vitest) {
       });
       expect(wake).toHaveBeenCalledOnce();
       h.handlers.get("agent_settled")!({}, h.ctx);
-      expect(wake).toHaveBeenCalledTimes(2);
+      expect(wake).toHaveBeenCalledOnce();
 
       const bad = harness([
         user("u1"),
