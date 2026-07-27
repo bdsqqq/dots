@@ -39,6 +39,7 @@ import {
   listProposals,
   migrateV1,
   recoverTransactions,
+  reconcileRollbackAdaptationEvents,
   reviewProposal,
   rollbackReview,
   saveProposal,
@@ -66,7 +67,23 @@ import {
   TURN_RECEIPT_ENTRY_TYPE,
   validateTurnReceiptBinding,
 } from "./receipt.js";
-import { processPipelineBatches } from "./pipeline.js";
+import {
+  parseStoredPipelineInput,
+  processPipelineBatches,
+} from "./pipeline.js";
+import {
+  buildAdaptationPrompt,
+  collectTurnObservations,
+  deduplicateTurnObservations,
+  findShadowAdaptation,
+  markShadowAdaptationLedger,
+  parseAdaptationDecisions,
+  publishShadowAdaptation,
+  verifiedRollbackEvidence,
+  turnObservationMatchesRefs,
+  validateTurnObservationRefs,
+  type TurnObservation,
+} from "./adaptation.js";
 import {
   analyzeCorpusMaintenance,
   assertFreshMaintenanceBasis,
@@ -993,6 +1010,7 @@ function consolidateV1Unlocked(limit: number): boolean {
 
 type PendingWindow = {
   evidence: SafeEvidence;
+  observations: TurnObservation[];
   jobs: Array<{ job: Job; name: string }>;
 };
 
@@ -1237,6 +1255,7 @@ function pendingWindows(limit: number): PendingWindow[] {
     );
     if (throughIndex < start)
       throw new Error(`checkpoint leaf precedes window ${maximum.name}`);
+    const observationCatalog = scanCatalog(cfg.root);
     windows.push({
       evidence: buildSafeEvidence({
         sessionId: maximum.job.sessionId,
@@ -1256,9 +1275,25 @@ function pendingWindows(limit: number): PendingWindow[] {
           .slice(0, throughIndex + 1)
           .map((entry) => entry.id),
       }),
+      observations: collectTurnObservations({
+        entries: maximum.chain,
+        start,
+        end: throughIndex,
+        receiptEnd: maximum.checkpointIndex - 1,
+        sessionId: maximum.job.sessionId,
+        workspace: maximum.job.workspace,
+        catalog: observationCatalog,
+      }),
       jobs: covered.map(({ job, name }) => ({ job, name })),
     });
   }
+  const seenObservations = new Set<string>();
+  for (const window of windows)
+    window.observations = window.observations.filter((observation) => {
+      if (seenObservations.has(observation.evidenceId)) return false;
+      seenObservations.add(observation.evidenceId);
+      return true;
+    });
   return windows;
 }
 
@@ -1443,6 +1478,9 @@ async function consolidateV2Unlocked(limit: number): Promise<boolean> {
         cfg,
         scope: scopeFor(batch[0]!.jobs[0]!.job.workspace),
         evidence: batch.map((window) => window.evidence),
+        observations: deduplicateTurnObservations(
+          batch.flatMap((window) => window.observations),
+        ),
         model,
         skipExternal: process.env.PI_MEMORY_SKIP_EXTERNAL === "1",
         invoke: (prompt: string) =>
@@ -1597,6 +1635,120 @@ function applyDeterministicMaintenance(cfg: ReturnType<typeof config>) {
   throw new Error("deterministic corpus maintenance did not converge");
 }
 
+function adaptationObservations(
+  cfg: ReturnType<typeof config>,
+  affectedRefs: Array<{ memoryId: string; artifactSha256: string }>,
+): TurnObservation[] {
+  const root = join(cfg.data, "v2/runs");
+  if (!existsSync(root)) return [];
+  const observations = readdirSync(root)
+    .sort()
+    .flatMap((name) => {
+      const path = join(root, name, "input.json");
+      if (!existsSync(path)) return [];
+      const input = parseStoredPipelineInput(readFileSync(path, "utf8"));
+      if (input.version !== 3) return [];
+      for (const observation of input.observations)
+        validateTurnObservationRefs(observation, input.catalog);
+      return input.observations;
+    })
+    .filter((observation) =>
+      turnObservationMatchesRefs(observation, affectedRefs),
+    );
+  return [
+    ...new Map(observations.map((item) => [item.evidenceId, item])).values(),
+  ].slice(-100);
+}
+
+async function processAdaptationEvents(
+  cfg: ReturnType<typeof config>,
+): Promise<boolean> {
+  let ok = true;
+  for (;;) {
+    const event = claimMaintenanceEvent(cfg, { kinds: ["adaptation-ready"] });
+    if (!event) return ok;
+    try {
+      let shadow = findShadowAdaptation(cfg, event.id);
+      if (!shadow) {
+        const basis = event.basis;
+        if (
+          typeof basis.historyCommit !== "string" ||
+          typeof basis.mutationId !== "string" ||
+          typeof basis.reviewId !== "string" ||
+          typeof basis.proposalId !== "string"
+        )
+          throw new Error("invalid adaptation event basis");
+        const rollback = verifiedRollbackEvidence(cfg, {
+          historyCommit: basis.historyCommit,
+          mutationId: basis.mutationId,
+          reviewId: basis.reviewId,
+          proposalId: basis.proposalId,
+        });
+        const evidence = [
+          ...adaptationObservations(cfg, rollback.affectedRefs),
+          rollback,
+        ];
+        const catalog = scanCatalog(cfg.root);
+        const model =
+          process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-luna:low";
+        const raw =
+          process.env.PI_MEMORY_SKIP_EXTERNAL === "1"
+            ? JSON.stringify({
+                version: 1,
+                decisions: [
+                  {
+                    action: "no-op",
+                    evidenceIds: [rollback.evidenceId],
+                    reason: "external processing disabled",
+                  },
+                ],
+              })
+            : await runAsync(
+                process.env.PI_BIN || "pi",
+                [
+                  "-p",
+                  "--no-session",
+                  "--no-tools",
+                  "--no-extensions",
+                  "--no-skills",
+                  "--no-prompt-templates",
+                  "--no-context-files",
+                  "--model",
+                  model,
+                ],
+                buildAdaptationPrompt(catalog, evidence),
+              );
+        const decisions = parseAdaptationDecisions(raw, catalog, evidence);
+        shadow = publishShadowAdaptation({
+          cfg,
+          eventId: event.id,
+          model,
+          createdAt: event.createdAt,
+          evidence,
+          decisions,
+        });
+      }
+      markShadowAdaptationLedger(cfg, event.id, shadow.id);
+      completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+    } catch (error) {
+      if (event.attempt >= MAX_MAINTENANCE_EVENT_ATTEMPTS)
+        failMaintenanceEvent(cfg, event.id, event.claimToken!);
+      else retryMaintenanceEvent(cfg, event.id, event.claimToken!);
+      ok = false;
+      console.error(
+        `adaptation failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+}
+
+export function combineMaintenanceResults(
+  current: boolean,
+  next: boolean,
+): boolean {
+  return current && next;
+}
+
 async function maintainUnlocked(): Promise<boolean> {
   const cfg = config();
   recoverTransactions(cfg);
@@ -1607,6 +1759,7 @@ async function maintainUnlocked(): Promise<boolean> {
       ? { remote: process.env.PI_MEMORY_GIT_REMOTE }
       : {}),
   });
+  reconcileRollbackAdaptationEvents(cfg);
   projectUnlocked();
   writeCatalog(cfg);
   secureDir(cfg.state);
@@ -1616,11 +1769,14 @@ async function maintainUnlocked(): Promise<boolean> {
     gates = JSON.parse(readFileSync(gatesPath, "utf8"));
   } catch {}
   const now = Date.now();
-  let ok = true;
+  let ok = await processAdaptationEvents(cfg);
   reconcileCoveredCheckpointEvents(cfg);
   if (pendingWindows(1).length > 0)
-    ok = await consolidateUnlocked(
-      Number(process.env.PI_MEMORY_MAINTAIN_LIMIT || 10),
+    ok = combineMaintenanceResults(
+      ok,
+      await consolidateUnlocked(
+        Number(process.env.PI_MEMORY_MAINTAIN_LIMIT || 10),
+      ),
     );
   reconcileCoveredCheckpointEvents(cfg);
   const health = applyDeterministicMaintenance(cfg);
@@ -1724,6 +1880,15 @@ async function maintainUnlocked(): Promise<boolean> {
   }
   atomic(gatesPath, `${JSON.stringify(gates)}\n`);
   return ok;
+}
+
+function wakeMaintenance(): void {
+  const child = spawn(process.env.PI_MEMORY_BIN || "pi-memory", ["maintain"], {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.once("error", () => undefined);
+  child.unref();
 }
 
 async function main(): Promise<void> {
@@ -1946,8 +2111,10 @@ async function main(): Promise<void> {
     const receipt = await lock(() =>
       rollbackReview(config(), args[0]!, args[reasonIndex + 1]!),
     );
-    if (receipt) console.log(JSON.stringify(receipt, null, 2));
-    else result = undefined;
+    if (receipt) {
+      wakeMaintenance();
+      console.log(JSON.stringify(receipt, null, 2));
+    } else result = undefined;
   } else if (command === "feedback" && args[0] && args[1]) {
     const reasonIndex = args.indexOf("--reason-code");
     const queryIndex = args.indexOf("--query");
@@ -2114,6 +2281,11 @@ if (import.meta.vitest) {
     content: unknown,
   ): Entry => ({ type: "message", id, parentId, message: { role, content } });
   describe("session projection invariants", () => {
+    it("does not overwrite an earlier maintenance failure", () => {
+      expect(combineMaintenanceResults(false, true)).toBe(false);
+      expect(combineMaintenanceResults(true, false)).toBe(false);
+    });
+
     it("loads multiple session roots from global config", () => {
       const dir = mkdtempSync(join(tmpdir(), "pi-memory-config-"));
       const settings = join(dir, "bds-pi.json");

@@ -11,10 +11,13 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scanCatalog, type MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
+import { canonicalTurnReceiptId, type TurnReceipt } from "./receipt.js";
+import type { TurnObservation } from "./adaptation.js";
 import { canonicalProposalId } from "./schema.js";
 import {
   freezePipelineInput,
   rankRetrieval,
+  parseStoredPipelineInput,
   processPipelineBatch,
   processPipelineBatches,
 } from "./pipeline.js";
@@ -81,6 +84,115 @@ describe("memory reflection pipeline", () => {
         "mem_dddddddddddddddddddddddd",
       ]),
     );
+  });
+
+  it("rejects a cross-workspace forged observation during freeze and replay", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(
+      join(cfg.root, "2026-project-b--source__agent.md"),
+      `---
+memory_version: 2
+memory_id: "mem_bbbbbbbbbbbbbbbbbbbbbbbb"
+status: "active"
+title: "Project B"
+kind: pattern
+scope: "/tmp/project-b"
+description: "Project B only"
+triggers: ["project b"]
+keywords: []
+updated: "2026-07-27"
+---
+
+Project B rule.
+`,
+    );
+    const catalog = scanCatalog(cfg.root);
+    const target = catalog.entries[0]!;
+    const identity: Omit<TurnReceipt, "receiptId"> = {
+      version: 1,
+      sessionId: "session-a",
+      workspace: "/tmp/project-a",
+      userEntryIds: ["u"],
+      assistantEntryIds: ["a"],
+      catalogSha256: "a".repeat(64),
+      exposures: [
+        {
+          kind: "injected",
+          memoryId: target.memoryId,
+          artifactSha256: target.sha256,
+        },
+      ],
+      outcomes: [],
+      redactions: {},
+      recordedAt: "2026-07-27T00:00:00.000Z",
+    };
+    const receipt = {
+      ...identity,
+      receiptId: canonicalTurnReceiptId(identity),
+    };
+    const forged: TurnObservation = {
+      kind: "turn-observation",
+      evidenceId: `turn:r:${receipt.receiptId}`,
+      entryId: "r",
+      receipt,
+    };
+    const projectA = evidence("cp-a");
+    projectA.workspace = "/tmp/project-a";
+    projectA.window.sessionId = "session-a";
+    const projectB = evidence("cp-b");
+    projectB.workspace = "/tmp/project-b";
+    projectB.window.windowId = "window-b";
+    projectB.window.sessionId = "session-b";
+    expect(() =>
+      freezePipelineInput(cfg, "global", [projectA, projectB], "test", [
+        forged,
+      ]),
+    ).toThrow("outside frozen scoped catalog");
+
+    const frozen = freezePipelineInput(
+      cfg,
+      "global",
+      [projectA, projectB],
+      "test",
+    );
+    if (frozen.version !== 3) throw new Error("expected v3 input");
+    expect(() =>
+      parseStoredPipelineInput(
+        JSON.stringify({ ...frozen, observations: [forged] }),
+      ),
+    ).toThrow("invalid stored pipeline input");
+  });
+
+  it("writes v3 inputs while replaying strict v2 inputs", () => {
+    const cfg = config();
+    const current = freezePipelineInput(cfg, "global", [evidence()], "test");
+    expect(current).toMatchObject({
+      version: 3,
+      promptVersion: 3,
+      observations: [],
+      rollbackEvidence: [],
+    });
+    if (current.version !== 3)
+      throw new Error("expected current pipeline input");
+    const {
+      observations: _observations,
+      rollbackEvidence: _rollbackEvidence,
+      ...base
+    } = current;
+    const legacy = { ...base, version: 2, promptVersion: 2 };
+    expect(parseStoredPipelineInput(JSON.stringify(legacy))).toMatchObject({
+      version: 2,
+      promptVersion: 2,
+    });
+    expect(() =>
+      parseStoredPipelineInput(
+        JSON.stringify({
+          ...current,
+          rollbackEvidence: [{ kind: "verified-rollback" }],
+        }),
+      ),
+    ).toThrow("invalid stored pipeline input");
   });
 
   it("freezes inputs and covers checkpoints only after a valid skip", () => {

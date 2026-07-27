@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -21,11 +22,13 @@ import {
   parseStoredProposal,
   recoverTransactions,
   readReviewReceipts,
+  reconcileRollbackAdaptationEvents,
   reviewProposal,
   rollbackReview,
   saveProposal,
   submitManualProposal,
 } from "./workflow.js";
+import { listMaintenanceEvents } from "./events.js";
 
 function config(): MemoryConfig {
   const base = mkdtempSync(join(tmpdir(), "memory-workflow-"));
@@ -97,8 +100,28 @@ describe("memory proposal review", () => {
     expect(readFileSync(join(cfg.root, active!), "utf8")).toContain(
       "mem_aaaaaaaaaaaaaaaaaaaaaaaa",
     );
-    rollbackReview(cfg, receipt.reviewId, "later shown incorrect");
+    const rollback = rollbackReview(
+      cfg,
+      receipt.reviewId,
+      "later shown incorrect",
+    );
     expect(existsSync(join(cfg.root, active!))).toBe(false);
+    const event = listMaintenanceEvents(cfg, ["pending"]).find(
+      ({ event }) => event.kind === "adaptation-ready",
+    );
+    expect(event?.event.basis).toMatchObject({
+      historyCommit: rollback.historyCommit,
+      mutationId: rollback.mutationId,
+      reviewId: rollback.reviewId,
+      proposalId: rollback.proposalId,
+    });
+    rmSync(join(cfg.data, "v2/events/pending", `${event!.event.id}.json`));
+    expect(reconcileRollbackAdaptationEvents(cfg)).toBe(1);
+    expect(listMaintenanceEvents(cfg, ["pending"])).toEqual([
+      expect.objectContaining({
+        event: expect.objectContaining({ id: event!.event.id }),
+      }),
+    ]);
   });
 
   it("applies hash-guarded patches and rolls them back", () => {
