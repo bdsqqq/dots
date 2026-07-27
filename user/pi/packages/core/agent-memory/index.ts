@@ -40,6 +40,7 @@ import {
   recoverTransactions,
   reviewProposal,
   rollbackReview,
+  saveProposal,
   submitManualProposal,
 } from "./workflow.js";
 import { REVIEW_REASON_CODES, type ReviewReasonCode } from "./schema.js";
@@ -55,7 +56,7 @@ import {
 } from "./history.js";
 import { buildSafeEvidence, type SafeEvidence } from "./evidence.js";
 import { processPipelineBatch } from "./pipeline.js";
-import { scanCorpusHealth } from "./maintenance.js";
+import { maintenanceProposals, scanCorpusHealth } from "./maintenance.js";
 import {
   claimMaintenanceEvent,
   completeMaintenanceEvent,
@@ -1183,6 +1184,23 @@ function maintainUnlocked(): boolean {
         completeMaintenanceEvent(cfg, event.id, event.claimToken!);
       }
     }
+  }
+  const health = scanCorpusHealth(cfg);
+  enqueueMaintenanceEvent(cfg, {
+    kind: "corpus-changed",
+    cause: health.catalogSha256,
+    basis: {
+      catalogSha256: health.catalogSha256,
+      ...(health.historyCommit ? { historyCommit: health.historyCommit } : {}),
+    },
+  });
+  for (const proposal of maintenanceProposals(health)) {
+    saveProposal(cfg, proposal);
+    applyMemoryProposal({
+      cfg,
+      id: proposal.id,
+      actor: "background-reflection",
+    });
   }
   if (process.env.PI_MEMORY_SKIP_EXTERNAL !== "1") {
     try {
