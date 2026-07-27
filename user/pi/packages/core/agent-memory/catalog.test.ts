@@ -1,8 +1,21 @@
-import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { renderPromptCatalog, scanCatalog } from "./catalog.js";
+import {
+  generateHotManifest,
+  loadHotManifest,
+  renderHotManifest,
+  renderPromptCatalog,
+  scanCatalog,
+} from "./catalog.js";
 
 function note(overrides = ""): string {
   return `---\nmemory_version: 2\nmemory_id: "mem_one"\nstatus: "active"\ntitle: "Scoped gotcha"\nkind: gotcha\nscope: "work/project"\ndescription: "Use when touching project tooling"\ntriggers: ["tooling"]\nkeywords: ["project"]\nupdated: "2026-07-25"\n${overrides}---\n\nbody\n`;
@@ -58,5 +71,40 @@ describe("memory catalog", () => {
     expect(
       renderPromptCatalog(scanCatalog(root), "/tmp/work/project", 30, 400),
     ).not.toContain("Scoped gotcha");
+  });
+
+  it("generates bounded scoped pointers and rejects stale hashes", () => {
+    const data = mkdtempSync(join(tmpdir(), "memory-hot-data-"));
+    const cwd = join(homedir(), "work/project");
+    const base = scanCatalog(mkdtempSync(join(tmpdir(), "memory-hot-root-")));
+    const entries = Array.from({ length: 25 }, (_, index) => ({
+      memoryId: `mem_${index}`,
+      path: `${index}--source__agent.md`,
+      title: `title ${index}`,
+      description: `catalog description ${index}`,
+      kind: "gotcha",
+      scope: index === 24 ? "work/project" : "global",
+      triggers: [`trigger ${index}`],
+      keywords: [],
+      status: "active" as const,
+      sha256: String(index).padStart(64, "0"),
+      updated: `2026-07-${String((index % 25) + 1).padStart(2, "0")}`,
+      legacy: false,
+    }));
+    const catalog = { ...base, entries };
+    const manifest = generateHotManifest({ data }, catalog, cwd);
+    const rendered = renderHotManifest(manifest);
+    expect(manifest.entries).toHaveLength(20);
+    expect(manifest.entries[0]?.path).toBe("24--source__agent.md");
+    expect(rendered.length).toBeLessThanOrEqual(8_192);
+    expect(rendered).not.toContain("invented prose");
+    expect(rendered).toContain("catalog description 24");
+    expect(loadHotManifest({ data }, catalog, cwd)).toBe(rendered);
+
+    const path = join(data, "v2/hot", readdirSync(join(data, "v2/hot"))[0]!);
+    const stored = JSON.parse(readFileSync(path, "utf8"));
+    stored.entries[0].sha256 = "f".repeat(64);
+    writeFileSync(path, JSON.stringify(stored));
+    expect(loadHotManifest({ data }, catalog, cwd)).toBeUndefined();
   });
 });

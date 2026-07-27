@@ -26,7 +26,12 @@ import {
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
 import { resolvePrompt } from "@bds_pi/pi-spawn";
-import { renderPromptCatalog } from "@bds_pi/pi-memory/catalog";
+import {
+  generateHotManifest,
+  loadHotManifest,
+  renderHotManifest,
+  renderPromptCatalog,
+} from "@bds_pi/pi-memory/catalog";
 
 type SystemPromptExtConfig = {
   identity: string;
@@ -257,7 +262,16 @@ function createSystemPromptExtension(
         const catalog = JSON.parse(
           fs.readFileSync(path.join(dataDir, "catalog.json"), "utf8"),
         );
-        memoryCatalog = renderPromptCatalog(catalog, ctx.cwd);
+        memoryCatalog =
+          loadHotManifest({ data: dataDir }, catalog, ctx.cwd) ?? "";
+        if (!memoryCatalog)
+          try {
+            memoryCatalog = renderHotManifest(
+              generateHotManifest({ data: dataDir }, catalog, ctx.cwd),
+            );
+          } catch {
+            memoryCatalog = renderPromptCatalog(catalog, ctx.cwd);
+          }
       } catch {}
 
       return {
