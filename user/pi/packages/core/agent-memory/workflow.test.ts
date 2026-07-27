@@ -13,11 +13,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scanCatalog, sha256, type MemoryConfig } from "./catalog.js";
-import type { Proposal } from "./schema.js";
+import { canonicalProposalId, type Proposal } from "./schema.js";
 import {
   applyMemoryProposal,
   listProposals,
   migrateV1,
+  parseStoredProposal,
   recoverTransactions,
   readReviewReceipts,
   reviewProposal,
@@ -36,10 +37,10 @@ function config(): MemoryConfig {
   };
 }
 
-function proposal(id = "prop_one"): Proposal {
-  return {
+function proposal(_id = "prop_one"): Proposal {
+  const value: Omit<Proposal, "id"> = {
     version: 2,
-    id,
+    digestVersion: 2,
     lane: "memory",
     status: "pending",
     operation: {
@@ -68,15 +69,23 @@ function proposal(id = "prop_one"): Proposal {
       corpusAware: true,
     },
   };
+  return { ...value, id: canonicalProposalId(value) };
+}
+
+function seal(proposal: Proposal): Proposal {
+  const { id: _id, ...value } = proposal;
+  proposal.id = canonicalProposalId(value);
+  return proposal;
 }
 
 describe("memory proposal review", () => {
   it("applies and rolls back an accepted proposal", () => {
     const cfg = config();
-    saveProposal(cfg, proposal());
+    const created = proposal();
+    saveProposal(cfg, created);
     const receipt = reviewProposal({
       cfg,
-      id: "prop_one",
+      id: created.id,
       decision: "accept",
       reasonCode: "correct",
       reason: "verified durable rule",
@@ -94,10 +103,11 @@ describe("memory proposal review", () => {
 
   it("applies hash-guarded patches and rolls them back", () => {
     const cfg = config();
-    saveProposal(cfg, proposal("prop_seed_patch"));
+    const seed = proposal("prop_seed_patch");
+    saveProposal(cfg, seed);
     reviewProposal({
       cfg,
-      id: "prop_seed_patch",
+      id: seed.id,
       decision: "accept",
       reasonCode: "correct",
       reason: "seed patch target",
@@ -136,7 +146,7 @@ describe("memory proposal review", () => {
         },
       },
     };
-    saveProposal(cfg, patch);
+    saveProposal(cfg, seal(patch));
     const receipt = applyMemoryProposal({
       cfg,
       id: patch.id,
@@ -163,8 +173,8 @@ describe("memory proposal review", () => {
       title: "Duplicate durable rule",
       sources: ["pi://session/duplicate"],
     };
-    saveProposal(cfg, primary);
-    saveProposal(cfg, duplicate);
+    saveProposal(cfg, seal(primary));
+    saveProposal(cfg, seal(duplicate));
     for (const item of [primary, duplicate])
       reviewProposal({
         cfg,
@@ -202,7 +212,7 @@ describe("memory proposal review", () => {
         ],
       },
     };
-    saveProposal(cfg, deduplicate);
+    saveProposal(cfg, seal(deduplicate));
     applyMemoryProposal({
       cfg,
       id: deduplicate.id,
@@ -353,10 +363,11 @@ describe("memory proposal review", () => {
 
   it("aborts an interrupted rollback before its history commit", () => {
     const cfg = config();
-    saveProposal(cfg, proposal("prop_interrupted_rollback"));
+    const interrupted = proposal("prop_interrupted_rollback");
+    saveProposal(cfg, interrupted);
     const accepted = reviewProposal({
       cfg,
-      id: "prop_interrupted_rollback",
+      id: interrupted.id,
       decision: "accept",
       reasonCode: "correct",
       reason: "initially accepted",
@@ -397,10 +408,11 @@ describe("memory proposal review", () => {
 
   it("records rejection without mutating active memory", () => {
     const cfg = config();
-    saveProposal(cfg, proposal("prop_reject"));
+    const rejected = proposal("prop_reject");
+    saveProposal(cfg, rejected);
     reviewProposal({
       cfg,
-      id: "prop_reject",
+      id: rejected.id,
       decision: "reject",
       reasonCode: "ephemeral",
       reason: "only relevant to one session",
@@ -433,7 +445,7 @@ describe("memory proposal review", () => {
         reason: "superseded",
       },
     };
-    saveProposal(cfg, archive);
+    saveProposal(cfg, seal(archive));
     expect(() =>
       reviewProposal({
         cfg,
@@ -465,7 +477,7 @@ describe("memory proposal review", () => {
         reason: "stale",
       },
     };
-    saveProposal(cfg, archive);
+    saveProposal(cfg, seal(archive));
     const accepted = reviewProposal({
       cfg,
       id: archive.id,
@@ -633,7 +645,7 @@ describe("memory proposal review", () => {
         ],
       },
     };
-    saveProposal(cfg, skill);
+    saveProposal(cfg, seal(skill));
     const receipt = reviewProposal({
       cfg,
       id: skill.id,
@@ -643,5 +655,42 @@ describe("memory proposal review", () => {
     });
     expect(readFileSync(installed, "utf8")).toBe("installed\n");
     expect(receipt.finalArtifacts[0]?.status).toBe("approved-skill-draft");
+  });
+  it("reads and verifies legacy manual proposal digests", () => {
+    const current = proposal();
+    const { digestVersion: _digestVersion, id: _id, ...legacy } = current;
+    const operation = legacy.operation;
+    if (!("artifact" in operation)) throw new Error("invalid test");
+    legacy.provenance = {
+      ...legacy.provenance,
+      model: "manual-cli",
+      source: "pi://manual/legacy",
+    };
+    operation.artifact.sources = ["pi://manual/legacy"];
+    const digestOperation = {
+      ...operation,
+      artifact: { ...operation.artifact, sources: [] },
+    };
+    const id = `prop_${sha256(
+      JSON.stringify({
+        operation: digestOperation,
+        evidence: legacy.evidence,
+        runId: legacy.provenance.runId,
+      }),
+    ).slice(0, 32)}`;
+    const raw = JSON.stringify({ ...legacy, id });
+    expect(parseStoredProposal(raw).id).toBe(id);
+    expect(() =>
+      parseStoredProposal(
+        JSON.stringify({
+          ...legacy,
+          id,
+          operation: {
+            ...operation,
+            artifact: { ...operation.artifact, title: "Tampered" },
+          },
+        }),
+      ),
+    ).toThrow("stored proposal id does not match content");
   });
 });

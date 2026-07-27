@@ -8,6 +8,7 @@ import {
 } from "./catalog.js";
 import { isHistoryInitialized, listHistory } from "./history.js";
 import {
+  canonicalProposalId,
   memoryRef,
   type EvidenceRef,
   type MemoryOperation,
@@ -335,9 +336,9 @@ export function maintenanceProposals(
     const [primary, ...targets] = pathology.basis.targets;
     if (!primary || targets.length === 0) continue;
     pathology.basis.targets.forEach((target) => claimed.add(target.memoryId));
-    proposals.push({
+    const proposal: Omit<Proposal, "id"> = {
       version: 2,
-      id: `prop_${sha256(`maintenance:${pathology.id}`).slice(0, 32)}`,
+      digestVersion: 2,
       lane: "memory",
       status: "pending",
       operation: { type: "deduplicate", primary, targets },
@@ -351,7 +352,8 @@ export function maintenanceProposals(
         corpusAware: true,
         autonomous: true,
       },
-    });
+    };
+    proposals.push({ ...proposal, id: canonicalProposalId(proposal) });
   }
   return proposals;
 }
@@ -619,7 +621,7 @@ export async function analyzeCorpusMaintenance(options: {
     };
   const createdAt = options.createdAt ?? new Date().toISOString();
   const claimed = new Set<string>();
-  const proposals = drafts.map((draft, index): Proposal => {
+  const proposals = drafts.map((draft): Proposal => {
     const item = usable.find(
       (candidate) => candidate.pathology.id === draft.pathologyId,
     );
@@ -672,9 +674,9 @@ export async function analyzeCorpusMaintenance(options: {
       throw new Error("maintenance proposals overlap");
     ids.forEach((id) => claimed.add(id));
     const refsForEvidence = item.refs;
-    return {
+    const proposal: Omit<Proposal, "id"> = {
       version: 2,
-      id: `prop_${sha256(`${item.pathology.id}:${index}:${JSON.stringify(operation)}`).slice(0, 32)}`,
+      digestVersion: 2,
       lane: "memory",
       status: "pending",
       operation,
@@ -689,6 +691,7 @@ export async function analyzeCorpusMaintenance(options: {
         autonomous: true,
       },
     };
+    return { ...proposal, id: canonicalProposalId(proposal) };
   });
   return { report: options.report, proposals, diagnostics };
 }

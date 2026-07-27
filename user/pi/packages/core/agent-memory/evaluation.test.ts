@@ -42,10 +42,12 @@ const evidence: SafeEvidence = {
 };
 
 const proposalResponse = JSON.stringify({
+  version: 2,
   action: "propose",
   proposals: [
     {
       lane: "memory",
+      evidenceWindowIds: ["window"],
       operation: {
         type: "create",
         artifact: {
@@ -89,7 +91,7 @@ describe("memory evaluation dataset", () => {
       modes: ["memory-off", "current", "gold"],
       limit: 1,
       model: "test",
-      invoke: () => '{"action":"skip","reason":"test replay"}',
+      invoke: () => '{"version":2,"action":"skip","reason":"test replay"}',
     });
     expect(replay.outputs).toBe(3);
     expect(
@@ -126,10 +128,12 @@ describe("memory evaluation dataset", () => {
       autoApplyMemory: false,
       invoke: () =>
         JSON.stringify({
+          version: 2,
           action: "propose",
           proposals: [
             {
               lane: "memory",
+              evidenceWindowIds: ["window"],
               operation: {
                 type: "archive",
                 targetId: memoryId,
@@ -175,10 +179,12 @@ describe("memory evaluation dataset", () => {
       model: "test",
       invoke: () =>
         JSON.stringify({
+          version: 2,
           action: "propose",
           proposals: [
             {
               lane: "skill",
+              evidenceWindowIds: ["window", "window-two"],
               operation: {
                 type: "skill-draft",
                 mode: "create",

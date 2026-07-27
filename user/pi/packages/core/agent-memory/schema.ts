@@ -82,6 +82,7 @@ export type SkillDraftOperation = {
 
 export type Proposal = {
   version: 2;
+  digestVersion?: 2;
   id: string;
   lane: "memory" | "skill";
   status: "pending";
@@ -99,6 +100,20 @@ export type Proposal = {
     source?: string;
   };
 };
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (object(value))
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+      .join(",")}}`;
+  return JSON.stringify(value) ?? "null";
+}
+
+export function canonicalProposalId(proposal: Omit<Proposal, "id">): string {
+  return `prop_${sha256(canonical(proposal)).slice(0, 32)}`;
+}
 
 export const REVIEW_REASON_CODES = [
   "correct",
@@ -137,12 +152,14 @@ export type ReviewReceipt = {
 };
 
 export type ModelProposal =
-  | { action: "skip"; reason: string }
+  | { version: 2; action: "skip"; reason: string }
   | {
+      version: 2;
       action: "propose";
       proposals: Array<
         | {
             lane: "memory";
+            evidenceWindowIds: string[];
             operation:
               | {
                   type: "create";
@@ -177,6 +194,7 @@ export type ModelProposal =
           }
         | {
             lane: "skill";
+            evidenceWindowIds: string[];
             operation: SkillDraftOperation;
           }
       >;
@@ -324,12 +342,24 @@ function skillOperation(value: unknown): SkillDraftOperation {
   };
 }
 
-export function parseModelProposal(raw: string): ModelProposal {
+export function parseModelProposal(
+  raw: string,
+  legacyEvidenceWindowIds?: string[],
+): ModelProposal {
   const value: unknown = JSON.parse(raw.trim());
   if (!object(value)) throw new Error("invalid proposal response");
+  const legacy = value.version === undefined;
+  if (legacy && legacyEvidenceWindowIds === undefined)
+    throw new Error("unversioned proposal response is not allowed");
+  if (!legacy && value.version !== 2)
+    throw new Error("invalid proposal response version");
   if (value.action === "skip") {
-    exactKeys(value, ["action", "reason"]);
+    exactKeys(
+      value,
+      legacy ? ["action", "reason"] : ["action", "reason", "version"],
+    );
     return {
+      version: 2,
       action: "skip",
       reason: boundedString(value.reason, "skip reason", 500),
     };
@@ -341,8 +371,12 @@ export function parseModelProposal(raw: string): ModelProposal {
     value.proposals.length > 8
   )
     throw new Error("invalid proposals");
-  exactKeys(value, ["action", "proposals"]);
+  exactKeys(
+    value,
+    legacy ? ["action", "proposals"] : ["action", "proposals", "version"],
+  );
   return {
+    version: 2,
     action: "propose",
     proposals: value.proposals.map((item) => {
       if (
@@ -351,15 +385,36 @@ export function parseModelProposal(raw: string): ModelProposal {
         !object(item.operation)
       )
         throw new Error("invalid proposal");
-      exactKeys(item, ["lane", "operation"]);
+      exactKeys(
+        item,
+        legacy
+          ? ["lane", "operation"]
+          : ["evidenceWindowIds", "lane", "operation"],
+      );
+      const evidenceWindowIds = strings(
+        legacy ? legacyEvidenceWindowIds : item.evidenceWindowIds,
+        "evidenceWindowIds",
+        100,
+        200,
+      );
+      if (
+        evidenceWindowIds.length === 0 ||
+        new Set(evidenceWindowIds).size !== evidenceWindowIds.length
+      )
+        throw new Error("invalid evidenceWindowIds");
       if (item.lane === "skill")
-        return { lane: "skill", operation: skillOperation(item.operation) };
+        return {
+          lane: "skill",
+          evidenceWindowIds,
+          operation: skillOperation(item.operation),
+        };
       const operation = item.operation;
       const type = operation.type;
       if (type === "create") {
         exactKeys(operation, ["artifact", "type"]);
         return {
           lane: "memory",
+          evidenceWindowIds,
           operation: { type, artifact: artifact(operation.artifact) },
         };
       }
@@ -367,6 +422,7 @@ export function parseModelProposal(raw: string): ModelProposal {
         exactKeys(operation, ["artifact", "targetId", "type"]);
         return {
           lane: "memory",
+          evidenceWindowIds,
           operation: {
             type,
             targetId: singleLine(operation.targetId, "targetId", 100),
@@ -378,6 +434,7 @@ export function parseModelProposal(raw: string): ModelProposal {
         exactKeys(operation, ["artifact", "primaryId", "targetIds", "type"]);
         return {
           lane: "memory",
+          evidenceWindowIds,
           operation: {
             type,
             primaryId: singleLine(operation.primaryId, "primaryId", 100),
@@ -394,6 +451,7 @@ export function parseModelProposal(raw: string): ModelProposal {
         exactKeys(operation, allowed);
         return {
           lane: "memory",
+          evidenceWindowIds,
           operation: {
             type,
             targetId: singleLine(operation.targetId, "targetId", 100),

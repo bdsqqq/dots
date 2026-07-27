@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
+import { canonicalProposalId } from "./schema.js";
 import {
   freezePipelineInput,
   processPipelineBatch,
@@ -61,7 +62,7 @@ describe("memory reflection pipeline", () => {
       join(cfg.root, "2026-other--source__agent.md"),
       note("mem_dddddddddddddddddddddddd", "/tmp/other"),
     );
-    const input = freezePipelineInput(cfg, "tmp/project", [evidence()]);
+    const input = freezePipelineInput(cfg, "tmp/project", [evidence()], "test");
     expect(input.catalog.entries.map((entry) => entry.memoryId)).toEqual([
       "mem_cccccccccccccccccccccccc",
     ]);
@@ -101,10 +102,12 @@ describe("memory reflection pipeline", () => {
       model: "test",
       invoke: () =>
         JSON.stringify({
+          version: 2,
           action: "propose",
           proposals: [
             {
               lane: "memory",
+              evidenceWindowIds: ["window"],
               operation: {
                 type: "create",
                 artifact: {
@@ -131,9 +134,12 @@ describe("memory reflection pipeline", () => {
       decision: "accepted",
       reviewer: "background-reflection",
     });
-    const withFeedback = freezePipelineInput(cfg, "global", [
-      evidence("cp-feedback"),
-    ]);
+    const withFeedback = freezePipelineInput(
+      cfg,
+      "global",
+      [evidence("cp-feedback")],
+      "test",
+    );
     expect(withFeedback.reviewSignals).toEqual([]);
     const retried = processPipelineBatch({
       cfg,
@@ -153,6 +159,7 @@ describe("memory reflection pipeline", () => {
   it("keeps executable skill drafts review-gated", () => {
     const cfg = config();
     const second = evidence("cp-second");
+    second.window.windowId = "window-two";
     second.window.sessionId = "session-two";
     const result = processPipelineBatch({
       cfg,
@@ -161,10 +168,12 @@ describe("memory reflection pipeline", () => {
       model: "test",
       invoke: () =>
         JSON.stringify({
+          version: 2,
           action: "propose",
           proposals: [
             {
               lane: "memory",
+              evidenceWindowIds: ["window"],
               operation: {
                 type: "create",
                 artifact: {
@@ -180,6 +189,7 @@ describe("memory reflection pipeline", () => {
             },
             {
               lane: "skill",
+              evidenceWindowIds: ["window", "window-two"],
               operation: {
                 type: "skill-draft",
                 mode: "create",
@@ -207,10 +217,12 @@ describe("memory reflection pipeline", () => {
     const cfg = config();
     const invoke = () =>
       JSON.stringify({
+        version: 2,
         action: "propose",
         proposals: [
           {
             lane: "memory",
+            evidenceWindowIds: ["window"],
             operation: {
               type: "create",
               artifact: {
@@ -239,12 +251,15 @@ describe("memory reflection pipeline", () => {
       cfg,
       scope: "global",
       evidence: [evidence("cp-interrupted")],
-      model: "test",
+      model: "changed-model",
       invoke: () => {
         throw new Error("cached result must be reused");
       },
     });
     expect(recovered).toEqual(interrupted);
+    expect(listProposals(cfg, undefined, "reviewed")[0]?.provenance.model).toBe(
+      "test",
+    );
     expect(listProposals(cfg, "memory")).toHaveLength(0);
     expect(readReviewReceipts(cfg)).toHaveLength(1);
   });
@@ -266,10 +281,12 @@ describe("memory reflection pipeline", () => {
         await new Promise<void>((resolve) => releases.push(resolve));
         active--;
         return JSON.stringify({
+          version: 2,
           action: "propose",
           proposals: [
             {
               lane: "memory",
+              evidenceWindowIds: ["window"],
               operation: {
                 type: "create",
                 artifact: {
@@ -341,5 +358,277 @@ describe("memory reflection pipeline", () => {
         false,
       );
     }
+  });
+  it("rejects invalid evidence selections and stores only selected refs", () => {
+    const cfg = config();
+    const second = evidence("cp-unselected");
+    second.window.windowId = "window-two";
+    second.window.sessionId = "session-two";
+    const result = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-selected"), second],
+      model: "test",
+      autoApplyMemory: false,
+      invoke: () =>
+        JSON.stringify({
+          version: 2,
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              evidenceWindowIds: ["window"],
+              operation: {
+                type: "create",
+                artifact: {
+                  title: "Selected evidence",
+                  kind: "pattern",
+                  scope: "global",
+                  description: "Use while testing selected evidence",
+                  triggers: ["selected evidence"],
+                  keywords: ["evidence"],
+                  body: "Use only evidence selected by the model.",
+                },
+              },
+            },
+          ],
+        }),
+    });
+    expect(
+      listProposals(cfg)[0]?.evidence.map((item) => item.windowId),
+    ).toEqual(["window"]);
+    expect(result.proposalIds).toHaveLength(1);
+
+    const invalid = (evidenceWindowIds: string[]) =>
+      processPipelineBatch({
+        cfg: config(),
+        scope: "global",
+        evidence: [evidence()],
+        model: "test",
+        invoke: () =>
+          JSON.stringify({
+            version: 2,
+            action: "propose",
+            proposals: [
+              {
+                lane: "memory",
+                evidenceWindowIds,
+                operation: {
+                  type: "create",
+                  artifact: {
+                    title: "Invalid evidence",
+                    kind: "pattern",
+                    scope: "global",
+                    description: "Use while testing invalid evidence",
+                    triggers: ["invalid evidence"],
+                    keywords: [],
+                    body: "This proposal must be rejected.",
+                  },
+                },
+              },
+            ],
+          }),
+      });
+    expect(() => invalid([])).toThrow("invalid evidenceWindowIds");
+    expect(() => invalid(["window", "window"])).toThrow(
+      "invalid evidenceWindowIds",
+    );
+    expect(() => invalid(["missing"])).toThrow("unavailable evidence");
+  });
+
+  it("rejects a stored autonomous proposal whose content keeps its id", () => {
+    const cfg = config();
+    const result = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence()],
+      model: "test",
+      autoApplyMemory: false,
+      invoke: () =>
+        JSON.stringify({
+          version: 2,
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              evidenceWindowIds: ["window"],
+              operation: {
+                type: "create",
+                artifact: {
+                  title: "Untampered",
+                  kind: "pattern",
+                  scope: "global",
+                  description: "Use while testing proposal integrity",
+                  triggers: ["proposal integrity"],
+                  keywords: [],
+                  body: "Reject stored content changes.",
+                },
+              },
+            },
+          ],
+        }),
+    });
+    const dir = join(cfg.data, "v2/proposals/pending");
+    const path = join(dir, readdirSync(dir)[0]!);
+    const proposal = JSON.parse(readFileSync(path, "utf8"));
+    proposal.provenance.autonomous = false;
+    const { id: _id, ...identity } = proposal;
+    proposal.id = canonicalProposalId(identity);
+    const tamper = [
+      (value: typeof proposal) => {
+        value.operation.artifact.title = "Tampered";
+      },
+      (value: typeof proposal) => {
+        value.evidence[0].excerpt = "Tampered";
+      },
+      (value: typeof proposal) => {
+        value.provenance.model = "tampered-model";
+      },
+      (value: typeof proposal) => {
+        delete value.digestVersion;
+      },
+    ];
+    for (const mutate of tamper) {
+      const changed = structuredClone(proposal);
+      mutate(changed);
+      writeFileSync(path, `${JSON.stringify(changed, null, 2)}\n`);
+      expect(() => listProposals(cfg)).toThrow(
+        "stored proposal id does not match content",
+      );
+    }
+    expect(result.proposalIds).toHaveLength(1);
+  });
+  it("replays pre-versioned output with all frozen evidence", () => {
+    const cfg = config();
+    const second = evidence("cp-legacy-two");
+    second.window.windowId = "window-two";
+    second.window.sessionId = "session-two";
+    const result = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-legacy-one"), second],
+      model: "legacy-model",
+      autoApplyMemory: false,
+      invoke: () =>
+        JSON.stringify({
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              operation: {
+                type: "create",
+                artifact: {
+                  title: "Legacy evidence",
+                  kind: "pattern",
+                  scope: "global",
+                  description: "Use while replaying legacy output",
+                  triggers: ["legacy output"],
+                  keywords: [],
+                  body: "Legacy output applies to every frozen window.",
+                },
+              },
+            },
+          ],
+        }),
+    });
+    const stored = listProposals(cfg)[0]!;
+    expect(stored.digestVersion).toBe(2);
+    expect(stored.evidence.map((item) => item.windowId)).toEqual([
+      "window",
+      "window-two",
+    ]);
+    expect(
+      JSON.parse(
+        readFileSync(
+          join(cfg.data, `v2/runs/${result.runId}/output.json`),
+          "utf8",
+        ),
+      ).version,
+    ).toBeUndefined();
+    expect(
+      processPipelineBatch({
+        cfg,
+        scope: "global",
+        evidence: [evidence("cp-legacy-one"), second],
+        model: "changed-model",
+        autoApplyMemory: false,
+        invoke: () => {
+          throw new Error("legacy output must replay");
+        },
+      }),
+    ).toEqual(result);
+  });
+
+  it("requires evidenceWindowIds in versioned output", () => {
+    expect(() =>
+      processPipelineBatch({
+        cfg: config(),
+        scope: "global",
+        evidence: [evidence()],
+        model: "test",
+        invoke: () =>
+          JSON.stringify({
+            version: 2,
+            action: "propose",
+            proposals: [
+              {
+                lane: "memory",
+                operation: {
+                  type: "create",
+                  artifact: {
+                    title: "Missing selection",
+                    kind: "pattern",
+                    scope: "global",
+                    description: "Use while testing versioned output",
+                    triggers: ["versioned output"],
+                    keywords: [],
+                    body: "Versioned output must select evidence.",
+                  },
+                },
+              },
+            ],
+          }),
+      }),
+    ).toThrow("invalid fields");
+  });
+  it("fails before invoke when an input-only replay changes model", () => {
+    const cfg = config();
+    expect(() =>
+      processPipelineBatch({
+        cfg,
+        scope: "global",
+        evidence: [evidence("cp-input-only")],
+        model: "model-a",
+        invoke: () => {
+          throw new Error("interrupted after input publication");
+        },
+      }),
+    ).toThrow("interrupted after input publication");
+
+    let invoked = false;
+    expect(() =>
+      processPipelineBatch({
+        cfg,
+        scope: "global",
+        evidence: [evidence("cp-input-only")],
+        model: "model-b",
+        invoke: () => {
+          invoked = true;
+          return '{"version":2,"action":"skip","reason":"must not run"}';
+        },
+      }),
+    ).toThrow(
+      "frozen pipeline model model-a does not match configured model model-b",
+    );
+    expect(invoked).toBe(false);
+
+    const runs = readdirSync(join(cfg.data, "v2/runs"));
+    expect(runs).toHaveLength(1);
+    const dir = join(cfg.data, "v2/runs", runs[0]!);
+    expect(
+      JSON.parse(readFileSync(join(dir, "input.json"), "utf8")).model,
+    ).toBe("model-a");
+    expect(existsSync(join(dir, "output.json"))).toBe(false);
+    expect(existsSync(join(dir, "result.json"))).toBe(false);
   });
 });
