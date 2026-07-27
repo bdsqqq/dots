@@ -833,44 +833,6 @@ export function createAgentMemoryExtension(
       };
     });
 
-    // Pi persists the user after message_end extension handlers; turn_start is
-    // the first hook where the submitted run has a stable SessionEntry ID.
-    pi.on("turn_start", (_event, ctx) => {
-      if (!pending || pending.userEntryId) return;
-      const branch = ctx.sessionManager.getBranch();
-      const boundary = pending.boundaryId
-        ? branch.findIndex((entry) => entry.id === pending!.boundaryId)
-        : -1;
-      const user = branch
-        .slice(boundary + 1)
-        .reverse()
-        .find(
-          (entry) => entry.type === "message" && entry.message.role === "user",
-        );
-      const userEntryId = user?.id ?? pending.existingUserId;
-      if (!userEntryId)
-        throw new Error("memory injection has no persisted current user entry");
-      const current = loadCatalog();
-      if (catalogSha256(current) !== pending.catalogSha256)
-        throw new Error("memory catalog changed before run correlation");
-      pending.refs.forEach((memory) => validateMemoryRef(current, memory));
-      const existing = branch.some((entry) => {
-        const data = customData(entry, INJECTION_ENTRY_TYPE);
-        return (
-          data !== undefined &&
-          parseInjectionReceipt(data).userEntryId === userEntryId
-        );
-      });
-      if (!existing)
-        pi.appendEntry(INJECTION_ENTRY_TYPE, {
-          version: 1,
-          userEntryId,
-          catalogSha256: pending.catalogSha256,
-          refs: pending.refs,
-        });
-      pending.userEntryId = userEntryId;
-    });
-
     pi.on("agent_settled", (_event, ctx) => {
       if (settling) return;
       settling = true;
@@ -878,6 +840,48 @@ export function createAgentMemoryExtension(
         let branch = ctx.sessionManager.getBranch();
         const catalog = loadCatalog();
         receiptEntries(branch, consumption(ctx));
+        if (pending && !pending.userEntryId) {
+          const boundary = pending.boundaryId
+            ? branch.findIndex((entry) => entry.id === pending!.boundaryId)
+            : -1;
+          const user =
+            pending.existingUserId !== undefined
+              ? branch.find((entry) => entry.id === pending!.existingUserId)
+              : branch
+                  .slice(boundary + 1)
+                  .find(
+                    (entry) =>
+                      entry.type === "message" && entry.message.role === "user",
+                  );
+          if (
+            (pending.boundaryId !== undefined && boundary < 0) ||
+            user?.type !== "message" ||
+            user.message.role !== "user" ||
+            catalogSha256(catalog) !== pending.catalogSha256
+          ) {
+            pending = undefined;
+          } else {
+            pending.refs.forEach((memory) =>
+              validateMemoryRef(catalog, memory),
+            );
+            const existing = branch.some((entry) => {
+              const data = customData(entry, INJECTION_ENTRY_TYPE);
+              return (
+                data !== undefined &&
+                parseInjectionReceipt(data).userEntryId === user.id
+              );
+            });
+            if (!existing)
+              pi.appendEntry(INJECTION_ENTRY_TYPE, {
+                version: 1,
+                userEntryId: user.id,
+                catalogSha256: pending.catalogSha256,
+                refs: pending.refs,
+              });
+            pending.userEntryId = user.id;
+            branch = ctx.sessionManager.getBranch();
+          }
+        }
         if (pending?.userEntryId) {
           const receipt = buildTurnReceipt({
             branch,
@@ -885,7 +889,7 @@ export function createAgentMemoryExtension(
             workspace: ctx.cwd,
             catalog,
             now,
-            ancestryBoundaryId: pending.boundaryId ?? ancestryBoundaryId,
+            ancestryBoundaryId,
           });
           if (receipt) {
             pi.appendEntry(TURN_RECEIPT_ENTRY_TYPE, receipt);
@@ -1118,7 +1122,6 @@ if (import.meta.vitest) {
         "session_start",
         "tool_call",
         "tool_result",
-        "turn_start",
       ]);
       expect([...h.tools.keys()].sort()).toEqual([
         "memory_open",
@@ -1126,7 +1129,7 @@ if (import.meta.vitest) {
       ]);
     });
 
-    it("binds the first turn at Pi's persisted turn_start lifecycle boundary", () => {
+    it("binds a turn after Pi persists its messages", () => {
       setupCatalog();
       const branch: SessionEntry[] = [];
       const h = harness(branch);
@@ -1141,8 +1144,8 @@ if (import.meta.vitest) {
       );
       expect(injected.systemPrompt).toContain("<memory_catalog>");
       expect(h.actions).toEqual([]);
+      expect(h.handlers.has("turn_start")).toBe(false);
       branch.push(user("u1"));
-      h.handlers.get("turn_start")!({ turnIndex: 0 }, h.ctx);
       branch.push(assistant("a1"));
       h.handlers.get("agent_settled")!({}, h.ctx);
       expect(h.actions).toEqual([
@@ -1165,6 +1168,44 @@ if (import.meta.vitest) {
       });
       h.handlers.get("agent_settled")!({}, h.ctx);
       expect(wake).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the session ancestry boundary separate from each turn cursor", () => {
+      setupCatalog();
+      const branch: SessionEntry[] = [];
+      const h = harness(branch);
+      createAgentMemoryExtension({
+        now: () => "2026-01-01T00:00:04.000Z",
+        wake: vi.fn(),
+      })(h.pi);
+
+      h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
+      branch.push(user("u1"), assistant("a1"));
+      h.handlers.get("agent_settled")!({}, h.ctx);
+
+      h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
+      branch.push(user("u2"), assistant("a2"));
+      expect(() => h.handlers.get("agent_settled")!({}, h.ctx)).not.toThrow();
+      const receipts = branch.flatMap((entry) => {
+        const data = customData(entry, TURN_RECEIPT_ENTRY_TYPE);
+        return data === undefined ? [] : [parseTurnReceipt(data)];
+      });
+      expect(receipts).toHaveLength(2);
+      expect(receipts[1]).toMatchObject({
+        userEntryIds: ["u2"],
+        assistantEntryIds: ["a2"],
+        responseToReceiptId: receipts[0]!.receiptId,
+      });
+    });
+
+    it("drops observation when a run settles without a persisted user", () => {
+      setupCatalog();
+      const branch: SessionEntry[] = [];
+      const h = harness(branch);
+      createAgentMemoryExtension({ wake: vi.fn() })(h.pi);
+      h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
+      expect(() => h.handlers.get("agent_settled")!({}, h.ctx)).not.toThrow();
+      expect(h.actions).toEqual([]);
     });
 
     it("correlates parallel results by call ID and redacts bounded queries", () => {
@@ -1532,7 +1573,6 @@ if (import.meta.vitest) {
 
       h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
       branch.push(user("child-u"));
-      h.handlers.get("turn_start")!({ turnIndex: 0 }, h.ctx);
       branch.push(assistant("child-a"));
       h.handlers.get("agent_settled")!({}, h.ctx);
 
