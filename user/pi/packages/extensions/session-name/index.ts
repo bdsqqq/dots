@@ -1,10 +1,8 @@
-/** auto-names sessions immediately, then checkpoints and summarizes settled turns. */
+/** Auto-names sessions immediately and summarizes settled turns. */
 
 import * as fs from "node:fs";
-import { EventEmitter } from "node:events";
 import * as os from "node:os";
 import * as path from "node:path";
-import { spawn, type ChildProcess } from "node:child_process";
 import type {
   Api,
   AssistantMessage,
@@ -58,37 +56,8 @@ const SESSION_NAME_CONFIG_SCHEMA: ExtensionConfigSchema<SessionNameExtConfig> =
   {
     validate: isSessionNameConfig,
   };
-const CHECKPOINT_ENTRY_TYPE = "@bds_pi/agent-memory/checkpoint";
 const SUMMARY_ENTRY_TYPE = "@bds_pi/session-name/summary";
 const SUMMARY_MAX_CHARS = 8_000;
-let maintenanceWake: ChildProcess | undefined;
-let maintenanceWakePending = false;
-
-export function wakeMemoryMaintenance(
-  spawnProcess: typeof spawn = spawn,
-): void {
-  if (maintenanceWake) {
-    maintenanceWakePending = true;
-    return;
-  }
-  const child = spawnProcess(
-    process.env.PI_MEMORY_BIN || "pi-memory",
-    ["maintain"],
-    { detached: true, stdio: "ignore" },
-  );
-  maintenanceWake = child;
-  const settled = () => {
-    if (maintenanceWake !== child) return;
-    maintenanceWake = undefined;
-    if (maintenanceWakePending) {
-      maintenanceWakePending = false;
-      wakeMemoryMaintenance(spawnProcess);
-    }
-  };
-  child.once("error", settled);
-  child.once("exit", settled);
-  child.unref();
-}
 
 type SessionSummaryEntryData = {
   version: 1;
@@ -129,20 +98,6 @@ function completedAuthoredLeafId(entries: SessionEntry[]): string | null {
       return entry.id;
   }
   return null;
-}
-
-function alreadyCheckpointed(
-  entries: SessionEntry[],
-  throughLeafId: string,
-): boolean {
-  return entries.some(
-    (entry) =>
-      entry.type === "custom" &&
-      entry.customType === CHECKPOINT_ENTRY_TYPE &&
-      isPlainObject(entry.data) &&
-      entry.data.version === 1 &&
-      entry.data.throughLeafId === throughLeafId,
-  );
 }
 
 function validSummary(entry: SessionEntry): SessionSummaryEntryData | null {
@@ -327,16 +282,9 @@ function sessionNameExtension(pi: ExtensionAPI, complete?: Complete): void {
     if (!throughLeafId) return;
     const acceptedUserTurns = acceptedUserTurnCount(branch);
     if (acceptedUserTurns < 1) return;
-    if (alreadyCheckpointed(branch, throughLeafId)) return;
     const sessionId = ctx.sessionManager.getSessionId();
-    pi.appendEntry(CHECKPOINT_ENTRY_TYPE, {
-      version: 1,
-      throughLeafId,
-      acceptedUserTurns,
-    });
-    wakeMemoryMaintenance();
-
     const previous = latestSummary(branch);
+    if (previous?.throughLeafId === throughLeafId) return;
     if (!summaryDue(acceptedUserTurns, previous, cfg.renameInterval)) return;
     const model =
       ctx.modelRegistry.find(cfg.model.provider, cfg.model.id) ?? ctx.model;
@@ -476,14 +424,9 @@ if (import.meta.vitest) {
     };
   }
 
-  beforeEach(() => {
-    process.env.PI_MEMORY_BIN = "/usr/bin/true";
-  });
+  beforeEach(() => {});
 
   afterEach(() => {
-    delete process.env.PI_MEMORY_BIN;
-    maintenanceWake = undefined;
-    maintenanceWakePending = false;
     vi.restoreAllMocks();
     clearConfigCache();
     setGlobalSettingsPath(path.join(tmpdir, `missing-${Date.now()}`));
@@ -503,37 +446,12 @@ if (import.meta.vitest) {
       ]);
     });
 
-    it("coalesces detached maintenance wakes", () => {
-      const children: ChildProcess[] = [];
-      const spawnProcess = vi.fn(() => {
-        const child = new EventEmitter() as ChildProcess;
-        child.unref = vi.fn();
-        children.push(child);
-        return child;
-      }) as unknown as typeof spawn;
-      wakeMemoryMaintenance(spawnProcess);
-      wakeMemoryMaintenance(spawnProcess);
-      wakeMemoryMaintenance(spawnProcess);
-      expect(spawnProcess).toHaveBeenCalledOnce();
-
-      children[0]!.emit("exit", 0, null);
-
-      expect(spawnProcess).toHaveBeenCalledTimes(2);
-      children[1]!.emit("exit", 0, null);
-      expect(spawnProcess).toHaveBeenCalledTimes(2);
-    });
-
-    it("persists a checkpoint when summary auth fails", async () => {
+    it("skips summary when auth fails", async () => {
       const branch = [user("u1", "goal"), assistant("a1")];
       const h = harness(branch);
       sessionNameExtension(h.pi, vi.fn());
       await h.handlers.get("agent_settled")?.({}, context(branch, false));
-      expect(h.appended).toEqual([
-        {
-          customType: CHECKPOINT_ENTRY_TYPE,
-          data: { version: 1, throughLeafId: "a1", acceptedUserTurns: 1 },
-        },
-      ]);
+      expect(h.appended).toEqual([]);
     });
 
     it("retries a missing first summary at the next interval", async () => {
@@ -565,14 +483,19 @@ if (import.meta.vitest) {
       expect(h.appended.at(-1)?.data.summary).toBe("recovered summary");
     });
 
-    it("does not checkpoint the same completed leaf twice", async () => {
+    it("does not summarize the same completed leaf twice", async () => {
       const branch = [user("u1", "goal"), assistant("a1")];
       const h = harness(branch);
-      sessionNameExtension(h.pi, vi.fn());
-      await h.handlers.get("agent_settled")?.({}, context(branch, false));
-      await h.handlers.get("agent_settled")?.({}, context(branch, false));
+      const complete = vi.fn().mockResolvedValue({
+        stopReason: "stop",
+        content: [{ type: "text", text: "durable result" }],
+      });
+      sessionNameExtension(h.pi, complete as Complete);
+      await h.handlers.get("agent_settled")?.({}, context(branch));
+      await h.handlers.get("agent_settled")?.({}, context(branch));
+      expect(complete).toHaveBeenCalledOnce();
       expect(h.appended).toHaveLength(1);
-      expect(h.appended[0]?.customType).toBe(CHECKPOINT_ENTRY_TYPE);
+      expect(h.appended[0]?.customType).toBe(SUMMARY_ENTRY_TYPE);
     });
 
     it("summarizes the complete authored turn without tools or reasoning", async () => {

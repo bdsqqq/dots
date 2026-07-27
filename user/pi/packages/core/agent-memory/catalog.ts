@@ -359,11 +359,11 @@ export function renderHotManifest(manifest: HotManifest): string {
   return lines.join("\n");
 }
 
-export function loadHotManifest(
+export function loadHotManifestData(
   cfg: Pick<MemoryConfig, "data">,
   catalog: Catalog,
   cwd: string,
-): string | undefined {
+): HotManifest | undefined {
   try {
     const value: unknown = JSON.parse(readFileSync(hotPath(cfg, cwd), "utf8"));
     if (!value || typeof value !== "object") return undefined;
@@ -390,11 +390,21 @@ export function loadHotManifest(
       })
     )
       return undefined;
-    const rendered = renderHotManifest(manifest);
-    return rendered.length <= HOT_MAX_CHARS ? rendered : undefined;
+    return renderHotManifest(manifest).length <= HOT_MAX_CHARS
+      ? manifest
+      : undefined;
   } catch {
     return undefined;
   }
+}
+
+export function loadHotManifest(
+  cfg: Pick<MemoryConfig, "data">,
+  catalog: Catalog,
+  cwd: string,
+): string | undefined {
+  const manifest = loadHotManifestData(cfg, catalog, cwd);
+  return manifest ? renderHotManifest(manifest) : undefined;
 }
 
 export function writeCatalog(

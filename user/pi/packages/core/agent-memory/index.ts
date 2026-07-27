@@ -30,6 +30,7 @@ import {
   renderPromptCatalog,
   scanCatalog,
   writeCatalog,
+  type Catalog,
   type MemoryConfig,
 } from "./catalog.js";
 import {
@@ -59,6 +60,12 @@ import {
   verifyHistory,
 } from "./history.js";
 import { buildSafeEvidence, type SafeEvidence } from "./evidence.js";
+import {
+  canonicalTurnReceiptId,
+  parseTurnReceiptObservation,
+  TURN_RECEIPT_ENTRY_TYPE,
+  validateTurnReceiptBinding,
+} from "./receipt.js";
 import { processPipelineBatches } from "./pipeline.js";
 import {
   analyzeCorpusMaintenance,
@@ -318,14 +325,40 @@ function customData(
   return entry.data;
 }
 
-function checkpoint(entry: Entry): Record<string, unknown> | undefined {
+type Checkpoint = {
+  version: 2;
+  sessionId: string;
+  throughLeafId: string;
+  acceptedUserTurns: number;
+};
+
+function checkpoint(entry: Entry): Checkpoint | undefined {
   const data = customData(entry, "@bds_pi/agent-memory/checkpoint");
-  return data?.version === 1 &&
+  return data?.version === 2 &&
+    Object.keys(data).sort().join("\0") ===
+      ["acceptedUserTurns", "sessionId", "throughLeafId", "version"].join(
+        "\0",
+      ) &&
+    typeof data.sessionId === "string" &&
+    data.sessionId.length > 0 &&
     typeof data.throughLeafId === "string" &&
+    data.throughLeafId.length > 0 &&
     Number.isInteger(data.acceptedUserTurns) &&
-    Number(data.acceptedUserTurns) >= 0
-    ? data
+    Number(data.acceptedUserTurns) >= 1
+    ? (data as Checkpoint)
     : undefined;
+}
+
+function acceptedUserTurns(entries: Entry[], throughLeafId: string): number {
+  const through = entries.findIndex((entry) => entry.id === throughLeafId);
+  return entries
+    .slice(0, through + 1)
+    .filter(
+      (entry) =>
+        entry.type === "message" &&
+        object(entry.message) &&
+        entry.message.role === "user",
+    ).length;
 }
 
 function visible(entry: Entry): string {
@@ -371,16 +404,55 @@ function latestSummary(
   return result;
 }
 
-export function renderSnapshot(snapshot: Snapshot): {
+export function renderSnapshot(
+  snapshot: Snapshot,
+  observationCatalog?: Catalog,
+): {
   markdown: string;
   jobs: Job[];
 } {
+  for (const entry of snapshot.entries) {
+    const data = customData(entry, TURN_RECEIPT_ENTRY_TYPE);
+    if (data === undefined) continue;
+    const observed = parseTurnReceiptObservation(data);
+    const stale = observationCatalog
+      ? observed.receipt.exposures.filter(
+          (exposure) =>
+            !observationCatalog.entries.some(
+              (candidate) =>
+                candidate.memoryId === exposure.memoryId &&
+                candidate.sha256 === exposure.artifactSha256,
+            ),
+        ).length
+      : 0;
+    const malformed = observed.diagnostics.reduce(
+      (sum, diagnostic) => sum + diagnostic.count,
+      0,
+    );
+    if (malformed || stale)
+      console.warn(
+        `${snapshot.source}:${entry.id}: ignored ${malformed} malformed and ${stale} stale receipt exposure(s)`,
+      );
+  }
   const sections: string[] = [
     `# pi session ${snapshot.header.id}`,
     `workspace: ${snapshot.header.cwd}`,
   ];
   const jobs = new Map<string, Job>();
   for (const chain of snapshot.chains) {
+    // Turn receipts are correlation observations, not evidence authentication.
+    // Projection derives evidence from messages and admits checkpoints by their
+    // native session origin and branch count, never by exposure claims.
+    for (const entry of chain) {
+      const data = customData(entry, TURN_RECEIPT_ENTRY_TYPE);
+      if (data !== undefined) {
+        const receipt = parseTurnReceiptObservation(data).receipt;
+        validateTurnReceiptBinding(chain, entry.id, receipt, {
+          sessionId: receipt.sessionId,
+          workspace: receipt.workspace,
+        });
+      }
+    }
     const leaf = chain.at(-1);
     if (!leaf) continue;
     let name = "";
@@ -391,9 +463,11 @@ export function renderSnapshot(snapshot: Snapshot): {
       const data = checkpoint(entry);
       return (
         data !== undefined &&
+        data.sessionId === snapshot.header.id &&
         chain
           .slice(0, index)
-          .some((candidate) => candidate.id === data.throughLeafId)
+          .some((candidate) => candidate.id === data.throughLeafId) &&
+        data.acceptedUserTurns === acceptedUserTurns(chain, data.throughLeafId)
       );
     });
     const checkpointEntry = checkpointEntries.at(-1);
@@ -468,6 +542,7 @@ async function lock<T>(fn: () => T | Promise<T>): Promise<T | undefined> {
 
 function projectUnlocked(): void {
   const cfg = config();
+  const observationCatalog = scanCatalog(cfg.root);
   const projectionDir = contained(cfg.data, join(cfg.data, "pi-sessions"));
   const pending = contained(cfg.data, join(cfg.data, "queue/pending"));
   const quarantine = contained(cfg.data, join(cfg.data, "quarantine"));
@@ -492,7 +567,7 @@ function projectUnlocked(): void {
         projectionDir,
         join(projectionDir, `${snapshot.header.id}.md`),
       );
-      const rendered = renderSnapshot(snapshot);
+      const rendered = renderSnapshot(snapshot, observationCatalog);
       atomic(output, rendered.markdown);
       for (const job of rendered.jobs) {
         job.projectionPath = output;
@@ -799,12 +874,19 @@ function validateJob(job: Job): string {
     (item) => item.id === job.checkpointEntryId,
   );
   const exactChain = chain.slice(0, checkpointIndex + 1);
-  const rendered = renderSnapshot({
-    ...snapshot,
-    entries: exactChain,
-    chains: [exactChain],
-  }).markdown;
-  return rendered.slice(0, MAX_PROJECTION);
+  const rendered = renderSnapshot(
+    {
+      ...snapshot,
+      entries: exactChain,
+      chains: [exactChain],
+    },
+    scanCatalog(config().root),
+  );
+  if (
+    !rendered.jobs.some((candidate) => candidate.checkpointEntryId === entry.id)
+  )
+    throw new Error("checkpoint is not linked to a valid turn receipt");
+  return rendered.markdown.slice(0, MAX_PROJECTION);
 }
 
 function consolidateV1Unlocked(limit: number): boolean {
@@ -2084,11 +2166,149 @@ if (import.meta.vitest) {
       expect(renderSnapshot(snapshot).markdown).toContain("answer");
       expect(renderSnapshot(snapshot).markdown).not.toMatch(/secret|bash|leak/);
     });
+    it("requires native checkpoints to match the branch user count", () => {
+      const identity = {
+        version: 1 as const,
+        sessionId: "s",
+        workspace: "/tmp",
+        userEntryIds: ["u"],
+        assistantEntryIds: ["a"],
+        catalogSha256: "a".repeat(64),
+        exposures: [],
+        outcomes: [],
+        redactions: {},
+        recordedAt: "2026-01-01T00:00:00.000Z",
+      };
+      const receipt: Entry = {
+        type: "custom",
+        id: "r",
+        parentId: "a",
+        customType: TURN_RECEIPT_ENTRY_TYPE,
+        data: { ...identity, receiptId: canonicalTurnReceiptId(identity) },
+      };
+      const checkpointEntry: Entry = {
+        type: "custom",
+        id: "cp",
+        parentId: "r",
+        customType: "@bds_pi/agent-memory/checkpoint",
+        data: {
+          version: 2,
+          sessionId: "s",
+          throughLeafId: "u",
+          acceptedUserTurns: 1,
+        },
+      };
+      const chain = [
+        message("u", null, "user", "goal"),
+        message("a", "u", "assistant", "answer"),
+        receipt,
+        checkpointEntry,
+      ];
+      const snapshot: Snapshot = {
+        source: "/tmp/s",
+        header,
+        entries: chain,
+        chains: [chain],
+      };
+      expect(renderSnapshot(snapshot).jobs).toHaveLength(1);
+      (checkpointEntry.data as Record<string, unknown>).acceptedUserTurns = 2;
+      expect(renderSnapshot(snapshot).jobs).toEqual([]);
+    });
+
+    it("queues only child-native checkpoints from a fork projection", () => {
+      const receiptEntry = (
+        id: string,
+        parentId: string,
+        sessionId: string,
+        userEntryIds: string[],
+        assistantEntryIds: string[],
+      ): Entry => {
+        const identity = {
+          version: 1 as const,
+          sessionId,
+          workspace: "/tmp",
+          userEntryIds,
+          assistantEntryIds,
+          catalogSha256: "a".repeat(64),
+          exposures: [],
+          outcomes: [],
+          redactions: {},
+          recordedAt: "2026-01-01T00:00:00.000Z",
+        };
+        return {
+          type: "custom",
+          id,
+          parentId,
+          customType: TURN_RECEIPT_ENTRY_TYPE,
+          data: { ...identity, receiptId: canonicalTurnReceiptId(identity) },
+        };
+      };
+      const chain: Entry[] = [
+        message("parent-u", null, "user", "parent"),
+        message("parent-a", "parent-u", "assistant", "parent answer"),
+        receiptEntry(
+          "parent-r",
+          "parent-a",
+          "parent-session",
+          ["parent-u"],
+          ["parent-a"],
+        ),
+        {
+          type: "custom",
+          id: "parent-cp",
+          parentId: "parent-r",
+          customType: "@bds_pi/agent-memory/checkpoint",
+          data: {
+            version: 2,
+            sessionId: "parent-session",
+            throughLeafId: "parent-a",
+            acceptedUserTurns: 1,
+          },
+        },
+        message("child-u", "parent-cp", "user", "child"),
+        message("child-a", "child-u", "assistant", "child answer"),
+        receiptEntry(
+          "child-r",
+          "child-a",
+          "child-session",
+          ["child-u"],
+          ["child-a"],
+        ),
+        {
+          type: "custom",
+          id: "child-cp",
+          parentId: "child-r",
+          customType: "@bds_pi/agent-memory/checkpoint",
+          data: {
+            version: 2,
+            sessionId: "child-session",
+            throughLeafId: "child-a",
+            acceptedUserTurns: 2,
+          },
+        },
+      ];
+      const projected = renderSnapshot({
+        source: "/tmp/child",
+        header: { ...header, id: "child-session" },
+        entries: chain,
+        chains: [chain],
+      });
+      expect(projected.jobs.map((job) => job.checkpointEntryId)).toEqual([
+        "child-cp",
+      ]);
+      expect(projected.markdown).toContain("child answer");
+    });
+
     it("uses checkpoint identity for deterministic jobs", () => {
       const cp: Entry = {
         type: "custom",
         customType: "@bds_pi/agent-memory/checkpoint",
-        data: { version: 1, throughLeafId: "u", acceptedUserTurns: 1 },
+        data: {
+          version: 2,
+          sessionId: "s",
+          throughLeafId: "u",
+          acceptedUserTurns: 1,
+        },
         id: "cp",
         parentId: "u",
       };
@@ -2108,14 +2328,24 @@ if (import.meta.vitest) {
       const first: Entry = {
         type: "custom",
         customType: "@bds_pi/agent-memory/checkpoint",
-        data: { version: 1, throughLeafId: "u1", acceptedUserTurns: 1 },
+        data: {
+          version: 2,
+          sessionId: "s",
+          throughLeafId: "u1",
+          acceptedUserTurns: 1,
+        },
         id: "cp1",
         parentId: "u1",
       };
       const second: Entry = {
         type: "custom",
         customType: "@bds_pi/agent-memory/checkpoint",
-        data: { version: 1, throughLeafId: "u2", acceptedUserTurns: 2 },
+        data: {
+          version: 2,
+          sessionId: "s",
+          throughLeafId: "u2",
+          acceptedUserTurns: 2,
+        },
         id: "cp2",
         parentId: "u2",
       };
@@ -2143,7 +2373,12 @@ if (import.meta.vitest) {
         {
           type: "custom",
           customType: "@bds_pi/agent-memory/checkpoint",
-          data: { version: 1, throughLeafId: "a1", acceptedUserTurns: 1 },
+          data: {
+            version: 2,
+            sessionId: "s",
+            throughLeafId: "a1",
+            acceptedUserTurns: 1,
+          },
           id: "cp",
           parentId: "a1",
         },
@@ -2172,7 +2407,12 @@ if (import.meta.vitest) {
         {
           type: "custom",
           customType: "@bds_pi/agent-memory/checkpoint",
-          data: { version: 1, throughLeafId: "u1", acceptedUserTurns: 1 },
+          data: {
+            version: 2,
+            sessionId: "s",
+            throughLeafId: "u1",
+            acceptedUserTurns: 1,
+          },
           id: "cp1",
           parentId: "u1",
         },
@@ -2180,7 +2420,12 @@ if (import.meta.vitest) {
         {
           type: "custom",
           customType: "@bds_pi/agent-memory/checkpoint",
-          data: { version: 1, throughLeafId: "a", acceptedUserTurns: 2 },
+          data: {
+            version: 2,
+            sessionId: "forked",
+            throughLeafId: "a",
+            acceptedUserTurns: 1,
+          },
           id: "cpa",
           parentId: "a",
         },
@@ -2188,7 +2433,12 @@ if (import.meta.vitest) {
         {
           type: "custom",
           customType: "@bds_pi/agent-memory/checkpoint",
-          data: { version: 1, throughLeafId: "b", acceptedUserTurns: 2 },
+          data: {
+            version: 2,
+            sessionId: "forked",
+            throughLeafId: "b",
+            acceptedUserTurns: 1,
+          },
           id: "cpb",
           parentId: "b",
         },
@@ -2274,7 +2524,8 @@ if (import.meta.vitest) {
             type: "custom",
             customType: "@bds_pi/agent-memory/checkpoint",
             data: {
-              version: 1,
+              version: 2,
+              sessionId: "session",
               throughLeafId: "before-boundary",
               acceptedUserTurns: 1,
             },
@@ -2286,7 +2537,8 @@ if (import.meta.vitest) {
             type: "custom",
             customType: "@bds_pi/agent-memory/checkpoint",
             data: {
-              version: 1,
+              version: 2,
+              sessionId: "session",
               throughLeafId: "before-boundary",
               acceptedUserTurns: 2,
             },
@@ -2303,7 +2555,8 @@ if (import.meta.vitest) {
             type: "custom",
             customType: "@bds_pi/agent-memory/checkpoint",
             data: {
-              version: 1,
+              version: 2,
+              sessionId: "session",
               throughLeafId: "after-boundary",
               acceptedUserTurns: 2,
             },
@@ -2314,7 +2567,8 @@ if (import.meta.vitest) {
             type: "custom",
             customType: "@bds_pi/agent-memory/checkpoint",
             data: {
-              version: 1,
+              version: 2,
+              sessionId: "session",
               throughLeafId: "before-boundary",
               acceptedUserTurns: 3,
             },

@@ -8,7 +8,9 @@
   "exports": {
     ".": "./index.ts",
     "./catalog": "./catalog.ts",
-    "./events": "./events.ts"
+    "./events": "./events.ts",
+    "./evidence": "./evidence.ts",
+    "./receipt": "./receipt.ts"
   },
   "dependencies": {
     "@bds_pi/config": "workspace:*",
