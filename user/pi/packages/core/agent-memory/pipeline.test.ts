@@ -46,6 +46,8 @@ function evidence(checkpoint = "checkpoint"): SafeEvidence {
     records: [],
     tools: [],
     redactions: {},
+    checkpointFrontiers: { [checkpoint]: "leaf" },
+    emittedEntryIds: ["leaf"],
   };
 }
 

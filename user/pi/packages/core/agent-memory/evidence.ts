@@ -23,6 +23,8 @@ export type SafeEvidence = {
     errors: number;
   }>;
   redactions: Record<string, number>;
+  checkpointFrontiers?: Record<string, string>;
+  emittedEntryIds?: string[];
 };
 
 const REDACTIONS: Array<[string, RegExp]> = [
@@ -217,6 +219,7 @@ export function buildSafeEvidence(options: {
   workspace: string;
   entries: BranchEntry[];
   checkpointEntryIds: string[];
+  checkpointFrontiers: Record<string, string>;
   throughLeafId: string;
   branchEntryIds: string[];
 }): SafeEvidence {
@@ -317,5 +320,7 @@ export function buildSafeEvidence(options: {
     records,
     tools: [...tools.values()].sort((a, b) => a.name.localeCompare(b.name)),
     redactions,
+    checkpointFrontiers: options.checkpointFrontiers,
+    emittedEntryIds: options.entries.map((entry) => entry.id),
   };
 }

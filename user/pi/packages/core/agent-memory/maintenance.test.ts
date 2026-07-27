@@ -30,6 +30,7 @@ function memory(
   title: string,
   body: string,
   sources: string[] = ["pi://session/checkpoint"],
+  scope = "global",
 ): void {
   mkdirSync(cfg.root, { recursive: true });
   writeFileSync(
@@ -39,7 +40,7 @@ function memory(
         memoryId: id,
         title,
         kind: "pattern",
-        scope: "global",
+        scope,
         description: title,
         triggers: [title],
         keywords: [],
@@ -145,6 +146,77 @@ describe("corpus health", () => {
         }),
       }),
     ]);
+  });
+
+  it("does not combine source fragmentation across scopes", () => {
+    const cfg = config();
+    const repeated =
+      "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu";
+    memory(cfg, "mem_scope000000000000000001", "global one", repeated);
+    memory(cfg, "mem_scope000000000000000002", "global two", repeated);
+    memory(
+      cfg,
+      "mem_scope000000000000000003",
+      "project one",
+      repeated,
+      ["pi://session/checkpoint"],
+      "/tmp/project",
+    );
+
+    expect(
+      scanCorpusHealth(cfg).pathologies.filter(
+        (item) => item.type === "source-fragmentation",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("measures combined global and project prompt pressure", () => {
+    const cfg = config();
+    for (let index = 0; index < 20; index++)
+      memory(
+        cfg,
+        `mem_global${String(index).padStart(15, "0")}`,
+        `global ${index}`,
+        `global body ${index}`,
+      );
+    for (let index = 0; index < 11; index++)
+      memory(
+        cfg,
+        `mem_project${String(index).padStart(14, "0")}`,
+        `project ${index}`,
+        `project body ${index}`,
+        ["pi://session/checkpoint"],
+        "/tmp/project",
+      );
+
+    const pressure = scanCorpusHealth(cfg).pathologies.filter(
+      (item) => item.type === "prompt-pressure",
+    );
+    expect(pressure).toHaveLength(1);
+    expect(pressure[0]).toMatchObject({
+      scope: "/tmp/project",
+      metric: { value: 31, threshold: 30 },
+    });
+    expect(pressure[0]!.basis.targets).toHaveLength(31);
+  });
+
+  it("reports prompt pressure when one eligible entry exceeds the render budget", () => {
+    const cfg = config();
+    memory(
+      cfg,
+      "mem_largecatalogentry0000000",
+      `large ${"x".repeat(8_192)}`,
+      "small body",
+      ["pi://session/checkpoint"],
+      "/tmp/project",
+    );
+    expect(scanCorpusHealth(cfg).pathologies).toContainEqual(
+      expect.objectContaining({
+        type: "prompt-pressure",
+        scope: "/tmp/project",
+        metric: expect.objectContaining({ value: 1, threshold: 30 }),
+      }),
+    );
   });
 
   it("reports prompt pressure without proposing corpus prose changes", () => {

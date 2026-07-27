@@ -88,6 +88,7 @@ describe("safe trajectory evidence", () => {
       workspace: "/tmp/project",
       entries,
       checkpointEntryIds: ["cp"],
+      checkpointFrontiers: { cp: "final" },
       throughLeafId: "final",
       branchEntryIds: entries.map((entry) => entry.id),
     });
