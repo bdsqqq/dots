@@ -48,7 +48,7 @@ in
       config = {
         ProgramArguments = [ "${agentMemory}/bin/pi-memory" "maintain" ];
         RunAtLoad = true;
-        StartInterval = 900;
+        StartInterval = 3600;
         ProcessType = "Background";
         StandardOutPath = "${config.home.homeDirectory}/Library/Logs/pi-memory.log";
         StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/pi-memory.log";
@@ -67,7 +67,7 @@ in
       Unit.Description = "Periodic pi session and agent memory maintenance";
       Timer = {
         OnBootSec = "5m";
-        OnUnitActiveSec = "15m";
+        OnUnitActiveSec = "1h";
         Persistent = true;
       };
       Install.WantedBy = [ "timers.target" ];
