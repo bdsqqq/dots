@@ -86,11 +86,22 @@ class LabeledEditor extends CustomEditor {
     position: "top" | "bottom" = "top",
     align: "left" | "right" = "left",
   ): void {
+    const current = this.labels.get(key);
+    if (
+      current?.text === text &&
+      current.position === position &&
+      current.align === align
+    )
+      return;
     this.labels.set(key, { key, text, position, align });
+    this.invalidate();
+    this.tui.requestRender();
   }
 
   removeLabel(key: string): void {
-    this.labels.delete(key);
+    if (!this.labels.delete(key)) return;
+    this.invalidate();
+    this.tui.requestRender();
   }
 
   override invalidate(): void {
@@ -380,9 +391,9 @@ async function getGitDiffStats(cwd: string): Promise<string> {
 
 const SPINNER_FRAMES = ["·", "•", "*", "⁑", "⁂", "⁑", "*", "•", "·"];
 
-type ActivityPhase = "idle" | "thinking" | "tool" | "streaming";
+export type ActivityPhase = "idle" | "thinking" | "tool" | "streaming";
 
-interface ActivityState {
+export interface ActivityState {
   phase: ActivityPhase;
   turnIndex: number;
   /** tool names currently in-flight (supports parallel tool calls) */
@@ -455,11 +466,18 @@ function describeToolCall(toolName: string, args: any): string {
 function renderActivity(state: ActivityState): string {
   if (state.phase === "idle") return "";
 
+  return [
+    SPINNER_FRAMES[state.frame % SPINNER_FRAMES.length]!,
+    renderActivityDetail(state),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** stable activity text for surfaces that cannot animate, such as Live Activities. */
+function renderActivityDetail(state: ActivityState): string {
+  if (state.phase === "idle") return "";
   const parts: string[] = [];
-
-  // animated spinner
-  parts.push(SPINNER_FRAMES[state.frame % SPINNER_FRAMES.length]!);
-
   // turn number (0-indexed from the event, display as 1-indexed)
   if (state.turnIndex > 0) {
     parts.push(`turn ${state.turnIndex + 1}`);
@@ -723,6 +741,7 @@ export {
   formatElapsed,
   describeToolCall,
   renderActivity,
+  renderActivityDetail,
   createActivityState,
   updateStatsLabels,
   LabeledEditor,
@@ -737,7 +756,7 @@ if (import.meta.vitest) {
   describe("LabeledEditor border building", () => {
     function createPlainEditor(): LabeledEditor {
       return new LabeledEditor(
-        {} as any,
+        { requestRender() {} } as any,
         {} as any,
         {} as any,
         {
@@ -821,7 +840,7 @@ if (import.meta.vitest) {
     it("invalidate clears cached themed border output for repeated same-width renders", () => {
       let themeTag = "[old]";
       const editor = new LabeledEditor(
-        {} as any,
+        { requestRender() {} } as any,
         {} as any,
         {} as any,
         {

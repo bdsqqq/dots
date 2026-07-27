@@ -17,17 +17,23 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { createActivityState, renderActivityDetail } from "@bds_pi/editor";
 import { Type } from "typebox";
 import { lock } from "proper-lockfile";
 
 type SessionStatus = "working" | "done" | "error";
+export type HarkConnection = "paired" | "disconnected";
 
 type SessionRecord = {
   id: string;
   pid: number;
   cwd: string;
+  blocked: boolean;
+  enabled: boolean;
   name: string;
   status: SessionStatus;
+  activity: string;
+  activityAt: number;
   updatedAt: number;
 };
 
@@ -35,11 +41,15 @@ type ActivityView = {
   title: string;
   status: string;
   detail: string;
+  symbol: "build" | "success" | "warning";
 };
 
 type PublisherState = {
   active: boolean;
+  connection: HarkConnection;
+  generation: number;
   hash: string;
+  pendingSignature: string;
   publishedAt: number;
   startedAt: number;
   retryAt: number;
@@ -49,6 +59,7 @@ type HarkResult = Record<string, unknown>;
 
 const ACTIVITY_KEY = "pi-sessions-v1";
 const HEARTBEAT_MS = 15_000;
+const STATUS_POLL_MS = 2_000;
 const STALE_RECORD_MS = 60_000;
 const REFRESH_MS = 3 * 60 * 60 * 1_000;
 const RESTART_MS = 7 * 60 * 60 * 1_000;
@@ -56,7 +67,10 @@ const RETRY_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 30_000;
 const EMPTY_PUBLISHER: PublisherState = {
   active: false,
+  connection: "disconnected",
+  generation: 0,
   hash: "",
+  pendingSignature: "",
   publishedAt: 0,
   startedAt: 0,
   retryAt: 0,
@@ -86,26 +100,33 @@ function statusIcon(status: SessionStatus): string {
   return "✓";
 }
 
+export function renderHarkWidgetStatus(
+  connection: HarkConnection,
+  waitingForResponse: boolean,
+): string {
+  if (waitingForResponse)
+    return "waiting for live activity response from iph16";
+  return connection === "paired"
+    ? "live activity paired to iph16"
+    : "live activity disconnected from iph16";
+}
+
 export function renderActivity(records: SessionRecord[]): ActivityView {
   const ordered = [...records].sort((a, b) => {
-    const rank = { error: 0, working: 1, done: 2 } satisfies Record<
+    const rank = { working: 0, error: 1, done: 2 } satisfies Record<
       SessionStatus,
       number
     >;
-    return rank[a.status] - rank[b.status] || a.name.localeCompare(b.name);
+    return (
+      rank[a.status] - rank[b.status] ||
+      b.activityAt - a.activityAt ||
+      a.name.localeCompare(b.name)
+    );
   });
-  const counts = {
-    working: ordered.filter((record) => record.status === "working").length,
-    done: ordered.filter((record) => record.status === "done").length,
-    error: ordered.filter((record) => record.status === "error").length,
-  };
-  const status = (["working", "done", "error"] as const)
-    .filter((key) => counts[key] > 0)
-    .map((key) => `${counts[key]} ${key}`)
-    .join(" · ");
-
+  const primary = ordered[0]!;
   const items = ordered.map(
-    (record) => `${statusIcon(record.status)} ${truncate(record.name, 48)}`,
+    (record) =>
+      `${statusIcon(record.status)} ${truncate(record.name, 42)} — ${truncate(record.activity, 48)}`,
   );
   const visible: string[] = [];
   for (let index = 0; index < items.length; index++) {
@@ -121,16 +142,21 @@ export function renderActivity(records: SessionRecord[]): ActivityView {
   const detail = `${visible.join(" · ")}${hidden > 0 ? `${visible.length ? " · " : ""}+${hidden} more` : ""}`;
 
   return {
-    title: "pi sessions",
-    status,
+    title: truncate(primary.name, 80),
+    status: truncate(primary.activity, 60),
     detail,
+    symbol: ordered.some((record) => record.status === "error")
+      ? "warning"
+      : ordered.some((record) => record.status === "working")
+        ? "build"
+        : "success",
   };
 }
 
-function isSessionRecord(value: unknown): value is SessionRecord {
-  if (!value || typeof value !== "object") return false;
+function parseSessionRecord(value: unknown): SessionRecord | null {
+  if (!value || typeof value !== "object") return null;
   const record = value as Partial<SessionRecord>;
-  return (
+  const valid =
     typeof record.id === "string" &&
     typeof record.pid === "number" &&
     typeof record.cwd === "string" &&
@@ -138,8 +164,24 @@ function isSessionRecord(value: unknown): value is SessionRecord {
     (record.status === "working" ||
       record.status === "done" ||
       record.status === "error") &&
-    typeof record.updatedAt === "number"
-  );
+    typeof record.updatedAt === "number";
+  if (!valid) return null;
+  return {
+    id: record.id!,
+    pid: record.pid!,
+    cwd: record.cwd!,
+    blocked: record.blocked === true,
+    enabled: record.enabled === true,
+    name: record.name!,
+    status: record.status!,
+    activity:
+      typeof record.activity === "string" ? record.activity : record.status!,
+    activityAt:
+      typeof record.activityAt === "number"
+        ? record.activityAt
+        : record.updatedAt!,
+    updatedAt: record.updatedAt!,
+  };
 }
 
 async function atomicJson(path: string, value: unknown): Promise<void> {
@@ -157,7 +199,7 @@ async function readJson<T>(path: string, fallback: T): Promise<T> {
     return JSON.parse(await readFile(path, "utf8")) as T;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.error(`[@bds_pi/hark] failed to read ${path}:`, error);
+      console.error(`[@bds_pi/live-activity] failed to read ${path}:`, error);
     }
     return fallback;
   }
@@ -216,12 +258,12 @@ async function listCurrentRecords(directory: string): Promise<SessionRecord[]> {
   for (const name of await readdir(directory)) {
     if (!name.endsWith(".json")) continue;
     const path = join(directory, name);
-    const record = await readJson<unknown>(path, null);
-    if (!isSessionRecord(record) || now - record.updatedAt > STALE_RECORD_MS) {
+    const record = parseSessionRecord(await readJson<unknown>(path, null));
+    if (!record || now - record.updatedAt > STALE_RECORD_MS) {
       await unlink(path).catch(() => {});
       continue;
     }
-    records.push(record);
+    if (record.enabled) records.push(record);
   }
   return records;
 }
@@ -230,19 +272,32 @@ function activityHash(view: ActivityView): string {
   return createHash("sha256").update(JSON.stringify(view)).digest("hex");
 }
 
-function requireAccepted(
-  result: Awaited<ReturnType<typeof runHark>>,
-  operation: string,
-): void {
-  if (result.code === 7) {
-    throw new Error(`No Hark device accepted the ${operation}.`);
-  }
+function activityMutationIdentity(
+  publisher: PublisherState,
+  operation: "start" | "update",
+  hash: string,
+): { generation: number; pendingMatches: boolean; signature: string } {
+  const signature = `${operation}:${hash}`;
+  const pendingMatches = publisher.pendingSignature === signature;
+  return {
+    generation: pendingMatches
+      ? publisher.generation
+      : (typeof publisher.generation === "number" ? publisher.generation : 0) +
+        1,
+    pendingMatches,
+    signature,
+  };
+}
+
+export function isActivityMutationAccepted(exitCode: number): boolean {
+  // Hark uses 7 when the server mutation succeeded but APNs accepted no push.
+  return exitCode === 0 || exitCode === 7;
 }
 
 async function startActivity(
   view: ActivityView,
   idempotencyKey: string,
-): Promise<void> {
+): Promise<HarkConnection> {
   const result = await runHark([
     "activity",
     "start",
@@ -258,29 +313,47 @@ async function startActivity(
     "--detail",
     view.detail,
     "--privacy",
-    "private",
+    "standard",
+    "--symbol",
+    view.symbol,
     "--idempotency-key",
     idempotencyKey,
   ]);
-  requireAccepted(result, "Live Activity start");
+  if (!isActivityMutationAccepted(result.code)) {
+    throw new Error(
+      `Unexpected Live Activity provider exit code: ${result.code}`,
+    );
+  }
+  return result.code === 0 ? "paired" : "disconnected";
 }
 
 async function updateActivity(
   view: ActivityView,
   idempotencyKey: string,
-): Promise<void> {
+): Promise<HarkConnection> {
   const result = await runHark([
     "activity",
     "update",
     ACTIVITY_KEY,
+    "--title",
+    view.title,
     "--status",
     view.status,
     "--detail",
     view.detail,
+    "--privacy",
+    "standard",
+    "--symbol",
+    view.symbol,
     "--idempotency-key",
     idempotencyKey,
   ]);
-  requireAccepted(result, "Live Activity update");
+  if (!isActivityMutationAccepted(result.code)) {
+    throw new Error(
+      `Unexpected Live Activity provider exit code: ${result.code}`,
+    );
+  }
+  return result.code === 0 ? "paired" : "disconnected";
 }
 
 class SessionActivity {
@@ -291,30 +364,106 @@ class SessionActivity {
   private recordPath = "";
   private record: SessionRecord | null = null;
   private heartbeat: NodeJS.Timeout | undefined;
+  private statusPoll: NodeJS.Timeout | undefined;
   private writes: Promise<void> = Promise.resolve();
-  private lastError = "";
+  private reconcileRequested = false;
+  private forceReconcileRequested = false;
+  private reconciling: Promise<void> | null = null;
 
-  constructor(private readonly pi: ExtensionAPI) {}
+  constructor(
+    private readonly pi: ExtensionAPI,
+    private readonly getActivityText: () => string,
+    private readonly onConnection: (connection: HarkConnection) => void,
+  ) {}
 
   async start(ctx: ExtensionContext): Promise<void> {
     const sessionId = ctx.sessionManager.getSessionId();
+    const now = Date.now();
     this.recordPath = join(
       this.recordsDirectory,
       `${process.pid}-${sessionId}.json`,
+    );
+    const previous = parseSessionRecord(
+      await readJson<unknown>(this.recordPath, null),
     );
     this.record = {
       id: sessionId,
       pid: process.pid,
       cwd: ctx.cwd,
+      blocked: previous?.blocked === true,
+      enabled: previous?.enabled === true,
       name: this.sessionName(ctx),
       status: ctx.isIdle() ? "done" : "working",
-      updatedAt: Date.now(),
+      activity: ctx.isIdle() ? "done" : "thinking",
+      activityAt: now,
+      updatedAt: now,
     };
+    if (this.record.enabled) {
+      await this.publishRecord();
+      this.startHeartbeat();
+    } else {
+      this.requestReconcile();
+    }
+  }
+
+  async activate(explicit = false): Promise<boolean> {
+    if (!this.record || this.record.enabled) return false;
+    if (this.record.blocked && !explicit) return false;
+    this.record.blocked = false;
+    this.record.enabled = true;
+    this.record.updatedAt = Date.now();
     await this.publishRecord();
+    this.startHeartbeat();
+    return true;
+  }
+
+  async deactivate(): Promise<boolean> {
+    if (!this.record?.enabled) return false;
+    this.record.blocked = true;
+    this.record.enabled = false;
+    this.record.updatedAt = Date.now();
+    this.stopTimers();
+    await this.publishRecord();
+    return true;
+  }
+
+  isEnabled(): boolean {
+    return this.record?.enabled === true;
+  }
+
+  reconnect(): void {
+    if (this.record?.enabled) this.requestReconcile(true);
+  }
+
+  private startHeartbeat(): void {
+    if (this.heartbeat) return;
     this.heartbeat = setInterval(() => {
-      void this.update();
+      const patch =
+        this.record?.status === "working"
+          ? { activity: this.getActivityText() }
+          : undefined;
+      void this.update(patch, false);
     }, HEARTBEAT_MS);
     this.heartbeat.unref();
+    void this.syncConnection();
+    this.statusPoll = setInterval(() => {
+      void this.syncConnection();
+    }, STATUS_POLL_MS);
+    this.statusPoll.unref();
+  }
+
+  private stopTimers(): void {
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    if (this.statusPoll) clearInterval(this.statusPoll);
+    this.heartbeat = undefined;
+    this.statusPoll = undefined;
+  }
+
+  private async syncConnection(): Promise<void> {
+    const publisher = await readJson(this.publisherPath, EMPTY_PUBLISHER);
+    this.onConnection(
+      publisher.connection === "paired" ? "paired" : "disconnected",
+    );
   }
 
   private sessionName(ctx: ExtensionContext): string {
@@ -327,14 +476,21 @@ class SessionActivity {
   }
 
   update(
-    patch?: Partial<Pick<SessionRecord, "name" | "status">>,
+    patch?: Partial<Pick<SessionRecord, "activity" | "name" | "status">>,
+    markActivity = patch !== undefined,
   ): Promise<void> {
     this.writes = this.writes
       .catch(() => {})
       .then(async () => {
         if (!this.record) return;
-        this.record = { ...this.record, ...patch, updatedAt: Date.now() };
-        await this.publishRecord();
+        const now = Date.now();
+        this.record = {
+          ...this.record,
+          ...patch,
+          ...(markActivity ? { activityAt: now } : {}),
+          updatedAt: now,
+        };
+        if (this.record.enabled) await this.publishRecord();
       });
     return this.writes;
   }
@@ -342,10 +498,29 @@ class SessionActivity {
   private async publishRecord(): Promise<void> {
     if (!this.record) return;
     await atomicJson(this.recordPath, this.record);
-    await this.reconcile();
+    this.requestReconcile();
   }
 
-  private async reconcile(): Promise<void> {
+  private requestReconcile(force = false): void {
+    this.reconcileRequested = true;
+    this.forceReconcileRequested ||= force;
+    if (this.reconciling) return;
+    this.reconciling = this.drainReconciles().finally(() => {
+      this.reconciling = null;
+      if (this.reconcileRequested) this.requestReconcile();
+    });
+  }
+
+  private async drainReconciles(): Promise<void> {
+    while (this.reconcileRequested) {
+      this.reconcileRequested = false;
+      const force = this.forceReconcileRequested;
+      this.forceReconcileRequested = false;
+      await this.reconcile(force).catch(() => {});
+    }
+  }
+
+  private async reconcile(force = false): Promise<void> {
     await mkdir(this.root, { recursive: true, mode: 0o700 });
     const handle = await open(this.lockTarget, "a", 0o600);
     let release: (() => Promise<void>) | undefined;
@@ -366,7 +541,7 @@ class SessionActivity {
       const records = await listCurrentRecords(this.recordsDirectory);
       const publisher = await readJson(this.publisherPath, EMPTY_PUBLISHER);
       const now = Date.now();
-      if (publisher.retryAt > now) return;
+      if (!force && publisher.retryAt > now) return;
 
       if (records.length === 0) {
         if (publisher.active) {
@@ -378,7 +553,11 @@ class SessionActivity {
             "No running sessions",
           ]);
         }
-        await atomicJson(this.publisherPath, EMPTY_PUBLISHER);
+        await atomicJson(this.publisherPath, {
+          ...EMPTY_PUBLISHER,
+          generation:
+            typeof publisher.generation === "number" ? publisher.generation : 0,
+        });
         return;
       }
 
@@ -386,42 +565,52 @@ class SessionActivity {
       const hash = activityHash(view);
       const unchanged =
         publisher.active &&
+        publisher.connection === "paired" &&
         publisher.hash === hash &&
         now - publisher.publishedAt < REFRESH_MS;
-      if (unchanged) return;
+      if (unchanged && !force) return;
 
       const restart =
-        !publisher.active || now - publisher.startedAt >= RESTART_MS;
-      const operationKey = `pi-activity-${restart ? "start" : "update"}-${hash.slice(0, 32)}-${now}`;
-      if (restart) {
-        await startActivity(view, operationKey);
-      } else {
-        await updateActivity(view, operationKey);
+        !publisher.active || now - publisher.startedAt >= RESTART_MS || force;
+      const operation = restart ? "start" : "update";
+      const { generation, pendingMatches, signature } =
+        activityMutationIdentity(publisher, operation, hash);
+      if (!pendingMatches) {
+        await atomicJson(this.publisherPath, {
+          ...publisher,
+          connection:
+            publisher.connection === "paired" ? "paired" : "disconnected",
+          generation,
+          pendingSignature: signature,
+        });
       }
+      const operationKey = `pi-activity-${operation}-${generation}`;
+      const connection = restart
+        ? await startActivity(view, operationKey)
+        : await updateActivity(view, operationKey);
       await atomicJson(this.publisherPath, {
         active: true,
+        connection,
+        generation,
         hash,
+        pendingSignature: "",
         publishedAt: now,
         startedAt: restart ? now : publisher.startedAt,
-        retryAt: 0,
+        retryAt: connection === "paired" ? 0 : now + RETRY_MS,
       } satisfies PublisherState);
-      this.lastError = "";
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const publisher = await readJson(this.publisherPath, EMPTY_PUBLISHER);
       const remoteIsInactive =
-        /no hark device accepted|not found|unknown activity|already terminal|expired|\b404\b/i.test(
+        /not found|unknown activity|already terminal|expired|\b404\b/i.test(
           message,
         );
       await atomicJson(this.publisherPath, {
         ...publisher,
+        connection: "disconnected",
         ...(remoteIsInactive ? { active: false, hash: "" } : {}),
         retryAt: Date.now() + (remoteIsInactive ? HEARTBEAT_MS : RETRY_MS),
       });
-      if (message !== this.lastError) {
-        console.error(`[@bds_pi/hark] ${message}`);
-        this.lastError = message;
-      }
     } finally {
       await release();
       await handle.close();
@@ -432,14 +621,19 @@ class SessionActivity {
     await this.update({ name: this.sessionName(ctx) });
   }
 
-  async shutdown(): Promise<void> {
-    if (this.heartbeat) clearInterval(this.heartbeat);
+  async shutdown(preserveRecord = false): Promise<void> {
+    this.stopTimers();
+    if (preserveRecord) {
+      this.record = null;
+      void this.writes.catch(() => {});
+      return;
+    }
     try {
       await this.writes;
     } finally {
       this.record = null;
       await unlink(this.recordPath).catch(() => {});
-      await this.reconcile();
+      this.requestReconcile();
     }
   }
 }
@@ -463,7 +657,7 @@ const notifySchema = Type.Object({
       minItems: 2,
       maxItems: 8,
       description:
-        "Numbered choices shown in a text-response prompt; Hark does not support custom action buttons",
+        "Numbered choices shown in a text-response prompt; custom action buttons are unavailable",
     }),
   ),
   expiresInSeconds: Type.Optional(
@@ -474,55 +668,166 @@ const notifySchema = Type.Object({
 
 export default function harkExtension(pi: ExtensionAPI): void {
   let activity: SessionActivity | null = null;
+  let connection: HarkConnection = "disconnected";
+  let waitingResponseCount = 0;
   let runHadError = false;
+  const editorActivity = createActivityState();
+  const currentActivity = (): string =>
+    renderActivityDetail(editorActivity) || "thinking";
+  const syncEditorIndicator = (): void => {
+    const enabled = activity?.isEnabled() === true;
+    const text = renderHarkWidgetStatus(connection, waitingResponseCount > 0);
+    pi.events.emit(
+      enabled ? "editor:set-label" : "editor:remove-label",
+      enabled
+        ? {
+            key: "hark",
+            text,
+            position: "bottom",
+            align: "left",
+          }
+        : { key: "hark" },
+    );
+  };
 
   pi.on("session_start", async (_event, ctx) => {
-    activity = new SessionActivity(pi);
+    activity = new SessionActivity(pi, currentActivity, (nextConnection) => {
+      connection = nextConnection;
+      syncEditorIndicator();
+    });
     await activity.start(ctx);
+    syncEditorIndicator();
   });
 
   pi.on("agent_start", async () => {
-    runHadError = false;
-    await activity?.update({ status: "working" });
+    if (editorActivity.phase === "idle") runHadError = false;
+    editorActivity.phase = "thinking";
+    editorActivity.turnIndex = 0;
+    editorActivity.activeTools.clear();
+    editorActivity.startedAt = Date.now();
+    await activity?.update({
+      status: "working",
+      activity: currentActivity(),
+    });
+  });
+
+  pi.on("turn_start", async (event) => {
+    editorActivity.turnIndex = event.turnIndex;
+    editorActivity.phase =
+      editorActivity.activeTools.size > 0 ? "tool" : "thinking";
+    await activity?.update({ activity: currentActivity() });
+  });
+
+  pi.on("tool_execution_start", async (event) => {
+    editorActivity.phase = "tool";
+    editorActivity.activeTools.set(event.toolCallId, event.toolName);
+    await activity?.update({ activity: currentActivity() });
   });
 
   pi.on("tool_execution_end", async (event) => {
-    if (!event.isError) return;
-    runHadError = true;
-    await activity?.update({ status: "error" });
+    editorActivity.activeTools.delete(event.toolCallId);
+    editorActivity.phase =
+      editorActivity.activeTools.size > 0 ? "tool" : "thinking";
+    if (event.isError) runHadError = true;
+    await activity?.update({ activity: currentActivity() });
   });
 
-  pi.on("agent_end", async (event) => {
+  pi.on("message_start", async (event) => {
+    if ("role" in event.message && event.message.role === "assistant") {
+      editorActivity.phase =
+        editorActivity.activeTools.size > 0 ? "tool" : "streaming";
+      await activity?.update({ activity: currentActivity() });
+    }
+  });
+
+  pi.on("agent_end", (event) => {
     if (
       event.messages.some(
         (message) =>
-          message.role === "assistant" &&
-          (message.stopReason === "error" || message.stopReason === "aborted"),
+          message.role === "assistant" && message.stopReason === "error",
       )
     ) {
       runHadError = true;
-      await activity?.update({ status: "error" });
     }
   });
 
   pi.on("agent_settled", async () => {
-    await activity?.update({ status: runHadError ? "error" : "done" });
+    editorActivity.phase = "idle";
+    editorActivity.activeTools.clear();
+    const finalStatus = runHadError ? "error" : "done";
+    await activity?.update({
+      status: finalStatus,
+      activity: finalStatus,
+    });
   });
 
   pi.on("session_info_changed", async (_event, ctx) => {
     await activity?.rename(ctx);
   });
 
-  pi.on("session_shutdown", async () => {
-    await activity?.shutdown();
+  pi.on("session_shutdown", async (event) => {
+    await activity?.shutdown(event.reason === "reload");
     activity = null;
+    if (event.reason !== "reload") syncEditorIndicator();
+  });
+
+  pi.registerCommand("live-activity", {
+    description: "Enable, reconnect, or disable this session's Live Activity",
+    getArgumentCompletions: (prefix) => {
+      const items = [
+        {
+          value: "on",
+          label: "on",
+          description: "Enable this session's Live Activity",
+        },
+        {
+          value: "off",
+          label: "off",
+          description: "Disable this session's Live Activity",
+        },
+        {
+          value: "reconnect",
+          label: "reconnect",
+          description: "Force a fresh connection to iph16",
+        },
+      ];
+      const matches = items.filter((item) => item.value.startsWith(prefix));
+      return matches.length > 0 ? matches : null;
+    },
+    handler: async (args, ctx) => {
+      const action = args.trim().toLowerCase();
+      if (action === "off") {
+        const disabled = await activity?.deactivate();
+        syncEditorIndicator();
+        ctx.ui.notify(
+          disabled
+            ? "Live Activity disabled"
+            : "Live Activity already disabled",
+          "info",
+        );
+        return;
+      }
+      if (action && action !== "on" && action !== "reconnect") {
+        ctx.ui.notify("usage: /live-activity [on|off|reconnect]", "warning");
+        return;
+      }
+      const enabled = await activity?.activate(true);
+      if (!enabled) activity?.reconnect();
+      syncEditorIndicator();
+      ctx.ui.notify(
+        enabled
+          ? "Live Activity enabled"
+          : "Live Activity reconnection requested",
+        "info",
+      );
+    },
   });
 
   pi.registerTool({
-    name: "hark_notify",
-    label: "Hark Notify",
+    name: "live_activity_notify",
+    label: "Live Activity Notify",
     description:
-      "Send an iPhone notification through Hark. Can wait for approval, yes/no, text, or a numbered text choice. Hark Pro is required for responses.",
+      "Send a notification to iph16. Can wait for approval, yes/no, text, or a numbered text choice.",
     promptSnippet:
       "Send an iPhone notification and optionally wait for a response",
     parameters: notifySchema,
@@ -532,7 +837,7 @@ export default function harkExtension(pi: ExtensionAPI): void {
         (args.response !== undefined && args.response !== "none");
       const preview = truncate(args.body || "", 72);
       return new Text(
-        theme.fg("toolTitle", theme.bold("hark ")) +
+        theme.fg("toolTitle", theme.bold("live activity ")) +
           theme.fg("dim", `${asks ? "ask" : "notify"} “${preview || "…"}”`),
         0,
         0,
@@ -573,6 +878,8 @@ export default function harkExtension(pi: ExtensionAPI): void {
       return new Text(text, 0, 0);
     },
     async execute(toolCallId, params, signal) {
+      await activity?.activate();
+      syncEditorIndicator();
       const response = params.actions?.length
         ? "text"
         : (params.response ?? "none");
@@ -607,13 +914,27 @@ export default function harkExtension(pi: ExtensionAPI): void {
       );
       args.push("--", prompt);
 
-      const result = await runHark(
-        args,
-        signal,
-        response === "none" ? COMMAND_TIMEOUT_MS : (timeoutSeconds + 5) * 1_000,
-      );
+      if (response !== "none") {
+        waitingResponseCount++;
+        syncEditorIndicator();
+      }
+      let result: Awaited<ReturnType<typeof runHark>>;
+      try {
+        result = await runHark(
+          args,
+          signal,
+          response === "none"
+            ? COMMAND_TIMEOUT_MS
+            : (timeoutSeconds + 5) * 1_000,
+        );
+      } finally {
+        if (response !== "none") {
+          waitingResponseCount--;
+          syncEditorIndicator();
+        }
+      }
       if (result.code === 7) {
-        throw new Error("No Hark device accepted the notification.");
+        throw new Error("iph16 did not accept the notification.");
       }
       const interaction =
         result.data.interaction && typeof result.data.interaction === "object"
@@ -645,14 +966,14 @@ export default function harkExtension(pi: ExtensionAPI): void {
           {
             type: "text",
             text: interaction
-              ? `Hark response: ${timedOut ? "pending" : String(interaction.status)}${
+              ? `Live Activity response: ${timedOut ? "pending" : String(interaction.status)}${
                   selectedAction
                     ? ` (${selectedAction})`
                     : typeof rawResponse === "string" && rawResponse
                       ? ` (${rawResponse})`
                       : ""
                 }`
-              : `Hark notification sent${
+              : `Live Activity notification sent${
                   result.code === 7 ? " (no device accepted it)" : ""
                 }.`,
           },
@@ -666,12 +987,20 @@ export default function harkExtension(pi: ExtensionAPI): void {
 if (import.meta.vitest) {
   const { describe, expect, test } = import.meta.vitest;
 
-  const record = (name: string, status: SessionStatus): SessionRecord => ({
+  const record = (
+    name: string,
+    status: SessionStatus,
+    activity: string = status,
+  ): SessionRecord => ({
     id: name,
     pid: 1,
     cwd: "/tmp",
+    blocked: false,
+    enabled: true,
     name,
     status,
+    activity,
+    activityAt: 1,
     updatedAt: 1,
   });
 
@@ -680,13 +1009,15 @@ if (import.meta.vitest) {
       expect(
         renderActivity([
           record("docs", "done"),
-          record("build", "working"),
+          record("build", "working", "read(index.ts) · 5s"),
           record("deploy", "error"),
         ]),
       ).toEqual({
-        title: "pi sessions",
-        status: "1 working · 1 done · 1 error",
-        detail: "! deploy · ● build · ✓ docs",
+        title: "build",
+        status: "read(index.ts) · 5s",
+        detail:
+          "● build — read(index.ts) · 5s · ! deploy — error · ✓ docs — done",
+        symbol: "warning",
       });
     });
 
@@ -699,5 +1030,63 @@ if (import.meta.vitest) {
       expect(Array.from(view.detail).length).toBeLessThanOrEqual(240);
       expect(view.detail).toMatch(/\+\d+ more$/);
     });
+
+    test("keeps records from Pi processes that have not reloaded yet", () => {
+      expect(
+        parseSessionRecord({
+          id: "legacy",
+          pid: 1,
+          cwd: "/tmp",
+          name: "older session",
+          status: "working",
+          updatedAt: 42,
+        }),
+      ).toMatchObject({
+        blocked: false,
+        enabled: false,
+        activity: "working",
+        activityAt: 42,
+      });
+    });
+  });
+
+  test("treats zero-device delivery as an authoritative activity mutation", () => {
+    expect(isActivityMutationAccepted(7)).toBe(true);
+    expect(isActivityMutationAccepted(1)).toBe(false);
+  });
+
+  test("renders live activity connection and response states", () => {
+    expect(renderHarkWidgetStatus("paired", false)).toBe(
+      "live activity paired to iph16",
+    );
+    expect(renderHarkWidgetStatus("disconnected", false)).toBe(
+      "live activity disconnected from iph16",
+    );
+    expect(renderHarkWidgetStatus("paired", true)).toBe(
+      "waiting for live activity response from iph16",
+    );
+  });
+
+  test("reuses mutation generations only for retries", () => {
+    const first = activityMutationIdentity(EMPTY_PUBLISHER, "update", "h1");
+    expect(first).toMatchObject({ generation: 1, pendingMatches: false });
+    expect(
+      activityMutationIdentity(
+        {
+          ...EMPTY_PUBLISHER,
+          generation: first.generation,
+          pendingSignature: first.signature,
+        },
+        "update",
+        "h1",
+      ),
+    ).toMatchObject({ generation: 1, pendingMatches: true });
+    expect(
+      activityMutationIdentity(
+        { ...EMPTY_PUBLISHER, generation: 2 },
+        "update",
+        "h1",
+      ),
+    ).toMatchObject({ generation: 3, pendingMatches: false });
   });
 }
