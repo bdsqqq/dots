@@ -35,7 +35,7 @@ describe("safe trajectory evidence", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("preserves branch-selected tool outcomes without arguments or raw results", () => {
+  it("preserves bounded tool evidence while removing reasoning and credentials", () => {
     const entries: BranchEntry[] = [
       {
         type: "message",
@@ -55,7 +55,11 @@ describe("safe trajectory evidence", () => {
               type: "toolCall",
               id: "call",
               name: "bash",
-              arguments: { command: "secret command" },
+              arguments: {
+                command: "nix build",
+                password: "tool-secret",
+                accessToken: "short-live-token",
+              },
             },
           ],
         },
@@ -67,7 +71,8 @@ describe("safe trajectory evidence", () => {
         message: {
           role: "toolResult",
           toolCallId: "call",
-          content: "raw private output",
+          content:
+            "build output password=output-secret OPENAI_API_KEY=short-live-secret",
           isError: false,
         },
       },
@@ -87,9 +92,12 @@ describe("safe trajectory evidence", () => {
       branchEntryIds: entries.map((entry) => entry.id),
     });
     const serialized = JSON.stringify(evidence);
+    expect(serialized).not.toContain("private reasoning");
     expect(serialized).not.toMatch(
-      /private reasoning|secret command|raw private output/,
+      /tool-secret|output-secret|short-live-token|short-live-secret/,
     );
+    expect(serialized).toContain("nix build");
+    expect(serialized).toContain("build output");
     expect(evidence.tools).toEqual([
       { name: "bash", calls: 1, successes: 1, errors: 0 },
     ]);
