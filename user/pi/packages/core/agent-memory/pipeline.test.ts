@@ -9,11 +9,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { MemoryConfig } from "./catalog.js";
+import { scanCatalog, type MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
 import { canonicalProposalId } from "./schema.js";
 import {
   freezePipelineInput,
+  rankRetrieval,
   processPipelineBatch,
   processPipelineBatches,
 } from "./pipeline.js";
@@ -67,6 +68,17 @@ describe("memory reflection pipeline", () => {
       "mem_cccccccccccccccccccccccc",
     ]);
     expect(JSON.stringify(input)).not.toContain("mem_dddddddddddddddddddddddd");
+    expect(
+      rankRetrieval(scanCatalog(cfg.root), "scoped rule", [
+        "/tmp/project",
+        "/tmp/other",
+      ]).map((entry) => entry.memoryId),
+    ).toEqual(
+      expect.arrayContaining([
+        "mem_cccccccccccccccccccccccc",
+        "mem_dddddddddddddddddddddddd",
+      ]),
+    );
   });
 
   it("freezes inputs and covers checkpoints only after a valid skip", () => {

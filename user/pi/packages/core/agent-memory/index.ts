@@ -76,10 +76,15 @@ import {
   retryMaintenanceEvent,
 } from "./events.js";
 import {
+  evalReport,
   exportEvalDataset,
+  FEEDBACK_REASON_CODES,
   gradeReplay,
   memoryMetrics,
+  recordMemoryFeedback,
   replayDataset,
+  retrievalBenchmark,
+  type FeedbackReasonCode,
 } from "./evaluation.js";
 
 process.umask(0o077);
@@ -1727,6 +1732,45 @@ async function main(): Promise<void> {
     );
     if (receipt) console.log(JSON.stringify(receipt, null, 2));
     else result = undefined;
+  } else if (command === "feedback" && args[0] && args[1]) {
+    const reasonIndex = args.indexOf("--reason-code");
+    const queryIndex = args.indexOf("--query");
+    const workspaceIndex = args.indexOf("--workspace");
+    const supersedesIndex = args.indexOf("--supersedes");
+    const memoriesIndex = args.indexOf("--memories");
+    const outcome = args[1];
+    const reasonCode =
+      reasonIndex >= 0
+        ? (args[reasonIndex + 1] as FeedbackReasonCode | undefined)
+        : undefined;
+    if (
+      (outcome !== "useful" && outcome !== "harmful") ||
+      !reasonCode ||
+      !FEEDBACK_REASON_CODES.includes(reasonCode)
+    )
+      throw new Error("feedback requires useful|harmful and --reason-code");
+    const receipt = await lock(() =>
+      recordMemoryFeedback({
+        cfg: config(),
+        reference: args[0]!,
+        outcome,
+        reasonCode,
+        ...(queryIndex >= 0 && args[queryIndex + 1]
+          ? { query: args[queryIndex + 1] }
+          : {}),
+        ...(workspaceIndex >= 0 && args[workspaceIndex + 1]
+          ? { workspace: args[workspaceIndex + 1] }
+          : {}),
+        ...(supersedesIndex >= 0 && args[supersedesIndex + 1]
+          ? { supersedes: args[supersedesIndex + 1] }
+          : {}),
+        ...(memoriesIndex >= 0 && args[memoriesIndex + 1]
+          ? { memoryIds: args[memoriesIndex + 1]!.split(",").filter(Boolean) }
+          : {}),
+      }),
+    );
+    if (receipt) console.log(JSON.stringify(receipt, null, 2));
+    else result = undefined;
   } else if (command === "metrics")
     console.log(JSON.stringify(memoryMetrics(config()), null, 2));
   else if (command === "health")
@@ -1792,6 +1836,20 @@ async function main(): Promise<void> {
         2,
       ),
     );
+  } else if (command === "eval" && args[0] === "report" && args[1])
+    console.log(JSON.stringify(evalReport(config(), args[1]), null, 2));
+  else if (command === "eval" && args[0] === "retrieval") {
+    const kIndex = args.indexOf("--k");
+    console.log(
+      JSON.stringify(
+        retrievalBenchmark(
+          config(),
+          kIndex >= 0 ? Number(args[kIndex + 1]) : 5,
+        ),
+        null,
+        2,
+      ),
+    );
   } else if (command === "eval" && args[0] === "grade" && args[1]) {
     const caseIndex = args.indexOf("--case");
     const modeIndex = args.indexOf("--mode");
@@ -1818,7 +1876,7 @@ async function main(): Promise<void> {
     );
   } else
     throw new Error(
-      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|catalog [--cwd PATH] [--json]|events [enqueue --kind manual]|migrate [--dry-run]|propose --json JSON [--source URI]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|rollback <review-id> --reason TEXT|history init|list|show|diff|verify|sync|repair adopt|discard --reason TEXT|metrics|eval export|replay|grade",
+      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|catalog [--cwd PATH] [--json]|events [enqueue --kind manual]|migrate [--dry-run]|propose --json JSON [--source URI]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|feedback <review-or-proposal-id> useful|harmful --reason-code CODE [--query TEXT]|rollback <review-id> --reason TEXT|history init|list|show|diff|verify|sync|repair adopt|discard --reason TEXT|metrics|eval export|replay|grade|report|retrieval",
     );
   if (result === false) process.exitCode = 1;
   else if (result === undefined) process.exitCode = 75;

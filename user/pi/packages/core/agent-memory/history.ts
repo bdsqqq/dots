@@ -590,6 +590,8 @@ export function commitHistory(
   options: { allowEmpty?: boolean } = {},
 ): { commit: string; mutationId: string } {
   if (!isHistoryInitialized(cfg)) throw new Error("history not initialized");
+  if (historyEntryByMutationId(cfg, receiptCore.mutationId))
+    throw new Error(`duplicate history mutation id ${receiptCore.mutationId}`);
   return withWritableMemoryRoot(cfg, () => {
     try {
       return commitInternal(cfg, receiptCore, options.allowEmpty);
@@ -604,6 +606,85 @@ export function headHistoryReceipt(cfg: MemoryConfig): HistoryReceipt | null {
   const commit = git(cfg, ["rev-parse", "HEAD"]).trim();
   return { ...decode(git(cfg, ["show", "-s", "--format=%B", "HEAD"])), commit };
 }
+export function historyReceiptAt(
+  cfg: MemoryConfig,
+  commit: string,
+): HistoryReceipt {
+  const exact = revision(commit);
+  const resolved = git(cfg, [
+    "rev-parse",
+    "--verify",
+    `${exact}^{commit}`,
+  ]).trim();
+  if (resolved !== exact)
+    throw new Error("history commit did not resolve exactly");
+  return {
+    ...decode(git(cfg, ["show", "-s", "--format=%B", exact])),
+    commit: exact,
+  };
+}
+
+export function historyContainsAncestor(
+  cfg: MemoryConfig,
+  ancestor: string,
+  descendant = "HEAD",
+): boolean {
+  const result = spawnSync(
+    "git",
+    [
+      `--git-dir=${gitDir(cfg)}`,
+      `--work-tree=${cfg.root}`,
+      "merge-base",
+      "--is-ancestor",
+      revision(ancestor),
+      revision(descendant),
+    ],
+    { encoding: "utf8", env: gitEnv },
+  );
+  if (result.error) throw result.error;
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  throw new Error(
+    (result.stderr || "could not verify history ancestry").trim(),
+  );
+}
+
+function allHistoryEntries(cfg: MemoryConfig): HistoryEntry[] {
+  if (!isHistoryInitialized(cfg)) return [];
+  const fields = git(cfg, ["log", "--format=%H%x00%B%x00"])
+    .split("\0")
+    .filter(Boolean);
+  const entries: HistoryEntry[] = [];
+  const mutationIds = new Set<string>();
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const receipt = decode(fields[index + 1]!);
+    if (mutationIds.has(receipt.mutationId))
+      throw new Error(`duplicate history mutation id ${receipt.mutationId}`);
+    mutationIds.add(receipt.mutationId);
+    entries.push({ commit: fields[index]!.trim(), receipt });
+  }
+  return entries;
+}
+
+export function historyEntryByMutationId(
+  cfg: MemoryConfig,
+  mutationId: string,
+): HistoryEntry | undefined {
+  if (!/^[A-Za-z0-9_.-]+$/.test(mutationId))
+    throw new Error("invalid history mutation id");
+  return allHistoryEntries(cfg).find(
+    (entry) => entry.receipt.mutationId === mutationId,
+  );
+}
+
+export function listHistoryByKind(
+  cfg: MemoryConfig,
+  kind: string,
+): HistoryEntry[] {
+  if (!kind.trim()) throw new Error("invalid history kind");
+  return allHistoryEntries(cfg).filter((entry) => entry.receipt.kind === kind);
+}
+
 export function listHistory(
   cfg: MemoryConfig,
   options: { memory?: string; limit?: number } = {},

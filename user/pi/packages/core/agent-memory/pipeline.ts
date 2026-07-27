@@ -151,35 +151,63 @@ function score(entry: CatalogEntry, query: Set<string>): number {
   return result;
 }
 
+export function scopeCatalog(catalog: Catalog, workspaces: string[]): Catalog {
+  return {
+    ...catalog,
+    entries: catalog.entries
+      .filter((entry) =>
+        workspaces.some(
+          (workspace) => memoryScopeRank(entry.scope, workspace) > 0,
+        ),
+      )
+      .sort(
+        (a, b) =>
+          b.updated.localeCompare(a.updated) || a.path.localeCompare(b.path),
+      )
+      .slice(0, 100),
+  };
+}
+
+export const PRODUCTION_TARGET_LIMIT = 8;
+
+export function rankRetrieval(
+  catalog: Catalog,
+  queryText: string,
+  workspaces: string[],
+): CatalogEntry[] {
+  const query = words(`${queryText} ${workspaces.join(" ")}`);
+  return scopeCatalog(catalog, workspaces)
+    .entries.map((entry) => ({ entry, score: score(entry, query) }))
+    .filter((item) => item.score > 0)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        b.entry.updated.localeCompare(a.entry.updated) ||
+        a.entry.memoryId.localeCompare(b.entry.memoryId),
+    )
+    .slice(0, PRODUCTION_TARGET_LIMIT)
+    .map(({ entry }) => entry);
+}
+
 function selectTargets(
   cfg: MemoryConfig,
   catalog: Catalog,
   evidence: SafeEvidence[],
 ): PipelineInput["targets"] {
-  const query = words(
-    evidence
-      .flatMap((item) => [
-        item.window.excerpt,
-        item.workspace,
-        ...item.tools.map((tool) => tool.name),
-      ])
-      .join(" "),
-  );
-  return catalog.entries
-    .map((entry) => ({ entry, score: score(entry, query) }))
-    .filter((item) => item.score > 0)
-    .sort(
-      (a, b) =>
-        b.score - a.score || b.entry.updated.localeCompare(a.entry.updated),
-    )
-    .slice(0, 8)
-    .map(({ entry }) => ({
-      ...entry,
-      body: readFileSync(
-        contained(cfg.root, join(cfg.root, entry.path)),
-        "utf8",
-      ).slice(0, 12_000),
-    }));
+  const query = evidence
+    .flatMap((item) => [
+      item.window.excerpt,
+      ...item.tools.map((tool) => tool.name),
+    ])
+    .join(" ");
+  const workspaces = evidence.map((item) => item.workspace);
+  return rankRetrieval(catalog, query, workspaces).map((entry) => ({
+    ...entry,
+    body: readFileSync(
+      contained(cfg.root, join(cfg.root, entry.path)),
+      "utf8",
+    ).slice(0, 12_000),
+  }));
 }
 
 function skillDescriptions(root: string): PipelineInput["skills"] {
@@ -221,20 +249,10 @@ export function freezePipelineInput(
   model: string,
 ): PipelineInput {
   const fullCatalog = scanCatalog(cfg.root, "1970-01-01T00:00:00.000Z");
-  const catalog: Catalog = {
-    ...fullCatalog,
-    entries: fullCatalog.entries
-      .filter((entry) =>
-        evidence.some(
-          (item) => memoryScopeRank(entry.scope, item.workspace) > 0,
-        ),
-      )
-      .sort(
-        (a, b) =>
-          b.updated.localeCompare(a.updated) || a.path.localeCompare(b.path),
-      )
-      .slice(0, 100),
-  };
+  const catalog = scopeCatalog(
+    fullCatalog,
+    evidence.map((item) => item.workspace),
+  );
   const scopedIds = new Set(catalog.entries.map((entry) => entry.memoryId));
   const pending = listProposals(cfg)
     .filter((proposal) => {
