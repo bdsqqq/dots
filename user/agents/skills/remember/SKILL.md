@@ -166,7 +166,7 @@ pi-memory history verify
 
 autonomous memory mutations can create, update, merge, archive, or retire flat markdown notes. accepted skill proposals become draft bundles under `~/.local/share/pi-memory/v2/approved-skills`; pi-memory NEVER edits installed skills. install a draft only through the normal code-review, test, and git workflow.
 
-`pi-memory catalog` shows the bounded pointer catalog injected into agent prompts. full contents remain on-demand through qmd/grep. autonomous acceptance is not a quality reward: record an observed outcome against its review, artifact version, query, and workspace. corrections append a superseding receipt rather than rewriting feedback.
+`pi-memory catalog` shows the bounded pointer catalog injected into agent prompts. full contents remain on-demand through qmd/grep. qmd retrieval receipts retain production and deterministic quality-neutral shadow orderings over the same hash-bound candidate set. adaptation metrics report exposure and transition rates as associations, not causal effects; only explicit feedback and verified rollback are trusted gold. observations, objective tool diagnostics, and model decisions remain non-gold. autonomous acceptance is not a quality reward: record an observed outcome against its review, artifact version, query, and workspace. corrections append a superseding receipt rather than rewriting feedback.
 
 ```bash
 # create a trusted retrieval/usefulness label
@@ -177,6 +177,7 @@ pi-memory feedback review_id useful --reason-code retrieved-relevant \
 pi-memory metrics
 pi-memory eval report ~/.local/share/pi-memory/eval/replay-run
 pi-memory eval retrieval --k 5
+pi-memory eval adaptation
 
 # one-time, non-destructive import of legacy candidates
 pi-memory migrate --dry-run

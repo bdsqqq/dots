@@ -5,12 +5,14 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
 import {
+  adaptationEvaluationMetrics,
   buildEvalCases,
   evalReport,
   exportEvalDataset,
@@ -23,6 +25,7 @@ import {
   retrievalMetrics,
 } from "./evaluation.js";
 import { processPipelineBatch } from "./pipeline.js";
+import { canonicalTurnReceiptId, type TurnReceipt } from "./receipt.js";
 import {
   claimMaintenanceEvent,
   enqueueMaintenanceEvent,
@@ -566,6 +569,318 @@ describe("memory operational metrics", () => {
     writeFileSync(resultPath, JSON.stringify(stored));
     expect(memoryMetrics(cfg)).toMatchObject({
       pipeline: { runs: 0, malformedArtifacts: 1 },
+    });
+  });
+});
+
+describe("adaptation evaluation metrics", () => {
+  const session = (
+    sessionId: string,
+    workspace: string,
+    hash: string,
+  ): unknown[] => {
+    const firstIdentity: Omit<TurnReceipt, "receiptId"> = {
+      version: 1,
+      sessionId,
+      workspace,
+      userEntryIds: ["u1"],
+      assistantEntryIds: ["a1"],
+      catalogSha256: "c".repeat(64),
+      retrievals: [
+        {
+          toolCallId: "search-1",
+          querySha256: "d".repeat(64),
+          candidateSetSha256: "placeholder",
+          production: [],
+          shadow: [],
+        },
+      ],
+      exposures: [],
+      outcomes: [
+        {
+          toolCallId: "search-1",
+          resultEntryId: "tool-1",
+          toolName: "memory_search",
+          result: "success",
+        },
+      ],
+      redactions: {},
+      recordedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const relevant = {
+      memoryId: "mem_aaaaaaaaaaaaaaaaaaaaaaaa",
+      path: "memory-a.md",
+      artifactSha256: hash,
+    };
+    const decoy = {
+      memoryId: "mem_bbbbbbbbbbbbbbbbbbbbbbbb",
+      path: "memory-b.md",
+      artifactSha256: "b".repeat(64),
+    };
+    const candidateKeys = [relevant, decoy]
+      .map((ref) => `${ref.memoryId}\0${ref.path}\0${ref.artifactSha256}`)
+      .sort();
+    firstIdentity.retrievals = [
+      {
+        toolCallId: "search-1",
+        querySha256: "d".repeat(64),
+        candidateSetSha256: createHash("sha256")
+          .update(JSON.stringify(candidateKeys))
+          .digest("hex"),
+        production: [relevant, decoy],
+        shadow: [decoy, relevant],
+      },
+    ];
+    firstIdentity.exposures = [
+      {
+        kind: "searched",
+        memoryId: relevant.memoryId,
+        artifactSha256: relevant.artifactSha256,
+        toolCallId: "search-1",
+        rank: 1,
+      },
+      {
+        kind: "searched",
+        memoryId: decoy.memoryId,
+        artifactSha256: decoy.artifactSha256,
+        toolCallId: "search-1",
+        rank: 2,
+      },
+      {
+        kind: "opened",
+        memoryId: relevant.memoryId,
+        artifactSha256: relevant.artifactSha256,
+        toolCallId: "open-1",
+      },
+      {
+        kind: "cited",
+        memoryId: relevant.memoryId,
+        artifactSha256: relevant.artifactSha256,
+      },
+    ];
+    const first = {
+      ...firstIdentity,
+      receiptId: canonicalTurnReceiptId(firstIdentity),
+    };
+    const secondIdentity: Omit<TurnReceipt, "receiptId"> = {
+      version: 1,
+      sessionId,
+      workspace,
+      userEntryIds: ["u2"],
+      assistantEntryIds: ["a2"],
+      responseToReceiptId: first.receiptId,
+      catalogSha256: "c".repeat(64),
+      exposures: [],
+      outcomes: [],
+      redactions: {},
+      recordedAt: "2026-01-01T00:01:00.000Z",
+    };
+    const second = {
+      ...secondIdentity,
+      receiptId: canonicalTurnReceiptId(secondIdentity),
+    };
+    return [
+      { type: "session", id: sessionId, cwd: workspace },
+      {
+        type: "message",
+        id: "u1",
+        parentId: null,
+        message: { role: "user", content: "find the rule" },
+      },
+      {
+        type: "message",
+        id: "a1",
+        parentId: "u1",
+        message: { role: "assistant", content: relevant.memoryId },
+      },
+      {
+        type: "custom",
+        id: "r1",
+        parentId: "a1",
+        customType: "@bds_pi/agent-memory/turn-receipt",
+        data: first,
+      },
+      {
+        type: "custom",
+        id: "cp1",
+        parentId: "r1",
+        customType: "@bds_pi/agent-memory/checkpoint",
+        data: {
+          version: 2,
+          sessionId,
+          throughLeafId: "a1",
+          acceptedUserTurns: 1,
+        },
+      },
+      {
+        type: "message",
+        id: "u2",
+        parentId: "cp1",
+        message: { role: "user", content: "thanks, that worked" },
+      },
+      {
+        type: "message",
+        id: "a2",
+        parentId: "u2",
+        message: { role: "assistant", content: "noted" },
+      },
+      {
+        type: "custom",
+        id: "r2",
+        parentId: "a2",
+        customType: "@bds_pi/agent-memory/turn-receipt",
+        data: second,
+      },
+      {
+        type: "custom",
+        id: "cp2",
+        parentId: "r2",
+        customType: "@bds_pi/agent-memory/checkpoint",
+        data: {
+          version: 2,
+          sessionId,
+          throughLeafId: "a2",
+          acceptedUserTurns: 2,
+        },
+      },
+    ];
+  };
+
+  it("quarantines malformed adaptation artifacts and counts terminal outcomes", () => {
+    const cfg = config();
+    const shadowDir = join(cfg.data, "v2/adaptation/shadow");
+    const ledgerDir = join(cfg.data, "v2/adaptation/ledger");
+    const terminalDir = join(cfg.data, "v2/adaptation/production");
+    mkdirSync(shadowDir, { recursive: true });
+    mkdirSync(ledgerDir, { recursive: true });
+    const identity = {
+      version: 1,
+      eventId: "event-one",
+      model: "legacy-model",
+      promptVersion: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      evidence: [],
+      decisions: [{}],
+    };
+    const shadowId = `adapt_${createHash("sha256")
+      .update(JSON.stringify(identity))
+      .digest("hex")}`;
+    writeFileSync(
+      join(shadowDir, `${shadowId}.json`),
+      JSON.stringify({ ...identity, id: shadowId }),
+    );
+    writeFileSync(join(shadowDir, "malformed.json"), "not json");
+    writeFileSync(
+      join(ledgerDir, "event-one.json"),
+      JSON.stringify({ version: 2, eventId: "event-one", shadowId }),
+    );
+    const production = join(terminalDir, shadowId);
+    mkdirSync(production, { recursive: true });
+    writeFileSync(
+      join(production, "0.json"),
+      JSON.stringify({
+        version: 2,
+        shadowId,
+        decisionIndex: 0,
+        action: "legacy",
+        outcome: "error",
+        error: "legacy shadow adaptation requires regeneration",
+      }),
+    );
+    expect(adaptationEvaluationMetrics(cfg)).toMatchObject({
+      adaptation: {
+        publishedDecisions: 1,
+        terminalOutcomes: { applied: 0, stale: 0, error: 1 },
+        pendingDecisions: 0,
+        malformedArtifacts: 1,
+        recoveryFailures: 1,
+      },
+    });
+  });
+
+  it("preserves zero denominators", () => {
+    const cfg = config();
+    expect(adaptationEvaluationMetrics(cfg)).toMatchObject({
+      receipts: {
+        nativeCheckpoints: 0,
+        validReceiptCoveragePerNativeCheckpoint: 0,
+      },
+      rates: {
+        openedThenCited: { numerator: 0, denominator: 0, rate: 0 },
+      },
+      shadowRetrieval: { trustedExplicitLabels: 0, rankDeltas: [] },
+    });
+  });
+
+  it("quarantines malformed receipts and isolates workspaces and revisions", () => {
+    const cfg = config() as MemoryConfig & { sessions: string[] };
+    const root = join(cfg.data, "sessions");
+    mkdirSync(root, { recursive: true });
+    const writeSession = (name: string, records: unknown[]) =>
+      writeFileSync(
+        join(root, `${name}.jsonl`),
+        `${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+      );
+    writeSession(
+      "one",
+      session("session-one", "/workspace/one", "a".repeat(64)),
+    );
+    writeSession(
+      "two",
+      session("session-two", "/workspace/two", "e".repeat(64)),
+    );
+    writeSession("malformed", [
+      { type: "session", id: "bad", cwd: "/workspace/bad" },
+      {
+        type: "custom",
+        id: "bad-receipt",
+        parentId: null,
+        customType: "@bds_pi/agent-memory/turn-receipt",
+        data: { version: 1 },
+      },
+      {
+        type: "custom",
+        id: "bad-checkpoint",
+        parentId: "bad-receipt",
+        customType: "@bds_pi/agent-memory/checkpoint",
+        data: {
+          version: 2,
+          sessionId: "bad",
+          throughLeafId: "missing",
+          acceptedUserTurns: 1,
+        },
+      },
+    ]);
+    cfg.sessions = [root];
+    expect(adaptationEvaluationMetrics(cfg)).toMatchObject({
+      receipts: {
+        valid: 4,
+        malformedArtifacts: 1,
+        nativeCheckpoints: 5,
+        coveredNativeCheckpoints: 4,
+        validReceiptCoveragePerNativeCheckpoint: 0.8,
+        workspaces: { "/workspace/one": 2, "/workspace/two": 2 },
+      },
+      exposures: { searched: 4, opened: 2, cited: 2 },
+      rates: {
+        openedThenCited: { numerator: 2, denominator: 2, rate: 1 },
+        citedThenExplicitPositiveFeedback: {
+          numerator: 2,
+          denominator: 2,
+          rate: 1,
+        },
+        citedWithObjectiveToolOutcomeDiagnostic: {
+          numerator: 2,
+          denominator: 2,
+          rate: 1,
+        },
+      },
+      shadowRetrieval: {
+        trustedExplicitLabels: 2,
+        meanProductionRankImprovementOverShadow: 1,
+        rankDeltas: [1, 1],
+      },
+      trustedGold: { observations: 0, modelDecisions: 0 },
     });
   });
 });
