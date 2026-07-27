@@ -101,6 +101,7 @@ import {
   retryMaintenanceEvent,
 } from "./events.js";
 import {
+  adaptationEvaluationMetrics,
   evalReport,
   exportEvalDataset,
   FEEDBACK_REASON_CODES,
@@ -2163,6 +2164,8 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(memoryMetrics(config()), null, 2));
   else if (command === "health")
     console.log(JSON.stringify(scanCorpusHealth(config()), null, 2));
+  else if (command === "eval" && args[0] === "adaptation")
+    console.log(JSON.stringify(adaptationEvaluationMetrics(config()), null, 2));
   else if (command === "eval" && args[0] === "export") {
     const outIndex = args.indexOf("--out");
     if (outIndex < 0 || !args[outIndex + 1])

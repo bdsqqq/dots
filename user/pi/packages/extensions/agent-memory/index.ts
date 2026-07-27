@@ -41,6 +41,7 @@ import {
   TURN_RECEIPT_ENTRY_TYPE,
   validateTurnReceiptBinding,
   type MemoryRef,
+  type RetrievalOrdering,
   type TurnReceipt,
 } from "@bds_pi/pi-memory/receipt";
 
@@ -125,6 +126,26 @@ function currentManifest(catalog: Catalog, cwd: string): HotManifest {
     loadHotManifestData({ data }, catalog, cwd, quality) ??
     generateHotManifest({ data }, catalog, cwd, quality)
   );
+}
+
+function qualityOrderedCandidates(
+  shadow: MemoryRef[],
+  quality: Map<string, string>,
+): MemoryRef[] {
+  const qualityRank = (memory: MemoryRef): number => {
+    const value = quality.get(
+      `${memory.memoryId}\0${memory.path}\0${memory.artifactSha256}`,
+    );
+    return value === "reinforced" ? 0 : value === "demoted" ? 2 : 1;
+  };
+  return shadow
+    .map((memory, index) => ({ memory, index }))
+    .sort(
+      (left, right) =>
+        qualityRank(left.memory) - qualityRank(right.memory) ||
+        left.index - right.index,
+    )
+    .map(({ memory }) => memory);
 }
 
 function contentText(content: unknown): string {
@@ -340,12 +361,14 @@ function staleReceiptExposureCount(
 function parseMemoryToolDetails(value: unknown): {
   refs: MemoryRef[];
   redactions: Record<string, number>;
+  retrieval?: RetrievalOrdering;
 } {
   if (
     !object(value) ||
     value.version !== TOOL_DETAILS_VERSION ||
     !Array.isArray(value.refs) ||
-    (value.redactions !== undefined && !object(value.redactions))
+    (value.redactions !== undefined && !object(value.redactions)) ||
+    (value.retrieval !== undefined && !object(value.retrieval))
   )
     throw new Error("invalid memory tool details");
   const refs = value.refs.map((candidate) => {
@@ -365,7 +388,12 @@ function parseMemoryToolDetails(value: unknown): {
     )
   )
     throw new Error("invalid memory tool details");
-  return { refs, redactions: redactions as Record<string, number> };
+  const retrieval = value.retrieval as RetrievalOrdering | undefined;
+  return {
+    refs,
+    redactions: redactions as Record<string, number>,
+    ...(retrieval ? { retrieval } : {}),
+  };
 }
 
 function buildTurnReceipt(options: {
@@ -408,6 +436,7 @@ function buildTurnReceipt(options: {
     throw new Error("settled turn is missing its memory injection receipt");
 
   const exposures: TurnReceipt["exposures"] = [];
+  const retrievals: RetrievalOrdering[] = [];
   for (const item of injections)
     for (const memory of item.refs) {
       validateMemoryRef(options.catalog, memory);
@@ -465,6 +494,14 @@ function buildTurnReceipt(options: {
     ) {
       const details = parseMemoryToolDetails(message.details);
       const refs = details.refs;
+      if (call.name === "memory_search") {
+        if (
+          !details.retrieval ||
+          details.retrieval.toolCallId !== message.toolCallId
+        )
+          throw new Error("memory search is missing retrieval ordering");
+        retrievals.push(details.retrieval);
+      }
       refs.forEach((memory) => validateMemoryRef(options.catalog, memory));
       addCounts(redactions, details.redactions);
       const kind = call.name === "memory_search" ? "searched" : "opened";
@@ -515,6 +552,7 @@ function buildTurnReceipt(options: {
       ? { responseToReceiptId: nativePrior.at(-1)!.receipt.receiptId }
       : {}),
     catalogSha256: injection.catalogSha256,
+    ...(retrievals.length ? { retrievals } : {}),
     exposures: uniqueExposures,
     outcomes,
     redactions,
@@ -641,15 +679,35 @@ export function createAgentMemoryExtension(
           const entry = qmdCatalogEntry(catalog, row);
           return entry ? [ref(entry)] : [];
         });
-        const unique = [
+        const shadow = [
           ...new Map(refs.map((item) => [item.memoryId, item])).values(),
         ];
+        const quality = deriveAdaptationQuality({
+          data: memoryData(),
+          root: memoryRoot(),
+          state: memoryData(),
+          skillsRoot: memoryRoot(),
+        });
+        const production = qualityOrderedCandidates(shadow, quality);
+        const candidateKeys = shadow
+          .map(
+            (memory) =>
+              `${memory.memoryId}\0${memory.path}\0${memory.artifactSha256}`,
+          )
+          .sort();
+        const retrieval: RetrievalOrdering = {
+          toolCallId,
+          querySha256: sha256(clean.text),
+          candidateSetSha256: sha256(JSON.stringify(candidateKeys)),
+          production,
+          shadow,
+        };
         return {
           content: [
             {
               type: "text",
-              text: unique.length
-                ? unique
+              text: production.length
+                ? production
                     .map(
                       (item, index) =>
                         `${index + 1}. ${item.memoryId} | ${item.path} | sha256:${item.artifactSha256}`,
@@ -658,7 +716,11 @@ export function createAgentMemoryExtension(
                 : "No current catalog memories matched.",
             },
           ],
-          details: { version: TOOL_DETAILS_VERSION, refs: unique },
+          details: {
+            version: TOOL_DETAILS_VERSION,
+            refs: production,
+            retrieval,
+          },
         };
       },
     });
@@ -1016,6 +1078,36 @@ if (import.meta.vitest) {
   });
 
   describe("agent-memory", () => {
+    it("keeps the qmd candidate set while applying deterministic quality order", () => {
+      const first = {
+        memoryId: "mem_first",
+        path: "first.md",
+        artifactSha256: "a".repeat(64),
+      };
+      const second = {
+        memoryId: "mem_second",
+        path: "second.md",
+        artifactSha256: "b".repeat(64),
+      };
+      const quality = new Map([
+        [
+          `${first.memoryId}\0${first.path}\0${first.artifactSha256}`,
+          "demoted",
+        ],
+        [
+          `${second.memoryId}\0${second.path}\0${second.artifactSha256}`,
+          "reinforced",
+        ],
+      ]);
+      const shadow = [first, second];
+      expect(qualityOrderedCandidates(shadow, quality)).toEqual([
+        second,
+        first,
+      ]);
+      expect(new Set(qualityOrderedCandidates(shadow, quality))).toEqual(
+        new Set(shadow),
+      );
+    });
     it("registers the complete observation lifecycle and narrow tools", () => {
       setupCatalog();
       const h = harness([]);
@@ -1104,6 +1196,17 @@ if (import.meta.vitest) {
         result("r-search", "search-call", "memory_search", {
           version: 1,
           refs: [ref(entry)],
+          retrieval: {
+            toolCallId: "search-call",
+            querySha256: "a".repeat(64),
+            candidateSetSha256: sha256(
+              JSON.stringify([
+                `${entry.memoryId}\0${entry.path}\0${entry.sha256}`,
+              ]),
+            ),
+            production: [ref(entry)],
+            shadow: [ref(entry)],
+          },
         }),
       ];
       const receipt = buildTurnReceipt({
@@ -1136,6 +1239,13 @@ if (import.meta.vitest) {
           }),
         ]),
       );
+      expect(receipt.retrievals).toEqual([
+        expect.objectContaining({
+          toolCallId: "search-call",
+          production: [ref(entry)],
+          shadow: [ref(entry)],
+        }),
+      ]);
       expect(receipt.redactions["provider-token"]).toBe(1);
       expect(JSON.stringify(receipt)).not.toContain("sk-");
       expect(JSON.stringify(receipt)).not.toContain("raw output");

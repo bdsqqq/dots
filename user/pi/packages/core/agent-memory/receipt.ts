@@ -10,6 +10,14 @@ export type MemoryRef = {
   artifactSha256: string;
 };
 
+export type RetrievalOrdering = {
+  toolCallId: string;
+  querySha256: string;
+  candidateSetSha256: string;
+  production: MemoryRef[];
+  shadow: MemoryRef[];
+};
+
 export type TurnReceipt = {
   version: 1;
   receiptId: string;
@@ -19,6 +27,7 @@ export type TurnReceipt = {
   assistantEntryIds: string[];
   responseToReceiptId?: string;
   catalogSha256: string;
+  retrievals?: RetrievalOrdering[];
   exposures: Array<{
     kind: "injected" | "searched" | "opened" | "cited";
     memoryId: string;
@@ -156,7 +165,7 @@ export function parseTurnReceipt(value: unknown): TurnReceipt {
     "recordedAt",
   ];
   if (!object(value)) throw new Error("invalid turn receipt");
-  const allowed = [...required, "responseToReceiptId"];
+  const allowed = [...required, "responseToReceiptId", "retrievals"];
   if (
     !Object.keys(value).every((key) => allowed.includes(key)) ||
     !required.every((key) => key in value)
@@ -187,6 +196,58 @@ export function parseTurnReceipt(value: unknown): TurnReceipt {
     throw new Error("invalid turn receipt");
   if (value.exposures.some((exposure) => !isTurnExposure(exposure)))
     throw new Error("invalid turn receipt");
+  if (value.retrievals !== undefined) {
+    if (!Array.isArray(value.retrievals))
+      throw new Error("invalid turn receipt");
+    for (const retrieval of value.retrievals) {
+      if (
+        !object(retrieval) ||
+        !keysAre(retrieval, [
+          "toolCallId",
+          "querySha256",
+          "candidateSetSha256",
+          "production",
+          "shadow",
+        ]) ||
+        typeof retrieval.toolCallId !== "string" ||
+        !retrieval.toolCallId ||
+        !HASH.test(String(retrieval.querySha256)) ||
+        !HASH.test(String(retrieval.candidateSetSha256)) ||
+        !Array.isArray(retrieval.production) ||
+        !Array.isArray(retrieval.shadow)
+      )
+        throw new Error("invalid turn retrieval ordering");
+      const parseRefs = (refs: unknown[]): MemoryRef[] =>
+        refs.map((ref) => {
+          if (
+            !object(ref) ||
+            !keysAre(ref, ["memoryId", "path", "artifactSha256"]) ||
+            typeof ref.memoryId !== "string" ||
+            !ref.memoryId ||
+            typeof ref.path !== "string" ||
+            !ref.path ||
+            !HASH.test(String(ref.artifactSha256))
+          )
+            throw new Error("invalid turn retrieval ordering");
+          return ref as MemoryRef;
+        });
+      const production = parseRefs(retrieval.production);
+      const shadow = parseRefs(retrieval.shadow);
+      const key = (ref: MemoryRef) =>
+        `${ref.memoryId}\0${ref.path}\0${ref.artifactSha256}`;
+      const productionKeys = production.map(key);
+      const shadowKeys = shadow.map(key);
+      if (
+        new Set(productionKeys).size !== productionKeys.length ||
+        new Set(shadowKeys).size !== shadowKeys.length ||
+        [...productionKeys].sort().join("\0") !==
+          [...shadowKeys].sort().join("\0") ||
+        sha256(JSON.stringify([...productionKeys].sort())) !==
+          retrieval.candidateSetSha256
+      )
+        throw new Error("invalid turn retrieval candidate set");
+    }
+  }
   for (const outcome of value.outcomes) {
     if (
       !object(outcome) ||
@@ -214,6 +275,34 @@ export function parseTurnReceipt(value: unknown): TurnReceipt {
     throw new Error("invalid turn receipt");
   const exposureItems = value.exposures as TurnReceipt["exposures"];
   const outcomeItems = value.outcomes as TurnReceipt["outcomes"];
+  for (const retrieval of (value.retrievals ?? []) as RetrievalOrdering[]) {
+    const searched = exposureItems
+      .filter(
+        (exposure) =>
+          exposure.kind === "searched" &&
+          exposure.toolCallId === retrieval.toolCallId,
+      )
+      .sort((left, right) => Number(left.rank) - Number(right.rank));
+    if (
+      searched.length !== retrieval.production.length ||
+      searched.some(
+        (exposure, index) =>
+          exposure.memoryId !== retrieval.production[index]!.memoryId ||
+          exposure.artifactSha256 !==
+            retrieval.production[index]!.artifactSha256 ||
+          exposure.rank !== index + 1,
+      ) ||
+      !outcomeItems.some(
+        (outcome) =>
+          outcome.toolCallId === retrieval.toolCallId &&
+          outcome.toolName === "memory_search" &&
+          outcome.result === "success",
+      )
+    )
+      throw new Error(
+        "turn retrieval ordering is not bound to search exposure",
+      );
+  }
   if (
     new Set(
       exposureItems.map(
@@ -222,7 +311,13 @@ export function parseTurnReceipt(value: unknown): TurnReceipt {
       ),
     ).size !== exposureItems.length ||
     new Set(outcomeItems.map((outcome) => outcome.toolCallId)).size !==
-      outcomeItems.length
+      outcomeItems.length ||
+    (value.retrievals !== undefined &&
+      new Set(
+        (value.retrievals as RetrievalOrdering[]).map(
+          (retrieval) => retrieval.toolCallId,
+        ),
+      ).size !== value.retrievals.length)
   )
     throw new Error("invalid turn receipt");
   const receipt = value as TurnReceipt;

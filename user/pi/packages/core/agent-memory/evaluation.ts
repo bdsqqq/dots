@@ -1,11 +1,12 @@
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   atomicWrite,
   contained,
   scanCatalog,
   secureDir,
   sha256,
+  type Catalog,
   type MemoryConfig,
 } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
@@ -25,6 +26,21 @@ import {
 } from "./schema.js";
 import { findProposal, listProposals, readReviewReceipts } from "./workflow.js";
 import {
+  CHECKPOINT_ENTRY_TYPE,
+  parseTurnReceiptObservation,
+  TURN_RECEIPT_ENTRY_TYPE,
+  validateTurnReceiptBinding,
+  type MemoryRef,
+  type TurnReceipt,
+} from "./receipt.js";
+import { adaptationQualityKey, deriveAdaptationQuality } from "./quality.js";
+import {
+  parseAdaptationDecisions,
+  parseRollbackEvidence,
+  parseTurnObservation,
+  type AdaptationDecision,
+} from "./adaptation.js";
+import {
   MAINTENANCE_EVENT_KINDS,
   parseMaintenanceEvent,
   type MaintenanceEventStatus,
@@ -34,7 +50,9 @@ import {
   historyContainsAncestor,
   historyEntryByMutationId,
   historyReceiptAt,
+  isHistoryInitialized,
   listHistoryByKind,
+  verifyHistory,
 } from "./history.js";
 
 export const FEEDBACK_REASON_CODES = [
@@ -1234,6 +1252,574 @@ function replayMetrics(cfg: MemoryConfig) {
   };
 }
 
+type SessionMetricEntry = {
+  type: string;
+  id: string;
+  parentId: string | null;
+  customType?: unknown;
+  data?: unknown;
+  message?: unknown;
+};
+
+const explicitPositiveFeedback =
+  /\b(?:thank you|thanks|that worked|works now|solved|fixed it|exactly right|helpful)\b/i;
+
+function sessionFiles(roots: string[]): {
+  files: string[];
+  malformedRoots: number;
+} {
+  const files: string[] = [];
+  const walk = (root: string, dir: string): void => {
+    if (!existsSync(dir)) return;
+    const rel = relative(resolve(root), resolve(dir));
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel))
+      throw new Error("session path escapes root");
+    const metadata = lstatSync(dir);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink())
+      throw new Error("invalid session directory");
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) walk(root, path);
+      else if (entry.isFile() && entry.name.endsWith(".jsonl"))
+        files.push(path);
+    }
+  };
+  let malformedRoots = 0;
+  for (const root of [...new Set(roots.map((root) => resolve(root)))])
+    try {
+      walk(root, root);
+    } catch {
+      malformedRoots++;
+    }
+  return { files: files.sort(), malformedRoots };
+}
+
+function messageText(entry: SessionMetricEntry): string {
+  if (
+    entry.type !== "message" ||
+    !entry.message ||
+    typeof entry.message !== "object"
+  )
+    return "";
+  const message = entry.message as Record<string, unknown>;
+  if (message.role !== "user") return "";
+  const content = message.content;
+  if (typeof content === "string") return content;
+  return Array.isArray(content)
+    ? content
+        .flatMap((part) =>
+          part &&
+          typeof part === "object" &&
+          (part as Record<string, unknown>).type === "text" &&
+          typeof (part as Record<string, unknown>).text === "string"
+            ? [String((part as Record<string, unknown>).text)]
+            : [],
+        )
+        .join("\n")
+    : "";
+}
+
+function refVersionKey(
+  ref: Pick<MemoryRef, "memoryId" | "artifactSha256">,
+): string {
+  return `${ref.memoryId}\0${ref.artifactSha256}`;
+}
+
+function ratio(numerator: number, denominator: number): number {
+  return denominator ? numerator / denominator : 0;
+}
+
+export function adaptationEvaluationMetrics(
+  cfg: MemoryConfig & { sessions?: string[] },
+): Record<string, unknown> {
+  const exposures = { injected: 0, searched: 0, opened: 0, cited: 0 };
+  const workspaces: Record<string, number> = {};
+  let nativeCheckpoints = 0;
+  let coveredNativeCheckpoints = 0;
+  let validReceipts = 0;
+  let malformedReceiptArtifacts = 0;
+  const sessions = sessionFiles(cfg.sessions ?? []);
+  let malformedSessionArtifacts = sessions.malformedRoots;
+  let opened = 0;
+  let openedThenCited = 0;
+  let cited = 0;
+  let citedThenExplicitPositive = 0;
+  let citedWithObjectiveToolOutcomeDiagnostic = 0;
+  const rankDeltas: number[] = [];
+
+  for (const path of sessions.files) {
+    let records: unknown[];
+    try {
+      const raw = readFileSync(path, "utf8");
+      records = raw
+        .split("\n")
+        .filter((line) => line.trim())
+        .map((line) => JSON.parse(line));
+    } catch {
+      malformedSessionArtifacts++;
+      continue;
+    }
+    const header = records[0];
+    if (
+      !header ||
+      typeof header !== "object" ||
+      (header as Record<string, unknown>).type !== "session" ||
+      typeof (header as Record<string, unknown>).id !== "string" ||
+      typeof (header as Record<string, unknown>).cwd !== "string"
+    ) {
+      malformedSessionArtifacts++;
+      continue;
+    }
+    const sessionId = String((header as Record<string, unknown>).id);
+    const workspace = String((header as Record<string, unknown>).cwd);
+    const entries = records.slice(1) as SessionMetricEntry[];
+    if (
+      entries.some(
+        (entry) =>
+          !entry ||
+          typeof entry !== "object" ||
+          typeof entry.type !== "string" ||
+          typeof entry.id !== "string" ||
+          !(entry.parentId === null || typeof entry.parentId === "string"),
+      )
+    ) {
+      malformedSessionArtifacts++;
+      continue;
+    }
+    const byId = new Map(entries.map((entry) => [entry.id, entry]));
+    if (byId.size !== entries.length) {
+      malformedSessionArtifacts++;
+      continue;
+    }
+    const chainThrough = (entry: SessionMetricEntry): SessionMetricEntry[] => {
+      const chain: SessionMetricEntry[] = [];
+      const seen = new Set<string>();
+      let current: SessionMetricEntry | undefined = entry;
+      while (current) {
+        if (seen.has(current.id)) throw new Error("cyclic session ancestry");
+        seen.add(current.id);
+        chain.unshift(current);
+        current =
+          current.parentId === null ? undefined : byId.get(current.parentId);
+        if (current === undefined && chain[0]!.parentId !== null)
+          throw new Error("dangling session ancestry");
+      }
+      return chain;
+    };
+    const receiptRecords: Array<{
+      entry: SessionMetricEntry;
+      receipt: TurnReceipt;
+      chain: SessionMetricEntry[];
+    }> = [];
+    for (const entry of entries) {
+      if (
+        entry.type !== "custom" ||
+        entry.customType !== TURN_RECEIPT_ENTRY_TYPE
+      )
+        continue;
+      try {
+        const observed = parseTurnReceiptObservation(entry.data);
+        const chain = chainThrough(entry);
+        validateTurnReceiptBinding(chain, entry.id, observed.receipt, {
+          sessionId,
+          workspace,
+        });
+        if (observed.diagnostics.length) malformedReceiptArtifacts++;
+        receiptRecords.push({ entry, receipt: observed.receipt, chain });
+        validReceipts++;
+        workspaces[workspace] = (workspaces[workspace] ?? 0) + 1;
+        for (const exposure of observed.receipt.exposures)
+          exposures[exposure.kind] += 1;
+      } catch {
+        malformedReceiptArtifacts++;
+      }
+    }
+    for (const record of receiptRecords) {
+      const openedRefs = new Set(
+        record.receipt.exposures
+          .filter((item) => item.kind === "opened")
+          .map(refVersionKey),
+      );
+      const citedRefs = new Set(
+        record.receipt.exposures
+          .filter((item) => item.kind === "cited")
+          .map(refVersionKey),
+      );
+      opened += openedRefs.size;
+      openedThenCited += [...openedRefs].filter((key) =>
+        citedRefs.has(key),
+      ).length;
+      cited += citedRefs.size;
+      if (record.receipt.outcomes.length)
+        citedWithObjectiveToolOutcomeDiagnostic += citedRefs.size;
+      const responses = receiptRecords.filter(
+        (candidate) =>
+          candidate.receipt.responseToReceiptId === record.receipt.receiptId,
+      );
+      const explicit = responses.some((response) =>
+        response.receipt.userEntryIds.some((id) => {
+          const entry = byId.get(id);
+          return entry
+            ? explicitPositiveFeedback.test(messageText(entry))
+            : false;
+        }),
+      );
+      if (explicit) {
+        citedThenExplicitPositive += citedRefs.size;
+        for (const retrieval of record.receipt.retrievals ?? [])
+          for (const key of citedRefs) {
+            const production = retrieval.production.findIndex(
+              (item) => refVersionKey(item) === key,
+            );
+            const shadow = retrieval.shadow.findIndex(
+              (item) => refVersionKey(item) === key,
+            );
+            if (production >= 0 && shadow >= 0)
+              rankDeltas.push(shadow - production);
+          }
+      }
+    }
+    for (const entry of entries) {
+      if (entry.type !== "custom" || entry.customType !== CHECKPOINT_ENTRY_TYPE)
+        continue;
+      const checkpoint = entry.data as Record<string, unknown>;
+      if (
+        !checkpoint ||
+        typeof checkpoint !== "object" ||
+        checkpoint.sessionId !== sessionId
+      )
+        continue;
+      nativeCheckpoints++;
+      try {
+        if (
+          Object.keys(checkpoint).sort().join(",") !==
+            "acceptedUserTurns,sessionId,throughLeafId,version" ||
+          checkpoint.version !== 2 ||
+          typeof checkpoint.throughLeafId !== "string" ||
+          !Number.isInteger(checkpoint.acceptedUserTurns)
+        )
+          throw new Error("invalid native checkpoint");
+        const chain = chainThrough(entry);
+        const checkpointIndex = chain.findIndex((item) => item.id === entry.id);
+        const throughIndex = chain.findIndex(
+          (item) => item.id === checkpoint.throughLeafId,
+        );
+        if (
+          throughIndex < 0 ||
+          throughIndex >= checkpointIndex ||
+          chain
+            .slice(0, throughIndex + 1)
+            .filter(
+              (item) =>
+                item.type === "message" &&
+                item.message &&
+                typeof item.message === "object" &&
+                (item.message as Record<string, unknown>).role === "user",
+            ).length !== checkpoint.acceptedUserTurns
+        )
+          throw new Error("invalid native checkpoint count");
+        const linked = receiptRecords.some(
+          (record) =>
+            record.receipt.assistantEntryIds.at(-1) ===
+              checkpoint.throughLeafId &&
+            chain
+              .slice(0, checkpointIndex)
+              .some((item) => item.id === record.entry.id),
+        );
+        if (linked) coveredNativeCheckpoints++;
+      } catch {
+        // The denominator intentionally retains malformed native checkpoint artifacts.
+      }
+    }
+  }
+
+  let malformedAdaptationArtifacts = 0;
+  let publishedDecisions = 0;
+  const terminalOutcomes = { applied: 0, stale: 0, error: 0 };
+  let staleTargetRejects = 0;
+  let recoveryFailures = 0;
+  const shadowRoot = join(cfg.data, "v2/adaptation/shadow");
+  const shadows = new Map<
+    string,
+    { eventId: string; decisions: AdaptationDecision[] }
+  >();
+  if (existsSync(shadowRoot))
+    for (const name of readdirSync(shadowRoot)
+      .filter((item) => item.endsWith(".json"))
+      .sort())
+      try {
+        const path = join(shadowRoot, name);
+        if (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink())
+          throw new Error("invalid shadow artifact");
+        const value = JSON.parse(readFileSync(path, "utf8")) as Record<
+          string,
+          unknown
+        >;
+        const { id, ...identity } = value;
+        if (
+          typeof id !== "string" ||
+          name !== `${id}.json` ||
+          id !== `adapt_${sha256(JSON.stringify(identity))}` ||
+          typeof value.eventId !== "string" ||
+          typeof value.model !== "string" ||
+          typeof value.createdAt !== "string" ||
+          Number.isNaN(Date.parse(value.createdAt)) ||
+          !Array.isArray(value.evidence) ||
+          !Array.isArray(value.decisions)
+        )
+          throw new Error("invalid shadow artifact");
+        let decisions: AdaptationDecision[];
+        if (value.version === 2 && value.promptVersion === 2) {
+          if (!value.catalog || typeof value.catalog !== "object")
+            throw new Error("invalid shadow catalog");
+          const evidence = value.evidence.map((item) =>
+            item &&
+            typeof item === "object" &&
+            (item as Record<string, unknown>).kind === "turn-observation"
+              ? parseTurnObservation(item)
+              : parseRollbackEvidence(item),
+          );
+          decisions = parseAdaptationDecisions(
+            JSON.stringify({ version: 2, decisions: value.decisions }),
+            value.catalog as Catalog,
+            evidence,
+          );
+        } else if (value.version === 1 && value.promptVersion === 1) {
+          decisions = value.decisions.map(() => ({
+            action: "no-op" as const,
+            evidenceIds: [],
+            reason: "legacy",
+          }));
+        } else throw new Error("invalid shadow version");
+        shadows.set(id, { eventId: value.eventId, decisions });
+        publishedDecisions += decisions.length;
+      } catch {
+        malformedAdaptationArtifacts++;
+      }
+  const ledgerRoot = join(cfg.data, "v2/adaptation/ledger");
+  if (existsSync(ledgerRoot))
+    for (const name of readdirSync(ledgerRoot)
+      .filter((item) => item.endsWith(".json"))
+      .sort())
+      try {
+        const path = join(ledgerRoot, name);
+        if (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink())
+          throw new Error("invalid adaptation ledger artifact");
+        const value = JSON.parse(readFileSync(path, "utf8")) as Record<
+          string,
+          unknown
+        >;
+        const shadow =
+          typeof value.shadowId === "string"
+            ? shadows.get(value.shadowId)
+            : undefined;
+        if (
+          Object.keys(value).sort().join(",") !== "eventId,shadowId,version" ||
+          value.version !== 2 ||
+          typeof value.eventId !== "string" ||
+          name !== `${value.eventId}.json` ||
+          !shadow ||
+          shadow.eventId !== value.eventId
+        )
+          throw new Error("invalid adaptation ledger artifact");
+      } catch {
+        malformedAdaptationArtifacts++;
+      }
+  const terminalRoot = join(cfg.data, "v2/adaptation/production");
+  if (existsSync(terminalRoot))
+    for (const shadowId of readdirSync(terminalRoot).sort()) {
+      const dir = join(terminalRoot, shadowId);
+      try {
+        if (!lstatSync(dir).isDirectory() || lstatSync(dir).isSymbolicLink())
+          throw new Error("invalid terminal directory");
+        for (const name of readdirSync(dir)
+          .filter((item) => item.endsWith(".json"))
+          .sort()) {
+          try {
+            const path = join(dir, name);
+            if (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink())
+              throw new Error("invalid terminal artifact");
+            const value = JSON.parse(readFileSync(path, "utf8")) as Record<
+              string,
+              unknown
+            >;
+            const optional = [
+              ...(value.historyCommit === undefined ? [] : ["historyCommit"]),
+              ...(value.proposalId === undefined ? [] : ["proposalId"]),
+              ...(value.error === undefined ? [] : ["error"]),
+            ];
+            if (
+              Object.keys(value).sort().join(",") !==
+                [
+                  "action",
+                  "decisionIndex",
+                  "outcome",
+                  "shadowId",
+                  "version",
+                  ...optional,
+                ]
+                  .sort()
+                  .join(",") ||
+              value.version !== 2 ||
+              value.shadowId !== shadowId ||
+              !Number.isInteger(value.decisionIndex) ||
+              name !== `${Number(value.decisionIndex)}.json` ||
+              ![
+                "reinforce",
+                "repair",
+                "demote",
+                "archive",
+                "no-op",
+                "legacy",
+              ].includes(String(value.action)) ||
+              !["applied", "stale", "error"].includes(String(value.outcome)) ||
+              (value.error !== undefined && typeof value.error !== "string")
+            )
+              throw new Error("invalid adaptation terminal");
+            const shadow = shadows.get(shadowId);
+            const decisionIndex = Number(value.decisionIndex);
+            if (
+              value.action === "legacy"
+                ? !shadow || decisionIndex !== 0
+                : !shadow ||
+                  shadow.decisions[decisionIndex]?.action !== value.action
+            )
+              throw new Error("adaptation terminal is not bound to shadow");
+            const outcome = value.outcome as keyof typeof terminalOutcomes;
+            terminalOutcomes[outcome] += 1;
+            if (
+              outcome === "stale" ||
+              value.error === "stale adaptation target"
+            )
+              staleTargetRejects++;
+            if (
+              outcome === "error" &&
+              typeof value.error === "string" &&
+              /(?:recover|collision|history|regeneration)/i.test(value.error)
+            )
+              recoveryFailures++;
+          } catch {
+            malformedAdaptationArtifacts++;
+          }
+        }
+      } catch {
+        malformedAdaptationArtifacts++;
+      }
+    }
+
+  const catalog = scanCatalog(cfg.root);
+  let quality = new Map<string, "reinforced" | "neutral" | "demoted">();
+  try {
+    quality = deriveAdaptationQuality(cfg);
+  } catch {
+    malformedAdaptationArtifacts++;
+  }
+  const liveArtifactVersions = { reinforced: 0, demoted: 0 };
+  for (const entry of catalog.entries) {
+    const value = quality.get(
+      adaptationQualityKey({
+        memoryId: entry.memoryId,
+        path: entry.path,
+        artifactSha256: entry.sha256,
+      }),
+    );
+    if (value === "reinforced" || value === "demoted")
+      liveArtifactVersions[value] += 1;
+  }
+  let verifiedRollbacks = 0;
+  try {
+    const verification = isHistoryInitialized(cfg)
+      ? verifyHistory(cfg)
+      : { ok: true };
+    if (!verification.ok) throw new Error("invalid rollback history");
+    verifiedRollbacks = listHistoryByKind(cfg, "rollback").filter(
+      (entry) =>
+        entry.receipt.reviewId &&
+        entry.receipt.proposalId &&
+        entry.receipt.transactionId &&
+        entry.receipt.provenance &&
+        typeof entry.receipt.provenance === "object" &&
+        (entry.receipt.provenance as Record<string, unknown>).reviewer ===
+          "local-cli",
+    ).length;
+  } catch {
+    malformedAdaptationArtifacts++;
+  }
+  let explicitFeedback = 0;
+  try {
+    explicitFeedback = activeFeedback(cfg).length;
+  } catch {
+    malformedAdaptationArtifacts++;
+  }
+
+  return {
+    version: 1,
+    receipts: {
+      valid: validReceipts,
+      malformedArtifacts: malformedReceiptArtifacts,
+      malformedSessionArtifacts,
+      nativeCheckpoints,
+      coveredNativeCheckpoints,
+      validReceiptCoveragePerNativeCheckpoint: ratio(
+        coveredNativeCheckpoints,
+        nativeCheckpoints,
+      ),
+      workspaces: Object.fromEntries(
+        Object.entries(workspaces).sort(([left], [right]) =>
+          left.localeCompare(right),
+        ),
+      ),
+    },
+    exposures,
+    rates: {
+      openedThenCited: {
+        numerator: openedThenCited,
+        denominator: opened,
+        rate: ratio(openedThenCited, opened),
+      },
+      citedThenExplicitPositiveFeedback: {
+        numerator: citedThenExplicitPositive,
+        denominator: cited,
+        rate: ratio(citedThenExplicitPositive, cited),
+      },
+      citedWithObjectiveToolOutcomeDiagnostic: {
+        numerator: citedWithObjectiveToolOutcomeDiagnostic,
+        denominator: cited,
+        rate: ratio(citedWithObjectiveToolOutcomeDiagnostic, cited),
+      },
+    },
+    shadowRetrieval: {
+      trustedExplicitLabels: rankDeltas.length,
+      meanProductionRankImprovementOverShadow: rankDeltas.length
+        ? rankDeltas.reduce((sum, delta) => sum + delta, 0) / rankDeltas.length
+        : 0,
+      rankDeltas,
+    },
+    adaptation: {
+      publishedDecisions,
+      terminalOutcomes,
+      pendingDecisions: Math.max(
+        0,
+        publishedDecisions -
+          terminalOutcomes.applied -
+          terminalOutcomes.stale -
+          terminalOutcomes.error,
+      ),
+      staleTargetRejects,
+      malformedArtifacts: malformedAdaptationArtifacts,
+      recoveryFailures,
+      liveArtifactVersions,
+    },
+    trustedGold: {
+      explicitFeedback,
+      verifiedRollbacks,
+      observations: 0,
+      modelDecisions: 0,
+    },
+  };
+}
+
 export function memoryMetrics(
   cfg: MemoryConfig,
   clock: () => string = () => new Date().toISOString(),
@@ -1281,6 +1867,7 @@ export function memoryMetrics(
             ) / results.length,
     },
     maintenance: operationalMetrics(cfg, generatedAt),
+    adaptationEvaluation: adaptationEvaluationMetrics(cfg),
     proposals: {
       pending: pending.length,
       reviewed: reviewed.length,
