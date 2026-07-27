@@ -446,16 +446,31 @@ export function listMaintenanceEvents(
 
 export function claimMaintenanceEvent(
   cfg: EventConfig,
-  options: { ownerPid?: number; clock?: Clock } = {},
+  options: {
+    ownerPid?: number;
+    clock?: Clock;
+    kinds?: MaintenanceEventKind[];
+    ids?: string[];
+  } = {},
 ): MaintenanceEvent | null {
   return withQueueLock(cfg, (assertOwned) => {
-    const pending = listMaintenanceEvents(cfg, ["pending"])[0];
-    if (!pending) return null;
-    const source = eventPath(cfg, "pending", pending.event.id);
-    const target = eventPath(cfg, "processing", pending.event.id);
+    const pending = listMaintenanceEvents(cfg, ["pending"]).find(
+      ({ event }) => !options.kinds || options.kinds.includes(event.kind),
+    );
+    const selected =
+      pending && (!options.ids || options.ids.includes(pending.event.id))
+        ? pending
+        : listMaintenanceEvents(cfg, ["pending"]).find(
+            ({ event }) =>
+              (!options.kinds || options.kinds.includes(event.kind)) &&
+              (!options.ids || options.ids.includes(event.id)),
+          );
+    if (!selected) return null;
+    const source = eventPath(cfg, "pending", selected.event.id);
+    const target = eventPath(cfg, "processing", selected.event.id);
     const claimed = {
-      ...pending.event,
-      attempt: pending.event.attempt + 1,
+      ...selected.event,
+      attempt: selected.event.attempt + 1,
       ownerPid: options.ownerPid ?? process.pid,
       ownerIdentity:
         processIdentity(options.ownerPid ?? process.pid) ??
