@@ -123,7 +123,7 @@
   "diffEditor.ignoreTrimWhitespace": false,
   "git.ignoreMissingGitWarning": true,
   "git.blame.editorDecoration.template": "${authorDateAgo} by ${authorName}, ${subject}",
-  "git.blame.editorDecoration.enabled": true,
+  "git.blame.editorDecoration.enabled": false,
   "gitlens.mode.active": "zen",
   "gitlens.gitCommands.skipConfirmations": [
     "fetch:command",
