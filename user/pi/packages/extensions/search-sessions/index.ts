@@ -32,6 +32,7 @@ import {
   parseMentions,
   resolveMentionableSession,
   toResolvedSessionMention,
+  type MentionableSession,
   type MentionSource,
   type MentionSourceContext,
 } from "@bds_pi/mentions";
@@ -59,6 +60,69 @@ type SearchSessionsExtensionDeps = {
   getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
   withPromptPatch: typeof withPromptPatch;
 };
+
+const MAX_SESSION_PROJECTIONS = 2_000;
+const MAX_SESSION_PROJECTION_BYTES = 64 * 1024;
+const MAX_SESSION_PROJECTION_TOTAL_BYTES = 64 * 1024 * 1024;
+
+function sessionProjectionDir(): string {
+  const data =
+    process.env.PI_MEMORY_DATA_DIR ??
+    path.join(os.homedir(), ".local", "share", "pi-memory");
+  return path.join(data, "pi-sessions");
+}
+
+async function loadProjectedSessionMentions(): Promise<MentionableSession[]> {
+  const root = sessionProjectionDir();
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const sessions: MentionableSession[] = [];
+  let totalBytes = 0;
+  for (const entry of entries.slice(0, MAX_SESSION_PROJECTIONS)) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    const filePath = path.join(root, entry.name);
+    try {
+      const stat = await fs.promises.stat(filePath);
+      if (
+        stat.size > MAX_SESSION_PROJECTION_BYTES ||
+        totalBytes + stat.size > MAX_SESSION_PROJECTION_TOTAL_BYTES
+      )
+        continue;
+      totalBytes += stat.size;
+      const text = await fs.promises.readFile(filePath, "utf8");
+      const sessionId = entry.name.slice(0, -3);
+      const workspace = text.match(/^workspace:\s*(.+)$/mu)?.[1]?.trim() ?? "";
+      const sessionName =
+        text.match(/^## branch [^\n]*? — (.+)$/mu)?.[1]?.trim() ?? "";
+      const firstUserMessage =
+        text
+          .match(/^### user\s*\n+([^\n]+)/mu)?.[1]
+          ?.trim()
+          .slice(0, 500) ?? "";
+      sessions.push({
+        sessionId,
+        sessionName,
+        workspace,
+        filePath,
+        startedAt: stat.birthtime.toISOString(),
+        updatedAt: stat.mtime.toISOString(),
+        firstUserMessage,
+        searchableText: [
+          sessionId,
+          sessionName,
+          workspace,
+          firstUserMessage,
+        ].join("\n"),
+        branchCount: text.match(/^## branch /gmu)?.length ?? 1,
+      });
+    } catch {}
+  }
+  return sessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
 
 const CONFIG_DEFAULTS: SearchSessionsExtConfig = {
   maxResults: 50,
@@ -673,16 +737,12 @@ function createSearchSessionsExtension(
     if (!enabled) return;
 
     const source = createSessionMentionSource();
-    const sessionsDirs = resolveSessionsDirs(cfg);
+    let autocompleteGeneration = 0;
 
-    pi.on("session_start", async (_event, ctx) => {
+    pi.on("session_start", (_event, ctx) => {
       if (!ctx.hasUI) return;
-      const sessions = uniqueBy(
-        sessionsDirs.flatMap((sessionsDir) =>
-          getSessionMentionsIndex(sessionsDir),
-        ),
-        (session) => session.sessionId,
-      );
+      const generation = ++autocompleteGeneration;
+      const sessions: MentionableSession[] = [];
       ctx.ui.addAutocompleteProvider(
         (baseProvider) =>
           new MentionAutocompleteProvider({
@@ -691,6 +751,10 @@ function createSearchSessionsExtension(
             context: { cwd: ctx.cwd, sessions },
           }),
       );
+      void loadProjectedSessionMentions().then((loaded) => {
+        if (generation === autocompleteGeneration)
+          sessions.splice(0, sessions.length, ...loaded);
+      });
     });
 
     pi.on("before_agent_start", async (event) => {
@@ -748,10 +812,45 @@ if (import.meta.vitest) {
   afterEach(() => {
     vi.restoreAllMocks();
     clearConfigCache();
+    delete process.env.PI_MEMORY_DATA_DIR;
     setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
   });
 
   describe("search-sessions extension", () => {
+    it("loads autocomplete metadata from bounded projections asynchronously", async () => {
+      const data = fs.mkdtempSync(
+        path.join(tmpdir, "pi-search-session-projections-"),
+      );
+      process.env.PI_MEMORY_DATA_DIR = data;
+      const projections = path.join(data, "pi-sessions");
+      fs.mkdirSync(projections, { recursive: true });
+      fs.writeFileSync(
+        path.join(projections, "session-1.md"),
+        [
+          "# pi session session-1",
+          "",
+          "workspace: /workspace",
+          "",
+          "## branch leaf — fast startup",
+          "",
+          "### user",
+          "",
+          "fix the freeze",
+        ].join("\n"),
+      );
+
+      await expect(loadProjectedSessionMentions()).resolves.toMatchObject([
+        {
+          sessionId: "session-1",
+          sessionName: "fast startup",
+          workspace: "/workspace",
+          firstUserMessage: "fix the freeze",
+          branchCount: 1,
+        },
+      ]);
+      fs.rmSync(data, { recursive: true, force: true });
+    });
+
     it("searches every configured session root", async () => {
       const firstRoot = fs.mkdtempSync(
         path.join(tmpdir, "pi-search-sessions-first-"),
