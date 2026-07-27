@@ -23,6 +23,11 @@ import {
   retrievalMetrics,
 } from "./evaluation.js";
 import { processPipelineBatch } from "./pipeline.js";
+import {
+  claimMaintenanceEvent,
+  enqueueMaintenanceEvent,
+  failMaintenanceEvent,
+} from "./events.js";
 import { reviewProposal, rollbackReview } from "./workflow.js";
 
 function config(): MemoryConfig {
@@ -145,6 +150,14 @@ describe("memory evaluation dataset", () => {
       invoke: () => '{"version":2,"action":"skip","reason":"test replay"}',
     });
     expect(replay.outputs).toBe(3);
+    expect(evalReport(cfg, replay.replayId)).toMatchObject({
+      pairedCases: 0,
+      pairableCases: 1,
+      coverage: 0,
+    });
+    expect(memoryMetrics(cfg)).toMatchObject({
+      eval: { paired: { pairedCases: 0, pairableCases: 1, coverage: 0 } },
+    });
     const caseId = JSON.parse(readFileSync(dataset, "utf8")).caseId;
     const currentOutput = join(
       cfg.data,
@@ -253,7 +266,11 @@ describe("memory evaluation dataset", () => {
     }
     expect(beforeCwd).toMatchObject({ labels: 1, recallAtK: 1, mrr: 1 });
     expect(memoryMetrics(cfg)).toMatchObject({
-      eval: { cases: 1 },
+      eval: {
+        cases: 1,
+        paired: { pairedCases: 1, pairableCases: 1, coverage: 1, delta: 0.5 },
+        retrieval: { labels: 1, recallAtK: 1, mrr: 1 },
+      },
       reviews: { accepted: 1 },
     });
     const reviewPath = join(
@@ -322,7 +339,7 @@ describe("memory evaluation dataset", () => {
         (item) => item.reasonCode === "improved-outcome",
       ),
     ).toBe(true);
-  });
+  }, 10_000);
 
   it("freezes truthful gold context for archive and skill operations", () => {
     const archiveCfg = config();
@@ -476,5 +493,79 @@ describe("memory evaluation dataset", () => {
       reasonCode: "improved-outcome",
     });
     expect(readFeedbackReceipts(cfg)).toContainEqual(receipt);
+  });
+});
+
+describe("memory operational metrics", () => {
+  it("counts durable queue and malformed pipeline artifacts without throwing", () => {
+    const cfg = config();
+    enqueueMaintenanceEvent(
+      cfg,
+      { kind: "checkpoint-ready", cause: "queued", basis: {} },
+      () => "2026-01-01T00:00:00.000Z",
+    );
+    const failed = enqueueMaintenanceEvent(
+      cfg,
+      { kind: "manual", cause: "failed", basis: { reason: "model-timeout" } },
+      () => "2026-01-01T00:01:00.000Z",
+    );
+    const claimed = claimMaintenanceEvent(cfg, {
+      ids: [failed.id],
+      clock: () => "2026-01-01T00:02:00.000Z",
+    })!;
+    failMaintenanceEvent(cfg, claimed.id, claimed.claimToken!);
+    const pending = join(cfg.data, "v2", "events", "pending");
+    writeFileSync(join(pending, "malformed.json"), "not json");
+    const run = join(cfg.data, "v2", "runs", "malformed-run");
+    mkdirSync(run, { recursive: true });
+    writeFileSync(join(run, "input.json"), "{}");
+    writeFileSync(join(run, "output.json"), "not model json");
+    writeFileSync(join(run, "result.json"), "not result json");
+
+    expect(memoryMetrics(cfg, () => "2026-01-01T00:10:00.000Z")).toMatchObject({
+      pipeline: { runs: 0, malformedArtifacts: 1, modelParseFailures: 0 },
+      maintenance: {
+        byKind: { "checkpoint-ready": 1, manual: 1 },
+        byStatus: { pending: 1, failed: 1 },
+        oldestPendingAgeSeconds: 600,
+        maxAttempts: 1,
+        failedAgesSeconds: [540],
+        failedReasons: { "model-timeout": 1 },
+        malformedArtifacts: 1,
+      },
+    });
+  });
+
+  it("quarantines an ENOTDIR event status path", () => {
+    const cfg = config();
+    const events = join(cfg.data, "v2", "events");
+    mkdirSync(events, { recursive: true });
+    writeFileSync(join(events, "pending"), "not a directory");
+    expect(memoryMetrics(cfg)).toMatchObject({
+      maintenance: { malformedArtifacts: 1, byStatus: { pending: 0 } },
+    });
+  });
+
+  it("rejects numeric checkpoint ids through canonical run validation", () => {
+    const cfg = config();
+    const result = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence],
+      model: "test",
+      invoke: () => '{"version":2,"action":"skip","reason":"done"}',
+    });
+    const dir = join(cfg.data, "v2", "runs", result.runId);
+    const inputPath = join(dir, "input.json");
+    const input = JSON.parse(readFileSync(inputPath, "utf8"));
+    input.evidence[0].window.checkpointEntryIds = [42];
+    writeFileSync(inputPath, JSON.stringify(input));
+    const resultPath = join(dir, "result.json");
+    const stored = JSON.parse(readFileSync(resultPath, "utf8"));
+    stored.coveredCheckpointIds = [42];
+    writeFileSync(resultPath, JSON.stringify(stored));
+    expect(memoryMetrics(cfg)).toMatchObject({
+      pipeline: { runs: 0, malformedArtifacts: 1 },
+    });
   });
 });

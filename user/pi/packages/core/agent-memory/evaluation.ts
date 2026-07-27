@@ -14,6 +14,8 @@ import {
   freezePipelineInput,
   PRODUCTION_TARGET_LIMIT,
   rankRetrieval,
+  parseStoredPipelineInput,
+  parseStoredPipelineResult,
   type PipelineInput,
 } from "./pipeline.js";
 import {
@@ -22,6 +24,11 @@ import {
   type ReviewReceipt,
 } from "./schema.js";
 import { findProposal, listProposals, readReviewReceipts } from "./workflow.js";
+import {
+  MAINTENANCE_EVENT_KINDS,
+  parseMaintenanceEvent,
+  type MaintenanceEventStatus,
+} from "./events.js";
 import {
   commitHistory,
   historyContainsAncestor,
@@ -1006,6 +1013,7 @@ export function evalReport(
     version: 2,
     replayId,
     pairedCases: paired.length,
+    pairableCases: pairable.size,
     coverage: pairable.size ? Math.min(1, paired.length / pairable.size) : 0,
     current: average("current"),
     memoryOff: average("memory-off"),
@@ -1079,25 +1087,165 @@ export function retrievalBenchmark(
   };
 }
 
-export function memoryMetrics(cfg: MemoryConfig): Record<string, unknown> {
+function operationalMetrics(cfg: MemoryConfig, now: string) {
+  const statuses: MaintenanceEventStatus[] = [
+    "pending",
+    "processing",
+    "done",
+    "failed",
+  ];
+  const byKind = Object.fromEntries(
+    MAINTENANCE_EVENT_KINDS.map((kind) => [kind, 0]),
+  );
+  const byStatus = Object.fromEntries(statuses.map((status) => [status, 0]));
+  const records: Array<{
+    status: MaintenanceEventStatus;
+    event: ReturnType<typeof parseMaintenanceEvent>;
+  }> = [];
+  let malformedArtifacts = 0;
+  for (const status of statuses) {
+    const dir = join(cfg.data, "v2", "events", status);
+    let names: string[];
+    try {
+      const metadata = lstatSync(dir);
+      if (!metadata.isDirectory() || metadata.isSymbolicLink())
+        throw new Error("invalid event status directory");
+      names = readdirSync(dir)
+        .filter((item) => item.endsWith(".json"))
+        .sort();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      malformedArtifacts++;
+      continue;
+    }
+    for (const name of names) {
+      try {
+        const path = join(dir, name);
+        if (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink())
+          throw new Error("invalid event artifact");
+        const event = parseMaintenanceEvent(readFileSync(path, "utf8"));
+        records.push({ status, event });
+        byKind[event.kind] = (byKind[event.kind] ?? 0) + 1;
+        byStatus[status] = (byStatus[status] ?? 0) + 1;
+      } catch {
+        malformedArtifacts++;
+      }
+    }
+  }
+  const age = (date: string) =>
+    Math.max(0, (Date.parse(now) - Date.parse(date)) / 1000);
+  const pending = records.filter((item) => item.status === "pending");
+  const failed = records.filter((item) => item.status === "failed");
+  const reasons: Record<string, number> = {};
+  for (const { event } of failed)
+    if (typeof event.basis.reason === "string")
+      reasons[event.basis.reason] = (reasons[event.basis.reason] ?? 0) + 1;
+  return {
+    byKind,
+    byStatus,
+    oldestPendingAgeSeconds: pending.length
+      ? Math.max(...pending.map(({ event }) => age(event.createdAt)))
+      : 0,
+    maxAttempts: records.length
+      ? Math.max(...records.map(({ event }) => event.attempt))
+      : 0,
+    failedAgesSeconds: failed
+      .map(({ event }) => age(event.createdAt))
+      .sort((a, b) => b - a),
+    failedReasons: Object.fromEntries(
+      Object.entries(reasons).sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    ),
+    malformedArtifacts,
+  };
+}
+
+function durablePipelineMetrics(cfg: MemoryConfig) {
+  const root = join(cfg.data, "v2", "runs");
+  const results: Array<{ action: string; coveredCheckpointIds: string[] }> = [];
+  let malformedArtifacts = 0,
+    modelParseFailures = 0;
+  if (existsSync(root))
+    for (const name of readdirSync(root).sort()) {
+      const dir = join(root, name),
+        inputPath = join(dir, "input.json"),
+        outputPath = join(dir, "output.json"),
+        resultPath = join(dir, "result.json");
+      let input: PipelineInput;
+      try {
+        input = parseStoredPipelineInput(readFileSync(inputPath, "utf8"));
+      } catch {
+        malformedArtifacts++;
+        continue;
+      }
+      if (existsSync(outputPath))
+        try {
+          parseModelProposal(
+            readFileSync(outputPath, "utf8"),
+            input.evidence.map((item) => item.window.windowId),
+          );
+        } catch {
+          modelParseFailures++;
+        }
+      if (existsSync(resultPath))
+        try {
+          results.push(
+            parseStoredPipelineResult(readFileSync(resultPath, "utf8"), input),
+          );
+        } catch {
+          malformedArtifacts++;
+        }
+    }
+  return { results, malformedArtifacts, modelParseFailures };
+}
+
+function replayMetrics(cfg: MemoryConfig) {
+  const root = join(cfg.data, "v2", "eval", "replays"),
+    reports: Record<string, unknown>[] = [];
+  let malformedArtifacts = 0;
+  if (existsSync(root))
+    for (const id of readdirSync(root).sort())
+      try {
+        reports.push(evalReport(cfg, id));
+      } catch {
+        malformedArtifacts++;
+      }
+  const pairedCases = reports.reduce(
+    (sum, item) => sum + Number(item.pairedCases),
+    0,
+  );
+  const pairable = reports.reduce(
+    (sum, item) => sum + Number(item.pairableCases),
+    0,
+  );
+  return {
+    replays: reports.length,
+    pairedCases,
+    pairableCases: pairable,
+    coverage: pairable ? pairedCases / pairable : 0,
+    delta: pairedCases
+      ? reports.reduce(
+          (sum, item) => sum + Number(item.delta) * Number(item.pairedCases),
+          0,
+        ) / pairedCases
+      : 0,
+    malformedArtifacts,
+  };
+}
+
+export function memoryMetrics(
+  cfg: MemoryConfig,
+  clock: () => string = () => new Date().toISOString(),
+): Record<string, unknown> {
+  const generatedAt = clock();
   const reviews = readReviewReceipts(cfg);
   const pending = listProposals(cfg);
   const reviewed = listProposals(cfg, undefined, "reviewed");
   const catalog = scanCatalog(cfg.root);
   const ledger = contained(cfg.data, join(cfg.data, "v2", "ledger"));
-  const runs = contained(cfg.data, join(cfg.data, "v2", "runs"));
-  const runDirs = existsSync(runs)
-    ? readdirSync(runs).filter((name) =>
-        existsSync(join(runs, name, "result.json")),
-      )
-    : [];
-  const results = runDirs.map(
-    (name) =>
-      JSON.parse(readFileSync(join(runs, name, "result.json"), "utf8")) as {
-        action: string;
-        coveredCheckpointIds: string[];
-      },
-  );
+  const pipeline = durablePipelineMetrics(cfg);
+  const results = pipeline.results;
   const reasonCodes = Object.fromEntries(
     [...new Set(reviews.map((review) => review.reason.code))].map((code) => [
       code,
@@ -1105,8 +1253,8 @@ export function memoryMetrics(cfg: MemoryConfig): Record<string, unknown> {
     ]),
   );
   return {
-    version: 1,
-    generatedAt: new Date().toISOString(),
+    version: 2,
+    generatedAt,
     catalog: {
       entries: catalog.entries.length,
       legacy: catalog.entries.filter((entry) => entry.legacy).length,
@@ -1122,6 +1270,8 @@ export function memoryMetrics(cfg: MemoryConfig): Record<string, unknown> {
             (name) => name.endsWith(".json") && !name.startsWith("v1-"),
           ).length
         : 0,
+      malformedArtifacts: pipeline.malformedArtifacts,
+      modelParseFailures: pipeline.modelParseFailures,
       checkpointsPerRun:
         results.length === 0
           ? 0
@@ -1130,6 +1280,7 @@ export function memoryMetrics(cfg: MemoryConfig): Record<string, unknown> {
               0,
             ) / results.length,
     },
+    maintenance: operationalMetrics(cfg, generatedAt),
     proposals: {
       pending: pending.length,
       reviewed: reviewed.length,
@@ -1156,6 +1307,10 @@ export function memoryMetrics(cfg: MemoryConfig): Record<string, unknown> {
         .length,
       reasonCodes,
     },
-    eval: { cases: buildEvalCases(cfg).length },
+    eval: {
+      cases: buildEvalCases(cfg).length,
+      paired: replayMetrics(cfg),
+      retrieval: retrievalBenchmark(cfg),
+    },
   };
 }

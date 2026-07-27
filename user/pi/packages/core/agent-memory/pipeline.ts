@@ -56,7 +56,68 @@ export type PipelineResult = {
   coveredCheckpointIds: string[];
 };
 
-function storedPipelineResult(
+export function parseStoredPipelineInput(raw: string): PipelineInput {
+  const value: unknown = JSON.parse(raw);
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    throw new Error("invalid stored pipeline input");
+  const input = value as Record<string, unknown>;
+  const expectedFields = [
+    "batchId",
+    "catalog",
+    "createdAt",
+    "evidence",
+    "model",
+    "pending",
+    "promptVersion",
+    "reviewSignals",
+    "runId",
+    "scope",
+    "skills",
+    "targets",
+    "version",
+  ];
+  const fields = Object.keys(input).sort();
+  if (input.model === undefined)
+    expectedFields.splice(expectedFields.indexOf("model"), 1);
+  if (
+    fields.join(",") !== expectedFields.sort().join(",") ||
+    input.version !== 2 ||
+    input.promptVersion !== 2 ||
+    typeof input.runId !== "string" ||
+    typeof input.batchId !== "string" ||
+    typeof input.createdAt !== "string" ||
+    typeof input.scope !== "string" ||
+    (input.model !== undefined && typeof input.model !== "string") ||
+    !Array.isArray(input.evidence) ||
+    !input.evidence.every((item) => {
+      if (typeof item !== "object" || item === null || Array.isArray(item))
+        return false;
+      const window = (item as { window?: unknown }).window;
+      return (
+        typeof window === "object" &&
+        window !== null &&
+        !Array.isArray(window) &&
+        typeof (window as { windowId?: unknown }).windowId === "string" &&
+        Array.isArray(
+          (window as { checkpointEntryIds?: unknown }).checkpointEntryIds,
+        ) &&
+        (window as { checkpointEntryIds: unknown[] }).checkpointEntryIds.every(
+          (id) => typeof id === "string",
+        )
+      );
+    }) ||
+    !Array.isArray(input.targets) ||
+    !Array.isArray(input.pending) ||
+    !Array.isArray(input.reviewSignals) ||
+    !Array.isArray(input.skills) ||
+    typeof input.catalog !== "object" ||
+    input.catalog === null
+  )
+    throw new Error("invalid stored pipeline input");
+  return input as PipelineInput;
+}
+
+export function parseStoredPipelineResult(
   raw: string,
   input: PipelineInput,
 ): PipelineResult {
@@ -384,7 +445,7 @@ function existingFrozenInput(
   for (const name of readdirSync(root).sort()) {
     const path = join(root, name, "input.json");
     if (!existsSync(path)) continue;
-    const candidate = JSON.parse(readFileSync(path, "utf8")) as PipelineInput;
+    const candidate = parseStoredPipelineInput(readFileSync(path, "utf8"));
     if (
       candidate.batchId === fresh.batchId &&
       sha256(JSON.stringify(candidate.evidence)) === evidenceHash
@@ -486,7 +547,7 @@ export function processPipelineBatch(options: {
   const outputMetadataPath = join(dir, "output-meta.json");
   const resultPath = join(dir, "result.json");
   if (existsSync(resultPath)) {
-    const result = storedPipelineResult(
+    const result = parseStoredPipelineResult(
       readFileSync(resultPath, "utf8"),
       input,
     );
