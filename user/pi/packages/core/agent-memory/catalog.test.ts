@@ -9,6 +9,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { adaptationQualityKey } from "./quality.js";
 import {
   generateHotManifest,
   loadHotManifest,
@@ -100,6 +101,42 @@ describe("memory catalog", () => {
     expect(rendered).not.toContain("invented prose");
     expect(rendered).toContain("catalog description 24");
     expect(loadHotManifest({ data }, catalog, cwd)).toBe(rendered);
+
+    const quality = new Map([
+      [
+        adaptationQualityKey({
+          memoryId: entries[0]!.memoryId,
+          path: entries[0]!.path,
+          artifactSha256: entries[0]!.sha256,
+        }),
+        "reinforced" as const,
+      ],
+      [
+        adaptationQualityKey({
+          memoryId: entries[24]!.memoryId,
+          path: entries[24]!.path,
+          artifactSha256: entries[24]!.sha256,
+        }),
+        "demoted" as const,
+      ],
+    ]);
+    const qualityManifest = generateHotManifest(
+      { data },
+      catalog,
+      cwd,
+      quality,
+    );
+    expect(qualityManifest.entries[0]?.path).toBe(entries[0]!.path);
+    expect(
+      qualityManifest.entries.some((item) => item.path === entries[24]!.path),
+    ).toBe(false);
+    expect(
+      catalog.entries.some((item) => item.path === entries[24]!.path),
+    ).toBe(true);
+    expect(loadHotManifest({ data }, catalog, cwd, quality)).toBe(
+      renderHotManifest(qualityManifest),
+    );
+    expect(loadHotManifest({ data }, catalog, cwd, new Map())).toBeUndefined();
 
     const path = join(data, "v2/hot", readdirSync(join(data, "v2/hot"))[0]!);
     const stored = JSON.parse(readFileSync(path, "utf8"));

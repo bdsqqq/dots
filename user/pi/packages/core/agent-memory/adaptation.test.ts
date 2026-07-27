@@ -1,22 +1,33 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  adaptationGate,
   buildAdaptationPrompt,
   collectTurnObservations,
   deduplicateTurnObservations,
+  findShadowAdaptation,
   listVerifiedRollbackEvidence,
   markShadowAdaptationLedger,
   parseAdaptationDecisions,
+  promoteShadowAdaptation,
   publishShadowAdaptation,
   turnObservationMatchesRefs,
   verifiedRollbackEvidence,
+  type AdaptationDecision,
   type RollbackEvidence,
   type TurnObservation,
 } from "./adaptation.js";
-import { scanCatalog, type MemoryConfig } from "./catalog.js";
-import { withWritableMemoryRoot } from "./history.js";
+import { scanCatalog, sha256, type MemoryConfig } from "./catalog.js";
+import { initHistory, listHistory, withWritableMemoryRoot } from "./history.js";
 import { canonicalTurnReceiptId, type TurnReceipt } from "./receipt.js";
 import { canonicalProposalId, renderMemory, type Proposal } from "./schema.js";
 import { reviewProposal, rollbackReview, saveProposal } from "./workflow.js";
@@ -218,6 +229,14 @@ describe("adaptation evidence and shadow decisions", () => {
           artifactSha256: entry.sha256,
         },
       ],
+      condemnedRefs: [
+        {
+          memoryId: entry.memoryId,
+          path: entry.path,
+          artifactSha256: entry.sha256,
+        },
+      ],
+      restoredRefs: [],
       targets: [
         {
           memoryId: entry.memoryId,
@@ -227,10 +246,10 @@ describe("adaptation evidence and shadow decisions", () => {
       ],
     };
     const valid = {
-      version: 1,
+      version: 2,
       decisions: [
         {
-          action: "repair",
+          action: "demote",
           target: evidence.targets[0],
           evidenceIds: [evidence.evidenceId],
           reason: "rollback is stronger evidence",
@@ -331,7 +350,7 @@ describe("adaptation evidence and shadow decisions", () => {
         [evidence],
       ),
     ).toThrow("stale adaptation target");
-    expect(buildAdaptationPrompt(catalog, [evidence])).toMatch(
+    expect(buildAdaptationPrompt(cfg, catalog, [evidence])).toMatch(
       /non-authoritative|Do not grade your own/,
     );
   });
@@ -387,6 +406,7 @@ describe("adaptation evidence and shadow decisions", () => {
       eventId: "event_" + "a".repeat(64),
       model: "test",
       createdAt: "2026-07-27T00:00:00.000Z",
+      catalog: scanCatalog(cfg.root),
       evidence: [evidence],
       decisions: [decision],
     };
@@ -402,5 +422,414 @@ describe("adaptation evidence and shadow decisions", () => {
     expect(JSON.parse(readFileSync(ledger, "utf8"))).toMatchObject({
       shadowId: first.id,
     });
+  });
+});
+
+describe("production adaptation policy", () => {
+  function setup() {
+    const cfg = config();
+    withWritableMemoryRoot(cfg, () =>
+      writeFileSync(join(cfg.root, "2026-test--source__agent.md"), memory()),
+    );
+    initHistory(cfg);
+    const entry = scanCatalog(cfg.root).entries[0]!;
+    return {
+      cfg,
+      target: {
+        memoryId: entry.memoryId,
+        path: entry.path,
+        artifactSha256: entry.sha256,
+      },
+    };
+  }
+
+  function observation(options: {
+    id: string;
+    target: { memoryId: string; artifactSha256: string };
+    session?: string;
+    responseToReceiptId?: string;
+    kind?: "injected" | "opened" | "cited";
+    text?: string;
+    outcome?: {
+      toolName: string;
+      result: "success" | "error";
+      independent?: boolean;
+    };
+  }): TurnObservation {
+    const exposureCall = `open-${options.id}`;
+    const identity: Omit<TurnReceipt, "receiptId"> = {
+      version: 1,
+      sessionId: options.session ?? "session",
+      workspace: "/tmp",
+      userEntryIds: [`u-${options.id}`],
+      assistantEntryIds: [`a-${options.id}`],
+      ...(options.responseToReceiptId
+        ? { responseToReceiptId: options.responseToReceiptId }
+        : {}),
+      catalogSha256: "a".repeat(64),
+      exposures: [
+        {
+          kind: options.kind ?? "injected",
+          memoryId: options.target.memoryId,
+          artifactSha256: options.target.artifactSha256,
+          ...(options.kind === "opened" || options.kind === "cited"
+            ? { toolCallId: exposureCall }
+            : {}),
+        },
+      ],
+      outcomes: options.outcome
+        ? [
+            {
+              toolCallId: options.outcome.independent
+                ? `verify-${options.id}`
+                : exposureCall,
+              resultEntryId: `result-${options.id}`,
+              toolName: options.outcome.toolName,
+              result: options.outcome.result,
+            },
+          ]
+        : [],
+      redactions: {},
+      recordedAt: "2026-07-27T00:00:00.000Z",
+    };
+    const receipt = {
+      ...identity,
+      receiptId: canonicalTurnReceiptId(identity),
+    };
+    return {
+      kind: "turn-observation",
+      evidenceId: `turn:${options.id}:${receipt.receiptId}`,
+      entryId: options.id,
+      receipt,
+      ...(options.text
+        ? {
+            authoredUserText: [
+              { entryId: `u-${options.id}`, text: options.text },
+            ],
+          }
+        : {}),
+    };
+  }
+
+  function shadow(
+    cfg: MemoryConfig,
+    evidence: TurnObservation[] | RollbackEvidence[],
+    decisions: AdaptationDecision[],
+    id = `adapt_${"a".repeat(64)}`,
+  ) {
+    return {
+      version: 2 as const,
+      id,
+      eventId: `event_${"b".repeat(64)}`,
+      model: "test",
+      promptVersion: 2 as const,
+      createdAt: "2026-07-27T00:00:00.000Z",
+      catalog: scanCatalog(cfg.root),
+      evidence,
+      decisions,
+    };
+  }
+
+  function replacementDecision(
+    target: { memoryId: string; path: string; artifactSha256: string },
+    prior: TurnObservation,
+    correction: TurnObservation,
+  ): AdaptationDecision {
+    const authoredCorrection = "use the verified correction instead";
+    return {
+      action: "repair",
+      target,
+      evidenceIds: [prior.evidenceId, correction.evidenceId],
+      reason: "authored correction",
+      mutation: {
+        type: "replace",
+        oldSpan: "Verify exact evidence.",
+        newSpan: authoredCorrection,
+        authoredCorrection,
+      },
+    };
+  }
+
+  it("never promotes v1 shadows", () => {
+    const { cfg } = setup();
+    const baseline = listHistory(cfg).length;
+    const legacyIdentity = {
+      version: 1 as const,
+      eventId: `event_${"2".repeat(64)}`,
+      model: "old",
+      promptVersion: 1 as const,
+      createdAt: "2026-07-27T00:00:00.000Z",
+      evidence: [],
+      decisions: [],
+    };
+    const legacy = {
+      ...legacyIdentity,
+      id: `adapt_${sha256(JSON.stringify(legacyIdentity))}`,
+    };
+    const shadowRoot = join(cfg.data, "v2/adaptation/shadow");
+    mkdirSync(shadowRoot, { recursive: true });
+    writeFileSync(
+      join(shadowRoot, `${legacy.id}.json`),
+      JSON.stringify(legacy),
+    );
+    expect(findShadowAdaptation(cfg, legacy.eventId)).toBeUndefined();
+    expect(buildAdaptationPrompt(cfg, scanCatalog(cfg.root), [])).toContain(
+      `Return {"version":2`,
+    );
+    expect(promoteShadowAdaptation(cfg, legacy)[0]).toMatchObject({
+      outcome: "error",
+      action: "legacy",
+    });
+    expect(listHistory(cfg)).toHaveLength(baseline);
+  });
+
+  it("requires linked authored praise and rejects objective tool success", () => {
+    const { cfg, target } = setup();
+    const opened = observation({
+      id: "open",
+      target,
+      kind: "opened",
+      outcome: { toolName: "read", result: "success" },
+    });
+    const decision = {
+      action: "reinforce" as const,
+      target,
+      evidenceIds: [opened.evidenceId],
+      reason: "candidate",
+    };
+    expect(
+      adaptationGate(cfg, shadow(cfg, [opened], [decision]), decision).allowed,
+    ).toBe(false);
+    const unboundPraise = observation({
+      id: "praise",
+      target,
+      text: "thanks, that worked",
+    });
+    const unbound = { ...decision, evidenceIds: [unboundPraise.evidenceId] };
+    expect(
+      adaptationGate(cfg, shadow(cfg, [unboundPraise], [unbound]), unbound)
+        .allowed,
+    ).toBe(false);
+    const linkedPraise = observation({
+      id: "linked",
+      target,
+      responseToReceiptId: opened.receipt.receiptId,
+      text: "thanks, that worked",
+    });
+    const linked = {
+      ...decision,
+      evidenceIds: [opened.evidenceId, linkedPraise.evidenceId],
+    };
+    expect(
+      adaptationGate(cfg, shadow(cfg, [opened, linkedPraise], [linked]), linked)
+        .allowed,
+    ).toBe(true);
+    const verified = observation({
+      id: "verified",
+      target,
+      kind: "opened",
+      outcome: { toolName: "test", result: "success", independent: true },
+    });
+    const objective = { ...decision, evidenceIds: [verified.evidenceId] };
+    expect(
+      adaptationGate(cfg, shadow(cfg, [verified], [objective]), objective)
+        .allowed,
+    ).toBe(false);
+  });
+
+  it("treats only the condemned rollback hash as negative authority", () => {
+    const cfg = config();
+    const created = proposal();
+    saveProposal(cfg, created);
+    const accepted = reviewProposal({
+      cfg,
+      id: created.id,
+      decision: "accept",
+      reasonCode: "correct",
+      reason: "seed",
+    });
+    const badHash = scanCatalog(cfg.root).entries[0]!.sha256;
+    const rolledBack = rollbackReview(
+      cfg,
+      accepted.reviewId,
+      "incorrect artifact",
+    );
+    const evidence = verifiedRollbackEvidence(cfg, {
+      historyCommit: rolledBack.historyCommit!,
+      mutationId: rolledBack.mutationId!,
+      reviewId: rolledBack.reviewId,
+      proposalId: rolledBack.proposalId,
+    });
+    expect(evidence.condemnedRefs).toContainEqual(
+      expect.objectContaining({ artifactSha256: badHash }),
+    );
+    expect(
+      evidence.restoredRefs.some((ref) => ref.artifactSha256 === badHash),
+    ).toBe(false);
+    const restored = evidence.restoredRefs[0];
+    if (restored) {
+      const archive = {
+        action: "archive" as const,
+        target: restored,
+        evidenceIds: [evidence.evidenceId],
+        reason: "must not archive restored",
+      };
+      expect(
+        adaptationGate(
+          cfg,
+          {
+            ...shadow(cfg, [evidence], [archive]),
+            catalog: scanCatalog(cfg.root),
+          },
+          archive,
+        ).allowed,
+      ).toBe(false);
+    }
+    const condemned = evidence.condemnedRefs[0]!;
+    const demote = {
+      action: "demote" as const,
+      target: condemned,
+      evidenceIds: [evidence.evidenceId],
+      reason: "historical bad version",
+    };
+    const before = scanCatalog(cfg.root);
+    const terminal = promoteShadowAdaptation(cfg, {
+      ...shadow(cfg, [evidence], [demote]),
+      catalog: {
+        ...before,
+        entries: [
+          {
+            ...before.entries[0]!,
+            sha256: condemned.artifactSha256,
+            path: condemned.path,
+            memoryId: condemned.memoryId,
+          },
+        ],
+      },
+    })[0]!;
+    expect(terminal.outcome).toBe("applied");
+    expect(scanCatalog(cfg.root).entries).toEqual(before.entries);
+  });
+
+  it("replaces one exact span and preserves every byte outside it", () => {
+    const { cfg, target } = setup();
+    const prior = observation({ id: "prior", target });
+    const correction = observation({
+      id: "correction",
+      target,
+      responseToReceiptId: prior.receipt.receiptId,
+      text: "wrong; use the verified correction instead",
+    });
+    const proposed = replacementDecision(target, prior, correction);
+    const patch = parseAdaptationDecisions(
+      JSON.stringify({ version: 2, decisions: [proposed] }),
+      scanCatalog(cfg.root),
+      [prior, correction],
+    )[0]!;
+    const before = readFileSync(join(cfg.root, target.path), "utf8");
+    expect(
+      promoteShadowAdaptation(cfg, shadow(cfg, [prior, correction], [patch]))[0]
+        ?.outcome,
+    ).toBe("applied");
+    expect(readFileSync(join(cfg.root, target.path), "utf8")).toBe(
+      before.replace(
+        "Verify exact evidence.",
+        "use the verified correction instead",
+      ),
+    );
+
+    const second = setup();
+    const prior2 = observation({ id: "prior2", target: second.target });
+    const correction2 = observation({
+      id: "correction2",
+      target: second.target,
+      responseToReceiptId: prior2.receipt.receiptId,
+      text: "wrong; use the verified correction instead",
+    });
+    const bad: AdaptationDecision = {
+      action: "repair",
+      target: second.target,
+      evidenceIds: [prior2.evidenceId, correction2.evidenceId],
+      reason: "bad body",
+      mutation: {
+        type: "replace",
+        oldSpan: "missing old body",
+        newSpan: "use the verified correction instead",
+        authoredCorrection: "use the verified correction instead",
+      },
+    };
+    expect(
+      promoteShadowAdaptation(
+        second.cfg,
+        shadow(second.cfg, [prior2, correction2], [bad]),
+      )[0],
+    ).toMatchObject({ outcome: "error" });
+  });
+
+  it("recovers an applied deterministic proposal before checking the stale target", () => {
+    const { cfg, target } = setup();
+    const prior = observation({ id: "prior", target });
+    const correction = observation({
+      id: "correction",
+      target,
+      responseToReceiptId: prior.receipt.receiptId,
+      text: "wrong; use the verified correction instead",
+    });
+    const decision = replacementDecision(target, prior, correction);
+    const value = shadow(cfg, [prior, correction], [decision]);
+    const first = promoteShadowAdaptation(cfg, value)[0]!;
+    rmSync(join(cfg.data, "v2/adaptation/production", value.id, "0.json"));
+    expect(promoteShadowAdaptation(cfg, value)[0]).toMatchObject({
+      outcome: "applied",
+      proposalId: first.proposalId,
+    });
+  });
+
+  it("settles later decisions after an earlier terminal error", () => {
+    const { cfg, target } = setup();
+    const exposure = observation({ id: "weak", target });
+    const decisions: AdaptationDecision[] = [
+      {
+        action: "reinforce",
+        target,
+        evidenceIds: [exposure.evidenceId],
+        reason: "unsupported",
+      },
+      {
+        action: "no-op",
+        evidenceIds: [exposure.evidenceId],
+        reason: "independent no-op",
+      },
+    ];
+    expect(
+      promoteShadowAdaptation(cfg, shadow(cfg, [exposure], decisions)).map(
+        (item) => item.outcome,
+      ),
+    ).toEqual(["error", "applied"]);
+  });
+
+  it("fails closed on artifact drift", () => {
+    const { cfg, target } = setup();
+    const verified = observation({
+      id: "verified",
+      target,
+      kind: "opened",
+      outcome: { toolName: "test", result: "success", independent: true },
+    });
+    withWritableMemoryRoot(cfg, () =>
+      writeFileSync(join(cfg.root, target.path), `${memory()}\nchanged`),
+    );
+    const decision = {
+      action: "reinforce" as const,
+      target,
+      evidenceIds: [verified.evidenceId],
+      reason: "stale",
+    };
+    expect(
+      promoteShadowAdaptation(
+        cfg,
+        shadow(cfg, [verified], [decision], `adapt_${"c".repeat(64)}`),
+      )[0]?.outcome,
+    ).toBe("stale");
   });
 });
