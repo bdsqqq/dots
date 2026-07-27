@@ -24,6 +24,7 @@ import {
 import {
   MEMORY_KINDS,
   REVIEW_REASON_CODES,
+  canonicalProposalId,
   memoryRef,
   parseModelProposal,
   proposalFileName,
@@ -112,6 +113,7 @@ function proposalPath(
 }
 
 export function saveProposal(cfg: MemoryConfig, proposal: Proposal): string {
+  parseStoredProposal(JSON.stringify(proposal), cfg);
   ensureWorkflowDirs(cfg);
   const path = proposalPath(cfg, proposal);
   const value = `${JSON.stringify(proposal, null, 2)}\n`;
@@ -126,7 +128,11 @@ export function saveProposal(cfg: MemoryConfig, proposal: Proposal): string {
         const reviewedPath = join(reviewedDir, name);
         return {
           path: reviewedPath,
-          proposal: parseStoredProposal(readFileSync(reviewedPath, "utf8")),
+          proposal: parseStoredProposal(
+            readFileSync(reviewedPath, "utf8"),
+            cfg,
+            true,
+          ),
         };
       })
       .filter((item) => item.proposal.id === proposal.id);
@@ -148,7 +154,13 @@ export function listProposals(
   return readdirSync(dir)
     .filter((name) => name.endsWith(".json"))
     .sort()
-    .map((name) => parseStoredProposal(readFileSync(join(dir, name), "utf8")))
+    .map((name) =>
+      parseStoredProposal(
+        readFileSync(join(dir, name), "utf8"),
+        cfg,
+        status === "reviewed",
+      ),
+    )
     .filter((proposal) => lane === undefined || proposal.lane === lane);
 }
 
@@ -164,7 +176,11 @@ export function findProposal(
       item.endsWith(".json"),
     )) {
       const path = join(dir, name);
-      const proposal = parseStoredProposal(readFileSync(path, "utf8"));
+      const proposal = parseStoredProposal(
+        readFileSync(path, "utf8"),
+        cfg,
+        status === "reviewed",
+      );
       if (proposal.id === id || proposal.id.startsWith(id))
         matches.push({ proposal, path });
     }
@@ -214,9 +230,14 @@ function validateFullArtifact(value: unknown): void {
   } = value;
   parseModelProposal(
     JSON.stringify({
+      version: 2,
       action: "propose",
       proposals: [
-        { lane: "memory", operation: { type: "create", artifact: draft } },
+        {
+          lane: "memory",
+          evidenceWindowIds: ["stored-validation"],
+          operation: { type: "create", artifact: draft },
+        },
       ],
     }),
   );
@@ -314,8 +335,15 @@ function validateStoredOperation(
   if (lane === "skill") {
     parseModelProposal(
       JSON.stringify({
+        version: 2,
         action: "propose",
-        proposals: [{ lane: "skill", operation: value }],
+        proposals: [
+          {
+            lane: "skill",
+            evidenceWindowIds: ["stored-validation"],
+            operation: value,
+          },
+        ],
       }),
     );
     return;
@@ -364,13 +392,20 @@ function validateStoredOperation(
   } else throw new Error("invalid stored operation type");
 }
 
-export function parseStoredProposal(raw: string): Proposal {
+export function parseStoredProposal(
+  raw: string,
+  cfg?: MemoryConfig,
+  allowHistoricalMaintenance = false,
+): Proposal {
   const value: unknown = JSON.parse(raw);
   if (
     !object(value) ||
-    Object.keys(value).sort().join(",") !==
-      "evidence,id,lane,operation,provenance,status,supersedes,version" ||
+    ![
+      "evidence,id,lane,operation,provenance,status,supersedes,version",
+      "digestVersion,evidence,id,lane,operation,provenance,status,supersedes,version",
+    ].includes(Object.keys(value).sort().join(",")) ||
     value.version !== 2 ||
+    (value.digestVersion !== undefined && value.digestVersion !== 2) ||
     typeof value.id !== "string" ||
     (value.lane !== "memory" && value.lane !== "skill") ||
     value.status !== "pending" ||
@@ -411,6 +446,81 @@ export function parseStoredProposal(raw: string): Proposal {
   if (value.operation.type !== "skill-draft" && value.lane !== "memory")
     throw new Error("proposal lane mismatch");
   validateStoredOperation(value.lane, value.operation);
+  const proposal = value as Proposal;
+  const { id: _id, ...identity } = proposal;
+  const legacyId = (operation: Proposal["operation"]) =>
+    `prop_${sha256(
+      JSON.stringify({
+        operation,
+        evidence: proposal.evidence,
+        runId: proposal.provenance.runId,
+      }),
+    ).slice(0, 32)}`;
+  const expectedIds =
+    proposal.digestVersion === 2
+      ? [canonicalProposalId(identity)]
+      : [
+          legacyId(proposal.operation),
+          ...(allowHistoricalMaintenance &&
+          proposal.provenance.runId.startsWith("maintenance_")
+            ? [
+                `prop_${sha256(
+                  `maintenance:${proposal.provenance.runId.slice(
+                    "maintenance_".length,
+                  )}`,
+                ).slice(0, 32)}`,
+                ...Array.from(
+                  { length: 8 },
+                  (_, index) =>
+                    `prop_${sha256(
+                      `${proposal.provenance.runId.slice(
+                        "maintenance_".length,
+                      )}:${index}:${JSON.stringify(proposal.operation)}`,
+                    ).slice(0, 32)}`,
+                ),
+              ]
+            : []),
+          ...(proposal.provenance.model === "manual-cli" &&
+          "artifact" in proposal.operation
+            ? [
+                legacyId({
+                  ...proposal.operation,
+                  artifact: { ...proposal.operation.artifact, sources: [] },
+                }),
+              ]
+            : []),
+        ];
+  const legacyMigrationMatch =
+    proposal.digestVersion === undefined &&
+    proposal.provenance.migration === true &&
+    proposal.provenance.model === "legacy-v1" &&
+    proposal.provenance.runId.startsWith("migration_") &&
+    /^prop_[a-f0-9]{32}$/.test(proposal.id) &&
+    cfg !== undefined &&
+    existsSync(join(cfg.data, "candidates")) &&
+    readdirSync(join(cfg.data, "candidates"))
+      .filter((name) => name.endsWith(".md"))
+      .some((name) => {
+        const path = join(cfg.data, "candidates", name);
+        const parsed = legacyCandidate(path);
+        const seed = sha256(
+          `legacy-v1:${parsed.source}:${sha256(readFileSync(path))}`,
+        );
+        return (
+          proposal.id === `prop_${seed.slice(0, 32)}` &&
+          proposal.provenance.runId === `migration_${seed.slice(0, 24)}` &&
+          JSON.stringify(proposal.operation) ===
+            JSON.stringify({
+              type: "create",
+              artifact: {
+                ...parsed.artifact,
+                memoryId: `mem_${seed.slice(0, 24)}`,
+              },
+            })
+        );
+      });
+  if (!expectedIds.includes(proposal.id) && !legacyMigrationMatch)
+    throw new Error("stored proposal id does not match content");
   return value as Proposal;
 }
 
@@ -455,6 +565,7 @@ export function materializeModelProposals(options: {
   corpusAware?: boolean;
   autonomous?: boolean;
   source?: string;
+  digestVersion?: 2;
 }): Proposal[] {
   const createdAt = options.createdAt ?? new Date().toISOString();
   const targets = new Map(
@@ -463,11 +574,25 @@ export function materializeModelProposals(options: {
   const pendingIds = new Set(options.pending.map((item) => item.id));
   let skillCount = 0;
   return options.result.proposals.map((draft, index) => {
+    const availableEvidence = new Map(
+      options.evidence.map((item) => [item.windowId, item]),
+    );
+    const selectedEvidence =
+      options.evidence.length === 0 && options.autonomous !== true
+        ? []
+        : draft.evidenceWindowIds.map((windowId) => {
+            const item = availableEvidence.get(windowId);
+            if (!item)
+              throw new Error(
+                `proposal references unavailable evidence ${windowId}`,
+              );
+            return item;
+          });
     let operation: MemoryOperation | SkillDraftOperation;
     if (draft.lane === "skill") {
       skillCount += 1;
       if (skillCount > 2) throw new Error("too many skill proposals");
-      if (new Set(options.evidence.map((item) => item.sessionId)).size < 2)
+      if (new Set(selectedEvidence.map((item) => item.sessionId)).size < 2)
         throw new Error("skill proposal requires two sessions");
       operation = draft.operation;
     } else {
@@ -484,7 +609,7 @@ export function materializeModelProposals(options: {
           artifact: completeArtifact(
             op.artifact,
             `mem_${seed.slice(0, 24)}`,
-            options.evidence,
+            selectedEvidence,
             createdAt,
           ),
         };
@@ -498,7 +623,7 @@ export function materializeModelProposals(options: {
           artifact: completeArtifact(
             op.artifact,
             current.memoryId,
-            options.evidence,
+            selectedEvidence,
             createdAt,
           ),
         };
@@ -518,7 +643,7 @@ export function materializeModelProposals(options: {
           artifact: completeArtifact(
             op.artifact,
             primary.memoryId,
-            options.evidence,
+            selectedEvidence,
             createdAt,
           ),
         };
@@ -534,27 +659,23 @@ export function materializeModelProposals(options: {
         } as MemoryOperation;
       }
     }
-    const canonical = JSON.stringify({
-      operation,
-      evidence: options.evidence,
-      runId: options.runId,
-    });
-    const proposalId = `prop_${sha256(canonical).slice(0, 32)}`;
-    return {
-      version: 2,
-      id: proposalId,
+    if (options.source && "artifact" in operation)
+      operation.artifact.sources = [options.source];
+    const proposal = {
+      version: 2 as const,
+      ...(options.digestVersion === 2 ? { digestVersion: 2 as const } : {}),
       lane: draft.lane,
-      status: "pending",
+      status: "pending" as const,
       operation,
       supersedes: options.pending
         .filter(
           (item) =>
-            item.id !== proposalId &&
+            item.provenance.runId !== options.runId &&
             pendingIds.has(item.id) &&
             JSON.stringify(item.operation) === JSON.stringify(operation),
         )
         .map((item) => item.id),
-      evidence: options.evidence,
+      evidence: selectedEvidence,
       provenance: {
         runId: options.runId,
         promptVersion: PROMPT_VERSION,
@@ -567,6 +688,17 @@ export function materializeModelProposals(options: {
         ...(options.source ? { source: options.source } : {}),
       },
     };
+    const id =
+      options.digestVersion === 2
+        ? canonicalProposalId(proposal)
+        : `prop_${sha256(
+            JSON.stringify({
+              operation,
+              evidence: selectedEvidence,
+              runId: options.runId,
+            }),
+          ).slice(0, 32)}`;
+    return { ...proposal, id };
   });
 }
 
@@ -611,7 +743,14 @@ export function submitManualProposal(
       !/^(?:pi|https):\/\//.test(source))
   )
     throw new Error("manual proposal source must be a pi:// or https:// URI");
-  const result = parseModelProposal(raw);
+  const manualValue: unknown = JSON.parse(raw);
+  if (object(manualValue) && Array.isArray(manualValue.proposals)) {
+    manualValue.version = 2;
+    for (const proposal of manualValue.proposals)
+      if (object(proposal) && proposal.evidenceWindowIds === undefined)
+        proposal.evidenceWindowIds = ["manual"];
+  }
+  const result = parseModelProposal(JSON.stringify(manualValue));
   if (result.action !== "propose")
     throw new Error("manual proposal payload must propose at least one change");
   if (result.proposals.some((proposal) => proposal.lane !== "memory"))
@@ -645,16 +784,13 @@ export function submitManualProposal(
       ? { createdAt: existingBatch[0].provenance.createdAt }
       : {}),
     ...(source ? { source } : {}),
+    digestVersion: 2,
   });
   assertNonOverlappingMemoryProposals(
     cfg,
     proposals.filter((proposal) => !existing.has(proposal.id)),
   );
   return proposals.map((proposal) => {
-    if (source && proposal.lane === "memory") {
-      const operation = proposal.operation as MemoryOperation;
-      if ("artifact" in operation) operation.artifact.sources = [source];
-    }
     const saved = existing.get(proposal.id);
     if (saved) {
       if (
@@ -1916,9 +2052,9 @@ export function migrateV1(
       ...parsed.artifact,
       memoryId: `mem_${seed.slice(0, 24)}`,
     };
-    saveProposal(cfg, {
+    const proposal: Omit<Proposal, "id"> = {
       version: 2,
-      id: `prop_${seed.slice(0, 32)}`,
+      digestVersion: 2,
       lane: "memory",
       status: "pending",
       operation: { type: "create", artifact },
@@ -1932,7 +2068,8 @@ export function migrateV1(
         migration: true,
         corpusAware: false,
       },
-    });
+    };
+    saveProposal(cfg, { ...proposal, id: canonicalProposalId(proposal) });
   }
   for (const name of receipts)
     copyFileSync(join(receiptDir, name), v2(cfg, "ledger", `v1-${name}`));

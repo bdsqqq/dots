@@ -253,11 +253,13 @@ function replayInput(
   cfg: MemoryConfig,
   item: EvalCase,
   mode: "memory-off" | "current" | "gold",
+  model: string,
 ): PipelineInput {
   const current = freezePipelineInput(
     cfg,
     item.input.scope,
     item.input.sanitizedEvidence,
+    model,
   );
   if (mode === "current") return current;
   if (mode === "memory-off")
@@ -290,7 +292,7 @@ export function replayDataset(options: {
   let outputs = 0;
   for (const item of cases)
     for (const mode of options.modes) {
-      const input = replayInput(options.cfg, item, mode);
+      const input = replayInput(options.cfg, item, mode, options.model);
       const raw = options.invoke(buildReflectionPrompt(input));
       const parsed = parseModelProposal(raw);
       atomicWrite(

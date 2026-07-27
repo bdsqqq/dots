@@ -28,6 +28,7 @@ export type PipelineInput = {
   runId: string;
   batchId: string;
   promptVersion: 2;
+  model?: string;
   createdAt: string;
   scope: string;
   evidence: SafeEvidence[];
@@ -85,26 +86,44 @@ function storedPipelineResult(
   return record as PipelineResult;
 }
 
+function parsePipelineOutput(raw: string, input: PipelineInput) {
+  return {
+    legacy: (JSON.parse(raw) as { version?: unknown }).version === undefined,
+    parsed: parseModelProposal(
+      raw,
+      input.evidence.map((item) => item.window.windowId),
+    ),
+  };
+}
+
 function expectedStoredResult(
   cfg: MemoryConfig,
   input: PipelineInput,
   outputPath: string,
-): Pick<PipelineResult, "action" | "proposalIds"> {
-  const parsed = parseModelProposal(readFileSync(outputPath, "utf8"));
-  if (parsed.action === "skip") return { action: "skip", proposalIds: [] };
+  model: string,
+  digestVersion: 2 | undefined,
+):
+  | { action: "skip"; proposals: [] }
+  | { action: "propose"; proposals: import("./schema.js").Proposal[] } {
+  const { parsed } = parsePipelineOutput(
+    readFileSync(outputPath, "utf8"),
+    input,
+  );
+  if (parsed.action === "skip") return { action: "skip", proposals: [] };
   return {
     action: "propose",
-    proposalIds: materializeModelProposals({
+    proposals: materializeModelProposals({
       result: parsed,
       runId: input.runId,
-      model: "cached-result-validation",
+      model,
       scope: input.scope,
       evidence: input.evidence.map((item) => item.window),
       catalog: input.catalog,
       pending: listProposals(cfg),
       createdAt: input.createdAt,
       autonomous: true,
-    }).map((proposal) => proposal.id),
+      ...(digestVersion === 2 ? { digestVersion } : {}),
+    }),
   };
 }
 
@@ -199,6 +218,7 @@ export function freezePipelineInput(
   cfg: MemoryConfig,
   scope: string,
   evidence: SafeEvidence[],
+  model: string,
 ): PipelineInput {
   const fullCatalog = scanCatalog(cfg.root, "1970-01-01T00:00:00.000Z");
   const catalog: Catalog = {
@@ -274,6 +294,7 @@ export function freezePipelineInput(
       ]),
       pending,
       reviewSignals,
+      model,
     }),
   );
   const evidenceHash = sha256(JSON.stringify(evidence));
@@ -283,6 +304,7 @@ export function freezePipelineInput(
     runId,
     batchId,
     promptVersion: 2,
+    model,
     createdAt: new Date().toISOString(),
     scope,
     evidence,
@@ -300,9 +322,10 @@ export function buildReflectionPrompt(input: PipelineInput): string {
 
 First reflect on whether the bounded evidence contains durable, reusable learning. Prefer explicit corrections, verified failures, stable preferences, architectural decisions, and repeated workflows. Do not store secrets, raw logs, temporary task state, or facts already represented adequately.
 
-You may return {"action":"skip","reason":"..."} or {"action":"propose","proposals":[...]} with at most 8 proposals.
+Return schema version 2. You may return {"version":2,"action":"skip","reason":"..."} or {"version":2,"action":"propose","proposals":[...]} with at most 8 proposals.
 
 Memory proposals use lane "memory" and one operation:
+Each proposal must include "evidenceWindowIds", a nonempty list of unique window IDs selected from the frozen evidence. Select only evidence that supports that proposal.
 - create: {"type":"create","artifact":ARTIFACT}
 - update: {"type":"update","targetId":"...","artifact":ARTIFACT}
 - merge: {"type":"merge","primaryId":"...","targetIds":["..."],"artifact":ARTIFACT}
@@ -323,6 +346,14 @@ ${JSON.stringify(input, null, 2)}`;
 
 function runDir(cfg: MemoryConfig, runId: string): string {
   return contained(cfg.data, join(cfg.data, "v2", "runs", runId));
+}
+
+function writeCurrentOutputMetadata(dir: string): void {
+  const path = join(dir, "output-meta.json");
+  const value = `${JSON.stringify({ version: 1, digestVersion: 2 }, null, 2)}\n`;
+  if (existsSync(path) && readFileSync(path, "utf8") !== value)
+    throw new Error("pipeline output metadata collision");
+  if (!existsSync(path)) atomicWrite(path, value);
 }
 
 function existingFrozenInput(
@@ -394,6 +425,7 @@ function preparePipelineBatch(options: PipelineBatchOptions): {
     options.cfg,
     options.scope,
     options.evidence,
+    options.model,
   );
   const input = existingFrozenInput(options.cfg, fresh) || fresh;
   const dir = runDir(options.cfg, input.runId);
@@ -403,6 +435,15 @@ function preparePipelineBatch(options: PipelineBatchOptions): {
   if (existsSync(inputPath) && readFileSync(inputPath, "utf8") !== inputValue)
     throw new Error("frozen pipeline input collision");
   if (!existsSync(inputPath)) atomicWrite(inputPath, inputValue);
+  if (
+    input.model !== undefined &&
+    input.model !== options.model &&
+    !existsSync(join(dir, "output.json")) &&
+    !existsSync(join(dir, "result.json"))
+  )
+    throw new Error(
+      `frozen pipeline model ${input.model} does not match configured model ${options.model}`,
+    );
   return { input, dir };
 }
 
@@ -417,17 +458,28 @@ export function processPipelineBatch(options: {
 }): PipelineResult {
   const { input, dir } = preparePipelineBatch(options);
   const outputPath = join(dir, "output.json");
+  const outputMetadataPath = join(dir, "output-meta.json");
   const resultPath = join(dir, "result.json");
   if (existsSync(resultPath)) {
     const result = storedPipelineResult(
       readFileSync(resultPath, "utf8"),
       input,
     );
-    const expected = expectedStoredResult(options.cfg, input, outputPath);
+    const stored = result.proposalIds.map(
+      (id) => findProposal(options.cfg, id).proposal,
+    );
+    const frozenModel =
+      input.model ?? stored[0]?.provenance.model ?? options.model;
+    const expected = expectedStoredResult(
+      options.cfg,
+      input,
+      outputPath,
+      frozenModel,
+      stored.every((proposal) => proposal.digestVersion === 2) ? 2 : undefined,
+    );
     if (
       result.action !== expected.action ||
-      JSON.stringify(result.proposalIds) !==
-        JSON.stringify(expected.proposalIds)
+      JSON.stringify(stored) !== JSON.stringify(expected.proposals)
     )
       throw new Error("stored pipeline result does not match model output");
     for (const id of options.autoApplyMemory === false
@@ -448,14 +500,26 @@ export function processPipelineBatch(options: {
     markLedger(options.cfg, input, result);
     return result;
   }
-  const raw = existsSync(outputPath)
+  const outputExisted = existsSync(outputPath);
+  if (
+    !outputExisted &&
+    !options.skipExternal &&
+    input.model &&
+    input.model !== options.model
+  )
+    throw new Error(
+      `frozen pipeline model mismatch: expected ${input.model}, got ${options.model}`,
+    );
+  const raw = outputExisted
     ? readFileSync(outputPath, "utf8")
     : options.skipExternal
-      ? '{"action":"skip","reason":"external processing disabled"}'
+      ? '{"version":2,"action":"skip","reason":"external processing disabled"}'
       : options.invoke(buildReflectionPrompt(input));
-  const parsed = parseModelProposal(raw);
-  if (!existsSync(outputPath))
-    atomicWrite(outputPath, `${JSON.stringify(parsed, null, 2)}\n`);
+  const { parsed } = parsePipelineOutput(raw, input);
+  if (!outputExisted) {
+    writeCurrentOutputMetadata(dir);
+    atomicWrite(outputPath, `${JSON.stringify(JSON.parse(raw), null, 2)}\n`);
+  }
   const coveredCheckpointIds = input.evidence.flatMap(
     (item) => item.window.checkpointEntryIds,
   );
@@ -464,13 +528,16 @@ export function processPipelineBatch(options: {
     const proposals = materializeModelProposals({
       result: parsed,
       runId: input.runId,
-      model: options.model,
+      model: input.model ?? options.model,
       scope: input.scope,
       evidence: input.evidence.map((item) => item.window),
       catalog: input.catalog,
       pending: listProposals(options.cfg),
       createdAt: input.createdAt,
       autonomous: true,
+      ...(!existsSync(outputMetadataPath) && input.model === undefined
+        ? {}
+        : { digestVersion: 2 }),
     });
     assertNonOverlappingMemoryProposals(options.cfg, proposals);
     for (const proposal of proposals) {
@@ -544,9 +611,9 @@ export async function processPipelineBatches(
           const resultPath = join(item.dir, "result.json");
           if (existsSync(outputPath) || existsSync(resultPath)) continue;
           analyses[index] = item.option.skipExternal
-            ? '{"action":"skip","reason":"external processing disabled"}'
+            ? '{"version":2,"action":"skip","reason":"external processing disabled"}'
             : await item.option.invoke(buildReflectionPrompt(item.input));
-          parseModelProposal(analyses[index]!);
+          parsePipelineOutput(analyses[index]!, item.input);
         }
       },
     ),
@@ -562,9 +629,10 @@ export async function processPipelineBatches(
         readFileSync(inputPath, "utf8") !== expected
       )
         throw new Error("frozen pipeline input changed during analysis");
+      writeCurrentOutputMetadata(item.dir);
       atomicWrite(
         join(item.dir, "output.json"),
-        `${JSON.stringify(parseModelProposal(raw), null, 2)}\n`,
+        `${JSON.stringify(JSON.parse(raw), null, 2)}\n`,
       );
     }
     return processPipelineBatch({
