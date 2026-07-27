@@ -116,6 +116,13 @@ describe("private memory history", () => {
         },
       ],
     });
+    expect(() =>
+      commitHistory(
+        cfg,
+        { ...core("mutation_one"), changes: [] },
+        { allowEmpty: true },
+      ),
+    ).toThrow("duplicate history mutation id");
     const receipt = headHistoryReceipt(cfg)!;
     expect(receipt).toMatchObject({
       commit: result.commit,
