@@ -376,7 +376,7 @@ function markLedger(
     }
 }
 
-export function processPipelineBatch(options: {
+export type PipelineBatchOptions = {
   cfg: MemoryConfig;
   scope: string;
   evidence: SafeEvidence[];
@@ -384,7 +384,12 @@ export function processPipelineBatch(options: {
   invoke: (prompt: string) => string;
   skipExternal?: boolean;
   autoApplyMemory?: boolean;
-}): PipelineResult {
+};
+
+function preparePipelineBatch(options: PipelineBatchOptions): {
+  input: PipelineInput;
+  dir: string;
+} {
   const fresh = freezePipelineInput(
     options.cfg,
     options.scope,
@@ -398,6 +403,19 @@ export function processPipelineBatch(options: {
   if (existsSync(inputPath) && readFileSync(inputPath, "utf8") !== inputValue)
     throw new Error("frozen pipeline input collision");
   if (!existsSync(inputPath)) atomicWrite(inputPath, inputValue);
+  return { input, dir };
+}
+
+export function processPipelineBatch(options: {
+  cfg: MemoryConfig;
+  scope: string;
+  evidence: SafeEvidence[];
+  model: string;
+  invoke: (prompt: string) => string;
+  skipExternal?: boolean;
+  autoApplyMemory?: boolean;
+}): PipelineResult {
+  const { input, dir } = preparePipelineBatch(options);
   const outputPath = join(dir, "output.json");
   const resultPath = join(dir, "result.json");
   if (existsSync(resultPath)) {
@@ -489,4 +507,71 @@ export function coveredCheckpointIds(cfg: MemoryConfig): Set<string> {
       .filter((name) => name.endsWith(".json") && !name.startsWith("v1-"))
       .map((name) => basename(name, ".json")),
   );
+}
+
+export async function processPipelineBatches(
+  options: Array<
+    Omit<PipelineBatchOptions, "invoke"> & {
+      invoke: (prompt: string) => string | Promise<string>;
+    }
+  >,
+  concurrencyValue = process.env.PI_MEMORY_CONCURRENCY,
+): Promise<PipelineResult[]> {
+  const parsedConcurrency =
+    concurrencyValue === undefined ? 2 : Number(concurrencyValue);
+  if (
+    !Number.isInteger(parsedConcurrency) ||
+    parsedConcurrency < 1 ||
+    parsedConcurrency > 8
+  )
+    throw new Error("PI_MEMORY_CONCURRENCY must be an integer from 1 to 8");
+
+  const prepared = options.map((option) => ({
+    option,
+    ...preparePipelineBatch(option as PipelineBatchOptions),
+  }));
+  const analyses = new Array<string | undefined>(prepared.length);
+  let next = 0;
+  await Promise.all(
+    Array.from(
+      { length: Math.min(parsedConcurrency, prepared.length) },
+      async () => {
+        for (;;) {
+          const index = next++;
+          if (index >= prepared.length) return;
+          const item = prepared[index]!;
+          const outputPath = join(item.dir, "output.json");
+          const resultPath = join(item.dir, "result.json");
+          if (existsSync(outputPath) || existsSync(resultPath)) continue;
+          analyses[index] = item.option.skipExternal
+            ? '{"action":"skip","reason":"external processing disabled"}'
+            : await item.option.invoke(buildReflectionPrompt(item.input));
+          parseModelProposal(analyses[index]!);
+        }
+      },
+    ),
+  );
+
+  return prepared.map((item, index) => {
+    const raw = analyses[index];
+    if (raw !== undefined) {
+      const inputPath = join(item.dir, "input.json");
+      const expected = `${JSON.stringify(item.input, null, 2)}\n`;
+      if (
+        !existsSync(inputPath) ||
+        readFileSync(inputPath, "utf8") !== expected
+      )
+        throw new Error("frozen pipeline input changed during analysis");
+      atomicWrite(
+        join(item.dir, "output.json"),
+        `${JSON.stringify(parseModelProposal(raw), null, 2)}\n`,
+      );
+    }
+    return processPipelineBatch({
+      ...item.option,
+      invoke: () => {
+        throw new Error("analysis output was not published");
+      },
+    });
+  });
 }

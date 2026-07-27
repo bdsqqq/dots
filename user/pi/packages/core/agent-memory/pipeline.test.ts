@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,7 +11,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
-import { freezePipelineInput, processPipelineBatch } from "./pipeline.js";
+import {
+  freezePipelineInput,
+  processPipelineBatch,
+  processPipelineBatches,
+} from "./pipeline.js";
 import { listProposals, readReviewReceipts } from "./workflow.js";
 
 function config(): MemoryConfig {
@@ -242,5 +247,99 @@ describe("memory reflection pipeline", () => {
     expect(recovered).toEqual(interrupted);
     expect(listProposals(cfg, "memory")).toHaveLength(0);
     expect(readReviewReceipts(cfg)).toHaveLength(1);
+  });
+
+  it("analyzes concurrently and publishes in batch order", async () => {
+    const cfg = config();
+    let active = 0;
+    let peak = 0;
+    const releases: Array<() => void> = [];
+    const options = ["cp-first", "cp-second"].map((checkpoint) => ({
+      cfg,
+      scope: "global",
+      evidence: [evidence(checkpoint)],
+      model: "test",
+      autoApplyMemory: false,
+      invoke: async () => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise<void>((resolve) => releases.push(resolve));
+        active--;
+        return JSON.stringify({
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              operation: {
+                type: "create",
+                artifact: {
+                  title: checkpoint,
+                  kind: "pattern",
+                  scope: "global",
+                  description: `Use for ${checkpoint}`,
+                  triggers: [checkpoint],
+                  keywords: [checkpoint],
+                  body: `Remember ${checkpoint}.`,
+                },
+              },
+            },
+          ],
+        });
+      },
+    }));
+    const pending = processPipelineBatches(options);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(peak).toBe(2);
+    releases[1]!();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(listProposals(cfg)).toHaveLength(0);
+    releases[0]!();
+    const results = await pending;
+    expect(results.map((result) => result.coveredCheckpointIds[0])).toEqual([
+      "cp-first",
+      "cp-second",
+    ]);
+    expect(
+      results.map((result) => {
+        const proposal = listProposals(cfg).find(
+          (item) => item.id === result.proposalIds[0],
+        );
+        return proposal?.operation.type === "create"
+          ? proposal.operation.artifact.title
+          : "";
+      }),
+    ).toEqual(["cp-first", "cp-second"]);
+  });
+
+  it("does not publish when one concurrent analysis fails", async () => {
+    const cfg = config();
+    const options = ["cp-good", "cp-failed"].map((checkpoint) => ({
+      cfg,
+      scope: "global",
+      evidence: [evidence(checkpoint)],
+      model: "test",
+      invoke: async () => {
+        if (checkpoint === "cp-failed") throw new Error("analysis failed");
+        return '{"action":"skip","reason":"nothing durable"}';
+      },
+    }));
+    await expect(processPipelineBatches(options)).rejects.toThrow(
+      "analysis failed",
+    );
+    expect(listProposals(cfg)).toHaveLength(0);
+    expect(existsSync(join(cfg.data, "v2/ledger/session--cp-good.json"))).toBe(
+      false,
+    );
+    expect(
+      existsSync(join(cfg.data, "v2/ledger/session--cp-failed.json")),
+    ).toBe(false);
+    for (const name of readdirSync(join(cfg.data, "v2/runs"))) {
+      expect(existsSync(join(cfg.data, "v2/runs", name, "output.json"))).toBe(
+        false,
+      );
+      expect(existsSync(join(cfg.data, "v2/runs", name, "result.json"))).toBe(
+        false,
+      );
+    }
   });
 });

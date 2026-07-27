@@ -23,7 +23,7 @@ import {
   resolve,
   sep,
 } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { clearConfigCache, getExtensionConfigWithSchema } from "@bds_pi/config";
 import {
@@ -55,7 +55,7 @@ import {
   verifyHistory,
 } from "./history.js";
 import { buildSafeEvidence, type SafeEvidence } from "./evidence.js";
-import { processPipelineBatch } from "./pipeline.js";
+import { processPipelineBatches } from "./pipeline.js";
 import { maintenanceProposals, scanCorpusHealth } from "./maintenance.js";
 import {
   claimMaintenanceEvent,
@@ -418,7 +418,7 @@ export function renderSnapshot(snapshot: Snapshot): {
   return { markdown, jobs: [...jobs.values()] };
 }
 
-function lock<T>(fn: () => T): T | undefined {
+async function lock<T>(fn: () => T | Promise<T>): Promise<T | undefined> {
   const { state } = config();
   secureDir(state);
   const path = contained(state, join(state, "mutating.lock"));
@@ -444,7 +444,7 @@ function lock<T>(fn: () => T): T | undefined {
   }
   writeFileSync(join(path, "owner"), `${process.pid}\n`, { mode: 0o600 });
   try {
-    return fn();
+    return await fn();
   } finally {
     rmSync(path, { recursive: true, force: true });
   }
@@ -530,6 +530,68 @@ function isJob(value: unknown): value is Job {
       "workspace",
     ].every((key) => typeof value[key] === "string")
   );
+}
+
+function runAsync(
+  command: string,
+  args: string[],
+  input: string,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: HOME,
+      env: { ...process.env, NO_COLOR: "1" },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let bytes = 0;
+    let settled = false;
+    const finish = (error?: Error, value?: string): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(value ?? "");
+    };
+    const append = (target: Buffer[], chunk: Buffer): void => {
+      bytes += chunk.length;
+      if (bytes > 1024 * 1024) {
+        child.kill("SIGTERM");
+        finish(new Error(`${command} output exceeded 1 MiB`));
+        return;
+      }
+      target.push(chunk);
+    };
+    child.stdout.on("data", (chunk: Buffer) => append(stdout, chunk));
+    child.stderr.on("data", (chunk: Buffer) => append(stderr, chunk));
+    child.stdin.on("error", (error) => finish(error));
+    child.on("error", (error) => finish(error));
+    child.on("close", (code) => {
+      if (code === 0)
+        finish(
+          undefined,
+          Buffer.concat(stdout)
+            .toString("utf8")
+            .slice(0, 256 * 1024),
+        );
+      else
+        finish(
+          new Error(
+            Buffer.concat(stderr).toString("utf8").trim() ||
+              `${command} exited ${code}`,
+          ),
+        );
+    });
+    const timer = setTimeout(
+      () => {
+        child.kill("SIGTERM");
+        finish(new Error(`${command} timed out`));
+      },
+      Number(process.env.PI_MEMORY_COMMAND_TIMEOUT_MS || 120_000),
+    );
+    child.stdin.end(input);
+  });
 }
 
 function run(
@@ -985,7 +1047,7 @@ function batchWindows(windows: PendingWindow[]): PendingWindow[][] {
   return batches;
 }
 
-function consolidateV2Unlocked(limit: number): boolean {
+async function consolidateV2Unlocked(limit: number): Promise<boolean> {
   const cfg = config();
   let ok = true;
   for (const proposal of listProposals(cfg, "memory").filter(
@@ -1000,25 +1062,21 @@ function consolidateV2Unlocked(limit: number): boolean {
     } catch (error) {
       ok = false;
       console.error(
-        `autonomous memory application deferred for ${proposal.id}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `autonomous memory application deferred for ${proposal.id}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   const batches = batchWindows(pendingWindows(limit));
-  for (const batch of batches) {
-    const workspace = batch[0]!.jobs[0]!.job.workspace;
-    try {
-      const model =
-        process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-luna:low";
-      processPipelineBatch({
+  const model = process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-luna:low";
+  try {
+    await processPipelineBatches(
+      batches.map((batch) => ({
         cfg,
-        scope: scopeFor(workspace),
+        scope: scopeFor(batch[0]!.jobs[0]!.job.workspace),
         evidence: batch.map((window) => window.evidence),
         model,
         skipExternal: process.env.PI_MEMORY_SKIP_EXTERNAL === "1",
-        invoke: (prompt) =>
-          run(
+        invoke: (prompt: string) =>
+          runAsync(
             process.env.PI_BIN || "pi",
             [
               "-p",
@@ -1033,22 +1091,23 @@ function consolidateV2Unlocked(limit: number): boolean {
             ],
             prompt,
           ),
-      });
+      })),
+    );
+    for (const batch of batches)
       for (const window of batch)
         for (const { name } of window.jobs)
           finalizeQueuedJob(cfg, name, "processed");
-    } catch (error) {
-      ok = false;
-      console.error(error instanceof Error ? error.message : String(error));
-    }
+  } catch (error) {
+    ok = false;
+    console.error(error instanceof Error ? error.message : String(error));
   }
   return ok;
 }
 
-function consolidateUnlocked(limit: number): boolean {
+async function consolidateUnlocked(limit: number): Promise<boolean> {
   return process.env.PI_MEMORY_PIPELINE_VERSION === "1"
     ? consolidateV1Unlocked(limit)
-    : consolidateV2Unlocked(limit);
+    : await consolidateV2Unlocked(limit);
 }
 
 function reconcile(): void {
@@ -1136,7 +1195,7 @@ function finalizeHistorySync(
   }
 }
 
-function maintainUnlocked(): boolean {
+async function maintainUnlocked(): Promise<boolean> {
   const cfg = config();
   recoverTransactions(cfg);
   initHistory(cfg, {
@@ -1155,7 +1214,7 @@ function maintainUnlocked(): boolean {
   const now = Date.now();
   let ok = true;
   if (pendingWindows(1).length > 0) {
-    ok = consolidateUnlocked(
+    ok = await consolidateUnlocked(
       Number(process.env.PI_MEMORY_MAINTAIN_LIMIT || 10),
     );
     if (ok) {
@@ -1256,7 +1315,7 @@ async function main(): Promise<void> {
   };
   let result: boolean | undefined = true;
   if (command === "project")
-    result = lock(() => {
+    result = await lock(() => {
       projectUnlocked();
       return true;
     });
@@ -1265,13 +1324,13 @@ async function main(): Promise<void> {
     const limit = index >= 0 ? Number(args[index + 1]) : 10;
     if (!Number.isInteger(limit) || limit < 0 || limit > 1000)
       throw new Error("invalid --limit");
-    result = lock(() => consolidateUnlocked(limit));
+    result = await lock(() => consolidateUnlocked(limit));
   } else if (command === "reconcile")
-    result = lock(() => {
+    result = await lock(() => {
       reconcile();
       return true;
     });
-  else if (command === "maintain") result = lock(maintainUnlocked);
+  else if (command === "maintain") result = await lock(maintainUnlocked);
   else if (command === "promote")
     throw new Error(
       "promote was removed because it bypassed reversible review; run pi-memory migrate, then review the imported proposal",
@@ -1289,7 +1348,7 @@ async function main(): Promise<void> {
         : renderPromptCatalog(catalog, cwd),
     );
   } else if (command === "migrate")
-    result = lock(() => {
+    result = await lock(() => {
       console.log(
         JSON.stringify(
           migrateV1(config(), args.includes("--dry-run")),
@@ -1310,7 +1369,7 @@ async function main(): Promise<void> {
       : json
         ? json
         : readFileSync(0, "utf8");
-    const submitted = lock(() => {
+    const submitted = await lock(() => {
       const cfg = config();
       const proposals = submitManualProposal(cfg, raw, source);
       const receipts = proposals.map((proposal) =>
@@ -1353,7 +1412,7 @@ async function main(): Promise<void> {
     const action = args[0] ?? "list";
     if (action === "init") {
       const remote = option("--remote") ?? process.env.PI_MEMORY_GIT_REMOTE;
-      const report = lock(() =>
+      const report = await lock(() =>
         initHistory(cfg, {
           ...(remote ? { remote } : {}),
           dryRun: args.includes("--dry-run"),
@@ -1403,7 +1462,7 @@ async function main(): Promise<void> {
       throw new Error("repair requires --reason");
     if (args[0] !== "adopt" && args[0] !== "discard")
       throw new Error("repair mode must be adopt or discard");
-    const report = lock(() => {
+    const report = await lock(() => {
       const cfg = config();
       recoverTransactions(cfg);
       return repairHistory(cfg, {
@@ -1442,7 +1501,7 @@ async function main(): Promise<void> {
     const decision = args[1];
     if (decision !== "accept" && decision !== "reject")
       throw new Error("review decision must be accept or reject");
-    const receipt = lock(() =>
+    const receipt = await lock(() =>
       reviewProposal({
         cfg: config(),
         id: args[0]!,
@@ -1460,7 +1519,7 @@ async function main(): Promise<void> {
     const reasonIndex = args.indexOf("--reason");
     if (reasonIndex < 0 || !args[reasonIndex + 1]?.trim())
       throw new Error("rollback requires --reason");
-    const receipt = lock(() =>
+    const receipt = await lock(() =>
       rollbackReview(config(), args[0]!, args[reasonIndex + 1]!),
     );
     if (receipt) console.log(JSON.stringify(receipt, null, 2));
