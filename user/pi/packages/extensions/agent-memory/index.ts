@@ -53,6 +53,7 @@ const HOME = homedir();
 const QUERY_MAX_CHARS = 512;
 const SEARCH_MAX_RESULTS = 10;
 const TOOL_DETAILS_VERSION = 1;
+const MAINTENANCE_IDLE_MS = 30_000;
 let maintenanceWake: ChildProcess | undefined;
 let maintenanceWakePending = false;
 
@@ -655,13 +656,18 @@ export function createAgentMemoryExtension(
     now?: () => string;
     wake?: () => void;
     preparePrompt?: (cwd: string) => Promise<PromptSnapshot>;
+    maintenanceIdleMs?: number;
   } = {},
 ) {
   const now = deps.now ?? (() => new Date().toISOString());
   const wake = deps.wake ?? wakeMemoryMaintenance;
   const preparePrompt = deps.preparePrompt ?? loadPromptSnapshot;
+  const maintenanceIdleMs = deps.maintenanceIdleMs ?? MAINTENANCE_IDLE_MS;
   return function agentMemoryExtension(pi: ExtensionAPI): void {
     let settling = false;
+    let agentActive = false;
+    let maintenanceDirty = false;
+    let maintenanceTimer: NodeJS.Timeout | undefined;
     let ancestryBoundaryId: string | undefined;
     let ancestryInitialized = false;
     let sessionReason: string | undefined;
@@ -678,6 +684,41 @@ export function createAgentMemoryExtension(
           userEntryId?: string;
         }
       | undefined;
+
+    const cancelMaintenance = (): void => {
+      if (!maintenanceTimer) return;
+      clearTimeout(maintenanceTimer);
+      maintenanceTimer = undefined;
+    };
+
+    const scheduleMaintenance = (): void => {
+      cancelMaintenance();
+      if (!maintenanceDirty || agentActive) return;
+      if (maintenanceIdleMs <= 0) {
+        maintenanceDirty = false;
+        wake();
+        return;
+      }
+      maintenanceTimer = setTimeout(() => {
+        maintenanceTimer = undefined;
+        if (agentActive || !maintenanceDirty) return;
+        maintenanceDirty = false;
+        wake();
+      }, maintenanceIdleMs);
+      maintenanceTimer.unref();
+    };
+
+    const requestMaintenance = (): void => {
+      maintenanceDirty = true;
+      scheduleMaintenance();
+    };
+
+    const flushMaintenance = (): void => {
+      cancelMaintenance();
+      if (!maintenanceDirty) return;
+      maintenanceDirty = false;
+      wake();
+    };
 
     const prepareSessionPrompt = (cwd: string): void => {
       const generation = ++promptGeneration;
@@ -696,7 +737,7 @@ export function createAgentMemoryExtension(
         .catch(() => {
           if (generation === promptGeneration) {
             preparedPrompt = undefined;
-            wake();
+            requestMaintenance();
           }
         });
     };
@@ -914,6 +955,8 @@ export function createAgentMemoryExtension(
     });
 
     pi.on("before_agent_start", (event, ctx) => {
+      agentActive = true;
+      cancelMaintenance();
       if (sessionPrompt === undefined) sessionPrompt = preparedPrompt ?? null;
       const leaf = ctx.sessionManager.getLeafEntry();
       const existingUser =
@@ -942,8 +985,12 @@ export function createAgentMemoryExtension(
     });
 
     pi.on("agent_settled", (_event, ctx) => {
+      agentActive = false;
       if (settling) return;
-      if (!sessionPrompt) return;
+      if (!sessionPrompt) {
+        scheduleMaintenance();
+        return;
+      }
       settling = true;
       try {
         let branch = ctx.sessionManager.getBranch();
@@ -1008,19 +1055,27 @@ export function createAgentMemoryExtension(
           }
         }
         const nativeCount = reconcile(branch, ctx);
-        if (nativeCount > 0) wake();
+        if (nativeCount > 0) requestMaintenance();
       } finally {
         settling = false;
+        scheduleMaintenance();
       }
     });
 
     pi.on("session_start", (event, ctx) => {
+      cancelMaintenance();
+      agentActive = false;
       pending = undefined;
       prepareSessionPrompt(ctx.cwd);
       ancestryBoundaryId = undefined;
       ancestryInitialized = false;
       sessionReason = event.reason;
       sessionInitialLeafId = ctx.sessionManager.getLeafId() ?? undefined;
+    });
+
+    pi.on("session_shutdown", () => {
+      flushMaintenance();
+      promptGeneration += 1;
     });
   };
 }
@@ -1186,6 +1241,7 @@ if (import.meta.vitest) {
     maintenanceWake = undefined;
     maintenanceWakePending = false;
     rmSync(testDir, { recursive: true, force: true });
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -1227,6 +1283,7 @@ if (import.meta.vitest) {
       expect([...h.handlers.keys()].sort()).toEqual([
         "agent_settled",
         "before_agent_start",
+        "session_shutdown",
         "session_start",
         "tool_call",
         "tool_result",
@@ -1290,6 +1347,32 @@ if (import.meta.vitest) {
       expect(h.actions).toEqual([]);
     });
 
+    it("defers failed preparation maintenance until the active turn settles", async () => {
+      setupCatalog();
+      const h = harness([]);
+      const wake = vi.fn();
+      let rejectPrompt!: (error: Error) => void;
+      createAgentMemoryExtension({
+        wake,
+        maintenanceIdleMs: 50,
+        preparePrompt: () =>
+          new Promise<PromptSnapshot>((_resolve, reject) => {
+            rejectPrompt = reject;
+          }),
+      })(h.pi);
+      h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
+      h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      rejectPrompt(new Error("catalog unavailable"));
+      await settlePromptPreparation();
+      vi.useFakeTimers();
+      vi.advanceTimersByTime(50);
+      expect(wake).not.toHaveBeenCalled();
+      h.handlers.get("agent_settled")!({}, h.ctx);
+      vi.advanceTimersByTime(50);
+      expect(wake).toHaveBeenCalledOnce();
+    });
+
     it("binds a turn after Pi persists its messages", async () => {
       const setup = setupCatalog();
       const branch: SessionEntry[] = [];
@@ -1299,6 +1382,7 @@ if (import.meta.vitest) {
         now: () => "2026-01-01T00:00:04.000Z",
         wake,
         preparePrompt: async () => preparedPrompt(setup),
+        maintenanceIdleMs: 0,
       })(h.pi);
       h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
       await settlePromptPreparation();
@@ -1331,6 +1415,37 @@ if (import.meta.vitest) {
         assistantEntryIds: ["a1"],
       });
       h.handlers.get("agent_settled")!({}, h.ctx);
+      expect(wake).toHaveBeenCalledTimes(2);
+    });
+
+    it("runs maintenance only after the session stays idle", async () => {
+      const setup = setupCatalog();
+      const branch: SessionEntry[] = [];
+      const h = harness(branch);
+      const wake = vi.fn();
+      createAgentMemoryExtension({
+        wake,
+        preparePrompt: async () => preparedPrompt(setup),
+        maintenanceIdleMs: 50,
+      })(h.pi);
+      h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
+      await settlePromptPreparation();
+      vi.useFakeTimers();
+      h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
+      branch.push(user("u1"), assistant("a1"));
+      h.handlers.get("agent_settled")!({}, h.ctx);
+      expect(wake).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(49);
+      expect(wake).not.toHaveBeenCalled();
+      h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
+      vi.advanceTimersByTime(50);
+      expect(wake).not.toHaveBeenCalled();
+      h.handlers.get("agent_settled")!({}, h.ctx);
+      vi.advanceTimersByTime(50);
+      expect(wake).toHaveBeenCalledOnce();
+      h.handlers.get("agent_settled")!({}, h.ctx);
+      h.handlers.get("session_shutdown")!({}, h.ctx);
+      vi.advanceTimersByTime(50);
       expect(wake).toHaveBeenCalledTimes(2);
     });
 
@@ -1571,6 +1686,7 @@ if (import.meta.vitest) {
       createAgentMemoryExtension({
         wake,
         preparePrompt: async () => preparedPrompt(setup),
+        maintenanceIdleMs: 0,
       })(h.pi);
       h.handlers.get("session_start")!({}, h.ctx);
       expect(h.actions).toEqual([]);
