@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
-import { scanCorpusHealth } from "./maintenance.js";
+import { maintenanceProposals, scanCorpusHealth } from "./maintenance.js";
 import { renderMemory } from "./schema.js";
 
 function config(): MemoryConfig {
@@ -72,6 +72,21 @@ describe("corpus health", () => {
         allowedOperations: [],
       }),
     );
+    expect(maintenanceProposals(first)).toEqual([
+      expect.objectContaining({
+        operation: expect.objectContaining({
+          type: "deduplicate",
+          primary: expect.objectContaining({
+            memoryId: "mem_aaaaaaaaaaaaaaaaaaaaaaaa",
+          }),
+          targets: [
+            expect.objectContaining({
+              memoryId: "mem_bbbbbbbbbbbbbbbbbbbbbbbb",
+            }),
+          ],
+        }),
+      }),
+    ]);
   });
 
   it("reports prompt pressure without proposing corpus prose changes", () => {

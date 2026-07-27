@@ -7,7 +7,7 @@ import {
   type MemoryConfig,
 } from "./catalog.js";
 import { isHistoryInitialized, listHistory } from "./history.js";
-import { memoryRef, type MemoryRef } from "./schema.js";
+import { memoryRef, type MemoryRef, type Proposal } from "./schema.js";
 
 export type PathologyType =
   | "duplicate-exact"
@@ -301,4 +301,49 @@ export function scanCorpusHealth(cfg: MemoryConfig): CorpusHealthReport {
         left.type.localeCompare(right.type) || left.id.localeCompare(right.id),
     ),
   };
+}
+
+export function maintenanceProposals(
+  report: CorpusHealthReport,
+  createdAt: string = new Date().toISOString(),
+): Proposal[] {
+  const churned = new Set(
+    report.pathologies
+      .filter((item) => item.type === "rewrite-churn")
+      .flatMap((item) => item.basis.targets.map((target) => target.memoryId)),
+  );
+  const claimed = new Set<string>();
+  const proposals: Proposal[] = [];
+  for (const pathology of report.pathologies) {
+    if (
+      pathology.type !== "duplicate-exact" ||
+      pathology.basis.targets.length < 2 ||
+      pathology.basis.targets.some(
+        (target) =>
+          churned.has(target.memoryId) || claimed.has(target.memoryId),
+      )
+    )
+      continue;
+    const [primary, ...targets] = pathology.basis.targets;
+    if (!primary || targets.length === 0) continue;
+    pathology.basis.targets.forEach((target) => claimed.add(target.memoryId));
+    proposals.push({
+      version: 2,
+      id: `prop_${sha256(`maintenance:${pathology.id}`).slice(0, 32)}`,
+      lane: "memory",
+      status: "pending",
+      operation: { type: "deduplicate", primary, targets },
+      supersedes: [],
+      evidence: [],
+      provenance: {
+        runId: `maintenance_${pathology.id}`,
+        promptVersion: 2,
+        model: "deterministic-corpus-doctor",
+        createdAt,
+        corpusAware: true,
+        autonomous: true,
+      },
+    });
+  }
+  return proposals;
 }
