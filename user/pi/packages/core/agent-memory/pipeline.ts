@@ -403,10 +403,17 @@ function markLedger(
   secureDir(ledger);
   for (const evidence of input.evidence)
     for (const checkpoint of evidence.window.checkpointEntryIds) {
+      const throughLeafId = evidence.checkpointFrontiers?.[checkpoint];
+      if (!throughLeafId || !evidence.emittedEntryIds?.includes(throughLeafId))
+        throw new Error(
+          `checkpoint frontier is outside frozen evidence ${checkpoint}`,
+        );
       const record = {
         version: 2,
         sessionId: evidence.window.sessionId,
         checkpointEntryId: checkpoint,
+        throughLeafId,
+        branchDigest: evidence.window.branchDigest,
         runId: input.runId,
         action: result.action,
         proposalIds: result.proposalIds,

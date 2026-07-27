@@ -50,6 +50,8 @@ const evidence: SafeEvidence = {
   records: [],
   tools: [],
   redactions: {},
+  checkpointFrontiers: { checkpoint: "leaf" },
+  emittedEntryIds: ["leaf"],
 };
 
 const proposalResponse = JSON.stringify({
@@ -377,6 +379,7 @@ describe("memory evaluation dataset", () => {
         sessionId: "session-two",
         checkpointEntryIds: ["checkpoint-two"],
       },
+      checkpointFrontiers: { "checkpoint-two": "leaf" },
     };
     const skillRun = processPipelineBatch({
       cfg: skillCfg,

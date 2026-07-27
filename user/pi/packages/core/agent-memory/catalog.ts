@@ -196,13 +196,16 @@ export function scanCatalog(
   return { version: 2, generatedAt, entries };
 }
 
+export function memoryScopePath(scope: string): string | undefined {
+  if (scope === "global" || scope === "unknown") return undefined;
+  return resolve(scope.startsWith(sep) ? scope : join(homedir(), scope));
+}
+
 export function memoryScopeRank(scope: string, cwd: string): number {
   if (scope === "global") return 2;
-  if (scope === "unknown") return 0;
+  const scopePath = memoryScopePath(scope);
+  if (!scopePath) return 0;
   const cwdPath = resolve(cwd);
-  const scopePath = resolve(
-    scope.startsWith(sep) ? scope : join(homedir(), scope),
-  );
   return cwdPath === scopePath || cwdPath.startsWith(`${scopePath}${sep}`)
     ? 4
     : 0;
@@ -230,11 +233,14 @@ function promptField(value: string): string {
     .trim();
 }
 
+export const PROMPT_CATALOG_MAX_ENTRIES = 30;
+export const PROMPT_CATALOG_MAX_CHARS = 8_192;
+
 export function renderPromptCatalog(
   catalog: Catalog,
   cwd: string,
-  maxEntries: number = 30,
-  maxChars: number = 8_192,
+  maxEntries: number = PROMPT_CATALOG_MAX_ENTRIES,
+  maxChars: number = PROMPT_CATALOG_MAX_CHARS,
 ): string {
   const header = [
     "<memory_catalog>",
@@ -253,6 +259,13 @@ export function renderPromptCatalog(
   }
   lines.push("</memory_catalog>");
   return lines.join("\n");
+}
+
+export function renderedPromptCatalogEntryCount(
+  catalog: Catalog,
+  cwd: string,
+): number {
+  return renderPromptCatalog(catalog, cwd).split("\n").length - 3;
 }
 
 const HOT_MAX_ENTRIES = 20;

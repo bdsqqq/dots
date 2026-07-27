@@ -1,6 +1,10 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
+  memoryScopePath,
+  PROMPT_CATALOG_MAX_ENTRIES,
+  rankCatalog,
+  renderedPromptCatalogEntryCount,
   scanCatalog,
   sha256,
   type CatalogEntry,
@@ -59,7 +63,6 @@ type Artifact = {
 
 const BODY_LIMIT = 6_000;
 const LINE_LIMIT = 100;
-const PROMPT_ENTRY_LIMIT = 30;
 
 function frontmatterArray(text: string, field: string): string[] {
   const frontmatter = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1];
@@ -191,11 +194,18 @@ export function scanCorpusHealth(cfg: MemoryConfig): CorpusHealthReport {
         );
     }
 
-  const bySource = new Map<string, Artifact[]>();
+  const byScopeAndSource = new Map<
+    string,
+    { source: string; members: Artifact[] }
+  >();
   for (const artifact of artifacts)
-    for (const source of artifact.sources)
-      bySource.set(source, [...(bySource.get(source) ?? []), artifact]);
-  for (const [source, members] of bySource)
+    for (const source of artifact.sources) {
+      const key = JSON.stringify([artifact.entry.scope, source]);
+      const group = byScopeAndSource.get(key) ?? { source, members: [] };
+      group.members.push(artifact);
+      byScopeAndSource.set(key, group);
+    }
+  for (const { source, members } of byScopeAndSource.values())
     if (
       members.length >= 3 &&
       members.some((left, index) =>
@@ -257,11 +267,20 @@ export function scanCorpusHealth(cfg: MemoryConfig): CorpusHealthReport {
       );
   }
 
-  const byScope = new Map<string, CatalogEntry[]>();
-  for (const entry of catalog.entries)
-    byScope.set(entry.scope, [...(byScope.get(entry.scope) ?? []), entry]);
-  for (const [scope, entries] of byScope)
-    if (entries.length > PROMPT_ENTRY_LIMIT)
+  const scopes = new Set(catalog.entries.map((entry) => entry.scope));
+  for (const scope of scopes) {
+    const workspace = memoryScopePath(scope);
+    const entries = workspace
+      ? rankCatalog(catalog, workspace)
+      : scope === "global"
+        ? catalog.entries.filter((entry) => entry.scope === "global")
+        : [];
+    if (
+      renderedPromptCatalogEntryCount(
+        { ...catalog, entries },
+        workspace ?? "/",
+      ) < entries.length
+    )
       pathologies.push(
         pathology({
           type: "prompt-pressure",
@@ -269,12 +288,13 @@ export function scanCorpusHealth(cfg: MemoryConfig): CorpusHealthReport {
           metric: {
             name: "eligible-catalog-entries",
             value: entries.length,
-            threshold: PROMPT_ENTRY_LIMIT,
+            threshold: PROMPT_CATALOG_MAX_ENTRIES,
           },
           basis: targetBasis(catalogSha256, historyCommit, entries),
           allowedOperations: [],
         }),
       );
+  }
 
   const changed = new Map<string, number>();
   for (const entry of history)

@@ -930,6 +930,73 @@ function finalizeQueuedJob(
   } else renameSync(source, target);
 }
 
+function failCheckpointEvent(cfg: ReturnType<typeof config>, job: Job): void {
+  const ids = listMaintenanceEvents(cfg, ["pending"])
+    .filter(
+      ({ event }) =>
+        event.kind === "checkpoint-ready" &&
+        event.basis.sessionId === job.sessionId &&
+        event.basis.checkpointEntryId === job.checkpointEntryId,
+    )
+    .map(({ event }) => event.id);
+  for (const id of ids) {
+    const event = claimMaintenanceEvent(cfg, {
+      kinds: ["checkpoint-ready"],
+      ids: [id],
+    });
+    if (event) failMaintenanceEvent(cfg, event.id, event.claimToken!);
+  }
+}
+
+function trustedCheckpointFrontier(
+  cfg: ReturnType<typeof config>,
+  sessionId: string,
+  checkpointEntryId: string,
+  chain: Entry[],
+): number | undefined {
+  const path = join(
+    cfg.data,
+    "v2/ledger",
+    `${sessionId}--${checkpointEntryId}.json`,
+  );
+  if (!existsSync(path)) return undefined;
+  const ledger = JSON.parse(readFileSync(path, "utf8")) as Record<
+    string,
+    unknown
+  >;
+  if (
+    ledger.version !== 2 ||
+    typeof ledger.runId !== "string" ||
+    typeof ledger.throughLeafId !== "string" ||
+    typeof ledger.branchDigest !== "string"
+  )
+    throw new Error(`invalid checkpoint ledger ${checkpointEntryId}`);
+  const input = JSON.parse(
+    readFileSync(join(cfg.data, "v2/runs", ledger.runId, "input.json"), "utf8"),
+  ) as { evidence?: SafeEvidence[] };
+  const frozen = input.evidence?.find(
+    (item) =>
+      item.window.sessionId === sessionId &&
+      item.window.checkpointEntryIds.includes(checkpointEntryId),
+  );
+  if (
+    !frozen ||
+    frozen.window.branchDigest !== ledger.branchDigest ||
+    frozen.checkpointFrontiers?.[checkpointEntryId] !== ledger.throughLeafId ||
+    !frozen.emittedEntryIds?.includes(ledger.throughLeafId)
+  )
+    throw new Error(`inconsistent checkpoint ledger ${checkpointEntryId}`);
+  const frontier = chain.findIndex(
+    (entry) => entry.id === ledger.throughLeafId,
+  );
+  const marker = chain.findIndex((entry) => entry.id === checkpointEntryId);
+  if (frontier < 0 || marker < 0 || frontier >= marker)
+    throw new Error(
+      `checkpoint ledger frontier is not on ancestry ${checkpointEntryId}`,
+    );
+  return frontier;
+}
+
 function pendingWindows(limit: number): PendingWindow[] {
   const cfg = config();
   const pending = join(cfg.data, "queue/pending");
@@ -968,13 +1035,53 @@ function pendingWindows(limit: number): PendingWindow[] {
       );
       const checkpointIndex =
         chain?.findIndex((entry) => entry.id === value.checkpointEntryId) ?? -1;
-      if (!chain || checkpointIndex < 0 || !checkpoint(chain[checkpointIndex]!))
-        throw new Error(`invalid checkpoint job ${name}`);
+      const cp =
+        chain && checkpointIndex >= 0
+          ? checkpoint(chain[checkpointIndex]!)
+          : undefined;
+      const throughIndex = cp
+        ? chain!.findIndex((entry) => entry.id === cp.throughLeafId)
+        : -1;
+      let trustedStart = 0;
+      let monotonicFrontier = 0;
+      if (chain)
+        for (let index = 0; index < checkpointIndex; index++) {
+          const entry = chain[index]!;
+          const prior = checkpoint(entry);
+          if (!prior) continue;
+          const trusted = trustedCheckpointFrontier(
+            cfg,
+            value.sessionId,
+            entry.id,
+            chain,
+          );
+          if (trusted !== undefined)
+            trustedStart = Math.max(trustedStart, trusted + 1);
+          const priorFrontier = chain.findIndex(
+            (candidate) => candidate.id === prior.throughLeafId,
+          );
+          if (priorFrontier >= monotonicFrontier && priorFrontier < index)
+            monotonicFrontier = priorFrontier;
+        }
+      if (
+        !chain ||
+        checkpointIndex < 0 ||
+        !cp ||
+        throughIndex < trustedStart ||
+        throughIndex < monotonicFrontier ||
+        throughIndex >= checkpointIndex
+      )
+        throw new Error(`invalid checkpoint ancestry ${name}`);
       items.push({ job: value, name, chain, checkpointIndex });
     } catch (error) {
       console.error(
         `${name}: ${error instanceof Error ? error.message : String(error)}`,
       );
+      let failedJob: unknown;
+      try {
+        failedJob = JSON.parse(readFileSync(join(pending, name), "utf8"));
+      } catch {}
+      if (isJob(failedJob)) failCheckpointEvent(cfg, failedJob);
       finalizeQueuedJob(cfg, name, "failed");
     }
   }
@@ -1004,23 +1111,42 @@ function pendingWindows(limit: number): PendingWindow[] {
         .slice(0, maximum.checkpointIndex + 1)
         .map((entry) => entry.id),
     );
-    const covered = items.filter(
-      (item) =>
+    const maximumCheckpoint = checkpoint(
+      maximum.chain[maximum.checkpointIndex]!,
+    )!;
+    const maximumThroughIndex = maximum.chain.findIndex(
+      (entry) => entry.id === maximumCheckpoint.throughLeafId,
+    );
+    const covered = items.filter((item) => {
+      const frontier = checkpoint(
+        item.chain[item.checkpointIndex]!,
+      )?.throughLeafId;
+      const frontierIndex = frontier
+        ? maximum.chain.findIndex((entry) => entry.id === frontier)
+        : -1;
+      return (
         item.job.sessionId === maximum.job.sessionId &&
         ancestry.has(item.job.checkpointEntryId) &&
-        !assigned.has(`${item.job.sessionId}--${item.job.checkpointEntryId}`),
-    );
-    if (!covered.length) continue;
+        frontierIndex >= 0 &&
+        frontierIndex <= maximumThroughIndex &&
+        !assigned.has(`${item.job.sessionId}--${item.job.checkpointEntryId}`)
+      );
+    });
+    if (!covered.some((item) => item === maximum)) continue;
     covered.forEach((item) =>
       assigned.add(`${item.job.sessionId}--${item.job.checkpointEntryId}`),
-    );
-    const coveredIds = new Set(
-      covered.map((item) => item.job.checkpointEntryId),
     );
     let start = 0;
     for (let index = 0; index < maximum.checkpointIndex; index++) {
       const entry = maximum.chain[index]!;
-      if (checkpoint(entry) && !coveredIds.has(entry.id)) start = index + 1;
+      if (!checkpoint(entry)) continue;
+      const frontier = trustedCheckpointFrontier(
+        cfg,
+        maximum.job.sessionId,
+        entry.id,
+        maximum.chain,
+      );
+      if (frontier !== undefined) start = Math.max(start, frontier + 1);
     }
     const cp = checkpoint(maximum.chain[maximum.checkpointIndex]!)!;
     const throughLeafId = String(cp.throughLeafId);
@@ -1035,6 +1161,14 @@ function pendingWindows(limit: number): PendingWindow[] {
         workspace: maximum.job.workspace,
         entries: maximum.chain.slice(start, throughIndex + 1),
         checkpointEntryIds: covered.map((item) => item.job.checkpointEntryId),
+        checkpointFrontiers: Object.fromEntries(
+          covered.map((item) => [
+            item.job.checkpointEntryId,
+            String(
+              checkpoint(item.chain[item.checkpointIndex]!)!.throughLeafId,
+            ),
+          ]),
+        ),
         throughLeafId,
         branchEntryIds: maximum.chain
           .slice(0, throughIndex + 1)
@@ -2117,6 +2251,229 @@ if (import.meta.vitest) {
         if (previousSessions === undefined)
           delete process.env.PI_CODING_AGENT_SESSION_DIR;
         else process.env.PI_CODING_AGENT_SESSION_DIR = previousSessions;
+      }
+    });
+
+    it("uses only ledger-covered boundaries when isolating descendant checkpoints", () => {
+      const base = mkdtempSync(join(tmpdir(), "memory-malformed-checkpoint-"));
+      const previousData = process.env.PI_MEMORY_DATA_DIR;
+      process.env.PI_MEMORY_DATA_DIR = join(base, "data");
+      try {
+        const cfg = config();
+        const source = join(base, "session.jsonl");
+        const records = [
+          { type: "session", id: "session", cwd: "/tmp/project" },
+          message("before-boundary", null, "user", "already reflected"),
+          message(
+            "marker-gap",
+            "before-boundary",
+            "assistant",
+            "include marker gap",
+          ),
+          {
+            type: "custom",
+            customType: "@bds_pi/agent-memory/checkpoint",
+            data: {
+              version: 1,
+              throughLeafId: "before-boundary",
+              acceptedUserTurns: 1,
+            },
+            id: "trusted-checkpoint",
+            parentId: "marker-gap",
+          },
+          message("after-boundary", "trusted-checkpoint", "user", "include me"),
+          {
+            type: "custom",
+            customType: "@bds_pi/agent-memory/checkpoint",
+            data: {
+              version: 1,
+              throughLeafId: "before-boundary",
+              acceptedUserTurns: 2,
+            },
+            id: "bad-checkpoint",
+            parentId: "after-boundary",
+          },
+          message(
+            "omitted-after-through",
+            "bad-checkpoint",
+            "assistant",
+            "omit me",
+          ),
+          {
+            type: "custom",
+            customType: "@bds_pi/agent-memory/checkpoint",
+            data: {
+              version: 1,
+              throughLeafId: "after-boundary",
+              acceptedUserTurns: 2,
+            },
+            id: "descendant-checkpoint",
+            parentId: "omitted-after-through",
+          },
+          {
+            type: "custom",
+            customType: "@bds_pi/agent-memory/checkpoint",
+            data: {
+              version: 1,
+              throughLeafId: "before-boundary",
+              acceptedUserTurns: 3,
+            },
+            id: "rewound-checkpoint",
+            parentId: "descendant-checkpoint",
+          },
+        ];
+        writeFileSync(
+          source,
+          `${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+        );
+        mkdirSync(join(cfg.data, "queue/pending"), { recursive: true });
+        mkdirSync(join(cfg.data, "v2/ledger"), { recursive: true });
+        mkdirSync(join(cfg.data, "v2/runs/trusted-run"), { recursive: true });
+        writeFileSync(
+          join(cfg.data, "v2/runs/trusted-run/input.json"),
+          JSON.stringify({
+            evidence: [
+              {
+                version: 1,
+                window: {
+                  sessionId: "session",
+                  checkpointEntryIds: ["trusted-checkpoint"],
+                  branchDigest: "trusted-branch",
+                },
+                checkpointFrontiers: {
+                  "trusted-checkpoint": "before-boundary",
+                },
+                emittedEntryIds: ["before-boundary"],
+              },
+            ],
+          }),
+        );
+        writeFileSync(
+          join(cfg.data, "v2/ledger/session--trusted-checkpoint.json"),
+          JSON.stringify({
+            version: 2,
+            runId: "trusted-run",
+            throughLeafId: "before-boundary",
+            branchDigest: "trusted-branch",
+          }),
+        );
+        for (const checkpointEntryId of [
+          "bad-checkpoint",
+          "descendant-checkpoint",
+          "rewound-checkpoint",
+        ]) {
+          writeFileSync(
+            join(
+              cfg.data,
+              "queue/pending",
+              `session--${checkpointEntryId}.json`,
+            ),
+            JSON.stringify({
+              version: 1,
+              sessionId: "session",
+              checkpointEntryId,
+              sourcePath: source,
+              projectionPath: "",
+              workspace: "/tmp/project",
+            }),
+          );
+          enqueueMaintenanceEvent(cfg, {
+            kind: "checkpoint-ready",
+            cause: `session:${checkpointEntryId}`,
+            basis: { sessionId: "session", checkpointEntryId },
+          });
+        }
+
+        const windows = pendingWindows(10);
+
+        expect(
+          windows.flatMap((window) =>
+            window.jobs.map((item) => item.job.checkpointEntryId),
+          ),
+        ).toEqual(["descendant-checkpoint"]);
+        expect(JSON.stringify(windows[0]!.evidence)).toContain("include me");
+        expect(JSON.stringify(windows[0]!.evidence)).toContain(
+          "include marker gap",
+        );
+        expect(JSON.stringify(windows[0]!.evidence)).not.toMatch(
+          /already reflected|omit me/,
+        );
+        expect(
+          existsSync(
+            join(cfg.data, "queue/failed/session--bad-checkpoint.json"),
+          ),
+        ).toBe(true);
+        expect(
+          existsSync(
+            join(cfg.data, "queue/failed/session--rewound-checkpoint.json"),
+          ),
+        ).toBe(true);
+        expect(listMaintenanceEvents(cfg)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              status: "failed",
+              event: expect.objectContaining({
+                basis: expect.objectContaining({
+                  checkpointEntryId: "bad-checkpoint",
+                }),
+              }),
+            }),
+            expect.objectContaining({
+              status: "pending",
+              event: expect.objectContaining({
+                basis: expect.objectContaining({
+                  checkpointEntryId: "descendant-checkpoint",
+                }),
+              }),
+            }),
+          ]),
+        );
+      } finally {
+        if (previousData === undefined) delete process.env.PI_MEMORY_DATA_DIR;
+        else process.env.PI_MEMORY_DATA_DIR = previousData;
+      }
+    });
+
+    it("recovers a pending job whose malformed checkpoint event already failed", () => {
+      const base = mkdtempSync(join(tmpdir(), "memory-malformed-recovery-"));
+      const previousData = process.env.PI_MEMORY_DATA_DIR;
+      process.env.PI_MEMORY_DATA_DIR = join(base, "data");
+      try {
+        const cfg = config();
+        const event = enqueueMaintenanceEvent(cfg, {
+          kind: "checkpoint-ready",
+          cause: "session:checkpoint",
+          basis: { sessionId: "session", checkpointEntryId: "checkpoint" },
+        });
+        const claim = claimMaintenanceEvent(cfg, {
+          kinds: ["checkpoint-ready"],
+          ids: [event.id],
+        })!;
+        failMaintenanceEvent(cfg, event.id, claim.claimToken!);
+        mkdirSync(join(cfg.data, "queue/pending"), { recursive: true });
+        writeFileSync(
+          join(cfg.data, "queue/pending/session--checkpoint.json"),
+          JSON.stringify({
+            version: 1,
+            sessionId: "session",
+            checkpointEntryId: "checkpoint",
+            sourcePath: "/missing/session.jsonl",
+            projectionPath: "",
+            workspace: "/tmp/project",
+          }),
+        );
+
+        reconcileFailedCheckpointJobs(cfg);
+
+        expect(
+          existsSync(join(cfg.data, "queue/failed/session--checkpoint.json")),
+        ).toBe(true);
+        expect(
+          existsSync(join(cfg.data, "queue/pending/session--checkpoint.json")),
+        ).toBe(false);
+      } finally {
+        if (previousData === undefined) delete process.env.PI_MEMORY_DATA_DIR;
+        else process.env.PI_MEMORY_DATA_DIR = previousData;
       }
     });
 
