@@ -1,10 +1,18 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
-import { maintenanceProposals, scanCorpusHealth } from "./maintenance.js";
+import {
+  analyzeCorpusMaintenance,
+  assertFreshMaintenanceBasis,
+  maintenanceProposals,
+  scanCorpusHealth,
+} from "./maintenance.js";
 import { renderMemory } from "./schema.js";
+import { initHistory } from "./history.js";
+import { applyMemoryProposal, saveProposal } from "./workflow.js";
+import { sha256 } from "./catalog.js";
 
 function config(): MemoryConfig {
   const base = mkdtempSync(join(tmpdir(), "memory-health-"));
@@ -42,6 +50,56 @@ function memory(
       },
       "review_test",
     ),
+  );
+}
+
+function freezeEvidence(
+  cfg: MemoryConfig,
+  source: string,
+  authored: string,
+): void {
+  const match = /^pi:\/\/([^/]+)\/([^/]+)$/.exec(source)!;
+  const [sessionId, checkpoint] = match.slice(1);
+  const dir = join(cfg.data, "v2/runs/run-test");
+  mkdirSync(dir, { recursive: true });
+  const window = {
+    windowId: "window-test",
+    sessionId,
+    checkpointEntryIds: [checkpoint],
+    throughLeafId: checkpoint,
+    branchDigest: "branch-test",
+    excerpt: authored,
+    excerptSha256: sha256(authored),
+  };
+  writeFileSync(
+    join(dir, "input.json"),
+    JSON.stringify({
+      version: 2,
+      runId: "run-test",
+      batchId: "batch-test",
+      promptVersion: 2,
+      createdAt: "2026-07-26T00:00:00.000Z",
+      scope: "global",
+      evidence: [
+        {
+          version: 1,
+          window,
+          workspace: "test",
+          records: [{ role: "user", content: authored }],
+          tools: [],
+          redactions: {},
+        },
+      ],
+      catalog: {
+        version: 2,
+        generatedAt: "2026-07-26T00:00:00.000Z",
+        entries: [],
+      },
+      targets: [],
+      pending: [],
+      reviewSignals: [],
+      skills: [],
+    }),
   );
 }
 
@@ -136,5 +194,154 @@ describe("corpus health", () => {
     expect(
       pathologies.filter((item) => item.type === "source-fragmentation"),
     ).toHaveLength(0);
+  });
+
+  it("does not summarize corpus bodies when authored evidence is unresolved", async () => {
+    const cfg = config();
+    memory(
+      cfg,
+      "mem_000000000000000000000000",
+      "large",
+      "summary-of-summary ".repeat(500),
+      ["pi://missing/checkpoint"],
+    );
+    let invoked = false;
+    const analysis = await analyzeCorpusMaintenance({
+      cfg,
+      report: scanCorpusHealth(cfg),
+      model: "test",
+      invoke: () => {
+        invoked = true;
+        return '{"action":"skip","reason":"unexpected"}';
+      },
+    });
+    expect(invoked).toBe(false);
+    expect(analysis.proposals).toEqual([]);
+    expect(analysis.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "missing-authored-evidence" }),
+    );
+  });
+
+  it("uses frozen authored evidence rather than corpus prose", async () => {
+    const cfg = config();
+    const source = "pi://session-one/checkpoint-one";
+    memory(
+      cfg,
+      "mem_111111111111111111111111",
+      "large",
+      "summary-of-summary ".repeat(500),
+      [source],
+    );
+    freezeEvidence(cfg, source, "original authored statement");
+    const report = scanCorpusHealth(cfg);
+    let prompt = "";
+    const analysis = await analyzeCorpusMaintenance({
+      cfg,
+      report,
+      model: "test",
+      invoke: (value) => {
+        prompt = value;
+        return '{"action":"skip","reason":"no justified patch"}';
+      },
+    });
+    expect(prompt).toContain("original authored statement");
+    expect(prompt).toContain(
+      "Corpus bodies are context only and are NEVER evidence",
+    );
+    expect(analysis.proposals).toEqual([]);
+  });
+
+  it("rejects fabricated patch sources", async () => {
+    const cfg = config();
+    const source = "pi://session-two/checkpoint-two";
+    const original = "large body ".repeat(700);
+    memory(cfg, "mem_222222222222222222222222", "large", original, [source]);
+    freezeEvidence(cfg, source, "authored evidence");
+    const report = scanCorpusHealth(cfg);
+    const pathology = report.pathologies.find(
+      (item) => item.type === "oversized-artifact",
+    )!;
+    await expect(
+      analyzeCorpusMaintenance({
+        cfg,
+        report,
+        model: "test",
+        invoke: () =>
+          JSON.stringify({
+            action: "propose",
+            proposals: [
+              {
+                type: "patch",
+                pathologyId: pathology.id,
+                target: pathology.basis.targets[0],
+                changes: {
+                  body: {
+                    fromSha256: sha256(original.trim()),
+                    to: "short body",
+                    sourceRefs: ["pi://fabricated/source"],
+                  },
+                },
+              },
+            ],
+          }),
+      }),
+    ).rejects.toThrow("fabricated source");
+  });
+
+  it("rejects a stale pathology basis", () => {
+    const cfg = config();
+    memory(cfg, "mem_333333333333333333333333", "one", "one");
+    const report = scanCorpusHealth(cfg);
+    memory(cfg, "mem_444444444444444444444444", "two", "two");
+    expect(() => assertFreshMaintenanceBasis(cfg, report)).toThrow(
+      "stale maintenance pathology basis",
+    );
+  });
+
+  it("applies an evidence-backed body patch through receipts", async () => {
+    const cfg = config();
+    const source = "pi://session-four/checkpoint-four";
+    const original = "oversized authored body ".repeat(400);
+    memory(cfg, "mem_555555555555555555555555", "large", original, [source]);
+    freezeEvidence(cfg, source, "keep the durable rule concise");
+    initHistory(cfg);
+    const report = scanCorpusHealth(cfg);
+    const pathology = report.pathologies.find(
+      (item) => item.type === "oversized-artifact",
+    )!;
+    const analysis = await analyzeCorpusMaintenance({
+      cfg,
+      report,
+      model: "test",
+      createdAt: "2026-07-26T00:00:00.000Z",
+      invoke: () =>
+        JSON.stringify({
+          action: "propose",
+          proposals: [
+            {
+              type: "patch",
+              pathologyId: pathology.id,
+              target: pathology.basis.targets[0],
+              changes: {
+                body: {
+                  fromSha256: sha256(original.trim()),
+                  to: "keep the durable rule concise",
+                  sourceRefs: [source],
+                },
+              },
+            },
+          ],
+        }),
+    });
+    saveProposal(cfg, analysis.proposals[0]!);
+    const receipt = applyMemoryProposal({
+      cfg,
+      id: analysis.proposals[0]!.id,
+      actor: "background-reflection",
+    });
+    expect(receipt.decision).toBe("accepted");
+    expect(
+      readFileSync(join(cfg.root, pathology.basis.targets[0]!.path), "utf8"),
+    ).toContain("keep the durable rule concise");
   });
 });

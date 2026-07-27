@@ -56,13 +56,20 @@ import {
 } from "./history.js";
 import { buildSafeEvidence, type SafeEvidence } from "./evidence.js";
 import { processPipelineBatches } from "./pipeline.js";
-import { maintenanceProposals, scanCorpusHealth } from "./maintenance.js";
+import {
+  analyzeCorpusMaintenance,
+  assertFreshMaintenanceBasis,
+  maintenanceProposals,
+  scanCorpusHealth,
+} from "./maintenance.js";
 import {
   claimMaintenanceEvent,
   completeMaintenanceEvent,
   enqueueMaintenanceEvent,
+  failMaintenanceEvent,
   listMaintenanceEvents,
   recoverMaintenanceEvents,
+  retryMaintenanceEvent,
 } from "./events.js";
 import {
   exportEvalDataset,
@@ -1260,6 +1267,67 @@ async function maintainUnlocked(): Promise<boolean> {
       id: proposal.id,
       actor: "background-reflection",
     });
+  }
+  const corpusEvent =
+    process.env.PI_MEMORY_SKIP_EXTERNAL === "1"
+      ? null
+      : claimMaintenanceEvent(cfg, { kinds: ["corpus-changed"] });
+  if (corpusEvent) {
+    try {
+      const model =
+        process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-luna:low";
+      const analysis = await analyzeCorpusMaintenance({
+        cfg,
+        report: health,
+        model,
+        invoke: (prompt) =>
+          runAsync(
+            process.env.PI_BIN || "pi",
+            [
+              "-p",
+              "--no-session",
+              "--no-tools",
+              "--no-extensions",
+              "--no-skills",
+              "--no-prompt-templates",
+              "--no-context-files",
+              "--model",
+              model,
+            ],
+            prompt,
+          ),
+      });
+      for (const diagnostic of analysis.diagnostics)
+        console.error(
+          `memory maintenance ${diagnostic.code} ${diagnostic.pathologyId}: ${diagnostic.message}`,
+        );
+      if (
+        analysis.diagnostics.some(
+          (diagnostic) => diagnostic.code === "model-skip",
+        )
+      ) {
+        retryMaintenanceEvent(cfg, corpusEvent.id, corpusEvent.claimToken!);
+      } else {
+        assertFreshMaintenanceBasis(cfg, analysis.report);
+        for (const proposal of analysis.proposals) {
+          saveProposal(cfg, proposal);
+          applyMemoryProposal({
+            cfg,
+            id: proposal.id,
+            actor: "background-reflection",
+          });
+        }
+        completeMaintenanceEvent(cfg, corpusEvent.id, corpusEvent.claimToken!);
+      }
+    } catch (error) {
+      if (corpusEvent.attempt >= 3)
+        failMaintenanceEvent(cfg, corpusEvent.id, corpusEvent.claimToken!);
+      else retryMaintenanceEvent(cfg, corpusEvent.id, corpusEvent.claimToken!);
+      ok = false;
+      console.error(
+        `corpus maintenance failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
   if (process.env.PI_MEMORY_SKIP_EXTERNAL !== "1") {
     try {
