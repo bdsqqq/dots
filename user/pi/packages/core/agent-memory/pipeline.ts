@@ -515,7 +515,7 @@ export async function processPipelineBatches(
       invoke: (prompt: string) => string | Promise<string>;
     }
   >,
-  concurrencyValue = process.env.PI_MEMORY_CONCURRENCY,
+  concurrencyValue: string | undefined = process.env.PI_MEMORY_CONCURRENCY,
 ): Promise<PipelineResult[]> {
   const parsedConcurrency =
     concurrencyValue === undefined ? 2 : Number(concurrencyValue);
