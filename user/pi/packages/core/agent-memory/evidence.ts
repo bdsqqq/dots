@@ -49,7 +49,7 @@ const REDACTIONS: Array<[string, RegExp]> = [
   ["credential-url", /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:]+:[^\s/@]+@[^\s]+/gi],
   [
     "secret-field",
-    /(?<![A-Za-z0-9_])(["']?)(token|secret|password|passwd|api[_-]?key|cookie|authorization|client[_-]?secret|access[_-]?key|(?:aws[_-]?)?secret[_-]?access[_-]?key|private[_-]?key|session[_-]?token)\1(?:\s*[:=]\s*|\s+is\s+)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi,
+    /(?<![A-Za-z0-9_])(["']?)(?:(?:[a-z0-9]+[_-])*(?:token|secret|password|passwd|api[_-]?key|cookie|authorization|client[_-]?secret|access[_-]?token|access[_-]?key|(?:aws[_-]?)?secret[_-]?access[_-]?key|private[_-]?key|session[_-]?token)|accessToken|apiKey|clientSecret|privateKey|sessionToken)\1(?:\s*[:=]\s*|\s+is\s+)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi,
   ],
 ];
 
@@ -90,6 +90,26 @@ function textParts(content: unknown): string {
     .filter((part) => part.type === "text" && typeof part.text === "string")
     .map((part) => String(part.text))
     .join("\n");
+}
+
+function boundedRedacted(
+  value: unknown,
+  limit: number,
+  redactions: Record<string, number>,
+): string {
+  let raw: string;
+  if (typeof value === "string") raw = value;
+  else
+    try {
+      raw = JSON.stringify(value);
+    } catch {
+      raw = String(value);
+    }
+  const clean = redact(raw);
+  addCounts(redactions, clean.counts);
+  if (clean.text.length <= limit) return clean.text;
+  const half = Math.floor((limit - 20) / 2);
+  return `${clean.text.slice(0, half)}\n[TRUNCATED]\n${clean.text.slice(-half)}`;
 }
 
 function iso(entry: BranchEntry, index: number): string {
@@ -154,7 +174,11 @@ function syntheticTranscript(
                 typeof part.name === "string" && part.name
                   ? part.name
                   : "unknown",
-              arguments: {},
+              arguments: boundedRedacted(
+                part.arguments ?? {},
+                2_048,
+                redactions,
+              ),
             });
         }
       }
@@ -167,6 +191,7 @@ function syntheticTranscript(
           message: { role: "assistant", content },
         });
     } else if (message.role === "toolResult" || message.role === "tool") {
+      const result = boundedRedacted(message.content ?? "", 4_096, redactions);
       rows.push({
         type: "message",
         id: entry.id,
@@ -178,7 +203,7 @@ function syntheticTranscript(
             typeof message.toolCallId === "string" && message.toolCallId
               ? message.toolCallId
               : `tool-${entry.parentId || entry.id}`,
-          content: message.isError === true ? "error" : "ok",
+          content: result || (message.isError === true ? "error" : "ok"),
           isError: message.isError === true,
         },
       });
@@ -213,8 +238,8 @@ export function buildSafeEvidence(options: {
     transcript,
     sourceContext: { partial: true },
     bounds: {
-      toolArguments: { maxCharacters: 2 },
-      toolResults: { maxCharacters: 8, strategy: "head" },
+      toolArguments: { maxCharacters: 2_048 },
+      toolResults: { maxCharacters: 4_096, strategy: "head-tail" },
     },
     filters: { toolResults: "include" },
   });
