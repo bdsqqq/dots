@@ -53,6 +53,12 @@ import {
   type HistoryChange,
 } from "./history.js";
 
+import {
+  enqueueMaintenanceEvent,
+  listMaintenanceEvents,
+  type EventBasis,
+} from "./events.js";
+
 const V2 = "v2";
 const PROMPT_VERSION = 2;
 
@@ -1884,6 +1890,98 @@ export function applyMemoryProposal(options: {
   });
 }
 
+export type VerifiedRollbackLinkage = {
+  receipt: ReviewReceipt;
+  transactionId: string;
+};
+
+export function verifyPersistedRollbackLinkage(
+  cfg: MemoryConfig,
+  input: {
+    historyCommit: string;
+    mutationId: string;
+    reviewId: string;
+    proposalId: string;
+  },
+): VerifiedRollbackLinkage {
+  const reviewPath = v2(cfg, "reviews", `${input.reviewId}.json`);
+  if (!existsSync(reviewPath))
+    throw new Error("rollback review receipt is missing");
+  const receipt = JSON.parse(readFileSync(reviewPath, "utf8")) as ReviewReceipt;
+  if (
+    receipt.decision !== "rolled-back" ||
+    receipt.reviewId !== input.reviewId ||
+    receipt.proposalId !== input.proposalId ||
+    receipt.historyCommit !== input.historyCommit ||
+    receipt.mutationId !== input.mutationId ||
+    !receipt.transactionId
+  )
+    throw new Error("rollback review linkage does not match");
+  const transaction = parseTransaction(
+    cfg,
+    readFileSync(
+      v2(cfg, "transactions", `${receipt.transactionId}.json`),
+      "utf8",
+    ),
+    receipt.transactionId,
+  );
+  if (
+    transaction.state !== "rolled-back" ||
+    transaction.review?.proposalId !== input.proposalId ||
+    transaction.rollback?.reviewId !== input.reviewId ||
+    transaction.rollbackHistory?.commit !== input.historyCommit ||
+    transaction.rollbackHistory.mutationId !== input.mutationId
+  )
+    throw new Error("rollback transaction linkage does not match");
+  return { receipt, transactionId: transaction.id };
+}
+
+type RollbackEventBasis = EventBasis & {
+  historyCommit: string;
+  mutationId: string;
+  reviewId: string;
+  proposalId: string;
+};
+
+function adaptationEventBasis(receipt: ReviewReceipt): RollbackEventBasis {
+  if (!receipt.historyCommit || !receipt.mutationId)
+    throw new Error("rollback did not publish verified history");
+  return {
+    historyCommit: receipt.historyCommit,
+    mutationId: receipt.mutationId,
+    reviewId: receipt.reviewId,
+    proposalId: receipt.proposalId,
+  };
+}
+
+export function reconcileRollbackAdaptationEvents(cfg: MemoryConfig): number {
+  let enqueued = 0;
+  for (const receipt of readReviewReceipts(cfg).filter(
+    (candidate) => candidate.decision === "rolled-back",
+  )) {
+    const basis = adaptationEventBasis(receipt);
+    verifyPersistedRollbackLinkage(cfg, {
+      historyCommit: basis.historyCommit,
+      mutationId: basis.mutationId,
+      reviewId: receipt.reviewId,
+      proposalId: receipt.proposalId,
+    });
+    const before = listMaintenanceEvents(cfg).some(
+      ({ event }) =>
+        event.kind === "adaptation-ready" &&
+        event.cause === receipt.reviewId &&
+        JSON.stringify(event.basis) === JSON.stringify(basis),
+    );
+    enqueueMaintenanceEvent(cfg, {
+      kind: "adaptation-ready",
+      cause: receipt.reviewId,
+      basis,
+    });
+    if (!before) enqueued += 1;
+  }
+  return enqueued;
+}
+
 export function rollbackReview(
   cfg: MemoryConfig,
   reviewId: string,
@@ -1903,8 +2001,15 @@ export function rollbackReview(
     readFileSync(txPath, "utf8"),
     original.transactionId,
   );
-  if (transaction.state === "rolled-back" && transaction.rollback)
-    return persistRollbackReceipt(cfg, transaction)!;
+  if (transaction.state === "rolled-back" && transaction.rollback) {
+    const receipt = persistRollbackReceipt(cfg, transaction)!;
+    enqueueMaintenanceEvent(cfg, {
+      kind: "adaptation-ready",
+      cause: receipt.reviewId,
+      basis: adaptationEventBasis(receipt),
+    });
+    return receipt;
+  }
   if (transaction.state !== "applied")
     throw new Error("transaction is not applied");
   for (const action of transaction.actions) {
@@ -1945,6 +2050,11 @@ export function rollbackReview(
   atomicWrite(txPath, `${JSON.stringify(transaction, null, 2)}\n`);
   writeCatalog(cfg);
   const receipt = persistRollbackReceipt(cfg, transaction)!;
+  enqueueMaintenanceEvent(cfg, {
+    kind: "adaptation-ready",
+    cause: receipt.reviewId,
+    basis: adaptationEventBasis(receipt),
+  });
   syncHistory(cfg);
   return receipt;
 }

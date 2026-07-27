@@ -24,6 +24,7 @@ export const MAINTENANCE_EVENT_KINDS = [
   "checkpoint-ready",
   "corpus-changed",
   "history-fast-forward",
+  "adaptation-ready",
   "manual",
 ] as const;
 export type MaintenanceEventKind = (typeof MAINTENANCE_EVENT_KINDS)[number];

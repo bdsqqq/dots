@@ -10,7 +10,8 @@
     "./catalog": "./catalog.ts",
     "./events": "./events.ts",
     "./evidence": "./evidence.ts",
-    "./receipt": "./receipt.ts"
+    "./receipt": "./receipt.ts",
+    "./adaptation": "./adaptation.ts"
   },
   "dependencies": {
     "@bds_pi/config": "workspace:*",

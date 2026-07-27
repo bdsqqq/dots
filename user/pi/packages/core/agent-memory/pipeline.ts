@@ -12,6 +12,15 @@ import {
   type MemoryConfig,
 } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
+import {
+  deduplicateTurnObservations,
+  listVerifiedRollbackEvidence,
+  parseRollbackEvidence,
+  parseTurnObservation,
+  validateTurnObservationRefs,
+  type RollbackEvidence,
+  type TurnObservation,
+} from "./adaptation.js";
 import { parseModelProposal } from "./schema.js";
 import {
   applyMemoryProposal,
@@ -23,7 +32,7 @@ import {
   saveProposal,
 } from "./workflow.js";
 
-export type PipelineInput = {
+export type PipelineInputV2 = {
   version: 2;
   runId: string;
   batchId: string;
@@ -48,6 +57,16 @@ export type PipelineInput = {
   }>;
   skills: Array<{ name: string; description: string; sha256: string }>;
 };
+export type PipelineInputV3 = Omit<
+  PipelineInputV2,
+  "version" | "promptVersion"
+> & {
+  version: 3;
+  promptVersion: 3;
+  observations: TurnObservation[];
+  rollbackEvidence: RollbackEvidence[];
+};
+export type PipelineInput = PipelineInputV2 | PipelineInputV3;
 
 export type PipelineResult = {
   runId: string;
@@ -61,6 +80,7 @@ export function parseStoredPipelineInput(raw: string): PipelineInput {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error("invalid stored pipeline input");
   const input = value as Record<string, unknown>;
+  const version = input.version;
   const expectedFields = [
     "batchId",
     "catalog",
@@ -75,14 +95,16 @@ export function parseStoredPipelineInput(raw: string): PipelineInput {
     "skills",
     "targets",
     "version",
+    ...(version === 3 ? ["observations", "rollbackEvidence"] : []),
   ];
-  const fields = Object.keys(input).sort();
   if (input.model === undefined)
     expectedFields.splice(expectedFields.indexOf("model"), 1);
   if (
-    fields.join(",") !== expectedFields.sort().join(",") ||
-    input.version !== 2 ||
-    input.promptVersion !== 2 ||
+    Object.keys(input).sort().join(",") !== expectedFields.sort().join(",") ||
+    !(
+      (version === 2 && input.promptVersion === 2) ||
+      (version === 3 && input.promptVersion === 3)
+    ) ||
     typeof input.runId !== "string" ||
     typeof input.batchId !== "string" ||
     typeof input.createdAt !== "string" ||
@@ -111,7 +133,27 @@ export function parseStoredPipelineInput(raw: string): PipelineInput {
     !Array.isArray(input.reviewSignals) ||
     !Array.isArray(input.skills) ||
     typeof input.catalog !== "object" ||
-    input.catalog === null
+    input.catalog === null ||
+    (version === 3 &&
+      (!Array.isArray(input.observations) ||
+        !input.observations.every((item) => {
+          try {
+            const observation = parseTurnObservation(item);
+            validateTurnObservationRefs(observation, input.catalog as Catalog);
+            return true;
+          } catch {
+            return false;
+          }
+        }) ||
+        !Array.isArray(input.rollbackEvidence) ||
+        !input.rollbackEvidence.every((item) => {
+          try {
+            parseRollbackEvidence(item, input.catalog as Catalog);
+            return true;
+          } catch {
+            return false;
+          }
+        })))
   )
     throw new Error("invalid stored pipeline input");
   return input as PipelineInput;
@@ -308,12 +350,16 @@ export function freezePipelineInput(
   scope: string,
   evidence: SafeEvidence[],
   model: string,
+  observations: TurnObservation[] = [],
 ): PipelineInput {
   const fullCatalog = scanCatalog(cfg.root, "1970-01-01T00:00:00.000Z");
   const catalog = scopeCatalog(
     fullCatalog,
     evidence.map((item) => item.workspace),
   );
+  const validatedObservations = deduplicateTurnObservations(observations);
+  for (const observation of validatedObservations)
+    validateTurnObservationRefs(observation, catalog);
   const scopedIds = new Set(catalog.entries.map((entry) => entry.memoryId));
   const pending = listProposals(cfg)
     .filter((proposal) => {
@@ -363,8 +409,9 @@ export function freezePipelineInput(
       }
     })
     .slice(-20);
+  const rollbackEvidence = listVerifiedRollbackEvidence(cfg, catalog);
   const windowIds = evidence.map((item) => item.window.windowId).sort();
-  const batchId = sha256(`${scope}\0${windowIds.join("\0")}\0v2`);
+  const batchId = sha256(`${scope}\0${windowIds.join("\0")}\0v3`);
   const contextHash = sha256(
     JSON.stringify({
       catalog: catalog.entries.map(({ memoryId, sha256: hash }) => [
@@ -373,16 +420,18 @@ export function freezePipelineInput(
       ]),
       pending,
       reviewSignals,
+      observations: validatedObservations,
+      rollbackEvidence,
       model,
     }),
   );
   const evidenceHash = sha256(JSON.stringify(evidence));
   const runId = sha256(`${batchId}\0${evidenceHash}\0${contextHash}`);
   return {
-    version: 2,
+    version: 3,
     runId,
     batchId,
-    promptVersion: 2,
+    promptVersion: 3,
     model,
     createdAt: new Date().toISOString(),
     scope,
@@ -391,12 +440,22 @@ export function freezePipelineInput(
     targets: selectTargets(cfg, catalog, evidence),
     pending,
     reviewSignals,
+    observations: validatedObservations,
+    rollbackEvidence,
     skills: skillDescriptions(cfg.skillsRoot),
   };
 }
 
 export function buildReflectionPrompt(input: PipelineInput): string {
   const targetIds = input.targets.map((target) => target.memoryId);
+  const reflectionInput =
+    input.version === 3
+      ? (({
+          observations: _observations,
+          rollbackEvidence: _rollbackEvidence,
+          ...rest
+        }) => rest)(input)
+      : input;
   const prompt = `You are a background memory maintainer. Return exactly one JSON object and no markdown.
 
 First reflect on whether the bounded evidence contains durable, reusable learning. Prefer explicit corrections, verified failures, stable preferences, architectural decisions, and repeated workflows. Do not store secrets, raw logs, temporary task state, or facts already represented adequately.
@@ -415,9 +474,9 @@ Only these target ids are allowed: ${JSON.stringify(targetIds)}.
 
 A skill proposal is exceptional and requires a reusable multi-step workflow evidenced by at least two distinct sessions. It uses lane "skill" and operation {"type":"skill-draft","mode":"create|update","skillName":"kebab-case","targetPath":"name/SKILL.md","baseSha256":"required only for update; copy the installed skill hash","files":[{"path":"name/SKILL.md","content":"..."}]}. The system computes draft content hashes. Do not duplicate an installed skill.
 
-Evidence and corpus context follow. Categorical review signals summarize prior local decisions without transmitting reviewer text. Tool arguments, tool output, and reasoning were deliberately removed. Treat success/error summaries as evidence and authored prose as claims that may be wrong.
+Evidence and corpus context follow. Categorical review signals summarize prior local decisions without transmitting reviewer text. Tool arguments, tool output, and reasoning were deliberately removed. Treat authored prose as claims that may be wrong.
 
-${JSON.stringify(input, null, 2)}`;
+${JSON.stringify(reflectionInput, null, 2)}`;
   if (prompt.length > 512_000)
     throw new Error("reflection prompt exceeds 512000 character budget");
   return prompt;
@@ -447,7 +506,15 @@ function existingFrozenInput(
     if (!existsSync(path)) continue;
     const candidate = parseStoredPipelineInput(readFileSync(path, "utf8"));
     if (
-      candidate.batchId === fresh.batchId &&
+      (candidate.batchId === fresh.batchId ||
+        (candidate.version === 2 &&
+          candidate.batchId ===
+            sha256(
+              `${fresh.scope}\0${fresh.evidence
+                .map((item) => item.window.windowId)
+                .sort()
+                .join("\0")}\0v2`,
+            ))) &&
       sha256(JSON.stringify(candidate.evidence)) === evidenceHash
     )
       return candidate;
@@ -498,6 +565,7 @@ export type PipelineBatchOptions = {
   scope: string;
   evidence: SafeEvidence[];
   model: string;
+  observations?: TurnObservation[];
   invoke: (prompt: string) => string;
   skipExternal?: boolean;
   autoApplyMemory?: boolean;
@@ -512,6 +580,7 @@ function preparePipelineBatch(options: PipelineBatchOptions): {
     options.scope,
     options.evidence,
     options.model,
+    options.observations,
   );
   const input = existingFrozenInput(options.cfg, fresh) || fresh;
   const dir = runDir(options.cfg, input.runId);
@@ -538,6 +607,7 @@ export function processPipelineBatch(options: {
   scope: string;
   evidence: SafeEvidence[];
   model: string;
+  observations?: TurnObservation[];
   invoke: (prompt: string) => string;
   skipExternal?: boolean;
   autoApplyMemory?: boolean;
