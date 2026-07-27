@@ -56,7 +56,13 @@ import {
 import { buildSafeEvidence, type SafeEvidence } from "./evidence.js";
 import { processPipelineBatch } from "./pipeline.js";
 import { scanCorpusHealth } from "./maintenance.js";
-import { enqueueMaintenanceEvent, listMaintenanceEvents } from "./events.js";
+import {
+  claimMaintenanceEvent,
+  completeMaintenanceEvent,
+  enqueueMaintenanceEvent,
+  listMaintenanceEvents,
+  recoverMaintenanceEvents,
+} from "./events.js";
 import {
   exportEvalDataset,
   gradeReplay,
@@ -485,8 +491,18 @@ function projectUnlocked(): void {
           cfg.data,
           join(cfg.data, `queue/failed/${basename(target)}`),
         );
-        if (!existsSync(target) && !existsSync(done) && !existsSync(failed))
-          atomic(target, `${JSON.stringify(job)}\n`);
+        if (!existsSync(done) && !existsSync(failed)) {
+          if (!existsSync(target)) atomic(target, `${JSON.stringify(job)}\n`);
+          enqueueMaintenanceEvent(cfg, {
+            kind: "checkpoint-ready",
+            cause: `${job.sessionId}:${job.checkpointEntryId}`,
+            basis: {
+              sessionId: job.sessionId,
+              checkpointEntryId: job.checkpointEntryId,
+              workspace: job.workspace,
+            },
+          });
+        }
       }
     } catch (error) {
       const id = createHash("sha256").update(source).digest("hex").slice(0, 16);
@@ -1137,11 +1153,36 @@ function maintainUnlocked(): boolean {
   } catch {}
   const now = Date.now();
   let ok = true;
-  if (now - (gates.consolidation || 0) >= 2 * 60 * 60_000) {
+  if (pendingWindows(1).length > 0) {
     ok = consolidateUnlocked(
       Number(process.env.PI_MEMORY_MAINTAIN_LIMIT || 10),
     );
-    if (ok) gates.consolidation = now;
+    if (ok) {
+      recoverMaintenanceEvents(cfg);
+      const processedEventIds = listMaintenanceEvents(cfg, ["pending"])
+        .filter(
+          ({ event }) =>
+            event.kind === "checkpoint-ready" &&
+            typeof event.basis.sessionId === "string" &&
+            typeof event.basis.checkpointEntryId === "string" &&
+            existsSync(
+              join(
+                cfg.data,
+                "v2/ledger",
+                `${event.basis.sessionId}--${event.basis.checkpointEntryId}.json`,
+              ),
+            ),
+        )
+        .map(({ event }) => event.id);
+      for (;;) {
+        const event = claimMaintenanceEvent(cfg, {
+          kinds: ["checkpoint-ready"],
+          ids: processedEventIds,
+        });
+        if (!event) break;
+        completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+      }
+    }
   }
   if (process.env.PI_MEMORY_SKIP_EXTERNAL !== "1") {
     try {
