@@ -12,6 +12,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import {
+  lstat as lstatAsync,
+  readFile as readFileAsync,
+  realpath as realpathAsync,
+} from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type {
@@ -22,7 +27,6 @@ import { Type } from "typebox";
 import {
   deriveAdaptationQuality,
   generateHotManifest,
-  loadHotManifestData,
   renderHotManifest,
   scanCatalog,
   sha256,
@@ -74,13 +78,16 @@ function addCounts(
     target[key] = (target[key] ?? 0) + count;
 }
 
-function loadCatalog(): Catalog {
-  const value: unknown = JSON.parse(
-    readFileSync(join(memoryData(), "catalog.json"), "utf8"),
-  );
+function parseCatalog(value: unknown): Catalog {
   if (!object(value) || value.version !== 2 || !Array.isArray(value.entries))
     throw new Error("invalid memory catalog");
   return value as Catalog;
+}
+
+function loadCatalog(): Catalog {
+  return parseCatalog(
+    JSON.parse(readFileSync(join(memoryData(), "catalog.json"), "utf8")),
+  );
 }
 
 function catalogSha256(catalog: Catalog): string {
@@ -113,19 +120,75 @@ function ref(entry: CatalogEntry): MemoryRef {
   };
 }
 
-function currentManifest(catalog: Catalog, cwd: string): HotManifest {
+type PromptSnapshot = {
+  readonly catalogSha256: string;
+  readonly refs: readonly MemoryRef[];
+  readonly rendered: string;
+};
+
+const EMPTY_MEMORY_CATALOG =
+  "<memory_catalog>\nDurable memory catalog unavailable for this session.\n</memory_catalog>";
+
+async function loadPromptSnapshot(cwd: string): Promise<PromptSnapshot> {
   const data = memoryData();
-  const root = memoryRoot();
-  const quality = deriveAdaptationQuality({
-    data,
-    root,
-    state: data,
-    skillsRoot: root,
-  });
-  return (
-    loadHotManifestData({ data }, catalog, cwd, quality) ??
-    generateHotManifest({ data }, catalog, cwd, quality)
+  const catalog = parseCatalog(
+    JSON.parse(await readFileAsync(join(data, "catalog.json"), "utf8")),
   );
+  const manifestPath = join(data, "v2/hot", `${sha256(resolve(cwd))}.json`);
+  const value: unknown = JSON.parse(await readFileAsync(manifestPath, "utf8"));
+  if (!object(value)) throw new Error("invalid hot manifest");
+  const manifest = value as HotManifest;
+  if (
+    manifest.version !== 2 ||
+    manifest.cwd !== resolve(cwd) ||
+    manifest.catalogSha256 !== catalogSha256(catalog) ||
+    !/^[a-f0-9]{64}$/.test(manifest.qualitySha256) ||
+    !Array.isArray(manifest.entries) ||
+    manifest.entries.length > 20
+  )
+    throw new Error("invalid hot manifest");
+  const root = await realpathAsync(memoryRoot());
+  const refs = await Promise.all(
+    manifest.entries.map(async (item) => {
+      const entry = catalog.entries.find(
+        (candidate) =>
+          candidate.path === item.path && candidate.sha256 === item.sha256,
+      );
+      if (
+        !entry ||
+        item.title !== entry.title ||
+        item.description !== entry.description ||
+        JSON.stringify(item.triggers) !== JSON.stringify(entry.triggers) ||
+        !Array.isArray(item.reasons) ||
+        item.reasons.some((reason) => typeof reason !== "string")
+      )
+        throw new Error("stale hot manifest");
+      const target = resolve(root, entry.path);
+      const rel = relative(root, target);
+      if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel))
+        throw new Error("memory path escapes root");
+      const [info, realTarget, text] = await Promise.all([
+        lstatAsync(target),
+        realpathAsync(target),
+        readFileAsync(target, "utf8"),
+      ]);
+      if (
+        !info.isFile() ||
+        info.isSymbolicLink() ||
+        realTarget !== target ||
+        sha256(text) !== entry.sha256
+      )
+        throw new Error("stale memory artifact");
+      return ref(entry);
+    }),
+  );
+  const rendered = renderHotManifest(manifest);
+  if (rendered.length > 8_192) throw new Error("oversized hot manifest");
+  return Object.freeze({
+    catalogSha256: manifest.catalogSha256,
+    refs: Object.freeze(refs),
+    rendered,
+  });
 }
 
 function qualityOrderedCandidates(
@@ -591,13 +654,21 @@ export function createAgentMemoryExtension(
   deps: {
     now?: () => string;
     wake?: () => void;
+    preparePrompt?: (cwd: string) => Promise<PromptSnapshot>;
   } = {},
 ) {
   const now = deps.now ?? (() => new Date().toISOString());
   const wake = deps.wake ?? wakeMemoryMaintenance;
+  const preparePrompt = deps.preparePrompt ?? loadPromptSnapshot;
   return function agentMemoryExtension(pi: ExtensionAPI): void {
     let settling = false;
     let ancestryBoundaryId: string | undefined;
+    let ancestryInitialized = false;
+    let sessionReason: string | undefined;
+    let sessionInitialLeafId: string | undefined;
+    let promptGeneration = 0;
+    let preparedPrompt: PromptSnapshot | undefined;
+    let sessionPrompt: PromptSnapshot | null | undefined;
     let pending:
       | {
           boundaryId?: string;
@@ -608,6 +679,28 @@ export function createAgentMemoryExtension(
         }
       | undefined;
 
+    const prepareSessionPrompt = (cwd: string): void => {
+      const generation = ++promptGeneration;
+      preparedPrompt = undefined;
+      sessionPrompt = undefined;
+      void new Promise<void>((resolve) => setImmediate(resolve))
+        .then(() => preparePrompt(cwd))
+        .then((snapshot) => {
+          if (generation === promptGeneration) {
+            preparedPrompt = Object.freeze({
+              ...snapshot,
+              refs: Object.freeze([...snapshot.refs]),
+            });
+          }
+        })
+        .catch(() => {
+          if (generation === promptGeneration) {
+            preparedPrompt = undefined;
+            wake();
+          }
+        });
+    };
+
     const consumption = (ctx: {
       cwd: string;
       sessionManager: { getSessionId(): string };
@@ -617,6 +710,35 @@ export function createAgentMemoryExtension(
       ancestryBoundaryId,
       catalog: loadCatalog(),
     });
+
+    const initializeAncestry = (
+      branch: SessionEntry[],
+      sessionId: string,
+    ): void => {
+      if (ancestryInitialized) return;
+      const parsed = branch.flatMap((entry) => {
+        const data = customData(entry, TURN_RECEIPT_ENTRY_TYPE);
+        return data === undefined
+          ? []
+          : [{ entry, receipt: parseTurnReceiptObservation(data).receipt }];
+      });
+      const firstNative = parsed.find(
+        (item) => item.receipt.sessionId === sessionId,
+      );
+      if (firstNative) {
+        const firstUserIndex = branch.findIndex(
+          (entry) => entry.id === firstNative.receipt.userEntryIds[0],
+        );
+        ancestryBoundaryId =
+          firstUserIndex > 0 ? branch[firstUserIndex - 1]!.id : undefined;
+      } else if (
+        sessionReason === "fork" ||
+        parsed.some((item) => item.receipt.sessionId !== sessionId)
+      )
+        ancestryBoundaryId = sessionInitialLeafId;
+      else ancestryBoundaryId = undefined;
+      ancestryInitialized = true;
+    };
 
     const reconcile = (branch: SessionEntry[], ctx: any): number => {
       const native = receiptEntries(branch, consumption(ctx)).filter(
@@ -682,11 +804,13 @@ export function createAgentMemoryExtension(
         const shadow = [
           ...new Map(refs.map((item) => [item.memoryId, item])).values(),
         ];
+        const data = memoryData();
+        const root = memoryRoot();
         const quality = deriveAdaptationQuality({
-          data: memoryData(),
-          root: memoryRoot(),
-          state: memoryData(),
-          skillsRoot: memoryRoot(),
+          data,
+          root,
+          state: data,
+          skillsRoot: root,
         });
         const production = qualityOrderedCandidates(shadow, quality);
         const candidateKeys = shadow
@@ -790,54 +914,40 @@ export function createAgentMemoryExtension(
     });
 
     pi.on("before_agent_start", (event, ctx) => {
-      const catalog = loadCatalog();
-      const manifest = currentManifest(catalog, ctx.cwd);
-      const refs = manifest.entries.flatMap((item) => {
-        const entry = catalog.entries.find(
-          (candidate) =>
-            candidate.path === item.path && candidate.sha256 === item.sha256,
-        );
-        if (!entry) return [];
-        try {
-          currentArtifact(entry);
-          return [ref(entry)];
-        } catch {
-          return [];
-        }
-      });
-      const trustedManifest: HotManifest = {
-        ...manifest,
-        entries: manifest.entries.filter((item) =>
-          refs.some(
-            (memory) =>
-              memory.path === item.path &&
-              memory.artifactSha256 === item.sha256,
-          ),
-        ),
-      };
-      const branch = ctx.sessionManager.getBranch();
-      const leaf = branch.at(-1);
+      if (sessionPrompt === undefined) sessionPrompt = preparedPrompt ?? null;
+      const leaf = ctx.sessionManager.getLeafEntry();
       const existingUser =
         leaf?.type === "message" && leaf.message.role === "user"
           ? leaf
           : undefined;
-      const boundary = existingUser ? branch.at(-2) : leaf;
-      pending = {
-        ...(boundary ? { boundaryId: boundary.id } : {}),
-        ...(existingUser ? { existingUserId: existingUser.id } : {}),
-        catalogSha256: catalogSha256(catalog),
-        refs,
-      };
+      const boundary =
+        existingUser && existingUser.parentId
+          ? ctx.sessionManager.getEntry(existingUser.parentId)
+          : existingUser
+            ? undefined
+            : leaf;
+      pending = sessionPrompt
+        ? {
+            ...(boundary ? { boundaryId: boundary.id } : {}),
+            ...(existingUser ? { existingUserId: existingUser.id } : {}),
+            catalogSha256: sessionPrompt.catalogSha256,
+            refs: [...sessionPrompt.refs],
+          }
+        : undefined;
       return {
-        systemPrompt: `${event.systemPrompt}\n\n${renderHotManifest(trustedManifest)}`,
+        systemPrompt: `${event.systemPrompt}\n\n${
+          sessionPrompt?.rendered ?? EMPTY_MEMORY_CATALOG
+        }`,
       };
     });
 
     pi.on("agent_settled", (_event, ctx) => {
       if (settling) return;
+      if (!sessionPrompt) return;
       settling = true;
       try {
         let branch = ctx.sessionManager.getBranch();
+        initializeAncestry(branch, ctx.sessionManager.getSessionId());
         const catalog = loadCatalog();
         receiptEntries(branch, consumption(ctx));
         if (pending && !pending.userEntryId) {
@@ -906,36 +1016,11 @@ export function createAgentMemoryExtension(
 
     pi.on("session_start", (event, ctx) => {
       pending = undefined;
-      const branch = ctx.sessionManager.getBranch();
-      const sessionId = ctx.sessionManager.getSessionId();
-      const parsed = branch.flatMap((entry) => {
-        const data = customData(entry, TURN_RECEIPT_ENTRY_TYPE);
-        return data === undefined
-          ? []
-          : [
-              {
-                entry,
-                receipt: parseTurnReceiptObservation(data).receipt,
-              },
-            ];
-      });
-      const firstNative = parsed.find(
-        (item) => item.receipt.sessionId === sessionId,
-      );
-      if (firstNative) {
-        const firstUserIndex = branch.findIndex(
-          (entry) => entry.id === firstNative.receipt.userEntryIds[0],
-        );
-        ancestryBoundaryId =
-          firstUserIndex > 0 ? branch[firstUserIndex - 1]!.id : undefined;
-      } else if (
-        event.reason === "fork" ||
-        parsed.some((item) => item.receipt.sessionId !== sessionId)
-      )
-        ancestryBoundaryId = branch.at(-1)?.id;
-      else ancestryBoundaryId = undefined;
-      const nativeCount = reconcile(branch, ctx);
-      if (nativeCount > 0) wake();
+      prepareSessionPrompt(ctx.cwd);
+      ancestryBoundaryId = undefined;
+      ancestryInitialized = false;
+      sessionReason = event.reason;
+      sessionInitialLeafId = ctx.sessionManager.getLeafId() ?? undefined;
     });
   };
 }
@@ -1031,8 +1116,23 @@ if (import.meta.vitest) {
     );
     const catalog = scanCatalog(root, "2026-01-01T00:00:00.000Z");
     writeFileSync(join(data, "catalog.json"), JSON.stringify(catalog));
-    generateHotManifest({ data }, catalog, "/workspace");
-    return { catalog, entry: catalog.entries[0]!, path };
+    const manifest = generateHotManifest({ data }, catalog, "/workspace");
+    return { catalog, entry: catalog.entries[0]!, manifest, path };
+  }
+
+  function preparedPrompt(
+    setup: ReturnType<typeof setupCatalog>,
+  ): PromptSnapshot {
+    return {
+      catalogSha256: catalogSha256(setup.catalog),
+      refs: setup.manifest.entries.map((item) => {
+        const entry = setup.catalog.entries.find(
+          (candidate) => candidate.path === item.path,
+        )!;
+        return ref(entry);
+      }),
+      rendered: renderHotManifest(setup.manifest),
+    };
   }
 
   function harness(branch: SessionEntry[]) {
@@ -1057,10 +1157,18 @@ if (import.meta.vitest) {
       cwd: "/workspace",
       sessionManager: {
         getBranch: () => branch,
+        getEntry: (id: string) => branch.find((entry) => entry.id === id),
+        getLeafEntry: () => branch.at(-1),
+        getLeafId: () => branch.at(-1)?.id ?? null,
         getSessionId: () => "session-1",
       },
     };
     return { pi, handlers, tools, actions, exec, ctx };
+  }
+
+  async function settlePromptPreparation(): Promise<void> {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await Promise.resolve();
   }
 
   beforeEach(() => {
@@ -1129,15 +1237,71 @@ if (import.meta.vitest) {
       ]);
     });
 
-    it("binds a turn after Pi persists its messages", () => {
+    it("does not await prompt preparation or mutate the prompt mid-session", async () => {
+      const setup = setupCatalog();
+      const h = harness([]);
+      let resolvePrompt!: (snapshot: PromptSnapshot) => void;
+      const preparePrompt = vi.fn(
+        () =>
+          new Promise<PromptSnapshot>((resolve) => {
+            resolvePrompt = resolve;
+          }),
+      );
+      createAgentMemoryExtension({
+        wake: vi.fn(),
+        preparePrompt,
+      })(h.pi);
+      h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
+      await settlePromptPreparation();
+      const first = h.handlers.get("before_agent_start")!(
+        { systemPrompt: "base" },
+        h.ctx,
+      );
+      expect(first.systemPrompt).toContain("catalog unavailable");
+      resolvePrompt(preparedPrompt(setup));
+      await settlePromptPreparation();
+      const second = h.handlers.get("before_agent_start")!(
+        { systemPrompt: "base" },
+        h.ctx,
+      );
+      expect(second.systemPrompt).toBe(first.systemPrompt);
+      expect(preparePrompt).toHaveBeenCalledOnce();
+    });
+
+    it("starts immediately with a stable empty catalog when preparation fails", async () => {
       setupCatalog();
+      rmSync(join(data, "catalog.json"));
+      const h = harness([]);
+      createAgentMemoryExtension({ wake: vi.fn() })(h.pi);
+      expect(() =>
+        h.handlers.get("session_start")!({ reason: "startup" }, h.ctx),
+      ).not.toThrow();
+      const first = h.handlers.get("before_agent_start")!(
+        { systemPrompt: "base" },
+        h.ctx,
+      );
+      await settlePromptPreparation();
+      const second = h.handlers.get("before_agent_start")!(
+        { systemPrompt: "base" },
+        h.ctx,
+      );
+      expect(second.systemPrompt).toBe(first.systemPrompt);
+      expect(() => h.handlers.get("agent_settled")!({}, h.ctx)).not.toThrow();
+      expect(h.actions).toEqual([]);
+    });
+
+    it("binds a turn after Pi persists its messages", async () => {
+      const setup = setupCatalog();
       const branch: SessionEntry[] = [];
       const h = harness(branch);
       const wake = vi.fn(() => h.actions.push("wake"));
       createAgentMemoryExtension({
         now: () => "2026-01-01T00:00:04.000Z",
         wake,
+        preparePrompt: async () => preparedPrompt(setup),
       })(h.pi);
+      h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
+      await settlePromptPreparation();
       const injected = h.handlers.get("before_agent_start")!(
         { systemPrompt: "base" },
         h.ctx,
@@ -1170,14 +1334,17 @@ if (import.meta.vitest) {
       expect(wake).toHaveBeenCalledTimes(2);
     });
 
-    it("keeps the session ancestry boundary separate from each turn cursor", () => {
-      setupCatalog();
+    it("keeps the session ancestry boundary separate from each turn cursor", async () => {
+      const setup = setupCatalog();
       const branch: SessionEntry[] = [];
       const h = harness(branch);
       createAgentMemoryExtension({
         now: () => "2026-01-01T00:00:04.000Z",
         wake: vi.fn(),
+        preparePrompt: async () => preparedPrompt(setup),
       })(h.pi);
+      h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
+      await settlePromptPreparation();
 
       h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
       branch.push(user("u1"), assistant("a1"));
@@ -1198,11 +1365,16 @@ if (import.meta.vitest) {
       });
     });
 
-    it("drops observation when a run settles without a persisted user", () => {
-      setupCatalog();
+    it("drops observation when a run settles without a persisted user", async () => {
+      const setup = setupCatalog();
       const branch: SessionEntry[] = [];
       const h = harness(branch);
-      createAgentMemoryExtension({ wake: vi.fn() })(h.pi);
+      createAgentMemoryExtension({
+        wake: vi.fn(),
+        preparePrompt: async () => preparedPrompt(setup),
+      })(h.pi);
+      h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
+      await settlePromptPreparation();
       h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
       expect(() => h.handlers.get("agent_settled")!({}, h.ctx)).not.toThrow();
       expect(h.actions).toEqual([]);
@@ -1364,8 +1536,9 @@ if (import.meta.vitest) {
       ).rejects.toThrow("stale memory artifact");
     });
 
-    it("recovers only canonical settled receipts and rejects malformed ones", () => {
-      const { catalog } = setupCatalog();
+    it("recovers only canonical settled receipts and rejects malformed ones", async () => {
+      const setup = setupCatalog();
+      const { catalog } = setup;
       const identity: Omit<TurnReceipt, "receiptId"> = {
         version: 1,
         sessionId: "session-1",
@@ -1395,8 +1568,15 @@ if (import.meta.vitest) {
       ];
       const h = harness(branch);
       const wake = vi.fn();
-      createAgentMemoryExtension({ wake })(h.pi);
+      createAgentMemoryExtension({
+        wake,
+        preparePrompt: async () => preparedPrompt(setup),
+      })(h.pi);
       h.handlers.get("session_start")!({}, h.ctx);
+      expect(h.actions).toEqual([]);
+      await settlePromptPreparation();
+      h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
+      h.handlers.get("agent_settled")!({}, h.ctx);
       expect(h.actions).toEqual([CHECKPOINT_ENTRY_TYPE]);
       expect(customData(branch.at(-1)!, CHECKPOINT_ENTRY_TYPE)).toEqual({
         version: 2,
@@ -1413,14 +1593,26 @@ if (import.meta.vitest) {
         assistant("a1"),
         custom("r1", TURN_RECEIPT_ENTRY_TYPE, { version: 1 }),
       ]);
-      createAgentMemoryExtension({ wake: vi.fn() })(bad.pi);
-      expect(() => bad.handlers.get("session_start")!({}, bad.ctx)).toThrow(
+      createAgentMemoryExtension({
+        wake: vi.fn(),
+        preparePrompt: async () => preparedPrompt(setup),
+      })(bad.pi);
+      expect(() =>
+        bad.handlers.get("session_start")!({}, bad.ctx),
+      ).not.toThrow();
+      await settlePromptPreparation();
+      bad.handlers.get("before_agent_start")!(
+        { systemPrompt: "base" },
+        bad.ctx,
+      );
+      expect(() => bad.handlers.get("agent_settled")!({}, bad.ctx)).toThrow(
         "invalid turn receipt",
       );
     });
 
-    it("isolates stale receipt observations during recovery consumption", () => {
-      const { catalog, entry } = setupCatalog();
+    it("isolates stale receipt observations during recovery consumption", async () => {
+      const setup = setupCatalog();
+      const { catalog, entry } = setup;
       const identity: Omit<TurnReceipt, "receiptId"> = {
         version: 1,
         sessionId: "session-1",
@@ -1448,10 +1640,16 @@ if (import.meta.vitest) {
         }),
       ];
       const h = harness(branch);
-      createAgentMemoryExtension({ wake: vi.fn() })(h.pi);
+      createAgentMemoryExtension({
+        wake: vi.fn(),
+        preparePrompt: async () => preparedPrompt(setup),
+      })(h.pi);
       expect(() =>
         h.handlers.get("session_start")!({ reason: "resume" }, h.ctx),
       ).not.toThrow();
+      await settlePromptPreparation();
+      h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
+      h.handlers.get("agent_settled")!({}, h.ctx);
       expect(h.actions).toEqual([CHECKPOINT_ENTRY_TYPE]);
       expect(
         receiptEntries(branch, {
@@ -1462,8 +1660,9 @@ if (import.meta.vitest) {
       ).toEqual(["1 stale exposure metadata item(s)"]);
     });
 
-    it("isolates malformed exposure metadata without dropping correlation", () => {
-      const { catalog } = setupCatalog();
+    it("isolates malformed exposure metadata without dropping correlation", async () => {
+      const setup = setupCatalog();
+      const { catalog } = setup;
       const rawIdentity = {
         version: 1 as const,
         sessionId: "session-1",
@@ -1487,10 +1686,16 @@ if (import.meta.vitest) {
         }),
       ];
       const h = harness(branch);
-      createAgentMemoryExtension({ wake: vi.fn() })(h.pi);
+      createAgentMemoryExtension({
+        wake: vi.fn(),
+        preparePrompt: async () => preparedPrompt(setup),
+      })(h.pi);
       expect(() =>
         h.handlers.get("session_start")!({ reason: "resume" }, h.ctx),
       ).not.toThrow();
+      await settlePromptPreparation();
+      h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
+      h.handlers.get("agent_settled")!({}, h.ctx);
       expect(h.actions).toEqual([CHECKPOINT_ENTRY_TYPE]);
       expect(
         receiptEntries(branch, {
@@ -1536,8 +1741,9 @@ if (import.meta.vitest) {
       ).toEqual({ "provider-token": 1, "secret-field": 2 });
     });
 
-    it("rebases a fork after validated inherited receipts", () => {
-      const { catalog, entry } = setupCatalog();
+    it("rebases a fork after validated inherited receipts", async () => {
+      const setup = setupCatalog();
+      const { catalog, entry } = setup;
       const parentBase = [
         user("parent-u"),
         custom("parent-i", INJECTION_ENTRY_TYPE, {
@@ -1567,8 +1773,12 @@ if (import.meta.vitest) {
       ];
       const h = harness(branch);
       const wake = vi.fn();
-      createAgentMemoryExtension({ wake })(h.pi);
+      createAgentMemoryExtension({
+        wake,
+        preparePrompt: async () => preparedPrompt(setup),
+      })(h.pi);
       h.handlers.get("session_start")!({ reason: "fork" }, h.ctx);
+      await settlePromptPreparation();
       expect(wake).not.toHaveBeenCalled();
 
       h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
