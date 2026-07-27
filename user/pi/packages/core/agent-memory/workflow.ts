@@ -22,6 +22,7 @@ import {
   type MemoryConfig,
 } from "./catalog.js";
 import {
+  MEMORY_KINDS,
   REVIEW_REASON_CODES,
   memoryRef,
   parseModelProposal,
@@ -29,8 +30,10 @@ import {
   renderMemory,
   type EvidenceRef,
   type MemoryArtifact,
+  type MemoryKind,
   type MemoryMutationActor,
   type MemoryOperation,
+  type MemoryPatch,
   type ModelProposal,
   type Proposal,
   type ReviewReasonCode,
@@ -219,6 +222,91 @@ function validateFullArtifact(value: unknown): void {
   );
 }
 
+function validatePatch(value: unknown): void {
+  if (!object(value) || Object.keys(value).length === 0)
+    throw new Error("invalid stored patch");
+  const allowed = new Set([
+    "title",
+    "kind",
+    "description",
+    "triggers",
+    "keywords",
+    "body",
+  ]);
+  if (Object.keys(value).some((key) => !allowed.has(key)))
+    throw new Error("invalid stored patch fields");
+  for (const field of ["title", "kind", "description"] as const) {
+    const change = value[field];
+    if (
+      change !== undefined &&
+      (!object(change) ||
+        Object.keys(change).sort().join(",") !== "from,to" ||
+        typeof change.from !== "string" ||
+        typeof change.to !== "string")
+    )
+      throw new Error(`invalid stored ${field} patch`);
+  }
+  const title = value.title;
+  const description = value.description;
+  const kind = value.kind;
+  if (
+    (object(title) &&
+      (![title.from, title.to].every(
+        (item) =>
+          typeof item === "string" &&
+          !!item.trim() &&
+          item.length <= 120 &&
+          !/[\r\n]/.test(item),
+      ) ||
+        title.from === title.to)) ||
+    (object(description) &&
+      (![description.from, description.to].every(
+        (item) =>
+          typeof item === "string" &&
+          !!item.trim() &&
+          item.length <= 240 &&
+          !/[\r\n]/.test(item),
+      ) ||
+        description.from === description.to)) ||
+    (object(kind) &&
+      (!MEMORY_KINDS.includes(kind.from as MemoryKind) ||
+        !MEMORY_KINDS.includes(kind.to as MemoryKind) ||
+        kind.from === kind.to))
+  )
+    throw new Error("invalid stored scalar patch");
+  for (const field of ["triggers", "keywords"] as const) {
+    const change = value[field];
+    if (
+      change !== undefined &&
+      (!object(change) ||
+        Object.keys(change).sort().join(",") !== "add,remove" ||
+        !Array.isArray(change.add) ||
+        !Array.isArray(change.remove) ||
+        ![...change.add, ...change.remove].every(
+          (item) => typeof item === "string",
+        ))
+    )
+      throw new Error(`invalid stored ${field} patch`);
+  }
+  const body = value.body;
+  if (
+    body !== undefined &&
+    (!object(body) ||
+      Object.keys(body).sort().join(",") !== "fromSha256,sourceRefs,to" ||
+      typeof body.fromSha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(body.fromSha256) ||
+      typeof body.to !== "string" ||
+      !body.to.trim() ||
+      !Array.isArray(body.sourceRefs) ||
+      body.sourceRefs.length === 0 ||
+      !body.sourceRefs.every(
+        (source) =>
+          typeof source === "string" && /^(?:pi|https):\/\//.test(source),
+      ))
+  )
+    throw new Error("invalid stored body patch");
+}
+
 function validateStoredOperation(
   lane: "memory" | "skill",
   value: Record<string, unknown>,
@@ -241,6 +329,18 @@ function validateStoredOperation(
       throw new Error("invalid stored update fields");
     validateMemoryRef(value.target);
     validateFullArtifact(value.artifact);
+  } else if (value.type === "patch") {
+    if (Object.keys(value).sort().join(",") !== "changes,target,type")
+      throw new Error("invalid stored patch fields");
+    validateMemoryRef(value.target);
+    validatePatch(value.changes);
+  } else if (value.type === "deduplicate") {
+    if (Object.keys(value).sort().join(",") !== "primary,targets,type")
+      throw new Error("invalid stored deduplicate fields");
+    validateMemoryRef(value.primary);
+    if (!Array.isArray(value.targets) || value.targets.length < 1)
+      throw new Error("invalid stored deduplicate targets");
+    value.targets.forEach(validateMemoryRef);
   } else if (value.type === "merge") {
     if (Object.keys(value).sort().join(",") !== "artifact,primary,targets,type")
       throw new Error("invalid stored merge fields");
@@ -482,7 +582,7 @@ export function assertNonOverlappingMemoryProposals(
     const ids =
       operation.type === "create"
         ? []
-        : operation.type === "merge"
+        : operation.type === "merge" || operation.type === "deduplicate"
           ? [
               operation.primary.memoryId,
               ...operation.targets.map((target) => target.memoryId),
@@ -744,6 +844,105 @@ function withStatus(
   return result;
 }
 
+function frontmatterValue(text: string, field: string): unknown {
+  const frontmatter = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1];
+  const raw = frontmatter
+    ? new RegExp(`^${field}:\\s*(.+)$`, "m").exec(frontmatter)?.[1]
+    : undefined;
+  if (raw === undefined) throw new Error(`memory is missing ${field}`);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw.trim();
+  }
+}
+
+function memoryArtifact(text: string): MemoryArtifact {
+  const string = (field: string): string => {
+    const value = frontmatterValue(text, field);
+    if (typeof value !== "string") throw new Error(`invalid memory ${field}`);
+    return value;
+  };
+  const strings = (field: string): string[] => {
+    const value = frontmatterValue(text, field);
+    if (
+      !Array.isArray(value) ||
+      !value.every((item) => typeof item === "string")
+    )
+      throw new Error(`invalid memory ${field}`);
+    return value;
+  };
+  const kind = string("kind");
+  if (!["preference", "decision", "gotcha", "pattern"].includes(kind))
+    throw new Error("invalid memory kind");
+  return {
+    memoryId: string("memory_id"),
+    title: string("title"),
+    kind: kind as MemoryKind,
+    scope: string("scope"),
+    description: string("description"),
+    triggers: strings("triggers"),
+    keywords: strings("keywords"),
+    sources: strings("sources"),
+    created: string("created"),
+    updated: string("updated"),
+    body: text.replace(/^---\n[\s\S]*?\n---\n?/, "").trim(),
+  };
+}
+
+function rewriteFrontmatter(
+  text: string,
+  fields: Record<string, unknown>,
+): string {
+  const match = /^(---\n)([\s\S]*?)(\n---)([\s\S]*)$/.exec(text);
+  if (!match) throw new Error("invalid memory frontmatter");
+  let frontmatter = match[2]!;
+  for (const [field, value] of Object.entries(fields)) {
+    const line = `${field}: ${JSON.stringify(value)}`;
+    const pattern = new RegExp(`^${field}:.*$`, "m");
+    if (!pattern.test(frontmatter))
+      throw new Error(`memory is missing ${field}`);
+    frontmatter = frontmatter.replace(pattern, line);
+  }
+  return `${match[1]}${frontmatter}${match[3]}${match[4]}`;
+}
+
+function patchedArtifact(
+  current: MemoryArtifact,
+  changes: MemoryPatch,
+): MemoryArtifact {
+  const next = { ...current };
+  for (const field of ["title", "kind", "description"] as const) {
+    const change = changes[field];
+    if (!change) continue;
+    if (current[field] !== change.from)
+      throw new Error(`patch ${field} precondition failed`);
+    Object.assign(next, { [field]: change.to });
+  }
+  for (const field of ["triggers", "keywords"] as const) {
+    const change = changes[field];
+    if (!change) continue;
+    if (change.remove.some((item) => !current[field].includes(item)))
+      throw new Error(`patch ${field} precondition failed`);
+    next[field] = [
+      ...new Set([
+        ...current[field].filter((item) => !change.remove.includes(item)),
+        ...change.add,
+      ]),
+    ];
+  }
+  if (changes.body) {
+    if (sha256(current.body) !== changes.body.fromSha256)
+      throw new Error("patch body precondition failed");
+    next.body = changes.body.to;
+    next.sources = [
+      ...new Set([...current.sources, ...changes.body.sourceRefs]),
+    ];
+  }
+  next.updated = new Date().toISOString().slice(0, 10);
+  return next;
+}
+
 function actionsFor(
   cfg: MemoryConfig,
   operation: MemoryOperation,
@@ -767,6 +966,65 @@ function actionsFor(
     return [
       { from, to: from, before, after: renderMemory(artifact, reviewId) },
     ];
+  }
+  if (operation.type === "patch") {
+    const from = currentTarget(cfg, operation.target);
+    const before = readFileSync(from, "utf8");
+    return [
+      {
+        from,
+        to: from,
+        before,
+        after: renderMemory(
+          patchedArtifact(memoryArtifact(before), operation.changes),
+          reviewId,
+        ),
+      },
+    ];
+  }
+  if (operation.type === "deduplicate") {
+    const primary = currentTarget(cfg, operation.primary);
+    const before = readFileSync(primary, "utf8");
+    const primaryArtifact = memoryArtifact(before);
+    const duplicates = operation.targets.map((ref) => {
+      if (ref.memoryId === operation.primary.memoryId)
+        throw new Error("deduplicate target repeats primary");
+      const from = currentTarget(cfg, ref);
+      const text = readFileSync(from, "utf8");
+      const artifact = memoryArtifact(text);
+      if (artifact.scope !== primaryArtifact.scope)
+        throw new Error("deduplicate cannot cross scopes");
+      return { from, text, artifact };
+    });
+    const actions: TransactionAction[] = [
+      {
+        from: primary,
+        to: primary,
+        before,
+        after: rewriteFrontmatter(before, {
+          sources: [
+            ...new Set([
+              ...primaryArtifact.sources,
+              ...duplicates.flatMap((item) => item.artifact.sources),
+            ]),
+          ],
+          updated: new Date().toISOString().slice(0, 10),
+          review_id: reviewId,
+        }),
+      },
+    ];
+    for (const duplicate of duplicates) {
+      const to = archivedPath(cfg, duplicate.from, "retired");
+      if (existsSync(to))
+        throw new Error(`archive destination exists ${relative(cfg.root, to)}`);
+      actions.push({
+        from: duplicate.from,
+        to,
+        before: duplicate.text,
+        after: withStatus(duplicate.text, "retired", reviewId),
+      });
+    }
+    return actions;
   }
   if (operation.type === "merge") {
     const primary = currentTarget(cfg, operation.primary);
@@ -1179,6 +1437,29 @@ function finalArtifacts(
   }));
 }
 
+function validatePatchProvenance(proposal: Proposal): void {
+  if (
+    proposal.lane !== "memory" ||
+    proposal.operation.type !== "patch" ||
+    !proposal.operation.changes.body
+  )
+    return;
+  const allowed = new Set([
+    ...proposal.evidence.flatMap((item) =>
+      item.checkpointEntryIds.map(
+        (checkpoint) => `pi://${item.sessionId}/${checkpoint}`,
+      ),
+    ),
+    ...(proposal.provenance.source ? [proposal.provenance.source] : []),
+  ]);
+  if (
+    proposal.operation.changes.body.sourceRefs.some(
+      (source) => !allowed.has(source),
+    )
+  )
+    throw new Error("patch body source is not backed by proposal evidence");
+}
+
 function historyStatus(path: string): "active" | "archived" | "retired" {
   return path.includes("/.archive/archived/")
     ? "archived"
@@ -1301,6 +1582,7 @@ export function reviewProposal(options: {
     proposal = edited;
     editedHash = sha256(editedRaw);
   }
+  validatePatchProvenance(proposal);
   const reviewer = options.reviewer ?? "local-cli";
   const reviewedAt = options.reviewedAt ?? new Date().toISOString();
   const reviewId = `review_${sha256(`${proposal.id}:${reviewer}:${reviewedAt}:${options.reason}`).slice(0, 24)}`;
