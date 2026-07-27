@@ -23,7 +23,6 @@ in
   imports = [
     ../user/nvim
     ../user/git
-    ../user/google-workspace
     ../user/node-pnpm
     ../user/dev-tools.nix
     ../user/trash.nix
@@ -41,8 +40,12 @@ in
     ../user/agents
   ] ++ lib.optionals isGraphical [ ../user/ghostty.nix ];
 
-  home-manager.users.bdsqqq = { config, ... }: {
-    home.packages = [ agentMemory ];
+  home-manager.users.bdsqqq = { config, pkgs, ... }: {
+    home.packages = [
+      agentMemory
+      # Python 3.14's libffi aborts during gcloud startup on Apple Silicon.
+      (pkgs.google-cloud-sdk.override { python314 = pkgs.python313; })
+    ];
 
     launchd.agents.pi-memory = lib.mkIf isDarwin {
       enable = true;
