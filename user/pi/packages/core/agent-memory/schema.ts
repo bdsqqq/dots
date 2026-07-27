@@ -29,6 +29,15 @@ export type MemoryRef = {
   sha256: string;
 };
 
+export type MemoryPatch = {
+  title?: { from: string; to: string };
+  kind?: { from: MemoryKind; to: MemoryKind };
+  description?: { from: string; to: string };
+  triggers?: { add: string[]; remove: string[] };
+  keywords?: { add: string[]; remove: string[] };
+  body?: { fromSha256: string; to: string; sourceRefs: string[] };
+};
+
 export type EvidenceRef = {
   windowId: string;
   sessionId: string;
@@ -42,6 +51,12 @@ export type EvidenceRef = {
 export type MemoryOperation =
   | { type: "create"; artifact: MemoryArtifact }
   | { type: "update"; target: MemoryRef; artifact: MemoryArtifact }
+  | { type: "patch"; target: MemoryRef; changes: MemoryPatch }
+  | {
+      type: "deduplicate";
+      primary: MemoryRef;
+      targets: MemoryRef[];
+    }
   | {
       type: "merge";
       primary: MemoryRef;

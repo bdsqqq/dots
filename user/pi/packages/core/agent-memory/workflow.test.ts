@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { MemoryConfig } from "./catalog.js";
+import { scanCatalog, sha256, type MemoryConfig } from "./catalog.js";
 import type { Proposal } from "./schema.js";
 import {
   applyMemoryProposal,
@@ -90,6 +90,128 @@ describe("memory proposal review", () => {
     );
     rollbackReview(cfg, receipt.reviewId, "later shown incorrect");
     expect(existsSync(join(cfg.root, active!))).toBe(false);
+  });
+
+  it("applies hash-guarded patches and rolls them back", () => {
+    const cfg = config();
+    saveProposal(cfg, proposal("prop_seed_patch"));
+    reviewProposal({
+      cfg,
+      id: "prop_seed_patch",
+      decision: "accept",
+      reasonCode: "correct",
+      reason: "seed patch target",
+    });
+    const target = scanCatalog(cfg.root).entries[0]!;
+    const patch: Proposal = {
+      ...proposal("prop_apply_patch"),
+      evidence: [
+        {
+          windowId: "window_patch",
+          sessionId: "session",
+          checkpointEntryIds: ["checkpoint"],
+          throughLeafId: "leaf",
+          branchDigest: "branch",
+          excerpt: "patch evidence",
+          excerptSha256: sha256("patch evidence"),
+        },
+      ],
+      operation: {
+        type: "patch",
+        target: {
+          memoryId: target.memoryId,
+          path: target.path,
+          sha256: target.sha256,
+        },
+        changes: {
+          description: {
+            from: "Use when applying the durable rule",
+            to: "Use when applying the patched durable rule",
+          },
+          body: {
+            fromSha256: sha256("Apply the durable rule."),
+            to: "Apply the patched durable rule.",
+            sourceRefs: ["pi://session/checkpoint"],
+          },
+        },
+      },
+    };
+    saveProposal(cfg, patch);
+    const receipt = applyMemoryProposal({
+      cfg,
+      id: patch.id,
+      actor: "background-reflection",
+    });
+    const active = scanCatalog(cfg.root).entries[0]!;
+    const text = readFileSync(join(cfg.root, active.path), "utf8");
+    expect(text).toContain("Apply the patched durable rule.");
+    expect(text).toContain("pi://session/checkpoint");
+    rollbackReview(cfg, receipt.reviewId, "patch was invalid");
+    expect(readFileSync(join(cfg.root, target.path), "utf8")).toContain(
+      "Apply the durable rule.",
+    );
+  });
+
+  it("deduplicates without rewriting the primary body", () => {
+    const cfg = config();
+    const primary = proposal("prop_primary_seed");
+    const duplicate = proposal("prop_duplicate_seed");
+    if (duplicate.operation.type !== "create") throw new Error("invalid test");
+    duplicate.operation.artifact = {
+      ...duplicate.operation.artifact,
+      memoryId: "mem_bbbbbbbbbbbbbbbbbbbbbbbb",
+      title: "Duplicate durable rule",
+      sources: ["pi://session/duplicate"],
+    };
+    saveProposal(cfg, primary);
+    saveProposal(cfg, duplicate);
+    for (const item of [primary, duplicate])
+      reviewProposal({
+        cfg,
+        id: item.id,
+        decision: "accept",
+        reasonCode: "correct",
+        reason: "seed deduplicate target",
+      });
+    const entries = scanCatalog(cfg.root).entries;
+    const primaryEntry = entries.find(
+      (entry) => entry.memoryId === "mem_aaaaaaaaaaaaaaaaaaaaaaaa",
+    )!;
+    const duplicateEntry = entries.find(
+      (entry) => entry.memoryId === "mem_bbbbbbbbbbbbbbbbbbbbbbbb",
+    )!;
+    const primaryBody = readFileSync(
+      join(cfg.root, primaryEntry.path),
+      "utf8",
+    ).split("---\n\n")[1];
+    const deduplicate: Proposal = {
+      ...proposal("prop_apply_deduplicate"),
+      operation: {
+        type: "deduplicate",
+        primary: {
+          memoryId: primaryEntry.memoryId,
+          path: primaryEntry.path,
+          sha256: primaryEntry.sha256,
+        },
+        targets: [
+          {
+            memoryId: duplicateEntry.memoryId,
+            path: duplicateEntry.path,
+            sha256: duplicateEntry.sha256,
+          },
+        ],
+      },
+    };
+    saveProposal(cfg, deduplicate);
+    applyMemoryProposal({
+      cfg,
+      id: deduplicate.id,
+      actor: "background-reflection",
+    });
+    const after = readFileSync(join(cfg.root, primaryEntry.path), "utf8");
+    expect(after.split("---\n\n")[1]).toBe(primaryBody);
+    expect(after).toContain("pi://session/duplicate");
+    expect(existsSync(join(cfg.root, duplicateEntry.path))).toBe(false);
   });
 
   it("applies manual memory proposals idempotently", () => {
