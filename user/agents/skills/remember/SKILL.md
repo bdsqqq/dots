@@ -141,7 +141,9 @@ qmd search -c pi-sessions "what happened" -n 10
 
 ## background reflection
 
-pi checkpoints completed branches, then groups ancestor checkpoints into branch-safe windows. reflection receives authored text plus redacted tool outcome counts; reasoning, tool arguments, and raw tool output are excluded. it compares evidence with active memory and pending proposals, then autonomously commits memory changes through the same receipt-backed transaction engine. executable skill drafts remain pending.
+pi checkpoints completed branches, then immediately enqueue branch-safe dreaming windows. reflection receives authored text plus bounded, credential-redacted tool arguments and results; reasoning remains excluded. independent windows analyze concurrently, while receipt-backed publication stays serialized. executable skill drafts remain pending.
+
+corpus maintenance is pathology-triggered, never periodic summarization. exact duplicates use byte-preserving deduplicate patches. overlap, fragmentation, and oversized notes may receive body patches only when their original `pi://` checkpoint evidence resolves; corpus prose is context, never evidence. provenance gaps, prompt pressure, and rewrite churn block autonomous rewriting. generated hot memory contains ranked pointers only—never synthesized prose.
 
 ```bash
 pi-memory project
