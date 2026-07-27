@@ -16,6 +16,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { lock } from "proper-lockfile";
 
@@ -165,6 +166,7 @@ async function readJson<T>(path: string, fallback: T): Promise<T> {
 async function runHark(
   args: string[],
   signal?: AbortSignal,
+  timeoutMs = COMMAND_TIMEOUT_MS,
 ): Promise<{ data: HarkResult; code: number; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn("harkctl", args, {
@@ -173,7 +175,7 @@ async function runHark(
     });
     let stdout = "";
     let stderr = "";
-    const timeout = setTimeout(() => child.kill("SIGTERM"), COMMAND_TIMEOUT_MS);
+    const timeout = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => (stdout += chunk));
@@ -524,10 +526,58 @@ export default function harkExtension(pi: ExtensionAPI): void {
     promptSnippet:
       "Send an iPhone notification and optionally wait for a response",
     parameters: notifySchema,
+    renderCall(args, theme) {
+      const asks =
+        args.actions?.length ||
+        (args.response !== undefined && args.response !== "none");
+      const preview = truncate(args.body || "", 72);
+      return new Text(
+        theme.fg("toolTitle", theme.bold("hark ")) +
+          theme.fg("dim", `${asks ? "ask" : "notify"} “${preview || "…"}”`),
+        0,
+        0,
+      );
+    },
+    renderResult(result, { expanded }, theme) {
+      const details = result.details as
+        | (HarkResult & { selectedAction?: string })
+        | undefined;
+      const interaction =
+        details?.interaction && typeof details.interaction === "object"
+          ? (details.interaction as Record<string, unknown>)
+          : null;
+      const status =
+        details?.timedOut === true
+          ? "pending"
+          : typeof interaction?.status === "string"
+            ? interaction.status
+            : "sent";
+      const response =
+        details?.selectedAction ??
+        (typeof interaction?.response === "string"
+          ? interaction.response
+          : undefined);
+      const color =
+        status === "denied" || status === "no"
+          ? "warning"
+          : status === "pending"
+            ? "muted"
+            : "success";
+      let text = theme.fg(
+        color,
+        `${status}${response ? ` · ${truncate(response, 72)}` : ""}`,
+      );
+      if (expanded && typeof interaction?.id === "string") {
+        text += theme.fg("dim", `\n${interaction.id}`);
+      }
+      return new Text(text, 0, 0);
+    },
     async execute(toolCallId, params, signal) {
       const response = params.actions?.length
         ? "text"
         : (params.response ?? "none");
+      const timeoutSeconds =
+        params.timeoutSeconds ?? params.expiresInSeconds ?? 900;
       const prompt = params.actions?.length
         ? `${params.body}\n\nReply with a number or action:\n${params.actions
             .map((action, index) => `${index + 1}. ${action}`)
@@ -548,7 +598,7 @@ export default function harkExtension(pi: ExtensionAPI): void {
               `${params.expiresInSeconds ?? 900}s`,
               "--wait",
               "--timeout",
-              `${params.timeoutSeconds ?? params.expiresInSeconds ?? 900}s`,
+              `${timeoutSeconds}s`,
             ];
       if (params.title) args.push("--title", params.title);
       args.push(
@@ -557,7 +607,11 @@ export default function harkExtension(pi: ExtensionAPI): void {
       );
       args.push("--", prompt);
 
-      const result = await runHark(args, signal);
+      const result = await runHark(
+        args,
+        signal,
+        response === "none" ? COMMAND_TIMEOUT_MS : (timeoutSeconds + 5) * 1_000,
+      );
       if (result.code === 7) {
         throw new Error("No Hark device accepted the notification.");
       }
@@ -585,12 +639,13 @@ export default function harkExtension(pi: ExtensionAPI): void {
         ...result.data,
         ...(selectedAction ? { selectedAction } : {}),
       };
+      const timedOut = result.data.timedOut === true;
       return {
         content: [
           {
             type: "text",
             text: interaction
-              ? `Hark response: ${String(interaction.status)}${
+              ? `Hark response: ${timedOut ? "pending" : String(interaction.status)}${
                   selectedAction
                     ? ` (${selectedAction})`
                     : typeof rawResponse === "string" && rawResponse

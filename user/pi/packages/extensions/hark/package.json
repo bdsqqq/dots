@@ -10,6 +10,7 @@
   "devDependencies": {
     "@earendil-works/pi-ai": "catalog:",
     "@earendil-works/pi-coding-agent": "catalog:",
+    "@earendil-works/pi-tui": "catalog:",
     "@types/proper-lockfile": "^4.1.4",
     "typebox": "catalog:",
     "vitest": "^3.0.0"
