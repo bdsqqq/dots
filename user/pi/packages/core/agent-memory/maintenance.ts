@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   scanCatalog,
@@ -7,7 +7,15 @@ import {
   type MemoryConfig,
 } from "./catalog.js";
 import { isHistoryInitialized, listHistory } from "./history.js";
-import { memoryRef, type MemoryRef, type Proposal } from "./schema.js";
+import {
+  memoryRef,
+  type EvidenceRef,
+  type MemoryOperation,
+  type MemoryPatch,
+  type MemoryRef,
+  type Proposal,
+} from "./schema.js";
+import type { PipelineInput } from "./pipeline.js";
 
 export type PathologyType =
   | "duplicate-exact"
@@ -346,4 +354,353 @@ export function maintenanceProposals(
     });
   }
   return proposals;
+}
+
+export type MaintenanceDiagnostic = {
+  pathologyId: string;
+  type: PathologyType;
+  code: "blocked-pathology" | "missing-authored-evidence" | "model-skip";
+  message: string;
+};
+
+export type MaintenanceAnalysis = {
+  report: CorpusHealthReport;
+  proposals: Proposal[];
+  diagnostics: MaintenanceDiagnostic[];
+};
+
+type MaintenanceDraft =
+  | {
+      type: "patch";
+      pathologyId: string;
+      target: MemoryRef;
+      changes: MemoryPatch;
+    }
+  | {
+      type: "deduplicate";
+      pathologyId: string;
+      primary: MemoryRef;
+      targets: MemoryRef[];
+    }
+  | {
+      type: "archive" | "retire";
+      pathologyId: string;
+      target: MemoryRef;
+      reason: string;
+    };
+
+function object(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function frozenInputs(cfg: MemoryConfig): PipelineInput[] {
+  const root = join(cfg.data, "v2/runs");
+  if (!existsSync(root)) return [];
+  return readdirSync(root)
+    .sort()
+    .flatMap((name) => {
+      const path = join(root, name, "input.json");
+      if (!existsSync(path)) return [];
+      try {
+        const input = JSON.parse(readFileSync(path, "utf8")) as PipelineInput;
+        return input.version === 2 && Array.isArray(input.evidence)
+          ? [input]
+          : [];
+      } catch {
+        return [];
+      }
+    });
+}
+
+function evidenceFor(
+  inputs: PipelineInput[],
+  sources: string[],
+): { refs: EvidenceRef[]; evidence: PipelineInput["evidence"] } {
+  const requested = new Set(sources);
+  const evidence = inputs
+    .flatMap((input) => input.evidence)
+    .filter((item) =>
+      item.window.checkpointEntryIds.some((checkpoint) =>
+        requested.has(`pi://${item.window.sessionId}/${checkpoint}`),
+      ),
+    );
+  const unique = [
+    ...new Map(evidence.map((item) => [item.window.windowId, item])).values(),
+  ];
+  return { refs: unique.map((item) => item.window), evidence: unique };
+}
+
+function parseMaintenanceDrafts(raw: string): MaintenanceDraft[] {
+  const value: unknown = JSON.parse(raw.trim());
+  if (!object(value)) throw new Error("invalid maintenance response");
+  if (value.action === "skip") {
+    if (
+      Object.keys(value).sort().join(",") !== "action,reason" ||
+      typeof value.reason !== "string"
+    )
+      throw new Error("invalid maintenance skip");
+    return [];
+  }
+  if (
+    value.action !== "propose" ||
+    !Array.isArray(value.proposals) ||
+    value.proposals.length < 1 ||
+    value.proposals.length > 8
+  )
+    throw new Error("invalid maintenance proposals");
+  if (Object.keys(value).sort().join(",") !== "action,proposals")
+    throw new Error("invalid maintenance response fields");
+  return value.proposals.map((proposal): MaintenanceDraft => {
+    if (
+      !object(proposal) ||
+      typeof proposal.pathologyId !== "string" ||
+      typeof proposal.type !== "string"
+    )
+      throw new Error("invalid maintenance proposal");
+    const type = proposal.type;
+    if (type === "patch") {
+      if (
+        Object.keys(proposal).sort().join(",") !==
+          "changes,pathologyId,target,type" ||
+        !object(proposal.target) ||
+        !object(proposal.changes)
+      )
+        throw new Error("invalid maintenance patch");
+      return proposal as MaintenanceDraft;
+    }
+    if (type === "deduplicate") {
+      if (
+        Object.keys(proposal).sort().join(",") !==
+          "pathologyId,primary,targets,type" ||
+        !object(proposal.primary) ||
+        !Array.isArray(proposal.targets)
+      )
+        throw new Error("invalid maintenance deduplicate");
+      return proposal as MaintenanceDraft;
+    }
+    if (type === "archive" || type === "retire") {
+      if (
+        Object.keys(proposal).sort().join(",") !==
+          "pathologyId,reason,target,type" ||
+        !object(proposal.target) ||
+        typeof proposal.reason !== "string"
+      )
+        throw new Error(`invalid maintenance ${type}`);
+      return proposal as MaintenanceDraft;
+    }
+    throw new Error("unsupported maintenance operation");
+  });
+}
+
+export function buildMaintenancePrompt(options: {
+  report: CorpusHealthReport;
+  pathologies: CorpusPathology[];
+  context: Array<{ target: MemoryRef; body: string }>;
+  evidence: PipelineInput["evidence"];
+}): string {
+  return `You are a corpus maintenance patch planner. Return exactly one JSON object and no markdown.
+Only propose body patches. NEVER create, update, merge, deduplicate, archive, retire, skill, metadata edits, or freeform summaries.
+Corpus bodies are context only and are NEVER evidence. Every patch must contain exactly one body change, preserve authored meaning, and cite sourceRefs copied exactly from the resolved pi:// evidence. Do not infer or fabricate sources.
+Every proposal must copy pathologyId and the complete target ref (memoryId, path, sha256) exactly from the pathology basis. A patch is {"type":"patch","pathologyId":"...","target":REF,"changes":{"body":{"fromSha256":"...","to":"...","sourceRefs":["pi://..."]}}}. Return skip when evidence cannot justify the operation.
+Allowed pathology basis, corpus context, and original authored evidence follow:\n${JSON.stringify(options, null, 2)}`;
+}
+
+export async function analyzeCorpusMaintenance(options: {
+  cfg: MemoryConfig;
+  report: CorpusHealthReport;
+  model: string;
+  invoke: (prompt: string) => string | Promise<string>;
+  createdAt?: string;
+}): Promise<MaintenanceAnalysis> {
+  const mutable = new Set<PathologyType>([
+    "overlap-cluster",
+    "source-fragmentation",
+    "oversized-artifact",
+  ]);
+  const blockers = new Set<PathologyType>([
+    "provenance-gap",
+    "prompt-pressure",
+    "rewrite-churn",
+  ]);
+  const diagnostics: MaintenanceDiagnostic[] = options.report.pathologies
+    .filter((item) => blockers.has(item.type))
+    .map((item) => ({
+      pathologyId: item.id,
+      type: item.type,
+      code: "blocked-pathology",
+      message: `${item.type} blocks autonomous mutation`,
+    }));
+  const blockedIds = new Set(
+    options.report.pathologies
+      .filter((item) => blockers.has(item.type))
+      .flatMap((item) => item.basis.targets.map((target) => target.memoryId)),
+  );
+  const inputs = frozenInputs(options.cfg);
+  const candidates = options.report.pathologies.filter(
+    (item) =>
+      mutable.has(item.type) &&
+      !item.basis.targets.some((target) => blockedIds.has(target.memoryId)),
+  );
+  const resolved = candidates.map((pathology) => {
+    const sources = pathology.basis.targets.flatMap((target) => {
+      const text = readFileSync(join(options.cfg.root, target.path), "utf8");
+      return frontmatterArray(text, "sources").filter((source) =>
+        /^pi:\/\/[^/]+\/[^/]+$/.test(source),
+      );
+    });
+    return {
+      pathology,
+      sources: [...new Set(sources)],
+      ...evidenceFor(inputs, sources),
+    };
+  });
+  for (const item of resolved)
+    if (
+      item.sources.length === 0 ||
+      item.sources.some(
+        (source) =>
+          !item.evidence.some((evidence) =>
+            evidence.window.checkpointEntryIds.some(
+              (checkpoint) =>
+                source === `pi://${evidence.window.sessionId}/${checkpoint}`,
+            ),
+          ),
+      )
+    )
+      diagnostics.push({
+        pathologyId: item.pathology.id,
+        type: item.pathology.type,
+        code: "missing-authored-evidence",
+        message:
+          "original authored evidence could not be resolved from frozen v2 run inputs",
+      });
+  const usable = resolved.filter(
+    (item) =>
+      !diagnostics.some(
+        (diagnostic) => diagnostic.pathologyId === item.pathology.id,
+      ),
+  );
+  if (usable.length === 0)
+    return { report: options.report, proposals: [], diagnostics };
+  const evidence = [
+    ...new Map(
+      usable
+        .flatMap((item) => item.evidence)
+        .map((item) => [item.window.windowId, item]),
+    ).values(),
+  ];
+  const raw = await options.invoke(
+    buildMaintenancePrompt({
+      report: options.report,
+      pathologies: usable.map((item) => item.pathology),
+      context: usable.flatMap((item) =>
+        item.pathology.basis.targets.map((target) => ({
+          target,
+          body: readFileSync(join(options.cfg.root, target.path), "utf8"),
+        })),
+      ),
+      evidence,
+    }),
+  );
+  const drafts = parseMaintenanceDrafts(raw);
+  if (drafts.length === 0)
+    return {
+      report: options.report,
+      proposals: [],
+      diagnostics: [
+        ...diagnostics,
+        ...usable.map((item) => ({
+          pathologyId: item.pathology.id,
+          type: item.pathology.type,
+          code: "model-skip" as const,
+          message: "model skipped maintenance",
+        })),
+      ],
+    };
+  const createdAt = options.createdAt ?? new Date().toISOString();
+  const claimed = new Set<string>();
+  const proposals = drafts.map((draft, index): Proposal => {
+    const item = usable.find(
+      (candidate) => candidate.pathology.id === draft.pathologyId,
+    );
+    if (!item) throw new Error("maintenance proposal uses unknown pathology");
+    if (!item.pathology.allowedOperations.includes(draft.type))
+      throw new Error("maintenance operation is not allowed by pathology");
+    const refs = new Map(
+      item.pathology.basis.targets.map((target) => [target.memoryId, target]),
+    );
+    const exact = (ref: MemoryRef): MemoryRef => {
+      const expected = refs.get(ref.memoryId);
+      if (!expected || JSON.stringify(ref) !== JSON.stringify(expected))
+        throw new Error(
+          "maintenance proposal uses fabricated or stale target ref",
+        );
+      return expected;
+    };
+    if (draft.type !== "patch")
+      throw new Error("model maintenance may only propose body patches");
+    const target = exact(draft.target);
+    const bodyChange = draft.changes.body;
+    if (
+      Object.keys(draft.changes).join(",") !== "body" ||
+      !bodyChange ||
+      Object.keys(bodyChange).sort().join(",") !== "fromSha256,sourceRefs,to" ||
+      typeof bodyChange.to !== "string" ||
+      !bodyChange.to.trim() ||
+      !Array.isArray(bodyChange.sourceRefs)
+    )
+      throw new Error("invalid maintenance body patch");
+    const allowedSources = new Set(item.sources);
+    if (
+      bodyChange.fromSha256 !==
+        sha256(
+          body(readFileSync(join(options.cfg.root, target.path), "utf8")),
+        ) ||
+      bodyChange.sourceRefs.length === 0 ||
+      bodyChange.sourceRefs.some((source) => !allowedSources.has(source))
+    )
+      throw new Error(
+        "maintenance patch uses fabricated source or stale body hash",
+      );
+    const operation: MemoryOperation = {
+      type: "patch",
+      target,
+      changes: { body: bodyChange },
+    };
+    const ids = [target.memoryId];
+    if (ids.some((id) => claimed.has(id)))
+      throw new Error("maintenance proposals overlap");
+    ids.forEach((id) => claimed.add(id));
+    const refsForEvidence = item.refs;
+    return {
+      version: 2,
+      id: `prop_${sha256(`${item.pathology.id}:${index}:${JSON.stringify(operation)}`).slice(0, 32)}`,
+      lane: "memory",
+      status: "pending",
+      operation,
+      supersedes: [],
+      evidence: refsForEvidence,
+      provenance: {
+        runId: `maintenance_${item.pathology.id}`,
+        promptVersion: 3,
+        model: options.model,
+        createdAt,
+        corpusAware: true,
+        autonomous: true,
+      },
+    };
+  });
+  return { report: options.report, proposals, diagnostics };
+}
+
+export function assertFreshMaintenanceBasis(
+  cfg: MemoryConfig,
+  report: CorpusHealthReport,
+): void {
+  const fresh = scanCorpusHealth(cfg);
+  if (
+    fresh.catalogSha256 !== report.catalogSha256 ||
+    fresh.historyCommit !== report.historyCommit
+  )
+    throw new Error("stale maintenance pathology basis");
 }

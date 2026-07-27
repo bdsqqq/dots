@@ -554,3 +554,27 @@ export function failMaintenanceEvent(
     return event;
   });
 }
+
+export function retryMaintenanceEvent(
+  cfg: EventConfig,
+  id: string,
+  claimToken: string,
+): MaintenanceEvent {
+  return withQueueLock(cfg, (assertOwned) => {
+    const source = eventPath(cfg, "processing", id);
+    const claimed = parseMaintenanceEvent(readFileSync(source, "utf8"));
+    if (claimed.claimToken !== claimToken)
+      throw new Error("maintenance event owner mismatch");
+    const {
+      ownerPid: _ownerPid,
+      ownerIdentity: _ownerIdentity,
+      claimedAt: _claimedAt,
+      claimToken: _claimToken,
+      ...event
+    } = claimed;
+    assertOwned();
+    atomicReplace(source, event);
+    moveSync(source, eventPath(cfg, "pending", id));
+    return event;
+  });
+}
