@@ -39,6 +39,7 @@ const SESSION_ID =
 const MAX_MESSAGE_CHARS = 64 * 1024;
 const CLAIM_LEASE_MS = 60 * 60 * 1000;
 const RECONCILE_INTERVAL_MS = 30 * 1000;
+const DRAIN_BATCH_SIZE = 16;
 
 export interface AgentMessage {
   version: 1;
@@ -214,6 +215,11 @@ interface ClaimedAgentMessage {
   path: string;
 }
 
+interface AgentMessageDrain {
+  claims: ClaimedAgentMessage[];
+  hasMore: boolean;
+}
+
 function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -267,7 +273,8 @@ export function drainAgentMessages(
   persistedMessageIds: ReadonlySet<string> = new Set(),
   activeClaimPaths: ReadonlySet<string> = new Set(),
   activeMessageIds: ReadonlySet<string> = new Set(),
-): ClaimedAgentMessage[] {
+  batchSize: number = DRAIN_BATCH_SIZE,
+): AgentMessageDrain {
   const mailbox = mailboxPath(queueDir, sessionId);
   fs.mkdirSync(mailbox, { recursive: true, mode: 0o700 });
   recoverAgentMessageClaims(mailbox, activeClaimPaths);
@@ -278,7 +285,7 @@ export function drainAgentMessages(
     .filter((filename) => MESSAGE_FILE.test(filename))
     .sort((left, right) => left.localeCompare(right));
 
-  for (const filename of files) {
+  for (const filename of files.slice(0, batchSize)) {
     const pending = path.join(mailbox, filename);
     const claimed = `${pending}.processing-${process.pid}-${randomUUID()}`;
     try {
@@ -345,7 +352,7 @@ export function drainAgentMessages(
       );
     }
   }
-  return claims;
+  return { claims, hasMore: files.length > batchSize };
 }
 
 const AGENT_MESSAGE_PARAMETERS: TObject<{
@@ -449,11 +456,20 @@ export function createAgentMessageExtension(
     let watcher: fs.FSWatcher | undefined;
     let initialDrainTimer: NodeJS.Timeout | undefined;
     let reconcileTimer: NodeJS.Timeout | undefined;
+    let scheduledDrain: NodeJS.Immediate | undefined;
     let currentSessionId: string | undefined;
     let draining = false;
     let drainRequested = false;
     const claims = new Map<string, string>();
     const persistedMessageIds = new Set<string>();
+
+    const scheduleDrain = () => {
+      if (scheduledDrain) return;
+      scheduledDrain = setImmediate(() => {
+        scheduledDrain = undefined;
+        drain();
+      });
+    };
 
     const drain = () => {
       if (!currentSessionId) return;
@@ -463,7 +479,7 @@ export function createAgentMessageExtension(
       }
       draining = true;
       try {
-        drainAgentMessages(
+        const result = drainAgentMessages(
           pi,
           config.queueDir,
           currentSessionId,
@@ -474,13 +490,14 @@ export function createAgentMessageExtension(
           new Set(claims.values()),
           new Set(claims.keys()),
         );
+        if (result.hasMore) drainRequested = true;
       } catch (error) {
         console.error("[@bds_pi/agent-message] mailbox drain failed:", error);
       } finally {
         draining = false;
         if (drainRequested) {
           drainRequested = false;
-          queueMicrotask(drain);
+          scheduleDrain();
         }
       }
     };
@@ -490,6 +507,8 @@ export function createAgentMessageExtension(
       initialDrainTimer = undefined;
       if (reconcileTimer) clearInterval(reconcileTimer);
       reconcileTimer = undefined;
+      if (scheduledDrain) clearImmediate(scheduledDrain);
+      scheduledDrain = undefined;
       watcher?.close();
       watcher = undefined;
       currentSessionId = undefined;
@@ -517,12 +536,12 @@ export function createAgentMessageExtension(
         persistedMessageIds.add(messageId);
       const mailbox = mailboxPath(config.queueDir, currentSessionId);
       fs.mkdirSync(mailbox, { recursive: true, mode: 0o700 });
-      initialDrainTimer = setTimeout(drain, 0);
+      initialDrainTimer = setTimeout(scheduleDrain, 0);
       initialDrainTimer.unref();
-      reconcileTimer = setInterval(drain, RECONCILE_INTERVAL_MS);
+      reconcileTimer = setInterval(scheduleDrain, RECONCILE_INTERVAL_MS);
       reconcileTimer.unref();
       try {
-        watcher = deps.watch(mailbox, () => drain());
+        watcher = deps.watch(mailbox, scheduleDrain);
         watcher.on("error", (error) => {
           console.error(
             "[@bds_pi/agent-message] mailbox watcher failed:",
@@ -550,7 +569,7 @@ export function createAgentMessageExtension(
         else requeueAgentMessageClaim(claim);
         claims.delete(messageId);
       }
-      queueMicrotask(drain);
+      scheduleDrain();
     });
 
     pi.on("session_shutdown", async () => stop());
@@ -677,7 +696,7 @@ if (import.meta.vitest) {
           old,
         );
 
-      const claims = drainAgentMessages(
+      const { claims } = drainAgentMessages(
         { sendMessage } as any,
         queueDir,
         targetSessionId,
@@ -718,7 +737,7 @@ if (import.meta.vitest) {
           undefined,
           new Set(),
           new Set(claims.map((claim) => claim.path)),
-        ),
+        ).claims,
       ).toEqual([]);
       expect(secondSend).not.toHaveBeenCalled();
       for (const claim of claims) fs.rmSync(claim.path);
@@ -760,7 +779,7 @@ if (import.meta.vitest) {
       );
       const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      const claims = drainAgentMessages(
+      const { claims } = drainAgentMessages(
         { sendMessage: vi.fn() } as any,
         queueDir,
         targetSessionId,
@@ -801,7 +820,7 @@ if (import.meta.vitest) {
           targetSessionId,
           undefined,
           new Set([message.id]),
-        ),
+        ).claims,
       ).toEqual([]);
       expect(sendMessage).not.toHaveBeenCalled();
       expect(fs.readdirSync(mailboxPath(queueDir, targetSessionId))).toEqual(
@@ -833,18 +852,35 @@ if (import.meta.vitest) {
       });
       const sendMessage = vi.fn();
 
-      const claims = drainAgentMessages(
+      const first = drainAgentMessages(
         { sendMessage } as any,
         queueDir,
         targetSessionId,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        1,
+      );
+      const second = drainAgentMessages(
+        { sendMessage } as any,
+        queueDir,
+        targetSessionId,
+        undefined,
+        undefined,
+        new Set(first.claims.map((claim) => claim.path)),
+        new Set([message.id]),
+        1,
       );
 
       expect(sendMessage).toHaveBeenCalledOnce();
-      expect(claims).toHaveLength(1);
+      expect(first.hasMore).toBe(true);
+      expect(first.claims).toHaveLength(1);
+      expect(second).toMatchObject({ claims: [], hasMore: false });
       expect(
         fs.readdirSync(mailboxPath(queueDir, targetSessionId)),
       ).toHaveLength(1);
-      fs.rmSync(claims[0]!.path);
+      fs.rmSync(first.claims[0]!.path);
     });
 
     it("requeues dropped follow-ups and acknowledges persisted ones", async () => {
@@ -915,7 +951,7 @@ if (import.meta.vitest) {
           sessionManager: { getEntries: () => entries },
         },
       );
-      await Promise.resolve();
+      await new Promise((resolve) => setImmediate(resolve));
       expect(sendMessage).toHaveBeenCalledTimes(2);
 
       entries.push({
