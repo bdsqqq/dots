@@ -28,6 +28,10 @@ export interface InboundMessageInput {
 	text: string;
 	mentionedBot?: boolean;
 	isBot?: boolean;
+	sentAt?: string;
+	scopeId?: string;
+	scopeName?: string;
+	scopeKind?: "channel" | "thread";
 	attachments?: AttachmentInput[];
 }
 
@@ -50,6 +54,10 @@ export interface InboundMessageRecord extends ChatRecordBase {
 	text: string;
 	mentionedBot: boolean;
 	isBot: boolean;
+	scopeId?: string;
+	scopeName?: string;
+	scopeKind?: "channel" | "thread";
+	observationLease?: boolean;
 	attachments: StoredAttachment[];
 }
 export interface OutboundMessageRecord extends ChatRecordBase {
@@ -68,8 +76,9 @@ export interface CheckpointRecord extends ChatRecordBase {
 export interface JobQueuedRecord extends ChatRecordBase {
 	type: "job_queued";
 	jobId: string;
-	trigger: "mention" | "dm";
+	trigger: "mention" | "observe" | "dm";
 	triggerRecordId: number;
+	scopeId?: string;
 }
 export interface JobCompletedRecord extends ChatRecordBase {
 	type: "job_completed";
@@ -99,15 +108,24 @@ export type ChatLogRecord =
 
 export interface PendingJob {
 	jobId: string;
-	trigger: "mention" | "dm";
+	trigger: "mention" | "observe" | "dm";
 	triggerRecordId: number;
 	queuedRecordId: number;
+	scopeId: string;
 }
 
 export interface DispatchableJob {
 	job: PendingJob;
 	prompt: string;
 	triggerMessageId?: string;
+	triggerScopeId: string;
+}
+
+export interface ObservedScope {
+	id: string;
+	name: string;
+	kind: "channel" | "thread";
+	expiresAt: number;
 }
 
 export interface ChatHistoryQuery {

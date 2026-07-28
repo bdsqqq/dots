@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DiscordAccountConfig, ResolvedConversation } from "../core/config-types.js";
 import { buildDiscordInviteUrl } from "../services/discord.js";
 import {
+	formatDiscordObservationPresence,
 	MAX_DISCORD_ATTACHMENT_BYTES,
 	MAX_DISCORD_ATTACHMENTS,
 	messageToInput,
@@ -30,10 +31,22 @@ function conversation(access: ResolvedConversation["access"]): ResolvedConversat
 	} as ResolvedConversation;
 }
 
-function message(userId: string, attachments: Array<{ url: string; size: number }> = []): Message {
+function message(
+	userId: string,
+	attachments: Array<{ url: string; size: number }> = [],
+	scope: { id: string; name: string; parentId?: string } = {
+		id: "channel",
+		name: "middle-halls",
+	},
+): Message {
 	return {
 		guildId: "server",
-		channelId: "channel",
+		channelId: scope.id,
+		channel: {
+			name: scope.name,
+			parentId: scope.parentId,
+			isThread: () => Boolean(scope.parentId),
+		},
 		id: "message",
 		author: { id: userId, username: userId, bot: false },
 		member: { displayName: userId, roles: { cache: { map: () => [] } } },
@@ -47,6 +60,50 @@ function message(userId: string, attachments: Array<{ url: string; size: number 
 
 afterEach(() => {
 	vi.unstubAllGlobals();
+});
+
+describe("Discord conversation scopes", () => {
+	it("accepts the configured channel and its threads while rejecting unrelated channels", async () => {
+		const access = { allowedUserIds: ["owner"] };
+		expect((await messageToInput(conversation(access), account, message("owner")))?.scopeKind).toBe("channel");
+		expect(
+			(
+				await messageToInput(
+					conversation(access),
+					account,
+					message("owner", [], {
+						id: "thread",
+						name: "rabbit-hole",
+						parentId: "channel",
+					}),
+				)
+			)?.scopeName,
+		).toBe("rabbit-hole");
+		expect(
+			await messageToInput(
+				conversation(access),
+				account,
+				message("owner", [], {
+					id: "other-thread",
+					name: "other",
+					parentId: "other-channel",
+				}),
+			),
+		).toBeUndefined();
+	});
+
+	it("lists observed scopes in presence and bounds long activity names", () => {
+		const scope = (id: string, name: string, kind: "channel" | "thread" = "channel") => ({
+			id,
+			name,
+			kind,
+			expiresAt: Date.now() + 1000,
+		});
+		expect(
+			formatDiscordObservationPresence([scope("channel", "middle-halls"), scope("thread", "rabbit", "thread")], "Wisp"),
+		).toBe("observing conversations");
+		expect(formatDiscordObservationPresence([], "Wisp")).toBe("waiting for @Wisp");
+	});
 });
 
 describe("Discord inbound attachment policy", () => {

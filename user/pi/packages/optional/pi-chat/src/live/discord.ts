@@ -2,10 +2,10 @@
 
 import { once } from "node:events";
 
-import { Client, Events, GatewayIntentBits, type Message, Partials } from "discord.js";
+import { ActivityType, Client, Events, GatewayIntentBits, type Message, Partials } from "discord.js";
 
 import type { DiscordAccountConfig, ResolvedConversation } from "../core/config-types.js";
-import type { InboundMessageInput } from "../core/runtime-types.js";
+import type { InboundMessageInput, ObservedScope } from "../core/runtime-types.js";
 import { chunkText } from "../render/chunking.js";
 import { formatMarkdownForService, maxMessageLength } from "../render/format.js";
 import { StreamingPreview } from "../render/streaming.js";
@@ -53,8 +53,8 @@ type DiscordTextChannel = {
 async function resolveTextChannel(
 	client: Client<true>,
 	conversation: ResolvedConversation,
+	channelId = getTargetChannelId(conversation),
 ): Promise<DiscordTextChannel> {
-	const channelId = getTargetChannelId(conversation);
 	const channel = await client.channels.fetch(channelId);
 	if (!channel?.isTextBased()) throw new Error(`Discord channel is not text-based: ${channelId}`);
 	return channel as unknown as DiscordTextChannel;
@@ -63,6 +63,34 @@ async function resolveTextChannel(
 export const MAX_DISCORD_ATTACHMENTS = 10;
 export const MAX_DISCORD_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 export const MAX_DISCORD_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const MAX_DISCORD_ACTIVITY_NAME = 128;
+
+export function formatDiscordObservationPresence(scopes: ObservedScope[], botName: string): string {
+	if (scopes.length === 0) return `waiting for @${botName}`;
+	return "observing conversations".slice(0, MAX_DISCORD_ACTIVITY_NAME);
+}
+
+function messageScope(
+	conversation: ResolvedConversation,
+	message: Message,
+): { id: string; name: string; kind: "channel" | "thread" } | undefined {
+	const targetId = getTargetChannelId(conversation);
+	const channel = message.channel;
+	if (message.channelId === targetId) {
+		return {
+			id: targetId,
+			name:
+				"name" in channel && typeof channel.name === "string" ? channel.name : conversation.channel.name || "channel",
+			kind: "channel",
+		};
+	}
+	if (!channel.isThread?.() || channel.parentId !== targetId) return undefined;
+	return {
+		id: message.channelId,
+		name: channel.name,
+		kind: "thread",
+	};
+}
 
 export function validateDiscordAttachmentMetadata(attachments: Array<{ size: number }>): void {
 	if (attachments.length > MAX_DISCORD_ATTACHMENTS)
@@ -116,7 +144,8 @@ export async function messageToInput(
 	message: Message,
 ): Promise<InboundMessageInput | undefined> {
 	if (message.guildId !== account.serverId) return undefined;
-	if (message.channelId !== getTargetChannelId(conversation)) return undefined;
+	const scope = messageScope(conversation, message);
+	if (!scope) return undefined;
 	if (message.author.id === account.botUserId) return undefined;
 	const identity = {
 		userId: message.author.id,
@@ -125,7 +154,11 @@ export async function messageToInput(
 	};
 	if (!isInputAuthorized(conversation.access, identity)) return undefined;
 	const remoteAttachments = [...message.attachments.values()];
-	const downloaded: Array<{ attachment: (typeof remoteAttachments)[number]; data: Uint8Array; index: number }> = [];
+	const downloaded: Array<{
+		attachment: (typeof remoteAttachments)[number];
+		data: Uint8Array;
+		index: number;
+	}> = [];
 	let attachmentRejection: string | undefined;
 	try {
 		validateDiscordAttachmentMetadata(remoteAttachments);
@@ -168,6 +201,10 @@ export async function messageToInput(
 			message.mentions.users.has(account.botUserId || "") ||
 			textMentionsBot(message.content || "", account.botUsername, account.botUserId),
 		isBot: message.author.bot,
+		sentAt: message.createdAt?.toISOString(),
+		scopeId: scope.id,
+		scopeName: scope.name,
+		scopeKind: scope.kind,
 		attachments,
 	};
 }
@@ -180,7 +217,10 @@ async function postDiscordMessage(
 ): Promise<string> {
 	const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
 		method: "POST",
-		headers: { Authorization: `Bot ${botToken}`, "content-type": "application/json" },
+		headers: {
+			Authorization: `Bot ${botToken}`,
+			"content-type": "application/json",
+		},
 		body: JSON.stringify(payload),
 		signal,
 	});
@@ -233,18 +273,43 @@ async function catchUpMessages(
 	conversation: ResolvedConversation,
 	afterId?: string,
 ): Promise<Message[]> {
-	const channel = await resolveTextChannel(client, conversation);
 	const allMessages: Message[] = [];
-	let cursor = afterId;
-	while (true) {
-		const batch = await channel.messages.fetch(cursor ? { after: cursor, limit: 100 } : { limit: 25 });
-		if (batch.size === 0) break;
-		const sorted = [...batch.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
-		allMessages.push(...sorted);
-		cursor = sorted[sorted.length - 1].id;
-		if (batch.size < 100) break;
+	const channelIds = new Set([conversation.channel.id]);
+	const guild = client.guilds.cache.get((conversation.account as DiscordAccountConfig).serverId);
+	if (guild) {
+		const activeThreads = await guild.channels.fetchActiveThreads();
+		for (const thread of activeThreads.threads.values()) {
+			if (thread.parentId === conversation.channel.id) channelIds.add(thread.id);
+		}
 	}
-	return allMessages;
+	const parentChannel = await client.channels.fetch(conversation.channel.id);
+	if (parentChannel && "threads" in parentChannel) {
+		for (const type of ["public", "private"] as const) {
+			try {
+				const archived = await parentChannel.threads.fetchArchived({
+					type,
+					fetchAll: true,
+				});
+				for (const thread of archived.threads.values()) channelIds.add(thread.id);
+			} catch (error) {
+				if (type === "public") throw error;
+				// Private archived threads are unavailable unless the bot can access them.
+			}
+		}
+	}
+	for (const channelId of channelIds) {
+		const channel = await resolveTextChannel(client, conversation, channelId);
+		let cursor = afterId;
+		while (true) {
+			const batch = await channel.messages.fetch(cursor ? { after: cursor, limit: 100 } : { limit: 25 });
+			if (batch.size === 0) break;
+			const sorted = [...batch.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+			allMessages.push(...sorted);
+			cursor = sorted[sorted.length - 1].id;
+			if (batch.size < 100) break;
+		}
+	}
+	return allMessages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
 }
 
 export async function connectDiscordLive(
@@ -266,7 +331,10 @@ export async function connectDiscordLive(
 		}
 		const input = await messageToInput(conversation, account, message);
 		if (!input) return;
-		await handlers.onMessage(input, { messageId: input.messageId, cursor: input.messageId });
+		await handlers.onMessage(input, {
+			messageId: input.messageId,
+			cursor: input.messageId,
+		});
 	};
 	let initializing = true;
 	let bufferedMessages: Message[] = [];
@@ -308,6 +376,7 @@ export async function connectDiscordLive(
 		},
 	});
 	let disconnectFired = false;
+	let lastPresenceName: string | undefined;
 	const fireDisconnect = () => {
 		if (disconnectFired) return;
 		disconnectFired = true;
@@ -330,18 +399,46 @@ export async function connectDiscordLive(
 			client.off(Events.MessageCreate, onMessageCreate);
 			client.destroy();
 		},
-		sendImmediate: async (text, replyToMessageId) => {
-			return sendDiscordMessage(account.botToken, conversation.channel.id, text, [], undefined, replyToMessageId);
+		sendImmediate: async (text, replyToMessageId, scopeId) => {
+			return sendDiscordMessage(
+				account.botToken,
+				scopeId || conversation.channel.id,
+				text,
+				[],
+				undefined,
+				replyToMessageId,
+			);
 		},
-		send: async (text, attachmentPaths = [], signal, replyToMessageId) =>
-			sendDiscordMessage(account.botToken, conversation.channel.id, text, attachmentPaths, signal, replyToMessageId),
-		startTyping: async () => {
-			const channel = await resolveTextChannel(client, conversation);
+		send: async (text, attachmentPaths = [], signal, replyToMessageId, scopeId) =>
+			sendDiscordMessage(
+				account.botToken,
+				scopeId || conversation.channel.id,
+				text,
+				attachmentPaths,
+				signal,
+				replyToMessageId,
+			),
+		startTyping: async (_status, scopeId) => {
+			const channel = await resolveTextChannel(client, conversation, scopeId);
 			await channel.sendTyping();
 		},
 		stopTyping: async () => {},
 		syncPreview: async (markdown, done = false) => preview.update(markdown, done),
 		clearPreview: async () => preview.clear(),
 		setReplyTo: (messageId) => preview.setReplyTo(messageId),
+		setObservedScopes: async (scopes) => {
+			const name = formatDiscordObservationPresence(scopes, account.botUsername || conversation.botName);
+			if (name === lastPresenceName) return;
+			lastPresenceName = name;
+			await client.user.setPresence({
+				activities: [
+					{
+						name,
+						type: ActivityType.Watching,
+					},
+				],
+				status: "online",
+			});
+		},
 	};
 }

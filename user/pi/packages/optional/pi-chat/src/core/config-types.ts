@@ -1,6 +1,6 @@
 export type ChatService = "telegram" | "discord";
 
-export type TriggerMode = "mention" | "message";
+export type TriggerMode = "mention" | "message" | "observe";
 
 export interface AccessPolicy {
 	trigger?: TriggerMode;

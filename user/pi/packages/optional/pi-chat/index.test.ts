@@ -6,6 +6,8 @@ import {
 	ChatTurnSettler,
 	explicitExtensionCommandParts,
 	piExecutable,
+	resolveChatReply,
+	suppressNoReply,
 	tmuxSafeName,
 	tryDecryptAuthorizedSecret,
 	validSecretName,
@@ -102,6 +104,19 @@ describe("agent settlement", () => {
 		const settler = new ChatTurnSettler();
 		settler.noteAgentEnd([{ role: "assistant", stopReason: "aborted", content: [] }]);
 		expect(settler.take().stopReason).toBe("aborted");
+	});
+});
+
+describe("observation replies", () => {
+	it("suppresses only the exact no-reply sentinel", () => {
+		expect(suppressNoReply("[NO_REPLY]")).toBe("");
+		expect(suppressNoReply("  [NO_REPLY]  ")).toBe("");
+		expect(suppressNoReply("I might say [NO_REPLY] here.")).toBe("I might say [NO_REPLY] here.");
+		expect(resolveChatReply("[NO_REPLY]", ["/workspace/file"], true)).toEqual({
+			text: "",
+			attachmentPaths: [],
+		});
+		expect(resolveChatReply("[NO_REPLY]", [], false).text).toBe("[NO_REPLY]");
 	});
 });
 

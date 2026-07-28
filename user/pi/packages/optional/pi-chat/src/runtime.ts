@@ -8,6 +8,7 @@ import type {
 	InboundMessageInput,
 	InboundMessageRecord,
 	JobQueuedRecord,
+	ObservedScope,
 	PendingJob,
 	ResolvedConversation,
 } from "../types.js";
@@ -47,11 +48,15 @@ export function reconstructPendingJobs(records: ChatLogRecord[]): PendingJob[] {
 	for (const record of [...records].sort((a, b) => a.recordId - b.recordId)) {
 		if (record.type !== "job_queued" || terminalJobIds.has(record.jobId) || seenJobIds.has(record.jobId)) continue;
 		seenJobIds.add(record.jobId);
+		const triggerRecord = records.find(
+			(candidate) => candidate.type === "inbound" && candidate.recordId === record.triggerRecordId,
+		) as InboundMessageRecord | undefined;
 		pending.push({
 			jobId: record.jobId,
 			trigger: record.trigger,
 			triggerRecordId: record.triggerRecordId,
 			queuedRecordId: record.recordId,
+			scopeId: record.scopeId ?? triggerRecord?.scopeId ?? triggerRecord?.channelId ?? "channel",
 		});
 	}
 	return pending;
@@ -75,8 +80,14 @@ function toGuestDisplayPath(conversation: ResolvedConversation, localPath: strin
 
 function formatTranscriptRecord(conversation: ResolvedConversation, record: ChatLogRecord): string[] {
 	if (record.type !== "inbound") return [];
+	const scope =
+		record.scopeKind === "thread"
+			? ` [thread:${record.scopeName ?? record.scopeId ?? "unknown"}]`
+			: record.scopeName
+				? ` [channel:${record.scopeName}]`
+				: "";
 	const lines = [
-		`- [${record.timestamp}] [uid:${record.userId}] ${record.userName ?? "unknown"}: ${record.text || "(no text)"}`,
+		`- [${record.timestamp}]${scope} [uid:${record.userId}] ${record.userName ?? "unknown"}: ${record.text || "(no text)"}`,
 	];
 	if (record.attachments.length > 0) {
 		lines.push("  attachments:");
@@ -99,6 +110,8 @@ function escapeRegExp(value: string): string {
 }
 
 export class ConversationRuntime {
+	static readonly OBSERVATION_LEASE_MS = 15 * 60_000;
+
 	readonly conversation: ResolvedConversation;
 	private readonly ownerId: string;
 	private records: ChatLogRecord[] = [];
@@ -106,6 +119,7 @@ export class ConversationRuntime {
 	private pendingJobs: PendingJob[] = [];
 	private activeJob: PendingJob | undefined;
 	private armedAfterRecordId: number | undefined;
+	private readonly observedScopes = new Map<string, ObservedScope>();
 
 	constructor(conversation: ResolvedConversation, ownerId: string) {
 		this.conversation = conversation;
@@ -124,6 +138,22 @@ export class ConversationRuntime {
 		this.records = await readConversationLog(this.conversation);
 		this.nextRecordId = this.records.reduce((max, record) => Math.max(max, record.recordId), 0) + 1;
 		this.pendingJobs = reconstructPendingJobs(this.records);
+		this.reconstructObservedScopes();
+	}
+
+	private reconstructObservedScopes(): void {
+		if (this.conversation.access.trigger !== "observe") return;
+		for (const record of this.records) {
+			if (record.type !== "inbound" || !record.observationLease || !this.isAuthorizedInput(record)) continue;
+			const scope = this.scopeFor(record);
+			const timestamp = Date.parse(record.timestamp);
+			if (!Number.isFinite(timestamp)) continue;
+			this.observedScopes.set(scope.id, {
+				...scope,
+				expiresAt: timestamp + ConversationRuntime.OBSERVATION_LEASE_MS,
+			});
+		}
+		this.pruneObservedScopes();
 	}
 
 	armAfterCurrentTail(): void {
@@ -144,18 +174,86 @@ export class ConversationRuntime {
 		await appendConversationRecord(this.conversation, record);
 	}
 
-	private getLastQueuedTriggerRecordId(): number {
+	private scopeFor(
+		message: Pick<InboundMessageInput, "scopeId" | "scopeName" | "scopeKind">,
+	): Omit<ObservedScope, "expiresAt"> {
+		return {
+			id: message.scopeId || this.conversation.channel.id,
+			name: message.scopeName || this.conversation.channel.name || this.conversation.channelKey,
+			kind: message.scopeKind || "channel",
+		};
+	}
+
+	private pruneObservedScopes(now = Date.now()): void {
+		for (const [scopeId, scope] of this.observedScopes) {
+			if (scope.expiresAt <= now) this.observedScopes.delete(scopeId);
+		}
+	}
+
+	getObservedScopes(now = Date.now()): ObservedScope[] {
+		this.pruneObservedScopes(now);
+		return [...this.observedScopes.values()].sort((a, b) => a.name.localeCompare(b.name));
+	}
+
+	renewObservation(
+		message: Pick<
+			InboundMessageInput,
+			"userId" | "roleIds" | "isBot" | "mentionedBot" | "scopeId" | "scopeName" | "scopeKind"
+		>,
+		now = Date.now(),
+	): boolean {
+		if (this.conversation.access.trigger !== "observe" || !this.isAuthorizedInput(message)) return false;
+		const scope = this.scopeFor(message);
+		const active = (this.observedScopes.get(scope.id)?.expiresAt ?? 0) > now;
+		if (!message.mentionedBot && !active) return false;
+		this.observedScopes.set(scope.id, {
+			...scope,
+			expiresAt: now + ConversationRuntime.OBSERVATION_LEASE_MS,
+		});
+		return true;
+	}
+
+	canHandleControl(input: InboundMessageInput): boolean {
+		if (!this.isAuthorizedInput(input)) return false;
+		if (isDMConversation(this.conversation) || this.conversation.access.trigger === "message") return true;
+		if (input.mentionedBot) return true;
+		if (this.conversation.access.trigger !== "observe") return false;
+		return (this.observedScopes.get(this.scopeFor(input).id)?.expiresAt ?? 0) > Date.now();
+	}
+
+	private getLastQueuedTriggerRecordId(scopeId: string): number {
 		let last = 0;
 		for (const record of this.records) {
-			if (record.type === "job_queued") last = Math.max(last, record.triggerRecordId);
+			if (record.type !== "job_queued") continue;
+			const recordScopeId =
+				record.scopeId ??
+				(
+					this.records.find(
+						(candidate) => candidate.type === "inbound" && candidate.recordId === record.triggerRecordId,
+					) as InboundMessageRecord | undefined
+				)?.scopeId ??
+				this.conversation.channel.id;
+			if (recordScopeId === scopeId) last = Math.max(last, record.triggerRecordId);
 		}
 		return last;
 	}
 
-	private getLastCompletedTriggerRecordId(): number {
+	private getLastCompletedTriggerRecordId(scopeId: string): number {
 		let last = 0;
 		for (const record of this.records) {
 			if (record.type !== "job_completed") continue;
+			const queued = this.records.find(
+				(candidate) => candidate.type === "job_queued" && candidate.jobId === record.jobId,
+			) as JobQueuedRecord | undefined;
+			const recordScopeId =
+				queued?.scopeId ??
+				(
+					this.records.find(
+						(candidate) => candidate.type === "inbound" && candidate.recordId === record.triggerRecordId,
+					) as InboundMessageRecord | undefined
+				)?.scopeId ??
+				this.conversation.channel.id;
+			if (recordScopeId !== scopeId) continue;
 			last = Math.max(last, record.triggerRecordId);
 		}
 		return last;
@@ -188,16 +286,22 @@ export class ConversationRuntime {
 		return this.parseControlCommand(input) === "stop";
 	}
 
-	private shouldTriggerJob(message: InboundMessageRecord): false | "mention" | "dm" {
+	private shouldTriggerJob(message: InboundMessageRecord): false | "mention" | "observe" | "dm" {
 		if (!this.isAuthorizedInput(message)) return false;
 		if (isDMConversation(this.conversation)) return "dm";
-		if ((this.conversation.access.trigger ?? "mention") === "message") return "mention";
+		const trigger = this.conversation.access.trigger ?? "mention";
+		if (trigger === "message") return "mention";
+		if (trigger === "observe") {
+			const sentAt = Date.parse(message.timestamp);
+			if (!this.renewObservation(message, Number.isFinite(sentAt) ? sentAt : Date.now())) return false;
+			return message.mentionedBot ? "mention" : "observe";
+		}
 		return message.mentionedBot ? "mention" : false;
 	}
 
-	private shouldQueueTrigger(recordId: number): boolean {
+	private shouldQueueTrigger(recordId: number, scopeId: string): boolean {
 		if (this.armedAfterRecordId === undefined) return false;
-		return recordId > Math.max(this.armedAfterRecordId, this.getLastQueuedTriggerRecordId());
+		return recordId > Math.max(this.armedAfterRecordId, this.getLastQueuedTriggerRecordId(scopeId));
 	}
 
 	getLastCheckpoint(): { cursor?: string; messageId?: string } {
@@ -223,6 +327,7 @@ export class ConversationRuntime {
 	async ingestInbound(
 		input: InboundMessageInput,
 		checkpoint?: { cursor?: string; messageId?: string },
+		options: { queueJobs?: boolean } = {},
 	): Promise<{ record: InboundMessageRecord; jobQueued: boolean }> {
 		const normalized = normalizeInboundMessage(input, this.conversation.botName);
 		const messageId = normalized.messageId || nextMessageId(this.conversation.service);
@@ -230,6 +335,9 @@ export class ConversationRuntime {
 		const record: InboundMessageRecord = {
 			type: "inbound",
 			...buildBaseRecordFields(this.conversation, this.nextRecordId),
+			...(normalized.sentAt && Number.isFinite(Date.parse(normalized.sentAt))
+				? { timestamp: new Date(normalized.sentAt).toISOString() }
+				: {}),
 			messageId,
 			userId: normalized.userId,
 			userName: normalized.userName,
@@ -237,18 +345,28 @@ export class ConversationRuntime {
 			text: normalized.text,
 			mentionedBot: normalized.mentionedBot ?? false,
 			isBot: normalized.isBot ?? false,
+			scopeId: normalized.scopeId,
+			scopeName: normalized.scopeName,
+			scopeKind: normalized.scopeKind,
 			attachments,
 		};
-		await this.appendRecord(record);
-		if (checkpoint) await this.noteCheckpoint(checkpoint);
 		const trigger = this.shouldTriggerJob(record);
-		if (!trigger || !this.shouldQueueTrigger(record.recordId)) return { record, jobQueued: false };
+		if (this.conversation.access.trigger === "observe" && (trigger === "mention" || trigger === "observe")) {
+			record.observationLease = true;
+		}
+		await this.appendRecord(record);
+		const scopeId = this.scopeFor(record).id;
+		if (!trigger || options.queueJobs === false || !this.shouldQueueTrigger(record.recordId, scopeId)) {
+			if (checkpoint) await this.noteCheckpoint(checkpoint);
+			return { record, jobQueued: false };
+		}
 		const queuedRecord: JobQueuedRecord = {
 			type: "job_queued",
 			...buildBaseRecordFields(this.conversation, this.nextRecordId),
 			jobId: randomUUID(),
 			trigger,
 			triggerRecordId: record.recordId,
+			scopeId,
 		};
 		await this.appendRecord(queuedRecord);
 		this.pendingJobs.push({
@@ -256,7 +374,9 @@ export class ConversationRuntime {
 			trigger: queuedRecord.trigger,
 			triggerRecordId: queuedRecord.triggerRecordId,
 			queuedRecordId: queuedRecord.recordId,
+			scopeId,
 		});
+		if (checkpoint) await this.noteCheckpoint(checkpoint);
 		return { record, jobQueued: true };
 	}
 
@@ -266,15 +386,22 @@ export class ConversationRuntime {
 		if (!job) return undefined;
 		this.activeJob = job;
 		const triggerRecord = getLatestTriggerRecord(this.records, job);
-		return { job, prompt: this.buildPrompt(job), triggerMessageId: triggerRecord?.messageId };
+		return {
+			job,
+			prompt: this.buildPrompt(job),
+			triggerMessageId: triggerRecord?.messageId,
+			triggerScopeId: job.scopeId,
+		};
 	}
 
 	private buildPrompt(job: PendingJob): string {
-		const completedBoundary = this.getLastCompletedTriggerRecordId();
-		const slice = this.records.filter(
-			(record) =>
-				record.recordId > completedBoundary && record.recordId <= job.triggerRecordId && record.type === "inbound",
-		);
+		const completedBoundary = this.getLastCompletedTriggerRecordId(job.scopeId);
+		const slice = this.records
+			.filter(
+				(record) =>
+					record.recordId > completedBoundary && record.recordId <= job.triggerRecordId && record.type === "inbound",
+			)
+			.filter((record) => this.scopeFor(record as InboundMessageRecord).id === job.scopeId);
 		const lines: string[] = [];
 		for (const record of slice) lines.push(...formatTranscriptRecord(this.conversation, record));
 		return lines.join("\n").trim();
@@ -323,7 +450,11 @@ export class ConversationRuntime {
 	}
 
 	async appendError(message: string): Promise<void> {
-		await this.appendRecord({ type: "error", ...buildBaseRecordFields(this.conversation, this.nextRecordId), message });
+		await this.appendRecord({
+			type: "error",
+			...buildBaseRecordFields(this.conversation, this.nextRecordId),
+			message,
+		});
 	}
 
 	findHistory(options: { query?: string; after?: string; before?: string; limit?: number }): Array<ChatLogRecord> {
