@@ -1,6 +1,7 @@
 packages:
   - packages/core/*
   - packages/extensions/*
+  - packages/optional/*
 
 catalog:
   "@earendil-works/pi-ai": ^0.82.0
