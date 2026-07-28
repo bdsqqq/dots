@@ -13,6 +13,8 @@ let
 
       export PI_BIN="${toolsBin}/pi"
       export QMD_BIN="${toolsBin}/qmd"
+      export PI_MEMORY_MODEL="openai-codex/gpt-5.6-sol"
+      export PI_MEMORY_REASONING_LEVEL="low"
       export PI_MEMORY_SKILLS_ROOT="${repoRoot}/user/agents/skills"
       export PI_MEMORY_GIT_REMOTE="git@github.com:bdsqqq/pi-memory.git"
       exec bun run "${repoRoot}/user/pi/packages/core/agent-memory/index.ts" "$@"
