@@ -737,6 +737,23 @@ Project B rule.
         cfg,
         scope: "global",
         evidence: [evidence("cp-input-only")],
+        model: "model-a",
+        reasoning: "high",
+        invoke: () => {
+          invoked = true;
+          return '{"version":2,"action":"skip","reason":"must not run"}';
+        },
+      }),
+    ).toThrow(
+      "frozen pipeline reasoning low does not match configured reasoning high",
+    );
+    expect(invoked).toBe(false);
+
+    expect(() =>
+      processPipelineBatch({
+        cfg,
+        scope: "global",
+        evidence: [evidence("cp-input-only")],
         model: "model-b",
         invoke: () => {
           invoked = true;
@@ -752,8 +769,8 @@ Project B rule.
     expect(runs).toHaveLength(1);
     const dir = join(cfg.data, "v2/runs", runs[0]!);
     expect(
-      JSON.parse(readFileSync(join(dir, "input.json"), "utf8")).model,
-    ).toBe("model-a");
+      JSON.parse(readFileSync(join(dir, "input.json"), "utf8")),
+    ).toMatchObject({ model: "model-a", reasoning: "low" });
     expect(existsSync(join(dir, "output.json"))).toBe(false);
     expect(existsSync(join(dir, "result.json"))).toBe(false);
   });

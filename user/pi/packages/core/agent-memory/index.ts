@@ -25,6 +25,15 @@ import {
 } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import {
+  auditResumeCommand,
+  auditSessionDir,
+  listAuditSessions,
+  modelConfig,
+  prepareAuditInvocation,
+  type AuditKind,
+  type ModelConfig,
+} from "./audit.js";
 import { clearConfigCache, getExtensionConfigWithSchema } from "@bds_pi/config";
 import {
   renderPromptCatalog,
@@ -729,6 +738,43 @@ function run(
   return result.stdout.slice(0, 256 * 1024);
 }
 
+function auditedArgs(options: {
+  cfg: ReturnType<typeof config>;
+  kind: AuditKind;
+  identity: string;
+  prompt: string;
+  model: ModelConfig;
+  runId?: string;
+  eventId?: string;
+}) {
+  return prepareAuditInvocation({
+    data: options.cfg.data,
+    kind: options.kind,
+    identity: options.identity,
+    prompt: options.prompt,
+    model: options.model.model,
+    reasoning: options.model.reasoning,
+    ...(options.runId ? { runId: options.runId } : {}),
+    ...(options.eventId ? { eventId: options.eventId } : {}),
+  });
+}
+
+async function runAuditedAsync(
+  options: Parameters<typeof auditedArgs>[0],
+): Promise<string> {
+  const audit = auditedArgs(options);
+  if (audit.recoveredOutput !== undefined) return audit.recoveredOutput;
+  await runAsync(process.env.PI_BIN || "pi", audit.args, options.prompt);
+  return audit.complete().output;
+}
+
+function runAudited(options: Parameters<typeof auditedArgs>[0]): string {
+  const audit = auditedArgs(options);
+  if (audit.recoveredOutput !== undefined) return audit.recoveredOutput;
+  run(process.env.PI_BIN || "pi", audit.args, options.prompt);
+  return audit.complete().output;
+}
+
 function parseAction(raw: string): Record<string, unknown> {
   const value: unknown = JSON.parse(raw.trim());
   if (!object(value) || (value.action !== "create" && value.action !== "skip"))
@@ -969,22 +1015,14 @@ function consolidateV1Unlocked(limit: number): boolean {
         const response =
           process.env.PI_MEMORY_SKIP_EXTERNAL === "1"
             ? '{"action":"skip"}'
-            : run(
-                process.env.PI_BIN || "pi",
-                [
-                  "-p",
-                  "--no-session",
-                  "--no-tools",
-                  "--no-extensions",
-                  "--no-skills",
-                  "--no-prompt-templates",
-                  "--no-context-files",
-                  "--model",
-                  process.env.PI_MEMORY_MODEL ||
-                    "openai-codex/gpt-5.6-luna:low",
-                ],
+            : runAudited({
+                cfg,
+                kind: "reflection",
+                identity: key,
                 prompt,
-              );
+                model: modelConfig(),
+                runId: key,
+              });
         const action = parseAction(response);
         const now = new Date().toISOString();
         if (action.action === "skip")
@@ -1475,7 +1513,7 @@ async function consolidateV2Unlocked(limit: number): Promise<boolean> {
       claimMaintenanceEvent(cfg, { kinds: ["checkpoint-ready"], ids: [id] }),
     )
     .filter((event): event is NonNullable<typeof event> => event !== null);
-  const model = process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-luna:low";
+  const configuredModel = modelConfig();
   try {
     await processPipelineBatches(
       batches.map((batch) => ({
@@ -1485,24 +1523,21 @@ async function consolidateV2Unlocked(limit: number): Promise<boolean> {
         observations: deduplicateTurnObservations(
           batch.flatMap((window) => window.observations),
         ),
-        model,
+        model: configuredModel.model,
+        reasoning: configuredModel.reasoning,
         skipExternal: process.env.PI_MEMORY_SKIP_EXTERNAL === "1",
-        invoke: (prompt: string) =>
-          runAsync(
-            process.env.PI_BIN || "pi",
-            [
-              "-p",
-              "--no-session",
-              "--no-tools",
-              "--no-extensions",
-              "--no-skills",
-              "--no-prompt-templates",
-              "--no-context-files",
-              "--model",
-              model,
-            ],
+        invoke: (prompt, input) =>
+          runAuditedAsync({
+            cfg,
+            kind: "reflection",
+            identity: input.runId,
             prompt,
-          ),
+            model: {
+              model: input.model ?? configuredModel.model,
+              reasoning: input.reasoning ?? configuredModel.reasoning,
+            },
+            runId: input.runId,
+          }),
       })),
     );
     for (const batch of batches)
@@ -1693,8 +1728,7 @@ async function processAdaptationEvents(
           rollback,
         ];
         const catalog = scanCatalog(cfg.root);
-        const model =
-          process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-luna:low";
+        const configuredModel = modelConfig();
         const raw =
           process.env.PI_MEMORY_SKIP_EXTERNAL === "1"
             ? JSON.stringify({
@@ -1707,26 +1741,20 @@ async function processAdaptationEvents(
                   },
                 ],
               })
-            : await runAsync(
-                process.env.PI_BIN || "pi",
-                [
-                  "-p",
-                  "--no-session",
-                  "--no-tools",
-                  "--no-extensions",
-                  "--no-skills",
-                  "--no-prompt-templates",
-                  "--no-context-files",
-                  "--model",
-                  model,
-                ],
-                buildAdaptationPrompt(cfg, catalog, evidence),
-              );
+            : await runAuditedAsync({
+                cfg,
+                kind: "adaptation",
+                identity: event.id,
+                prompt: buildAdaptationPrompt(cfg, catalog, evidence),
+                model: configuredModel,
+                eventId: event.id,
+              });
         const decisions = parseAdaptationDecisions(raw, catalog, evidence);
         shadow = publishShadowAdaptation({
           cfg,
           eventId: event.id,
-          model,
+          model: configuredModel.model,
+          reasoning: configuredModel.reasoning,
           createdAt: event.createdAt,
           catalog,
           evidence,
@@ -1792,28 +1820,21 @@ async function maintainUnlocked(): Promise<boolean> {
       : claimMaintenanceEvent(cfg, { kinds: ["corpus-changed"] });
   if (corpusEvent) {
     try {
-      const model =
-        process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-luna:low";
+      const configuredModel = modelConfig();
       const analysis = await analyzeCorpusMaintenance({
         cfg,
         report: health,
-        model,
+        model: configuredModel.model,
+        reasoning: configuredModel.reasoning,
         invoke: (prompt) =>
-          runAsync(
-            process.env.PI_BIN || "pi",
-            [
-              "-p",
-              "--no-session",
-              "--no-tools",
-              "--no-extensions",
-              "--no-skills",
-              "--no-prompt-templates",
-              "--no-context-files",
-              "--model",
-              model,
-            ],
+          runAuditedAsync({
+            cfg,
+            kind: "corpus-doctor",
+            identity: corpusEvent.id,
             prompt,
-          ),
+            model: configuredModel,
+            eventId: corpusEvent.id,
+          }),
       });
       for (const diagnostic of analysis.diagnostics)
         console.error(
@@ -2164,7 +2185,15 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(memoryMetrics(config()), null, 2));
   else if (command === "health")
     console.log(JSON.stringify(scanCorpusHealth(config()), null, 2));
-  else if (command === "eval" && args[0] === "adaptation")
+  else if (command === "background" && args[0] === "sessions") {
+    if (args.length !== 1)
+      throw new Error("usage: pi-memory background sessions");
+    console.log(JSON.stringify(listAuditSessions(config().data), null, 2));
+  } else if (command === "background" && args[0] === "resume") {
+    if (args.length !== 1)
+      throw new Error("usage: pi-memory background resume");
+    console.log(auditResumeCommand(config().data));
+  } else if (command === "eval" && args[0] === "adaptation")
     console.log(JSON.stringify(adaptationEvaluationMetrics(config()), null, 2));
   else if (command === "eval" && args[0] === "export") {
     const outIndex = args.indexOf("--out");
@@ -2196,8 +2225,7 @@ async function main(): Promise<void> {
     const limit = limitIndex >= 0 ? Number(args[limitIndex + 1]) : 20;
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
       throw new Error("invalid replay limit");
-    const model =
-      process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-luna:low";
+    const configuredModel = modelConfig();
     console.log(
       JSON.stringify(
         replayDataset({
@@ -2205,23 +2233,20 @@ async function main(): Promise<void> {
           dataset: args[datasetIndex + 1]!,
           modes: modes as Array<"memory-off" | "current" | "gold">,
           limit,
-          model,
-          invoke: (prompt) =>
-            run(
-              process.env.PI_BIN || "pi",
-              [
-                "-p",
-                "--no-session",
-                "--no-tools",
-                "--no-extensions",
-                "--no-skills",
-                "--no-prompt-templates",
-                "--no-context-files",
-                "--model",
-                model,
-              ],
+          model: configuredModel.model,
+          reasoning: configuredModel.reasoning,
+          invoke: (prompt, invocation) =>
+            runAudited({
+              cfg: config(),
+              kind: "eval-replay",
+              identity: invocation.identity,
               prompt,
-            ),
+              model: {
+                model: invocation.model,
+                reasoning: invocation.reasoning,
+              },
+              runId: invocation.replayId,
+            }),
         }),
         null,
         2,
@@ -2267,7 +2292,7 @@ async function main(): Promise<void> {
     );
   } else
     throw new Error(
-      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|catalog [--cwd PATH] [--json]|events [enqueue --kind manual]|migrate [--dry-run]|propose --json JSON [--source URI]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|feedback <review-or-proposal-id> useful|harmful --reason-code CODE [--query TEXT]|rollback <review-id> --reason TEXT|history init|list|show|diff|verify|sync|repair adopt|discard --reason TEXT|metrics|eval export|replay|grade|report|retrieval",
+      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|catalog [--cwd PATH] [--json]|events [enqueue --kind manual]|migrate [--dry-run]|propose --json JSON [--source URI]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|feedback <review-or-proposal-id> useful|harmful --reason-code CODE [--query TEXT]|rollback <review-id> --reason TEXT|history init|list|show|diff|verify|sync|repair adopt|discard --reason TEXT|metrics|background sessions|resume|eval export|replay|grade|report|retrieval",
     );
   if (result === false) process.exitCode = 1;
   else if (result === undefined) process.exitCode = 75;
@@ -2322,6 +2347,46 @@ if (import.meta.vitest) {
           delete process.env.PI_CODING_AGENT_SESSION_DIR;
         else process.env.PI_CODING_AGENT_SESSION_DIR = previousSessions;
         clearConfigCache();
+      }
+    });
+
+    it("keeps dedicated background sessions out of normal projection roots", () => {
+      const base = mkdtempSync(join(tmpdir(), "pi-memory-audit-isolation-"));
+      const data = join(base, "data");
+      const sessions = join(base, "sessions");
+      const audit = join(base, "audit");
+      mkdirSync(sessions, { recursive: true });
+      mkdirSync(audit, { recursive: true });
+      writeFileSync(
+        join(sessions, "normal.jsonl"),
+        `${JSON.stringify({ type: "session", id: "normal", cwd: "/tmp" })}\n`,
+      );
+      writeFileSync(
+        join(audit, "audit.jsonl"),
+        `${JSON.stringify({ type: "session", id: "audit", cwd: "/tmp" })}\n`,
+      );
+      const previous = {
+        data: process.env.PI_MEMORY_DATA_DIR,
+        sessions: process.env.PI_CODING_AGENT_SESSION_DIR,
+        audit: process.env.PI_MEMORY_SESSION_DIR,
+      };
+      process.env.PI_MEMORY_DATA_DIR = data;
+      process.env.PI_CODING_AGENT_SESSION_DIR = sessions;
+      process.env.PI_MEMORY_SESSION_DIR = audit;
+      try {
+        expect(config().sessions).toEqual([sessions]);
+        expect(config().sessions).not.toContain(auditSessionDir(data));
+        projectUnlocked();
+        expect(existsSync(join(data, "pi-sessions/normal.md"))).toBe(true);
+        expect(existsSync(join(data, "pi-sessions/audit.md"))).toBe(false);
+      } finally {
+        for (const [key, value] of [
+          ["PI_MEMORY_DATA_DIR", previous.data],
+          ["PI_CODING_AGENT_SESSION_DIR", previous.sessions],
+          ["PI_MEMORY_SESSION_DIR", previous.audit],
+        ] as const)
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
       }
     });
 

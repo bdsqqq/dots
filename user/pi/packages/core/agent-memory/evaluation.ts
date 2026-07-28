@@ -10,6 +10,7 @@ import {
   type MemoryConfig,
 } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
+import { REASONING_LEVELS, type ReasoningLevel } from "./audit.js";
 import {
   buildReflectionPrompt,
   freezePipelineInput,
@@ -756,12 +757,15 @@ function replayInput(
   item: EvalCase,
   mode: "memory-off" | "current" | "gold",
   model: string,
+  reasoning: ReasoningLevel,
 ): PipelineInput {
   const current = freezePipelineInput(
     cfg,
     item.input.scope,
     item.input.sanitizedEvidence,
     model,
+    [],
+    reasoning,
   );
   if (mode === "current") return current;
   if (mode === "memory-off")
@@ -785,7 +789,16 @@ export function replayDataset(options: {
   modes: Array<"memory-off" | "current" | "gold">;
   limit: number;
   model: string;
-  invoke: (prompt: string) => string;
+  reasoning?: ReasoningLevel;
+  invoke: (
+    prompt: string,
+    invocation: {
+      identity: string;
+      replayId: string;
+      model: string;
+      reasoning: ReasoningLevel;
+    },
+  ) => string;
 }): { replayId: string; cases: number; outputs: number } {
   const cases = readDataset(options.dataset).slice(0, options.limit);
   const replayId = `replay_${sha256(`${options.dataset}:${Date.now()}`).slice(0, 20)}`;
@@ -799,8 +812,20 @@ export function replayDataset(options: {
   }> = [];
   for (const item of cases)
     for (const mode of options.modes) {
-      const input = replayInput(options.cfg, item, mode, options.model);
-      const raw = options.invoke(buildReflectionPrompt(input));
+      const reasoning = options.reasoning ?? "low";
+      const input = replayInput(
+        options.cfg,
+        item,
+        mode,
+        options.model,
+        reasoning,
+      );
+      const raw = options.invoke(buildReflectionPrompt(input), {
+        identity: `${replayId}:${item.caseId}:${mode}`,
+        replayId,
+        model: options.model,
+        reasoning,
+      });
       const parsed = parseModelProposal(raw);
       const outputSha256 = sha256(canonical(parsed));
       atomicWrite(
@@ -812,6 +837,7 @@ export function replayDataset(options: {
             caseId: item.caseId,
             mode,
             model: options.model,
+            reasoning: options.reasoning ?? "low",
             output: parsed,
             outputSha256,
           },
@@ -824,7 +850,7 @@ export function replayDataset(options: {
     }
   atomicWrite(
     join(dir, "manifest.json"),
-    `${JSON.stringify({ version: 2, replayId, dataset: resolve(options.dataset), cases: cases.length, modes: options.modes, model: options.model, outputs: manifestOutputs }, null, 2)}\n`,
+    `${JSON.stringify({ version: 2, replayId, dataset: resolve(options.dataset), cases: cases.length, modes: options.modes, model: options.model, reasoning: options.reasoning ?? "low", outputs: manifestOutputs }, null, 2)}\n`,
   );
   return { replayId, cases: cases.length, outputs };
 }
@@ -834,6 +860,8 @@ type ReplayManifest = {
   replayId: string;
   cases: number;
   modes: string[];
+  model: string;
+  reasoning: ReasoningLevel;
   outputs: Array<{ caseId: string; mode: string; outputSha256: string }>;
 };
 function readReplayManifest(
@@ -850,6 +878,8 @@ function readReplayManifest(
     !Number.isInteger(value.cases) ||
     value.cases < 0 ||
     !Array.isArray(value.modes) ||
+    typeof value.model !== "string" ||
+    !REASONING_LEVELS.includes(value.reasoning) ||
     !Array.isArray(value.outputs) ||
     !value.outputs.every(
       (output) =>
@@ -874,6 +904,8 @@ function readReplayManifest(
       replayId: string;
       caseId: string;
       mode: string;
+      model: string;
+      reasoning: ReasoningLevel;
       output: unknown;
       outputSha256: string;
     };
@@ -882,6 +914,8 @@ function readReplayManifest(
       output.replayId !== replayId ||
       output.caseId !== expected.caseId ||
       output.mode !== expected.mode ||
+      output.model !== value.model ||
+      output.reasoning !== value.reasoning ||
       output.outputSha256 !== digest ||
       expected.outputSha256 !== digest
     )

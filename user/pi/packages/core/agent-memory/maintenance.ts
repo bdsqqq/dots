@@ -1,3 +1,4 @@
+import type { ReasoningLevel } from "./audit.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -531,6 +532,7 @@ export async function analyzeCorpusMaintenance(options: {
   cfg: MemoryConfig;
   report: CorpusHealthReport;
   model: string;
+  reasoning?: ReasoningLevel;
   invoke: (prompt: string) => string | Promise<string>;
   createdAt?: string;
 }): Promise<MaintenanceAnalysis> {
@@ -706,6 +708,7 @@ export async function analyzeCorpusMaintenance(options: {
         runId: `maintenance_${item.pathology.id}`,
         promptVersion: 3,
         model: options.model,
+        ...(options.reasoning ? { reasoning: options.reasoning } : {}),
         createdAt,
         corpusAware: true,
         autonomous: true,
