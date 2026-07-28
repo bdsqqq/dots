@@ -68,6 +68,7 @@
   "pi": {
     "extensions": [
       "./dist/extensions/agent-memory.js",
+      "./dist/extensions/agent-message.js",
       "./dist/extensions/apply-patch.js",
       "./dist/extensions/bash.js",
       "./dist/extensions/cmux-notify.js",
