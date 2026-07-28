@@ -21,6 +21,7 @@ catalogs:
 
 patchedDependencies:
   '@earendil-works/gondolin@0.7.0': eeb485ec88228fbf91ecd939b1906bd4c448e7d6bf3f4fc8eeefcb83bdb5e0d3
+  remend@1.3.0: 3ec9805a16100c22936ce1f4d6c4373fdb3da196b0b3abaf2f5173c6e7716c0a
 
 importers:
 
@@ -1150,7 +1151,7 @@ importers:
         version: 14.26.3
       remend:
         specifier: 1.3.0
-        version: 1.3.0
+        version: 1.3.0(patch_hash=3ec9805a16100c22936ce1f4d6c4373fdb3da196b0b3abaf2f5173c6e7716c0a)
       ws:
         specifier: 8.20.0
         version: 8.20.0
@@ -5438,7 +5439,7 @@ snapshots:
 
   quansync@1.0.0: {}
 
-  remend@1.3.0: {}
+  remend@1.3.0(patch_hash=3ec9805a16100c22936ce1f4d6c4373fdb3da196b0b3abaf2f5173c6e7716c0a): {}
 
   require-from-string@2.0.2: {}
 
