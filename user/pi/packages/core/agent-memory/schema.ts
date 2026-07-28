@@ -99,6 +99,7 @@ export type Proposal = {
     runId: string;
     promptVersion: number;
     model: string;
+    reasoning?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
     createdAt: string;
     migration?: boolean;
     corpusAware: boolean;

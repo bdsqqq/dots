@@ -448,6 +448,11 @@ export function parseStoredProposal(
     typeof value.provenance.runId !== "string" ||
     typeof value.provenance.promptVersion !== "number" ||
     typeof value.provenance.model !== "string" ||
+    (value.provenance.reasoning !== undefined &&
+      (typeof value.provenance.reasoning !== "string" ||
+        !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(
+          value.provenance.reasoning,
+        ))) ||
     typeof value.provenance.createdAt !== "string" ||
     typeof value.provenance.corpusAware !== "boolean" ||
     (value.provenance.autonomous !== undefined &&
@@ -574,6 +579,7 @@ export function materializeModelProposals(options: {
   result: Extract<ModelProposal, { action: "propose" }>;
   runId: string;
   model: string;
+  reasoning?: Proposal["provenance"]["reasoning"];
   scope: string;
   evidence: EvidenceRef[];
   catalog: Catalog;
@@ -697,6 +703,7 @@ export function materializeModelProposals(options: {
         runId: options.runId,
         promptVersion: PROMPT_VERSION,
         model: options.model,
+        ...(options.reasoning ? { reasoning: options.reasoning } : {}),
         createdAt,
         corpusAware: options.corpusAware ?? true,
         ...(options.autonomous !== undefined

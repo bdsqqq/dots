@@ -35,6 +35,7 @@ import {
   type TurnReceipt,
 } from "./receipt.js";
 import { canonicalProposalId, type Proposal } from "./schema.js";
+import type { ReasoningLevel } from "./audit.js";
 import { applyMemoryProposal, findProposal, saveProposal } from "./workflow.js";
 
 export type TurnObservation = {
@@ -112,6 +113,7 @@ export type ShadowAdaptation = {
   id: string;
   eventId: string;
   model: string;
+  reasoning?: ReasoningLevel;
   promptVersion: typeof ADAPTATION_PROMPT_VERSION;
   createdAt: string;
   catalog: Catalog;
@@ -751,6 +753,7 @@ export function publishShadowAdaptation(options: {
   cfg: MemoryConfig;
   eventId: string;
   model: string;
+  reasoning?: ReasoningLevel;
   createdAt: string;
   catalog: Catalog;
   evidence: AdaptationEvidence[];
@@ -760,6 +763,7 @@ export function publishShadowAdaptation(options: {
     version: PRODUCTION_ADAPTATION_VERSION,
     eventId: options.eventId,
     model: options.model,
+    ...(options.reasoning ? { reasoning: options.reasoning } : {}),
     promptVersion: ADAPTATION_PROMPT_VERSION,
     createdAt: options.createdAt,
     catalog: options.catalog,
@@ -821,6 +825,17 @@ export function findShadowAdaptation(
         value.version !== PRODUCTION_ADAPTATION_VERSION ||
         value.promptVersion !== ADAPTATION_PROMPT_VERSION ||
         typeof value.model !== "string" ||
+        (value.reasoning !== undefined &&
+          (typeof value.reasoning !== "string" ||
+            ![
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+            ].includes(value.reasoning))) ||
         typeof value.createdAt !== "string" ||
         !object(value.catalog) ||
         !Array.isArray(value.evidence) ||

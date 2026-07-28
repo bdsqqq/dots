@@ -12,6 +12,7 @@ import {
   type MemoryConfig,
 } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
+import type { ReasoningLevel } from "./audit.js";
 import {
   deduplicateTurnObservations,
   listVerifiedRollbackEvidence,
@@ -38,6 +39,7 @@ export type PipelineInputV2 = {
   batchId: string;
   promptVersion: 2;
   model?: string;
+  reasoning?: ReasoningLevel;
   createdAt: string;
   scope: string;
   evidence: SafeEvidence[];
@@ -90,6 +92,7 @@ export function parseStoredPipelineInput(raw: string): PipelineInput {
     "pending",
     "promptVersion",
     "reviewSignals",
+    "reasoning",
     "runId",
     "scope",
     "skills",
@@ -99,6 +102,8 @@ export function parseStoredPipelineInput(raw: string): PipelineInput {
   ];
   if (input.model === undefined)
     expectedFields.splice(expectedFields.indexOf("model"), 1);
+  if (input.reasoning === undefined)
+    expectedFields.splice(expectedFields.indexOf("reasoning"), 1);
   if (
     Object.keys(input).sort().join(",") !== expectedFields.sort().join(",") ||
     !(
@@ -110,6 +115,11 @@ export function parseStoredPipelineInput(raw: string): PipelineInput {
     typeof input.createdAt !== "string" ||
     typeof input.scope !== "string" ||
     (input.model !== undefined && typeof input.model !== "string") ||
+    (input.reasoning !== undefined &&
+      (typeof input.reasoning !== "string" ||
+        !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(
+          input.reasoning,
+        ))) ||
     !Array.isArray(input.evidence) ||
     !input.evidence.every((item) => {
       if (typeof item !== "object" || item === null || Array.isArray(item))
@@ -219,6 +229,7 @@ function expectedStoredResult(
       result: parsed,
       runId: input.runId,
       model,
+      ...(input.reasoning ? { reasoning: input.reasoning } : {}),
       scope: input.scope,
       evidence: input.evidence.map((item) => item.window),
       catalog: input.catalog,
@@ -351,6 +362,7 @@ export function freezePipelineInput(
   evidence: SafeEvidence[],
   model: string,
   observations: TurnObservation[] = [],
+  reasoning: ReasoningLevel = "low",
 ): PipelineInput {
   const fullCatalog = scanCatalog(cfg.root, "1970-01-01T00:00:00.000Z");
   const catalog = scopeCatalog(
@@ -423,6 +435,7 @@ export function freezePipelineInput(
       observations: validatedObservations,
       rollbackEvidence,
       model,
+      reasoning,
     }),
   );
   const evidenceHash = sha256(JSON.stringify(evidence));
@@ -433,6 +446,7 @@ export function freezePipelineInput(
     batchId,
     promptVersion: 3,
     model,
+    reasoning,
     createdAt: new Date().toISOString(),
     scope,
     evidence,
@@ -565,8 +579,9 @@ export type PipelineBatchOptions = {
   scope: string;
   evidence: SafeEvidence[];
   model: string;
+  reasoning?: ReasoningLevel;
   observations?: TurnObservation[];
-  invoke: (prompt: string) => string;
+  invoke: (prompt: string, input: PipelineInput) => string;
   skipExternal?: boolean;
   autoApplyMemory?: boolean;
 };
@@ -581,6 +596,7 @@ function preparePipelineBatch(options: PipelineBatchOptions): {
     options.evidence,
     options.model,
     options.observations,
+    options.reasoning ?? "low",
   );
   const input = existingFrozenInput(options.cfg, fresh) || fresh;
   const dir = runDir(options.cfg, input.runId);
@@ -591,13 +607,16 @@ function preparePipelineBatch(options: PipelineBatchOptions): {
     throw new Error("frozen pipeline input collision");
   if (!existsSync(inputPath)) atomicWrite(inputPath, inputValue);
   if (
-    input.model !== undefined &&
-    input.model !== options.model &&
+    ((input.model !== undefined && input.model !== options.model) ||
+      (input.reasoning !== undefined &&
+        input.reasoning !== (options.reasoning ?? "low"))) &&
     !existsSync(join(dir, "output.json")) &&
     !existsSync(join(dir, "result.json"))
   )
     throw new Error(
-      `frozen pipeline model ${input.model} does not match configured model ${options.model}`,
+      input.model !== undefined && input.model !== options.model
+        ? `frozen pipeline model ${input.model} does not match configured model ${options.model}`
+        : `frozen pipeline reasoning ${input.reasoning} does not match configured reasoning ${options.reasoning ?? "low"}`,
     );
   return { input, dir };
 }
@@ -607,8 +626,9 @@ export function processPipelineBatch(options: {
   scope: string;
   evidence: SafeEvidence[];
   model: string;
+  reasoning?: ReasoningLevel;
   observations?: TurnObservation[];
-  invoke: (prompt: string) => string;
+  invoke: (prompt: string, input: PipelineInput) => string;
   skipExternal?: boolean;
   autoApplyMemory?: boolean;
 }): PipelineResult {
@@ -660,17 +680,15 @@ export function processPipelineBatch(options: {
   if (
     !outputExisted &&
     !options.skipExternal &&
-    input.model &&
-    input.model !== options.model
+    ((input.model && input.model !== options.model) ||
+      (input.reasoning && input.reasoning !== (options.reasoning ?? "low")))
   )
-    throw new Error(
-      `frozen pipeline model mismatch: expected ${input.model}, got ${options.model}`,
-    );
+    throw new Error(`frozen pipeline configuration mismatch`);
   const raw = outputExisted
     ? readFileSync(outputPath, "utf8")
     : options.skipExternal
       ? '{"version":2,"action":"skip","reason":"external processing disabled"}'
-      : options.invoke(buildReflectionPrompt(input));
+      : options.invoke(buildReflectionPrompt(input), input);
   const { parsed } = parsePipelineOutput(raw, input);
   if (!outputExisted) {
     writeCurrentOutputMetadata(dir);
@@ -685,6 +703,7 @@ export function processPipelineBatch(options: {
       result: parsed,
       runId: input.runId,
       model: input.model ?? options.model,
+      ...(input.reasoning ? { reasoning: input.reasoning } : {}),
       scope: input.scope,
       evidence: input.evidence.map((item) => item.window),
       catalog: input.catalog,
@@ -735,7 +754,10 @@ export function coveredCheckpointIds(cfg: MemoryConfig): Set<string> {
 export async function processPipelineBatches(
   options: Array<
     Omit<PipelineBatchOptions, "invoke"> & {
-      invoke: (prompt: string) => string | Promise<string>;
+      invoke: (
+        prompt: string,
+        input: PipelineInput,
+      ) => string | Promise<string>;
     }
   >,
   concurrencyValue: string | undefined = process.env.PI_MEMORY_CONCURRENCY,
@@ -768,7 +790,10 @@ export async function processPipelineBatches(
           if (existsSync(outputPath) || existsSync(resultPath)) continue;
           analyses[index] = item.option.skipExternal
             ? '{"version":2,"action":"skip","reason":"external processing disabled"}'
-            : await item.option.invoke(buildReflectionPrompt(item.input));
+            : await item.option.invoke(
+                buildReflectionPrompt(item.input),
+                item.input,
+              );
           parsePipelineOutput(analyses[index]!, item.input);
         }
       },

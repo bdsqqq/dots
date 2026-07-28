@@ -150,6 +150,7 @@ describe("memory evaluation dataset", () => {
       modes: ["memory-off", "current", "gold"],
       limit: 1,
       model: "test",
+      reasoning: "medium",
       invoke: () => '{"version":2,"action":"skip","reason":"test replay"}',
     });
     expect(replay.outputs).toBe(3);
@@ -171,6 +172,10 @@ describe("memory evaluation dataset", () => {
       `${caseId}-current.json`,
     );
     const pristineOutput = readFileSync(currentOutput, "utf8");
+    expect(JSON.parse(pristineOutput)).toMatchObject({
+      model: "test",
+      reasoning: "medium",
+    });
     const goldOutput = join(
       cfg.data,
       "v2",
@@ -195,6 +200,21 @@ describe("memory evaluation dataset", () => {
       }),
     ).toThrow("manifest replay output digest mismatch");
     writeFileSync(goldOutput, pristineGold);
+    writeFileSync(
+      currentOutput,
+      pristineOutput.replace('"reasoning": "medium"', '"reasoning": "low"'),
+    );
+    expect(() =>
+      gradeReplay({
+        cfg,
+        replayId: replay.replayId,
+        caseId,
+        mode: "current",
+        score: 0.8,
+        reason: "tampered reasoning",
+      }),
+    ).toThrow("manifest replay output digest mismatch");
+    writeFileSync(currentOutput, pristineOutput);
     writeFileSync(
       currentOutput,
       pristineOutput.replace("test replay", "tampered replay"),

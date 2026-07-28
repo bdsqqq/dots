@@ -150,6 +150,10 @@ pi-memory project
 pi-memory consolidate --limit 10
 pi-memory maintain
 
+# audit isolated background model sessions without polluting normal /resume
+pi-memory background sessions
+pi-memory background resume
+
 # inspect pending skill drafts or deferred memory conflicts
 pi-memory proposals --status pending
 pi-memory show prop_id
@@ -189,6 +193,8 @@ pi-memory eval export --out ~/.local/share/pi-memory/eval/reviewed-v1.jsonl
 pi-memory eval replay --dataset ~/.local/share/pi-memory/eval/reviewed-v1.jsonl \
   --modes memory-off,current,gold --limit 20 --allow-model-invocation
 ```
+
+background model calls use `PI_MEMORY_MODEL` (default `openai-codex/gpt-5.6-luna`) and the separate `PI_MEMORY_REASONING_LEVEL` (default `low`). each call persists an audit session under `PI_MEMORY_SESSION_DIR` (default `~/.local/share/pi-memory/v2/pi-sessions`) with tools, extensions, skills, prompt templates, and context files disabled. these sessions are intentionally outside normal `/resume` and memory projection roots; use `pi-memory background sessions` to inspect usage/cost or `pi-memory background resume` to print the isolated resume command.
 
 generated workflow state and the private git database live under `~/.local/share/pi-memory/v2`; retry and cadence state lives under `~/.local/state/pi-memory`. github sync is private and retryable. active markdown remains the readable worktree, but direct edits are rejected until explicitly adopted or discarded with `pi-memory repair`.
 
