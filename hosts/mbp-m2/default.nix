@@ -36,6 +36,13 @@ in {
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
 
+      home.activation.kindleLibrary =
+        lib.hm.dag.entryBetween [ "linkGeneration" ] [ "writeBoundary" ] ''
+          mkdir -p ${lib.escapeShellArg "${config.home.homeDirectory}/kindle"}
+        '';
+      home.file."commonplace/01_files/kindle".source =
+        config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/kindle";
+
       # declarative syncthing settings (daemon managed by launchd in system/syncthing.nix)
       services.syncthing = {
         enable = true;
@@ -60,7 +67,7 @@ in {
           };
 
           devices =
-            syncthing.devicesFor [ "htz-relay" "lgo-z2e" "iph16" "ipd" ];
+            syncthing.devicesFor [ "htz-relay" "lgo-z2e" "iph16" "ipd" "kindle" ];
 
           folders = {
             commonplace =
@@ -80,6 +87,10 @@ in {
                 "htz-relay"
                 "lgo-z2e"
               ]
+                { };
+            kindle =
+              syncthing.folderFor "kindle" config.home.homeDirectory true
+                [ "kindle" ]
                 { };
           };
         };

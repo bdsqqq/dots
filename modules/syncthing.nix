@@ -40,6 +40,10 @@ rec {
       id = "YORN2Q5-DWT444V-65WLF77-JHDHP5X-HHZEEFO-NKTLTYZ-M777AXS-X2KX6AF";
       addresses = [ "tcp://ipd:22000" "quic://ipd:22000" ];
     };
+    kindle = {
+      id = "IOE3UB4-G5GKJ4C-BO5HWG3-HFY7TYZ-P6C5EVT-Q46ZJ4U-N2XEFRH-2LRAVQS";
+      addresses = [ "tcp://kindle:22000" "quic://kindle:22000" ];
+    };
   };
 
   /* `devicesFor :: [String] -> AttrSet`
@@ -64,8 +68,9 @@ rec {
      - commonplace: `${home}/commonplace`
      - prism-instances: darwin: `${home}/Library/Application Support/PrismLauncher/instances`
                          linux: `${home}/.local/share/PrismLauncher/instances`
-     - pi-sessions: `${home}/.pi/agent/sessions`
-     - helium-remotes: `${home}/.local/share/helium-remotes`
+       - pi-sessions: `${home}/.pi/agent/sessions`
+       - helium-remotes: `${home}/.local/share/helium-remotes`
+       - kindle: `${home}/kindle`
   */
   folderPaths = name: home: isDarwin:
     let
@@ -77,6 +82,7 @@ rec {
           "${home}/.local/share/PrismLauncher/instances";
         pi-sessions = "${home}/.pi/agent/sessions";
         helium-remotes = "${home}/.local/share/helium-remotes";
+        kindle = "${home}/kindle";
       };
     in paths.${name};
 
@@ -149,6 +155,7 @@ rec {
       "(?d)(?i)**/.DS_Store"
       "(?d)(?i)**/Thumbs.db"
       "(?d)(?i)**/desktop.ini"
+      "(?d)(?i)/01_files/kindle"
       "**/.keep"
       ""
     ]);
@@ -159,6 +166,7 @@ rec {
     prism-instances = "prism-instances";
     pi-sessions = "pi-sessions";
     helium-remotes = "helium-remotes";
+    kindle = "kindle";
   };
 
   /* `mkFolder :: String -> String -> [String] -> AttrSet -> AttrSet`
