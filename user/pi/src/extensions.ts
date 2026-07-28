@@ -1,4 +1,5 @@
 export { default as agentMemory } from "../packages/extensions/agent-memory/index";
+export { default as agentMessage } from "../packages/extensions/agent-message/index";
 export { default as applyPatch } from "../packages/extensions/apply-patch/index";
 export { default as bash } from "../packages/extensions/bash/index";
 export { default as codeReview } from "../packages/extensions/code-review/index";
