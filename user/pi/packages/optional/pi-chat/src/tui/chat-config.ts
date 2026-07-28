@@ -194,14 +194,21 @@ async function promptAccessPolicy(
 			return policy;
 		}
 		if (choice === "trigger") {
-			const selected = await selectItem(ctx, "Trigger mode", [
+			const triggerModes = [
 				{ value: "mention", label: "Mention", description: "Only @mentions create jobs" },
 				{
 					value: "message",
 					label: "Message",
 					description: dm ? "Every DM message creates a job" : "Every matching message creates a job",
 				},
-			]);
+			];
+			if (!dm)
+				triggerModes.splice(1, 0, {
+					value: "observe",
+					label: "Observe",
+					description: "An @mention starts a renewable 15-minute channel or thread lease",
+				});
+			const selected = await selectItem(ctx, "Trigger mode", triggerModes);
 			if (selected) policy = { ...policy, trigger: selected as AccessPolicy["trigger"] };
 			continue;
 		}

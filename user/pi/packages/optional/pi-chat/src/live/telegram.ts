@@ -400,5 +400,6 @@ export async function connectTelegramLive(
 		syncPreview: async (markdown, done = false) => preview.update(markdown, done),
 		clearPreview: async () => preview.clear(),
 		setReplyTo: (messageId) => preview.setReplyTo(messageId),
+		setObservedScopes: async () => {},
 	};
 }

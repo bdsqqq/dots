@@ -13,7 +13,7 @@ Discord/Telegram ←→ Live Adapter ←→ Runtime (log, jobs, slices) ←→ p
 
 - **One VM per connection.** Started on `/chat-connect`, closed on `/chat-disconnect`. `/chat-spawn-all` launches one detached tmux/pi worker per configured channel using the `--chat-conversation <account/channel>` extension flag. `/chat-workers`, `/chat-open-all`, and `/chat-kill-all` manage those workers through tmux. Workers write status JSON to `~/.pi/agent/chat/worker-status/`; the `chat_workers` tool reads it.
 - **One JSONL log per channel.** Append-only event stream: inbound, outbound, job lifecycle.
-- **Trigger-based dispatch.** Mentions in channels, every message in DMs. Triggers queue jobs; jobs produce slices of inbound records for the agent.
+- **Trigger-based dispatch.** Channels support mention, every-message, or observe mode. Observe mode gives each mentioned channel/thread an independently renewable 15-minute lease; the model may answer with `[NO_REPLY]`. DMs dispatch every message.
 - **Tools run inside the VM.** `read`, `write`, `edit`, `bash` are routed through Gondolin. `chat_history` and `chat_attach` run on the host. `PI_CHAT_COMMONPLACE_ROOT` is mounted read-only at `/commonplace`; attachment staging remains restricted to `/workspace` and `/shared`.
 
 ## Entry point
@@ -96,7 +96,7 @@ Discord/Telegram ←→ Live Adapter ←→ Runtime (log, jobs, slices) ←→ p
 
 ## Job/slice semantics
 
-- `job_queued` records a trigger. `sliceStartRecordId` is derived at dispatch time from the last `job_completed.triggerRecordId`.
+- `job_queued` records a trigger and remote scope. `sliceStartRecordId` is derived per channel/thread from the last `job_completed.triggerRecordId`.
 - Failed jobs do not advance the consumption boundary.
 - The prompt slice includes all inbound records between the last completed boundary and the trigger.
 - On reconnect, catch-up messages are logged but do not trigger until a new trigger arrives after arming.
