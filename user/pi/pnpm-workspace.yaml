@@ -3,6 +3,9 @@ packages:
   - packages/extensions/*
   - packages/optional/*
 
+patchedDependencies:
+  "@earendil-works/gondolin@0.7.0": patches/gondolin-0.7.0.patch
+
 catalog:
   "@earendil-works/pi-ai": ^0.82.0
   "@earendil-works/pi-coding-agent": ^0.82.0
@@ -12,9 +15,11 @@ catalog:
 allowBuilds:
   "@google/genai": true
   "@letta-ai/trajectory@https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83": true
+  cpu-features: set this to true or false
   esbuild: true
   koffi: true
   protobufjs: true
+  ssh2: set this to true or false
 
 # Remove after Pi 0.82.0 clears the 48-hour release-age policy.
 minimumReleaseAgeExclude:
