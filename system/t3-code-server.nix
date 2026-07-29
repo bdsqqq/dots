@@ -47,6 +47,13 @@ let
       --tailscale-serve-port ${toString tailscaleServePort} \
       --no-browser
   '';
+  t3Fork = pkgs.writeShellApplication {
+    name = "t3-fork";
+    runtimeInputs = [ pkgs.nodejs ];
+    text = ''
+      exec node ${lib.escapeShellArg developmentServer} "$@"
+    '';
+  };
   t3PiDeploy = pkgs.writeShellApplication {
     name = "t3-pi-deploy";
     runtimeInputs = [
@@ -167,7 +174,10 @@ let
 in
 if isLinux then
   {
-    environment.systemPackages = [ t3PiDeploy ];
+    environment.systemPackages = [
+      t3Fork
+      t3PiDeploy
+    ];
 
     systemd.services.t3-code = {
       description = "T3 Code server";
@@ -204,7 +214,10 @@ if isLinux then
   }
 else if isDarwin then
   {
-    environment.systemPackages = [ t3PiDeploy ];
+    environment.systemPackages = [
+      t3Fork
+      t3PiDeploy
+    ];
 
     launchd.user.agents.t3-code = {
       path = [
