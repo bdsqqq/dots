@@ -7,7 +7,12 @@ else
     homebrew = {
       enable = true;
 
-      taps = [ "homebrew/cask" ];
+      taps = [
+        "depot/tap"
+        "homebrew/cask"
+      ];
+
+      brews = [ "depot" ];
 
       casks = [
         # System utilities
