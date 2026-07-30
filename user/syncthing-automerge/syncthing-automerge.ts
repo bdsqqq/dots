@@ -13,8 +13,22 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, rmSync, statSync, watch } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  chmodSync,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  watch,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 // ============================================================================
 // TYPES
@@ -58,7 +72,7 @@ const CONFLICT_PATTERN =
 /**
  * Parse a potential conflict file path. Returns null if not a conflict file.
  */
-function parseConflictFile(filePath: string, cwd: string): ConflictMatch | null {
+export function parseConflictFile(filePath: string, cwd: string): ConflictMatch | null {
   const relativePath = relative(cwd, filePath);
   const match = relativePath.match(CONFLICT_PATTERN);
 
@@ -79,37 +93,47 @@ function parseConflictFile(filePath: string, cwd: string): ConflictMatch | null 
 }
 
 /**
- * Find the latest backup file in .stversions/ matching the original file.
+ * Find the matching trash-can backup, or the latest timestamped backup used
+ * by Syncthing's simple and staggered versioning strategies.
  */
-function findBackupFile(originalPath: string, extension: string, cwd: string): string | null {
+export function findBackupFile(
+  originalPath: string,
+  extension: string,
+  cwd: string
+): string | null {
   const stversionsDir = join(cwd, ".stversions");
   if (!existsSync(stversionsDir)) return null;
 
-  // Backup pattern: .stversions/filename~YYYYMMDD-HHMMSS.ext
-  const baseName = originalPath.replace(/\.[^.]+$/, "");
+  const trashCanBackup = join(stversionsDir, originalPath);
+  if (existsSync(trashCanBackup) && statSync(trashCanBackup).isFile()) {
+    return relative(cwd, trashCanBackup);
+  }
+
+  const backupDir = join(stversionsDir, dirname(originalPath));
+  if (!existsSync(backupDir)) return null;
+
+  const fileName = originalPath.slice(originalPath.lastIndexOf("/") + 1);
+  const baseName = extension ? fileName.slice(0, -(extension.length + 1)) : fileName;
+  const extensionPattern = extension ? `\\.${escapeRegex(extension)}` : "";
   const backupPattern = new RegExp(
-    `^${escapeRegex(baseName)}~([0-9]{8})-([0-9]{6})\\.${escapeRegex(extension)}$`
+    `^${escapeRegex(baseName)}~([0-9]{8})-([0-9]{6})${extensionPattern}$`
   );
 
   const backups: { path: string; date: string; time: string }[] = [];
 
-  function scanDir(dir: string) {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        scanDir(fullPath);
-      } else {
-        const rel = relative(cwd, fullPath);
-        const match = rel.match(backupPattern);
+  try {
+    for (const entry of readdirSync(backupDir, { withFileTypes: true })) {
+      if (entry.isFile()) {
+        const match = entry.name.match(backupPattern);
         if (match) {
-          backups.push({ path: rel, date: match[1], time: match[2] });
+          backups.push({
+            path: relative(cwd, join(backupDir, entry.name)),
+            date: match[1],
+            time: match[2],
+          });
         }
       }
     }
-  }
-
-  try {
-    scanDir(stversionsDir);
   } catch {
     return null;
   }
@@ -130,27 +154,79 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function hashFile(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
 /**
- * Perform git three-way merge.
+ * Merge into a temporary file, then replace the original only if all three
+ * inputs stayed unchanged while Git was running. The displaced original is
+ * retained until the merged result has been installed without overwriting a
+ * concurrently recreated canonical path.
  */
-async function mergeFiles(original: string, backup: string, conflict: string, cwd: string): Promise<boolean> {
-  const exitCode = await new Promise<number>((resolve, reject) => {
-    const child = spawn("git", ["merge-file", "--union", original, backup, conflict], {
+export async function mergeFiles(
+  original: string,
+  backup: string,
+  conflict: string,
+  cwd: string
+): Promise<boolean> {
+  const paths = [original, backup, conflict].map((path) => resolve(cwd, path));
+  const hashes = paths.map(hashFile);
+
+  const result = await new Promise<{ exitCode: number; output: Buffer }>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const child = spawn("git", ["merge-file", "-p", original, backup, conflict], {
       cwd,
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "ignore"],
     });
 
+    child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
     child.on("error", reject);
-    child.on("close", (code) => resolve(code ?? 1));
+    child.on("close", (code) => {
+      resolve({ exitCode: code ?? 1, output: Buffer.concat(chunks) });
+    });
   });
 
-  return exitCode === 0;
+  if (result.exitCode !== 0 || paths.some((path, index) => hashFile(path) !== hashes[index])) {
+    return false;
+  }
+
+  const originalFullPath = paths[0];
+  const stagingDir = join(cwd, ".stversions", ".syncthing-automerge");
+  mkdirSync(stagingDir, { recursive: true });
+  const token = randomUUID();
+  const temporaryPath = join(stagingDir, `${token}.merged`);
+  const recoveryPath = join(stagingDir, `${token}.${basename(originalFullPath)}.original`);
+
+  try {
+    writeFileSync(temporaryPath, result.output);
+    chmodSync(temporaryPath, statSync(originalFullPath).mode);
+
+    renameSync(originalFullPath, recoveryPath);
+    if (hashFile(recoveryPath) !== hashes[0]) {
+      if (!existsSync(originalFullPath)) renameSync(recoveryPath, originalFullPath);
+      return false;
+    }
+
+    try {
+      linkSync(temporaryPath, originalFullPath);
+    } catch {
+      if (!existsSync(originalFullPath)) renameSync(recoveryPath, originalFullPath);
+      return false;
+    }
+
+    rmSync(recoveryPath);
+  } finally {
+    rmSync(temporaryPath, { force: true });
+  }
+
+  return true;
 }
 
 /**
  * Handle a potential conflict file. Returns true if merge was performed.
  */
-async function handleConflict(filePath: string, cwd: string): Promise<boolean> {
+export async function handleConflict(filePath: string, cwd: string): Promise<boolean> {
   // Check file exists
   if (!existsSync(filePath) || !statSync(filePath).isFile()) {
     return false;
@@ -185,22 +261,66 @@ async function handleConflict(filePath: string, cwd: string): Promise<boolean> {
 
   console.log(`Latest backup file: ${backupPath}`);
 
+  const conflictFullPath = resolve(cwd, parsed.conflictPath);
+  const stagingDir = join(cwd, ".stversions", ".syncthing-automerge");
+  mkdirSync(stagingDir, { recursive: true });
+  const stagedConflict = join(stagingDir, `${randomUUID()}.conflict`);
+  renameSync(conflictFullPath, stagedConflict);
+
   // Perform merge
   console.log("Performing three-way merge...");
-  const success = await mergeFiles(parsed.originalPath, backupPath, parsed.conflictPath, cwd);
+  let success: boolean;
+  try {
+    success = await mergeFiles(
+      parsed.originalPath,
+      backupPath,
+      relative(cwd, stagedConflict),
+      cwd
+    );
+  } catch (error) {
+    if (!existsSync(conflictFullPath)) renameSync(stagedConflict, conflictFullPath);
+    throw error;
+  }
 
   if (!success) {
-    console.error("Git merge failed!");
+    console.error("Merge was not clean; preserving conflict");
+    if (!existsSync(conflictFullPath)) {
+      renameSync(stagedConflict, conflictFullPath);
+    } else {
+      console.error(`Conflict snapshot retained at ${relative(cwd, stagedConflict)}`);
+    }
     return false;
   }
 
-  // Delete conflict file
+  // Delete the immutable conflict snapshot used by the successful merge.
   console.log("Deleting conflict file");
-  rmSync(resolve(cwd, parsed.conflictPath));
+  rmSync(stagedConflict);
 
   console.log("Deconfliction done!");
   console.log();
   return true;
+}
+
+export function createConflictQueue(cwd: string) {
+  const pending = new Map<string, Promise<boolean>>();
+
+  return (filePath: string): Promise<boolean> => {
+    const parsed = parseConflictFile(filePath, cwd);
+    if (!parsed) return Promise.resolve(false);
+
+    const previous = pending.get(parsed.originalPath) ?? Promise.resolve(false);
+    const current = previous
+      .catch(() => false)
+      .then(() => handleConflict(filePath, cwd))
+      .finally(() => {
+        if (pending.get(parsed.originalPath) === current) {
+          pending.delete(parsed.originalPath);
+        }
+      });
+
+    pending.set(parsed.originalPath, current);
+    return current;
+  };
 }
 
 // ============================================================================
@@ -211,10 +331,7 @@ async function main() {
   const cwd = process.cwd();
   console.log("Running Syncthing deconflicter");
   console.log(`Watching: ${cwd}`);
-
-  // Track recently processed files to dedupe rapid events
-  const recentlyProcessed = new Map<string, number>();
-  const DEDUPE_WINDOW_MS = 500;
+  const enqueueConflict = createConflictQueue(cwd);
 
   const watcher = watch(
     ".",
@@ -222,24 +339,7 @@ async function main() {
     (_event: string, filename: string | null) => {
       if (!filename) return;
 
-      // Dedupe rapid fire events
-      const now = Date.now();
-      const lastProcessed = recentlyProcessed.get(filename);
-      if (lastProcessed && now - lastProcessed < DEDUPE_WINDOW_MS) {
-        return;
-      }
-      recentlyProcessed.set(filename, now);
-
-      // Clean old entries periodically
-      if (recentlyProcessed.size > 1000) {
-        for (const [key, timestamp] of recentlyProcessed) {
-          if (now - timestamp > DEDUPE_WINDOW_MS * 2) {
-            recentlyProcessed.delete(key);
-          }
-        }
-      }
-
-      handleConflict(resolve(cwd, filename), cwd).catch((e) => {
+      enqueueConflict(resolve(cwd, filename)).catch((e) => {
         console.error(`Error handling ${filename}:`, e.message);
       });
     }
@@ -253,7 +353,9 @@ async function main() {
   await new Promise(() => {});
 }
 
-main().catch((e) => {
-  console.error("Fatal error:", e);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => {
+    console.error("Fatal error:", e);
+    process.exit(1);
+  });
+}

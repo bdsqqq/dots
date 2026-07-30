@@ -9,7 +9,8 @@
     "noEmit": true,
     "types": ["node"],
     "module": "esnext",
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true
   },
   "include": ["*.ts"]
 }
