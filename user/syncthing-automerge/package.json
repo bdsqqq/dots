@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node --test syncthing-automerge.test.ts",
+    "typecheck": "tsc"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0"
   }
