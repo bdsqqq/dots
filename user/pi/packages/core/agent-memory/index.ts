@@ -79,6 +79,7 @@ import {
 import {
   parseStoredPipelineInput,
   processPipelineBatches,
+  reflectionAutonomyState,
 } from "./pipeline.js";
 import {
   buildAdaptationPrompt,
@@ -1588,8 +1589,20 @@ async function consolidateV2UnlockedObserved(
   );
   const applied: string[] = [];
   const deferred: string[] = [];
+  const localReview: string[] = [];
   for (const proposal of autonomous)
     try {
+      if (/^[a-f0-9]{64}$/.test(proposal.provenance.runId)) {
+        const autonomy = reflectionAutonomyState(
+          cfg,
+          proposal.provenance.runId,
+          proposal.id,
+        );
+        if (autonomy !== "allowed") {
+          localReview.push(proposal.id);
+          continue;
+        }
+      }
       applyMemoryProposal({
         cfg,
         id: proposal.id,
@@ -1608,6 +1621,7 @@ async function consolidateV2UnlockedObserved(
       pending: autonomous.length,
       applied,
       deferred,
+      localReview,
     },
   });
   const batches = batchWindows(pendingWindows(limit));
@@ -1653,6 +1667,18 @@ async function consolidateV2UnlockedObserved(
             model: {
               model: input.model ?? configuredModel.model,
               reasoning: input.reasoning ?? configuredModel.reasoning,
+            },
+            runId: input.runId,
+          }),
+        criticInvoke: (prompt, input) =>
+          runAuditedAsync({
+            cfg,
+            kind: "reflection-critic",
+            identity: input.runId,
+            prompt,
+            model: {
+              model: input.model,
+              reasoning: input.reasoning,
             },
             runId: input.runId,
           }),
@@ -1821,7 +1847,7 @@ function adaptationObservations(
       const path = join(root, name, "input.json");
       if (!existsSync(path)) return [];
       const input = parseStoredPipelineInput(readFileSync(path, "utf8"));
-      if (input.version !== 3) return [];
+      if (input.version === 2) return [];
       for (const observation of input.observations)
         validateTurnObservationRefs(observation, input.catalog);
       return input.observations;

@@ -22,7 +22,7 @@ import {
   type RollbackEvidence,
   type TurnObservation,
 } from "./adaptation.js";
-import { parseModelProposal } from "./schema.js";
+import { parseModelProposal, type Proposal } from "./schema.js";
 import {
   applyMemoryProposal,
   assertNonOverlappingMemoryProposals,
@@ -68,13 +68,44 @@ export type PipelineInputV3 = Omit<
   observations: TurnObservation[];
   rollbackEvidence: RollbackEvidence[];
 };
-export type PipelineInput = PipelineInputV2 | PipelineInputV3;
+export type PipelineInputV4 = Omit<
+  PipelineInputV3,
+  "version" | "promptVersion"
+> & {
+  version: 4;
+  promptVersion: 4;
+  supersessionBasis: Array<{
+    id: string;
+    runId: string;
+    operation: Proposal["operation"];
+  }>;
+};
+export type PipelineInput = PipelineInputV2 | PipelineInputV3 | PipelineInputV4;
 
 export type PipelineResult = {
   runId: string;
   action: "skip" | "propose";
   proposalIds: string[];
   coveredCheckpointIds: string[];
+};
+
+export type PipelineCriticInput = {
+  version: 1;
+  promptVersion: 1;
+  runId: string;
+  model: string;
+  reasoning: ReasoningLevel;
+  autonomousApply: boolean;
+  reflectionInput: PipelineInput;
+  reflectionOutput: ReturnType<typeof parseModelProposal>;
+};
+
+type PipelineCriticOutput = {
+  version: 1;
+  runId: string;
+  criticInputSha256: string;
+  decision: "allow-autonomous-apply" | "require-local-review";
+  reason: string;
 };
 
 export function parseStoredPipelineInput(raw: string): PipelineInput {
@@ -98,7 +129,10 @@ export function parseStoredPipelineInput(raw: string): PipelineInput {
     "skills",
     "targets",
     "version",
-    ...(version === 3 ? ["observations", "rollbackEvidence"] : []),
+    ...(version === 3 || version === 4
+      ? ["observations", "rollbackEvidence"]
+      : []),
+    ...(version === 4 ? ["supersessionBasis"] : []),
   ];
   if (input.model === undefined)
     expectedFields.splice(expectedFields.indexOf("model"), 1);
@@ -108,7 +142,8 @@ export function parseStoredPipelineInput(raw: string): PipelineInput {
     Object.keys(input).sort().join(",") !== expectedFields.sort().join(",") ||
     !(
       (version === 2 && input.promptVersion === 2) ||
-      (version === 3 && input.promptVersion === 3)
+      (version === 3 && input.promptVersion === 3) ||
+      (version === 4 && input.promptVersion === 4)
     ) ||
     typeof input.runId !== "string" ||
     typeof input.batchId !== "string" ||
@@ -140,11 +175,22 @@ export function parseStoredPipelineInput(raw: string): PipelineInput {
     }) ||
     !Array.isArray(input.targets) ||
     !Array.isArray(input.pending) ||
+    (version === 4 &&
+      (!Array.isArray(input.supersessionBasis) ||
+        !input.supersessionBasis.every(
+          (item) =>
+            typeof item === "object" &&
+            item !== null &&
+            !Array.isArray(item) &&
+            typeof (item as Record<string, unknown>).runId === "string" &&
+            typeof (item as Record<string, unknown>).operation === "object" &&
+            (item as Record<string, unknown>).operation !== null,
+        ))) ||
     !Array.isArray(input.reviewSignals) ||
     !Array.isArray(input.skills) ||
     typeof input.catalog !== "object" ||
     input.catalog === null ||
-    (version === 3 &&
+    ((version === 3 || version === 4) &&
       (!Array.isArray(input.observations) ||
         !input.observations.every((item) => {
           try {
@@ -209,6 +255,98 @@ function parsePipelineOutput(raw: string, input: PipelineInput) {
   };
 }
 
+function frozenSupersessionBasis(input: PipelineInput) {
+  return input.version === 4 ? input.supersessionBasis : undefined;
+}
+
+function criticInput(
+  input: PipelineInput,
+  raw: string,
+  model: string,
+  reasoning: ReasoningLevel,
+  autonomousApply: boolean,
+): PipelineCriticInput {
+  return {
+    version: 1,
+    promptVersion: 1,
+    runId: input.runId,
+    model: input.model ?? model,
+    reasoning: input.reasoning ?? reasoning,
+    autonomousApply,
+    reflectionInput: input,
+    reflectionOutput: parsePipelineOutput(raw, input).parsed,
+  };
+}
+
+export function buildReflectionCriticPrompt(
+  input: PipelineCriticInput,
+): string {
+  const inputSha256 = sha256(JSON.stringify(input));
+  const prompt = `You are the independent critic for an autonomous memory-maintenance run. Return exactly one JSON object and no markdown.
+
+Return {"version":1,"runId":${JSON.stringify(input.runId)},"criticInputSha256":${JSON.stringify(inputSha256)},"decision":"allow-autonomous-apply|require-local-review","reason":"..."}.
+
+Allow autonomous application only when every proposed mutation is directly supported by its selected frozen evidence, durable rather than ephemeral, correctly scoped, non-duplicative, and safe. Require local review for any ambiguity. Do not rewrite proposals and do not treat the generator's confidence as evidence.
+
+${JSON.stringify(
+  {
+    ...input,
+    reflectionInput: modelFacingPipelineInput(input.reflectionInput),
+  },
+  null,
+  2,
+)}`;
+  if (prompt.length > 512_000)
+    throw new Error("reflection critic prompt exceeds 512000 character budget");
+  return prompt;
+}
+
+function parseCriticOutput(raw: string): PipelineCriticOutput {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw.trim());
+  } catch {
+    throw new Error("invalid reflection critic output");
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    throw new Error("invalid reflection critic output");
+  const record = value as Record<string, unknown>;
+  if (
+    Object.keys(record).sort().join(",") !==
+      "criticInputSha256,decision,reason,runId,version" ||
+    record.version !== 1 ||
+    typeof record.runId !== "string" ||
+    typeof record.criticInputSha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(record.criticInputSha256) ||
+    (record.decision !== "allow-autonomous-apply" &&
+      record.decision !== "require-local-review") ||
+    typeof record.reason !== "string" ||
+    !record.reason.trim() ||
+    record.reason.length > 1_000
+  )
+    throw new Error("invalid reflection critic output");
+  return {
+    version: 1,
+    runId: record.runId,
+    criticInputSha256: record.criticInputSha256,
+    decision: record.decision,
+    reason: record.reason.trim(),
+  };
+}
+
+function parseBoundCriticOutput(
+  raw: string,
+  input: PipelineCriticInput,
+): PipelineCriticOutput {
+  const output = parseCriticOutput(raw);
+  if (
+    output.runId !== input.runId ||
+    output.criticInputSha256 !== sha256(JSON.stringify(input))
+  )
+    throw new Error("reflection critic output binding mismatch");
+  return output;
+}
+
 function expectedStoredResult(
   cfg: MemoryConfig,
   input: PipelineInput,
@@ -234,6 +372,9 @@ function expectedStoredResult(
       evidence: input.evidence.map((item) => item.window),
       catalog: input.catalog,
       pending: listProposals(cfg),
+      ...(frozenSupersessionBasis(input)
+        ? { supersessionBasis: frozenSupersessionBasis(input) }
+        : {}),
       createdAt: input.createdAt,
       autonomous: true,
       ...(digestVersion === 2 ? { digestVersion } : {}),
@@ -373,7 +514,7 @@ export function freezePipelineInput(
   for (const observation of validatedObservations)
     validateTurnObservationRefs(observation, catalog);
   const scopedIds = new Set(catalog.entries.map((entry) => entry.memoryId));
-  const pending = listProposals(cfg)
+  const pendingProposals = listProposals(cfg)
     .filter((proposal) => {
       const op = proposal.operation;
       if (op.type === "skill-draft") return true;
@@ -383,13 +524,18 @@ export function freezePipelineInput(
         );
       return "target" in op && scopedIds.has(op.target.memoryId);
     })
-    .slice(-20)
-    .map((proposal) => ({
-      id: proposal.id,
-      lane: proposal.lane,
-      operation: proposal.operation.type,
-      summary: operationSummary(proposal.operation),
-    }));
+    .slice(-20);
+  const pending = pendingProposals.map((proposal) => ({
+    id: proposal.id,
+    lane: proposal.lane,
+    operation: proposal.operation.type,
+    summary: operationSummary(proposal.operation),
+  }));
+  const supersessionBasis = pendingProposals.map((proposal) => ({
+    id: proposal.id,
+    runId: proposal.provenance.runId,
+    operation: proposal.operation,
+  }));
   const reviewSignals = readReviewReceipts(cfg)
     .filter((review) => review.reviewer === "local-cli")
     .slice(-40)
@@ -423,7 +569,7 @@ export function freezePipelineInput(
     .slice(-20);
   const rollbackEvidence = listVerifiedRollbackEvidence(cfg, catalog);
   const windowIds = evidence.map((item) => item.window.windowId).sort();
-  const batchId = sha256(`${scope}\0${windowIds.join("\0")}\0v3`);
+  const batchId = sha256(`${scope}\0${windowIds.join("\0")}\0v4`);
   const contextHash = sha256(
     JSON.stringify({
       catalog: catalog.entries.map(({ memoryId, sha256: hash }) => [
@@ -431,6 +577,7 @@ export function freezePipelineInput(
         hash,
       ]),
       pending,
+      supersessionBasis,
       reviewSignals,
       observations: validatedObservations,
       rollbackEvidence,
@@ -441,10 +588,10 @@ export function freezePipelineInput(
   const evidenceHash = sha256(JSON.stringify(evidence));
   const runId = sha256(`${batchId}\0${evidenceHash}\0${contextHash}`);
   return {
-    version: 3,
+    version: 4,
     runId,
     batchId,
-    promptVersion: 3,
+    promptVersion: 4,
     model,
     reasoning,
     createdAt: new Date().toISOString(),
@@ -453,6 +600,7 @@ export function freezePipelineInput(
     catalog,
     targets: selectTargets(cfg, catalog, evidence),
     pending,
+    supersessionBasis,
     reviewSignals,
     observations: validatedObservations,
     rollbackEvidence,
@@ -462,14 +610,7 @@ export function freezePipelineInput(
 
 export function buildReflectionPrompt(input: PipelineInput): string {
   const targetIds = input.targets.map((target) => target.memoryId);
-  const reflectionInput =
-    input.version === 3
-      ? (({
-          observations: _observations,
-          rollbackEvidence: _rollbackEvidence,
-          ...rest
-        }) => rest)(input)
-      : input;
+  const reflectionInput = modelFacingPipelineInput(input);
   const prompt = `You are a background memory maintainer. Return exactly one JSON object and no markdown.
 
 First reflect on whether the bounded evidence contains durable, reusable learning. Prefer explicit corrections, verified failures, stable preferences, architectural decisions, and repeated workflows. Do not store secrets, raw logs, temporary task state, or facts already represented adequately.
@@ -480,10 +621,11 @@ Memory proposals use lane "memory" and one operation:
 Each proposal must include "evidenceWindowIds", a nonempty list of unique window IDs selected from the frozen evidence. Select only evidence that supports that proposal.
 - create: {"type":"create","artifact":ARTIFACT}
 - update: {"type":"update","targetId":"...","artifact":ARTIFACT}
+- replace: {"type":"replace","targetId":"...","oldSpan":"exact unique body text","newSpan":"replacement text"}
 - merge: {"type":"merge","primaryId":"...","targetIds":["..."],"artifact":ARTIFACT}
 - archive: {"type":"archive","targetId":"...","reason":"..."}
 - retire: {"type":"retire","targetId":"...","reason":"...","supersededBy":"optional memory id"}
-ARTIFACT is exactly {"title":"","kind":"preference|decision|gotcha|pattern","scope":"","description":"when this is useful","triggers":[],"keywords":[],"body":""}. Creates may use scope ${JSON.stringify(input.scope)} or "global". Updates and merges must preserve the target scope.
+ARTIFACT is exactly {"title":"","kind":"preference|decision|gotcha|pattern","scope":"","description":"when this is useful","triggers":[],"keywords":[],"body":""}. Creates may use scope ${JSON.stringify(input.scope)} or "global". Updates and merges must preserve the target scope. Prefer replace for precise body edits; oldSpan must occur exactly once and must not include frontmatter or line-number annotations. Use update only when the memory's structure or metadata must change.
 Only these target ids are allowed: ${JSON.stringify(targetIds)}.
 
 A skill proposal is exceptional and requires a reusable multi-step workflow evidenced by at least two distinct sessions. It uses lane "skill" and operation {"type":"skill-draft","mode":"create|update","skillName":"kebab-case","targetPath":"name/SKILL.md","baseSha256":"required only for update; copy the installed skill hash","files":[{"path":"name/SKILL.md","content":"..."}]}. The system computes draft content hashes. Do not duplicate an installed skill.
@@ -494,6 +636,23 @@ ${JSON.stringify(reflectionInput, null, 2)}`;
   if (prompt.length > 512_000)
     throw new Error("reflection prompt exceeds 512000 character budget");
   return prompt;
+}
+
+function modelFacingPipelineInput(input: PipelineInput) {
+  return input.version === 4
+    ? (({
+        observations: _observations,
+        rollbackEvidence: _rollbackEvidence,
+        supersessionBasis: _supersessionBasis,
+        ...rest
+      }) => rest)(input)
+    : input.version === 3
+      ? (({
+          observations: _observations,
+          rollbackEvidence: _rollbackEvidence,
+          ...rest
+        }) => rest)(input)
+      : input;
 }
 
 function runDir(cfg: MemoryConfig, runId: string): string {
@@ -508,6 +667,54 @@ function writeCurrentOutputMetadata(dir: string): void {
   if (!existsSync(path)) atomicWrite(path, value);
 }
 
+function prepareCritic(
+  dir: string,
+  input: PipelineInput,
+  raw: string,
+  model: string,
+  reasoning: ReasoningLevel,
+  autonomousApply: boolean,
+): PipelineCriticInput | undefined {
+  const parsed = parsePipelineOutput(raw, input).parsed;
+  if (parsed.action === "skip") return undefined;
+  const value = criticInput(input, raw, model, reasoning, autonomousApply);
+  const path = join(dir, "critic-input.json");
+  const serialized = `${JSON.stringify(value, null, 2)}\n`;
+  if (existsSync(path) && readFileSync(path, "utf8") !== serialized)
+    throw new Error("frozen reflection critic input collision");
+  if (!existsSync(path)) atomicWrite(path, serialized);
+  return value;
+}
+
+function criticDecision(options: {
+  dir: string;
+  input: PipelineInput;
+  raw: string;
+  model: string;
+  reasoning: ReasoningLevel;
+  autonomousApply: boolean;
+  invoke?: (prompt: string, input: PipelineCriticInput) => string;
+}): PipelineCriticOutput | undefined {
+  const input = prepareCritic(
+    options.dir,
+    options.input,
+    options.raw,
+    options.model,
+    options.reasoning,
+    options.autonomousApply,
+  );
+  if (!input) return undefined;
+  const path = join(options.dir, "critic-output.json");
+  if (existsSync(path))
+    return parseBoundCriticOutput(readFileSync(path, "utf8"), input);
+  if (!options.invoke)
+    throw new Error("reflection critic invocation is required");
+  const raw = options.invoke(buildReflectionCriticPrompt(input), input);
+  const parsed = parseBoundCriticOutput(raw, input);
+  atomicWrite(path, `${JSON.stringify(parsed, null, 2)}\n`);
+  return parsed;
+}
+
 function existingFrozenInput(
   cfg: MemoryConfig,
   fresh: PipelineInput,
@@ -519,15 +726,20 @@ function existingFrozenInput(
     const path = join(root, name, "input.json");
     if (!existsSync(path)) continue;
     const candidate = parseStoredPipelineInput(readFileSync(path, "utf8"));
+    const legacyAnalysisExists =
+      candidate.version === 4 ||
+      existsSync(join(root, name, "output.json")) ||
+      existsSync(join(root, name, "result.json"));
     if (
+      legacyAnalysisExists &&
       (candidate.batchId === fresh.batchId ||
-        (candidate.version === 2 &&
+        ((candidate.version === 2 || candidate.version === 3) &&
           candidate.batchId ===
             sha256(
               `${fresh.scope}\0${fresh.evidence
                 .map((item) => item.window.windowId)
                 .sort()
-                .join("\0")}\0v2`,
+                .join("\0")}\0v${candidate.version}`,
             ))) &&
       sha256(JSON.stringify(candidate.evidence)) === evidenceHash
     )
@@ -582,8 +794,10 @@ export type PipelineBatchOptions = {
   reasoning?: ReasoningLevel;
   observations?: TurnObservation[];
   invoke: (prompt: string, input: PipelineInput) => string;
+  criticInvoke?: (prompt: string, input: PipelineCriticInput) => string;
   skipExternal?: boolean;
   autoApplyMemory?: boolean;
+  deferApply?: boolean;
 };
 
 function preparePipelineBatch(options: PipelineBatchOptions): {
@@ -629,8 +843,10 @@ export function processPipelineBatch(options: {
   reasoning?: ReasoningLevel;
   observations?: TurnObservation[];
   invoke: (prompt: string, input: PipelineInput) => string;
+  criticInvoke?: (prompt: string, input: PipelineCriticInput) => string;
   skipExternal?: boolean;
   autoApplyMemory?: boolean;
+  deferApply?: boolean;
 }): PipelineResult {
   const { input, dir } = preparePipelineBatch(options);
   const outputPath = join(dir, "output.json");
@@ -655,12 +871,27 @@ export function processPipelineBatch(options: {
     );
     if (
       result.action !== expected.action ||
+      JSON.stringify(result.proposalIds) !==
+        JSON.stringify(expected.proposals.map((proposal) => proposal.id)) ||
       JSON.stringify(stored) !== JSON.stringify(expected.proposals)
     )
       throw new Error("stored pipeline result does not match model output");
+    const verdict = criticDecision({
+      dir,
+      input,
+      raw: readFileSync(outputPath, "utf8"),
+      model: frozenModel,
+      reasoning: input.reasoning ?? options.reasoning ?? "low",
+      autonomousApply: options.autoApplyMemory !== false,
+      invoke: options.criticInvoke,
+    });
     for (const id of options.autoApplyMemory === false
       ? []
-      : result.proposalIds) {
+      : options.deferApply
+        ? []
+        : verdict?.decision !== "allow-autonomous-apply"
+          ? []
+          : result.proposalIds) {
       const proposal = findProposal(options.cfg, id).proposal;
       if (
         proposal.lane === "memory" &&
@@ -694,6 +925,15 @@ export function processPipelineBatch(options: {
     writeCurrentOutputMetadata(dir);
     atomicWrite(outputPath, `${JSON.stringify(JSON.parse(raw), null, 2)}\n`);
   }
+  const verdict = criticDecision({
+    dir,
+    input,
+    raw,
+    model: input.model ?? options.model,
+    reasoning: input.reasoning ?? options.reasoning ?? "low",
+    autonomousApply: options.autoApplyMemory !== false,
+    invoke: options.criticInvoke,
+  });
   const coveredCheckpointIds = input.evidence.flatMap(
     (item) => item.window.checkpointEntryIds,
   );
@@ -708,6 +948,9 @@ export function processPipelineBatch(options: {
       evidence: input.evidence.map((item) => item.window),
       catalog: input.catalog,
       pending: listProposals(options.cfg),
+      ...(frozenSupersessionBasis(input)
+        ? { supersessionBasis: frozenSupersessionBasis(input) }
+        : {}),
       createdAt: input.createdAt,
       autonomous: true,
       ...(!existsSync(outputMetadataPath) && input.model === undefined
@@ -728,7 +971,11 @@ export function processPipelineBatch(options: {
   };
   atomicWrite(resultPath, `${JSON.stringify(result, null, 2)}\n`);
   if (parsed.action === "propose")
-    for (const id of options.autoApplyMemory === false ? [] : proposalIds) {
+    for (const id of options.autoApplyMemory === false ||
+    options.deferApply ||
+    verdict?.decision !== "allow-autonomous-apply"
+      ? []
+      : proposalIds) {
       const proposal = findProposal(options.cfg, id).proposal;
       if (proposal.lane === "memory")
         applyMemoryProposal({
@@ -751,12 +998,80 @@ export function coveredCheckpointIds(cfg: MemoryConfig): Set<string> {
   );
 }
 
+export function reflectionAutonomyState(
+  cfg: MemoryConfig,
+  runId: string,
+  proposalId: string,
+): "not-reflection" | "missing" | "allowed" | "local-review" {
+  const dir = runDir(cfg, runId);
+  const inputPath = join(dir, "input.json");
+  if (!existsSync(inputPath)) return "not-reflection";
+  const input = parseStoredPipelineInput(readFileSync(inputPath, "utf8"));
+  if (input.runId !== runId)
+    throw new Error("reflection autonomy run identity mismatch");
+  const outputPath = join(dir, "output.json");
+  if (!existsSync(outputPath)) return "missing";
+  const outputRaw = readFileSync(outputPath, "utf8");
+  const parsed = parsePipelineOutput(outputRaw, input);
+  if (parsed.parsed.action !== "propose") return "missing";
+  const resultPath = join(dir, "result.json");
+  if (!existsSync(resultPath)) return "missing";
+  const result = parseStoredPipelineResult(
+    readFileSync(resultPath, "utf8"),
+    input,
+  );
+  if (!result.proposalIds.includes(proposalId)) return "missing";
+  const stored = result.proposalIds.map((id) => findProposal(cfg, id).proposal);
+  const model = input.model ?? stored[0]?.provenance.model;
+  if (!model) return "missing";
+  const expected = expectedStoredResult(
+    cfg,
+    input,
+    outputPath,
+    model,
+    stored.every((proposal) => proposal.digestVersion === 2) ? 2 : undefined,
+  );
+  if (
+    result.action !== expected.action ||
+    JSON.stringify(result.proposalIds) !==
+      JSON.stringify(expected.proposals.map((proposal) => proposal.id)) ||
+    JSON.stringify(stored) !== JSON.stringify(expected.proposals)
+  )
+    throw new Error("reflection autonomy result does not match output");
+  const criticInputPath = join(dir, "critic-input.json");
+  if (!existsSync(criticInputPath)) return "missing";
+  const expectedCritic = criticInput(
+    input,
+    outputRaw,
+    model,
+    input.reasoning ?? stored[0]?.provenance.reasoning ?? "low",
+    true,
+  );
+  if (
+    readFileSync(criticInputPath, "utf8") !==
+    `${JSON.stringify(expectedCritic, null, 2)}\n`
+  )
+    return "local-review";
+  const criticPath = join(dir, "critic-output.json");
+  if (!existsSync(criticPath)) return "missing";
+  return parseBoundCriticOutput(
+    readFileSync(criticPath, "utf8"),
+    expectedCritic,
+  ).decision === "allow-autonomous-apply"
+    ? "allowed"
+    : "local-review";
+}
+
 export async function processPipelineBatches(
   options: Array<
-    Omit<PipelineBatchOptions, "invoke"> & {
+    Omit<PipelineBatchOptions, "criticInvoke" | "invoke"> & {
       invoke: (
         prompt: string,
         input: PipelineInput,
+      ) => string | Promise<string>;
+      criticInvoke?: (
+        prompt: string,
+        input: PipelineCriticInput,
       ) => string | Promise<string>;
     }
   >,
@@ -775,32 +1090,35 @@ export async function processPipelineBatches(
     option,
     ...preparePipelineBatch(option as PipelineBatchOptions),
   }));
+  const runWave = async (
+    worker: (index: number) => void | Promise<void>,
+  ): Promise<void> => {
+    let next = 0;
+    await Promise.all(
+      Array.from(
+        { length: Math.min(parsedConcurrency, prepared.length) },
+        async () => {
+          for (;;) {
+            const index = next++;
+            if (index >= prepared.length) return;
+            await worker(index);
+          }
+        },
+      ),
+    );
+  };
   const analyses = new Array<string | undefined>(prepared.length);
-  let next = 0;
-  await Promise.all(
-    Array.from(
-      { length: Math.min(parsedConcurrency, prepared.length) },
-      async () => {
-        for (;;) {
-          const index = next++;
-          if (index >= prepared.length) return;
-          const item = prepared[index]!;
-          const outputPath = join(item.dir, "output.json");
-          const resultPath = join(item.dir, "result.json");
-          if (existsSync(outputPath) || existsSync(resultPath)) continue;
-          analyses[index] = item.option.skipExternal
-            ? '{"version":2,"action":"skip","reason":"external processing disabled"}'
-            : await item.option.invoke(
-                buildReflectionPrompt(item.input),
-                item.input,
-              );
-          parsePipelineOutput(analyses[index]!, item.input);
-        }
-      },
-    ),
-  );
-
-  return prepared.map((item, index) => {
+  await runWave(async (index) => {
+    const item = prepared[index]!;
+    const outputPath = join(item.dir, "output.json");
+    const resultPath = join(item.dir, "result.json");
+    if (existsSync(outputPath) || existsSync(resultPath)) return;
+    analyses[index] = item.option.skipExternal
+      ? '{"version":2,"action":"skip","reason":"external processing disabled"}'
+      : await item.option.invoke(buildReflectionPrompt(item.input), item.input);
+    parsePipelineOutput(analyses[index]!, item.input);
+  });
+  prepared.forEach((item, index) => {
     const raw = analyses[index];
     if (raw !== undefined) {
       const inputPath = join(item.dir, "input.json");
@@ -816,11 +1134,150 @@ export async function processPipelineBatches(
         `${JSON.stringify(JSON.parse(raw), null, 2)}\n`,
       );
     }
-    return processPipelineBatch({
+  });
+
+  const critiques = new Array<string | undefined>(prepared.length);
+  await runWave(async (index) => {
+    const item = prepared[index]!;
+    const outputPath = join(item.dir, "output.json");
+    const raw = readFileSync(outputPath, "utf8");
+    const input = prepareCritic(
+      item.dir,
+      item.input,
+      raw,
+      item.input.model ?? item.option.model,
+      item.input.reasoning ?? item.option.reasoning ?? "low",
+      item.option.autoApplyMemory !== false,
+    );
+    if (!input) return;
+    const criticOutputPath = join(item.dir, "critic-output.json");
+    if (existsSync(criticOutputPath)) {
+      parseBoundCriticOutput(readFileSync(criticOutputPath, "utf8"), input);
+      return;
+    }
+    if (!item.option.criticInvoke)
+      throw new Error("reflection critic invocation is required");
+    critiques[index] = await item.option.criticInvoke(
+      buildReflectionCriticPrompt(input),
+      input,
+    );
+    parseBoundCriticOutput(critiques[index]!, input);
+  });
+  prepared.forEach((item, index) => {
+    const raw = critiques[index];
+    if (raw !== undefined) {
+      const input = prepareCritic(
+        item.dir,
+        item.input,
+        readFileSync(join(item.dir, "output.json"), "utf8"),
+        item.input.model ?? item.option.model,
+        item.input.reasoning ?? item.option.reasoning ?? "low",
+        item.option.autoApplyMemory !== false,
+      )!;
+      atomicWrite(
+        join(item.dir, "critic-output.json"),
+        `${JSON.stringify(parseBoundCriticOutput(raw, input), null, 2)}\n`,
+      );
+    }
+  });
+
+  const proposalsByConfig = new Map<
+    MemoryConfig,
+    import("./schema.js").Proposal[]
+  >();
+  for (const item of prepared) {
+    const outputPath = join(item.dir, "output.json");
+    const parsed = parsePipelineOutput(
+      readFileSync(outputPath, "utf8"),
+      item.input,
+    ).parsed;
+    const resultPath = join(item.dir, "result.json");
+    if (parsed.action === "skip") {
+      if (existsSync(resultPath)) {
+        const result = parseStoredPipelineResult(
+          readFileSync(resultPath, "utf8"),
+          item.input,
+        );
+        if (result.action !== "skip")
+          throw new Error("stored pipeline result does not match model output");
+      }
+      continue;
+    }
+    const proposals = materializeModelProposals({
+      result: parsed,
+      runId: item.input.runId,
+      model: item.input.model ?? item.option.model,
+      ...(item.input.reasoning ? { reasoning: item.input.reasoning } : {}),
+      scope: item.input.scope,
+      evidence: item.input.evidence.map((evidence) => evidence.window),
+      catalog: item.input.catalog,
+      pending: listProposals(item.option.cfg),
+      ...(frozenSupersessionBasis(item.input)
+        ? { supersessionBasis: frozenSupersessionBasis(item.input) }
+        : {}),
+      createdAt: item.input.createdAt,
+      autonomous: true,
+      ...(existsSync(join(item.dir, "output-meta.json"))
+        ? { digestVersion: 2 as const }
+        : {}),
+    });
+    let preflight = proposals;
+    if (existsSync(resultPath)) {
+      const result = parseStoredPipelineResult(
+        readFileSync(resultPath, "utf8"),
+        item.input,
+      );
+      const found = result.proposalIds.map((id) =>
+        findProposal(item.option.cfg, id),
+      );
+      const stored = found.map((item) => item.proposal);
+      if (
+        JSON.stringify(result.proposalIds) !==
+          JSON.stringify(proposals.map((proposal) => proposal.id)) ||
+        JSON.stringify(stored) !== JSON.stringify(proposals)
+      )
+        throw new Error("stored pipeline result does not match model output");
+      preflight = proposals.filter(
+        (_proposal, index) => !found[index]?.path.includes("/reviewed/"),
+      );
+    }
+    if (preflight.length)
+      proposalsByConfig.set(item.option.cfg, [
+        ...(proposalsByConfig.get(item.option.cfg) ?? []),
+        ...preflight,
+      ]);
+  }
+  for (const [cfg, proposals] of proposalsByConfig)
+    assertNonOverlappingMemoryProposals(cfg, proposals);
+
+  const results = prepared.map((item) =>
+    processPipelineBatch({
       ...item.option,
+      deferApply: true,
       invoke: () => {
         throw new Error("analysis output was not published");
       },
-    });
+      criticInvoke: () => {
+        throw new Error("critic output was not published");
+      },
+    }),
+  );
+  prepared.forEach((item, index) => {
+    if (item.option.autoApplyMemory === false) return;
+    const result = results[index]!;
+    for (const id of result.proposalIds) {
+      if (
+        reflectionAutonomyState(item.option.cfg, result.runId, id) !== "allowed"
+      )
+        continue;
+      const proposal = findProposal(item.option.cfg, id).proposal;
+      if (proposal.lane === "memory")
+        applyMemoryProposal({
+          cfg: item.option.cfg,
+          id,
+          actor: "background-reflection",
+        });
+    }
   });
+  return results;
 }

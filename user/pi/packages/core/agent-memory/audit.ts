@@ -17,6 +17,7 @@ export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 export type ModelConfig = { model: string; reasoning: ReasoningLevel };
 export type AuditKind =
   | "reflection"
+  | "reflection-critic"
   | "adaptation"
   | "corpus-doctor"
   | "maintenance-analysis"
@@ -120,6 +121,7 @@ function parseRecord(raw: string): AuditRecord {
     value.version !== 1 ||
     ![
       "reflection",
+      "reflection-critic",
       "adaptation",
       "corpus-doctor",
       "maintenance-analysis",

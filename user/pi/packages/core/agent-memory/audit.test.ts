@@ -142,6 +142,16 @@ process.stdout.write("untrusted stdout");
     expect(second.record.sessionId).toBe(first.record.sessionId);
     expect(second.record.model).toBe("openai-codex/gpt-5.6-luna");
     expect(second.recoveredOutput).toBe("ok");
+    const critic = prepareAuditInvocation({
+      data,
+      kind: "reflection-critic",
+      identity: "run_abc",
+      runId: "run_abc",
+      prompt: "critic prompt",
+      model: "openai-codex/gpt-5.6-luna",
+      reasoning: "low",
+    });
+    expect(critic.record.sessionId).not.toBe(first.record.sessionId);
     expect(() =>
       prepareAuditInvocation({
         data,
@@ -158,7 +168,9 @@ process.stdout.write("untrusted stdout");
     expect(session).toMatch(/"model":"gpt-5.6-luna"/);
     expect(session).toMatch(/"thinkingLevel":"low"/);
     expect(session).toMatch(/"usage":/);
-    expect(listAuditSessions(data)[0]).toMatchObject({
+    expect(
+      listAuditSessions(data).find((item) => item.kind === "reflection"),
+    ).toMatchObject({
       kind: "reflection",
       sessionId: first.record.sessionId,
       model: "openai-codex/gpt-5.6-luna",

@@ -375,8 +375,9 @@ function validateStoredOperation(
     if (
       typeof value.oldSpan !== "string" ||
       !value.oldSpan ||
+      value.oldSpan.length > 4_000 ||
       typeof value.newSpan !== "string" ||
-      !value.newSpan
+      value.newSpan.length > 8_000
     )
       throw new Error("invalid stored replacement spans");
   } else if (value.type === "deduplicate") {
@@ -584,6 +585,11 @@ export function materializeModelProposals(options: {
   evidence: EvidenceRef[];
   catalog: Catalog;
   pending: Proposal[];
+  supersessionBasis?: Array<{
+    id: string;
+    runId: string;
+    operation: Proposal["operation"];
+  }>;
   createdAt?: string;
   corpusAware?: boolean;
   autonomous?: boolean;
@@ -594,7 +600,8 @@ export function materializeModelProposals(options: {
   const targets = new Map(
     options.catalog.entries.map((entry) => [entry.memoryId, entry]),
   );
-  const pendingIds = new Set(options.pending.map((item) => item.id));
+  const supersessionBasis = options.supersessionBasis ?? options.pending;
+  const pendingIds = new Set(supersessionBasis.map((item) => item.id));
   let skillCount = 0;
   return options.result.proposals.map((draft, index) => {
     const availableEvidence = new Map(
@@ -670,6 +677,13 @@ export function materializeModelProposals(options: {
             createdAt,
           ),
         };
+      } else if (op.type === "replace") {
+        operation = {
+          type: "replace",
+          target: memoryRef(target(targets, op.targetId)),
+          oldSpan: op.oldSpan,
+          newSpan: op.newSpan,
+        };
       } else {
         const current = target(targets, op.targetId);
         operation = {
@@ -690,10 +704,11 @@ export function materializeModelProposals(options: {
       lane: draft.lane,
       status: "pending" as const,
       operation,
-      supersedes: options.pending
+      supersedes: supersessionBasis
         .filter(
           (item) =>
-            item.provenance.runId !== options.runId &&
+            ("provenance" in item ? item.provenance.runId : item.runId) !==
+              options.runId &&
             pendingIds.has(item.id) &&
             JSON.stringify(item.operation) === JSON.stringify(operation),
         )
@@ -1053,6 +1068,7 @@ function memoryArtifact(text: string): MemoryArtifact {
 function rewriteFrontmatter(
   text: string,
   fields: Record<string, unknown>,
+  insertMissing = false,
 ): string {
   const match = /^(---\n)([\s\S]*?)(\n---)([\s\S]*)$/.exec(text);
   if (!match) throw new Error("invalid memory frontmatter");
@@ -1060,9 +1076,11 @@ function rewriteFrontmatter(
   for (const [field, value] of Object.entries(fields)) {
     const line = `${field}: ${JSON.stringify(value)}`;
     const pattern = new RegExp(`^${field}:.*$`, "m");
-    if (!pattern.test(frontmatter))
+    if (!pattern.test(frontmatter) && !insertMissing)
       throw new Error(`memory is missing ${field}`);
-    frontmatter = frontmatter.replace(pattern, line);
+    frontmatter = pattern.test(frontmatter)
+      ? frontmatter.replace(pattern, line)
+      : `${frontmatter}\n${line}`;
   }
   return `${match[1]}${frontmatter}${match[3]}${match[4]}`;
 }
@@ -1145,15 +1163,28 @@ function actionsFor(
   if (operation.type === "replace") {
     const from = currentTarget(cfg, operation.target);
     const before = readFileSync(from, "utf8");
-    const first = before.indexOf(operation.oldSpan);
-    if (first < 0 || first !== before.lastIndexOf(operation.oldSpan))
+    const bodyStart = before.indexOf("\n---\n", 3) + 5;
+    if (bodyStart < 5)
+      throw new Error("replacement target has invalid frontmatter");
+    const body = before.slice(bodyStart);
+    const bodyOffset = body.indexOf(operation.oldSpan);
+    if (bodyOffset < 0 || bodyOffset !== body.lastIndexOf(operation.oldSpan))
       throw new Error("replacement old span must occur exactly once");
+    const first = bodyStart + bodyOffset;
+    const replaced = `${before.slice(0, first)}${operation.newSpan}${before.slice(first + operation.oldSpan.length)}`;
     return [
       {
         from,
         to: from,
         before,
-        after: `${before.slice(0, first)}${operation.newSpan}${before.slice(first + operation.oldSpan.length)}`,
+        after: rewriteFrontmatter(
+          replaced,
+          {
+            updated: new Date().toISOString().slice(0, 10),
+            review_id: reviewId,
+          },
+          true,
+        ),
       },
     ];
   }
@@ -1916,7 +1947,7 @@ export function applyMemoryProposal(options: {
     cfg: options.cfg,
     id: found.proposal.id,
     decision: "accept",
-    reasonCode: "correct",
+    reasonCode: "autonomous",
     reason: "autonomously applied from bounded durable-memory evidence",
     reviewer: options.actor,
     reviewedAt: found.proposal.provenance.createdAt,
