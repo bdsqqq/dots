@@ -24,7 +24,10 @@ import {
   retrievalBenchmark,
   retrievalMetrics,
 } from "./evaluation.js";
-import { processPipelineBatch } from "./pipeline.js";
+import {
+  processPipelineBatch as processPipelineBatchRaw,
+  type PipelineCriticInput,
+} from "./pipeline.js";
 import { canonicalTurnReceiptId, type TurnReceipt } from "./receipt.js";
 import {
   claimMaintenanceEvent,
@@ -41,6 +44,24 @@ function config(): MemoryConfig {
     root: join(base, "memories"),
     skillsRoot: join(base, "skills"),
   };
+}
+
+function processPipelineBatch(
+  options: Parameters<typeof processPipelineBatchRaw>[0],
+) {
+  return processPipelineBatchRaw({
+    ...options,
+    criticInvoke: (_prompt, input: PipelineCriticInput) =>
+      JSON.stringify({
+        version: 1,
+        runId: input.runId,
+        criticInputSha256: createHash("sha256")
+          .update(JSON.stringify(input))
+          .digest("hex"),
+        decision: "allow-autonomous-apply",
+        reason: "test approval",
+      }),
+  });
 }
 
 const evidence: SafeEvidence = {

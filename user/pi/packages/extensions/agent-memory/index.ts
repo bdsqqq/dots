@@ -24,6 +24,7 @@ import type {
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { createWideEvent, flushLogs } from "@bds_pi/log";
 import {
   deriveAdaptationQuality,
   generateHotManifest,
@@ -672,6 +673,14 @@ export function createAgentMemoryExtension(
     let ancestryInitialized = false;
     let sessionReason: string | undefined;
     let sessionInitialLeafId: string | undefined;
+    let sessionObservation: ReturnType<typeof createWideEvent> | undefined;
+    let sessionStats = {
+      settledRuns: 0,
+      receipts: 0,
+      checkpoints: 0,
+      promptFailures: 0,
+      settlementFailures: 0,
+    };
     let promptGeneration = 0;
     let preparedPrompt: PromptSnapshot | undefined;
     let sessionPrompt: PromptSnapshot | null | undefined;
@@ -732,11 +741,26 @@ export function createAgentMemoryExtension(
               ...snapshot,
               refs: Object.freeze([...snapshot.refs]),
             });
+            sessionObservation?.set(
+              sessionPrompt === undefined
+                ? {
+                    prompt: {
+                      status: "prepared",
+                      catalogSha256: snapshot.catalogSha256,
+                      memories: snapshot.refs.length,
+                    },
+                  }
+                : { prompt: { preparation: "completed-late" } },
+            );
           }
         })
-        .catch(() => {
+        .catch((error) => {
           if (generation === promptGeneration) {
             preparedPrompt = undefined;
+            sessionStats.promptFailures += 1;
+            sessionObservation?.error(error, {
+              prompt: { status: "failed" },
+            });
             requestMaintenance();
           }
         });
@@ -817,78 +841,112 @@ export function createAgentMemoryExtension(
         { query: Type.String({ minLength: 1, maxLength: QUERY_MAX_CHARS }) },
         { additionalProperties: false },
       ),
-      async execute(toolCallId, params, signal) {
+      async execute(toolCallId, params, signal, _onUpdate, ctx) {
         const clean = redact(params.query.slice(0, QUERY_MAX_CHARS));
-        const result = await pi.exec(
-          process.env.QMD_BIN || "qmd",
-          [
-            "search",
-            "-c",
-            "agent-memories",
-            "--json",
-            "--full",
-            "--full-path",
-            clean.text,
-            "-n",
-            String(SEARCH_MAX_RESULTS),
-          ],
-          { cwd: memoryRoot(), signal, timeout: 15_000 },
-        );
-        if (result.code !== 0) throw new Error("memory search failed");
-        const rows: unknown = JSON.parse(result.stdout);
-        if (!Array.isArray(rows))
-          throw new Error("invalid memory search result");
-        const catalog = loadCatalog();
-        const refs = rows.flatMap((row) => {
-          if (!object(row)) return [];
-          const entry = qmdCatalogEntry(catalog, row);
-          return entry ? [ref(entry)] : [];
-        });
-        const shadow = [
-          ...new Map(refs.map((item) => [item.memoryId, item])).values(),
-        ];
-        const data = memoryData();
-        const root = memoryRoot();
-        const quality = deriveAdaptationQuality({
-          data,
-          root,
-          state: data,
-          skillsRoot: root,
-        });
-        const production = qualityOrderedCandidates(shadow, quality);
-        const candidateKeys = shadow
-          .map(
-            (memory) =>
-              `${memory.memoryId}\0${memory.path}\0${memory.artifactSha256}`,
-          )
-          .sort();
-        const retrieval: RetrievalOrdering = {
-          toolCallId,
-          querySha256: sha256(clean.text),
-          candidateSetSha256: sha256(JSON.stringify(candidateKeys)),
-          production,
-          shadow,
-        };
-        return {
-          content: [
-            {
-              type: "text",
-              text: production.length
-                ? production
-                    .map(
-                      (item, index) =>
-                        `${index + 1}. ${item.memoryId} | ${item.path} | sha256:${item.artifactSha256}`,
-                    )
-                    .join("\n")
-                : "No current catalog memories matched.",
-            },
-          ],
-          details: {
-            version: TOOL_DETAILS_VERSION,
-            refs: production,
-            retrieval,
+        const observation = createWideEvent({
+          service: "pi-memory",
+          operation: "memory.retrieval",
+          correlation: {
+            sessionId: ctx?.sessionManager.getSessionId(),
+            toolCallId,
           },
-        };
+          fields: {
+            retrieval: {
+              kind: "search",
+              querySha256: sha256(clean.text),
+              queryChars: clean.text.length,
+              redactions: clean.counts,
+            },
+          },
+        });
+        try {
+          const result = await pi.exec(
+            process.env.QMD_BIN || "qmd",
+            [
+              "search",
+              "-c",
+              "agent-memories",
+              "--json",
+              "--full",
+              "--full-path",
+              clean.text,
+              "-n",
+              String(SEARCH_MAX_RESULTS),
+            ],
+            { cwd: memoryRoot(), signal, timeout: 15_000 },
+          );
+          if (result.code !== 0) throw new Error("memory search failed");
+          let rows: unknown;
+          try {
+            rows = JSON.parse(result.stdout);
+          } catch {
+            throw new Error("invalid memory search result");
+          }
+          if (!Array.isArray(rows))
+            throw new Error("invalid memory search result");
+          const catalog = loadCatalog();
+          const refs = rows.flatMap((row) => {
+            if (!object(row)) return [];
+            const entry = qmdCatalogEntry(catalog, row);
+            return entry ? [ref(entry)] : [];
+          });
+          const shadow = [
+            ...new Map(refs.map((item) => [item.memoryId, item])).values(),
+          ];
+          const data = memoryData();
+          const root = memoryRoot();
+          const quality = deriveAdaptationQuality({
+            data,
+            root,
+            state: data,
+            skillsRoot: root,
+          });
+          const production = qualityOrderedCandidates(shadow, quality);
+          const candidateKeys = shadow
+            .map(
+              (memory) =>
+                `${memory.memoryId}\0${memory.path}\0${memory.artifactSha256}`,
+            )
+            .sort();
+          const retrieval: RetrievalOrdering = {
+            toolCallId,
+            querySha256: sha256(clean.text),
+            candidateSetSha256: sha256(JSON.stringify(candidateKeys)),
+            production,
+            shadow,
+          };
+          observation.finish("success", {
+            retrieval: {
+              candidates: shadow.length,
+              returned: production.length,
+              candidateSetSha256: retrieval.candidateSetSha256,
+            },
+          });
+          return {
+            content: [
+              {
+                type: "text",
+                text: production.length
+                  ? production
+                      .map(
+                        (item, index) =>
+                          `${index + 1}. ${item.memoryId} | ${item.path} | sha256:${item.artifactSha256}`,
+                      )
+                      .join("\n")
+                  : "No current catalog memories matched.",
+              },
+            ],
+            details: {
+              version: TOOL_DETAILS_VERSION,
+              refs: production,
+              retrieval,
+            },
+          };
+        } catch (error) {
+          observation.error(error);
+          observation.finish("failure");
+          throw error;
+        }
       },
     });
 
@@ -901,21 +959,48 @@ export function createAgentMemoryExtension(
         { memoryId: Type.String({ minLength: 1, maxLength: 256 }) },
         { additionalProperties: false },
       ),
-      async execute(_toolCallId, params) {
-        const catalog = loadCatalog();
-        const entry = catalog.entries.find(
-          (candidate) => candidate.memoryId === params.memoryId,
-        );
-        if (!entry) throw new Error("unknown memory ID");
-        const clean = redact(currentArtifact(entry));
-        return {
-          content: [{ type: "text", text: clean.text }],
-          details: {
-            version: TOOL_DETAILS_VERSION,
-            refs: [ref(entry)],
-            redactions: clean.counts,
+      async execute(toolCallId, params, _signal, _onUpdate, ctx) {
+        const observation = createWideEvent({
+          service: "pi-memory",
+          operation: "memory.retrieval",
+          correlation: {
+            sessionId: ctx?.sessionManager.getSessionId(),
+            toolCallId,
           },
-        };
+          fields: {
+            retrieval: {
+              kind: "open",
+              requestedMemoryIdSha256: sha256(redact(params.memoryId).text),
+            },
+          },
+        });
+        try {
+          const catalog = loadCatalog();
+          const entry = catalog.entries.find(
+            (candidate) => candidate.memoryId === params.memoryId,
+          );
+          if (!entry) throw new Error("unknown memory ID");
+          const clean = redact(currentArtifact(entry));
+          observation.finish("success", {
+            retrieval: {
+              memoryId: entry.memoryId,
+              outputChars: clean.text.length,
+              redactions: clean.counts,
+            },
+          });
+          return {
+            content: [{ type: "text", text: clean.text }],
+            details: {
+              version: TOOL_DETAILS_VERSION,
+              refs: [ref(entry)],
+              redactions: clean.counts,
+            },
+          };
+        } catch (error) {
+          observation.error(error);
+          observation.finish("failure");
+          throw error;
+        }
       },
     });
 
@@ -960,6 +1045,12 @@ export function createAgentMemoryExtension(
       agentActive = true;
       cancelMaintenance();
       if (sessionPrompt === undefined) sessionPrompt = preparedPrompt ?? null;
+      sessionObservation?.set({
+        prompt: {
+          status: sessionPrompt ? "injected" : "unavailable",
+          memories: sessionPrompt?.refs.length ?? 0,
+        },
+      });
       const leaf = ctx.sessionManager.getLeafEntry();
       const existingUser =
         leaf?.type === "message" && leaf.message.role === "user"
@@ -993,7 +1084,9 @@ export function createAgentMemoryExtension(
       }
       agentActive = false;
       if (settling) return;
+      sessionStats.settledRuns += 1;
       if (!sessionPrompt) {
+        sessionObservation?.set({ session: sessionStats });
         scheduleMaintenance();
         return;
       }
@@ -1063,7 +1156,14 @@ export function createAgentMemoryExtension(
           }
         }
         const checkpointCount = reconcile(branch, ctx);
+        if (receiptAppended) sessionStats.receipts += 1;
+        sessionStats.checkpoints += checkpointCount;
+        sessionObservation?.set({ session: sessionStats });
         if (receiptAppended || checkpointCount > 0) requestMaintenance();
+      } catch (error) {
+        sessionStats.settlementFailures += 1;
+        sessionObservation?.error(error, { session: sessionStats });
+        throw error;
       } finally {
         settling = false;
         scheduleMaintenance();
@@ -1071,6 +1171,29 @@ export function createAgentMemoryExtension(
     });
 
     pi.on("session_start", (event, ctx) => {
+      sessionObservation?.finish("degraded", {
+        session: { status: "superseded" },
+      });
+      sessionStats = {
+        settledRuns: 0,
+        receipts: 0,
+        checkpoints: 0,
+        promptFailures: 0,
+        settlementFailures: 0,
+      };
+      sessionObservation = createWideEvent({
+        service: "pi-memory",
+        operation: "memory.extension-session",
+        correlation: {
+          sessionId: ctx.sessionManager.getSessionId(),
+        },
+        fields: {
+          session: {
+            reason: event.reason,
+            workspace: ctx.cwd,
+          },
+        },
+      });
       cancelMaintenance();
       agentActive = false;
       pending = undefined;
@@ -1081,9 +1204,24 @@ export function createAgentMemoryExtension(
       sessionInitialLeafId = ctx.sessionManager.getLeafId() ?? undefined;
     });
 
-    pi.on("session_shutdown", () => {
+    pi.on("session_shutdown", async (event) => {
+      const maintenanceRequested = maintenanceDirty;
       flushMaintenance();
       promptGeneration += 1;
+      sessionObservation?.finish(
+        sessionStats.promptFailures || sessionStats.settlementFailures
+          ? "degraded"
+          : "success",
+        {
+          session: {
+            ...sessionStats,
+            shutdownReason: event.reason,
+            maintenanceRequested,
+          },
+        },
+      );
+      sessionObservation = undefined;
+      await flushLogs();
     });
   };
 }
@@ -1093,11 +1231,12 @@ const agentMemoryExtension: (pi: ExtensionAPI) => void =
 export default agentMemoryExtension;
 
 if (import.meta.vitest) {
-  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta
-    .vitest;
+  const { afterAll, afterEach, beforeEach, describe, expect, it, vi } =
+    import.meta.vitest;
   let testDir = "";
   let root = "";
   let data = "";
+  const testLogDir = join(tmpdir(), `pi-agent-memory-test-logs-${process.pid}`);
 
   function user(id: string, text = "goal"): SessionEntry {
     return {
@@ -1241,6 +1380,7 @@ if (import.meta.vitest) {
     data = join(testDir, "data");
     process.env.PI_MEMORY_ROOT = root;
     process.env.PI_MEMORY_DATA_DIR = data;
+    process.env.BDS_PI_LOG_DIR = testLogDir;
   });
 
   afterEach(() => {
@@ -1252,6 +1392,12 @@ if (import.meta.vitest) {
     rmSync(testDir, { recursive: true, force: true });
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  afterAll(async () => {
+    await flushLogs();
+    delete process.env.BDS_PI_LOG_DIR;
+    rmSync(testLogDir, { recursive: true, force: true });
   });
 
   describe("agent-memory", () => {
@@ -1687,6 +1833,71 @@ if (import.meta.vitest) {
           memoryId: entry.memoryId,
         }),
       ).rejects.toThrow("stale memory artifact");
+    });
+
+    it("emits correlated retrieval and extension-session wide events", async () => {
+      setupCatalog();
+      const h = harness([]);
+      createAgentMemoryExtension()(h.pi);
+      h.exec.mockResolvedValue({
+        code: 0,
+        stdout: "[]",
+        stderr: "",
+        killed: false,
+      });
+      h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
+      await settlePromptPreparation();
+      await h.tools
+        .get("memory_search")
+        .execute(
+          "call-observed",
+          { query: "private-observability-query" },
+          undefined,
+          undefined,
+          h.ctx,
+        );
+      await h.handlers.get("session_shutdown")!({ reason: "quit" }, h.ctx);
+
+      const raw = readFileSync(
+        join(testLogDir, `${new Date().toISOString().slice(0, 10)}.jsonl`),
+        "utf8",
+      );
+      const events = raw
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Record<string, any>);
+      expect(
+        events.find(
+          (event) =>
+            event.operation === "memory.retrieval" &&
+            event.correlation?.toolCallId === "call-observed",
+        ),
+      ).toMatchObject({
+        correlation: {
+          sessionId: "session-1",
+          toolCallId: "call-observed",
+        },
+        retrieval: {
+          kind: "search",
+          candidates: 0,
+          returned: 0,
+        },
+        outcome: { status: "success" },
+      });
+      expect(
+        [...events]
+          .reverse()
+          .find(
+            (event) =>
+              event.operation === "memory.extension-session" &&
+              event.correlation?.sessionId === "session-1",
+          ),
+      ).toMatchObject({
+        correlation: { sessionId: "session-1" },
+        session: { reason: "startup", shutdownReason: "quit" },
+        outcome: { status: "success" },
+      });
+      expect(raw).not.toContain("private-observability-query");
     });
 
     it("recovers only canonical settled receipts and rejects malformed ones", async () => {

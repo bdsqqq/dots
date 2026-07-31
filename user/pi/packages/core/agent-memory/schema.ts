@@ -124,6 +124,7 @@ export function canonicalProposalId(proposal: Omit<Proposal, "id">): string {
 
 export const REVIEW_REASON_CODES = [
   "correct",
+  "autonomous",
   "duplicate",
   "incorrect",
   "ephemeral",
@@ -193,6 +194,12 @@ export type ModelProposal =
                   >;
                 }
               | {
+                  type: "replace";
+                  targetId: string;
+                  oldSpan: string;
+                  newSpan: string;
+                }
+              | {
                   type: "archive" | "retire";
                   targetId: string;
                   reason: string;
@@ -220,6 +227,21 @@ function boundedString(value: unknown, name: string, max: number): string {
   if (typeof value !== "string" || !value.trim() || value.length > max)
     throw new Error(`invalid ${name}`);
   return value.trim();
+}
+
+function rawString(
+  value: unknown,
+  name: string,
+  max: number,
+  allowEmpty = false,
+): string {
+  if (
+    typeof value !== "string" ||
+    value.length > max ||
+    (!allowEmpty && !value.length)
+  )
+    throw new Error(`invalid ${name}`);
+  return value;
 }
 
 function singleLine(value: unknown, name: string, max: number): string {
@@ -447,6 +469,19 @@ export function parseModelProposal(
             primaryId: singleLine(operation.primaryId, "primaryId", 100),
             targetIds: strings(operation.targetIds, "targetIds", 8, 100),
             artifact: artifact(operation.artifact),
+          },
+        };
+      }
+      if (type === "replace") {
+        exactKeys(operation, ["newSpan", "oldSpan", "targetId", "type"]);
+        return {
+          lane: "memory",
+          evidenceWindowIds,
+          operation: {
+            type,
+            targetId: singleLine(operation.targetId, "targetId", 100),
+            oldSpan: rawString(operation.oldSpan, "oldSpan", 4_000),
+            newSpan: rawString(operation.newSpan, "newSpan", 8_000, true),
           },
         };
       }

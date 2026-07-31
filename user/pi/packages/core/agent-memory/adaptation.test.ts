@@ -711,7 +711,7 @@ describe("production adaptation policy", () => {
     expect(scanCatalog(cfg.root).entries).toEqual(before.entries);
   });
 
-  it("replaces one exact span and preserves every byte outside it", () => {
+  it("replaces one exact body span and updates embedded provenance", () => {
     const { cfg, target } = setup();
     const prior = observation({ id: "prior", target });
     const correction = observation({
@@ -731,12 +731,16 @@ describe("production adaptation policy", () => {
       promoteShadowAdaptation(cfg, shadow(cfg, [prior, correction], [patch]))[0]
         ?.outcome,
     ).toBe("applied");
-    expect(readFileSync(join(cfg.root, target.path), "utf8")).toBe(
-      before.replace(
-        "Verify exact evidence.",
-        "use the verified correction instead",
-      ),
+    const after = readFileSync(join(cfg.root, target.path), "utf8");
+    expect(after.split("\n---\n")[1]).toBe(
+      before
+        .split("\n---\n")[1]!
+        .replace(
+          "Verify exact evidence.",
+          "use the verified correction instead",
+        ),
     );
+    expect(after).toMatch(/\nreview_id: "review_[a-f0-9]+"\n/);
 
     const second = setup();
     const prior2 = observation({ id: "prior2", target: second.target });

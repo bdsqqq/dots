@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { scanCatalog, type MemoryConfig } from "./catalog.js";
+import { scanCatalog, sha256, type MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
 import { canonicalTurnReceiptId, type TurnReceipt } from "./receipt.js";
 import type { TurnObservation } from "./adaptation.js";
@@ -18,8 +18,10 @@ import {
   freezePipelineInput,
   rankRetrieval,
   parseStoredPipelineInput,
-  processPipelineBatch,
-  processPipelineBatches,
+  processPipelineBatch as processPipelineBatchRaw,
+  processPipelineBatches as processPipelineBatchesRaw,
+  reflectionAutonomyState,
+  type PipelineCriticInput,
 } from "./pipeline.js";
 import { listProposals, readReviewReceipts } from "./workflow.js";
 
@@ -52,6 +54,45 @@ function evidence(checkpoint = "checkpoint"): SafeEvidence {
     checkpointFrontiers: { [checkpoint]: "leaf" },
     emittedEntryIds: ["leaf"],
   };
+}
+
+function criticOutput(
+  input: PipelineCriticInput,
+  decision: "allow-autonomous-apply" | "require-local-review",
+  reason: string,
+): string {
+  return JSON.stringify({
+    version: 1,
+    runId: input.runId,
+    criticInputSha256: sha256(JSON.stringify(input)),
+    decision,
+    reason,
+  });
+}
+
+const allowCritic = (_prompt: string, input: PipelineCriticInput) =>
+  criticOutput(input, "allow-autonomous-apply", "test approval");
+
+function processPipelineBatch(
+  options: Parameters<typeof processPipelineBatchRaw>[0],
+) {
+  return processPipelineBatchRaw({
+    ...options,
+    criticInvoke: options.criticInvoke ?? allowCritic,
+  });
+}
+
+function processPipelineBatches(
+  options: Parameters<typeof processPipelineBatchesRaw>[0],
+  concurrency?: string,
+) {
+  return processPipelineBatchesRaw(
+    options.map((option) => ({
+      ...option,
+      criticInvoke: option.criticInvoke ?? allowCritic,
+    })),
+    concurrency,
+  );
 }
 
 describe("memory reflection pipeline", () => {
@@ -156,7 +197,7 @@ Project B rule.
       [projectA, projectB],
       "test",
     );
-    if (frozen.version !== 3) throw new Error("expected v3 input");
+    if (frozen.version !== 4) throw new Error("expected v4 input");
     expect(() =>
       parseStoredPipelineInput(
         JSON.stringify({ ...frozen, observations: [forged] }),
@@ -164,22 +205,28 @@ Project B rule.
     ).toThrow("invalid stored pipeline input");
   });
 
-  it("writes v3 inputs while replaying strict v2 inputs", () => {
+  it("writes v4 inputs while replaying strict v2 inputs", () => {
     const cfg = config();
     const current = freezePipelineInput(cfg, "global", [evidence()], "test");
     expect(current).toMatchObject({
-      version: 3,
-      promptVersion: 3,
+      version: 4,
+      promptVersion: 4,
       observations: [],
       rollbackEvidence: [],
     });
-    if (current.version !== 3)
+    if (current.version !== 4)
       throw new Error("expected current pipeline input");
+    const { supersessionBasis: _supersessionBasis, ...v3Base } = current;
+    expect(
+      parseStoredPipelineInput(
+        JSON.stringify({ ...v3Base, version: 3, promptVersion: 3 }),
+      ),
+    ).toMatchObject({ version: 3, promptVersion: 3 });
     const {
       observations: _observations,
       rollbackEvidence: _rollbackEvidence,
       ...base
-    } = current;
+    } = v3Base;
     const legacy = { ...base, version: 2, promptVersion: 2 };
     expect(parseStoredPipelineInput(JSON.stringify(legacy))).toMatchObject({
       version: 2,
@@ -193,6 +240,85 @@ Project B rule.
         }),
       ),
     ).toThrow("invalid stored pipeline input");
+  });
+
+  it("resumes frozen v3 analysis after the v4 upgrade", () => {
+    const cfg = config();
+    const frozen = freezePipelineInput(
+      cfg,
+      "global",
+      [evidence("cp-v3")],
+      "test",
+    );
+    if (frozen.version !== 4) throw new Error("expected v4 input");
+    const runId = "legacy-v3-run";
+    const { supersessionBasis: _supersessionBasis, ...v3Base } = frozen;
+    const input = {
+      ...v3Base,
+      version: 3,
+      promptVersion: 3,
+      runId,
+      batchId: sha256(`${frozen.scope}\0window\0v3`),
+    };
+    const dir = join(cfg.data, "v2", "runs", runId);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "input.json"),
+      `${JSON.stringify(input, null, 2)}\n`,
+    );
+    writeFileSync(
+      join(dir, "output.json"),
+      `${JSON.stringify({ version: 2, action: "skip", reason: "done" }, null, 2)}\n`,
+    );
+
+    const result = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-v3")],
+      model: "test",
+      invoke: () => {
+        throw new Error("v3 output must be reused");
+      },
+    });
+    expect(result).toMatchObject({ runId, action: "skip" });
+  });
+
+  it("starts v4 analysis instead of relabeling incomplete v3 input", () => {
+    const cfg = config();
+    const frozen = freezePipelineInput(
+      cfg,
+      "global",
+      [evidence("cp-incomplete-v3")],
+      "test",
+    );
+    if (frozen.version !== 4) throw new Error("expected v4 input");
+    const { supersessionBasis: _supersessionBasis, ...v3Base } = frozen;
+    const input = {
+      ...v3Base,
+      version: 3,
+      promptVersion: 3,
+      runId: "incomplete-v3-run",
+      batchId: sha256(`${frozen.scope}\0window\0v3`),
+    };
+    const dir = join(cfg.data, "v2", "runs", input.runId);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "input.json"),
+      `${JSON.stringify(input, null, 2)}\n`,
+    );
+    let invoked = false;
+    const result = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-incomplete-v3")],
+      model: "test",
+      invoke: () => {
+        invoked = true;
+        return '{"version":2,"action":"skip","reason":"v4 analysis"}';
+      },
+    });
+    expect(invoked).toBe(true);
+    expect(result.runId).toBe(frozen.runId);
   });
 
   it("freezes inputs and covers checkpoints only after a valid skip", () => {
@@ -259,7 +385,11 @@ Project B rule.
     expect(readReviewReceipts(cfg)[0]).toMatchObject({
       decision: "accepted",
       reviewer: "background-reflection",
+      reason: { code: "autonomous" },
     });
+    expect(
+      reflectionAutonomyState(cfg, result.runId, result.proposalIds[0]!),
+    ).toBe("allowed");
     const withFeedback = freezePipelineInput(
       cfg,
       "global",
@@ -282,17 +412,157 @@ Project B rule.
     expect(readReviewReceipts(cfg)).toHaveLength(1);
   });
 
-  it("keeps executable skill drafts review-gated", () => {
+  it("leaves the whole reflection batch pending when the critic defers", () => {
+    const cfg = config();
+    const result = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-critic-review")],
+      model: "test",
+      criticInvoke: (_prompt, input) =>
+        criticOutput(input, "require-local-review", "evidence is ambiguous"),
+      invoke: () =>
+        JSON.stringify({
+          version: 2,
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              evidenceWindowIds: ["window"],
+              operation: {
+                type: "create",
+                artifact: {
+                  title: "Ambiguous lesson",
+                  kind: "pattern",
+                  scope: "global",
+                  description: "Needs local review",
+                  triggers: ["ambiguous lesson"],
+                  keywords: [],
+                  body: "This candidate remains pending.",
+                },
+              },
+            },
+          ],
+        }),
+    });
+    expect(result.action).toBe("propose");
+    expect(listProposals(cfg, "memory", "pending")).toHaveLength(1);
+    expect(readReviewReceipts(cfg)).toHaveLength(0);
+    expect(
+      reflectionAutonomyState(cfg, result.runId, result.proposalIds[0]!),
+    ).toBe("local-review");
+    expect(
+      JSON.parse(
+        readFileSync(
+          join(cfg.data, "v2", "runs", result.runId, "critic-output.json"),
+          "utf8",
+        ),
+      ),
+    ).toMatchObject({ decision: "require-local-review" });
+
+    processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-critic-review")],
+      model: "test",
+      criticInvoke: allowCritic,
+      invoke: () => {
+        throw new Error("stored reflection output must be reused");
+      },
+    });
+    expect(listProposals(cfg, "memory", "pending")).toHaveLength(1);
+    expect(readReviewReceipts(cfg)).toHaveLength(0);
+    writeFileSync(
+      join(cfg.data, "v2", "runs", result.runId, "critic-output.json"),
+      `${JSON.stringify({
+        version: 1,
+        runId: result.runId,
+        criticInputSha256: "0".repeat(64),
+        decision: "allow-autonomous-apply",
+        reason: "copied verdict",
+      })}\n`,
+    );
+    expect(() =>
+      reflectionAutonomyState(cfg, result.runId, result.proposalIds[0]!),
+    ).toThrow("binding mismatch");
+  });
+
+  it("applies precise body deletions from reflection", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(
+      join(cfg.root, "2026-verify-source__agent.md"),
+      `---
+memory_version: 2
+memory_id: "mem_replace"
+status: "active"
+title: "Verify"
+kind: pattern
+scope: "global"
+description: "Verify work"
+triggers: ["Run a build before reporting completion."]
+keywords: []
+updated: "2026-07-30"
+---
+
+Run a build before reporting completion.
+`,
+    );
+    const result = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-replace")],
+      model: "test",
+      invoke: () =>
+        JSON.stringify({
+          version: 2,
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              evidenceWindowIds: ["window"],
+              operation: {
+                type: "replace",
+                targetId: "mem_replace",
+                oldSpan: "Run a build before reporting completion.",
+                newSpan: "",
+              },
+            },
+          ],
+        }),
+    });
+    expect(result.action).toBe("propose");
+    expect(
+      listProposals(cfg, "memory", "reviewed")[0]?.operation,
+    ).toMatchObject({
+      type: "replace",
+      target: { memoryId: "mem_replace" },
+      oldSpan: "Run a build before reporting completion.",
+      newSpan: "",
+    });
+    const updated = readFileSync(
+      join(cfg.root, "2026-verify-source__agent.md"),
+      "utf8",
+    );
+    expect(updated.split("\n---\n")[1]).not.toContain(
+      "Run a build before reporting completion.",
+    );
+    expect(
+      updated.match(/Run a build before reporting completion\./g),
+    ).toHaveLength(1);
+  });
+
+  it("keeps executable skill drafts review-gated across replay", async () => {
     const cfg = config();
     const second = evidence("cp-second");
     second.window.windowId = "window-two";
     second.window.sessionId = "session-two";
-    const result = processPipelineBatch({
+    const option = {
       cfg,
       scope: "global",
       evidence: [evidence("cp-memory"), second],
       model: "test",
-      invoke: () =>
+      invoke: async () =>
         JSON.stringify({
           version: 2,
           action: "propose",
@@ -332,11 +602,22 @@ Project B rule.
             },
           ],
         }),
-    });
+    };
+    const result = (await processPipelineBatches([option]))[0]!;
     expect(result.proposalIds).toHaveLength(2);
     expect(listProposals(cfg, "memory")).toHaveLength(0);
     expect(listProposals(cfg, "skill")).toHaveLength(1);
     expect(readReviewReceipts(cfg)).toHaveLength(1);
+    expect(
+      await processPipelineBatches([
+        {
+          ...option,
+          invoke: async () => {
+            throw new Error("stored mixed batch must be reused");
+          },
+        },
+      ]),
+    ).toEqual([result]);
   });
 
   it("recovers after result publication but before memory application", () => {
@@ -370,7 +651,7 @@ Project B rule.
       evidence: [evidence("cp-interrupted")],
       model: "test",
       invoke,
-      autoApplyMemory: false,
+      deferApply: true,
     });
     expect(listProposals(cfg, "memory")).toHaveLength(1);
     const recovered = processPipelineBatch({
@@ -387,6 +668,50 @@ Project B rule.
       "test",
     );
     expect(listProposals(cfg, "memory")).toHaveLength(0);
+    expect(readReviewReceipts(cfg)).toHaveLength(1);
+  });
+
+  it("replays an applied batch without preflighting stale targets", async () => {
+    const cfg = config();
+    const option = {
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-applied-batch")],
+      model: "test",
+      invoke: async () =>
+        JSON.stringify({
+          version: 2,
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              evidenceWindowIds: ["window"],
+              operation: {
+                type: "create",
+                artifact: {
+                  title: "Applied batch",
+                  kind: "pattern",
+                  scope: "global",
+                  description: "Must replay idempotently",
+                  triggers: ["applied batch"],
+                  keywords: [],
+                  body: "Do not preflight an already applied create.",
+                },
+              },
+            },
+          ],
+        }),
+    };
+    const first = await processPipelineBatches([option]);
+    const replayed = await processPipelineBatches([
+      {
+        ...option,
+        invoke: async () => {
+          throw new Error("stored batch must be reused");
+        },
+      },
+    ]);
+    expect(replayed).toEqual(first);
     expect(readReviewReceipts(cfg)).toHaveLength(1);
   });
 
@@ -485,6 +810,53 @@ Project B rule.
       );
     }
   });
+
+  it("preflights every analyzed batch before autonomous mutation", async () => {
+    const cfg = config();
+    const options = ["cp-valid", "cp-invalid"].map((checkpoint) => ({
+      cfg,
+      scope: "global",
+      evidence: [evidence(checkpoint)],
+      model: "test",
+      invoke: async () =>
+        JSON.stringify({
+          version: 2,
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              evidenceWindowIds: ["window"],
+              operation:
+                checkpoint === "cp-invalid"
+                  ? {
+                      type: "replace",
+                      targetId: "mem_missing",
+                      oldSpan: "old",
+                      newSpan: "new",
+                    }
+                  : {
+                      type: "create",
+                      artifact: {
+                        title: "Valid batch",
+                        kind: "pattern",
+                        scope: "global",
+                        description: "Must wait for all preflights",
+                        triggers: ["batch preflight"],
+                        keywords: [],
+                        body: "Do not apply a partial wave.",
+                      },
+                    },
+            },
+          ],
+        }),
+    }));
+    await expect(processPipelineBatches(options)).rejects.toThrow(
+      "unavailable memory",
+    );
+    expect(listProposals(cfg)).toHaveLength(0);
+    expect(readReviewReceipts(cfg)).toHaveLength(0);
+  });
+
   it("rejects invalid evidence selections and stores only selected refs", () => {
     const cfg = config();
     const second = evidence("cp-unselected");
