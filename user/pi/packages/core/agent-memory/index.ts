@@ -121,6 +121,7 @@ import {
   retrievalBenchmark,
   type FeedbackReasonCode,
 } from "./evaluation.js";
+import { createWideEvent, flushLogs } from "@bds_pi/log";
 
 process.umask(0o077);
 
@@ -762,17 +763,87 @@ function auditedArgs(options: {
 async function runAuditedAsync(
   options: Parameters<typeof auditedArgs>[0],
 ): Promise<string> {
-  const audit = auditedArgs(options);
-  if (audit.recoveredOutput !== undefined) return audit.recoveredOutput;
-  await runAsync(process.env.PI_BIN || "pi", audit.args, options.prompt);
-  return audit.complete().output;
+  const observation = createWideEvent({
+    service: "pi-memory",
+    operation: "memory.model-invocation",
+    correlation: {
+      identity: options.identity,
+      runId: options.runId,
+      eventId: options.eventId,
+    },
+    fields: {
+      model: {
+        kind: options.kind,
+        name: options.model.model,
+        reasoning: options.model.reasoning,
+        promptChars: options.prompt.length,
+      },
+    },
+  });
+  try {
+    const audit = auditedArgs(options);
+    if (audit.recoveredOutput !== undefined) {
+      observation.finish("success", {
+        model: {
+          recovered: true,
+          outputChars: audit.recoveredOutput.length,
+        },
+      });
+      return audit.recoveredOutput;
+    }
+    await runAsync(process.env.PI_BIN || "pi", audit.args, options.prompt);
+    const output = audit.complete().output;
+    observation.finish("success", {
+      model: { recovered: false, outputChars: output.length },
+    });
+    return output;
+  } catch (error) {
+    observation.error(error);
+    observation.finish("failure");
+    throw error;
+  }
 }
 
 function runAudited(options: Parameters<typeof auditedArgs>[0]): string {
-  const audit = auditedArgs(options);
-  if (audit.recoveredOutput !== undefined) return audit.recoveredOutput;
-  run(process.env.PI_BIN || "pi", audit.args, options.prompt);
-  return audit.complete().output;
+  const observation = createWideEvent({
+    service: "pi-memory",
+    operation: "memory.model-invocation",
+    correlation: {
+      identity: options.identity,
+      runId: options.runId,
+      eventId: options.eventId,
+    },
+    fields: {
+      model: {
+        kind: options.kind,
+        name: options.model.model,
+        reasoning: options.model.reasoning,
+        promptChars: options.prompt.length,
+      },
+    },
+  });
+  try {
+    const audit = auditedArgs(options);
+    if (audit.recoveredOutput !== undefined) {
+      observation.finish("success", {
+        model: {
+          recovered: true,
+          outputChars: audit.recoveredOutput.length,
+        },
+      });
+      return audit.recoveredOutput;
+    }
+    run(process.env.PI_BIN || "pi", audit.args, options.prompt);
+    const output = audit.complete().output;
+    observation.finish("success", {
+      model: { recovered: false, outputChars: output.length },
+    });
+    return output;
+  } catch (error) {
+    observation.error(error);
+    observation.finish("failure");
+    throw error;
+  }
 }
 
 function parseAction(raw: string): Record<string, unknown> {
@@ -1490,23 +1561,70 @@ function reconcileFailedCheckpointJobs(cfg: ReturnType<typeof config>): void {
 
 async function consolidateV2Unlocked(limit: number): Promise<boolean> {
   const cfg = config();
+  const observation = createWideEvent({
+    service: "pi-memory",
+    operation: "memory.consolidation",
+    fields: { consolidation: { limit } },
+  });
+  try {
+    const result = await consolidateV2UnlockedObserved(limit, cfg, observation);
+    observation.finish(result ? "success" : "degraded");
+    return result;
+  } catch (error) {
+    observation.error(error);
+    observation.finish("failure");
+    throw error;
+  }
+}
+
+async function consolidateV2UnlockedObserved(
+  limit: number,
+  cfg: ReturnType<typeof config>,
+  observation: ReturnType<typeof createWideEvent>,
+): Promise<boolean> {
   let ok = true;
-  for (const proposal of listProposals(cfg, "memory").filter(
+  const autonomous = listProposals(cfg, "memory").filter(
     (item) => item.provenance.autonomous === true,
-  ))
+  );
+  const applied: string[] = [];
+  const deferred: string[] = [];
+  for (const proposal of autonomous)
     try {
       applyMemoryProposal({
         cfg,
         id: proposal.id,
         actor: "background-reflection",
       });
+      applied.push(proposal.id);
     } catch (error) {
       ok = false;
+      deferred.push(proposal.id);
       console.error(
         `autonomous memory application deferred for ${proposal.id}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  observation.set({
+    proposalApplication: {
+      pending: autonomous.length,
+      applied,
+      deferred,
+    },
+  });
   const batches = batchWindows(pendingWindows(limit));
+  observation.set({
+    consolidation: {
+      batches: batches.length,
+      windows: batches.flat().length,
+      checkpoints: batches
+        .flat()
+        .reduce(
+          (count, window) =>
+            count + window.evidence.window.checkpointEntryIds.length,
+          0,
+        ),
+      externalProcessing: process.env.PI_MEMORY_SKIP_EXTERNAL !== "1",
+    },
+  });
   if (process.env.PI_MEMORY_SKIP_EXTERNAL === "1") return ok;
   const claims = checkpointEventIds(cfg, batches.flat())
     .map((id) =>
@@ -1515,7 +1633,7 @@ async function consolidateV2Unlocked(limit: number): Promise<boolean> {
     .filter((event): event is NonNullable<typeof event> => event !== null);
   const configuredModel = modelConfig();
   try {
-    await processPipelineBatches(
+    const results = await processPipelineBatches(
       batches.map((batch) => ({
         cfg,
         scope: scopeFor(batch[0]!.jobs[0]!.job.workspace),
@@ -1540,6 +1658,17 @@ async function consolidateV2Unlocked(limit: number): Promise<boolean> {
           }),
       })),
     );
+    observation.set({
+      reflection: {
+        claims: claims.map((claim) => claim.id),
+        runs: results.map((result) => ({
+          runId: result.runId,
+          action: result.action,
+          proposalIds: result.proposalIds,
+          checkpoints: result.coveredCheckpointIds.length,
+        })),
+      },
+    });
     for (const batch of batches)
       for (const window of batch)
         for (const { name } of window.jobs)
@@ -1548,6 +1677,12 @@ async function consolidateV2Unlocked(limit: number): Promise<boolean> {
   } catch (error) {
     settleCheckpointClaims(cfg, claims, "error");
     ok = false;
+    observation.error(error, {
+      reflection: {
+        claims: claims.map((claim) => claim.id),
+        status: "failed",
+      },
+    });
     console.error(error instanceof Error ? error.message : String(error));
   }
   return ok;
@@ -1785,6 +1920,30 @@ export function combineMaintenanceResults(
 
 async function maintainUnlocked(): Promise<boolean> {
   const cfg = config();
+  const observation = createWideEvent({
+    service: "pi-memory",
+    operation: "memory.maintenance",
+    fields: {
+      maintenance: {
+        limit: Number(process.env.PI_MEMORY_MAINTAIN_LIMIT || 10),
+        externalProcessing: process.env.PI_MEMORY_SKIP_EXTERNAL !== "1",
+      },
+    },
+  });
+  try {
+    const result = await maintainUnlockedObserved(cfg);
+    observation.finish(result ? "success" : "degraded");
+    return result;
+  } catch (error) {
+    observation.error(error);
+    observation.finish("failure");
+    throw error;
+  }
+}
+
+async function maintainUnlockedObserved(
+  cfg: ReturnType<typeof config>,
+): Promise<boolean> {
   recoverTransactions(cfg);
   recoverMaintenanceEvents(cfg);
   reconcileFailedCheckpointJobs(cfg);
@@ -2298,8 +2457,77 @@ async function main(): Promise<void> {
   else if (result === undefined) process.exitCode = 75;
 }
 
+async function observedMain(): Promise<void> {
+  const [command, ...args] = process.argv.slice(2);
+  const hasSubcommand = new Set([
+    "background",
+    "eval",
+    "events",
+    "history",
+    "repair",
+  ]).has(command ?? "");
+  const knownFlags = new Set([
+    "--allow-model-invocation",
+    "--case",
+    "--cwd",
+    "--dataset",
+    "--dry-run",
+    "--edit",
+    "--file",
+    "--from",
+    "--json",
+    "--k",
+    "--lane",
+    "--limit",
+    "--memory",
+    "--memories",
+    "--mode",
+    "--modes",
+    "--out",
+    "--path",
+    "--query",
+    "--reason",
+    "--reason-code",
+    "--remote",
+    "--score",
+    "--source",
+    "--status",
+    "--supersedes",
+    "--to",
+    "--workspace",
+  ]);
+  const observation = createWideEvent({
+    service: "pi-memory",
+    operation: "memory.cli",
+    fields: {
+      command: {
+        name: command ?? "missing",
+        subcommand:
+          hasSubcommand && args[0] && !args[0].startsWith("-")
+            ? args[0]
+            : undefined,
+        flags: [...new Set(args.filter((arg) => knownFlags.has(arg)))],
+      },
+    },
+  });
+  try {
+    await main();
+    const exitCode =
+      typeof process.exitCode === "number" ? process.exitCode : undefined;
+    observation.finish(exitCode ? "degraded" : "success", {
+      command: { exitCode: exitCode ?? 0 },
+    });
+  } catch (error) {
+    observation.error(error);
+    observation.finish("failure", { command: { exitCode: 1 } });
+    throw error;
+  } finally {
+    await flushLogs();
+  }
+}
+
 if (import.meta.main)
-  main().catch((error) => {
+  observedMain().catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
   });

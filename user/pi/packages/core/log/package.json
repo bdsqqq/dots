@@ -1,0 +1,14 @@
+{
+  "name": "@bds_pi/log",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "dependencies": {
+    "evlog": "^2.22.4"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}
