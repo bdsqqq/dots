@@ -2,6 +2,38 @@
 
 let
   fanCurveConfig = "/home/bdsqqq/commonplace/01_files/nix/hosts/lgo-z2e/fan-curve.json";
+  defaultTdpWatts = 12;
+  tdpStateDir = "/var/lib/legion-power";
+  applyTdp = pkgs.writeShellApplication {
+    name = "apply-legion-tdp";
+    runtimeInputs = [ pkgs.ryzenadj ];
+    text = ''
+      watts="$1"
+      if [[ ! "$watts" =~ ^[0-9]+$ ]] || (( watts < 4 || watts > 30 )); then
+        echo "TDP must be an integer between 4 and 30 watts" >&2
+        exit 64
+      fi
+
+      ryzenadj \
+        --stapm-limit="$((watts * 1000))" \
+        --fast-limit="$((watts * 1000))" \
+        --slow-limit="$((watts * 1000))"
+      printf '%s\n' "$watts" > ${tdpStateDir}/tdp-watts
+    '';
+  };
+  restoreTdp = pkgs.writeShellApplication {
+    name = "restore-legion-tdp";
+    text = ''
+      watts=${toString defaultTdpWatts}
+      if [[ -r ${tdpStateDir}/tdp-watts ]]; then
+        read -r watts < ${tdpStateDir}/tdp-watts
+      fi
+      if [[ ! "$watts" =~ ^[0-9]+$ ]] || (( watts < 4 || watts > 30 )); then
+        watts=${toString defaultTdpWatts}
+      fi
+      exec ${applyTdp}/bin/apply-legion-tdp "$watts"
+    '';
+  };
   legionAcpi = pkgs.writeShellApplication {
     name = "legion-acpi";
     runtimeInputs = [ pkgs.python3 ];
@@ -158,13 +190,25 @@ in {
     };
   };
 
-  # templated service: systemctl start ryzenadj-tdp@{8,15,25,30}.service (values in watts)
+  # Successful changes persist across boots. Quickshell offers a conservative
+  # 8–20 W envelope; deliberate shell use may choose any validated 4–30 W value.
   systemd.services."ryzenadj-tdp@" = {
     description = "Set CPU TDP to %i watts via ryzenadj";
     serviceConfig = {
       Type = "oneshot";
-      ExecStart =
-        "${pkgs.bash}/bin/bash -c '${pkgs.ryzenadj}/bin/ryzenadj --stapm-limit=%i000 --fast-limit=%i000 --slow-limit=%i000'";
+      ExecStart = "${applyTdp}/bin/apply-legion-tdp %i";
+      StateDirectory = "legion-power";
+    };
+  };
+
+  systemd.services.ryzenadj-tdp-restore = {
+    description = "Restore the last selected CPU TDP";
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${restoreTdp}/bin/restore-legion-tdp";
+      RemainAfterExit = true;
+      StateDirectory = "legion-power";
     };
   };
 

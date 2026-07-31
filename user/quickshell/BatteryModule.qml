@@ -14,7 +14,7 @@ Item {
     property string batteryStatus: "unknown"
     property real powerDraw: 0.0
     property string currentGpuProfile: "auto"
-    property int currentTdp: 15
+    property int currentTdp: 12
     property bool expanded: false
 
     implicitHeight: card.implicitHeight
@@ -72,7 +72,7 @@ Item {
 
     Process {
         id: tdpSetter
-        property int targetTdp: 15
+        property int targetTdp: 12
         command: ["systemctl", "start", "ryzenadj-tdp@" + targetTdp + ".service"]
 
         onExited: function(code, status) {
@@ -198,9 +198,9 @@ Item {
                             Repeater {
                                 model: [
                                     { watts: 8, label: "8W" },
+                                    { watts: 12, label: "12W" },
                                     { watts: 15, label: "15W" },
-                                    { watts: 25, label: "25W" },
-                                    { watts: 30, label: "30W" }
+                                    { watts: 20, label: "20W" }
                                 ]
 
                                 Controls.Button {

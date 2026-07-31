@@ -2,45 +2,6 @@
 
 let
   toggleTheme = import ./scripts/toggle-theme.nix { inherit pkgs; };
-  touchPrimaryHost = osConfig != null && osConfig.networking.hostName == "lgo-z2e";
-
-  evdevRightClickEmulation = pkgs.stdenv.mkDerivation {
-    pname = "evdev-right-click-emulation";
-    version = "unstable-2019-03-13";
-
-    src = pkgs.fetchFromGitHub {
-      owner = "PeterCxy";
-      repo = "evdev-right-click-emulation";
-      rev = "350939b8d2e95ed1be352f1ac734bdedf14e43c7";
-      sha256 = "08289annb7ksng095a23n3z106mmsls97g19i4kc771bsxs6fmap";
-    };
-
-    dontConfigure = true;
-
-    buildInputs = [ pkgs.libevdev ];
-
-    buildPhase = ''
-      runHook preBuild
-      $CC -Wall -std=c11 -D_POSIX_C_SOURCE=199309L -I${pkgs.libevdev}/include/libevdev-1.0 -c uinput.c -o uinput.o
-      $CC -Wall -std=c11 -D_POSIX_C_SOURCE=199309L -I${pkgs.libevdev}/include/libevdev-1.0 -c input.c -o input.o
-      $CC -Wall -std=c11 -D_POSIX_C_SOURCE=199309L -I${pkgs.libevdev}/include/libevdev-1.0 -c rce.c -o rce.o
-      $CC uinput.o input.o rce.o -L${pkgs.libevdev}/lib -levdev -o evdev-rce
-      runHook postBuild
-    '';
-
-    installPhase = ''
-      runHook preInstall
-      install -Dm755 evdev-rce $out/bin/evdev-rce
-      runHook postInstall
-    '';
-
-    meta = {
-      description = "Long-press-to-right-click emulation for Linux touchscreens";
-      homepage = "https://github.com/PeterCxy/evdev-right-click-emulation";
-      license = lib.licenses.wtfpl;
-      platforms = lib.platforms.linux;
-    };
-  };
 
   # raw KDL bridge for niri 26.04 background effects. niri-flake still validates
   # the generated base config; activation validates this by making it the live config.
@@ -228,11 +189,23 @@ let
   # touchscreen gesture daemon for niri (niri lacks native touchscreen swipe gestures)
   # uses lisgd to translate edge swipes to niri actions
   lisgd-niri = pkgs.writeShellScriptBin "lisgd-niri" ''
-    # find touchscreen via udev ID_INPUT_TOUCHSCREEN property
+    # Some handheld controllers expose their tiny touchpad as a touchscreen.
+    # Pick the largest touchscreen so device enumeration cannot redirect gestures
+    # away from the built-in display.
+    TOUCH_AREA=0
     for dev in /dev/input/event*; do
-      if ${pkgs.systemd}/bin/udevadm info "$dev" 2>/dev/null | grep -q "ID_INPUT_TOUCHSCREEN=1"; then
-        TOUCH_DEV="$dev"
-        break
+      AREA=0
+      PROPERTIES=$(${pkgs.systemd}/bin/udevadm info --query=property --name="$dev" 2>/dev/null || true)
+      if printf '%s\n' "$PROPERTIES" | grep -q '^ID_INPUT_TOUCHSCREEN=1$'; then
+        WIDTH=$(printf '%s\n' "$PROPERTIES" | sed -n 's/^ID_INPUT_WIDTH_MM=//p')
+        HEIGHT=$(printf '%s\n' "$PROPERTIES" | sed -n 's/^ID_INPUT_HEIGHT_MM=//p')
+        [ -n "$WIDTH" ] || WIDTH=0
+        [ -n "$HEIGHT" ] || HEIGHT=0
+        AREA=$((WIDTH * HEIGHT))
+        if [ -z "''${TOUCH_DEV:-}" ] || [ "$AREA" -gt "$TOUCH_AREA" ]; then
+          TOUCH_DEV="$dev"
+          TOUCH_AREA="$AREA"
+        fi
       fi
     done
     if [ -z "$TOUCH_DEV" ]; then
@@ -545,26 +518,7 @@ else {
     cleanshot-niri
     lisgd
     lisgd-niri
-  ] ++ lib.optionals touchPrimaryHost [ evdevRightClickEmulation ];
-
-  systemd.user.services.evdev-right-click-emulation = lib.mkIf touchPrimaryHost {
-    Unit = {
-      Description = "Long-press right-click emulation for touchscreen";
-      After = [ "graphical-session.target" ];
-      PartOf = [ "graphical-session.target" ];
-    };
-    Service = {
-      Type = "simple";
-      ExecStart = "${evdevRightClickEmulation}/bin/evdev-rce";
-      Environment = [
-        "LONG_CLICK_INTERVAL=650"
-        "LONG_CLICK_FUZZ=70"
-      ];
-      Restart = "on-failure";
-      RestartSec = 2;
-    };
-    Install = { WantedBy = [ "graphical-session.target" ]; };
-  };
+  ];
 
   # systemd user service for lisgd - ensures proper group membership (input)
   # niri's spawn-at-startup doesn't inherit login session groups
