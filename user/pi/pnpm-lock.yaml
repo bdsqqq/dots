@@ -42,6 +42,9 @@ importers:
       diff:
         specifier: ^8.0.0
         version: 8.0.4
+      evlog:
+        specifier: ^2.22.4
+        version: 2.22.4
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1
@@ -82,9 +85,22 @@ importers:
       '@bds_pi/config':
         specifier: workspace:*
         version: link:../config
+      '@bds_pi/log':
+        specifier: workspace:*
+        version: link:../log
       '@letta-ai/trajectory':
         specifier: https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83
         version: https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+
+  packages/core/log:
+    dependencies:
+      evlog:
+        specifier: ^2.22.4
+        version: 2.22.4
     devDependencies:
       vitest:
         specifier: ^3.0.0
@@ -2729,6 +2745,66 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  evlog@2.22.4:
+    resolution: {integrity: sha512-u0hsh+FudUWkqqfrlWGI1CvSd2pz1iWkLWjawGcvbnLp9BHZqY1xS7BlRt21/Qq/rs60IODaei/Wbmry/q/zeg==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      '@nestjs/common': '>=11.1.28'
+      '@nuxt/kit': ^4.4.2
+      '@orpc/server': '>=1.14.8'
+      '@tanstack/start-client-core': ^1.170.14
+      ai: '>=6.0.168 <8.0.0'
+      elysia: '>=1.4.29'
+      eve: '>=0.24.3'
+      express: '>=5.2.1'
+      fastify: '>=5.10.0'
+      h3: ^1.15.11
+      hono: '>=4.12.30'
+      next: '>=16.2.10'
+      nitro: ^3.0.260311-beta
+      nitropack: ^2.13.4
+      ofetch: ^1.5.1
+      react: '>=19.2.7'
+      react-router: '>=7.18.1'
+      vite: ^7.0.0 || ^8.0.0
+    peerDependenciesMeta:
+      '@nestjs/common':
+        optional: true
+      '@nuxt/kit':
+        optional: true
+      '@orpc/server':
+        optional: true
+      '@tanstack/start-client-core':
+        optional: true
+      ai:
+        optional: true
+      elysia:
+        optional: true
+      eve:
+        optional: true
+      express:
+        optional: true
+      fastify:
+        optional: true
+      h3:
+        optional: true
+      hono:
+        optional: true
+      next:
+        optional: true
+      nitro:
+        optional: true
+      nitropack:
+        optional: true
+      ofetch:
+        optional: true
+      react:
+        optional: true
+      react-router:
+        optional: true
+      vite:
+        optional: true
+
   estree-walker@3.0.3:
     resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
 
@@ -5006,6 +5082,8 @@ snapshots:
       '@esbuild/win32-arm64': 0.27.4
       '@esbuild/win32-ia32': 0.27.4
       '@esbuild/win32-x64': 0.27.4
+
+  evlog@2.22.4: {}
 
   estree-walker@3.0.3:
     dependencies:
