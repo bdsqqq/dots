@@ -57,6 +57,7 @@ import {
   spawnDirectRunner,
   workflowAgentOutcome,
   type RunnerLauncher,
+  type WorkflowRunnerProcess,
   type WorkflowAgentOptions,
   type WorkflowRecipe,
 } from "./process-runner.js";
@@ -87,6 +88,7 @@ export interface RuntimeResult {
   value: unknown;
   cached: number;
   graph: WorkflowGraphNode[];
+  runner: WorkflowRunnerProcess;
 }
 
 interface RecipeExecution {
@@ -507,6 +509,13 @@ export const spawnRecipeTool: SpawnRecipe = async (request) => {
   if (session.sessionId || session.sessionFile)
     await request.onSession(session.sessionId, session.sessionFile);
   const text = resultText(result);
+  if (
+    result &&
+    typeof result === "object" &&
+    (result as { isError?: unknown }).isError === true
+  ) {
+    throw new Error(text || `${request.recipe.kind} recipe failed`);
+  }
   return { result: text, ...session, usage };
 };
 
@@ -590,7 +599,7 @@ export class WorkflowRuntime {
     try {
       if (!this.source.code)
         throw new Error("workflow source has no compiled code");
-      const value = await runWorkflowScript(
+      const execution = await runWorkflowScript(
         {
           code: this.source.code,
           meta: this.source.meta,
@@ -612,15 +621,21 @@ export class WorkflowRuntime {
       await this.drainAgents();
       this.setGraphTerminalStatus("completed");
       return {
-        value,
+        value: execution.value,
         cached: 0,
         graph: this.graph.map((node) => ({ ...node })),
+        runner: execution.runner,
       };
     } catch (error) {
       const cancelled = this.cancellationSignal.aborted;
       this.controller.abort();
       await this.drainAgents();
       this.setGraphTerminalStatus(cancelled ? "cancelled" : "failed");
+      if (error && typeof error === "object") {
+        Object.assign(error, {
+          workflowGraph: this.graph.map((node) => ({ ...node })),
+        });
+      }
       throw error;
     }
   }

@@ -23,6 +23,7 @@ import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "typebox";
 import {
   isPiSpawnModelValue,
+  isPiSpawnFailure,
   piSpawn,
   zeroUsage,
   type PiSpawnModel,
@@ -31,6 +32,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
@@ -450,12 +452,14 @@ export function createReadSessionTool(
         systemPromptBody: systemPrompt,
         signal,
         session: { persist: false, parentSession },
+        owner: { toolCallId, toolName: "read_session" },
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
           singleResult.model = partial.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
+          singleResult.lifecycle = partial.lifecycle;
           applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
             onUpdate({
@@ -478,18 +482,15 @@ export function createReadSessionTool(
       singleResult.model = result.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
+      singleResult.lifecycle = result.lifecycle;
       applySessionMeta(singleResult, result.session);
 
-      const isError =
-        result.exitCode !== 0 ||
-        result.stopReason === "error" ||
-        result.stopReason === "aborted";
+      const isError = isPiSpawnFailure(result);
       const output = getFinalOutput(result.messages) || "(no output)";
-
-      if (isError)
-        throw new Error(result.errorMessage || result.stderr || output);
-
-      return subAgentResult(output, singleResult);
+      const text = isError
+        ? result.errorMessage || result.stderr || output
+        : output;
+      return subAgentResult(text, singleResult, isError);
     },
 
     renderCall(args: any, theme: any) {
@@ -584,6 +585,7 @@ if (import.meta.vitest) {
       registerTool(tool: unknown) {
         tools.push(tool);
       },
+      on() {},
     } as unknown as ExtensionAPI;
 
     return { pi, tools };
@@ -801,6 +803,7 @@ export function createReadSessionExtension(
     if (!enabled) return;
 
     pi.registerTool(deps.withPromptPatch(createReadSessionTool(config)));
+    registerSubAgentErrorNormalization(pi, "read_session");
   };
 }
 

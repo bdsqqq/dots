@@ -54,6 +54,8 @@ type BackgroundProcess = {
   command: string;
   cwd: string;
   logPath: string;
+  ownerSessionId?: string;
+  startedAt: string;
   timeoutHandle?: ReturnType<typeof setTimeout>;
 };
 
@@ -61,6 +63,13 @@ type BackgroundState = {
   nextId: number;
   processes: Map<string, BackgroundProcess>;
 };
+
+type BashProcessStatus =
+  | "completed"
+  | "failed"
+  | "aborted"
+  | "timed_out"
+  | "spawn_error";
 
 type BashExtensionDeps = {
   getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
@@ -770,6 +779,14 @@ function createBashSessionEnvironment(ctx: any): NodeJS.ProcessEnv {
   return env;
 }
 
+function hasFailedProcess(details: unknown): boolean {
+  if (!details || typeof details !== "object") return false;
+  const processDetails = (details as Record<string, unknown>).process;
+  if (!processDetails || typeof processDetails !== "object") return false;
+  const status = (processDetails as Record<string, unknown>).status;
+  return typeof status === "string" && status !== "completed";
+}
+
 async function runForegroundCommand(
   command: string,
   displayCommand: string,
@@ -781,8 +798,9 @@ async function runForegroundCommand(
   env: NodeJS.ProcessEnv,
 ): Promise<any> {
   const { shell, args } = getShellConfig();
+  const startedAt = new Date().toISOString();
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const child = spawn(shell, [...args, command], {
       cwd,
       detached: true,
@@ -791,21 +809,25 @@ async function runForegroundCommand(
     });
 
     const output = new OutputBuffer(config.headLines, config.tailLines);
-    let timedOut = false;
-    let aborted = false;
-
+    let terminationCause: "timeout" | "aborted" | undefined;
+    let exitObserved = false;
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-    if (timeout && timeout > 0) {
-      timeoutHandle = setTimeout(() => {
-        timedOut = true;
-        if (child.pid) killGracefully(child.pid, config.sigkillDelayMs);
-      }, timeout * 1000);
-    }
-
-    const onAbort = () => {
-      aborted = true;
+    let drainHandle: ReturnType<typeof setTimeout> | undefined;
+    const terminate = (cause: "timeout" | "aborted") => {
+      if (terminationCause || exitObserved) return;
+      terminationCause = cause;
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+        timeoutHandle = undefined;
+      }
+      signal?.removeEventListener("abort", onAbort);
       if (child.pid) killGracefully(child.pid, config.sigkillDelayMs);
     };
+    const onAbort = () => terminate("aborted");
+
+    if (timeout && timeout > 0) {
+      timeoutHandle = setTimeout(() => terminate("timeout"), timeout * 1000);
+    }
     if (signal) {
       if (signal.aborted) onAbort();
       else signal.addEventListener("abort", onAbort, { once: true });
@@ -822,45 +844,105 @@ async function runForegroundCommand(
 
     child.stdout?.on("data", handleData);
     child.stderr?.on("data", handleData);
+    child.once("exit", () => {
+      exitObserved = true;
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+        timeoutHandle = undefined;
+      }
+      signal?.removeEventListener("abort", onAbort);
+      drainHandle = setTimeout(() => {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+      }, 100);
+    });
 
     child.on("error", (err) => {
       if (timeoutHandle) clearTimeout(timeoutHandle);
+      if (drainHandle) clearTimeout(drainHandle);
       signal?.removeEventListener("abort", onAbort);
-      reject(new Error(`command error: ${err.message}`));
+      resolve({
+        content: [
+          { type: "text" as const, text: `command error: ${err.message}` },
+        ],
+        details: {
+          command: displayCommand,
+          cwd,
+          process: {
+            pid: child.pid,
+            processGroupId: child.pid,
+            ownerSessionId: env.PI_SESSION_ID,
+            startedAt,
+            endedAt: new Date().toISOString(),
+            status: "spawn_error" satisfies BashProcessStatus,
+            exitCode: null,
+            signal: null,
+            timeoutSeconds: timeout,
+            errorKind: "spawn_error",
+          },
+        },
+        isError: true,
+      });
     });
 
-    child.on("close", (code) => {
+    child.on("close", (code, signalCode) => {
       if (timeoutHandle) clearTimeout(timeoutHandle);
+      if (drainHandle) clearTimeout(drainHandle);
       signal?.removeEventListener("abort", onAbort);
 
       const { text: outputText } = output.format();
+      const finish = (
+        text: string,
+        status: BashProcessStatus,
+        errorKind?: "aborted" | "timeout" | "nonzero_exit" | "signal_exit",
+      ) =>
+        resolve({
+          content: [{ type: "text" as const, text }],
+          details: {
+            command: displayCommand,
+            cwd,
+            process: {
+              pid: child.pid,
+              processGroupId: child.pid,
+              ownerSessionId: env.PI_SESSION_ID,
+              startedAt,
+              endedAt: new Date().toISOString(),
+              status,
+              exitCode: code,
+              signal: signalCode,
+              timeoutSeconds: timeout,
+              errorKind,
+            },
+          },
+          ...(errorKind ? { isError: true } : {}),
+        });
 
-      if (aborted) {
+      if (terminationCause === "aborted") {
         const text = outputText
           ? `${outputText}\n\ncommand aborted`
           : "command aborted";
-        reject(new Error(text));
+        finish(text, "aborted", "aborted");
         return;
       }
 
-      if (timedOut) {
+      if (terminationCause === "timeout") {
         const text = outputText
           ? `${outputText}\n\ncommand timed out after ${timeout} seconds`
           : `command timed out after ${timeout} seconds`;
-        reject(new Error(text));
+        finish(text, "timed_out", "timeout");
         return;
       }
 
       let result = `$ ${displayCommand}\n\n${outputText || "(no output)"}`;
 
-      if (code !== 0 && code !== null) {
+      if (signalCode !== null) {
+        result += `\n\nterminated by signal ${signalCode}`;
+        finish(result, "failed", "signal_exit");
+      } else if (code !== 0 && code !== null) {
         result += `\n\nexit code ${code}`;
-        reject(new Error(result));
+        finish(result, "failed", "nonzero_exit");
       } else {
-        resolve({
-          content: [{ type: "text" as const, text: result }],
-          details: { command: displayCommand },
-        });
+        finish(result, "completed");
       }
     });
   });
@@ -880,6 +962,7 @@ async function runBackgroundCommand(
   const id = `bg-${backgroundState.nextId++}`;
   const logPath = getBackgroundLogPath(id);
   const logFd = fs.openSync(logPath, "a");
+  const startedAt = new Date().toISOString();
 
   return new Promise((resolve, reject) => {
     const child = spawn(shell, [...args, command], {
@@ -920,6 +1003,8 @@ async function runBackgroundCommand(
       command,
       cwd,
       logPath,
+      ownerSessionId: env.PI_SESSION_ID,
+      startedAt,
       timeoutHandle,
     });
 
@@ -947,7 +1032,20 @@ async function runBackgroundCommand(
             timeoutNote,
         },
       ],
-      details: { command: displayCommand, background: { id, pid, logPath } },
+      details: {
+        command: displayCommand,
+        cwd,
+        background: {
+          id,
+          pid,
+          processGroupId: pid,
+          logPath,
+          ownerSessionId: env.PI_SESSION_ID,
+          startedAt,
+          status: "running",
+          timeoutSeconds: timeout,
+        },
+      },
     });
   });
 }
@@ -959,7 +1057,29 @@ if (import.meta.vitest) {
     content: [{ type: "text"; text: string }];
     details?: {
       command: string;
-      background?: { id: string; pid: number; logPath: string };
+      cwd?: string;
+      process?: {
+        pid?: number;
+        processGroupId?: number;
+        ownerSessionId?: string;
+        startedAt: string;
+        endedAt: string;
+        status: BashProcessStatus;
+        exitCode: number | null;
+        signal: NodeJS.Signals | null;
+        timeoutSeconds?: number;
+        errorKind?: string;
+      };
+      background?: {
+        id: string;
+        pid: number;
+        processGroupId: number;
+        logPath: string;
+        ownerSessionId?: string;
+        startedAt: string;
+        status: "running";
+        timeoutSeconds?: number;
+      };
     };
     isError?: boolean;
   };
@@ -1183,18 +1303,120 @@ if (import.meta.vitest) {
     });
 
     describe("exit codes", () => {
-      it("shows exit code on failure", async () => {
-        await expect(
-          execute(
-            `python3 -c "import sys; print('some output'); sys.exit(42)"`,
-          ),
-        ).rejects.toThrow("exit code 42");
+      it("returns structured process metadata on failure", async () => {
+        const result = await execute(
+          `python3 -c "import sys; print('some output'); sys.exit(42)"`,
+        );
+
+        expect(result.content[0].text).toContain("exit code 42");
+        expect(result.isError).toBe(true);
+        expect(result.details).toMatchObject({
+          command: `python3 -c "import sys; print('some output'); sys.exit(42)"`,
+          cwd: "/tmp",
+          process: {
+            ownerSessionId: "test-session-id",
+            status: "failed",
+            exitCode: 42,
+            signal: null,
+            errorKind: "nonzero_exit",
+          },
+        });
+        expect(result.details?.process?.pid).toBeTypeOf("number");
+        expect(result.details?.process?.startedAt).toBeTruthy();
+        expect(result.details?.process?.endedAt).toBeTruthy();
       });
 
-      it("no exit code on success", async () => {
+      it("returns structured process metadata on success", async () => {
         const result = await execute(`echo "success"`);
         expect(result.isError).toBeFalsy();
         expect(result.content[0].text).not.toContain("exit code");
+        expect(result.details?.process).toMatchObject({
+          ownerSessionId: "test-session-id",
+          status: "completed",
+          exitCode: 0,
+          signal: null,
+        });
+      });
+    });
+
+    describe("termination", () => {
+      it("returns a structured timeout", async () => {
+        const result = await execute(`sleep 2`, 0.01);
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain("command timed out");
+        expect(result.details?.process).toMatchObject({
+          status: "timed_out",
+          errorKind: "timeout",
+          timeoutSeconds: 0.01,
+        });
+      });
+
+      it("returns a structured cancellation", async () => {
+        const controller = new AbortController();
+        const pending = tool.execute!(
+          "test-id",
+          { cmd: "sleep 2" },
+          controller.signal,
+          undefined,
+          mockCtx as any,
+        ) as Promise<BashToolResult>;
+        controller.abort();
+        const result = await pending;
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain("command aborted");
+        expect(result.details?.process).toMatchObject({
+          status: "aborted",
+          errorKind: "aborted",
+        });
+      });
+
+      it("reports external signal termination as failure", async () => {
+        const result = await execute(`kill -TERM $$`);
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain(
+          "terminated by signal SIGTERM",
+        );
+        expect(result.details?.process).toMatchObject({
+          status: "failed",
+          exitCode: null,
+          signal: "SIGTERM",
+          errorKind: "signal_exit",
+        });
+      });
+
+      it("keeps the first termination cause", async () => {
+        const controller = new AbortController();
+        const pending = tool.execute!(
+          "test-id",
+          { cmd: "trap '' TERM; while :; do sleep 1; done", timeout: 0.01 },
+          controller.signal,
+          undefined,
+          mockCtx as any,
+        ) as Promise<BashToolResult>;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        controller.abort();
+        const result = await pending;
+
+        expect(result.details?.process).toMatchObject({
+          status: "timed_out",
+          errorKind: "timeout",
+        });
+      });
+
+      it("does not time out after the shell has exited", async () => {
+        const startedAt = Date.now();
+        const result = await execute(`sh -c "sleep 2 &"`, 1);
+
+        expect(Date.now() - startedAt).toBeLessThan(1_000);
+        expect(result.isError).toBeFalsy();
+        expect(result.details?.process).toMatchObject({
+          status: "completed",
+          exitCode: 0,
+          signal: null,
+        });
       });
     });
 
@@ -1442,6 +1664,15 @@ if (import.meta.vitest) {
         expect(result.details?.background?.pid).toBeTruthy();
         expect(result.details?.background?.id).toMatch(/^bg-/);
         expect(result.details?.background?.logPath).toBeTruthy();
+        expect(result.details).toMatchObject({
+          cwd: "/tmp",
+          background: {
+            processGroupId: result.details?.background?.pid,
+            ownerSessionId: "test-session-id",
+            startedAt: expect.any(String),
+            status: "running",
+          },
+        });
         expect(result.content[0].text).toContain("started background process");
 
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -1486,6 +1717,14 @@ function createBashExtension(
     const backgroundState = createBackgroundState();
 
     pi.registerTool(deps.withPromptPatch(createBashTool(backgroundState, cfg)));
+    pi.on("tool_result", async (event) => {
+      if (
+        event.toolName.toLowerCase() === "bash" &&
+        hasFailedProcess(event.details)
+      ) {
+        return { isError: true };
+      }
+    });
     pi.on("session_shutdown", async () => {
       await cleanupBackgroundProcesses(backgroundState, cfg.sigkillDelayMs);
     });
@@ -1568,11 +1807,50 @@ if (import.meta.vitest) {
       expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
       expect(harness.tools).toHaveLength(1);
       expect(harness.tools[0]).toMatchObject({ name: "bash" });
-      expect(harness.handlers).toHaveLength(2);
+      expect(harness.handlers).toHaveLength(3);
       expect(harness.handlers.map((handler) => handler.event)).toEqual([
+        "tool_result",
         "session_shutdown",
         "session_start",
       ]);
+    });
+
+    it("marks structured process failures as tool errors", async () => {
+      const extension = createBashExtension({
+        getEnabledExtensionConfig: (<T extends Record<string, unknown>>(
+          _namespace: string,
+          defaults: T,
+        ) => ({
+          enabled: true,
+          config: defaults,
+        })) as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
+        withPromptPatch: ((tool: ToolDefinition) =>
+          tool) as typeof DEFAULT_DEPS.withPromptPatch,
+      });
+      const harness = createMockExtensionApiHarness();
+      extension(harness.pi);
+      const handler = harness.handlers.find(
+        ({ event }) => event === "tool_result",
+      )?.handler as (event: any) => Promise<unknown>;
+
+      await expect(
+        handler({
+          toolName: "bash",
+          details: { process: { status: "failed" } },
+        }),
+      ).resolves.toEqual({ isError: true });
+      await expect(
+        handler({
+          toolName: "bash",
+          details: { process: { status: "completed" } },
+        }),
+      ).resolves.toBeUndefined();
+      await expect(
+        handler({
+          toolName: "read",
+          details: { process: { status: "failed" } },
+        }),
+      ).resolves.toBeUndefined();
     });
 
     it("registers no extension tool when disabled", () => {
@@ -1630,7 +1908,7 @@ if (import.meta.vitest) {
       expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
       expect(harness.tools).toHaveLength(1);
       expect(harness.tools[0]).toMatchObject({ name: "bash" });
-      expect(harness.handlers).toHaveLength(2);
+      expect(harness.handlers).toHaveLength(3);
     });
   });
 }

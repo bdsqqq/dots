@@ -60,6 +60,10 @@ import {
   type WorkflowProgress,
 } from "./runtime.js";
 import {
+  WorkflowRunnerError,
+  type WorkflowRunnerProcess,
+} from "./process-runner.js";
+import {
   listWorkflowFiles,
   parseWorkflowSource,
   resolveWorkflowSource,
@@ -163,6 +167,7 @@ interface WorkflowDetails {
   description: string;
   source: string;
   graph: WorkflowGraphNode[];
+  runner?: WorkflowRunnerProcess;
   children: Array<{
     nodeId: string;
     sessionId?: string;
@@ -433,7 +438,7 @@ export function createWorkflowTool(): ToolDefinition<
           journal.status = "completed";
           journal.finishedAt = new Date().toISOString();
         });
-        const details = makeDetails(store, cached, output.graph);
+        const details = makeDetails(store, cached, output.graph, output.runner);
         return {
           content: [{ type: "text", text: resultText(output.value) }],
           details,
@@ -445,6 +450,19 @@ export function createWorkflowTool(): ToolDefinition<
             journal.status = signal?.aborted ? "cancelled" : "failed";
             journal.finishedAt = new Date().toISOString();
           });
+        }
+        if (error instanceof WorkflowRunnerError && !signal?.aborted) {
+          const graph =
+            "workflowGraph" in error && Array.isArray(error.workflowGraph)
+              ? (error.workflowGraph as WorkflowGraphNode[])
+              : [];
+          const details = makeDetails(store, cached, graph, error.runner);
+          return {
+            content: [{ type: "text", text: error.message }],
+            details,
+            usage: toToolUsage(details.usage),
+            isError: true,
+          };
         }
         throw error;
       } finally {
@@ -547,6 +565,14 @@ export function createWorkflowTool(): ToolDefinition<
           0,
         ),
       );
+      if (details.status === "failed" || details.status === "cancelled") {
+        const message = result.content[0];
+        if (message?.type === "text" && message.text) {
+          container.addChild(
+            new Text(theme.fg("error", escapeToolText(message.text)), 0, 0),
+          );
+        }
+      }
       for (const line of renderWorkflowGraph(
         details.graph,
         theme,
@@ -554,6 +580,19 @@ export function createWorkflowTool(): ToolDefinition<
       ))
         container.addChild(new TruncatedText(line, 0, 0));
       if (expanded) {
+        if (details.runner) {
+          container.addChild(
+            new Text(
+              theme.fg(
+                "dim",
+                `runner ${details.runner.pid ?? "not-spawned"} · ${details.runner.status}` +
+                  `${details.runner.errorKind ? ` · ${details.runner.errorKind}` : ""}`,
+              ),
+              0,
+              0,
+            ),
+          );
+        }
         container.addChild(
           new Text(
             theme.fg(
@@ -587,6 +626,7 @@ function makeDetails(
   store: JournalStore,
   cached: number,
   graph: WorkflowGraphNode[],
+  runner?: WorkflowRunnerProcess,
 ): WorkflowDetails {
   return {
     runId: store.journal.runId,
@@ -598,6 +638,7 @@ function makeDetails(
     description: store.journal.workflow.description,
     source: store.journal.workflow.source,
     graph,
+    ...(runner ? { runner } : {}),
     children: store.journal.nodes.map((node) => ({
       nodeId: node.nodeId,
       sessionId: node.childSessionId,
@@ -612,6 +653,11 @@ function makeDetails(
 export function createWorkflowExtension(): (pi: ExtensionAPI) => void {
   return (pi) => {
     pi.registerTool(createWorkflowTool());
+    pi.on("tool_result", async (event) => {
+      if (event.toolName !== "workflow") return;
+      const runner = (event.details as WorkflowDetails | undefined)?.runner;
+      if (runner && runner.status !== "succeeded") return { isError: true };
+    });
     pi.registerCommand("workflow", {
       description: "Create and propose a typed workflow for a goal",
       handler: async (args, ctx) => {
@@ -671,15 +717,27 @@ if (import.meta.vitest) {
       expect(lineOutput.split("\n")).toHaveLength(2_000);
     });
 
-    it("registers the workflow tool and workflows command", () => {
+    it("registers the workflow tool, command, and error normalization", async () => {
       const tools: unknown[] = [];
       const commands: string[] = [];
+      let toolResultHandler:
+        | ((event: { toolName: string; details?: unknown }) => Promise<unknown>)
+        | undefined;
       createWorkflowExtension()({
         registerTool: (tool: unknown) => tools.push(tool),
         registerCommand: (name: string) => commands.push(name),
+        on: (_event: string, handler: typeof toolResultHandler) => {
+          toolResultHandler = handler;
+        },
       } as unknown as ExtensionAPI);
       expect((tools[0] as { name: string }).name).toBe("workflow");
       expect(commands).toEqual(["workflow", "workflows"]);
+      await expect(
+        toolResultHandler?.({
+          toolName: "workflow",
+          details: { runner: { status: "failed" } },
+        }),
+      ).resolves.toEqual({ isError: true });
     });
 
     it("turns /workflow goals into typed workflow proposals", async () => {
@@ -696,6 +754,7 @@ if (import.meta.vitest) {
         registerTool: () => undefined,
         registerCommand: (name: string, command: unknown) =>
           commands.set(name, command as never),
+        on: () => undefined,
         sendUserMessage: (content: string, options?: { deliverAs: string }) =>
           messages.push({ content, options }),
       } as unknown as ExtensionAPI);
@@ -720,6 +779,7 @@ if (import.meta.vitest) {
       createWorkflowExtension()({
         registerTool: (tool: unknown) => tools.push(tool),
         registerCommand: () => undefined,
+        on: () => undefined,
       } as unknown as ExtensionAPI);
       const tool = tools[0] as ToolDefinition<
         typeof WorkflowParams,

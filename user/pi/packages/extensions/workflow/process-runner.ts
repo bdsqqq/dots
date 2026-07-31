@@ -97,6 +97,47 @@ export interface ScriptRunRequest {
   onFatal?: (error: Error) => void;
 }
 
+export type WorkflowRunnerErrorKind =
+  | "aborted"
+  | "heartbeat_timeout"
+  | "idle_timeout"
+  | "spawn_error"
+  | "transport_error"
+  | "protocol_error"
+  | "script_error"
+  | "premature_exit"
+  | "nonzero_exit"
+  | "signal_exit";
+
+export interface WorkflowRunnerProcess {
+  pid: number | null;
+  processGroupId: number | null;
+  startedAt: string;
+  endedAt: string;
+  status: "succeeded" | "failed" | "cancelled" | "timed_out";
+  heartbeatTimeoutMs: number;
+  idleTimeoutMs: number;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  errorKind: WorkflowRunnerErrorKind | null;
+}
+
+export interface ScriptRunResult {
+  value: unknown;
+  runner: WorkflowRunnerProcess;
+}
+
+export class WorkflowRunnerError extends Error {
+  constructor(
+    message: string,
+    readonly runner: WorkflowRunnerProcess,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "WorkflowRunnerError";
+  }
+}
+
 export type RunnerLauncher = (
   signal?: AbortSignal,
 ) => Promise<ChildProcessWithoutNullStreams>;
@@ -198,9 +239,22 @@ function killProcessGroup(
 export async function runWorkflowScript(
   request: ScriptRunRequest,
   launcher: RunnerLauncher = spawnWorkflowRunner,
-): Promise<unknown> {
-  if (request.signal?.aborted)
-    throw new DOMException("workflow cancelled", "AbortError");
+): Promise<ScriptRunResult> {
+  const startedAt = new Date().toISOString();
+  if (request.signal?.aborted) {
+    throw new WorkflowRunnerError("workflow cancelled", {
+      pid: null,
+      processGroupId: null,
+      startedAt,
+      endedAt: startedAt,
+      status: "cancelled",
+      heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
+      idleTimeoutMs: IDLE_TIMEOUT_MS,
+      exitCode: null,
+      signal: null,
+      errorKind: "aborted",
+    });
+  }
   const child = await launcher(request.signal);
   if (request.signal?.aborted) {
     killProcessGroup(child, "SIGKILL");
@@ -211,7 +265,20 @@ export async function runWorkflowScript(
         child.once("error", () => resolve());
       }
     });
-    throw new DOMException("workflow cancelled", "AbortError");
+    const endedAt = new Date().toISOString();
+    throw new WorkflowRunnerError("workflow cancelled", {
+      pid: child.pid ?? null,
+      processGroupId:
+        launcher === spawnWorkflowRunner ? (child.pid ?? null) : null,
+      startedAt,
+      endedAt,
+      status: "cancelled",
+      heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
+      idleTimeoutMs: IDLE_TIMEOUT_MS,
+      exitCode: child.exitCode,
+      signal: child.signalCode,
+      errorKind: "aborted",
+    });
   }
   const decoder = new FrameDecoder();
   const brokerRequests = new Set<Promise<void>>();
@@ -225,6 +292,8 @@ export async function runWorkflowScript(
     | { ok: false; error: Error }
     | undefined;
   let terminating = false;
+  let terminationTimer: ReturnType<typeof setTimeout> | undefined;
+  let errorKind: WorkflowRunnerErrorKind | null = null;
 
   const write = (frame: Record<string, unknown>): void => {
     if (child.stdin.destroyed || !child.stdin.writable) return;
@@ -232,14 +301,20 @@ export async function runWorkflowScript(
     child.stdin.write(encodeFrame(frame));
   };
 
-  const terminate = (error: Error): void => {
+  const terminate = (error: Error, kind: WorkflowRunnerErrorKind): void => {
     if (terminating) return;
     terminating = true;
+    errorKind = kind;
     terminal = { ok: false, error };
     request.onFatal?.(error);
     killProcessGroup(child, "SIGTERM");
-    setTimeout(() => killProcessGroup(child, "SIGKILL"), KILL_GRACE_MS).unref();
+    terminationTimer = setTimeout(
+      () => killProcessGroup(child, "SIGKILL"),
+      KILL_GRACE_MS,
+    );
+    terminationTimer.unref();
   };
+  child.stdin.on("error", (error) => terminate(error, "transport_error"));
 
   const handleAgent = (frame: RunnerFrame): void => {
     if (
@@ -308,7 +383,10 @@ export async function runWorkflowScript(
       .finally(() => brokerRequests.delete(operation));
     brokerRequests.add(operation);
     void operation.catch((error) =>
-      terminate(error instanceof Error ? error : new Error(String(error))),
+      terminate(
+        error instanceof Error ? error : new Error(String(error)),
+        "protocol_error",
+      ),
     );
   };
 
@@ -359,7 +437,7 @@ export async function runWorkflowScript(
       return;
     }
     if (frame.type === "fatal") {
-      terminate(fromWireError(frame.error));
+      terminate(fromWireError(frame.error), "script_error");
       return;
     }
     throw new Error(
@@ -367,63 +445,120 @@ export async function runWorkflowScript(
     );
   };
 
-  return await new Promise<unknown>((resolve, reject) => {
+  return await new Promise<ScriptRunResult>((resolve, reject) => {
     const watchdog = setInterval(() => {
       if (terminal) return;
       const now = Date.now();
       if (now - lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
-        terminate(new Error("workflow script stopped responding"));
+        terminate(
+          new Error("workflow script stopped responding"),
+          "heartbeat_timeout",
+        );
       } else if (
         ready &&
         runnerPending === 0 &&
         brokerRequests.size === 0 &&
         now - lastActivity > IDLE_TIMEOUT_MS
       ) {
-        terminate(new Error("workflow script made no progress"));
+        terminate(
+          new Error("workflow script made no progress"),
+          "idle_timeout",
+        );
       }
     }, 250);
     watchdog.unref();
 
     const abort = () =>
-      terminate(new DOMException("workflow cancelled", "AbortError"));
+      terminate(
+        new DOMException("workflow cancelled", "AbortError"),
+        "aborted",
+      );
     request.signal?.addEventListener("abort", abort, { once: true });
 
     child.stdout.on("data", (chunk: Buffer) => {
       try {
         for (const frame of decoder.push(chunk)) handleFrame(frame);
       } catch (error) {
-        terminate(error instanceof Error ? error : new Error(String(error)));
+        terminate(
+          error instanceof Error ? error : new Error(String(error)),
+          "protocol_error",
+        );
       }
     });
     child.stderr.on("data", (chunk: Buffer) => {
       if (Buffer.byteLength(stderr, "utf8") < MAX_STDERR_BYTES)
         stderr += chunk.toString("utf8");
     });
-    child.on("error", (error) => terminate(error));
-    child.on("close", async () => {
+    child.on("error", (error) => terminate(error, "spawn_error"));
+    child.on("close", async (exitCode, signal) => {
       clearInterval(watchdog);
+      if (terminationTimer) clearTimeout(terminationTimer);
       request.signal?.removeEventListener("abort", abort);
       let closeError: Error | undefined;
       try {
         decoder.assertEmpty();
       } catch (error) {
         closeError = error as Error;
+        errorKind ??= "protocol_error";
       }
-      if (!terminal || closeError) {
+      if (!terminal || (closeError && terminal.ok)) {
         closeError ??= new Error(
           `workflow runner exited before completion${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
         );
+        errorKind ??= "premature_exit";
         terminal = { ok: false, error: closeError };
         request.onFatal?.(closeError);
+      } else if (terminal.ok && signal) {
+        terminal = {
+          ok: false,
+          error: new Error(`workflow runner exited by signal ${signal}`),
+        };
+        errorKind = "signal_exit";
+      } else if (terminal.ok && exitCode !== 0) {
+        terminal = {
+          ok: false,
+          error: new Error(`workflow runner exited with code ${exitCode}`),
+        };
+        errorKind = "nonzero_exit";
       }
       await Promise.allSettled([...brokerRequests]);
-      if (terminal.ok) resolve(terminal.value);
-      else reject(terminal.error);
+      const status =
+        errorKind === "aborted"
+          ? "cancelled"
+          : errorKind === "heartbeat_timeout" || errorKind === "idle_timeout"
+            ? "timed_out"
+            : terminal.ok
+              ? "succeeded"
+              : "failed";
+      const runner: WorkflowRunnerProcess = {
+        pid: child.pid ?? null,
+        processGroupId:
+          launcher === spawnWorkflowRunner ? (child.pid ?? null) : null,
+        startedAt,
+        endedAt: new Date().toISOString(),
+        status,
+        heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
+        idleTimeoutMs: IDLE_TIMEOUT_MS,
+        exitCode,
+        signal,
+        errorKind,
+      };
+      if (terminal.ok) resolve({ value: terminal.value, runner });
+      else
+        reject(
+          new WorkflowRunnerError(terminal.error.message, runner, {
+            cause: terminal.error,
+          }),
+        );
     });
   });
 }
 
-const executeWorkflowScriptForTest = runWorkflowScript;
+const executeWorkflowScriptWithLifecycleForTest = runWorkflowScript;
+const executeWorkflowScriptForTest = async (
+  request: ScriptRunRequest,
+  launcher: RunnerLauncher = spawnWorkflowRunner,
+): Promise<unknown> => (await runWorkflowScript(request, launcher)).value;
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest;
@@ -459,6 +594,30 @@ if (import.meta.vitest) {
   `;
 
   describe("workflow script runner", () => {
+    it("returns structured runner lifecycle metadata", async () => {
+      const result = await executeWorkflowScriptWithLifecycleForTest(
+        {
+          code: workflowCode("return 4;"),
+          meta: testMeta,
+          args: null,
+          agent: async () => undefined,
+        },
+        spawnDirectRunner,
+      );
+
+      expect(result.value).toBe(4);
+      expect(result.runner).toMatchObject({
+        pid: expect.any(Number),
+        processGroupId: expect.any(Number),
+        status: "succeeded",
+        heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
+        idleTimeoutMs: IDLE_TIMEOUT_MS,
+        exitCode: 0,
+        signal: null,
+        errorKind: null,
+      });
+    });
+
     it("keeps workflow globals in the runner and proxies agent calls", async () => {
       const prompts: string[] = [];
       const value = await runWorkflowScript(
@@ -849,7 +1008,18 @@ if (import.meta.vitest) {
           return child;
         },
       );
-      await expect(pending).rejects.toThrow("exited before completion");
+      const error = await pending.catch((caught) => caught);
+      expect(error).toBeInstanceOf(WorkflowRunnerError);
+      if (!(error instanceof WorkflowRunnerError)) throw error;
+      expect(error.message).toContain("exited before completion");
+      expect(error.runner).toMatchObject({
+        pid: expect.any(Number),
+        processGroupId: null,
+        status: "failed",
+        exitCode: null,
+        signal: "SIGKILL",
+        errorKind: "premature_exit",
+      });
     });
 
     it("aborts detached agents when the runner fails", async () => {

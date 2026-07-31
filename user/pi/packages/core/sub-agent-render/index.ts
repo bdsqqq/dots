@@ -11,7 +11,10 @@
 
 import * as os from "node:os";
 import type { Message, Usage } from "@earendil-works/pi-ai";
-import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import {
+  getMarkdownTheme,
+  type ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 import {
   Container,
   Markdown,
@@ -22,6 +25,7 @@ import {
   modelCliString,
   toToolUsage,
   type PiSpawnModel,
+  type PiSpawnLifecycle,
   type PiSpawnSessionMeta,
   type UsageStats,
 } from "@bds_pi/pi-spawn";
@@ -52,6 +56,7 @@ export interface SingleResult {
   sessionId?: string;
   sessionFile?: string;
   leafId?: string;
+  lifecycle?: PiSpawnLifecycle;
 }
 
 // --- message parsing ---
@@ -136,6 +141,27 @@ export function subAgentResult(
     usage: toToolUsage(details.usage),
     ...(isError && { isError: true }),
   };
+}
+
+export function registerSubAgentErrorNormalization(
+  pi: ExtensionAPI,
+  toolName: string,
+): void {
+  pi.on("tool_result", async (event) => {
+    if (event.toolName !== toolName) return;
+    const details = event.details as Partial<SingleResult> | undefined;
+    const status = details?.lifecycle?.status;
+    if (
+      status === "failed" ||
+      status === "cancelled" ||
+      status === "timed_out" ||
+      (typeof details?.exitCode === "number" && details.exitCode !== 0) ||
+      details?.stopReason === "error" ||
+      details?.stopReason === "aborted"
+    ) {
+      return { isError: true };
+    }
+  });
 }
 
 // --- formatting ---
@@ -279,7 +305,13 @@ export function renderAgentTree(
   const mdTheme = getMarkdownTheme();
 
   const isError =
-    r.exitCode !== 0 || r.stopReason === "error" || r.stopReason === "aborted";
+    r.lifecycle?.status === "failed" ||
+    r.lifecycle?.status === "cancelled" ||
+    r.lifecycle?.status === "timed_out" ||
+    r.exitCode !== 0 ||
+    r.stopReason === "error" ||
+    r.stopReason === "aborted";
+  const errorLabel = r.lifecycle?.errorKind ?? r.stopReason;
   const icon =
     r.exitCode === -1
       ? fg("warning", "⋯")
@@ -289,13 +321,11 @@ export function renderAgentTree(
 
   if (opts.header === "statusOnly") {
     let header = icon;
-    if (isError && r.stopReason)
-      header += ` ${fg("error", `[${r.stopReason}]`)}`;
+    if (isError && errorLabel) header += ` ${fg("error", `[${errorLabel}]`)}`;
     container.addChild(new Text(header, 0, 0));
   } else {
     let header = `${icon} ${fg("toolTitle", theme.bold(opts.label ?? r.agent))}`;
-    if (isError && r.stopReason)
-      header += ` ${fg("error", `[${r.stopReason}]`)}`;
+    if (isError && errorLabel) header += ` ${fg("error", `[${errorLabel}]`)}`;
     container.addChild(new Text(header, 0, 0));
   }
 
@@ -389,6 +419,41 @@ if (import.meta.vitest) {
     },
     stopReason: "stop",
     timestamp: 0,
+  });
+
+  describe("registerSubAgentErrorNormalization", () => {
+    it("marks only matching failed lifecycle results as errors", async () => {
+      let handler:
+        | ((event: { toolName: string; details?: unknown }) => Promise<unknown>)
+        | undefined;
+      registerSubAgentErrorNormalization(
+        {
+          on(_event: string, registered: typeof handler) {
+            handler = registered;
+          },
+        } as unknown as ExtensionAPI,
+        "finder",
+      );
+
+      await expect(
+        handler?.({
+          toolName: "finder",
+          details: { lifecycle: { status: "failed" } },
+        }),
+      ).resolves.toEqual({ isError: true });
+      await expect(
+        handler?.({
+          toolName: "finder",
+          details: { lifecycle: { status: "succeeded" }, exitCode: 0 },
+        }),
+      ).resolves.toBeUndefined();
+      await expect(
+        handler?.({
+          toolName: "read",
+          details: { lifecycle: { status: "failed" } },
+        }),
+      ).resolves.toBeUndefined();
+    });
   });
 
   describe("formatUsageStats", () => {
