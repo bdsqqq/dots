@@ -14,6 +14,9 @@ let
         exit 64
       fi
 
+      # Lenovo's profile controls firmware thermal and fan policy; ryzenadj
+      # then provides the exact package-power ceiling selected in Quickshell.
+      printf '%s\n' balanced > /sys/firmware/acpi/platform_profile
       ryzenadj \
         --stapm-limit="$((watts * 1000))" \
         --fast-limit="$((watts * 1000))" \
