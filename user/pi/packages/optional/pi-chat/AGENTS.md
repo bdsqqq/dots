@@ -23,26 +23,32 @@ Discord/Telegram ←→ Live Adapter ←→ Runtime (log, jobs, slices) ←→ p
 ## Key files
 
 ### Core types
+
 - `src/core/config-types.ts` — Config, account, channel, secret, and resolved conversation types.
 - `src/core/runtime-types.ts` — Log record types, job types, dispatch types.
 - `src/core/discovery-types.ts` — Discovery snapshot types (channels, users, roles).
 - `src/core/keys.ts` — Channel key derivation.
 
 ### Config & storage
+
 - `src/config.ts` — Load/save config, resolve conversations, storage paths. Everything under `~/.pi/agent/chat/`.
 - `src/discovery-store.ts` — Read/write discovery snapshots (cached channel/user/role lists).
 - `src/log.ts` — JSONL log read/write, locking, attachment materialization, directory setup.
 
 ### Runtime
+
 - `src/runtime.ts` — `ConversationRuntime`: log state machine, job queue, slice construction, prompt building, checkpoint management. Owns trigger logic, access policy, control command parsing.
 
 ### Gondolin sandbox
+
 - `src/gondolin.ts` — `ConversationSandbox`: VM lifecycle, secret environment setup, tool operation factories (read/write/edit/ls/find/grep/bash), guest/host path translation.
 
 ### Secrets
+
 - `src/secrets.ts` — Encrypted secret exchange: RSA keypair generation, widget URL construction, hybrid RSA-OAEP + AES-256-GCM decryption.
 
 ### Live adapters
+
 - `src/live/types.ts` — `LiveConnection` and `LiveConnectionHandlers` interfaces.
 - `src/live/index.ts` — Adapter router (Discord vs Telegram).
 - `src/live/discord.ts` — Discord adapter: discord.js gateway, catch-up pagination, REST message sending with chunking and formatting, reply-to, auto-reconnect on disconnect.
@@ -50,18 +56,21 @@ Discord/Telegram ←→ Live Adapter ←→ Runtime (log, jobs, slices) ←→ p
 - `src/live/common.ts` — Shared: attachment download/storage, MIME detection, bot mention detection.
 
 ### Rendering
+
 - `src/render/format.ts` — Service-specific markdown normalization and message length limits.
 - `src/render/chunking.ts` — Text chunking for service message limits.
 - `src/render/streaming.ts` — `StreamingPreview`: chunked preview transport (currently unused, kept for potential future streaming).
 - `src/render/streaming-markdown.ts` — Streaming markdown renderer (currently unused).
 
 ### Services (setup/discovery)
+
 - `src/services/index.ts` — Account snapshot refresh, identity update.
 - `src/services/discord.ts` — Discord bot validation, server listing, channel/role/user discovery.
 - `src/services/telegram.ts` — Telegram bot validation, identity fetch.
 - `src/services/types.ts` — Shared service types.
 
 ### TUI
+
 - `src/tui/chat-config.ts` — `/chat-config` UI: account/channel management, access policy, secrets config.
 - `src/tui/dialogs.ts` — Shared dialog helpers: select, notice, loader, toggle.
 - `src/tui/discord-setup.ts` — Guided Discord account setup (token, server selection, invite flow).

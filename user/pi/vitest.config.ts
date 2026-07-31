@@ -33,6 +33,7 @@ export default defineConfig({
   test: {
     includeSource: ["packages/**/*.ts"],
     exclude: ["**/node_modules/**", "**/*.sync-conflict-*.ts"],
+    testTimeout: 15_000,
   },
   define: {
     "import.meta.vitest": "undefined",

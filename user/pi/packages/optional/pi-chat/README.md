@@ -71,19 +71,19 @@ pi -e /path/to/pi-chat
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/chat-config` | Configure accounts, channels, and secrets |
-| `/chat-connect` | Connect to a configured channel |
-| `/chat-disconnect` | Disconnect the current channel |
-| `/chat-status` | Show connection status, model, usage, context |
-| `/chat-list` | List configured channels |
-| `/chat-spawn-all` | Spawn every configured channel in detached tmux/pi sessions |
-| `/chat-spawn-all --restart` | Restart those tmux/pi sessions |
-| `/chat-workers` | Show managed tmux/pi worker status |
-| `/chat-open-all` | Open running workers in a tiled tmux dashboard |
-| `/chat-kill-all` | Kill all managed tmux/pi workers |
-| `/chat-new` | Start a new pi session, keeping the chat connection |
+| Command                     | Description                                                 |
+| --------------------------- | ----------------------------------------------------------- |
+| `/chat-config`              | Configure accounts, channels, and secrets                   |
+| `/chat-connect`             | Connect to a configured channel                             |
+| `/chat-disconnect`          | Disconnect the current channel                              |
+| `/chat-status`              | Show connection status, model, usage, context               |
+| `/chat-list`                | List configured channels                                    |
+| `/chat-spawn-all`           | Spawn every configured channel in detached tmux/pi sessions |
+| `/chat-spawn-all --restart` | Restart those tmux/pi sessions                              |
+| `/chat-workers`             | Show managed tmux/pi worker status                          |
+| `/chat-open-all`            | Open running workers in a tiled tmux dashboard              |
+| `/chat-kill-all`            | Kill all managed tmux/pi workers                            |
+| `/chat-new`                 | Start a new pi session, keeping the chat connection         |
 
 Workers also write status snapshots every 15 seconds under `~/.pi/agent/chat/worker-status/`. The `chat_workers` tool exposes the same status to an orchestrating pi agent.
 
@@ -93,12 +93,12 @@ Workers also write status snapshots every 15 seconds under `~/.pi/agent/chat/wor
 
 Users in the connected chat can send these commands (with or without mentioning the bot):
 
-| Command | Effect |
-|---------|--------|
-| `stop` | Abort the current turn |
-| `status` | Show model, usage, context stats |
-| `compact` | Trigger context compaction |
-| `new` | Start a new pi session |
+| Command   | Effect                           |
+| --------- | -------------------------------- |
+| `stop`    | Abort the current turn           |
+| `status`  | Show model, usage, context stats |
+| `compact` | Trigger context compaction       |
+| `new`     | Start a new pi session           |
 
 ---
 
@@ -148,10 +148,10 @@ The agent sees `/workspace` as its working directory.
 
 Two persistent memory files, injected into the system prompt on every turn:
 
-| File | VM Path | Scope |
-|------|---------|-------|
-| Account memory | `/shared/memory.md` | Shared across all channels for this account |
-| Channel memory | `/workspace/memory.md` | Specific to this channel |
+| File           | VM Path                | Scope                                       |
+| -------------- | ---------------------- | ------------------------------------------- |
+| Account memory | `/shared/memory.md`    | Shared across all channels for this account |
+| Channel memory | `/workspace/memory.md` | Specific to this channel                    |
 
 The agent is instructed to write durable facts and preferences to these files when asked to remember something. Account-wide goes to `/shared/memory.md`, channel-specific to `/workspace/memory.md`.
 
@@ -208,14 +208,14 @@ The encrypted blob is useless without the ephemeral private key held in pi-chat'
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `read` | Read files (routed through Gondolin VM) |
-| `write` | Create/overwrite files |
-| `edit` | Precise in-place edits |
-| `bash` | Execute commands (runs `/bin/bash` in the VM) |
-| `chat_history` | Search older messages from the chat log |
-| `chat_attach` | Queue files to send with the next reply |
+| Tool                  | Description                                           |
+| --------------------- | ----------------------------------------------------- |
+| `read`                | Read files (routed through Gondolin VM)               |
+| `write`               | Create/overwrite files                                |
+| `edit`                | Precise in-place edits                                |
+| `bash`                | Execute commands (runs `/bin/bash` in the VM)         |
+| `chat_history`        | Search older messages from the chat log               |
+| `chat_attach`         | Queue files to send with the next reply               |
 | `chat_request_secret` | Request a secret from the user via encrypted exchange |
 
 ---
