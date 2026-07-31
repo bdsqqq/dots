@@ -1,5 +1,12 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { validateTranscript } from "@letta-ai/trajectory";
 import {
   atomicWrite,
   contained,
@@ -31,6 +38,7 @@ import {
   materializeModelProposals,
   readReviewReceipts,
   saveProposal,
+  parseStoredProposalOperation,
 } from "./workflow.js";
 
 export type PipelineInputV2 = {
@@ -74,7 +82,7 @@ export type PipelineInputV4 = Omit<
 > & {
   version: 4;
   promptVersion: 4;
-  supersessionBasis: Array<{
+  supersessionBasis?: Array<{
     id: string;
     runId: string;
     operation: Proposal["operation"];
@@ -108,111 +116,562 @@ type PipelineCriticOutput = {
   reason: string;
 };
 
-export function parseStoredPipelineInput(raw: string): PipelineInput {
-  const value: unknown = JSON.parse(raw);
+const HASH = /^[a-f0-9]{64}$/;
+const MEMORY_ID = /^(?:mem_[a-f0-9]{24}|legacy:[a-f0-9]{24})$/;
+const PROPOSAL_ID = /^prop_[a-f0-9]{32}$/;
+const REASONING_LEVELS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+function storedObject(value: unknown, name: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value))
-    throw new Error("invalid stored pipeline input");
-  const input = value as Record<string, unknown>;
-  const version = input.version;
-  const expectedFields = [
-    "batchId",
-    "catalog",
-    "createdAt",
-    "evidence",
-    "model",
-    "pending",
-    "promptVersion",
-    "reviewSignals",
-    "reasoning",
-    "runId",
-    "scope",
-    "skills",
-    "targets",
-    "version",
-    ...(version === 3 || version === 4
-      ? ["observations", "rollbackEvidence"]
-      : []),
-    ...(version === 4 ? ["supersessionBasis"] : []),
-  ];
-  if (input.model === undefined)
-    expectedFields.splice(expectedFields.indexOf("model"), 1);
-  if (input.reasoning === undefined)
-    expectedFields.splice(expectedFields.indexOf("reasoning"), 1);
+    throw new Error(`invalid ${name}`);
+  return value as Record<string, unknown>;
+}
+
+function storedExactKeys(
+  value: Record<string, unknown>,
+  keys: string[],
+  name: string,
+): void {
+  if (Object.keys(value).sort().join(",") !== keys.slice().sort().join(","))
+    throw new Error(`invalid ${name} fields`);
+}
+
+function storedString(
+  value: unknown,
+  name: string,
+  max: number,
+  options: { allowEmpty?: boolean; singleLine?: boolean } = {},
+): asserts value is string {
   if (
-    Object.keys(input).sort().join(",") !== expectedFields.sort().join(",") ||
-    !(
-      (version === 2 && input.promptVersion === 2) ||
-      (version === 3 && input.promptVersion === 3) ||
-      (version === 4 && input.promptVersion === 4)
-    ) ||
-    typeof input.runId !== "string" ||
-    typeof input.batchId !== "string" ||
-    typeof input.createdAt !== "string" ||
-    typeof input.scope !== "string" ||
-    (input.model !== undefined && typeof input.model !== "string") ||
-    (input.reasoning !== undefined &&
-      (typeof input.reasoning !== "string" ||
-        !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(
-          input.reasoning,
-        ))) ||
-    !Array.isArray(input.evidence) ||
-    !input.evidence.every((item) => {
-      if (typeof item !== "object" || item === null || Array.isArray(item))
-        return false;
-      const window = (item as { window?: unknown }).window;
-      return (
-        typeof window === "object" &&
-        window !== null &&
-        !Array.isArray(window) &&
-        typeof (window as { windowId?: unknown }).windowId === "string" &&
-        Array.isArray(
-          (window as { checkpointEntryIds?: unknown }).checkpointEntryIds,
-        ) &&
-        (window as { checkpointEntryIds: unknown[] }).checkpointEntryIds.every(
-          (id) => typeof id === "string",
-        )
-      );
-    }) ||
-    !Array.isArray(input.targets) ||
-    !Array.isArray(input.pending) ||
-    (version === 4 &&
-      (!Array.isArray(input.supersessionBasis) ||
-        !input.supersessionBasis.every(
-          (item) =>
-            typeof item === "object" &&
-            item !== null &&
-            !Array.isArray(item) &&
-            typeof (item as Record<string, unknown>).runId === "string" &&
-            typeof (item as Record<string, unknown>).operation === "object" &&
-            (item as Record<string, unknown>).operation !== null,
-        ))) ||
-    !Array.isArray(input.reviewSignals) ||
-    !Array.isArray(input.skills) ||
-    typeof input.catalog !== "object" ||
-    input.catalog === null ||
-    ((version === 3 || version === 4) &&
-      (!Array.isArray(input.observations) ||
-        !input.observations.every((item) => {
-          try {
-            const observation = parseTurnObservation(item);
-            validateTurnObservationRefs(observation, input.catalog as Catalog);
-            return true;
-          } catch {
-            return false;
-          }
-        }) ||
-        !Array.isArray(input.rollbackEvidence) ||
-        !input.rollbackEvidence.every((item) => {
-          try {
-            parseRollbackEvidence(item, input.catalog as Catalog);
-            return true;
-          } catch {
-            return false;
-          }
-        })))
+    typeof value !== "string" ||
+    value.length > max ||
+    (!options.allowEmpty && !value.length) ||
+    (!options.allowEmpty && value !== value.trim()) ||
+    (options.singleLine && /[\r\n]/.test(value))
   )
-    throw new Error("invalid stored pipeline input");
-  return input as PipelineInput;
+    throw new Error(`invalid ${name}`);
+}
+
+function storedHash(value: unknown, name: string): asserts value is string {
+  if (typeof value !== "string" || !HASH.test(value))
+    throw new Error(`invalid ${name}`);
+}
+
+function storedStorageId(
+  value: unknown,
+  name: string,
+): asserts value is string {
+  storedString(value, name, 200, { singleLine: true });
+  if (!/^[A-Za-z0-9._:-]+$/.test(value) || value === "." || value === "..")
+    throw new Error(`invalid ${name}`);
+}
+
+function storedTimestamp(
+  value: unknown,
+  name: string,
+): asserts value is string {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) ||
+    new Date(value).toISOString() !== value
+  )
+    throw new Error(`invalid ${name}`);
+}
+
+function storedUniqueStrings(
+  value: unknown,
+  name: string,
+  maxCount: number,
+  maxLength: number,
+  allowEmpty = true,
+): asserts value is string[] {
+  if (
+    !Array.isArray(value) ||
+    (!allowEmpty && value.length === 0) ||
+    value.length > maxCount
+  )
+    throw new Error(`invalid ${name}`);
+  for (const item of value)
+    storedString(item, name, maxLength, { singleLine: true });
+  if (new Set(value).size !== value.length)
+    throw new Error(`duplicate ${name}`);
+}
+
+function parseStoredEvidenceRef(value: unknown): void {
+  const ref = storedObject(value, "pipeline evidence window");
+  storedExactKeys(
+    ref,
+    [
+      "branchDigest",
+      "checkpointEntryIds",
+      "excerpt",
+      "excerptSha256",
+      "sessionId",
+      "throughLeafId",
+      "windowId",
+    ],
+    "pipeline evidence window",
+  );
+  storedHash(ref.windowId, "pipeline window id");
+  storedStorageId(ref.sessionId, "pipeline session id");
+  storedUniqueStrings(
+    ref.checkpointEntryIds,
+    "pipeline checkpoint ids",
+    100,
+    200,
+    false,
+  );
+  for (const checkpoint of ref.checkpointEntryIds)
+    storedStorageId(checkpoint, "pipeline checkpoint id");
+  storedString(ref.throughLeafId, "pipeline leaf id", 200, {
+    singleLine: true,
+  });
+  storedHash(ref.branchDigest, "pipeline branch digest");
+  storedString(ref.excerpt, "pipeline excerpt", 400, { allowEmpty: true });
+  storedHash(ref.excerptSha256, "pipeline excerpt hash");
+  if (sha256(ref.excerpt) !== ref.excerptSha256)
+    throw new Error("pipeline excerpt hash mismatch");
+}
+
+function parseStoredSafeEvidence(
+  value: unknown,
+  allowLegacyFrontier: boolean,
+): void {
+  const evidence = storedObject(value, "pipeline evidence");
+  storedExactKeys(
+    evidence,
+    [
+      "records",
+      "redactions",
+      "tools",
+      "version",
+      "window",
+      "workspace",
+      ...(evidence.checkpointFrontiers === undefined
+        ? []
+        : ["checkpointFrontiers"]),
+      ...(evidence.emittedEntryIds === undefined ? [] : ["emittedEntryIds"]),
+    ],
+    "pipeline evidence",
+  );
+  if (evidence.version !== 1)
+    throw new Error("invalid pipeline evidence version");
+  parseStoredEvidenceRef(evidence.window);
+  storedString(evidence.workspace, "pipeline workspace", 2_000, {
+    singleLine: true,
+  });
+  if (
+    !Array.isArray(evidence.records) ||
+    evidence.records.length > 201 ||
+    JSON.stringify(evidence.records).length > 64_000
+  )
+    throw new Error("invalid pipeline records");
+  validateTranscript(evidence.records, { partial: true });
+  const records = evidence.records;
+  const first = records[0];
+  if (
+    first?.role !== "meta" ||
+    first.source !== "pi" ||
+    records.some((record) => record.role === "reasoning")
+  )
+    throw new Error("invalid safe pipeline records");
+  if (!Array.isArray(evidence.tools) || evidence.tools.length > 100)
+    throw new Error("invalid pipeline tools");
+  const toolNames = new Set<string>();
+  for (const item of evidence.tools) {
+    const tool = storedObject(item, "pipeline tool");
+    storedExactKeys(
+      tool,
+      ["calls", "errors", "name", "successes"],
+      "pipeline tool",
+    );
+    storedString(tool.name, "pipeline tool name", 200, { singleLine: true });
+    if (toolNames.has(tool.name)) throw new Error("duplicate pipeline tool");
+    toolNames.add(tool.name);
+    for (const field of ["calls", "errors", "successes"] as const)
+      if (!Number.isSafeInteger(tool[field]) || (tool[field] as number) < 0)
+        throw new Error(`invalid pipeline tool ${field}`);
+  }
+  const redactions = storedObject(evidence.redactions, "pipeline redactions");
+  for (const [name, count] of Object.entries(redactions)) {
+    storedString(name, "pipeline redaction name", 100, { singleLine: true });
+    if (!Number.isSafeInteger(count) || (count as number) < 1)
+      throw new Error("invalid pipeline redaction count");
+  }
+  const window = evidence.window as { checkpointEntryIds: string[] };
+  if (evidence.checkpointFrontiers !== undefined) {
+    const frontiers = storedObject(
+      evidence.checkpointFrontiers,
+      "pipeline checkpoint frontiers",
+    );
+    storedExactKeys(
+      frontiers,
+      window.checkpointEntryIds,
+      "pipeline checkpoint frontiers",
+    );
+    for (const frontier of Object.values(frontiers))
+      storedString(frontier, "pipeline checkpoint frontier", 200, {
+        singleLine: true,
+      });
+  }
+  if (evidence.emittedEntryIds !== undefined)
+    storedUniqueStrings(
+      evidence.emittedEntryIds,
+      "pipeline emitted entry ids",
+      20_000,
+      200,
+    );
+  if (
+    (evidence.checkpointFrontiers === undefined) !==
+      (evidence.emittedEntryIds === undefined) ||
+    (!allowLegacyFrontier &&
+      (evidence.checkpointFrontiers === undefined ||
+        evidence.emittedEntryIds === undefined))
+  )
+    throw new Error("invalid pipeline evidence frontier fields");
+  if (
+    evidence.checkpointFrontiers !== undefined &&
+    evidence.emittedEntryIds !== undefined &&
+    Object.values(evidence.checkpointFrontiers as Record<string, string>).some(
+      (frontier) =>
+        !(evidence.emittedEntryIds as string[]).includes(frontier as string),
+    )
+  )
+    throw new Error("pipeline checkpoint frontier is outside evidence");
+}
+
+function parseStoredCatalogEntry(value: unknown, target: boolean): void {
+  const entry = storedObject(
+    value,
+    target ? "pipeline target" : "pipeline catalog entry",
+  );
+  storedExactKeys(
+    entry,
+    [
+      "description",
+      "keywords",
+      "kind",
+      "legacy",
+      "memoryId",
+      "path",
+      "scope",
+      "sha256",
+      "status",
+      "title",
+      "triggers",
+      "updated",
+      ...(target ? ["body"] : []),
+    ],
+    target ? "pipeline target" : "pipeline catalog entry",
+  );
+  if (typeof entry.memoryId !== "string" || !MEMORY_ID.test(entry.memoryId))
+    throw new Error("invalid pipeline memory id");
+  storedString(entry.path, "pipeline memory path", 240, { singleLine: true });
+  if (entry.path.startsWith("/") || entry.path.includes(".."))
+    throw new Error("invalid pipeline memory path");
+  storedString(entry.title, "pipeline memory title", 8_192, {
+    singleLine: true,
+  });
+  storedString(entry.description, "pipeline memory description", 8_192, {
+    singleLine: true,
+  });
+  storedString(entry.kind, "pipeline memory kind", 100, { singleLine: true });
+  storedString(entry.scope, "pipeline memory scope", 500, { singleLine: true });
+  storedUniqueStrings(entry.triggers, "pipeline memory triggers", 100, 500);
+  storedUniqueStrings(entry.keywords, "pipeline memory keywords", 100, 500);
+  if (entry.status !== "active")
+    throw new Error("invalid pipeline memory status");
+  storedHash(entry.sha256, "pipeline memory hash");
+  storedString(entry.updated, "pipeline memory updated date", 40, {
+    singleLine: true,
+  });
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(entry.updated) ||
+    new Date(`${entry.updated}T00:00:00.000Z`).toISOString().slice(0, 10) !==
+      entry.updated
+  )
+    throw new Error("invalid pipeline memory updated date");
+  if (typeof entry.legacy !== "boolean")
+    throw new Error("invalid pipeline memory legacy flag");
+  if (target)
+    storedString(entry.body, "pipeline target body", 12_000, {
+      allowEmpty: true,
+    });
+}
+
+function parseStoredCatalog(value: unknown): Catalog {
+  const catalog = storedObject(value, "pipeline catalog");
+  storedExactKeys(
+    catalog,
+    ["entries", "generatedAt", "version"],
+    "pipeline catalog",
+  );
+  if (catalog.version !== 2)
+    throw new Error("invalid pipeline catalog version");
+  storedTimestamp(catalog.generatedAt, "pipeline catalog timestamp");
+  if (!Array.isArray(catalog.entries) || catalog.entries.length > 100)
+    throw new Error("invalid pipeline catalog entries");
+  catalog.entries.forEach((entry) => parseStoredCatalogEntry(entry, false));
+  const entries = catalog.entries as CatalogEntry[];
+  if (
+    new Set(entries.map((entry) => entry.memoryId)).size !== entries.length ||
+    new Set(entries.map((entry) => entry.path)).size !== entries.length
+  )
+    throw new Error("duplicate pipeline catalog entry");
+  return catalog as Catalog;
+}
+
+function parseStoredPipelineBase(
+  input: Record<string, unknown>,
+  version: 2 | 3 | 4,
+): void {
+  storedExactKeys(
+    input,
+    [
+      "batchId",
+      "catalog",
+      "createdAt",
+      "evidence",
+      "pending",
+      "promptVersion",
+      "reviewSignals",
+      "runId",
+      "scope",
+      "skills",
+      "targets",
+      "version",
+      ...(input.model === undefined ? [] : ["model"]),
+      ...(input.reasoning === undefined ? [] : ["reasoning"]),
+      ...(version >= 3 ? ["observations", "rollbackEvidence"] : []),
+      ...(version === 4 && input.supersessionBasis !== undefined
+        ? ["supersessionBasis"]
+        : []),
+    ],
+    `pipeline v${version}`,
+  );
+  if (input.version !== version || input.promptVersion !== version)
+    throw new Error(`invalid pipeline v${version} version`);
+  storedHash(input.runId, "pipeline run id");
+  storedHash(input.batchId, "pipeline batch id");
+  storedTimestamp(input.createdAt, "pipeline timestamp");
+  storedString(input.scope, "pipeline scope", 500, { singleLine: true });
+  if (input.model !== undefined)
+    storedString(input.model, "pipeline model", 200, { singleLine: true });
+  if (
+    input.reasoning !== undefined &&
+    !REASONING_LEVELS.includes(input.reasoning as ReasoningLevel)
+  )
+    throw new Error("invalid pipeline reasoning");
+  if (
+    !Array.isArray(input.evidence) ||
+    input.evidence.length === 0 ||
+    input.evidence.length > 100
+  )
+    throw new Error("invalid pipeline evidence");
+  input.evidence.forEach((item) =>
+    parseStoredSafeEvidence(item, version === 2),
+  );
+  const evidence = input.evidence as SafeEvidence[];
+  if (
+    new Set(evidence.map((item) => item.window.windowId)).size !==
+    evidence.length
+  )
+    throw new Error("duplicate pipeline evidence id");
+  const catalog = parseStoredCatalog(input.catalog);
+  if (!Array.isArray(input.targets) || input.targets.length > 8)
+    throw new Error("invalid pipeline targets");
+  input.targets.forEach((target) => parseStoredCatalogEntry(target, true));
+  const targets = input.targets as PipelineInput["targets"];
+  if (new Set(targets.map((target) => target.memoryId)).size !== targets.length)
+    throw new Error("duplicate pipeline target id");
+  for (const target of targets) {
+    const entry = catalog.entries.find(
+      (candidate) => candidate.memoryId === target.memoryId,
+    );
+    const { body: _body, ...targetEntry } = target;
+    if (
+      !entry ||
+      !Object.keys(entry).every(
+        (key) =>
+          JSON.stringify(entry[key as keyof CatalogEntry]) ===
+          JSON.stringify(targetEntry[key as keyof CatalogEntry]),
+      )
+    )
+      throw new Error("pipeline target is outside catalog");
+  }
+  if (!Array.isArray(input.pending) || input.pending.length > 20)
+    throw new Error("invalid pipeline pending proposals");
+  for (const value of input.pending) {
+    const pending = storedObject(value, "pipeline pending proposal");
+    storedExactKeys(
+      pending,
+      ["id", "lane", "operation", "summary"],
+      "pipeline pending proposal",
+    );
+    if (typeof pending.id !== "string" || !PROPOSAL_ID.test(pending.id))
+      throw new Error("invalid pipeline pending proposal id");
+    if (pending.lane !== "memory" && pending.lane !== "skill")
+      throw new Error("invalid pipeline pending proposal lane");
+    storedString(pending.operation, "pipeline pending operation", 40, {
+      singleLine: true,
+    });
+    storedString(pending.summary, "pipeline pending summary", 401, {
+      singleLine: true,
+    });
+  }
+  const pending = input.pending as PipelineInput["pending"];
+  if (new Set(pending.map((item) => item.id)).size !== pending.length)
+    throw new Error("duplicate pipeline pending proposal id");
+  if (!Array.isArray(input.reviewSignals) || input.reviewSignals.length > 20)
+    throw new Error("invalid pipeline review signals");
+  for (const value of input.reviewSignals) {
+    const signal = storedObject(value, "pipeline review signal");
+    storedExactKeys(
+      signal,
+      ["decision", "lane", "operation", "reasonCode"],
+      "pipeline review signal",
+    );
+    storedString(signal.decision, "pipeline review decision", 40, {
+      singleLine: true,
+    });
+    storedString(signal.reasonCode, "pipeline review reason code", 40, {
+      singleLine: true,
+    });
+    if (signal.lane !== "memory" && signal.lane !== "skill")
+      throw new Error("invalid pipeline review lane");
+    storedString(signal.operation, "pipeline review operation", 40, {
+      singleLine: true,
+    });
+  }
+  if (!Array.isArray(input.skills) || input.skills.length > 100)
+    throw new Error("invalid pipeline skills");
+  for (const value of input.skills) {
+    const skill = storedObject(value, "pipeline skill");
+    storedExactKeys(skill, ["description", "name", "sha256"], "pipeline skill");
+    storedString(skill.name, "pipeline skill name", 80, { singleLine: true });
+    storedString(skill.description, "pipeline skill description", 300, {
+      singleLine: true,
+    });
+    storedHash(skill.sha256, "pipeline skill hash");
+  }
+  const skills = input.skills as PipelineInput["skills"];
+  if (new Set(skills.map((item) => item.name)).size !== skills.length)
+    throw new Error("duplicate pipeline skill name");
+  if (version >= 3) {
+    if (!Array.isArray(input.observations) || input.observations.length > 100)
+      throw new Error("invalid pipeline observations");
+    const observations = input.observations.map(parseTurnObservation);
+    observations.forEach((item) => validateTurnObservationRefs(item, catalog));
+    if (
+      new Set(observations.map((item) => item.evidenceId)).size !==
+      observations.length
+    )
+      throw new Error("duplicate pipeline observation id");
+    if (
+      !Array.isArray(input.rollbackEvidence) ||
+      input.rollbackEvidence.length > 100
+    )
+      throw new Error("invalid pipeline rollback evidence");
+    const rollbacks = input.rollbackEvidence.map((item) =>
+      parseRollbackEvidence(item, catalog),
+    );
+    if (
+      new Set(rollbacks.map((item) => item.evidenceId)).size !==
+      rollbacks.length
+    )
+      throw new Error("duplicate pipeline rollback evidence id");
+  }
+}
+
+function parseStoredPipelineInputV2(
+  input: Record<string, unknown>,
+): PipelineInputV2 {
+  parseStoredPipelineBase(input, 2);
+  return input as PipelineInputV2;
+}
+
+function parseStoredPipelineInputV3(
+  input: Record<string, unknown>,
+): PipelineInputV3 {
+  parseStoredPipelineBase(input, 3);
+  return input as PipelineInputV3;
+}
+
+function parseStoredPipelineInputV4(
+  input: Record<string, unknown>,
+): PipelineInputV4 {
+  parseStoredPipelineBase(input, 4);
+  if (input.supersessionBasis === undefined) {
+    if ((input.pending as PipelineInput["pending"]).length !== 0)
+      throw new Error("missing pipeline supersession basis");
+    return input as PipelineInputV4;
+  }
+  if (
+    !Array.isArray(input.supersessionBasis) ||
+    input.supersessionBasis.length > 20
+  )
+    throw new Error("invalid pipeline supersession basis");
+  for (const value of input.supersessionBasis) {
+    const basis = storedObject(value, "pipeline supersession basis");
+    storedExactKeys(
+      basis,
+      ["id", "operation", "runId"],
+      "pipeline supersession basis",
+    );
+    if (typeof basis.id !== "string" || !PROPOSAL_ID.test(basis.id))
+      throw new Error("invalid pipeline supersession id");
+    storedString(basis.runId, "pipeline supersession run id", 200, {
+      singleLine: true,
+    });
+    parseStoredProposalOperation(basis.operation);
+  }
+  const basis = input.supersessionBasis as NonNullable<
+    PipelineInputV4["supersessionBasis"]
+  >;
+  if (new Set(basis.map((item) => item.id)).size !== basis.length)
+    throw new Error("duplicate pipeline supersession id");
+  const pendingIds = (input.pending as PipelineInput["pending"])
+    .map((item) => item.id)
+    .sort();
+  if (
+    JSON.stringify(basis.map((item) => item.id).sort()) !==
+    JSON.stringify(pendingIds)
+  )
+    throw new Error("pipeline supersession basis does not match pending");
+  return input as PipelineInputV4;
+}
+
+export function parseStoredPipelineInput(raw: string): PipelineInput {
+  try {
+    const input = storedObject(JSON.parse(raw), "stored pipeline input");
+    if (input.version === 2) return parseStoredPipelineInputV2(input);
+    if (input.version === 3) return parseStoredPipelineInputV3(input);
+    if (input.version === 4) return parseStoredPipelineInputV4(input);
+    throw new Error("unsupported pipeline input version");
+  } catch (error) {
+    throw new Error(
+      `invalid stored pipeline input: ${
+        error instanceof Error ? error.message : "unknown parse failure"
+      }`,
+    );
+  }
+}
+
+export function frozenPipelineEvidence(input: PipelineInput): SafeEvidence[] {
+  switch (input.version) {
+    case 2:
+    case 3:
+    case 4:
+      return input.evidence;
+  }
 }
 
 export function parseStoredPipelineResult(
@@ -257,6 +716,19 @@ function parsePipelineOutput(raw: string, input: PipelineInput) {
 
 function frozenSupersessionBasis(input: PipelineInput) {
   return input.version === 4 ? input.supersessionBasis : undefined;
+}
+
+function storagePathIdentity(path: string): string {
+  const resolved = resolve(path);
+  const suffix: string[] = [];
+  let ancestor = resolved;
+  while (!existsSync(ancestor)) {
+    const parent = dirname(ancestor);
+    if (parent === ancestor) return resolved;
+    suffix.unshift(basename(ancestor));
+    ancestor = parent;
+  }
+  return resolve(realpathSync(ancestor), ...suffix);
 }
 
 function criticInput(
@@ -757,8 +1229,14 @@ function markLedger(
   secureDir(ledger);
   for (const evidence of input.evidence)
     for (const checkpoint of evidence.window.checkpointEntryIds) {
-      const throughLeafId = evidence.checkpointFrontiers?.[checkpoint];
-      if (!throughLeafId || !evidence.emittedEntryIds?.includes(throughLeafId))
+      const throughLeafId =
+        evidence.checkpointFrontiers?.[checkpoint] ??
+        (input.version === 2 ? evidence.window.throughLeafId : undefined);
+      if (
+        !throughLeafId ||
+        (evidence.emittedEntryIds !== undefined &&
+          !evidence.emittedEntryIds.includes(throughLeafId))
+      )
         throw new Error(
           `checkpoint frontier is outside frozen evidence ${checkpoint}`,
         );
@@ -774,7 +1252,7 @@ function markLedger(
         coveredAt: new Date().toISOString(),
       };
       const identity = `${evidence.window.sessionId}--${checkpoint}`;
-      const path = join(ledger, `${identity}.json`);
+      const path = contained(ledger, join(ledger, `${identity}.json`));
       const value = `${JSON.stringify(record, null, 2)}\n`;
       if (existsSync(path)) {
         const previous = JSON.parse(readFileSync(path, "utf8")) as {
@@ -1090,6 +1568,21 @@ export async function processPipelineBatches(
     option,
     ...preparePipelineBatch(option as PipelineBatchOptions),
   }));
+  const frozenModel = (item: (typeof prepared)[number]): string => {
+    if (item.input.model) return item.input.model;
+    const resultPath = join(item.dir, "result.json");
+    if (!existsSync(resultPath)) return item.option.model;
+    const result = parseStoredPipelineResult(
+      readFileSync(resultPath, "utf8"),
+      item.input,
+    );
+    return (
+      (result.proposalIds[0]
+        ? findProposal(item.option.cfg, result.proposalIds[0]).proposal
+            .provenance.model
+        : undefined) ?? item.option.model
+    );
+  };
   const runWave = async (
     worker: (index: number) => void | Promise<void>,
   ): Promise<void> => {
@@ -1145,7 +1638,7 @@ export async function processPipelineBatches(
       item.dir,
       item.input,
       raw,
-      item.input.model ?? item.option.model,
+      frozenModel(item),
       item.input.reasoning ?? item.option.reasoning ?? "low",
       item.option.autoApplyMemory !== false,
     );
@@ -1170,7 +1663,7 @@ export async function processPipelineBatches(
         item.dir,
         item.input,
         readFileSync(join(item.dir, "output.json"), "utf8"),
-        item.input.model ?? item.option.model,
+        frozenModel(item),
         item.input.reasoning ?? item.option.reasoning ?? "low",
         item.option.autoApplyMemory !== false,
       )!;
@@ -1181,9 +1674,9 @@ export async function processPipelineBatches(
     }
   });
 
-  const proposalsByConfig = new Map<
-    MemoryConfig,
-    import("./schema.js").Proposal[]
+  const proposalsByMemoryRoot = new Map<
+    string,
+    { cfg: MemoryConfig; proposals: import("./schema.js").Proposal[] }
   >();
   for (const item of prepared) {
     const outputPath = join(item.dir, "output.json");
@@ -1192,21 +1685,23 @@ export async function processPipelineBatches(
       item.input,
     ).parsed;
     const resultPath = join(item.dir, "result.json");
+    const storedResult = existsSync(resultPath)
+      ? parseStoredPipelineResult(readFileSync(resultPath, "utf8"), item.input)
+      : undefined;
     if (parsed.action === "skip") {
-      if (existsSync(resultPath)) {
-        const result = parseStoredPipelineResult(
-          readFileSync(resultPath, "utf8"),
-          item.input,
-        );
-        if (result.action !== "skip")
-          throw new Error("stored pipeline result does not match model output");
-      }
+      if (storedResult && storedResult.action !== "skip")
+        throw new Error("stored pipeline result does not match model output");
       continue;
     }
+    const found = storedResult
+      ? storedResult.proposalIds.map((id) => findProposal(item.option.cfg, id))
+      : [];
+    const stored = found.map((candidate) => candidate.proposal);
     const proposals = materializeModelProposals({
       result: parsed,
       runId: item.input.runId,
-      model: item.input.model ?? item.option.model,
+      model:
+        item.input.model ?? stored[0]?.provenance.model ?? frozenModel(item),
       ...(item.input.reasoning ? { reasoning: item.input.reasoning } : {}),
       scope: item.input.scope,
       evidence: item.input.evidence.map((evidence) => evidence.window),
@@ -1217,22 +1712,18 @@ export async function processPipelineBatches(
         : {}),
       createdAt: item.input.createdAt,
       autonomous: true,
-      ...(existsSync(join(item.dir, "output-meta.json"))
+      ...((
+        storedResult
+          ? stored.every((proposal) => proposal.digestVersion === 2)
+          : existsSync(join(item.dir, "output-meta.json"))
+      )
         ? { digestVersion: 2 as const }
         : {}),
     });
     let preflight = proposals;
-    if (existsSync(resultPath)) {
-      const result = parseStoredPipelineResult(
-        readFileSync(resultPath, "utf8"),
-        item.input,
-      );
-      const found = result.proposalIds.map((id) =>
-        findProposal(item.option.cfg, id),
-      );
-      const stored = found.map((item) => item.proposal);
+    if (storedResult) {
       if (
-        JSON.stringify(result.proposalIds) !==
+        JSON.stringify(storedResult.proposalIds) !==
           JSON.stringify(proposals.map((proposal) => proposal.id)) ||
         JSON.stringify(stored) !== JSON.stringify(proposals)
       )
@@ -1241,13 +1732,17 @@ export async function processPipelineBatches(
         (_proposal, index) => !found[index]?.path.includes("/reviewed/"),
       );
     }
-    if (preflight.length)
-      proposalsByConfig.set(item.option.cfg, [
-        ...(proposalsByConfig.get(item.option.cfg) ?? []),
-        ...preflight,
-      ]);
+    if (preflight.length) {
+      const memoryRootId = storagePathIdentity(item.option.cfg.root);
+      const group = proposalsByMemoryRoot.get(memoryRootId) ?? {
+        cfg: item.option.cfg,
+        proposals: [],
+      };
+      group.proposals.push(...preflight);
+      proposalsByMemoryRoot.set(memoryRootId, group);
+    }
   }
-  for (const [cfg, proposals] of proposalsByConfig)
+  for (const { cfg, proposals } of proposalsByMemoryRoot.values())
     assertNonOverlappingMemoryProposals(cfg, proposals);
 
   const results = prepared.map((item) =>

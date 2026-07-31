@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -13,6 +19,8 @@ import { renderMemory } from "./schema.js";
 import { initHistory } from "./history.js";
 import { applyMemoryProposal, saveProposal } from "./workflow.js";
 import { sha256 } from "./catalog.js";
+import type { SafeEvidence } from "./evidence.js";
+import { freezePipelineInput } from "./pipeline.js";
 
 function config(): MemoryConfig {
   const base = mkdtempSync(join(tmpdir(), "memory-health-"));
@@ -58,50 +66,61 @@ function freezeEvidence(
   cfg: MemoryConfig,
   source: string,
   authored: string,
+  version: 2 | 3 | 4 = 4,
 ): void {
-  const match = /^pi:\/\/([^/]+)\/([^/]+)$/.exec(source)!;
-  const [sessionId, checkpoint] = match.slice(1);
-  const dir = join(cfg.data, "v2/runs/run-test");
-  mkdirSync(dir, { recursive: true });
+  const match = /^pi:\/\/([^/]+)\/([^/]+)$/.exec(source);
+  if (!match) throw new Error("invalid test source");
+  const sessionId = match[1]!;
+  const checkpoint = match[2]!;
   const window = {
-    windowId: "window-test",
+    windowId: sha256("window-test"),
     sessionId,
     checkpointEntryIds: [checkpoint],
     throughLeafId: checkpoint,
-    branchDigest: "branch-test",
+    branchDigest: sha256("branch-test"),
     excerpt: authored,
     excerptSha256: sha256(authored),
   };
-  writeFileSync(
-    join(dir, "input.json"),
-    JSON.stringify({
-      version: 2,
-      runId: "run-test",
-      batchId: "batch-test",
-      promptVersion: 2,
-      createdAt: "2026-07-26T00:00:00.000Z",
-      scope: "global",
-      evidence: [
-        {
-          version: 1,
-          window,
-          workspace: "test",
-          records: [{ role: "user", content: authored }],
-          tools: [],
-          redactions: {},
-        },
-      ],
-      catalog: {
-        version: 2,
-        generatedAt: "2026-07-26T00:00:00.000Z",
-        entries: [],
+  const evidence: SafeEvidence = {
+    version: 1,
+    window,
+    workspace: "test",
+    records: [
+      { role: "meta", source: "pi", cwd: "test" },
+      {
+        role: "user",
+        content: authored,
+        timestamp: "2026-07-26T00:00:00.000Z",
       },
-      targets: [],
-      pending: [],
-      reviewSignals: [],
-      skills: [],
-    }),
-  );
+    ],
+    tools: [],
+    redactions: {},
+    checkpointFrontiers: { [checkpoint]: checkpoint },
+    emittedEntryIds: [checkpoint],
+  };
+  const current = freezePipelineInput(cfg, "global", [evidence], "test");
+  if (current.version !== 4) throw new Error("expected v4 input");
+  const {
+    supersessionBasis: _supersessionBasis,
+    observations: _observations,
+    rollbackEvidence: _rollbackEvidence,
+    ...v2Base
+  } = current;
+  const input =
+    version === 2
+      ? { ...v2Base, version: 2 as const, promptVersion: 2 as const }
+      : version === 3
+        ? {
+            ...v2Base,
+            version: 3 as const,
+            promptVersion: 3 as const,
+            observations: current.observations,
+            rollbackEvidence: current.rollbackEvidence,
+          }
+        : current;
+  const dir = join(cfg.data, "v2/runs", input.runId);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "input.json"), JSON.stringify(input));
 }
 
 describe("corpus health", () => {
@@ -321,6 +340,94 @@ describe("corpus health", () => {
       "Corpus bodies are context only and are NEVER evidence",
     );
     expect(analysis.proposals).toEqual([]);
+  });
+
+  it("resolves equivalent authored evidence from v2, v3, and v4 inputs", async () => {
+    const source = "pi://session-formats/checkpoint-formats";
+    const authored = "original statement retained across pipeline formats";
+    const resolved = [];
+    for (const version of [2, 3, 4] as const) {
+      const cfg = config();
+      memory(
+        cfg,
+        "mem_777777777777777777777777",
+        "large",
+        "summary-of-summary ".repeat(500),
+        [source],
+      );
+      freezeEvidence(cfg, source, authored, version);
+      let prompt = "";
+      await analyzeCorpusMaintenance({
+        cfg,
+        report: scanCorpusHealth(cfg),
+        model: "test",
+        invoke: (value) => {
+          prompt = value;
+          return '{"action":"skip","reason":"no justified patch"}';
+        },
+      });
+      const marker = "original authored evidence follow:\n";
+      const offset = prompt.indexOf(marker);
+      if (offset < 0) throw new Error("maintenance prompt marker missing");
+      const payload = JSON.parse(prompt.slice(offset + marker.length)) as {
+        evidence: unknown;
+      };
+      resolved.push(payload.evidence);
+    }
+    expect(resolved[1]).toEqual(resolved[0]);
+    expect(resolved[2]).toEqual(resolved[0]);
+  });
+
+  it("surfaces the first malformed frozen run deterministically", async () => {
+    const cfg = config();
+    memory(
+      cfg,
+      "mem_888888888888888888888888",
+      "large",
+      "oversized body ".repeat(700),
+    );
+    for (const name of ["z-run", "a-run"]) {
+      const dir = join(cfg.data, "v2", "runs", name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "input.json"), "{}");
+    }
+    await expect(
+      analyzeCorpusMaintenance({
+        cfg,
+        report: scanCorpusHealth(cfg),
+        model: "test",
+        invoke: () => '{"action":"skip","reason":"must not invoke"}',
+      }),
+    ).rejects.toThrow("invalid frozen pipeline input a-run");
+  });
+
+  it("rejects a frozen input stored under another run identity", async () => {
+    const cfg = config();
+    const source = "pi://session-identity/checkpoint-identity";
+    memory(
+      cfg,
+      "mem_999999999999999999999999",
+      "large",
+      "oversized body ".repeat(700),
+      [source],
+    );
+    freezeEvidence(cfg, source, "authored evidence");
+    const runs = join(cfg.data, "v2", "runs");
+    const runId = readdirSync(runs)[0]!;
+    const copied = join(runs, "copied-run");
+    mkdirSync(copied, { recursive: true });
+    writeFileSync(
+      join(copied, "input.json"),
+      readFileSync(join(runs, runId, "input.json"), "utf8"),
+    );
+    await expect(
+      analyzeCorpusMaintenance({
+        cfg,
+        report: scanCorpusHealth(cfg),
+        model: "test",
+        invoke: () => '{"action":"skip","reason":"must not invoke"}',
+      }),
+    ).rejects.toThrow("invalid frozen pipeline input copied-run");
   });
 
   it("rejects fabricated patch sources", async () => {
