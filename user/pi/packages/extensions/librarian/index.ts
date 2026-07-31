@@ -25,6 +25,7 @@ import {
 } from "@bds_pi/config";
 import {
   isPiSpawnModelValue,
+  isPiSpawnFailure,
   piSpawn,
   resolvePrompt,
   zeroUsage,
@@ -35,6 +36,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
@@ -156,7 +158,7 @@ export function createLibrarianTool(
       ),
     }),
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       let parentSession: string | undefined;
       try {
         parentSession = ctx.sessionManager?.getSessionFile?.() ?? undefined;
@@ -186,12 +188,14 @@ export function createLibrarianTool(
         systemPromptBody: config.systemPrompt,
         signal,
         session: { persist: false, parentSession },
+        owner: { toolCallId, toolName: "librarian" },
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
           singleResult.model = partial.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
+          singleResult.lifecycle = partial.lifecycle;
           applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
             onUpdate({
@@ -213,18 +217,15 @@ export function createLibrarianTool(
       singleResult.model = result.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
+      singleResult.lifecycle = result.lifecycle;
       applySessionMeta(singleResult, result.session);
 
-      const isError =
-        result.exitCode !== 0 ||
-        result.stopReason === "error" ||
-        result.stopReason === "aborted";
+      const isError = isPiSpawnFailure(result);
       const output = getFinalOutput(result.messages) || "(no output)";
-
-      if (isError)
-        throw new Error(result.errorMessage || result.stderr || output);
-
-      return subAgentResult(output, singleResult);
+      const text = isError
+        ? result.errorMessage || result.stderr || output
+        : output;
+      return subAgentResult(text, singleResult, isError);
     },
 
     renderCall(args: any, theme: any) {
@@ -294,6 +295,7 @@ function createLibrarianExtension(
     if (!enabled) return;
 
     pi.registerTool(deps.withPromptPatch(createLibrarianTool(config)));
+    registerSubAgentErrorNormalization(pi, "librarian");
   };
 }
 

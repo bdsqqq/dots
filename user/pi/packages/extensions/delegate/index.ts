@@ -32,6 +32,7 @@ import {
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getNestedMessages,
+  isPiSpawnFailure,
   getToolCalls,
   getToolResults,
   getToolResultText,
@@ -42,6 +43,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
@@ -200,12 +202,14 @@ export function createDelegateTool(
           persist: true,
           parentSession,
         },
+        owner: { toolCallId, toolName: "delegate" },
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
           singleResult.model = partial.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
+          singleResult.lifecycle = partial.lifecycle;
           applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
             onUpdate({
@@ -227,24 +231,19 @@ export function createDelegateTool(
       singleResult.model = result.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
+      singleResult.lifecycle = result.lifecycle;
       applySessionMeta(singleResult, result.session);
 
-      const isError =
-        result.exitCode !== 0 ||
-        result.stopReason === "error" ||
-        result.stopReason === "aborted";
+      const isError = isPiSpawnFailure(result);
       const output = getFinalOutput(result.messages) || "(no output)";
       const text = withRoutingMetadata(output, singleResult);
-
-      if (isError)
-        throw new Error(
-          withRoutingMetadata(
+      const finalText = isError
+        ? withRoutingMetadata(
             result.errorMessage || result.stderr || output,
             singleResult,
-          ),
-        );
-
-      return subAgentResult(text, singleResult);
+          )
+        : text;
+      return subAgentResult(finalText, singleResult, isError);
     },
 
     renderCall(args: any, theme: any) {
@@ -304,6 +303,7 @@ function createDelegateExtension(
     if (!enabled) return;
 
     pi.registerTool(deps.withPromptPatch(deps.createDelegateTool(config)));
+    registerSubAgentErrorNormalization(pi, "delegate");
   };
 }
 
@@ -339,6 +339,7 @@ if (import.meta.vitest) {
       registerTool(tool: unknown) {
         tools.push(tool);
       },
+      on() {},
     } as unknown as ExtensionAPI;
 
     return { pi, tools };

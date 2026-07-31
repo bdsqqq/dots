@@ -29,6 +29,7 @@ import {
 } from "@bds_pi/config";
 import {
   isPiSpawnModelValue,
+  isPiSpawnFailure,
   piSpawn,
   resolvePrompt,
   zeroUsage,
@@ -39,6 +40,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
@@ -312,12 +314,14 @@ export function createReadWebPageTool(
           systemPromptBody: promptSystem,
           signal,
           session: { persist: false, parentSession },
+          owner: { toolCallId, toolName: "read_web_page" },
           onUpdate: (partial) => {
             singleResult.messages = partial.messages;
             singleResult.usage = partial.usage;
             singleResult.model = partial.model;
             singleResult.stopReason = partial.stopReason;
             singleResult.errorMessage = partial.errorMessage;
+            singleResult.lifecycle = partial.lifecycle;
             applySessionMeta(singleResult, partial.session);
             if (onUpdate) {
               onUpdate({
@@ -339,18 +343,15 @@ export function createReadWebPageTool(
         singleResult.model = result.model;
         singleResult.stopReason = result.stopReason;
         singleResult.errorMessage = result.errorMessage;
+        singleResult.lifecycle = result.lifecycle;
         applySessionMeta(singleResult, result.session);
 
-        const isError =
-          result.exitCode !== 0 ||
-          result.stopReason === "error" ||
-          result.stopReason === "aborted";
+        const isError = isPiSpawnFailure(result);
         const output = getFinalOutput(result.messages) || "(no output)";
-
-        if (isError)
-          throw new Error(result.errorMessage || result.stderr || output);
-
-        return subAgentResult(output, singleResult);
+        const text = isError
+          ? result.errorMessage || result.stderr || output
+          : output;
+        return subAgentResult(text, singleResult, isError);
       }
 
       return { content: [{ type: "text" as const, text: content }] } as any;
@@ -425,6 +426,7 @@ function createReadWebPageExtension(
     if (!enabled) return;
 
     pi.registerTool(deps.withPromptPatch(createReadWebPageTool(config)));
+    registerSubAgentErrorNormalization(pi, "read_web_page");
   };
 }
 
@@ -451,6 +453,7 @@ if (import.meta.vitest) {
       registerTool(tool: unknown) {
         tools.push(tool);
       },
+      on() {},
     } as unknown as ExtensionAPI;
 
     return { pi, tools };

@@ -13,7 +13,7 @@
  * running after the user already bailed.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -105,6 +105,21 @@ export function getNestedMessages(
   );
 }
 
+function killSpawnedProcess(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (process.platform !== "win32" && child.pid) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+        child.kill(signal);
+        return;
+      }
+    }
+  }
+  if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+}
+
 export interface UsageStats {
   input: number;
   output: number;
@@ -140,6 +155,58 @@ export interface RecordedToolCall {
   arguments: Record<string, unknown>;
 }
 
+export type PiSpawnStatus =
+  | "starting"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "timed_out";
+
+export type PiSpawnErrorKind =
+  | "unsupported"
+  | "setup"
+  | "spawn"
+  | "agent"
+  | "exit"
+  | "signal"
+  | "transport"
+  | "cancelled"
+  | "timeout";
+
+export interface PiSpawnOwner {
+  sessionId?: string;
+  sessionFile?: string;
+  toolCallId?: string;
+  toolName?: string;
+}
+
+export interface PiSpawnLifecycle {
+  pid: number | null;
+  processGroupId: number | null;
+  owner: PiSpawnOwner | null;
+  startedAt: string;
+  endedAt: string | null;
+  status: PiSpawnStatus;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  errorKind: PiSpawnErrorKind | null;
+  cancellationRequestedAt: string | null;
+  timeoutMs: number | null;
+  timedOutAt: string | null;
+}
+
+export function isPiSpawnFailure(result: PiSpawnResult): boolean {
+  return (
+    result.lifecycle?.status === "failed" ||
+    result.lifecycle?.status === "cancelled" ||
+    result.lifecycle?.status === "timed_out" ||
+    result.exitCode !== 0 ||
+    result.stopReason === "error" ||
+    result.stopReason === "aborted"
+  );
+}
+
 export interface PiSpawnResult {
   exitCode: number;
   messages: Message[];
@@ -149,6 +216,7 @@ export interface PiSpawnResult {
   stopReason?: string;
   errorMessage?: string;
   session?: PiSpawnSessionMeta;
+  lifecycle?: PiSpawnLifecycle;
 }
 
 export interface PiSpawnConfig {
@@ -187,6 +255,8 @@ export interface PiSpawnConfig {
    * useful for testing tool-policy.json by overriding HOME.
    */
   env?: Record<string, string | undefined>;
+  owner?: PiSpawnOwner;
+  timeoutMs?: number;
 }
 
 // --- helpers ---
@@ -445,6 +515,12 @@ async function resolveSessionRouting(
 // --- spawn ---
 
 export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
+  if (
+    config.timeoutMs !== undefined &&
+    (!Number.isFinite(config.timeoutMs) || config.timeoutMs <= 0)
+  ) {
+    throw new Error("timeoutMs must be a positive finite number");
+  }
   const useRpc = !!config.followUp;
   const spawnEnv: Record<string, string | undefined> = {
     ...process.env,
@@ -459,11 +535,75 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
     }
   }
 
-  const sessionRouting = await resolveSessionRouting(
-    config.cwd,
-    config.session,
-    spawnEnv,
+  const startedAt = new Date().toISOString();
+  const parentSessionFile = normalizedSessionValue(
+    config.session?.parentSession,
   );
+  const parentSessionId = parentSessionFile
+    ? readSessionHeaderId(parentSessionFile)
+    : undefined;
+  const inferredOwner: PiSpawnOwner = {
+    ...(parentSessionFile
+      ? {
+          sessionFile: parentSessionFile,
+          ...(parentSessionId ? { sessionId: parentSessionId } : {}),
+        }
+      : {}),
+    ...config.owner,
+  };
+  const lifecycle: PiSpawnLifecycle = {
+    pid: null,
+    processGroupId: null,
+    owner: Object.keys(inferredOwner).length > 0 ? inferredOwner : null,
+    startedAt,
+    endedAt: null,
+    status: "starting",
+    exitCode: null,
+    signal: null,
+    errorKind: null,
+    cancellationRequestedAt: null,
+    timeoutMs: config.timeoutMs ?? null,
+    timedOutAt: null,
+  };
+  const baseResult = (): PiSpawnResult => ({
+    exitCode: 0,
+    messages: [],
+    stderr: "",
+    usage: zeroUsage(),
+    lifecycle,
+  });
+
+  if (config.signal?.aborted) {
+    lifecycle.status = "cancelled";
+    lifecycle.errorKind = "cancelled";
+    lifecycle.cancellationRequestedAt = startedAt;
+    lifecycle.endedAt = startedAt;
+    return {
+      ...baseResult(),
+      exitCode: 1,
+      stopReason: "aborted",
+      errorMessage: "pi process cancelled",
+    };
+  }
+
+  let sessionRouting: ResolvedSessionRouting;
+  try {
+    sessionRouting = await resolveSessionRouting(
+      config.cwd,
+      config.session,
+      spawnEnv,
+    );
+  } catch (error) {
+    lifecycle.status = "failed";
+    lifecycle.errorKind = "setup";
+    lifecycle.endedAt = new Date().toISOString();
+    return {
+      ...baseResult(),
+      exitCode: 1,
+      stopReason: "error",
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+  }
   const args: string[] = useRpc
     ? ["--mode", "rpc", ...sessionRouting.args]
     : ["--mode", "json", "-p", ...sessionRouting.args];
@@ -479,16 +619,20 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
   let tmpPromptDir: string | null = null;
   let tmpPromptPath: string | null = null;
+  if (sessionRouting.unsupported) {
+    lifecycle.endedAt = startedAt;
+    lifecycle.status = "failed";
+    lifecycle.errorKind = "unsupported";
+  }
 
   const result: PiSpawnResult = {
+    ...baseResult(),
     exitCode: sessionRouting.unsupported ? 1 : 0,
-    messages: [],
-    stderr: "",
-    usage: zeroUsage(),
     ...(sessionRouting.meta ? { session: sessionRouting.meta } : {}),
     ...(sessionRouting.unsupported
       ? { stopReason: "error", errorMessage: sessionRouting.unsupported }
       : {}),
+    lifecycle,
   };
 
   if (sessionRouting.unsupported) return result;
@@ -512,6 +656,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
     }
 
     let wasAborted = false;
+    let wasTimedOut = false;
     const debugEnabled = !!process.env.PI_SPAWN_DEBUG;
     const debug = (label: string, data?: Record<string, unknown>) => {
       if (!debugEnabled) return;
@@ -520,16 +665,35 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
     };
 
     const piBin = process.env.PI_BIN || "pi";
-    const exitCode = await new Promise<number>((resolve) => {
+    const outcome = await new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+      spawnError?: string;
+      transportError?: string;
+      rpcCompleted: boolean;
+    }>((resolve) => {
       const proc = spawn(piBin, args, {
         cwd: config.cwd,
+        detached: process.platform !== "win32",
         shell: false,
         stdio: [useRpc ? "pipe" : "ignore", "pipe", "pipe"],
         env: spawnEnv,
       });
+      lifecycle.pid = proc.pid ?? null;
+      lifecycle.processGroupId =
+        process.platform !== "win32" ? (proc.pid ?? null) : null;
+      lifecycle.status = "running";
+      let transportError: string | undefined;
+      proc.stdin?.on("error", (error) => {
+        transportError = error.message;
+        result.errorMessage = error.message;
+        terminate();
+      });
 
       // RPC state: track end_turns to know when to kill
       let endTurnCount = 0;
+      let rpcCompleted = false;
+      const expectedTurns = config.followUp ? 2 : 1;
 
       // send initial prompt via RPC stdin, then immediately queue follow_up.
       // follow_up is queued (not delivered) until the agent is idle, so the
@@ -610,7 +774,6 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
             const { stopReason } = msg;
             const isTurnEnd = stopReason === "stop";
-            const expectedTurns = config.followUp ? 2 : 1;
             debug("turn_end", {
               stopReason,
               isTurnEnd,
@@ -624,12 +787,9 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
             if (useRpc && isTurnEnd) {
               endTurnCount++;
               if (endTurnCount >= expectedTurns) {
+                rpcCompleted = true;
                 debug("kill_after_turn", { endTurnCount });
-                proc.kill("SIGTERM");
-                setTimeout(() => {
-                  if (proc.exitCode === null && proc.signalCode === null)
-                    proc.kill("SIGKILL");
-                }, 5000);
+                terminate();
               }
             }
 
@@ -639,11 +799,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
               (stopReason === "error" || stopReason === "aborted")
             ) {
               debug("kill_after_error", { stopReason });
-              proc.kill("SIGTERM");
-              setTimeout(() => {
-                if (proc.exitCode === null && proc.signalCode === null)
-                  proc.kill("SIGKILL");
-              }, 5000);
+              terminate();
             }
           }
 
@@ -668,46 +824,143 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       });
 
       let killTimer: NodeJS.Timeout | undefined;
-      const killProc = () => {
-        wasAborted = true;
-        proc.kill("SIGTERM");
+      let timeoutTimer: NodeJS.Timeout | undefined;
+      let settled = false;
+      const finish = (value: {
+        code: number | null;
+        signal: NodeJS.Signals | null;
+        spawnError?: string;
+      }) => {
+        if (settled) return;
+        settled = true;
+        if (config.signal) config.signal.removeEventListener("abort", killProc);
+        if (killTimer) clearTimeout(killTimer);
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (buffer.trim()) processLine(buffer);
+        resolve({ ...value, rpcCompleted, transportError });
+      };
+      const terminate = () => {
+        if (killTimer) return;
+        killSpawnedProcess(proc, "SIGTERM");
         killTimer = setTimeout(() => {
-          if (proc.exitCode === null && proc.signalCode === null)
-            proc.kill("SIGKILL");
+          killSpawnedProcess(proc, "SIGKILL");
         }, 5000);
       };
+      const killProc = () => {
+        if (wasAborted || wasTimedOut || settled) return;
+        wasAborted = true;
+        lifecycle.cancellationRequestedAt = new Date().toISOString();
+        terminate();
+      };
 
-      proc.on("close", (code) => {
-        if (config.signal) config.signal.removeEventListener("abort", killProc);
-        if (killTimer) clearTimeout(killTimer);
-        if (buffer.trim()) processLine(buffer);
-        resolve(code ?? 0);
+      proc.on("close", (code, signal) => {
+        finish({ code, signal });
       });
 
-      proc.on("error", () => {
-        if (config.signal) config.signal.removeEventListener("abort", killProc);
-        if (killTimer) clearTimeout(killTimer);
-        resolve(1);
+      proc.on("error", (error) => {
+        finish({ code: null, signal: null, spawnError: error.message });
       });
 
       if (config.signal) {
         if (config.signal.aborted) killProc();
         else config.signal.addEventListener("abort", killProc, { once: true });
       }
+      if (config.timeoutMs !== undefined) {
+        timeoutTimer = setTimeout(() => {
+          if (wasAborted || wasTimedOut || settled) return;
+          wasTimedOut = true;
+          lifecycle.timedOutAt = new Date().toISOString();
+          terminate();
+        }, config.timeoutMs);
+      }
     });
 
-    result.exitCode = exitCode;
+    lifecycle.endedAt = new Date().toISOString();
+    lifecycle.exitCode = outcome.code;
+    lifecycle.signal = outcome.signal;
+    result.exitCode = outcome.code ?? (outcome.spawnError ? 1 : 0);
     if (wasAborted) {
       result.exitCode = 1;
       result.stopReason = "aborted";
+      result.errorMessage ??= "pi process cancelled";
+      lifecycle.status = "cancelled";
+      lifecycle.errorKind = "cancelled";
+    } else if (wasTimedOut) {
+      result.exitCode = 1;
+      result.stopReason = "aborted";
+      result.errorMessage ??= `pi process timed out after ${config.timeoutMs}ms`;
+      lifecycle.status = "timed_out";
+      lifecycle.errorKind = "timeout";
+    } else if (outcome.spawnError) {
+      result.exitCode = 1;
+      result.errorMessage = outcome.spawnError;
+      lifecycle.status = "failed";
+      lifecycle.errorKind = "spawn";
+    } else if (outcome.transportError) {
+      result.exitCode = 1;
+      lifecycle.status = "failed";
+      lifecycle.errorKind = "transport";
     }
     // RPC processes are killed intentionally — don't treat SIGTERM exit as error
-    if (
+    const expectedRpcTermination =
       useRpc &&
-      result.exitCode !== 0 &&
-      (result.stopReason === "end_turn" || result.stopReason === "stop")
-    ) {
+      outcome.rpcCompleted &&
+      (result.stopReason === "end_turn" || result.stopReason === "stop");
+    if (expectedRpcTermination) {
       result.exitCode = 0;
+      lifecycle.status = "succeeded";
+      lifecycle.errorKind = null;
+    } else if (
+      !wasAborted &&
+      !wasTimedOut &&
+      !outcome.spawnError &&
+      !outcome.transportError &&
+      useRpc &&
+      !outcome.rpcCompleted
+    ) {
+      result.exitCode = result.exitCode || 1;
+      result.errorMessage ??=
+        "pi RPC ended before all expected turns completed";
+      lifecycle.status = "failed";
+      lifecycle.errorKind = "agent";
+    } else if (
+      !wasAborted &&
+      !wasTimedOut &&
+      !outcome.spawnError &&
+      !outcome.transportError &&
+      (result.stopReason === "error" || result.stopReason === "aborted")
+    ) {
+      lifecycle.status = "failed";
+      lifecycle.errorKind = "agent";
+    } else if (
+      !wasAborted &&
+      !wasTimedOut &&
+      !outcome.spawnError &&
+      !outcome.transportError &&
+      outcome.signal
+    ) {
+      result.exitCode = 1;
+      result.errorMessage ??= `pi process terminated by signal ${outcome.signal}`;
+      lifecycle.status = "failed";
+      lifecycle.errorKind = "signal";
+    } else if (
+      !wasAborted &&
+      !wasTimedOut &&
+      !outcome.spawnError &&
+      !outcome.transportError &&
+      outcome.code !== 0
+    ) {
+      result.errorMessage ??= `pi process exited with code ${outcome.code}`;
+      lifecycle.status = "failed";
+      lifecycle.errorKind = "exit";
+    } else if (
+      !wasAborted &&
+      !wasTimedOut &&
+      !outcome.spawnError &&
+      !outcome.transportError
+    ) {
+      lifecycle.status = "succeeded";
+      lifecycle.errorKind = null;
     }
     return result;
   } finally {
@@ -729,6 +982,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it } = import.meta.vitest;
   const tmpRoots: string[] = [];
+  const originalPiBin = process.env.PI_BIN;
 
   const makeTmpDir = () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-spawn-test-"));
@@ -736,7 +990,25 @@ if (import.meta.vitest) {
     return dir;
   };
 
+  const makeFakePi = (body: string) => {
+    const dir = makeTmpDir();
+    const executable = path.join(dir, "fake-pi");
+    fs.writeFileSync(executable, `#!/bin/sh\n${body}\n`, { mode: 0o700 });
+    return executable;
+  };
+
+  const isPidAlive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   afterEach(() => {
+    if (originalPiBin === undefined) delete process.env.PI_BIN;
+    else process.env.PI_BIN = originalPiBin;
     for (const dir of tmpRoots.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -846,5 +1118,179 @@ if (import.meta.vitest) {
 
       expect(routing).toEqual({ args: ["--no-session"] });
     });
+  });
+
+  describe("piSpawn lifecycle", () => {
+    it("records successful process lifecycle and inferred ownership", async () => {
+      const cwd = makeTmpDir();
+      const parentSession = path.join(cwd, "parent.jsonl");
+      fs.writeFileSync(
+        parentSession,
+        `${JSON.stringify({ type: "session", id: "parent-session" })}\n`,
+      );
+      process.env.PI_BIN = makeFakePi("exit 0");
+
+      const result = await piSpawn({
+        cwd,
+        task: "test",
+        session: { persist: false, parentSession },
+        owner: { toolCallId: "call-1", toolName: "finder" },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.lifecycle).toMatchObject({
+        pid: expect.any(Number),
+        processGroupId:
+          process.platform === "win32" ? null : expect.any(Number),
+        owner: {
+          sessionId: "parent-session",
+          sessionFile: parentSession,
+          toolCallId: "call-1",
+          toolName: "finder",
+        },
+        status: "succeeded",
+        exitCode: 0,
+        signal: null,
+        errorKind: null,
+        cancellationRequestedAt: null,
+        timeoutMs: null,
+        timedOutAt: null,
+        endedAt: expect.any(String),
+      });
+    });
+
+    it("distinguishes nonzero exits and signals", async () => {
+      const cwd = makeTmpDir();
+      process.env.PI_BIN = makeFakePi("exit 23");
+      const failed = await piSpawn({
+        cwd,
+        task: "test",
+        session: { persist: false },
+      });
+      expect(failed.lifecycle).toMatchObject({
+        status: "failed",
+        exitCode: 23,
+        signal: null,
+        errorKind: "exit",
+      });
+
+      process.env.PI_BIN = makeFakePi("kill -TERM $$");
+      const signalled = await piSpawn({
+        cwd,
+        task: "test",
+        session: { persist: false },
+      });
+      expect(signalled.lifecycle).toMatchObject({
+        status: "failed",
+        exitCode: null,
+        signal: "SIGTERM",
+        errorKind: "signal",
+      });
+      expect(signalled.exitCode).toBe(1);
+      expect(isPiSpawnFailure(signalled)).toBe(true);
+    });
+
+    it("distinguishes spawn errors, cancellation, and timeout", async () => {
+      const cwd = makeTmpDir();
+      process.env.PI_BIN = path.join(cwd, "missing-pi");
+      const spawnFailure = await piSpawn({
+        cwd,
+        task: "test",
+        session: { persist: false },
+      });
+      expect(spawnFailure.lifecycle).toMatchObject({
+        pid: null,
+        status: "failed",
+        errorKind: "spawn",
+      });
+
+      const controller = new AbortController();
+      controller.abort();
+      const cancelledSessionDir = path.join(cwd, "cancelled-sessions");
+      const cancelled = await piSpawn({
+        cwd,
+        task: "test",
+        signal: controller.signal,
+        session: { id: "cancelled-child" },
+        env: { PI_CODING_AGENT_SESSION_DIR: cancelledSessionDir },
+      });
+      expect(cancelled.lifecycle).toMatchObject({
+        pid: null,
+        status: "cancelled",
+        errorKind: "cancelled",
+        cancellationRequestedAt: expect.any(String),
+      });
+      expect(fs.existsSync(cancelledSessionDir)).toBe(false);
+
+      process.env.PI_BIN = makeFakePi("sleep 60");
+      const timedOut = await piSpawn({
+        cwd,
+        task: "test",
+        timeoutMs: 10,
+        session: { persist: false },
+      });
+      expect(timedOut.lifecycle).toMatchObject({
+        pid: expect.any(Number),
+        status: "timed_out",
+        errorKind: "timeout",
+        timeoutMs: 10,
+        timedOutAt: expect.any(String),
+      });
+    });
+
+    it("does not normalize an incomplete RPC review to success", async () => {
+      const cwd = makeTmpDir();
+      const message = JSON.stringify({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [],
+          stopReason: "stop",
+          timestamp: 0,
+        },
+      });
+      process.env.PI_BIN = makeFakePi(`printf '%s\\n' '${message}'; exit 42`);
+
+      const result = await piSpawn({
+        cwd,
+        task: "test",
+        followUp: "second turn",
+        session: { persist: false },
+      });
+
+      expect(result.exitCode).toBe(42);
+      expect(result.lifecycle).toMatchObject({
+        status: "failed",
+        exitCode: 42,
+        errorKind: "agent",
+      });
+      expect(isPiSpawnFailure(result)).toBe(true);
+    });
+
+    it.runIf(process.platform !== "win32")(
+      "times out the spawned process group, including descendants",
+      async () => {
+        const cwd = makeTmpDir();
+        const childPidFile = path.join(cwd, "child.pid");
+        process.env.PI_BIN = makeFakePi(
+          'sleep 60 & echo $! > "$CHILD_PID_FILE"; exit 0',
+        );
+
+        const result = await piSpawn({
+          cwd,
+          task: "test",
+          timeoutMs: 200,
+          session: { persist: false },
+          env: { CHILD_PID_FILE: childPidFile },
+        });
+        const childPid = Number(fs.readFileSync(childPidFile, "utf8").trim());
+
+        expect(result.lifecycle?.status).toBe("timed_out");
+        for (let attempt = 0; attempt < 20 && isPidAlive(childPid); attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        expect(isPidAlive(childPid)).toBe(false);
+      },
+    );
   });
 }

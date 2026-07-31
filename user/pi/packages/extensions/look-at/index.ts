@@ -25,6 +25,7 @@ import {
 import {
   getToolCalls,
   isPiSpawnModelValue,
+  isPiSpawnFailure,
   piSpawn,
   resolvePrompt,
   zeroUsage,
@@ -35,6 +36,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
@@ -180,7 +182,7 @@ export function createLookAtTool(
       ),
     }),
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as LookAtParams;
       let parentSession: string | undefined;
       try {
@@ -231,12 +233,14 @@ export function createLookAtTool(
         systemPromptBody: systemPrompt,
         signal,
         session: { persist: false, parentSession },
+        owner: { toolCallId, toolName: "look_at" },
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
           singleResult.model = partial.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
+          singleResult.lifecycle = partial.lifecycle;
           applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
             onUpdate({
@@ -258,18 +262,15 @@ export function createLookAtTool(
       singleResult.model = result.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
+      singleResult.lifecycle = result.lifecycle;
       applySessionMeta(singleResult, result.session);
 
-      const isError =
-        result.exitCode !== 0 ||
-        result.stopReason === "error" ||
-        result.stopReason === "aborted";
+      const isError = isPiSpawnFailure(result);
       const output = getFinalOutput(result.messages) || "(no output)";
-
-      if (isError)
-        throw new Error(result.errorMessage || result.stderr || output);
-
-      return subAgentResult(output, singleResult);
+      const text = isError
+        ? result.errorMessage || result.stderr || output
+        : output;
+      return subAgentResult(text, singleResult, isError);
     },
 
     renderCall(args: any, theme: any) {
@@ -344,6 +345,7 @@ function createLookAtExtension(
     if (!enabled) return;
 
     pi.registerTool(deps.withPromptPatch(createLookAtTool(config)));
+    registerSubAgentErrorNormalization(pi, "look_at");
   };
 }
 
