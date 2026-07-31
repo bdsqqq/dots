@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,7 +14,7 @@ import { scanCatalog, sha256, type MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
 import { canonicalTurnReceiptId, type TurnReceipt } from "./receipt.js";
 import type { TurnObservation } from "./adaptation.js";
-import { canonicalProposalId } from "./schema.js";
+import { canonicalProposalId, type Proposal } from "./schema.js";
 import {
   freezePipelineInput,
   rankRetrieval,
@@ -22,8 +23,15 @@ import {
   processPipelineBatches as processPipelineBatchesRaw,
   reflectionAutonomyState,
   type PipelineCriticInput,
+  type PipelineInputV4,
 } from "./pipeline.js";
 import { listProposals, readReviewReceipts } from "./workflow.js";
+
+const WINDOW_ID = "a".repeat(64);
+const SECOND_WINDOW_ID = "b".repeat(64);
+type PipelineInputV4WithBasis = PipelineInputV4 & {
+  supersessionBasis: NonNullable<PipelineInputV4["supersessionBasis"]>;
+};
 
 function config(): MemoryConfig {
   const base = mkdtempSync(join(tmpdir(), "memory-pipeline-"));
@@ -36,19 +44,20 @@ function config(): MemoryConfig {
 }
 
 function evidence(checkpoint = "checkpoint"): SafeEvidence {
+  const excerpt = "The user established a durable verification rule.";
   return {
     version: 1,
     window: {
-      windowId: "window",
+      windowId: WINDOW_ID,
       sessionId: "session",
       checkpointEntryIds: [checkpoint],
       throughLeafId: "leaf",
-      branchDigest: "branch",
-      excerpt: "The user established a durable verification rule.",
-      excerptSha256: "excerpt",
+      branchDigest: sha256("branch"),
+      excerpt,
+      excerptSha256: sha256(excerpt),
     },
     workspace: "/tmp/project",
-    records: [],
+    records: [{ role: "meta", source: "pi", cwd: "/tmp/project" }],
     tools: [],
     redactions: {},
     checkpointFrontiers: { [checkpoint]: "leaf" },
@@ -183,7 +192,7 @@ Project B rule.
     projectA.window.sessionId = "session-a";
     const projectB = evidence("cp-b");
     projectB.workspace = "/tmp/project-b";
-    projectB.window.windowId = "window-b";
+    projectB.window.windowId = SECOND_WINDOW_ID;
     projectB.window.sessionId = "session-b";
     expect(() =>
       freezePipelineInput(cfg, "global", [projectA, projectB], "test", [
@@ -232,6 +241,8 @@ Project B rule.
       version: 2,
       promptVersion: 2,
     });
+    const { supersessionBasis: _priorSupersessionBasis, ...priorV4 } = current;
+    expect(parseStoredPipelineInput(JSON.stringify(priorV4))).toEqual(priorV4);
     expect(() =>
       parseStoredPipelineInput(
         JSON.stringify({
@@ -240,6 +251,328 @@ Project B rule.
         }),
       ),
     ).toThrow("invalid stored pipeline input");
+  });
+
+  it("accepts the retained 201-record evidence shape", () => {
+    const cfg = config();
+    const current = freezePipelineInput(cfg, "global", [evidence()], "test");
+    current.evidence[0]!.records = [
+      { role: "meta", source: "pi" },
+      ...Array.from({ length: 200 }, (_, index) => ({
+        role: "user",
+        content: `record ${index}`,
+        timestamp: new Date(index * 1_000).toISOString(),
+      })),
+    ];
+    expect(parseStoredPipelineInput(JSON.stringify(current))).toEqual(current);
+  });
+
+  it("rejects malformed normalized evidence records", () => {
+    const cfg = config();
+    const current = freezePipelineInput(cfg, "global", [evidence()], "test");
+    const timestamp = "2026-07-31T00:00:00.000Z";
+    const malformedRecords: unknown[][] = [
+      [{ role: "unknown", content: "x", timestamp }],
+      [{ role: "user", content: "x", timestamp, extra: true }],
+      [{ role: "user", content: 1, timestamp }],
+      [
+        {
+          role: "assistant",
+          content: null,
+          timestamp,
+          tool_calls: [{ id: "call", name: "tool", args: "[]" }],
+        },
+      ],
+      [
+        { role: "meta", source: "pi" },
+        { role: "reasoning", content: "private reasoning", timestamp },
+      ],
+      [{ role: "user", content: "x".repeat(64_000), timestamp }],
+    ];
+    for (const records of malformedRecords) {
+      const malformed = structuredClone(current);
+      malformed.evidence[0]!.records = records;
+      expect(() => parseStoredPipelineInput(JSON.stringify(malformed))).toThrow(
+        "invalid stored pipeline input",
+      );
+    }
+  });
+
+  it("rejects non-canonical timestamps and impossible catalog dates", () => {
+    const cfg = config();
+    const current = freezePipelineInput(cfg, "global", [evidence()], "test");
+    expect(() =>
+      parseStoredPipelineInput(JSON.stringify({ ...current, createdAt: "0" })),
+    ).toThrow("invalid stored pipeline input");
+    const invalidDate = structuredClone(current);
+    invalidDate.catalog.entries.push({
+      memoryId: `mem_${"4".repeat(24)}`,
+      path: "memory.md",
+      title: "Invalid date",
+      description: "Invalid date",
+      kind: "pattern",
+      scope: "global",
+      triggers: [],
+      keywords: [],
+      status: "active",
+      sha256: "0".repeat(64),
+      updated: "2026-02-30",
+      legacy: false,
+    });
+    expect(() => parseStoredPipelineInput(JSON.stringify(invalidDate))).toThrow(
+      "invalid stored pipeline input",
+    );
+    for (const field of ["sessionId", "checkpointEntryIds"] as const) {
+      const traversal = structuredClone(current);
+      if (field === "sessionId")
+        traversal.evidence[0]!.window.sessionId = "../session";
+      else traversal.evidence[0]!.window.checkpointEntryIds = ["../checkpoint"];
+      expect(() => parseStoredPipelineInput(JSON.stringify(traversal))).toThrow(
+        "invalid stored pipeline input",
+      );
+    }
+  });
+
+  it("rejects every malformed v4 supersession basis shape at parse time", () => {
+    const cfg = config();
+    const current = freezePipelineInput(cfg, "global", [evidence()], "test");
+    if (current.version !== 4) throw new Error("expected v4 input");
+    const id = `prop_${"1".repeat(32)}`;
+    const operation: Proposal["operation"] = {
+      type: "create",
+      artifact: {
+        memoryId: `mem_${"2".repeat(24)}`,
+        title: "Stored operation",
+        kind: "pattern",
+        scope: "global",
+        description: "Use while validating stored operations",
+        triggers: ["stored operation"],
+        keywords: [],
+        sources: ["pi://session/checkpoint"],
+        created: "2026-07-31",
+        updated: "2026-07-31",
+        body: "Validate the complete stored operation.",
+      },
+    };
+    const valid: PipelineInputV4WithBasis = {
+      ...current,
+      pending: [
+        {
+          id,
+          lane: "memory",
+          operation: "create",
+          summary: JSON.stringify(operation),
+        },
+      ],
+      supersessionBasis: [{ id, runId: sha256("prior-run"), operation }],
+    };
+    expect(parseStoredPipelineInput(JSON.stringify(valid))).toEqual(valid);
+
+    const cases: Array<{
+      name: string;
+      mutate: (input: PipelineInputV4WithBasis) => void;
+    }> = [
+      {
+        name: "missing id",
+        mutate: (input) => {
+          delete (
+            input.supersessionBasis[0] as Partial<
+              PipelineInputV4WithBasis["supersessionBasis"][number]
+            >
+          ).id;
+        },
+      },
+      {
+        name: "missing runId",
+        mutate: (input) => {
+          delete (
+            input.supersessionBasis[0] as Partial<
+              PipelineInputV4WithBasis["supersessionBasis"][number]
+            >
+          ).runId;
+        },
+      },
+      {
+        name: "missing operation",
+        mutate: (input) => {
+          delete (
+            input.supersessionBasis[0] as Partial<
+              PipelineInputV4WithBasis["supersessionBasis"][number]
+            >
+          ).operation;
+        },
+      },
+      {
+        name: "extra key",
+        mutate: (input) => {
+          (
+            input.supersessionBasis[0] as unknown as Record<string, unknown>
+          ).extra = true;
+        },
+      },
+      {
+        name: "wrong id type",
+        mutate: (input) => {
+          (
+            input.supersessionBasis[0] as unknown as Record<string, unknown>
+          ).id = 1;
+        },
+      },
+      {
+        name: "wrong runId type",
+        mutate: (input) => {
+          (
+            input.supersessionBasis[0] as unknown as Record<string, unknown>
+          ).runId = 1;
+        },
+      },
+      {
+        name: "wrong operation type",
+        mutate: (input) => {
+          (
+            input.supersessionBasis[0] as unknown as Record<string, unknown>
+          ).operation = null;
+        },
+      },
+      {
+        name: "duplicate id",
+        mutate: (input) => {
+          input.supersessionBasis.push(
+            structuredClone(input.supersessionBasis[0]!),
+          );
+        },
+      },
+      {
+        name: "empty id",
+        mutate: (input) => {
+          input.supersessionBasis[0]!.id = "";
+        },
+      },
+      {
+        name: "invalid id",
+        mutate: (input) => {
+          input.supersessionBasis[0]!.id = "proposal";
+        },
+      },
+      {
+        name: "empty operation",
+        mutate: (input) => {
+          input.supersessionBasis[0]!.operation = {} as Proposal["operation"];
+        },
+      },
+      {
+        name: "unknown operation",
+        mutate: (input) => {
+          input.supersessionBasis[0]!.operation = {
+            type: "unknown",
+          } as unknown as Proposal["operation"];
+        },
+      },
+      {
+        name: "malformed nested operation",
+        mutate: (input) => {
+          const nested = structuredClone(operation);
+          if (!("artifact" in nested))
+            throw new Error("expected artifact operation");
+          delete (nested.artifact as Partial<{ body: string }>).body;
+          input.supersessionBasis[0]!.operation = nested;
+        },
+      },
+      {
+        name: "malformed nested memory ref",
+        mutate: (input) => {
+          input.supersessionBasis[0]!.operation = {
+            type: "retire",
+            target: {
+              memoryId: "not-a-memory-id",
+              path: "memory.md",
+              sha256: "0".repeat(64),
+            },
+            reason: "superseded",
+          };
+        },
+      },
+      {
+        name: "update changes memory identity",
+        mutate: (input) => {
+          if (!("artifact" in operation))
+            throw new Error("expected artifact operation");
+          input.supersessionBasis[0]!.operation = {
+            type: "update",
+            target: {
+              memoryId: `mem_${"5".repeat(24)}`,
+              path: "memory.md",
+              sha256: "0".repeat(64),
+            },
+            artifact: structuredClone(operation.artifact),
+          };
+        },
+      },
+      {
+        name: "merge changes memory identity",
+        mutate: (input) => {
+          if (!("artifact" in operation))
+            throw new Error("expected artifact operation");
+          input.supersessionBasis[0]!.operation = {
+            type: "merge",
+            primary: {
+              memoryId: `mem_${"5".repeat(24)}`,
+              path: "memory.md",
+              sha256: "0".repeat(64),
+            },
+            targets: [
+              {
+                memoryId: `mem_${"6".repeat(24)}`,
+                path: "other.md",
+                sha256: "1".repeat(64),
+              },
+            ],
+            artifact: structuredClone(operation.artifact),
+          };
+        },
+      },
+      {
+        name: "malformed supersededBy",
+        mutate: (input) => {
+          input.supersessionBasis[0]!.operation = {
+            type: "retire",
+            target: {
+              memoryId: `mem_${"3".repeat(24)}`,
+              path: "memory.md",
+              sha256: "0".repeat(64),
+            },
+            reason: "superseded",
+            supersededBy: {} as string,
+          };
+        },
+      },
+      {
+        name: "missing stored skill file hash",
+        mutate: (input) => {
+          input.supersessionBasis[0]!.operation = {
+            type: "skill-draft",
+            mode: "create",
+            skillName: "stored-skill",
+            targetPath: "stored-skill/SKILL.md",
+            files: [
+              {
+                path: "stored-skill/SKILL.md",
+                content:
+                  "---\nname: stored-skill\ndescription: stored skill\n---\n",
+              },
+            ],
+          } as unknown as Proposal["operation"];
+        },
+      },
+    ];
+    for (const testCase of cases) {
+      const malformed = structuredClone(valid);
+      testCase.mutate(malformed);
+      expect(
+        () => parseStoredPipelineInput(JSON.stringify(malformed)),
+        testCase.name,
+      ).toThrow("invalid stored pipeline input");
+    }
   });
 
   it("resumes frozen v3 analysis after the v4 upgrade", () => {
@@ -251,14 +584,14 @@ Project B rule.
       "test",
     );
     if (frozen.version !== 4) throw new Error("expected v4 input");
-    const runId = "legacy-v3-run";
+    const runId = sha256("legacy-v3-run");
     const { supersessionBasis: _supersessionBasis, ...v3Base } = frozen;
     const input = {
       ...v3Base,
       version: 3,
       promptVersion: 3,
       runId,
-      batchId: sha256(`${frozen.scope}\0window\0v3`),
+      batchId: sha256(`${frozen.scope}\0${WINDOW_ID}\0v3`),
     };
     const dir = join(cfg.data, "v2", "runs", runId);
     mkdirSync(dir, { recursive: true });
@@ -283,6 +616,186 @@ Project B rule.
     expect(result).toMatchObject({ runId, action: "skip" });
   });
 
+  it("replays retained v2, v3, and v4 inputs to identical proposals", () => {
+    const runId = sha256("cross-version-replay");
+    const createdAt = "2026-07-31T00:00:00.000Z";
+    const output = JSON.stringify({
+      version: 2,
+      action: "propose",
+      proposals: [
+        {
+          lane: "memory",
+          evidenceWindowIds: [WINDOW_ID],
+          operation: {
+            type: "create",
+            artifact: {
+              title: "Cross-version replay",
+              kind: "pattern",
+              scope: "global",
+              description: "Use while replaying frozen reflection inputs",
+              triggers: ["pipeline replay"],
+              keywords: ["formats"],
+              body: "Supported frozen formats replay without semantic drift.",
+            },
+          },
+        },
+      ],
+    });
+    const results = ([2, 3, 4] as const).map((version) => {
+      const cfg = config();
+      const current = freezePipelineInput(
+        cfg,
+        "global",
+        [evidence("cp-replay")],
+        "test",
+      );
+      if (current.version !== 4) throw new Error("expected v4 input");
+      const batchId =
+        version === 4
+          ? current.batchId
+          : sha256(`${current.scope}\0${WINDOW_ID}\0v${version}`);
+      const {
+        supersessionBasis: _supersessionBasis,
+        observations: _observations,
+        rollbackEvidence: _rollbackEvidence,
+        ...v2Base
+      } = current;
+      const input =
+        version === 2
+          ? {
+              ...v2Base,
+              version: 2 as const,
+              promptVersion: 2 as const,
+              runId,
+              batchId,
+              createdAt,
+              evidence: current.evidence.map(
+                ({
+                  checkpointFrontiers: _checkpointFrontiers,
+                  emittedEntryIds: _emittedEntryIds,
+                  ...item
+                }) => item,
+              ),
+            }
+          : version === 3
+            ? {
+                ...v2Base,
+                version: 3 as const,
+                promptVersion: 3 as const,
+                runId,
+                batchId,
+                createdAt,
+                observations: current.observations,
+                rollbackEvidence: current.rollbackEvidence,
+              }
+            : { ...current, runId, batchId, createdAt };
+      const dir = join(cfg.data, "v2", "runs", runId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "input.json"),
+        `${JSON.stringify(input, null, 2)}\n`,
+      );
+      writeFileSync(join(dir, "output.json"), `${output}\n`);
+      const result = processPipelineBatch({
+        cfg,
+        scope: "global",
+        evidence: input.evidence,
+        model: "test",
+        autoApplyMemory: false,
+        invoke: () => {
+          throw new Error("retained output must be reused");
+        },
+      });
+      return {
+        result,
+        proposals: listProposals(cfg),
+      };
+    });
+    expect(results[1]).toEqual(results[0]);
+    expect(results[2]).toEqual(results[0]);
+    expect(results[0]!.result.proposalIds).toHaveLength(1);
+  });
+
+  it("batches a completed model-less v2 replay with its stored model", async () => {
+    const cfg = config();
+    const current = freezePipelineInput(
+      cfg,
+      "global",
+      [evidence("cp-model-less")],
+      "old-model",
+    );
+    if (current.version !== 4) throw new Error("expected v4 input");
+    const {
+      supersessionBasis: _supersessionBasis,
+      observations: _observations,
+      rollbackEvidence: _rollbackEvidence,
+      model: _model,
+      ...base
+    } = current;
+    const input = {
+      ...base,
+      version: 2 as const,
+      promptVersion: 2 as const,
+      runId: sha256("model-less-v2"),
+      batchId: sha256(`${current.scope}\0${WINDOW_ID}\0v2`),
+      createdAt: "2026-07-31T00:00:00.000Z",
+    };
+    const dir = join(cfg.data, "v2", "runs", input.runId);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "input.json"),
+      `${JSON.stringify(input, null, 2)}\n`,
+    );
+    writeFileSync(
+      join(dir, "output.json"),
+      `${JSON.stringify({
+        version: 2,
+        action: "propose",
+        proposals: [
+          {
+            lane: "memory",
+            evidenceWindowIds: [WINDOW_ID],
+            operation: {
+              type: "create",
+              artifact: {
+                title: "Stored model replay",
+                kind: "pattern",
+                scope: "global",
+                description: "Use while replaying model-less v2 runs",
+                triggers: ["stored model"],
+                keywords: [],
+                body: "Completed legacy runs retain their proposal model.",
+              },
+            },
+          },
+        ],
+      })}\n`,
+    );
+    const first = processPipelineBatch({
+      cfg,
+      scope: "global",
+      evidence: [evidence("cp-model-less")],
+      model: "old-model",
+      autoApplyMemory: false,
+      invoke: () => {
+        throw new Error("stored output must be reused");
+      },
+    });
+    const replayed = await processPipelineBatches([
+      {
+        cfg,
+        scope: "global",
+        evidence: [evidence("cp-model-less")],
+        model: "new-model",
+        autoApplyMemory: false,
+        invoke: async () => {
+          throw new Error("completed run must be reused");
+        },
+      },
+    ]);
+    expect(replayed).toEqual([first]);
+  });
+
   it("starts v4 analysis instead of relabeling incomplete v3 input", () => {
     const cfg = config();
     const frozen = freezePipelineInput(
@@ -297,8 +810,8 @@ Project B rule.
       ...v3Base,
       version: 3,
       promptVersion: 3,
-      runId: "incomplete-v3-run",
-      batchId: sha256(`${frozen.scope}\0window\0v3`),
+      runId: sha256("incomplete-v3-run"),
+      batchId: sha256(`${frozen.scope}\0${WINDOW_ID}\0v3`),
     };
     const dir = join(cfg.data, "v2", "runs", input.runId);
     mkdirSync(dir, { recursive: true });
@@ -359,7 +872,7 @@ Project B rule.
           proposals: [
             {
               lane: "memory",
-              evidenceWindowIds: ["window"],
+              evidenceWindowIds: [WINDOW_ID],
               operation: {
                 type: "create",
                 artifact: {
@@ -428,7 +941,7 @@ Project B rule.
           proposals: [
             {
               lane: "memory",
-              evidenceWindowIds: ["window"],
+              evidenceWindowIds: [WINDOW_ID],
               operation: {
                 type: "create",
                 artifact: {
@@ -489,12 +1002,13 @@ Project B rule.
 
   it("applies precise body deletions from reflection", () => {
     const cfg = config();
+    const memoryId = `mem_${"e".repeat(24)}`;
     mkdirSync(cfg.root, { recursive: true });
     writeFileSync(
       join(cfg.root, "2026-verify-source__agent.md"),
       `---
 memory_version: 2
-memory_id: "mem_replace"
+memory_id: "${memoryId}"
 status: "active"
 title: "Verify"
 kind: pattern
@@ -520,10 +1034,10 @@ Run a build before reporting completion.
           proposals: [
             {
               lane: "memory",
-              evidenceWindowIds: ["window"],
+              evidenceWindowIds: [WINDOW_ID],
               operation: {
                 type: "replace",
-                targetId: "mem_replace",
+                targetId: memoryId,
                 oldSpan: "Run a build before reporting completion.",
                 newSpan: "",
               },
@@ -536,7 +1050,7 @@ Run a build before reporting completion.
       listProposals(cfg, "memory", "reviewed")[0]?.operation,
     ).toMatchObject({
       type: "replace",
-      target: { memoryId: "mem_replace" },
+      target: { memoryId },
       oldSpan: "Run a build before reporting completion.",
       newSpan: "",
     });
@@ -555,7 +1069,7 @@ Run a build before reporting completion.
   it("keeps executable skill drafts review-gated across replay", async () => {
     const cfg = config();
     const second = evidence("cp-second");
-    second.window.windowId = "window-two";
+    second.window.windowId = SECOND_WINDOW_ID;
     second.window.sessionId = "session-two";
     const option = {
       cfg,
@@ -569,7 +1083,7 @@ Run a build before reporting completion.
           proposals: [
             {
               lane: "memory",
-              evidenceWindowIds: ["window"],
+              evidenceWindowIds: [WINDOW_ID],
               operation: {
                 type: "create",
                 artifact: {
@@ -585,7 +1099,7 @@ Run a build before reporting completion.
             },
             {
               lane: "skill",
-              evidenceWindowIds: ["window", "window-two"],
+              evidenceWindowIds: [WINDOW_ID, SECOND_WINDOW_ID],
               operation: {
                 type: "skill-draft",
                 mode: "create",
@@ -629,7 +1143,7 @@ Run a build before reporting completion.
         proposals: [
           {
             lane: "memory",
-            evidenceWindowIds: ["window"],
+            evidenceWindowIds: [WINDOW_ID],
             operation: {
               type: "create",
               artifact: {
@@ -685,7 +1199,7 @@ Run a build before reporting completion.
           proposals: [
             {
               lane: "memory",
-              evidenceWindowIds: ["window"],
+              evidenceWindowIds: [WINDOW_ID],
               operation: {
                 type: "create",
                 artifact: {
@@ -737,7 +1251,7 @@ Run a build before reporting completion.
           proposals: [
             {
               lane: "memory",
-              evidenceWindowIds: ["window"],
+              evidenceWindowIds: [WINDOW_ID],
               operation: {
                 type: "create",
                 artifact: {
@@ -825,7 +1339,7 @@ Run a build before reporting completion.
           proposals: [
             {
               lane: "memory",
-              evidenceWindowIds: ["window"],
+              evidenceWindowIds: [WINDOW_ID],
               operation:
                 checkpoint === "cp-invalid"
                   ? {
@@ -857,10 +1371,119 @@ Run a build before reporting completion.
     expect(readReviewReceipts(cfg)).toHaveLength(0);
   });
 
+  it("groups batch preflight by resolved memory storage identity", async () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    const memoryId = `mem_${"9".repeat(24)}`;
+    const path = join(cfg.root, "2026-storage-identity--source__agent.md");
+    const original = `---
+memory_version: 2
+memory_id: "${memoryId}"
+status: "active"
+title: "Durable verification"
+kind: pattern
+scope: "global"
+description: "Durable verification rule"
+triggers: ["durable verification"]
+keywords: []
+updated: "2026-07-31"
+---
+
+Run the narrow verification before completion.
+`;
+    writeFileSync(path, original);
+    const rootAlias = join(cfg.root, "..", "memories-alias");
+    symlinkSync(cfg.root, rootAlias, "dir");
+    const equivalentCfg = {
+      ...cfg,
+      data: join(cfg.data, "..", "other-data"),
+      root: rootAlias,
+    };
+    const options = [cfg, equivalentCfg].map((batchCfg, index) => ({
+      cfg: batchCfg,
+      scope: "global",
+      evidence: [evidence(`cp-storage-${index}`)],
+      model: "test",
+      invoke: async () =>
+        JSON.stringify({
+          version: 2,
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              evidenceWindowIds: [WINDOW_ID],
+              operation: {
+                type: "replace",
+                targetId: memoryId,
+                oldSpan: "Run the narrow verification before completion.",
+                newSpan: `Run verification variant ${index}.`,
+              },
+            },
+          ],
+        }),
+    }));
+    await expect(processPipelineBatches(options)).rejects.toThrow(
+      "memory proposal batch contains overlapping targets",
+    );
+    expect(readFileSync(path, "utf8")).toBe(original);
+    expect(listProposals(cfg)).toHaveLength(0);
+  });
+
+  it("canonicalizes symlinked parents for missing memory roots", async () => {
+    const cfg = config();
+    const realParent = join(cfg.root, "..", "real-parent");
+    const aliasParent = join(cfg.root, "..", "parent-alias");
+    mkdirSync(realParent, { recursive: true });
+    symlinkSync(realParent, aliasParent, "dir");
+    const roots = [
+      join(realParent, "future-memories"),
+      join(aliasParent, "future-memories"),
+    ];
+    const configs = roots.map((root, index) => ({
+      ...cfg,
+      data: join(cfg.data, "..", `missing-root-data-${index}`),
+      root,
+    }));
+    const options = configs.map((batchCfg) => ({
+      cfg: batchCfg,
+      scope: "global",
+      evidence: [evidence("cp-missing-root")],
+      model: "test",
+      invoke: async () =>
+        JSON.stringify({
+          version: 2,
+          action: "propose",
+          proposals: [
+            {
+              lane: "memory",
+              evidenceWindowIds: [WINDOW_ID],
+              operation: {
+                type: "create",
+                artifact: {
+                  title: "Missing root",
+                  kind: "pattern",
+                  scope: "global",
+                  description: "Use while preflighting missing roots",
+                  triggers: ["missing root"],
+                  keywords: [],
+                  body: "Canonicalize the existing parent before mutation.",
+                },
+              },
+            },
+          ],
+        }),
+    }));
+    await expect(processPipelineBatches(options)).rejects.toThrow(
+      "memory proposal batch contains overlapping paths",
+    );
+    expect(roots.every((root) => !existsSync(root))).toBe(true);
+    expect(configs.flatMap((item) => listProposals(item))).toHaveLength(0);
+  });
+
   it("rejects invalid evidence selections and stores only selected refs", () => {
     const cfg = config();
     const second = evidence("cp-unselected");
-    second.window.windowId = "window-two";
+    second.window.windowId = SECOND_WINDOW_ID;
     second.window.sessionId = "session-two";
     const result = processPipelineBatch({
       cfg,
@@ -875,7 +1498,7 @@ Run a build before reporting completion.
           proposals: [
             {
               lane: "memory",
-              evidenceWindowIds: ["window"],
+              evidenceWindowIds: [WINDOW_ID],
               operation: {
                 type: "create",
                 artifact: {
@@ -894,7 +1517,7 @@ Run a build before reporting completion.
     });
     expect(
       listProposals(cfg)[0]?.evidence.map((item) => item.windowId),
-    ).toEqual(["window"]);
+    ).toEqual([WINDOW_ID]);
     expect(result.proposalIds).toHaveLength(1);
 
     const invalid = (evidenceWindowIds: string[]) =>
@@ -949,7 +1572,7 @@ Run a build before reporting completion.
           proposals: [
             {
               lane: "memory",
-              evidenceWindowIds: ["window"],
+              evidenceWindowIds: [WINDOW_ID],
               operation: {
                 type: "create",
                 artifact: {
@@ -999,7 +1622,7 @@ Run a build before reporting completion.
   it("replays pre-versioned output with all frozen evidence", () => {
     const cfg = config();
     const second = evidence("cp-legacy-two");
-    second.window.windowId = "window-two";
+    second.window.windowId = SECOND_WINDOW_ID;
     second.window.sessionId = "session-two";
     const result = processPipelineBatch({
       cfg,
@@ -1032,8 +1655,8 @@ Run a build before reporting completion.
     const stored = listProposals(cfg)[0]!;
     expect(stored.digestVersion).toBe(2);
     expect(stored.evidence.map((item) => item.windowId)).toEqual([
-      "window",
-      "window-two",
+      WINDOW_ID,
+      SECOND_WINDOW_ID,
     ]);
     expect(
       JSON.parse(

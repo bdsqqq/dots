@@ -35,6 +35,7 @@ import {
   type MemoryMutationActor,
   type MemoryOperation,
   type MemoryPatch,
+  type MemoryRef,
   type ModelProposal,
   type Proposal,
   type ReviewReasonCode,
@@ -203,7 +204,10 @@ function validateMemoryRef(value: unknown): void {
     !object(value) ||
     Object.keys(value).sort().join(",") !== "memoryId,path,sha256" ||
     typeof value.memoryId !== "string" ||
+    !/^(?:mem_[a-f0-9]{24}|legacy:[a-f0-9]{24})$/.test(value.memoryId) ||
     typeof value.path !== "string" ||
+    !value.path ||
+    value.path.length > 240 ||
     value.path.startsWith("/") ||
     value.path.includes("..") ||
     typeof value.sha256 !== "string" ||
@@ -352,6 +356,17 @@ function validateStoredOperation(
         ],
       }),
     );
+    if (
+      !Array.isArray(value.files) ||
+      value.files.some(
+        (file) =>
+          !object(file) ||
+          typeof file.content !== "string" ||
+          typeof file.sha256 !== "string" ||
+          file.sha256 !== sha256(file.content),
+      )
+    )
+      throw new Error("invalid stored skill file hash");
     return;
   }
   if (value.type === "create") {
@@ -363,6 +378,11 @@ function validateStoredOperation(
       throw new Error("invalid stored update fields");
     validateMemoryRef(value.target);
     validateFullArtifact(value.artifact);
+    if (
+      (value.target as MemoryRef).memoryId !==
+      (value.artifact as MemoryArtifact).memoryId
+    )
+      throw new Error("stored update changes memory identity");
   } else if (value.type === "patch") {
     if (Object.keys(value).sort().join(",") !== "changes,target,type")
       throw new Error("invalid stored patch fields");
@@ -395,6 +415,11 @@ function validateStoredOperation(
       throw new Error("invalid stored merge targets");
     value.targets.forEach(validateMemoryRef);
     validateFullArtifact(value.artifact);
+    if (
+      (value.primary as MemoryRef).memoryId !==
+      (value.artifact as MemoryArtifact).memoryId
+    )
+      throw new Error("stored merge changes memory identity");
   } else if (value.type === "archive" || value.type === "retire") {
     const keys = Object.keys(value).sort().join(",");
     if (
@@ -405,9 +430,30 @@ function validateStoredOperation(
     )
       throw new Error("invalid stored lifecycle fields");
     validateMemoryRef(value.target);
-    if (typeof value.reason !== "string" || !value.reason.trim())
+    if (
+      typeof value.reason !== "string" ||
+      !value.reason.trim() ||
+      value.reason.length > 500 ||
+      (value.type === "retire" &&
+        value.supersededBy !== undefined &&
+        (typeof value.supersededBy !== "string" ||
+          !/^(?:mem_[a-f0-9]{24}|legacy:[a-f0-9]{24})$/.test(
+            value.supersededBy,
+          )))
+    )
       throw new Error("invalid stored operation reason");
   } else throw new Error("invalid stored operation type");
+}
+
+export function parseStoredProposalOperation(
+  value: unknown,
+): Proposal["operation"] {
+  if (!object(value)) throw new Error("invalid stored operation");
+  validateStoredOperation(
+    value.type === "skill-draft" ? "skill" : "memory",
+    value,
+  );
+  return value as Proposal["operation"];
 }
 
 export function parseStoredProposal(
@@ -468,7 +514,7 @@ export function parseStoredProposal(
     throw new Error("proposal lane mismatch");
   if (value.operation.type !== "skill-draft" && value.lane !== "memory")
     throw new Error("proposal lane mismatch");
-  validateStoredOperation(value.lane, value.operation);
+  parseStoredProposalOperation(value.operation);
   const proposal = value as Proposal;
   const { id: _id, ...identity } = proposal;
   const legacyId = (operation: Proposal["operation"]) =>

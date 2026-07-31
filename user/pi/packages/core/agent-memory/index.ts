@@ -1168,10 +1168,9 @@ function trustedCheckpointFrontier(
   checkpointEntryId: string,
   chain: Entry[],
 ): number | undefined {
-  const path = join(
-    cfg.data,
-    "v2/ledger",
-    `${sessionId}--${checkpointEntryId}.json`,
+  const path = contained(
+    join(cfg.data, "v2/ledger"),
+    join(cfg.data, "v2/ledger", `${sessionId}--${checkpointEntryId}.json`),
   );
   if (!existsSync(path)) return undefined;
   const ledger = JSON.parse(readFileSync(path, "utf8")) as Record<
@@ -1186,18 +1185,31 @@ function trustedCheckpointFrontier(
   )
     throw new Error(`invalid checkpoint ledger ${checkpointEntryId}`);
   const input = JSON.parse(
-    readFileSync(join(cfg.data, "v2/runs", ledger.runId, "input.json"), "utf8"),
-  ) as { evidence?: SafeEvidence[] };
+    readFileSync(
+      contained(
+        join(cfg.data, "v2/runs"),
+        join(cfg.data, "v2/runs", ledger.runId, "input.json"),
+      ),
+      "utf8",
+    ),
+  ) as { version?: unknown; evidence?: SafeEvidence[] };
   const frozen = input.evidence?.find(
     (item) =>
       item.window.sessionId === sessionId &&
       item.window.checkpointEntryIds.includes(checkpointEntryId),
   );
+  const legacyV2 =
+    input.version === 2 &&
+    frozen?.checkpointFrontiers === undefined &&
+    frozen?.emittedEntryIds === undefined;
+  const frozenFrontier =
+    frozen?.checkpointFrontiers?.[checkpointEntryId] ??
+    (legacyV2 ? frozen?.window.throughLeafId : undefined);
   if (
     !frozen ||
     frozen.window.branchDigest !== ledger.branchDigest ||
-    frozen.checkpointFrontiers?.[checkpointEntryId] !== ledger.throughLeafId ||
-    !frozen.emittedEntryIds?.includes(ledger.throughLeafId)
+    frozenFrontier !== ledger.throughLeafId ||
+    (!legacyV2 && !frozen.emittedEntryIds?.includes(ledger.throughLeafId))
   )
     throw new Error(`inconsistent checkpoint ledger ${checkpointEntryId}`);
   const frontier = chain.findIndex(
@@ -3085,18 +3097,16 @@ if (import.meta.vitest) {
         writeFileSync(
           join(cfg.data, "v2/runs/trusted-run/input.json"),
           JSON.stringify({
+            version: 2,
             evidence: [
               {
                 version: 1,
                 window: {
                   sessionId: "session",
                   checkpointEntryIds: ["trusted-checkpoint"],
+                  throughLeafId: "before-boundary",
                   branchDigest: "trusted-branch",
                 },
-                checkpointFrontiers: {
-                  "trusted-checkpoint": "before-boundary",
-                },
-                emittedEntryIds: ["before-boundary"],
               },
             ],
           }),

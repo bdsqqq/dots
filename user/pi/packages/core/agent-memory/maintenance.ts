@@ -21,7 +21,12 @@ import {
   type MemoryRef,
   type Proposal,
 } from "./schema.js";
-import type { PipelineInput } from "./pipeline.js";
+import type { SafeEvidence } from "./evidence.js";
+import {
+  frozenPipelineEvidence,
+  parseStoredPipelineInput,
+  type PipelineInput,
+} from "./pipeline.js";
 
 export type PathologyType =
   | "duplicate-exact"
@@ -425,12 +430,14 @@ function frozenInputs(cfg: MemoryConfig): PipelineInput[] {
       const path = join(root, name, "input.json");
       if (!existsSync(path)) return [];
       try {
-        const input = JSON.parse(readFileSync(path, "utf8")) as PipelineInput;
-        return input.version === 2 && Array.isArray(input.evidence)
-          ? [input]
-          : [];
-      } catch {
-        return [];
+        const input = parseStoredPipelineInput(readFileSync(path, "utf8"));
+        if (input.runId !== name)
+          throw new Error("pipeline run directory identity mismatch");
+        return [input];
+      } catch (error) {
+        throw new Error(`invalid frozen pipeline input ${name}`, {
+          cause: error,
+        });
       }
     });
 }
@@ -438,10 +445,10 @@ function frozenInputs(cfg: MemoryConfig): PipelineInput[] {
 function evidenceFor(
   inputs: PipelineInput[],
   sources: string[],
-): { refs: EvidenceRef[]; evidence: PipelineInput["evidence"] } {
+): { refs: EvidenceRef[]; evidence: SafeEvidence[] } {
   const requested = new Set(sources);
   const evidence = inputs
-    .flatMap((input) => input.evidence)
+    .flatMap(frozenPipelineEvidence)
     .filter((item) =>
       item.window.checkpointEntryIds.some((checkpoint) =>
         requested.has(`pi://${item.window.sessionId}/${checkpoint}`),
@@ -596,7 +603,7 @@ export async function analyzeCorpusMaintenance(options: {
         type: item.pathology.type,
         code: "missing-authored-evidence",
         message:
-          "original authored evidence could not be resolved from frozen v2 run inputs",
+          "original authored evidence could not be resolved from frozen pipeline inputs",
       });
   const usable = resolved.filter(
     (item) =>
