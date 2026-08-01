@@ -179,6 +179,12 @@ in
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
+      programs.ssh.settings."github.com" = {
+        HostName = "github.com";
+        User = "git";
+        IdentityFile = "~/.ssh/github-dots-deploy";
+        IdentitiesOnly = true;
+      };
     };
   };
 
