@@ -29,7 +29,6 @@ in
     ../../bundles/dev.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
-    ../../system/t3-code-server.nix
     ./hardware-configuration.nix
   ];
 
