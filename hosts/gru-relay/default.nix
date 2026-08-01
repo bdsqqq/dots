@@ -1,12 +1,40 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, inputs, ... }:
 
+let
+  mbpPubKey =
+    lib.removeSuffix "\n" (builtins.readFile ../../system/ssh-keys/mbp-m2.pub);
+  homeManagerBackupCommand = pkgs.writeShellScript "home-manager-unique-backup" ''
+    set -eu
+
+    target="$1"
+    ext="''${HOME_MANAGER_BACKUP_EXT:-backup}"
+    candidate="$target.$ext"
+
+    if [ -e "$candidate" ]; then
+      stamp="$(${pkgs.coreutils}/bin/date +%Y%m%d%H%M%S)"
+      candidate="$target.$ext.$stamp"
+      i=1
+      while [ -e "$candidate" ]; do
+        candidate="$target.$ext.$stamp.$i"
+        i=$((i + 1))
+      done
+    fi
+
+    ${pkgs.coreutils}/bin/mv "$target" "$candidate"
+  '';
+in
 {
   imports = [
-    ../../system/ssh.nix
-    ../../system/tailscale.nix
-    ../../system/authorized-keys.nix
+    ../../bundles/base.nix
+    ../../bundles/dev.nix
+    ../../system/o11y
+    ../../system/o11y/hwmon.nix
+    ../../system/t3-code-server.nix
     ./hardware-configuration.nix
   ];
+
+  my.primaryUser = "bdsqqq";
+  services.hwmon-metrics.enable = true;
 
   boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
 
@@ -14,25 +42,6 @@
     "console=ttyS0,19200n8"
     "console=tty0"
   ];
-
-  nix = {
-    settings = {
-      experimental-features = [ "nix-command" "flakes" ];
-      substituters = [
-        "https://cache.nixos.org/"
-        "https://nix-community.cachix.org"
-      ];
-      trusted-public-keys = [
-        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-        "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
-      ];
-    };
-    optimise.automatic = true;
-    gc = {
-      automatic = true;
-      options = "--delete-older-than 14d";
-    };
-  };
 
   networking = {
     hostName = "gru-relay";
@@ -67,8 +76,9 @@
       enable = true;
       allowPing = false;
       trustedInterfaces = [ "tailscale0" ];
-      allowedTCPPorts = [ 22 ];
+      allowedTCPPorts = [ ];
       allowedUDPPorts = [ ];
+      interfaces.tailscale0.allowedTCPPorts = [ 22 ];
       checkReversePath = "loose";
     };
   };
@@ -131,14 +141,15 @@
     isNormalUser = true;
     extraGroups = [ "wheel" ];
     shell = pkgs.zsh;
+    openssh.authorizedKeys.keys = [ mbpPubKey ];
     hashedPassword =
       "$6$LeozgmV9I6N0QYNf$3BeytD3X/gFNzBJAeWYqFPqD7m9Qz4gn8vORyFtrJopplmZ/pgLZzcktymHLU9CVbR.SkFPg9MAbYNKWLzvaT0";
   };
 
-  users.users.root.openssh.authorizedKeys.keys =
-    config.users.users.bdsqqq.openssh.authorizedKeys.keys;
-
-  services.openssh.settings.PermitRootLogin = lib.mkForce "prohibit-password";
+  services.openssh.settings = {
+    PasswordAuthentication = false;
+    PermitRootLogin = "no";
+  };
 
   security.sudo = {
     enable = true;
@@ -146,6 +157,30 @@
   };
 
   programs.zsh.enable = true;
+
+  # The small root disk carries only a Git checkout; unlike htz-relay, this
+  # host intentionally has no Syncthing dataset or storage-backed services.
+  systemd.services.syncthing-automerge.enable = false;
+
+  home-manager = {
+    useGlobalPkgs = true;
+    useUserPackages = true;
+    backupFileExtension = "backup";
+    backupCommand = homeManagerBackupCommand;
+    extraSpecialArgs = {
+      inherit inputs;
+      isDarwin = false;
+      hostSystem = "x86_64-linux";
+      headMode = "headless";
+      torchBackend = "cpu";
+    };
+    users.bdsqqq = {
+      home.username = "bdsqqq";
+      home.homeDirectory = "/home/bdsqqq";
+      home.stateVersion = "25.05";
+      programs.home-manager.enable = true;
+    };
+  };
 
   time.timeZone = "America/Sao_Paulo";
   i18n.defaultLocale = "en_US.UTF-8";

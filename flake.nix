@@ -274,6 +274,11 @@
               headMode = "headless";
             };
             modules = [
+              inputs.sops-nix.nixosModules.sops
+              inputs.axiom-deploy-annotation.nixosModules.default
+              stylix.nixosModules.stylix
+              inputs.nix-flatpak.nixosModules.nix-flatpak
+              inputs.home-manager.nixosModules.home-manager
               ({ pkgs, config, lib, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [
@@ -281,6 +286,18 @@
                   (import ./zmx.nix).overlay
                 ];
                 system.configurationRevision = flakeRevision;
+
+                services.axiom-deploy-annotation = {
+                  enable = true;
+                  tokenPath = config.sops.secrets."axiom/personal_token".path;
+                  apiEndpoint = "https://api.axiom.co/v2/annotations";
+                  datasets = [ "papertrail" "papertrail-traces" ];
+                  repositoryUrl = "https://github.com/bdsqqq/dots";
+                  user = "bdsqqq";
+                  group = "users";
+                };
+                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome =
+                  lib.mkForce "read-only";
               })
               ./hosts/gru-relay/default.nix
             ];
