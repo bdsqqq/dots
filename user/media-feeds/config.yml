@@ -1,3 +1,5 @@
+variables: media-feed-variables.yml
+
 tasks:
   not-nyaa:
     rss:
@@ -9,7 +11,7 @@ tasks:
       - One Piece:
           identified_by: sequence
           sequence_regexp: '(?i)(?:chapter[ ._-]*)?([0-9]{4}(?:\.[0-9]+)?)'
-          begin: 1171
+          begin: '{? one_piece_begin ?}'
     transmission:
       host: 127.0.0.1
       port: 9091
