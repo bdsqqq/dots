@@ -39,7 +39,7 @@ in {
 
       home.activation.kindleLibrary =
         lib.hm.dag.entryBetween [ "linkGeneration" ] [ "writeBoundary" ] ''
-          mkdir -p ${lib.escapeShellArg "${config.home.homeDirectory}/kindle"}
+          mkdir -p ${lib.escapeShellArg "${config.home.homeDirectory}/kindle/one piece"}
         '';
       home.file."commonplace/01_files/kindle".source =
         config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/kindle";
@@ -123,6 +123,7 @@ in {
     enable = true;
     root = "/Users/bdsqqq/commonplace/03_media/one piece manga";
     feeds = [ "not-nyaa" ];
+    polling.enable = true;
   };
 
   # required by nix-darwin
