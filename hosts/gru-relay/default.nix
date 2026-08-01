@@ -8,6 +8,8 @@
     ./hardware-configuration.nix
   ];
 
+  boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
+
   boot.kernelParams = [
     "console=ttyS0,19200n8"
     "console=tty0"
