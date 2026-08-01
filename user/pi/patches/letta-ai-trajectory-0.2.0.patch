@@ -1,0 +1,15 @@
+diff --git a/package.json b/package.json
+index bfef0f1..2dbead0 100644
+--- a/package.json
++++ b/package.json
+@@ -17,7 +17,9 @@
+   "exports": {
+     ".": {
+       "types": "./dist/index.d.ts",
+-      "import": "./dist/index.js"
++      "import": "./dist/index.js",
++      "require": "./dist/index.js",
++      "default": "./dist/index.js"
+     },
+     "./schema": "./schema/trajectory-v1.schema.json",
+     "./schema/canonical": "./schema/trajectory-canonical-v1.schema.json",

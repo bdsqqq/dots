@@ -21,6 +21,7 @@ catalogs:
 
 patchedDependencies:
   '@earendil-works/gondolin@0.7.0': eeb485ec88228fbf91ecd939b1906bd4c448e7d6bf3f4fc8eeefcb83bdb5e0d3
+  '@letta-ai/trajectory@0.2.0': f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157
   remend@1.3.0: 3ec9805a16100c22936ce1f4d6c4373fdb3da196b0b3abaf2f5173c6e7716c0a
 
 importers:
@@ -44,7 +45,7 @@ importers:
         version: 8.0.4
       evlog:
         specifier: ^2.22.4
-        version: 2.22.4
+        version: 2.22.4(vite@7.3.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1
@@ -90,17 +91,7 @@ importers:
         version: link:../log
       '@letta-ai/trajectory':
         specifier: https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83
-        version: https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83
-    devDependencies:
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
-
-  packages/core/log:
-    dependencies:
-      evlog:
-        specifier: ^2.22.4
-        version: 2.22.4
+        version: https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)
     devDependencies:
       vitest:
         specifier: ^3.0.0
@@ -180,6 +171,16 @@ importers:
       '@bds_pi/config':
         specifier: workspace:*
         version: link:../config
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+
+  packages/core/log:
+    dependencies:
+      evlog:
+        specifier: ^2.22.4
+        version: 2.22.4(vite@7.3.1(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
     devDependencies:
       vitest:
         specifier: ^3.0.0
@@ -2745,6 +2746,9 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  estree-walker@3.0.3:
+    resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
+
   evlog@2.22.4:
     resolution: {integrity: sha512-u0hsh+FudUWkqqfrlWGI1CvSd2pz1iWkLWjawGcvbnLp9BHZqY1xS7BlRt21/Qq/rs60IODaei/Wbmry/q/zeg==}
     engines: {node: '>=18.0.0'}
@@ -2804,9 +2808,6 @@ packages:
         optional: true
       vite:
         optional: true
-
-  estree-walker@3.0.3:
-    resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
 
   expect-type@1.3.0:
     resolution: {integrity: sha512-knvyeauYhqjOYvQ66MznSMs83wmHrCycNEN6Ao+2AeYEfxUIkuiVxdEa1qlGEPK+We3n0THiDciYSsCcgW/DoA==}
@@ -4290,7 +4291,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@letta-ai/trajectory@https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83': {}
+  '@letta-ai/trajectory@https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)': {}
 
   '@mariozechner/clipboard-darwin-arm64@0.3.9':
     optional: true
@@ -5083,11 +5084,17 @@ snapshots:
       '@esbuild/win32-ia32': 0.27.4
       '@esbuild/win32-x64': 0.27.4
 
-  evlog@2.22.4: {}
-
   estree-walker@3.0.3:
     dependencies:
       '@types/estree': 1.0.8
+
+  evlog@2.22.4(vite@7.3.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)):
+    optionalDependencies:
+      vite: 7.3.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)
+
+  evlog@2.22.4(vite@7.3.1(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)):
+    optionalDependencies:
+      vite: 7.3.1(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
 
   expect-type@1.3.0: {}
 
