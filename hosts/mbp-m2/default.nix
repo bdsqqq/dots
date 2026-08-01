@@ -17,6 +17,7 @@ in {
     ../../system/o11y
     ../../system/t3-code-server.nix
     ../../user/gaming.nix
+    ../../user/html-stuff
     ../../user/media-feeds.nix
   ];
 

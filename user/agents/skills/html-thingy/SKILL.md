@@ -1,18 +1,16 @@
 ---
 name: html-thingy
-description: Creates or revises a self-contained HTML artifact for plans, specs, write-ups, findings, summaries, reports, comparisons, and UI mocks. Use when the user asks to make something visual, shareable, hosted, or says “html” or “make this into an html thingy.”
-compatibility: Requires Python 3. Local hosting uses Tailscale when available and tmux for persistence.
+description: Creates or revises a self-contained HTML file for plans, specs, write-ups, findings, summaries, reports, comparisons, and UI mocks. Use when the user asks to make something visual, says “html,” or says “make this into an html thingy.”
 ---
 
 # html thingy
 
-turn material that benefits from spatial structure into one inspectable HTML file.
+turn material that benefits from spatial structure into one self-contained HTML file, then place it at the requested path.
 
 ## artifact
 
-- write hosted artifacts to `~/commonplace/01_files/html_stuff/<stable-slug>.html`
-- honor a user-named path, but treat paths outside `html_stuff` as local-only unless the user authorizes another hosting setup
-- revise the same file across iterations; changing the slug breaks its stable URL
+- use the destination given by the user; otherwise default to `~/commonplace/01_files/html_stuff/<stable-slug>.html`
+- revise the same file across iterations unless the user requests another destination
 - keep it self-contained and at most 512 KB: inline CSS and JavaScript, with no external runtime or asset dependency
 - preserve source links and distinguish evidence from inference
 - do not open a browser unless requested
@@ -41,31 +39,13 @@ adapt the system when the content or user requests another direction. the inform
 ## workflow
 
 1. inspect the relevant sources and identify the artifact’s audience, decision, and information hierarchy.
-2. choose a stable lowercase kebab-case slug. reuse an existing matching artifact rather than creating versions.
-3. author the complete HTML file with a descriptive `<title>` and optional `<meta name="description">`.
-4. structurally lint before serving:
-
-   ```bash
-   python3 ~/.config/agents/skills/html-thingy/scripts/html_stuff_server.py \
-     --validate ~/commonplace/01_files/html_stuff/<slug>.html
-   ```
-
-5. derive the host address with `tailscale ip -4`, falling back to `127.0.0.1`. request the exact artifact URL. if it is unreachable, replace only the dedicated server session:
-
-   ```bash
-   tmux kill-session -t html-stuff 2>/dev/null || true
-   tmux new-session -d -s html-stuff \
-     'python3 ~/.config/agents/skills/html-thingy/scripts/html_stuff_server.py'
-   ```
-
-6. request the exact artifact URL again and confirm HTTP 200 before claiming it is hosted. percent-encode filenames when needed.
-7. report the file path and URL. mention that access requires the host Mac and, when applicable, the same tailnet.
-
-the server binds to this machine’s Tailscale IPv4 address when available, otherwise localhost. its generated index at `/` and `/index.html` lists artifact titles by modification time. htmx is intentionally unnecessary: the server already owns filesystem discovery and renders fresh state on every request.
+2. resolve the destination. choose a stable lowercase kebab-case filename only when the user did not provide one.
+3. ensure the destination directory exists. author the complete document at a temporary `.html` path in that same directory, with a descriptive `<title>` and optional `<meta name="description">`.
+4. rename the completed temporary file over the destination atomically. do not leave drafts beside the final artifact.
+5. report the exact destination path.
 
 ## boundaries
 
-- placing a file in `html_stuff` makes it visible to devices that can reach the server
-- do not expose the server publicly, change its bind address, or copy artifacts to a public host without explicit authorization
-- do not describe a written file as hosted until the server and exact URL have both been verified
-- reading an existing hosted page is ordinary web research; do not invoke this authoring workflow unless the user also wants an artifact created or revised
+- stop after placing the file and reporting its exact path
+- do not start unrelated tools or workflows
+- reading an existing page is ordinary web research; do not invoke this authoring workflow unless the user also wants an HTML file created or revised
