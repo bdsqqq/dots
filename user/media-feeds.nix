@@ -2,7 +2,10 @@
 let
   cfg = config.my.mediaFeeds;
   configSource = "/Users/bdsqqq/commonplace/01_files/nix/user/media-feeds/config.yml";
+  pollerSource = "/Users/bdsqqq/commonplace/01_files/nix/user/media-feeds/poll.sh";
   configPath = "/Users/bdsqqq/.config/flexget/config.yml";
+  variablesPath = "/Users/bdsqqq/.config/flexget/media-feed-variables.yml";
+  onePieceKindleDirectory = "/Users/bdsqqq/kindle/one piece";
   transmissionConfigDir = "/Users/bdsqqq/.config/transmission-daemon";
   logPath = "/Users/bdsqqq/Library/Logs/media-feeds.log";
 in
@@ -52,6 +55,9 @@ in
             "/Users/bdsqqq/.config/flexget" \
             "${transmissionConfigDir}"
           ln -sfn "${configSource}" "${configPath}"
+          if [[ ! -e "${variablesPath}" ]]; then
+            printf 'one_piece_begin: 1171\n' > "${variablesPath}"
+          fi
           ${lib.concatMapStringsSep "\n" (name: ''
             mkdir -p "${cfg.root}/${name}/complete" \
               "${cfg.root}/${name}/kindle"
@@ -85,10 +91,12 @@ in
         enable = true;
         config = {
           ProgramArguments = [
+            "${pkgs.bash}/bin/bash"
+            pollerSource
             "${pkgs.flexget}/bin/flexget"
-            "-c"
             configPath
-            "execute"
+            variablesPath
+            onePieceKindleDirectory
           ];
           RunAtLoad = true;
           StartInterval = cfg.polling.interval;
