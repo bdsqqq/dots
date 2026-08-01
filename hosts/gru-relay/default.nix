@@ -172,11 +172,15 @@ in
       headMode = "headless";
       torchBackend = "cpu";
     };
-    users.bdsqqq = {
+    users.bdsqqq = { lib, ... }: {
       home.username = "bdsqqq";
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
+      home.activation.installPnpmTools =
+        lib.mkForce (lib.hm.dag.entryAfter [ "linkGeneration" ] "");
+      home.activation.installVitePlus =
+        lib.mkForce (lib.hm.dag.entryAfter [ "linkGeneration" ] "");
       programs.ssh.settings."github.com" = {
         HostName = "github.com";
         User = "git";
