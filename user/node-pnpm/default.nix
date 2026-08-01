@@ -26,6 +26,7 @@ in
           pkgs.pnpm
           pkgs.python3
           pkgs.curl
+          pkgs.gzip
           pkgs.gnumake
           pkgs.gnutar
           pkgs.unzip
