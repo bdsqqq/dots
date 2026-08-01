@@ -5,6 +5,7 @@ packages:
 
 patchedDependencies:
   "@earendil-works/gondolin@0.7.0": patches/gondolin-0.7.0.patch
+  "@letta-ai/trajectory@0.2.0": patches/letta-ai-trajectory-0.2.0.patch
   "remend@1.3.0": patches/remend-1.3.0.patch
 
 catalog:
