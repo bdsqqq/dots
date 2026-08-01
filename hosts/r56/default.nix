@@ -100,6 +100,8 @@ in
     tabsExtension.enable = true;
   };
 
+  boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
+
   networking.hostName = "r56";
   networking.networkmanager.enable = true;
   networking.useDHCP = lib.mkDefault true;

@@ -62,7 +62,8 @@
 
     programs.zsh.enable = true;
 
-    boot.kernelPackages = pkgs.linuxPackages_latest;
+    boot.kernelPackages =
+      inputs.nixpkgs-unstable.legacyPackages.${pkgs.stdenv.hostPlatform.system}.linuxPackages_latest;
     boot.kernelParams = [ "amd_pstate=active" "amdgpu.sg_display=0" ];
 
     system.stateVersion = "25.05";

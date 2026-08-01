@@ -43,6 +43,8 @@ in
   my.paths.commonplace = "/mnt/storage-01/commonplace";
   services.hwmon-metrics.enable = true;
 
+  boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
+
   systemd.services.home-manager-bdsqqq = {
     requires = [ "mnt-storage\\x2d01.mount" ];
     after = [ "mnt-storage\\x2d01.mount" ];
