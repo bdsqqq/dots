@@ -26,7 +26,6 @@ in
 {
   imports = [
     ../../bundles/base.nix
-    ../../bundles/dev.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
     ./hardware-configuration.nix
