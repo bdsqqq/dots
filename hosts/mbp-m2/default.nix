@@ -16,6 +16,7 @@ in {
     ../../system/kanata.nix
     ../../system/o11y
     ../../system/t3-code-server.nix
+    ./moshi-host.nix
     ../../user/gaming.nix
     ../../user/html-stuff
     ../../user/media-feeds.nix
