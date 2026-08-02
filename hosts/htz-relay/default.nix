@@ -28,7 +28,6 @@ in
   imports = ([
     ../../bundles/base.nix
     ../../bundles/headless.nix
-    ../../bundles/dev.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
   ]) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix)
@@ -178,11 +177,15 @@ in
       headMode = "headless";
       torchBackend = "cpu";
     };
-    users.bdsqqq = {
+    users.bdsqqq = { lib, ... }: {
       home.username = "bdsqqq";
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
+      home.activation.installPnpmTools =
+        lib.mkForce (lib.hm.dag.entryAfter [ "linkGeneration" ] "");
+      home.activation.installVitePlus =
+        lib.mkForce (lib.hm.dag.entryAfter [ "linkGeneration" ] "");
       home.file."commonplace" = {
         force = true;
         source = config.hm.lib.file.mkOutOfStoreSymlink config.my.paths.commonplace;
