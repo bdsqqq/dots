@@ -15,6 +15,7 @@ import {
   sha256,
   type MemoryConfig,
 } from "./catalog.js";
+import { observeMemoryOperation } from "./observability.js";
 
 export type HistoryChange = {
   path: string;
@@ -210,7 +211,7 @@ export function isHistoryInitialized(cfg: MemoryConfig): boolean {
     !!git(cfg, ["rev-parse", "--verify", "HEAD"], true).trim()
   );
 }
-export function initHistory(
+function initHistoryImpl(
   cfg: MemoryConfig,
   options: { remote?: string; dryRun?: boolean } = {},
 ): InitHistoryReport {
@@ -584,7 +585,7 @@ ${TRAILER} ${encode(receipt)}`,
   writeReceiptCache(cfg, { ...receipt, commit: hash });
   return { commit: hash, mutationId: core.mutationId };
 }
-export function commitHistory(
+function commitHistoryImpl(
   cfg: MemoryConfig,
   receiptCore: HistoryReceiptCore,
   options: { allowEmpty?: boolean } = {},
@@ -726,7 +727,7 @@ export function diffHistory(
   if (memory) args.push("--", literalPath(memory));
   return git(cfg, args);
 }
-export function verifyHistory(cfg: MemoryConfig): VerifyHistoryReport {
+function verifyHistoryImpl(cfg: MemoryConfig): VerifyHistoryReport {
   const issues: string[] = [];
   if (!isHistoryInitialized(cfg))
     return { ok: false, issues: ["history not initialized"] };
@@ -788,7 +789,7 @@ export function verifyHistory(cfg: MemoryConfig): VerifyHistoryReport {
   }
   return { ok: issues.length === 0, issues };
 }
-export function syncHistory(cfg: MemoryConfig): SyncHistoryReport {
+function syncHistoryImpl(cfg: MemoryConfig): SyncHistoryReport {
   if (!isHistoryInitialized(cfg))
     return { ok: false, pushed: false, error: "history not initialized" };
   try {
@@ -842,7 +843,7 @@ function isAncestor(
   throw result.error ?? new Error(result.stderr || "could not compare history");
 }
 
-export function refreshHistory(cfg: MemoryConfig): SyncHistoryReport {
+function refreshHistoryImpl(cfg: MemoryConfig): SyncHistoryReport {
   if (!isHistoryInitialized(cfg))
     return { ok: false, pushed: false, error: "history not initialized" };
   try {
@@ -889,7 +890,7 @@ export function refreshHistory(cfg: MemoryConfig): SyncHistoryReport {
     };
   }
 }
-export function repairHistory(
+function repairHistoryImpl(
   cfg: MemoryConfig,
   options: { mode: "adopt" | "discard"; reason: string },
 ): RepairHistoryReport {
@@ -925,4 +926,109 @@ export function repairHistory(
     { allowEmpty: true },
   );
   return { mode: "discard", commit: result.commit };
+}
+
+export function initHistory(
+  cfg: MemoryConfig,
+  options: { remote?: string; dryRun?: boolean } = {},
+): InitHistoryReport {
+  return observeMemoryOperation(
+    {
+      operation: "memory.history.init",
+      fields: { dryRun: !!options.dryRun, remoteConfigured: !!options.remote },
+      result: (report) => ({
+        outcome: report.initialized ? "success" : "skipped",
+        fields: {
+          initialized: report.initialized,
+          dryRun: report.dryRun,
+          hasCommit: !!report.commit,
+        },
+      }),
+    },
+    () => initHistoryImpl(cfg, options),
+  );
+}
+export function commitHistory(
+  cfg: MemoryConfig,
+  receiptCore: HistoryReceiptCore,
+  options: { allowEmpty?: boolean } = {},
+): { commit: string; mutationId: string } {
+  return observeMemoryOperation(
+    {
+      operation: "memory.history.commit",
+      fields: { allowEmpty: !!options.allowEmpty },
+      result: (result) => ({
+        fields: { mutationId: result.mutationId, hasCommit: !!result.commit },
+      }),
+    },
+    () => commitHistoryImpl(cfg, receiptCore, options),
+  );
+}
+export function verifyHistory(cfg: MemoryConfig): VerifyHistoryReport {
+  return observeMemoryOperation(
+    {
+      operation: "memory.history.verify",
+      result: (report) => ({
+        outcome: report.ok ? "success" : "degraded",
+        fields: { ok: report.ok, issueCount: report.issues.length },
+      }),
+    },
+    () => verifyHistoryImpl(cfg),
+  );
+}
+export function syncHistory(cfg: MemoryConfig): SyncHistoryReport {
+  return observeMemoryOperation(
+    {
+      operation: "memory.history.sync",
+      result: (report) => ({
+        outcome: report.ok
+          ? report.pushed || report.fastForwarded
+            ? "success"
+            : "skipped"
+          : "degraded",
+        fields: {
+          ok: report.ok,
+          pushed: report.pushed,
+          fastForwarded: !!report.fastForwarded,
+          diverged: !!report.diverged,
+        },
+      }),
+    },
+    () => syncHistoryImpl(cfg),
+  );
+}
+export function refreshHistory(cfg: MemoryConfig): SyncHistoryReport {
+  return observeMemoryOperation(
+    {
+      operation: "memory.history.refresh",
+      result: (report) => ({
+        outcome: report.ok
+          ? report.fastForwarded
+            ? "success"
+            : "skipped"
+          : "degraded",
+        fields: {
+          ok: report.ok,
+          fastForwarded: !!report.fastForwarded,
+          diverged: !!report.diverged,
+        },
+      }),
+    },
+    () => refreshHistoryImpl(cfg),
+  );
+}
+export function repairHistory(
+  cfg: MemoryConfig,
+  options: { mode: "adopt" | "discard"; reason: string },
+): RepairHistoryReport {
+  return observeMemoryOperation(
+    {
+      operation: "memory.history.repair",
+      fields: { mode: options.mode },
+      result: (report) => ({
+        fields: { mode: report.mode, hasCommit: !!report.commit },
+      }),
+    },
+    () => repairHistoryImpl(cfg, options),
+  );
 }

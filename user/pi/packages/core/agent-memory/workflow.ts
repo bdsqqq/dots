@@ -1,3 +1,4 @@
+import { observeMemoryOperation } from "./observability.js";
 import {
   chmodSync,
   copyFileSync,
@@ -63,6 +64,17 @@ import {
 const V2 = "v2";
 const PROMPT_VERSION = 2;
 
+function safeOperationId(value: unknown): string {
+  if (typeof value !== "string") return "invalid-id";
+  if (
+    /^(?:prop_[a-f0-9]{32}|review_[a-f0-9]{24}|tx_[a-f0-9]{24}|adapt_[a-f0-9]{64}|event_[a-f0-9]{64}|feedback_[a-f0-9]{32}|replay_[a-f0-9]{20}|case_[a-f0-9]{24}|mut_[a-f0-9]{24})$/.test(
+      value,
+    )
+  )
+    return value;
+  return `hashed_${sha256(value.slice(0, 4096)).slice(0, 24)}`;
+}
+
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -119,7 +131,7 @@ function proposalPath(
   return v2(cfg, `proposals/${status}`, proposalFileName(proposal));
 }
 
-export function saveProposal(cfg: MemoryConfig, proposal: Proposal): string {
+function saveProposalImpl(cfg: MemoryConfig, proposal: Proposal): string {
   parseStoredProposal(JSON.stringify(proposal), cfg);
   ensureWorkflowDirs(cfg);
   const path = proposalPath(cfg, proposal);
@@ -816,7 +828,7 @@ export function assertNonOverlappingMemoryProposals(
   }
 }
 
-export function submitManualProposal(
+function submitManualProposalImpl(
   cfg: MemoryConfig,
   raw: string,
   source?: string,
@@ -1511,7 +1523,7 @@ function persistRollbackReceipt(
   return receipt;
 }
 
-export function recoverTransactions(cfg: MemoryConfig): number {
+function recoverTransactionsImpl(cfg: MemoryConfig): number {
   ensureWorkflowDirs(cfg);
   const dir = v2(cfg, "transactions");
   let recovered = 0;
@@ -1804,7 +1816,7 @@ function commitTransactionHistory(
   else transaction.history = { mutationId, commit: result.commit };
 }
 
-export function reviewProposal(options: {
+function reviewProposalImpl(options: {
   cfg: MemoryConfig;
   id: string;
   decision: "accept" | "reject";
@@ -1964,7 +1976,7 @@ export function reviewProposal(options: {
   return persistedReceipt;
 }
 
-export function applyMemoryProposal(options: {
+function applyMemoryProposalImpl(options: {
   cfg: MemoryConfig;
   id: string;
   actor: Exclude<MemoryMutationActor, "local-cli">;
@@ -2005,7 +2017,7 @@ export type VerifiedRollbackLinkage = {
   transactionId: string;
 };
 
-export function verifyPersistedRollbackLinkage(
+function verifyPersistedRollbackLinkageImpl(
   cfg: MemoryConfig,
   input: {
     historyCommit: string;
@@ -2064,7 +2076,7 @@ function adaptationEventBasis(receipt: ReviewReceipt): RollbackEventBasis {
   };
 }
 
-export function reconcileRollbackAdaptationEvents(cfg: MemoryConfig): number {
+function reconcileRollbackAdaptationEventsImpl(cfg: MemoryConfig): number {
   let enqueued = 0;
   for (const receipt of readReviewReceipts(cfg).filter(
     (candidate) => candidate.decision === "rolled-back",
@@ -2092,7 +2104,7 @@ export function reconcileRollbackAdaptationEvents(cfg: MemoryConfig): number {
   return enqueued;
 }
 
-export function rollbackReview(
+function rollbackReviewImpl(
   cfg: MemoryConfig,
   reviewId: string,
   reason: string,
@@ -2207,7 +2219,7 @@ function legacyCandidate(path: string): {
   };
 }
 
-export function migrateV1(
+function migrateV1Impl(
   cfg: MemoryConfig,
   dryRun = false,
 ): { candidates: number; receipts: number } {
@@ -2309,4 +2321,174 @@ export function readReviewReceipts(cfg: MemoryConfig): ReviewReceipt[] {
           readFileSync(v2(cfg, "reviews", name), "utf8"),
         ) as ReviewReceipt,
     );
+}
+
+export function saveProposal(
+  ...args: Parameters<typeof saveProposalImpl>
+): ReturnType<typeof saveProposalImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.saveProposal",
+      correlation: { proposalId: safeOperationId(args[1]?.id) },
+      result: () => ({ fields: { proposalId: args[1].id } }),
+    },
+    () => saveProposalImpl(...args),
+  );
+}
+
+export function submitManualProposal(
+  ...args: Parameters<typeof submitManualProposalImpl>
+): ReturnType<typeof submitManualProposalImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.submitManualProposal",
+      result: (proposals) => ({
+        outcome: proposals.length ? "success" : "skipped",
+        fields: { proposalCount: proposals.length },
+      }),
+    },
+    () => submitManualProposalImpl(...args),
+  );
+}
+
+export function recoverTransactions(
+  ...args: Parameters<typeof recoverTransactionsImpl>
+): ReturnType<typeof recoverTransactionsImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.recoverTransactions",
+      result: (recovered) => ({
+        outcome: recovered ? "success" : "skipped",
+        fields: { recoveredCount: recovered },
+      }),
+    },
+    () => recoverTransactionsImpl(...args),
+  );
+}
+
+export function reviewProposal(
+  ...args: Parameters<typeof reviewProposalImpl>
+): ReturnType<typeof reviewProposalImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.reviewProposal",
+      correlation: { proposalId: safeOperationId(args[0]?.id) },
+      result: (receipt) => ({
+        fields: {
+          proposalId: receipt.proposalId,
+          reviewId: receipt.reviewId,
+          ...(receipt.transactionId
+            ? { transactionId: receipt.transactionId }
+            : {}),
+          decision: receipt.decision,
+          artifactCount: receipt.finalArtifacts.length,
+        },
+      }),
+    },
+    () => reviewProposalImpl(...args),
+  );
+}
+
+export function applyMemoryProposal(
+  ...args: Parameters<typeof applyMemoryProposalImpl>
+): ReturnType<typeof applyMemoryProposalImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.applyMemoryProposal",
+      correlation: { proposalId: safeOperationId(args[0]?.id) },
+      result: (receipt) => ({
+        fields: {
+          proposalId: receipt.proposalId,
+          reviewId: receipt.reviewId,
+          ...(receipt.transactionId
+            ? { transactionId: receipt.transactionId }
+            : {}),
+          decision: receipt.decision,
+          artifactCount: receipt.finalArtifacts.length,
+        },
+      }),
+    },
+    () => applyMemoryProposalImpl(...args),
+  );
+}
+
+export function verifyPersistedRollbackLinkage(
+  ...args: Parameters<typeof verifyPersistedRollbackLinkageImpl>
+): ReturnType<typeof verifyPersistedRollbackLinkageImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.verifyPersistedRollbackLinkage",
+      correlation: {
+        proposalId: safeOperationId(args[1]?.proposalId),
+        reviewId: safeOperationId(args[1]?.reviewId),
+      },
+      result: (linkage) => ({
+        fields: {
+          proposalId: linkage.receipt.proposalId,
+          reviewId: linkage.receipt.reviewId,
+          transactionId: linkage.transactionId,
+          decision: linkage.receipt.decision,
+        },
+      }),
+    },
+    () => verifyPersistedRollbackLinkageImpl(...args),
+  );
+}
+
+export function reconcileRollbackAdaptationEvents(
+  ...args: Parameters<typeof reconcileRollbackAdaptationEventsImpl>
+): ReturnType<typeof reconcileRollbackAdaptationEventsImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.reconcileRollbackAdaptationEvents",
+      result: (enqueued) => ({
+        outcome: enqueued ? "success" : "skipped",
+        fields: { enqueuedCount: enqueued },
+      }),
+    },
+    () => reconcileRollbackAdaptationEventsImpl(...args),
+  );
+}
+
+export function rollbackReview(
+  ...args: Parameters<typeof rollbackReviewImpl>
+): ReturnType<typeof rollbackReviewImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.rollbackReview",
+      correlation: { reviewId: safeOperationId(args[1]) },
+      result: (receipt) => ({
+        fields: {
+          proposalId: receipt.proposalId,
+          reviewId: receipt.reviewId,
+          ...(receipt.transactionId
+            ? { transactionId: receipt.transactionId }
+            : {}),
+          decision: receipt.decision,
+          artifactCount: receipt.finalArtifacts.length,
+        },
+      }),
+    },
+    () => rollbackReviewImpl(...args),
+  );
+}
+
+export function migrateV1(
+  ...args: Parameters<typeof migrateV1Impl>
+): ReturnType<typeof migrateV1Impl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.migrateV1",
+      fields: { dryRun: args[1] ?? false },
+      result: (migration) => ({
+        outcome:
+          migration.candidates || migration.receipts ? "success" : "skipped",
+        fields: {
+          proposalCount: migration.candidates,
+          receiptCount: migration.receipts,
+        },
+      }),
+    },
+    () => migrateV1Impl(...args),
+  );
 }

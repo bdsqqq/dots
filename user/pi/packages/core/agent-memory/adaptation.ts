@@ -1,3 +1,4 @@
+import { observeMemoryOperation } from "./observability.js";
 import {
   existsSync,
   linkSync,
@@ -129,6 +130,17 @@ type SessionEntry = {
   message?: unknown;
 };
 const HASH = /^[a-f0-9]{64}$/;
+function safeOperationId(value: unknown): string {
+  if (typeof value !== "string") return "invalid-id";
+  if (
+    /^(?:prop_[a-f0-9]{32}|review_[a-f0-9]{24}|tx_[a-f0-9]{24}|adapt_[a-f0-9]{64}|event_[a-f0-9]{64}|feedback_[a-f0-9]{32}|replay_[a-f0-9]{20}|case_[a-f0-9]{24}|mut_[a-f0-9]{24})$/.test(
+      value,
+    )
+  )
+    return value;
+  return `hashed_${sha256(value.slice(0, 4096)).slice(0, 24)}`;
+}
+
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const exactKeys = (value: Record<string, unknown>, keys: string[]): boolean =>
@@ -438,7 +450,7 @@ export function parseRollbackEvidence(
   };
 }
 
-export function verifiedRollbackEvidence(
+function verifiedRollbackEvidenceImpl(
   cfg: MemoryConfig,
   input: {
     historyCommit: string;
@@ -749,7 +761,7 @@ Reinforce requires explicit artifact-linked authored user positive feedback. Obj
 Frozen artifacts:\n${JSON.stringify(artifacts, null, 2)}\n\nEvidence:\n${JSON.stringify(evidence, null, 2)}`;
 }
 
-export function publishShadowAdaptation(options: {
+function publishShadowAdaptationImpl(options: {
   cfg: MemoryConfig;
   eventId: string;
   model: string;
@@ -861,11 +873,11 @@ export function findShadowAdaptation(
   return matches[0];
 }
 
-export function markShadowAdaptationLedger(
+function markShadowAdaptationLedgerImpl(
   cfg: MemoryConfig,
   eventId: string,
   shadowId: string,
-): void {
+): boolean {
   const dir = contained(cfg.data, join(cfg.data, "v2/adaptation/ledger"));
   secureDir(dir);
   const path = contained(dir, join(dir, `${eventId}.json`));
@@ -876,7 +888,7 @@ export function markShadowAdaptationLedger(
       version?: number;
       shadowId?: string;
     };
-    if (previous.shadowId === shadowId && previous.version === 2) return;
+    if (previous.shadowId === shadowId && previous.version === 2) return false;
     const oldPath = previous.shadowId
       ? contained(
           cfg.data,
@@ -902,6 +914,7 @@ export function markShadowAdaptationLedger(
       atomicWrite(path, value);
     else throw new Error("adaptation ledger collision");
   } else atomicWrite(path, value);
+  return true;
 }
 
 export type AdaptationTerminal = {
@@ -1239,7 +1252,7 @@ function promoteDecision(
   });
 }
 
-export function promoteShadowAdaptation(
+function promoteShadowAdaptationImpl(
   cfg: MemoryConfig,
   shadow: ShadowAdaptation | LegacyShadowAdaptation,
 ): AdaptationTerminal[] {
@@ -1280,4 +1293,101 @@ export function promoteShadowAdaptation(
     }
   }
   return terminals;
+}
+
+export function verifiedRollbackEvidence(
+  ...args: Parameters<typeof verifiedRollbackEvidenceImpl>
+): ReturnType<typeof verifiedRollbackEvidenceImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.verifiedRollbackEvidence",
+      correlation: {
+        proposalId: safeOperationId(args[1]?.proposalId),
+        reviewId: safeOperationId(args[1]?.reviewId),
+      },
+      result: (evidence) => ({
+        fields: {
+          proposalId: evidence.proposalId,
+          reviewId: evidence.reviewId,
+          affectedCount: evidence.affectedRefs.length,
+          condemnedCount: evidence.condemnedRefs.length,
+          restoredCount: evidence.restoredRefs.length,
+        },
+      }),
+    },
+    () => verifiedRollbackEvidenceImpl(...args),
+  );
+}
+
+export function publishShadowAdaptation(
+  ...args: Parameters<typeof publishShadowAdaptationImpl>
+): ReturnType<typeof publishShadowAdaptationImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.publishShadowAdaptation",
+      correlation: { eventId: safeOperationId(args[0]?.eventId) },
+      result: (shadow) => ({
+        fields: {
+          eventId: shadow.eventId,
+          shadowId: shadow.id,
+          decisionCount: shadow.decisions.length,
+          evidenceCount: shadow.evidence.length,
+        },
+      }),
+    },
+    () => publishShadowAdaptationImpl(...args),
+  );
+}
+
+export function markShadowAdaptationLedger(
+  ...args: Parameters<typeof markShadowAdaptationLedgerImpl>
+): void {
+  observeMemoryOperation(
+    {
+      operation: "memory.markShadowAdaptationLedger",
+      correlation: {
+        eventId: safeOperationId(args[1]),
+        shadowId: safeOperationId(args[2]),
+      },
+      result: (changed) => ({
+        outcome: changed ? "success" : "skipped",
+        fields: { changed },
+      }),
+    },
+    () => markShadowAdaptationLedgerImpl(...args),
+  );
+}
+
+export function promoteShadowAdaptation(
+  ...args: Parameters<typeof promoteShadowAdaptationImpl>
+): ReturnType<typeof promoteShadowAdaptationImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.promoteShadowAdaptation",
+      correlation: { shadowId: safeOperationId(args[1]?.id) },
+      result: (terminals) => ({
+        outcome: terminals.some((terminal) => terminal.outcome === "error")
+          ? "degraded"
+          : terminals.length
+            ? "success"
+            : "skipped",
+        fields: {
+          ...(terminals[0]?.shadowId
+            ? { shadowId: terminals[0].shadowId }
+            : {}),
+          outputCount: terminals.length,
+          appliedCount: terminals.filter(
+            (terminal) => terminal.outcome === "applied",
+          ).length,
+          staleCount: terminals.filter(
+            (terminal) => terminal.outcome === "stale",
+          ).length,
+          errorCount: terminals.filter(
+            (terminal) => terminal.outcome === "error",
+          ).length,
+        },
+      }),
+    },
+    () => promoteShadowAdaptationImpl(...args),
+  );
 }

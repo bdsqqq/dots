@@ -13,8 +13,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { sha256 } from "./catalog.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
+import { withMemoryWideEventFactory } from "./observability.js";
 import {
   commitHistory,
   diffHistory,
@@ -316,5 +317,20 @@ describe("private memory history", () => {
     expect(readFileSync(join(second.root, "shared.md"), "utf8")).toBe(
       "updated\n",
     );
+  });
+
+  it("emits one terminal for a dry-run init boundary", () => {
+    const finish = vi.fn();
+    const report = withMemoryWideEventFactory(
+      () => ({ id: "test", set: vi.fn(), error: vi.fn(), finish }),
+      () => initHistory(config(), { dryRun: true }),
+    );
+    expect(report).toMatchObject({ initialized: true, dryRun: true });
+    expect(finish).toHaveBeenCalledOnce();
+    expect(finish).toHaveBeenCalledWith("success", {
+      initialized: true,
+      dryRun: true,
+      hasCommit: false,
+    });
   });
 });

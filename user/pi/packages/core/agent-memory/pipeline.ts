@@ -30,6 +30,7 @@ import {
   type TurnObservation,
 } from "./adaptation.js";
 import { parseModelProposal, type Proposal } from "./schema.js";
+import { observeMemoryOperation } from "./observability.js";
 import {
   applyMemoryProposal,
   assertNonOverlappingMemoryProposals,
@@ -1313,7 +1314,7 @@ function preparePipelineBatch(options: PipelineBatchOptions): {
   return { input, dir };
 }
 
-export function processPipelineBatch(options: {
+function processPipelineBatchUnobserved(options: {
   cfg: MemoryConfig;
   scope: string;
   evidence: SafeEvidence[];
@@ -1466,6 +1467,29 @@ export function processPipelineBatch(options: {
   return result;
 }
 
+export function processPipelineBatch(
+  options: Parameters<typeof processPipelineBatchUnobserved>[0],
+): PipelineResult {
+  return observeMemoryOperation(
+    {
+      operation: "memory.pipeline-batch",
+      fields: { pipeline: { evidenceCount: options.evidence.length } },
+      result: (result) => ({
+        outcome: result.action === "skip" ? "degraded" : "success",
+        fields: {
+          pipeline: {
+            runId: result.runId,
+            action: result.action,
+            proposalCount: result.proposalIds.length,
+            checkpointCount: result.coveredCheckpointIds.length,
+          },
+        },
+      }),
+    },
+    () => processPipelineBatchUnobserved(options),
+  );
+}
+
 export function coveredCheckpointIds(cfg: MemoryConfig): Set<string> {
   const dir = contained(cfg.data, join(cfg.data, "v2", "ledger"));
   if (!existsSync(dir)) return new Set();
@@ -1540,7 +1564,7 @@ export function reflectionAutonomyState(
     : "local-review";
 }
 
-export async function processPipelineBatches(
+async function processPipelineBatchesUnobserved(
   options: Array<
     Omit<PipelineBatchOptions, "criticInvoke" | "invoke"> & {
       invoke: (
@@ -1775,4 +1799,37 @@ export async function processPipelineBatches(
     }
   });
   return results;
+}
+
+export function processPipelineBatches(
+  options: Parameters<typeof processPipelineBatchesUnobserved>[0],
+  concurrencyValue?: string,
+): Promise<PipelineResult[]> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.pipeline-batches",
+      fields: { pipeline: { batchCount: options.length } },
+      result: (value) => {
+        return {
+          outcome: value.some((result) => result.action === "skip")
+            ? "degraded"
+            : "success",
+          fields: {
+            pipeline: {
+              batchCount: value.length,
+              proposalCount: value.reduce(
+                (count, result) => count + result.proposalIds.length,
+                0,
+              ),
+              checkpointCount: value.reduce(
+                (count, result) => count + result.coveredCheckpointIds.length,
+                0,
+              ),
+            },
+          },
+        };
+      },
+    },
+    () => processPipelineBatchesUnobserved(options, concurrencyValue),
+  );
 }
