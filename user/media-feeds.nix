@@ -16,13 +16,7 @@ in
     root = lib.mkOption {
       type = lib.types.str;
       default = "/Users/bdsqqq/commonplace/03_media/feeds";
-      description = "Root directory containing one directory per feed.";
-    };
-
-    feeds = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
-      description = "Feed names that receive complete and Kindle directories.";
+      description = "Transmission fallback and incomplete-download root.";
     };
 
     polling = {
@@ -36,20 +30,10 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    assertions = map
-      (name: {
-        assertion =
-          name != "."
-          && name != ".."
-          && builtins.match "^[A-Za-z0-9._-]+$" name != null;
-        message = "my.mediaFeeds feed names may only contain letters, numbers, dots, underscores, and hyphens";
-      })
-      cfg.feeds;
-
     home-manager.users.bdsqqq = { lib, ... }: {
       home.packages = [ pkgs.flexget pkgs.transmission_4 ];
 
-      home.activation.mediaFeedDirectories =
+      home.activation.mediaFeedState =
         lib.hm.dag.entryAfter [ "writeBoundary" ] ''
           mkdir -p "${cfg.root}/.incomplete" \
             "/Users/bdsqqq/.config/flexget" \
@@ -58,10 +42,6 @@ in
           if [[ ! -e "${variablesPath}" ]]; then
             printf 'one_piece_begin: 1171\n' > "${variablesPath}"
           fi
-          ${lib.concatMapStringsSep "\n" (name: ''
-            mkdir -p "${cfg.root}/${name}/complete" \
-              "${cfg.root}/${name}/kindle"
-          '') cfg.feeds}
         '';
 
       launchd.agents.transmission-daemon = lib.mkIf cfg.polling.enable {
@@ -91,6 +71,7 @@ in
       launchd.agents.media-feed-poller = lib.mkIf cfg.polling.enable {
         enable = true;
         config = {
+          # RSS has no push API, so KOReader reconciliation shares its polling interval.
           ProgramArguments = [
             "${pkgs.bash}/bin/bash"
             pollerSource

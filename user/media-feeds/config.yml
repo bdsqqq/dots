@@ -1,6 +1,7 @@
 variables: media-feed-variables.yml
 
 tasks:
+  # Keep this legacy key stable to preserve the task identity in FlexGet's existing database.
   not-nyaa:
     rss:
       url: https://nyaa.si/?page=rss&q=one+piece&c=3_0&f=1&u=quentintarantado

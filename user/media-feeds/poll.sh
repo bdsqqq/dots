@@ -31,6 +31,7 @@ for metadata in "$kindle_directory"/One\ Piece\ *.sdr/metadata.cbz.lua; do
   if ! grep -Eq \
     '^[[:space:]]*\["status"\][[:space:]]*=[[:space:]]*"complete"[[:space:]]*,?[[:space:]]*$' \
     "$metadata" &&
+    # KOReader can leave status at "reading" after reaching 100%.
     ! grep -Eq \
       '^[[:space:]]*\["percent_finished"\][[:space:]]*=[[:space:]]*1(\.0+)?[[:space:]]*,?[[:space:]]*$' \
       "$metadata"; then
@@ -55,4 +56,4 @@ mv "$temporary_variables" "$variables_path"
 trap - EXIT
 
 echo "one piece minimum chapter: $next_chapter"
-exec "$flexget_bin" -c "$config_path" execute
+exec "$flexget_bin" --cron -c "$config_path" execute
