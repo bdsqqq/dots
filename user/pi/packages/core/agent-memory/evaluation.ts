@@ -1,3 +1,4 @@
+import { observeMemoryOperation } from "./observability.js";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
@@ -108,6 +109,17 @@ export type EvalCase = {
   };
   retrieval: { targetIds: string[]; catalogSha256: string };
 };
+
+function safeOperationId(value: unknown): string {
+  if (typeof value !== "string") return "invalid-id";
+  if (
+    /^(?:prop_[a-f0-9]{32}|review_[a-f0-9]{24}|tx_[a-f0-9]{24}|adapt_[a-f0-9]{64}|event_[a-f0-9]{64}|feedback_[a-f0-9]{32}|replay_[a-f0-9]{20}|case_[a-f0-9]{24}|mut_[a-f0-9]{24})$/.test(
+      value,
+    )
+  )
+    return value;
+  return `hashed_${sha256(value.slice(0, 4096)).slice(0, 24)}`;
+}
 
 function goldContext(
   cfg: MemoryConfig,
@@ -504,7 +516,7 @@ function activeFeedback(cfg: MemoryConfig): FeedbackReceipt[] {
   return active;
 }
 
-export function recordMemoryFeedback(options: {
+function recordMemoryFeedbackImpl(options: {
   cfg: MemoryConfig;
   reference: string;
   outcome: "useful" | "harmful";
@@ -727,7 +739,7 @@ export function buildEvalCases(cfg: MemoryConfig): EvalCase[] {
   return cases.sort((a, b) => a.caseId.localeCompare(b.caseId));
 }
 
-export function exportEvalDataset(
+function exportEvalDatasetImpl(
   cfg: MemoryConfig,
   output: string,
 ): { cases: number; path: string } {
@@ -783,7 +795,7 @@ function replayInput(
   };
 }
 
-export function replayDataset(options: {
+function replayDatasetImpl(options: {
   cfg: MemoryConfig;
   dataset: string;
   modes: Array<"memory-off" | "current" | "gold">;
@@ -924,7 +936,7 @@ function readReplayManifest(
   return value;
 }
 
-export function gradeReplay(options: {
+function gradeReplayImpl(options: {
   cfg: MemoryConfig;
   replayId: string;
   caseId: string;
@@ -980,7 +992,7 @@ export function gradeReplay(options: {
   return path;
 }
 
-export function evalReport(
+function evalReportImpl(
   cfg: MemoryConfig,
   replayId: string,
 ): Record<string, unknown> {
@@ -1111,7 +1123,7 @@ export function retrievalMetrics(
   };
 }
 
-export function retrievalBenchmark(
+function retrievalBenchmarkImpl(
   cfg: MemoryConfig,
   k = 5,
 ): Record<string, unknown> {
@@ -1364,7 +1376,7 @@ function ratio(numerator: number, denominator: number): number {
   return denominator ? numerator / denominator : 0;
 }
 
-export function adaptationEvaluationMetrics(
+function adaptationEvaluationMetricsImpl(
   cfg: MemoryConfig & { sessions?: string[] },
 ): Record<string, unknown> {
   const exposures = { injected: 0, searched: 0, opened: 0, cited: 0 };
@@ -1854,7 +1866,7 @@ export function adaptationEvaluationMetrics(
   };
 }
 
-export function memoryMetrics(
+function memoryMetricsImpl(
   cfg: MemoryConfig,
   clock: () => string = () => new Date().toISOString(),
 ): Record<string, unknown> {
@@ -1934,4 +1946,177 @@ export function memoryMetrics(
       retrieval: retrievalBenchmark(cfg),
     },
   };
+}
+
+export function recordMemoryFeedback(
+  ...args: Parameters<typeof recordMemoryFeedbackImpl>
+): ReturnType<typeof recordMemoryFeedbackImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.recordMemoryFeedback",
+      correlation: {
+        referenceId: safeOperationId(args[0]?.reference),
+        ...(args[0]?.supersedes
+          ? { feedbackId: safeOperationId(args[0].supersedes) }
+          : {}),
+      },
+      result: (feedback) => ({
+        fields: {
+          feedbackId: feedback.feedbackId,
+          proposalId: feedback.proposalId,
+          reviewId: feedback.reviewId,
+          outcome: feedback.outcome,
+          artifactCount: feedback.relevant.length,
+        },
+      }),
+    },
+    () => recordMemoryFeedbackImpl(...args),
+  );
+}
+
+export function exportEvalDataset(
+  ...args: Parameters<typeof exportEvalDatasetImpl>
+): ReturnType<typeof exportEvalDatasetImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.exportEvalDataset",
+      result: (dataset) => ({
+        outcome: dataset.cases ? "success" : "skipped",
+        fields: { outputCount: dataset.cases },
+      }),
+    },
+    () => exportEvalDatasetImpl(...args),
+  );
+}
+
+export function replayDataset(
+  ...args: Parameters<typeof replayDatasetImpl>
+): ReturnType<typeof replayDatasetImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.replayDataset",
+      result: (replay) => ({
+        outcome: replay.outputs ? "success" : "skipped",
+        fields: {
+          replayId: replay.replayId,
+          caseCount: replay.cases,
+          outputCount: replay.outputs,
+        },
+      }),
+    },
+    () => replayDatasetImpl(...args),
+  );
+}
+
+export function gradeReplay(
+  ...args: Parameters<typeof gradeReplayImpl>
+): ReturnType<typeof gradeReplayImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.gradeReplay",
+      correlation: {
+        replayId: safeOperationId(args[0]?.replayId),
+        caseId: safeOperationId(args[0]?.caseId),
+        mode: ["memory-off", "current", "gold"].includes(args[0]?.mode)
+          ? args[0].mode
+          : "invalid-mode",
+      },
+      result: () => ({
+        fields: {
+          replayId: args[0].replayId,
+          caseId: args[0].caseId,
+          mode: args[0].mode,
+          changed: true,
+        },
+      }),
+    },
+    () => gradeReplayImpl(...args),
+  );
+}
+
+export function evalReport(
+  ...args: Parameters<typeof evalReportImpl>
+): ReturnType<typeof evalReportImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.evalReport",
+      correlation: { replayId: safeOperationId(args[1]) },
+      result: (report) => ({
+        fields: {
+          replayId: report.replayId,
+          caseCount: report.pairedCases,
+          pairableCount: report.pairableCases,
+          outputCount:
+            Number(report.pairedCases) * 2 + Number(report.ignoredUnpaired),
+        },
+      }),
+    },
+    () => evalReportImpl(...args),
+  );
+}
+
+export function retrievalBenchmark(
+  ...args: Parameters<typeof retrievalBenchmarkImpl>
+): ReturnType<typeof retrievalBenchmarkImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.retrievalBenchmark",
+      result: (benchmark) => ({
+        outcome: benchmark.labels ? "success" : "skipped",
+        fields: {
+          labelCount: benchmark.labels,
+          negativeLabelCount: benchmark.negativeLabels,
+          relevantCount: benchmark.relevant,
+          k: benchmark.k,
+        },
+      }),
+    },
+    () => retrievalBenchmarkImpl(...args),
+  );
+}
+
+export function adaptationEvaluationMetrics(
+  ...args: Parameters<typeof adaptationEvaluationMetricsImpl>
+): ReturnType<typeof adaptationEvaluationMetricsImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.adaptationEvaluationMetrics",
+      result: (metrics) => {
+        const receipts = metrics.receipts as Record<string, unknown>;
+        return {
+          fields: {
+            validReceiptCount: receipts.valid,
+            malformedArtifactCount:
+              Number(receipts.malformedArtifacts) +
+              Number(receipts.malformedSessionArtifacts),
+          },
+        };
+      },
+    },
+    () => adaptationEvaluationMetricsImpl(...args),
+  );
+}
+
+export function memoryMetrics(
+  ...args: Parameters<typeof memoryMetricsImpl>
+): ReturnType<typeof memoryMetricsImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.memoryMetrics",
+      result: (metrics) => {
+        const catalog = metrics.catalog as Record<string, unknown>;
+        const proposals = metrics.proposals as Record<string, unknown>;
+        const reviews = metrics.reviews as Record<string, unknown>;
+        return {
+          fields: {
+            artifactCount: catalog.entries,
+            pendingProposalCount: proposals.pending,
+            reviewedProposalCount: proposals.reviewed,
+            reviewCount: reviews.total,
+          },
+        };
+      },
+    },
+    () => memoryMetricsImpl(...args),
+  );
 }

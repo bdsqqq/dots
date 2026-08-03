@@ -49,11 +49,12 @@ function unsafeObjectKey(key: string): boolean {
 }
 
 function consumerFields(fields: Fields | undefined): Fields {
-  return Object.fromEntries(
+  const filtered = Object.fromEntries(
     Object.entries(fields ?? {})
       .filter(([key]) => !RESERVED_FIELDS.has(key) && !unsafeObjectKey(key))
-      .map(([key, value]) => [key, safeMarkerValue(value, key)]),
+      .slice(0, 64),
   );
+  return safeMarkerValue(filtered) as Fields;
 }
 
 type SharedLogState = {
@@ -62,6 +63,7 @@ type SharedLogState = {
   drains: Set<LogDrain>;
   pending: Set<Promise<void>>;
   loggerFactory?: typeof createLogger;
+  localDrain?: LogDrain;
 };
 
 type PendingOperation = {
@@ -110,10 +112,20 @@ function markerPath(directory: string, operationId: string): string {
   return join(markerDirectory(directory), `${digest}.json`);
 }
 
+function fsyncPath(path: string): void {
+  const fd = openSync(path, constants.O_RDONLY);
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function removeMarker(directory: string, operationId: string): void {
   const expected = markerPath(directory, operationId);
   if (existsSync(expected)) {
     unlinkSync(expected);
+    fsyncPath(markerDirectory(directory));
     return;
   }
   const pending = markerDirectory(directory);
@@ -124,6 +136,7 @@ function removeMarker(directory: string, operationId: string): void {
       const marker = JSON.parse(readFileSync(path, "utf8")) as PendingOperation;
       if (marker.operationId === operationId) {
         unlinkSync(path);
+        fsyncPath(pending);
         return;
       }
     } catch {}
@@ -158,7 +171,23 @@ function normalizeOperationId(value: string | undefined): string {
   return `op_${createHash("sha256").update(value).digest("hex")}`;
 }
 
-function safeMarkerValue(value: unknown, key = ""): unknown {
+type SanitizationBudget = {
+  chars: number;
+  nodes: number;
+  seen: WeakSet<object>;
+};
+
+function safeMarkerValue(
+  value: unknown,
+  key = "",
+  budget: SanitizationBudget = {
+    chars: 16_000,
+    nodes: 256,
+    seen: new WeakSet(),
+  },
+  depth = 0,
+): unknown {
+  if (budget.nodes-- <= 0 || depth > 6) return "<truncated>";
   const canonicalKey = key.replace(/[-_]/g, "").toLowerCase();
   if (
     /(?:authorization|cookie|password|passwd|secret|token|apikey|privatekey|accesskey)$/.test(
@@ -166,18 +195,37 @@ function safeMarkerValue(value: unknown, key = ""): unknown {
     )
   )
     return "<filtered>";
-  if (typeof value === "string") return sanitizeString(value);
+  if (typeof value === "string") {
+    const sanitized = sanitizeString(value);
+    const available = Math.max(0, Math.min(1_000, budget.chars));
+    budget.chars -= available;
+    return sanitized.length > available
+      ? `${sanitized.slice(0, available)}<truncated>`
+      : sanitized;
+  }
   if (Array.isArray(value))
-    return value.map((item) => safeMarkerValue(item, key));
-  if (value && typeof value === "object")
+    return value
+      .slice(0, 32)
+      .map((item) => safeMarkerValue(item, key, budget, depth + 1));
+  if (value && typeof value === "object") {
+    if (budget.seen.has(value)) return "<circular>";
+    budget.seen.add(value);
     return Object.fromEntries(
       Object.entries(value)
+        .slice(0, 64)
         .filter(([childKey]) => !unsafeObjectKey(childKey))
-        .map(([childKey, child]) => [
-          childKey,
-          safeMarkerValue(child, childKey),
-        ]),
+        .map(([childKey, child]) => {
+          const sanitizedKey = sanitizeString(childKey).slice(0, 128);
+          budget.chars -= sanitizedKey.length;
+          return [
+            budget.chars < 0 || !sanitizedKey
+              ? "<truncated-key>"
+              : sanitizedKey,
+            safeMarkerValue(child, childKey, budget, depth + 1),
+          ];
+        }),
     );
+  }
   return value;
 }
 
@@ -217,7 +265,11 @@ function dispatch(context: DrainContext): Promise<void> {
     Promise.allSettled(
       [...state.drains].map(async (drain) => {
         try {
-          await boundedDrain(drain, context);
+          // The local drain serializes durable writes itself. Timing out while
+          // it waits for an earlier write would let flushLogs return before
+          // the terminal record reaches disk.
+          if (drain === state.localDrain) await drain(context);
+          else await boundedDrain(drain, context);
         } catch (error) {
           reportFailure("drain failed", error);
         }
@@ -380,8 +432,11 @@ function localDrain(directory: string): LogDrain {
           (appendedEventExists(beforePath, offset, operationId) ||
             (afterPath !== beforePath &&
               appendedEventExists(afterPath, 0, operationId)))
-        )
+        ) {
+          fsyncPath(afterPath);
+          fsyncPath(directory);
           removeMarker(directory, operationId);
+        }
       } catch (error) {
         reportFailure("cannot secure local logs", error);
       }
@@ -408,41 +463,54 @@ export function initializeLogs(
     reportFailure("cannot initialize local log directory", error);
   }
   state.directory = directory;
-  state.drains.add(localDrain(directory));
-  initLogger({
-    env: { service: "pi", environment: "local" },
-    pretty: false,
-    silent: true,
-    redact: {
-      paths: [
-        "**.authorization",
-        "**.cookie",
-        "**.password",
-        "**.secret",
-        "**.token",
-        "**.*_token",
-        "**.apiKey",
-        "**.api_key",
-        "**.client_secret",
-        "**.access_key",
-        "**.access_token",
-        "**.privateKey",
-        "**.private_key",
-        "**.secret_access_key",
-        "**.session_token",
-      ],
-      patterns: [
-        /-----BEGIN [^-\n]+PRIVATE KEY-----[\s\S]*?-----END [^-\n]+PRIVATE KEY-----/gi,
-        /\b(?:sk|rk|ghp|github_pat|glpat|npm|pypi|xox[baprs]|AIza)[-_A-Za-z0-9]{12,}\b/g,
-        /\bBearer\s+[^\s,;]+/gi,
-        /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:]+:[^\s/@]+@[^\s]+/gi,
-      ],
-    },
-    drain: dispatch,
-  });
+  try {
+    state.localDrain = localDrain(directory);
+    state.drains.add(state.localDrain);
+  } catch (error) {
+    reportFailure("cannot initialize local log drain", error);
+  }
+  try {
+    initLogger({
+      env: { service: "pi", environment: "local" },
+      pretty: false,
+      silent: true,
+      redact: {
+        paths: [
+          "**.authorization",
+          "**.cookie",
+          "**.password",
+          "**.secret",
+          "**.token",
+          "**.*_token",
+          "**.apiKey",
+          "**.api_key",
+          "**.client_secret",
+          "**.access_key",
+          "**.access_token",
+          "**.privateKey",
+          "**.private_key",
+          "**.secret_access_key",
+          "**.session_token",
+        ],
+        patterns: [
+          /-----BEGIN [^-\n]+PRIVATE KEY-----[\s\S]*?-----END [^-\n]+PRIVATE KEY-----/gi,
+          /\b(?:sk|rk|ghp|github_pat|glpat|npm|pypi|xox[baprs]|AIza)[-_A-Za-z0-9]{12,}\b/g,
+          /\bBearer\s+[^\s,;]+/gi,
+          /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:]+:[^\s/@]+@[^\s]+/gi,
+        ],
+      },
+      drain: dispatch,
+    });
+  } catch (error) {
+    reportFailure("cannot initialize logger", error);
+  }
   state.loggerFactory = createLogger;
   state.initialized = true;
-  reconcileInterrupted(directory);
+  try {
+    reconcileInterrupted(directory);
+  } catch (error) {
+    reportFailure("cannot reconcile interrupted operations", error);
+  }
   return directory;
 }
 
@@ -454,7 +522,27 @@ export function registerLogDrain(drain: LogDrain): () => void {
 
 /** bounded drains make this safe to await before a short-lived cli exits. */
 export async function flushLogs(): Promise<void> {
-  while (state.pending.size > 0) await Promise.allSettled([...state.pending]);
+  const timeout = Number(process.env.BDS_PI_LOG_FLUSH_TIMEOUT_MS || 5_000);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      (async () => {
+        while (state.pending.size > 0)
+          await Promise.allSettled([...state.pending]);
+      })(),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          reportFailure(
+            "log flush timed out",
+            new Error(`flush timed out after ${timeout}ms`),
+          );
+          resolve();
+        }, timeout);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export function logDirectory(): string {
@@ -521,6 +609,7 @@ export class PiWideEvent {
       } finally {
         closeSync(fd);
       }
+      fsyncPath(markerDirectory(this.#directory));
     } catch (error) {
       reportFailure("cannot persist pending operation", error);
     }

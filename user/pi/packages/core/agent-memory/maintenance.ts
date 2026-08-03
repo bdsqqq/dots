@@ -22,6 +22,7 @@ import {
   type Proposal,
 } from "./schema.js";
 import type { SafeEvidence } from "./evidence.js";
+import { observeMemoryOperation } from "./observability.js";
 import {
   frozenPipelineEvidence,
   parseStoredPipelineInput,
@@ -535,7 +536,7 @@ Every proposal must copy pathologyId and the complete target ref (memoryId, path
 Allowed pathology basis, corpus context, and original authored evidence follow:\n${JSON.stringify(options, null, 2)}`;
 }
 
-export async function analyzeCorpusMaintenance(options: {
+async function analyzeCorpusMaintenanceUnobserved(options: {
   cfg: MemoryConfig;
   report: CorpusHealthReport;
   model: string;
@@ -724,6 +725,32 @@ export async function analyzeCorpusMaintenance(options: {
     return { ...proposal, id: canonicalProposalId(proposal) };
   });
   return { report: options.report, proposals, diagnostics };
+}
+
+export function analyzeCorpusMaintenance(
+  options: Parameters<typeof analyzeCorpusMaintenanceUnobserved>[0],
+): Promise<MaintenanceAnalysis> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.corpus-maintenance-analysis",
+      fields: {
+        maintenance: { pathologyCount: options.report.pathologies.length },
+      },
+      result: (value) => {
+        return {
+          outcome: value.proposals.length === 0 ? "degraded" : "success",
+          fields: {
+            maintenance: {
+              pathologyCount: value.report.pathologies.length,
+              proposalCount: value.proposals.length,
+              diagnosticCount: value.diagnostics.length,
+            },
+          },
+        };
+      },
+    },
+    () => analyzeCorpusMaintenanceUnobserved(options),
+  );
 }
 
 export function assertFreshMaintenanceBasis(

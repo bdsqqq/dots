@@ -8,8 +8,9 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { adaptationQualityKey } from "./quality.js";
+import { withMemoryWideEventFactory } from "./observability.js";
 import {
   generateHotManifest,
   loadHotManifest,
@@ -143,5 +144,21 @@ describe("memory catalog", () => {
     stored.entries[0].sha256 = "f".repeat(64);
     writeFileSync(path, JSON.stringify(stored));
     expect(loadHotManifest({ data }, catalog, cwd)).toBeUndefined();
+  });
+
+  it("emits one bounded hot-manifest terminal", () => {
+    const finish = vi.fn();
+    const manifest = withMemoryWideEventFactory(
+      () => ({ id: "test", set: vi.fn(), error: vi.fn(), finish }),
+      () =>
+        generateHotManifest(
+          { data: mkdtempSync(join(tmpdir(), "memory-hot-data-")) },
+          { version: 2, generatedAt: "2026-07-25T00:00:00.000Z", entries: [] },
+          "/tmp",
+        ),
+    );
+    expect(manifest.entries).toEqual([]);
+    expect(finish).toHaveBeenCalledOnce();
+    expect(finish).toHaveBeenCalledWith("skipped", { entryCount: 0 });
   });
 });

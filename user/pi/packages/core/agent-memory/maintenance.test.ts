@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
 import {
   analyzeCorpusMaintenance,
@@ -20,7 +20,30 @@ import { initHistory } from "./history.js";
 import { applyMemoryProposal, saveProposal } from "./workflow.js";
 import { sha256 } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
+import { withMemoryWideEventFactory } from "./observability.js";
 import { freezePipelineInput } from "./pipeline.js";
+
+function captureWideEvents() {
+  const events: Array<{
+    operation: string;
+    finishes: Array<{ outcome: string; fields: unknown }>;
+  }> = [];
+  const factory = (options: { operation: string }) => {
+    const event: {
+      operation: string;
+      finishes: Array<{ outcome: string; fields: unknown }>;
+    } = { operation: options.operation, finishes: [] };
+    events.push(event);
+    return {
+      id: `test-${events.length}`,
+      set: vi.fn(),
+      error: vi.fn(),
+      finish: (outcome: string, fields: unknown) =>
+        event.finishes.push({ outcome, fields }),
+    };
+  };
+  return { events, factory };
+}
 
 function config(): MemoryConfig {
   const base = mkdtempSync(join(tmpdir(), "memory-health-"));
@@ -522,5 +545,38 @@ describe("corpus health", () => {
     expect(
       readFileSync(join(cfg.root, pathology.basis.targets[0]!.path), "utf8"),
     ).toContain("keep the durable rule concise");
+  });
+
+  it("emits one bounded terminal for corpus maintenance analysis", async () => {
+    const cfg = config();
+    const { events, factory } = captureWideEvents();
+    const analysis = await withMemoryWideEventFactory(factory, () =>
+      analyzeCorpusMaintenance({
+        cfg,
+        report: scanCorpusHealth(cfg),
+        model: "test",
+        invoke: () => {
+          throw new Error("no pathology should invoke the model");
+        },
+      }),
+    );
+    expect(analysis.proposals).toEqual([]);
+    expect(events).toEqual([
+      {
+        operation: "memory.corpus-maintenance-analysis",
+        finishes: [
+          {
+            outcome: "degraded",
+            fields: {
+              maintenance: {
+                pathologyCount: 0,
+                proposalCount: 0,
+                diagnosticCount: 0,
+              },
+            },
+          },
+        ],
+      },
+    ]);
   });
 });

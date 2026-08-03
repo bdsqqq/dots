@@ -39,6 +39,8 @@ describe("shared pi logging", () => {
       captured.push(event);
     };
     initializeLogs({ directory, drain: capture });
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
 
     const first = createWideEvent({
       service: "pi-memory",
@@ -51,6 +53,10 @@ describe("shared pi logging", () => {
         credentialUrl: "https://user:password@example.com/private",
         private_key:
           "-----BEGIN TEST PRIVATE KEY-----\nsecret\n-----END TEST PRIVATE KEY-----",
+        oversized: "x".repeat(50_000),
+        circular,
+        ghp_abcdefghijklmnopqrst: "credential-shaped key",
+        ["k".repeat(2_000)]: "oversized key",
       },
       fields: {
         batches: 2,
@@ -66,6 +72,10 @@ describe("shared pi logging", () => {
     expect(markerRaw).not.toContain("PRIVATE KEY");
     expect(markerRaw).not.toContain("sk_test");
     expect(markerRaw).not.toContain("plain-api-key");
+    expect(markerRaw).not.toContain("x".repeat(2_000));
+    expect(markerRaw).not.toContain("ghp_abcdefghijklmnopqrst");
+    expect(markerRaw).not.toContain("k".repeat(200));
+    expect(markerRaw).toContain("<circular>");
     first.finish("success", { outcome: { status: "finish-override" } });
     const second = createWideEvent({
       service: "pi-agent-message",

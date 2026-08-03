@@ -1,3 +1,4 @@
+import { withMemoryWideEventFactory } from "./observability.js";
 import {
   existsSync,
   mkdirSync,
@@ -835,5 +836,36 @@ describe("production adaptation policy", () => {
         shadow(cfg, [verified], [decision], `adapt_${"c".repeat(64)}`),
       )[0]?.outcome,
     ).toBe("stale");
+  });
+});
+
+describe("adaptation observability", () => {
+  it("reports changed and idempotent ledger marking", () => {
+    const operations: string[] = [];
+    const terminals: Array<{ outcome: string; fields: unknown }> = [];
+    const cfg = config();
+    withMemoryWideEventFactory(
+      (options) => {
+        operations.push(options.operation);
+        return {
+          id: "adaptation-test",
+          set: () => {},
+          error: () => {},
+          finish: (outcome, fields) => terminals.push({ outcome, fields }),
+        };
+      },
+      () => {
+        markShadowAdaptationLedger(cfg, "event_one", "adapt_one");
+        markShadowAdaptationLedger(cfg, "event_one", "adapt_one");
+      },
+    );
+    expect(operations).toEqual([
+      "memory.markShadowAdaptationLedger",
+      "memory.markShadowAdaptationLedger",
+    ]);
+    expect(terminals).toEqual([
+      { outcome: "success", fields: { changed: true } },
+      { outcome: "skipped", fields: { changed: false } },
+    ]);
   });
 });
