@@ -19,6 +19,7 @@ import {
   listMaintenanceEvents,
   parseMaintenanceEvent,
   recoverMaintenanceEvents,
+  type MaintenanceEventKind,
 } from "./events.js";
 
 const CREATED = "2026-07-26T10:00:00.000Z";
@@ -38,7 +39,7 @@ function config(): MemoryConfig {
 
 function enqueue(
   cfg: MemoryConfig,
-  kind: "checkpoint-ready" | "corpus-changed" | "manual" = "manual",
+  kind: MaintenanceEventKind = "manual",
   basis: Record<string, string> = { request: "one" },
 ) {
   return enqueueMaintenanceEvent(
@@ -49,6 +50,15 @@ function enqueue(
 }
 
 describe("maintenance event queue", () => {
+  it("deduplicates autonomous tier classification and evaluation triggers", () => {
+    const cfg = config();
+    const tiering = enqueue(cfg, "tiering-ready");
+    const duplicate = enqueue(cfg, "tiering-ready");
+    const evaluation = enqueue(cfg, "tier-eval-ready");
+    expect(duplicate.id).toBe(tiering.id);
+    expect(evaluation.id).not.toBe(tiering.id);
+  });
+
   it("enqueues exclusively with a deterministic canonical id", () => {
     const cfg = config();
     const first = enqueue(cfg, "corpus-changed", { z: "last", a: "first" });

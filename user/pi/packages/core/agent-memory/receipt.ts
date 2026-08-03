@@ -18,8 +18,10 @@ export type RetrievalOrdering = {
   shadow: MemoryRef[];
 };
 
+export type RolloutArm = "active" | "canary";
+
 export type TurnReceipt = {
-  version: 1;
+  version: 1 | 2;
   receiptId: string;
   sessionId: string;
   workspace: string;
@@ -27,9 +29,19 @@ export type TurnReceipt = {
   assistantEntryIds: string[];
   responseToReceiptId?: string;
   catalogSha256: string;
+  systemRefs?: MemoryRef[];
+  externalPointerRefs?: MemoryRef[];
+  snapshotSha256?: string;
+  rolloutArm?: RolloutArm;
   retrievals?: RetrievalOrdering[];
   exposures: Array<{
-    kind: "injected" | "searched" | "opened" | "cited";
+    kind:
+      | "injected"
+      | "system-injected"
+      | "external-pointer"
+      | "searched"
+      | "opened"
+      | "cited";
     memoryId: string;
     artifactSha256: string;
     toolCallId?: string;
@@ -45,12 +57,22 @@ export type TurnReceipt = {
   recordedAt: string;
 };
 
-export type InjectionReceipt = {
-  version: 1;
-  userEntryId: string;
-  catalogSha256: string;
-  refs: MemoryRef[];
-};
+export type InjectionReceipt =
+  | {
+      version: 1;
+      userEntryId: string;
+      catalogSha256: string;
+      refs: MemoryRef[];
+    }
+  | {
+      version: 2;
+      userEntryId: string;
+      catalogSha256: string;
+      systemRefs: MemoryRef[];
+      externalPointerRefs: MemoryRef[];
+      snapshotSha256: string;
+      rolloutArm: RolloutArm;
+    };
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -85,44 +107,84 @@ export function canonicalTurnReceiptId(
 }
 
 export function parseInjectionReceipt(value: unknown): InjectionReceipt {
+  if (!object(value)) throw new Error("invalid memory injection receipt");
+  const parseRefs = (input: unknown): MemoryRef[] => {
+    if (!Array.isArray(input))
+      throw new Error("invalid memory injection receipt");
+    const refs = input.map((candidate) => {
+      if (
+        !object(candidate) ||
+        !keysAre(candidate, ["memoryId", "path", "artifactSha256"]) ||
+        typeof candidate.memoryId !== "string" ||
+        !candidate.memoryId ||
+        typeof candidate.path !== "string" ||
+        !candidate.path ||
+        typeof candidate.artifactSha256 !== "string" ||
+        !HASH.test(candidate.artifactSha256)
+      )
+        throw new Error("invalid memory injection receipt");
+      return candidate as MemoryRef;
+    });
+    if (
+      new Set(refs.map((ref) => `${ref.memoryId}\0${ref.path}`)).size !==
+      refs.length
+    )
+      throw new Error("invalid memory injection receipt");
+    return refs;
+  };
+  if (value.version === 1) {
+    if (!keysAre(value, ["version", "userEntryId", "catalogSha256", "refs"]))
+      throw new Error("invalid memory injection receipt");
+    if (
+      typeof value.userEntryId !== "string" ||
+      !value.userEntryId ||
+      typeof value.catalogSha256 !== "string" ||
+      !HASH.test(value.catalogSha256)
+    )
+      throw new Error("invalid memory injection receipt");
+    return {
+      version: 1,
+      userEntryId: value.userEntryId,
+      catalogSha256: value.catalogSha256,
+      refs: parseRefs(value.refs),
+    };
+  }
   if (
-    !object(value) ||
-    !keysAre(value, ["version", "userEntryId", "catalogSha256", "refs"])
-  )
-    throw new Error("invalid memory injection receipt");
-  if (
-    value.version !== 1 ||
+    value.version !== 2 ||
+    !keysAre(value, [
+      "version",
+      "userEntryId",
+      "catalogSha256",
+      "systemRefs",
+      "externalPointerRefs",
+      "snapshotSha256",
+      "rolloutArm",
+    ]) ||
     typeof value.userEntryId !== "string" ||
     !value.userEntryId ||
     typeof value.catalogSha256 !== "string" ||
     !HASH.test(value.catalogSha256) ||
-    !Array.isArray(value.refs)
+    typeof value.snapshotSha256 !== "string" ||
+    !HASH.test(value.snapshotSha256) ||
+    (value.rolloutArm !== "active" && value.rolloutArm !== "canary")
   )
     throw new Error("invalid memory injection receipt");
-  const refs = value.refs.map((candidate) => {
-    if (
-      !object(candidate) ||
-      !keysAre(candidate, ["memoryId", "path", "artifactSha256"]) ||
-      typeof candidate.memoryId !== "string" ||
-      !candidate.memoryId ||
-      typeof candidate.path !== "string" ||
-      !candidate.path ||
-      typeof candidate.artifactSha256 !== "string" ||
-      !HASH.test(candidate.artifactSha256)
-    )
-      throw new Error("invalid memory injection receipt");
-    return candidate as MemoryRef;
-  });
+  const systemRefs = parseRefs(value.systemRefs);
+  const externalPointerRefs = parseRefs(value.externalPointerRefs);
+  const all = [...systemRefs, ...externalPointerRefs];
   if (
-    new Set(refs.map((ref) => `${ref.memoryId}\0${ref.path}`)).size !==
-    refs.length
+    new Set(all.map((ref) => `${ref.memoryId}\0${ref.path}`)).size !==
+    all.length
   )
     throw new Error("invalid memory injection receipt");
   return {
-    version: 1,
+    version: 2,
     userEntryId: value.userEntryId,
     catalogSha256: value.catalogSha256,
-    refs,
+    systemRefs,
+    externalPointerRefs,
+    snapshotSha256: value.snapshotSha256,
+    rolloutArm: value.rolloutArm,
   };
 }
 
@@ -135,9 +197,14 @@ function isTurnExposure(
   return (
     Object.keys(exposure).every((key) => allowed.includes(key)) &&
     required.every((key) => key in exposure) &&
-    ["injected", "searched", "opened", "cited"].includes(
-      String(exposure.kind),
-    ) &&
+    [
+      "injected",
+      "system-injected",
+      "external-pointer",
+      "searched",
+      "opened",
+      "cited",
+    ].includes(String(exposure.kind)) &&
     typeof exposure.memoryId === "string" &&
     exposure.memoryId.length > 0 &&
     typeof exposure.artifactSha256 === "string" &&
@@ -165,14 +232,26 @@ export function parseTurnReceipt(value: unknown): TurnReceipt {
     "recordedAt",
   ];
   if (!object(value)) throw new Error("invalid turn receipt");
-  const allowed = [...required, "responseToReceiptId", "retrievals"];
+  const v2 = value.version === 2;
+  const versionFields = [
+    "systemRefs",
+    "externalPointerRefs",
+    "snapshotSha256",
+    "rolloutArm",
+  ];
+  const allowed = [
+    ...required,
+    "responseToReceiptId",
+    "retrievals",
+    ...(v2 ? versionFields : []),
+  ];
   if (
     !Object.keys(value).every((key) => allowed.includes(key)) ||
     !required.every((key) => key in value)
   )
     throw new Error("invalid turn receipt");
   if (
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     typeof value.receiptId !== "string" ||
     !/^turn_[a-f0-9]{32}$/.test(value.receiptId) ||
     typeof value.sessionId !== "string" ||
@@ -195,6 +274,61 @@ export function parseTurnReceipt(value: unknown): TurnReceipt {
   )
     throw new Error("invalid turn receipt");
   if (value.exposures.some((exposure) => !isTurnExposure(exposure)))
+    throw new Error("invalid turn receipt");
+  if (v2) {
+    if (
+      !versionFields.every((key) => key in value) ||
+      !HASH.test(String(value.snapshotSha256)) ||
+      (value.rolloutArm !== "active" && value.rolloutArm !== "canary")
+    )
+      throw new Error("invalid turn receipt");
+    const injection = parseInjectionReceipt({
+      version: 2,
+      userEntryId: value.userEntryIds[0],
+      catalogSha256: value.catalogSha256,
+      systemRefs: value.systemRefs,
+      externalPointerRefs: value.externalPointerRefs,
+      snapshotSha256: value.snapshotSha256,
+      rolloutArm: value.rolloutArm,
+    });
+    if (injection.version !== 2) throw new Error("invalid turn receipt");
+    const exposureItems = value.exposures as TurnReceipt["exposures"];
+    const expectedSystem = new Set(
+      injection.systemRefs.map(
+        (ref) => `${ref.memoryId}\0${ref.artifactSha256}`,
+      ),
+    );
+    const expectedExternal = new Set(
+      injection.externalPointerRefs.map(
+        (ref) => `${ref.memoryId}\0${ref.artifactSha256}`,
+      ),
+    );
+    const observedSystem = exposureItems.filter(
+      (item) => item.kind === "system-injected",
+    );
+    const observedExternal = exposureItems.filter(
+      (item) => item.kind === "external-pointer",
+    );
+    if (
+      exposureItems.some((item) => item.kind === "injected") ||
+      observedSystem.length !== expectedSystem.size ||
+      observedExternal.length !== expectedExternal.size ||
+      observedSystem.some(
+        (item) =>
+          !expectedSystem.has(`${item.memoryId}\0${item.artifactSha256}`),
+      ) ||
+      observedExternal.some(
+        (item) =>
+          !expectedExternal.has(`${item.memoryId}\0${item.artifactSha256}`),
+      )
+    )
+      throw new Error("turn receipt exposure does not match snapshot");
+  } else if (
+    (value.exposures as TurnReceipt["exposures"]).some(
+      (item) =>
+        item.kind === "system-injected" || item.kind === "external-pointer",
+    )
+  )
     throw new Error("invalid turn receipt");
   if (value.retrievals !== undefined) {
     if (!Array.isArray(value.retrievals))

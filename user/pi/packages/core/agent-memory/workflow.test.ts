@@ -30,6 +30,12 @@ import {
   submitManualProposal,
 } from "./workflow.js";
 import { listMaintenanceEvents } from "./events.js";
+import {
+  commitTierTransition,
+  planTierTransition,
+  selectSystemSet,
+} from "./tiering.js";
+import { verifiedRollbackEvidence } from "./adaptation.js";
 
 function config(): MemoryConfig {
   const base = mkdtempSync(join(tmpdir(), "memory-workflow-"));
@@ -83,6 +89,90 @@ function seal(proposal: Proposal): Proposal {
 }
 
 describe("memory proposal review", () => {
+  it("rejects a forged autonomous rollback without tier policy history", () => {
+    const cfg = config();
+    const created = proposal();
+    saveProposal(cfg, created);
+    const receipt = reviewProposal({
+      cfg,
+      id: created.id,
+      decision: "accept",
+      reasonCode: "correct",
+      reason: "verified durable rule",
+    });
+    expect(() =>
+      rollbackReview(
+        cfg,
+        receipt.reviewId,
+        "forged governor rollback",
+        "tier-governor",
+        `tierdec_${"a".repeat(32)}`,
+      ),
+    ).toThrow("lacks a verified policy decision");
+  });
+
+  it("accepts a governor rollback bound to trusted tier policy history", () => {
+    const cfg = config();
+    const created = proposal();
+    saveProposal(cfg, created);
+    const receipt = reviewProposal({
+      cfg,
+      id: created.id,
+      decision: "accept",
+      reasonCode: "correct",
+      reason: "verified durable rule",
+    });
+    const entry = scanCatalog(cfg.root).entries[0]!;
+    const text = readFileSync(join(cfg.root, entry.path), "utf8");
+    const body = text.slice(
+      /^---\n[\s\S]*?\n---(?:\n|$)/.exec(text)![0].length,
+    );
+    const decidedAt = "2026-08-03T00:00:00.000Z";
+    const selection = selectSystemSet({
+      cfg,
+      now: decidedAt,
+      candidates: [
+        {
+          target: {
+            memoryId: entry.memoryId,
+            path: entry.path,
+            artifactSha256: entry.sha256,
+          },
+          hierarchy: "workflow/testing",
+          body,
+          score: 1,
+          redaction: "clear",
+          promptIntegrity: "trusted",
+        },
+      ],
+    });
+    const tier = commitTierTransition({
+      cfg,
+      plan: planTierTransition({
+        cfg,
+        selection,
+        decidedAt,
+        reason: "trusted rollback policy",
+      }),
+    });
+    const rollback = rollbackReview(
+      cfg,
+      receipt.reviewId,
+      "policy gate failed",
+      "tier-governor",
+      tier.decision.decisionId,
+    );
+    expect(rollback.reviewer).toBe("tier-governor");
+    expect(
+      verifiedRollbackEvidence(cfg, {
+        historyCommit: rollback.historyCommit!,
+        mutationId: rollback.mutationId!,
+        reviewId: rollback.reviewId,
+        proposalId: rollback.proposalId,
+      }),
+    ).toMatchObject({ reviewId: rollback.reviewId });
+  });
+
   it("applies and rolls back an accepted proposal", () => {
     const cfg = config();
     const created = proposal();
@@ -118,11 +208,16 @@ describe("memory proposal review", () => {
     });
     rmSync(join(cfg.data, "v2/events/pending", `${event!.event.id}.json`));
     expect(reconcileRollbackAdaptationEvents(cfg)).toBe(1);
-    expect(listMaintenanceEvents(cfg, ["pending"])).toEqual([
-      expect.objectContaining({
-        event: expect.objectContaining({ id: event!.event.id }),
-      }),
-    ]);
+    expect(listMaintenanceEvents(cfg, ["pending"])).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: expect.objectContaining({ id: event!.event.id }),
+        }),
+        expect.objectContaining({
+          event: expect.objectContaining({ kind: "tiering-ready" }),
+        }),
+      ]),
+    );
   });
 
   it("applies hash-guarded patches and rolls them back", () => {

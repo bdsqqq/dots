@@ -21,7 +21,10 @@ export type AuditKind =
   | "adaptation"
   | "corpus-doctor"
   | "maintenance-analysis"
-  | "eval-replay";
+  | "eval-replay"
+  | "tier-classifier"
+  | "tier-critic"
+  | "tier-eval";
 export type AuditAttempt = {
   sessionId: string;
   sessionPath: string;
@@ -126,6 +129,9 @@ function parseRecord(raw: string): AuditRecord {
       "corpus-doctor",
       "maintenance-analysis",
       "eval-replay",
+      "tier-classifier",
+      "tier-critic",
+      "tier-eval",
     ].includes(String(value.kind)) ||
     typeof value.identity !== "string" ||
     typeof value.promptSha256 !== "string" ||

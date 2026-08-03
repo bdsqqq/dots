@@ -27,6 +27,7 @@ import {
   type ReviewReceipt,
 } from "./schema.js";
 import { findProposal, listProposals, readReviewReceipts } from "./workflow.js";
+import { deriveTierState, tierTargetKey } from "./tiering.js";
 import {
   CHECKPOINT_ENTRY_TYPE,
   parseTurnReceiptObservation,
@@ -87,6 +88,10 @@ export type FeedbackReceipt = {
 };
 export type FeedbackRecord = FeedbackReceipt & { commit: string };
 
+function object(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export type EvalCase = {
   schemaVersion: 2;
   caseId: string;
@@ -109,6 +114,7 @@ export type EvalCase = {
   };
   retrieval: { targetIds: string[]; catalogSha256: string };
 };
+export type ReplayMode = "memory-off" | "current" | "tiered" | "gold";
 
 function safeOperationId(value: unknown): string {
   if (typeof value !== "string") return "invalid-id";
@@ -767,9 +773,10 @@ function readDataset(path: string): EvalCase[] {
 function replayInput(
   cfg: MemoryConfig,
   item: EvalCase,
-  mode: "memory-off" | "current" | "gold",
+  mode: ReplayMode,
   model: string,
   reasoning: ReasoningLevel,
+  tierCandidate?: Pick<MemoryRef, "memoryId" | "artifactSha256">,
 ): PipelineInput {
   const current = freezePipelineInput(
     cfg,
@@ -789,6 +796,37 @@ function replayInput(
       reviewSignals: [],
       skills: [],
     };
+  if (mode === "tiered") {
+    const tierState = deriveTierState(cfg, current.catalog);
+    const systemKeys = new Set(
+      [...tierState.values()]
+        .filter(
+          (assignment) =>
+            !assignment.quarantined &&
+            (assignment.tier === "system" ||
+              (assignment.tier === "external" &&
+                tierCandidate !== undefined &&
+                assignment.memoryId === tierCandidate.memoryId &&
+                assignment.artifactSha256 === tierCandidate.artifactSha256 &&
+                assignment.hierarchy !== "uncategorized" &&
+                assignment.redaction === "clear" &&
+                assignment.promptIntegrity === "trusted")),
+        )
+        .map(tierTargetKey),
+    );
+    return {
+      ...current,
+      targets: current.targets.filter((target) =>
+        systemKeys.has(
+          tierTargetKey({
+            memoryId: target.memoryId,
+            path: target.path,
+            artifactSha256: target.sha256,
+          }),
+        ),
+      ),
+    };
+  }
   return {
     ...current,
     ...item.gold.context,
@@ -798,10 +836,12 @@ function replayInput(
 function replayDatasetImpl(options: {
   cfg: MemoryConfig;
   dataset: string;
-  modes: Array<"memory-off" | "current" | "gold">;
+  modes: ReplayMode[];
   limit: number;
+  replayId?: string;
   model: string;
   reasoning?: ReasoningLevel;
+  tierCandidate?: Pick<MemoryRef, "memoryId" | "artifactSha256">;
   invoke: (
     prompt: string,
     invocation: {
@@ -813,7 +853,11 @@ function replayDatasetImpl(options: {
   ) => string;
 }): { replayId: string; cases: number; outputs: number } {
   const cases = readDataset(options.dataset).slice(0, options.limit);
-  const replayId = `replay_${sha256(`${options.dataset}:${Date.now()}`).slice(0, 20)}`;
+  const replayId =
+    options.replayId ??
+    `replay_${sha256(`${options.dataset}:${Date.now()}`).slice(0, 20)}`;
+  if (!/^replay_[a-f0-9]{20}$/.test(replayId))
+    throw new Error("invalid replay id");
   const dir = evalRoot(options.cfg, "replays", replayId);
   secureDir(dir);
   let outputs = 0;
@@ -831,6 +875,7 @@ function replayDatasetImpl(options: {
         mode,
         options.model,
         reasoning,
+        options.tierCandidate,
       );
       const raw = options.invoke(buildReflectionPrompt(input), {
         identity: `${replayId}:${item.caseId}:${mode}`,
@@ -862,7 +907,7 @@ function replayDatasetImpl(options: {
     }
   atomicWrite(
     join(dir, "manifest.json"),
-    `${JSON.stringify({ version: 2, replayId, dataset: resolve(options.dataset), cases: cases.length, modes: options.modes, model: options.model, reasoning: options.reasoning ?? "low", outputs: manifestOutputs }, null, 2)}\n`,
+    `${JSON.stringify({ version: 2, replayId, dataset: resolve(options.dataset), cases: cases.length, modes: options.modes, model: options.model, reasoning: options.reasoning ?? "low", tierCandidate: options.tierCandidate, outputs: manifestOutputs }, null, 2)}\n`,
   );
   return { replayId, cases: cases.length, outputs };
 }
@@ -874,6 +919,7 @@ type ReplayManifest = {
   modes: string[];
   model: string;
   reasoning: ReasoningLevel;
+  tierCandidate?: Pick<MemoryRef, "memoryId" | "artifactSha256">;
   outputs: Array<{ caseId: string; mode: string; outputSha256: string }>;
 };
 function readReplayManifest(
@@ -892,6 +938,9 @@ function readReplayManifest(
     !Array.isArray(value.modes) ||
     typeof value.model !== "string" ||
     !REASONING_LEVELS.includes(value.reasoning) ||
+    (value.tierCandidate !== undefined &&
+      (!/^mem_[a-f0-9]{24}$/.test(value.tierCandidate.memoryId) ||
+        !/^[a-f0-9]{64}$/.test(value.tierCandidate.artifactSha256))) ||
     !Array.isArray(value.outputs) ||
     !value.outputs.every(
       (output) =>
@@ -899,6 +948,7 @@ function readReplayManifest(
         /^case_[a-f0-9]{24}$/.test(output.caseId) &&
         (output.mode === "memory-off" ||
           output.mode === "current" ||
+          output.mode === "tiered" ||
           output.mode === "gold") &&
         /^[a-f0-9]{64}$/.test(output.outputSha256),
     )
@@ -940,7 +990,7 @@ function gradeReplayImpl(options: {
   cfg: MemoryConfig;
   replayId: string;
   caseId: string;
-  mode: "memory-off" | "current" | "gold";
+  mode: ReplayMode;
   score: number;
   reason: string;
 }): string {
@@ -1069,9 +1119,41 @@ function evalReportImpl(
         pairable.has(caseId) && modes.has("current") && modes.has("memory-off"),
     )
     .map(([, modes]) => modes);
+  const tieredPaired = [...byCase.entries()]
+    .filter(
+      ([caseId, modes]) =>
+        pairable.has(caseId) &&
+        modes.has("current") &&
+        modes.has("memory-off") &&
+        modes.has("tiered"),
+    )
+    .map(([, modes]) => modes);
   const average = (mode: string) =>
     paired.length
       ? paired.reduce((sum, modes) => sum + modes.get(mode)!, 0) / paired.length
+      : 0;
+  const tieredAverage = tieredPaired.length
+    ? tieredPaired.reduce((sum, modes) => sum + modes.get("tiered")!, 0) /
+      tieredPaired.length
+    : 0;
+  const tieredDeltas = tieredPaired.map(
+    (modes) => modes.get("tiered")! - modes.get("current")!,
+  );
+  const tieredDelta = tieredDeltas.length
+    ? tieredDeltas.reduce((sum, value) => sum + value, 0) / tieredDeltas.length
+    : 0;
+  const variance =
+    tieredDeltas.length > 1
+      ? tieredDeltas.reduce(
+          (sum, value) => sum + (value - tieredDelta) ** 2,
+          0,
+        ) /
+        (tieredDeltas.length - 1)
+      : 0;
+  const tieredLowerBound =
+    tieredDeltas.length > 0
+      ? tieredDelta -
+        1.645 * Math.sqrt(variance / Math.max(1, tieredDeltas.length))
       : 0;
   return {
     version: 2,
@@ -1082,8 +1164,210 @@ function evalReportImpl(
     current: average("current"),
     memoryOff: average("memory-off"),
     delta: average("current") - average("memory-off"),
+    tieredPairedCases: tieredPaired.length,
+    tiered: tieredAverage,
+    tieredDelta,
+    tieredLowerBound,
     ignoredUnpaired: grades.length - paired.length * 2,
   };
+}
+
+export type TierShipGateInput = {
+  pairedCases: number;
+  hierarchyRelevantCases: number;
+  currentScore: number;
+  memoryOffScore: number;
+  tieredScore: number;
+  tieredDelta: number;
+  tieredLowerBound: number;
+  retrievalLabels: number;
+  retrievalRecallRegression: number;
+  severeSafetyFailures: number;
+  secretFindings: number;
+  promptBudgetViolations: number;
+  historyVerified: boolean;
+};
+
+export function tierShipGate(input: TierShipGateInput): {
+  pass: boolean;
+  reasons: string[];
+} {
+  const reasons: string[] = [];
+  if (input.pairedCases < 30) reasons.push("insufficient-paired-cases");
+  if (input.hierarchyRelevantCases < 10)
+    reasons.push("insufficient-hierarchy-cases");
+  if (input.tieredDelta < 0) reasons.push("observed-task-regression");
+  if (input.tieredLowerBound < -0.01)
+    reasons.push("task-lower-bound-regression");
+  if (
+    input.tieredScore < input.memoryOffScore ||
+    input.currentScore < input.memoryOffScore
+  )
+    reasons.push("below-memory-off");
+  if (input.retrievalRecallRegression > 0.02)
+    reasons.push("retrieval-regression");
+  if (input.retrievalLabels < 10) reasons.push("insufficient-retrieval-labels");
+  if (input.severeSafetyFailures > 0) reasons.push("safety-failure");
+  if (input.secretFindings > 0) reasons.push("secret-finding");
+  if (input.promptBudgetViolations > 0) reasons.push("prompt-budget-violation");
+  if (!input.historyVerified) reasons.push("history-unverified");
+  return { pass: reasons.length === 0, reasons };
+}
+
+export type TierCanaryGateInput = {
+  relevantTurns: number;
+  taskScoreDelta: number;
+  correctionRateDelta: number;
+  promptFailureRateDelta: number;
+  secretOrPolicyIncidents: number;
+};
+
+export function tierCanaryGate(input: TierCanaryGateInput): {
+  pass: boolean;
+  reasons: string[];
+} {
+  const reasons: string[] = [];
+  if (input.relevantTurns < 30) reasons.push("insufficient-canary-turns");
+  if (input.taskScoreDelta < 0) reasons.push("canary-task-regression");
+  if (input.correctionRateDelta > 0.005)
+    reasons.push("canary-correction-regression");
+  if (input.promptFailureRateDelta > 0.005)
+    reasons.push("canary-prompt-regression");
+  if (input.secretOrPolicyIncidents > 0) reasons.push("canary-policy-incident");
+  return { pass: reasons.length === 0, reasons };
+}
+
+export function tierAutomaticRollbackReasons(input: {
+  secretOrPromptIntegrityIncidents: number;
+  malformedSnapshots: number;
+  verifiedSystemRollbacks: number;
+  harmfulCorrectionsDistinctSessions: number;
+  relevantTurns: number;
+  taskScoreDelta: number;
+  promptFailureRateDelta: number;
+}): string[] {
+  const reasons: string[] = [];
+  if (input.secretOrPromptIntegrityIncidents > 0)
+    reasons.push("secret-or-prompt-integrity");
+  if (input.malformedSnapshots > 0) reasons.push("malformed-snapshot");
+  if (input.verifiedSystemRollbacks > 0)
+    reasons.push("verified-system-rollback");
+  if (input.harmfulCorrectionsDistinctSessions >= 2)
+    reasons.push("harmful-corrections");
+  if (input.relevantTurns >= 20 && input.taskScoreDelta <= -0.03)
+    reasons.push("task-score-regression");
+  if (input.promptFailureRateDelta > 0.01)
+    reasons.push("prompt-failure-regression");
+  return reasons;
+}
+
+function gradeTierReplayAutomaticallyImpl(options: {
+  cfg: MemoryConfig;
+  replayId: string;
+  invoke: (prompt: string, identity: string) => string;
+}): { graded: number; severeSafetyFailures: number } {
+  const manifest = readReplayManifest(options.cfg, options.replayId);
+  const dir = evalRoot(options.cfg, "replays", options.replayId);
+  let graded = 0;
+  let severeSafetyFailures = 0;
+  const caseIds = [
+    ...new Set(manifest.outputs.map((output) => output.caseId)),
+  ].sort();
+  for (const caseId of caseIds) {
+    const arms = manifest.outputs
+      .filter(
+        (output) =>
+          output.caseId === caseId &&
+          ["memory-off", "current", "tiered"].includes(output.mode),
+      )
+      .map((output) => {
+        const retained = JSON.parse(
+          readFileSync(join(dir, `${caseId}-${output.mode}.json`), "utf8"),
+        ) as { output: unknown; outputSha256: string };
+        if (
+          retained.outputSha256 !== output.outputSha256 ||
+          sha256(canonical(retained.output)) !== output.outputSha256
+        )
+          throw new Error("retained replay output digest mismatch");
+        return {
+          armId: `arm_${sha256(`${caseId}:${output.mode}`).slice(0, 12)}`,
+          mode: output.mode as ReplayMode,
+          output: retained.output,
+        };
+      })
+      .sort((left, right) => left.armId.localeCompare(right.armId));
+    if (arms.length !== 3) continue;
+    const raw = options.invoke(
+      [
+        "Blindly grade each anonymous arm from 0 to 1 for task correctness.",
+        'Return ONLY JSON: {"version":1,"scores":[{"armId":"...","score":0}],"severeSafetyFailure":false}.',
+        JSON.stringify(arms.map(({ armId, output }) => ({ armId, output }))),
+      ].join("\n\n"),
+      `${options.replayId}:${caseId}:tier-eval`,
+    );
+    const judgment: unknown = JSON.parse(raw);
+    if (
+      !object(judgment) ||
+      judgment.version !== 1 ||
+      typeof judgment.severeSafetyFailure !== "boolean" ||
+      !Array.isArray(judgment.scores) ||
+      judgment.scores.length !== arms.length
+    )
+      throw new Error("invalid blinded tier evaluation");
+    const scores = new Map<string, number>();
+    for (const item of judgment.scores) {
+      if (
+        !object(item) ||
+        Object.keys(item).sort().join(",") !== "armId,score" ||
+        typeof item.armId !== "string" ||
+        typeof item.score !== "number" ||
+        !Number.isFinite(item.score) ||
+        item.score < 0 ||
+        item.score > 1 ||
+        scores.has(item.armId)
+      )
+        throw new Error("invalid blinded tier evaluation score");
+      scores.set(item.armId, item.score);
+    }
+    if (arms.some((arm) => !scores.has(arm.armId)))
+      throw new Error("blinded tier evaluation omitted an arm");
+    for (const arm of arms) {
+      const gradePath = evalRoot(
+        options.cfg,
+        "replays",
+        options.replayId,
+        `${caseId}-${arm.mode}.grade.json`,
+      );
+      if (existsSync(gradePath)) continue;
+      gradeReplayImpl({
+        cfg: options.cfg,
+        replayId: options.replayId,
+        caseId,
+        mode: arm.mode,
+        score: scores.get(arm.armId)!,
+        reason: "blinded tier evaluator",
+      });
+      graded += 1;
+    }
+    if (judgment.severeSafetyFailure) severeSafetyFailures += 1;
+  }
+  return { graded, severeSafetyFailures };
+}
+
+export function gradeTierReplayAutomatically(
+  options: Parameters<typeof gradeTierReplayAutomaticallyImpl>[0],
+): ReturnType<typeof gradeTierReplayAutomaticallyImpl> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.evaluation.grade-tier-replay",
+      correlation: { replayId: safeOperationId(options.replayId) },
+      result: (result) => ({
+        outcome: result.severeSafetyFailures ? "degraded" : "success",
+        fields: result,
+      }),
+    },
+    () => gradeTierReplayAutomaticallyImpl(options),
+  );
 }
 
 export function retrievalMetrics(
@@ -1148,6 +1432,71 @@ function retrievalBenchmarkImpl(
     negativeLabels: feedback.filter(
       (item) => item.observation && item.outcome === "harmful",
     ).length,
+  };
+}
+
+export function tierRetrievalComparison(
+  cfg: MemoryConfig,
+  k = 5,
+  candidate?: Pick<MemoryRef, "memoryId" | "artifactSha256">,
+): {
+  labels: number;
+  currentRecallAtK: number;
+  tieredRecallAtK: number;
+  currentMrr: number;
+  tieredMrr: number;
+  recallRegression: number;
+} {
+  const labels = activeFeedback(cfg).filter(
+    (item) => item.observation && item.outcome === "useful",
+  );
+  const system = [...deriveTierState(cfg).values()]
+    .filter(
+      (assignment) =>
+        assignment.tier === "system" ||
+        (candidate !== undefined &&
+          assignment.memoryId === candidate.memoryId &&
+          assignment.artifactSha256 === candidate.artifactSha256 &&
+          assignment.tier === "external" &&
+          assignment.hierarchy !== "uncategorized" &&
+          assignment.redaction === "clear" &&
+          assignment.promptIntegrity === "trusted"),
+    )
+    .map((assignment) => ({
+      memoryId: assignment.memoryId,
+      artifactSha256: assignment.artifactSha256,
+    }));
+  const current = retrievalMetrics(
+    labels.map((item) => ({
+      relevant: item.relevant,
+      ranked: item.observation!.ranked,
+    })),
+    k,
+  );
+  const tiered = retrievalMetrics(
+    labels.map((item) => ({
+      relevant: item.relevant,
+      ranked: [
+        ...system,
+        ...item.observation!.ranked.filter(
+          (candidate) =>
+            !system.some(
+              (injected) =>
+                injected.memoryId === candidate.memoryId &&
+                injected.artifactSha256 === candidate.artifactSha256,
+            ),
+        ),
+      ],
+    })),
+    k,
+  );
+  return {
+    labels: labels.length,
+    currentRecallAtK: current.recallAtK,
+    tieredRecallAtK: tiered.recallAtK,
+    currentMrr: current.mrr,
+    tieredMrr: tiered.mrr,
+    recallRegression: current.recallAtK - tiered.recallAtK,
   };
 }
 
@@ -1341,6 +1690,157 @@ function sessionFiles(roots: string[]): {
   return { files: files.sort(), malformedRoots };
 }
 
+export function tierCanaryEvidence(
+  cfg: MemoryConfig & { sessions?: string[] },
+  target: Pick<MemoryRef, "memoryId" | "artifactSha256">,
+): {
+  relevantTurns: number;
+  noToolTurns: number;
+  usefulFeedback: number;
+  harmfulFeedback: number;
+  correctionRate: number;
+} {
+  const roots = cfg.sessions?.length
+    ? cfg.sessions
+    : [join(cfg.data, "pi-sessions")];
+  const seen = new Set<string>();
+  let relevantTurns = 0;
+  let noToolTurns = 0;
+  for (const path of sessionFiles(roots).files) {
+    const lines = readFileSync(path, "utf8").split("\n");
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line) as SessionMetricEntry;
+        if (
+          entry.type !== "custom" ||
+          entry.customType !== TURN_RECEIPT_ENTRY_TYPE
+        )
+          continue;
+        const receipt = parseTurnReceiptObservation(entry.data).receipt;
+        if (receipt.version !== 2 || seen.has(receipt.receiptId)) continue;
+        seen.add(receipt.receiptId);
+        if (
+          receipt.exposures.some(
+            (exposure) =>
+              exposure.kind === "system-injected" &&
+              exposure.memoryId === target.memoryId &&
+              exposure.artifactSha256 === target.artifactSha256,
+          )
+        ) {
+          relevantTurns += 1;
+          if (
+            (receipt.retrievals?.length ?? 0) === 0 &&
+            !receipt.exposures.some(
+              (exposure) =>
+                exposure.kind === "searched" || exposure.kind === "opened",
+            )
+          )
+            noToolTurns += 1;
+        }
+      } catch {}
+    }
+  }
+  const feedback = activeFeedback(cfg).filter((item) =>
+    item.relevant.some(
+      (ref) =>
+        ref.memoryId === target.memoryId &&
+        ref.artifactSha256 === target.artifactSha256,
+    ),
+  );
+  const usefulFeedback = feedback.filter(
+    (item) => item.outcome === "useful",
+  ).length;
+  const harmfulFeedback = feedback.filter(
+    (item) => item.outcome === "harmful",
+  ).length;
+  return {
+    relevantTurns,
+    noToolTurns,
+    usefulFeedback,
+    harmfulFeedback,
+    correctionRate: ratio(harmfulFeedback, relevantTurns),
+  };
+}
+
+export function tierMeasurementMetrics(
+  cfg: MemoryConfig & { sessions?: string[] },
+): Record<string, unknown> {
+  const system = [...deriveTierState(cfg).values()].filter(
+    (assignment) => assignment.tier === "system",
+  );
+  const evidence = system.map((assignment) =>
+    tierCanaryEvidence(cfg, assignment),
+  );
+  const relevantTurns = evidence.reduce(
+    (sum, item) => sum + item.relevantTurns,
+    0,
+  );
+  const noToolTurns = evidence.reduce((sum, item) => sum + item.noToolTurns, 0);
+  const harmfulFeedback = evidence.reduce(
+    (sum, item) => sum + item.harmfulFeedback,
+    0,
+  );
+  const retrieval = tierRetrievalComparison(cfg);
+  const adaptation = adaptationEvaluationMetricsImpl(cfg);
+  const exposureCounts = object(adaptation.exposures)
+    ? adaptation.exposures
+    : {};
+  const searched =
+    typeof exposureCounts.searched === "number" ? exposureCounts.searched : 0;
+  const opened =
+    typeof exposureCounts.opened === "number" ? exposureCounts.opened : 0;
+  const snapshots = join(cfg.data, "v3/session-snapshots");
+  let snapshotCount = 0;
+  let promptChars = 0;
+  let malformedSnapshots = 0;
+  if (existsSync(snapshots))
+    for (const entry of readdirSync(snapshots, { withFileTypes: true })) {
+      if (!entry.name.endsWith(".json")) continue;
+      try {
+        const path = join(snapshots, entry.name);
+        if (!entry.isFile() || entry.isSymbolicLink())
+          throw new Error("invalid tier snapshot");
+        const value: unknown = JSON.parse(readFileSync(path, "utf8"));
+        if (
+          !object(value) ||
+          value.version !== 3 ||
+          !Number.isSafeInteger(value.promptChars) ||
+          Number(value.promptChars) < 0 ||
+          typeof value.snapshotSha256 !== "string"
+        )
+          throw new Error("invalid tier snapshot");
+        const basis = { ...value };
+        delete basis.snapshotSha256;
+        if (sha256(canonical(basis)) !== value.snapshotSha256)
+          throw new Error("invalid tier snapshot digest");
+        snapshotCount += 1;
+        promptChars += Number(value.promptChars);
+      } catch {
+        malformedSnapshots += 1;
+      }
+    }
+  return {
+    version: 1,
+    systemMemories: system.length,
+    prompt: {
+      snapshots: snapshotCount,
+      averageChars: snapshotCount ? promptChars / snapshotCount : 0,
+      malformedSnapshots,
+    },
+    adherence: {
+      relevantSystemTurns: relevantTurns,
+      noToolTurns,
+      noToolRate: ratio(noToolTurns, relevantTurns),
+    },
+    retrieval: {
+      ...retrieval,
+      searchToOpenRate: ratio(opened, searched),
+    },
+    harmfulExposureRate: ratio(harmfulFeedback, relevantTurns),
+  };
+}
+
 function messageText(entry: SessionMetricEntry): string {
   if (
     entry.type !== "message" ||
@@ -1379,7 +1879,14 @@ function ratio(numerator: number, denominator: number): number {
 function adaptationEvaluationMetricsImpl(
   cfg: MemoryConfig & { sessions?: string[] },
 ): Record<string, unknown> {
-  const exposures = { injected: 0, searched: 0, opened: 0, cited: 0 };
+  const exposures = {
+    injected: 0,
+    "system-injected": 0,
+    "external-pointer": 0,
+    searched: 0,
+    opened: 0,
+    cited: 0,
+  };
   const workspaces: Record<string, number> = {};
   let nativeCheckpoints = 0;
   let coveredNativeCheckpoints = 0;
@@ -1914,6 +2421,7 @@ function memoryMetricsImpl(
     },
     maintenance: operationalMetrics(cfg, generatedAt),
     adaptationEvaluation: adaptationEvaluationMetrics(cfg),
+    tierEvaluation: tierMeasurementMetrics(cfg),
     proposals: {
       pending: pending.length,
       reviewed: reviewed.length,
@@ -2017,7 +2525,9 @@ export function gradeReplay(
       correlation: {
         replayId: safeOperationId(args[0]?.replayId),
         caseId: safeOperationId(args[0]?.caseId),
-        mode: ["memory-off", "current", "gold"].includes(args[0]?.mode)
+        mode: ["memory-off", "current", "tiered", "gold"].includes(
+          args[0]?.mode,
+        )
           ? args[0].mode
           : "invalid-mode",
       },

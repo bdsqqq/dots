@@ -11,6 +11,7 @@
     "./events": "./events.ts",
     "./evidence": "./evidence.ts",
     "./receipt": "./receipt.ts",
+    "./tiering": "./tiering.ts",
     "./adaptation": "./adaptation.ts"
   },
   "dependencies": {

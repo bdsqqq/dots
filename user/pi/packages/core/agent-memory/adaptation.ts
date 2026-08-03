@@ -476,9 +476,22 @@ function verifiedRollbackEvidenceImpl(
     receipt.reviewId !== input.reviewId ||
     receipt.proposalId !== input.proposalId ||
     !object(receipt.provenance) ||
-    receipt.provenance.reviewer !== "local-cli"
+    (receipt.provenance.reviewer !== "local-cli" &&
+      receipt.provenance.reviewer !== "tier-governor")
   )
     throw new Error("rollback evidence linkage does not match history");
+  const rollbackProvenance = receipt.provenance as Record<string, unknown>;
+  if (
+    rollbackProvenance.reviewer === "tier-governor" &&
+    (typeof rollbackProvenance.policyDecisionId !== "string" ||
+      !listHistoryByKind(cfg, "tier-decision").some(
+        ({ receipt: tierReceipt }) =>
+          object(tierReceipt.provenance) &&
+          tierReceipt.provenance.decisionId ===
+            rollbackProvenance.policyDecisionId,
+      ))
+  )
+    throw new Error("tier governor rollback policy linkage does not match");
   const catalog = scanCatalog(cfg.root);
   const refs = (side: "beforeSha256" | "afterSha256"): MemoryRef[] =>
     receipt.changes.flatMap((change) =>

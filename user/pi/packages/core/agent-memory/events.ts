@@ -26,6 +26,8 @@ export const MAINTENANCE_EVENT_KINDS = [
   "corpus-changed",
   "history-fast-forward",
   "adaptation-ready",
+  "tiering-ready",
+  "tier-eval-ready",
   "manual",
 ] as const;
 export type MaintenanceEventKind = (typeof MAINTENANCE_EVENT_KINDS)[number];
