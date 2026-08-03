@@ -76,6 +76,7 @@ in
             cfg.root
             "--incomplete-dir"
             "${cfg.root}/.incomplete"
+            "--no-portmap"
             "--rpc-bind-address"
             "127.0.0.1"
           ];
