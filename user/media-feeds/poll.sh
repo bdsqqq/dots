@@ -30,7 +30,10 @@ for metadata in "$kindle_directory"/One\ Piece\ *.sdr/metadata.cbz.lua; do
   # sidecars are data from another device. match the scalar instead of executing lua.
   if ! grep -Eq \
     '^[[:space:]]*\["status"\][[:space:]]*=[[:space:]]*"complete"[[:space:]]*,?[[:space:]]*$' \
-    "$metadata"; then
+    "$metadata" &&
+    ! grep -Eq \
+      '^[[:space:]]*\["percent_finished"\][[:space:]]*=[[:space:]]*1(\.0+)?[[:space:]]*,?[[:space:]]*$' \
+      "$metadata"; then
     continue
   fi
 
