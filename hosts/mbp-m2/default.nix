@@ -123,7 +123,6 @@ in {
   my.mediaFeeds = {
     enable = true;
     root = "/Users/bdsqqq/commonplace/03_media/one piece manga";
-    feeds = [ "not-nyaa" ];
     polling.enable = true;
   };
 
