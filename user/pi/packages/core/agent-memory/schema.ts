@@ -136,7 +136,8 @@ export type ReviewReasonCode = (typeof REVIEW_REASON_CODES)[number];
 export type MemoryMutationActor =
   | "local-cli"
   | "background-reflection"
-  | "remember-skill";
+  | "remember-skill"
+  | "tier-governor";
 
 export type ReviewReceipt = {
   version: 1;

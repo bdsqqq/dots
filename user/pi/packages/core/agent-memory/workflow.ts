@@ -48,6 +48,7 @@ import {
   headHistoryReceipt,
   initHistory,
   isHistoryInitialized,
+  listHistoryByKind,
   refreshHistory,
   syncHistory,
   verifyHistory,
@@ -60,9 +61,21 @@ import {
   listMaintenanceEvents,
   type EventBasis,
 } from "./events.js";
+import { deriveTierState, tierStateDigest } from "./tiering.js";
 
 const V2 = "v2";
 const PROMPT_VERSION = 2;
+
+function enqueueTieringAfterMutation(cfg: MemoryConfig): void {
+  const catalog = scanCatalog(cfg.root);
+  const catalogSha256 = sha256(JSON.stringify(catalog.entries));
+  const stateSha256 = tierStateDigest(deriveTierState(cfg, catalog));
+  enqueueMaintenanceEvent(cfg, {
+    kind: "tiering-ready",
+    cause: `${catalogSha256}:${stateSha256}:0`,
+    basis: { catalogSha256, stateSha256, cursor: 0 },
+  });
+}
 
 function safeOperationId(value: unknown): string {
   if (typeof value !== "string") return "invalid-id";
@@ -980,7 +993,13 @@ type Transaction = {
     originalProposalSha256: string;
     editedProposalSha256?: string;
   };
-  rollback?: { reviewId: string; reason: string; startedAt: string };
+  rollback?: {
+    reviewId: string;
+    reason: string;
+    startedAt: string;
+    actor?: "local-cli" | "tier-governor";
+    policyDecisionId?: string;
+  };
   history?: { mutationId: string; commit: string };
   rollbackHistory?: { mutationId: string; commit: string };
 };
@@ -1492,7 +1511,7 @@ function persistRollbackReceipt(
     decision: "rolled-back",
     reason: { code: "other", text: transaction.rollback.reason },
     reviewedAt: transaction.rollback.startedAt,
-    reviewer: "local-cli",
+    reviewer: transaction.rollback.actor ?? "local-cli",
     originalProposalSha256: original.originalProposalSha256,
     transactionId: transaction.id,
     ...(transaction.rollbackHistory
@@ -1805,10 +1824,13 @@ function commitTransactionHistory(
     changes: historyChanges(cfg, transaction, rollback),
     provenance: {
       reviewer: rollback
-        ? "local-cli"
+        ? (transaction.rollback?.actor ?? "local-cli")
         : (transaction.review?.reviewer ?? "local-cli"),
       reviewedAt:
         transaction.review?.reviewedAt ?? transaction.rollback?.startedAt,
+      ...(rollback && transaction.rollback?.policyDecisionId
+        ? { policyDecisionId: transaction.rollback.policyDecisionId }
+        : {}),
     },
   });
   if (rollback)
@@ -2108,10 +2130,25 @@ function rollbackReviewImpl(
   cfg: MemoryConfig,
   reviewId: string,
   reason: string,
+  actor: "local-cli" | "tier-governor" = "local-cli",
+  policyDecisionId?: string,
 ): ReviewReceipt {
   recoverTransactions(cfg);
   requireCleanHistory(cfg);
   if (!reason.trim()) throw new Error("rollback requires a reason");
+  if (actor !== "local-cli" && actor !== "tier-governor")
+    throw new Error("invalid rollback actor");
+  if (
+    actor === "tier-governor" &&
+    (typeof policyDecisionId !== "string" ||
+      !/^tierdec_[a-f0-9]{32}$/.test(policyDecisionId) ||
+      !listHistoryByKind(cfg, "tier-decision").some(
+        ({ receipt }) =>
+          object(receipt.provenance) &&
+          receipt.provenance.decisionId === policyDecisionId,
+      ))
+  )
+    throw new Error("tier governor rollback lacks a verified policy decision");
   const path = v2(cfg, "reviews", `${reviewId}.json`);
   if (!existsSync(path)) throw new Error("review not found");
   const original = JSON.parse(readFileSync(path, "utf8")) as ReviewReceipt;
@@ -2154,6 +2191,8 @@ function rollbackReviewImpl(
     reviewId: `review_${sha256(`${reviewId}:rollback:${at}`).slice(0, 24)}`,
     reason: reason.trim(),
     startedAt: at,
+    actor,
+    ...(policyDecisionId ? { policyDecisionId } : {}),
   };
   transaction.state = "rollback-prepared";
   atomicWrite(txPath, `${JSON.stringify(transaction, null, 2)}\n`);
@@ -2408,7 +2447,11 @@ export function applyMemoryProposal(
         },
       }),
     },
-    () => applyMemoryProposalImpl(...args),
+    () => {
+      const receipt = applyMemoryProposalImpl(...args);
+      enqueueTieringAfterMutation(args[0].cfg);
+      return receipt;
+    },
   );
 }
 
@@ -2469,7 +2512,11 @@ export function rollbackReview(
         },
       }),
     },
-    () => rollbackReviewImpl(...args),
+    () => {
+      const receipt = rollbackReviewImpl(...args);
+      enqueueTieringAfterMutation(args[0]);
+      return receipt;
+    },
   );
 }
 

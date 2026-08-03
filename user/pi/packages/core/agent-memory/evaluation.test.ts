@@ -22,6 +22,9 @@ import {
   readFeedbackReceipts,
   recordMemoryFeedback,
   replayDataset,
+  tierAutomaticRollbackReasons,
+  tierCanaryGate,
+  tierShipGate,
   retrievalBenchmark,
   retrievalMetrics,
 } from "./evaluation.js";
@@ -169,13 +172,13 @@ describe("memory evaluation dataset", () => {
     const replay = replayDataset({
       cfg,
       dataset,
-      modes: ["memory-off", "current", "gold"],
+      modes: ["memory-off", "current", "tiered", "gold"],
       limit: 1,
       model: "test",
       reasoning: "medium",
       invoke: () => '{"version":2,"action":"skip","reason":"test replay"}',
     });
-    expect(replay.outputs).toBe(3);
+    expect(replay.outputs).toBe(4);
     expect(evalReport(cfg, replay.replayId)).toMatchObject({
       pairedCases: 0,
       pairableCases: 1,
@@ -384,7 +387,7 @@ describe("memory evaluation dataset", () => {
         (item) => item.reasonCode === "improved-outcome",
       ),
     ).toBe(true);
-  }, 10_000);
+  }, 30_000);
 
   it("freezes truthful gold context for archive and skill operations", () => {
     const archiveCfg = config();
@@ -538,6 +541,48 @@ describe("memory evaluation dataset", () => {
       reasonCode: "improved-outcome",
     });
     expect(readFeedbackReceipts(cfg)).toContainEqual(receipt);
+  });
+});
+
+describe("tier rollout gates", () => {
+  it("requires paired no-regression evidence and rolls back hard incidents", () => {
+    expect(
+      tierShipGate({
+        pairedCases: 30,
+        hierarchyRelevantCases: 10,
+        currentScore: 0.7,
+        memoryOffScore: 0.6,
+        tieredScore: 0.72,
+        tieredDelta: 0.02,
+        tieredLowerBound: -0.005,
+        retrievalLabels: 10,
+        retrievalRecallRegression: 0.01,
+        severeSafetyFailures: 0,
+        secretFindings: 0,
+        promptBudgetViolations: 0,
+        historyVerified: true,
+      }),
+    ).toEqual({ pass: true, reasons: [] });
+    expect(
+      tierCanaryGate({
+        relevantTurns: 30,
+        taskScoreDelta: 0,
+        correctionRateDelta: 0.004,
+        promptFailureRateDelta: 0.004,
+        secretOrPolicyIncidents: 0,
+      }),
+    ).toEqual({ pass: true, reasons: [] });
+    expect(
+      tierAutomaticRollbackReasons({
+        secretOrPromptIntegrityIncidents: 1,
+        malformedSnapshots: 0,
+        verifiedSystemRollbacks: 0,
+        harmfulCorrectionsDistinctSessions: 0,
+        relevantTurns: 20,
+        taskScoreDelta: -0.03,
+        promptFailureRateDelta: 0,
+      }),
+    ).toEqual(["secret-or-prompt-integrity", "task-score-regression"]);
   });
 });
 

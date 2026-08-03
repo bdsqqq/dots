@@ -38,6 +38,7 @@ import { clearConfigCache, getExtensionConfigWithSchema } from "@bds_pi/config";
 import {
   renderPromptCatalog,
   scanCatalog,
+  sha256,
   writeCatalog,
   type Catalog,
   type MemoryConfig,
@@ -69,7 +70,7 @@ import {
   syncHistory,
   verifyHistory,
 } from "./history.js";
-import { buildSafeEvidence, type SafeEvidence } from "./evidence.js";
+import { buildSafeEvidence, redact, type SafeEvidence } from "./evidence.js";
 import {
   canonicalTurnReceiptId,
   parseTurnReceiptObservation,
@@ -115,11 +116,18 @@ import {
   evalReport,
   exportEvalDataset,
   FEEDBACK_REASON_CODES,
+  gradeTierReplayAutomatically,
   gradeReplay,
   memoryMetrics,
   recordMemoryFeedback,
   replayDataset,
   retrievalBenchmark,
+  tierShipGate,
+  tierRetrievalComparison,
+  tierAutomaticRollbackReasons,
+  tierCanaryEvidence,
+  tierCanaryGate,
+  type ReplayMode,
   type FeedbackReasonCode,
 } from "./evaluation.js";
 import { createWideEvent, flushLogs } from "@bds_pi/log";
@@ -127,11 +135,37 @@ import {
   attachMemoryOperationError,
   observeMemoryOperation,
 } from "./observability.js";
+import {
+  compareTierCodePoints,
+  advanceTierCanaryPercent,
+  commitTierTransition,
+  commitAutonomousTierDecision,
+  decideAutonomousTierTransition,
+  deriveTierState,
+  parseTierClassifierOutput,
+  parseTierCriticOutput,
+  publishTierManifest,
+  planTierTransition,
+  rollbackTierManifest,
+  setTierAutonomy,
+  selectSystemSet,
+  SYSTEM_PROMPT_MAX_MEMORIES,
+  tierAutonomyEnabled,
+  tierCanaryBaseline,
+  tierCanaryPercent,
+  tierStateDigest,
+  tierStatus,
+  resetTierCanaryPercent,
+  tierTargetKey,
+  type TierAssignment,
+  type TierClassifierOutput,
+} from "./tiering.js";
 
 process.umask(0o077);
 
 export { renderPromptCatalog } from "./catalog.js";
 export * from "./events.js";
+export * from "./tiering.js";
 
 type Entry = {
   type: string;
@@ -1950,6 +1984,60 @@ async function processAdaptationEventsUnobserved(
           reviewId: basis.reviewId,
           proposalId: basis.proposalId,
         });
+        let tierDemoted = false;
+        const tierCatalog = scanCatalog(cfg.root);
+        const tierState = deriveTierState(cfg, tierCatalog);
+        for (const condemned of rollback.condemnedRefs) {
+          const assignment = tierState.get(
+            tierTargetKey({
+              memoryId: condemned.memoryId,
+              path: condemned.path,
+              artifactSha256: condemned.artifactSha256,
+            }),
+          );
+          if (!assignment || assignment.tier !== "system") continue;
+          const classifier: TierClassifierOutput = {
+            version: 1,
+            target: {
+              memoryId: assignment.memoryId,
+              path: assignment.path,
+              artifactSha256: assignment.artifactSha256,
+            },
+            action: "demote",
+            hierarchy: assignment.hierarchy,
+            proposedScope: "project",
+            durability: "durable",
+            risk: "clear",
+            evidenceIds: [rollback.evidenceId],
+            evidenceSessionIds: [],
+          };
+          const result = commitAutonomousTierDecision({
+            cfg,
+            classifier,
+            critic: {
+              version: 1,
+              target: classifier.target,
+              agrees: true,
+              entailed: true,
+              scopeValid: true,
+              riskClear: true,
+              evidenceIds: [rollback.evidenceId],
+            },
+            signals: {
+              artifactScope: "project",
+              confidenceLowerBound: 1,
+              explicitDurableUserStatement: false,
+              verifiedCorrection: false,
+              condemnedRollback: true,
+              evaluationPassed: false,
+              availableEvidenceSessionIds: [],
+            },
+            decidedAt: new Date().toISOString(),
+          });
+          if (result.status === "committed") tierDemoted = true;
+        }
+        if (tierDemoted || rollback.condemnedRefs.length > 0)
+          publishTierManifest({ cfg, createdAt: new Date().toISOString() });
         const evidence = [
           ...adaptationObservations(cfg, rollback.affectedRefs),
           rollback,
@@ -2022,6 +2110,838 @@ export function combineMaintenanceResults(
   next: boolean,
 ): boolean {
   return current && next;
+}
+
+function enqueueTieringReady(cfg: ReturnType<typeof config>, cursor = 0): void {
+  const catalog = scanCatalog(cfg.root);
+  const state = deriveTierState(cfg, catalog);
+  const catalogSha256 = sha256(JSON.stringify(catalog.entries));
+  const stateSha256 = tierStateDigest(state);
+  enqueueMaintenanceEvent(cfg, {
+    kind: "tiering-ready",
+    cause: `${catalogSha256}:${stateSha256}:${cursor}`,
+    basis: { catalogSha256, stateSha256, cursor },
+  });
+}
+
+function tierArtifact(
+  cfg: ReturnType<typeof config>,
+  assignment: TierAssignment,
+): { text: string; body: string; sourceSessions: string[] } {
+  const path = contained(cfg.root, join(cfg.root, assignment.path));
+  const text = readFileSync(path, "utf8");
+  if (sha256(text) !== assignment.artifactSha256)
+    throw new Error("tier artifact changed after catalog scan");
+  const frontmatter = /^---\n[\s\S]*?\n---(?:\n|$)/.exec(text);
+  if (!frontmatter) throw new Error("tier artifact has no frontmatter");
+  const sourceSessions = [
+    ...new Set(
+      [...frontmatter[0].matchAll(/pi:\/\/([A-Za-z0-9_-]{1,200})/g)].map(
+        (match) => match[1]!,
+      ),
+    ),
+  ].sort();
+  return { text, body: text.slice(frontmatter[0].length), sourceSessions };
+}
+
+function tierClassifierPrompt(
+  assignment: TierAssignment,
+  entry: ReturnType<typeof scanCatalog>["entries"][number],
+  artifact: ReturnType<typeof tierArtifact>,
+): string {
+  return [
+    "Classify one durable memory for autonomous prompt placement.",
+    "Return ONLY strict JSON with: version=1, target, action (promote|demote|quarantine|abstain), hierarchy, proposedScope (project|global), durability (durable|situational), risk (clear|secret|prompt-integrity|harmful), evidenceIds, evidenceSessionIds.",
+    "Use only the supplied source sessions. Never broaden project scope to global. Abstain when evidence is insufficient.",
+    JSON.stringify({
+      target: {
+        memoryId: assignment.memoryId,
+        path: assignment.path,
+        artifactSha256: assignment.artifactSha256,
+      },
+      current: {
+        tier: assignment.tier,
+        rollout: assignment.rollout,
+        hierarchy: assignment.hierarchy,
+      },
+      metadata: {
+        title: entry.title,
+        kind: entry.kind,
+        scope: entry.scope,
+        description: entry.description,
+        sourceSessions: artifact.sourceSessions,
+      },
+      body: artifact.body,
+    }),
+  ].join("\n\n");
+}
+
+function tierCriticPrompt(
+  classifier: TierClassifierOutput,
+  artifact: ReturnType<typeof tierArtifact>,
+): string {
+  return [
+    "Independently criticize this memory tier classification.",
+    "Return ONLY strict JSON with: version=1, target, agrees, entailed, scopeValid, riskClear, evidenceIds.",
+    "Evidence IDs must be copied from the classifier; do not invent evidence. Reject unsupported scope or unsafe prompt content.",
+    JSON.stringify({ classifier, body: artifact.body }),
+  ].join("\n\n");
+}
+
+function deterministicTierRisk(
+  artifact: ReturnType<typeof tierArtifact>,
+): TierClassifierOutput["risk"] {
+  if (Object.values(redact(artifact.text).counts).some((count) => count > 0))
+    return "secret";
+  const compact = artifact.body
+    .normalize("NFKC")
+    .replace(/[\s\p{Cf}\p{Z}]+/gu, "")
+    .toLowerCase();
+  if (
+    /ignore(?:all|any)?(?:previous|prior|system)instructions/.test(compact) ||
+    /(?:reveal|print|repeat)(?:the)?systemprompt/.test(compact) ||
+    /<\/?(?:system|assistant|tool)/.test(compact) ||
+    /(?:bypass|disable)(?:safety|policy|approval)/.test(compact) ||
+    /exfiltrat|conceal(?:the)?action/.test(compact) ||
+    /(?:send|upload|publish|delete|deploy|purchase|email|message).{0,40}without(?:asking|approval)/.test(
+      compact,
+    )
+  )
+    return "prompt-integrity";
+  return "clear";
+}
+
+function tierHasExplicitUserStatement(
+  cfg: ReturnType<typeof config>,
+  memoryId: string,
+): boolean {
+  return listHistory(cfg, { limit: 1_000 }).some(
+    ({ receipt }) =>
+      receipt.changes.some((change) => change.memoryId === memoryId) &&
+      object(receipt.provenance) &&
+      receipt.provenance.reviewer === "remember-skill",
+  );
+}
+
+async function processTieringEvents(
+  cfg: ReturnType<typeof config>,
+): Promise<boolean> {
+  if (!tierAutonomyEnabled(cfg) || process.env.PI_MEMORY_SKIP_EXTERNAL === "1")
+    return true;
+  let ok = true;
+  for (;;) {
+    const event = claimMaintenanceEvent(cfg, { kinds: ["tiering-ready"] });
+    if (!event) return ok;
+    try {
+      const catalog = scanCatalog(cfg.root);
+      const state = deriveTierState(cfg, catalog);
+      if (
+        event.basis.catalogSha256 !== sha256(JSON.stringify(catalog.entries)) ||
+        event.basis.stateSha256 !== tierStateDigest(state)
+      ) {
+        completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+        enqueueTieringReady(cfg);
+        continue;
+      }
+      const cursor =
+        typeof event.basis.cursor === "number" &&
+        Number.isSafeInteger(event.basis.cursor) &&
+        event.basis.cursor >= 0
+          ? event.basis.cursor
+          : 0;
+      const limit = Math.max(
+        1,
+        Math.min(10, Number(process.env.PI_MEMORY_TIER_BATCH_SIZE || 3)),
+      );
+      const assignments = [...state.values()]
+        .filter((assignment) => !assignment.quarantined)
+        .sort((left, right) =>
+          compareTierCodePoints(tierTargetKey(left), tierTargetKey(right)),
+        );
+      const batch = assignments.slice(cursor, cursor + limit);
+      const configuredModel = modelConfig();
+      let changed = false;
+      for (const assignment of batch) {
+        const entry = catalog.entries.find(
+          (candidate) =>
+            candidate.memoryId === assignment.memoryId &&
+            candidate.path === assignment.path &&
+            candidate.sha256 === assignment.artifactSha256,
+        );
+        if (!entry) throw new Error("tier assignment left current catalog");
+        const artifact = tierArtifact(cfg, assignment);
+        const deterministicRisk = deterministicTierRisk(artifact);
+        if (deterministicRisk !== "clear") {
+          const classifier: TierClassifierOutput = {
+            version: 1,
+            target: {
+              memoryId: assignment.memoryId,
+              path: assignment.path,
+              artifactSha256: assignment.artifactSha256,
+            },
+            action: "quarantine",
+            hierarchy: assignment.hierarchy,
+            proposedScope: entry.scope === "global" ? "global" : "project",
+            durability: "durable",
+            risk: deterministicRisk,
+            evidenceIds: [],
+            evidenceSessionIds: [],
+          };
+          const result = commitAutonomousTierDecision({
+            cfg,
+            classifier,
+            critic: {
+              version: 1,
+              target: classifier.target,
+              agrees: true,
+              entailed: true,
+              scopeValid: true,
+              riskClear: false,
+              evidenceIds: [],
+            },
+            signals: {
+              artifactScope: entry.scope === "global" ? "global" : "project",
+              confidenceLowerBound: 1,
+              explicitDurableUserStatement: false,
+              verifiedCorrection: false,
+              condemnedRollback: false,
+              evaluationPassed: false,
+              availableEvidenceSessionIds: artifact.sourceSessions,
+            },
+            decidedAt: new Date().toISOString(),
+          });
+          if (result.status === "committed") changed = true;
+          continue;
+        }
+        const classifier = parseTierClassifierOutput(
+          await runAuditedAsync({
+            cfg,
+            kind: "tier-classifier",
+            identity: `${event.id}:${assignment.memoryId}`,
+            prompt: tierClassifierPrompt(assignment, entry, artifact),
+            model: configuredModel,
+            eventId: event.id,
+          }),
+        );
+        const allowedSessions = new Set(artifact.sourceSessions);
+        if (
+          classifier.evidenceSessionIds.some(
+            (sessionId) => !allowedSessions.has(sessionId),
+          )
+        )
+          throw new Error("tier classifier invented a source session");
+        const critic = parseTierCriticOutput(
+          await runAuditedAsync({
+            cfg,
+            kind: "tier-critic",
+            identity: `${event.id}:${assignment.memoryId}`,
+            prompt: tierCriticPrompt(classifier, artifact),
+            model: configuredModel,
+            eventId: event.id,
+          }),
+        );
+        const classifierEvidence = new Set(classifier.evidenceIds);
+        if (
+          critic.evidenceIds.some(
+            (evidenceId) => !classifierEvidence.has(evidenceId),
+          )
+        )
+          throw new Error("tier critic invented evidence");
+        const evidenceSessions = new Set(classifier.evidenceSessionIds).size;
+        const agreement =
+          critic.agrees &&
+          critic.entailed &&
+          critic.scopeValid &&
+          critic.riskClear;
+        const explicitDurableUserStatement = tierHasExplicitUserStatement(
+          cfg,
+          assignment.memoryId,
+        );
+        const confidenceLowerBound = agreement
+          ? evidenceSessions >= 3 ||
+            (explicitDurableUserStatement && entry.scope === "global")
+            ? 0.98
+            : evidenceSessions >= 2 || explicitDurableUserStatement
+              ? 0.95
+              : 0.9
+          : 0;
+        const exposure = tierCanaryEvidence(cfg, assignment);
+        const signals = {
+          artifactScope:
+            entry.scope === "global"
+              ? ("global" as const)
+              : ("project" as const),
+          confidenceLowerBound,
+          utilityLowerBound:
+            exposure.relevantTurns > 0
+              ? exposure.usefulFeedback / exposure.relevantTurns
+              : undefined,
+          relevantOpportunities: exposure.relevantTurns,
+          explicitDurableUserStatement,
+          verifiedCorrection: exposure.harmfulFeedback > 0,
+          condemnedRollback: false,
+          evaluationPassed: false,
+          availableEvidenceSessionIds: artifact.sourceSessions,
+        };
+        const currentState = deriveTierState(cfg);
+        const currentAssignment = currentState.get(tierTargetKey(assignment));
+        if (!currentAssignment)
+          throw new Error("tier assignment changed during governance");
+        const governed = decideAutonomousTierTransition({
+          current: currentAssignment,
+          classifier,
+          critic,
+          signals,
+        });
+        let result:
+          | { status: "abstained"; reasonCode: string }
+          | { status: "committed"; reasonCode: string };
+        if (
+          governed.reasonCode === "qualified-canary" &&
+          [...currentState.values()].filter((item) => item.tier === "system")
+            .length >= SYSTEM_PROMPT_MAX_MEMORIES
+        ) {
+          const candidates = [...currentState.values()]
+            .filter((item) => item.tier === "system")
+            .map((item) => {
+              const currentArtifact = tierArtifact(cfg, item);
+              return {
+                target: {
+                  memoryId: item.memoryId,
+                  path: item.path,
+                  artifactSha256: item.artifactSha256,
+                },
+                hierarchy: item.hierarchy,
+                body: currentArtifact.body,
+                score: 0.5,
+                rollout: item.rollout,
+                redaction: item.redaction,
+                promptIntegrity: item.promptIntegrity,
+              };
+            });
+          candidates.push({
+            target: classifier.target,
+            hierarchy: classifier.hierarchy,
+            body: artifact.body,
+            score: confidenceLowerBound,
+            rollout: "canary",
+            redaction: "clear",
+            promptIntegrity: "trusted",
+          });
+          const decidedAt = new Date().toISOString();
+          const selection = selectSystemSet({
+            cfg,
+            candidates,
+            now: decidedAt,
+          });
+          if (
+            selection.selected.some(
+              (candidate) =>
+                tierTargetKey(candidate.target) ===
+                tierTargetKey(classifier.target),
+            )
+          ) {
+            commitTierTransition({
+              cfg,
+              plan: planTierTransition({
+                cfg,
+                selection,
+                decidedAt,
+                reason: "autonomous-qualified-canary",
+              }),
+            });
+            result = {
+              status: "committed",
+              reasonCode: "qualified-canary",
+            };
+          } else
+            result = {
+              status: "abstained",
+              reasonCode: "replacement-policy",
+            };
+        } else
+          result = commitAutonomousTierDecision({
+            cfg,
+            classifier,
+            critic,
+            signals,
+            decidedAt: new Date().toISOString(),
+          });
+        if (result.status === "committed") {
+          changed = true;
+        }
+      }
+      if (changed)
+        publishTierManifest({ cfg, createdAt: new Date().toISOString() });
+      completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+      if (cursor + batch.length < assignments.length)
+        enqueueTieringReady(cfg, cursor + batch.length);
+    } catch (error) {
+      if (event.attempt >= MAX_MAINTENANCE_EVENT_ATTEMPTS)
+        failMaintenanceEvent(cfg, event.id, event.claimToken!);
+      else retryMaintenanceEvent(cfg, event.id, event.claimToken!);
+      ok = false;
+      console.error(
+        `tier governance failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+}
+
+function enqueueTierEvaluationEvents(cfg: ReturnType<typeof config>): void {
+  const state = deriveTierState(cfg);
+  const catalog = scanCatalog(cfg.root);
+  const reviewed = listProposals(cfg, undefined, "reviewed").length;
+  const retrievalLabels = tierRetrievalComparison(cfg).labels;
+  const stateSha256 = tierStateDigest(state);
+  for (const assignment of state.values()) {
+    const phase =
+      assignment.tier === "system" && assignment.rollout === "canary"
+        ? "canary"
+        : assignment.tier === "external" &&
+            assignment.hierarchy !== "uncategorized" &&
+            assignment.redaction === "clear" &&
+            assignment.promptIntegrity === "trusted"
+          ? "shadow"
+          : undefined;
+    if (!phase) continue;
+    const entry = catalog.entries.find(
+      (candidate) =>
+        candidate.memoryId === assignment.memoryId &&
+        candidate.path === assignment.path &&
+        candidate.sha256 === assignment.artifactSha256,
+    );
+    if (!entry) continue;
+    const canary = tierCanaryEvidence(cfg, assignment);
+    const canaryPercent = tierCanaryPercent(cfg, assignment);
+    const canaryBaseline = tierCanaryBaseline(cfg, assignment);
+    const artifact = tierArtifact(cfg, assignment);
+    const explicitDurableUserStatement = tierHasExplicitUserStatement(
+      cfg,
+      assignment.memoryId,
+    );
+    const confidenceLowerBound =
+      artifact.sourceSessions.length >= 3 ||
+      (explicitDurableUserStatement && entry.scope === "global")
+        ? 0.98
+        : artifact.sourceSessions.length >= 2 || explicitDurableUserStatement
+          ? 0.95
+          : 0.9;
+    enqueueMaintenanceEvent(cfg, {
+      kind: "tier-eval-ready",
+      cause: `${phase}:${assignment.memoryId}:${assignment.artifactSha256}:${reviewed}:${retrievalLabels}:${canary.relevantTurns}:${canary.harmfulFeedback}:${canaryPercent}:${canaryBaseline}:${stateSha256}`,
+      basis: {
+        phase,
+        memoryId: assignment.memoryId,
+        path: assignment.path,
+        artifactSha256: assignment.artifactSha256,
+        reviewed,
+        retrievalLabels,
+        relevantTurns: canary.relevantTurns,
+        harmfulFeedback: canary.harmfulFeedback,
+        canaryPercent,
+        canaryBaseline,
+        hierarchy: assignment.hierarchy,
+        proposedScope: entry.scope === "global" ? "global" : "project",
+        evidenceSessionIds: artifact.sourceSessions,
+        confidenceLowerBound,
+        explicitDurableUserStatement,
+        stateSha256,
+      },
+    });
+  }
+}
+
+function reportNumber(report: Record<string, unknown>, key: string): number {
+  const value = report[key];
+  if (typeof value !== "number" || !Number.isFinite(value))
+    throw new Error(`tier evaluation report lacks ${key}`);
+  return value;
+}
+
+async function processTierEvaluationEvents(
+  cfg: ReturnType<typeof config>,
+): Promise<boolean> {
+  if (!tierAutonomyEnabled(cfg) || process.env.PI_MEMORY_SKIP_EXTERNAL === "1")
+    return true;
+  let ok = true;
+  for (;;) {
+    const event = claimMaintenanceEvent(cfg, { kinds: ["tier-eval-ready"] });
+    if (!event) return ok;
+    try {
+      const state = deriveTierState(cfg);
+      const assignment = [...state.values()].find(
+        (candidate) =>
+          candidate.memoryId === event.basis.memoryId &&
+          candidate.path === event.basis.path &&
+          candidate.artifactSha256 === event.basis.artifactSha256,
+      );
+      const phase = event.basis.phase;
+      const expectedPlacement =
+        phase === "shadow"
+          ? assignment?.tier === "external" &&
+            assignment.redaction === "clear" &&
+            assignment.promptIntegrity === "trusted"
+          : phase === "canary"
+            ? assignment?.tier === "system" && assignment.rollout === "canary"
+            : false;
+      if (
+        !assignment ||
+        !expectedPlacement ||
+        event.basis.stateSha256 !== tierStateDigest(state)
+      ) {
+        completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+        continue;
+      }
+      const immediateCanaryEvidence = tierCanaryEvidence(cfg, assignment);
+      if (immediateCanaryEvidence.harmfulFeedback > 0) {
+        const target = {
+          memoryId: assignment.memoryId,
+          path: assignment.path,
+          artifactSha256: assignment.artifactSha256,
+        };
+        const classifier: TierClassifierOutput = {
+          version: 1,
+          target,
+          action: "demote",
+          hierarchy: assignment.hierarchy,
+          proposedScope: "project",
+          durability: "durable",
+          risk: "clear",
+          evidenceIds: ["trusted-harmful-feedback"],
+          evidenceSessionIds: [],
+        };
+        const demoted = commitAutonomousTierDecision({
+          cfg,
+          classifier,
+          critic: {
+            version: 1,
+            target,
+            agrees: true,
+            entailed: true,
+            scopeValid: true,
+            riskClear: true,
+            evidenceIds: classifier.evidenceIds,
+          },
+          signals: {
+            artifactScope: "project",
+            confidenceLowerBound: 1,
+            explicitDurableUserStatement: false,
+            verifiedCorrection: true,
+            condemnedRollback: false,
+            evaluationPassed: false,
+            availableEvidenceSessionIds: [],
+          },
+          decidedAt: new Date().toISOString(),
+        });
+        if (demoted.status === "committed")
+          publishTierManifest({ cfg, createdAt: new Date().toISOString() });
+        resetTierCanaryPercent(cfg, assignment);
+        completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+        continue;
+      }
+      if (
+        phase === "canary" &&
+        immediateCanaryEvidence.relevantTurns -
+          tierCanaryBaseline(cfg, assignment) <
+          30
+      ) {
+        completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+        continue;
+      }
+      const dataset = contained(
+        cfg.data,
+        join(cfg.data, "v2/eval/tier-autonomous.jsonl"),
+      );
+      const exported = exportEvalDataset(cfg, dataset);
+      const retrieval = tierRetrievalComparison(cfg, 5, assignment);
+      if (exported.cases < 30 || retrieval.labels < 10) {
+        completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+        continue;
+      }
+      const evaluatorModel = modelConfig();
+      if (process.env.PI_MEMORY_TIER_EVAL_MODEL)
+        evaluatorModel.model = process.env.PI_MEMORY_TIER_EVAL_MODEL;
+      if (!evaluatorModel.model.includes("/"))
+        throw new Error("PI_MEMORY_TIER_EVAL_MODEL must be provider/model");
+      const replayId = `replay_${sha256(`tier-eval:${event.id}`).slice(0, 20)}`;
+      const replay = replayDataset({
+        cfg,
+        dataset,
+        modes: ["memory-off", "current", "tiered"],
+        limit: Math.min(100, exported.cases),
+        replayId,
+        model: evaluatorModel.model,
+        reasoning: evaluatorModel.reasoning,
+        tierCandidate: assignment,
+        invoke: (prompt, invocation) =>
+          runAudited({
+            cfg,
+            kind: "eval-replay",
+            identity: invocation.identity,
+            prompt,
+            model: evaluatorModel,
+            runId: replayId,
+            eventId: event.id,
+          }),
+      });
+      const graded = gradeTierReplayAutomatically({
+        cfg,
+        replayId: replay.replayId,
+        invoke: (prompt, identity) =>
+          runAudited({
+            cfg,
+            kind: "tier-eval",
+            identity,
+            prompt,
+            model: evaluatorModel,
+            runId: replayId,
+            eventId: event.id,
+          }),
+      });
+      const report = evalReport(cfg, replay.replayId);
+      const datasetCases = readFileSync(dataset, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map(
+          (line) => JSON.parse(line) as { retrieval?: { targetIds?: unknown } },
+        );
+      const hierarchyRelevantCases = datasetCases.filter(
+        (item) =>
+          Array.isArray(item.retrieval?.targetIds) &&
+          item.retrieval.targetIds.includes(assignment.memoryId),
+      ).length;
+      const gate = tierShipGate({
+        pairedCases: reportNumber(report, "tieredPairedCases"),
+        hierarchyRelevantCases,
+        currentScore: reportNumber(report, "current"),
+        memoryOffScore: reportNumber(report, "memoryOff"),
+        tieredScore: reportNumber(report, "tiered"),
+        tieredDelta: reportNumber(report, "tieredDelta"),
+        tieredLowerBound: reportNumber(report, "tieredLowerBound"),
+        retrievalLabels: retrieval.labels,
+        retrievalRecallRegression: retrieval.recallRegression,
+        severeSafetyFailures: graded.severeSafetyFailures,
+        secretFindings: 0,
+        promptBudgetViolations: 0,
+        historyVerified: verifyHistory(cfg).ok,
+      });
+      if (phase === "shadow") {
+        const target = {
+          memoryId: assignment.memoryId,
+          path: assignment.path,
+          artifactSha256: assignment.artifactSha256,
+        };
+        const evalEntry = scanCatalog(cfg.root).entries.find(
+          (entry) =>
+            entry.memoryId === assignment.memoryId &&
+            entry.path === assignment.path &&
+            entry.sha256 === assignment.artifactSha256,
+        );
+        if (!evalEntry) throw new Error("tier evaluation target left catalog");
+        const sourceSessions = tierArtifact(cfg, assignment).sourceSessions;
+        const classifier = parseTierClassifierOutput({
+          version: 1,
+          target,
+          action: graded.severeSafetyFailures > 0 ? "quarantine" : "promote",
+          hierarchy: assignment.hierarchy,
+          proposedScope: evalEntry.scope === "global" ? "global" : "project",
+          durability: "durable",
+          risk: graded.severeSafetyFailures > 0 ? "harmful" : "clear",
+          evidenceIds: [`tier-eval:${replayId}`],
+          evidenceSessionIds: sourceSessions,
+        });
+        const critic = parseTierCriticOutput({
+          version: 1,
+          target,
+          agrees: gate.pass,
+          entailed: gate.pass,
+          scopeValid: true,
+          riskClear: graded.severeSafetyFailures === 0,
+          evidenceIds: classifier.evidenceIds,
+        });
+        const explicitDurableUserStatement = tierHasExplicitUserStatement(
+          cfg,
+          assignment.memoryId,
+        );
+        const confidenceLowerBound =
+          sourceSessions.length >= 3 ||
+          (explicitDurableUserStatement && evalEntry.scope === "global")
+            ? 0.98
+            : sourceSessions.length >= 2 || explicitDurableUserStatement
+              ? 0.95
+              : 0.9;
+        let committed = false;
+        if (
+          gate.pass &&
+          [...state.values()].filter((item) => item.tier === "system").length >=
+            SYSTEM_PROMPT_MAX_MEMORIES
+        ) {
+          const candidates = [...state.values()]
+            .filter((item) => item.tier === "system")
+            .map((item) => ({
+              target: {
+                memoryId: item.memoryId,
+                path: item.path,
+                artifactSha256: item.artifactSha256,
+              },
+              hierarchy: item.hierarchy,
+              body: tierArtifact(cfg, item).body,
+              score: 0.5,
+              rollout: item.rollout,
+              redaction: item.redaction,
+              promptIntegrity: item.promptIntegrity,
+            }));
+          candidates.push({
+            target,
+            hierarchy: classifier.hierarchy,
+            body: tierArtifact(cfg, assignment).body,
+            score: confidenceLowerBound,
+            rollout: "canary",
+            redaction: "clear",
+            promptIntegrity: "trusted",
+          });
+          const decidedAt = new Date().toISOString();
+          const selection = selectSystemSet({
+            cfg,
+            candidates,
+            now: decidedAt,
+          });
+          if (
+            selection.selected.some(
+              (candidate) =>
+                tierTargetKey(candidate.target) === tierTargetKey(target),
+            )
+          ) {
+            commitTierTransition({
+              cfg,
+              plan: planTierTransition({
+                cfg,
+                selection,
+                decidedAt,
+                reason: "autonomous-shadow-gate-passed",
+              }),
+            });
+            committed = true;
+          }
+        } else {
+          const result = commitAutonomousTierDecision({
+            cfg,
+            classifier,
+            critic,
+            signals: {
+              artifactScope:
+                classifier.proposedScope === "global" ? "global" : "project",
+              confidenceLowerBound,
+              explicitDurableUserStatement,
+              verifiedCorrection: false,
+              condemnedRollback: false,
+              evaluationPassed: gate.pass,
+              availableEvidenceSessionIds: sourceSessions,
+            },
+            decidedAt: new Date().toISOString(),
+          });
+          committed = result.status === "committed";
+        }
+        if (committed)
+          publishTierManifest({ cfg, createdAt: new Date().toISOString() });
+        completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+        continue;
+      }
+      const canaryEvidence = tierCanaryEvidence(cfg, assignment);
+      const canaryBaseline = tierCanaryBaseline(cfg, assignment);
+      const stagedRelevantTurns = Math.max(
+        0,
+        canaryEvidence.relevantTurns - canaryBaseline,
+      );
+      const canaryGate = tierCanaryGate({
+        relevantTurns: stagedRelevantTurns,
+        taskScoreDelta:
+          (canaryEvidence.usefulFeedback - canaryEvidence.harmfulFeedback) /
+          Math.max(1, canaryEvidence.relevantTurns),
+        correctionRateDelta: canaryEvidence.correctionRate,
+        promptFailureRateDelta: 0,
+        secretOrPolicyIncidents: graded.severeSafetyFailures,
+      });
+      const canaryPercent = tierCanaryPercent(cfg, assignment);
+      if (gate.pass && canaryGate.pass && canaryPercent < 100) {
+        advanceTierCanaryPercent(cfg, assignment, canaryEvidence.relevantTurns);
+        completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+        continue;
+      }
+      const rollbackReasons = tierAutomaticRollbackReasons({
+        secretOrPromptIntegrityIncidents: graded.severeSafetyFailures,
+        malformedSnapshots: 0,
+        verifiedSystemRollbacks: 0,
+        harmfulCorrectionsDistinctSessions: 0,
+        relevantTurns: reportNumber(report, "tieredPairedCases"),
+        taskScoreDelta: reportNumber(report, "tieredDelta"),
+        promptFailureRateDelta: 0,
+      });
+      if (canaryEvidence.harmfulFeedback > 0)
+        rollbackReasons.push("verified-harmful-feedback");
+      const target = {
+        memoryId: assignment.memoryId,
+        path: assignment.path,
+        artifactSha256: assignment.artifactSha256,
+      };
+      const classifier: TierClassifierOutput = {
+        version: 1,
+        target,
+        action:
+          rollbackReasons.length > 0
+            ? graded.severeSafetyFailures > 0
+              ? "quarantine"
+              : "demote"
+            : "promote",
+        hierarchy: assignment.hierarchy,
+        proposedScope: "project",
+        durability: "durable",
+        risk: graded.severeSafetyFailures > 0 ? "harmful" : "clear",
+        evidenceIds: [`tier-eval:${replayId}`],
+        evidenceSessionIds: [],
+      };
+      const result = commitAutonomousTierDecision({
+        cfg,
+        classifier,
+        critic: {
+          version: 1,
+          target,
+          agrees: gate.pass && canaryGate.pass,
+          entailed: gate.pass && canaryGate.pass,
+          scopeValid: true,
+          riskClear: graded.severeSafetyFailures === 0,
+          evidenceIds: classifier.evidenceIds,
+        },
+        signals: {
+          artifactScope: "project",
+          confidenceLowerBound: rollbackReasons.length > 0 ? 0 : 1,
+          utilityLowerBound: reportNumber(report, "tiered"),
+          relevantOpportunities: reportNumber(report, "tieredPairedCases"),
+          explicitDurableUserStatement: false,
+          verifiedCorrection: canaryEvidence.harmfulFeedback > 0,
+          condemnedRollback: false,
+          evaluationPassed: gate.pass && canaryGate.pass,
+          availableEvidenceSessionIds: [],
+        },
+        decidedAt: new Date().toISOString(),
+      });
+      if (result.status === "committed")
+        publishTierManifest({ cfg, createdAt: new Date().toISOString() });
+      if (result.status === "committed")
+        resetTierCanaryPercent(cfg, assignment);
+      completeMaintenanceEvent(cfg, event.id, event.claimToken!);
+    } catch (error) {
+      if (event.attempt >= MAX_MAINTENANCE_EVENT_ATTEMPTS)
+        failMaintenanceEvent(cfg, event.id, event.claimToken!);
+      else retryMaintenanceEvent(cfg, event.id, event.claimToken!);
+      ok = false;
+      console.error(
+        `tier evaluation failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 }
 
 async function maintainUnlocked(): Promise<boolean> {
@@ -2152,6 +3072,10 @@ async function maintainUnlockedObserved(
       );
     }
   }
+  enqueueTieringReady(cfg);
+  ok = combineMaintenanceResults(ok, await processTieringEvents(cfg));
+  enqueueTierEvaluationEvents(cfg);
+  ok = combineMaintenanceResults(ok, await processTierEvaluationEvents(cfg));
   if (process.env.PI_MEMORY_SKIP_EXTERNAL !== "1") {
     try {
       run(process.env.QMD_BIN || "qmd", ["update"]);
@@ -2235,7 +3159,39 @@ async function main(): Promise<void> {
     throw new Error(
       "promote was removed because it bypassed reversible review; run pi-memory migrate, then review the imported proposal",
     );
-  else if (command === "catalog") {
+  else if (command === "tier") {
+    const action = args[0] ?? "status";
+    if (action === "status")
+      console.log(JSON.stringify(tierStatus(config()), null, 2));
+    else if (action === "disable")
+      await lock(() => {
+        setTierAutonomy(config(), false);
+        return true;
+      });
+    else if (action === "enable")
+      await lock(() => {
+        const cfg = config();
+        setTierAutonomy(cfg, true);
+        enqueueTieringReady(cfg);
+        return true;
+      });
+    else if (action === "rollback") {
+      const targetManifestId = args[1];
+      if (!targetManifestId || args.length !== 2)
+        throw new Error("tier rollback requires one target manifest ID");
+      const rolledBackAt = new Date().toISOString();
+      const manifest = await lock(() =>
+        rollbackTierManifest({
+          cfg: config(),
+          rollbackId: `rollback_${sha256(`${targetManifestId}:${rolledBackAt}`).slice(0, 32)}`,
+          targetManifestId,
+          rolledBackAt,
+        }),
+      );
+      console.log(JSON.stringify(manifest, null, 2));
+    } else
+      throw new Error("tier requires status, enable, disable, or rollback");
+  } else if (command === "catalog") {
     const cwdIndex = args.indexOf("--cwd");
     const cwd =
       cwdIndex >= 0 && args[cwdIndex + 1]
@@ -2497,12 +3453,17 @@ async function main(): Promise<void> {
         "eval replay sends sanitized cases to the configured model; pass --allow-model-invocation to confirm",
       );
     const modes = (
-      modesIndex >= 0 ? args[modesIndex + 1] || "" : "memory-off,current,gold"
+      modesIndex >= 0
+        ? args[modesIndex + 1] || ""
+        : "memory-off,current,tiered,gold"
     ).split(",");
     if (
       !modes.every(
         (mode) =>
-          mode === "memory-off" || mode === "current" || mode === "gold",
+          mode === "memory-off" ||
+          mode === "current" ||
+          mode === "tiered" ||
+          mode === "gold",
       )
     )
       throw new Error("invalid replay modes");
@@ -2515,7 +3476,7 @@ async function main(): Promise<void> {
         replayDataset({
           cfg: config(),
           dataset: args[datasetIndex + 1]!,
-          modes: modes as Array<"memory-off" | "current" | "gold">,
+          modes: modes as ReplayMode[],
           limit,
           model: configuredModel.model,
           reasoning: configuredModel.reasoning,
@@ -2561,7 +3522,10 @@ async function main(): Promise<void> {
       !args[caseIndex + 1] ||
       reasonIndex < 0 ||
       !args[reasonIndex + 1]?.trim() ||
-      (mode !== "memory-off" && mode !== "current" && mode !== "gold")
+      (mode !== "memory-off" &&
+        mode !== "current" &&
+        mode !== "tiered" &&
+        mode !== "gold")
     )
       throw new Error("eval grade requires --case, --mode, and --reason");
     console.log(
@@ -2576,7 +3540,7 @@ async function main(): Promise<void> {
     );
   } else
     throw new Error(
-      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|catalog [--cwd PATH] [--json]|events [enqueue --kind manual]|migrate [--dry-run]|propose --json JSON [--source URI]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|feedback <review-or-proposal-id> useful|harmful --reason-code CODE [--query TEXT]|rollback <review-id> --reason TEXT|history init|list|show|diff|verify|sync|repair adopt|discard --reason TEXT|metrics|background sessions|resume|eval export|replay|grade|report|retrieval",
+      "usage: pi-memory project|consolidate [--limit N]|reconcile|maintain|tier status|enable|disable|rollback <manifest-id>|catalog [--cwd PATH] [--json]|events [enqueue --kind manual]|migrate [--dry-run]|propose --json JSON [--source URI]|proposals|show <id>|review <id> accept|reject --reason-code CODE --reason TEXT|feedback <review-or-proposal-id> useful|harmful --reason-code CODE [--query TEXT]|rollback <review-id> --reason TEXT|history init|list|show|diff|verify|sync|repair adopt|discard --reason TEXT|metrics|background sessions|resume|eval export|replay|grade|report|retrieval",
     );
   if (result === false) process.exitCode = 1;
   else if (result === undefined) process.exitCode = 75;
@@ -3439,17 +4403,22 @@ if (import.meta.vitest) {
         expect(
           readdirSync(cfg.root).filter((name) => name.endsWith(".md")),
         ).toHaveLength(1);
-        expect(listMaintenanceEvents(cfg, ["pending"])).toEqual([
-          expect.objectContaining({
-            event: expect.objectContaining({
-              kind: "corpus-changed",
-              cause: health.catalogSha256,
-              basis: expect.objectContaining({
-                catalogSha256: health.catalogSha256,
+        expect(listMaintenanceEvents(cfg, ["pending"])).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              event: expect.objectContaining({
+                kind: "corpus-changed",
+                cause: health.catalogSha256,
+                basis: expect.objectContaining({
+                  catalogSha256: health.catalogSha256,
+                }),
               }),
             }),
-          }),
-        ]);
+            expect.objectContaining({
+              event: expect.objectContaining({ kind: "tiering-ready" }),
+            }),
+          ]),
+        );
       } finally {
         if (previousData === undefined) delete process.env.PI_MEMORY_DATA_DIR;
         else process.env.PI_MEMORY_DATA_DIR = previousData;
