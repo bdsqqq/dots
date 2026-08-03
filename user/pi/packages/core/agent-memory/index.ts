@@ -123,6 +123,10 @@ import {
   type FeedbackReasonCode,
 } from "./evaluation.js";
 import { createWideEvent, flushLogs } from "@bds_pi/log";
+import {
+  attachMemoryOperationError,
+  observeMemoryOperation,
+} from "./observability.js";
 
 process.umask(0o077);
 
@@ -571,7 +575,7 @@ async function lock<T>(fn: () => T | Promise<T>): Promise<T | undefined> {
   }
 }
 
-function projectUnlocked(): void {
+function projectUnlockedUnobserved(): void {
   const cfg = config();
   const observationCatalog = scanCatalog(cfg.root);
   const projectionDir = contained(cfg.data, join(cfg.data, "pi-sessions"));
@@ -638,6 +642,13 @@ function projectUnlocked(): void {
       );
     }
   }
+}
+
+function projectUnlocked(): void {
+  return observeMemoryOperation(
+    { operation: "memory.checkpoint-job-publication" },
+    projectUnlockedUnobserved,
+  );
 }
 
 function isJob(value: unknown): value is Job {
@@ -799,7 +810,7 @@ async function runAuditedAsync(
     });
     return output;
   } catch (error) {
-    observation.error(error);
+    attachMemoryOperationError(observation, error);
     observation.finish("failure");
     throw error;
   }
@@ -841,7 +852,7 @@ function runAudited(options: Parameters<typeof auditedArgs>[0]): string {
     });
     return output;
   } catch (error) {
-    observation.error(error);
+    attachMemoryOperationError(observation, error);
     observation.finish("failure");
     throw error;
   }
@@ -1128,7 +1139,7 @@ type PendingWindow = {
   jobs: Array<{ job: Job; name: string }>;
 };
 
-function finalizeQueuedJob(
+function finalizeQueuedJobUnobserved(
   cfg: ReturnType<typeof config>,
   name: string,
   destination: "processed" | "failed",
@@ -1142,6 +1153,20 @@ function finalizeQueuedJob(
       throw new Error(`queue destination collision ${name}`);
     rmSync(source);
   } else renameSync(source, target);
+}
+
+function finalizeQueuedJob(
+  cfg: ReturnType<typeof config>,
+  name: string,
+  destination: "processed" | "failed",
+): void {
+  return observeMemoryOperation(
+    {
+      operation: "memory.checkpoint-job-transition",
+      fields: { checkpointJob: { status: destination } },
+    },
+    () => finalizeQueuedJobUnobserved(cfg, name, destination),
+  );
 }
 
 function failCheckpointEvent(cfg: ReturnType<typeof config>, job: Job): void {
@@ -1466,7 +1491,7 @@ function checkpointEventIds(
     .map(({ event }) => event.id);
 }
 
-function settleCheckpointClaims(
+function settleCheckpointClaimsUnobserved(
   cfg: ReturnType<typeof config>,
   claims: NonNullable<ReturnType<typeof claimMaintenanceEvent>>[],
   outcome: "complete" | "error",
@@ -1506,6 +1531,20 @@ function settleCheckpointClaims(
         }
     } else retryMaintenanceEvent(cfg, event.id, event.claimToken!);
   }
+}
+
+function settleCheckpointClaims(
+  cfg: ReturnType<typeof config>,
+  claims: NonNullable<ReturnType<typeof claimMaintenanceEvent>>[],
+  outcome: "complete" | "error",
+): void {
+  return observeMemoryOperation(
+    {
+      operation: "memory.checkpoint-settlement",
+      fields: { checkpoint: { claimCount: claims.length, status: outcome } },
+    },
+    () => settleCheckpointClaimsUnobserved(cfg, claims, outcome),
+  );
 }
 
 function reconcileCoveredCheckpointEvents(
@@ -1584,7 +1623,7 @@ async function consolidateV2Unlocked(limit: number): Promise<boolean> {
     observation.finish(result ? "success" : "degraded");
     return result;
   } catch (error) {
-    observation.error(error);
+    attachMemoryOperationError(observation, error);
     observation.finish("failure");
     throw error;
   }
@@ -1715,7 +1754,8 @@ async function consolidateV2UnlockedObserved(
   } catch (error) {
     settleCheckpointClaims(cfg, claims, "error");
     ok = false;
-    observation.error(error, {
+    attachMemoryOperationError(observation, error);
+    observation.set({
       reflection: {
         claims: claims.map((claim) => claim.id),
         status: "failed",
@@ -1817,7 +1857,9 @@ function finalizeHistorySync(
   }
 }
 
-function applyDeterministicMaintenance(cfg: ReturnType<typeof config>) {
+function applyDeterministicMaintenanceUnobserved(
+  cfg: ReturnType<typeof config>,
+) {
   let health = scanCorpusHealth(cfg);
   for (let cycle = 0; cycle < 100; cycle++) {
     const proposals = maintenanceProposals(health);
@@ -1847,6 +1889,18 @@ function applyDeterministicMaintenance(cfg: ReturnType<typeof config>) {
   throw new Error("deterministic corpus maintenance did not converge");
 }
 
+function applyDeterministicMaintenance(cfg: ReturnType<typeof config>) {
+  return observeMemoryOperation(
+    {
+      operation: "memory.deterministic-maintenance",
+      result: (report) => ({
+        fields: { maintenance: { pathologyCount: report.pathologies.length } },
+      }),
+    },
+    () => applyDeterministicMaintenanceUnobserved(cfg),
+  );
+}
+
 function adaptationObservations(
   cfg: ReturnType<typeof config>,
   affectedRefs: Array<{ memoryId: string; artifactSha256: string }>,
@@ -1872,7 +1926,7 @@ function adaptationObservations(
   ].slice(-100);
 }
 
-async function processAdaptationEvents(
+async function processAdaptationEventsUnobserved(
   cfg: ReturnType<typeof config>,
 ): Promise<boolean> {
   let ok = true;
@@ -1949,6 +2003,20 @@ async function processAdaptationEvents(
   }
 }
 
+function processAdaptationEvents(
+  cfg: ReturnType<typeof config>,
+): Promise<boolean> {
+  return observeMemoryOperation(
+    {
+      operation: "memory.adaptation-processing",
+      result: (value) => ({
+        outcome: value ? "success" : "degraded",
+      }),
+    },
+    () => processAdaptationEventsUnobserved(cfg),
+  );
+}
+
 export function combineMaintenanceResults(
   current: boolean,
   next: boolean,
@@ -1973,7 +2041,7 @@ async function maintainUnlocked(): Promise<boolean> {
     observation.finish(result ? "success" : "degraded");
     return result;
   } catch (error) {
-    observation.error(error);
+    attachMemoryOperationError(observation, error);
     observation.finish("failure");
     throw error;
   }
@@ -2018,21 +2086,40 @@ async function maintainUnlockedObserved(
   if (corpusEvent) {
     try {
       const configuredModel = modelConfig();
-      const analysis = await analyzeCorpusMaintenance({
-        cfg,
-        report: health,
-        model: configuredModel.model,
-        reasoning: configuredModel.reasoning,
-        invoke: (prompt) =>
-          runAuditedAsync({
+      const analysis = await observeMemoryOperation(
+        {
+          operation: "memory.corpus-doctor-processing",
+          correlation: { eventId: corpusEvent.id },
+          fields: { corpusDoctor: { attempt: corpusEvent.attempt } },
+          result: (result) => {
+            return {
+              outcome: result.proposals.length === 0 ? "degraded" : "success",
+              fields: {
+                corpusDoctor: {
+                  proposalCount: result.proposals.length,
+                  diagnosticCount: result.diagnostics.length,
+                },
+              },
+            };
+          },
+        },
+        () =>
+          analyzeCorpusMaintenance({
             cfg,
-            kind: "corpus-doctor",
-            identity: corpusEvent.id,
-            prompt,
-            model: configuredModel,
-            eventId: corpusEvent.id,
+            report: health,
+            model: configuredModel.model,
+            reasoning: configuredModel.reasoning,
+            invoke: (prompt) =>
+              runAuditedAsync({
+                cfg,
+                kind: "corpus-doctor",
+                identity: corpusEvent.id,
+                prompt,
+                model: configuredModel,
+                eventId: corpusEvent.id,
+              }),
           }),
-      });
+      );
       for (const diagnostic of analysis.diagnostics)
         console.error(
           `memory maintenance ${diagnostic.code} ${diagnostic.pathologyId}: ${diagnostic.message}`,
@@ -2556,7 +2643,7 @@ async function observedMain(): Promise<void> {
       command: { exitCode: exitCode ?? 0 },
     });
   } catch (error) {
-    observation.error(error);
+    attachMemoryOperationError(observation, error);
     observation.finish("failure", { command: { exitCode: 1 } });
     throw error;
   } finally {

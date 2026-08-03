@@ -9,9 +9,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { scanCatalog, sha256, type MemoryConfig } from "./catalog.js";
 import type { SafeEvidence } from "./evidence.js";
+import { withMemoryWideEventFactory } from "./observability.js";
 import { canonicalTurnReceiptId, type TurnReceipt } from "./receipt.js";
 import type { TurnObservation } from "./adaptation.js";
 import { canonicalProposalId, type Proposal } from "./schema.js";
@@ -32,6 +33,28 @@ const SECOND_WINDOW_ID = "b".repeat(64);
 type PipelineInputV4WithBasis = PipelineInputV4 & {
   supersessionBasis: NonNullable<PipelineInputV4["supersessionBasis"]>;
 };
+
+function captureWideEvents() {
+  const events: Array<{
+    operation: string;
+    finishes: Array<{ outcome: string; fields: unknown }>;
+  }> = [];
+  const factory = (options: { operation: string }) => {
+    const event: {
+      operation: string;
+      finishes: Array<{ outcome: string; fields: unknown }>;
+    } = { operation: options.operation, finishes: [] };
+    events.push(event);
+    return {
+      id: `test-${events.length}`,
+      set: vi.fn(),
+      error: vi.fn(),
+      finish: (outcome: string, fields: unknown) =>
+        event.finishes.push({ outcome, fields }),
+    };
+  };
+  return { events, factory };
+}
 
 function config(): MemoryConfig {
   const base = mkdtempSync(join(tmpdir(), "memory-pipeline-"));
@@ -1768,5 +1791,33 @@ Run the narrow verification before completion.
     ).toMatchObject({ model: "model-a", reasoning: "low" });
     expect(existsSync(join(dir, "output.json"))).toBe(false);
     expect(existsSync(join(dir, "result.json"))).toBe(false);
+  });
+
+  it("emits one bounded terminal per pipeline boundary", async () => {
+    const cfg = config();
+    const { events, factory } = captureWideEvents();
+    const [result] = await withMemoryWideEventFactory(factory, () =>
+      processPipelineBatches([
+        {
+          cfg,
+          scope: "global",
+          evidence: [evidence()],
+          model: "test",
+          skipExternal: true,
+          invoke: () => {
+            throw new Error("external invocation must remain disabled");
+          },
+        },
+      ]),
+    );
+    expect(result?.action).toBe("skip");
+    expect(events.map((event) => event.operation)).toEqual([
+      "memory.pipeline-batches",
+      "memory.pipeline-batch",
+    ]);
+    expect(events.every((event) => event.finishes.length === 1)).toBe(true);
+    expect(JSON.stringify(events)).not.toContain(
+      "external processing disabled",
+    );
   });
 });

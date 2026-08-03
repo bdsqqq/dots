@@ -8,8 +8,9 @@ import {
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
+import { withMemoryWideEventFactory } from "./observability.js";
 import {
   claimMaintenanceEvent,
   completeMaintenanceEvent,
@@ -210,5 +211,30 @@ describe("maintenance event queue", () => {
         .map(({ status }) => status)
         .sort(),
     ).toEqual(["done", "failed"]);
+  });
+
+  it("emits one enqueue terminal and ignores logging failure", () => {
+    const finishes = vi.fn();
+    const event = withMemoryWideEventFactory(
+      () => ({ id: "test", set: vi.fn(), error: vi.fn(), finish: finishes }),
+      () => enqueue(config()),
+    );
+    expect(finishes).toHaveBeenCalledOnce();
+    expect(finishes).toHaveBeenCalledWith("success", {
+      eventId: event.id,
+      attempt: 0,
+    });
+
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(
+      withMemoryWideEventFactory(
+        () => {
+          throw new Error("offline");
+        },
+        () => enqueue(config()),
+      ).id,
+    ).toMatch(/^event_/);
+    expect(stderr).toHaveBeenCalledOnce();
+    stderr.mockRestore();
   });
 });

@@ -1,3 +1,4 @@
+import { withMemoryWideEventFactory } from "./observability.js";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -715,5 +716,82 @@ describe("memory proposal review", () => {
         }),
       ),
     ).toThrow("stored proposal id does not match content");
+  });
+});
+
+describe("workflow observability", () => {
+  it("emits one terminal for proposal persistence", () => {
+    const operations: string[] = [],
+      terminals: string[] = [];
+    withMemoryWideEventFactory(
+      (options) => {
+        operations.push(options.operation);
+        return {
+          id: "workflow-test",
+          set: () => {},
+          error: () => {},
+          finish: (outcome) => terminals.push(outcome),
+        };
+      },
+      () => saveProposal(config(), proposal()),
+    );
+    expect(operations).toEqual(["memory.saveProposal"]);
+    expect(terminals).toEqual(["success"]);
+  });
+
+  it("correlates a failed proposal save without persisting its body", () => {
+    const correlations: unknown[] = [];
+    const terminals: string[] = [];
+    const invalid = proposal();
+    const proposalId = invalid.id;
+    if (invalid.operation.type !== "create") throw new Error("expected create");
+    invalid.operation.artifact.body = "unvalidated secret body";
+    expect(() =>
+      withMemoryWideEventFactory(
+        (options) => {
+          correlations.push(options.correlation);
+          return {
+            id: "failure-test",
+            set: () => {},
+            error: () => {},
+            finish: (outcome) => terminals.push(outcome),
+          };
+        },
+        () => saveProposal(config(), invalid),
+      ),
+    ).toThrow("stored proposal id does not match content");
+    expect(correlations).toEqual([{ proposalId }]);
+    expect(terminals).toEqual(["failure"]);
+    expect(JSON.stringify(correlations)).not.toContain(
+      "unvalidated secret body",
+    );
+  });
+
+  it("reports an empty recovery as skipped", () => {
+    const events: Array<{
+      operation: string;
+      terminals: Array<{ outcome: string; fields: unknown }>;
+    }> = [];
+    withMemoryWideEventFactory(
+      (options) => {
+        const event: (typeof events)[number] = {
+          operation: options.operation,
+          terminals: [],
+        };
+        events.push(event);
+        return {
+          id: "recovery-test",
+          set: () => {},
+          error: () => {},
+          finish: (outcome, fields) =>
+            event.terminals.push({ outcome, fields }),
+        };
+      },
+      () => expect(recoverTransactions(config())).toBe(0),
+    );
+    expect(
+      events.find((event) => event.operation === "memory.recoverTransactions")
+        ?.terminals,
+    ).toEqual([{ outcome: "skipped", fields: { recoveredCount: 0 } }]);
   });
 });
