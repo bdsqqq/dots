@@ -21,6 +21,7 @@ import {
 } from "./quality.js";
 export { deriveAdaptationQuality } from "./quality.js";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { observeMemoryOperation } from "./observability.js";
 
 export type MemoryConfig = {
   state: string;
@@ -316,7 +317,7 @@ function churnByPath(cfg: Pick<MemoryConfig, "data">): Map<string, number> {
   return result;
 }
 
-export function generateHotManifest(
+function generateHotManifestImpl(
   cfg: Pick<MemoryConfig, "data">,
   catalog: Catalog,
   cwd: string,
@@ -443,7 +444,7 @@ export function loadHotManifest(
   return manifest ? renderHotManifest(manifest) : undefined;
 }
 
-export function writeCatalog(
+function writeCatalogImpl(
   cfg: MemoryConfig,
   cwd: string = process.cwd(),
 ): Catalog {
@@ -472,4 +473,41 @@ export function writeCatalog(
     `<!-- pi-memory:top-of-mind:start -->\n# top of mind\n\n${top}\n<!-- pi-memory:top-of-mind:end -->\n`,
   );
   return catalog;
+}
+
+export function generateHotManifest(
+  cfg: Pick<MemoryConfig, "data">,
+  catalog: Catalog,
+  cwd: string,
+  quality: Map<string, AdaptationQuality> = new Map(),
+): HotManifest {
+  return observeMemoryOperation(
+    {
+      operation: "memory.catalog.generate-hot-manifest",
+      fields: {
+        catalogEntryCount: catalog.entries.length,
+        qualityCount: quality.size,
+      },
+      result: (manifest) => ({
+        outcome: manifest.entries.length ? "success" : "skipped",
+        fields: { entryCount: manifest.entries.length },
+      }),
+    },
+    () => generateHotManifestImpl(cfg, catalog, cwd, quality),
+  );
+}
+export function writeCatalog(
+  cfg: MemoryConfig,
+  cwd: string = process.cwd(),
+): Catalog {
+  return observeMemoryOperation(
+    {
+      operation: "memory.catalog.write",
+      result: (catalog) => ({
+        outcome: catalog.entries.length ? "success" : "skipped",
+        fields: { entryCount: catalog.entries.length },
+      }),
+    },
+    () => writeCatalogImpl(cfg, cwd),
+  );
 }

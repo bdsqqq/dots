@@ -19,6 +19,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { basename, dirname, join } from "node:path";
 import type { MemoryConfig } from "./catalog.js";
+import { observeMemoryOperation } from "./observability.js";
 
 export const MAINTENANCE_EVENT_KINDS = [
   "checkpoint-ready",
@@ -387,7 +388,7 @@ export function parseMaintenanceEvent(raw: string): MaintenanceEvent {
   return value as MaintenanceEvent;
 }
 
-export function enqueueMaintenanceEvent(
+function enqueueMaintenanceEventImpl(
   cfg: EventConfig,
   input: { kind: MaintenanceEventKind; cause: string; basis: EventBasis },
   clock: Clock = now,
@@ -445,7 +446,7 @@ export function listMaintenanceEvents(
     );
 }
 
-export function claimMaintenanceEvent(
+function claimMaintenanceEventImpl(
   cfg: EventConfig,
   options: {
     ownerPid?: number;
@@ -487,7 +488,7 @@ export function claimMaintenanceEvent(
   });
 }
 
-export function recoverMaintenanceEvents(
+function recoverMaintenanceEventsImpl(
   cfg: EventConfig,
   options: { clock?: Clock; leaseMs?: number } = {},
 ): MaintenanceEvent[] {
@@ -524,7 +525,7 @@ export function recoverMaintenanceEvents(
   });
 }
 
-export function completeMaintenanceEvent(
+function completeMaintenanceEventImpl(
   cfg: EventConfig,
   id: string,
   claimToken: string,
@@ -540,7 +541,7 @@ export function completeMaintenanceEvent(
   });
 }
 
-export function failMaintenanceEvent(
+function failMaintenanceEventImpl(
   cfg: EventConfig,
   id: string,
   claimToken: string,
@@ -556,7 +557,7 @@ export function failMaintenanceEvent(
   });
 }
 
-export function retryMaintenanceEvent(
+function retryMaintenanceEventImpl(
   cfg: EventConfig,
   id: string,
   claimToken: string,
@@ -578,4 +579,119 @@ export function retryMaintenanceEvent(
     moveSync(source, eventPath(cfg, "pending", id));
     return event;
   });
+}
+
+export function enqueueMaintenanceEvent(
+  cfg: EventConfig,
+  input: { kind: MaintenanceEventKind; cause: string; basis: EventBasis },
+  clock: Clock = now,
+): MaintenanceEvent {
+  return observeMemoryOperation(
+    {
+      operation: "memory.events.enqueue",
+      fields: { kind: input.kind },
+      result: (event) => ({
+        fields: { eventId: event.id, attempt: event.attempt },
+      }),
+    },
+    () => enqueueMaintenanceEventImpl(cfg, input, clock),
+  );
+}
+
+export function claimMaintenanceEvent(
+  cfg: EventConfig,
+  options: {
+    ownerPid?: number;
+    clock?: Clock;
+    kinds?: MaintenanceEventKind[];
+    ids?: string[];
+  } = {},
+): MaintenanceEvent | null {
+  return observeMemoryOperation(
+    {
+      operation: "memory.events.claim",
+      fields: {
+        kindCount: options.kinds?.length ?? 0,
+        idCount: options.ids?.length ?? 0,
+      },
+      result: (event) =>
+        event
+          ? { fields: { eventId: event.id, attempt: event.attempt } }
+          : { outcome: "skipped", fields: { claimed: false } },
+    },
+    () => claimMaintenanceEventImpl(cfg, options),
+  );
+}
+
+export function recoverMaintenanceEvents(
+  cfg: EventConfig,
+  options: { clock?: Clock; leaseMs?: number } = {},
+): MaintenanceEvent[] {
+  return observeMemoryOperation(
+    {
+      operation: "memory.events.recover",
+      result: (events) => ({
+        outcome: events.length ? "success" : "skipped",
+        fields: { recoveredCount: events.length },
+      }),
+    },
+    () => recoverMaintenanceEventsImpl(cfg, options),
+  );
+}
+
+export function completeMaintenanceEvent(
+  cfg: EventConfig,
+  id: string,
+  claimToken: string,
+): MaintenanceEvent {
+  return observeMemoryOperation(
+    {
+      operation: "memory.events.complete",
+      correlation: { eventId: id },
+      result: (event) => ({
+        fields: { eventId: event.id, attempt: event.attempt, status: "done" },
+      }),
+    },
+    () => completeMaintenanceEventImpl(cfg, id, claimToken),
+  );
+}
+
+export function failMaintenanceEvent(
+  cfg: EventConfig,
+  id: string,
+  claimToken: string,
+): MaintenanceEvent {
+  return observeMemoryOperation(
+    {
+      operation: "memory.events.fail",
+      correlation: { eventId: id },
+      result: (event) => ({
+        outcome: "degraded",
+        fields: { eventId: event.id, attempt: event.attempt, status: "failed" },
+      }),
+    },
+    () => failMaintenanceEventImpl(cfg, id, claimToken),
+  );
+}
+
+export function retryMaintenanceEvent(
+  cfg: EventConfig,
+  id: string,
+  claimToken: string,
+): MaintenanceEvent {
+  return observeMemoryOperation(
+    {
+      operation: "memory.events.retry",
+      correlation: { eventId: id },
+      result: (event) => ({
+        outcome: "degraded",
+        fields: {
+          eventId: event.id,
+          attempt: event.attempt,
+          status: "pending",
+        },
+      }),
+    },
+    () => retryMaintenanceEventImpl(cfg, id, claimToken),
+  );
 }

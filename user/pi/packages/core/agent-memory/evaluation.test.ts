@@ -1,3 +1,4 @@
+import { withMemoryWideEventFactory } from "./observability.js";
 import {
   mkdirSync,
   mkdtempSync,
@@ -923,5 +924,31 @@ describe("adaptation evaluation metrics", () => {
       },
       trustedGold: { observations: 0, modelDecisions: 0 },
     });
+  });
+});
+
+describe("evaluation observability", () => {
+  it("emits one failure terminal without report inputs", () => {
+    const operations: string[] = [];
+    const terminals: Array<{ outcome: string; fields: unknown }> = [];
+    expect(() =>
+      withMemoryWideEventFactory(
+        (options) => {
+          operations.push(options.operation);
+          expect(options.fields).toBeUndefined();
+          return {
+            id: "evaluation-test",
+            set: () => {},
+            error: () => {},
+            finish: (outcome, fields) => terminals.push({ outcome, fields }),
+          };
+        },
+        () => retrievalBenchmark(config(), 0),
+      ),
+    ).toThrow("invalid retrieval k");
+    expect(operations).toEqual(["memory.retrievalBenchmark"]);
+    expect(terminals).toEqual([
+      { outcome: "failure", fields: { errorType: "Error" } },
+    ]);
   });
 });
