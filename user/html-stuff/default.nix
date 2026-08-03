@@ -2,15 +2,30 @@
 let
   commonplace = config.my.paths.commonplace;
   root = "${commonplace}/01_files/html_stuff";
-  source = pkgs.writeText "html-stuff-server.py" (builtins.readFile ./server.py);
+  source = pkgs.writeText "html-stuff-server.ts" (builtins.readFile ./server.ts);
   server = pkgs.writeShellApplication {
     name = "html-stuff-server";
     runtimeInputs = [
-      pkgs.python3
+      pkgs.bun
       pkgs.tailscale
     ];
     text = ''
-      exec python3 ${source} "$@"
+      bun_pid=""
+      cleanup() {
+        tailscale serve --http=8765 off >/dev/null 2>&1 || true
+        if [[ -n "$bun_pid" ]] && kill -0 "$bun_pid" 2>/dev/null; then
+          kill "$bun_pid"
+          wait "$bun_pid" 2>/dev/null || true
+        fi
+      }
+      trap cleanup EXIT
+      trap 'exit 143' TERM
+      trap 'exit 130' INT
+
+      bun run ${source} "$@" &
+      bun_pid=$!
+      tailscale serve --bg --yes --http=8765 http://127.0.0.1:8766
+      wait "$bun_pid"
     '';
   };
 in {
@@ -30,7 +45,7 @@ in {
           "--directory"
           root
           "--port"
-          "8765"
+          "8766"
         ];
         RunAtLoad = true;
         KeepAlive = true;
