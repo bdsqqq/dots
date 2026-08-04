@@ -23,6 +23,10 @@
         "./packages/core/agent-memory/evidence.ts"
       ],
       "@bds_pi/pi-memory/receipt": ["./packages/core/agent-memory/receipt.ts"],
+      "@bds_pi/pi-memory/tiering": ["./packages/core/agent-memory/tiering.ts"],
+      "@bds_pi/pi-memory/observability": [
+        "./packages/core/agent-memory/observability.ts"
+      ],
       "@bds_pi/*": [
         "./packages/core/*/index.ts",
         "./packages/extensions/*/index.ts"

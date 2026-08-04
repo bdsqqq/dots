@@ -63,8 +63,8 @@ import {
   tierTargetKey,
   type TierAssignment,
   type TierHierarchy,
-} from "../../core/agent-memory/tiering.js";
-import { attachMemoryOperationError } from "../../core/agent-memory/observability.js";
+} from "@bds_pi/pi-memory/tiering";
+import { attachMemoryOperationError } from "@bds_pi/pi-memory/observability";
 
 const HOME = homedir();
 const QUERY_MAX_CHARS = 512;

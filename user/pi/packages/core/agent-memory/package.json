@@ -12,6 +12,7 @@
     "./evidence": "./evidence.ts",
     "./receipt": "./receipt.ts",
     "./tiering": "./tiering.ts",
+    "./observability": "./observability.ts",
     "./adaptation": "./adaptation.ts"
   },
   "dependencies": {

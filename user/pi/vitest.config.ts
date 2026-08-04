@@ -26,6 +26,12 @@ export default defineConfig({
       "@bds_pi/pi-memory/receipt": resolve(
         "packages/core/agent-memory/receipt.ts",
       ),
+      "@bds_pi/pi-memory/tiering": resolve(
+        "packages/core/agent-memory/tiering.ts",
+      ),
+      "@bds_pi/pi-memory/observability": resolve(
+        "packages/core/agent-memory/observability.ts",
+      ),
       ...collectAliases("packages/core"),
       ...collectAliases("packages/extensions"),
     },
