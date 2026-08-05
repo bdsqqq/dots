@@ -43,6 +43,11 @@ in
 
   boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
 
+  nix.gc = {
+    dates = "daily";
+    options = "--delete-older-than 3d";
+  };
+
   systemd.services.home-manager-bdsqqq = {
     requires = [ "mnt-storage\\x2d01.mount" ];
     after = [ "mnt-storage\\x2d01.mount" ];
