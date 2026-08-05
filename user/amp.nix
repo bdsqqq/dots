@@ -1,4 +1,10 @@
-{ ... }:
+{ config, ... }:
+let
+  # This host is the composition point; Amp remains a capture adapter while
+  # the installed pi-memory service owns every semantic pipeline stage.
+  enableLocalMemory =
+    (config.networking.localHostName or "") == "mbp-m2";
+in
 {
   home-manager.users.bdsqqq =
     { config, lib, pkgs, ... }:
@@ -8,6 +14,11 @@
         url = "https://ampcode.com/install.sh";
         hash = "sha256-TOq3GvT1oSbY/+DhrzsG8hC+Z+rpPI5Fg3k6UgZPwuI=";
       };
+      memoryPlugin = pkgs.runCommand "amp-pi-memory-plugin" { } ''
+        mkdir -p "$out/plugins" "$out/lib"
+        cp "${./amp/plugins/pi-memory.ts}" "$out/plugins/pi-memory.ts"
+        cp "${./amp/lib/pi-memory-adapter.ts}" "$out/lib/pi-memory-adapter.ts"
+      '';
     in
     {
       custom.path.segments = [
@@ -24,5 +35,14 @@
           "${pkgs.bash}/bin/bash" "${installer}"
         fi
       '';
+
+      home.file.".config/amp/plugins/pi-memory.ts" =
+        lib.mkIf enableLocalMemory {
+          source = "${memoryPlugin}/plugins/pi-memory.ts";
+        };
+      home.file.".config/amp/lib/pi-memory-adapter.ts" =
+        lib.mkIf enableLocalMemory {
+          source = "${memoryPlugin}/lib/pi-memory-adapter.ts";
+        };
     };
 }

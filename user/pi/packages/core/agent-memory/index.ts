@@ -616,7 +616,13 @@ function projectUnlockedUnobserved(): void {
   const pending = contained(cfg.data, join(cfg.data, "queue/pending"));
   const quarantine = contained(cfg.data, join(cfg.data, "quarantine"));
   [cfg.state, cfg.data, projectionDir, pending, quarantine].forEach(secureDir);
-  const sources = [...new Set(cfg.sessions.flatMap(walkJsonl))];
+  const sources = [
+    ...new Set(
+      // Amp sessions are untrusted checkpoint-v2 ingress and pass through the
+      // same parser, quarantine, and evidence validation as native sessions.
+      [...cfg.sessions, join(cfg.data, "amp-sessions")].flatMap(walkJsonl),
+    ),
+  ];
   const claimedSessions = new Map<string, { source: string; digest: string }>();
   for (const source of sources) {
     try {
@@ -3701,6 +3707,58 @@ if (import.meta.vitest) {
           ["PI_MEMORY_DATA_DIR", previous.data],
           ["PI_CODING_AGENT_SESSION_DIR", previous.sessions],
           ["PI_MEMORY_SESSION_DIR", previous.audit],
+        ] as const)
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+      }
+    });
+
+    it("projects Amp adapter sessions through the native checkpoint queue", () => {
+      const base = mkdtempSync(join(tmpdir(), "pi-memory-amp-adapter-"));
+      const data = join(base, "data");
+      const sessions = join(base, "sessions");
+      const state = join(base, "state");
+      const root = join(base, "memories");
+      const ampSessions = join(data, "amp-sessions");
+      mkdirSync(sessions, { recursive: true });
+      mkdirSync(ampSessions, { recursive: true });
+      const fixture = readFileSync(
+        new URL("./test-fixtures/amp-checkpoint-v2.jsonl", import.meta.url),
+        "utf8",
+      );
+      const rows = fixture
+        .trim()
+        .split("\n")
+        .map((row) => JSON.parse(row)) as [Header, ...Entry[]];
+      const sessionId = rows[0].id;
+      const checkpointId = rows.at(-1)!.id;
+      writeFileSync(join(ampSessions, `${sessionId}.jsonl`), fixture);
+      const previous = {
+        data: process.env.PI_MEMORY_DATA_DIR,
+        root: process.env.PI_MEMORY_ROOT,
+        sessions: process.env.PI_CODING_AGENT_SESSION_DIR,
+        state: process.env.PI_MEMORY_STATE_DIR,
+      };
+      process.env.PI_MEMORY_DATA_DIR = data;
+      process.env.PI_MEMORY_ROOT = root;
+      process.env.PI_CODING_AGENT_SESSION_DIR = sessions;
+      process.env.PI_MEMORY_STATE_DIR = state;
+      try {
+        projectUnlocked();
+        expect(
+          readFileSync(join(data, `pi-sessions/${sessionId}.md`), "utf8"),
+        ).toContain("remember this");
+        expect(
+          existsSync(
+            join(data, `queue/pending/${sessionId}--${checkpointId}.json`),
+          ),
+        ).toBe(true);
+      } finally {
+        for (const [key, value] of [
+          ["PI_MEMORY_DATA_DIR", previous.data],
+          ["PI_MEMORY_ROOT", previous.root],
+          ["PI_CODING_AGENT_SESSION_DIR", previous.sessions],
+          ["PI_MEMORY_STATE_DIR", previous.state],
         ] as const)
           if (value === undefined) delete process.env[key];
           else process.env[key] = value;
