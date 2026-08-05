@@ -4,5 +4,5 @@
   "singleQuote": false,
   "printWidth": 80,
   "sortPackageJson": true,
-  "ignorePatterns": ["**/node_modules/**", "**/dist/**"]
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**", "settings.json"]
 }
