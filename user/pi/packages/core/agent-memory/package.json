@@ -18,7 +18,7 @@
   "dependencies": {
     "@bds_pi/config": "workspace:*",
     "@bds_pi/log": "workspace:*",
-    "@letta-ai/trajectory": "https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83"
+    "@letta-ai/trajectory": "0.2.1"
   },
   "devDependencies": {
     "vitest": "^3.0.0"

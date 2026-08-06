@@ -66,7 +66,6 @@ in
           export PATH="${
             lib.makeBinPath (
               [
-                pkgs.bun
                 pkgs.nodejs
                 pkgs.pnpm
                 pkgs.python3
