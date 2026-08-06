@@ -11,6 +11,7 @@
     ../user/path-order.nix
     ../user/shell.nix
     ../user/ssh.nix
+    ../user/btop
     ../user/homebrew.nix
     ../user/node-pnpm
     ../user/sdkman.nix

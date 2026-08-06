@@ -65,7 +65,8 @@ let
       echo "wikiman-update: installed $(basename "$url")"
     '';
   };
-in {
+in
+{
   options.my.hardware.gpu.vendors = lib.mkOption {
     type = with lib.types; listOf (enum [ "amd" "intel" "nvidia" ]);
     default = [ ];
@@ -126,7 +127,6 @@ in {
         fd
         bat
         eza
-        btop
         ctop
         lazydocker
         curl
