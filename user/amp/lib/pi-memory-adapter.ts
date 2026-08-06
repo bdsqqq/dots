@@ -7,6 +7,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -266,4 +267,46 @@ export function publishAmpMemorySession(
     closeSync(directoryFd);
   }
   return "created";
+}
+
+/** Publishes a level-triggered request that survives an already-running job. */
+export function publishMaintenanceWake(root: string, token: string): void {
+  if (!token || token.length > 256) throw new Error("invalid maintenance token");
+  const directory = resolve(root);
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const target = join(directory, "wake");
+  const temporary = join(
+    directory,
+    `.wake.${process.pid}.${Date.now()}.tmp`,
+  );
+  const fd = openSync(
+    temporary,
+    constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
+    0o600,
+  );
+  try {
+    writeFileSync(fd, `${token}\n`);
+    fsyncSync(fd);
+  } catch (error) {
+    try {
+      unlinkSync(temporary);
+    } catch {}
+    throw error;
+  } finally {
+    closeSync(fd);
+  }
+  try {
+    renameSync(temporary, target);
+    const directoryFd = openSync(directory, constants.O_RDONLY);
+    try {
+      fsyncSync(directoryFd);
+    } finally {
+      closeSync(directoryFd);
+    }
+  } catch (error) {
+    try {
+      unlinkSync(temporary);
+    } catch {}
+    throw error;
+  }
 }
