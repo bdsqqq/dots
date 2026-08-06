@@ -28,6 +28,7 @@ in
     ../../bundles/base.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
+    ../../user/amp.nix
     ./hardware-configuration.nix
   ];
 
@@ -199,6 +200,7 @@ in
   i18n.defaultLocale = "en_US.UTF-8";
 
   environment.systemPackages = with pkgs; [
+    btop
     curl
     ethtool
     git
@@ -206,6 +208,7 @@ in
     jq
     ripgrep
     tree
+    zmx
   ];
 
   nixpkgs.config.allowUnfree = true;

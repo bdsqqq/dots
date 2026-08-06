@@ -30,6 +30,7 @@ in
     ../../bundles/headless.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
+    ../../user/amp.nix
   ]) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix)
     [ ./hardware-configuration.nix ];
 
@@ -206,7 +207,14 @@ in
     device = "/dev/sda";
   };
 
-  environment.systemPackages = with pkgs; [ git curl htop tree ];
+  environment.systemPackages = with pkgs; [
+    btop
+    curl
+    git
+    htop
+    tree
+    zmx
+  ];
 
   services.qemuGuest.enable = true;
 
