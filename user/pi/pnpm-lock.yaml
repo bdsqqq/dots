@@ -21,7 +21,7 @@ catalogs:
 
 patchedDependencies:
   '@earendil-works/gondolin@0.7.0': eeb485ec88228fbf91ecd939b1906bd4c448e7d6bf3f4fc8eeefcb83bdb5e0d3
-  '@letta-ai/trajectory@0.2.0': f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157
+  '@letta-ai/trajectory@0.2.1': f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157
   remend@1.3.0: 3ec9805a16100c22936ce1f4d6c4373fdb3da196b0b3abaf2f5173c6e7716c0a
 
 importers:
@@ -90,8 +90,8 @@ importers:
         specifier: workspace:*
         version: link:../log
       '@letta-ai/trajectory':
-        specifier: https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83
-        version: https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)
+        specifier: 0.2.1
+        version: 0.2.1(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)
     devDependencies:
       vitest:
         specifier: ^3.0.0
@@ -1723,9 +1723,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@letta-ai/trajectory@https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83':
-    resolution: {gitHosted: true, integrity: sha512-lkE8NEVpYPMc3+0r2ClRIVobm0E9tAExbzZwt3jicycm0g3Ld3rt1uzgGiqh4vNASfALWsKupnSJvfPZ+tuuiw==, tarball: https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83}
-    version: 0.2.0
+  '@letta-ai/trajectory@0.2.1':
+    resolution: {integrity: sha512-0zHue8yPZAZwv5rnnnyo1cy9K5hcthJ0dEGRVjkihJ2zujKslQOKM1GcXJDZXVM3ME9txq7ZMSLLZYoLmzjnKA==}
     engines: {node: '>=20'}
 
   '@mariozechner/clipboard-darwin-arm64@0.3.9':
@@ -4291,7 +4290,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@letta-ai/trajectory@https://codeload.github.com/letta-ai/trajectory/tar.gz/a665556089d6a3c59f5806ee109b4d36f6c2ac83(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)': {}
+  '@letta-ai/trajectory@0.2.1(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)': {}
 
   '@mariozechner/clipboard-darwin-arm64@0.3.9':
     optional: true
