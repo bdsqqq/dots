@@ -16,6 +16,7 @@ export { default as hark } from "../packages/extensions/hark/index";
 export { default as librarian } from "../packages/extensions/librarian/index";
 export { default as lookAt } from "../packages/extensions/look-at/index";
 export { default as ls } from "../packages/extensions/ls/index";
+export { default as nestedAgents } from "../packages/extensions/nested-agents/index";
 export { default as oracle } from "../packages/extensions/oracle/index";
 export { default as read } from "../packages/extensions/read/index";
 export { default as readSession } from "../packages/extensions/read-session/index";
