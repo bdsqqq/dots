@@ -13,7 +13,7 @@ if ! cmux ping >/dev/null 2>&1; then
   exit 1
 fi
 
-workspaces=$(cmux list-workspaces --json)
+workspaces=$(cmux workspace list --json)
 created=0
 present=0
 missing=0
@@ -35,7 +35,7 @@ while IFS= read -r workspace; do
   fi
 
   layout=$(jq -c '.layout' <<<"$workspace")
-  args=(new-workspace --name "$name" --layout "$layout" --focus false)
+  args=(workspace create --name "$name" --layout "$layout" --focus false)
 
   cwd=$(jq -r '.cwd // empty' <<<"$workspace")
   if [[ -n $cwd ]]; then
