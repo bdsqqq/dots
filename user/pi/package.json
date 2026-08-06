@@ -86,6 +86,7 @@
       "./dist/extensions/librarian.js",
       "./dist/extensions/look-at.js",
       "./dist/extensions/ls.js",
+      "./dist/extensions/nested-agents.js",
       "./dist/extensions/oracle.js",
       "./dist/extensions/read.js",
       "./dist/extensions/read-session.js",
