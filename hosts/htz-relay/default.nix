@@ -208,7 +208,6 @@ in
   };
 
   environment.systemPackages = with pkgs; [
-    btop
     curl
     git
     htop
