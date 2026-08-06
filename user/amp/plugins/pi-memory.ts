@@ -4,13 +4,12 @@ import { join, resolve } from "node:path";
 import {
   adaptAmpTurn,
   publishAmpMemorySession,
+  publishMaintenanceWake,
 } from "../lib/pi-memory-adapter.ts";
 
 export const description =
   "Feeds settled local Amp turns into the Pi-owned memory pipeline.";
 
-const SETTLE_DELAY_MS = 1_000;
-const LAUNCH_AGENT = "org.nix-community.home.pi-memory";
 const memoryDataRoot = (): string =>
   resolve(
     (
@@ -21,28 +20,6 @@ const memoryDataRoot = (): string =>
 
 export default function piMemoryPlugin(amp: PluginAPI): void {
   if (amp.system.executor.kind !== "local") return;
-
-  let wakeTimer: ReturnType<typeof setTimeout> | undefined;
-  const scheduleMaintenance = (): void => {
-    if (wakeTimer !== undefined) clearTimeout(wakeTimer);
-    wakeTimer = setTimeout(async () => {
-      wakeTimer = undefined;
-      try {
-        const result =
-          await amp.$`/bin/launchctl start ${LAUNCH_AGENT}`;
-        if (result.exitCode !== 0)
-          amp.logger.log(
-            `pi-memory wake failed (${result.exitCode}): ${result.stderr}`,
-          );
-      } catch (error) {
-        amp.logger.log(
-          `pi-memory wake failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }, SETTLE_DELAY_MS);
-  };
 
   amp.on("agent.end", (event) => {
     try {
@@ -61,7 +38,10 @@ export default function piMemoryPlugin(amp: PluginAPI): void {
         join(memoryDataRoot(), "amp-sessions"),
         session,
       );
-      scheduleMaintenance();
+      publishMaintenanceWake(
+        join(homedir(), ".local/state/pi-memory"),
+        session.id,
+      );
     } catch (error) {
       amp.logger.log(
         `Amp memory adapter failed: ${
@@ -69,9 +49,5 @@ export default function piMemoryPlugin(amp: PluginAPI): void {
         }`,
       );
     }
-  });
-
-  amp.onDispose(() => {
-    if (wakeTimer !== undefined) clearTimeout(wakeTimer);
   });
 }

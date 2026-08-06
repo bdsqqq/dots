@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   adaptAmpTurn,
   publishAmpMemorySession,
+  publishMaintenanceWake,
 } from "./pi-memory-adapter.ts";
 
 const temporaryDirectories: string[] = [];
@@ -158,5 +159,15 @@ describe("Amp memory adapter", () => {
         jsonl: `${session.jsonl}changed\n`,
       }),
     ).toThrow("identity collision");
+  });
+
+  it("atomically replaces the durable maintenance wake", () => {
+    const directory = mkdtempSync(join(tmpdir(), "amp-memory-wake-"));
+    temporaryDirectories.push(directory);
+
+    publishMaintenanceWake(directory, "first");
+    publishMaintenanceWake(directory, "second");
+
+    expect(readFileSync(join(directory, "wake"), "utf8")).toBe("second\n");
   });
 });

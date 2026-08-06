@@ -51,7 +51,14 @@ in
         ProgramArguments = [ "${agentMemory}/bin/pi-memory" "maintain" ];
         RunAtLoad = true;
         StartInterval = 3600;
+        KeepAlive = {
+          PathState = {
+            "${config.home.homeDirectory}/.local/state/pi-memory/wake" = true;
+            "${config.home.homeDirectory}/.local/state/pi-memory/wake.claimed" = true;
+          };
+        };
         ProcessType = "Background";
+        ThrottleInterval = 60;
         StandardOutPath = "${config.home.homeDirectory}/Library/Logs/pi-memory.log";
         StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/pi-memory.log";
       };

@@ -3132,6 +3132,33 @@ function wakeMaintenance(): void {
   child.unref();
 }
 
+type MaintenanceWakeConfig = { state: string };
+
+function claimMaintenanceWake(cfg: MaintenanceWakeConfig): string | undefined {
+  secureDir(cfg.state);
+  const wake = contained(cfg.state, join(cfg.state, "wake"));
+  const claim = contained(cfg.state, join(cfg.state, "wake.claimed"));
+  try {
+    renameSync(wake, claim);
+    return claim;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    return existsSync(claim) ? claim : undefined;
+  }
+}
+
+async function withMaintenanceWake<T>(
+  cfg: MaintenanceWakeConfig,
+  runMaintenance: () => T | Promise<T>,
+): Promise<T> {
+  const claim = claimMaintenanceWake(cfg);
+  try {
+    return await runMaintenance();
+  } finally {
+    if (claim) rmSync(claim, { force: true });
+  }
+}
+
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   const option = (name: string): string | undefined => {
@@ -3160,7 +3187,8 @@ async function main(): Promise<void> {
       reconcile();
       return true;
     });
-  else if (command === "maintain") result = await lock(maintainUnlocked);
+  else if (command === "maintain")
+    result = await lock(() => withMaintenanceWake(config(), maintainUnlocked));
   else if (command === "promote")
     throw new Error(
       "promote was removed because it bypassed reversible review; run pi-memory migrate, then review the imported proposal",
@@ -3640,6 +3668,32 @@ if (import.meta.vitest) {
     it("does not overwrite an earlier maintenance failure", () => {
       expect(combineMaintenanceResults(false, true)).toBe(false);
       expect(combineMaintenanceResults(true, false)).toBe(false);
+    });
+
+    it("keeps a newer maintenance wake published during a run", async () => {
+      const state = mkdtempSync(join(tmpdir(), "pi-memory-wake-"));
+      atomic(join(state, "wake"), "old\n");
+
+      await withMaintenanceWake({ state }, () => {
+        atomic(join(state, "wake"), "new\n");
+      });
+
+      expect(readFileSync(join(state, "wake"), "utf8")).toBe("new\n");
+      expect(existsSync(join(state, "wake.claimed"))).toBe(false);
+    });
+
+    it("consumes a claimed wake after a failed attempt", async () => {
+      const state = mkdtempSync(join(tmpdir(), "pi-memory-wake-failure-"));
+      atomic(join(state, "wake"), "request\n");
+
+      await expect(
+        withMaintenanceWake({ state }, () => {
+          throw new Error("maintenance failed");
+        }),
+      ).rejects.toThrow("maintenance failed");
+
+      expect(existsSync(join(state, "wake"))).toBe(false);
+      expect(existsSync(join(state, "wake.claimed"))).toBe(false);
     });
 
     it("loads multiple session roots from global config", () => {
