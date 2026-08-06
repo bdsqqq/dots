@@ -1,10 +1,10 @@
-{ lib, pkgs, hostSystem ? null, ... }:
+{ config, lib, pkgs, hostSystem ? null, ... }:
 
 if !(lib.hasInfix "darwin" hostSystem) then
   { }
 else
   let
-    cmuxConfig = pkgs.writeText "cmux.json" (builtins.readFile ./cmux.json);
+    cmuxConfig = "${config.my.paths.commonplace}/01_files/nix/system/cmux.json";
     cmuxFleetSource = pkgs.writeText "cmux-fleet.sh" (builtins.readFile ./cmux-fleet.sh);
     cmuxCli = pkgs.runCommand "cmux-cli" { } ''
       mkdir -p "$out/bin"
@@ -33,5 +33,10 @@ else
       casks = [ "cmux" ];
     };
 
-    home-manager.users.bdsqqq.home.file.".config/cmux/cmux.json".source = cmuxConfig;
+    home-manager.users.bdsqqq = { config, ... }: {
+      home.file.".config/cmux/cmux.json" = {
+        source = config.lib.file.mkOutOfStoreSymlink cmuxConfig;
+        force = true;
+      };
+    };
   }
