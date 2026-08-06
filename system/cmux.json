@@ -1,0 +1,84 @@
+{
+  "$schema": "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json",
+  "schemaVersion": 1,
+  "workspaceColors": {
+    "notificationBadgeColor": null,
+    "selectionColor": null
+  },
+  "commands": [
+    {
+      "name": "r56",
+      "keywords": ["cmux-fleet"],
+      "restart": "ignore",
+      "workspace": {
+        "name": "r56",
+        "layout": {
+          "direction": "horizontal",
+          "split": 0.5,
+          "children": [
+            {
+              "pane": {
+                "surfaces": [
+                  {
+                    "type": "terminal",
+                    "name": "btop",
+                    "command": "exec ssh -t r56 \"tmux new-session -A -s cmux-btop 'exec btop'\"",
+                    "focus": true
+                  }
+                ]
+              }
+            },
+            {
+              "pane": {
+                "surfaces": [
+                  {
+                    "type": "terminal",
+                    "name": "amp",
+                    "command": "exec ssh -t r56 \"tmux new-session -A -s cmux-amp 'exec amp --no-tui --remote-control'\""
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "lgo-z2e",
+      "keywords": ["cmux-fleet"],
+      "restart": "ignore",
+      "workspace": {
+        "name": "lgo-z2e",
+        "layout": {
+          "direction": "horizontal",
+          "split": 0.5,
+          "children": [
+            {
+              "pane": {
+                "surfaces": [
+                  {
+                    "type": "terminal",
+                    "name": "btop",
+                    "command": "exec ssh -t lgo-z2e \"tmux new-session -A -s cmux-btop 'exec btop'\"",
+                    "focus": true
+                  }
+                ]
+              }
+            },
+            {
+              "pane": {
+                "surfaces": [
+                  {
+                    "type": "terminal",
+                    "name": "amp",
+                    "command": "exec ssh -t lgo-z2e \"tmux new-session -A -s cmux-amp 'exec amp --no-tui --remote-control'\""
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
