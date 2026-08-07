@@ -1,0 +1,46 @@
+name: sync Tailscale policy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tailscale/policy.hujson
+      - .github/workflows/tailscale-policy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tailscale-policy
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Reject stale revisions
+        run: |
+          set -euo pipefail
+          current="$(
+            git ls-remote https://github.com/bdsqqq/dots.git refs/heads/main |
+              cut -f1
+          )"
+          if [[ "${GITHUB_SHA}" != "${current}" ]]; then
+            echo "Refusing to apply stale policy ${GITHUB_SHA}; main is ${current}."
+            exit 1
+          fi
+
+      - name: Validate and apply policy
+        uses: tailscale/gitops-acl-action@5a4a17f5708e9bf96f4ee915a95e9f83c2eebe1a # v1
+        with:
+          action: apply
+          audience: ${{ vars.TS_AUDIENCE }}
+          oauth-client-id: ${{ vars.TS_OAUTH_ID }}
+          policy-file: tailscale/policy.hujson
+          tailnet: ${{ vars.TS_TAILNET }}

@@ -1,0 +1,27 @@
+{
+	"grants": [
+		// The owner can reach their devices and use exit nodes.
+		{
+			"src": ["autogroup:owner"],
+			"dst": ["autogroup:owner", "autogroup:internet"],
+			"ip":  ["*"],
+		},
+
+		// Invited members can reach their own devices, but not each other's.
+		{
+			"src": ["autogroup:member"],
+			"dst": ["autogroup:self"],
+			"ip":  ["*"],
+		},
+	],
+
+	"ssh": [
+		// Members can only Tailscale SSH into their own devices.
+		{
+			"action": "check",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+}
