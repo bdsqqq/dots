@@ -89,6 +89,7 @@
 
 **/.stfolder/
 **/.stversions/
+**/.syncthing-conflicts/
 
 **/result/
 **/result-*

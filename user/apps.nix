@@ -12,7 +12,10 @@ in lib.mkIf (headMode == "graphical") {
         rclone
         qpdf
         inputs.lnr.packages.${hostSystem}.default
-      ] ++ lib.optionals isDarwin [ iina ] ++ lib.optionals (!isDarwin) [
+      ] ++ lib.optionals isDarwin [
+        axiom-cli
+        iina
+      ] ++ lib.optionals (!isDarwin) [
         transmission_4 # fmt-9.1.0 fails to compile on darwin with newer clang
         dbeaver-bin
         vlc
