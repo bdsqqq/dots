@@ -35,10 +35,12 @@ let
     "/var/log/powermanagement/**"
   ];
   processScraperYaml =
-    "      process:\n"
-    + "        mute_process_name_error: true\n"
-    + "        mute_process_exe_error: true\n"
-    + "        mute_process_io_error: true\n";
+    lib.optionalString cfg.processMetrics.enable (
+      "      process:\n"
+      + "        mute_process_name_error: true\n"
+      + "        mute_process_exe_error: true\n"
+      + "        mute_process_io_error: true\n"
+    );
   logReceiversYaml =
     if isDarwin then ''
         filelog/darwin_services:
@@ -260,6 +262,12 @@ in
       example = [ "/var/lib/my-service/events.jsonl" ];
       description = "JSONL event files that OpenTelemetry Collector forwards to the Axiom papertrail dataset.";
     };
+
+    processMetrics.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Whether to collect high-cardinality per-process host metrics.";
+    };
   };
 
   config = lib.mkIf cfg.enable (
@@ -303,13 +311,30 @@ in
         {
           launchd.daemons.otelcol-axiom = {
             script = ''
+              pid_file=/var/run/otelcol-axiom.pid
+              child_pid=
+
+              cleanup() {
+                trap - EXIT HUP INT TERM
+                if [ -n "$child_pid" ] && kill -0 "$child_pid" 2>/dev/null; then
+                  kill "$child_pid"
+                  wait "$child_pid" || true
+                fi
+                rm -f "$pid_file"
+              }
+              trap cleanup EXIT HUP INT TERM
+
               export AXIOM_URL="${edgeUrl}"
               export AXIOM_TOKEN_LOGS="$(cat ${secret "papertrail_token"})"
               export AXIOM_TOKEN_METRICS="$(cat ${secret "host_metrics_token"})"
-              exec ${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config /etc/otelcol/axiom.yaml
+              ${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config /etc/otelcol/axiom.yaml &
+              child_pid=$!
+              printf '%s\n' "$child_pid" > "$pid_file"
+              wait "$child_pid"
             '';
             serviceConfig = {
               Label = "dev.otelcol.axiom";
+              KeepAlive = true;
               RunAtLoad = true;
               StandardOutPath = "/dev/null";
               StandardErrorPath = "${homeDir}/Library/Logs/otelcol-axiom-error.log";
@@ -317,6 +342,19 @@ in
               GroupName = "wheel";
             };
           };
+
+          environment.etc."newsyslog.d/otelcol-axiom.conf".text = ''
+            ${homeDir}/Library/Logs/otelcol-axiom-error.log root:staff 640 3 10240 * J /var/run/otelcol-axiom.pid 15
+          '';
+
+          # SOPS rewrites secrets before postActivation, while the collector
+          # reads them only once at startup. Restart even when its plist did not
+          # change so a secret rotation cannot leave stale exporter credentials.
+          system.activationScripts.postActivation.text = lib.mkAfter ''
+            if launchctl print system/dev.otelcol.axiom >/dev/null 2>&1; then
+              launchctl kickstart -k system/dev.otelcol.axiom
+            fi
+          '';
         }
       ]
     else if isLinux then
