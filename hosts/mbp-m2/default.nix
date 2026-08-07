@@ -20,6 +20,7 @@ in {
     ../../user/gaming.nix
     ../../user/html-stuff
     ../../user/media-feeds.nix
+    ../../user/storage-preview.nix
   ];
 
   # home-manager module enabled at flake level; user-layer provided via bundles
