@@ -200,12 +200,15 @@ in
   time.timeZone = "America/Sao_Paulo";
   i18n.defaultLocale = "en_US.UTF-8";
 
+  environment.shellAliases.g = "lazygit";
   environment.systemPackages = with pkgs; [
     curl
     ethtool
     git
+    ghostty.terminfo
     htop
     jq
+    lazygit
     ripgrep
     tree
     zmx

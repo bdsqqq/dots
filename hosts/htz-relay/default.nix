@@ -203,6 +203,7 @@ in
   time.timeZone = "Europe/London";
   i18n.defaultLocale = "en_US.UTF-8";
 
+  environment.shellAliases.g = "lazygit";
   boot.loader.grub = {
     enable = true;
     device = "/dev/sda";
@@ -211,7 +212,9 @@ in
   environment.systemPackages = with pkgs; [
     curl
     git
+    ghostty.terminfo
     htop
+    lazygit
     tree
     zmx
   ];
