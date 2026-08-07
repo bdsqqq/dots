@@ -41,6 +41,7 @@ in
   my.primaryUser = "bdsqqq";
   my.paths.commonplace = "/mnt/storage-01/commonplace";
   services.hwmon-metrics.enable = true;
+  services.o11y.processMetrics.enable = false;
 
   boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
 

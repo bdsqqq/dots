@@ -34,6 +34,7 @@ in
 
   my.primaryUser = "bdsqqq";
   services.hwmon-metrics.enable = true;
+  services.o11y.processMetrics.enable = false;
 
   boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
 
