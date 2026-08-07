@@ -146,6 +146,7 @@
                   overlays = [
                     (import ./overlays/unstable.nix inputs)
                     (import ./zmx.nix).overlay
+                    (import ./overlays/axiom-cli.nix)
                     (import ./overlays/libplist-darwin.nix)
                   ];
                 };
@@ -161,6 +162,7 @@
                   overlays = [
                     (import ./overlays/unstable.nix inputs)
                     (import ./zmx.nix).overlay
+                    (import ./overlays/axiom-cli.nix)
                     (import ./overlays/libplist-darwin.nix)
                   ];
                 };

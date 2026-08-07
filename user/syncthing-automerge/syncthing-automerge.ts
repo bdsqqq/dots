@@ -51,6 +51,11 @@ interface ConflictMatch {
   originalPath: string;
 }
 
+interface QuarantinePaths {
+  snapshot: string;
+  metadata: string;
+}
+
 // ============================================================================
 // PATTERNS
 // ============================================================================
@@ -158,6 +163,21 @@ function hashFile(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function getQuarantinePaths(cwd: string): QuarantinePaths {
+  const quarantineDir = join(cwd, ".syncthing-conflicts");
+  let id: string;
+  let snapshot: string;
+  let metadata: string;
+
+  do {
+    id = randomUUID();
+    snapshot = join(quarantineDir, `${id}.conflict`);
+    metadata = join(quarantineDir, `${id}.json`);
+  } while (existsSync(snapshot) || existsSync(metadata));
+
+  return { snapshot, metadata };
+}
+
 /**
  * Merge into a temporary file, then replace the original only if all three
  * inputs stayed unchanged while Git was running. The displaced original is
@@ -262,10 +282,35 @@ export async function handleConflict(filePath: string, cwd: string): Promise<boo
   console.log(`Latest backup file: ${backupPath}`);
 
   const conflictFullPath = resolve(cwd, parsed.conflictPath);
-  const stagingDir = join(cwd, ".stversions", ".syncthing-automerge");
-  mkdirSync(stagingDir, { recursive: true });
-  const stagedConflict = join(stagingDir, `${randomUUID()}.conflict`);
-  renameSync(conflictFullPath, stagedConflict);
+  const quarantine = getQuarantinePaths(cwd);
+  mkdirSync(dirname(quarantine.snapshot), { recursive: true });
+  writeFileSync(
+    quarantine.metadata,
+    JSON.stringify(
+      {
+        version: 1,
+        conflictPath: parsed.conflictPath,
+        originalPath: parsed.originalPath,
+        conflict: {
+          date: parsed.date,
+          time: parsed.time,
+          id: parsed.id,
+          extension: parsed.extension,
+        },
+        size: statSync(conflictFullPath).size,
+        quarantinedAt: new Date().toISOString(),
+      },
+      null,
+      2
+    ),
+    { flag: "wx" }
+  );
+  try {
+    renameSync(conflictFullPath, quarantine.snapshot);
+  } catch (error) {
+    rmSync(quarantine.metadata, { force: true });
+    throw error;
+  }
 
   // Perform merge
   console.log("Performing three-way merge...");
@@ -274,27 +319,25 @@ export async function handleConflict(filePath: string, cwd: string): Promise<boo
     success = await mergeFiles(
       parsed.originalPath,
       backupPath,
-      relative(cwd, stagedConflict),
+      relative(cwd, quarantine.snapshot),
       cwd
     );
   } catch (error) {
-    if (!existsSync(conflictFullPath)) renameSync(stagedConflict, conflictFullPath);
+    console.error(`Merge failed; conflict quarantined at ${relative(cwd, quarantine.snapshot)}`);
     throw error;
   }
 
   if (!success) {
-    console.error("Merge was not clean; preserving conflict");
-    if (!existsSync(conflictFullPath)) {
-      renameSync(stagedConflict, conflictFullPath);
-    } else {
-      console.error(`Conflict snapshot retained at ${relative(cwd, stagedConflict)}`);
-    }
+    console.error(
+      `Merge was not clean; conflict quarantined at ${relative(cwd, quarantine.snapshot)}`
+    );
     return false;
   }
 
   // Delete the immutable conflict snapshot used by the successful merge.
   console.log("Deleting conflict file");
-  rmSync(stagedConflict);
+  rmSync(quarantine.snapshot);
+  rmSync(quarantine.metadata);
 
   console.log("Deconfliction done!");
   console.log();

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -130,7 +130,39 @@ test("preserves both files when the three-way merge is not clean", async () => {
 
     assert.equal(await handleConflict(conflict, vault), false);
     assert.equal(await readFile(original, "utf8"), "setting: local\n");
-    assert.equal(await readFile(conflict, "utf8"), "setting: remote\n");
+    await assert.rejects(readFile(conflict));
+
+    const quarantine = join(vault, ".syncthing-conflicts");
+    const entries = await readdir(quarantine);
+    assert.equal(entries.filter((entry) => entry.endsWith(".conflict")).length, 1);
+    assert.equal(entries.filter((entry) => entry.endsWith(".json")).length, 1);
+
+    const snapshot = entries.find((entry) => entry.endsWith(".conflict"));
+    const metadata = entries.find((entry) => entry.endsWith(".json"));
+    assert.ok(snapshot);
+    assert.ok(metadata);
+    assert.equal(await readFile(join(quarantine, snapshot), "utf8"), "setting: remote\n");
+    const record = JSON.parse(await readFile(join(quarantine, metadata), "utf8"));
+    assert.deepEqual(
+      {
+        ...record,
+        quarantinedAt: undefined,
+      },
+      {
+        version: 1,
+        conflictPath: "note.sync-conflict-20990101-203035-L2PJ4F3.md",
+        originalPath: "note.md",
+        conflict: {
+          date: "20990101",
+          time: "203035",
+          id: "L2PJ4F3",
+          extension: "md",
+        },
+        size: 16,
+        quarantinedAt: undefined,
+      }
+    );
+    assert.match(record.quarantinedAt, /^\d{4}-\d{2}-\d{2}T/);
   });
 });
 
