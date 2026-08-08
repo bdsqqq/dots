@@ -117,6 +117,18 @@ in {
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+  my.tailnetRegistry = {
+    directory.enable = true;
+    services.syncthing = {
+      title = "syncthing";
+      description = "mbp-m2 synchronization status";
+      target = "http://127.0.0.1:8384";
+      scheme = "https";
+      port = 8385;
+      healthPath = "/";
+      audience = "owner";
+    };
+  };
   my.heliumRemotes = {
     enable = true;
     tabsExtension.enable = true;

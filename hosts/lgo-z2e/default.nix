@@ -97,6 +97,15 @@ in
   my.hardware.gpu.vendors = [ "amd" ];
   my.primaryUser = "bdsqqq";
   my.login.greeter = "quickshell";
+  my.tailnetRegistry.services.syncthing = {
+    title = "syncthing";
+    description = "lgo-z2e synchronization status";
+    target = "http://127.0.0.1:8384";
+    scheme = "https";
+    port = 8385;
+    healthPath = "/";
+    audience = "owner";
+  };
   services.hwmon-metrics.enable = true;
   my.heliumRemotes = {
     enable = true;

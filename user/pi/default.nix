@@ -68,7 +68,6 @@ in
               [
                 pkgs.nodejs
                 pkgs.pnpm
-                pkgs.python3
               ]
               ++ lib.optionals pkgs.stdenv.isLinux [
                 pkgs.gcc

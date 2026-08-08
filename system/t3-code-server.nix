@@ -43,8 +43,6 @@ let
     exec $t3_command serve \
       --host 127.0.0.1 \
       --port 3773 \
-      --tailscale-serve \
-      --tailscale-serve-port ${toString tailscaleServePort} \
       --no-browser
   '';
   t3Fork = pkgs.writeShellApplication {
@@ -174,6 +172,17 @@ let
 in
 if isLinux then
   {
+    my.tailnetRegistry.services.t3-code = {
+      title = "t3 code";
+      description = "remote coding workspace";
+      target = "http://127.0.0.1:3773";
+      scheme = "https";
+      port = tailscaleServePort;
+      healthPath = "/.well-known/t3/environment";
+      audience = "owner";
+      adoptExisting = true;
+    };
+
     environment.systemPackages = [
       t3Fork
       t3PiDeploy
@@ -198,7 +207,6 @@ if isLinux then
         pkgs.git
         pkgs.gnused
         pkgs.nodejs
-        pkgs.tailscale
         toolsBin
       ];
       serviceConfig = {
@@ -214,6 +222,17 @@ if isLinux then
   }
 else if isDarwin then
   {
+    my.tailnetRegistry.services.t3-code = {
+      title = "t3 code";
+      description = "remote coding workspace";
+      target = "http://127.0.0.1:3773";
+      scheme = "https";
+      port = tailscaleServePort;
+      healthPath = "/.well-known/t3/environment";
+      audience = "owner";
+      adoptExisting = true;
+    };
+
     environment.systemPackages = [
       t3Fork
       t3PiDeploy

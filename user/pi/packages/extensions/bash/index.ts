@@ -1284,7 +1284,7 @@ if (import.meta.vitest) {
     describe("large output (truncation)", () => {
       it("shows head + tail for large output", async () => {
         const result = await execute(
-          `python3 -c "for i in range(1, 201): print(f'line {i}')"`,
+          `awk 'BEGIN { for (i = 1; i <= 200; i++) print "line " i }'`,
         );
         const text = result.content[0].text;
 
@@ -1304,14 +1304,13 @@ if (import.meta.vitest) {
 
     describe("exit codes", () => {
       it("returns structured process metadata on failure", async () => {
-        const result = await execute(
-          `python3 -c "import sys; print('some output'); sys.exit(42)"`,
-        );
+        const command = `printf 'some output\\n'; exit 42`;
+        const result = await execute(command);
 
         expect(result.content[0].text).toContain("exit code 42");
         expect(result.isError).toBe(true);
         expect(result.details).toMatchObject({
-          command: `python3 -c "import sys; print('some output'); sys.exit(42)"`,
+          command,
           cwd: "/tmp",
           process: {
             ownerSessionId: "test-session-id",
@@ -1604,7 +1603,7 @@ if (import.meta.vitest) {
     describe("reversion guards", () => {
       it("shows first lines, not just tail", async () => {
         const result = await execute(
-          `python3 -c "for i in range(1, 101): print(f'output line {i}')"`,
+          `awk 'BEGIN { for (i = 1; i <= 100; i++) print "output line " i }'`,
         );
         const text = result.content[0].text;
         expect(text).toContain("output line 1");
@@ -1622,7 +1621,7 @@ if (import.meta.vitest) {
 
       it("keeps head lines before tail lines in truncated output", async () => {
         const result = await execute(
-          `python3 -c "for i in range(1, 151): print(f'line {i}')"`,
+          `awk 'BEGIN { for (i = 1; i <= 150; i++) print "line " i }'`,
         );
         const text = result.content[0].text;
         const firstHeadIndex = text.indexOf("line 1");
@@ -1641,13 +1640,15 @@ if (import.meta.vitest) {
       });
 
       it("handles very long single line", async () => {
-        const result = await execute(`python3 -c "print('x' * 10000)"`);
+        const result = await execute(
+          `awk 'BEGIN { for (i = 0; i < 10000; i++) printf "x"; print "" }'`,
+        );
         expect(result.content[0].text).toContain("xxxxx");
       }, 10_000);
 
       it("handles many short lines", async () => {
         const result = await execute(
-          `python3 -c "for _ in range(500): print('x')"`,
+          `awk 'BEGIN { for (i = 0; i < 500; i++) print "x" }'`,
         );
         expect(result.content[0].text).toContain("truncated");
       }, 10_000);
@@ -1657,7 +1658,7 @@ if (import.meta.vitest) {
       it("returns immediately and writes output to a log file", async () => {
         const startedAt = Date.now();
         const result = await execute(
-          `python3 -c "import time; print('ready', flush=True); time.sleep(60)" &`,
+          `printf 'ready\\n'; sleep 60 &`,
         );
 
         expect(Date.now() - startedAt).toBeLessThan(1_000);
@@ -1684,9 +1685,7 @@ if (import.meta.vitest) {
       }, 10_000);
 
       it("kills background commands during cleanup", async () => {
-        const result = await execute(
-          `python3 -c "import time; time.sleep(60)" &`,
-        );
+        const result = await execute(`sleep 60 &`);
         const pid = result.details!.background!.pid;
 
         expect(isPidAlive(pid)).toBe(true);

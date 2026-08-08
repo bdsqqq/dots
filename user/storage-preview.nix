@@ -49,21 +49,9 @@ let
     runtimeInputs = [
       pkgs.copyparty
       pkgs.coreutils
-      pkgs.tailscale
     ];
     text = ''
-      publish() {
-        for _ in {1..10}; do
-          if tailscale serve --bg --yes --https=3923 http://127.0.0.1:3923; then
-            return
-          fi
-          sleep 1
-        done
-        return 1
-      }
-
       cleanup() {
-        tailscale serve --https=3923 off >/dev/null 2>&1 || true
         if [[ -n "''${server_pid:-}" ]] && kill -0 "$server_pid" 2>/dev/null; then
           kill "$server_pid"
           wait "$server_pid" 2>/dev/null || true
@@ -89,7 +77,6 @@ let
         -v ${lib.escapeShellArg "${galleryRoot}:/gallery:r"} &
       server_pid=$!
 
-      publish
       wait "$server_pid"
     '';
   };
@@ -101,21 +88,9 @@ let
       pkgs.openssh
       pkgs.restic
       pkgs.sops
-      pkgs.tailscale
     ];
     text = ''
-      publish() {
-        for _ in {1..10}; do
-          if tailscale serve --bg --yes --https=9898 http://127.0.0.1:9898; then
-            return
-          fi
-          sleep 1
-        done
-        return 1
-      }
-
       cleanup() {
-        tailscale serve --https=9898 off >/dev/null 2>&1 || true
         if [[ -n "''${server_pid:-}" ]] && kill -0 "$server_pid" 2>/dev/null; then
           kill "$server_pid"
           wait "$server_pid" 2>/dev/null || true
@@ -132,12 +107,36 @@ let
         -restic-cmd ${pkgs.restic}/bin/restic &
       server_pid=$!
 
-      publish
       wait "$server_pid"
     '';
   };
 in
 {
+  my.tailnetRegistry.services = {
+    gallery = {
+      title = "family photos";
+      description = "read-only household photo gallery";
+      target = "http://127.0.0.1:3923";
+      scheme = "https";
+      port = 3923;
+      path = "/gallery/";
+      healthPath = "/gallery/";
+      audience = "family";
+      adoptExisting = true;
+    };
+
+    backup-health = {
+      title = "backup health";
+      description = "snapshots, repository checks, and restores";
+      target = "http://127.0.0.1:9898";
+      scheme = "https";
+      port = 9898;
+      healthPath = "/";
+      audience = "owner";
+      adoptExisting = true;
+    };
+  };
+
   home-manager.users.bdsqqq = { config, lib, ... }: {
     home.packages = [
       backrestServer

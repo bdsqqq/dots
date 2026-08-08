@@ -6,6 +6,7 @@
     ../system/nix-ld.nix
     ../system/ssh.nix
     ../system/tailscale.nix
+    ../system/tailnet-registry.nix
     ../system/sops.nix
     ../system/authorized-keys.nix
     ../user/path-order.nix
