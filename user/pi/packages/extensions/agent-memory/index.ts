@@ -2,6 +2,7 @@
 
 import { EventEmitter } from "node:events";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createRequire } from "node:module";
 import {
   closeSync,
   constants,
@@ -19,7 +20,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   ExtensionAPI,
   SessionEntry,
@@ -71,8 +73,25 @@ const QUERY_MAX_CHARS = 512;
 const SEARCH_MAX_RESULTS = 10;
 const TOOL_DETAILS_VERSION = 1;
 const MAINTENANCE_IDLE_MS = 30_000;
+const PROMPT_WORKER_ENV = "PI_AGENT_MEMORY_PROMPT_WORKER";
+const PROMPT_WORKER_KILL_GRACE_MS = 500;
+const PROMPT_WORKER_STDERR_MAX_BYTES = 64 * 1024;
 let maintenanceWake: ChildProcess | undefined;
 let maintenanceWakePending = false;
+
+type PromptWorkerMessage =
+  | {
+      version: 1;
+      sessionId: string;
+      ok: true;
+      snapshot: PromptSnapshot;
+    }
+  | {
+      version: 1;
+      sessionId: string;
+      ok: false;
+      error: { name: string; message: string };
+    };
 
 const envPath = (name: string, fallback: string): string =>
   resolve((process.env[name] || fallback).replace(/^~(?=$|\/)/, HOME));
@@ -617,6 +636,217 @@ async function loadPromptSnapshot(
     } catch {}
     throw error;
   }
+}
+
+function promptWorkerError(message: string): Error {
+  const error = new Error(message);
+  error.name = "PromptWorkerError";
+  return error;
+}
+
+function promptWorkerAbortError(): Error {
+  const error = new Error("prompt preparation cancelled");
+  error.name = "AbortError";
+  return error;
+}
+
+function killPromptWorker(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null)
+    return;
+  try {
+    process.kill(-child.pid, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") child.kill(signal);
+  }
+}
+
+function promptWorkerPackageRoot(modulePath: string): string {
+  const sourceRoot = resolve(dirname(modulePath), "../../..");
+  return existsSync(join(sourceRoot, "tsconfig.json"))
+    ? sourceRoot
+    : resolve(dirname(modulePath), "../..");
+}
+
+function resolveJitiRegister(): string {
+  if (typeof import.meta.resolve === "function")
+    return import.meta.resolve("jiti/register");
+  return join(
+    dirname(createRequire(import.meta.url).resolve("jiti/package.json")),
+    "lib/jiti-register.mjs",
+  );
+}
+
+function isPromptWorkerMessage(
+  value: unknown,
+  sessionId: string,
+): value is PromptWorkerMessage {
+  if (!object(value)) return false;
+  if (
+    value.version !== 1 ||
+    value.sessionId !== sessionId ||
+    typeof value.ok !== "boolean"
+  )
+    return false;
+  if (value.ok) {
+    if (!object(value.snapshot)) return false;
+    return (
+      value.snapshot.version === 3 &&
+      value.snapshot.sessionId === sessionId &&
+      typeof value.snapshot.snapshotSha256 === "string" &&
+      typeof value.snapshot.rendered === "string"
+    );
+  }
+  return (
+    object(value.error) &&
+    typeof value.error.name === "string" &&
+    typeof value.error.message === "string"
+  );
+}
+
+/**
+ * History verification intentionally stays synchronous and fail-closed, but it
+ * runs in a disposable process so hundreds of git checks cannot stall the TUI.
+ */
+export function preparePromptInWorker(
+  sessionId: string,
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<PromptSnapshot> {
+  if (signal?.aborted) return Promise.reject(promptWorkerAbortError());
+  const modulePath = fileURLToPath(import.meta.url);
+  const jitiRegister = resolveJitiRegister();
+  const child = spawn(
+    process.execPath,
+    ["--import", jitiRegister, modulePath, sessionId, cwd],
+    {
+      cwd: promptWorkerPackageRoot(modulePath),
+      detached: true,
+      env: { ...process.env, [PROMPT_WORKER_ENV]: "1" },
+      stdio: ["ignore", "ignore", "pipe", "ipc"],
+    },
+  );
+
+  return new Promise<PromptSnapshot>((resolvePromise, rejectPromise) => {
+    let response: PromptWorkerMessage | undefined;
+    let failure: Error | undefined;
+    let stderr = "";
+    let aborted = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const abort = () => {
+      aborted = true;
+      killPromptWorker(child, "SIGTERM");
+      killTimer = setTimeout(
+        () => killPromptWorker(child, "SIGKILL"),
+        PROMPT_WORKER_KILL_GRACE_MS,
+      );
+      killTimer.unref();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      if (Buffer.byteLength(stderr) >= PROMPT_WORKER_STDERR_MAX_BYTES) return;
+      stderr += String(chunk).slice(
+        0,
+        PROMPT_WORKER_STDERR_MAX_BYTES - Buffer.byteLength(stderr),
+      );
+    });
+    child.on("message", (message) => {
+      if (response) {
+        failure = promptWorkerError("prompt worker sent multiple responses");
+        killPromptWorker(child, "SIGTERM");
+        return;
+      }
+      if (!isPromptWorkerMessage(message, sessionId)) {
+        failure = promptWorkerError("prompt worker sent an invalid response");
+        killPromptWorker(child, "SIGTERM");
+        return;
+      }
+      response = message;
+    });
+    child.once("error", (error) => {
+      failure = error;
+    });
+    child.once("close", (code, closeSignal) => {
+      signal?.removeEventListener("abort", abort);
+      if (killTimer) clearTimeout(killTimer);
+      if (aborted) {
+        rejectPromise(promptWorkerAbortError());
+        return;
+      }
+      if (failure) {
+        rejectPromise(failure);
+        return;
+      }
+      if (code !== 0 || closeSignal) {
+        rejectPromise(
+          promptWorkerError(
+            `prompt worker exited ${closeSignal ?? code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
+          ),
+        );
+        return;
+      }
+      if (!response) {
+        rejectPromise(
+          promptWorkerError("prompt worker exited without a response"),
+        );
+        return;
+      }
+      if (!response.ok) {
+        const error = new Error(response.error.message);
+        error.name = response.error.name;
+        rejectPromise(error);
+        return;
+      }
+      resolvePromise(response.snapshot);
+    });
+  });
+}
+
+async function runPromptWorker(): Promise<void> {
+  const [sessionId, cwd] = process.argv.slice(2);
+  let message: PromptWorkerMessage;
+  if (!sessionId || !cwd) {
+    message = {
+      version: 1,
+      sessionId: sessionId ?? "",
+      ok: false,
+      error: {
+        name: "PromptWorkerError",
+        message: "prompt worker requires session ID and cwd",
+      },
+    };
+  } else {
+    try {
+      message = {
+        version: 1,
+        sessionId,
+        ok: true,
+        snapshot: await loadPromptSnapshot(sessionId, cwd),
+      };
+    } catch (error) {
+      message = {
+        version: 1,
+        sessionId,
+        ok: false,
+        error: {
+          name: error instanceof Error ? error.name : "Error",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
+  }
+  await flushLogs().catch(() => {});
+  await new Promise<void>((resolveSend, rejectSend) => {
+    if (!process.send) {
+      rejectSend(promptWorkerError("prompt worker IPC is unavailable"));
+      return;
+    }
+    process.send(message, (error) => {
+      if (error) rejectSend(error);
+      else resolveSend();
+    });
+  });
+  process.disconnect();
 }
 
 function qualityOrderedCandidates(
@@ -1187,13 +1417,17 @@ export function createAgentMemoryExtension(
   deps: {
     now?: () => string;
     wake?: () => void;
-    preparePrompt?: (sessionId: string, cwd: string) => Promise<PromptSnapshot>;
+    preparePrompt?: (
+      sessionId: string,
+      cwd: string,
+      signal?: AbortSignal,
+    ) => Promise<PromptSnapshot>;
     maintenanceIdleMs?: number;
   } = {},
 ) {
   const now = deps.now ?? (() => new Date().toISOString());
   const wake = deps.wake ?? wakeMemoryMaintenance;
-  const preparePrompt = deps.preparePrompt ?? loadPromptSnapshot;
+  const preparePrompt = deps.preparePrompt ?? preparePromptInWorker;
   const maintenanceIdleMs = deps.maintenanceIdleMs ?? MAINTENANCE_IDLE_MS;
   return function agentMemoryExtension(pi: ExtensionAPI): void {
     let settling = false;
@@ -1213,6 +1447,8 @@ export function createAgentMemoryExtension(
       settlementFailures: 0,
     };
     let promptGeneration = 0;
+    let promptAbort: AbortController | undefined;
+    let promptPreparation: Promise<void> | undefined;
     let preparedPrompt: PromptSnapshot | undefined;
     let sessionPrompt: PromptSnapshot | null | undefined;
     let pending:
@@ -1265,10 +1501,13 @@ export function createAgentMemoryExtension(
 
     const prepareSessionPrompt = (sessionId: string, cwd: string): void => {
       const generation = ++promptGeneration;
+      promptAbort?.abort();
+      const abort = new AbortController();
+      promptAbort = abort;
       preparedPrompt = undefined;
       sessionPrompt = undefined;
-      void new Promise<void>((resolve) => setImmediate(resolve))
-        .then(() => preparePrompt(sessionId, cwd))
+      promptPreparation = new Promise<void>((resolve) => setImmediate(resolve))
+        .then(() => preparePrompt(sessionId, cwd, abort.signal))
         .then((snapshot) => {
           if (generation === promptGeneration) {
             preparedPrompt = Object.freeze({
@@ -1295,6 +1534,7 @@ export function createAgentMemoryExtension(
           }
         })
         .catch((error) => {
+          if (abort.signal.aborted || generation !== promptGeneration) return;
           if (generation === promptGeneration) {
             preparedPrompt = undefined;
             sessionStats.promptFailures += 1;
@@ -1303,6 +1543,11 @@ export function createAgentMemoryExtension(
             });
             requestMaintenance();
           }
+        })
+        .finally(() => {
+          if (generation !== promptGeneration) return;
+          promptAbort = undefined;
+          promptPreparation = undefined;
         });
     };
 
@@ -1798,9 +2043,13 @@ export function createAgentMemoryExtension(
     });
 
     pi.on("session_shutdown", async (event) => {
+      promptGeneration += 1;
+      promptAbort?.abort();
+      await promptPreparation?.catch(() => {});
+      promptAbort = undefined;
+      promptPreparation = undefined;
       const maintenanceRequested = maintenanceDirty;
       flushMaintenance();
-      promptGeneration += 1;
       sessionObservation?.finish(
         sessionStats.promptFailures || sessionStats.settlementFailures
           ? "degraded"
@@ -1822,6 +2071,13 @@ export function createAgentMemoryExtension(
 const agentMemoryExtension: (pi: ExtensionAPI) => void =
   createAgentMemoryExtension();
 export default agentMemoryExtension;
+
+if (process.env[PROMPT_WORKER_ENV] === "1") {
+  void runPromptWorker().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
 
 if (import.meta.vitest) {
   const { afterAll, afterEach, beforeEach, describe, expect, it, vi } =
@@ -2077,6 +2333,35 @@ if (import.meta.vitest) {
       expect(afterRollback.snapshotSha256).not.toBe(first.snapshotSha256);
     });
 
+    it("prepares snapshots outside the parent event loop", async () => {
+      setupCatalog();
+      let timerRan = false;
+      setTimeout(() => {
+        timerRan = true;
+      }, 0);
+      const snapshot = await preparePromptInWorker(
+        "worker-session",
+        "/workspace",
+      );
+      expect(timerRan).toBe(true);
+      expect(snapshot.sessionId).toBe("worker-session");
+      expect(await loadPromptSnapshot("worker-session", "/workspace")).toEqual(
+        snapshot,
+      );
+    });
+
+    it("terminates prompt workers when preparation is cancelled", async () => {
+      setupCatalog();
+      const abort = new AbortController();
+      const preparation = preparePromptInWorker(
+        "cancelled-session",
+        "/workspace",
+        abort.signal,
+      );
+      abort.abort();
+      await expect(preparation).rejects.toMatchObject({ name: "AbortError" });
+    });
+
     it("fails closed when a frozen content-addressed artifact is stale", () => {
       const setup = setupCatalog();
       const snapshot = preparedPrompt(setup);
@@ -2265,7 +2550,10 @@ if (import.meta.vitest) {
       setupCatalog();
       rmSync(join(data, "catalog.json"));
       const h = harness([]);
-      createAgentMemoryExtension({ wake: vi.fn() })(h.pi);
+      createAgentMemoryExtension({
+        wake: vi.fn(),
+        preparePrompt: loadPromptSnapshot,
+      })(h.pi);
       expect(() =>
         h.handlers.get("session_start")!({ reason: "startup" }, h.ctx),
       ).not.toThrow();
@@ -2281,6 +2569,33 @@ if (import.meta.vitest) {
       expect(second.systemPrompt).toBe(first.systemPrompt);
       expect(() => h.handlers.get("agent_settled")!({}, h.ctx)).not.toThrow();
       expect(h.actions).toEqual([]);
+    });
+
+    it("aborts and joins prompt preparation during session shutdown", async () => {
+      setupCatalog();
+      const h = harness([]);
+      let preparationSignal: AbortSignal | undefined;
+      let workerClosed = false;
+      createAgentMemoryExtension({
+        wake: vi.fn(),
+        preparePrompt: (_sessionId, _cwd, signal) =>
+          new Promise<PromptSnapshot>((_resolve, reject) => {
+            preparationSignal = signal;
+            signal?.addEventListener(
+              "abort",
+              () => {
+                workerClosed = true;
+                reject(promptWorkerAbortError());
+              },
+              { once: true },
+            );
+          }),
+      })(h.pi);
+      h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
+      await settlePromptPreparation();
+      await h.handlers.get("session_shutdown")!({ reason: "quit" }, h.ctx);
+      expect(preparationSignal?.aborted).toBe(true);
+      expect(workerClosed).toBe(true);
     });
 
     it("defers failed preparation maintenance until the active turn settles", async () => {
@@ -2606,7 +2921,7 @@ if (import.meta.vitest) {
     it("maps qmd output only to hash-valid current catalog artifacts", async () => {
       const { entry } = setupCatalog();
       const h = harness([]);
-      createAgentMemoryExtension()(h.pi);
+      createAgentMemoryExtension({ preparePrompt: loadPromptSnapshot })(h.pi);
       h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
       await settlePromptPreparation();
       h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
@@ -2646,7 +2961,7 @@ if (import.meta.vitest) {
     it("emits correlated retrieval and extension-session wide events", async () => {
       setupCatalog();
       const h = harness([]);
-      createAgentMemoryExtension()(h.pi);
+      createAgentMemoryExtension({ preparePrompt: loadPromptSnapshot })(h.pi);
       h.exec.mockResolvedValue({
         code: 0,
         stdout: "[]",
@@ -3040,7 +3355,7 @@ if (import.meta.vitest) {
         ].join("\n"),
       );
       const h = harness([]);
-      createAgentMemoryExtension()(h.pi);
+      createAgentMemoryExtension({ preparePrompt: loadPromptSnapshot })(h.pi);
       h.handlers.get("session_start")!({ reason: "startup" }, h.ctx);
       await settlePromptPreparation();
       h.handlers.get("before_agent_start")!({ systemPrompt: "base" }, h.ctx);
