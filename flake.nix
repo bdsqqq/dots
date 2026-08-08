@@ -127,6 +127,18 @@
         };
 
         formatter = pkgs.nixpkgs-fmt;
+
+        checks.tailnet-registry = pkgs.runCommand "tailnet-registry-tests"
+          {
+            nativeBuildInputs = [ pkgs.bun ];
+          } ''
+          mkdir source
+          cp ${./system/tailnet-registry.ts} source/tailnet-registry.ts
+          cp ${./system/tailnet-registry.test.ts} source/tailnet-registry.test.ts
+          cd source
+          bun test tailnet-registry.test.ts
+          touch "$out"
+        '';
       };
 
       flake = {

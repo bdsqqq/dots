@@ -5,7 +5,7 @@
  * Watches for Syncthing conflict files and performs git three-way merges
  * using the original file and the latest backup from .stversions/
  *
- * Ported from Python (scripts/syncthing-automerge.py) to TypeScript
+ * Implemented in TypeScript so the launch agent shares the existing Bun runtime.
  *
  * Original: https://gist.github.com/solarkraft/26fe291a3de075ae8d96e1ada928fb7d
  *

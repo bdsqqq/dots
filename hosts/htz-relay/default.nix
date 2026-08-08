@@ -40,6 +40,28 @@ in
 
   my.primaryUser = "bdsqqq";
   my.paths.commonplace = "/mnt/storage-01/commonplace";
+  my.tailnetRegistry.services = {
+    commonplace = {
+      title = "commonplace";
+      description = "read-only commonplace file browser";
+      target = "http://127.0.0.1:3923";
+      scheme = "https";
+      port = 3924;
+      path = "/commonplace/";
+      healthPath = "/commonplace/";
+      audience = "owner";
+    };
+
+    syncthing = {
+      title = "syncthing";
+      description = "htz-relay synchronization status";
+      target = "http://127.0.0.1:8384";
+      scheme = "https";
+      port = 8385;
+      healthPath = "/";
+      audience = "owner";
+    };
+  };
   services.hwmon-metrics.enable = true;
 
   boot.kernelPackages = pkgs.unstable.linuxPackages_latest;

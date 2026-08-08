@@ -22,9 +22,7 @@ in
       activationPath = lib.makeBinPath (
         [
           pkgs.nodejs
-          pkgs.node-gyp
           pkgs.pnpm
-          pkgs.python3
           pkgs.curl
           pkgs.gzip
           pkgs.gnumake
@@ -81,8 +79,6 @@ in
 
         export CI=true
         export NODE_NO_WARNINGS=1
-        export npm_config_python="${pkgs.python3}/bin/python3"
-        export PYTHON="${pkgs.python3}/bin/python3"
         export PATH="${activationPath}:$PATH"
 
         "${pkgs.pnpm}/bin/pnpm" install \

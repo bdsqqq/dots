@@ -29,33 +29,29 @@ else
       '';
     };
 
-    updateScript = pkgs.writeText "helium-update.py" ''
-      import re
-      import sys
-      from pathlib import Path
+    updateScript = pkgs.writeText "helium-update.ts" ''
+      import { readFileSync, writeFileSync } from "node:fs";
 
-      path = Path(sys.argv[1])
-      version, x86_hash, arm_hash = sys.argv[2:]
-      text = path.read_text()
-      text = re.sub(r'version = "[^"]+";', f'version = "{version}";', text, count=1)
-      text = re.sub(
-          r'(suffix = "x86_64\.AppImage";\n\s+hash = ")[^"]+(";)',
-          rf'\g<1>{x86_hash}\2',
-          text,
-          count=1,
-      )
-      text = re.sub(
-          r'(suffix = "arm64\.AppImage";\n\s+hash = ")[^"]+(";)',
-          rf'\g<1>{arm_hash}\2',
-          text,
-          count=1,
-      )
-      path.write_text(text)
+      const [path, version, x86Hash, armHash] = Bun.argv.slice(2);
+      let text = readFileSync(path, "utf8");
+      text = text.replace(
+        /version = "[^"]+";/,
+        `version = "''${version}";`,
+      );
+      text = text.replace(
+        /(suffix = "x86_64\.AppImage";\n\s+hash = ")[^"]+(";)/,
+        `$1''${x86Hash}$2`,
+      );
+      text = text.replace(
+        /(suffix = "arm64\.AppImage";\n\s+hash = ")[^"]+(";)/,
+        `$1''${armHash}$2`,
+      );
+      writeFileSync(path, text);
     '';
 
     helium-update = pkgs.writeShellApplication {
       name = "helium-update";
-      runtimeInputs = [ pkgs.coreutils pkgs.curl pkgs.gnugrep pkgs.gnused pkgs.nix pkgs.python3 ];
+      runtimeInputs = [ pkgs.bun pkgs.coreutils pkgs.curl pkgs.gnugrep pkgs.gnused pkgs.nix ];
       text = ''
         set -euo pipefail
 
@@ -88,7 +84,7 @@ else
         x86_hash="$(hash_for x86_64.AppImage)"
         arm_hash="$(hash_for arm64.AppImage)"
 
-        ${pkgs.python3}/bin/python3 ${updateScript} "$file" "$latest_version" "$x86_hash" "$arm_hash"
+        bun ${updateScript} "$file" "$latest_version" "$x86_hash" "$arm_hash"
 
         nix fmt "$file"
         echo "helium-update: updated $file to $latest_version"

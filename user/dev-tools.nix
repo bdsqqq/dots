@@ -75,7 +75,7 @@ in
 
       `dev-tools.nix` uses an explicit capability list here instead of
       inferring from `headMode` or `torchBackend`, which describe session
-      shape and python package selection rather than gpu monitor tooling.
+      shape and compute-package selection rather than gpu monitor tooling.
     '';
   };
 

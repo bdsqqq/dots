@@ -194,99 +194,124 @@ let
     JS
   '';
 
+  tabsSource = pkgs.writeText "helium-tabs.ts" ''
+    import {
+      mkdirSync,
+      readdirSync,
+      readFileSync,
+      renameSync,
+      writeFileSync,
+    } from "node:fs";
+    import { hostname } from "node:os";
+    import { basename, join } from "node:path";
+
+    function argument(name: string, fallback: string): string {
+      const index = Bun.argv.indexOf(name);
+      return index < 0 ? fallback : Bun.argv[index + 1];
+    }
+
+    function manifests(tabsDir: string): Record<string, unknown>[] {
+      const result: Record<string, unknown>[] = [];
+      for (const name of readdirSync(tabsDir).filter((name) => name.endsWith(".json")).sort()) {
+        try {
+          result.push(JSON.parse(readFileSync(join(tabsDir, name), "utf8")));
+        } catch {}
+      }
+      return result;
+    }
+
+    const command = Bun.argv[2];
+    const stateDir = argument(
+      "--state-dir",
+      join(process.env.HOME ?? "", "${syncedStateDir}"),
+    );
+    const tabsDir = join(stateDir, "tabs");
+    mkdirSync(tabsDir, { recursive: true });
+
+    if (command === "query") {
+      const queryIndex = Bun.argv.findIndex(
+        (value, index) => index > 2 && !value.startsWith("--") && Bun.argv[index - 1] !== "--state-dir",
+      );
+      const needle = (queryIndex < 0 ? "" : Bun.argv[queryIndex]).toLowerCase();
+      for (const payload of manifests(tabsDir)) {
+        const host = String(payload.host ?? "unknown");
+        const tabs = Array.isArray(payload.tabs) ? payload.tabs : [];
+        for (const rawTab of tabs) {
+          if (!rawTab || typeof rawTab !== "object") continue;
+          const tab = rawTab as Record<string, unknown>;
+          const title = String(tab.title ?? "");
+          const url = String(tab.url ?? "");
+          if (needle && !`''${host} ''${title} ''${url}`.toLowerCase().includes(needle)) {
+            continue;
+          }
+          console.log(`''${host}\t''${title}\t''${url}`);
+        }
+      }
+    } else if (command === "agent") {
+      const host = argument("--host", hostname());
+      const bind = argument("--bind", "127.0.0.1");
+      const port = Number(argument("--port", "${toString port}"));
+      const output = join(tabsDir, `''${host}.json`);
+
+      Bun.serve({
+        hostname: bind,
+        port,
+        maxRequestBodySize: 1024 * 1024,
+        async fetch(request) {
+          const url = new URL(request.url);
+          if (url.pathname !== "/tabs") {
+            return new Response("not found\n", { status: 404 });
+          }
+          if (request.method === "GET") {
+            return Response.json(
+              { hosts: manifests(tabsDir) },
+              { headers: { "access-control-allow-origin": "*" } },
+            );
+          }
+          if (request.method !== "POST") {
+            return new Response("method not allowed\n", { status: 405 });
+          }
+          const declared = Number(request.headers.get("content-length") ?? "0");
+          if (declared > 1024 * 1024) {
+            return new Response("payload too large\n", { status: 413 });
+          }
+          const payload = await request.json();
+          if (!payload || typeof payload !== "object") {
+            return new Response("invalid payload\n", { status: 400 });
+          }
+          const next = {
+            ...(payload as Record<string, unknown>),
+            host,
+            schema: "helium-remotes.tabs.v1",
+          };
+          const temporary = join(tabsDir, `.''${basename(output)}.''${process.pid}.tmp`);
+          writeFileSync(temporary, `''${JSON.stringify(next, null, 2)}\n`);
+          renameSync(temporary, output);
+          return new Response(null, { status: 204 });
+        },
+      });
+    } else {
+      throw new Error("usage: helium-tabs.ts query [text] | agent [options]");
+    }
+  '';
+
   tabsCli = pkgs.writeShellApplication {
     name = "helium-tabs";
-    runtimeInputs = [ pkgs.python3 ];
+    runtimeInputs = [ pkgs.bun ];
     text = ''
-      set -euo pipefail
-      exec ${pkgs.python3}/bin/python3 - "$@" <<'PY'
-      import argparse, glob, json, os
-
-      parser = argparse.ArgumentParser()
-      parser.add_argument("query", nargs="?", default="")
-      parser.add_argument("--state-dir", default=os.path.expanduser("~/${syncedStateDir}"))
-      args = parser.parse_args()
-
-      needle = args.query.lower()
-      for path in sorted(glob.glob(os.path.join(args.state_dir, "tabs", "*.json"))):
-          with open(path) as f:
-              payload = json.load(f)
-          host = payload.get("host", os.path.basename(path).removesuffix(".json"))
-          for tab in payload.get("tabs", []):
-              title = tab.get("title") or ""
-              url = tab.get("url") or ""
-              haystack = f"{host} {title} {url}".lower()
-              if needle and needle not in haystack:
-                  continue
-              print(f"{host}\t{title}\t{url}")
-      PY
+      exec bun ${tabsSource} query "$@"
     '';
   };
 
   tabsAgent = pkgs.writeShellApplication {
     name = "helium-tabs-agent";
-    runtimeInputs = [ pkgs.python3 pkgs.coreutils ];
+    runtimeInputs = [ pkgs.bun ];
     text = ''
-      set -euo pipefail
-      exec ${pkgs.python3}/bin/python3 - "$@" <<'PY'
-      import argparse, glob, json, os, socket, tempfile
-      from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-      parser = argparse.ArgumentParser()
-      parser.add_argument("--state-dir", default=os.path.expanduser("~/${syncedStateDir}"))
-      parser.add_argument("--host", default=socket.gethostname())
-      parser.add_argument("--bind", default="127.0.0.1")
-      parser.add_argument("--port", type=int, default=${toString port})
-      args = parser.parse_args()
-
-      tabs_dir = os.path.join(args.state_dir, "tabs")
-      os.makedirs(tabs_dir, exist_ok=True)
-      output = os.path.join(tabs_dir, f"{args.host}.json")
-
-      class Handler(BaseHTTPRequestHandler):
-          def do_GET(self):
-              if self.path != "/tabs":
-                  self.send_error(404)
-                  return
-              hosts = []
-              for path in sorted(glob.glob(os.path.join(tabs_dir, "*.json"))):
-                  try:
-                      with open(path) as f:
-                          hosts.append(json.load(f))
-                  except (OSError, json.JSONDecodeError):
-                      continue
-              body = json.dumps({"hosts": hosts}, sort_keys=True).encode()
-              self.send_response(200)
-              self.send_header("content-type", "application/json")
-              self.send_header("content-length", str(len(body)))
-              self.send_header("access-control-allow-origin", "*")
-              self.end_headers()
-              self.wfile.write(body)
-
-          def do_POST(self):
-              if self.path != "/tabs":
-                  self.send_error(404)
-                  return
-              length = int(self.headers.get("content-length", "0"))
-              payload = json.loads(self.rfile.read(length) or b"{}")
-              payload["host"] = args.host
-              payload["schema"] = "helium-remotes.tabs.v1"
-              fd, tmp = tempfile.mkstemp(prefix=f".{args.host}.", suffix=".json", dir=tabs_dir)
-              with os.fdopen(fd, "w") as f:
-                  json.dump(payload, f, indent=2, sort_keys=True)
-                  f.write("\n")
-              os.replace(tmp, output)
-              self.send_response(204)
-              self.end_headers()
-
-          def log_message(self, format, *args):
-              return
-
-      ThreadingHTTPServer((args.bind, args.port), Handler).serve_forever()
-      PY
+      exec bun ${tabsSource} agent "$@"
     '';
   };
-in {
+in
+{
   options.my.heliumRemotes = {
     enable = lib.mkEnableOption "Helium remote browser artifacts";
     tabsExtension.enable = lib.mkEnableOption "the Helium tabs publisher extension";
