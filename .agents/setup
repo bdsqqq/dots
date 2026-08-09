@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+log() {
+  printf '[orb setup] %s\n' "$*"
+}
+
+load_nix() {
+  command -v nix >/dev/null 2>&1 && return
+
+  local profile
+  for profile in \
+    /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh \
+    "$HOME/.nix-profile/etc/profile.d/nix.sh"; do
+    if [[ -r "$profile" ]]; then
+      # shellcheck disable=SC1090
+      source "$profile"
+      command -v nix >/dev/null 2>&1 && return
+    fi
+  done
+
+  local nix_bin nix_dir
+  for nix_bin in \
+    /nix/var/nix/profiles/default/bin/nix \
+    "$HOME/.nix-profile/bin/nix"; do
+    if [[ -x "$nix_bin" ]]; then
+      nix_dir="$(dirname "$nix_bin")"
+      export PATH="$nix_dir:$PATH"
+      return
+    fi
+  done
+}
+
+install_nix() {
+  [[ "$(uname -s)" == Linux ]] || {
+    printf '[orb setup] nix is missing; automatic installation is only supported on Linux.\n' >&2
+    exit 1
+  }
+
+  local apt=(apt-get)
+  if (( EUID != 0 )); then
+    command -v sudo >/dev/null 2>&1 || {
+      printf '[orb setup] nix installation needs root or sudo.\n' >&2
+      exit 1
+    }
+    apt=(sudo apt-get)
+  fi
+
+  log "installing Nix prerequisites"
+  "${apt[@]}" update
+  DEBIAN_FRONTEND=noninteractive "${apt[@]}" install -y ca-certificates curl git xz-utils
+
+  log "installing Nix"
+  curl --proto '=https' --tlsv1.2 -fsSL https://install.determinate.systems/nix |
+    sh -s -- install --no-confirm
+  load_nix
+}
+
+load_nix
+if ! command -v nix >/dev/null 2>&1; then
+  install_nix
+fi
+
+if [[ "$(uname -s)" == Linux ]]; then
+  profile_marker="# dots Nix development shell (Amp orb)"
+  profile_hook="$HOME/.config/amp/dots-dev-shell.sh"
+  quoted_repo_root="$(printf '%q' "$repo_root")"
+  mkdir -p "$(dirname "$profile_hook")"
+  cat > "$profile_hook" <<EOF
+if [[ -z "\${IN_NIX_SHELL:-}" && "\${PWD:-}" == $quoted_repo_root ]]; then
+  for nix_profile in /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh "\$HOME/.nix-profile/etc/profile.d/nix.sh"; do
+    if [[ -r "\$nix_profile" ]]; then
+      source "\$nix_profile"
+      command -v nix >/dev/null 2>&1 && break
+    fi
+  done
+  if ! command -v nix >/dev/null 2>&1 && [[ -x /nix/var/nix/profiles/default/bin/nix ]]; then
+    export PATH="/nix/var/nix/profiles/default/bin:\$PATH"
+  fi
+  eval "\$(nix --extra-experimental-features 'nix-command flakes' print-dev-env $quoted_repo_root)"
+fi
+EOF
+
+  touch "$HOME/.bash_profile"
+  if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile"; then
+    cat >> "$HOME/.bash_profile" <<EOF
+
+$profile_marker
+source "\$HOME/.config/amp/dots-dev-shell.sh"
+EOF
+  fi
+fi
+
+log "realizing the flake development shell"
+nix --extra-experimental-features 'nix-command flakes' print-dev-env "$repo_root" >/dev/null
+
+log "ready ($(nix --version))"

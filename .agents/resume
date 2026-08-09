@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v nix >/dev/null 2>&1; then
+  for nix_profile in \
+    /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh \
+    "$HOME/.nix-profile/etc/profile.d/nix.sh"; do
+    if [[ -r "$nix_profile" ]]; then
+      # shellcheck disable=SC1090
+      source "$nix_profile"
+      command -v nix >/dev/null 2>&1 && break
+    fi
+  done
+fi
+
+if ! command -v nix >/dev/null 2>&1 && [[ -x /nix/var/nix/profiles/default/bin/nix ]]; then
+  export PATH="/nix/var/nix/profiles/default/bin:$PATH"
+fi
+
+if ! command -v nix >/dev/null 2>&1; then
+  printf '[orb resume] nix is unavailable; rerun .agents/setup.\n' >&2
+  exit 1
+fi
+
+printf '[orb resume] ready (%s)\n' "$(nix --version)"
