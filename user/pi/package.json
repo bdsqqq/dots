@@ -94,6 +94,7 @@
       "./dist/extensions/read-web-page.js",
       "./dist/extensions/search-sessions.js",
       "./dist/extensions/session-name.js",
+      "./dist/extensions/session-settlement.js",
       "./dist/extensions/skill.js",
       "./dist/extensions/system-prompt.js",
       "./dist/extensions/tool-harness.js",
