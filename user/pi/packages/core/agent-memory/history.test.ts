@@ -186,6 +186,80 @@ describe("private memory history", () => {
     expect(verifyHistory(cfg).ok).toBe(true);
   });
 
+  it("reuses immutable proof at the same head and verifies only an appended suffix", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(join(cfg.root, "one.md"), "one\n");
+    initHistory(cfg);
+
+    const first = verifyHistory(cfg);
+    expect(first).toMatchObject({
+      ok: true,
+      telemetry: { mode: "full", commits: 1, semanticProcesses: 3 },
+    });
+    const hit = verifyHistory(cfg);
+    expect(hit).toMatchObject({
+      ok: true,
+      telemetry: {
+        mode: "process-hit",
+        commits: 0,
+        blobs: 0,
+        semanticProcesses: 0,
+      },
+    });
+
+    withWritableMemoryRoot(cfg, () =>
+      writeFileSync(join(cfg.root, "one.md"), "two\n"),
+    );
+    commitHistory(cfg, {
+      ...core("suffix_one"),
+      changes: [
+        {
+          path: "one.md",
+          beforeSha256: sha256("one\n"),
+          afterSha256: sha256("two\n"),
+          status: "active",
+        },
+      ],
+    });
+    expect(verifyHistory(cfg)).toMatchObject({
+      ok: true,
+      telemetry: { mode: "suffix", commits: 1 },
+    });
+  });
+
+  it("keeps volatile checks live on a proof hit and fails closed on checkpoint loss", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(join(cfg.root, "one.md"), "one\n");
+    initHistory(cfg);
+    expect(verifyHistory(cfg).ok).toBe(true);
+
+    chmodSync(cfg.root, 0o700);
+    chmodSync(join(cfg.root, "one.md"), 0o600);
+    writeFileSync(join(cfg.root, "one.md"), "dirty\n");
+    expect(verifyHistory(cfg).issues).toContain("dirty memory worktree");
+    withWritableMemoryRoot(cfg, () =>
+      spawnSync(
+        "git",
+        [
+          `--git-dir=${join(cfg.data, "v2/history.git")}`,
+          `--work-tree=${cfg.root}`,
+          "checkout",
+          "-f",
+          "HEAD",
+          "--",
+          "one.md",
+        ],
+        { encoding: "utf8" },
+      ),
+    );
+    rmSync(join(cfg.data, "v2/history-verification.json"));
+    expect(verifyHistory(cfg).issues).toContain(
+      "history verification checkpoint is missing; explicit history recovery is required",
+    );
+  });
+
   it("reconstructs receipt caches and refuses a changed origin", () => {
     const cfg = config();
     const remote = join(tmpdir(), `memory-remote-${Date.now()}.git`);

@@ -23,6 +23,7 @@ import {
   isHistoryInitialized,
   listHistoryByKind,
   verifyHistory,
+  type VerifiedHistoryBasis,
 } from "./history.js";
 import { observeMemoryOperation } from "./observability.js";
 
@@ -331,6 +332,13 @@ function samePlacement(left: TierPlacement, right: TierPlacement): boolean {
   );
 }
 
+let latestTierProjection:
+  | {
+      key: string;
+      entries: Array<[string, TierAssignment]>;
+    }
+  | undefined;
+
 /**
  * Tier state is a projection of verified append-only memory history. A changed
  * artifact has a new key and therefore falls back to external/uncategorized;
@@ -339,6 +347,7 @@ function samePlacement(left: TierPlacement, right: TierPlacement): boolean {
 export function deriveTierState(
   cfg: MemoryConfig,
   catalog: Catalog = scanCatalog(cfg.root),
+  verified?: VerifiedHistoryBasis,
 ): Map<string, TierAssignment> {
   const current = new Map(
     catalog.entries.map((entry) => [
@@ -347,13 +356,25 @@ export function deriveTierState(
     ]),
   );
   if (!isHistoryInitialized(cfg)) return current;
-  const verification = verifyHistory(cfg);
-  if (!verification.ok)
-    throw new Error(
-      `tier history verification failed: ${verification.issues.join(", ")}`,
-    );
+  const basis = verified ?? (() => {
+    const verification = verifyHistory(cfg);
+    if (!verification.ok || !verification.basis)
+      throw new Error(
+        `tier history verification failed: ${verification.issues.join(", ")}`,
+      );
+    return verification.basis;
+  })();
+  if (headHistoryReceipt(cfg)?.commit !== basis.head)
+    throw new Error("verified tier history snapshot is stale");
+  const cacheKey = `${basis.repository}:${basis.policyVersion}:${basis.head}:${sha256(canonical(catalog.entries))}`;
+  if (latestTierProjection?.key === cacheKey)
+    return new Map(latestTierProjection.entries.map(([key, value]) => [key, { ...value }]));
   const replay = new Map<string, TierAssignment>();
-  for (const entry of listHistoryByKind(cfg, TIER_DECISION_KIND).reverse()) {
+  for (const entry of listHistoryByKind(
+    cfg,
+    TIER_DECISION_KIND,
+    basis.head,
+  ).reverse()) {
     if (entry.receipt.changes.length !== 0)
       throw new Error("tier decision commit changed an artifact");
     const decision = parseTierDecision(entry.receipt.provenance);
@@ -375,7 +396,11 @@ export function deriveTierState(
   }
   for (const [key, assignment] of replay)
     if (current.has(key)) current.set(key, assignment);
-  return current;
+  latestTierProjection = {
+    key: cacheKey,
+    entries: [...current].map(([key, value]) => [key, { ...value }]),
+  };
+  return new Map(latestTierProjection.entries.map(([key, value]) => [key, { ...value }]));
 }
 
 export const TIER_ELIGIBILITY_REASON_CODES = [
@@ -553,10 +578,17 @@ function verifiedBasis(
   historyHead: string;
   stateSha256: string;
 } {
-  const state = deriveTierState(cfg, catalog);
-  const historyHead = headHistoryReceipt(cfg)?.commit;
-  if (!historyHead) throw new Error("tier history is not initialized");
-  return { state, historyHead, stateSha256: tierStateDigest(state) };
+  const verification = verifyHistory(cfg);
+  if (!verification.ok || !verification.basis)
+    throw new Error(
+      `tier history verification failed: ${verification.issues.join(", ")}`,
+    );
+  const state = deriveTierState(cfg, catalog, verification.basis);
+  return {
+    state,
+    historyHead: verification.basis.head,
+    stateSha256: tierStateDigest(state),
+  };
 }
 
 function lastNonSafetyReplacementAt(cfg: MemoryConfig): string | undefined {
@@ -1001,6 +1033,7 @@ export function commitTierTransition(options: {
           mutationId,
           kind: TIER_DECISION_KIND,
           reason: decision.reason,
+          parentCommit: decision.expectedHistoryHead,
           changes: [],
           provenance: decision,
         },

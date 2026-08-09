@@ -5,7 +5,9 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   readdirSync,
+  statSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -45,7 +47,17 @@ export type InitHistoryReport = {
   remote?: string;
 };
 export type HistoryEntry = { commit: string; receipt: HistoryReceiptCore };
-export type VerifyHistoryReport = { ok: boolean; issues: string[] };
+export type VerifiedHistoryBasis = Readonly<{
+  head: string;
+  repository: string;
+  policyVersion: number;
+}>;
+export type VerifyHistoryReport = {
+  ok: boolean;
+  issues: string[];
+  basis?: VerifiedHistoryBasis;
+  telemetry?: Readonly<Record<string, string | number | boolean>>;
+};
 export type SyncHistoryReport = {
   ok: boolean;
   pushed: boolean;
@@ -62,19 +74,62 @@ const TRAILER = "Pi-Memory-Receipt:";
 const PATHS = [":(glob)**/*.md", ":(exclude,glob).qmd/**"];
 const gitDir = (cfg: MemoryConfig) => join(cfg.data, "v2/history.git");
 const receiptsDir = (cfg: MemoryConfig) => join(cfg.data, "v2/mutations");
-const gitEnv = {
-  ...process.env,
-  GIT_AUTHOR_NAME: "pi-memory",
-  GIT_AUTHOR_EMAIL: "pi-memory@local",
-  GIT_COMMITTER_NAME: "pi-memory",
-  GIT_COMMITTER_EMAIL: "pi-memory@local",
+const gitEnv: NodeJS.ProcessEnv = (() => {
+  const env = { ...process.env };
+  for (const name of [
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_REPLACE_REF_BASE",
+  ])
+    delete env[name];
+  return {
+    ...env,
+    GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_AUTHOR_NAME: "pi-memory",
+    GIT_AUTHOR_EMAIL: "pi-memory@local",
+    GIT_COMMITTER_NAME: "pi-memory",
+    GIT_COMMITTER_EMAIL: "pi-memory@local",
+  };
+})();
+const HISTORY_POLICY_VERSION = 1;
+const checkpointPath = (cfg: MemoryConfig) =>
+  join(cfg.data, "v2/history-verification.json");
+const checkpointMarkerPath = (cfg: MemoryConfig) =>
+  join(cfg.data, "v2/history-verification.initialized");
+type HistoryCheckpoint = VerifiedHistoryBasis & {
+  version: 1;
+  root: string;
+  objectFormat: string;
+  expectedRemote: string | null;
 };
+let latestProcessAnchor:
+  | { repository: string; head: string; policyVersion: number }
+  | undefined;
 
 function git(cfg: MemoryConfig, args: string[], tolerate = false): string {
   const result = spawnSync(
     "git",
     [`--git-dir=${gitDir(cfg)}`, `--work-tree=${cfg.root}`, ...args],
     { encoding: "utf8", env: gitEnv },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0 && !tolerate)
+    throw new Error((result.stderr || result.stdout || "git failed").trim());
+  return result.status === 0 ? result.stdout : "";
+}
+function gitInput(
+  cfg: MemoryConfig,
+  args: string[],
+  input: string,
+  tolerate = false,
+): string {
+  const result = spawnSync(
+    "git",
+    [`--git-dir=${gitDir(cfg)}`, `--work-tree=${cfg.root}`, ...args],
+    { encoding: "utf8", env: gitEnv, input },
   );
   if (result.error) throw result.error;
   if (result.status !== 0 && !tolerate)
@@ -468,42 +523,6 @@ function stagedChanges(cfg: MemoryConfig): HistoryChange[] {
   return changes;
 }
 
-function committedChanges(cfg: MemoryConfig, commit: string): HistoryChange[] {
-  const fields = git(cfg, [
-    "diff-tree",
-    "--root",
-    "--no-commit-id",
-    "--name-status",
-    "--no-renames",
-    "-r",
-    "-z",
-    commit,
-  ])
-    .split("\0")
-    .filter(Boolean);
-  const parent = git(cfg, ["rev-parse", `${commit}^`], true).trim();
-  const changes: HistoryChange[] = [];
-  for (let index = 0; index < fields.length; index += 2) {
-    const status = fields[index]!;
-    const path = fields[index + 1]!;
-    if (!allowedTrackedPath(path))
-      throw new Error(`history contains disallowed path ${path}`);
-    const before = parent ? readRevisionFile(cfg, parent, path) : undefined;
-    const after =
-      status === "D" ? undefined : readRevisionFile(cfg, commit, path);
-    changes.push({
-      path,
-      ...(memoryId(after ?? before)
-        ? { memoryId: memoryId(after ?? before) }
-        : {}),
-      ...(before === undefined ? {} : { beforeSha256: sha256(before) }),
-      ...(after === undefined ? {} : { afterSha256: sha256(after) }),
-      status: statusFor(path),
-    });
-  }
-  return changes;
-}
-
 function normalizedChanges(changes: HistoryChange[]): string {
   return canonical(
     changes
@@ -513,30 +532,7 @@ function normalizedChanges(changes: HistoryChange[]): string {
 }
 
 function committedHistoryIssues(cfg: MemoryConfig, ref: string): string[] {
-  const issues: string[] = [];
-  const commits = git(cfg, ["rev-list", revision(ref)])
-    .split("\n")
-    .map((commit) => commit.trim())
-    .filter(Boolean);
-  for (const commit of commits) {
-    const parents = git(cfg, ["rev-list", "--parents", "-n", "1", commit])
-      .trim()
-      .split(/\s+/);
-    if (parents.length > 2) {
-      issues.push(`merge commit is not allowed ${commit}`);
-      continue;
-    }
-    const receipt = decode(git(cfg, ["show", "-s", "--format=%B", commit]));
-    const parent = git(cfg, ["rev-parse", `${commit}^`], true).trim();
-    if ((receipt.parentCommit ?? "") !== parent)
-      issues.push(`receipt parent mismatch ${commit}`);
-    if (
-      normalizedChanges(receipt.changes) !==
-      normalizedChanges(committedChanges(cfg, commit))
-    )
-      issues.push(`receipt diff mismatch ${commit}`);
-  }
-  return issues;
+  return verifyCommittedSemanticHistory(cfg, revision(ref)).issues;
 }
 
 function writeReceiptCache(cfg: MemoryConfig, receipt: HistoryReceipt): void {
@@ -573,15 +569,32 @@ function commitInternal(
     const changed = git(cfg, ["diff", "--cached", "--name-only"]);
     if (!changed.trim()) throw new Error("no memory changes to commit");
   }
-  git(cfg, [
-    "commit",
-    ...(empty ? ["--allow-empty"] : []),
-    "-m",
-    `pi-memory ${core.kind}
-
-${TRAILER} ${encode(receipt)}`,
-  ]);
-  const hash = git(cfg, ["rev-parse", "HEAD"]).trim();
+  const tree = git(cfg, ["write-tree"]).trim();
+  const message = `pi-memory ${core.kind}\n\n${TRAILER} ${encode(receipt)}\n`;
+  const hash = gitInput(
+    cfg,
+    ["commit-tree", tree, ...(parent ? ["-p", parent] : [])],
+    message,
+  ).trim();
+  const ref = git(cfg, ["symbolic-ref", "-q", "HEAD"]).trim();
+  if (!ref) throw new Error("history HEAD must be symbolic");
+  const update = spawnSync(
+    "git",
+    [
+      `--git-dir=${gitDir(cfg)}`,
+      `--work-tree=${cfg.root}`,
+      "update-ref",
+      "-m",
+      `pi-memory ${core.kind}`,
+      ref,
+      hash,
+      parent ?? "0".repeat(hash.length),
+    ],
+    { encoding: "utf8", env: gitEnv },
+  );
+  if (update.error) throw update.error;
+  if (update.status !== 0)
+    throw new Error("history parent changed before ref update; retry mutation");
   writeReceiptCache(cfg, { ...receipt, commit: hash });
   return { commit: hash, mutationId: core.mutationId };
 }
@@ -650,9 +663,9 @@ export function historyContainsAncestor(
   );
 }
 
-function allHistoryEntries(cfg: MemoryConfig): HistoryEntry[] {
+function allHistoryEntries(cfg: MemoryConfig, ref = "HEAD"): HistoryEntry[] {
   if (!isHistoryInitialized(cfg)) return [];
-  const fields = git(cfg, ["log", "--format=%H%x00%B%x00"])
+  const fields = git(cfg, ["log", "--format=%H%x00%B%x00", revision(ref)])
     .split("\0")
     .filter(Boolean);
   const entries: HistoryEntry[] = [];
@@ -681,9 +694,12 @@ export function historyEntryByMutationId(
 export function listHistoryByKind(
   cfg: MemoryConfig,
   kind: string,
+  ref = "HEAD",
 ): HistoryEntry[] {
   if (!kind.trim()) throw new Error("invalid history kind");
-  return allHistoryEntries(cfg).filter((entry) => entry.receipt.kind === kind);
+  return allHistoryEntries(cfg, ref).filter(
+    (entry) => entry.receipt.kind === kind,
+  );
 }
 
 export function listHistory(
@@ -727,49 +743,260 @@ export function diffHistory(
   if (memory) args.push("--", literalPath(memory));
   return git(cfg, args);
 }
+function repositoryIdentity(cfg: MemoryConfig): string {
+  const path = realpathSync(gitDir(cfg));
+  const stat = statSync(path);
+  return `${path}:${stat.dev}:${stat.ino}`;
+}
+
+function readCheckpoint(cfg: MemoryConfig): HistoryCheckpoint | undefined {
+  if (!existsSync(checkpointPath(cfg))) {
+    if (existsSync(checkpointMarkerPath(cfg)))
+      throw new Error(
+        "history verification checkpoint is missing; explicit history recovery is required",
+      );
+    return undefined;
+  }
+  try {
+    const value = JSON.parse(
+      readFileSync(checkpointPath(cfg), "utf8"),
+    ) as HistoryCheckpoint;
+    if (
+      value.version !== 1 ||
+      !Number.isSafeInteger(value.policyVersion) ||
+      !/^[0-9a-f]{40,64}$/.test(value.head) ||
+      typeof value.repository !== "string" ||
+      typeof value.root !== "string" ||
+      typeof value.objectFormat !== "string" ||
+      (value.expectedRemote !== null &&
+        typeof value.expectedRemote !== "string")
+    )
+      throw new Error("shape");
+    return value;
+  } catch {
+    throw new Error(
+      "history verification checkpoint is corrupt; explicit history recovery is required",
+    );
+  }
+}
+
+type SemanticCommit = {
+  commit: string;
+  parent: string;
+  receipt: HistoryReceiptCore;
+};
+
+function semanticCommits(
+  cfg: MemoryConfig,
+  range: string,
+): SemanticCommit[] {
+  const fields = git(cfg, ["log", "--format=%H%x00%P%x00%B%x00", range])
+    .split("\0");
+  const commits: SemanticCommit[] = [];
+  for (let index = 0; index + 2 < fields.length; index += 3) {
+    const commit = fields[index]!.trim();
+    if (!commit) continue;
+    const parents = fields[index + 1]!.trim().split(/\s+/).filter(Boolean);
+    if (parents.length > 1)
+      throw new Error(`merge commit is not allowed ${commit}`);
+    commits.push({
+      commit,
+      parent: parents[0] ?? "",
+      receipt: decode(fields[index + 2]!),
+    });
+  }
+  return commits;
+}
+
+function semanticDiffs(
+  cfg: MemoryConfig,
+  commits: SemanticCommit[],
+): Map<string, Array<{ status: string; path: string }>> {
+  const output = gitInput(
+    cfg,
+    ["diff-tree", "--stdin", "--root", "--no-renames", "-r", "-z", "--name-status"],
+    `${commits.map(({ commit }) => commit).join("\n")}\n`,
+  );
+  const fields = output.split("\0").filter(Boolean);
+  const result = new Map<string, Array<{ status: string; path: string }>>();
+  let current: Array<{ status: string; path: string }> | undefined;
+  for (let index = 0; index < fields.length; ) {
+    const field = fields[index]!;
+    if (/^[0-9a-f]{40,64}$/.test(field)) {
+      current = [];
+      result.set(field, current);
+      index += 1;
+      continue;
+    }
+    if (!current || index + 1 >= fields.length)
+      throw new Error("invalid batched history diff");
+    current.push({ status: field, path: fields[index + 1]! });
+    index += 2;
+  }
+  return result;
+}
+
+function batchRevisionFiles(
+  cfg: MemoryConfig,
+  objects: string[],
+): Map<string, Buffer | undefined> {
+  if (objects.length === 0) return new Map();
+  const result = spawnSync(
+    "git",
+    [
+      `--git-dir=${gitDir(cfg)}`,
+      `--work-tree=${cfg.root}`,
+      "cat-file",
+      "--batch",
+    ],
+    { env: gitEnv, input: Buffer.from(`${objects.join("\n")}\n`) },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0)
+    throw new Error(String(result.stderr || "batched git object read failed").trim());
+  const output = result.stdout as Buffer;
+  const files = new Map<string, Buffer | undefined>();
+  let offset = 0;
+  for (const object of objects) {
+    const newline = output.indexOf(0x0a, offset);
+    if (newline < 0) throw new Error("truncated batched git object response");
+    const header = output.subarray(offset, newline).toString("utf8");
+    offset = newline + 1;
+    if (header.endsWith(" missing")) {
+      files.set(object, undefined);
+      continue;
+    }
+    const match = /^[0-9a-f]{40,64} blob (\d+)$/.exec(header);
+    if (!match) throw new Error("invalid batched git object response");
+    const size = Number(match[1]);
+    const end = offset + size;
+    if (!Number.isSafeInteger(size) || end >= output.length || output[end] !== 0x0a)
+      throw new Error("truncated batched git blob");
+    files.set(object, output.subarray(offset, end));
+    offset = end + 1;
+  }
+  return files;
+}
+
+function verifyCommittedSemanticHistory(
+  cfg: MemoryConfig,
+  range: string,
+): { issues: string[]; commits: number; blobs: number; processes: number } {
+  const issues: string[] = [];
+  const commits = semanticCommits(cfg, range);
+  const diffs = semanticDiffs(cfg, commits);
+  const objectNames: string[] = [];
+  for (const item of commits)
+    for (const change of diffs.get(item.commit) ?? []) {
+      if (!allowedTrackedPath(change.path))
+        issues.push(`history contains disallowed path ${change.path}`);
+      if (item.parent) objectNames.push(`${item.parent}:${change.path}`);
+      if (change.status !== "D") objectNames.push(`${item.commit}:${change.path}`);
+    }
+  const uniqueObjects = [...new Set(objectNames)];
+  const files = batchRevisionFiles(cfg, uniqueObjects);
+  for (const item of commits) {
+    if ((item.receipt.parentCommit ?? "") !== item.parent)
+      issues.push(`receipt parent mismatch ${item.commit}`);
+    const actual: HistoryChange[] = [];
+    for (const change of diffs.get(item.commit) ?? []) {
+      const before = item.parent
+        ? files.get(`${item.parent}:${change.path}`)
+        : undefined;
+      const after =
+        change.status === "D"
+          ? undefined
+          : files.get(`${item.commit}:${change.path}`);
+      if (change.status !== "D" && after === undefined)
+        throw new Error(`committed memory is missing ${change.path}`);
+      actual.push({
+        path: change.path,
+        ...(memoryId(after ?? before)
+          ? { memoryId: memoryId(after ?? before) }
+          : {}),
+        ...(before === undefined ? {} : { beforeSha256: sha256(before) }),
+        ...(after === undefined ? {} : { afterSha256: sha256(after) }),
+        status: statusFor(change.path),
+      });
+    }
+    if (normalizedChanges(item.receipt.changes) !== normalizedChanges(actual))
+      issues.push(`receipt diff mismatch ${item.commit}`);
+  }
+  return {
+    issues,
+    commits: commits.length,
+    blobs: uniqueObjects.length,
+    processes: uniqueObjects.length > 0 ? 3 : 2,
+  };
+}
+
 function verifyHistoryImpl(cfg: MemoryConfig): VerifyHistoryReport {
+  const started = Date.now();
   const issues: string[] = [];
   if (!isHistoryInitialized(cfg))
     return { ok: false, issues: ["history not initialized"] };
+  const head = git(cfg, ["rev-parse", "--verify", "HEAD^{commit}"]).trim();
+  const repository = repositoryIdentity(cfg);
+  let mode = "full";
+  let commitsVerified = 0;
+  let blobsVerified = 0;
+  let semanticProcesses = 0;
+  let checkpointStatus = "migration";
   if (git(cfg, ["status", "--porcelain", "--", ...PATHS], true).trim())
     issues.push("dirty memory worktree");
   try {
-    validateRemote(cfg);
-  } catch (error) {
-    issues.push(error instanceof Error ? error.message : String(error));
-  }
-  try {
+    const remote = validateRemote(cfg) ?? null;
+    const root = realpathSync(cfg.root);
+    const objectFormat =
+      git(cfg, ["rev-parse", "--show-object-format"], true).trim() || "sha1";
+    const checkpoint = readCheckpoint(cfg);
+    if (checkpoint) {
+      checkpointStatus = "loaded";
+      if (
+        checkpoint.repository !== repository ||
+        checkpoint.root !== root ||
+        checkpoint.objectFormat !== objectFormat ||
+        checkpoint.expectedRemote !== remote
+      )
+        throw new Error(
+          "history verification checkpoint identity changed; explicit history recovery is required",
+        );
+      if (checkpoint.policyVersion !== HISTORY_POLICY_VERSION) {
+        mode = "full";
+        checkpointStatus = "policy-reverify";
+      } else if (checkpoint.head === head) mode = "durable-hit";
+      else if (historyContainsAncestor(cfg, checkpoint.head, head)) mode = "suffix";
+      else
+        throw new Error(
+          "history was rewritten or moved backward; explicit history recovery is required",
+        );
+    }
+    if (
+      latestProcessAnchor?.repository === repository &&
+      latestProcessAnchor.policyVersion === HISTORY_POLICY_VERSION
+    ) {
+      if (latestProcessAnchor.head === head) mode = "process-hit";
+      else if (!historyContainsAncestor(cfg, latestProcessAnchor.head, head))
+        throw new Error(
+          "history moved behind the in-process verification anchor; restart and explicit recovery are required",
+        );
+    }
     const tracked = git(cfg, ["ls-files", "-z"]).split("\0").filter(Boolean);
     for (const path of tracked)
       if (!allowedTrackedPath(path))
         issues.push(`history contains disallowed path ${path}`);
-    const commits = git(cfg, ["rev-list", "HEAD"])
-      .split("\n")
-      .map((commit) => commit.trim())
-      .filter(Boolean);
-    for (const commit of commits) {
-      const parents = git(cfg, ["rev-list", "--parents", "-n", "1", commit])
-        .trim()
-        .split(/\s+/);
-      if (parents.length > 2) {
-        issues.push(`merge commit is not allowed ${commit}`);
-        continue;
-      }
-      const receipt = decode(git(cfg, ["show", "-s", "--format=%B", commit]));
-      const parent = git(cfg, ["rev-parse", `${commit}^`], true).trim();
-      let valid = true;
-      if ((receipt.parentCommit ?? "") !== parent) {
-        issues.push(`receipt parent mismatch ${commit}`);
-        valid = false;
-      }
-      if (
-        normalizedChanges(receipt.changes) !==
-        normalizedChanges(committedChanges(cfg, commit))
-      ) {
-        issues.push(`receipt diff mismatch ${commit}`);
-        valid = false;
-      }
-      if (!valid) continue;
+    const range =
+      mode === "suffix" && checkpoint ? `${checkpoint.head}..${head}` : head;
+    if (mode !== "durable-hit" && mode !== "process-hit") {
+      const semantic = verifyCommittedSemanticHistory(cfg, range);
+      issues.push(...semantic.issues);
+      commitsVerified = semantic.commits;
+      blobsVerified = semantic.blobs;
+      semanticProcesses = semantic.processes;
+    }
+    // Receipt caches are volatile projections. Validate or reconstruct every
+    // call even when the immutable commit prefix already has a proof.
+    for (const { commit, receipt } of allHistoryEntries(cfg)) {
       const file = join(receiptsDir(cfg), `${receipt.mutationId}.json`);
       contained(receiptsDir(cfg), file);
       if (!existsSync(file)) {
@@ -784,10 +1011,50 @@ function verifyHistoryImpl(cfg: MemoryConfig): VerifyHistoryReport {
       if (savedCommit !== commit || canonical(savedCore) !== canonical(receipt))
         issues.push(`receipt cache mismatch ${receipt.mutationId}`);
     }
-  } catch {
-    issues.push("invalid history receipt");
+    if (git(cfg, ["rev-parse", "HEAD"]).trim() !== head)
+      throw new Error(
+        "history head changed during verification; retry verification",
+      );
+    if (
+      issues.length === 0 &&
+      mode !== "durable-hit" &&
+      mode !== "process-hit"
+    ) {
+      atomicWrite(
+        checkpointPath(cfg),
+        `${canonical({ version: 1, policyVersion: HISTORY_POLICY_VERSION, head, repository, root, objectFormat, expectedRemote: remote })}\n`,
+      );
+      atomicWrite(checkpointMarkerPath(cfg), "initialized\n");
+      checkpointStatus = "advanced";
+    }
+    if (issues.length === 0)
+      latestProcessAnchor = {
+        repository,
+        head,
+        policyVersion: HISTORY_POLICY_VERSION,
+      };
+  } catch (error) {
+    issues.push(
+      error instanceof Error ? error.message : "invalid history receipt",
+    );
   }
-  return { ok: issues.length === 0, issues };
+  return {
+    ok: issues.length === 0,
+    issues,
+    ...(issues.length === 0
+      ? { basis: { head, repository, policyVersion: HISTORY_POLICY_VERSION } }
+      : {}),
+    telemetry: {
+      mode,
+      head,
+      anchor: latestProcessAnchor?.head ?? "none",
+      commits: commitsVerified,
+      blobs: blobsVerified,
+      semanticProcesses,
+      checkpointStatus,
+      elapsedMs: Date.now() - started,
+    },
+  };
 }
 function syncHistoryImpl(cfg: MemoryConfig): SyncHistoryReport {
   if (!isHistoryInitialized(cfg))
