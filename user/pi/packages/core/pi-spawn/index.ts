@@ -1249,7 +1249,9 @@ if (import.meta.vitest) {
           timestamp: 0,
         },
       });
-      process.env.PI_BIN = makeFakePi(`printf '%s\\n' '${message}'; exit 42`);
+      process.env.PI_BIN = makeFakePi(
+        `read -r prompt; read -r follow_up; printf '%s\\n' '${message}'; exit 42`,
+      );
 
       const result = await piSpawn({
         cwd,
