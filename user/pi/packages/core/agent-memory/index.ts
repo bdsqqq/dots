@@ -592,18 +592,31 @@ async function lock<T>(fn: () => T | Promise<T>): Promise<T | undefined> {
     if (owner > 0) {
       try {
         process.kill(owner, 0);
+        retryMaintenanceWakeIfPresent(state);
         return undefined;
       } catch (ownerError) {
-        if ((ownerError as NodeJS.ErrnoException).code !== "ESRCH")
+        if ((ownerError as NodeJS.ErrnoException).code !== "ESRCH") {
+          retryMaintenanceWakeIfPresent(state);
           return undefined;
+        }
       }
-    } else if (Date.now() - statSync(path).mtimeMs < 60_000) return undefined;
+    } else if (Date.now() - statSync(path).mtimeMs < 60_000) {
+      retryMaintenanceWakeIfPresent(state);
+      return undefined;
+    }
     rmSync(path, { recursive: true, force: true });
     mkdirSync(path, { mode: 0o700 });
   }
   writeFileSync(join(path, "owner"), `${process.pid}\n`, { mode: 0o600 });
+  const acquiredAt = Date.now();
   try {
-    return await fn();
+    return await observeMemoryOperation(
+      {
+        operation: "memory.mutation-lock",
+        result: () => ({ fields: { holdMs: Date.now() - acquiredAt } }),
+      },
+      fn,
+    );
   } finally {
     rmSync(path, { recursive: true, force: true });
   }
@@ -2231,13 +2244,19 @@ function tierHasExplicitUserStatement(
 
 async function processTieringEvents(
   cfg: ReturnType<typeof config>,
+  budget: { remaining: number; assignments: number } = {
+    remaining: 1,
+    assignments: 0,
+  },
 ): Promise<boolean> {
   if (!tierAutonomyEnabled(cfg) || process.env.PI_MEMORY_SKIP_EXTERNAL === "1")
     return true;
   let ok = true;
   for (;;) {
+    if (budget.remaining <= 0) return ok;
     const event = claimMaintenanceEvent(cfg, { kinds: ["tiering-ready"] });
     if (!event) return ok;
+    budget.remaining -= 1;
     try {
       const catalog = scanCatalog(cfg.root);
       const state = deriveTierState(cfg, catalog);
@@ -2265,6 +2284,7 @@ async function processTieringEvents(
           compareTierCodePoints(tierTargetKey(left), tierTargetKey(right)),
         );
       const batch = assignments.slice(cursor, cursor + limit);
+      budget.assignments += batch.length;
       const configuredModel = modelConfig();
       let changed = false;
       for (const assignment of batch) {
@@ -2567,13 +2587,20 @@ function reportNumber(report: Record<string, unknown>, key: string): number {
 
 async function processTierEvaluationEvents(
   cfg: ReturnType<typeof config>,
+  budget: { remaining: number; assignments: number } = {
+    remaining: 1,
+    assignments: 0,
+  },
 ): Promise<boolean> {
   if (!tierAutonomyEnabled(cfg) || process.env.PI_MEMORY_SKIP_EXTERNAL === "1")
     return true;
   let ok = true;
   for (;;) {
+    if (budget.remaining <= 0) return ok;
     const event = claimMaintenanceEvent(cfg, { kinds: ["tier-eval-ready"] });
     if (!event) return ok;
+    budget.remaining -= 1;
+    budget.assignments += 1;
     try {
       const state = deriveTierState(cfg);
       const assignment = [...state.values()].find(
@@ -3078,10 +3105,6 @@ async function maintainUnlockedObserved(
       );
     }
   }
-  enqueueTieringReady(cfg);
-  ok = combineMaintenanceResults(ok, await processTieringEvents(cfg));
-  enqueueTierEvaluationEvents(cfg);
-  ok = combineMaintenanceResults(ok, await processTierEvaluationEvents(cfg));
   if (process.env.PI_MEMORY_SKIP_EXTERNAL !== "1") {
     try {
       run(process.env.QMD_BIN || "qmd", ["update"]);
@@ -3123,11 +3146,93 @@ async function maintainUnlockedObserved(
   return ok;
 }
 
+type TierMaintenanceSlice = {
+  ok: boolean;
+  events: number;
+  assignments: number;
+  remaining: number;
+};
+
+async function processTierMaintenanceSlice(
+  cfg: ReturnType<typeof config>,
+): Promise<TierMaintenanceSlice> {
+  const configured = Number(process.env.PI_MEMORY_TIER_EVENT_BUDGET || 1);
+  const limit =
+    Number.isSafeInteger(configured) && configured >= 1 && configured <= 100
+      ? configured
+      : 1;
+  const budget = { remaining: limit, assignments: 0 };
+  if (!tierAutonomyEnabled(cfg) || process.env.PI_MEMORY_SKIP_EXTERNAL === "1")
+    return { ok: true, events: 0, assignments: 0, remaining: 0 };
+  return observeMemoryOperation(
+    {
+      operation: "memory.tiering.maintenance-slice",
+      fields: { limit },
+      result: (result) => ({
+        outcome: result.ok ? "success" : "degraded",
+        fields: {
+          events: result.events,
+          assignments: result.assignments,
+          remaining: result.remaining,
+        },
+      }),
+    },
+    async () => {
+      enqueueTieringReady(cfg);
+      let ok = await processTieringEvents(cfg, budget);
+      enqueueTierEvaluationEvents(cfg);
+      ok = combineMaintenanceResults(
+        ok,
+        await processTierEvaluationEvents(cfg, budget),
+      );
+      const remaining = listMaintenanceEvents(cfg, ["pending"]).filter(
+        ({ event }) =>
+          event.kind === "tiering-ready" || event.kind === "tier-eval-ready",
+      ).length;
+      return {
+        ok,
+        events: limit - budget.remaining,
+        assignments: budget.assignments,
+        remaining,
+      };
+    },
+  );
+}
+
+function scheduleTierContinuation(cfg: ReturnType<typeof config>): boolean {
+  secureDir(cfg.state);
+  const wake = contained(cfg.state, join(cfg.state, "wake"));
+  try {
+    writeFileSync(wake, "tier-continuation\n", {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+  spawnMaintenance(["--tier-continuation"]);
+  return true;
+}
+
+function retryMaintenanceWakeIfPresent(state: string): void {
+  if (!existsSync(contained(state, join(state, "wake")))) return;
+  setTimeout(wakeMaintenance, 1_000);
+}
+
 function wakeMaintenance(): void {
-  const child = spawn(process.env.PI_MEMORY_BIN || "pi-memory", ["maintain"], {
-    detached: true,
-    stdio: "ignore",
-  });
+  spawnMaintenance([]);
+}
+
+function spawnMaintenance(args: string[]): void {
+  const configured = process.env.PI_MEMORY_BIN;
+  const executable = configured || process.execPath;
+  const script = process.argv[1];
+  const child = spawn(
+    executable,
+    configured ? ["maintain", ...args] : [script!, "maintain", ...args],
+    { detached: true, stdio: "ignore" },
+  );
   child.once("error", () => undefined);
   child.unref();
 }
@@ -3187,8 +3292,30 @@ async function main(): Promise<void> {
       reconcile();
       return true;
     });
-  else if (command === "maintain")
-    result = await lock(() => withMaintenanceWake(config(), maintainUnlocked));
+  else if (command === "maintain") {
+    const cfg = config();
+    const continuation = args.includes("--tier-continuation");
+    if (!continuation)
+      result = await lock(() => withMaintenanceWake(cfg, maintainUnlocked));
+    if (result !== undefined) {
+      // Model inference remains within this bounded lock slice. Releasing it
+      // around inference requires a durable prepared record bound to the event
+      // claim, history head, catalog/state digests, artifact hash, and prompts;
+      // reacquisition must then revalidate those fields before the history CAS.
+      const tier = await lock(() =>
+        continuation
+          ? withMaintenanceWake(cfg, () => processTierMaintenanceSlice(cfg))
+          : processTierMaintenanceSlice(cfg),
+      );
+      if (tier === undefined) result = undefined;
+      else {
+        result = combineMaintenanceResults(result, tier.ok);
+        if (tier.remaining > 0) scheduleTierContinuation(cfg);
+        else if (existsSync(contained(cfg.state, join(cfg.state, "wake"))))
+          wakeMaintenance();
+      }
+    }
+  }
   else if (command === "promote")
     throw new Error(
       "promote was removed because it bypassed reversible review; run pi-memory migrate, then review the imported proposal",
@@ -3198,12 +3325,12 @@ async function main(): Promise<void> {
     if (action === "status")
       console.log(JSON.stringify(tierStatus(config()), null, 2));
     else if (action === "disable")
-      await lock(() => {
+      result = await lock(() => {
         setTierAutonomy(config(), false);
         return true;
       });
     else if (action === "enable")
-      await lock(() => {
+      result = await lock(() => {
         const cfg = config();
         setTierAutonomy(cfg, true);
         enqueueTieringReady(cfg);
