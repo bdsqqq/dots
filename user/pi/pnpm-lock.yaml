@@ -982,6 +982,12 @@ importers:
         specifier: 'catalog:'
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
 
+  packages/extensions/session-settlement:
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: 'catalog:'
+        version: 0.82.0(ws@8.21.0)(zod@4.4.3)
+
   packages/extensions/skill:
     dependencies:
       '@bds_pi/box-format':

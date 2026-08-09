@@ -23,6 +23,7 @@ export { default as readSession } from "../packages/extensions/read-session/inde
 export { default as readWebPage } from "../packages/extensions/read-web-page/index";
 export { default as searchSessions } from "../packages/extensions/search-sessions/index";
 export { default as sessionName } from "../packages/extensions/session-name/index";
+export { default as sessionSettlement } from "../packages/extensions/session-settlement/index";
 export { default as skill } from "../packages/extensions/skill/index";
 export { default as systemPrompt } from "../packages/extensions/system-prompt/index";
 export { default as toolHarness } from "../packages/extensions/tool-harness/index";
