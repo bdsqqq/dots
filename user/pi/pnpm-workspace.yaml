@@ -21,6 +21,9 @@ allowBuilds:
   koffi: true
   protobufjs: true
   ssh2: false
+  tree-sitter: true
+  tree-sitter-javascript: true
+  tree-sitter-typescript: true
 
 # Remove after Pi 0.82.0 clears the 48-hour release-age policy.
 minimumReleaseAgeExclude:

@@ -9,6 +9,7 @@ let
   # repo path for mkOutOfStoreSymlink — edits take effect immediately without rebuild
   repoExtensions = "${repoPi}/packages/extensions";
   piChatExtension = "${repoPi}/packages/optional/pi-chat";
+  calldiffPackage = "${repoPi}/packages/optional/calldiff";
   repoAgentPrompts = "${commonplaceRoot}/01_files/nix/user/agents/agents";
 in
 {
@@ -19,6 +20,16 @@ in
     , ...
     }:
     let
+      piCalldiff = pkgs.writeShellApplication {
+        name = "pi-calldiff";
+        runtimeInputs = [
+          pkgs.git
+          pkgs.nodejs
+        ];
+        text = ''
+          exec "${pkgs.nodejs}/bin/node" "${calldiffPackage}/dist/cli.js" "$@"
+        '';
+      };
       piChat = pkgs.writeShellApplication {
         name = "pi-chat";
         runtimeInputs = [
@@ -43,7 +54,7 @@ in
       };
     in
     {
-      home.packages = [ piChat ];
+      home.packages = [ piChat piCalldiff ];
 
       home.file.".pi/agent/settings.json".source =
         config.lib.file.mkOutOfStoreSymlink "${repoPi}/settings.json";
@@ -76,6 +87,7 @@ in
             )
           }:$PATH"
           "${pkgs.pnpm}/bin/pnpm" install --dir "${repoPi}" --frozen-lockfile
+          "${pkgs.pnpm}/bin/pnpm" --dir "${calldiffPackage}" run build
         fi
       '';
 
