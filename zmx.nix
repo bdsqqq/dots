@@ -161,7 +161,7 @@ let
 
             output=$(eval "$source" | fzf \
               --print-query \
-              --expect=ctrl-n \
+              --expect=enter,ctrl-n \
               --delimiter='\t' \
               --with-nth='1,2,3,4,5' \
               --height=80% \
@@ -171,7 +171,7 @@ let
               --header='enter attach  ctrl+n create from query  ctrl+a all' \
               --bind 'ctrl-a:reload(zmx-rows)' \
               --preview='zmx history {1} 2>/dev/null | tail -200' \
-              --preview-window='right:60%:follow')
+              --preview-window='down,50%,follow')
             rc=$?
 
             query=$(printf '%s\n' "$output" | sed -n '1p')
@@ -251,7 +251,7 @@ let
               --prompt='zgc> ' \
               --header='tab select detached sessions; enter confirm list' \
               --preview='zmx history {1} 2>/dev/null | tail -200' \
-              --preview-window='right:60%:follow') || return $?
+              --preview-window='down,50%,follow') || return $?
             names=$(printf '%s\n' "$selected" | awk -F '\t' 'NF { print $1 }')
             [[ -n "$names" ]] || return 0
             printf 'kill these zmx sessions?\n%s\n' "$names"
