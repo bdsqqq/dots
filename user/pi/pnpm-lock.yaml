@@ -1235,7 +1235,7 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
       vitest:
-        specifier: ^3.0.0
+        specifier: ^3.2.6
         version: 3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
 
 packages:
