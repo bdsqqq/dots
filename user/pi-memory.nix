@@ -1,6 +1,5 @@
-{ config, lib, pkgs, hostSystem ? null, headMode ? "graphical", ... }:
+{ config, lib, pkgs, hostSystem ? null, ... }:
 let
-  isGraphical = headMode == "graphical";
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isLinux = lib.hasInfix "linux" hostSystem;
   repoRoot = "${config.my.paths.commonplace}/01_files/nix";
@@ -22,26 +21,6 @@ let
   };
 in
 {
-  imports = [
-    ../user/nvim
-    ../user/git
-    ../user/node-pnpm
-    ../user/dev-tools.nix
-    ../user/trash.nix
-    (import ../zmx.nix).module
-    ../user/direnv.nix
-    ../user/rust.nix
-    ../user/go.nix
-    ../user/lua.nix
-    ../user/typescript.nix
-    ../user/nix.nix
-    ../user/fairy-name.nix
-    ../user/tmux.nix
-    ../user/amp.nix
-    ../user/pi
-    ../user/agents
-  ] ++ lib.optionals isGraphical [ ../user/ghostty.nix ];
-
   home-manager.users.bdsqqq = { config, ... }: {
     home.packages = [ agentMemory ];
 

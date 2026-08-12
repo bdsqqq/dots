@@ -25,9 +25,29 @@ let
 in
 {
   imports = [
-    ../../bundles/base.nix
+    ../../modules/primary-user.nix
+    ../../system/nix.nix
+    ../../system/nh.nix
+    ../../system/nix-ld.nix
+    ../../system/ssh.nix
+    ../../system/tailscale.nix
+    ../../system/tailnet-registry.nix
+    ../../system/sops.nix
+    ../../system/authorized-keys.nix
+    ../../system/fonts.nix
+    ../../system/auto-upgrade.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
+    ../../user/path-order.nix
+    ../../user/shell.nix
+    ../../user/ssh.nix
+    ../../user/btop
+    ../../user/homebrew.nix
+    ../../user/node-pnpm
+    ../../user/fnm.nix
+    ../../user/fzf
+    ../../user/zoxide.nix
+    ../../user/syncthing-automerge
     ../../user/amp.nix
     ./hardware-configuration.nix
   ];

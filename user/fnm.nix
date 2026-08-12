@@ -1,5 +1,6 @@
-{ config, pkgs, ... }: {
+{ ... }: {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
+    home.packages = [ pkgs.fnm ];
     home.file.".node-version".text = "24.18.0";
     programs.zsh.initContent = ''
       # fnm

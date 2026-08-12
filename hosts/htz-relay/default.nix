@@ -26,10 +26,30 @@ let
 in
 {
   imports = ([
-    ../../bundles/base.nix
-    ../../bundles/headless.nix
+    ../../modules/primary-user.nix
+    ../../system/nix.nix
+    ../../system/nh.nix
+    ../../system/nix-ld.nix
+    ../../system/ssh.nix
+    ../../system/tailscale.nix
+    ../../system/tailnet-registry.nix
+    ../../system/sops.nix
+    ../../system/authorized-keys.nix
+    ../../system/fonts.nix
+    ../../system/auto-upgrade.nix
+    ../../system/syncthing.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
+    ../../user/path-order.nix
+    ../../user/shell.nix
+    ../../user/ssh.nix
+    ../../user/btop
+    ../../user/homebrew.nix
+    ../../user/node-pnpm
+    ../../user/fnm.nix
+    ../../user/fzf
+    ../../user/zoxide.nix
+    ../../user/syncthing-automerge
     ../../user/amp.nix
   ]) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix)
     [ ./hardware-configuration.nix ];
@@ -87,7 +107,6 @@ in
     checkReversePath = "loose";
   };
 
-  # ssh provided by base bundle
   services.openssh = {
     enable = true;
     settings = {
@@ -96,7 +115,6 @@ in
     };
   };
 
-  # tailscale provided by base bundle; host-specific flags preserved
   services.tailscale = {
     enable = true;
     useRoutingFeatures = "client";
@@ -126,7 +144,6 @@ in
   systemd.services.copyparty.requires = [ "mnt-storage\\x2d01.mount" ];
   systemd.services.copyparty.after = [ "mnt-storage\\x2d01.mount" ];
 
-  # syncthing provided by headless bundle; declarative mesh settings live here
   services.syncthing = {
     openDefaultPorts = false;
     guiAddress = "0.0.0.0:8384";

@@ -1,5 +1,5 @@
 { lib, config, pkgs, inputs, ... }: {
-  imports = [ ../../system/login.nix ];
+  imports = [ ./login.nix ];
 
   programs.niri.enable = true;
   programs.niri.package = inputs.niri.packages.${pkgs.stdenv.hostPlatform.system}.niri-unstable;
@@ -31,7 +31,7 @@
   # XDG_CURRENT_DESKTOP is set by the session desktop file when niri starts
 
   environment.etc."wallpaper.jpg".source =
-    ../../assets/wallpaper_without_mask.jpg;
+    ../assets/wallpaper_without_mask.jpg;
 
   specialisation.greeter-quickshell.configuration = {
     my.login.greeter = "quickshell";
@@ -68,8 +68,9 @@
           rm -f "$out.1"
         fi
       '';
-    in {
-      imports = [ ../../user/niri.nix ];
+    in
+    {
+      imports = [ ../user/niri.nix ];
 
       xdg.configFile."xdg-desktop-portal-termfilechooser/config".text = ''
         [filechooser]

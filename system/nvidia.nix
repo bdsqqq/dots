@@ -1,4 +1,4 @@
-{ lib, config, pkgs, hostSystem ? null, ... }:
+{ lib, config, hostSystem ? null, ... }:
 
 if !(lib.hasInfix "linux" hostSystem) then
   { }
@@ -25,10 +25,4 @@ else {
     __GLX_VENDOR_LIBRARY_NAME = "nvidia";
     WLR_NO_HARDWARE_CURSORS = "1";
   };
-
-  environment.systemPackages = with pkgs;
-    [
-      # nvtop provided by user/dev-tools.nix with full gpu support
-    ];
 }
-

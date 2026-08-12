@@ -2,10 +2,6 @@
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isLinux = lib.hasInfix "linux" hostSystem;
-  gpuVendors = lib.unique config.my.hardware.gpu.vendors;
-  hasAmdGpu = lib.elem "amd" gpuVendors;
-  hasIntelGpu = lib.elem "intel" gpuVendors;
-  hasNvidiaGpu = lib.elem "nvidia" gpuVendors;
 
   wikimanPackage = pkgs.wikiman.overrideAttrs (oldAttrs: {
     postFixup = (oldAttrs.postFixup or "") + ''
@@ -67,19 +63,7 @@ let
   };
 in
 {
-  options.my.hardware.gpu.vendors = lib.mkOption {
-    type = with lib.types; listOf (enum [ "amd" "intel" "nvidia" ]);
-    default = [ ];
-    description = ''
-      gpu vendors present on this host.
-
-      `dev-tools.nix` uses an explicit capability list here instead of
-      inferring from `headMode` or `torchBackend`, which describe session
-      shape and compute-package selection rather than gpu monitor tooling.
-    '';
-  };
-
-  config.home-manager.users.bdsqqq = { config, pkgs, ... }: {
+  home-manager.users.bdsqqq = { config, pkgs, ... }: {
     xdg.configFile = {
       "wikiman/wikiman.conf".text = ''
         sources = man, arch
@@ -101,60 +85,7 @@ in
       };
     };
 
-    programs = {
-      yt-dlp = {
-        enable = true;
-        settings = { sub-lang = "en.*"; };
-      };
-      gallery-dl.enable = true;
-      tealdeer = {
-        enable = true;
-        enableAutoUpdates = true;
-      };
-    };
-    home.packages = with pkgs;
-      [
-        coreutils
-        exiftool
-        sops
-        age
-        ssh-to-age
-        fnm
-        pnpm
-        pscale
-        ripgrep
-        ast-grep
-        fd
-        bat
-        eza
-        ctop
-        lazydocker
-        curl
-        wget
-        jq
-        yq
-        tree
-        p7zip
-        cloc
-        stow
-        yazi
-        tmux
-        ffmpeg
-        httpie
-        fastfetch
-        ollama
-        mkcert
-        wikimanPackage
-        wikimanUpdate
-      ] ++ lib.optionals isLinux [
-        tailscale
-      ] ++ lib.optionals isDarwin [
-        istat-menus
-        libimobiledevice
-        ifuse
-      ] ++ lib.optionals hasAmdGpu [ nvtopPackages.amd radeontop ]
-      ++ lib.optionals hasIntelGpu [ nvtopPackages.intel ]
-      ++ lib.optionals hasNvidiaGpu [ nvtopPackages.nvidia ];
+    home.packages = [ wikimanPackage wikimanUpdate ];
 
     launchd.agents.wikiman-update = lib.mkIf isDarwin {
       enable = true;
@@ -186,11 +117,6 @@ in
         Persistent = true;
       };
       Install.WantedBy = [ "timers.target" ];
-    };
-
-    home.shellAliases = {
-      b = "btop";
-      f = "fastfetch";
     };
   };
 }
