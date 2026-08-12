@@ -6,35 +6,6 @@ else
   {
     homebrew = {
       enable = true;
-
-      taps = [
-        "depot/tap"
-        "homebrew/cask"
-      ];
-
-      brews = [ "depot" ];
-
-      casks = [
-        # System utilities
-        "cleanshot"
-        "tailscale-app"
-
-        # Development tools
-        "tableplus"
-
-        # Creative/Media tools
-        "figma"
-        "obs"
-        "transmission"
-
-        # Productivity applications
-        "linear"
-        "vscodium"
-
-        # Entertainment/Gaming
-        "steam"
-      ];
-
       onActivation = {
         autoUpdate = false;
         upgrade = true;

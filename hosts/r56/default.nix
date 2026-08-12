@@ -77,22 +77,64 @@ in
 
   imports = [
     ./hardware.nix
-    ../../bundles/base.nix
-    ../../bundles/dev.nix
-    ../../bundles/desktop.nix
-    ../../bundles/wm/niri.nix
+
+    # Shared system infrastructure
+    ../../modules/primary-user.nix
+    ../../system/nix.nix
+    ../../system/nh.nix
+    ../../system/nix-ld.nix
+    ../../system/ssh.nix
+    ../../system/tailscale.nix
+    ../../system/tailnet-registry.nix
+    ../../system/sops.nix
+    ../../system/authorized-keys.nix
+    ../../system/fonts.nix
+    ../../system/auto-upgrade.nix
     ../../system/nvidia.nix
     ../../system/bluetooth.nix
     ../../system/audio.nix
+    ../../system/flatpak.nix
+    ../../system/niri.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
+
+    # Configured user programs
+    ../../user/path-order.nix
+    ../../user/shell.nix
+    ../../user/ssh.nix
+    ../../user/btop
+    ../../user/homebrew.nix
+    ../../user/node-pnpm
+    ../../user/fnm.nix
+    ../../user/fzf
+    ../../user/zoxide.nix
+    ../../user/syncthing-automerge
+    ../../user/nvim
+    ../../user/git
+    ../../user/wikiman.nix
+    ../../user/yt-dlp.nix
+    ../../user/gallery-dl.nix
+    ../../user/tealdeer.nix
+    ../../user/trash.nix
+    (import ../../zmx.nix).module
+    ../../user/direnv.nix
+    ../../user/rust.nix
+    ../../user/go.nix
+    ../../user/fairy-name.nix
+    ../../user/tmux.nix
+    ../../user/amp.nix
+    ../../user/pi
+    ../../user/agents
+    ../../user/pi-memory.nix
+    ../../user/e-ink-glass.nix
+    ../../user/1password.nix
+    ../../user/helium.nix
+    ../../user/helium-remotes.nix
     ../../user/ghostty.nix
     ../../user/quickshell.nix
     ../../user/gaming.nix
-    ../../system/flatpak.nix
   ];
 
-  my.hardware.gpu.vendors = [ "nvidia" ];
   my.primaryUser = "bdsqqq";
   services.hwmon-metrics.enable = true;
   my.heliumRemotes = {
@@ -116,7 +158,7 @@ in
   # ensure DISPLAY is set for xwayland-satellite (spawned as :0 by niri/hyprland)
   environment.sessionVariables.DISPLAY = ":0";
 
-  # tailscale and ssh provided by base bundle; auth key for headless auth
+  # Host-specific Tailscale authentication
   services.tailscale = {
     authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key)
       config.sops.secrets.tailscale_auth_key.path;
@@ -145,7 +187,7 @@ in
   # udev rules for PS5 DualSense and other controllers
   hardware.steam-hardware.enable = true;
 
-  # home-manager module is enabled at flake level; user-layer is provided via bundles
+  # Home Manager module is enabled at flake level.
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
@@ -164,6 +206,74 @@ in
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
+
+      # Unconfigured host-selected programs
+      home.packages = with pkgs; [
+        coreutils
+        exiftool
+        sops
+        age
+        ssh-to-age
+        pscale
+        ripgrep
+        ast-grep
+        fd
+        bat
+        eza
+        ctop
+        lazydocker
+        curl
+        wget
+        jq
+        yq
+        tree
+        p7zip
+        cloc
+        stow
+        yazi
+        tmux
+        ffmpeg
+        httpie
+        fastfetch
+        mkcert
+        tailscale
+        nvtopPackages.nvidia
+        blockbench
+        vscode
+        obsidian
+        rclone
+        qpdf
+        inputs.lnr.packages.x86_64-linux.default
+        transmission_4
+        dbeaver-bin
+        vlc
+        imv
+        overskride
+        superfile
+        xwayland-satellite
+        fuzzel
+        pavucontrol
+        playerctl
+        brightnessctl
+        impala
+        bluetuith
+        pulsemixer
+        lnav
+        bandwhich
+        iotop
+        systemctl-tui
+        dust
+        procs
+        pyprland
+        ollama
+        lua-language-server
+        stylua
+        typescript
+        typescript-language-server
+        nil
+        nixfmt
+        statix
+      ];
 
       # disable stylix targets we manage manually
       stylix.targets = {
@@ -285,8 +395,6 @@ in
     usbutils
     libnotify
   ];
-
-  # fonts provided by base bundle
 
   nixpkgs.config.allowUnfree = true;
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";

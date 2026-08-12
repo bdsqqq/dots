@@ -5,25 +5,104 @@ let syncthing = import ../../modules/syncthing.nix { inherit lib; };
 in {
   imports = [
     inputs.home-manager.darwinModules.home-manager
-    ../../bundles/base.nix
-    ../../bundles/desktop.nix
-    ../../bundles/dev.nix
-    ../../bundles/headless.nix
+
+    # Shared system infrastructure
+    ../../modules/primary-user.nix
+    ../../system/nix.nix
+    ../../system/nh.nix
+    ../../system/nix-ld.nix
+    ../../system/ssh.nix
+    ../../system/tailscale.nix
+    ../../system/tailnet-registry.nix
     ../../system/sops.nix
+    ../../system/authorized-keys.nix
+    ../../system/fonts.nix
+    ../../system/auto-upgrade.nix
+    ../../system/syncthing.nix
+    ../../system/audio.nix
+    ../../system/bluetooth.nix
+    ../../system/flatpak.nix
     ../../system/homebrew.nix
     ../../system/macos-defaults.nix
     ../../system/sleepless.nix
     ../../system/kanata.nix
     ../../system/o11y
     ../../system/t3-code-server.nix
+    ../../system/cmux.nix
     ./moshi-host.nix
+
+    # Configured user programs
+    ../../user/path-order.nix
+    ../../user/shell.nix
+    ../../user/ssh.nix
+    ../../user/btop
+    ../../user/homebrew.nix
+    ../../user/node-pnpm
+    ../../user/fnm.nix
+    ../../user/fzf
+    ../../user/zoxide.nix
+    ../../user/syncthing-automerge
+    ../../user/nvim
+    ../../user/git
+    ../../user/wikiman.nix
+    ../../user/yt-dlp.nix
+    ../../user/gallery-dl.nix
+    ../../user/tealdeer.nix
+    ../../user/trash.nix
+    (import ../../zmx.nix).module
+    ../../user/direnv.nix
+    ../../user/rust.nix
+    ../../user/go.nix
+    ../../user/fairy-name.nix
+    ../../user/tmux.nix
+    ../../user/amp.nix
+    ../../user/pi
+    ../../user/agents
+    ../../user/pi-memory.nix
+    ../../user/e-ink-glass.nix
+    ../../user/ghostty.nix
+    ../../user/vscodium
+    ../../user/1password.nix
+    ../../user/orbstack.nix
+    ../../user/obs
+    ../../user/helium-remotes.nix
     ../../user/gaming.nix
     ../../user/html-stuff
     ../../user/media-feeds.nix
     ../../user/storage-preview.nix
   ];
 
-  # home-manager module enabled at flake level; user-layer provided via bundles
+  homebrew = {
+    taps = [
+      "depot/tap"
+      "homebrew/cask"
+    ];
+
+    brews = [ "depot" ];
+
+    casks = [
+      # System utilities
+      "cleanshot"
+      "tailscale-app"
+
+      # Development tools
+      "tableplus"
+
+      # Creative/Media tools
+      "figma"
+      "obs"
+      "transmission"
+
+      # Productivity applications
+      "linear"
+      "vscodium"
+
+      # Entertainment/Gaming
+      "steam"
+    ];
+  };
+
+  # Home Manager module is enabled at flake level.
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
@@ -38,6 +117,56 @@ in {
       home.homeDirectory = "/Users/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
+
+      # Unconfigured host-selected programs
+      home.packages = with pkgs; [
+        coreutils
+        exiftool
+        sops
+        age
+        ssh-to-age
+        pscale
+        ripgrep
+        ast-grep
+        fd
+        bat
+        eza
+        ctop
+        lazydocker
+        curl
+        wget
+        jq
+        yq
+        tree
+        p7zip
+        cloc
+        stow
+        yazi
+        tmux
+        ffmpeg
+        httpie
+        fastfetch
+        mkcert
+        istat-menus
+        libimobiledevice
+        ifuse
+        blockbench
+        vscode
+        obsidian
+        rclone
+        qpdf
+        inputs.lnr.packages.aarch64-darwin.default
+        axiom-cli
+        iina
+        ollama
+        lua-language-server
+        stylua
+        typescript
+        typescript-language-server
+        nil
+        nixfmt
+        statix
+      ];
 
       home.activation.kindleLibrary =
         lib.hm.dag.entryBetween [ "linkGeneration" ] [ "writeBoundary" ] ''

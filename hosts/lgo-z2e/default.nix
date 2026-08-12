@@ -78,23 +78,65 @@ in
     ./acpi.nix
     ./legion-wmi-fan.nix
     ./legion-metrics.nix
-    ../../bundles/base.nix
-    ../../bundles/headless.nix
-    ../../bundles/dev.nix
-    ../../bundles/desktop.nix
-    ../../bundles/wm/niri.nix
+
+    # Shared system infrastructure
+    ../../modules/primary-user.nix
+    ../../system/nix.nix
+    ../../system/nh.nix
+    ../../system/nix-ld.nix
+    ../../system/ssh.nix
+    ../../system/tailscale.nix
+    ../../system/tailnet-registry.nix
+    ../../system/sops.nix
+    ../../system/authorized-keys.nix
+    ../../system/fonts.nix
+    ../../system/auto-upgrade.nix
+    ../../system/syncthing.nix
     ../../system/bluetooth.nix
     ../../system/audio.nix
+    ../../system/flatpak.nix
+    ../../system/niri.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
     ../../system/t3-code-server.nix
+
+    # Configured user programs
+    ../../user/path-order.nix
+    ../../user/shell.nix
+    ../../user/ssh.nix
+    ../../user/btop
+    ../../user/homebrew.nix
+    ../../user/node-pnpm
+    ../../user/fnm.nix
+    ../../user/fzf
+    ../../user/zoxide.nix
+    ../../user/syncthing-automerge
+    ../../user/nvim
+    ../../user/git
+    ../../user/wikiman.nix
+    ../../user/yt-dlp.nix
+    ../../user/gallery-dl.nix
+    ../../user/tealdeer.nix
+    ../../user/trash.nix
+    (import ../../zmx.nix).module
+    ../../user/direnv.nix
+    ../../user/rust.nix
+    ../../user/go.nix
+    ../../user/fairy-name.nix
+    ../../user/tmux.nix
+    ../../user/amp.nix
+    ../../user/pi
+    ../../user/agents
+    ../../user/pi-memory.nix
+    ../../user/e-ink-glass.nix
+    ../../user/1password.nix
+    ../../user/helium.nix
+    ../../user/helium-remotes.nix
     ../../user/ghostty.nix
     ../../user/gaming.nix
     ../../user/quickshell.nix
-    ../../system/flatpak.nix
   ];
 
-  my.hardware.gpu.vendors = [ "amd" ];
   my.primaryUser = "bdsqqq";
   my.login.greeter = "quickshell";
   my.tailnetRegistry.services.syncthing = {
@@ -225,6 +267,75 @@ in
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
+
+      # Unconfigured host-selected programs
+      home.packages = with pkgs; [
+        coreutils
+        exiftool
+        sops
+        age
+        ssh-to-age
+        pscale
+        ripgrep
+        ast-grep
+        fd
+        bat
+        eza
+        ctop
+        lazydocker
+        curl
+        wget
+        jq
+        yq
+        tree
+        p7zip
+        cloc
+        stow
+        yazi
+        tmux
+        ffmpeg
+        httpie
+        fastfetch
+        mkcert
+        tailscale
+        nvtopPackages.amd
+        radeontop
+        blockbench
+        vscode
+        obsidian
+        rclone
+        qpdf
+        inputs.lnr.packages.x86_64-linux.default
+        transmission_4
+        dbeaver-bin
+        vlc
+        imv
+        overskride
+        superfile
+        xwayland-satellite
+        fuzzel
+        pavucontrol
+        playerctl
+        brightnessctl
+        impala
+        bluetuith
+        pulsemixer
+        lnav
+        bandwhich
+        iotop
+        systemctl-tui
+        dust
+        procs
+        pyprland
+        ollama
+        lua-language-server
+        stylua
+        typescript
+        typescript-language-server
+        nil
+        nixfmt
+        statix
+      ];
 
       stylix.targets = {
         ghostty.enable = false;

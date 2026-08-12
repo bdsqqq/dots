@@ -240,6 +240,8 @@
       };
 
       home.shellAliases = {
+        b = "btop";
+        f = "fastfetch";
         ls = "eza";
         l = "eza -lah --git --icons";
         ll = "eza -l --git --icons";
