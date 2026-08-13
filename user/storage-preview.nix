@@ -1,4 +1,4 @@
-{ lib, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 let
   home = "/Users/bdsqqq";
@@ -14,7 +14,7 @@ let
     (builtins.toJSON {
       modno = 1;
       version = 6;
-      instance = "mbp-m2";
+      instance = config.networking.localHostName;
       repos = [
         {
           id = "ssd-01-hetzner";

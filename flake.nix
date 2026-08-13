@@ -84,6 +84,59 @@
     let
       # get git revision for configuration tracking
       flakeRevision = self.rev or self.dirtyRev or "unknown";
+
+      mkDarwinSystem = hostModule: inputs.nix-darwin.lib.darwinSystem {
+        specialArgs = {
+          inherit inputs;
+          hostSystem = "aarch64-darwin";
+          headMode = "graphical";
+          inherit (inputs.nixpkgs.lib) systems;
+          pkgsFor = system:
+            import inputs.nixpkgs {
+              inherit system;
+              config.allowUnfree = true;
+              overlays = [
+                (import ./overlays/unstable.nix inputs)
+                (import ./zmx.nix).overlay
+                (import ./overlays/axiom-cli.nix)
+                (import ./overlays/libplist-darwin.nix)
+              ];
+            };
+        };
+        modules = [
+          inputs.sops-nix.darwinModules.sops
+          inputs.axiom-deploy-annotation.darwinModules.default
+          ({ config, ... }: {
+            nixpkgs = {
+              hostPlatform = "aarch64-darwin";
+              config.allowUnfree = true;
+              overlays = [
+                (import ./overlays/unstable.nix inputs)
+                (import ./zmx.nix).overlay
+                (import ./overlays/axiom-cli.nix)
+                (import ./overlays/libplist-darwin.nix)
+              ];
+            };
+            system.configurationRevision = flakeRevision;
+
+            services.axiom-deploy-annotation = {
+              enable = true;
+              tokenPath = config.sops.secrets."axiom/personal_token".path;
+              apiEndpoint = "https://api.axiom.co/v2/annotations";
+              datasets = [ "papertrail" "papertrail-traces" ];
+              repositoryUrl = "https://github.com/bdsqqq/dots";
+            };
+          })
+          hostModule
+          {
+            _module.args = {
+              inherit inputs;
+              isDarwin = true;
+              headMode = "graphical";
+            };
+          }
+        ];
+      };
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems =
@@ -143,65 +196,8 @@
 
       flake = {
         darwinConfigurations = {
-          "mbp-m2" = inputs.nix-darwin.lib.darwinSystem {
-            specialArgs = {
-              inherit inputs;
-              hostSystem = "aarch64-darwin";
-              headMode = "graphical";
-              # Make system architecture available for conditional logic
-              inherit (inputs.nixpkgs.lib) systems;
-              # Helper function to get packages for different systems
-              pkgsFor = system:
-                import inputs.nixpkgs {
-                  inherit system;
-                  config.allowUnfree = true;
-                  overlays = [
-                    (import ./overlays/unstable.nix inputs)
-                    (import ./zmx.nix).overlay
-                    (import ./overlays/axiom-cli.nix)
-                    (import ./overlays/libplist-darwin.nix)
-                  ];
-                };
-            };
-            modules = [
-              inputs.sops-nix.darwinModules.sops
-              inputs.axiom-deploy-annotation.darwinModules.default
-              # Apply overlays to the main system packages
-              ({ config, ... }: {
-                nixpkgs = {
-                  hostPlatform = "aarch64-darwin";
-                  config.allowUnfree = true;
-                  overlays = [
-                    (import ./overlays/unstable.nix inputs)
-                    (import ./zmx.nix).overlay
-                    (import ./overlays/axiom-cli.nix)
-                    (import ./overlays/libplist-darwin.nix)
-                  ];
-                };
-                # track git revision for deploy annotations
-                system.configurationRevision = flakeRevision;
-
-                services.axiom-deploy-annotation = {
-                  enable = true;
-                  tokenPath = config.sops.secrets."axiom/personal_token".path;
-                  apiEndpoint = "https://api.axiom.co/v2/annotations";
-                  datasets = [ "papertrail" "papertrail-traces" ];
-                  repositoryUrl = "https://github.com/bdsqqq/dots";
-                };
-              })
-
-              ./hosts/mbp-m2/default.nix
-
-              {
-                # Ensure all modules receive enhanced specialArgs
-                _module.args = {
-                  inherit inputs;
-                  isDarwin = true;
-                  headMode = "graphical";
-                };
-              }
-            ];
-          };
+          "mbp-m2" = mkDarwinSystem ./hosts/mbp-m2/default.nix;
+          "mmn-m4" = mkDarwinSystem ./hosts/mmn-m4/default.nix;
         };
 
         nixosConfigurations = {

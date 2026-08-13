@@ -23,11 +23,10 @@ in {
     ../../system/bluetooth.nix
     ../../system/flatpak.nix
     ../../system/homebrew.nix
+    ../../system/homebrew-best-effort.nix
     ../../system/macos-defaults.nix
     ../../system/sleepless.nix
     ../../system/kanata.nix
-    ../../system/o11y
-    ../../system/t3-code-server.nix
     ../../system/cmux.nix
     ./moshi-host.nix
 
@@ -67,15 +66,11 @@ in {
     ../../user/obs
     ../../user/helium-remotes.nix
     ../../user/gaming.nix
-    ../../user/html-stuff
-    ../../user/media-feeds.nix
-    ../../user/storage-preview.nix
   ];
 
   homebrew = {
     taps = [
       "depot/tap"
-      "homebrew/cask"
     ];
 
     brews = [ "depot" ];
@@ -237,45 +232,31 @@ in {
   # Host-specific settings
   # System identification for multi-host setups
   networking = {
-    hostName = "mbp-m2.local"; # FQDN is fine for HostName
-    localHostName = "mbp-m2"; # must NOT contain dots (mDNS)
-    computerName = "mbp-m2"; # UI name
+    hostName = "mbp-m2.local";
+    localHostName = "mbp-m2";
+    computerName = "mbp-m2";
   };
 
-  # ensure darwin user exists with a concrete home path so HM can derive paths
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
-  my.tailnetRegistry = {
-    directory.enable = true;
-    services.syncthing = {
-      title = "syncthing";
-      description = "mbp-m2 synchronization status";
-      target = "http://127.0.0.1:8384";
-      scheme = "https";
-      port = 8385;
-      healthPath = "/";
-      audience = "owner";
-    };
+  my.tailnetRegistry.services.syncthing = {
+    title = "syncthing";
+    description = "mbp-m2 synchronization status";
+    target = "http://127.0.0.1:8384";
+    scheme = "https";
+    port = 8385;
+    healthPath = "/";
+    audience = "owner";
   };
   my.heliumRemotes = {
     enable = true;
     tabsExtension.enable = true;
   };
-  my.mediaFeeds = {
-    enable = true;
-    root = "/Users/bdsqqq/commonplace/03_media/one piece manga";
-    polling.enable = true;
-  };
 
-  # required by nix-darwin
   system.stateVersion = 6;
-
-  # darwin baselines
   nixpkgs = {
     hostPlatform = "aarch64-darwin";
     config.allowUnfree = true;
   };
-
-  # Kanata enabled when host imports system/kanata.nix
 }

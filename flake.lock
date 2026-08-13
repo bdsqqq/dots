@@ -123,6 +123,7 @@
     "berkeley-mono": {
       "flake": false,
       "locked": {
+        "narHash": "sha256-Ggc7RO9+tKKBkAid0sabQ8j45SwSb9rpx0H4kPIUHkA=",
         "path": "./modules/shared/berkeley-mono",
         "type": "path"
       },
