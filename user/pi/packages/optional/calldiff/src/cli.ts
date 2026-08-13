@@ -85,18 +85,19 @@ const pathsArg = z
   .optional()
   .describe("Limit to these path prefixes");
 
-export const cli = Cli.create("calldiff", {
+export const cli = Cli.create("pi-calldiff", {
   description:
-    "Diff call stacks across git commits for agentic code review (22 languages)",
+    "Map control flow plus syntax-level data in/outflow for agentic code review (22 languages)",
   version: readVersion(),
-  hint: "Commands: diff (compare two trees), tree (view one tree), reach (paths between symbols). Path filters are trailing positionals (a leading -- is also accepted). Use --format json for structured agent output.",
+  hint: "Commands: diff (compare two trees), tree (view one tree), reach (paths between symbols). For JS/TS investigations, add --data-flow: a call stack alone does not show what crosses each boundary. Path filters are trailing positionals. Use --format json for structured agent output.",
   sync: {
     // One skill file covering all commands (default incur depth is 1 = per-command).
     depth: 0,
     suggestions: [
-      "Diff HEAD against my working tree with calldiff diff",
-      "View the call tree for createAgentSession with calldiff tree",
-      "Find call paths from runCheckout to sendEmail with calldiff reach",
+      "Diff HEAD against my working tree with pi-calldiff diff",
+      "View the call tree for createAgentSession with pi-calldiff tree",
+      "Find call paths from runCheckout to sendEmail with pi-calldiff reach",
+      "Trace control flow and data in/outflow with pi-calldiff reach --data-flow",
     ],
   },
 })
@@ -179,7 +180,7 @@ export const cli = Cli.create("calldiff", {
     },
   })
   .command("tree", {
-    description: "View a call tree (no diff) for one or more entrypoints",
+    description: "View control flow and optional data in/outflow for entrypoints",
     args: z.object({
       ref: z.string().optional().describe("Git ref (default: working tree)"),
       paths: pathsArg,
@@ -188,8 +189,12 @@ export const cli = Cli.create("calldiff", {
       entry: entryOption,
       maxDepth: maxDepthOption,
       locs: locsOption,
+      dataFlow: z.boolean().default(false).describe(
+        "Show JS/TS call arguments → parameters and explicit return expressions",
+      ),
     }),
     alias: { entry: "e" },
+    hint: "For JavaScript/TypeScript investigations, add --data-flow so the graph shows arguments → parameters and returned values → local bindings.",
     examples: [
       {
         description: "Tree from working tree",
@@ -218,6 +223,7 @@ export const cli = Cli.create("calldiff", {
           paths: c.args.paths,
           maxDepth: c.options.maxDepth,
           locs: c.options.locs,
+          dataFlow: c.options.dataFlow,
           color: !c.formatExplicit && !c.agent,
         });
         return emitAsciiOrData(c, result);
@@ -231,7 +237,7 @@ export const cli = Cli.create("calldiff", {
     },
   })
   .command("reach", {
-    description: "Find all call paths from an entrypoint to a target symbol",
+    description: "Find control and optional data paths between two symbols",
     args: z.object({
       ref: z.string().optional().describe("Git ref (default: working tree)"),
       paths: pathsArg,
@@ -243,8 +249,12 @@ export const cli = Cli.create("calldiff", {
         .describe("Target symbol to reach (functionName or ClassName.method)"),
       maxDepth: maxDepthOption,
       locs: locsOption,
+      dataFlow: z.boolean().default(false).describe(
+        "Show JS/TS call arguments → parameters and explicit return expressions",
+      ),
     }),
     alias: { entry: "e" },
+    hint: "For JavaScript/TypeScript investigations, add --data-flow. Control reachability alone does not show what data crosses each boundary.",
     examples: [
       {
         description: "Paths in the working tree",
@@ -281,6 +291,7 @@ export const cli = Cli.create("calldiff", {
           paths: c.args.paths,
           maxDepth: c.options.maxDepth,
           locs: c.options.locs,
+          dataFlow: c.options.dataFlow,
           color: !c.formatExplicit && !c.agent,
         });
         return emitAsciiOrData(c, result);

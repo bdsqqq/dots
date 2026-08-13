@@ -43,6 +43,7 @@ export type TreeRunOptions = {
   maxDepth?: number;
   color?: boolean;
   locs?: boolean;
+  dataFlow?: boolean;
 };
 
 export type ReachRunOptions = {
@@ -56,6 +57,7 @@ export type ReachRunOptions = {
   maxDepth?: number;
   color?: boolean;
   locs?: boolean;
+  dataFlow?: boolean;
 };
 
 function loadIndex(
@@ -98,6 +100,7 @@ function serializeCallNode(node: CallNode): CallNode {
     label: node.label,
     ...(node.kind ? { kind: node.kind } : {}),
     ...(node.callback ? { callback: node.callback } : {}),
+    ...(node.data ? { data: node.data } : {}),
     ...(node.file ? { file: node.file } : {}),
     ...(node.line != null ? { line: node.line } : {}),
     ...(node.endLine != null ? { endLine: node.endLine } : {}),
@@ -205,6 +208,7 @@ export function runTree(options: TreeRunOptions): TreeResult {
   const maxDepth = options.maxDepth ?? 12;
   const color = options.color !== false;
   const locs = options.locs === true;
+  const dataFlow = options.dataFlow === true;
 
   assertGitRepo(cwd);
 
@@ -224,10 +228,10 @@ export function runTree(options: TreeRunOptions): TreeResult {
 
   for (const entry of entries) {
     const tree = buildCallTree(entry, index, maxDepth);
-    const ascii = renderTree(tree, { color, locs });
+    const ascii = renderTree(tree, { color, locs, dataFlow });
     trees.push({
       entry,
-      ascii: renderTree(tree, { color: false, locs }),
+      ascii: renderTree(tree, { color: false, locs, dataFlow }),
       tree: serializeCallNode(tree),
     });
     if (asciiParts.length > 2) asciiParts.push("");
@@ -248,6 +252,7 @@ export function runReach(options: ReachRunOptions): ReachResult {
   const maxDepth = options.maxDepth ?? 12;
   const color = options.color !== false;
   const locs = options.locs === true;
+  const dataFlow = options.dataFlow === true;
 
   assertGitRepo(cwd);
 
@@ -271,7 +276,7 @@ export function runReach(options: ReachRunOptions): ReachResult {
     const found = findReachPaths(entry, targetKey, index, maxDepth);
     for (const path of found) {
       pathResults.push({
-        ascii: renderTree(path, { color: false, locs }),
+        ascii: renderTree(path, { color: false, locs, dataFlow }),
         tree: serializeCallNode(path),
       });
     }
@@ -300,7 +305,7 @@ export function runReach(options: ReachRunOptions): ReachResult {
     if (pathResults.length > 1) {
       asciiParts.push(`# path ${i + 1}`);
     }
-    asciiParts.push(renderTree(path.tree, { color, locs }));
+    asciiParts.push(renderTree(path.tree, { color, locs, dataFlow }));
   }
 
   return {

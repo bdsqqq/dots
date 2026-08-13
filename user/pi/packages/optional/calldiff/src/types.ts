@@ -25,6 +25,17 @@ export interface CallNode {
   /** Branches omit the continuing │ rail so arms read as alternate paths */
   kind?: CallNodeKind;
   callback?: CallbackEdge;
+  /** Syntax-level data crossing this call boundary. Present for JS/TS. */
+  data?: {
+    /** Expressions supplied by the caller. */
+    arguments?: string[];
+    /** Parameters declared by the resolved callee/callback. */
+    parameters?: string[];
+    /** Expressions explicitly returned by the resolved callee/callback. */
+    returns?: string[];
+    /** Local binding or return boundary receiving the call result. */
+    result?: string;
+  };
   /**
    * Root: definition location. Children: call-site (or branch keyword) in the parent.
    * Matching/diff keys ignore these fields.
@@ -51,6 +62,10 @@ export type CallStep =
       children?: CallStep[];
       /** Deferred callback edges declared by a recognized API contract. */
       callbacks?: CallStep[];
+      /** Call-site argument expressions, when supported by the extractor. */
+      arguments?: string[];
+      /** Local binding or return boundary receiving the call result. */
+      result?: string;
     }
   | {
       type: "callback";
@@ -92,6 +107,10 @@ export interface FunctionInfo {
   file: string;
   /** Ordered body steps (calls + if/else branches) */
   steps: CallStep[];
+  /** Declared parameter patterns, when supported by the extractor. */
+  parameters?: string[];
+  /** Explicit return expressions, when supported by the extractor. */
+  returns?: string[];
   exported: boolean;
   /** Source span for change detection */
   start: number;

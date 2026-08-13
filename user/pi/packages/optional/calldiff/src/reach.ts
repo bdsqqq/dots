@@ -34,6 +34,7 @@ export function pathToTree(nodes: CallNode[]): CallNode {
     label: head!.label,
     ...(head!.kind ? { kind: head!.kind } : {}),
     ...(head!.callback ? { callback: head!.callback } : {}),
+    ...(head!.data ? { data: head!.data } : {}),
     ...(head!.file ? { file: head!.file } : {}),
     ...(head!.line != null ? { line: head!.line } : {}),
     ...(head!.endLine != null ? { endLine: head!.endLine } : {}),

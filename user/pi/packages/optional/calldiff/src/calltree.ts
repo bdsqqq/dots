@@ -65,10 +65,24 @@ function expandCall(
   visiting: Set<string>,
   inlineChildren?: CallStep[],
   callbacks?: CallStep[],
-  callSite?: { file?: string; line?: number; endLine?: number },
+  callSite?: {
+    file?: string;
+    line?: number;
+    endLine?: number;
+    arguments?: string[];
+    result?: string;
+  },
 ): CallNode {
   const label = displayCallLabel(key, index);
   const info = index.get(key);
+  const callArguments = callSite?.arguments;
+  const data = {
+    ...(callArguments?.length ? { arguments: callArguments } : {}),
+    ...(info?.parameters?.length ? { parameters: info.parameters } : {}),
+    ...(info?.returns?.length ? { returns: info.returns } : {}),
+    ...(callSite?.result ? { result: callSite.result } : {}),
+  };
+  const hasData = Object.keys(data).length > 0;
 
   // Root uses the definition start line; every other node uses the call-site in the parent.
   const loc =
@@ -77,11 +91,11 @@ function expandCall(
       : pickLoc(callSite);
 
   if (depth >= maxDepth) {
-    return { key, label, kind: "call", ...loc, children: [] };
+    return { key, label, kind: "call", ...(hasData ? { data } : {}), ...loc, children: [] };
   }
 
   if (!info && !inlineChildren?.length && !callbacks?.length) {
-    return { key, label, kind: "call", ...loc, children: [] };
+    return { key, label, kind: "call", ...(hasData ? { data } : {}), ...loc, children: [] };
   }
 
   if (info && visiting.has(key)) {
@@ -96,6 +110,7 @@ function expandCall(
       key,
       label: `${label} ⇄`,
       kind: "call",
+      ...(hasData ? { data } : {}),
       ...loc,
       children: [...callbackChildren, ...callSiteChildren],
     };
@@ -117,6 +132,7 @@ function expandCall(
     key,
     label,
     kind: "call",
+    ...(hasData ? { data } : {}),
     ...loc,
     children: [...bodyChildren, ...callbackChildren, ...callSiteChildren],
   };

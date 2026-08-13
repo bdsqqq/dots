@@ -5,7 +5,9 @@
 > callback-contract edges for Pi extensions and Promise executors. In this
 > workspace, invoke it as `pi-calldiff`.
 
-Diff call stacks across git commits — like `git diff`, but for who-calls-whom.
+Map control flow across git commits and, for JavaScript/TypeScript, the data
+crossing each call boundary. A call stack answers who calls whom; `--data-flow`
+adds call-site arguments → callee parameters and explicit return expressions.
 
 Built for **agentic code review**: when an agent (or you) rewires call flow, plain line diffs bury the shape of the change. `calldiff` shows which callees appeared, disappeared, or moved under an entrypoint — across **22 languages**.
 
@@ -58,6 +60,9 @@ pi-calldiff tree -e runCheckout --locs examples/checkout
 pi-calldiff reach -e runCheckout --to sendEmail
 pi-calldiff reach HEAD -e runCheckout --to sendEmail examples/checkout
 
+# ask for both control flow and data in/outflow (JS/TS)
+pi-calldiff reach HEAD -e runCheckout --to sendEmail --data-flow examples/checkout
+
 # agent / machine-readable output (via incur)
 pi-calldiff diff --format json
 pi-calldiff --llms
@@ -97,6 +102,14 @@ Definition.
 | `calldiff reach <ref> -e <from> --to <target>` | that commit/ref |
 
 Prints every call path from the entrypoint to the target (including alternate `if` / `else` arms). Both `--entry` / `-e` and `--to` are required.
+
+Add `--data-flow` to `tree` or `reach` to annotate the same control-flow graph
+with syntax-level data evidence. `in: expression → parameter` is a call-boundary
+binding; `out: expression → binding` connects explicit return expressions to a
+local assignment or enclosing return boundary. This is not taint analysis:
+it does not infer runtime values, mutation, aliasing, or dynamic dispatch, and
+languages other than JavaScript/TypeScript currently retain the control graph
+without data annotations.
 
 ### Labels
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 export default defineConfig({
   test: {
-    include: ["test/**/*.test.ts"],
+    include: ["test/**/*.test.ts", "src/render.ts"],
     // First use may compile an on-demand language grammar.
     testTimeout: 60_000,
     // Keep on-demand grammars out of the repo; reuse across test runs in this env.
