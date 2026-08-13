@@ -21,12 +21,21 @@
 	"scripts": {
 		"build": "vici build",
 		"dev": "vici develop",
-		"lint": "vici lint"
+		"lint": "vici lint",
+		"postinstall": "node scripts/patch-npm-bundles.mjs",
+		"test:npm-bundles": "node scripts/test-npm-bundles.mjs"
 	},
 	"dependencies": {
-		"@vicinae/api": "^0.16.1"
+		"@vicinae/api": "^0.16.1",
+		"npm-patched-brace-expansion": "npm:brace-expansion@5.0.9",
+		"npm-patched-ip-address": "npm:ip-address@10.3.1",
+		"npm-patched-tar": "npm:tar@7.5.21",
+		"npm-patched-undici": "npm:undici@6.28.0"
 	},
 	"devDependencies": {
 		"typescript": "^5.9.2"
+	},
+	"overrides": {
+		"npm": "12.0.2"
 	}
 }
