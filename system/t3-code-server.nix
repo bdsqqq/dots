@@ -241,6 +241,7 @@ else if isDarwin then
     launchd.user.agents.t3-code = {
       path = [
         pkgs.coreutils
+        pkgs.gnused
         pkgs.git
         pkgs.nodejs
         "/usr/local/bin"
