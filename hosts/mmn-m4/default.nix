@@ -10,7 +10,6 @@
     ../../system/tailscale.nix
     ../../system/tailnet-registry.nix
     ../../system/o11y
-    ../../system/t3-code-server.nix
     ../mbp-m2/moshi-host.nix
     ../../system/sleepless.nix
     ../../system/cmux.nix

@@ -98,7 +98,6 @@ in
     ../../system/niri.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
-    ../../system/t3-code-server.nix
 
     # Configured user programs
     ../../user/path-order.nix
