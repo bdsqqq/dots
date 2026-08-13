@@ -100,32 +100,17 @@ in
     ../../system/o11y/hwmon.nix
 
     # Configured user programs
-    ../../user/path-order.nix
-    ../../user/shell.nix
-    ../../user/ssh.nix
-    ../../user/btop
-    ../../user/homebrew.nix
+    ../../user/shell-baseline.nix
     ../../user/node-pnpm
     ../../user/fnm.nix
-    ../../user/fzf
-    ../../user/zoxide.nix
     ../../user/syncthing-automerge
-    ../../user/nvim
-    ../../user/git
     ../../user/wikiman.nix
     ../../user/yt-dlp.nix
     ../../user/gallery-dl.nix
-    ../../user/tealdeer.nix
-    ../../user/trash.nix
-    (import ../../zmx.nix).module
-    ../../user/direnv.nix
     ../../user/rust.nix
     ../../user/go.nix
     ../../user/fairy-name.nix
-    ../../user/tmux.nix
-    ../../user/amp.nix
     ../../user/pi
-    ../../user/agents
     ../../user/pi-memory.nix
     ../../user/e-ink-glass.nix
     ../../user/1password.nix
