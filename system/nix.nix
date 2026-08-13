@@ -19,7 +19,11 @@
     optimise.automatic = true;
     gc = {
       automatic = lib.mkDefault true;
-      options = lib.mkDefault "--delete-older-than 14d";
+      interval = lib.mkDefault {
+        Hour = 3;
+        Minute = 15;
+      };
+      options = lib.mkDefault "--delete-older-than 3d";
     };
   };
 }
