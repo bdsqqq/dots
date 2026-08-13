@@ -19,6 +19,7 @@
     ../../user/ssh.nix
     ../../user/homebrew.nix
     ../../user/node-pnpm
+    ../../user/amp.nix
     ../../user/1password.nix
     ../../user/orbstack.nix
     ../../user/ghostty.nix
@@ -53,6 +54,10 @@
         homeDirectory = "/Users/bdsqqq";
         stateVersion = "25.05";
       };
+      home.packages = [
+        pkgs.eza
+        pkgs.fastfetch
+      ];
       programs.home-manager.enable = true;
     };
   };
