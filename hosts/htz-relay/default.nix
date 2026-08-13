@@ -40,17 +40,10 @@ in
     ../../system/syncthing.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
-    ../../user/path-order.nix
-    ../../user/shell.nix
-    ../../user/ssh.nix
-    ../../user/btop
-    ../../user/homebrew.nix
+    ../../user/shell-baseline.nix
     ../../user/node-pnpm
     ../../user/fnm.nix
-    ../../user/fzf
-    ../../user/zoxide.nix
     ../../user/syncthing-automerge
-    ../../user/amp.nix
   ]) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix)
     [ ./hardware-configuration.nix ];
 

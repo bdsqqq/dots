@@ -14,12 +14,8 @@
     ../../system/sleepless.nix
     ../../system/cmux.nix
     ../../system/fonts.nix
-    ../../user/path-order.nix
-    ../../user/shell.nix
-    ../../user/ssh.nix
-    ../../user/homebrew.nix
+    ../../user/shell-baseline.nix
     ../../user/node-pnpm
-    ../../user/amp.nix
     ../../user/1password.nix
     ../../user/orbstack.nix
     ../../user/ghostty.nix
@@ -54,10 +50,6 @@
         homeDirectory = "/Users/bdsqqq";
         stateVersion = "25.05";
       };
-      home.packages = [
-        pkgs.eza
-        pkgs.fastfetch
-      ];
       programs.home-manager.enable = true;
     };
   };
