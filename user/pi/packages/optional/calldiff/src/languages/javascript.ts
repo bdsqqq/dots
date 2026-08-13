@@ -5,6 +5,10 @@ import type { CallStep, FunctionInfo } from "../types.js";
 import {
   childByType,
   collapseWs,
+  dataArguments,
+  dataParameters,
+  dataResult,
+  dataReturns,
   locFromNode,
   namedChildren,
   type LanguageExtractor,
@@ -155,6 +159,8 @@ export function collectStatements(
     steps.push({
       type: "call",
       key,
+      arguments: dataArguments(node),
+      result: dataResult(node),
       start: node.startIndex,
       end: node.endIndex,
       ...locFromNode(file, node),
@@ -454,6 +460,8 @@ function functionFromParts(
     label: `${label}${getParamsLabel(params)}`,
     file,
     steps: collectStepsFromBody(file, body, className),
+    parameters: dataParameters(params),
+    returns: dataReturns(body),
     exported,
     start,
     end,

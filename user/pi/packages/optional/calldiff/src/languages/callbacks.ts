@@ -1,5 +1,7 @@
 import type { CallbackRelation, CallStep, FunctionInfo } from "../types.js";
 import {
+  dataParameters,
+  dataReturns,
   locFromNode,
   namedChildren,
   type SyntaxNode,
@@ -243,6 +245,16 @@ export function extractContractCallbacks(
         label: `${contract.role}${anchor ? ` (${anchor})` : ""}`,
         file,
         steps: collect(file, body, null),
+        parameters: dataParameters(
+          callback.childForFieldName("parameters") ??
+            (callback.type === "arrow_function"
+              ? namedChildren(callback).find((node) => node.type === "identifier") ??
+                null
+              : null),
+        ),
+        returns: dataReturns(
+          callback.childForFieldName("body") ?? namedChildren(callback).at(-1) ?? null,
+        ),
         exported: false,
         start: callback.startIndex,
         end: callback.endIndex,
@@ -304,6 +316,12 @@ export function extractContractCallbacks(
           label: `${name.text}${parameters}`,
           file,
           steps: collect(file, body, null),
+          parameters: dataParameters(
+            node.childForFieldName("parameters") ?? null,
+          ),
+          returns: dataReturns(
+            node.childForFieldName("body") ?? namedChildren(node).at(-1) ?? null,
+          ),
           exported: false,
           start: node.startIndex,
           end: node.endIndex,
