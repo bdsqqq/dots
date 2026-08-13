@@ -14,7 +14,10 @@ let
 in
 {
   sops = {
-    age.sshKeyPaths = [ sshKeyPath ];
+    age = {
+      sshKeyPaths = [ sshKeyPath ];
+      keyFile = if isDarwin then "${homeDir}/.config/sops/age/keys.txt" else null;
+    };
 
     defaultSopsFile = ../secrets.yaml;
     secrets = {

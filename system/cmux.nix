@@ -29,7 +29,10 @@ else
     ];
 
     homebrew = {
-      taps = [ "manaflow-ai/cmux" ];
+      taps = [{
+        name = "manaflow-ai/cmux";
+        trusted = true;
+      }];
       casks = [ "cmux" ];
     };
 
