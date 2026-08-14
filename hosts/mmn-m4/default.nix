@@ -19,6 +19,7 @@
     ../../user/1password.nix
     ../../user/orbstack.nix
     ../../user/ghostty.nix
+    ../../user/ipad-display.nix
     ../../user/html-stuff
     ../../user/media-feeds.nix
     ../../user/storage-preview.nix
