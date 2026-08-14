@@ -1,7 +1,27 @@
 { lib, pkgs, ... }:
 
 let
-  betterDisplay = "/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay";
+  betterDisplayApp = pkgs.stdenvNoCC.mkDerivation {
+    pname = "betterdisplay";
+    version = "5.0.2-pre-release";
+    src = pkgs.fetchurl {
+      url = "https://github.com/waydabber/BetterDisplay/releases/download/v5.0.2/BetterDisplay-v5.0.2-pre-release.dmg";
+      hash = "sha256-fw79lBqWD4foVTqE9jMtu316pEsXqlANo7Rwywpfbyo=";
+    };
+    nativeBuildInputs = [ pkgs.undmg ];
+    sourceRoot = ".";
+    installPhase = ''
+      runHook preInstall
+      mkdir -p "$out/Applications"
+      cp -R BetterDisplay.app "$out/Applications/"
+      runHook postInstall
+    '';
+    # Preserve the upstream signature so macOS permissions remain associated
+    # with BetterDisplay across Nix generations.
+    dontFixup = true;
+  };
+  betterDisplayAppPath = "${betterDisplayApp}/Applications/BetterDisplay.app";
+  betterDisplay = "${betterDisplayAppPath}/Contents/MacOS/BetterDisplay";
   virtualDisplayName = "iPad mini virtual";
 
   ipadDisplay = pkgs.writeShellApplication {
@@ -10,6 +30,7 @@ let
     text = ''
       set -euo pipefail
 
+      better_display_app=${lib.escapeShellArg betterDisplayAppPath}
       better_display=${lib.escapeShellArg betterDisplay}
       virtual_display_name=${lib.escapeShellArg virtualDisplayName}
       config_dir="''${XDG_CONFIG_HOME:-$HOME/.config}/ipad-display"
@@ -38,7 +59,7 @@ let
 
       start_better_display() {
         require_better_display
-        /usr/bin/open -gja /Applications/BetterDisplay.app
+        /usr/bin/open -gja "$better_display_app"
 
         for _ in $(seq 1 30); do
           if "$better_display" get -proAvailable >/dev/null 2>&1; then
@@ -97,7 +118,19 @@ let
         local target_parameter
 
         if [[ "$specifier" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]; then
-          target_parameter="-targetUUID=$specifier"
+          local sidecar_entry
+          local sidecar_name=""
+          while IFS= read -r sidecar_entry; do
+            if [[ "$sidecar_entry" == *", $specifier" ]]; then
+              sidecar_name="''${sidecar_entry%, "$specifier"}"
+              break
+            fi
+          done < <("$better_display" get -sidecarList)
+
+          if [[ -z "$sidecar_name" ]]; then
+            return 1
+          fi
+          target_parameter="-targetName=$sidecar_name"
         else
           target_parameter="-targetName=$specifier"
         fi
@@ -144,18 +177,28 @@ let
           restore_virtual_display
           specifier=$(read_specifier)
           last_error=""
-          for _ in $(seq 1 3); do
-            if output=$("$better_display" set -sidecarConnected=on -specifier="$specifier" 2>&1); then
-              if mirror_to_sidecar "$specifier"; then
-                echo "Connected iPad display: $specifier"
-                exit 0
-              fi
-              echo "Sidecar connected, but the virtual display could not be mirrored to it." >&2
-              echo "Check the BetterDisplay Pro license and display names." >&2
-              exit 1
+
+          if [[ $("$better_display" get -sidecarConnected -specifier="$specifier" 2>/dev/null) == "on" ]]; then
+            if mirror_to_sidecar "$specifier"; then
+              echo "Connected iPad display: $specifier"
+              exit 0
             fi
-            last_error=$output
+            echo "Sidecar is connected, but the virtual display could not be mirrored to it." >&2
+            exit 1
+          fi
+
+          for _ in $(seq 1 5); do
+            if ! output=$("$better_display" set -sidecarConnected=on -specifier="$specifier" 2>&1); then
+              last_error=$output
+            fi
+
             sleep 2
+
+            if [[ $("$better_display" get -sidecarConnected -specifier="$specifier" 2>/dev/null) == "on" ]] \
+              && mirror_to_sidecar "$specifier"; then
+              echo "Connected iPad display: $specifier"
+              exit 0
+            fi
           done
           printf '%s\n' "$last_error" >&2
           echo "Could not connect Sidecar. Wake and unlock the iPad, then retry." >&2
@@ -183,32 +226,8 @@ let
     '';
   };
 
-  raycastCommand = pkgs.writeTextFile {
-    name = "connect-ipad-display";
-    executable = true;
-    text = ''
-      #!/bin/bash
-
-      # Required parameters:
-      # @raycast.schemaVersion 1
-      # @raycast.title connect iPad display
-      # @raycast.mode compact
-
-      # Optional parameters:
-      # @raycast.icon 🖥️
-      # @raycast.packageName displays
-
-      # Documentation:
-      # @raycast.description Connect the selected iPad using Sidecar
-      # @raycast.author bdsqqq
-
-      exec ${ipadDisplay}/bin/ipad-display connect
-    '';
-  };
 in
 {
-  homebrew.casks = [ "betterdisplay" ];
-
   # Automatic login still requires disabling FileVault and entering the account
   # password once in System Settings. Never store that password in Nix.
   system.defaults.loginwindow.autoLoginUser = "bdsqqq";
@@ -222,9 +241,7 @@ in
   };
 
   home-manager.users.bdsqqq = { config, ... }: {
-    home.packages = [ ipadDisplay ];
-
-    home.file.".config/raycast/script-commands/connect-ipad-display.sh".source = raycastCommand;
+    home.packages = [ betterDisplayApp ipadDisplay ];
 
     launchd.agents.ipad-display = {
       enable = true;
