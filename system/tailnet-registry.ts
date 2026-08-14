@@ -13,17 +13,31 @@ import { dirname, join } from "node:path";
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const SERVICE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-type Audience = "owner" | "family" | "machines";
+type TailnetAudience = "owner" | "family" | "machines";
+type CloudflareAudience = "disabled" | "owner" | "family" | "public";
 type Scheme = "http" | "https";
+
+interface ServiceAccess {
+  tailnet: TailnetAudience;
+  cloudflare: CloudflareAudience;
+}
+
+interface NativeServiceConfig {
+  enable: boolean;
+  name: string;
+  port: number;
+  adoptExisting?: boolean;
+}
 
 export interface ServiceConfig {
   adoptExisting?: boolean;
-  audience: Audience;
+  access: ServiceAccess;
   description: string | null;
   healthPath: string;
   path: string;
   port: number;
   scheme: Scheme;
+  tailscaleService: NativeServiceConfig;
   target: string;
   title: string;
 }
@@ -32,7 +46,12 @@ interface RegistryConfig {
   schemaVersion: 1;
   host: { name: string };
   manifest: { port: number; backendPort: number };
-  directory: { enable: boolean; port: number; backendPort: number };
+  directory: {
+    enable: boolean;
+    port: number;
+    backendPort: number;
+    tailscaleService: NativeServiceConfig;
+  };
   services: Record<string, ServiceConfig>;
 }
 
@@ -46,12 +65,15 @@ export interface Route {
 }
 
 interface PublicService {
-  audience: Audience;
+  access: ServiceAccess;
+  /** Kept during rolling deployment so older registry agents can read manifests. */
+  audience: TailnetAudience;
   description: string | null;
   healthPath: string;
   path: string;
   port: number;
   scheme: Scheme;
+  tailscaleService: Omit<NativeServiceConfig, "adoptExisting" | "enable"> | null;
   title: string;
 }
 
@@ -440,6 +462,250 @@ export class ServeReconciler {
   }
 }
 
+export interface NativeEndpoint {
+  service: string;
+  port: number;
+  target: string;
+  advertised?: boolean;
+  adoptExisting?: boolean;
+  shared?: boolean;
+}
+
+function nativeServiceConfig(): Record<string, unknown> {
+  return JSON.parse(
+    command(["tailscale", "serve", "get-config", "--all"]).stdout,
+  );
+}
+
+export function nativeEndpointsFromConfig(
+  config: Record<string, unknown>,
+): Map<string, NativeEndpoint> {
+  const result = new Map<string, NativeEndpoint>();
+  const services = asRecord(config.services);
+  if (!services) return result;
+
+  for (const [service, rawValue] of Object.entries(services)) {
+    const value = asRecord(rawValue);
+    const endpoints = asRecord(value?.endpoints);
+    if (!service.startsWith("svc:") || !endpoints) continue;
+    const entries = Object.entries(endpoints);
+    const [endpoint, target] = entries[0] ?? [];
+    const match = /^tcp:(\d+)$/.exec(endpoint ?? "");
+    if (!match || typeof target !== "string") continue;
+    result.set(service, {
+      service,
+      port: Number(match[1]),
+      target,
+      advertised: value?.advertised !== false,
+      shared: entries.length !== 1,
+    });
+  }
+  return result;
+}
+
+function desiredNativeEndpoints(
+  config: RegistryConfig,
+): Map<string, NativeEndpoint> {
+  const endpoints = new Map<string, NativeEndpoint>();
+  const add = (definition: NativeServiceConfig, target: string): void => {
+    if (!definition.enable) return;
+    const service = `svc:${definition.name}`;
+    endpoints.set(service, {
+      service,
+      port: definition.port,
+      target,
+      adoptExisting: definition.adoptExisting,
+    });
+  };
+  add(
+    config.directory.tailscaleService,
+    `http://127.0.0.1:${config.directory.backendPort}`,
+  );
+  for (const service of Object.values(config.services)) {
+    add(service.tailscaleService, service.target);
+  }
+  return endpoints;
+}
+
+function nativeEndpointMatches(
+  left: NativeEndpoint,
+  right: NativeEndpoint,
+): boolean {
+  return (
+    left.service === right.service &&
+    left.port === right.port &&
+    left.target.replace(/\/$/, "") === right.target.replace(/\/$/, "")
+  );
+}
+
+function nativeEndpointForState(endpoint: NativeEndpoint): NativeEndpoint {
+  return {
+    service: endpoint.service,
+    port: endpoint.port,
+    target: endpoint.target,
+    ...(endpoint.advertised === false ? { advertised: false } : {}),
+  };
+}
+
+function nativeOnCommand(endpoint: NativeEndpoint): string[] {
+  return [
+    "tailscale",
+    "serve",
+    "--yes",
+    `--service=${endpoint.service}`,
+    `--https=${endpoint.port}`,
+    endpoint.target,
+  ];
+}
+
+interface NativeReconcilerDependencies {
+  status: () => Record<string, unknown>;
+  execute: (args: string[]) => CommandResult;
+}
+
+export class NativeServiceReconciler {
+  readonly desired: Map<string, NativeEndpoint>;
+  readonly statePath: string;
+  private readonly dependencies: NativeReconcilerDependencies;
+
+  constructor(
+    config: RegistryConfig,
+    stateDirectory: string,
+    dependencies: NativeReconcilerDependencies = {
+      status: nativeServiceConfig,
+      execute: command,
+    },
+  ) {
+    this.desired = desiredNativeEndpoints(config);
+    this.statePath = join(stateDirectory, "owned-native-services.json");
+    this.dependencies = dependencies;
+    mkdirSync(stateDirectory, { recursive: true });
+  }
+
+  private loadOwned(): Map<string, NativeEndpoint> {
+    const state = readJson<{ services?: Record<string, NativeEndpoint> }>(
+      this.statePath,
+      {},
+    );
+    return new Map(
+      Object.entries(state.services ?? {}).filter(
+        ([service, endpoint]) =>
+          endpoint &&
+          service === endpoint.service &&
+          service.startsWith("svc:") &&
+          Number.isInteger(endpoint.port) &&
+          typeof endpoint.target === "string",
+      ),
+    );
+  }
+
+  private saveOwned(endpoints: Map<string, NativeEndpoint>): void {
+    atomicWriteJson(this.statePath, {
+      schemaVersion: 1,
+      services: Object.fromEntries(
+        [...endpoints.entries()]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([service, endpoint]) => [
+            service,
+            nativeEndpointForState(endpoint),
+          ]),
+      ),
+    });
+  }
+
+  reconcile(): void {
+    if (this.desired.size === 0 && !existsSync(this.statePath)) return;
+    const observed = nativeEndpointsFromConfig(this.dependencies.status());
+    const owned = this.loadOwned();
+    const conflicts: string[] = [];
+
+    for (const [service, desired] of this.desired) {
+      const current = observed.get(service);
+      const previous = owned.get(service);
+      if (!current) continue;
+      if (current.shared) {
+        conflicts.push(`${service} has additional endpoints`);
+        continue;
+      }
+      if (nativeEndpointMatches(current, desired)) {
+        const previouslyOwned =
+          previous !== undefined && nativeEndpointMatches(previous, desired);
+        if (!previouslyOwned && !desired.adoptExisting) {
+          conflicts.push(
+            `${service} exactly matches an existing endpoint, but explicit adoption is disabled`,
+          );
+        }
+        continue;
+      }
+      if (!previous || !nativeEndpointMatches(current, previous)) {
+        conflicts.push(
+          `${service} wants https:${desired.port} -> ${desired.target}, ` +
+            `occupied by tcp:${current.port} -> ${current.target}`,
+        );
+      }
+    }
+    if (conflicts.length) throw new Error(conflicts.join("; "));
+
+    const nextOwned = new Map(owned);
+    for (const [service, previous] of owned) {
+      const desired = this.desired.get(service);
+      if (desired) continue;
+      const current = observed.get(service);
+      if (!current || !nativeEndpointMatches(current, previous)) {
+        nextOwned.delete(service);
+        this.saveOwned(nextOwned);
+        continue;
+      }
+      if (previous.advertised === false && current.advertised === false) continue;
+      log("info", `draining stale native service ${service}`);
+      this.dependencies.execute(["tailscale", "serve", "drain", service]);
+      nextOwned.set(service, { ...previous, advertised: false });
+      this.saveOwned(nextOwned);
+    }
+
+    for (const [service, desired] of this.desired) {
+      const current = observed.get(service);
+      if (current && nativeEndpointMatches(current, desired)) {
+        if (current.advertised === false) {
+          this.dependencies.execute([
+            "tailscale",
+            "serve",
+            "advertise",
+            service,
+          ]);
+        }
+        nextOwned.set(service, desired);
+        this.saveOwned(nextOwned);
+        continue;
+      }
+
+      const previous = owned.get(service);
+      const replacingOwned =
+        current !== undefined &&
+        previous !== undefined &&
+        nativeEndpointMatches(current, previous);
+      if (replacingOwned) {
+        this.dependencies.execute(["tailscale", "serve", "drain", service]);
+      }
+      log(
+        "info",
+        `publishing native service ${service} on https:${desired.port} -> ${desired.target}`,
+      );
+      try {
+        this.dependencies.execute(nativeOnCommand(desired));
+      } catch (error) {
+        if (replacingOwned && previous) {
+          log("error", `native service replacement failed; restoring ${service}`);
+          this.dependencies.execute(nativeOnCommand(previous));
+        }
+        throw error;
+      }
+      nextOwned.set(service, desired);
+      this.saveOwned(nextOwned);
+    }
+  }
+}
+
 function normalizedPath(value: unknown): string {
   if (typeof value !== "string" || value.length === 0 || value.length > 512) {
     throw new Error("invalid URL path");
@@ -470,6 +736,44 @@ function sanitizedText(
   return value;
 }
 
+function sanitizedAccess(service: Record<string, unknown>, id: string): ServiceAccess {
+  const access = asRecord(service.access);
+  const tailnet = access?.tailnet ?? service.audience;
+  const cloudflare = access?.cloudflare ?? "disabled";
+  if (tailnet !== "owner" && tailnet !== "family" && tailnet !== "machines") {
+    throw new Error(`invalid tailnet access for ${id}`);
+  }
+  if (
+    cloudflare !== "disabled" &&
+    cloudflare !== "owner" &&
+    cloudflare !== "family" &&
+    cloudflare !== "public"
+  ) {
+    throw new Error(`invalid Cloudflare access for ${id}`);
+  }
+  return { tailnet, cloudflare };
+}
+
+function sanitizedNativeService(
+  value: unknown,
+  id: string,
+): PublicService["tailscaleService"] {
+  if (value === null || value === undefined) return null;
+  const service = asRecord(value);
+  if (
+    !service ||
+    typeof service.name !== "string" ||
+    !SERVICE_ID.test(service.name) ||
+    typeof service.port !== "number" ||
+    !Number.isInteger(service.port) ||
+    service.port < 1 ||
+    service.port > 65535
+  ) {
+    throw new Error(`invalid Tailscale Service for ${id}`);
+  }
+  return { name: service.name, port: service.port };
+}
+
 export function sanitizeManifest(value: unknown): PublicManifest {
   const manifest = asRecord(value);
   const rawServices = asRecord(manifest?.services);
@@ -495,14 +799,10 @@ export function sanitizeManifest(value: unknown): PublicManifest {
     ) {
       throw new Error(`invalid port for ${id}`);
     }
-    if (
-      service.audience !== "owner" &&
-      service.audience !== "family" &&
-      service.audience !== "machines"
-    ) {
-      throw new Error(`invalid audience for ${id}`);
-    }
+    const access = sanitizedAccess(service, id);
     services[id] = {
+      access,
+      audience: access.tailnet,
       title: sanitizedText(service.title ?? id, `title for ${id}`, 100),
       description:
         service.description === null || service.description === undefined
@@ -518,7 +818,7 @@ export function sanitizeManifest(value: unknown): PublicManifest {
       healthPath: normalizedPath(
         service.healthPath ?? service.path ?? "/",
       ),
-      audience: service.audience,
+      tailscaleService: sanitizedNativeService(service.tailscaleService, id),
     };
   }
 
@@ -539,12 +839,19 @@ function publicManifest(config: RegistryConfig): PublicManifest {
   const services: Record<string, PublicService> = {};
   for (const [id, service] of Object.entries(config.services)) {
     services[id] = {
-      audience: service.audience,
+      access: service.access,
+      audience: service.access.tailnet,
       description: service.description,
       healthPath: service.healthPath,
       path: service.path,
       port: service.port,
       scheme: service.scheme,
+      tailscaleService: service.tailscaleService.enable
+        ? {
+            name: service.tailscaleService.name,
+            port: service.tailscaleService.port,
+          }
+        : null,
       title: service.title,
     };
   }
@@ -556,7 +863,14 @@ function publicManifest(config: RegistryConfig): PublicManifest {
       port: config.directory.port,
       path: "/",
       healthPath: "/api/services",
+      access: { tailnet: "owner", cloudflare: "disabled" },
       audience: "owner",
+      tailscaleService: config.directory.tailscaleService.enable
+        ? {
+            name: config.directory.tailscaleService.name,
+            port: config.directory.tailscaleService.port,
+          }
+        : null,
     };
   }
   return sanitizeManifest({
@@ -673,6 +987,15 @@ function machineFromStatus(value: unknown): Machine | null {
 }
 
 function serviceUrl(machine: Machine, service: PublicService): string {
+  if (service.tailscaleService) {
+    const tailnetSuffix = machine.dnsName.split(".").slice(1).join(".");
+    if (tailnetSuffix) {
+      return new URL(
+        normalizedPath(service.path),
+        `https://${service.tailscaleService.name}.${tailnetSuffix}:${service.tailscaleService.port}`,
+      ).toString();
+    }
+  }
   return new URL(
     normalizedPath(service.path),
     `${service.scheme}://${machine.dnsName}:${service.port}`,
@@ -1007,12 +1330,21 @@ async function main(): Promise<void> {
   process.on("SIGTERM", shutdown);
 
   const reconciler = new ServeReconciler(config, args.stateDirectory);
+  const nativeServiceReconciler = new NativeServiceReconciler(
+    config,
+    args.stateDirectory,
+  );
   let lastDirectoryRefresh = 0;
   while (true) {
     try {
       reconciler.reconcile();
     } catch (error) {
       log("error", `serve reconciliation failed: ${String(error)}`);
+    }
+    try {
+      nativeServiceReconciler.reconcile();
+    } catch (error) {
+      log("error", `native service reconciliation failed: ${String(error)}`);
     }
     if (directory && Date.now() - lastDirectoryRefresh >= 30_000) {
       try {

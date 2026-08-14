@@ -71,7 +71,10 @@
     };
   };
 
-  my.tailnetRegistry.directory.enable = true;
+  my.tailnetRegistry.directory = {
+    enable = true;
+    tailscaleService.enable = true;
+  };
   my.mediaFeeds = {
     enable = true;
     root = "/Users/bdsqqq/commonplace/03_media/one piece manga";
