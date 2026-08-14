@@ -5,10 +5,7 @@
 	},
 
 	"autoApprovers": {
-		"routes": {
-			"0.0.0.0/0": ["tag:service-host"],
-			"::/0":      ["tag:service-host"],
-		},
+		"exitNode": ["tag:service-host"],
 		"services": {
 			"svc:apps": ["tag:service-host"],
 		},
