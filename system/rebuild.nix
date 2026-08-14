@@ -12,12 +12,12 @@ let
     set -o pipefail
 
     case "''${1:-}" in
-      switch|boot|test|build)
-        action="$1"
-        shift
+      ""|-*)
+        action="switch"
         ;;
       *)
-        action="switch"
+        action="$1"
+        shift
         ;;
     esac
 
