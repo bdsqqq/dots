@@ -19,11 +19,12 @@
     optimise.automatic = true;
     gc = {
       automatic = lib.mkDefault true;
-      interval = lib.mkDefault {
-        Hour = 3;
-        Minute = 15;
-      };
       options = lib.mkDefault "--delete-older-than 3d";
+    };
+  } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+    gc.interval = lib.mkDefault {
+      Hour = 3;
+      Minute = 15;
     };
   };
 }
