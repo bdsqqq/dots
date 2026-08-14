@@ -60,6 +60,8 @@ jobs:
           echo "TS_API_TOKEN=${api_token}" >> "${GITHUB_ENV}"
 
       - name: Define Tailscale services
+        id: services
+        continue-on-error: true
         env:
           TS_TAILNET: ${{ vars.TS_TAILNET }}
         run: |
@@ -112,3 +114,9 @@ jobs:
           oauth-client-id: ${{ vars.TS_OAUTH_ID }}
           policy-file: tailscale/policy.hujson
           tailnet: ${{ vars.TS_TAILNET }}
+
+      - name: Require service reconciliation
+        if: steps.services.outcome != 'success'
+        run: |
+          echo "The Tailscale identity needs the services write scope." >&2
+          exit 1
