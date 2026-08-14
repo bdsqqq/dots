@@ -68,7 +68,7 @@ jobs:
 
           jq -r 'keys[]' tailscale/services.json | while read -r service; do
             encoded_service="$(jq -rn --arg value "${service}" '$value | @uri')"
-            url="https://api.tailscale.com/api/v2/tailnet/${tailnet}/services/${encoded_service}"
+            url="https://api.tailscale.com/api/v2/tailnet/${tailnet}/vip-services/${encoded_service}"
             status="$(
               curl --silent --show-error \
                 -H "Authorization: Bearer ${TS_API_TOKEN}" \
