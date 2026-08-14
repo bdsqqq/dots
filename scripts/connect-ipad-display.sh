@@ -13,4 +13,4 @@
 # @raycast.description Connect the selected iPad using Sidecar
 # @raycast.author bdsqqq
 
-exec /etc/profiles/per-user/bdsqqq/bin/ipad-display connect
+exec /Users/bdsqqq/.local/bin/ipad-display connect

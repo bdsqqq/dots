@@ -23,6 +23,8 @@ let
   betterDisplayAppPath = "${betterDisplayApp}/Applications/BetterDisplay.app";
   betterDisplay = "${betterDisplayAppPath}/Contents/MacOS/BetterDisplay";
   virtualDisplayName = "iPad mini virtual";
+  virtualDisplayResolution = "1512x992";
+  physicalDisplayName = "PHILIPS";
 
   ipadDisplay = pkgs.writeShellApplication {
     name = "ipad-display";
@@ -33,6 +35,8 @@ let
       better_display_app=${lib.escapeShellArg betterDisplayAppPath}
       better_display=${lib.escapeShellArg betterDisplay}
       virtual_display_name=${lib.escapeShellArg virtualDisplayName}
+      virtual_display_resolution=${lib.escapeShellArg virtualDisplayResolution}
+      physical_display_name=${lib.escapeShellArg physicalDisplayName}
       config_dir="''${XDG_CONFIG_HOME:-$HOME/.config}/ipad-display"
       specifier_file="$config_dir/sidecar-specifier"
 
@@ -72,14 +76,37 @@ let
         exit 1
       }
 
-      restore_virtual_display() {
+      configure_virtual_display() {
+        "$better_display" set \
+          -type=VirtualScreen \
+          -name="$virtual_display_name" \
+          -useResolutionList=on \
+          -resolutionList="$virtual_display_resolution"
+
         "$better_display" set \
           -type=VirtualScreen \
           -name="$virtual_display_name" \
           -connected=on \
-          -resolution=2266x1488 \
-          -hiDPI=on \
-          -main=on >/dev/null 2>&1 || true
+          -resolution="$virtual_display_resolution" \
+          -hiDPI=on
+
+        for _ in $(seq 1 10); do
+          if "$better_display" set -name="$virtual_display_name" -main=on; then
+            break
+          fi
+          sleep 1
+        done
+
+        if "$better_display" get -name="$physical_display_name" -identifier >/dev/null 2>&1; then
+          "$better_display" set \
+            -name="$virtual_display_name" \
+            -mirror=on \
+            -targetName="$physical_display_name"
+        fi
+      }
+
+      restore_virtual_display() {
+        configure_virtual_display >/dev/null 2>&1 || true
       }
 
       setup_virtual_display() {
@@ -91,17 +118,11 @@ let
             -type=VirtualScreen \
             -virtualScreenName="$virtual_display_name" \
             -useResolutionList=on \
-            -resolutionList=2266x1488 \
+            -resolutionList="$virtual_display_resolution" \
             -virtualScreenHiDPI=on
         fi
 
-        "$better_display" set \
-          -type=VirtualScreen \
-          -name="$virtual_display_name" \
-          -connected=on \
-          -resolution=2266x1488 \
-          -hiDPI=on \
-          -main=on
+        configure_virtual_display
       }
 
       read_specifier() {
@@ -115,7 +136,7 @@ let
 
       mirror_to_sidecar() {
         local specifier=$1
-        local target_parameter
+        local target_parameters=()
 
         if [[ "$specifier" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]; then
           local sidecar_entry
@@ -130,16 +151,20 @@ let
           if [[ -z "$sidecar_name" ]]; then
             return 1
           fi
-          target_parameter="-targetName=$sidecar_name"
+          target_parameters+=("-targetName=$sidecar_name")
         else
-          target_parameter="-targetName=$specifier"
+          target_parameters+=("-targetName=$specifier")
+        fi
+
+        if "$better_display" get -name="$physical_display_name" -identifier >/dev/null 2>&1; then
+          target_parameters+=("-targetName=$physical_display_name")
         fi
 
         for _ in $(seq 1 10); do
           if "$better_display" set \
             -name="$virtual_display_name" \
             -mirror=on \
-            "$target_parameter" >/dev/null 2>&1; then
+            "''${target_parameters[@]}" >/dev/null 2>&1; then
             return 0
           fi
           sleep 1
@@ -243,10 +268,12 @@ in
   home-manager.users.bdsqqq = { config, ... }: {
     home.packages = [ betterDisplayApp ipadDisplay ];
 
+    home.file.".local/bin/ipad-display".source = "${ipadDisplay}/bin/ipad-display";
+
     launchd.agents.ipad-display = {
       enable = true;
       config = {
-        ProgramArguments = [ "${ipadDisplay}/bin/ipad-display" "restore" ];
+        ProgramArguments = [ "${config.home.homeDirectory}/.local/bin/ipad-display" "restore" ];
         RunAtLoad = true;
         ProcessType = "Interactive";
         ThrottleInterval = 30;
