@@ -44,6 +44,7 @@ in
     ../../user/node-pnpm
     ../../user/fnm.nix
     ../../user/syncthing-automerge
+    ./apps-container.nix
   ]) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix)
     [ ./hardware-configuration.nix ];
 
