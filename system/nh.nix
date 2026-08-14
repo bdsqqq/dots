@@ -1,19 +1,15 @@
 {
   lib,
   pkgs,
-  config,
   hostSystem ? null,
   ...
 }:
 
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
-  isRelay = lib.hasSuffix "-relay" config.networking.hostName;
   flakePath =
     if isDarwin then
       "/Users/bdsqqq/commonplace/01_files/nix"
-    else if isRelay then
-      "github:bdsqqq/dots"
     else
       "/home/bdsqqq/commonplace/01_files/nix";
   systemSubject = if isDarwin then "darwin" else "os";
@@ -42,7 +38,7 @@ let
         mkdir -p "$log_dir"
         timestamp="$(${pkgs.coreutils}/bin/date -u +%Y%m%dT%H%M%SZ)"
         log_file="$log_dir/$timestamp-$subject-$action.log"
-        "$real" "''${args[@]}" ${lib.optionalString isRelay "--refresh"} 2>&1 | ${pkgs.coreutils}/bin/tee "$log_file"
+        "$real" "''${args[@]}" 2>&1 | ${pkgs.coreutils}/bin/tee "$log_file"
         exit ''${PIPESTATUS[0]}
         ;;
       *)

@@ -36,6 +36,7 @@ in
     ../../system/authorized-keys.nix
     ../../system/fonts.nix
     ../../system/auto-upgrade.nix
+    ../../system/rebuild.nix
     ../../system/o11y
     ../../system/o11y/hwmon.nix
     ../../user/shell-baseline.nix
