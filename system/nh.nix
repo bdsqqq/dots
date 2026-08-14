@@ -1,9 +1,4 @@
-{
-  lib,
-  pkgs,
-  hostSystem ? null,
-  ...
-}:
+{ lib, pkgs, hostSystem ? null, ... }:
 
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
@@ -47,16 +42,13 @@ let
     esac
   '';
 in
-if isDarwin then
-  {
-    environment.systemPackages = [ nhWrapped ];
-    environment.variables.NH_FLAKE = flakePath;
-  }
-else
-  {
-    programs.nh = {
-      enable = true;
-      package = nhWrapped;
-      flake = flakePath;
-    };
-  }
+if isDarwin then {
+  environment.systemPackages = [ nhWrapped ];
+  environment.variables.NH_FLAKE = flakePath;
+} else {
+  programs.nh = {
+    enable = true;
+    package = nhWrapped;
+    flake = flakePath;
+  };
+}
