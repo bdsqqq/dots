@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const SERVICE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const STALE_HEALTH_MS = 2 * 60 * 1_000;
 
 type TailnetAudience = "owner" | "family" | "machines";
 type CloudflareAudience = "disabled" | "owner" | "family" | "public";
@@ -75,6 +76,7 @@ interface PublicService {
   scheme: Scheme;
   tailscaleService: Omit<NativeServiceConfig, "adoptExisting" | "enable"> | null;
   title: string;
+  health?: Health;
 }
 
 interface PublicManifest {
@@ -101,7 +103,14 @@ interface DirectoryService extends PublicService {
 }
 
 interface Health {
-  status: "up" | "down" | "offline" | "checking" | "auth-required";
+  status:
+    | "up"
+    | "down"
+    | "offline"
+    | "checking"
+    | "auth-required"
+    | "stale";
+  checkedAt?: string;
   code?: number;
   latencyMs?: number;
   error?: string;
@@ -774,6 +783,42 @@ function sanitizedNativeService(
   return { name: service.name, port: service.port };
 }
 
+function sanitizedHealth(value: unknown, id: string): Health | undefined {
+  if (value === undefined) return undefined;
+  const health = asRecord(value);
+  if (
+    !health ||
+    (health.status !== "up" &&
+      health.status !== "down" &&
+      health.status !== "checking" &&
+      health.status !== "auth-required") ||
+    typeof health.checkedAt !== "string" ||
+    !Number.isFinite(Date.parse(health.checkedAt)) ||
+    (health.code !== undefined &&
+      (typeof health.code !== "number" ||
+        !Number.isInteger(health.code) ||
+        health.code < 100 ||
+        health.code > 599)) ||
+    (health.latencyMs !== undefined &&
+      (typeof health.latencyMs !== "number" ||
+        !Number.isInteger(health.latencyMs) ||
+        health.latencyMs < 0)) ||
+    (health.error !== undefined &&
+      (typeof health.error !== "string" || health.error.length > 500))
+  ) {
+    throw new Error(`invalid health for ${id}`);
+  }
+  return {
+    status: health.status,
+    checkedAt: health.checkedAt,
+    ...(health.code === undefined ? {} : { code: health.code }),
+    ...(health.latencyMs === undefined
+      ? {}
+      : { latencyMs: health.latencyMs }),
+    ...(health.error === undefined ? {} : { error: health.error }),
+  };
+}
+
 export function sanitizeManifest(value: unknown): PublicManifest {
   const manifest = asRecord(value);
   const rawServices = asRecord(manifest?.services);
@@ -819,6 +864,7 @@ export function sanitizeManifest(value: unknown): PublicManifest {
         service.healthPath ?? service.path ?? "/",
       ),
       tailscaleService: sanitizedNativeService(service.tailscaleService, id),
+      health: sanitizedHealth(service.health, id),
     };
   }
 
@@ -952,6 +998,23 @@ export async function probe(url: string): Promise<Health> {
   }
 }
 
+export async function refreshManifestHealth(
+  config: RegistryConfig,
+  manifest: PublicManifest,
+): Promise<void> {
+  await mapLimit(Object.entries(manifest.services), 8, async ([id, service]) => {
+    const target =
+      id === "service-directory"
+        ? `http://127.0.0.1:${config.directory.backendPort}`
+        : config.services[id]?.target;
+    if (!target) return;
+    service.health = {
+      ...(await probe(new URL(service.healthPath, target).toString())),
+      checkedAt: new Date().toISOString(),
+    };
+  });
+}
+
 async function mapLimit<T, R>(
   values: T[],
   limit: number,
@@ -1002,11 +1065,17 @@ function serviceUrl(machine: Machine, service: PublicService): string {
   ).toString();
 }
 
-function healthUrl(machine: Machine, service: PublicService): string {
-  return new URL(
-    normalizedPath(service.healthPath),
-    `${service.scheme}://${machine.dnsName}:${service.port}`,
-  ).toString();
+export function manifestHealth(
+  machineOnline: boolean,
+  health: Health | undefined,
+  now = Date.now(),
+): Health {
+  if (!machineOnline) return { status: "offline", checkedAt: health?.checkedAt };
+  if (!health?.checkedAt) return { status: "checking" };
+  if (now - Date.parse(health.checkedAt) > STALE_HEALTH_MS) {
+    return { ...health, status: "stale" };
+  }
+  return health;
 }
 
 class Directory {
@@ -1055,11 +1124,6 @@ class Directory {
       }
     });
 
-    const probeJobs: Array<{
-      machine: Machine;
-      service: DirectoryService;
-      url: string;
-    }> = [];
     nodes.forEach((machine, index) => {
       const manifest = manifests[index];
       machine.manifest = manifest;
@@ -1069,26 +1133,11 @@ class Directory {
           ...service,
           id,
           url: serviceUrl(machine, service),
-          health: {
-            status: machine.online ? "checking" : "offline",
-          },
+          health: manifestHealth(machine.online, service.health),
         };
         machine.services.push(entry);
-        if (machine.online) {
-          probeJobs.push({
-            machine,
-            service: entry,
-            url: healthUrl(machine, service),
-          });
-        }
       }
     });
-
-    const health = await mapLimit(probeJobs, 8, async (job) => ({
-      job,
-      result: await probe(job.url),
-    }));
-    for (const { job, result } of health) job.service.health = result;
 
     this.snapshot = {
       updatedAt: new Date().toISOString(),
@@ -1146,6 +1195,8 @@ export function renderDirectory(snapshot: Snapshot): string {
                       ? "machine offline"
                       : service.health.status === "auth-required"
                         ? "sign-in required"
+                        : service.health.status === "stale"
+                          ? `stale ${relativeTime(service.health.checkedAt ?? null)}`
                         : "checking";
               return `<a class="service" href="${escapeHtml(service.url)}">
                 <span class="service-copy">
@@ -1203,7 +1254,7 @@ export function renderDirectory(snapshot: Snapshot): string {
     .machine-status.online,.health-up i { background:var(--green); box-shadow:0 0 0 3px color-mix(in srgb,var(--green),transparent 85%); }
     .machine-status.offline,.health-down i { background:var(--red); }
     .health-offline i { background:var(--muted); }
-    .health-checking i,.health-auth-required i { background:var(--amber); }
+    .health-checking i,.health-auth-required i,.health-stale i { background:var(--amber); }
     .services { padding:6px; }
     .service { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 12px; border-radius:9px; color:inherit; text-decoration:none; transition:background 140ms ease,transform 140ms cubic-bezier(.23,1,.32,1); }
     .service:hover { background:var(--panel-hover); }
@@ -1334,6 +1385,7 @@ async function main(): Promise<void> {
     config,
     args.stateDirectory,
   );
+  let lastHealthRefresh = 0;
   let lastDirectoryRefresh = 0;
   while (true) {
     try {
@@ -1345,6 +1397,14 @@ async function main(): Promise<void> {
       nativeServiceReconciler.reconcile();
     } catch (error) {
       log("error", `native service reconciliation failed: ${String(error)}`);
+    }
+    if (Date.now() - lastHealthRefresh >= 15_000) {
+      try {
+        await refreshManifestHealth(config, manifest);
+      } catch (error) {
+        log("error", `local health refresh failed: ${String(error)}`);
+      }
+      lastHealthRefresh = Date.now();
     }
     if (directory && Date.now() - lastDirectoryRefresh >= 30_000) {
       try {

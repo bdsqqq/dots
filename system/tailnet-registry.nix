@@ -44,7 +44,7 @@ let
       healthPath = lib.mkOption {
         type = lib.types.str;
         default = "/";
-        description = "Path probed by the fleet directory.";
+        description = "Path probed locally and reported to the fleet directory.";
       };
 
       access = {
