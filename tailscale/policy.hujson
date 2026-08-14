@@ -17,6 +17,11 @@
 			"dst": ["autogroup:owner", "autogroup:internet"],
 			"ip":  ["*"],
 		},
+		{
+			"src": ["autogroup:owner"],
+			"dst": ["tag:service-host"],
+			"ip":  ["*"],
+		},
 
 		// Start the portable app directory with an owner-only canary.
 		{
@@ -34,6 +39,14 @@
 	],
 
 	"ssh": [
+		// Keep administrative access after a host adopts the service identity.
+		{
+			"action": "check",
+			"src":    ["autogroup:owner"],
+			"dst":    ["tag:service-host"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+
 		// Members can only Tailscale SSH into their own devices.
 		{
 			"action": "check",
