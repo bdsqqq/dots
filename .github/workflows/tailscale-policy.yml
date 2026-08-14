@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - tailscale/policy.hujson
+      - tailscale/services.json
       - .github/workflows/tailscale-policy.yml
   workflow_dispatch:
 
@@ -35,6 +36,73 @@ jobs:
             echo "Refusing to apply stale policy ${GITHUB_SHA}; main is ${current}."
             exit 1
           fi
+
+      - name: Exchange GitHub identity for a Tailscale API token
+        env:
+          TS_AUDIENCE: ${{ vars.TS_AUDIENCE }}
+          TS_OAUTH_ID: ${{ vars.TS_OAUTH_ID }}
+        run: |
+          set -euo pipefail
+          id_token="$(
+            curl --fail --silent --show-error \
+              -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${TS_AUDIENCE}" |
+              jq -er '.value'
+          )"
+          api_token="$(
+            curl --fail-with-body --silent --show-error \
+              --data-urlencode "client_id=${TS_OAUTH_ID}" \
+              --data-urlencode "jwt=${id_token}" \
+              https://api.tailscale.com/api/v2/oauth/token-exchange |
+              jq -er '.access_token'
+          )"
+          echo "::add-mask::${api_token}"
+          echo "TS_API_TOKEN=${api_token}" >> "${GITHUB_ENV}"
+
+      - name: Define Tailscale services
+        env:
+          TS_TAILNET: ${{ vars.TS_TAILNET }}
+        run: |
+          set -euo pipefail
+          tailnet="$(jq -rn --arg value "${TS_TAILNET}" '$value | @uri')"
+
+          jq -r 'keys[]' tailscale/services.json | while read -r service; do
+            encoded_service="$(jq -rn --arg value "${service}" '$value | @uri')"
+            url="https://api.tailscale.com/api/v2/tailnet/${tailnet}/services/${encoded_service}"
+            status="$(
+              curl --silent --show-error \
+                -H "Authorization: Bearer ${TS_API_TOKEN}" \
+                -o current-service.json \
+                -w '%{http_code}' \
+                "${url}"
+            )"
+
+            case "${status}" in
+              200)
+                jq --arg service "${service}" \
+                  '. as $current | input | $current * .[$service] | .name = $service' \
+                  current-service.json tailscale/services.json \
+                  > desired-service.json
+                ;;
+              404)
+                jq --arg service "${service}" \
+                  '.[$service] + {name: $service}' \
+                  tailscale/services.json \
+                  > desired-service.json
+                ;;
+              *)
+                cat current-service.json >&2
+                exit 1
+                ;;
+            esac
+
+            curl --fail-with-body --silent --show-error \
+              -X PUT \
+              -H "Authorization: Bearer ${TS_API_TOKEN}" \
+              -H 'Content-Type: application/json' \
+              --data-binary @desired-service.json \
+              "${url}"
+          done
 
       - name: Validate and apply policy
         uses: tailscale/gitops-acl-action@5a4a17f5708e9bf96f4ee915a95e9f83c2eebe1a # v1

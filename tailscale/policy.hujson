@@ -1,10 +1,28 @@
 {
+	"tagOwners": {
+		// Service hosts use a device identity rather than a person's identity.
+		"tag:service-host": ["autogroup:owner"],
+	},
+
+	"autoApprovers": {
+		"services": {
+			"svc:apps": ["tag:service-host"],
+		},
+	},
+
 	"grants": [
 		// The owner can reach their devices and use exit nodes.
 		{
 			"src": ["autogroup:owner"],
 			"dst": ["autogroup:owner", "autogroup:internet"],
 			"ip":  ["*"],
+		},
+
+		// Start the portable app directory with an owner-only canary.
+		{
+			"src": ["autogroup:owner"],
+			"dst": ["svc:apps"],
+			"ip":  ["443"],
 		},
 
 		// Invited members can reach their own devices, but not each other's.
