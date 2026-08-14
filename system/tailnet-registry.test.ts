@@ -3,9 +3,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  manifestHealth,
   nativeEndpointsFromConfig,
   NativeServiceReconciler,
   probe,
+  refreshManifestHealth,
   routesFromStatus,
   sanitizeManifest,
   ServeReconciler,
@@ -208,6 +210,36 @@ describe("manifest boundary", () => {
     expect(manifest.services.photos.tailscaleService).toEqual({
       name: "photos",
       port: 443,
+    });
+  });
+
+  test("accepts timestamped local health without exposing backend targets", () => {
+    const manifest = sanitizeManifest({
+      schemaVersion: 1,
+      services: {
+        photos: {
+          title: "photos",
+          target: "http://127.0.0.1:3923",
+          scheme: "https",
+          port: 3923,
+          path: "/",
+          audience: "owner",
+          health: {
+            status: "up",
+            code: 200,
+            latencyMs: 4,
+            checkedAt: "2026-08-14T12:00:00.000Z",
+          },
+        },
+      },
+    });
+
+    expect(manifest.services.photos).not.toHaveProperty("target");
+    expect(manifest.services.photos.health).toEqual({
+      status: "up",
+      code: 200,
+      latencyMs: 4,
+      checkedAt: "2026-08-14T12:00:00.000Z",
     });
   });
 
@@ -441,6 +473,57 @@ describe("health probes", () => {
     expect((await probe(`${base}/ok`)).status).toBe("up");
     expect((await probe(`${base}/missing`)).status).toBe("down");
     expect((await probe(`${base}/private`)).status).toBe("auth-required");
+  });
+
+  test("publishes health from the configured loopback backend", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        return new URL(request.url).pathname === "/health"
+          ? new Response("ok")
+          : new Response("missing", { status: 404 });
+      },
+    });
+    servers.push(server);
+    const desired = config({
+      photos: {
+        target: `http://127.0.0.1:${server.port}`,
+        healthPath: "/health",
+        path: "/",
+        scheme: "https",
+        port: 443,
+      },
+    });
+    const manifest = sanitizeManifest({
+      schemaVersion: 1,
+      services: {
+        photos: {
+          title: "photos",
+          healthPath: "/health",
+          path: "/",
+          scheme: "https",
+          port: 443,
+          audience: "owner",
+        },
+      },
+    });
+
+    await refreshManifestHealth(desired, manifest);
+
+    expect(manifest.services.photos.health?.status).toBe("up");
+    expect(manifest.services.photos.health?.code).toBe(200);
+    expect(manifest.services.photos.health?.checkedAt).toBeDefined();
+  });
+
+  test("distinguishes missing, stale, and offline reports", () => {
+    const checkedAt = "2026-08-14T12:00:00.000Z";
+    const report = { status: "up" as const, checkedAt, latencyMs: 4 };
+
+    expect(manifestHealth(true, undefined).status).toBe("checking");
+    expect(
+      manifestHealth(true, report, Date.parse(checkedAt) + 121_000).status,
+    ).toBe("stale");
+    expect(manifestHealth(false, report).status).toBe("offline");
   });
 });
 
