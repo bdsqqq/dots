@@ -26,7 +26,7 @@ let
     timestamp="$(${pkgs.coreutils}/bin/date -u +%Y%m%dT%H%M%SZ)"
     log_file="$log_dir/$timestamp-$action.log"
 
-    ${pkgs.sudo}/bin/sudo \
+    ${config.security.wrapperDir}/sudo \
       ${config.system.build.nixos-rebuild}/bin/nixos-rebuild \
       "$action" \
       --flake ${lib.escapeShellArg "github:bdsqqq/dots#${hostName}"} \
