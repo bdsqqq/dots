@@ -3,6 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  nativeEndpointsFromConfig,
+  NativeServiceReconciler,
   probe,
   routesFromStatus,
   sanitizeManifest,
@@ -29,12 +31,36 @@ function temporaryDirectory(): string {
 function config(
   services: Record<string, Record<string, unknown>> = {},
 ): ConstructorParameters<typeof ServeReconciler>[0] {
+  const normalized = Object.fromEntries(
+    Object.entries(services).map(([id, service]) => [
+      id,
+      {
+        access: { tailnet: "owner", cloudflare: "disabled" },
+        tailscaleService: {
+          enable: false,
+          name: id,
+          port: 443,
+          ...((service.tailscaleService as Record<string, unknown>) ?? {}),
+        },
+        ...service,
+      },
+    ]),
+  );
   return {
     schemaVersion: 1,
     host: { name: "test-host" },
     manifest: { port: 5252, backendPort: 15252 },
-    directory: { enable: false, port: 5253, backendPort: 15253 },
-    services,
+    directory: {
+      enable: false,
+      port: 5253,
+      backendPort: 15253,
+      tailscaleService: {
+        enable: false,
+        name: "apps",
+        port: 443,
+      },
+    },
+    services: normalized,
   } as ConstructorParameters<typeof ServeReconciler>[0];
 }
 
@@ -156,6 +182,33 @@ describe("manifest boundary", () => {
     expect(manifest.services.photos.path).toBe(
       "/f%C3%A9rias%20de%20ver%C3%A3o/",
     );
+    expect(manifest.services.photos.access).toEqual({
+      tailnet: "family",
+      cloudflare: "disabled",
+    });
+  });
+
+  test("keeps access dimensions independent and validates logical services", () => {
+    const manifest = sanitizeManifest({
+      schemaVersion: 1,
+      services: {
+        photos: {
+          title: "photos",
+          scheme: "https",
+          port: 3923,
+          path: "/gallery/",
+          access: { tailnet: "family", cloudflare: "family" },
+          tailscaleService: { name: "photos", port: 443 },
+        },
+      },
+    });
+
+    expect(manifest.services.photos.access.cloudflare).toBe("family");
+    expect(manifest.services.photos.audience).toBe("family");
+    expect(manifest.services.photos.tailscaleService).toEqual({
+      name: "photos",
+      port: 443,
+    });
   });
 
   test("rejects executable schemes and malformed services", () => {
@@ -204,6 +257,170 @@ describe("manifest boundary", () => {
       fetchManifest(`http://127.0.0.1:${redirect.port}/manifest.json`),
     ).rejects.toThrow();
     expect(targetHit).toBe(false);
+  });
+});
+
+describe("native Tailscale Services", () => {
+  test("parses endpoints without confusing advertisement state", () => {
+    const observed = nativeEndpointsFromConfig({
+      version: "0.0.1",
+      services: {
+        "svc:photos": {
+          advertised: false,
+          endpoints: { "tcp:443": "http://127.0.0.1:3923" },
+        },
+      },
+    });
+
+    expect(observed.get("svc:photos")).toMatchObject({
+      port: 443,
+      target: "http://127.0.0.1:3923",
+      advertised: false,
+      shared: false,
+    });
+  });
+
+  test("publishes a declared logical endpoint", () => {
+    const desired = config({
+      photos: {
+        target: "http://127.0.0.1:3923",
+        tailscaleService: { enable: true, name: "photos", port: 443 },
+      },
+    });
+    const deps = dependencies({ version: "0.0.1" });
+    const reconciler = new NativeServiceReconciler(
+      desired,
+      temporaryDirectory(),
+      deps.value,
+    );
+
+    reconciler.reconcile();
+
+    expect(deps.commands).toEqual([
+      [
+        "tailscale",
+        "serve",
+        "--yes",
+        "--service=svc:photos",
+        "--https=443",
+        "http://127.0.0.1:3923",
+      ],
+    ]);
+  });
+
+  test("refuses implicit ownership of an existing service", () => {
+    const desired = config({
+      photos: {
+        target: "http://127.0.0.1:3923",
+        tailscaleService: { enable: true, name: "photos", port: 443 },
+      },
+    });
+    const deps = dependencies({
+      version: "0.0.1",
+      services: {
+        "svc:photos": {
+          endpoints: { "tcp:443": "http://127.0.0.1:3923" },
+        },
+      },
+    });
+    const reconciler = new NativeServiceReconciler(
+      desired,
+      temporaryDirectory(),
+      deps.value,
+    );
+
+    expect(() => reconciler.reconcile()).toThrow("adoption is disabled");
+    expect(deps.commands).toEqual([]);
+  });
+
+  test("drains an owned endpoint before replacing it", () => {
+    const desired = config({
+      photos: {
+        target: "http://127.0.0.1:4000",
+        tailscaleService: { enable: true, name: "photos", port: 443 },
+      },
+    });
+    const deps = dependencies({
+      version: "0.0.1",
+      services: {
+        "svc:photos": {
+          endpoints: { "tcp:443": "http://127.0.0.1:3923" },
+        },
+      },
+    });
+    const reconciler = new NativeServiceReconciler(
+      desired,
+      temporaryDirectory(),
+      deps.value,
+    );
+    writeFileSync(
+      reconciler.statePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        services: {
+          "svc:photos": {
+            service: "svc:photos",
+            port: 443,
+            target: "http://127.0.0.1:3923",
+          },
+        },
+      }),
+    );
+
+    reconciler.reconcile();
+
+    expect(deps.commands).toEqual([
+      ["tailscale", "serve", "drain", "svc:photos"],
+      [
+        "tailscale",
+        "serve",
+        "--yes",
+        "--service=svc:photos",
+        "--https=443",
+        "http://127.0.0.1:4000",
+      ],
+    ]);
+  });
+
+  test("drains a removed endpoint without clearing active connections", () => {
+    const current = {
+      version: "0.0.1",
+      services: {
+        "svc:photos": {
+          endpoints: { "tcp:443": "http://127.0.0.1:3923" },
+        },
+      },
+    };
+    const deps = dependencies(current);
+    const reconciler = new NativeServiceReconciler(
+      config(),
+      temporaryDirectory(),
+      deps.value,
+    );
+    writeFileSync(
+      reconciler.statePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        services: {
+          "svc:photos": {
+            service: "svc:photos",
+            port: 443,
+            target: "http://127.0.0.1:3923",
+          },
+        },
+      }),
+    );
+
+    reconciler.reconcile();
+
+    expect(deps.commands).toEqual([
+      ["tailscale", "serve", "drain", "svc:photos"],
+    ]);
+    expect(
+      JSON.parse(readFileSync(reconciler.statePath, "utf8")).services[
+        "svc:photos"
+      ].advertised,
+    ).toBe(false);
   });
 });
 

@@ -34,7 +34,7 @@ in
     scheme = "http";
     port = 8765;
     healthPath = "/";
-    audience = "owner";
+    access.tailnet = "owner";
     adoptExisting = true;
   };
 

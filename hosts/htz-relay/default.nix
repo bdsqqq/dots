@@ -62,7 +62,7 @@ in
       port = 3924;
       path = "/commonplace/";
       healthPath = "/commonplace/";
-      audience = "owner";
+      access.tailnet = "owner";
     };
 
     syncthing = {
@@ -72,7 +72,7 @@ in
       scheme = "https";
       port = 8385;
       healthPath = "/";
-      audience = "owner";
+      access.tailnet = "owner";
     };
   };
   services.hwmon-metrics.enable = true;

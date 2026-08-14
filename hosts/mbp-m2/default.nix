@@ -232,7 +232,7 @@ in {
     scheme = "https";
     port = 8385;
     healthPath = "/";
-    audience = "owner";
+    access.tailnet = "owner";
   };
   my.heliumRemotes = {
     enable = true;

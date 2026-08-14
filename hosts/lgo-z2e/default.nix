@@ -130,7 +130,7 @@ in
     scheme = "https";
     port = 8385;
     healthPath = "/";
-    audience = "owner";
+    access.tailnet = "owner";
   };
   services.hwmon-metrics.enable = true;
   my.heliumRemotes = {

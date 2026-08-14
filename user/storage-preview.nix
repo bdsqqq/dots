@@ -121,7 +121,10 @@ in
       port = 3923;
       path = "/gallery/";
       healthPath = "/gallery/";
-      audience = "family";
+      access = {
+        tailnet = "family";
+        cloudflare = "family";
+      };
       adoptExisting = true;
     };
 
@@ -132,7 +135,7 @@ in
       scheme = "https";
       port = 9898;
       healthPath = "/";
-      audience = "owner";
+      access.tailnet = "owner";
       adoptExisting = true;
     };
   };

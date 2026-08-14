@@ -4,7 +4,7 @@ let
   cfg = config.my.tailnetRegistry;
   isDarwin = lib.hasSuffix "-darwin" hostSystem;
   isLinux = lib.hasSuffix "-linux" hostSystem;
-  serviceType = lib.types.submodule ({ name, ... }: {
+  serviceType = lib.types.submodule ({ config, name, ... }: {
     options = {
       title = lib.mkOption {
         type = lib.types.str;
@@ -47,11 +47,26 @@ let
         description = "Path probed by the fleet directory.";
       };
 
+      access = {
+        tailnet = lib.mkOption {
+          type = lib.types.enum [ "owner" "family" "machines" ];
+          default = if config.audience == null then "owner" else config.audience;
+          description =
+            "Intended tailnet access class; enforcement remains in the tailnet policy.";
+        };
+
+        cloudflare = lib.mkOption {
+          type = lib.types.enum [ "disabled" "owner" "family" "public" ];
+          default = "disabled";
+          description =
+            "Intended Cloudflare exposure class; enforcement and group membership remain private Cloudflare state.";
+        };
+      };
+
       audience = lib.mkOption {
-        type = lib.types.enum [ "owner" "family" "machines" ];
-        default = "owner";
-        description =
-          "Intended access class; enforcement remains in the tailnet policy.";
+        type = lib.types.nullOr (lib.types.enum [ "owner" "family" "machines" ]);
+        default = null;
+        description = "Deprecated alias for access.tailnet.";
       };
 
       adoptExisting = lib.mkOption {
@@ -60,9 +75,35 @@ let
         description =
           "Explicitly transfer an exactly matching existing Serve route to the registry.";
       };
+
+      tailscaleService = {
+        enable = lib.mkEnableOption "a portable native Tailscale Service endpoint";
+
+        name = lib.mkOption {
+          type = lib.types.strMatching "[a-z0-9][a-z0-9-]{0,63}";
+          default = name;
+          description = "Stable Tailscale Service name, without the svc: prefix.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 443;
+          description = "HTTPS port exposed by the native Tailscale Service.";
+        };
+
+        adoptExisting = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description =
+            "Explicitly transfer an exactly matching existing native Service endpoint to the registry.";
+        };
+      };
     };
   });
-  active = cfg.services != { } || cfg.directory.enable;
+  active =
+    cfg.services != { }
+    || cfg.directory.enable
+    || cfg.directory.tailscaleService.enable;
   allPorts =
     (map (service: service.port) (lib.attrValues cfg.services))
     ++ [ cfg.manifest.port ]
@@ -75,7 +116,6 @@ let
     (_: service: {
       inherit (service)
         adoptExisting
-        audience
         description
         healthPath
         path
@@ -84,8 +124,25 @@ let
         target
         title
         ;
+      inherit (service) access;
+      tailscaleService = {
+        inherit (service.tailscaleService)
+          adoptExisting
+          enable
+          name
+          port
+          ;
+      };
     })
     cfg.services;
+  nativeServiceNames =
+    map
+      (service: service.tailscaleService.name)
+      (lib.filter
+        (service: service.tailscaleService.enable)
+        (lib.attrValues cfg.services))
+    ++ lib.optional cfg.directory.tailscaleService.enable
+      cfg.directory.tailscaleService.name;
   hostName =
     if isDarwin
     then config.networking.localHostName
@@ -100,6 +157,14 @@ let
     };
     directory = {
       inherit (cfg.directory) enable port backendPort;
+      tailscaleService = {
+        inherit (cfg.directory.tailscaleService)
+          adoptExisting
+          enable
+          name
+          port
+          ;
+      };
     };
     services = normalizedServices;
   });
@@ -161,6 +226,29 @@ in
         default = 15253;
         description = "Loopback port used by the directory server.";
       };
+
+      tailscaleService = {
+        enable = lib.mkEnableOption "a portable native Tailscale Service for the directory";
+
+        name = lib.mkOption {
+          type = lib.types.strMatching "[a-z0-9][a-z0-9-]{0,63}";
+          default = "apps";
+          description = "Stable Tailscale Service name, without the svc: prefix.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 443;
+          description = "HTTPS port exposed by the directory's native Tailscale Service.";
+        };
+
+        adoptExisting = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description =
+            "Explicitly transfer an exactly matching existing directory Service endpoint to the registry.";
+        };
+      };
     };
   };
 
@@ -179,6 +267,25 @@ in
             || cfg.manifest.backendPort != cfg.directory.backendPort;
           message =
             "my.tailnetRegistry manifest and directory backend ports must be unique";
+        }
+        {
+          assertion =
+            !cfg.directory.tailscaleService.enable || cfg.directory.enable;
+          message =
+            "my.tailnetRegistry.directory.tailscaleService requires the directory";
+        }
+        {
+          assertion = lib.all
+            (service: service.audience == null || service.access.tailnet == service.audience)
+            (lib.attrValues cfg.services);
+          message =
+            "my.tailnetRegistry service audience conflicts with access.tailnet";
+        }
+        {
+          assertion = builtins.length nativeServiceNames
+            == builtins.length (lib.unique nativeServiceNames);
+          message =
+            "my.tailnetRegistry native Tailscale Service names must be unique per host";
         }
         {
           assertion = lib.all loopbackTarget
