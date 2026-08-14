@@ -1,0 +1,6 @@
+{
+  "svc:apps": {
+    "comment": "portable app directory",
+    "ports": ["tcp:443"]
+  }
+}
