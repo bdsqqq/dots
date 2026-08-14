@@ -23,6 +23,12 @@
 			"dst": ["tag:service-host"],
 			"ip":  ["*"],
 		},
+		// Directory hosts can fetch manifests and probe registered owner apps.
+		{
+			"src": ["tag:service-host"],
+			"dst": ["autogroup:owner"],
+			"ip":  ["3924", "5252", "8385"],
+		},
 
 		// Start the portable app directory with an owner-only canary.
 		{
