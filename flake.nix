@@ -201,44 +201,6 @@
         };
 
         nixosConfigurations = {
-          "r56" = inputs.nixpkgs.lib.nixosSystem {
-            specialArgs = {
-              inherit inputs;
-              hostSystem = "x86_64-linux";
-              headMode = "graphical";
-            };
-            modules = [
-              inputs.sops-nix.nixosModules.sops
-              inputs.axiom-deploy-annotation.nixosModules.default
-              stylix.nixosModules.stylix
-              inputs.home-manager.nixosModules.home-manager
-              inputs.nix-flatpak.nixosModules.nix-flatpak
-              inputs.niri.nixosModules.niri
-              ({ pkgs, config, lib, ... }: {
-                nixpkgs.hostPlatform = "x86_64-linux";
-                nixpkgs.overlays = [
-                  (import ./overlays/unstable.nix inputs)
-                  (import ./zmx.nix).overlay
-                  (import ./overlays/quickshell.nix inputs)
-                ];
-                system.configurationRevision = flakeRevision;
-
-                services.axiom-deploy-annotation = {
-                  enable = true;
-                  tokenPath = config.sops.secrets."axiom/personal_token".path;
-                  apiEndpoint = "https://api.axiom.co/v2/annotations";
-                  datasets = [ "papertrail" "papertrail-traces" ];
-                  repositoryUrl = "https://github.com/bdsqqq/dots";
-                  user = "bdsqqq";
-                  group = "users";
-                };
-                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome =
-                  lib.mkForce "read-only";
-              })
-              ./hosts/r56/default.nix
-            ];
-          };
-
           "htz-relay" = inputs.nixpkgs.lib.nixosSystem {
             specialArgs = {
               inherit inputs;

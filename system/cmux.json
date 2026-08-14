@@ -44,43 +44,6 @@
       }
     },
     {
-      "name": "r56",
-      "keywords": ["cmux-fleet"],
-      "restart": "ignore",
-      "workspace": {
-        "name": "r56",
-        "layout": {
-          "direction": "horizontal",
-          "split": 0.5,
-          "children": [
-            {
-              "pane": {
-                "surfaces": [
-                  {
-                    "type": "terminal",
-                    "name": "btop",
-                    "command": "exec ssh -t r56 \"zmx attach cmux-btop btop\"",
-                    "focus": true
-                  }
-                ]
-              }
-            },
-            {
-              "pane": {
-                "surfaces": [
-                  {
-                    "type": "terminal",
-                    "name": "amp",
-                    "command": "exec ssh -t r56 \"zmx attach cmux-amp amp --no-tui --remote-control\""
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      }
-    },
-    {
       "name": "lgo-z2e",
       "keywords": ["cmux-fleet"],
       "restart": "ignore",
