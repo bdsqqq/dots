@@ -21,6 +21,7 @@
     autoStart = true;
     privateNetwork = true;
     hostBridge = "br-apps";
+    hostAddress = "10.233.1.1";
     localAddress = "10.233.1.2/24";
     enableTun = true;
     specialArgs.hostSystem = "x86_64-linux";
