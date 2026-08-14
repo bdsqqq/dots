@@ -8,6 +8,11 @@ on:
       - tailscale/services.json
       - .github/workflows/tailscale-policy.yml
   workflow_dispatch:
+    inputs:
+      mint_service_host_key:
+        description: Mint an encrypted one-off service-host auth key
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -58,6 +63,43 @@ jobs:
           )"
           echo "::add-mask::${api_token}"
           echo "TS_API_TOKEN=${api_token}" >> "${GITHUB_ENV}"
+
+      - name: Mint encrypted service-host auth key
+        if: inputs.mint_service_host_key
+        env:
+          AGE_RECIPIENT: age1j2lyxxhxj0g2fw05h8c856fjxy2f0salxlk78pwglpv2nxjm3ptsgxcce4
+          TS_TAILNET: ${{ vars.TS_TAILNET }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -qq age
+          tailnet="$(jq -rn --arg value "${TS_TAILNET}" '$value | @uri')"
+          response="$(
+            jq -n '{
+              capabilities: {
+                devices: {
+                  create: {
+                    reusable: false,
+                    ephemeral: false,
+                    preauthorized: true,
+                    tags: ["tag:service-host"]
+                  }
+                }
+              },
+              expirySeconds: 3600,
+              description: "htz app directory enrollment"
+            }' |
+              curl --fail-with-body --silent --show-error \
+                -X POST \
+                -H "Authorization: Bearer ${TS_API_TOKEN}" \
+                -H 'Content-Type: application/json' \
+                --data-binary @- \
+                "https://api.tailscale.com/api/v2/tailnet/${tailnet}/keys"
+          )"
+          auth_key="$(jq -er '.key' <<< "${response}")"
+          echo "::add-mask::${auth_key}"
+          encrypted="$(printf '%s' "${auth_key}" | age -r "${AGE_RECIPIENT}" | base64 -w0)"
+          echo "encrypted-auth-key=${encrypted}"
 
       - name: Define Tailscale services
         id: services
