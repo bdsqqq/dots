@@ -145,6 +145,7 @@ in
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.backup-health.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.files-browser.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.html-stuff.plist"} \
+      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.ipad-display.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.media-feed-poller.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.ssd-gallery.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.syncthing.plist"} \
