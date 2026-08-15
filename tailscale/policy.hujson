@@ -24,11 +24,11 @@
 			"dst": ["tag:service-host"],
 			"ip":  ["*"],
 		},
-		// Directory hosts only fetch manifests; app health is probed locally.
+		// Service hosts fetch manifests and synchronize app data from owner devices.
 		{
 			"src": ["tag:service-host"],
 			"dst": ["autogroup:owner", "tag:service-host"],
-			"ip":  ["5252"],
+			"ip":  ["5252", "22000"],
 		},
 
 		// Portable services begin as owner-only canaries.

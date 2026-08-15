@@ -1,8 +1,14 @@
-{ config, pkgs, lib, modulesPath, inputs, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  modulesPath,
+  inputs,
+  ...
+}:
 
 let
-  mbpPubKey =
-    lib.removeSuffix "\n" (builtins.readFile ../../system/ssh-keys/mbp-m2.pub);
+  mbpPubKey = lib.removeSuffix "\n" (builtins.readFile ../../system/ssh-keys/mbp-m2.pub);
   syncthing = import ../../modules/syncthing.nix { inherit lib; };
   homeManagerBackupCommand = pkgs.writeShellScript "home-manager-unique-backup" ''
     set -eu
@@ -45,8 +51,10 @@ in
     ../../user/fnm.nix
     ../../user/syncthing-automerge
     ./apps-container.nix
-  ]) ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix)
-    [ ./hardware-configuration.nix ];
+  ])
+  ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [
+    ./hardware-configuration.nix
+  ];
 
   networking.hostName = "htz-relay";
   networking.useDHCP = lib.mkDefault true;
@@ -96,7 +104,12 @@ in
     trustedInterfaces = [ "tailscale0" ];
     allowedTCPPorts = [ ];
     allowedUDPPorts = [ ];
-    interfaces.tailscale0.allowedTCPPorts = [ 22 22000 8384 3923 ];
+    interfaces.tailscale0.allowedTCPPorts = [
+      22
+      22000
+      8384
+      3923
+    ];
     interfaces.tailscale0.allowedUDPPorts = [ 22000 ];
     checkReversePath = "loose";
   };
@@ -113,9 +126,14 @@ in
     enable = true;
     useRoutingFeatures = "client";
     extraSetFlags = [ "--operator=bdsqqq" ];
-    extraUpFlags = [ "--ssh" "--accept-dns=false" "--shields-up=false" ];
-    authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key)
-      config.sops.secrets.tailscale_auth_key.path;
+    extraUpFlags = [
+      "--ssh"
+      "--accept-dns=false"
+      "--shields-up=false"
+    ];
+    authKeyFile = lib.mkIf (
+      config.sops.secrets ? tailscale_auth_key
+    ) config.sops.secrets.tailscale_auth_key.path;
   };
 
   # copyparty file server
@@ -133,8 +151,7 @@ in
     };
   };
 
-  systemd.services.copyparty.serviceConfig.BindPaths =
-    [ "/mnt/storage-01/commonplace" ];
+  systemd.services.copyparty.serviceConfig.BindPaths = [ "/mnt/storage-01/commonplace" ];
   systemd.services.copyparty.requires = [ "mnt-storage\\x2d01.mount" ];
   systemd.services.copyparty.after = [ "mnt-storage\\x2d01.mount" ];
 
@@ -144,12 +161,14 @@ in
     settings = {
       gui = {
         user = "bdsqqq";
-        password =
-          "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
+        password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
       };
       options = {
         urAccepted = -1;
-        listenAddress = [ "tcp://0.0.0.0:22000" "quic://0.0.0.0:22000" ];
+        listenAddress = [
+          "tcp://0.0.0.0:22000"
+          "quic://0.0.0.0:22000"
+        ];
         globalAnnounceEnabled = false;
         localAnnounceEnabled = false;
         relaysEnabled = false;
@@ -160,16 +179,23 @@ in
         connectionLimitMax = 0;
       };
 
-      devices = syncthing.devicesFor [ "mbp-m2" "ipd" "iph16" "lgo-z2e" ];
+      devices = syncthing.devicesFor [
+        "mbp-m2"
+        "mmn-m4"
+        "ipd"
+        "iph16"
+        "lgo-z2e"
+      ];
 
       folders = {
-        commonplace =
-          syncthing.folderForPath "commonplace" "/mnt/storage-01/commonplace"
-            [ "mbp-m2" "ipd" "iph16" ]
-            { rescanIntervalS = 3600; };
+        commonplace = syncthing.folderForPath "commonplace" "/mnt/storage-01/commonplace" [
+          "mbp-m2"
+          "mmn-m4"
+          "ipd"
+          "iph16"
+        ] { rescanIntervalS = 3600; };
         helium-remotes =
-          syncthing.folderForPath "helium-remotes" "/mnt/storage-01/helium-remotes"
-            [ "mbp-m2" "lgo-z2e" ]
+          syncthing.folderForPath "helium-remotes" "/mnt/storage-01/helium-remotes" [ "mbp-m2" "lgo-z2e" ]
             {
               rescanIntervalS = 60;
             };
@@ -192,8 +218,7 @@ in
     extraGroups = [ "wheel" ];
     shell = pkgs.zsh;
     openssh.authorizedKeys.keys = [ mbpPubKey ];
-    hashedPassword =
-      "$6$LeozgmV9I6N0QYNf$3BeytD3X/gFNzBJAeWYqFPqD7m9Qz4gn8vORyFtrJopplmZ/pgLZzcktymHLU9CVbR.SkFPg9MAbYNKWLzvaT0";
+    hashedPassword = "$6$LeozgmV9I6N0QYNf$3BeytD3X/gFNzBJAeWYqFPqD7m9Qz4gn8vORyFtrJopplmZ/pgLZzcktymHLU9CVbR.SkFPg9MAbYNKWLzvaT0";
   };
 
   security.sudo = {
@@ -221,10 +246,8 @@ in
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
-      home.activation.installPnpmTools =
-        lib.mkForce (lib.hm.dag.entryAfter [ "linkGeneration" ] "");
-      home.activation.installVitePlus =
-        lib.mkForce (lib.hm.dag.entryAfter [ "linkGeneration" ] "");
+      home.activation.installPnpmTools = lib.mkForce (lib.hm.dag.entryAfter [ "linkGeneration" ] "");
+      home.activation.installVitePlus = lib.mkForce (lib.hm.dag.entryAfter [ "linkGeneration" ] "");
       home.file."commonplace" = {
         force = true;
         source = config.hm.lib.file.mkOutOfStoreSymlink config.my.paths.commonplace;
