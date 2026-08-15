@@ -43,7 +43,6 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
-  my.htmlStuff.root = "/Volumes/ssd-01/commonplace/01_files/html_stuff";
   environment.systemPackages = [ pkgs.git ];
 
   home-manager = {
@@ -76,11 +75,13 @@ in
             relaysEnabled = false;
             natEnabled = false;
           };
-          devices = syncthing.devicesFor [
+          devices = (syncthing.devicesFor [
             "mbp-m2"
             "htz-relay"
-          ];
-          folders.commonplace = syncthing.folderForPath "commonplace" "/Volumes/ssd-01/commonplace" [
+          ]) // {
+            mbp-m2 = syncthing.devices.mbp-m2 // { introducer = false; };
+          };
+          folders.commonplace = syncthing.folderForPath "commonplace" "/Users/bdsqqq/commonplace" [
             "mbp-m2"
             "htz-relay"
           ] { label = "commonplace"; };
