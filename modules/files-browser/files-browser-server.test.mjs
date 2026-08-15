@@ -13,6 +13,7 @@ import {
   materializeSnapshot,
   modelToken,
   parseArgs,
+  startBackend,
   stopBackend,
   waitForBackend,
 } from "./files-browser-server.mjs";
@@ -236,24 +237,26 @@ test("rejects a candidate backend that exits after a successful health response"
 test("cleans up a spawn error that closes without an exit event", async () => {
   const temporary = await mkdtemp(join(tmpdir(), "files-browser-test-"));
   const snapshot = join(temporary, "snapshot");
-  const history = join(temporary, "history");
   await mkdir(snapshot);
-  await mkdir(history);
 
   const child = new EventEmitter();
   child.pid = undefined;
   child.exitCode = null;
-  const closed = new Promise((resolvePromise) => child.once("close", resolvePromise));
-  const backend = { child, closed, history, snapshot };
-  child.once("error", (error) => {
-    backend.failure = error;
-  });
-
-  const cleanup = stopBackend(backend);
-  child.emit("error", new Error("spawn failed"));
+  const backend = startBackend(
+    { copyparty: "/missing-copyparty", state: temporary },
+    999,
+    snapshot,
+    () => child
+  );
+  const waiting = waitForBackend(backend);
+  child.emit("error", Object.assign(new Error("spawn failed"), { code: "ENOENT" }));
   child.emit("close");
-  await cleanup;
-  assert.match(backend.failure.message, /spawn failed/);
+  await assert.rejects(waiting, /spawn failed/);
+  await Promise.race([
+    stopBackend(backend),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("failed spawn cleanup timed out")), 1_000)
+    ),
+  ]);
   await assert.rejects(access(snapshot));
-  await assert.rejects(access(history));
 });

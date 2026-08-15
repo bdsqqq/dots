@@ -217,10 +217,10 @@ export function assertBackendLive(backend) {
   }
 }
 
-function startBackend(config, generation, snapshot) {
+export function startBackend(config, generation, snapshot, spawnProcess = spawn) {
   const port = 13_925 + generation;
   const history = join(config.state, "history", String(generation));
-  const child = spawn(
+  const child = spawnProcess(
     config.copyparty,
     [
       "-i",
