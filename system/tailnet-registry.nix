@@ -191,6 +191,9 @@ let
 in
 {
   options.my.tailnetRegistry = {
+    darwinSystemDaemon = lib.mkEnableOption
+      "starting the registry at boot instead of at GUI login on Darwin";
+
     services = lib.mkOption {
       type = lib.types.attrsOf serviceType;
       default = { };
@@ -330,7 +333,28 @@ in
     })
 
     (lib.optionalAttrs isDarwin {
-      launchd.user.agents.tailnet-registry = {
+      launchd.daemons.tailnet-registry = lib.mkIf cfg.darwinSystemDaemon {
+        path = [
+          pkgs.coreutils
+          pkgs.tailscale
+        ];
+        command = lib.escapeShellArgs (registryArgs darwinStateDir);
+        serviceConfig = {
+          Label = "dev.tailnet.registry";
+          RunAtLoad = true;
+          KeepAlive = true;
+          ThrottleInterval = 10;
+          ProcessType = "Background";
+          UserName = primaryUser;
+          GroupName = "staff";
+          StandardOutPath =
+            "${primaryHome}/Library/Logs/tailnet-registry.log";
+          StandardErrorPath =
+            "${primaryHome}/Library/Logs/tailnet-registry.log";
+        };
+      };
+
+      launchd.user.agents.tailnet-registry = lib.mkIf (!cfg.darwinSystemDaemon) {
         path = [
           pkgs.coreutils
           pkgs.tailscale
