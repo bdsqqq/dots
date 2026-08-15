@@ -1,4 +1,12 @@
-{ inputs, pkgs, ... }:
+{
+  inputs,
+  pkgs,
+  lib,
+  ...
+}:
+let
+  syncthing = import ../../modules/syncthing.nix { inherit lib; };
+in
 {
   imports = [
     inputs.home-manager.darwinModules.home-manager
@@ -9,6 +17,7 @@
     ../../system/homebrew-best-effort.nix
     ../../system/tailscale.nix
     ../../system/tailnet-registry.nix
+    ../../system/syncthing.nix
     ../../system/o11y
     ../mbp-m2/moshi-host.nix
     ../../system/sleepless.nix
@@ -34,6 +43,7 @@
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+  my.htmlStuff.root = "/Volumes/ssd-01/commonplace/01_files/html_stuff";
   environment.systemPackages = [ pkgs.git ];
 
   home-manager = {
@@ -52,6 +62,33 @@
         stateVersion = "25.05";
       };
       programs.home-manager.enable = true;
+
+      services.syncthing = {
+        enable = true;
+        overrideFolders = true;
+        overrideDevices = true;
+        guiAddress = "127.0.0.1:8384";
+        settings = {
+          options = {
+            urAccepted = -1;
+            globalAnnounceEnabled = false;
+            localAnnounceEnabled = false;
+            relaysEnabled = false;
+            natEnabled = false;
+          };
+          devices = syncthing.devicesFor [
+            "mbp-m2"
+            "htz-relay"
+          ];
+          folders.commonplace = syncthing.folderForPath "commonplace" "/Volumes/ssd-01/commonplace" [
+            "mbp-m2"
+            "htz-relay"
+          ] { label = "commonplace"; };
+        };
+      };
+
+      launchd.agents.syncthing.config.RunAtLoad = true;
+      launchd.agents.syncthing-init.config.RunAtLoad = true;
     };
   };
 
