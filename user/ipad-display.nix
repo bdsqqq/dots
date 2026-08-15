@@ -174,6 +174,17 @@ let
       }
 
       command=''${1:-}
+
+      # Raycast sends repeated key-down events while a shortcut is held. Display
+      # mutations must be serialized because concurrent BetterDisplay clients can
+      # race while replacing the same virtual display.
+      lock_file="''${TMPDIR:-/tmp}/ipad-display-$UID.lock"
+      if ! /usr/bin/shlock -f "$lock_file" -p "$$"; then
+        echo "An iPad display operation is already in progress."
+        exit 0
+      fi
+      trap 'rm -f "$lock_file"' EXIT
+
       case "$command" in
         setup)
           start_better_display
@@ -265,21 +276,22 @@ in
     };
   };
 
-  home-manager.users.bdsqqq = { config, ... }: {
+  home-manager.users.bdsqqq = { ... }: {
     home.packages = [ betterDisplayApp ipadDisplay ];
 
-    home.file.".local/bin/ipad-display".source = "${ipadDisplay}/bin/ipad-display";
-
-    launchd.agents.ipad-display = {
-      enable = true;
-      config = {
-        ProgramArguments = [ "${config.home.homeDirectory}/.local/bin/ipad-display" "restore" ];
-        RunAtLoad = true;
-        ProcessType = "Interactive";
-        ThrottleInterval = 30;
-        StandardOutPath = "${config.home.homeDirectory}/Library/Logs/ipad-display.log";
-        StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/ipad-display.log";
-      };
+    home.file.".local/bin/ipad-display" = {
+      source = "${ipadDisplay}/bin/ipad-display";
+      force = true;
     };
+  };
+
+  launchd.user.agents.ipad-display.serviceConfig = {
+    Label = "dev.ipad-display";
+    ProgramArguments = [ "${ipadDisplay}/bin/ipad-display" "restore" ];
+    RunAtLoad = true;
+    ProcessType = "Interactive";
+    ThrottleInterval = 30;
+    StandardOutPath = "/Users/bdsqqq/Library/Logs/ipad-display.log";
+    StandardErrorPath = "/Users/bdsqqq/Library/Logs/ipad-display.log";
   };
 }
