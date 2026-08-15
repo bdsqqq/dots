@@ -240,7 +240,8 @@ function startBackend(config, generation, snapshot) {
       stdio: "inherit",
     }
   );
-  const backend = { child, failure: null, generation, history, inflight: 0, port, snapshot };
+  const closed = new Promise((resolvePromise) => child.once("close", resolvePromise));
+  const backend = { child, closed, failure: null, generation, history, inflight: 0, port, snapshot };
   child.once("error", (error) => {
     backend.failure = error;
   });
@@ -251,14 +252,13 @@ function startBackend(config, generation, snapshot) {
   return backend;
 }
 
-async function stopBackend(backend) {
+export async function stopBackend(backend) {
   if (backend.stopping) return backend.stopping;
   backend.stopping = (async () => {
-    if (backend.child.exitCode === null) backend.child.kill("SIGTERM");
-    await new Promise((resolvePromise) => {
-      if (backend.child.exitCode !== null) return resolvePromise();
-      backend.child.once("exit", resolvePromise);
-    });
+    if (backend.child.pid !== undefined && backend.child.exitCode === null) {
+      backend.child.kill("SIGTERM");
+    }
+    await backend.closed;
     await rm(backend.snapshot, { recursive: true, force: true });
     await rm(backend.history, { recursive: true, force: true });
   })();
