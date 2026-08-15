@@ -6,8 +6,10 @@ import {
   manifestHealth,
   nativeEndpointsFromConfig,
   NativeServiceReconciler,
+  portableServiceStatus,
   probe,
   refreshManifestHealth,
+  renderHealth,
   routesFromStatus,
   sanitizeManifest,
   ServeReconciler,
@@ -532,6 +534,65 @@ describe("health probes", () => {
       manifestHealth(true, report, Date.parse(checkedAt) + 121_000).status,
     ).toBe("stale");
     expect(manifestHealth(false, report).status).toBe("offline");
+  });
+});
+
+describe("health dashboard", () => {
+  test("summarizes only explicitly portable services", () => {
+    expect(portableServiceStatus(["up", "up"])).toBe("available");
+    expect(portableServiceStatus(["up", "down"])).toBe("degraded");
+    expect(portableServiceStatus(["auth-required", "offline"])).toBe(
+      "degraded",
+    );
+    expect(portableServiceStatus(["down", "offline"])).toBe("unavailable");
+    expect(portableServiceStatus(["checking", "stale"])).toBe("unknown");
+  });
+
+  test("renders stale collection state and escapes host data", () => {
+    const html = renderHealth(
+      {
+        updatedAt: "2026-08-14T12:00:00.000Z",
+        machines: [
+          {
+            id: "node-1",
+            hostName: "<script>alert(1)</script>",
+            dnsName: "node.tail.ts.net",
+            online: true,
+            lastSeen: null,
+            os: "linux",
+            manifestFetchedAt: "2026-08-14T12:00:00.000Z",
+            manifest: {
+              schemaVersion: 1,
+              reportedAt: "2026-08-14T12:00:00.000Z",
+              host: { name: "node" },
+              services: {},
+            },
+            services: [
+              {
+                id: "files",
+                title: "files",
+                description: null,
+                path: "/",
+                port: 443,
+                scheme: "https",
+                access: { tailnet: "owner", cloudflare: "disabled" },
+                audience: "owner",
+                tailscaleService: { name: "files", port: 443 },
+                url: "https://files.tail.ts.net/",
+                health: { status: "up", checkedAt: "2026-08-14T12:00:00.000Z" },
+              },
+            ],
+          },
+        ],
+      },
+      Date.parse("2026-08-14T12:03:00.000Z"),
+    );
+
+    expect(html).toContain("collector data is stale");
+    expect(html).toContain("svc:files");
+    expect(html).toContain("stale report 3m ago");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).not.toContain("<script>alert(1)</script>");
   });
 });
 

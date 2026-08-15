@@ -121,6 +121,15 @@ interface Snapshot {
   machines: Machine[];
 }
 
+type SummaryStatus = "available" | "degraded" | "unavailable" | "unknown";
+
+interface PortableServiceSummary {
+  name: string;
+  title: string;
+  status: SummaryStatus;
+  providers: Array<{ hostName: string; health: Health }>;
+}
+
 interface CommandResult {
   exitCode: number;
   stdout: string;
@@ -1187,15 +1196,145 @@ function escapeHtml(value: unknown): string {
     .replaceAll("'", "&#39;");
 }
 
-function relativeTime(value: string | null): string {
+function relativeTime(value: string | null, now = Date.now()): string {
   if (!value || value.startsWith("0001-")) return "now";
   const milliseconds = Date.parse(value);
   if (!Number.isFinite(milliseconds)) return "unknown";
-  const seconds = Math.max(0, Math.floor((Date.now() - milliseconds) / 1_000));
+  const seconds = Math.max(0, Math.floor((now - milliseconds) / 1_000));
   if (seconds < 60) return "just now";
   if (seconds < 3_600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86_400) return `${Math.floor(seconds / 3_600)}h ago`;
   return `${Math.floor(seconds / 86_400)}d ago`;
+}
+
+export function portableServiceStatus(
+  statuses: Health["status"][],
+): SummaryStatus {
+  if (statuses.length === 0) return "unknown";
+  if (statuses.every((status) => status === "up")) return "available";
+  if (statuses.every((status) => status === "down" || status === "offline")) {
+    return "unavailable";
+  }
+  if (
+    statuses.some((status) => status === "up" || status === "auth-required") &&
+    statuses.some(
+      (status) =>
+        status === "down" ||
+        status === "offline" ||
+        status === "checking" ||
+        status === "stale",
+    )
+  ) {
+    return "degraded";
+  }
+  return "unknown";
+}
+
+export function portableServiceSummaries(
+  snapshot: Snapshot,
+): PortableServiceSummary[] {
+  const groups = new Map<string, PortableServiceSummary>();
+  for (const machine of snapshot.machines) {
+    for (const service of machine.services) {
+      const name = service.tailscaleService?.name;
+      if (!name) continue;
+      const group = groups.get(name) ?? {
+        name,
+        title: service.title,
+        status: "unknown" as const,
+        providers: [],
+      };
+      group.providers.push({ hostName: machine.hostName, health: service.health });
+      groups.set(name, group);
+    }
+  }
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      status: portableServiceStatus(
+        group.providers.map((provider) => provider.health.status),
+      ),
+    }))
+    .sort((left, right) => left.title.localeCompare(right.title));
+}
+
+function healthDetail(health: Health): string {
+  if (health.status === "up") {
+    return health.latencyMs === undefined ? "reachable" : `${health.latencyMs} ms`;
+  }
+  if (health.status === "down") return "unreachable";
+  if (health.status === "offline") return "host offline";
+  if (health.status === "auth-required") return "auth boundary reachable";
+  if (health.status === "stale") {
+    return `stale ${relativeTime(health.checkedAt ?? null)}`;
+  }
+  return "checking";
+}
+
+function timestampIsStale(value: string | null | undefined, now: number): boolean {
+  if (!value) return true;
+  const timestamp = Date.parse(value);
+  return !Number.isFinite(timestamp) || now - timestamp > STALE_HEALTH_MS;
+}
+
+export function renderHealth(snapshot: Snapshot, now = Date.now()): string {
+  const summaries = portableServiceSummaries(snapshot);
+  const snapshotStale = timestampIsStale(snapshot.updatedAt, now);
+  const portable = summaries.length
+    ? summaries
+        .map(
+          (service) => `<article class="summary-card">
+            <header><strong>${escapeHtml(service.title)}</strong><span class="state ${service.status}">${service.status}</span></header>
+            <p><code>svc:${escapeHtml(service.name)}</code> · ${service.providers.length} known provider${service.providers.length === 1 ? "" : "s"}</p>
+            <ul>${service.providers
+              .map(
+                (provider) => `<li><span>${escapeHtml(provider.hostName)}</span><span class="probe health-${escapeHtml(provider.health.status)}"><i></i>${escapeHtml(healthDetail(provider.health))}</span></li>`,
+              )
+              .join("")}</ul>
+          </article>`,
+        )
+        .join("")
+    : '<p class="empty">no portable services observed</p>';
+  const machines = snapshot.machines
+    .map((machine) => {
+      const report = machine.manifest?.reportedAt;
+      const reportStale = timestampIsStale(report, now);
+      const manifestState = !machine.manifest
+        ? "manifest not yet observed"
+        : `${reportStale ? "stale report" : "reported"} ${relativeTime(report ?? null, now)} · fetched ${relativeTime(machine.manifestFetchedAt ?? null, now)}`;
+      const services = machine.services.length
+        ? machine.services
+            .map(
+              (service) => `<li><span>${escapeHtml(service.title)}</span><span class="probe health-${escapeHtml(service.health.status)}"><i></i>${escapeHtml(healthDetail(service.health))}</span></li>`,
+            )
+            .join("")
+        : '<li class="empty">no service manifest observed</li>';
+      return `<article class="machine-card ${machine.online ? "" : "offline"}">
+        <header><strong>${escapeHtml(machine.hostName)}</strong><span>${machine.online ? "online" : `offline ${escapeHtml(relativeTime(machine.lastSeen, now))}`}</span></header>
+        <p class="${reportStale ? "stale-copy" : ""}">${escapeHtml(manifestState)}</p>
+        <ul>${services}</ul>
+      </article>`;
+    })
+    .join("");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="30">
+  <title>tailnet health</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0c0d0f;--panel:#14161a;--line:#292d34;--muted:#8f98a6;--text:#f4f5f7;--green:#65d68b;--red:#f17b7b;--amber:#e3b868}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}main{width:min(1040px,calc(100% - 32px));margin:auto;padding:56px 0}h1{font:600 clamp(28px,5vw,48px)/1.05 system-ui,sans-serif;letter-spacing:-.04em;margin:0 0 10px}h2{font:600 20px/1.2 system-ui,sans-serif;margin:36px 0 14px}.lede,.summary-card p,.machine-card p{color:var(--muted)}.banner{padding:12px 14px;border:1px solid color-mix(in srgb,var(--amber),transparent 45%);border-radius:10px;color:var(--amber);margin:20px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}.summary-card,.machine-card{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:16px}.machine-card.offline{opacity:.65}header,li{display:flex;align-items:center;justify-content:space-between;gap:16px}.summary-card header strong,.machine-card header strong{font:600 15px/1 system-ui,sans-serif}.summary-card p,.machine-card p{font-size:11px;margin:9px 0 13px}.stale-copy{color:var(--amber)!important}ul{list-style:none;padding:0;margin:0;border-top:1px solid var(--line)}li{padding:10px 0;border-bottom:1px solid var(--line)}li:last-child{border:0}.state{font-size:10px;text-transform:uppercase;letter-spacing:.06em}.available{color:var(--green)}.degraded,.unknown{color:var(--amber)}.unavailable{color:var(--red)}.probe{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;white-space:nowrap}.probe i{width:7px;height:7px;border-radius:50%;background:var(--muted)}.health-up i{background:var(--green)}.health-down i{background:var(--red)}.health-checking i,.health-auth-required i,.health-stale i{background:var(--amber)}.empty{color:var(--muted)}@media(max-width:640px){main{padding:32px 0}li{align-items:start;flex-direction:column;gap:5px}}
+  </style>
+</head>
+<body><main>
+  <h1>tailnet health</h1>
+  <p class="lede">host-specific observations and explicitly declared portable services</p>
+  ${snapshotStale ? '<p class="banner">collector data is stale or waiting for its first scan</p>' : ""}
+  <h2>portable services</h2><section class="grid">${portable}</section>
+  <h2>hosts and instances</h2><section class="grid">${machines}</section>
+</main></body>
+</html>`;
 }
 
 export function renderDirectory(snapshot: Snapshot): string {
@@ -1381,6 +1520,16 @@ async function main(): Promise<void> {
           const path = new URL(request.url).pathname;
           const snapshot = directory.getSnapshot();
           if (path === "/api/services") return jsonResponse(snapshot);
+          if (path === "/health") {
+            return new Response(renderHealth(snapshot), {
+              headers: {
+                "cache-control": "no-store",
+                "content-security-policy":
+                  "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                "content-type": "text/html; charset=utf-8",
+              },
+            });
+          }
           if (path !== "/" && path !== "/index.html") {
             return new Response("not found\n", { status: 404 });
           }
