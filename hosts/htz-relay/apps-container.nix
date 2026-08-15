@@ -13,6 +13,7 @@
     externalInterface = "enp1s0";
     internalInterfaces = [ "br-apps" ];
   };
+  networking.firewall.interfaces.br-apps.allowedTCPPorts = [ 8384 ];
 
   containers.apps = {
     autoStart = true;
@@ -30,6 +31,10 @@
       hostPath = "/mnt/storage-01/commonplace";
       isReadOnly = true;
     };
+    bindMounts."/run/host-syncthing" = {
+      hostPath = "/home/bdsqqq/.config/syncthing";
+      isReadOnly = true;
+    };
 
     config =
       { pkgs, lib, ... }:
@@ -37,6 +42,7 @@
         htmlStuffServer = import ../../user/html-stuff/package.nix {
           inherit pkgs;
         };
+        filesBrowserServer = import ../../modules/files-browser { inherit pkgs; };
       in
       {
         networking = {
@@ -100,18 +106,17 @@
           wantedBy = [ "multi-user.target" ];
           serviceConfig = {
             ExecStart = lib.escapeShellArgs [
-              "${pkgs.copyparty}/bin/copyparty"
-              "-i"
-              "127.0.0.1"
-              "-p"
-              "3925"
-              "--hist"
+              "${filesBrowserServer}/bin/files-browser-server"
+              "--source"
+              "/srv/commonplace"
+              "--state"
               "/var/lib/files-browser"
-              "--grid"
-              "--no-del"
-              "--no-mv"
-              "-v"
-              "/srv/commonplace::r"
+              "--syncthing-config"
+              "/run/host-syncthing/config.xml"
+              "--syncthing-url"
+              "http://10.233.1.1:8384"
+              "--port"
+              "3925"
             ];
             Restart = "always";
             RestartSec = "5s";
@@ -133,4 +138,5 @@
     requires = [ "mnt-storage\\x2d01.mount" ];
     after = [ "mnt-storage\\x2d01.mount" ];
   };
+
 }

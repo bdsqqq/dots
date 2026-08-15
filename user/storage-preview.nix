@@ -10,6 +10,7 @@ let
   galleryRoot = "/Volumes/ssd-01/igor/photos-library-2";
   copypartyCache = "${home}/Library/Caches/copyparty-ssd";
   filesBrowserCache = "${home}/Library/Caches/copyparty-files";
+  syncthingConfig = "${home}/Library/Application Support/Syncthing/config.xml";
   backrestConfigDir = "${home}/.config/backrest";
   backrestDataDir = "${home}/.local/share/backrest";
   resticSecret = "${home}/commonplace/01_files/nix/restic/secrets.yaml";
@@ -88,24 +89,7 @@ let
     '';
   };
 
-  filesBrowserServer = pkgs.writeShellApplication {
-    name = "files-browser-server";
-    runtimeInputs = [
-      pkgs.copyparty
-      pkgs.coreutils
-    ];
-    text = ''
-      mkdir -p ${lib.escapeShellArg filesBrowserCache}
-      exec copyparty \
-        -i 127.0.0.1 \
-        -p 3925 \
-        --hist ${lib.escapeShellArg filesBrowserCache} \
-        --grid \
-        --no-del \
-        --no-mv \
-        -v ${lib.escapeShellArg "${config.my.paths.commonplace}::r"}
-    '';
-  };
+  filesBrowserServer = import ../modules/files-browser { inherit pkgs; };
 
   backrestServer = pkgs.writeShellApplication {
     name = "backup-health-server";
@@ -201,7 +185,19 @@ in
     launchd.agents.files-browser = {
       enable = true;
       config = {
-        ProgramArguments = [ "${filesBrowserServer}/bin/files-browser-server" ];
+        ProgramArguments = [
+          "${filesBrowserServer}/bin/files-browser-server"
+          "--source"
+          "${home}/commonplace"
+          "--state"
+          filesBrowserCache
+          "--syncthing-config"
+          syncthingConfig
+          "--syncthing-url"
+          "http://127.0.0.1:8384"
+          "--port"
+          "3925"
+        ];
         RunAtLoad = true;
         KeepAlive = true;
         ThrottleInterval = 10;
