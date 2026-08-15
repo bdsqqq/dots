@@ -62,6 +62,11 @@ in
 
   my.primaryUser = "bdsqqq";
   my.paths.commonplace = "/mnt/storage-01/commonplace";
+  my.tailnetRegistry.hostChecks.syncthing = {
+    enable = true;
+    configFile = "/home/bdsqqq/.config/syncthing/config.xml";
+    folderIds = [ syncthing.folderIds.commonplace ];
+  };
   my.tailnetRegistry.services = {
     commonplace = {
       title = "commonplace";
