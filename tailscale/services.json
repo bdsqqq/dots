@@ -2,5 +2,9 @@
   "svc:apps": {
     "comment": "portable app directory",
     "ports": ["tcp:443"]
+  },
+  "svc:html-stuff": {
+    "comment": "portable HTML artifact browser",
+    "ports": ["tcp:443"]
   }
 }
