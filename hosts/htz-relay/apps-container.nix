@@ -26,9 +26,13 @@
       hostPath = "/mnt/storage-01/commonplace/01_files/html_stuff";
       isReadOnly = true;
     };
+    bindMounts."/srv/commonplace" = {
+      hostPath = "/mnt/storage-01/commonplace";
+      isReadOnly = true;
+    };
 
     config =
-      { pkgs, ... }:
+      { pkgs, lib, ... }:
       let
         htmlStuffServer = import ../../user/html-stuff/package.nix {
           inherit pkgs;
@@ -64,6 +68,16 @@
           access.tailnet = "owner";
           tailscaleService.enable = true;
         };
+        my.tailnetRegistry.services.files = {
+          title = "files";
+          description = "read-only commonplace file browser";
+          target = "http://127.0.0.1:3925";
+          scheme = "https";
+          port = 3925;
+          healthPath = "/";
+          access.tailnet = "owner";
+          tailscaleService.enable = true;
+        };
 
         users.users.bdsqqq = {
           isNormalUser = true;
@@ -78,6 +92,35 @@
             Restart = "always";
             RestartSec = "5s";
             User = "bdsqqq";
+          };
+        };
+
+        systemd.services.files-browser = {
+          description = "Read-only commonplace file browser";
+          wantedBy = [ "multi-user.target" ];
+          serviceConfig = {
+            ExecStart = lib.escapeShellArgs [
+              "${pkgs.copyparty}/bin/copyparty"
+              "-i"
+              "127.0.0.1"
+              "-p"
+              "3925"
+              "--hist"
+              "/var/lib/files-browser"
+              "--grid"
+              "--no-del"
+              "--no-mv"
+              "-v"
+              "/srv/commonplace::r"
+            ];
+            Restart = "always";
+            RestartSec = "5s";
+            User = "bdsqqq";
+            StateDirectory = "files-browser";
+            NoNewPrivileges = true;
+            ProtectSystem = "strict";
+            ProtectHome = true;
+            ReadOnlyPaths = [ "/srv/commonplace" ];
           };
         };
 
