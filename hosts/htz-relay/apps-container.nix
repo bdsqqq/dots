@@ -65,14 +65,19 @@
           tailscaleService.enable = true;
         };
 
+        users.users.bdsqqq = {
+          isNormalUser = true;
+          uid = 1000;
+        };
+
         systemd.services.html-stuff = {
           description = "HTML artifact browser";
           wantedBy = [ "multi-user.target" ];
           serviceConfig = {
-            DynamicUser = true;
             ExecStart = "${htmlStuffServer}/bin/html-stuff-server --directory /srv/html-stuff --port 8766";
             Restart = "always";
             RestartSec = "5s";
+            User = "bdsqqq";
           };
         };
 
