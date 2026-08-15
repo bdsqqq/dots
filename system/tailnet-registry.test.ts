@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  collectSyncthingReport,
   manifestHealth,
   nativeEndpointsFromConfig,
   NativeServiceReconciler,
@@ -62,6 +63,14 @@ function config(
         enable: false,
         name: "apps",
         port: 443,
+      },
+    },
+    hostChecks: {
+      syncthing: {
+        enable: false,
+        url: "http://127.0.0.1:8384",
+        configFile: null,
+        folderIds: [],
       },
     },
     services: normalized,
@@ -593,6 +602,152 @@ describe("health dashboard", () => {
     expect(html).toContain("stale report 3m ago");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
+  });
+});
+
+describe("Syncthing host check", () => {
+  test("reports caught-up folders without claiming disconnected peers are fresh", async () => {
+    const directory = temporaryDirectory();
+    const configFile = join(directory, "config.xml");
+    writeFileSync(configFile, "<configuration><apikey>test-secret</apikey></configuration>");
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        if (request.headers.get("x-api-key") !== "test-secret") {
+          return new Response("forbidden", { status: 403 });
+        }
+        const url = new URL(request.url);
+        if (url.pathname === "/rest/db/status") {
+          return Response.json({
+            state: "idle",
+            error: "",
+            watchError: "",
+            errors: 0,
+            pullErrors: 0,
+            needTotalItems: 0,
+            needBytes: 0,
+          });
+        }
+        if (url.pathname === "/rest/config/devices") {
+          return Response.json([{}, {}, {}]);
+        }
+        if (url.pathname === "/rest/system/connections") {
+          return Response.json({
+            connections: {
+              peer1: { connected: true },
+              peer2: { connected: false },
+              peer3: { connected: false },
+            },
+          });
+        }
+        return new Response("missing", { status: 404 });
+      },
+    });
+    servers.push(server);
+
+    const report = await collectSyncthingReport({
+      enable: true,
+      url: `http://127.0.0.1:${server.port}`,
+      configFile,
+      folderIds: ["commonplace"],
+    });
+
+    expect(report).toMatchObject({
+      status: "caught-up",
+      monitoredFolders: 1,
+      caughtUpFolders: 1,
+      errorFolders: 0,
+      backlogItems: 0,
+      configuredPeers: 3,
+      connectedPeers: 1,
+    });
+  });
+
+  test("aggregates backlog and rejects API failures without publishing details", async () => {
+    const directory = temporaryDirectory();
+    const configFile = join(directory, "private-config.xml");
+    writeFileSync(configFile, "<apikey>private-api-key</apikey>");
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url);
+        if (url.pathname === "/rest/db/status") {
+          return Response.json({
+            state: "syncing",
+            error: "",
+            watchError: "",
+            errors: 0,
+            pullErrors: 0,
+            needTotalItems: 7,
+            needBytes: 4096,
+          });
+        }
+        if (url.pathname === "/rest/config/devices") return Response.json([]);
+        if (url.pathname === "/rest/system/connections") {
+          return Response.json({ connections: {} });
+        }
+        return new Response("missing", { status: 404 });
+      },
+    });
+    servers.push(server);
+    const config = {
+      enable: true,
+      url: `http://127.0.0.1:${server.port}`,
+      configFile,
+      folderIds: ["commonplace"],
+    };
+
+    const busy = await collectSyncthingReport(config);
+    expect(busy).toMatchObject({
+      status: "busy",
+      backlogItems: 7,
+      backlogBytes: 4096,
+    });
+
+    server.stop(true);
+    const unreachable = await collectSyncthingReport(config);
+    expect(unreachable.status).toBe("unreachable");
+    expect(JSON.stringify(unreachable)).not.toMatch(
+      /private-api-key|private-config|127[.]0[.]0[.]1/,
+    );
+  });
+
+  test("sanitizes the published report to its coarse schema", () => {
+    const manifest = sanitizeManifest({
+      schemaVersion: 1,
+      host: {
+        name: "test-host",
+        checks: {
+          syncthing: {
+            status: "busy",
+            checkedAt: "2026-08-14T12:00:00.000Z",
+            monitoredFolders: 1,
+            caughtUpFolders: 0,
+            errorFolders: 0,
+            backlogItems: 3,
+            backlogBytes: 2048,
+            configuredPeers: 2,
+            connectedPeers: 1,
+            apiKey: "secret",
+            folderIds: ["private-folder"],
+          },
+        },
+      },
+      services: {},
+    });
+
+    expect(manifest.host.checks?.syncthing).toEqual({
+      status: "busy",
+      checkedAt: "2026-08-14T12:00:00.000Z",
+      monitoredFolders: 1,
+      caughtUpFolders: 0,
+      errorFolders: 0,
+      backlogItems: 3,
+      backlogBytes: 2048,
+      configuredPeers: 2,
+      connectedPeers: 1,
+    });
+    expect(JSON.stringify(manifest)).not.toMatch(/secret|private-folder/);
   });
 });
 

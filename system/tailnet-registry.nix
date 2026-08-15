@@ -103,7 +103,8 @@ let
   active =
     cfg.services != { }
     || cfg.directory.enable
-    || cfg.directory.tailscaleService.enable;
+    || cfg.directory.tailscaleService.enable
+    || cfg.hostChecks.syncthing.enable;
   allPorts =
     (map (service: service.port) (lib.attrValues cfg.services))
     ++ [ cfg.manifest.port ]
@@ -166,6 +167,16 @@ let
           ;
       };
     };
+    hostChecks = {
+      syncthing = {
+        inherit (cfg.hostChecks.syncthing)
+          enable
+          url
+          configFile
+          folderIds
+          ;
+      };
+    };
     services = normalizedServices;
   });
   registryPackage = pkgs.writeShellApplication {
@@ -212,6 +223,28 @@ in
         type = lib.types.port;
         default = 15252;
         description = "Loopback port used by the manifest server.";
+      };
+    };
+
+    hostChecks.syncthing = {
+      enable = lib.mkEnableOption "a coarse local Syncthing health report";
+
+      url = lib.mkOption {
+        type = lib.types.str;
+        default = "http://127.0.0.1:8384";
+        description = "Loopback Syncthing API URL.";
+      };
+
+      configFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Syncthing config.xml used to read the local API key.";
+      };
+
+      folderIds = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Explicit Syncthing folder IDs included in the coarse report.";
       };
     };
 
@@ -295,6 +328,27 @@ in
             (map (service: service.target) (lib.attrValues cfg.services));
           message =
             "my.tailnetRegistry service targets must use an HTTP(S) loopback address";
+        }
+        {
+          assertion =
+            !cfg.hostChecks.syncthing.enable
+            || loopbackTarget cfg.hostChecks.syncthing.url;
+          message =
+            "my.tailnetRegistry Syncthing check URL must use an HTTP(S) loopback address";
+        }
+        {
+          assertion =
+            !cfg.hostChecks.syncthing.enable
+            || cfg.hostChecks.syncthing.configFile != null;
+          message =
+            "my.tailnetRegistry Syncthing check requires configFile";
+        }
+        {
+          assertion =
+            !cfg.hostChecks.syncthing.enable
+            || cfg.hostChecks.syncthing.folderIds != [ ];
+          message =
+            "my.tailnetRegistry Syncthing check requires at least one folder ID";
         }
         {
           assertion = lib.all

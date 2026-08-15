@@ -53,7 +53,29 @@ interface RegistryConfig {
     backendPort: number;
     tailscaleService: NativeServiceConfig;
   };
+  hostChecks: {
+    syncthing: SyncthingCheckConfig;
+  };
   services: Record<string, ServiceConfig>;
+}
+
+interface SyncthingCheckConfig {
+  enable: boolean;
+  url: string;
+  configFile: string | null;
+  folderIds: string[];
+}
+
+interface SyncthingReport {
+  status: "caught-up" | "busy" | "error" | "unreachable";
+  checkedAt: string;
+  monitoredFolders: number;
+  caughtUpFolders: number;
+  errorFolders: number;
+  backlogItems: number;
+  backlogBytes: number;
+  configuredPeers: number;
+  connectedPeers: number;
 }
 
 export interface Route {
@@ -81,7 +103,10 @@ interface PublicService {
 interface PublicManifest {
   schemaVersion: 1;
   reportedAt?: string;
-  host: { name: string };
+  host: {
+    name: string;
+    checks?: { syncthing?: SyncthingReport };
+  };
   services: Record<string, PublicService>;
 }
 
@@ -833,6 +858,71 @@ function sanitizedHealth(value: unknown, id: string): Health | undefined {
   };
 }
 
+function sanitizedCount(value: unknown, field: string): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 0
+  ) {
+    throw new Error(`invalid ${field}`);
+  }
+  return value;
+}
+
+function sanitizedSyncthingReport(value: unknown): SyncthingReport | undefined {
+  if (value === undefined) return undefined;
+  const report = asRecord(value);
+  if (
+    !report ||
+    (report.status !== "caught-up" &&
+      report.status !== "busy" &&
+      report.status !== "error" &&
+      report.status !== "unreachable")
+  ) {
+    throw new Error("invalid Syncthing report");
+  }
+  const sanitized: SyncthingReport = {
+    status: report.status,
+    checkedAt: sanitizedTimestamp(report.checkedAt, "Syncthing check time"),
+    monitoredFolders: sanitizedCount(
+      report.monitoredFolders,
+      "Syncthing monitored folder count",
+    ),
+    caughtUpFolders: sanitizedCount(
+      report.caughtUpFolders,
+      "Syncthing caught-up folder count",
+    ),
+    errorFolders: sanitizedCount(
+      report.errorFolders,
+      "Syncthing error folder count",
+    ),
+    backlogItems: sanitizedCount(
+      report.backlogItems,
+      "Syncthing backlog item count",
+    ),
+    backlogBytes: sanitizedCount(
+      report.backlogBytes,
+      "Syncthing backlog byte count",
+    ),
+    configuredPeers: sanitizedCount(
+      report.configuredPeers,
+      "Syncthing configured peer count",
+    ),
+    connectedPeers: sanitizedCount(
+      report.connectedPeers,
+      "Syncthing connected peer count",
+    ),
+  };
+  if (
+    sanitized.caughtUpFolders + sanitized.errorFolders >
+      sanitized.monitoredFolders ||
+    sanitized.connectedPeers > sanitized.configuredPeers
+  ) {
+    throw new Error("inconsistent Syncthing report");
+  }
+  return sanitized;
+}
+
 export function sanitizeManifest(value: unknown): PublicManifest {
   const manifest = asRecord(value);
   const rawServices = asRecord(manifest?.services);
@@ -880,6 +970,8 @@ export function sanitizeManifest(value: unknown): PublicManifest {
   }
 
   const rawHost = asRecord(manifest.host);
+  const rawChecks = asRecord(rawHost?.checks);
+  const syncthing = sanitizedSyncthingReport(rawChecks?.syncthing);
   return {
     schemaVersion: 1,
     ...(manifest.reportedAt === undefined
@@ -895,6 +987,7 @@ export function sanitizeManifest(value: unknown): PublicManifest {
         rawHost?.name === undefined
           ? "unknown"
           : sanitizedText(rawHost.name, "host name", 100),
+      ...(syncthing ? { checks: { syncthing } } : {}),
     },
     services,
   };
@@ -1011,6 +1104,168 @@ export async function probe(url: string): Promise<Health> {
     log("warn", `health probe failed: ${error instanceof Error ? error.message : String(error)}`);
     return { status: "down" };
   }
+}
+
+class SyncthingConnectionError extends Error {}
+
+async function syncthingRequest(
+  config: SyncthingCheckConfig,
+  apiKey: string,
+  path: string,
+): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(new URL(path, config.url), {
+      headers: {
+        accept: "application/json",
+        "x-api-key": apiKey,
+      },
+      redirect: "manual",
+      signal: AbortSignal.timeout(3_000),
+    });
+  } catch (error) {
+    throw new SyncthingConnectionError(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  if (!response.ok || response.status >= 300) {
+    await response.body?.cancel();
+    throw new Error(`Syncthing API returned ${response.status}`);
+  }
+  return response.json();
+}
+
+function apiCount(value: unknown, field: string): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 0
+  ) {
+    throw new Error(`invalid Syncthing ${field}`);
+  }
+  return value;
+}
+
+function failedSyncthingReport(
+  status: "error" | "unreachable",
+  checkedAt: string,
+): SyncthingReport {
+  return {
+    status,
+    checkedAt,
+    monitoredFolders: 0,
+    caughtUpFolders: 0,
+    errorFolders: 0,
+    backlogItems: 0,
+    backlogBytes: 0,
+    configuredPeers: 0,
+    connectedPeers: 0,
+  };
+}
+
+export async function collectSyncthingReport(
+  config: SyncthingCheckConfig,
+): Promise<SyncthingReport> {
+  const checkedAt = new Date().toISOString();
+  try {
+    if (!config.configFile) throw new Error("Syncthing config file is missing");
+    const xml = readFileSync(config.configFile, "utf8");
+    const apiKey = xml.match(/<apikey>([^<]+)<\/apikey>/)?.[1];
+    if (!apiKey) throw new Error("Syncthing API key is missing");
+
+    const [folders, rawDevices, rawConnections] = await Promise.all([
+      Promise.all(
+        config.folderIds.map(async (folderId) => {
+          const raw = asRecord(
+            await syncthingRequest(
+              config,
+              apiKey,
+              `/rest/db/status?folder=${encodeURIComponent(folderId)}`,
+            ),
+          );
+          if (!raw) throw new Error("invalid Syncthing folder status");
+          const backlogItems = apiCount(
+            raw.needTotalItems,
+            "backlog item count",
+          );
+          const backlogBytes = apiCount(raw.needBytes, "backlog byte count");
+          const errorCount = apiCount(raw.errors, "folder error count");
+          const pullErrorCount = apiCount(
+            raw.pullErrors,
+            "folder pull error count",
+          );
+          const hasError =
+            errorCount > 0 ||
+            pullErrorCount > 0 ||
+            (typeof raw.error === "string" && raw.error.length > 0) ||
+            (typeof raw.watchError === "string" && raw.watchError.length > 0);
+          return {
+            backlogItems,
+            backlogBytes,
+            hasError,
+            caughtUp:
+              !hasError &&
+              raw.state === "idle" &&
+              backlogItems === 0 &&
+              backlogBytes === 0,
+          };
+        }),
+      ),
+      syncthingRequest(config, apiKey, "/rest/config/devices"),
+      syncthingRequest(config, apiKey, "/rest/system/connections"),
+    ]);
+    if (!Array.isArray(rawDevices)) {
+      throw new Error("invalid Syncthing device list");
+    }
+    const connections = asRecord(asRecord(rawConnections)?.connections);
+    if (!connections) throw new Error("invalid Syncthing connection list");
+    const caughtUpFolders = folders.filter((folder) => folder.caughtUp).length;
+    const errorFolders = folders.filter((folder) => folder.hasError).length;
+    return {
+      status:
+        errorFolders > 0
+          ? "error"
+          : caughtUpFolders === folders.length
+            ? "caught-up"
+            : "busy",
+      checkedAt,
+      monitoredFolders: folders.length,
+      caughtUpFolders,
+      errorFolders,
+      backlogItems: folders.reduce(
+        (total, folder) => total + folder.backlogItems,
+        0,
+      ),
+      backlogBytes: folders.reduce(
+        (total, folder) => total + folder.backlogBytes,
+        0,
+      ),
+      configuredPeers: rawDevices.length,
+      connectedPeers: Object.values(connections).filter(
+        (connection) => asRecord(connection)?.connected === true,
+      ).length,
+    };
+  } catch (error) {
+    log(
+      "warn",
+      `Syncthing health check failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return failedSyncthingReport(
+      error instanceof SyncthingConnectionError ? "unreachable" : "error",
+      checkedAt,
+    );
+  }
+}
+
+export async function refreshHostChecks(
+  config: RegistryConfig,
+  manifest: PublicManifest,
+): Promise<void> {
+  if (!config.hostChecks?.syncthing.enable) return;
+  manifest.host.checks = {
+    ...manifest.host.checks,
+    syncthing: await collectSyncthingReport(config.hostChecks.syncthing),
+  };
 }
 
 export async function refreshManifestHealth(
@@ -1277,6 +1532,22 @@ function timestampIsStale(value: string | null | undefined, now: number): boolea
   return !Number.isFinite(timestamp) || now - timestamp > STALE_HEALTH_MS;
 }
 
+function syncthingDetail(report: SyncthingReport, now: number): string {
+  if (timestampIsStale(report.checkedAt, now)) {
+    return `stale ${relativeTime(report.checkedAt, now)}`;
+  }
+  if (report.status === "caught-up") {
+    return `caught up to known cluster state · ${report.connectedPeers}/${report.configuredPeers} peers connected`;
+  }
+  if (report.status === "busy") {
+    return `${report.backlogItems} items / ${report.backlogBytes} bytes pending · ${report.connectedPeers}/${report.configuredPeers} peers connected`;
+  }
+  if (report.status === "error") {
+    return `${report.errorFolders}/${report.monitoredFolders} monitored folders report errors`;
+  }
+  return "local Syncthing API unreachable";
+}
+
 export function renderHealth(snapshot: Snapshot, now = Date.now()): string {
   const summaries = portableServiceSummaries(snapshot);
   const snapshotStale = timestampIsStale(snapshot.updatedAt, now);
@@ -1309,9 +1580,14 @@ export function renderHealth(snapshot: Snapshot, now = Date.now()): string {
             )
             .join("")
         : '<li class="empty">no service manifest observed</li>';
+      const syncthing = machine.manifest?.host.checks?.syncthing;
+      const checks = syncthing
+        ? `<div class="host-check"><strong>syncthing</strong><span class="state syncthing-${escapeHtml(syncthing.status)}">${escapeHtml(syncthingDetail(syncthing, now))}</span></div>`
+        : "";
       return `<article class="machine-card ${machine.online ? "" : "offline"}">
         <header><strong>${escapeHtml(machine.hostName)}</strong><span>${machine.online ? "online" : `offline ${escapeHtml(relativeTime(machine.lastSeen, now))}`}</span></header>
         <p class="${reportStale ? "stale-copy" : ""}">${escapeHtml(manifestState)}</p>
+        ${checks}
         <ul>${services}</ul>
       </article>`;
     })
@@ -1324,7 +1600,7 @@ export function renderHealth(snapshot: Snapshot, now = Date.now()): string {
   <meta http-equiv="refresh" content="30">
   <title>tailnet health</title>
   <style>
-    :root{color-scheme:dark;--bg:#0c0d0f;--panel:#14161a;--line:#292d34;--muted:#8f98a6;--text:#f4f5f7;--green:#65d68b;--red:#f17b7b;--amber:#e3b868}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}main{width:min(1040px,calc(100% - 32px));margin:auto;padding:56px 0}h1{font:600 clamp(28px,5vw,48px)/1.05 system-ui,sans-serif;letter-spacing:-.04em;margin:0 0 10px}h2{font:600 20px/1.2 system-ui,sans-serif;margin:36px 0 14px}.lede,.summary-card p,.machine-card p{color:var(--muted)}.banner{padding:12px 14px;border:1px solid color-mix(in srgb,var(--amber),transparent 45%);border-radius:10px;color:var(--amber);margin:20px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}.summary-card,.machine-card{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:16px}.machine-card.offline{opacity:.65}header,li{display:flex;align-items:center;justify-content:space-between;gap:16px}.summary-card header strong,.machine-card header strong{font:600 15px/1 system-ui,sans-serif}.summary-card p,.machine-card p{font-size:11px;margin:9px 0 13px}.stale-copy{color:var(--amber)!important}ul{list-style:none;padding:0;margin:0;border-top:1px solid var(--line)}li{padding:10px 0;border-bottom:1px solid var(--line)}li:last-child{border:0}.state{font-size:10px;text-transform:uppercase;letter-spacing:.06em}.available{color:var(--green)}.degraded,.unknown{color:var(--amber)}.unavailable{color:var(--red)}.probe{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;white-space:nowrap}.probe i{width:7px;height:7px;border-radius:50%;background:var(--muted)}.health-up i{background:var(--green)}.health-down i{background:var(--red)}.health-checking i,.health-auth-required i,.health-stale i{background:var(--amber)}.empty{color:var(--muted)}@media(max-width:640px){main{padding:32px 0}li{align-items:start;flex-direction:column;gap:5px}}
+    :root{color-scheme:dark;--bg:#0c0d0f;--panel:#14161a;--line:#292d34;--muted:#8f98a6;--text:#f4f5f7;--green:#65d68b;--red:#f17b7b;--amber:#e3b868}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}main{width:min(1040px,calc(100% - 32px));margin:auto;padding:56px 0}h1{font:600 clamp(28px,5vw,48px)/1.05 system-ui,sans-serif;letter-spacing:-.04em;margin:0 0 10px}h2{font:600 20px/1.2 system-ui,sans-serif;margin:36px 0 14px}.lede,.summary-card p,.machine-card p{color:var(--muted)}.banner{padding:12px 14px;border:1px solid color-mix(in srgb,var(--amber),transparent 45%);border-radius:10px;color:var(--amber);margin:20px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}.summary-card,.machine-card{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:16px}.machine-card.offline{opacity:.65}header,li,.host-check{display:flex;align-items:center;justify-content:space-between;gap:16px}.summary-card header strong,.machine-card header strong{font:600 15px/1 system-ui,sans-serif}.summary-card p,.machine-card p{font-size:11px;margin:9px 0 13px}.stale-copy{color:var(--amber)!important}.host-check{border-top:1px solid var(--line);padding:11px 0}.host-check strong{font-size:12px}.syncthing-caught-up{color:var(--green)}.syncthing-busy{color:var(--amber)}.syncthing-error,.syncthing-unreachable{color:var(--red)}ul{list-style:none;padding:0;margin:0;border-top:1px solid var(--line)}li{padding:10px 0;border-bottom:1px solid var(--line)}li:last-child{border:0}.state{font-size:10px;text-transform:uppercase;letter-spacing:.06em}.available{color:var(--green)}.degraded,.unknown{color:var(--amber)}.unavailable{color:var(--red)}.probe{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;white-space:nowrap}.probe i{width:7px;height:7px;border-radius:50%;background:var(--muted)}.health-up i{background:var(--green)}.health-down i{background:var(--red)}.health-checking i,.health-auth-required i,.health-stale i{background:var(--amber)}.empty{color:var(--muted)}@media(max-width:640px){main{padding:32px 0}li,.host-check{align-items:start;flex-direction:column;gap:5px}}
   </style>
 </head>
 <body><main>
@@ -1562,6 +1838,7 @@ async function main(): Promise<void> {
     args.stateDirectory,
   );
   let lastHealthRefresh = 0;
+  let lastHostChecksRefresh = 0;
   let lastDirectoryRefresh = 0;
   while (true) {
     try {
@@ -1581,6 +1858,14 @@ async function main(): Promise<void> {
         log("error", `local health refresh failed: ${String(error)}`);
       }
       lastHealthRefresh = Date.now();
+    }
+    if (Date.now() - lastHostChecksRefresh >= 60_000) {
+      try {
+        await refreshHostChecks(config, manifest);
+      } catch (error) {
+        log("error", `host checks refresh failed: ${String(error)}`);
+      }
+      lastHostChecksRefresh = Date.now();
     }
     if (directory && Date.now() - lastDirectoryRefresh >= 30_000) {
       try {
