@@ -71,16 +71,18 @@ let
         fetch --quiet amp-skills main
       published_sha="$(${pkgs.git}/bin/git -C "$root" rev-parse FETCH_HEAD)"
 
-      echo "Publishing user/agents/skills to Amp User Skills..." >&2
-      split_sha="$(${pkgs.git}/bin/git -C "$root" subtree split \
-        --prefix=user/agents/skills "$main_sha")"
-
       published_tree="$(${pkgs.git}/bin/git -C "$root" rev-parse "$published_sha^{tree}")"
-      split_tree="$(${pkgs.git}/bin/git -C "$root" rev-parse "$split_sha^{tree}")"
-      if [[ "$published_tree" == "$split_tree" ]]; then
+      skills_tree="$(${pkgs.git}/bin/git -C "$root" rev-parse \
+        "$main_sha:user/agents/skills")"
+      if [[ "$published_tree" == "$skills_tree" ]]; then
         echo "Amp User Skills is already up to date." >&2
         exit 0
       fi
+
+      echo "Publishing user/agents/skills to Amp User Skills..." >&2
+      split_sha="$(${pkgs.git}/bin/git -C "$root" subtree split \
+        --prefix=user/agents/skills "$main_sha")"
+      split_tree="$(${pkgs.git}/bin/git -C "$root" rev-parse "$split_sha^{tree}")"
 
       projection_sha="$split_sha"
       if ! ${pkgs.git}/bin/git -C "$root" merge-base --is-ancestor \
@@ -166,6 +168,8 @@ in
             ${pkgs.git}/bin/git -C "$dots_repo" remote add amp-skills \
               "https://ampcode.com/git/@user_01KTSZFRFVGGBPHVEF4Y6JYCH7/-/skills"
           fi
+          ${pkgs.git}/bin/git -C "$dots_repo" config \
+            remote.amp-skills.skipFetchAll true
         fi
       '';
   };
