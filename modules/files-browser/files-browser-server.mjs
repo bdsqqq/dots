@@ -4,6 +4,7 @@ import { connect as connectTcp } from "node:net";
 import { spawn } from "node:child_process";
 import {
   access,
+  link,
   lstat,
   mkdir,
   readFile,
@@ -103,6 +104,15 @@ function manifestSignature(items) {
   return createHash("sha256").update(manifest).digest("hex");
 }
 
+export function modelToken(status) {
+  return JSON.stringify([
+    status.sequence,
+    Object.entries(status.remoteSequence ?? {}).sort(([left], [right]) =>
+      left.localeCompare(right)
+    ),
+  ]);
+}
+
 export function folderReady(status) {
   return (
     status.state === "idle" &&
@@ -122,10 +132,22 @@ async function publishItem(sourceRoot, snapshotRoot, item) {
       await mkdir(destination, { recursive: true });
       return;
     case "FILE_INFO_TYPE_FILE": {
-      const status = await lstat(source);
+      const status = await lstat(source, { bigint: true });
       if (!status.isFile()) throw new Error(`indexed file is not a regular file: ${item.path}`);
       await mkdir(dirname(destination), { recursive: true });
-      await symlink(source, destination);
+      await link(source, destination);
+      const [sourceAfter, published] = await Promise.all([
+        lstat(source, { bigint: true }),
+        lstat(destination, { bigint: true }),
+      ]);
+      if (
+        !sourceAfter.isFile() ||
+        !published.isFile() ||
+        sourceAfter.dev !== published.dev ||
+        sourceAfter.ino !== published.ino
+      ) {
+        throw new Error(`indexed file changed during publication: ${item.path}`);
+      }
       return;
     }
     case "FILE_INFO_TYPE_SYMLINK": {
@@ -167,23 +189,32 @@ export async function materializeSnapshot(sourceRoot, snapshotsRoot, entries) {
   return { signature, snapshot, itemCount: items.length };
 }
 
-async function waitForBackend(backend) {
+export async function waitForBackend(backend) {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
-    if (backend.child.exitCode !== null) {
-      throw new Error(`Copyparty exited with code ${backend.child.exitCode}`);
-    }
+    assertBackendLive(backend);
     try {
       const response = await fetch(`http://127.0.0.1:${backend.port}/`, {
         signal: AbortSignal.timeout(1_000),
       });
-      if (response.ok) return;
+      if (response.ok) {
+        assertBackendLive(backend);
+        return;
+      }
     } catch {
+      assertBackendLive(backend);
       // Copyparty takes a moment to bind and initialize the volume.
     }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 200));
   }
   throw new Error("timed out waiting for Copyparty");
+}
+
+export function assertBackendLive(backend) {
+  if (backend.failure) throw backend.failure;
+  if (backend.child.exitCode !== null) {
+    throw new Error(`Copyparty exited with code ${backend.child.exitCode}`);
+  }
 }
 
 function startBackend(config, generation, snapshot) {
@@ -209,7 +240,15 @@ function startBackend(config, generation, snapshot) {
       stdio: "inherit",
     }
   );
-  return { child, generation, history, inflight: 0, port, snapshot };
+  const backend = { child, failure: null, generation, history, inflight: 0, port, snapshot };
+  child.once("error", (error) => {
+    backend.failure = error;
+  });
+  child.once("exit", (code, signal) => {
+    backend.failure ??= new Error(`Copyparty exited with ${signal ?? `code ${code}`}`);
+    backend.onExit?.();
+  });
+  return backend;
 }
 
 async function stopBackend(backend) {
@@ -304,7 +343,7 @@ async function main() {
 
   let active = null;
   let generation = 0;
-  let lastSequence = null;
+  let lastModelToken = null;
   let refreshing = false;
   const backends = new Set();
 
@@ -317,16 +356,20 @@ async function main() {
         `/rest/db/status?folder=${encodeURIComponent(FOLDER_ID)}`
       );
       if (!folderReady(status)) return;
-      if (active && status.sequence === lastSequence) return;
+      const token = modelToken(status);
+      if (active && token === lastModelToken) return;
 
       const entries = await syncthingRequest(
         config,
         `/rest/db/browse?folder=${encodeURIComponent(FOLDER_ID)}`
       );
       const publication = await materializeSnapshot(config.source, snapshotsRoot, entries);
-      if (active?.signature === publication.signature) {
+      const statusAfter = await syncthingRequest(
+        config,
+        `/rest/db/status?folder=${encodeURIComponent(FOLDER_ID)}`
+      );
+      if (!folderReady(statusAfter) || modelToken(statusAfter) !== token) {
         await rm(publication.snapshot, { recursive: true, force: true });
-        lastSequence = status.sequence;
         return;
       }
 
@@ -334,19 +377,20 @@ async function main() {
       const backend = startBackend(config, generation, publication.snapshot);
       backend.signature = publication.signature;
       backends.add(backend);
-      backend.child.once("exit", () => {
+      backend.onExit = () => {
         if (active !== backend) return;
         active = null;
-        lastSequence = null;
+        lastModelToken = null;
         stopBackend(backend)
           .then(() => backends.delete(backend))
           .catch((error) => console.error("failed to clean up dead backend", error));
         setTimeout(() => {
           refresh().catch((error) => console.error("backend recovery failed", error));
         }, 1_000);
-      });
+      };
       try {
         await waitForBackend(backend);
+        assertBackendLive(backend);
       } catch (error) {
         backends.delete(backend);
         await stopBackend(backend);
@@ -355,7 +399,7 @@ async function main() {
 
       const previous = active;
       active = backend;
-      lastSequence = status.sequence;
+      lastModelToken = token;
       console.log(
         `published ${publication.itemCount} Syncthing-indexed items as ${publication.signature}`
       );
