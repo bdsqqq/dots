@@ -117,6 +117,7 @@
             RestartSec = "5s";
             User = "bdsqqq";
             StateDirectory = "files-browser";
+            Environment = "HOME=/var/lib/files-browser";
             NoNewPrivileges = true;
             ProtectSystem = "strict";
             ProtectHome = true;
