@@ -63,19 +63,51 @@ test("allows ignored local deletion errors but not missing indexed content", () 
   assert.equal(folderReady({ ...synchronized, state: "syncing" }), false);
 });
 
-test("remote index changes invalidate the publication token", () => {
+test("remote deletion invalidates the token and disappears from publication", async () => {
+  const temporary = await mkdtemp(join(tmpdir(), "files-browser-test-"));
+  const source = join(temporary, "source");
+  const snapshots = join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await writeFile(join(source, "keep.txt"), "keep\n");
+  await writeFile(join(source, "deleted.txt"), "deleted\n");
+
   const status = {
+    state: "idle",
+    needFiles: 0,
+    needDirectories: 0,
+    needSymlinks: 0,
+    needBytes: 0,
+    needDeletes: 0,
     sequence: 10,
     remoteSequence: { remoteB: 20, remoteA: 30 },
   };
-  assert.equal(
-    modelToken(status),
-    modelToken({ ...status, remoteSequence: { remoteA: 30, remoteB: 20 } })
-  );
-  assert.notEqual(
-    modelToken(status),
-    modelToken({ ...status, remoteSequence: { remoteB: 21, remoteA: 30 } })
-  );
+  const afterDeletion = {
+    ...status,
+    needDeletes: 1,
+    remoteSequence: { remoteB: 21, remoteA: 30 },
+  };
+  const file = (name, size) => ({
+    name,
+    type: "FILE_INFO_TYPE_FILE",
+    modTime: "2026-01-01T00:00:00Z",
+    size,
+  });
+
+  try {
+    const before = await materializeSnapshot(source, snapshots, [
+      file("keep.txt", 5),
+      file("deleted.txt", 8),
+    ]);
+    assert.equal(await readFile(join(before.snapshot, "deleted.txt"), "utf8"), "deleted\n");
+    assert.equal(folderReady(afterDeletion), true);
+    assert.notEqual(modelToken(status), modelToken(afterDeletion));
+
+    const after = await materializeSnapshot(source, snapshots, [file("keep.txt", 5)]);
+    await assert.rejects(readFile(join(after.snapshot, "deleted.txt")));
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
 });
 
 test("materializes only indexed files and symlinks", async () => {
