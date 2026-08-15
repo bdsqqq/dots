@@ -29,6 +29,11 @@ in
       parallel_api_key = { owner = "bdsqqq"; };
       syncthing_gui_password = { owner = "bdsqqq"; };
       syncthing_gui_password_hash = { owner = "bdsqqq"; };
+      cloudflare_cert_pem = {
+        owner = "bdsqqq";
+        mode = "0400";
+        path = "${homeDir}/.cloudflared/cert.pem";
+      };
       "axiom/personal_url" = {
         sopsFile = ./o11y/secrets.yaml;
         key = "personal_url";
