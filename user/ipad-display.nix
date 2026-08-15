@@ -210,7 +210,6 @@ let
           ;;
         connect)
           start_better_display
-          restore_virtual_display
           specifier=$(read_specifier)
           last_error=""
 
