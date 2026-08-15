@@ -113,6 +113,7 @@ in
     enable = true;
     tailscaleService.enable = true;
   };
+  my.tailnetRegistry.darwinSystemDaemon = true;
   my.mediaFeeds = {
     enable = true;
     root = "/Users/bdsqqq/commonplace/03_media/one piece manga";
