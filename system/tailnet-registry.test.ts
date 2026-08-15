@@ -216,6 +216,7 @@ describe("manifest boundary", () => {
   test("accepts timestamped local health without exposing backend targets", () => {
     const manifest = sanitizeManifest({
       schemaVersion: 1,
+      reportedAt: "2026-08-14T12:00:01.000Z",
       services: {
         photos: {
           title: "photos",
@@ -229,18 +230,25 @@ describe("manifest boundary", () => {
             code: 200,
             latencyMs: 4,
             checkedAt: "2026-08-14T12:00:00.000Z",
+            error: "http://127.0.0.1:3923/Users/private failed",
           },
         },
       },
     });
 
     expect(manifest.services.photos).not.toHaveProperty("target");
+    expect(manifest.services.photos).not.toHaveProperty("healthPath");
+    expect(manifest.services.photos.health).not.toHaveProperty("error");
+    expect(manifest.reportedAt).toBe("2026-08-14T12:00:01.000Z");
     expect(manifest.services.photos.health).toEqual({
       status: "up",
       code: 200,
       latencyMs: 4,
       checkedAt: "2026-08-14T12:00:00.000Z",
     });
+    expect(JSON.stringify(manifest)).not.toMatch(
+      /127[.]0[.]0[.]1|\/Users\/private/,
+    );
   });
 
   test("rejects executable schemes and malformed services", () => {
