@@ -14,7 +14,6 @@ in
     healthPath = "/";
     access.tailnet = "owner";
     adoptExisting = true;
-    tailscaleService.enable = true;
   };
 
   home-manager.users.bdsqqq = { config, lib, ... }: {
