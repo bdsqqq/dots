@@ -10,6 +10,13 @@ readonly SSH_KEY="/Users/bdsqqq/.ssh/id_ed25519"
 readonly HARK="/Users/bdsqqq/commonplace/01_files/nix/user/node-pnpm/node_modules/.bin/harkctl"
 readonly HARK_DEVICE="dev_DsQ9wLUj5uiOAp0d"
 readonly REPOSITORY="sftp:u646875@u646875.your-storagebox.de:/home/restic/ssd-01"
+# Performance note (2026-08-14): snapshot bc3be5bb added only 3.465 GiB
+# after deduplication, but its SFTP upload took 3h40m (~2.25 Mbps) while the
+# Mac measured 29.1 Mbps upstream and local hashing/copying ran at tens of
+# MB/s. The bottleneck is therefore between restic's SFTP transport and the
+# Hetzner Storage Box, not the source SSD. Before the next large upload,
+# benchmark a direct SFTP transfer and test sftp.connections above its default
+# of 5; do not mistake restic's logical snapshot byte count for uploaded bytes.
 readonly SFTP_COMMAND="ssh -p 23 -o BatchMode=yes -o IdentitiesOnly=yes -i ${SSH_KEY} u646875@u646875.your-storagebox.de -s sftp"
 
 export RESTIC_PASSWORD_COMMAND="/usr/bin/env SOPS_AGE_KEY_FILE=${SOPS_KEY_FILE} /etc/profiles/per-user/bdsqqq/bin/sops --decrypt --extract '[\"restic_ssd_01_password\"]' ${SECRET_FILE}"
