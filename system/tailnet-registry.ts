@@ -1685,6 +1685,7 @@ export function renderDirectory(snapshot: Snapshot): string {
     h1 { font:600 clamp(28px,5vw,48px)/1.05 system-ui,sans-serif; letter-spacing:-.04em; margin:0 0 10px; }
     .summary,.updated { color:var(--muted); margin:0; }
     .updated { text-align:right; font-size:12px; }
+    .health-link { color:var(--text); text-decoration-color:var(--line); text-underline-offset:4px; }
     .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; }
     .machine { border:1px solid var(--line); border-radius:14px; background:var(--panel); overflow:hidden; }
     .machine.is-offline { opacity:.62; }
@@ -1717,7 +1718,7 @@ export function renderDirectory(snapshot: Snapshot): string {
         <h1>tailnet services</h1>
         <p class="summary">${serviceCount} services across ${onlineCount}/${snapshot.machines.length} online machines</p>
       </div>
-      <p class="updated">updated ${escapeHtml(updated)}<br>refreshes every 30 seconds</p>
+      <p class="updated"><a class="health-link" href="/health">fleet health</a><br>updated ${escapeHtml(updated)} · refreshes every 30 seconds</p>
     </div>
     <div class="grid">${cards}</div>
   </main>

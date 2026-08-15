@@ -173,6 +173,11 @@ in
     enable = true;
     tailscaleService.enable = true;
   };
+  my.tailnetRegistry.hostChecks.syncthing = {
+    enable = true;
+    configFile = "${home}/Library/Application Support/Syncthing/config.xml";
+    folderIds = [ syncthing.folderIds.commonplace ];
+  };
   my.tailnetRegistry.darwinSystemDaemon = true;
   my.mediaFeeds = {
     enable = true;

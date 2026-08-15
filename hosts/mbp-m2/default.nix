@@ -236,6 +236,11 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+  my.tailnetRegistry.hostChecks.syncthing = {
+    enable = true;
+    configFile = "/Users/bdsqqq/Library/Application Support/Syncthing/config.xml";
+    folderIds = [ syncthing.folderIds.commonplace ];
+  };
   my.tailnetRegistry.services.syncthing = {
     title = "syncthing";
     description = "mbp-m2 synchronization status";

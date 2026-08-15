@@ -150,8 +150,8 @@ in
     };
 
     backup-health = {
-      title = "backup health";
-      description = "snapshots, repository checks, and restores";
+      title = "backrest";
+      description = "backup console reachable; backup outcome is not yet reported";
       target = "http://127.0.0.1:9898";
       scheme = "https";
       port = 9898;

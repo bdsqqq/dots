@@ -123,6 +123,11 @@ in
 
   my.primaryUser = "bdsqqq";
   my.login.greeter = "quickshell";
+  my.tailnetRegistry.hostChecks.syncthing = {
+    enable = true;
+    configFile = "/home/bdsqqq/.config/syncthing/config.xml";
+    folderIds = [ syncthing.folderIds.commonplace ];
+  };
   my.tailnetRegistry.services.syncthing = {
     title = "syncthing";
     description = "lgo-z2e synchronization status";
