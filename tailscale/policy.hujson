@@ -9,6 +9,7 @@
 		"services": {
 			"svc:apps":       ["tag:service-host"],
 			"svc:html-stuff": ["tag:service-host"],
+			"svc:files":      ["tag:service-host"],
 		},
 	},
 
@@ -34,7 +35,7 @@
 		// Portable services begin as owner-only canaries.
 		{
 			"src": ["autogroup:owner"],
-			"dst": ["svc:apps", "svc:html-stuff"],
+			"dst": ["svc:apps", "svc:html-stuff", "svc:files"],
 			"ip":  ["443"],
 		},
 

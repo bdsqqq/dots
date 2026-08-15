@@ -6,5 +6,9 @@
   "svc:html-stuff": {
     "comment": "portable HTML artifact browser",
     "ports": ["tcp:443"]
+  },
+  "svc:files": {
+    "comment": "portable read-only commonplace browser",
+    "ports": ["tcp:443"]
   }
 }

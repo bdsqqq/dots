@@ -1,17 +1,23 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   home = "/Users/bdsqqq";
   galleryRoot = "/Volumes/ssd-01/igor/photos-library-2";
   copypartyCache = "${home}/Library/Caches/copyparty-ssd";
+  filesBrowserCache = "${home}/Library/Caches/copyparty-files";
   backrestConfigDir = "${home}/.config/backrest";
   backrestDataDir = "${home}/.local/share/backrest";
   resticSecret = "${home}/commonplace/01_files/nix/restic/secrets.yaml";
   sopsAgeKey = "${home}/.config/sops/age/keys.txt";
   storageBoxKey = "${home}/.ssh/id_ed25519";
 
-  backrestConfig = pkgs.writeText "backrest-storage-preview.json"
-    (builtins.toJSON {
+  backrestConfig = pkgs.writeText "backrest-storage-preview.json" (
+    builtins.toJSON {
       modno = 1;
       version = 6;
       instance = config.networking.localHostName;
@@ -42,7 +48,8 @@ let
         disabled = true;
         users = [ ];
       };
-    });
+    }
+  );
 
   copypartyServer = pkgs.writeShellApplication {
     name = "ssd-gallery-server";
@@ -81,6 +88,25 @@ let
     '';
   };
 
+  filesBrowserServer = pkgs.writeShellApplication {
+    name = "files-browser-server";
+    runtimeInputs = [
+      pkgs.copyparty
+      pkgs.coreutils
+    ];
+    text = ''
+      mkdir -p ${lib.escapeShellArg filesBrowserCache}
+      exec copyparty \
+        -i 127.0.0.1 \
+        -p 3925 \
+        --hist ${lib.escapeShellArg filesBrowserCache} \
+        --grid \
+        --no-del \
+        --no-mv \
+        -v ${lib.escapeShellArg "${config.my.paths.commonplace}::r"}
+    '';
+  };
+
   backrestServer = pkgs.writeShellApplication {
     name = "backup-health-server";
     runtimeInputs = [
@@ -113,6 +139,17 @@ let
 in
 {
   my.tailnetRegistry.services = {
+    files = {
+      title = "files";
+      description = "read-only commonplace file browser";
+      target = "http://127.0.0.1:3925";
+      scheme = "https";
+      port = 3925;
+      healthPath = "/";
+      access.tailnet = "owner";
+      tailscaleService.enable = true;
+    };
+
     gallery = {
       title = "family photos";
       description = "read-only household photo gallery";
@@ -144,21 +181,35 @@ in
     home.packages = [
       backrestServer
       copypartyServer
+      filesBrowserServer
     ];
 
-    home.activation.storagePreviewState =
-      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        mkdir -p \
-          ${lib.escapeShellArg backrestConfigDir} \
-          ${lib.escapeShellArg backrestDataDir} \
-          ${lib.escapeShellArg copypartyCache}
-        if [[ ! -e ${lib.escapeShellArg "${backrestConfigDir}/config.json"} ]]; then
-          ${pkgs.coreutils}/bin/install \
-            -m 0600 \
-            ${backrestConfig} \
-            ${lib.escapeShellArg "${backrestConfigDir}/config.json"}
-        fi
-      '';
+    home.activation.storagePreviewState = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      mkdir -p \
+        ${lib.escapeShellArg backrestConfigDir} \
+        ${lib.escapeShellArg backrestDataDir} \
+        ${lib.escapeShellArg copypartyCache} \
+        ${lib.escapeShellArg filesBrowserCache}
+      if [[ ! -e ${lib.escapeShellArg "${backrestConfigDir}/config.json"} ]]; then
+        ${pkgs.coreutils}/bin/install \
+          -m 0600 \
+          ${backrestConfig} \
+          ${lib.escapeShellArg "${backrestConfigDir}/config.json"}
+      fi
+    '';
+
+    launchd.agents.files-browser = {
+      enable = true;
+      config = {
+        ProgramArguments = [ "${filesBrowserServer}/bin/files-browser-server" ];
+        RunAtLoad = true;
+        KeepAlive = true;
+        ThrottleInterval = 10;
+        ProcessType = "Background";
+        StandardOutPath = "${config.home.homeDirectory}/Library/Logs/files-browser.log";
+        StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/files-browser.log";
+      };
+    };
 
     launchd.agents.ssd-gallery = {
       enable = true;
