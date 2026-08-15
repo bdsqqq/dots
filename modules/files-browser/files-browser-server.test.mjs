@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
+import { EventEmitter } from "node:events";
+import { access, mkdtemp, mkdir, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +13,7 @@ import {
   materializeSnapshot,
   modelToken,
   parseArgs,
+  stopBackend,
   waitForBackend,
 } from "./files-browser-server.mjs";
 
@@ -229,4 +231,29 @@ test("rejects a candidate backend that exits after a successful health response"
   } finally {
     await new Promise((resolvePromise) => server.close(resolvePromise));
   }
+});
+
+test("cleans up a spawn error that closes without an exit event", async () => {
+  const temporary = await mkdtemp(join(tmpdir(), "files-browser-test-"));
+  const snapshot = join(temporary, "snapshot");
+  const history = join(temporary, "history");
+  await mkdir(snapshot);
+  await mkdir(history);
+
+  const child = new EventEmitter();
+  child.pid = undefined;
+  child.exitCode = null;
+  const closed = new Promise((resolvePromise) => child.once("close", resolvePromise));
+  const backend = { child, closed, history, snapshot };
+  child.once("error", (error) => {
+    backend.failure = error;
+  });
+
+  const cleanup = stopBackend(backend);
+  child.emit("error", new Error("spawn failed"));
+  child.emit("close");
+  await cleanup;
+  assert.match(backend.failure.message, /spawn failed/);
+  await assert.rejects(access(snapshot));
+  await assert.rejects(access(history));
 });
