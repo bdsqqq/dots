@@ -108,15 +108,23 @@ in
       launchd.agents.syncthing-init.enable = lib.mkForce false;
       launchd.agents.files-browser.enable = lib.mkForce false;
       launchd.agents.html-stuff.enable = lib.mkForce false;
+      launchd.agents.ssd-gallery.enable = lib.mkForce false;
+      launchd.agents.backup-health.enable = lib.mkForce false;
     };
   };
 
+  launchd.daemons.backup-health = systemDaemonFromAgent
+    "dev.backup-health"
+    config.home-manager.users.bdsqqq.launchd.agents.backup-health.config;
   launchd.daemons.files-browser = systemDaemonFromAgent
     "dev.files-browser"
     config.home-manager.users.bdsqqq.launchd.agents.files-browser.config;
   launchd.daemons.html-stuff = systemDaemonFromAgent
     "dev.html-stuff"
     config.home-manager.users.bdsqqq.launchd.agents.html-stuff.config;
+  launchd.daemons.ssd-gallery = systemDaemonFromAgent
+    "dev.ssd-gallery"
+    config.home-manager.users.bdsqqq.launchd.agents.ssd-gallery.config;
   launchd.daemons.syncthing = systemDaemonFromAgent
     "dev.syncthing"
     config.home-manager.users.bdsqqq.launchd.agents.syncthing.config;
@@ -126,8 +134,10 @@ in
 
   system.activationScripts.preActivation.text = lib.mkAfter ''
     rm -f \
+      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.backup-health.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.files-browser.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.html-stuff.plist"} \
+      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.ssd-gallery.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.syncthing.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.syncthing-init.plist"}
   '';
