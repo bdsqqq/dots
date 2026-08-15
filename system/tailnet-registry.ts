@@ -70,7 +70,6 @@ interface PublicService {
   /** Kept during rolling deployment so older registry agents can read manifests. */
   audience: TailnetAudience;
   description: string | null;
-  healthPath: string;
   path: string;
   port: number;
   scheme: Scheme;
@@ -81,6 +80,7 @@ interface PublicService {
 
 interface PublicManifest {
   schemaVersion: 1;
+  reportedAt?: string;
   host: { name: string };
   services: Record<string, PublicService>;
 }
@@ -93,6 +93,7 @@ interface Machine {
   lastSeen: string | null;
   os: string | null;
   manifest?: PublicManifest;
+  manifestFetchedAt?: string;
   services: DirectoryService[];
 }
 
@@ -113,7 +114,6 @@ interface Health {
   checkedAt?: string;
   code?: number;
   latencyMs?: number;
-  error?: string;
 }
 
 interface Snapshot {
@@ -745,6 +745,14 @@ function sanitizedText(
   return value;
 }
 
+function sanitizedTimestamp(value: unknown, field: string): string {
+  const timestamp = sanitizedText(value, field, 100);
+  if (!Number.isFinite(Date.parse(timestamp))) {
+    throw new Error(`invalid ${field}`);
+  }
+  return timestamp;
+}
+
 function sanitizedAccess(service: Record<string, unknown>, id: string): ServiceAccess {
   const access = asRecord(service.access);
   const tailnet = access?.tailnet ?? service.audience;
@@ -802,9 +810,7 @@ function sanitizedHealth(value: unknown, id: string): Health | undefined {
     (health.latencyMs !== undefined &&
       (typeof health.latencyMs !== "number" ||
         !Number.isInteger(health.latencyMs) ||
-        health.latencyMs < 0)) ||
-    (health.error !== undefined &&
-      (typeof health.error !== "string" || health.error.length > 500))
+        health.latencyMs < 0))
   ) {
     throw new Error(`invalid health for ${id}`);
   }
@@ -815,7 +821,6 @@ function sanitizedHealth(value: unknown, id: string): Health | undefined {
     ...(health.latencyMs === undefined
       ? {}
       : { latencyMs: health.latencyMs }),
-    ...(health.error === undefined ? {} : { error: health.error }),
   };
 }
 
@@ -860,9 +865,6 @@ export function sanitizeManifest(value: unknown): PublicManifest {
       scheme: service.scheme,
       port: service.port,
       path: normalizedPath(service.path ?? "/"),
-      healthPath: normalizedPath(
-        service.healthPath ?? service.path ?? "/",
-      ),
       tailscaleService: sanitizedNativeService(service.tailscaleService, id),
       health: sanitizedHealth(service.health, id),
     };
@@ -871,6 +873,14 @@ export function sanitizeManifest(value: unknown): PublicManifest {
   const rawHost = asRecord(manifest.host);
   return {
     schemaVersion: 1,
+    ...(manifest.reportedAt === undefined
+      ? {}
+      : {
+          reportedAt: sanitizedTimestamp(
+            manifest.reportedAt,
+            "manifest report time",
+          ),
+        }),
     host: {
       name:
         rawHost?.name === undefined
@@ -888,7 +898,6 @@ function publicManifest(config: RegistryConfig): PublicManifest {
       access: service.access,
       audience: service.access.tailnet,
       description: service.description,
-      healthPath: service.healthPath,
       path: service.path,
       port: service.port,
       scheme: service.scheme,
@@ -908,7 +917,6 @@ function publicManifest(config: RegistryConfig): PublicManifest {
       scheme: "https",
       port: config.directory.port,
       path: "/",
-      healthPath: "/api/services",
       access: { tailnet: "owner", cloudflare: "disabled" },
       audience: "owner",
       tailscaleService: config.directory.tailscaleService.enable
@@ -991,10 +999,8 @@ export async function probe(url: string): Promise<Health> {
       ...result,
     };
   } catch (error) {
-    return {
-      status: "down",
-      error: error instanceof Error ? error.message : String(error),
-    };
+    log("warn", `health probe failed: ${error instanceof Error ? error.message : String(error)}`);
+    return { status: "down" };
   }
 }
 
@@ -1003,16 +1009,20 @@ export async function refreshManifestHealth(
   manifest: PublicManifest,
 ): Promise<void> {
   await mapLimit(Object.entries(manifest.services), 8, async ([id, service]) => {
-    const target =
-      id === "service-directory"
-        ? `http://127.0.0.1:${config.directory.backendPort}`
-        : config.services[id]?.target;
-    if (!target) return;
+    const declared = config.services[id];
+    const target = id === "service-directory"
+      ? `http://127.0.0.1:${config.directory.backendPort}`
+      : declared?.target;
+    const healthPath = id === "service-directory"
+      ? "/api/services"
+      : declared?.healthPath;
+    if (!target || !healthPath) return;
     service.health = {
-      ...(await probe(new URL(service.healthPath, target).toString())),
+      ...(await probe(new URL(healthPath, target).toString())),
       checkedAt: new Date().toISOString(),
     };
   });
+  manifest.reportedAt = new Date().toISOString();
 }
 
 async function mapLimit<T, R>(
@@ -1111,22 +1121,39 @@ class Directory {
     const selfId = typeof self?.ID === "string" ? self.ID : null;
 
     const manifests = await mapLimit(nodes, 8, async (machine) => {
-      if (machine.id === selfId) return this.localManifest;
+      if (machine.id === selfId) {
+        return {
+          manifest: this.localManifest,
+          fetchedAt: new Date().toISOString(),
+        };
+      }
       if (!machine.online || !machine.dnsName) {
-        return previous.get(machine.id)?.manifest;
+        const cached = previous.get(machine.id);
+        return {
+          manifest: cached?.manifest,
+          fetchedAt: cached?.manifestFetchedAt,
+        };
       }
       try {
-        return await fetchManifest(
-          `http://${machine.dnsName}:${this.config.manifest.port}/manifest.json`,
-        );
+        return {
+          manifest: await fetchManifest(
+            `http://${machine.dnsName}:${this.config.manifest.port}/manifest.json`,
+          ),
+          fetchedAt: new Date().toISOString(),
+        };
       } catch {
-        return previous.get(machine.id)?.manifest;
+        const cached = previous.get(machine.id);
+        return {
+          manifest: cached?.manifest,
+          fetchedAt: cached?.manifestFetchedAt,
+        };
       }
     });
 
     nodes.forEach((machine, index) => {
-      const manifest = manifests[index];
+      const { manifest, fetchedAt } = manifests[index];
       machine.manifest = manifest;
+      machine.manifestFetchedAt = fetchedAt;
       if (!manifest) return;
       for (const [id, service] of Object.entries(manifest.services)) {
         const entry: DirectoryService = {
