@@ -573,7 +573,22 @@ describe("health dashboard", () => {
             manifest: {
               schemaVersion: 1,
               reportedAt: "2026-08-14T12:00:00.000Z",
-              host: { name: "node" },
+              host: {
+                name: "node",
+                checks: {
+                  syncthing: {
+                    status: "caught-up",
+                    checkedAt: "2026-08-14T12:00:00.000Z",
+                    monitoredFolders: 1,
+                    caughtUpFolders: 1,
+                    errorFolders: 0,
+                    backlogItems: 0,
+                    backlogBytes: 0,
+                    configuredPeers: 2,
+                    connectedPeers: 1,
+                  },
+                },
+              },
               services: {},
             },
             services: [
@@ -600,6 +615,8 @@ describe("health dashboard", () => {
     expect(html).toContain("collector data is stale");
     expect(html).toContain("svc:files");
     expect(html).toContain("stale report 3m ago");
+    expect(html).toContain('class="state syncthing-stale"');
+    expect(html).toContain("stale 3m ago");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
   });
