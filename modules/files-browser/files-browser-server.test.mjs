@@ -101,3 +101,28 @@ test("materializes only indexed files and symlinks", async () => {
     await rm(temporary, { recursive: true, force: true });
   }
 });
+
+test("rejects indexed symlinks that escape the source root", async () => {
+  const temporary = await mkdtemp(join(tmpdir(), "files-browser-test-"));
+  const source = join(temporary, "source");
+  const snapshots = join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await symlink("../outside", join(source, "escape"));
+
+  try {
+    await assert.rejects(
+      materializeSnapshot(source, snapshots, [
+        {
+          name: "escape",
+          type: "FILE_INFO_TYPE_SYMLINK",
+          modTime: "2026-01-01T00:00:00Z",
+          size: 0,
+        },
+      ]),
+      /indexed symlink escapes source root/
+    );
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});

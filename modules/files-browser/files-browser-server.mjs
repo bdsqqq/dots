@@ -12,7 +12,7 @@ import {
   rm,
   symlink,
 } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const FOLDER_ID = "sqz7z-a6tfg";
@@ -75,6 +75,10 @@ function safePath(root, parent, name) {
   return path;
 }
 
+function pathInside(root, path) {
+  return path === root || path.startsWith(`${root}${sep}`);
+}
+
 export function flattenModel(entries, parent = "") {
   const items = [];
   for (const entry of entries) {
@@ -127,8 +131,13 @@ async function publishItem(sourceRoot, snapshotRoot, item) {
     case "FILE_INFO_TYPE_SYMLINK": {
       const status = await lstat(source);
       if (!status.isSymbolicLink()) throw new Error(`indexed symlink is not a symlink: ${item.path}`);
+      const sourceTarget = resolve(dirname(source), await readlink(source));
+      if (!pathInside(sourceRoot, sourceTarget)) {
+        throw new Error(`indexed symlink escapes source root: ${item.path}`);
+      }
+      const snapshotTarget = join(snapshotRoot, relative(sourceRoot, sourceTarget));
       await mkdir(dirname(destination), { recursive: true });
-      await symlink(await readlink(source), destination);
+      await symlink(relative(dirname(destination), snapshotTarget), destination);
       return;
     }
     default:
