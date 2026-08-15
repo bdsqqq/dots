@@ -1,4 +1,5 @@
 {
+  config,
   inputs,
   pkgs,
   lib,
@@ -6,6 +7,21 @@
 }:
 let
   syncthing = import ../../modules/syncthing.nix { inherit lib; };
+  home = "/Users/bdsqqq";
+  systemDaemonFromAgent = label: agentConfig: {
+    serviceConfig = builtins.removeAttrs agentConfig [
+      "GroupName"
+      "Label"
+      "LimitLoadToSessionType"
+      "UserName"
+    ] // {
+      Label = label;
+      UserName = "bdsqqq";
+      GroupName = "staff";
+      RunAtLoad = true;
+      EnvironmentVariables.HOME = home;
+    };
+  };
 in
 {
   imports = [
@@ -88,10 +104,23 @@ in
         };
       };
 
-      launchd.agents.syncthing.config.RunAtLoad = true;
-      launchd.agents.syncthing-init.config.RunAtLoad = true;
+      launchd.agents.syncthing.enable = lib.mkForce false;
+      launchd.agents.syncthing-init.enable = lib.mkForce false;
     };
   };
+
+  launchd.daemons.syncthing = systemDaemonFromAgent
+    "dev.syncthing"
+    config.home-manager.users.bdsqqq.launchd.agents.syncthing.config;
+  launchd.daemons.syncthing-init = systemDaemonFromAgent
+    "dev.syncthing.init"
+    config.home-manager.users.bdsqqq.launchd.agents.syncthing-init.config;
+
+  system.activationScripts.preActivation.text = lib.mkAfter ''
+    rm -f \
+      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.syncthing.plist"} \
+      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.syncthing-init.plist"}
+  '';
 
   homebrew = {
     enable = true;
