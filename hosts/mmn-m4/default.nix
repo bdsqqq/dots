@@ -106,9 +106,13 @@ in
 
       launchd.agents.syncthing.enable = lib.mkForce false;
       launchd.agents.syncthing-init.enable = lib.mkForce false;
+      launchd.agents.files-browser.enable = lib.mkForce false;
     };
   };
 
+  launchd.daemons.files-browser = systemDaemonFromAgent
+    "dev.files-browser"
+    config.home-manager.users.bdsqqq.launchd.agents.files-browser.config;
   launchd.daemons.syncthing = systemDaemonFromAgent
     "dev.syncthing"
     config.home-manager.users.bdsqqq.launchd.agents.syncthing.config;
@@ -118,6 +122,7 @@ in
 
   system.activationScripts.preActivation.text = lib.mkAfter ''
     rm -f \
+      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.files-browser.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.syncthing.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.syncthing-init.plist"}
   '';
