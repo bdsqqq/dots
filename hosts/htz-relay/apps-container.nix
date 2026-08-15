@@ -29,7 +29,7 @@
     };
     bindMounts."/srv/commonplace" = {
       hostPath = "/mnt/storage-01/commonplace";
-      isReadOnly = true;
+      isReadOnly = false;
     };
     bindMounts."/run/host-syncthing" = {
       hostPath = "/home/bdsqqq/.config/syncthing";
@@ -110,7 +110,7 @@
               "--source"
               "/srv/commonplace"
               "--state"
-              "/var/lib/files-browser"
+              "/srv/commonplace/.files-browser-publication"
               "--syncthing-config"
               "/run/host-syncthing/config.xml"
               "--syncthing-url"
@@ -121,12 +121,11 @@
             Restart = "always";
             RestartSec = "5s";
             User = "bdsqqq";
-            StateDirectory = "files-browser";
-            Environment = "HOME=/var/lib/files-browser";
+            Environment = "HOME=/srv/commonplace/.files-browser-publication";
             NoNewPrivileges = true;
             ProtectSystem = "strict";
             ProtectHome = true;
-            ReadOnlyPaths = [ "/srv/commonplace" ];
+            ReadWritePaths = [ "/srv/commonplace" ];
           };
         };
 

@@ -90,6 +90,7 @@
 **/.stfolder/
 **/.stversions/
 **/.syncthing-conflicts/
+**/.files-browser-publication/
 
 **/result/
 **/result-*
