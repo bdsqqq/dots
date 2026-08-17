@@ -48,7 +48,7 @@ in
     ../../system/o11y/hwmon.nix
     ../../user/shell-baseline.nix
     ../../user/node-pnpm
-    ../../user/fnm.nix
+    ../../user/mise.nix
     ../../user/syncthing-automerge
     ./apps-container.nix
   ])
