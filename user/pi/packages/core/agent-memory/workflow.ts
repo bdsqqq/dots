@@ -1542,7 +1542,10 @@ function persistRollbackReceipt(
   return receipt;
 }
 
-function recoverTransactionsImpl(cfg: MemoryConfig): number {
+function recoverTransactionsImpl(
+  cfg: MemoryConfig,
+  options: { publishCatalog?: boolean } = {},
+): number {
   ensureWorkflowDirs(cfg);
   const dir = v2(cfg, "transactions");
   let recovered = 0;
@@ -1629,7 +1632,7 @@ function recoverTransactionsImpl(cfg: MemoryConfig): number {
     else persistAppliedReceipt(cfg, transaction);
     recovered += 1;
   }
-  writeCatalog(cfg);
+  if (options.publishCatalog !== false) writeCatalog(cfg);
   return recovered;
 }
 

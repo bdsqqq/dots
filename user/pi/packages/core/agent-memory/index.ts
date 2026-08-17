@@ -3315,8 +3315,7 @@ async function main(): Promise<void> {
           wakeMaintenance();
       }
     }
-  }
-  else if (command === "promote")
+  } else if (command === "promote")
     throw new Error(
       "promote was removed because it bypassed reversible review; run pi-memory migrate, then review the imported proposal",
     );
@@ -3481,11 +3480,15 @@ async function main(): Promise<void> {
       throw new Error("repair mode must be adopt or discard");
     const report = await lock(() => {
       const cfg = config();
-      recoverTransactions(cfg);
-      return repairHistory(cfg, {
+      // Explicit history recovery must settle interrupted transactions first,
+      // but catalog quality cannot be derived until repair reseeds verification.
+      recoverTransactions(cfg, { publishCatalog: false });
+      const repaired = repairHistory(cfg, {
         mode: args[0] as "adopt" | "discard",
         reason: args[reasonIndex + 1]!,
       });
+      writeCatalog(cfg);
+      return repaired;
     });
     if (report) console.log(JSON.stringify(report, null, 2));
     else result = undefined;
@@ -3783,7 +3786,7 @@ if (import.meta.main)
   });
 
 if (import.meta.vitest) {
-  const { describe, expect, it } = import.meta.vitest;
+  const { describe, expect, it, vi } = import.meta.vitest;
   const header = { type: "session" as const, id: "s", cwd: "/tmp" };
   const message = (
     id: string,
@@ -3821,6 +3824,73 @@ if (import.meta.vitest) {
 
       expect(existsSync(join(state, "wake"))).toBe(false);
       expect(existsSync(join(state, "wake.claimed"))).toBe(false);
+    });
+
+    it("repairs a dirty worktree with a stale checkpoint through the cli", async () => {
+      const base = mkdtempSync(join(tmpdir(), "pi-memory-repair-cli-"));
+      const cfg = {
+        state: join(base, "state"),
+        data: join(base, "data"),
+        root: join(base, "memories"),
+        skillsRoot: join(base, "skills"),
+      };
+      mkdirSync(cfg.root, { recursive: true });
+      writeFileSync(join(cfg.root, "one.md"), "one\n");
+      initHistory(cfg);
+      expect(verifyHistory(cfg).ok).toBe(true);
+
+      const checkpointPath = join(cfg.data, "v2/history-verification.json");
+      const checkpoint = JSON.parse(readFileSync(checkpointPath, "utf8"));
+      checkpoint.repository = `${checkpoint.repository}:stale`;
+      writeFileSync(checkpointPath, `${JSON.stringify(checkpoint)}\n`);
+      chmodSync(cfg.root, 0o700);
+      rmSync(join(cfg.root, "one.md"));
+
+      const previousArgv = process.argv;
+      const previous = {
+        data: process.env.PI_MEMORY_DATA_DIR,
+        root: process.env.PI_MEMORY_ROOT,
+        sessions: process.env.PI_CODING_AGENT_SESSION_DIR,
+        state: process.env.PI_MEMORY_STATE_DIR,
+        skills: process.env.PI_MEMORY_SKILLS_ROOT,
+      };
+      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      process.argv = [
+        process.execPath,
+        import.meta.filename,
+        "repair",
+        "discard",
+        "--reason",
+        "restore test fixture",
+      ];
+      process.env.PI_MEMORY_DATA_DIR = cfg.data;
+      process.env.PI_MEMORY_ROOT = cfg.root;
+      process.env.PI_MEMORY_STATE_DIR = cfg.state;
+      process.env.PI_MEMORY_SKILLS_ROOT = cfg.skillsRoot;
+      process.env.PI_CODING_AGENT_SESSION_DIR = join(base, "sessions");
+      try {
+        await main();
+      } finally {
+        process.argv = previousArgv;
+        log.mockRestore();
+        for (const [key, value] of [
+          ["PI_MEMORY_DATA_DIR", previous.data],
+          ["PI_MEMORY_ROOT", previous.root],
+          ["PI_CODING_AGENT_SESSION_DIR", previous.sessions],
+          ["PI_MEMORY_STATE_DIR", previous.state],
+          ["PI_MEMORY_SKILLS_ROOT", previous.skills],
+        ] as const)
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+      }
+
+      expect(readFileSync(join(cfg.root, "one.md"), "utf8")).toBe("one\n");
+      const verification = verifyHistory(cfg);
+      expect(verification).toMatchObject({ ok: true, issues: [] });
+      expect(JSON.parse(readFileSync(checkpointPath, "utf8")).repository).toBe(
+        verification.basis?.repository,
+      );
+      expect(existsSync(join(cfg.data, "catalog.json"))).toBe(true);
     });
 
     it("loads multiple session roots from global config", () => {
