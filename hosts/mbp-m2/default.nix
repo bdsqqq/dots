@@ -63,12 +63,6 @@ in
   ];
 
   homebrew = {
-    taps = [
-      "depot/tap"
-    ];
-
-    brews = [ "depot" ];
-
     casks = [
       # System utilities
       "cleanshot"
