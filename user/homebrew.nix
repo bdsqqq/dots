@@ -4,7 +4,13 @@ let
   prefix = if isDarwin then config.homebrew.prefix or "/opt/homebrew" else "";
 in
 lib.optionalAttrs isDarwin {
-  homebrew.brews = [ "cloudflared" ];
+  homebrew = {
+    taps = [ "depot/tap" ];
+    brews = [
+      "cloudflared"
+      "depot"
+    ];
+  };
 
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
     programs.zsh.initContent = ''
