@@ -2,6 +2,7 @@
 	"tagOwners": {
 		// Service hosts use a device identity rather than a person's identity.
 		"tag:service-host": ["autogroup:owner"],
+		"tag:depot-runner": ["autogroup:owner"],
 	},
 
 	"autoApprovers": {
