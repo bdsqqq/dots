@@ -786,12 +786,10 @@ type SemanticCommit = {
   receipt: HistoryReceiptCore;
 };
 
-function semanticCommits(
-  cfg: MemoryConfig,
-  range: string,
-): SemanticCommit[] {
-  const fields = git(cfg, ["log", "--format=%H%x00%P%x00%B%x00", range])
-    .split("\0");
+function semanticCommits(cfg: MemoryConfig, range: string): SemanticCommit[] {
+  const fields = git(cfg, ["log", "--format=%H%x00%P%x00%B%x00", range]).split(
+    "\0",
+  );
   const commits: SemanticCommit[] = [];
   for (let index = 0; index + 2 < fields.length; index += 3) {
     const commit = fields[index]!.trim();
@@ -814,7 +812,15 @@ function semanticDiffs(
 ): Map<string, Array<{ status: string; path: string }>> {
   const output = gitInput(
     cfg,
-    ["diff-tree", "--stdin", "--root", "--no-renames", "-r", "-z", "--name-status"],
+    [
+      "diff-tree",
+      "--stdin",
+      "--root",
+      "--no-renames",
+      "-r",
+      "-z",
+      "--name-status",
+    ],
     `${commits.map(({ commit }) => commit).join("\n")}\n`,
   );
   const fields = output.split("\0").filter(Boolean);
@@ -853,7 +859,9 @@ function batchRevisionFiles(
   );
   if (result.error) throw result.error;
   if (result.status !== 0)
-    throw new Error(String(result.stderr || "batched git object read failed").trim());
+    throw new Error(
+      String(result.stderr || "batched git object read failed").trim(),
+    );
   const output = result.stdout as Buffer;
   const files = new Map<string, Buffer | undefined>();
   let offset = 0;
@@ -870,7 +878,11 @@ function batchRevisionFiles(
     if (!match) throw new Error("invalid batched git object response");
     const size = Number(match[1]);
     const end = offset + size;
-    if (!Number.isSafeInteger(size) || end >= output.length || output[end] !== 0x0a)
+    if (
+      !Number.isSafeInteger(size) ||
+      end >= output.length ||
+      output[end] !== 0x0a
+    )
       throw new Error("truncated batched git blob");
     files.set(object, output.subarray(offset, end));
     offset = end + 1;
@@ -891,7 +903,8 @@ function verifyCommittedSemanticHistory(
       if (!allowedTrackedPath(change.path))
         issues.push(`history contains disallowed path ${change.path}`);
       if (item.parent) objectNames.push(`${item.parent}:${change.path}`);
-      if (change.status !== "D") objectNames.push(`${item.commit}:${change.path}`);
+      if (change.status !== "D")
+        objectNames.push(`${item.commit}:${change.path}`);
     }
   const uniqueObjects = [...new Set(objectNames)];
   const files = batchRevisionFiles(cfg, uniqueObjects);
@@ -930,7 +943,13 @@ function verifyCommittedSemanticHistory(
   };
 }
 
-function verifyHistoryImpl(cfg: MemoryConfig): VerifyHistoryReport {
+function verifyHistoryImpl(
+  cfg: MemoryConfig,
+  options: {
+    recoverCheckpoint?: boolean;
+    allowDirtyWorktree?: boolean;
+  } = {},
+): VerifyHistoryReport {
   const started = Date.now();
   const issues: string[] = [];
   if (!isHistoryInitialized(cfg))
@@ -941,15 +960,20 @@ function verifyHistoryImpl(cfg: MemoryConfig): VerifyHistoryReport {
   let commitsVerified = 0;
   let blobsVerified = 0;
   let semanticProcesses = 0;
-  let checkpointStatus = "migration";
-  if (git(cfg, ["status", "--porcelain", "--", ...PATHS], true).trim())
+  let checkpointStatus = options.recoverCheckpoint ? "recovery" : "migration";
+  if (
+    !options.allowDirtyWorktree &&
+    git(cfg, ["status", "--porcelain", "--", ...PATHS], true).trim()
+  )
     issues.push("dirty memory worktree");
   try {
     const remote = validateRemote(cfg) ?? null;
     const root = realpathSync(cfg.root);
     const objectFormat =
       git(cfg, ["rev-parse", "--show-object-format"], true).trim() || "sha1";
-    const checkpoint = readCheckpoint(cfg);
+    const checkpoint = options.recoverCheckpoint
+      ? undefined
+      : readCheckpoint(cfg);
     if (checkpoint) {
       checkpointStatus = "loaded";
       if (
@@ -965,13 +989,15 @@ function verifyHistoryImpl(cfg: MemoryConfig): VerifyHistoryReport {
         mode = "full";
         checkpointStatus = "policy-reverify";
       } else if (checkpoint.head === head) mode = "durable-hit";
-      else if (historyContainsAncestor(cfg, checkpoint.head, head)) mode = "suffix";
+      else if (historyContainsAncestor(cfg, checkpoint.head, head))
+        mode = "suffix";
       else
         throw new Error(
           "history was rewritten or moved backward; explicit history recovery is required",
         );
     }
     if (
+      !options.recoverCheckpoint &&
       latestProcessAnchor?.repository === repository &&
       latestProcessAnchor.policyVersion === HISTORY_POLICY_VERSION
     ) {
@@ -1017,8 +1043,8 @@ function verifyHistoryImpl(cfg: MemoryConfig): VerifyHistoryReport {
       );
     if (
       issues.length === 0 &&
-      mode !== "durable-hit" &&
-      mode !== "process-hit"
+      (options.recoverCheckpoint ||
+        (mode !== "durable-hit" && mode !== "process-hit"))
     ) {
       atomicWrite(
         checkpointPath(cfg),
@@ -1162,6 +1188,14 @@ function repairHistoryImpl(
   options: { mode: "adopt" | "discard"; reason: string },
 ): RepairHistoryReport {
   if (!options.reason.trim()) throw new Error("repair reason is required");
+  const recovered = verifyHistoryImpl(cfg, {
+    recoverCheckpoint: true,
+    allowDirtyWorktree: true,
+  });
+  if (!recovered.ok)
+    throw new Error(
+      `memory history recovery verification failed: ${recovered.issues.join(", ")}`,
+    );
   const refreshed = refreshHistory(cfg);
   if (!refreshed.ok)
     throw new Error(`memory history refresh failed: ${refreshed.error}`);
@@ -1174,6 +1208,11 @@ function repairHistoryImpl(
       changes: [],
       provenance: { source: "pi-memory repair" },
     });
+    const verification = verifyHistoryImpl(cfg, { recoverCheckpoint: true });
+    if (!verification.ok)
+      throw new Error(
+        `repaired memory history verification failed: ${verification.issues.join(", ")}`,
+      );
     return { mode: "adopt", commit: result.commit };
   }
   withWritableMemoryRoot(cfg, () => {
@@ -1192,6 +1231,11 @@ function repairHistoryImpl(
     },
     { allowEmpty: true },
   );
+  const verification = verifyHistoryImpl(cfg, { recoverCheckpoint: true });
+  if (!verification.ok)
+    throw new Error(
+      `repaired memory history verification failed: ${verification.issues.join(", ")}`,
+    );
   return { mode: "discard", commit: result.commit };
 }
 
