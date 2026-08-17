@@ -42,7 +42,7 @@ in
     # Configured user programs
     ../../user/shell-baseline.nix
     ../../user/node-pnpm
-    ../../user/fnm.nix
+    ../../user/mise.nix
     ../../user/syncthing-automerge
     ../../user/wikiman.nix
     ../../user/yt-dlp.nix
