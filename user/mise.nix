@@ -12,6 +12,9 @@
 
         [settings]
         idiomatic_version_file_enable_tools = ["node"]
+
+        [settings.node]
+        compile = false
       '';
       programs.zsh.initContent = ''
         # mise
