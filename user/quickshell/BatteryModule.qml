@@ -13,8 +13,7 @@ Item {
     property int batteryPercent: 0
     property string batteryStatus: "unknown"
     property real powerDraw: 0.0
-    property string currentGpuProfile: "auto"
-    property int currentTdp: 12
+    property string currentPowerProfile: "custom"
     property bool expanded: false
 
     implicitHeight: card.implicitHeight
@@ -50,33 +49,40 @@ Item {
     }
 
     Process {
-        id: gpuProfileReader
-        command: ["cat", "/sys/class/drm/card1/device/power_dpm_force_performance_level"]
+        id: powerProfileReader
+        command: ["bash", "-c", "set -e; cat /sys/firmware/acpi/platform_profile; cat /sys/devices/system/cpu/cpufreq/policy*/energy_performance_preference | sort -u; cat /sys/devices/system/cpu/cpufreq/boost /sys/devices/system/cpu/cpufreq/policy*/boost | sort -u; cat /sys/class/drm/card*/device/power_dpm_force_performance_level"]
+
+        property string buffer: ""
 
         stdout: SplitParser {
+            splitMarker: ""
             onRead: function(data) {
-                currentGpuProfile = data.trim();
+                powerProfileReader.buffer += data;
             }
         }
-    }
-
-    Process {
-        id: gpuProfileSetter
-        property string targetProfile: "auto"
-        command: ["systemctl", "start", "amdgpu-profile@" + targetProfile + ".service"]
 
         onExited: function(code, status) {
-            gpuProfileReader.running = true;
+            let lines = powerProfileReader.buffer.trim().split("\n");
+            currentPowerProfile = "custom";
+            if (code === 0 && lines.length === 4 && lines[2] === "1" && lines[3] === "auto") {
+                if (lines[0] === "balanced" && lines[1] === "balance_power")
+                    currentPowerProfile = "balanced";
+                else if (lines[0] === "performance" && lines[1] === "performance")
+                    currentPowerProfile = "performance";
+                else if (lines[0] === "low-power" && lines[1] === "power")
+                    currentPowerProfile = "power-saver";
+            }
+            powerProfileReader.buffer = "";
         }
     }
 
     Process {
-        id: tdpSetter
-        property int targetTdp: 12
-        command: ["systemctl", "start", "ryzenadj-tdp@" + targetTdp + ".service"]
+        id: powerProfileSetter
+        property string targetProfile: "balanced"
+        command: ["systemctl", "start", "legion-power-profile@" + targetProfile + ".service"]
 
         onExited: function(code, status) {
-            currentTdp = targetTdp;
+            powerProfileReader.running = true;
         }
     }
 
@@ -87,7 +93,7 @@ Item {
         triggeredOnStart: true
         onTriggered: {
             batteryReader.running = true;
-            gpuProfileReader.running = true;
+            powerProfileReader.running = true;
         }
     }
 
@@ -165,7 +171,7 @@ Item {
             Controls.Accordion {
                 Layout.fillWidth: true
                 title: "performance"
-                detail: currentTdp + "W · " + currentGpuProfile
+                detail: currentPowerProfile
                 expanded: batteryModule.expanded
                 onToggled: function(next) { batteryModule.expanded = next }
 
@@ -185,7 +191,7 @@ Item {
                             Primitives.T {
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: "apu limit"
+                                text: "power profile"
                                 tone: "subtle"
                                 size: "bodySm"
                             }
@@ -197,67 +203,21 @@ Item {
 
                             Repeater {
                                 model: [
-                                    { watts: 8, label: "8W" },
-                                    { watts: 12, label: "12W" },
-                                    { watts: 15, label: "15W" },
-                                    { watts: 20, label: "20W" }
+                                    { id: "power-saver", label: "save" },
+                                    { id: "balanced", label: "balanced" },
+                                    { id: "performance", label: "fast" }
                                 ]
 
                                 Controls.Button {
                                     required property var modelData
                                     size: "sm"
                                     variant: "ghost"
-                                    active: currentTdp === modelData.watts
+                                    active: currentPowerProfile === modelData.id
                                     text: modelData.label
                                     onClicked: {
-                                        if (currentTdp !== modelData.watts) {
-                                            tdpSetter.targetTdp = modelData.watts;
-                                            tdpSetter.running = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: Design.Theme.t.space1
-
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 24
-
-                            Primitives.T {
-                                anchors.left: parent.left
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: "gpu mode"
-                                tone: "subtle"
-                                size: "bodySm"
-                            }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Design.Theme.t.space2
-
-                            Repeater {
-                                model: [
-                                    { id: "low", label: "low" },
-                                    { id: "auto", label: "auto" },
-                                    { id: "high", label: "high" }
-                                ]
-
-                                Controls.Button {
-                                    required property var modelData
-                                    size: "sm"
-                                    variant: "ghost"
-                                    active: currentGpuProfile === modelData.id
-                                    text: modelData.label
-                                    onClicked: {
-                                        if (currentGpuProfile !== modelData.id) {
-                                            gpuProfileSetter.targetProfile = modelData.id;
-                                            gpuProfileSetter.running = true;
+                                        if (currentPowerProfile !== modelData.id) {
+                                            powerProfileSetter.targetProfile = modelData.id;
+                                            powerProfileSetter.running = true;
                                         }
                                     }
                                 }

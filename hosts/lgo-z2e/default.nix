@@ -163,7 +163,7 @@ in
     hardware.has.amd.gpu = true;
   };
 
-  # handheld daemon for controller/gyro/TDP management
+  # handheld daemon for controller and gyro management
   services.handheld-daemon = {
     enable = true;
     user = "bdsqqq";
@@ -458,7 +458,6 @@ in
     # handheld-specific
     mangohud
     gamemode
-    ryzenadj
   ];
 
   nixpkgs.config.allowUnfree = true;
