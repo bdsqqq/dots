@@ -51,6 +51,7 @@ let
       ${darwinLogFilesYaml}
           exclude:
       ${darwinLogExcludeFilesYaml}
+          poll_interval: 30s
           include_file_name: true
           include_file_path: true
           start_at: end
