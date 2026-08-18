@@ -19,7 +19,10 @@ let
   eventFiles = cfg.papertrail.eventFiles ++ defaultEventFiles;
   eventFilesYaml = lib.concatMapStringsSep "\n" (path: "      - ${path}") eventFiles;
   linuxUserLogFilesYaml = lib.concatMapStringsSep "\n" (path: "      - ${path}") [
-    "${homeDir}/.local/state/**/*.log"
+    "${homeDir}/.local/state/*.log"
+    "${homeDir}/.local/state/*/*.log"
+    "${homeDir}/.local/state/*/logs/*.log"
+    "${homeDir}/.local/state/*/*/logs/*.log"
   ];
   darwinLogFilesYaml = lib.concatMapStringsSep "\n" (path: "      - ${path}") [
     "${homeDir}/Library/Logs/**/*.log"
@@ -71,6 +74,7 @@ let
         filelog/user_logs:
           include:
       ${linuxUserLogFilesYaml}
+          poll_interval: 30s
           include_file_name: true
           include_file_path: true
           start_at: end

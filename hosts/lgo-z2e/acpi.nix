@@ -2,39 +2,66 @@
 
 let
   fanCurveConfig = "/home/bdsqqq/commonplace/01_files/nix/hosts/lgo-z2e/fan-curve.json";
-  defaultTdpWatts = 12;
-  tdpStateDir = "/var/lib/legion-power";
-  applyTdp = pkgs.writeShellApplication {
-    name = "apply-legion-tdp";
-    runtimeInputs = [ pkgs.ryzenadj ];
+  defaultPowerProfile = "balanced";
+  powerStateDir = "/var/lib/legion-power";
+  applyPowerProfile = pkgs.writeShellApplication {
+    name = "apply-legion-power-profile";
     text = ''
-      watts="$1"
-      if [[ ! "$watts" =~ ^[0-9]+$ ]] || (( watts < 4 || watts > 30 )); then
-        echo "TDP must be an integer between 4 and 30 watts" >&2
-        exit 64
-      fi
+      profile="$1"
+      case "$profile" in
+        balanced)
+          firmware_profile=balanced
+          cpu_preference=balance_power
+          ;;
+        performance)
+          firmware_profile=performance
+          cpu_preference=performance
+          ;;
+        power-saver)
+          firmware_profile=low-power
+          cpu_preference=power
+          ;;
+        *)
+          echo "power profile must be balanced, performance, or power-saver" >&2
+          exit 64
+          ;;
+      esac
 
-      # Lenovo's profile controls firmware thermal and fan policy; ryzenadj
-      # then provides the exact package-power ceiling selected in Quickshell.
-      printf '%s\n' balanced > /sys/firmware/acpi/platform_profile
-      ryzenadj \
-        --stapm-limit="$((watts * 1000))" \
-        --fast-limit="$((watts * 1000))" \
-        --slow-limit="$((watts * 1000))"
-      printf '%s\n' "$watts" > ${tdpStateDir}/tdp-watts
+      printf '%s\n' "$firmware_profile" > /sys/firmware/acpi/platform_profile
+      for preference in /sys/devices/system/cpu/cpufreq/policy*/energy_performance_preference; do
+        printf '%s\n' "$cpu_preference" > "$preference"
+      done
+
+      if [[ -e /sys/devices/system/cpu/cpufreq/boost ]]; then
+        printf '1\n' > /sys/devices/system/cpu/cpufreq/boost
+      fi
+      for boost in /sys/devices/system/cpu/cpufreq/policy*/boost; do
+        printf '1\n' > "$boost"
+      done
+
+      shopt -s nullglob
+      gpu_controls=(/sys/class/drm/card*/device/power_dpm_force_performance_level)
+      if (( ''${#gpu_controls[@]} != 1 )); then
+        echo "expected one AMDGPU performance control, found ''${#gpu_controls[@]}" >&2
+        exit 1
+      fi
+      printf 'auto\n' > "''${gpu_controls[0]}"
+
+      printf '%s\n' "$profile" > ${powerStateDir}/profile
     '';
   };
-  restoreTdp = pkgs.writeShellApplication {
-    name = "restore-legion-tdp";
+  restorePowerProfile = pkgs.writeShellApplication {
+    name = "restore-legion-power-profile";
     text = ''
-      watts=${toString defaultTdpWatts}
-      if [[ -r ${tdpStateDir}/tdp-watts ]]; then
-        read -r watts < ${tdpStateDir}/tdp-watts
+      profile=${defaultPowerProfile}
+      if [[ -r ${powerStateDir}/profile ]]; then
+        read -r profile < ${powerStateDir}/profile
       fi
-      if [[ ! "$watts" =~ ^[0-9]+$ ]] || (( watts < 4 || watts > 30 )); then
-        watts=${toString defaultTdpWatts}
-      fi
-      exec ${applyTdp}/bin/apply-legion-tdp "$watts"
+      case "$profile" in
+        balanced|performance|power-saver) ;;
+        *) profile=${defaultPowerProfile} ;;
+      esac
+      exec ${applyPowerProfile}/bin/apply-legion-power-profile "$profile"
     '';
   };
   legionAcpiSource = pkgs.writeText "legion-acpi.ts" ''
@@ -191,33 +218,23 @@ in
     };
   };
 
-  # templated service: systemctl start amdgpu-profile@{low,auto,high}.service
-  systemd.services."amdgpu-profile@" = {
-    description = "Set AMDGPU power profile to %i";
+  # One control keeps firmware, CPU, and GPU policy coherent. Boost remains
+  # available in every mode so low idle power does not cap burst performance.
+  systemd.services."legion-power-profile@" = {
+    description = "Set Legion power profile to %i";
     serviceConfig = {
       Type = "oneshot";
-      ExecStart =
-        "${pkgs.bash}/bin/bash -c 'echo %i > /sys/class/drm/card1/device/power_dpm_force_performance_level'";
-    };
-  };
-
-  # Successful changes persist across boots. Quickshell offers a conservative
-  # 8–20 W envelope; deliberate shell use may choose any validated 4–30 W value.
-  systemd.services."ryzenadj-tdp@" = {
-    description = "Set CPU TDP to %i watts via ryzenadj";
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = "${applyTdp}/bin/apply-legion-tdp %i";
+      ExecStart = "${applyPowerProfile}/bin/apply-legion-power-profile %i";
       StateDirectory = "legion-power";
     };
   };
 
-  systemd.services.ryzenadj-tdp-restore = {
-    description = "Restore the last selected CPU TDP";
+  systemd.services.legion-power-profile-restore = {
+    description = "Restore the last selected Legion power profile";
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${restoreTdp}/bin/restore-legion-tdp";
+      ExecStart = "${restorePowerProfile}/bin/restore-legion-power-profile";
       RemainAfterExit = true;
       StateDirectory = "legion-power";
     };
@@ -227,8 +244,7 @@ in
   security.polkit.extraConfig = ''
     polkit.addRule(function(action, subject) {
       if (action.id == "org.freedesktop.systemd1.manage-units" &&
-          (action.lookup("unit").indexOf("amdgpu-profile@") == 0 ||
-           action.lookup("unit").indexOf("ryzenadj-tdp@") == 0 ||
+          (action.lookup("unit").indexOf("legion-power-profile@") == 0 ||
            action.lookup("unit") == "legion-fan-curve-apply.service") &&
           subject.user == "bdsqqq") {
         return polkit.Result.YES;
