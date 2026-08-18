@@ -347,7 +347,10 @@ in
         '';
       };
 
-      programs.niri.settings.outputs."eDP-1".scale = 1.5;
+      programs.niri.settings.outputs."eDP-1" = {
+        scale = 1.5;
+        variable-refresh-rate = true;
+      };
 
       fonts.fontconfig = {
         enable = true;
