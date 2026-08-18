@@ -42,6 +42,20 @@ let
       fi
 
       root="$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
+      resolve_object() {
+        local spec="$1"
+        local expected_type="$2"
+        local object_id
+        local object_type
+
+        object_id="$(${pkgs.git}/bin/git -C "$root" rev-parse \
+          --verify "$spec" 2>/dev/null)" || return 1
+        object_type="$(${pkgs.git}/bin/git -C "$root" cat-file \
+          -t "$object_id" 2>/dev/null)" || return 1
+        [[ "$object_type" == "$expected_type" ]] || return 1
+        printf '%s\n' "$object_id"
+      }
+
       amp_remote="$(${pkgs.git}/bin/git -C "$root" remote get-url amp-skills 2>/dev/null || true)"
       agentfiles_remote="$(${pkgs.git}/bin/git -C "$root" remote get-url agentfiles 2>/dev/null || true)"
       agentfiles_push_remote="$(${pkgs.git}/bin/git -C "$root" \
@@ -62,37 +76,61 @@ let
 
       if [[ "$agentfiles_remote" == "git@github.com:depot/agentfiles.git" ]] &&
         [[ "$agentfiles_push_remote" == "git@github.com:depot/agentfiles.git" ]]; then
-        agents_tree="$(${pkgs.git}/bin/git -C "$root" rev-parse \
-          "$main_sha:user/agents" 2>/dev/null || true)"
-        if [[ -z "$agents_tree" ]]; then
-          echo "error: cannot publish Depot Agentfiles: user/agents is absent from the pushed main" >&2
+        agents_tree="$(resolve_object "$main_sha:user/agents" tree || true)"
+        global_agents_blob="$(resolve_object \
+          "$main_sha:config/global-agents.md" blob || true)"
+        pi_settings_blob="$(resolve_object \
+          "$main_sha:user/pi/settings.json" blob || true)"
+        pi_keybindings_blob="$(resolve_object \
+          "$main_sha:user/pi/keybindings.json" blob || true)"
+        pi_models_blob="$(resolve_object \
+          "$main_sha:user/pi/models.json" blob || true)"
+        pi_tool_policy_blob="$(resolve_object \
+          "$main_sha:user/pi/tool-policy.json" blob || true)"
+        if [[ -z "$agents_tree" || -z "$global_agents_blob" ||
+          -z "$pi_settings_blob" || -z "$pi_keybindings_blob" ||
+          -z "$pi_models_blob" || -z "$pi_tool_policy_blob" ]]; then
+          echo "error: cannot publish Depot Agentfiles: a projected source is absent from the pushed main" >&2
           exit 1
         fi
 
         ${pkgs.git}/bin/git -C "$root" fetch --quiet agentfiles main
         agentfiles_sha="$(${pkgs.git}/bin/git -C "$root" rev-parse FETCH_HEAD)"
-        published_agents_tree="$(${pkgs.git}/bin/git -C "$root" rev-parse \
-          "$agentfiles_sha:bdsqqq/agents" 2>/dev/null || true)"
+        agentfiles_tree="$(${pkgs.git}/bin/git -C "$root" rev-parse \
+          "$agentfiles_sha^{tree}")"
+        index_dir="$(${pkgs.coreutils}/bin/mktemp -d)"
+        trap '${pkgs.coreutils}/bin/rm -rf "$index_dir"' EXIT
 
-        if [[ "$published_agents_tree" == "$agents_tree" ]]; then
+        GIT_INDEX_FILE="$index_dir/index" \
+          ${pkgs.git}/bin/git -C "$root" read-tree "$agentfiles_tree"
+        GIT_INDEX_FILE="$index_dir/index" \
+          ${pkgs.git}/bin/git -C "$root" rm --quiet -r -f --cached \
+            --ignore-unmatch -- \
+            bdsqqq/agents \
+            bdsqqq/shared/AGENTS.md \
+            bdsqqq/settings/pi/settings.json \
+            bdsqqq/settings/pi/keybindings.json \
+            bdsqqq/settings/pi/models.json \
+            bdsqqq/settings/pi/tool-policy.json
+        GIT_INDEX_FILE="$index_dir/index" \
+          ${pkgs.git}/bin/git -C "$root" read-tree \
+            --prefix=bdsqqq/agents/ "$agents_tree"
+        GIT_INDEX_FILE="$index_dir/index" \
+          ${pkgs.git}/bin/git -C "$root" update-index --add \
+            --cacheinfo 100644 "$global_agents_blob" bdsqqq/shared/AGENTS.md \
+            --cacheinfo 100644 "$pi_settings_blob" bdsqqq/settings/pi/settings.json \
+            --cacheinfo 100644 "$pi_keybindings_blob" bdsqqq/settings/pi/keybindings.json \
+            --cacheinfo 100644 "$pi_models_blob" bdsqqq/settings/pi/models.json \
+            --cacheinfo 100644 "$pi_tool_policy_blob" bdsqqq/settings/pi/tool-policy.json
+        projection_tree="$(GIT_INDEX_FILE="$index_dir/index" \
+          ${pkgs.git}/bin/git -C "$root" write-tree)"
+
+        if [[ "$projection_tree" == "$agentfiles_tree" ]]; then
           echo "Depot Agentfiles is already up to date." >&2
         else
-          echo "Publishing user/agents to Depot Agentfiles..." >&2
-          index_dir="$(${pkgs.coreutils}/bin/mktemp -d)"
-          trap '${pkgs.coreutils}/bin/rm -rf "$index_dir"' EXIT
-
-          GIT_INDEX_FILE="$index_dir/index" \
-            ${pkgs.git}/bin/git -C "$root" read-tree "$agentfiles_sha^{tree}"
-          GIT_INDEX_FILE="$index_dir/index" \
-            ${pkgs.git}/bin/git -C "$root" rm --quiet -r -f --cached \
-              --ignore-unmatch -- bdsqqq/agents
-          GIT_INDEX_FILE="$index_dir/index" \
-            ${pkgs.git}/bin/git -C "$root" read-tree \
-              --prefix=bdsqqq/agents/ "$agents_tree"
-          projection_tree="$(GIT_INDEX_FILE="$index_dir/index" \
-            ${pkgs.git}/bin/git -C "$root" write-tree)"
+          echo "Publishing agent configuration to Depot Agentfiles..." >&2
           projection_sha="$(printf '%s\n\nDots-Commit: %s\n' \
-            "Project user/agents from bdsqqq/dots" "$main_sha" | \
+            "Project agent configuration from bdsqqq/dots" "$main_sha" | \
             ${pkgs.git}/bin/git -C "$root" commit-tree "$projection_tree" \
               -p "$agentfiles_sha")"
 
