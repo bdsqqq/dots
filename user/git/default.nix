@@ -19,12 +19,12 @@ let
         runHook postInstall
       '';
     };
-  amp-skills-hooks = { pkgs }:
+  agent-projection-hooks = { pkgs }:
     pkgs.writeShellScriptBin "pre-push" ''
       set -euo pipefail
 
       remote_name="$1"
-      if [[ "$remote_name" == "amp-skills" ]]; then
+      if [[ "$remote_name" == "amp-skills" || "$remote_name" == "agentfiles" ]]; then
         exit 0
       fi
 
@@ -42,12 +42,13 @@ let
       fi
 
       root="$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
-      if [[ ! -d "$root/user/agents/skills" ]]; then
-        exit 0
-      fi
-
       amp_remote="$(${pkgs.git}/bin/git -C "$root" remote get-url amp-skills 2>/dev/null || true)"
-      if [[ "$amp_remote" != "https://ampcode.com/git/@user_01KTSZFRFVGGBPHVEF4Y6JYCH7/-/skills" ]]; then
+      agentfiles_remote="$(${pkgs.git}/bin/git -C "$root" remote get-url agentfiles 2>/dev/null || true)"
+      agentfiles_push_remote="$(${pkgs.git}/bin/git -C "$root" \
+        remote get-url --push --all agentfiles 2>/dev/null || true)"
+      if [[ "$amp_remote" != "https://ampcode.com/git/@user_01KTSZFRFVGGBPHVEF4Y6JYCH7/-/skills" ]] &&
+        { [[ "$agentfiles_remote" != "git@github.com:depot/agentfiles.git" ]] ||
+          [[ "$agentfiles_push_remote" != "git@github.com:depot/agentfiles.git" ]]; }; then
         exit 0
       fi
 
@@ -56,6 +57,57 @@ let
           "$remote_main_sha" "$main_sha"; then
         echo "error: refusing to publish agent skills before a non-fast-forward main push" >&2
         echo "fetch and rebase the outer repository, then push again" >&2
+        exit 1
+      fi
+
+      if [[ "$agentfiles_remote" == "git@github.com:depot/agentfiles.git" ]] &&
+        [[ "$agentfiles_push_remote" == "git@github.com:depot/agentfiles.git" ]]; then
+        agents_tree="$(${pkgs.git}/bin/git -C "$root" rev-parse \
+          "$main_sha:user/agents" 2>/dev/null || true)"
+        if [[ -z "$agents_tree" ]]; then
+          echo "error: cannot publish Depot Agentfiles: user/agents is absent from the pushed main" >&2
+          exit 1
+        fi
+
+        ${pkgs.git}/bin/git -C "$root" fetch --quiet agentfiles main
+        agentfiles_sha="$(${pkgs.git}/bin/git -C "$root" rev-parse FETCH_HEAD)"
+        published_agents_tree="$(${pkgs.git}/bin/git -C "$root" rev-parse \
+          "$agentfiles_sha:bdsqqq/agents" 2>/dev/null || true)"
+
+        if [[ "$published_agents_tree" == "$agents_tree" ]]; then
+          echo "Depot Agentfiles is already up to date." >&2
+        else
+          echo "Publishing user/agents to Depot Agentfiles..." >&2
+          index_dir="$(${pkgs.coreutils}/bin/mktemp -d)"
+          trap '${pkgs.coreutils}/bin/rm -rf "$index_dir"' EXIT
+
+          GIT_INDEX_FILE="$index_dir/index" \
+            ${pkgs.git}/bin/git -C "$root" read-tree "$agentfiles_sha^{tree}"
+          GIT_INDEX_FILE="$index_dir/index" \
+            ${pkgs.git}/bin/git -C "$root" rm --quiet -r -f --cached \
+              --ignore-unmatch -- bdsqqq/agents
+          GIT_INDEX_FILE="$index_dir/index" \
+            ${pkgs.git}/bin/git -C "$root" read-tree \
+              --prefix=bdsqqq/agents/ "$agents_tree"
+          projection_tree="$(GIT_INDEX_FILE="$index_dir/index" \
+            ${pkgs.git}/bin/git -C "$root" write-tree)"
+          projection_sha="$(printf '%s\n\nDots-Commit: %s\n' \
+            "Project user/agents from bdsqqq/dots" "$main_sha" | \
+            ${pkgs.git}/bin/git -C "$root" commit-tree "$projection_tree" \
+              -p "$agentfiles_sha")"
+
+          ${pkgs.git}/bin/git -C "$root" \
+            push agentfiles "$projection_sha:refs/heads/main"
+        fi
+      fi
+
+      if [[ "$amp_remote" != "https://ampcode.com/git/@user_01KTSZFRFVGGBPHVEF4Y6JYCH7/-/skills" ]]; then
+        exit 0
+      fi
+
+      if ! ${pkgs.git}/bin/git -C "$root" cat-file -e \
+        "$main_sha:user/agents/skills"; then
+        echo "error: cannot publish Amp User Skills: user/agents/skills is absent from the pushed main" >&2
         exit 1
       fi
 
@@ -155,7 +207,7 @@ in
     };
 
     home.file.".config/git/hooks/pre-push".source =
-      "${(amp-skills-hooks { inherit pkgs; })}/bin/pre-push";
+      "${(agent-projection-hooks { inherit pkgs; })}/bin/pre-push";
 
     home.activation.configureAmpSkillsProjection =
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -170,6 +222,24 @@ in
           fi
           ${pkgs.git}/bin/git -C "$dots_repo" config \
             remote.amp-skills.skipFetchAll true
+        fi
+      '';
+
+    home.activation.configureAgentfilesProjection =
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        dots_repo="$HOME/commonplace/01_files/nix"
+        if ${pkgs.git}/bin/git -C "$dots_repo" rev-parse --git-dir >/dev/null 2>&1; then
+          if ${pkgs.git}/bin/git -C "$dots_repo" remote get-url agentfiles >/dev/null 2>&1; then
+            ${pkgs.git}/bin/git -C "$dots_repo" remote set-url agentfiles \
+              "git@github.com:depot/agentfiles.git"
+          else
+            ${pkgs.git}/bin/git -C "$dots_repo" remote add agentfiles \
+              "git@github.com:depot/agentfiles.git"
+          fi
+          ${pkgs.git}/bin/git -C "$dots_repo" config --unset-all \
+            remote.agentfiles.pushurl || true
+          ${pkgs.git}/bin/git -C "$dots_repo" config \
+            remote.agentfiles.skipFetchAll true
         fi
       '';
   };
