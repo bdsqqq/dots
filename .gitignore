@@ -2,3 +2,7 @@
 result
 result-*
 user/media-feeds/*.sqlite
+**/.terraform/
+*.tfplan
+*.tfstate.backup
+.terraform.tfstate.lock.info
