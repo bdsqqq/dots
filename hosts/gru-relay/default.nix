@@ -32,6 +32,7 @@ in
     ../../system/ssh.nix
     ../../system/tailscale.nix
     ../../system/tailnet-registry.nix
+    ../../system/cloudflare-ingress-container.nix
     ../../system/sops.nix
     ../../system/authorized-keys.nix
     ../../system/fonts.nix
