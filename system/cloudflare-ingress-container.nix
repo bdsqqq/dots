@@ -87,6 +87,17 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    sops.secrets = {
+      tailscale_cf_ingress_auth_key = {
+        owner = "root";
+        mode = "0400";
+      };
+      cloudflare_tailnet_apps_credentials = {
+        owner = "root";
+        mode = "0400";
+      };
+    };
+
     networking.bridges.br-cloudflare.interfaces = [ ];
     networking.interfaces.br-cloudflare.ipv4.addresses = [
       {
