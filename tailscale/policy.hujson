@@ -56,6 +56,14 @@
 		},
 	],
 
+	"tests": [
+		{
+			"src":    "tag:cf-ingress",
+			"accept": ["svc:photos:443"],
+			"deny":   ["svc:apps:443", "svc:files:443", "svc:html-stuff:443"],
+		},
+	],
+
 	"ssh": [
 		// Keep administrative access after a host adopts the service identity.
 		{
