@@ -73,6 +73,16 @@ in
         owner = "bdsqqq";
         mode = "0400";
       };
+    }
+    // lib.optionalAttrs (!isDarwin) {
+      tailscale_cf_ingress_auth_key = {
+        owner = "root";
+        mode = "0400";
+      };
+      cloudflare_tailnet_apps_credentials = {
+        owner = "root";
+        mode = "0400";
+      };
     };
   };
 }
