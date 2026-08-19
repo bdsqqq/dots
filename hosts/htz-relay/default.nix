@@ -63,6 +63,25 @@ in
 
   my.primaryUser = "bdsqqq";
   my.paths.commonplace = "/mnt/storage-01/commonplace";
+  my.cloudflareIngress = {
+    enable = true;
+    connectorName = "cf-ingress-htz";
+    externalInterface = "enp1s0";
+    tailscaleAuthKeyFile = config.sops.secrets.tailscale_cf_ingress_auth_key.path;
+    tunnel = {
+      id = "88b54fce-fae0-4ca2-9c56-41ab61cedf3f";
+      credentialsFile = config.sops.secrets.cloudflare_tailnet_apps_credentials.path;
+    };
+    route = {
+      hostname = "fotos.igorbedesqui.com";
+      service = "https://photos.tail1543a7.ts.net";
+      originServerName = "photos.tail1543a7.ts.net";
+    };
+    access = {
+      teamName = "solitary-darkness-2655";
+      audienceTag = "3ea4ce018a06d07b534578eb2ee9310d1ef9844a45c163367def6df9d7202413";
+    };
+  };
   my.tailnetRegistry.hostChecks.syncthing = {
     enable = true;
     configFile = "/home/bdsqqq/.config/syncthing/config.xml";

@@ -141,6 +141,7 @@ in
           description = "Cloudflare ingress through a least-privilege tailnet identity";
           wantedBy = [ "multi-user.target" ];
           requires = [ "tailscaled-autoconnect.service" ];
+          wants = [ "network-online.target" ];
           after = [
             "network-online.target"
             "tailscaled-autoconnect.service"
