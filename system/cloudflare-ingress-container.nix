@@ -4,6 +4,7 @@ let
   cfg = config.my.cloudflareIngress;
   containerAddress = "10.233.2.2";
   hostAddress = "10.233.2.1";
+  tailscalePackage = pkgs.unstable.tailscale;
   tunnelConfig = pkgs.writeText "cloudflare-ingress.json" (builtins.toJSON {
     tunnel = cfg.tunnel.id;
     credentials-file = "/run/credentials/cloudflare-ingress.service/tunnel.json";
@@ -129,6 +130,7 @@ in
 
         services.tailscale = {
           enable = true;
+          package = tailscalePackage;
           authKeyFile = "/run/secrets/tailscale-auth-key";
           extraUpFlags = [
             "--accept-dns=true"
