@@ -147,6 +147,10 @@ in
         cloudflare = "family";
       };
       adoptExisting = true;
+      tailscaleService = {
+        enable = true;
+        name = "photos";
+      };
     };
 
     backup-health = {

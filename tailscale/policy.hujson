@@ -3,6 +3,7 @@
 		// Service hosts use a device identity rather than a person's identity.
 		"tag:service-host": ["autogroup:owner"],
 		"tag:depot-runner": ["autogroup:owner"],
+		"tag:cf-ingress":   ["autogroup:owner"],
 	},
 
 	"autoApprovers": {
@@ -11,6 +12,7 @@
 			"svc:apps":       ["tag:service-host"],
 			"svc:html-stuff": ["tag:service-host"],
 			"svc:files":      ["tag:service-host"],
+			"svc:photos":     ["tag:service-host"],
 		},
 	},
 
@@ -36,7 +38,13 @@
 		// Portable services begin as owner-only canaries.
 		{
 			"src": ["autogroup:owner"],
-			"dst": ["svc:apps", "svc:html-stuff", "svc:files"],
+			"dst": ["svc:apps", "svc:html-stuff", "svc:files", "svc:photos"],
+			"ip":  ["443"],
+		},
+		// Cloudflare connectors can reach only explicitly public-facing apps.
+		{
+			"src": ["tag:cf-ingress"],
+			"dst": ["svc:photos"],
 			"ip":  ["443"],
 		},
 

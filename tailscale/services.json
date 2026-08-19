@@ -10,5 +10,9 @@
   "svc:files": {
     "comment": "portable read-only commonplace browser",
     "ports": ["tcp:443"]
+  },
+  "svc:photos": {
+    "comment": "portable read-only family photo gallery",
+    "ports": ["tcp:443"]
   }
 }
