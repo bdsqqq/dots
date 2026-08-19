@@ -19,6 +19,14 @@
       description = "ordered PATH segments from all modules";
     };
 
+    # user-installed CLIs commonly target this XDG-adjacent location.
+    config.custom.path.segments = [
+      {
+        order = 80;
+        value = "${config.home.homeDirectory}/.local/bin";
+      }
+    ];
+
     # aggregate all segments into home.sessionPath
     config.home.sessionPath = let
       sorted =
