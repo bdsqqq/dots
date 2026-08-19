@@ -27,6 +27,7 @@ in
     ../../system/authorized-keys.nix
     ../../system/fonts.nix
     ../../system/auto-upgrade.nix
+    ../../system/o11y
     ../../system/syncthing.nix
     ../../system/audio.nix
     ../../system/bluetooth.nix
