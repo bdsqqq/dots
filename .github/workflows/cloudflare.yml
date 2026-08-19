@@ -1,0 +1,117 @@
+name: sync Cloudflare control plane
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cloudflare/**.tf"
+      - "cloudflare/.terraform.lock.hcl"
+      - ".github/workflows/cloudflare.yml"
+  schedule:
+    - cron: "23 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cloudflare-control-plane
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_family_emails: ${{ secrets.CLOUDFLARE_FAMILY_EMAILS }}
+      TF_VAR_state_passphrase: ${{ secrets.TOFU_STATE_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: 1.12.3
+          tofu_wrapper: false
+
+      - name: Reject stale revisions
+        if: github.event_name != 'schedule'
+        working-directory: .
+        run: |
+          set -euo pipefail
+          current="$(
+            git ls-remote https://github.com/bdsqqq/dots.git refs/heads/main |
+              cut -f1
+          )"
+          if [[ "${GITHUB_SHA}" != "${current}" ]]; then
+            echo "Refusing to apply stale Cloudflare config ${GITHUB_SHA}; main is ${current}."
+            exit 1
+          fi
+
+      - run: tofu init
+
+      - name: Bootstrap the existing Access application
+        if: hashFiles('cloudflare/terraform.tfstate') == ''
+        run: |
+          set -euo pipefail
+          app_id="$(
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              'https://api.cloudflare.com/client/v4/accounts/7c1219e69201df160c85fc5e030efe36/access/apps' |
+              jq -er '
+                [.result[] | select(.domain == "fotos.igorbedesqui.com")] |
+                if length == 1 then .[0].id
+                else error("expected exactly one family photos Access application")
+                end
+              '
+          )"
+          tofu import \
+            cloudflare_zero_trust_access_application.family_photos \
+            "accounts/7c1219e69201df160c85fc5e030efe36/${app_id}"
+
+      - name: Plan
+        id: plan
+        run: |
+          set +e
+          tofu plan -detailed-exitcode -out=cloudflare.tfplan
+          status=$?
+          set -e
+
+          case "${status}" in
+            0) echo "changes=false" >> "${GITHUB_OUTPUT}" ;;
+            2) echo "changes=true" >> "${GITHUB_OUTPUT}" ;;
+            *) exit "${status}" ;;
+          esac
+
+      - name: Report drift
+        if: github.event_name == 'schedule' && steps.plan.outputs.changes == 'true'
+        run: |
+          echo "Cloudflare differs from the committed declaration." >&2
+          exit 1
+
+      - name: Apply
+        if: github.event_name != 'schedule' && steps.plan.outputs.changes == 'true'
+        run: tofu apply cloudflare.tfplan
+
+      - name: Require convergence
+        if: github.event_name != 'schedule'
+        run: tofu plan -detailed-exitcode
+
+      - name: Commit encrypted state
+        if: github.event_name != 'schedule'
+        working-directory: .
+        run: |
+          set -euo pipefail
+          git add cloudflare/terraform.tfstate
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "chore(cloudflare): update encrypted state [skip ci]"
+          git push origin HEAD:main
