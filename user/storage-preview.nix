@@ -78,6 +78,7 @@ let
       copyparty \
         -i 127.0.0.1 \
         -p 3923 \
+        --rproxy -1 \
         --hist ${lib.escapeShellArg copypartyCache} \
         --grid \
         --no-del \
