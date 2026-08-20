@@ -6,6 +6,6 @@
     "pi": "bin/pi"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.82.0"
+    "@earendil-works/pi-coding-agent": "^0.84.2"
   }
 }
