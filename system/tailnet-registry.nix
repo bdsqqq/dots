@@ -1,4 +1,4 @@
-{ config, hostSystem, lib, pkgs, ... }:
+{ config, hostSystem, lib, pkgs, tailnetApps, ... }:
 
 let
   cfg = config.my.tailnetRegistry;
@@ -100,13 +100,90 @@ let
       };
     };
   });
+  providerType = lib.types.submodule ({ name, ... }:
+    let
+      app = tailnetApps.catalog.${name} or
+        (throw "unknown tailnet app provider: ${name}");
+    in
+    {
+      options = {
+        target = lib.mkOption {
+          type = lib.types.str;
+          example = "http://127.0.0.1:8080";
+          description = "Loopback backend for this host's app provider.";
+        };
+
+        scheme = lib.mkOption {
+          type = lib.types.enum [ "http" "https" ];
+          default = "https";
+          description = "Protocol exposed on this host's legacy Tailscale Serve route.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          description = "Port exposed on this host's legacy Tailscale Serve route.";
+        };
+
+        path = lib.mkOption {
+          type = lib.types.str;
+          default = app.path;
+          description = "Browser path used to open this provider.";
+        };
+
+        healthPath = lib.mkOption {
+          type = lib.types.str;
+          default = app.path;
+          description = "Path probed on this host's local backend.";
+        };
+
+        adoptExisting = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Adopt an exactly matching legacy Serve route.";
+        };
+
+        tailscaleService.adoptExisting = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Adopt an exactly matching native Tailscale Service endpoint.";
+        };
+      };
+    });
+  providerServices = lib.mapAttrs
+    (name: provider:
+      let
+        app = tailnetApps.catalog.${name};
+      in
+      {
+        inherit (app) description title;
+        inherit (provider)
+          adoptExisting
+          healthPath
+          path
+          port
+          scheme
+          target
+          ;
+        access = {
+          tailnet = app.tailnet.audience;
+          cloudflare = if app.cloudflare == null then "disabled" else app.cloudflare.audience;
+        };
+        audience = null;
+        tailscaleService = {
+          enable = true;
+          inherit (app.tailnet.service) name port;
+          inherit (provider.tailscaleService) adoptExisting;
+        };
+      })
+    cfg.providers;
+  effectiveServices = cfg.services // providerServices;
   active =
-    cfg.services != { }
+    effectiveServices != { }
     || cfg.directory.enable
     || cfg.directory.tailscaleService.enable
     || cfg.hostChecks.syncthing.enable;
   allPorts =
-    (map (service: service.port) (lib.attrValues cfg.services))
+    (map (service: service.port) (lib.attrValues effectiveServices))
     ++ [ cfg.manifest.port ]
     ++ lib.optional cfg.directory.enable cfg.directory.port;
   loopbackTarget = target:
@@ -135,13 +212,13 @@ let
           ;
       };
     })
-    cfg.services;
+    effectiveServices;
   nativeServiceNames =
     map
       (service: service.tailscaleService.name)
       (lib.filter
         (service: service.tailscaleService.enable)
-        (lib.attrValues cfg.services))
+        (lib.attrValues effectiveServices))
     ++ lib.optional cfg.directory.tailscaleService.enable
       cfg.directory.tailscaleService.name;
   hostName =
@@ -210,6 +287,13 @@ in
       default = { };
       description =
         "Host-local services announced to the tailnet service directory.";
+    };
+
+    providers = lib.mkOption {
+      type = lib.types.attrsOf providerType;
+      default = { };
+      description =
+        "Host-local providers for canonical app-colocated tailnet declarations.";
     };
 
     manifest = {
@@ -292,6 +376,13 @@ in
     {
       assertions = [
         {
+          assertion = lib.intersectLists
+            (builtins.attrNames cfg.services)
+            (builtins.attrNames cfg.providers) == [ ];
+          message =
+            "a tailnet app cannot be declared through both services and providers";
+        }
+        {
           assertion = builtins.length allPorts
             == builtins.length (lib.unique allPorts);
           message =
@@ -313,7 +404,7 @@ in
         {
           assertion = lib.all
             (service: service.audience == null || service.access.tailnet == service.audience)
-            (lib.attrValues cfg.services);
+            (lib.attrValues effectiveServices);
           message =
             "my.tailnetRegistry service audience conflicts with access.tailnet";
         }
@@ -325,7 +416,7 @@ in
         }
         {
           assertion = lib.all loopbackTarget
-            (map (service: service.target) (lib.attrValues cfg.services));
+            (map (service: service.target) (lib.attrValues effectiveServices));
           message =
             "my.tailnetRegistry service targets must use an HTTP(S) loopback address";
         }
@@ -355,7 +446,7 @@ in
             (service:
               lib.hasPrefix "/" service.path
               && lib.hasPrefix "/" service.healthPath)
-            (lib.attrValues cfg.services);
+            (lib.attrValues effectiveServices);
           message =
             "my.tailnetRegistry service paths and health paths must begin with /";
         }

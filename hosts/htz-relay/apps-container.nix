@@ -1,4 +1,4 @@
-{ ... }:
+{ tailnetApps, ... }:
 
 {
   networking.bridges.br-apps.interfaces = [ ];
@@ -22,7 +22,10 @@
     hostAddress = "10.233.1.1";
     localAddress = "10.233.1.2/24";
     enableTun = true;
-    specialArgs.hostSystem = "x86_64-linux";
+    specialArgs = {
+      hostSystem = "x86_64-linux";
+      inherit tailnetApps;
+    };
     bindMounts."/srv/html-stuff" = {
       hostPath = "/mnt/storage-01/commonplace/01_files/html_stuff";
       isReadOnly = true;
@@ -64,25 +67,17 @@
           enable = true;
           tailscaleService.enable = true;
         };
-        my.tailnetRegistry.services.html-stuff = {
-          title = "html stuff";
-          description = "generated documents and visual artifacts";
+        my.tailnetRegistry.providers.html-stuff = {
           target = "http://127.0.0.1:8766";
           scheme = "http";
           port = 8765;
           healthPath = "/";
-          access.tailnet = "owner";
-          tailscaleService.enable = true;
         };
-        my.tailnetRegistry.services.files = {
-          title = "files";
-          description = "read-only commonplace file browser";
+        my.tailnetRegistry.providers.files = {
           target = "http://127.0.0.1:3925";
           scheme = "https";
           port = 3925;
           healthPath = "/";
-          access.tailnet = "owner";
-          tailscaleService.enable = true;
         };
 
         users.users.bdsqqq = {
