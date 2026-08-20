@@ -52,33 +52,7 @@ in
     connectorName = "cf-ingress-gru";
     externalInterface = "eth0";
     tailscaleAuthKeyFile = config.sops.secrets.tailscale_cf_ingress_auth_key.path;
-    apps.photos = {
-      tunnel = {
-        id = "88b54fce-fae0-4ca2-9c56-41ab61cedf3f";
-        credentialsSecret = "cloudflare_tailnet_apps_credentials";
-      };
-      route = {
-        hostname = "fotos.igorbedesqui.com";
-        service = "https://photos.tail1543a7.ts.net";
-        originServerName = "photos.tail1543a7.ts.net";
-      };
-      access.audienceTag = "3ea4ce018a06d07b534578eb2ee9310d1ef9844a45c163367def6df9d7202413";
-    };
-    apps.html-stuff = {
-      tunnel = {
-        id = "1be2b16d-7cbe-477e-8dd0-09b24a4d85c3";
-        credentialsSecret = "cloudflare_html_stuff_credentials";
-      };
-      route = {
-        hostname = "stuff.igorbedesqui.com";
-        service = "https://html-stuff.tail1543a7.ts.net";
-        originServerName = "html-stuff.tail1543a7.ts.net";
-      };
-      access.audienceTag = "fe941963b0aa26a6351d9db942baa380a1dcb4832a239edec0b173bbd843aaa6";
-    };
-    access = {
-      teamName = "solitary-darkness-2655";
-    };
+    trustClass = "shared";
   };
   services.hwmon-metrics.enable = true;
 
