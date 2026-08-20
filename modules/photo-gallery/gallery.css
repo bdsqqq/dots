@@ -1,0 +1,211 @@
+:root {
+  color-scheme: dark;
+  --background: #101110;
+  --surface: rgb(16 17 16 / 88%);
+  --text: #f3f3ef;
+  --muted: #aaa9a3;
+  --accent: #ffd36a;
+  --gap: 4px;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--background);
+  color: var(--text);
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--background);
+}
+
+a { color: inherit; }
+
+.topbar {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 56px 0 24px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  background: var(--surface);
+  backdrop-filter: blur(20px) saturate(140%);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.brand-mark { color: var(--accent); }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.folders {
+  padding: 8px 12px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 999px;
+  color: var(--text);
+  text-decoration: none;
+  transition: background-color 140ms ease, transform 140ms cubic-bezier(.23, 1, .32, 1);
+}
+
+.folders:active { transform: scale(.97); }
+
+main { padding: 22px 54px 80px 20px; }
+
+.day {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 310px;
+  scroll-margin-top: 72px;
+  margin-bottom: 28px;
+}
+
+.day-heading {
+  position: sticky;
+  z-index: 10;
+  top: 64px;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  width: fit-content;
+  margin: 0;
+  padding: 9px 10px 8px 4px;
+  border-radius: 0 0 10px 0;
+  background: var(--surface);
+  backdrop-filter: blur(16px);
+  font-size: 17px;
+  font-weight: 620;
+  letter-spacing: -.01em;
+}
+
+.day-heading time + span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 450;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  grid-auto-rows: clamp(154px, 16vw, 244px);
+  gap: var(--gap);
+}
+
+.photo {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #222320;
+  outline: none;
+}
+
+.photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.photo img.loaded { opacity: 1; }
+
+.photo:focus-visible { box-shadow: inset 0 0 0 3px var(--accent); }
+
+.video-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 66%);
+  color: white;
+  font-size: 11px;
+  backdrop-filter: blur(8px);
+}
+
+#years {
+  position: fixed;
+  z-index: 30;
+  top: 50%;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transform: translateY(-50%);
+}
+
+#years button {
+  width: 40px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+}
+
+#years button:hover,
+#years button:focus-visible { color: var(--accent); }
+
+#sentinel { height: 1px; }
+
+.error {
+  max-width: 520px;
+  margin: 15vh auto;
+  color: var(--muted);
+  text-align: center;
+}
+
+noscript { display: block; padding: 40px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .folders:hover { background: rgb(255 255 255 / 8%); }
+  .photo img { transition: opacity 180ms ease, transform 180ms cubic-bezier(.23, 1, .32, 1); }
+  .photo:hover img { transform: scale(1.018); }
+}
+
+@media (max-width: 700px) {
+  .topbar { min-height: 56px; padding: 0 12px; }
+  .topbar-actions { gap: 8px; }
+  #status { display: none; }
+  main { padding: 10px 0 64px; }
+  .day { margin-bottom: 18px; }
+  .day-heading { top: 56px; padding-left: 10px; }
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 34vw;
+    gap: 2px;
+  }
+  .photo { border-radius: 0; }
+  #years { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .folders, .photo img { transition: none; }
+}
