@@ -14,3 +14,9 @@ variable "family_emails" {
     error_message = "At least one family identity is required."
   }
 }
+
+variable "html_stuff_tunnel_secret" {
+  description = "Base64-encoded secret for the independently supervised html-stuff tunnel."
+  type        = string
+  sensitive   = true
+}

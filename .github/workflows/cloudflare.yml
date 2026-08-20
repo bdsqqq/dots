@@ -29,6 +29,7 @@ jobs:
       TF_IN_AUTOMATION: "true"
       TF_INPUT: "false"
       TF_VAR_family_emails: ${{ secrets.CLOUDFLARE_FAMILY_EMAILS }}
+      TF_VAR_html_stuff_tunnel_secret: ${{ secrets.CLOUDFLARE_HTML_STUFF_TUNNEL_SECRET }}
       TF_VAR_state_passphrase: ${{ secrets.TOFU_STATE_PASSPHRASE }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -100,6 +101,10 @@ jobs:
       - name: Require convergence
         if: github.event_name != 'schedule'
         run: tofu plan -detailed-exitcode
+
+      - name: Report connector identifiers
+        if: github.event_name != 'schedule'
+        run: tofu output
 
       - name: Commit encrypted state
         if: github.event_name != 'schedule'
