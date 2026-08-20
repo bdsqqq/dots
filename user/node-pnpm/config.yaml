@@ -5,3 +5,4 @@ minimumReleaseAgeExclude:
   - "@tobilu/qmd"
   - "vercel"
   - "@vercel/cli-config"
+  - "t3"
