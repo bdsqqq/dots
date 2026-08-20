@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createServer } from "node:http";
 import test from "node:test";
 
-import { backendPath, buildTimeline, parseArgs } from "./photo-gallery-server.mjs";
+import { backendPath, galleryServer, parseArgs } from "./photo-gallery-server.mjs";
 
 test("parses server options", () => {
   assert.deepEqual(
@@ -26,35 +24,9 @@ test("parses server options", () => {
       host: "127.0.0.1",
       port: 3923,
       backendPort: 13923,
+      intelligenceUrl: "http://127.0.0.1:3924",
     }
   );
-});
-
-test("groups media by archive date and ignores sidecars", async () => {
-  const root = await mkdtemp(join(tmpdir(), "photo-gallery-test-"));
-  try {
-    await mkdir(join(root, "2026", "08", "20"), { recursive: true });
-    await mkdir(join(root, "2025", "12", "31"), { recursive: true });
-    await Promise.all([
-      writeFile(join(root, "2026", "08", "20", "photo.HEIC"), "photo"),
-      writeFile(join(root, "2026", "08", "20", "clip.mov"), "video"),
-      writeFile(join(root, "2026", "08", "20", "photo.HEIC.json"), "{}"),
-      writeFile(join(root, "2026", "08", "20", "._photo.HEIC"), "fork"),
-      writeFile(join(root, "2025", "12", "31", "older.jpg"), "photo"),
-    ]);
-
-    const timeline = await buildTimeline(root);
-    assert.equal(timeline.itemCount, 3);
-    assert.deepEqual(
-      timeline.groups.map(({ date, items }) => [date, items.map(({ name, type }) => [name, type])]),
-      [
-        ["2026-08-20", [["clip.mov", "video"], ["photo.HEIC", "image"]]],
-        ["2025-12-31", [["older.jpg", "image"]]],
-      ]
-    );
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
 });
 
 test("maps gallery media and folder routes to copyparty", () => {
@@ -63,4 +35,29 @@ test("maps gallery media and folder routes to copyparty", () => {
   assert.equal(backendPath("/gallery/folders/2026/08/"), "/raw/2026/08/");
   assert.equal(backendPath("/raw/2026/08/a.jpg?v"), "/raw/2026/08/a.jpg?v");
   assert.equal(backendPath("/gallery/api/timeline"), null);
+});
+
+test("proxies the timeline from photo intelligence", async () => {
+  const timeline = { generatedAt: "2026-08-20T00:00:00.000Z", itemCount: 1, groups: [] };
+  const intelligence = createServer((request, response) => {
+    assert.equal(request.url, "/timeline");
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(timeline));
+  });
+  let gallery;
+  try {
+    await new Promise((resolvePromise) => intelligence.listen(0, "127.0.0.1", resolvePromise));
+    gallery = galleryServer({
+      assets: { html: "", css: "", js: "" },
+      backendPort: 1,
+      intelligenceUrl: `http://127.0.0.1:${intelligence.address().port}`,
+    });
+    await new Promise((resolvePromise) => gallery.listen(0, "127.0.0.1", resolvePromise));
+    const response = await fetch(`http://127.0.0.1:${gallery.address().port}/gallery/api/timeline`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), timeline);
+  } finally {
+    if (gallery) await new Promise((resolvePromise) => gallery.close(resolvePromise));
+    await new Promise((resolvePromise) => intelligence.close(resolvePromise));
+  }
 });

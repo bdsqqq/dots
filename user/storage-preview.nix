@@ -9,6 +9,7 @@ let
   home = "/Users/bdsqqq";
   galleryRoot = "/Volumes/ssd-01/igor/photos-library-2";
   copypartyCache = "${home}/Library/Caches/copyparty-ssd";
+  photoIntelligenceState = "${home}/Library/Application Support/photo-intelligence";
   filesBrowserCache = "${home}/Library/Caches/copyparty-files";
   syncthingConfig = "${home}/Library/Application Support/Syncthing/config.xml";
   backrestConfigDir = "${home}/.config/backrest";
@@ -53,6 +54,7 @@ let
   );
 
   photoGalleryServer = import ../modules/photo-gallery { inherit pkgs; };
+  photoIntelligenceServer = import ../modules/photo-intelligence { inherit pkgs; };
   filesBrowserServer = import ../modules/files-browser { inherit pkgs; };
 
   backrestServer = pkgs.writeShellApplication {
@@ -134,6 +136,7 @@ in
       backrestServer
       filesBrowserServer
       photoGalleryServer
+      photoIntelligenceServer
     ];
 
     home.activation.storagePreviewState = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -142,6 +145,7 @@ in
         ${lib.escapeShellArg backrestDataDir} \
         ${lib.escapeShellArg copypartyCache} \
         ${lib.escapeShellArg filesBrowserCache}
+      ${pkgs.coreutils}/bin/install -d -m 0700 ${lib.escapeShellArg photoIntelligenceState}
       if [[ ! -e ${lib.escapeShellArg "${backrestConfigDir}/config.json"} ]]; then
         ${pkgs.coreutils}/bin/install \
           -m 0600 \
@@ -186,6 +190,8 @@ in
           copypartyCache
           "--port"
           "3923"
+          "--intelligence-url"
+          "http://127.0.0.1:3924"
         ];
         RunAtLoad = true;
         KeepAlive = true;
@@ -193,6 +199,29 @@ in
         ProcessType = "Background";
         StandardOutPath = "${config.home.homeDirectory}/Library/Logs/ssd-gallery.log";
         StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/ssd-gallery.log";
+      };
+    };
+
+    launchd.agents.photo-intelligence = {
+      enable = true;
+      config = {
+        ProgramArguments = [
+          "${photoIntelligenceServer}/bin/photo-intelligence-server"
+          "--source"
+          galleryRoot
+          "--state"
+          photoIntelligenceState
+          "--sentinel"
+          ".osxphotos_export.db"
+          "--port"
+          "3924"
+        ];
+        RunAtLoad = true;
+        KeepAlive = true;
+        ThrottleInterval = 10;
+        ProcessType = "Background";
+        StandardOutPath = "${config.home.homeDirectory}/Library/Logs/photo-intelligence.log";
+        StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/photo-intelligence.log";
       };
     };
 
