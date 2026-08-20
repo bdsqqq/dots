@@ -102,6 +102,19 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "html_stuff" {
   }
 }
 
+resource "cloudflare_dns_record" "family_html_stuff" {
+  zone_id = local.zone_id
+  name    = local.stuff_domain
+  type    = "CNAME"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.html_stuff.id}.cfargotunnel.com"
+  ttl     = 1
+  proxied = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 resource "cloudflare_zero_trust_access_application" "family_html_stuff" {
   account_id = local.account_id
   name       = "family html stuff"
