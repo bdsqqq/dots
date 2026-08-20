@@ -37,6 +37,7 @@ locals {
   zone_id      = "f6f9ce4af454779e269f70c8e1e8d158"
   tunnel_id    = "88b54fce-fae0-4ca2-9c56-41ab61cedf3f"
   photo_domain = "fotos.igorbedesqui.com"
+  stuff_domain = "stuff.igorbedesqui.com"
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "tailnet_apps" {
@@ -88,6 +89,55 @@ resource "cloudflare_zero_trust_access_application" "family_photos" {
   lifecycle {
     prevent_destroy = true
   }
+}
+
+resource "cloudflare_zero_trust_tunnel_cloudflared" "html_stuff" {
+  account_id    = local.account_id
+  name          = "html-stuff"
+  config_src    = "local"
+  tunnel_secret = var.html_stuff_tunnel_secret
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "cloudflare_zero_trust_access_application" "family_html_stuff" {
+  account_id = local.account_id
+  name       = "family html stuff"
+  domain     = local.stuff_domain
+  type       = "self_hosted"
+
+  app_launcher_visible       = false
+  enable_binding_cookie      = true
+  http_only_cookie_attribute = true
+  same_site_cookie_attribute = "strict"
+  session_duration           = "720h"
+
+  policies = [{
+    name       = "family"
+    decision   = "allow"
+    precedence = 1
+    include = [
+      for address in sort(tolist(var.family_emails)) : {
+        email = { email = address }
+      }
+    ]
+  }]
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+output "html_stuff_tunnel_id" {
+  description = "Tunnel UUID required by the connector deployment."
+  value       = cloudflare_zero_trust_tunnel_cloudflared.html_stuff.id
+}
+
+output "html_stuff_access_aud" {
+  description = "Access audience required by the connector JWT validator."
+  value       = cloudflare_zero_trust_access_application.family_html_stuff.aud
 }
 
 import {
