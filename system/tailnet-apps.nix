@@ -37,6 +37,7 @@ let
           builtins.elem cloudflare.audience [ "owner" "family" ]
           && builtins.match "[a-z0-9.-]+" cloudflare.hostname != null
           && builtins.match "[a-z0-9][a-z0-9-]{0,63}" cloudflare.connectorTrust != null
+          && builtins.hasAttr cloudflare.connectorTrust connectorTags
           && builtins.isString cloudflare.tunnelName
           && builtins.isString cloudflare.accessName
         ));

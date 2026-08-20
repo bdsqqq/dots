@@ -15,6 +15,12 @@ creation_rules:
           - *host_gru_relay
           - *host_r56
           - *host_lgo_z2e
+  - path_regex: ^secrets/cloudflare/[^/]+\.yaml$
+    key_groups:
+      - age:
+          - *user_bdsqqq
+          - *host_htz_relay
+          - *host_gru_relay
   - path_regex: cookies\.txt$
     key_groups:
       - age:
