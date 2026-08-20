@@ -1,6 +1,15 @@
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -19,7 +28,9 @@ export function grammarCacheDir(): string {
 }
 
 function packageInstalled(cacheDir: string, npmPackage: string): boolean {
-  return existsSync(join(cacheDir, "node_modules", npmPackage));
+  return existsSync(
+    join(cacheDir, "node_modules", npmPackage, "package.json"),
+  );
 }
 
 function ensureCachePackageJson(cacheDir: string): void {
@@ -92,6 +103,62 @@ const INSTALL_SPEC: Record<string, string> = {
     "@tree-sitter-grammars/tree-sitter-lua@0.2.0",
 };
 
+function packageCacheDir(cacheDir: string, npmPackage: string): string {
+  const installSpec = INSTALL_SPEC[npmPackage] ?? npmPackage;
+  const key = createHash("sha256").update(installSpec).digest("hex").slice(0, 16);
+  return join(cacheDir, "packages", key);
+}
+
+/**
+ * npm mutates its whole prefix during install, so sharing one prefix lets
+ * concurrent grammar loads delete each other's files. Install into a unique
+ * staging prefix and atomically publish the complete directory instead.
+ */
+function installGrammarPackage(cacheDir: string, npmPackage: string): string {
+  const targetDir = packageCacheDir(cacheDir, npmPackage);
+  if (packageInstalled(targetDir, npmPackage)) return targetDir;
+
+  const packagesDir = join(cacheDir, "packages");
+  mkdirSync(packagesDir, { recursive: true });
+  const stagingDir = mkdtempSync(join(packagesDir, ".install-"));
+  try {
+    ensureCachePackageJson(stagingDir);
+    const installSpec = INSTALL_SPEC[npmPackage] ?? npmPackage;
+    execFileSync(
+      "npm",
+      [
+        "install",
+        "--prefix",
+        stagingDir,
+        "--no-save",
+        "--no-fund",
+        "--no-audit",
+        "--legacy-peer-deps",
+        installSpec,
+      ],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: process.env,
+      },
+    );
+
+    try {
+      renameSync(stagingDir, targetDir);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (
+        !["EEXIST", "ENOTEMPTY"].includes(code ?? "") ||
+        !packageInstalled(targetDir, npmPackage)
+      ) {
+        throw err;
+      }
+    }
+  } finally {
+    rmSync(stagingDir, { recursive: true, force: true });
+  }
+  return targetDir;
+}
+
 /**
  * Install an npm grammar package into the shared cache if missing, then require it.
  * Reuses the cache across CLI invocations.
@@ -121,30 +188,10 @@ export function loadGrammarPackage(npmPackage: string): GrammarModule {
   }
 
   const cacheDir = grammarCacheDir();
-  if (!packageInstalled(cacheDir, npmPackage)) {
-    ensureCachePackageJson(cacheDir);
-    const installSpec = INSTALL_SPEC[npmPackage] ?? npmPackage;
-    execFileSync(
-      "npm",
-      [
-        "install",
-        "--prefix",
-        cacheDir,
-        "--no-save",
-        "--no-fund",
-        "--no-audit",
-        "--legacy-peer-deps",
-        installSpec,
-      ],
-      {
-        stdio: ["ignore", "pipe", "pipe"],
-        env: process.env,
-      },
-    );
-  }
+  const packageDir = installGrammarPackage(cacheDir, npmPackage);
 
-  const require = createRequire(join(cacheDir, "package.json"));
-  const packageRoot = join(cacheDir, "node_modules", npmPackage);
+  const require = createRequire(join(packageDir, "package.json"));
+  const packageRoot = join(packageDir, "node_modules", npmPackage);
   return requireGrammar(require, npmPackage, packageRoot);
 }
 
@@ -163,7 +210,12 @@ export function resolveLanguage(
 
 export function readCachedPackageVersion(npmPackage: string): string | null {
   const cacheDir = grammarCacheDir();
-  const pkgJson = join(cacheDir, "node_modules", npmPackage, "package.json");
+  const pkgJson = join(
+    packageCacheDir(cacheDir, npmPackage),
+    "node_modules",
+    npmPackage,
+    "package.json",
+  );
   if (!existsSync(pkgJson)) return null;
   try {
     const raw = JSON.parse(readFileSync(pkgJson, "utf8")) as {
