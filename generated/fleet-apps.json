@@ -1,0 +1,58 @@
+{
+  "files": {
+    "cloudflare": null,
+    "description": "read-only commonplace file browser",
+    "id": "files",
+    "path": "/",
+    "schemaVersion": 1,
+    "source": "modules/files-browser/tailnet-app.nix",
+    "tailnet": {
+      "audience": "owner",
+      "service": {
+        "name": "files",
+        "port": 443
+      }
+    },
+    "title": "files"
+  },
+  "html-stuff": {
+    "cloudflare": {
+      "audience": "family",
+      "connectorTrust": "shared",
+      "hostname": "stuff.igorbedesqui.com"
+    },
+    "description": "generated documents and visual artifacts",
+    "id": "html-stuff",
+    "path": "/",
+    "schemaVersion": 1,
+    "source": "user/html-stuff/tailnet-app.nix",
+    "tailnet": {
+      "audience": "owner",
+      "service": {
+        "name": "html-stuff",
+        "port": 443
+      }
+    },
+    "title": "html stuff"
+  },
+  "photos": {
+    "cloudflare": {
+      "audience": "family",
+      "connectorTrust": "shared",
+      "hostname": "fotos.igorbedesqui.com"
+    },
+    "description": "read-only household photo gallery",
+    "id": "photos",
+    "path": "/gallery/",
+    "schemaVersion": 1,
+    "source": "modules/photo-gallery/tailnet-app.nix",
+    "tailnet": {
+      "audience": "family",
+      "service": {
+        "name": "photos",
+        "port": 443
+      }
+    },
+    "title": "family photos"
+  }
+}

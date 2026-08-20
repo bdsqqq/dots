@@ -1,0 +1,22 @@
+{
+  "apps": {
+    "files": {
+      "connectorTrust": null,
+      "service": "svc:files:443",
+      "tailnetAudience": "owner"
+    },
+    "html-stuff": {
+      "connectorTrust": "shared",
+      "service": "svc:html-stuff:443",
+      "tailnetAudience": "owner"
+    },
+    "photos": {
+      "connectorTrust": "shared",
+      "service": "svc:photos:443",
+      "tailnetAudience": "family"
+    }
+  },
+  "connectorTags": {
+    "shared": "tag:cf-ingress"
+  }
+}

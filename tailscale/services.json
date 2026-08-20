@@ -1,18 +1,26 @@
 {
   "svc:apps": {
     "comment": "portable app directory",
-    "ports": ["tcp:443"]
-  },
-  "svc:html-stuff": {
-    "comment": "portable HTML artifact browser",
-    "ports": ["tcp:443"]
+    "ports": [
+      "tcp:443"
+    ]
   },
   "svc:files": {
-    "comment": "portable read-only commonplace browser",
-    "ports": ["tcp:443"]
+    "comment": "read-only commonplace file browser",
+    "ports": [
+      "tcp:443"
+    ]
+  },
+  "svc:html-stuff": {
+    "comment": "generated documents and visual artifacts",
+    "ports": [
+      "tcp:443"
+    ]
   },
   "svc:photos": {
-    "comment": "portable read-only family photo gallery",
-    "ports": ["tcp:443"]
+    "comment": "read-only household photo gallery",
+    "ports": [
+      "tcp:443"
+    ]
   }
 }
