@@ -33,80 +33,34 @@ terraform {
 provider "cloudflare" {}
 
 locals {
-  account_id   = "7c1219e69201df160c85fc5e030efe36"
-  zone_id      = "f6f9ce4af454779e269f70c8e1e8d158"
-  tunnel_id    = "88b54fce-fae0-4ca2-9c56-41ab61cedf3f"
-  photo_domain = "fotos.igorbedesqui.com"
-  stuff_domain = "stuff.igorbedesqui.com"
-}
-
-resource "cloudflare_zero_trust_tunnel_cloudflared" "tailnet_apps" {
-  account_id = local.account_id
-  name       = "tailnet-apps"
-  config_src = "local"
-
-  lifecycle {
-    prevent_destroy = true
+  account_id       = "7c1219e69201df160c85fc5e030efe36"
+  zone_id          = "f6f9ce4af454779e269f70c8e1e8d158"
+  access_team_name = "solitary-darkness-2655"
+  audience_emails = {
+    family = var.family_emails
   }
 }
 
-resource "cloudflare_dns_record" "family_photos" {
-  zone_id = local.zone_id
-  name    = local.photo_domain
-  type    = "CNAME"
-  content = "${local.tunnel_id}.cfargotunnel.com"
-  ttl     = 1
-  proxied = true
+resource "cloudflare_zero_trust_tunnel_cloudflared" "app" {
+  for_each = var.apps
 
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-resource "cloudflare_zero_trust_access_application" "family_photos" {
-  account_id = local.account_id
-  name       = "family photos"
-  domain     = local.photo_domain
-  type       = "self_hosted"
-
-  app_launcher_visible       = false
-  enable_binding_cookie      = true
-  http_only_cookie_attribute = true
-  same_site_cookie_attribute = "strict"
-  session_duration           = "720h"
-
-  policies = [{
-    name       = "family"
-    decision   = "allow"
-    precedence = 1
-    include = [
-      for address in sort(tolist(var.family_emails)) : {
-        email = { email = address }
-      }
-    ]
-  }]
-
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-resource "cloudflare_zero_trust_tunnel_cloudflared" "html_stuff" {
   account_id    = local.account_id
-  name          = "html-stuff"
+  name          = each.value.cloudflare.tunnelName
   config_src    = "local"
-  tunnel_secret = var.html_stuff_tunnel_secret
+  tunnel_secret = lookup(var.tunnel_secrets, each.key, null)
 
   lifecycle {
     prevent_destroy = true
   }
 }
 
-resource "cloudflare_dns_record" "family_html_stuff" {
+resource "cloudflare_dns_record" "app" {
+  for_each = var.apps
+
   zone_id = local.zone_id
-  name    = local.stuff_domain
+  name    = each.value.cloudflare.hostname
   type    = "CNAME"
-  content = "${cloudflare_zero_trust_tunnel_cloudflared.html_stuff.id}.cfargotunnel.com"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.app[each.key].id}.cfargotunnel.com"
   ttl     = 1
   proxied = true
 
@@ -115,10 +69,12 @@ resource "cloudflare_dns_record" "family_html_stuff" {
   }
 }
 
-resource "cloudflare_zero_trust_access_application" "family_html_stuff" {
+resource "cloudflare_zero_trust_access_application" "app" {
+  for_each = var.apps
+
   account_id = local.account_id
-  name       = "family html stuff"
-  domain     = local.stuff_domain
+  name       = each.value.cloudflare.accessName
+  domain     = each.value.cloudflare.hostname
   type       = "self_hosted"
 
   app_launcher_visible       = false
@@ -128,11 +84,11 @@ resource "cloudflare_zero_trust_access_application" "family_html_stuff" {
   session_duration           = "720h"
 
   policies = [{
-    name       = "family"
+    name       = each.value.cloudflare.audience
     decision   = "allow"
     precedence = 1
     include = [
-      for address in sort(tolist(var.family_emails)) : {
+      for address in sort(tolist(local.audience_emails[each.value.cloudflare.audience])) : {
         email = { email = address }
       }
     ]
@@ -143,22 +99,43 @@ resource "cloudflare_zero_trust_access_application" "family_html_stuff" {
   }
 }
 
-output "html_stuff_tunnel_id" {
-  description = "Tunnel UUID required by the connector deployment."
-  value       = cloudflare_zero_trust_tunnel_cloudflared.html_stuff.id
+moved {
+  from = cloudflare_zero_trust_tunnel_cloudflared.tailnet_apps
+  to   = cloudflare_zero_trust_tunnel_cloudflared.app["photos"]
 }
 
-output "html_stuff_access_aud" {
-  description = "Access audience required by the connector JWT validator."
-  value       = cloudflare_zero_trust_access_application.family_html_stuff.aud
+moved {
+  from = cloudflare_zero_trust_tunnel_cloudflared.html_stuff
+  to   = cloudflare_zero_trust_tunnel_cloudflared.app["html-stuff"]
 }
 
-import {
-  to = cloudflare_zero_trust_tunnel_cloudflared.tailnet_apps
-  id = "${local.account_id}/${local.tunnel_id}"
+moved {
+  from = cloudflare_dns_record.family_photos
+  to   = cloudflare_dns_record.app["photos"]
 }
 
-import {
-  to = cloudflare_dns_record.family_photos
-  id = "${local.zone_id}/de3702d4c5a4e0b52d4a09b6b0a2fc5d"
+moved {
+  from = cloudflare_dns_record.family_html_stuff
+  to   = cloudflare_dns_record.app["html-stuff"]
+}
+
+moved {
+  from = cloudflare_zero_trust_access_application.family_photos
+  to   = cloudflare_zero_trust_access_application.app["photos"]
+}
+
+moved {
+  from = cloudflare_zero_trust_access_application.family_html_stuff
+  to   = cloudflare_zero_trust_access_application.app["html-stuff"]
+}
+
+output "runtime_bindings" {
+  description = "Non-secret identifiers consumed by relay connector deployments."
+  value = {
+    for name, app in var.apps : name => {
+      tunnelId       = cloudflare_zero_trust_tunnel_cloudflared.app[name].id
+      accessAudience = cloudflare_zero_trust_access_application.app[name].aud
+      accountTag     = local.access_team_name
+    }
+  }
 }
