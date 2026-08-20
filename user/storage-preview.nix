@@ -52,44 +52,7 @@ let
     }
   );
 
-  copypartyServer = pkgs.writeShellApplication {
-    name = "ssd-gallery-server";
-    runtimeInputs = [
-      pkgs.copyparty
-      pkgs.coreutils
-    ];
-    text = ''
-      cleanup() {
-        if [[ -n "''${server_pid:-}" ]] && kill -0 "$server_pid" 2>/dev/null; then
-          kill "$server_pid"
-          wait "$server_pid" 2>/dev/null || true
-        fi
-      }
-      trap cleanup EXIT
-      trap 'exit 143' TERM
-      trap 'exit 130' INT
-
-      while [[ ! -d ${lib.escapeShellArg galleryRoot} ]]; do
-        echo "waiting for ${galleryRoot}"
-        sleep 10
-      done
-
-      mkdir -p ${lib.escapeShellArg copypartyCache}
-      copyparty \
-        -i 127.0.0.1 \
-        -p 3923 \
-        --rproxy -1 \
-        --hist ${lib.escapeShellArg copypartyCache} \
-        --grid \
-        --no-del \
-        --no-mv \
-        -v ${lib.escapeShellArg "${galleryRoot}:/gallery:r"} &
-      server_pid=$!
-
-      wait "$server_pid"
-    '';
-  };
-
+  photoGalleryServer = import ../modules/photo-gallery { inherit pkgs; };
   filesBrowserServer = import ../modules/files-browser { inherit pkgs; };
 
   backrestServer = pkgs.writeShellApplication {
@@ -169,8 +132,8 @@ in
   home-manager.users.bdsqqq = { config, lib, ... }: {
     home.packages = [
       backrestServer
-      copypartyServer
       filesBrowserServer
+      photoGalleryServer
     ];
 
     home.activation.storagePreviewState = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -215,7 +178,15 @@ in
     launchd.agents.ssd-gallery = {
       enable = true;
       config = {
-        ProgramArguments = [ "${copypartyServer}/bin/ssd-gallery-server" ];
+        ProgramArguments = [
+          "${photoGalleryServer}/bin/photo-gallery-server"
+          "--source"
+          galleryRoot
+          "--state"
+          copypartyCache
+          "--port"
+          "3923"
+        ];
         RunAtLoad = true;
         KeepAlive = true;
         ThrottleInterval = 10;

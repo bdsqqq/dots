@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>family photos</title>
+    <link rel="stylesheet" href="/gallery/gallery.css">
+    <script src="/gallery/gallery.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/gallery/" aria-label="family photos home">
+        <span class="brand-mark" aria-hidden="true">✦</span>
+        <span>family photos</span>
+      </a>
+      <div class="topbar-actions">
+        <span id="status" role="status">loading archive…</span>
+        <a class="folders" href="/gallery/folders/">folders</a>
+      </div>
+    </header>
+
+    <main id="timeline" aria-busy="true"></main>
+    <nav id="years" aria-label="jump to year"></nav>
+    <div id="sentinel" aria-hidden="true"></div>
+    <noscript>this timeline needs javascript. <a href="/gallery/folders/">browse folders instead</a>.</noscript>
+  </body>
+</html>
