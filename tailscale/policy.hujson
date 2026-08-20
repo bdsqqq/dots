@@ -44,7 +44,7 @@
 		// Cloudflare connectors can reach only explicitly public-facing apps.
 		{
 			"src": ["tag:cf-ingress"],
-			"dst": ["svc:photos"],
+			"dst": ["svc:html-stuff", "svc:photos"],
 			"ip":  ["443"],
 		},
 
@@ -59,8 +59,8 @@
 	"tests": [
 		{
 			"src":    "tag:cf-ingress",
-			"accept": ["svc:photos:443"],
-			"deny":   ["svc:apps:443", "svc:files:443", "svc:html-stuff:443"],
+			"accept": ["svc:html-stuff:443", "svc:photos:443"],
+			"deny":   ["svc:apps:443", "svc:files:443"],
 		},
 	],
 
