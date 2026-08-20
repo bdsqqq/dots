@@ -1,33 +1,8 @@
 import { spawn } from "node:child_process";
 import { createServer, request as httpRequest } from "node:http";
-import { access, mkdir, readFile, readdir, stat } from "node:fs/promises";
-import { extname, join, relative, resolve, sep } from "node:path";
+import { access, mkdir, readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-
-const MEDIA_EXTENSIONS = new Set([
-  ".3gp",
-  ".avif",
-  ".avi",
-  ".bmp",
-  ".dng",
-  ".gif",
-  ".heic",
-  ".heif",
-  ".jfif",
-  ".jpeg",
-  ".jpg",
-  ".m4v",
-  ".mkv",
-  ".mov",
-  ".mp4",
-  ".png",
-  ".tif",
-  ".tiff",
-  ".webm",
-  ".webp",
-]);
-const VIDEO_EXTENSIONS = new Set([".3gp", ".avi", ".m4v", ".mkv", ".mov", ".mp4", ".webm"]);
-const RESCAN_INTERVAL_MS = 5 * 60 * 1000;
 
 function required(options, name) {
   const value = options.get(name);
@@ -56,63 +31,7 @@ export function parseArgs(argv) {
     host: options.get("host") ?? "127.0.0.1",
     port: Number(options.get("port") ?? "3923"),
     backendPort: Number(options.get("backend-port") ?? "13923"),
-  };
-}
-
-function calendarDate(path) {
-  const match = path.match(/^(\d{4})\/(\d{2})\/(\d{2})(?:\/|$)/);
-  if (!match) return null;
-  const [, year, month, day] = match;
-  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-  return date.getUTCFullYear() === Number(year) &&
-    date.getUTCMonth() === Number(month) - 1 &&
-    date.getUTCDate() === Number(day)
-    ? `${year}-${month}-${day}`
-    : null;
-}
-
-function publicPath(root, path) {
-  return relative(root, path).split(sep).join("/");
-}
-
-async function walk(root, directory, items) {
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (entry.name.startsWith(".")) continue;
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) {
-      await walk(root, path, items);
-      continue;
-    }
-    if (!entry.isFile()) continue;
-
-    const extension = extname(entry.name).toLowerCase();
-    if (!MEDIA_EXTENSIONS.has(extension)) continue;
-    const relativePath = publicPath(root, path);
-    const date = calendarDate(relativePath) ?? (await stat(path)).mtime.toISOString().slice(0, 10);
-    items.push({
-      date,
-      name: entry.name,
-      path: relativePath,
-      type: VIDEO_EXTENSIONS.has(extension) ? "video" : "image",
-    });
-  }
-}
-
-export async function buildTimeline(root) {
-  const items = [];
-  await walk(root, root, items);
-  items.sort((left, right) => right.date.localeCompare(left.date) || left.path.localeCompare(right.path));
-
-  const groups = [];
-  for (const item of items) {
-    const current = groups.at(-1);
-    if (!current || current.date !== item.date) groups.push({ date: item.date, items: [] });
-    groups.at(-1).items.push({ name: item.name, path: item.path, type: item.type });
-  }
-  return {
-    generatedAt: new Date().toISOString(),
-    itemCount: items.length,
-    groups,
+    intelligenceUrl: options.get("intelligence-url") ?? "http://127.0.0.1:3924",
   };
 }
 
@@ -144,10 +63,10 @@ function send(outgoing, status, contentType, body, extraHeaders = {}) {
   outgoing.end(body);
 }
 
-function proxy(incoming, outgoing, backendPort, path) {
-  const headers = { ...incoming.headers, host: `127.0.0.1:${backendPort}` };
+function proxy(incoming, outgoing, target, path) {
+  const headers = { ...incoming.headers, host: target.host };
   const proxied = httpRequest(
-    { host: "127.0.0.1", port: backendPort, method: incoming.method, path, headers },
+    { hostname: target.hostname, port: target.port, method: incoming.method, path, headers },
     (response) => {
       outgoing.writeHead(response.statusCode ?? 502, response.headers);
       response.pipe(outgoing);
@@ -155,16 +74,18 @@ function proxy(incoming, outgoing, backendPort, path) {
   );
   proxied.once("error", (error) => {
     if (!outgoing.headersSent) outgoing.writeHead(502);
-    outgoing.end(`thumbnail backend unavailable: ${error.message}\n`);
+    outgoing.end(`backend unavailable: ${error.message}\n`);
   });
   incoming.pipe(proxied);
 }
 
-export function galleryServer({ assets, backendPort, timeline }) {
+export function galleryServer({ assets, backendPort, intelligenceUrl }) {
   return createServer((incoming, outgoing) => {
     const url = new URL(incoming.url, "http://gallery.local");
     const proxiedPath = backendPath(incoming.url);
-    if (proxiedPath) return proxy(incoming, outgoing, backendPort, proxiedPath);
+    if (proxiedPath) {
+      return proxy(incoming, outgoing, new URL(`http://127.0.0.1:${backendPort}`), proxiedPath);
+    }
 
     if (url.pathname === "/") {
       outgoing.writeHead(302, { location: "/gallery/" }).end();
@@ -185,10 +106,8 @@ export function galleryServer({ assets, backendPort, timeline }) {
       return;
     }
     if (url.pathname === "/gallery/api/timeline") {
-      const current = timeline();
-      if (!current) return send(outgoing, 503, "application/json", '{"error":"indexing"}\n');
-      send(outgoing, 200, "application/json", `${JSON.stringify(current)}\n`);
-      return;
+      const target = new URL("/timeline", intelligenceUrl);
+      return proxy(incoming, outgoing, target, `${target.pathname}${target.search}`);
     }
     send(outgoing, 404, "text/plain; charset=utf-8", "not found\n");
   });
@@ -202,18 +121,6 @@ async function main() {
     css: await readFile(config.css, "utf8"),
     js: await readFile(config.js, "utf8"),
   };
-
-  let timeline = await buildTimeline(config.source);
-  console.log(`indexed ${timeline.itemCount} media files in ${timeline.groups.length} days`);
-  const refresh = setInterval(async () => {
-    try {
-      timeline = await buildTimeline(config.source);
-      console.log(`refreshed ${timeline.itemCount} media files in ${timeline.groups.length} days`);
-    } catch (error) {
-      console.error("gallery refresh failed", error);
-    }
-  }, RESCAN_INTERVAL_MS);
-  refresh.unref();
 
   const backend = spawn(
     config.copyparty,
@@ -236,7 +143,11 @@ async function main() {
   );
   backend.once("error", (error) => console.error("failed to start copyparty", error));
 
-  const server = galleryServer({ assets, backendPort: config.backendPort, timeline: () => timeline });
+  const server = galleryServer({
+    assets,
+    backendPort: config.backendPort,
+    intelligenceUrl: config.intelligenceUrl,
+  });
   server.listen(config.port, config.host, () => {
     console.log(`photo gallery listening on http://${config.host}:${config.port}/gallery/`);
   });
