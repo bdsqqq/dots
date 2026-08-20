@@ -24,6 +24,66 @@ let
       { service = "http_status:404"; }
     ];
   });
+  originProbe = lib.escapeShellArgs [
+    "${pkgs.curl}/bin/curl"
+    "--fail"
+    "--silent"
+    "--show-error"
+    "--connect-timeout"
+    "5"
+    "--max-time"
+    "10"
+    "--output"
+    "/dev/null"
+    cfg.route.service
+  ];
+  cloudflaredCommand = lib.escapeShellArgs [
+    "${pkgs.cloudflared}/bin/cloudflared"
+    "tunnel"
+    "--config=${tunnelConfig}"
+    "--no-autoupdate"
+    "run"
+  ];
+  cloudflaredWithOriginWatchdog = pkgs.writeShellScript "cloudflared-with-origin-watchdog" ''
+    probe_origin() {
+      ${originProbe}
+    }
+
+    if ! probe_origin; then
+      echo "origin probe failed; connector will remain withdrawn" >&2
+      exit 1
+    fi
+
+    connector_pid=""
+    watchdog_pid=""
+    cleanup() {
+      if [[ -n "$watchdog_pid" ]]; then
+        kill "$watchdog_pid" 2>/dev/null || true
+      fi
+      if [[ -n "$connector_pid" ]]; then
+        kill "$connector_pid" 2>/dev/null || true
+      fi
+      wait 2>/dev/null || true
+    }
+    trap cleanup EXIT INT TERM
+
+    ${cloudflaredCommand} &
+    connector_pid=$!
+
+    (
+      while ${pkgs.coreutils}/bin/sleep 15; do
+        if ! probe_origin; then
+          echo "origin probe failed; withdrawing connector" >&2
+          kill "$connector_pid" 2>/dev/null || true
+          exit 1
+        fi
+      done
+    ) &
+    watchdog_pid=$!
+
+    wait -n "$connector_pid" "$watchdog_pid"
+    exit $?
+  '';
 in
 {
   options.my.cloudflareIngress = {
@@ -162,13 +222,7 @@ in
           serviceConfig = {
             DynamicUser = true;
             LoadCredential = "tunnel.json:/run/secrets/cloudflare-tunnel.json";
-            ExecStart = lib.escapeShellArgs [
-              "${pkgs.cloudflared}/bin/cloudflared"
-              "tunnel"
-              "--config=${tunnelConfig}"
-              "--no-autoupdate"
-              "run"
-            ];
+            ExecStart = cloudflaredWithOriginWatchdog;
             Restart = "always";
             RestartSec = "5s";
             NoNewPrivileges = true;
