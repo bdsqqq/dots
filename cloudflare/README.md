@@ -8,8 +8,8 @@ and their local tunnel routing.
 
 state is committed because this is a small, public configuration repository.
 opentofu encrypts it before writing; the passphrase and private access audience
-remain outside git. github actions is the only apply authority so two machines
-cannot overwrite the local backend concurrently.
+membership remain outside git. github actions is the only apply authority so
+two machines cannot overwrite the local backend concurrently.
 
 pushes that change the declaration reconcile cloudflare and commit the encrypted
 state. a daily plan reports dashboard drift without applying it. the api token
