@@ -41,6 +41,11 @@
 			"dst": ["svc:apps", "svc:html-stuff", "svc:files", "svc:photos"],
 			"ip":  ["443"],
 		},
+		{
+			"src": ["autogroup:member"],
+			"dst": ["svc:photos"],
+			"ip":  ["443"],
+		},
 		// Cloudflare connectors can reach only explicitly public-facing apps.
 		{
 			"src": ["tag:cf-ingress"],

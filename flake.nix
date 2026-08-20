@@ -185,6 +185,32 @@
 
         formatter = pkgs.nixpkgs-fmt;
 
+        packages.tailnet-artifact-generator = pkgs.writeShellApplication {
+          name = "generate-tailnet-artifacts";
+          runtimeInputs = [ (pkgs.python3.withPackages (python: [ python.hjson ])) ];
+          text = ''
+            exec python ${./scripts/generate-tailnet-artifacts.py} \
+              --catalog ${pkgs.writeText "fleet-apps.json" (builtins.toJSON tailnetApps.catalog)} \
+              --cloudflare ${pkgs.writeText "cloudflare-apps.json" (builtins.toJSON tailnetApps.cloudflareApps)} \
+              --services ${pkgs.writeText "tailscale-services.json" (builtins.toJSON tailnetApps.tailscaleServices)} \
+              --capabilities ${pkgs.writeText "tailscale-capabilities.json" (builtins.toJSON {
+                apps = tailnetApps.capabilities;
+                inherit (tailnetApps) connectorTags;
+              })} \
+              "$@"
+          '';
+        };
+
+        apps.generate-tailnet-artifacts.program =
+          "${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts";
+
+        checks.tailnet-artifacts = pkgs.runCommand "tailnet-artifacts-check" { } ''
+          ${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts \
+            --check \
+            --root ${self}
+          touch "$out"
+        '';
+
         checks.tailnet-registry = pkgs.runCommand "tailnet-registry-tests"
           {
             nativeBuildInputs = [ pkgs.bun ];

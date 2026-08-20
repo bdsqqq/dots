@@ -66,13 +66,21 @@ let
         throw "conflicting tailnet app declarations for ${app.id}: ${result.${app.id}.source} and ${app.source}")
     { }
     declarations;
+  connectorTags = {
+    shared = "tag:cf-ingress";
+  };
 in
 {
-  inherit catalog;
+  inherit catalog connectorTags;
 
   cloudflareApps = lib.filterAttrs (_: app: app.cloudflare != null) catalog;
 
-  tailscaleServices = lib.mapAttrs'
+  tailscaleServices = {
+    "svc:apps" = {
+      comment = "portable app directory";
+      ports = [ "tcp:443" ];
+    };
+  } // lib.mapAttrs'
     (_: app: lib.nameValuePair "svc:${app.tailnet.service.name}" {
       comment = app.description;
       ports = [ "tcp:${toString app.tailnet.service.port}" ];
