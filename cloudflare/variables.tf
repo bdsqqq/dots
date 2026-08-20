@@ -15,8 +15,23 @@ variable "family_emails" {
   }
 }
 
-variable "html_stuff_tunnel_secret" {
-  description = "Base64-encoded secret for the independently supervised html-stuff tunnel."
-  type        = string
+variable "apps" {
+  description = "Generated publication intent from app-colocated declarations."
+  type = map(object({
+    title = string
+    cloudflare = object({
+      hostname       = string
+      audience       = string
+      connectorTrust = string
+      tunnelName     = string
+      accessName     = string
+    })
+  }))
+}
+
+variable "tunnel_secrets" {
+  description = "Optional base64 tunnel secrets keyed by app ID."
+  type        = map(string)
   sensitive   = true
+  default     = {}
 }

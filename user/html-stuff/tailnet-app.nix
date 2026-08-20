@@ -17,5 +17,7 @@
     hostname = "stuff.igorbedesqui.com";
     audience = "family";
     connectorTrust = "shared";
+    tunnelName = "html-stuff";
+    accessName = "family html stuff";
   };
 }

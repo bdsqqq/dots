@@ -17,5 +17,7 @@
     hostname = "fotos.igorbedesqui.com";
     audience = "family";
     connectorTrust = "shared";
+    tunnelName = "tailnet-apps";
+    accessName = "family photos";
   };
 }

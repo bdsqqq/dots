@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "cloudflare/**.tf"
+      - "cloudflare/apps.auto.tfvars.json"
       - "cloudflare/.terraform.lock.hcl"
       - ".github/workflows/cloudflare.yml"
   schedule:
@@ -29,7 +30,7 @@ jobs:
       TF_IN_AUTOMATION: "true"
       TF_INPUT: "false"
       TF_VAR_family_emails: ${{ secrets.CLOUDFLARE_FAMILY_EMAILS }}
-      TF_VAR_html_stuff_tunnel_secret: ${{ secrets.CLOUDFLARE_HTML_STUFF_TUNNEL_SECRET }}
+      TF_VAR_tunnel_secrets: '{"html-stuff":"${{ secrets.CLOUDFLARE_HTML_STUFF_TUNNEL_SECRET }}"}'
       TF_VAR_state_passphrase: ${{ secrets.TOFU_STATE_PASSPHRASE }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -55,24 +56,9 @@ jobs:
 
       - run: tofu init
 
-      - name: Bootstrap the existing Access application
-        if: hashFiles('cloudflare/terraform.tfstate') == ''
+      - name: Require committed encrypted state
         run: |
-          set -euo pipefail
-          app_id="$(
-            curl --fail-with-body --silent --show-error \
-              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              'https://api.cloudflare.com/client/v4/accounts/7c1219e69201df160c85fc5e030efe36/access/apps' |
-              jq -er '
-                [.result[] | select(.domain == "fotos.igorbedesqui.com")] |
-                if length == 1 then .[0].id
-                else error("expected exactly one family photos Access application")
-                end
-              '
-          )"
-          tofu import \
-            cloudflare_zero_trust_access_application.family_photos \
-            "accounts/7c1219e69201df160c85fc5e030efe36/${app_id}"
+          test -s terraform.tfstate
 
       - name: Plan
         id: plan
@@ -87,6 +73,23 @@ jobs:
             2) echo "changes=true" >> "${GITHUB_OUTPUT}" ;;
             *) exit "${status}" ;;
           esac
+
+      - name: Reject destructive plans
+        run: |
+          set -euo pipefail
+          tofu show -json cloudflare.tfplan > cloudflare.tfplan.json
+          destructive="$(
+            jq '[
+              .resource_changes[]? |
+              select(.change.actions | index("delete")) |
+              .address
+            ]' cloudflare.tfplan.json
+          )"
+          if [[ "${destructive}" != "[]" ]]; then
+            echo "Refusing a plan that deletes or replaces Cloudflare resources:" >&2
+            jq -r '.[]' <<< "${destructive}" >&2
+            exit 1
+          fi
 
       - name: Report drift
         if: github.event_name == 'schedule' && steps.plan.outputs.changes == 'true'
@@ -106,12 +109,18 @@ jobs:
         if: github.event_name != 'schedule'
         run: tofu output
 
-      - name: Commit encrypted state
+      - name: Write applied runtime bindings
+        if: github.event_name != 'schedule'
+        run: tofu output -json runtime_bindings > runtime-bindings.json
+
+      - name: Commit encrypted state and applied bindings
         if: github.event_name != 'schedule'
         working-directory: .
         run: |
           set -euo pipefail
-          git add cloudflare/terraform.tfstate
+          git add \
+            cloudflare/runtime-bindings.json \
+            cloudflare/terraform.tfstate
           if git diff --cached --quiet; then
             exit 0
           fi
