@@ -84,10 +84,14 @@
     let
       # get git revision for configuration tracking
       flakeRevision = self.rev or self.dirtyRev or "unknown";
+      tailnetApps = import ./system/tailnet-apps.nix {
+        inherit (inputs.nixpkgs) lib;
+        root = ./.;
+      };
 
       mkDarwinSystem = hostModule: inputs.nix-darwin.lib.darwinSystem {
         specialArgs = {
-          inherit inputs;
+          inherit inputs tailnetApps;
           hostSystem = "aarch64-darwin";
           headMode = "graphical";
           inherit (inputs.nixpkgs.lib) systems;
@@ -203,7 +207,7 @@
         nixosConfigurations = {
           "htz-relay" = inputs.nixpkgs.lib.nixosSystem {
             specialArgs = {
-              inherit inputs;
+              inherit inputs tailnetApps;
               hostSystem = "x86_64-linux";
               headMode = "headless";
             };
@@ -241,7 +245,7 @@
 
           "gru-relay" = inputs.nixpkgs.lib.nixosSystem {
             specialArgs = {
-              inherit inputs;
+              inherit inputs tailnetApps;
               hostSystem = "x86_64-linux";
               headMode = "headless";
             };
@@ -277,7 +281,7 @@
 
           "lgo-z2e" = inputs.nixpkgs.lib.nixosSystem {
             specialArgs = {
-              inherit inputs;
+              inherit inputs tailnetApps;
               hostSystem = "x86_64-linux";
               headMode = "graphical";
             };

@@ -88,37 +88,25 @@ let
   };
 in
 {
-  my.tailnetRegistry.services = {
+  my.tailnetRegistry.providers = {
     files = {
-      title = "files";
-      description = "read-only commonplace file browser";
       target = "http://127.0.0.1:3925";
       scheme = "https";
       port = 3925;
       healthPath = "/";
-      access.tailnet = "owner";
-      tailscaleService.enable = true;
     };
 
-    gallery = {
-      title = "family photos";
-      description = "read-only household photo gallery";
+    photos = {
       target = "http://127.0.0.1:3923";
       scheme = "https";
       port = 3923;
       path = "/gallery/";
       healthPath = "/gallery/";
-      access = {
-        tailnet = "family";
-        cloudflare = "family";
-      };
       adoptExisting = true;
-      tailscaleService = {
-        enable = true;
-        name = "photos";
-      };
     };
+  };
 
+  my.tailnetRegistry.services = {
     backup-health = {
       title = "backrest";
       description = "backup console reachable; backup outcome is not yet reported";

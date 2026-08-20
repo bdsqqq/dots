@@ -16,16 +16,12 @@ in
   };
 
   config = {
-    my.tailnetRegistry.services.html-stuff = {
-      title = "html stuff";
-      description = "generated documents and visual artifacts";
+    my.tailnetRegistry.providers.html-stuff = {
       target = "http://127.0.0.1:8766";
       scheme = "http";
       port = 8765;
       healthPath = "/";
-      access.tailnet = "owner";
       adoptExisting = true;
-      tailscaleService.enable = true;
     };
 
     home-manager.users.bdsqqq = { config, lib, ... }: {
