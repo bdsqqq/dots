@@ -28,6 +28,7 @@ in
     ../../system/fonts.nix
     ../../system/auto-upgrade.nix
     ../../system/o11y
+    ../../system/t3-code-server.nix
     ../../system/syncthing.nix
     ../../system/audio.nix
     ../../system/bluetooth.nix
