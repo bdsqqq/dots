@@ -138,7 +138,7 @@ jobs:
               continue
             fi
 
-            description="dots:connector:${trust}"
+            description="dots-connector-${trust}"
             keys_url="https://api.tailscale.com/api/v2/tailnet/${tailnet}/keys"
             keys="$(
               curl --fail-with-body --silent --show-error \
