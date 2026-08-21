@@ -15,6 +15,17 @@ variable "family_emails" {
   }
 }
 
+variable "owner_email" {
+  description = "Private identity allowed through owner-only Access policies."
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.owner_email)) > 0
+    error_message = "An owner identity is required."
+  }
+}
+
 variable "apps" {
   description = "Generated publication intent from app-colocated declarations."
   type = map(object({

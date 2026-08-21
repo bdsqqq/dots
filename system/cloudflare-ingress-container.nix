@@ -14,18 +14,23 @@ let
   containerAddress = connector: "10.233.${toString connector.networkId}.2";
   authSecretName = trust: "cloudflare-connector-${trust}-tailscale-auth-key";
   appSecretName = name: "cloudflare-tunnel-${name}";
+  credentialPath = name: inputs.self + "/secrets/cloudflare/${name}.yaml";
+  readyApps = lib.filterAttrs
+    (name: app:
+      app.cloudflare != null
+      && builtins.hasAttr name runtimeBindings
+      && builtins.pathExists (credentialPath name))
+    tailnetApps.catalog;
   declaredAppsFor = trust:
     lib.filterAttrs
       (_: app:
-        app.cloudflare != null
-        && app.cloudflare.connectorTrust == trust)
-      tailnetApps.catalog;
+        app.cloudflare.connectorTrust == trust)
+      readyApps;
   appsFor = trust:
     lib.mapAttrs
       (name: app:
         let
-          binding = runtimeBindings.${name} or
-            (throw "cloudflare app ${name} has no applied runtime binding");
+          binding = runtimeBindings.${name};
           serviceHost = "${app.tailnet.service.name}.${cfg.tailnetDnsSuffix}";
         in
         {
@@ -41,7 +46,6 @@ let
           };
         })
       (declaredAppsFor trust);
-  publishedApps = lib.filterAttrs (_: app: app.cloudflare != null) tailnetApps.catalog;
   tunnelConfig = name: app:
     pkgs.writeText "cloudflare-ingress-${name}.json" (builtins.toJSON {
       tunnel = app.tunnel.id;
@@ -125,12 +129,12 @@ let
     '';
   appSecrets = lib.mapAttrs'
     (name: _: lib.nameValuePair (appSecretName name) {
-      sopsFile = inputs.self + "/secrets/cloudflare/${name}.yaml";
+      sopsFile = credentialPath name;
       key = "credential";
       owner = "root";
       mode = "0400";
     })
-    publishedApps;
+    readyApps;
   authSecrets = lib.mapAttrs'
     (trust: _: lib.nameValuePair (authSecretName trust) {
       sopsFile = inputs.self + "/secrets/tailscale/connectors/${trust}.yaml";
