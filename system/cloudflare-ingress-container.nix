@@ -5,34 +5,43 @@ let
   runtimeBindings = builtins.fromJSON (
     builtins.readFile ../cloudflare/runtime-bindings.json
   );
-  declaredApps = lib.filterAttrs
-    (_: app:
-      app.cloudflare != null
-      && app.cloudflare.connectorTrust == cfg.trustClass)
-    tailnetApps.catalog;
-  apps = lib.mapAttrs
-    (name: app:
-      let
-        binding = runtimeBindings.${name} or
-          (throw "cloudflare app ${name} has no applied runtime binding");
-        serviceHost = "${app.tailnet.service.name}.${cfg.tailnetDnsSuffix}";
-      in
-      {
-        tunnel.id = binding.tunnelId;
-        route = {
-          inherit (app.cloudflare) hostname;
-          service = "https://${serviceHost}";
-          originServerName = serviceHost;
-        };
-        access = {
-          audienceTag = binding.accessAudience;
-          teamName = binding.accountTag;
-        };
-      })
-    declaredApps;
-  containerAddress = "10.233.2.2";
-  hostAddress = "10.233.2.1";
   tailscalePackage = pkgs.unstable.tailscale;
+  containerName = trust:
+    if trust == "shared" then "cloudflare-ingress" else "cloudflare-ingress-${trust}";
+  bridgeName = trust:
+    if trust == "shared" then "br-cloudflare" else "br-cf-${trust}";
+  hostAddress = connector: "10.233.${toString connector.networkId}.1";
+  containerAddress = connector: "10.233.${toString connector.networkId}.2";
+  authSecretName = trust: "cloudflare-connector-${trust}-tailscale-auth-key";
+  appSecretName = name: "cloudflare-tunnel-${name}";
+  declaredAppsFor = trust:
+    lib.filterAttrs
+      (_: app:
+        app.cloudflare != null
+        && app.cloudflare.connectorTrust == trust)
+      tailnetApps.catalog;
+  appsFor = trust:
+    lib.mapAttrs
+      (name: app:
+        let
+          binding = runtimeBindings.${name} or
+            (throw "cloudflare app ${name} has no applied runtime binding");
+          serviceHost = "${app.tailnet.service.name}.${cfg.tailnetDnsSuffix}";
+        in
+        {
+          tunnel.id = binding.tunnelId;
+          route = {
+            inherit (app.cloudflare) hostname;
+            service = "https://${serviceHost}";
+            originServerName = serviceHost;
+          };
+          access = {
+            audienceTag = binding.accessAudience;
+            teamName = binding.accountTag;
+          };
+        })
+      (declaredAppsFor trust);
+  publishedApps = lib.filterAttrs (_: app: app.cloudflare != null) tailnetApps.catalog;
   tunnelConfig = name: app:
     pkgs.writeText "cloudflare-ingress-${name}.json" (builtins.toJSON {
       tunnel = app.tunnel.id;
@@ -114,7 +123,6 @@ let
       wait -n "$connector_pid" "$watchdog_pid"
       exit $?
     '';
-  appSecretName = name: "cloudflare-tunnel-${name}";
   appSecrets = lib.mapAttrs'
     (name: _: lib.nameValuePair (appSecretName name) {
       sopsFile = inputs.self + "/secrets/cloudflare/${name}.yaml";
@@ -122,111 +130,67 @@ let
       owner = "root";
       mode = "0400";
     })
-    apps;
-  appSecretMounts = lib.mapAttrs'
-    (name: _: lib.nameValuePair "/run/secrets/cloudflare-tunnel-${name}.json" {
-      hostPath = config.sops.secrets.${appSecretName name}.path;
-      isReadOnly = true;
+    publishedApps;
+  authSecrets = lib.mapAttrs'
+    (trust: _: lib.nameValuePair (authSecretName trust) {
+      sopsFile = inputs.self + "/secrets/tailscale/connectors/${trust}.yaml";
+      key = "authKey";
+      owner = "root";
+      mode = "0400";
     })
-    apps;
-  appServices = lib.mapAttrs'
-    (name: app: lib.nameValuePair "cloudflare-ingress-${name}" {
-      description = "Cloudflare ingress for ${name} through a least-privilege tailnet identity";
-      wantedBy = [ "multi-user.target" ];
-      requires = [ "tailscaled-autoconnect.service" ];
-      wants = [ "network-online.target" ];
-      after = [
-        "network-online.target"
-        "tailscaled-autoconnect.service"
-      ];
-      serviceConfig = {
-        DynamicUser = true;
-        LoadCredential = "tunnel.json:/run/secrets/cloudflare-tunnel-${name}.json";
-        ExecStart = cloudflaredWithOriginWatchdog name app;
-        Restart = "always";
-        RestartSec = "5s";
-        NoNewPrivileges = true;
-        PrivateTmp = true;
-        ProtectHome = true;
-        ProtectSystem = "strict";
-      };
-    })
-    apps;
-in
-{
-  options.my.cloudflareIngress = {
-    enable = lib.mkEnableOption "an isolated Cloudflare-to-tailnet connector";
-
-    connectorName = lib.mkOption {
-      type = lib.types.strMatching "[a-z0-9][a-z0-9-]{0,62}";
-      description = "Unique Tailscale hostname for this connector.";
-    };
-
-    externalInterface = lib.mkOption {
-      type = lib.types.str;
-      description = "Host interface used to NAT the connector container.";
-    };
-
-    tailscaleAuthKeyFile = lib.mkOption {
-      type = lib.types.path;
-      description = "Secret Tailscale auth key scoped to tag:cf-ingress.";
-    };
-
-    trustClass = lib.mkOption {
-      type = lib.types.strMatching "[a-z0-9][a-z0-9-]{0,63}";
-      description = "App-declared connector trust class served by this relay.";
-    };
-
-    tailnetDnsSuffix = lib.mkOption {
-      type = lib.types.str;
-      default = "tail1543a7.ts.net";
-      description = "Stable MagicDNS suffix used by portable Tailscale Services.";
-    };
-  };
-
-  config = lib.mkIf cfg.enable {
-    assertions = [{
-      assertion = apps != { };
-      message = "Cloudflare ingress trust class ${cfg.trustClass} has no published apps";
-    }];
-
-    sops.secrets = {
-      tailscale_cf_ingress_auth_key = {
-        owner = "root";
-        mode = "0400";
-      };
-    } // appSecrets;
-
-    networking.bridges.br-cloudflare.interfaces = [ ];
-    networking.interfaces.br-cloudflare.ipv4.addresses = [
-      {
-        address = hostAddress;
-        prefixLength = 24;
-      }
-    ];
-    networking.nat = {
-      enable = true;
-      externalInterface = lib.mkDefault cfg.externalInterface;
-      internalInterfaces = [ "br-cloudflare" ];
-    };
-
-    containers.cloudflare-ingress = {
+    cfg.connectors;
+  appSecretMounts = apps:
+    lib.mapAttrs'
+      (name: _: lib.nameValuePair "/run/secrets/cloudflare-tunnel-${name}.json" {
+        hostPath = config.sops.secrets.${appSecretName name}.path;
+        isReadOnly = true;
+      })
+      apps;
+  appServices = apps:
+    lib.mapAttrs'
+      (name: app: lib.nameValuePair "cloudflare-ingress-${name}" {
+        description = "Cloudflare ingress for ${name} through a least-privilege tailnet identity";
+        wantedBy = [ "multi-user.target" ];
+        requires = [ "tailscaled-autoconnect.service" ];
+        wants = [ "network-online.target" ];
+        after = [
+          "network-online.target"
+          "tailscaled-autoconnect.service"
+        ];
+        serviceConfig = {
+          DynamicUser = true;
+          LoadCredential = "tunnel.json:/run/secrets/cloudflare-tunnel-${name}.json";
+          ExecStart = cloudflaredWithOriginWatchdog name app;
+          Restart = "always";
+          RestartSec = "5s";
+          NoNewPrivileges = true;
+          PrivateTmp = true;
+          ProtectHome = true;
+          ProtectSystem = "strict";
+        };
+      })
+      apps;
+  mkContainer = trust: connector:
+    let
+      apps = appsFor trust;
+    in
+    {
       autoStart = true;
       privateNetwork = true;
-      hostBridge = "br-cloudflare";
-      inherit hostAddress;
-      localAddress = "${containerAddress}/24";
+      hostBridge = bridgeName trust;
+      hostAddress = hostAddress connector;
+      localAddress = "${containerAddress connector}/24";
       enableTun = true;
       bindMounts = {
         "/run/secrets/tailscale-auth-key" = {
-          hostPath = cfg.tailscaleAuthKeyFile;
+          hostPath = config.sops.secrets.${authSecretName trust}.path;
           isReadOnly = true;
         };
-      } // appSecretMounts;
+      } // appSecretMounts apps;
 
       config = { pkgs, ... }: {
         networking = {
-          hostName = cfg.connectorName;
+          hostName = connector.connectorName;
           useHostResolvConf = false;
           nameservers = [
             "100.100.100.100"
@@ -240,15 +204,91 @@ in
           authKeyFile = "/run/secrets/tailscale-auth-key";
           extraUpFlags = [
             "--accept-dns=true"
-            "--advertise-tags=${tailnetApps.connectorTags.${cfg.trustClass}}"
-            "--hostname=${cfg.connectorName}"
+            "--advertise-tags=${tailnetApps.connectorTags.${trust}}"
+            "--hostname=${connector.connectorName}"
           ];
         };
 
-        systemd.services = appServices;
+        systemd.services = appServices apps;
 
         system.stateVersion = "26.05";
       };
     };
+  connectorType = lib.types.submodule {
+    options = {
+      connectorName = lib.mkOption {
+        type = lib.types.strMatching "[a-z0-9][a-z0-9-]{0,62}";
+        description = "Unique Tailscale hostname for this trust-class connector.";
+      };
+
+      networkId = lib.mkOption {
+        type = lib.types.ints.between 2 254;
+        description = "Third octet of the connector's isolated 10.233.x.0/24 network.";
+      };
+    };
+  };
+in
+{
+  options.my.cloudflareIngress = {
+    enable = lib.mkEnableOption "isolated Cloudflare-to-tailnet connectors";
+
+    externalInterface = lib.mkOption {
+      type = lib.types.str;
+      description = "Host interface used to NAT connector containers.";
+    };
+
+    connectors = lib.mkOption {
+      type = lib.types.attrsOf connectorType;
+      default = { };
+      description = "Host participation in app-declared connector trust classes.";
+    };
+
+    tailnetDnsSuffix = lib.mkOption {
+      type = lib.types.str;
+      default = "tail1543a7.ts.net";
+      description = "Stable MagicDNS suffix used by portable Tailscale Services.";
+    };
+  };
+
+  config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.connectors != { };
+        message = "Cloudflare ingress requires at least one connector trust class";
+      }
+      {
+        assertion = builtins.length (lib.attrValues (lib.mapAttrs (_: value: value.networkId) cfg.connectors))
+          == builtins.length (lib.unique (lib.attrValues (lib.mapAttrs (_: value: value.networkId) cfg.connectors)));
+        message = "Cloudflare ingress connector network IDs must be unique";
+      }
+      {
+        assertion = lib.all (trust: builtins.hasAttr trust tailnetApps.connectorTags)
+          (builtins.attrNames cfg.connectors);
+        message = "Cloudflare ingress connector trust classes must have generated Tailscale tags";
+      }
+    ];
+
+    sops.secrets = authSecrets // appSecrets;
+
+    networking.bridges = lib.mapAttrs'
+      (trust: _: lib.nameValuePair (bridgeName trust) { interfaces = [ ]; })
+      cfg.connectors;
+    networking.interfaces = lib.mapAttrs'
+      (trust: connector: lib.nameValuePair (bridgeName trust) {
+        ipv4.addresses = [{
+          address = hostAddress connector;
+          prefixLength = 24;
+        }];
+      })
+      cfg.connectors;
+    networking.nat = {
+      enable = true;
+      externalInterface = lib.mkDefault cfg.externalInterface;
+      internalInterfaces = map bridgeName (builtins.attrNames cfg.connectors);
+    };
+
+    containers = lib.mapAttrs'
+      (trust: connector: lib.nameValuePair (containerName trust) (mkContainer trust connector))
+      cfg.connectors;
   };
 }

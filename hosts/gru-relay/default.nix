@@ -49,10 +49,11 @@ in
   my.primaryUser = "bdsqqq";
   my.cloudflareIngress = {
     enable = true;
-    connectorName = "cf-ingress-gru";
     externalInterface = "eth0";
-    tailscaleAuthKeyFile = config.sops.secrets.tailscale_cf_ingress_auth_key.path;
-    trustClass = "shared";
+    connectors.shared = {
+      connectorName = "cf-ingress-gru";
+      networkId = 2;
+    };
   };
   services.hwmon-metrics.enable = true;
 
