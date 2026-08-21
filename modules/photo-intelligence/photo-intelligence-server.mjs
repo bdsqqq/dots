@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, watch as watchFileSystem } from "node:fs";
 import { chmod, mkdir, readdir, stat } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -72,10 +72,14 @@ function calendarDate(path, mtimeMs) {
       date.getUTCMonth() === Number(month) - 1 &&
       date.getUTCDate() === Number(day)
     ) {
-      return `${year}-${month}-${day}`;
+      return { value: `${year}-${month}-${day}`, source: "path" };
     }
   }
-  return new Date(mtimeMs).toISOString().slice(0, 10);
+  return { value: new Date(mtimeMs).toISOString().slice(0, 10), source: "file-mtime" };
+}
+
+function opaqueId(prefix) {
+  return `${prefix}_${randomBytes(18).toString("base64url")}`;
 }
 
 function publicPath(root, path) {
@@ -99,6 +103,7 @@ async function walk(root, directory, entries) {
     if (!MEDIA_EXTENSIONS.has(extension)) continue;
     const status = await stat(path, { bigint: true });
     const relativePath = publicPath(root, path);
+    const date = calendarDate(relativePath, Number(status.mtimeMs));
     entries.push({
       path: relativePath,
       name: entry.name,
@@ -107,7 +112,8 @@ async function walk(root, directory, entries) {
       mtimeMs: Number(status.mtimeMs),
       device: status.dev.toString(),
       inode: status.ino.toString(),
-      date: calendarDate(relativePath, Number(status.mtimeMs)),
+      date: date.value,
+      dateSource: date.source,
       type: VIDEO_EXTENSIONS.has(extension) ? "video" : "image",
     });
   }
@@ -134,16 +140,15 @@ export async function discoverMedia(root, sentinel = null) {
   return entries;
 }
 
-function migrate(db) {
+export function migrate(db) {
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
     PRAGMA busy_timeout = 5000;
   `);
   const version = Number(db.prepare("PRAGMA user_version").get().user_version);
-  if (version > 1) throw new Error(`catalog schema ${version} is newer than this server supports`);
-  if (version === 1) return;
-  transaction(db, () => db.exec(`
+  if (version > 2) throw new Error(`catalog schema ${version} is newer than this server supports`);
+  if (version === 0) transaction(db, () => db.exec(`
     CREATE TABLE IF NOT EXISTS sources (
       id INTEGER PRIMARY KEY,
       root TEXT NOT NULL UNIQUE,
@@ -224,11 +229,146 @@ function migrate(db) {
     CREATE INDEX IF NOT EXISTS jobs_runnable ON jobs(state, available_at, id);
     PRAGMA user_version = 1;
   `));
-  db.prepare(`
-    INSERT OR IGNORE INTO stage_specs
-      (stage, spec_key, adapter_version, model_digest, config_digest, schema_version)
-    VALUES ('content-hash', ?, 'node-crypto-sha256-v1', NULL, 'sha256', 1)
-  `).run(HASH_SPEC);
+  if (version < 2) transaction(db, () => {
+    const migratedAt = new Date().toISOString();
+    db.prepare(`
+      INSERT OR IGNORE INTO stage_specs
+        (stage, spec_key, adapter_version, model_digest, config_digest, schema_version)
+      VALUES ('content-hash', ?, 'node-crypto-sha256-v1', NULL, 'sha256', 1)
+    `).run(HASH_SPEC);
+    db.exec(`
+      ALTER TABLE assets ADD COLUMN media_id TEXT;
+      ALTER TABLE locations ADD COLUMN media_date_source TEXT;
+      ALTER TABLE locations ADD COLUMN media_date_observed_at TEXT;
+      ALTER TABLE stage_specs ADD COLUMN created_at TEXT;
+      ALTER TABLE artifacts ADD COLUMN input_key TEXT;
+      ALTER TABLE jobs ADD COLUMN input_key TEXT;
+      ALTER TABLE jobs ADD COLUMN lease_token TEXT;
+
+      CREATE TABLE pipeline_slots (
+        slot TEXT PRIMARY KEY,
+        stage TEXT NOT NULL,
+        stage_spec_id INTEGER NOT NULL REFERENCES stage_specs(id),
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE embedding_contracts (
+        stage_spec_id INTEGER PRIMARY KEY REFERENCES stage_specs(id),
+        element_type TEXT NOT NULL CHECK (element_type = 'float32-le'),
+        dimensions INTEGER NOT NULL CHECK (dimensions > 0),
+        created_at TEXT NOT NULL,
+        UNIQUE (stage_spec_id, element_type, dimensions)
+      ) STRICT;
+      CREATE TABLE embeddings (
+        asset_id INTEGER NOT NULL REFERENCES assets(id),
+        stage_spec_id INTEGER NOT NULL,
+        input_key TEXT NOT NULL CHECK (length(input_key) > 0),
+        element_type TEXT NOT NULL,
+        dimensions INTEGER NOT NULL,
+        vector BLOB NOT NULL CHECK (length(vector) = dimensions * 4),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (asset_id, stage_spec_id, input_key),
+        FOREIGN KEY (stage_spec_id, element_type, dimensions)
+          REFERENCES embedding_contracts(stage_spec_id, element_type, dimensions)
+      ) STRICT;
+    `);
+    const assignMediaId = db.prepare("UPDATE assets SET media_id = ? WHERE id = ?");
+    for (const asset of db.prepare("SELECT id FROM assets WHERE media_id IS NULL").all()) {
+      assignMediaId.run(opaqueId("med"), asset.id);
+    }
+    db.prepare(`
+      UPDATE locations SET media_date_source = 'legacy-path-or-mtime',
+        media_date_observed_at = ? WHERE media_date_source IS NULL
+    `).run(migratedAt);
+    db.prepare("UPDATE stage_specs SET created_at = ? WHERE created_at IS NULL").run(migratedAt);
+    db.exec(`
+      UPDATE artifacts SET input_key = input_fingerprint WHERE input_key IS NULL;
+      UPDATE jobs SET input_key = input_fingerprint WHERE input_key IS NULL;
+      UPDATE jobs SET state = 'queued', lease_owner = NULL, lease_expires_at = NULL
+        WHERE state = 'running';
+      UPDATE jobs SET lease_owner = NULL, lease_expires_at = NULL WHERE state != 'running';
+      CREATE UNIQUE INDEX assets_media_id ON assets(media_id);
+      CREATE UNIQUE INDEX artifacts_input_key
+        ON artifacts(asset_id, stage_spec_id, input_key);
+      CREATE UNIQUE INDEX jobs_location_input_key
+        ON jobs(location_id, stage_spec_id, input_key) WHERE location_id IS NOT NULL;
+      CREATE UNIQUE INDEX jobs_asset_input_key
+        ON jobs(asset_id, stage_spec_id, input_key) WHERE asset_id IS NOT NULL;
+      CREATE TRIGGER assets_require_media_id
+        BEFORE INSERT ON assets WHEN NEW.media_id IS NULL
+        BEGIN SELECT RAISE(ABORT, 'assets.media_id is required'); END;
+      CREATE TRIGGER assets_media_id_immutable
+        BEFORE UPDATE OF media_id ON assets
+        WHEN NEW.media_id IS NULL OR NEW.media_id != OLD.media_id
+        BEGIN SELECT RAISE(ABORT, 'assets.media_id is immutable'); END;
+      CREATE TRIGGER stage_specs_require_created_at
+        BEFORE INSERT ON stage_specs WHEN NEW.created_at IS NULL
+        BEGIN SELECT RAISE(ABORT, 'stage_specs.created_at is required'); END;
+      CREATE TRIGGER stage_specs_immutable_update
+        BEFORE UPDATE ON stage_specs
+        BEGIN SELECT RAISE(ABORT, 'stage specs are immutable'); END;
+      CREATE TRIGGER stage_specs_immutable_delete
+        BEFORE DELETE ON stage_specs
+        BEGIN SELECT RAISE(ABORT, 'stage specs are immutable'); END;
+      CREATE TRIGGER pipeline_slots_match_stage_insert
+        BEFORE INSERT ON pipeline_slots
+        WHEN NEW.stage != (SELECT stage FROM stage_specs WHERE id = NEW.stage_spec_id)
+        BEGIN SELECT RAISE(ABORT, 'pipeline slot stage mismatch'); END;
+      CREATE TRIGGER pipeline_slots_match_stage_update
+        BEFORE UPDATE ON pipeline_slots
+        WHEN NEW.stage != (SELECT stage FROM stage_specs WHERE id = NEW.stage_spec_id)
+        BEGIN SELECT RAISE(ABORT, 'pipeline slot stage mismatch'); END;
+      CREATE TRIGGER artifacts_require_input_key
+        BEFORE INSERT ON artifacts WHEN NEW.input_key IS NULL OR length(NEW.input_key) = 0
+        BEGIN SELECT RAISE(ABORT, 'artifacts.input_key is required'); END;
+      CREATE TRIGGER artifacts_input_key_immutable
+        BEFORE UPDATE OF input_key ON artifacts
+        WHEN NEW.input_key IS NULL OR length(NEW.input_key) = 0 OR NEW.input_key != OLD.input_key
+        BEGIN SELECT RAISE(ABORT, 'artifacts.input_key is immutable'); END;
+      CREATE TRIGGER jobs_require_input_key
+        BEFORE INSERT ON jobs WHEN NEW.input_key IS NULL OR length(NEW.input_key) = 0
+        BEGIN SELECT RAISE(ABORT, 'jobs.input_key is required'); END;
+      CREATE TRIGGER jobs_input_key_immutable
+        BEFORE UPDATE OF input_key ON jobs
+        WHEN NEW.input_key IS NULL OR length(NEW.input_key) = 0 OR NEW.input_key != OLD.input_key
+        BEGIN SELECT RAISE(ABORT, 'jobs.input_key is immutable'); END;
+      CREATE TRIGGER jobs_require_valid_lease_insert
+        BEFORE INSERT ON jobs WHEN
+          (NEW.state = 'running' AND
+            (NEW.lease_token IS NULL OR NEW.lease_owner IS NULL OR NEW.lease_expires_at IS NULL)) OR
+          (NEW.state != 'running' AND
+            (NEW.lease_token IS NOT NULL OR NEW.lease_owner IS NOT NULL OR NEW.lease_expires_at IS NOT NULL))
+        BEGIN SELECT RAISE(ABORT, 'job lease state is invalid'); END;
+      CREATE TRIGGER jobs_require_valid_lease_update
+        BEFORE UPDATE ON jobs WHEN
+          (NEW.state = 'running' AND
+            (NEW.lease_token IS NULL OR NEW.lease_owner IS NULL OR NEW.lease_expires_at IS NULL)) OR
+          (NEW.state != 'running' AND
+            (NEW.lease_token IS NOT NULL OR NEW.lease_owner IS NOT NULL OR NEW.lease_expires_at IS NOT NULL))
+        BEGIN SELECT RAISE(ABORT, 'job lease state is invalid'); END;
+      CREATE TRIGGER locations_require_date_provenance_insert
+        BEFORE INSERT ON locations
+        WHEN NEW.media_date_source IS NULL OR NEW.media_date_observed_at IS NULL
+        BEGIN SELECT RAISE(ABORT, 'location date provenance is required'); END;
+      CREATE TRIGGER embeddings_immutable_update
+        BEFORE UPDATE ON embeddings
+        BEGIN SELECT RAISE(ABORT, 'embeddings are immutable'); END;
+      CREATE TRIGGER embeddings_immutable_delete
+        BEFORE DELETE ON embeddings
+        BEGIN SELECT RAISE(ABORT, 'embeddings are immutable'); END;
+      CREATE TRIGGER embedding_contracts_immutable_update
+        BEFORE UPDATE ON embedding_contracts
+        BEGIN SELECT RAISE(ABORT, 'embedding contracts are immutable'); END;
+      CREATE TRIGGER embedding_contracts_immutable_delete
+        BEFORE DELETE ON embedding_contracts
+        BEGIN SELECT RAISE(ABORT, 'embedding contracts are immutable'); END;
+    `);
+    const hashSpec = db.prepare("SELECT id FROM stage_specs WHERE spec_key = ?").get(HASH_SPEC);
+    db.prepare(`
+      INSERT INTO pipeline_slots (slot, stage, stage_spec_id, updated_at)
+      VALUES ('content-hash/current', 'content-hash', ?, ?)
+    `).run(hashSpec.id, migratedAt);
+    db.exec("PRAGMA user_version = 2");
+  });
 }
 
 function transaction(db, operation) {
@@ -255,15 +395,37 @@ export class Catalog {
         RETURNING id
       `).get(root, sentinel).id
     );
-    this.hashSpecId = Number(this.db.prepare("SELECT id FROM stage_specs WHERE spec_key = ?").get(HASH_SPEC).id);
     this.db.prepare(`
-      UPDATE jobs SET state = 'queued', lease_owner = NULL, lease_expires_at = NULL,
+      UPDATE jobs SET state = 'queued', lease_owner = NULL, lease_expires_at = NULL, lease_token = NULL,
         updated_at = ? WHERE state = 'running'
     `).run(new Date().toISOString());
   }
 
   close() {
     this.db.close();
+  }
+
+  currentHashSpecId() {
+    const spec = this.db.prepare(`
+      SELECT stage_specs.id, stage_specs.stage, stage_specs.spec_key AS specKey,
+        stage_specs.adapter_version AS adapterVersion, stage_specs.model_digest AS modelDigest,
+        stage_specs.config_digest AS configDigest, stage_specs.schema_version AS schemaVersion
+      FROM pipeline_slots
+      JOIN stage_specs ON stage_specs.id = pipeline_slots.stage_spec_id
+      WHERE pipeline_slots.slot = 'content-hash/current'
+    `).get();
+    if (
+      !spec ||
+      spec.stage !== "content-hash" ||
+      spec.specKey !== HASH_SPEC ||
+      spec.adapterVersion !== "node-crypto-sha256-v1" ||
+      spec.modelDigest !== null ||
+      spec.configDigest !== "sha256" ||
+      Number(spec.schemaVersion) !== 1
+    ) {
+      throw new Error("content-hash/current is unsupported by this worker");
+    }
+    return Number(spec.id);
   }
 
   scanStarted() {
@@ -283,6 +445,7 @@ export class Catalog {
   reconcile(entries) {
     const now = new Date().toISOString();
     return transaction(this.db, () => {
+      const hashSpecId = this.currentHashSpecId();
       const source = this.db.prepare("SELECT generation FROM sources WHERE id = ?").get(this.sourceId);
       const generation = Number(source.generation) + 1;
       const existingStatement = this.db.prepare(`
@@ -292,27 +455,32 @@ export class Catalog {
       const insertStatement = this.db.prepare(`
         INSERT INTO locations
           (source_id, path, name, size, mtime_ns, device, inode, input_fingerprint,
-           media_date, media_type, state, stable_observations, last_seen_generation)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'candidate', 1, ?)
+           media_date, media_type, state, stable_observations, last_seen_generation,
+           media_date_source, media_date_observed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'candidate', 1, ?, ?, ?)
       `);
       const updateStatement = this.db.prepare(`
         UPDATE locations SET name = ?, size = ?, mtime_ns = ?, device = ?, inode = ?,
           input_fingerprint = ?, media_date = ?, media_type = ?, state = ?,
-          stable_observations = ?, last_seen_generation = ?, missing_at = NULL, asset_id = ?
+          stable_observations = ?, last_seen_generation = ?, missing_at = NULL, asset_id = ?,
+          media_date_source = ?, media_date_observed_at = ?
         WHERE id = ?
       `);
       const enqueueStatement = this.db.prepare(`
         INSERT INTO jobs
-          (location_id, stage_spec_id, input_fingerprint, state, available_at, created_at, updated_at)
-        VALUES (?, ?, ?, 'queued', ?, ?, ?)
+          (location_id, stage_spec_id, input_fingerprint, input_key, state,
+           available_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)
         ON CONFLICT(location_id, stage_spec_id, input_fingerprint) DO UPDATE SET
           state = 'queued', attempts = 0, available_at = excluded.available_at,
-          lease_owner = NULL, lease_expires_at = NULL, last_error = NULL,
+          input_key = excluded.input_key, lease_owner = NULL, lease_expires_at = NULL,
+          lease_token = NULL, last_error = NULL,
           updated_at = excluded.updated_at
         WHERE jobs.state IN ('cancelled', 'failed', 'superseded')
       `);
       const supersedeStatement = this.db.prepare(`
-        UPDATE jobs SET state = 'superseded', updated_at = ?
+        UPDATE jobs SET state = 'superseded', lease_owner = NULL, lease_expires_at = NULL,
+          lease_token = NULL, updated_at = ?
         WHERE location_id = ? AND input_fingerprint != ? AND state IN ('queued', 'running')
       `);
 
@@ -337,7 +505,9 @@ export class Catalog {
             inputFingerprint,
             entry.date,
             entry.type,
-            generation
+            generation,
+            entry.dateSource,
+            now
           ).lastInsertRowid);
           state = "candidate";
           observations = 1;
@@ -361,12 +531,16 @@ export class Catalog {
             observations,
             generation,
             assetId,
+            entry.dateSource,
+            now,
             locationId
           );
         }
         if (state === "present") {
           present += 1;
-          if (assetId === null) enqueueStatement.run(locationId, this.hashSpecId, inputFingerprint, now, now, now);
+          if (assetId === null) {
+            enqueueStatement.run(locationId, hashSpecId, inputFingerprint, inputFingerprint, now, now, now);
+          }
         } else {
           candidates += 1;
         }
@@ -382,7 +556,8 @@ export class Catalog {
       `).run(now, this.sourceId, generation);
       for (const location of missing) {
         this.db.prepare(`
-          UPDATE jobs SET state = 'cancelled', updated_at = ?
+          UPDATE jobs SET state = 'cancelled', lease_owner = NULL, lease_expires_at = NULL,
+            lease_token = NULL, updated_at = ?
           WHERE location_id = ? AND state IN ('queued', 'running')
         `).run(now, location.id);
       }
@@ -396,15 +571,25 @@ export class Catalog {
 
   timeline() {
     const rows = this.db.prepare(`
-      SELECT path, name, media_date AS date, media_type AS type
-      FROM locations WHERE source_id = ? AND state = 'present'
+      SELECT locations.path, locations.name, locations.media_date AS date,
+        locations.media_type AS type, locations.media_date_source AS dateSource,
+        assets.media_id AS mediaId
+      FROM locations
+      LEFT JOIN assets ON assets.id = locations.asset_id
+      WHERE locations.source_id = ? AND locations.state = 'present'
       ORDER BY media_date DESC, path ASC
     `).all(this.sourceId);
     const groups = [];
     for (const row of rows) {
       const current = groups.at(-1);
       if (!current || current.date !== row.date) groups.push({ date: row.date, items: [] });
-      groups.at(-1).items.push({ name: row.name, path: row.path, type: row.type });
+      groups.at(-1).items.push({
+        mediaId: row.mediaId,
+        name: row.name,
+        path: row.path,
+        type: row.type,
+        dateSource: row.dateSource,
+      });
     }
     const source = this.db.prepare("SELECT last_success_at FROM sources WHERE id = ?").get(this.sourceId);
     return { generatedAt: source.last_success_at, itemCount: rows.length, groups };
@@ -431,78 +616,120 @@ export class Catalog {
   claimHashJob(owner = `pid-${process.pid}`) {
     return transaction(this.db, () => {
       const now = new Date().toISOString();
+      const hashSpecId = this.currentHashSpecId();
+      this.db.prepare(`
+        UPDATE jobs SET state = 'queued', lease_owner = NULL, lease_expires_at = NULL,
+          lease_token = NULL, updated_at = ?
+        WHERE state = 'running' AND lease_expires_at <= ?
+      `).run(now, now);
       const job = this.db.prepare(`
-        SELECT jobs.id, jobs.location_id AS locationId, jobs.input_fingerprint AS inputFingerprint,
+        SELECT jobs.id, jobs.location_id AS locationId, jobs.input_key AS inputKey,
           jobs.attempts, locations.path, locations.size, locations.mtime_ns AS mtimeNs,
           locations.device, locations.inode
         FROM jobs
         JOIN locations ON locations.id = jobs.location_id
         JOIN sources ON sources.id = locations.source_id
         WHERE jobs.state = 'queued' AND jobs.available_at <= ? AND locations.state = 'present'
-          AND jobs.input_fingerprint = locations.input_fingerprint AND sources.state = 'ready'
+          AND jobs.input_key = locations.input_fingerprint AND sources.state = 'ready'
+          AND jobs.stage_spec_id = ?
         ORDER BY jobs.id LIMIT 1
-      `).get(now);
+      `).get(now, hashSpecId);
       if (!job) return null;
+      const leaseToken = opaqueId("lease");
       this.db.prepare(`
-        UPDATE jobs SET state = 'running', lease_owner = ?, lease_expires_at = ?, updated_at = ?
+        UPDATE jobs SET state = 'running', lease_owner = ?, lease_expires_at = ?,
+          lease_token = ?, updated_at = ?
         WHERE id = ?
-      `).run(owner, new Date(Date.now() + 30 * 60 * 1000).toISOString(), now, job.id);
-      return { ...job, id: Number(job.id), locationId: Number(job.locationId), size: Number(job.size) };
+      `).run(owner, new Date(Date.now() + 30 * 60 * 1000).toISOString(), leaseToken, now, job.id);
+      return {
+        ...job,
+        id: Number(job.id),
+        locationId: Number(job.locationId),
+        size: Number(job.size),
+        leaseToken,
+      };
     });
   }
 
   completeHash(job, digest) {
     const now = new Date().toISOString();
     return transaction(this.db, () => {
-      const location = this.db.prepare(`
-        SELECT state, input_fingerprint AS inputFingerprint FROM locations WHERE id = ?
-      `).get(job.locationId);
-      if (!location || location.state !== "present" || location.inputFingerprint !== job.inputFingerprint) {
+      const hashSpecId = this.currentHashSpecId();
+      const claimed = this.db.prepare(`
+        SELECT jobs.state, jobs.lease_token AS leaseToken, jobs.lease_expires_at AS leaseExpiresAt,
+          jobs.stage_spec_id AS stageSpecId, jobs.location_id AS locationId,
+          jobs.input_key AS inputKey, locations.state AS locationState,
+          locations.input_fingerprint AS locationInputKey, locations.size
+        FROM jobs JOIN locations ON locations.id = jobs.location_id
+        WHERE jobs.id = ?
+      `).get(job.id);
+      if (
+        !claimed ||
+        claimed.state !== "running" ||
+        claimed.leaseToken !== job.leaseToken ||
+        claimed.leaseExpiresAt <= now ||
+        Number(claimed.stageSpecId) !== hashSpecId
+      ) return false;
+      if (claimed.locationState !== "present" || claimed.locationInputKey !== claimed.inputKey) {
         this.db.prepare(`
-          UPDATE jobs SET state = 'superseded', lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
-          WHERE id = ?
-        `).run(now, job.id);
+          UPDATE jobs SET state = 'superseded', lease_owner = NULL, lease_expires_at = NULL,
+            lease_token = NULL, updated_at = ?
+          WHERE id = ? AND lease_token = ?
+        `).run(now, job.id, job.leaseToken);
         return false;
       }
       this.db.prepare(`
-        INSERT OR IGNORE INTO assets (hash_algorithm, content_hash, size, created_at)
-        VALUES ('sha256', ?, ?, ?)
-      `).run(digest, job.size, now);
+        INSERT OR IGNORE INTO assets (hash_algorithm, content_hash, size, created_at, media_id)
+        VALUES ('sha256', ?, ?, ?, ?)
+      `).run(digest, claimed.size, now, opaqueId("med"));
       const asset = this.db.prepare(`
         SELECT id FROM assets WHERE hash_algorithm = 'sha256' AND content_hash = ? AND size = ?
-      `).get(digest, job.size);
-      this.db.prepare("UPDATE locations SET asset_id = ? WHERE id = ?").run(asset.id, job.locationId);
+      `).get(digest, claimed.size);
+      this.db.prepare("UPDATE locations SET asset_id = ? WHERE id = ?").run(asset.id, claimed.locationId);
       this.db.prepare(`
         UPDATE jobs SET state = 'complete', lease_owner = NULL, lease_expires_at = NULL,
-          last_error = NULL, updated_at = ? WHERE id = ?
-      `).run(now, job.id);
+          lease_token = NULL, last_error = NULL, updated_at = ?
+        WHERE id = ? AND lease_token = ?
+      `).run(now, job.id, job.leaseToken);
       return true;
     });
   }
 
   supersedeJob(job) {
+    const now = new Date().toISOString();
     this.db.prepare(`
       UPDATE jobs SET state = 'superseded', lease_owner = NULL, lease_expires_at = NULL,
-        updated_at = ? WHERE id = ?
-    `).run(new Date().toISOString(), job.id);
+        lease_token = NULL, updated_at = ?
+      WHERE id = ? AND state = 'running' AND lease_token = ? AND lease_expires_at > ?
+    `).run(now, job.id, job.leaseToken, now);
   }
 
   failJob(job, error) {
-    const attempts = Number(job.attempts) + 1;
-    const failed = attempts >= MAX_JOB_ATTEMPTS;
-    const delay = Math.min(60 * 60 * 1000, 1000 * (2 ** attempts));
-    this.db.prepare(`
-      UPDATE jobs SET state = ?, attempts = ?, available_at = ?, lease_owner = NULL,
-        lease_expires_at = NULL, last_error = ?, updated_at = ?
-      WHERE id = ? AND state = 'running'
-    `).run(
-      failed ? "failed" : "queued",
-      attempts,
-      new Date(Date.now() + delay).toISOString(),
-      String(error?.message ?? error).slice(0, 1000),
-      new Date().toISOString(),
-      job.id
-    );
+    return transaction(this.db, () => {
+      const now = new Date().toISOString();
+      const claimed = this.db.prepare(`
+        SELECT attempts FROM jobs
+        WHERE id = ? AND state = 'running' AND lease_token = ? AND lease_expires_at > ?
+      `).get(job.id, job.leaseToken, now);
+      if (!claimed) return false;
+      const attempts = Number(claimed.attempts) + 1;
+      const failed = attempts >= MAX_JOB_ATTEMPTS;
+      const delay = Math.min(60 * 60 * 1000, 1000 * (2 ** attempts));
+      this.db.prepare(`
+        UPDATE jobs SET state = ?, attempts = ?, available_at = ?, lease_owner = NULL,
+          lease_expires_at = NULL, lease_token = NULL, last_error = ?, updated_at = ?
+        WHERE id = ? AND lease_token = ?
+      `).run(
+        failed ? "failed" : "queued",
+        attempts,
+        new Date(Date.now() + delay).toISOString(),
+        String(error?.message ?? error).slice(0, 1000),
+        now,
+        job.id,
+        job.leaseToken
+      );
+      return true;
+    });
   }
 }
 
@@ -524,7 +751,7 @@ export async function runHashJob(catalog, job, signal) {
     device: before.dev.toString(),
     inode: before.ino.toString(),
   };
-  if (fingerprint(observed) !== job.inputFingerprint) {
+  if (fingerprint(observed) !== job.inputKey) {
     catalog.supersedeJob(job);
     return false;
   }
@@ -536,7 +763,7 @@ export async function runHashJob(catalog, job, signal) {
     device: after.dev.toString(),
     inode: after.ino.toString(),
   };
-  if (fingerprint(afterObserved) !== job.inputFingerprint) {
+  if (fingerprint(afterObserved) !== job.inputKey) {
     catalog.supersedeJob(job);
     return false;
   }
