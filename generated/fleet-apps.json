@@ -1,6 +1,12 @@
 {
   "files": {
-    "cloudflare": null,
+    "cloudflare": {
+      "accessName": "owner files",
+      "audience": "owner",
+      "connectorTrust": "files",
+      "hostname": "files.igorbedesqui.com",
+      "tunnelName": "files"
+    },
     "description": "read-only commonplace file browser",
     "id": "files",
     "path": "/",

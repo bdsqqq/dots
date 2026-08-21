@@ -13,5 +13,11 @@
     };
   };
 
-  cloudflare = null;
+  cloudflare = {
+    hostname = "files.igorbedesqui.com";
+    audience = "owner";
+    connectorTrust = "files";
+    tunnelName = "files";
+    accessName = "owner files";
+  };
 }
