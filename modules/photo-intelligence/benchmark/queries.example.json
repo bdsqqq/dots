@@ -1,0 +1,14 @@
+{
+  "queries": [
+    {
+      "id": "keyboard",
+      "text": "keyboard",
+      "relevantAssetIds": []
+    },
+    {
+      "id": "blue-wall-pink-hair",
+      "text": "blue wall pink hair",
+      "relevantAssetIds": []
+    }
+  ]
+}

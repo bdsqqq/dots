@@ -204,6 +204,12 @@
         apps.generate-tailnet-artifacts.program =
           "${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts";
 
+        packages.photo-semantic-benchmark =
+          import ./modules/photo-intelligence/benchmark { inherit pkgs; };
+
+        apps.photo-semantic-benchmark.program =
+          "${config.packages.photo-semantic-benchmark}/bin/photo-semantic-benchmark";
+
         checks.tailnet-artifacts = pkgs.runCommand "tailnet-artifacts-check" { } ''
           ${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts \
             --check \

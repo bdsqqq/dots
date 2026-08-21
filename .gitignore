@@ -6,3 +6,5 @@ user/media-feeds/*.sqlite
 *.tfplan
 *.tfstate.backup
 .terraform.tfstate.lock.info
+__pycache__/
+*.py[cod]
