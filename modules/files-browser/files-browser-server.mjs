@@ -227,6 +227,8 @@ export function startBackend(config, generation, snapshot, spawnProcess = spawn)
       "127.0.0.1",
       "-p",
       String(port),
+      "--rproxy",
+      "-1",
       "--hist",
       history,
       "--grid",
