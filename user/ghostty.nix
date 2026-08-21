@@ -165,7 +165,11 @@ let
 
 in lib.mkIf (headMode == "graphical") (if isDarwin then {
   homebrew.casks = [ "ghostty" ];
-  home-manager.users.bdsqqq.xdg.configFile = ghosttyFiles;
+  home-manager.users.bdsqqq = {
+    home.sessionVariables.TERMINFO_DIRS =
+      "/Applications/Ghostty.app/Contents/Resources/terminfo:/usr/share/terminfo";
+    xdg.configFile = ghosttyFiles;
+  };
 } else if isLinux then {
   home-manager.users.bdsqqq.home.packages = [ pkgs.ghostty ];
   home-manager.users.bdsqqq.xdg.configFile = ghosttyFiles;
