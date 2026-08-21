@@ -4,26 +4,29 @@ on:
   push:
     branches: [main]
     paths:
+      - .sops.yaml
+      - tailscale/capabilities.json
       - tailscale/policy.hujson
       - tailscale/services.json
+      - secrets/tailscale/connectors/*.yaml
       - .github/workflows/tailscale-policy.yml
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 concurrency:
   group: tailscale-policy
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   apply:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
+
+      - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
 
       - name: Reject stale revisions
         run: |
@@ -120,3 +123,102 @@ jobs:
         run: |
           echo "The Tailscale identity needs the services write scope." >&2
           exit 1
+
+      - name: Provision missing connector auth keys
+        env:
+          TS_TAILNET: ${{ vars.TS_TAILNET }}
+        run: |
+          set -euo pipefail
+          tailnet="$(jq -rn --arg value "${TS_TAILNET}" '$value | @uri')"
+          created=()
+
+          while IFS=$'\t' read -r trust tag; do
+            secret="secrets/tailscale/connectors/${trust}.yaml"
+            if [[ -s "${secret}" ]]; then
+              continue
+            fi
+
+            description="dots:connector:${trust}"
+            keys_url="https://api.tailscale.com/api/v2/tailnet/${tailnet}/keys"
+            keys="$(
+              curl --fail-with-body --silent --show-error \
+                -H "Authorization: Bearer ${TS_API_TOKEN}" \
+                "${keys_url}"
+            )"
+
+            while read -r key_id; do
+              metadata="$(
+                curl --fail-with-body --silent --show-error \
+                  -H "Authorization: Bearer ${TS_API_TOKEN}" \
+                  "${keys_url}/${key_id}"
+              )"
+              if jq -e \
+                --arg description "${description}" \
+                --arg tag "${tag}" \
+                '.description == $description and
+                 (.capabilities.devices.create.tags // []) == [$tag]' \
+                <<< "${metadata}" >/dev/null
+              then
+                curl --fail-with-body --silent --show-error \
+                  -X DELETE \
+                  -H "Authorization: Bearer ${TS_API_TOKEN}" \
+                  "${keys_url}/${key_id}"
+              fi
+            done < <(jq -r '.keys[].id' <<< "${keys}")
+
+            auth_key="$(
+              jq -n \
+                --arg description "${description}" \
+                --arg tag "${tag}" \
+                '{
+                  capabilities: {
+                    devices: {
+                      create: {
+                        reusable: true,
+                        ephemeral: false,
+                        preauthorized: true,
+                        tags: [$tag]
+                      }
+                    }
+                  },
+                  expirySeconds: 7776000,
+                  description: $description
+                }' |
+                curl --fail-with-body --silent --show-error \
+                  -X POST \
+                  -H "Authorization: Bearer ${TS_API_TOKEN}" \
+                  -H 'Content-Type: application/json' \
+                  --data-binary @- \
+                  "${keys_url}" |
+                jq -er '.key'
+            )"
+            echo "::add-mask::${auth_key}"
+            mkdir -p "$(dirname "${secret}")"
+            encrypted="$(mktemp)"
+            export AUTH_KEY="${auth_key}"
+            jq -n '{authKey: env.AUTH_KEY}' |
+              nix shell nixpkgs#sops --command sops encrypt \
+                --filename-override "${secret}" \
+                --input-type json \
+                --output-type yaml \
+                /dev/stdin \
+                > "${encrypted}"
+            unset AUTH_KEY auth_key
+            install -m 0600 "${encrypted}" "${secret}"
+            rm "${encrypted}"
+            created+=("${secret}")
+          done < <(
+            jq -r '.connectorTags | to_entries[] | [.key, .value] | @tsv' \
+              tailscale/capabilities.json
+          )
+
+          if (( ${#created[@]} == 0 )); then
+            exit 0
+          fi
+
+          git add "${created[@]}"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "chore(tailscale): provision connector auth keys [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main

@@ -70,6 +70,7 @@ let
     { }
     declarations;
   connectorTags = {
+    files = "tag:cf-files-ingress";
     shared = "tag:cf-ingress";
   };
 in
