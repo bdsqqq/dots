@@ -234,6 +234,23 @@ test("rejects a candidate backend that exits after a successful health response"
   }
 });
 
+test("trusts the single local reverse-proxy hop", () => {
+  const child = new EventEmitter();
+  child.exitCode = null;
+  let arguments_;
+  startBackend(
+    { copyparty: "/bin/copyparty", state: "/state" },
+    1,
+    "/snapshot",
+    (_command, spawnArguments) => {
+      arguments_ = spawnArguments;
+      return child;
+    }
+  );
+
+  assert.deepEqual(arguments_.slice(4, 6), ["--rproxy", "-1"]);
+});
+
 test("cleans up a spawn error that closes without an exit event", async () => {
   const temporary = await mkdtemp(join(tmpdir(), "files-browser-test-"));
   const snapshot = join(temporary, "snapshot");
