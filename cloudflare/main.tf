@@ -38,6 +38,7 @@ locals {
   access_team_name = "solitary-darkness-2655"
   audience_emails = {
     family = var.family_emails
+    owner  = toset([var.owner_email])
   }
 }
 
@@ -51,6 +52,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "app" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [tunnel_secret]
   }
 }
 
