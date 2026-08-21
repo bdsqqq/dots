@@ -28,6 +28,18 @@ def require_grant(policy: dict, source: str, destinations: set[str]) -> None:
         )
 
 
+def require_exact_grant(policy: dict, source: str, destinations: set[str]) -> None:
+    granted = set()
+    for grant in policy.get("grants", []):
+        if source in grant.get("src", []) and "443" in grant.get("ip", []):
+            granted.update(grant.get("dst", []))
+    if granted != destinations:
+        raise SystemExit(
+            f"tailscale connector grant for {source} must be exactly: "
+            + ", ".join(sorted(destinations))
+        )
+
+
 def validate_policy(root: Path, services: dict, capabilities: dict) -> None:
     policy = hjson.loads((root / "tailscale/policy.hujson").read_text())
     defined_services = set(policy.get("autoApprovers", {}).get("services", {}))
@@ -57,7 +69,9 @@ def validate_policy(root: Path, services: dict, capabilities: dict) -> None:
                 app["service"].rsplit(":", 1)[0]
             )
     for trust, destinations in by_trust.items():
-        require_grant(policy, capabilities["connectorTags"][trust], destinations)
+        require_exact_grant(
+            policy, capabilities["connectorTags"][trust], destinations
+        )
 
 
 def main() -> None:
