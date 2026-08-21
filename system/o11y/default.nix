@@ -174,7 +174,7 @@ let
       transform/drop_process_command_line:
         error_mode: ignore
         metric_statements:
-          - context: datapoint
+          - context: resource
             statements:
               - delete_key(attributes, "process.command_line")
 
