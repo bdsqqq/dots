@@ -21,6 +21,12 @@ creation_rules:
           - *user_bdsqqq
           - *host_htz_relay
           - *host_gru_relay
+  - path_regex: ^secrets/tailscale/connectors/[^/]+\.yaml$
+    key_groups:
+      - age:
+          - *user_bdsqqq
+          - *host_htz_relay
+          - *host_gru_relay
   - path_regex: cookies\.txt$
     key_groups:
       - age:

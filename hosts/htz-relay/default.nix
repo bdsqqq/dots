@@ -65,10 +65,11 @@ in
   my.paths.commonplace = "/mnt/storage-01/commonplace";
   my.cloudflareIngress = {
     enable = true;
-    connectorName = "cf-ingress-htz";
     externalInterface = "enp1s0";
-    tailscaleAuthKeyFile = config.sops.secrets.tailscale_cf_ingress_auth_key.path;
-    trustClass = "shared";
+    connectors.shared = {
+      connectorName = "cf-ingress-htz";
+      networkId = 2;
+    };
   };
   my.tailnetRegistry.hostChecks.syncthing = {
     enable = true;
