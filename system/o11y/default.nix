@@ -37,12 +37,55 @@ let
     "/var/log/DiagnosticMessages/**"
     "/var/log/powermanagement/**"
   ];
+  containerNames = if isLinux then builtins.attrNames config.containers else [ ];
+  containerJournaldReceiverNames = map (name: "journald/${name}") containerNames;
+  containerJournaldReceiversYaml = lib.concatMapStrings (name:
+    "\n  journald/${name}:\n"
+    + "    directory: /var/lib/nixos-containers/${name}/var/log/journal\n"
+    + "    storage: file_storage\n"
+    + "    operators:\n"
+    + "      - type: add\n"
+    + "        field: resource[\"container.name\"]\n"
+    + "        value: ${builtins.toJSON name}\n"
+    + "      - type: add\n"
+    + "        field: attributes.log_source\n"
+    + "        value: journald\n"
+  ) containerNames;
+  linuxLogReceiversYaml =
+    "  journald:\n"
+    + "    directory: /var/log/journal\n"
+    + "    storage: file_storage\n"
+    + containerJournaldReceiversYaml
+    + "\n  filelog/user_logs:\n"
+    + "    include:\n"
+    + linuxUserLogFilesYaml + "\n"
+    + "    poll_interval: 30s\n"
+    + "    include_file_name: true\n"
+    + "    include_file_path: true\n"
+    + "    start_at: end\n"
+    + "    storage: file_storage\n"
+    + "    operators:\n"
+    + "      - type: add\n"
+    + "        field: attributes.user\n"
+    + "        value: bdsqqq\n"
+    + "      - type: add\n"
+    + "        field: attributes.log_source\n"
+    + "        value: file\n"
+    + "\n  filelog/papertrail:\n"
+    + "    include:\n"
+    + eventFilesYaml + "\n"
+    + "    start_at: end\n"
+    + "    storage: file_storage\n"
+    + "    operators:\n"
+    + "      - type: json_parser\n"
+    + "        parse_from: body\n";
   processScraperYaml =
     lib.optionalString cfg.processMetrics.enable (
       "      process:\n"
       + "        mute_process_name_error: true\n"
       + "        mute_process_exe_error: true\n"
       + "        mute_process_io_error: true\n"
+      + "        mute_process_user_error: true\n"
     );
   logReceiversYaml =
     if isDarwin then ''
@@ -68,36 +111,20 @@ let
             - type: add
               field: attributes.log_source
               value: file
-    '' else ''
-        journald:
-          directory: /var/log/journal
-
-        filelog/user_logs:
-          include:
-      ${linuxUserLogFilesYaml}
-          poll_interval: 30s
-          include_file_name: true
-          include_file_path: true
-          start_at: end
-          storage: file_storage
-          operators:
-            - type: add
-              field: attributes.user
-              value: bdsqqq
-            - type: add
-              field: attributes.log_source
-              value: file
-
-        filelog/papertrail:
-          include:
-      ${eventFilesYaml}
-          start_at: end
-          storage: file_storage
-          operators:
-            - type: json_parser
-              parse_from: body
-    '';
-  logReceivers = if isDarwin then "filelog/darwin_services" else "journald, filelog/user_logs, filelog/papertrail";
+    '' else
+      linuxLogReceiversYaml;
+  logReceivers =
+    if isDarwin then
+      "filelog/darwin_services"
+    else
+      lib.concatStringsSep ", " (
+        [ "journald" ]
+        ++ containerJournaldReceiverNames
+        ++ [
+          "filelog/user_logs"
+          "filelog/papertrail"
+        ]
+      );
   deployDatasetsJson = builtins.toJSON deployCfg.datasets;
 
   otelcolConfig = pkgs.writeText "otelcol-axiom.yaml" ''
