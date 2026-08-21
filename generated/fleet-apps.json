@@ -49,7 +49,7 @@
       "audience": "family",
       "connectorTrust": "shared",
       "hostname": "fotos.igorbedesqui.com",
-      "tunnelName": "tailnet-apps"
+      "tunnelName": "photos"
     },
     "description": "read-only household photo gallery",
     "id": "photos",
