@@ -164,9 +164,16 @@ jobs:
                   -H "Authorization: Bearer ${TS_API_TOKEN}" \
                   "${keys_url}/${key_id}"
               fi
-            done < <(jq -r '.keys[].id' <<< "${keys}")
+            done < <(
+              jq -r '
+                if type == "array" then .[]?.id
+                else (.keys // .authKeys // [])[]?.id
+                end
+              ' <<< "${keys}"
+            )
 
-            auth_key="$(
+            response="$(mktemp)"
+            status="$(
               jq -n \
                 --arg description "${description}" \
                 --arg tag "${tag}" \
@@ -184,14 +191,23 @@ jobs:
                   expirySeconds: 7776000,
                   description: $description
                 }' |
-                curl --fail-with-body --silent --show-error \
+                curl --silent --show-error \
                   -X POST \
                   -H "Authorization: Bearer ${TS_API_TOKEN}" \
                   -H 'Content-Type: application/json' \
                   --data-binary @- \
-                  "${keys_url}" |
-                jq -er '.key'
+                  --output "${response}" \
+                  --write-out '%{http_code}' \
+                  "${keys_url}"
             )"
+            if [[ ! "${status}" =~ ^2[0-9][0-9]$ ]]; then
+              jq -r '.message // .error // "Tailscale rejected the auth key"' \
+                "${response}" >&2
+              rm "${response}"
+              exit 1
+            fi
+            auth_key="$(jq -er '.key' "${response}")"
+            rm "${response}"
             echo "::add-mask::${auth_key}"
             mkdir -p "$(dirname "${secret}")"
             encrypted="$(mktemp)"
