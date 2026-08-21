@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, watch as watchFileSystem } from "node:fs";
 import { chmod, mkdir, readdir, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
@@ -55,7 +55,10 @@ export function parseArgs(argv) {
     sentinel: options.get("sentinel") ?? null,
     host: options.get("host") ?? "127.0.0.1",
     port: Number(options.get("port") ?? "3924"),
-    scanIntervalMs: Number(options.get("scan-interval-ms") ?? "15000"),
+    scanIntervalMs: Number(options.get("scan-interval-ms") ?? "600000"),
+    settleIntervalMs: Number(options.get("settle-interval-ms") ?? "15000"),
+    watchDebounceMs: Number(options.get("watch-debounce-ms") ?? "2000"),
+    retryIntervalMs: Number(options.get("retry-interval-ms") ?? "15000"),
   };
 }
 
@@ -575,22 +578,99 @@ async function pause(milliseconds, signal) {
   }
 }
 
-async function scanLoop(config, catalog, signal) {
-  while (!signal.aborted) {
+export async function scanLoop(config, catalog, signal, watcherFactory = watchFileSystem) {
+  const timers = new Map();
+  let watcher = null;
+  let scanRunning = false;
+  let rerunRequested = false;
+  let currentScan = Promise.resolve();
+
+  const clearTimer = (name) => {
+    const timer = timers.get(name);
+    if (timer) clearTimeout(timer);
+    timers.delete(name);
+  };
+  const schedule = (name, delay) => {
+    if (signal.aborted) return;
+    clearTimer(name);
+    timers.set(name, setTimeout(() => {
+      timers.delete(name);
+      void requestScan();
+    }, delay));
+  };
+  const closeWatcher = () => {
+    watcher?.close();
+    watcher = null;
+  };
+  const ensureWatcher = () => {
+    if (watcher || signal.aborted) return;
+    watcher = watcherFactory(config.source, { recursive: true }, () => {
+      schedule("event", config.watchDebounceMs);
+    });
+    watcher.once("error", (error) => {
+      console.error(`photo source watch failed: ${error.message}`);
+      closeWatcher();
+      schedule("retry", config.retryIntervalMs);
+    });
+  };
+  const scanOnce = async () => {
     catalog.scanStarted();
+    let result;
     try {
       const entries = await discoverMedia(config.source, config.sentinel);
-      if (signal.aborted) break;
-      const result = catalog.reconcile(entries);
-      console.log(`scan ${result.generation}: ${result.present} present, ${result.candidates} settling, ${result.missing} missing`);
+      if (signal.aborted) return;
+      result = catalog.reconcile(entries);
     } catch (error) {
       if (!signal.aborted) {
         catalog.scanFailed(error);
         console.error(`photo source scan failed: ${error.message}`);
+        closeWatcher();
+        clearTimer("periodic");
+        schedule("retry", config.retryIntervalMs);
       }
+      return;
     }
-    if (!(await pause(config.scanIntervalMs, signal))) break;
+    console.log(`scan ${result.generation}: ${result.present} present, ${result.candidates} settling, ${result.missing} missing`);
+    clearTimer("retry");
+    schedule("periodic", config.scanIntervalMs);
+    if (result.candidates > 0) {
+      schedule("settle", config.settleIntervalMs);
+    } else {
+      clearTimer("settle");
+    }
+    try {
+      ensureWatcher();
+    } catch (error) {
+      console.error(`photo source watch failed: ${error.message}`);
+      closeWatcher();
+      schedule("retry", config.retryIntervalMs);
+    }
+  };
+  async function requestScan() {
+    if (scanRunning) {
+      rerunRequested = true;
+      return currentScan;
+    }
+    currentScan = (async () => {
+      scanRunning = true;
+      do {
+        rerunRequested = false;
+        await scanOnce();
+      } while (rerunRequested && !signal.aborted);
+      scanRunning = false;
+    })();
+    return currentScan;
   }
+
+  const aborted = new Promise((resolvePromise) => {
+    if (signal.aborted) resolvePromise();
+    else signal.addEventListener("abort", resolvePromise, { once: true });
+  });
+  void requestScan();
+  await aborted;
+  for (const name of timers.keys()) clearTimer(name);
+  closeWatcher();
+  await currentScan;
 }
 
 async function jobLoop(catalog, signal) {
