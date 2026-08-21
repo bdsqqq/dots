@@ -50,9 +50,15 @@ in
   my.cloudflareIngress = {
     enable = true;
     externalInterface = "eth0";
-    connectors.shared = {
-      connectorName = "cf-ingress-gru";
-      networkId = 2;
+    connectors = {
+      files = {
+        connectorName = "cf-files-ingress-gru";
+        networkId = 3;
+      };
+      shared = {
+        connectorName = "cf-ingress-gru";
+        networkId = 2;
+      };
     };
   };
   services.hwmon-metrics.enable = true;

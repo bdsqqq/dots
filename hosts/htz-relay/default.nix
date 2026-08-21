@@ -66,9 +66,15 @@ in
   my.cloudflareIngress = {
     enable = true;
     externalInterface = "enp1s0";
-    connectors.shared = {
-      connectorName = "cf-ingress-htz";
-      networkId = 2;
+    connectors = {
+      files = {
+        connectorName = "cf-files-ingress-htz";
+        networkId = 3;
+      };
+      shared = {
+        connectorName = "cf-ingress-htz";
+        networkId = 2;
+      };
     };
   };
   my.tailnetRegistry.hostChecks.syncthing = {
