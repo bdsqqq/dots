@@ -171,6 +171,12 @@ let
           - key: host.name
             value: ${config.networking.hostName or "unknown"}
             action: upsert
+      transform/drop_process_command_line:
+        error_mode: ignore
+        metric_statements:
+          - context: datapoint
+            statements:
+              - delete_key(attributes, "process.command_line")
 
     exporters:
       otlphttp/axiom_logs:
@@ -213,7 +219,7 @@ let
           exporters: [otlphttp/axiom_logs]
         metrics:
           receivers: [hostmetrics, otlp]
-          processors: [memory_limiter, resource, batch]
+          processors: [memory_limiter, resource, transform/drop_process_command_line, batch]
           exporters: [otlphttp/axiom_metrics]
         traces:
           receivers: [otlp]
