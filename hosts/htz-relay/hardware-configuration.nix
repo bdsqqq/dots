@@ -15,4 +15,8 @@
     options = [ "discard" "defaults" ];
   };
 
+  swapDevices = [{
+    device = "/swapfile";
+    size = 4096;
+  }];
 }
