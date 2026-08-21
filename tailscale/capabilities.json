@@ -1,7 +1,7 @@
 {
   "apps": {
     "files": {
-      "connectorTrust": null,
+      "connectorTrust": "files",
       "service": "svc:files:443",
       "tailnetAudience": "owner"
     },
