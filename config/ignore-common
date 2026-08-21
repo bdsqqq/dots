@@ -1,62 +1,63 @@
-02_temp/
+// trailing slashes ignore only directory contents, letting syncthing replace the local directory shell.
+02_temp
 
-**/.git/
-**/.svn/
-**/.hg/
+**/.git
+**/.svn
+**/.hg
 
-**/node_modules/
-**/.pnpm/
-**/.pnpm-store/
-**/.yarn/
-**/.npm/
-**/.bun/
-**/go/pkg/
-**/go/bin/
-**/.cargo/
-**/.stack/
+**/node_modules
+**/.pnpm
+**/.pnpm-store
+**/.yarn
+**/.npm
+**/.bun
+**/go/pkg
+**/go/bin
+**/.cargo
+**/.stack
 
-**/dist/
-**/build/
-**/out/
-**/.output/
-**/coverage/
-**/target/
-**/generated/
-**/.next/
-**/.nuxt/
-**/.astro/
-**/.vite/
-**/.parcel-cache/
-**/.cache/
-**/cache/
-**/.turbo/
-**/.vercel/
-**/.netlify/
-**/.million/
-**/.svelte-kit/
+**/dist
+**/build
+**/out
+**/.output
+**/coverage
+**/target
+**/generated
+**/.next
+**/.nuxt
+**/.astro
+**/.vite
+**/.parcel-cache
+**/.cache
+**/cache
+**/.turbo
+**/.vercel
+**/.netlify
+**/.million
+**/.svelte-kit
 
-**/.vscode/
-**/.idea/
-**/.changeset/
-**/.storybook/
-**/.pytest_cache/
-**/.mypy_cache/
-**/.tox/
-**/.venv/
-**/.direnv/
-**/.expo/
-**/.angular/
-**/.gradle/
+**/.vscode
+**/.idea
+**/.changeset
+**/.storybook
+**/.pytest_cache
+**/.mypy_cache
+**/.tox
+**/.venv
+**/.direnv
+**/.expo
+**/.angular
+**/.gradle
 
 **/.DS_Store
 **/Thumbs.db
 **/desktop.ini
-**/.Spotlight-V100/
-**/.Trashes/
-**/.fseventsd/
+**/.Spotlight-V100
+**/.Trashes
+**/.fseventsd
 
-**/tmp/
-**/temp/
+**/tmp
+**/temp
 **/*.tmp
 **/*.temp
 **/*.log
@@ -87,12 +88,12 @@
 **/*.min.css
 **/*.map
 
-**/.stfolder/
-**/.stversions/
-**/.syncthing-conflicts/
-**/.files-browser-publication/
+**/.stfolder
+**/.stversions
+**/.syncthing-conflicts
+**/.files-browser-publication
 
-**/result/
+**/result
 **/result-*
 01_files/nix/result
 01_files/nix/result-*
@@ -100,8 +101,8 @@
 rclone_*.log
 rclone_*.txt
 
-pack-toolbox/temp/
-*/assets/minecraft/textures/
+pack-toolbox/temp
+*/assets/minecraft/textures
 **/*.mcmeta
 
-**/.claude/.cc-writes/
+**/.claude/.cc-writes
