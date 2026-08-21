@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { mkdtemp, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +11,7 @@ import {
   intelligenceServer,
   parseArgs,
   runHashJob,
+  scanLoop,
 } from "./photo-intelligence-server.mjs";
 
 async function fixture() {
@@ -33,7 +35,10 @@ test("parses daemon options", () => {
       sentinel: ".catalog",
       host: "127.0.0.1",
       port: 3924,
-      scanIntervalMs: 15000,
+      scanIntervalMs: 600000,
+      settleIntervalMs: 15000,
+      watchDebounceMs: 2000,
+      retryIntervalMs: 15000,
     }
   );
 });
@@ -219,6 +224,53 @@ test("serves health, status, and timeline APIs", async () => {
     assert.equal((await (await fetch(`${origin}/status`)).json()).source.generation, 2);
   } finally {
     await new Promise((resolvePromise) => server.close(resolvePromise));
+    catalog.close();
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test("filesystem hints debounce scans and candidates receive a settling scan", async () => {
+  const { temporary, source, catalog } = await fixture();
+  const abort = new AbortController();
+  const watcher = new EventEmitter();
+  watcher.close = () => {};
+  let notify;
+  const watcherFactory = (_source, options, listener) => {
+    assert.deepEqual(options, { recursive: true });
+    notify = listener;
+    return watcher;
+  };
+  const config = {
+    source,
+    sentinel: ".library-sentinel",
+    scanIntervalMs: 60_000,
+    settleIntervalMs: 20,
+    watchDebounceMs: 10,
+    retryIntervalMs: 10,
+  };
+  await writeFile(join(source, "2026", "08", "20", "one.jpg"), "one");
+  const loop = scanLoop(config, catalog, abort.signal, watcherFactory);
+  const waitFor = async (predicate) => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (predicate()) return;
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 5));
+    }
+    assert.fail("condition was not reached");
+  };
+  try {
+    await waitFor(() => catalog.timeline().itemCount === 1);
+    const settledGeneration = catalog.status().source.generation;
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 40));
+    assert.equal(catalog.status().source.generation, settledGeneration);
+
+    await writeFile(join(source, "2026", "08", "20", "two.jpg"), "two");
+    notify();
+    notify();
+    await waitFor(() => catalog.timeline().itemCount === 2);
+    assert.equal(catalog.status().source.generation, settledGeneration + 2);
+  } finally {
+    abort.abort();
+    await loop;
     catalog.close();
     await rm(temporary, { recursive: true, force: true });
   }
