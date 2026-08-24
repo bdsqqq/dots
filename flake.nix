@@ -210,6 +210,17 @@
         apps.photo-semantic-benchmark.program =
           "${config.packages.photo-semantic-benchmark}/bin/photo-semantic-benchmark";
 
+        packages.household-intake-smb-audit =
+          import ./modules/household-intake { inherit pkgs; };
+
+        apps.household-intake-smb-audit.program =
+          "${config.packages.household-intake-smb-audit}/bin/household-intake-smb-audit";
+
+        checks.household-intake-smb-audit = pkgs.runCommand "household-intake-smb-audit-tests" { } ''
+          ${pkgs.python3}/bin/python ${./modules/household-intake}/smb-audit.test.py
+          touch "$out"
+        '';
+
         checks.tailnet-artifacts = pkgs.runCommand "tailnet-artifacts-check" { } ''
           ${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts \
             --check \
