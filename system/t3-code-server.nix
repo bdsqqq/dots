@@ -15,28 +15,24 @@ let
   nativeRuntimePackages =
     if hostSystem == "aarch64-darwin" then
       [
-        "@anthropic-ai/claude-agent-sdk-darwin-arm64"
         "@ff-labs/fff-bin-darwin-arm64"
         "@msgpackr-extract/msgpackr-extract-darwin-arm64"
         "@yuuang/ffi-rs-darwin-arm64"
       ]
     else if hostSystem == "x86_64-darwin" then
       [
-        "@anthropic-ai/claude-agent-sdk-darwin-x64"
         "@ff-labs/fff-bin-darwin-x64"
         "@msgpackr-extract/msgpackr-extract-darwin-x64"
         "@yuuang/ffi-rs-darwin-x64"
       ]
     else if hostSystem == "aarch64-linux" then
       [
-        "@anthropic-ai/claude-agent-sdk-linux-arm64"
         "@ff-labs/fff-bin-linux-arm64-gnu"
         "@msgpackr-extract/msgpackr-extract-linux-arm64"
         "@yuuang/ffi-rs-linux-arm64-gnu"
       ]
     else
       [
-        "@anthropic-ai/claude-agent-sdk-linux-x64"
         "@ff-labs/fff-bin-linux-x64-gnu"
         "@msgpackr-extract/msgpackr-extract-linux-x64"
         "@yuuang/ffi-rs-linux-x64-gnu"
@@ -81,6 +77,7 @@ let
       replacement_installed=false
       previous_saved=false
       deployment_verified=false
+      stage="setup"
 
       restart_service() {
         ${
@@ -106,6 +103,9 @@ let
       cleanup() {
         status=$?
         trap - EXIT HUP INT TERM
+        if [ "$status" -ne 0 ]; then
+          printf 't3-pi-deploy failed during %s (exit %s)\n' "$stage" "$status" >&2
+        fi
         if [ "$deployment_verified" != true ] && \
           { [ "$replacement_installed" = true ] || [ "$previous_saved" = true ]; }; then
           rollback
@@ -123,12 +123,14 @@ let
         mv "$previous" "$runtime_dir/dist"
       fi
 
+      stage="server build"
       test -x "$repo/node_modules/.bin/vp"
       (
         cd "$repo"
         ./node_modules/.bin/vp run --filter t3 build
       )
 
+      stage="production package assembly"
       package="$next/.package"
       (
         cd "$repo"
@@ -138,10 +140,14 @@ let
       mv "$package/node_modules" "$next/node_modules"
       rm -rf "$package"
 
+      stage="native runtime staging"
       for native_package in ${lib.concatMapStringsSep " " lib.escapeShellArg nativeRuntimePackages}; do
         scope="''${native_package%%/*}"
         source="$repo/node_modules/.pnpm/node_modules/$native_package"
-        test -e "$source"
+        if [ ! -e "$source" ]; then
+          printf 'missing native runtime package %s at %s\n' "$native_package" "$source" >&2
+          exit 1
+        fi
         mkdir -p "$next/node_modules/$scope"
         cp -RL "$source" "$next/node_modules/$scope/"
       done
@@ -151,6 +157,7 @@ let
         printf '%s\n' dirty >> "$next/source-revision"
       fi
 
+      stage="runtime swap"
       rm -rf "$previous"
       if [ -e "$runtime_dir/dist" ]; then
         previous_saved=true
@@ -159,10 +166,12 @@ let
       replacement_installed=true
       mv "$next" "$runtime_dir/dist"
 
+      stage="service restart"
       if ! restart_service; then
         exit 1
       fi
 
+      stage="health check"
       ready=false
       for _ in $(seq 1 30); do
         if ${lib.getExe pkgs.curl} --fail --silent --max-time 1 \
