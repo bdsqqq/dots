@@ -26,6 +26,7 @@ let
     let
       app = declaration.value;
       cloudflare = app.cloudflare or null;
+      cloudflareOrigin = if cloudflare == null then null else cloudflare.origin or null;
       valid =
         app.schemaVersion == 1
         && builtins.match "[a-z0-9][a-z0-9-]{0,63}" app.id != null
@@ -40,6 +41,13 @@ let
           && builtins.hasAttr cloudflare.connectorTrust connectorTags
           && builtins.isString cloudflare.tunnelName
           && builtins.isString cloudflare.accessName
+          && (cloudflareOrigin == null || (
+            builtins.match "https://[a-z0-9.-]+:[0-9]+" cloudflareOrigin.service != null
+            && builtins.match "[a-z0-9.-]+" cloudflareOrigin.serverName != null
+            && builtins.match "[a-z0-9][a-z0-9-]{0,63}" cloudflareOrigin.policyDestination != null
+            && cloudflareOrigin.port > 0
+            && cloudflareOrigin.port < 65536
+          ))
         ));
     in
     if !valid then
@@ -72,6 +80,7 @@ let
   connectorTags = {
     files = "tag:cf-files-ingress";
     shared = "tag:cf-ingress";
+    t3 = "tag:cf-t3-ingress";
   };
 in
 {
@@ -92,10 +101,21 @@ in
     catalog;
 
   capabilities = lib.mapAttrs
-    (_: app: {
-      service = "svc:${app.tailnet.service.name}:${toString app.tailnet.service.port}";
-      tailnetAudience = app.tailnet.audience;
-      connectorTrust = if app.cloudflare == null then null else app.cloudflare.connectorTrust;
-    })
+    (_: app:
+      let
+        cloudflareOrigin =
+          if app.cloudflare == null then null else app.cloudflare.origin or null;
+      in
+      {
+        service = "svc:${app.tailnet.service.name}:${toString app.tailnet.service.port}";
+        tailnetAudience = app.tailnet.audience;
+        connectorTrust = if app.cloudflare == null then null else app.cloudflare.connectorTrust;
+        connectorDestination =
+          if app.cloudflare == null then null
+          else if cloudflareOrigin == null then
+            "svc:${app.tailnet.service.name}:${toString app.tailnet.service.port}"
+          else
+            "${cloudflareOrigin.policyDestination}:${toString cloudflareOrigin.port}";
+      })
     catalog;
 }

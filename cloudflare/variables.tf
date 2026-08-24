@@ -36,6 +36,12 @@ variable "apps" {
       connectorTrust = string
       tunnelName     = string
       accessName     = string
+      origin = optional(object({
+        service           = string
+        serverName        = string
+        policyDestination = string
+        port              = number
+      }))
     })
   }))
 }

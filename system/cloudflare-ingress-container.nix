@@ -13,8 +13,13 @@ let
   hostAddress = connector: "10.233.${toString connector.networkId}.1";
   containerAddress = connector: "10.233.${toString connector.networkId}.2";
   authSecretName = trust: "cloudflare-connector-${trust}-tailscale-auth-key";
+  authCredentialPath = trust:
+    inputs.self + "/secrets/tailscale/connectors/${trust}.yaml";
   appSecretName = name: "cloudflare-tunnel-${name}";
   credentialPath = name: inputs.self + "/secrets/cloudflare/${name}.yaml";
+  readyConnectors = lib.filterAttrs
+    (trust: _: builtins.pathExists (authCredentialPath trust))
+    cfg.connectors;
   readyApps = lib.filterAttrs
     (name: app:
       app.cloudflare != null
@@ -31,14 +36,21 @@ let
       (name: app:
         let
           binding = runtimeBindings.${name};
+          declaredOrigin = app.cloudflare.origin or null;
           serviceHost = "${app.tailnet.service.name}.${cfg.tailnetDnsSuffix}";
         in
         {
           tunnel.id = binding.tunnelId;
           route = {
             inherit (app.cloudflare) hostname;
-            service = "https://${serviceHost}";
-            originServerName = serviceHost;
+            service =
+              if declaredOrigin == null
+              then "https://${serviceHost}"
+              else declaredOrigin.service;
+            originServerName =
+              if declaredOrigin == null
+              then serviceHost
+              else declaredOrigin.serverName;
           };
           access = {
             audienceTag = binding.accessAudience;
@@ -137,12 +149,12 @@ let
     readyApps;
   authSecrets = lib.mapAttrs'
     (trust: _: lib.nameValuePair (authSecretName trust) {
-      sopsFile = inputs.self + "/secrets/tailscale/connectors/${trust}.yaml";
+      sopsFile = authCredentialPath trust;
       key = "authKey";
       owner = "root";
       mode = "0400";
     })
-    cfg.connectors;
+    readyConnectors;
   appSecretMounts = apps:
     lib.mapAttrs'
       (name: _: lib.nameValuePair "/run/secrets/cloudflare-tunnel-${name}.json" {
@@ -276,7 +288,7 @@ in
 
     networking.bridges = lib.mapAttrs'
       (trust: _: lib.nameValuePair (bridgeName trust) { interfaces = [ ]; })
-      cfg.connectors;
+      readyConnectors;
     networking.interfaces = lib.mapAttrs'
       (trust: connector: lib.nameValuePair (bridgeName trust) {
         ipv4.addresses = [{
@@ -284,15 +296,15 @@ in
           prefixLength = 24;
         }];
       })
-      cfg.connectors;
+      readyConnectors;
     networking.nat = {
       enable = true;
       externalInterface = lib.mkDefault cfg.externalInterface;
-      internalInterfaces = map bridgeName (builtins.attrNames cfg.connectors);
+      internalInterfaces = map bridgeName (builtins.attrNames readyConnectors);
     };
 
     containers = lib.mapAttrs'
       (trust: connector: lib.nameValuePair (containerName trust) (mkContainer trust connector))
-      cfg.connectors;
+      readyConnectors;
   };
 }

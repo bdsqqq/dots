@@ -64,5 +64,33 @@
       }
     },
     "title": "family photos"
+  },
+  "t3": {
+    "cloudflare": {
+      "accessName": "owner t3 code",
+      "audience": "owner",
+      "connectorTrust": "t3",
+      "hostname": "t3.igorbedesqui.com",
+      "origin": {
+        "policyDestination": "mbp-m2",
+        "port": 8443,
+        "serverName": "mbp-m2.tail1543a7.ts.net",
+        "service": "https://mbp-m2.tail1543a7.ts.net:8443"
+      },
+      "tunnelName": "t3"
+    },
+    "description": "remote coding workspace",
+    "id": "t3",
+    "path": "/",
+    "schemaVersion": 1,
+    "source": "modules/t3-code/tailnet-app.nix",
+    "tailnet": {
+      "audience": "owner",
+      "service": {
+        "name": "t3",
+        "port": 443
+      }
+    },
+    "title": "t3 code"
   }
 }

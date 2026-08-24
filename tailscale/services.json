@@ -22,5 +22,11 @@
     "ports": [
       "tcp:443"
     ]
+  },
+  "svc:t3": {
+    "comment": "remote coding workspace",
+    "ports": [
+      "tcp:443"
+    ]
   }
 }

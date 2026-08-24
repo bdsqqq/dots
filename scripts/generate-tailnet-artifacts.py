@@ -29,10 +29,13 @@ def require_grant(policy: dict, source: str, destinations: set[str]) -> None:
 
 
 def require_exact_grant(policy: dict, source: str, destinations: set[str]) -> None:
-    granted = set()
+    granted: set[str] = set()
     for grant in policy.get("grants", []):
-        if source in grant.get("src", []) and "443" in grant.get("ip", []):
-            granted.update(grant.get("dst", []))
+        if source not in grant.get("src", []):
+            continue
+        for destination in grant.get("dst", []):
+            for port in grant.get("ip", []):
+                granted.add(f"{destination}:{port}")
     if granted != destinations:
         raise SystemExit(
             f"tailscale connector grant for {source} must be exactly: "
@@ -66,7 +69,7 @@ def validate_policy(root: Path, services: dict, capabilities: dict) -> None:
     for app in apps.values():
         if app["connectorTrust"] is not None:
             by_trust.setdefault(app["connectorTrust"], set()).add(
-                app["service"].rsplit(":", 1)[0]
+                app["connectorDestination"]
             )
     for trust, destinations in by_trust.items():
         require_exact_grant(

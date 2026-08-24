@@ -75,6 +75,10 @@ in
         connectorName = "cf-ingress-htz";
         networkId = 2;
       };
+      t3 = {
+        connectorName = "cf-t3-ingress-htz";
+        networkId = 4;
+      };
     };
   };
   my.tailnetRegistry.hostChecks.syncthing = {

@@ -59,6 +59,10 @@ in
         connectorName = "cf-ingress-gru";
         networkId = 2;
       };
+      t3 = {
+        connectorName = "cf-t3-ingress-gru";
+        networkId = 4;
+      };
     };
   };
   services.hwmon-metrics.enable = true;
