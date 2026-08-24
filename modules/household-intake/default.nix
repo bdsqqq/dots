@@ -2,8 +2,8 @@
 
 pkgs.writeShellApplication {
   name = "household-intake-smb-audit";
-  runtimeInputs = [ pkgs.python3 ];
+  runtimeInputs = [ pkgs.nodejs ];
   text = ''
-    exec python ${./smb-audit.py} "$@"
+    exec node ${./smb-audit.mjs} "$@"
   '';
 }
