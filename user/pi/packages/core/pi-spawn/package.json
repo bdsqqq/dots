@@ -7,7 +7,10 @@
   "dependencies": {
     "@bds_pi/config": "workspace:*",
     "@bds_pi/interpolate": "workspace:*",
-    "@earendil-works/pi-coding-agent": "catalog:"
+    "@earendil-works/pi-client": "catalog:",
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "@earendil-works/pi-protocol": "catalog:",
+    "@earendil-works/pi-server": "catalog:"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "catalog:",

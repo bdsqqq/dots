@@ -9,7 +9,16 @@ catalogs:
     '@earendil-works/pi-ai':
       specifier: ^0.84.2
       version: 0.84.2
+    '@earendil-works/pi-client':
+      specifier: ^0.84.2
+      version: 0.84.2
     '@earendil-works/pi-coding-agent':
+      specifier: ^0.84.2
+      version: 0.84.2
+    '@earendil-works/pi-protocol':
+      specifier: ^0.84.2
+      version: 0.84.2
+    '@earendil-works/pi-server':
       specifier: ^0.84.2
       version: 0.84.2
     '@earendil-works/pi-tui':
@@ -227,7 +236,16 @@ importers:
       '@bds_pi/interpolate':
         specifier: workspace:*
         version: link:../interpolate
+      '@earendil-works/pi-client':
+        specifier: 'catalog:'
+        version: 0.84.2
       '@earendil-works/pi-coding-agent':
+        specifier: 'catalog:'
+        version: 0.84.2(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-protocol':
+        specifier: 'catalog:'
+        version: 0.84.2
+      '@earendil-works/pi-server':
         specifier: 'catalog:'
         version: 0.84.2(ws@8.21.3)(zod@4.4.3)
     devDependencies:
@@ -1566,6 +1584,10 @@ packages:
 
   '@earendil-works/pi-protocol@0.84.2':
     resolution: {integrity: sha512-jbBh03fkeckWEroHpcZBr4w5/Ibat8WwdXFlXHivYQImrQNFtLpDeL0t1cku4hmK0q3pceIRQHkw4fwbM4YILQ==}
+    engines: {node: '>=22.19.0'}
+
+  '@earendil-works/pi-server@0.84.2':
+    resolution: {integrity: sha512-AYlQHHSwI+d/peAgu+WfZzvqpReRGOOYRhyEdjOpZj5bSj95ta05X5szsEGbL+ZVHp75qni7HLI/YEWPir5R9Q==}
     engines: {node: '>=22.19.0'}
 
   '@earendil-works/pi-telemetry@0.84.2':
@@ -4278,6 +4300,18 @@ snapshots:
   '@earendil-works/pi-protocol@0.84.2':
     dependencies:
       typebox: 1.3.7
+
+  '@earendil-works/pi-server@0.84.2(ws@8.21.3)(zod@4.4.3)':
+    dependencies:
+      '@earendil-works/pi-ai': 0.84.2(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-protocol': 0.84.2
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+      - ws
+      - zod
 
   '@earendil-works/pi-telemetry@0.84.2': {}
 

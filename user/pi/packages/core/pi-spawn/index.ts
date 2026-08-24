@@ -259,6 +259,23 @@ export interface PiSpawnConfig {
   timeoutMs?: number;
 }
 
+/**
+ * one source of pi execution capacity.
+ *
+ * admission and placement belong here; session control belongs to pi's
+ * PiServerService/PiSessionRuntime boundary. the local provider remains the
+ * default while remote providers reach feature parity.
+ */
+export interface PiCapacityProvider {
+  run(config: PiSpawnConfig): Promise<PiSpawnResult>;
+}
+
+export type PiSpawn = (config: PiSpawnConfig) => Promise<PiSpawnResult>;
+
+export function createPiSpawn(provider: PiCapacityProvider): PiSpawn {
+  return (config) => provider.run(config);
+}
+
 // --- helpers ---
 
 function writePromptToTempFile(
@@ -512,9 +529,9 @@ async function resolveSessionRouting(
   };
 }
 
-// --- spawn ---
+// --- local capacity ---
 
-export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
+async function runLocalPi(config: PiSpawnConfig): Promise<PiSpawnResult> {
   if (
     config.timeoutMs !== undefined &&
     (!Number.isFinite(config.timeoutMs) || config.timeoutMs <= 0)
@@ -978,6 +995,21 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       }
   }
 }
+
+export const localPiCapacityProvider: PiCapacityProvider = {
+  run: runLocalPi,
+};
+
+export const piSpawn: PiSpawn = createPiSpawn(localPiCapacityProvider);
+
+export {
+  AgentSessionPiRuntime,
+  PiSpawnServerService,
+  RemotePiCapacityProvider,
+  type PiSpawnRuntimeFactory,
+  type PiSpawnRuntimeFactoryOptions,
+  type PiSpawnServerServiceOptions,
+} from "./remote.js";
 
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it } = import.meta.vitest;
