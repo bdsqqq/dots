@@ -1,12 +1,11 @@
 # hosts/mbp14.local/default.nix
 # Enhanced host configuration with improved input handling
-{
-  lib,
-  pkgs,
-  inputs,
-  systems ? [ ],
-  pkgsFor ? null,
-  ...
+{ lib
+, pkgs
+, inputs
+, systems ? [ ]
+, pkgsFor ? null
+, ...
 }:
 let
   syncthing = import ../../modules/syncthing.nix { inherit lib; };
@@ -97,11 +96,10 @@ in
       headMode = "graphical";
     };
     users.bdsqqq =
-      {
-        lib,
-        pkgs,
-        config,
-        ...
+      { lib
+      , pkgs
+      , config
+      , ...
       }:
       {
         home.username = "bdsqqq";
@@ -203,12 +201,14 @@ in
                 "mmn-m4"
                 "iph16"
                 "ipd"
-              ] { label = "commonplace"; };
+              ]
+                { label = "commonplace"; };
               pi-sessions = syncthing.folderFor "pi-sessions" config.home.homeDirectory true [ "lgo-z2e" ] { };
               helium-remotes = syncthing.folderFor "helium-remotes" config.home.homeDirectory true [
                 "htz-relay"
                 "lgo-z2e"
-              ] { };
+              ]
+                { };
               kindle = syncthing.folderFor "kindle" config.home.homeDirectory true [ "kindle" ] { };
             };
           };
@@ -231,6 +231,12 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+  # Bootstrap aarch64-linux guest builds without making the 16 GB storage host
+  # carry a second build VM alongside the household appliance.
+  nix = {
+    linux-builder.enable = true;
+    settings.trusted-users = [ "@admin" ];
+  };
   my.tailnetRegistry.hostChecks.syncthing = {
     enable = true;
     configFile = "/Users/bdsqqq/Library/Application Support/Syncthing/config.xml";
