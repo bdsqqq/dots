@@ -4,6 +4,7 @@ packages:
   - packages/optional/*
 
 patchedDependencies:
+  "@earendil-works/pi-coding-agent@0.84.2": patches/pi-coding-agent-0.84.2.patch
   "@earendil-works/gondolin@0.7.0": patches/gondolin-0.7.0.patch
   "@letta-ai/trajectory@0.2.1": patches/letta-ai-trajectory-0.2.1.patch
   "remend@1.3.0": patches/remend-1.3.0.patch
