@@ -16,6 +16,9 @@
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
 
+    microvm.url = "github:microvm-nix/microvm.nix";
+    microvm.inputs.nixpkgs.follows = "nixpkgs";
+
     berkeley-mono.url = "path:./modules/shared/berkeley-mono";
     berkeley-mono.flake = false;
 
@@ -141,6 +144,27 @@
           }
         ];
       };
+      householdStorage = inputs.nixpkgs.lib.nixosSystem {
+        system = "aarch64-linux";
+        specialArgs = {
+          inherit inputs;
+          hostPkgs = import inputs.nixpkgs {
+            system = "aarch64-darwin";
+            config.allowUnfree = true;
+          };
+          hostSystem = "aarch64-linux";
+          headMode = "headless";
+        };
+        modules = [
+          inputs.microvm.nixosModules.microvm
+          ./system/authorized-keys.nix
+          ./modules/household-intake/vm.nix
+          {
+            nixpkgs.hostPlatform = "aarch64-linux";
+            system.configurationRevision = flakeRevision;
+          }
+        ];
+      };
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems =
@@ -248,6 +272,8 @@
         };
 
         nixosConfigurations = {
+          "household-storage" = householdStorage;
+
           "htz-relay" = inputs.nixpkgs.lib.nixosSystem {
             specialArgs = {
               inherit inputs tailnetApps;

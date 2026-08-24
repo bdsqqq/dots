@@ -1,9 +1,8 @@
-{
-  config,
-  inputs,
-  pkgs,
-  lib,
-  ...
+{ config
+, inputs
+, pkgs
+, lib
+, ...
 }:
 let
   syncthing = import ../../modules/syncthing.nix { inherit lib; };
@@ -38,6 +37,7 @@ in
     ../../system/sleepless.nix
     ../../system/cmux.nix
     ../../system/fonts.nix
+    ../../modules/household-intake/service.nix
     ../../user/shell-baseline.nix
     ../../user/node-pnpm
     ../../user/1password.nix
@@ -99,7 +99,8 @@ in
           folders.commonplace = syncthing.folderForPath "commonplace" "/Users/bdsqqq/commonplace" [
             "mbp-m2"
             "htz-relay"
-          ] { label = "commonplace"; };
+          ]
+            { label = "commonplace"; };
         };
       };
 
