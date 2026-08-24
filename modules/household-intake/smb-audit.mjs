@@ -12,12 +12,20 @@ function check(name, passed, evidence) {
 
 export function audit(shares, volume, expected) {
   const share = shares[expected.shareName];
+  const enabledShares = Object.entries(shares)
+    .filter(([, record]) => record.smb_shared === 1)
+    .map(([name]) => name);
   const checks = [
     check("volume UUID", volume.VolumeUUID === expected.volumeUuid, volume.VolumeUUID),
     check("volume mount", volume.MountPoint === expected.mountPoint, volume.MountPoint),
     check("volume filesystem", volume.FilesystemType === "exfat", volume.FilesystemType),
     check("volume writable", volume.Writable === true, volume.Writable),
     check("share exists", share !== undefined, expected.shareName),
+    check(
+      "only intended SMB share enabled",
+      enabledShares.length === 1 && enabledShares[0] === expected.shareName,
+      enabledShares.join(", ") || "none",
+    ),
   ];
   if (share === undefined) return checks;
 
@@ -50,7 +58,7 @@ function volumeRecord(path, mountPoint) {
   return JSON.parse(commandOutput("/usr/bin/plutil", ["-convert", "json", "-o", "-", "-"], { input: plist }));
 }
 
-function listenerReady(host, port, timeoutMs) {
+export function listenerReady(host, port, timeoutMs) {
   return new Promise((resolvePromise) => {
     const socket = createConnection({ host, port });
     let settled = false;
