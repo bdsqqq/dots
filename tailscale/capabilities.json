@@ -1,23 +1,33 @@
 {
   "apps": {
     "files": {
+      "connectorDestination": "svc:files:443",
       "connectorTrust": "files",
       "service": "svc:files:443",
       "tailnetAudience": "owner"
     },
     "html-stuff": {
+      "connectorDestination": "svc:html-stuff:443",
       "connectorTrust": "shared",
       "service": "svc:html-stuff:443",
       "tailnetAudience": "owner"
     },
     "photos": {
+      "connectorDestination": "svc:photos:443",
       "connectorTrust": "shared",
       "service": "svc:photos:443",
       "tailnetAudience": "family"
+    },
+    "t3": {
+      "connectorDestination": "mbp-m2:8443",
+      "connectorTrust": "t3",
+      "service": "svc:t3:443",
+      "tailnetAudience": "owner"
     }
   },
   "connectorTags": {
     "files": "tag:cf-files-ingress",
-    "shared": "tag:cf-ingress"
+    "shared": "tag:cf-ingress",
+    "t3": "tag:cf-t3-ingress"
   }
 }
