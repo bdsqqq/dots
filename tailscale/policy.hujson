@@ -5,7 +5,7 @@
 		"tag:depot-runner": ["autogroup:owner"],
 		"tag:cf-ingress":   ["autogroup:owner"],
 		"tag:cf-files-ingress": ["autogroup:owner"],
-		"tag:cf-t3-ingress": ["autogroup:owner", "tag:cf-files-ingress"],
+		"tag:cf-t3-ingress": ["autogroup:owner"],
 	},
 	"hosts": {
 		"mbp-m2": "100.87.59.1",
