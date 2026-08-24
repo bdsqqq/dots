@@ -10,7 +10,10 @@ patchedDependencies:
 
 catalog:
   "@earendil-works/pi-ai": ^0.84.2
+  "@earendil-works/pi-client": ^0.84.2
   "@earendil-works/pi-coding-agent": ^0.84.2
+  "@earendil-works/pi-protocol": ^0.84.2
+  "@earendil-works/pi-server": ^0.84.2
   "@earendil-works/pi-tui": ^0.84.2
   typebox: ^1.1.38
 
