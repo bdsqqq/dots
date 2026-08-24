@@ -5,7 +5,7 @@
   "bin": {
     "pi": "bin/pi"
   },
-  "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.2"
+  "scripts": {
+    "test": "./bin/pi --offline --mode rpc --no-extensions -e ../../pi/packages/extensions/code-review/index.ts < /dev/null"
   }
 }
