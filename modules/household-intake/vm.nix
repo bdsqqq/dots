@@ -1,4 +1,5 @@
-{ hostPkgs
+{ config
+, hostPkgs
 , lib
 , ...
 }:
@@ -43,6 +44,17 @@
   microvm = {
     hypervisor = "vfkit";
     vmHostPackages = hostPkgs;
+    # microvm.nix defaults to a stdio console, but vfkit requires stdin to be
+    # a TTY in that mode. launchd has no TTY, so keep the console file-backed.
+    declaredRunner = config.microvm.runner.vfkit.overrideAttrs (old: {
+      buildCommand = old.buildCommand + ''
+        runner=$(readlink $out/bin/microvm-run)
+        rm $out/bin/microvm-run
+        cp "$runner" $out/bin/microvm-run
+        substituteInPlace $out/bin/microvm-run \
+          --replace-fail 'virtio-serial,stdio' 'virtio-serial,logFilePath=guest-console.log'
+      '';
+    });
     vcpu = 4;
     mem = 6144;
     storeOnDisk = true;
@@ -55,7 +67,7 @@
     ];
     volumes = [
       {
-        image = "/var/lib/household-intake/vm/state.img";
+        image = "state.img";
         mountPoint = "/var";
         size = 8192;
         fsType = "ext4";
