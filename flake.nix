@@ -217,7 +217,7 @@
           "${config.packages.household-intake-smb-audit}/bin/household-intake-smb-audit";
 
         checks.household-intake-smb-audit = pkgs.runCommand "household-intake-smb-audit-tests" { } ''
-          ${pkgs.python3}/bin/python ${./modules/household-intake}/smb-audit.test.py
+          ${pkgs.nodejs}/bin/node --test ${./modules/household-intake}/smb-audit.test.mjs
           touch "$out"
         '';
 
