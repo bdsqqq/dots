@@ -31,5 +31,6 @@
   "treeFilterMode": "no-tools",
   "theme": "dark",
   "outputPad": 0,
-  "showCacheMissNotices": true
+  "showCacheMissNotices": true,
+  "tuiMode": "fullscreen"
 }
