@@ -39,7 +39,6 @@ in
     ../../system/sleepless.nix
     ../../system/kanata.nix
     ../../system/cmux.nix
-    ./moshi-host.nix
 
     # Configured user programs
     ../../user/shell-baseline.nix
