@@ -5,6 +5,11 @@ package_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 tools_root=$(CDPATH= cd -- "$package_root/.." && pwd -P)
 pi_workspace=$(CDPATH= cd -- "$tools_root/../pi" && pwd -P)
 
+# keep this selective bridge instead of adding the pi workspace's entire
+# node_modules/.bin to PATH. that would expose pi's oxlint, vitest, and other
+# dev tools as global commands, allowing them to conflict with project-local
+# versions elsewhere. the outer pnpm shim injects the global-tools NODE_PATH;
+# clear it here and keep parent and child pi processes on the source graph.
 unset NODE_PATH
 export PI_BIN="$pi_workspace/node_modules/.bin/pi"
 
