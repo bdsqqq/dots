@@ -601,7 +601,7 @@ in {
             local cmd=""
             for w in "''${words[@]}"; do
               # skip env assignments (FOO=bar) and common wrappers
-              [[ "$w" == *=* || "$w" == sudo || "$w" == ssh || "$w" == mosh ]] && continue
+              [[ "$w" == *=* || "$w" == sudo || "$w" == ssh ]] && continue
               # skip flags
               [[ "$w" == -* ]] && continue
               cmd="''${w:t}"
