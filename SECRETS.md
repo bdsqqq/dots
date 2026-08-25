@@ -114,8 +114,8 @@ cat ~/.config/sops/age/keys.txt
 ```
 .sops.yaml          ✓ (public keys)
 secrets.yaml        ✓ (encrypted)
-system/sops.nix    ✓ (secret declarations)
-user/shell.nix     ✓ (shell exports)
+modules/secrets/default.nix  ✓ (secret declarations)
+modules/<feature>/           ✓ (secret consumers)
 ~/.config/sops/age/keys.txt  ✗ (NEVER)
 ```
 
@@ -136,22 +136,20 @@ rebuild first: `sudo darwin-rebuild switch --flake .`
 - verify public key matches in `.sops.yaml`
 - re-encrypt: `sops updatekeys secrets.yaml`
 
-**"no such file: secrets.yaml"**  
-fallback handles this - uses env vars instead.
+**"no such file: secrets.yaml"**
+
+run the command from the repository root and verify the encrypted file exists.
 
 ## adding secrets
 
 1. `sops secrets.yaml`
-2. declare it in `system/sops.nix`:
+2. declare it in `modules/secrets/default.nix`:
    ```nix
    sops.secrets.new_secret = { owner = "bdsqqq"; };
    ```
-3. if a shell command needs it as an env var, export it from `user/shell.nix`:
-   ```nix
-   initContent = ''
-     export NEW_SECRET="$(cat /run/secrets/new_secret 2>/dev/null || echo "$NEW_SECRET")"
-   '';
-   ```
+3. use `config.sops.secrets.new_secret.path` in the owning feature's service
+   configuration. avoid copying the secret into the Nix store or a process
+   environment.
 4. `sudo darwin-rebuild switch --flake .`
 
 ## refs

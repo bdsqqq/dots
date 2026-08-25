@@ -5,8 +5,7 @@ on:
     branches: [main]
     paths:
       - "modules/**/tailnet-app.nix"
-      - "user/**/tailnet-app.nix"
-      - "system/tailnet-apps.nix"
+      - "modules/tailnet/catalog.nix"
       - "scripts/generate-tailnet-artifacts.py"
       - "generated/fleet-apps.json"
       - "cloudflare/apps.auto.tfvars.json"

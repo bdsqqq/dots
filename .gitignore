@@ -1,7 +1,9 @@
 .DS_Store
 result
 result-*
-user/media-feeds/*.sqlite
+modules/media-feeds/*.sqlite
+!modules/fonts/berkeley-mono/
+!modules/fonts/berkeley-mono/*.otf
 **/.terraform/
 *.tfplan
 *.tfstate.backup

@@ -19,7 +19,7 @@
     microvm.url = "github:microvm-nix/microvm.nix";
     microvm.inputs.nixpkgs.follows = "nixpkgs";
 
-    berkeley-mono.url = "path:./modules/shared/berkeley-mono";
+    berkeley-mono.url = "path:./modules/fonts/berkeley-mono";
     berkeley-mono.flake = false;
 
     stylix = {
@@ -87,7 +87,7 @@
     let
       # get git revision for configuration tracking
       flakeRevision = self.rev or self.dirtyRev or "unknown";
-      tailnetApps = import ./system/tailnet-apps.nix {
+      tailnetApps = import ./modules/tailnet/catalog.nix {
         inherit (inputs.nixpkgs) lib;
         root = ./.;
       };
@@ -104,7 +104,7 @@
               config.allowUnfree = true;
               overlays = [
                 (import ./overlays/unstable.nix inputs)
-                (import ./zmx.nix).overlay
+                (import ./modules/zmx).overlay
                 (import ./overlays/axiom-cli.nix)
                 (import ./overlays/libplist-darwin.nix)
               ];
@@ -119,7 +119,7 @@
               config.allowUnfree = true;
               overlays = [
                 (import ./overlays/unstable.nix inputs)
-                (import ./zmx.nix).overlay
+                (import ./modules/zmx).overlay
                 (import ./overlays/axiom-cli.nix)
                 (import ./overlays/libplist-darwin.nix)
               ];
@@ -157,8 +157,8 @@
         };
         modules = [
           inputs.microvm.nixosModules.microvm
-          ./system/authorized-keys.nix
-          ./modules/household-intake/vm.nix
+          ./modules/ssh/authorized-keys.nix
+          ./hosts/household-storage/default.nix
           {
             nixpkgs.hostPlatform = "aarch64-linux";
             system.configurationRevision = flakeRevision;
@@ -235,7 +235,7 @@
           "${config.packages.photo-semantic-benchmark}/bin/photo-semantic-benchmark";
 
         packages.household-intake-smb-audit =
-          import ./modules/household-intake { inherit pkgs; };
+          import ./modules/household-intake/package.nix { inherit pkgs; };
 
         apps.household-intake-smb-audit.program =
           "${config.packages.household-intake-smb-audit}/bin/household-intake-smb-audit";
@@ -257,8 +257,8 @@
             nativeBuildInputs = [ pkgs.bun ];
           } ''
           mkdir source
-          cp ${./system/tailnet-registry.ts} source/tailnet-registry.ts
-          cp ${./system/tailnet-registry.test.ts} source/tailnet-registry.test.ts
+          cp ${./modules/tailnet-registry/tailnet-registry.ts} source/tailnet-registry.ts
+          cp ${./modules/tailnet-registry/tailnet-registry.test.ts} source/tailnet-registry.test.ts
           cd source
           bun test tailnet-registry.test.ts
           touch "$out"
@@ -292,7 +292,7 @@
                 nixpkgs.overlays = [
                   inputs.copyparty.overlays.default
                   (import ./overlays/unstable.nix inputs)
-                  (import ./zmx.nix).overlay
+                  (import ./modules/zmx).overlay
                 ];
                 system.configurationRevision = flakeRevision;
 
@@ -328,7 +328,7 @@
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [
                   (import ./overlays/unstable.nix inputs)
-                  (import ./zmx.nix).overlay
+                  (import ./modules/zmx).overlay
                 ];
                 system.configurationRevision = flakeRevision;
 
@@ -366,7 +366,7 @@
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [
                   (import ./overlays/unstable.nix inputs)
-                  (import ./zmx.nix).overlay
+                (import ./modules/zmx).overlay
                   (import ./overlays/quickshell.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
@@ -384,14 +384,6 @@
                   lib.mkForce "read-only";
               })
               ./hosts/lgo-z2e/default.nix
-            ];
-          };
-
-          "lgo-z2e-installer" = inputs.nixpkgs.lib.nixosSystem {
-            specialArgs = { inherit inputs; };
-            modules = [
-              { nixpkgs.hostPlatform = "x86_64-linux"; }
-              ./iso/lgo-z2e-installer.nix
             ];
           };
 
