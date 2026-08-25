@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import type {
   AssistantMessage,
   Message,
@@ -67,11 +69,29 @@ export type PiSpawnRuntimeFactory = (
   options: PiSpawnRuntimeFactoryOptions,
 ) => Promise<PiSessionRuntime>;
 
+export interface PiSpawnCapacityAdmission {
+  repositoryId: string;
+  baseRevision: string;
+}
+
+export interface PiSpawnServerCapacityOptions {
+  catalogueDir: string;
+  executorRoot: string;
+  repositories: Readonly<Record<string, string>>;
+  executionProfileId: string;
+  admitSession: (
+    sessionId: string,
+  ) => PiSpawnCapacityAdmission | Promise<PiSpawnCapacityAdmission>;
+}
+
 export interface PiSpawnServerServiceOptions {
   defaultCwd?: string;
   agentDir?: string;
   /** A shared catalogue directory. Omit to use pi's per-cwd session directories. */
   sessionDir?: string;
+  /** Admit sessions by repository identity instead of treating request cwd as portable. */
+  capacity?: PiSpawnServerCapacityOptions;
+  modelRuntime?: ModelRuntime;
   runtimeFactory?: PiSpawnRuntimeFactory;
   listModels?: () => Promise<ModelMetadata[]>;
 }
@@ -331,6 +351,10 @@ export class PiSpawnServerService implements PiServerService {
   readonly #agentDir: string;
   readonly #sessionDir: string | undefined;
   readonly #runtimeFactory: PiSpawnRuntimeFactory;
+  readonly #capacity: LocalPiSessionCapacity | undefined;
+  readonly #admitCapacitySession:
+    | PiSpawnServerCapacityOptions["admitSession"]
+    | undefined;
   readonly #listModelsOverride: (() => Promise<ModelMetadata[]>) | undefined;
   #modelRuntimePromise: Promise<ModelRuntime> | undefined;
 
@@ -342,10 +366,24 @@ export class PiSpawnServerService implements PiServerService {
       : undefined;
     this.#runtimeFactory =
       options.runtimeFactory ?? ((input) => this.#createLocalRuntime(input));
+    this.#capacity = options.capacity
+      ? new LocalPiSessionCapacity({
+          catalogueDir: options.capacity.catalogueDir,
+          executorRoot: options.capacity.executorRoot,
+          repositories: options.capacity.repositories,
+          executionProfileId: options.capacity.executionProfileId,
+          runtimeFactory: this.#runtimeFactory,
+        })
+      : undefined;
+    this.#admitCapacitySession = options.capacity?.admitSession;
     this.#listModelsOverride = options.listModels;
+    if (options.modelRuntime) {
+      this.#modelRuntimePromise = Promise.resolve(options.modelRuntime);
+    }
   }
 
   async listSessions(): Promise<SessionMetadata[]> {
+    if (this.#capacity) return this.#capacity.listSessions();
     const sessions = await this.#sessions();
     return sessions.map((session) => {
       const parentId = parentSessionId(session.parentSessionPath);
@@ -381,6 +419,18 @@ export class PiSpawnServerService implements PiServerService {
   async createSession(
     options: CreateSessionOptions,
   ): Promise<PiSessionRuntime> {
+    if (this.#capacity && this.#admitCapacitySession) {
+      const admission = await this.#admitCapacitySession(options.id);
+      return this.#capacity.createSession({
+        sessionId: options.id,
+        ...admission,
+        ...(options.name ? { name: options.name } : {}),
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.thinkingLevel
+          ? { thinkingLevel: options.thinkingLevel }
+          : {}),
+      });
+    }
     if ((await this.#find(options.id)) !== undefined) {
       throw new PiServerError(
         "session_locked",
@@ -419,6 +469,7 @@ export class PiSpawnServerService implements PiServerService {
   }
 
   async openSession(sessionId: string): Promise<PiSessionRuntime> {
+    if (this.#capacity) return this.#capacity.acquireSession(sessionId);
     const session = await this.#find(sessionId);
     if (!session) throw new SessionNotFoundError(sessionId);
     return this.#runtimeFactory({
@@ -495,6 +546,687 @@ export class PiSpawnServerService implements PiServerService {
       },
     });
     return new AgentSessionPiRuntime(runtime);
+  }
+}
+
+export type PiCapacitySessionLifecycle = "active" | "suspending" | "suspended";
+
+export interface PiCapacityArtifactReference {
+  key: string;
+}
+
+/** Durable identity and the last acknowledged checkpoint for one pi session. */
+export interface PiCapacitySessionRecord {
+  sessionId: string;
+  createdAt: number;
+  updatedAt: number;
+  sessionName?: string;
+  workspace: {
+    repositoryId: string;
+    baseRevision: string;
+  };
+  workspaceCheckpointRef: PiCapacityArtifactReference;
+  sessionLogRef: PiCapacityArtifactReference;
+  executionProfileId: string;
+  leaseEpoch: number;
+  lifecycle: PiCapacitySessionLifecycle;
+}
+
+export interface LocalPiSessionCapacityOptions {
+  catalogueDir: string;
+  executorRoot: string;
+  repositories: Readonly<Record<string, string>>;
+  executionProfileId: string;
+  runtimeFactory: PiSpawnRuntimeFactory;
+}
+
+export interface CreateLocalPiSessionOptions {
+  sessionId: string;
+  repositoryId: string;
+  baseRevision: string;
+  name?: string;
+  model?: ModelRef;
+  thinkingLevel?: ThinkingLevel;
+}
+
+function command(
+  executable: string,
+  args: readonly string[],
+  env?: NodeJS.ProcessEnv,
+): string {
+  const result = spawnSync(executable, args, {
+    encoding: "utf8",
+    env: env ? { ...process.env, ...env } : process.env,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const detail = result.stderr.trim() || result.stdout.trim();
+    throw new Error(
+      `${executable} ${args.join(" ")} failed with status ${result.status}${detail ? `: ${detail}` : ""}`,
+    );
+  }
+  return result.stdout.trim();
+}
+
+function git(repository: string, args: readonly string[]): string {
+  return command("git", ["-C", repository, ...args]);
+}
+
+function fsyncFile(file: string): void {
+  const descriptor = fs.openSync(file, "r");
+  try {
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+function fsyncDirectory(directory: string): void {
+  const descriptor = fs.openSync(directory, "r");
+  try {
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+function acknowledgeFile(temporaryPath: string, finalPath: string): void {
+  fsyncFile(temporaryPath);
+  fs.renameSync(temporaryPath, finalPath);
+  fsyncDirectory(path.dirname(finalPath));
+}
+
+/**
+ * One fenced, host-local materialization of a durable pi session.
+ *
+ * PiServer calls dispose when an idle runtime loses its final attachment. Here
+ * that operation checkpoints the workspace and session log before releasing the
+ * lease, so the server never needs to treat an executor path as durable state.
+ */
+export class LocalPiSessionLease implements PiSessionRuntime {
+  readonly sessionId: string;
+  readonly leaseEpoch: number;
+  readonly executorDir: string;
+  readonly workspacePath: string;
+  readonly #delegate: PiSessionRuntime;
+  readonly #suspendOperation: () => Promise<void>;
+  #state: PiCapacitySessionLifecycle = "active";
+  #inFlight = 0;
+
+  constructor(options: {
+    sessionId: string;
+    leaseEpoch: number;
+    executorDir: string;
+    workspacePath: string;
+    delegate: PiSessionRuntime;
+    suspend: () => Promise<void>;
+  }) {
+    this.sessionId = options.sessionId;
+    this.leaseEpoch = options.leaseEpoch;
+    this.executorDir = options.executorDir;
+    this.workspacePath = options.workspacePath;
+    this.#delegate = options.delegate;
+    this.#suspendOperation = options.suspend;
+  }
+
+  snapshot(): SessionSnapshot | Promise<SessionSnapshot> {
+    this.#assertActive();
+    return this.#delegate.snapshot();
+  }
+
+  getPhase(): SessionPhase {
+    return this.#state === "active" ? this.#delegate.getPhase() : "idle";
+  }
+
+  prompt(input: PromptInput): Promise<void> {
+    return this.#run(() => this.#delegate.prompt(input));
+  }
+
+  steer(input: SteerInput): Promise<void> {
+    return this.#run(() => this.#delegate.steer(input));
+  }
+
+  abort(): Promise<void> {
+    return this.#run(() => this.#delegate.abort());
+  }
+
+  setModel(model: ModelRef): Promise<void> {
+    return this.#run(() => this.#delegate.setModel(model));
+  }
+
+  setThinking(thinkingLevel: ThinkingLevel): Promise<void> {
+    return this.#run(() => this.#delegate.setThinking(thinkingLevel));
+  }
+
+  subscribe(listener: (event: PiSessionRuntimeEvent) => void): () => void {
+    this.#assertActive();
+    return this.#delegate.subscribe(listener);
+  }
+
+  async suspend(): Promise<void> {
+    if (this.#state === "suspending") {
+      throw new SessionBusyError("session suspension is already in progress");
+    }
+    if (this.#state === "active") {
+      if (this.#inFlight > 0 || this.#delegate.getPhase() !== "idle") {
+        throw new SessionBusyError("cannot suspend a busy session");
+      }
+      this.#state = "suspending";
+    }
+
+    await this.#suspendOperation();
+    this.#state = "suspended";
+  }
+
+  async dispose(): Promise<void> {
+    if (this.#state === "suspended") return;
+    await this.suspend();
+  }
+
+  async #run<T>(operation: () => Promise<T>): Promise<T> {
+    this.#assertActive();
+    this.#inFlight += 1;
+    try {
+      return await operation();
+    } finally {
+      this.#inFlight -= 1;
+    }
+  }
+
+  #assertActive(): void {
+    if (this.#state !== "active") {
+      throw new PiServerError(
+        "session_locked",
+        `session lease is ${this.#state}`,
+      );
+    }
+  }
+}
+
+/** Local filesystem/git proof of the workspace-above-session capacity seam. */
+export class LocalPiSessionCapacity {
+  readonly #catalogueDir: string;
+  readonly #executorRoot: string;
+  readonly #recordsDir: string;
+  readonly #workspaceArtifactsDir: string;
+  readonly #sessionArtifactsDir: string;
+  readonly #lockPath: string;
+  readonly #repositories: ReadonlyMap<string, string>;
+  readonly #executionProfileId: string;
+  readonly #runtimeFactory: PiSpawnRuntimeFactory;
+
+  constructor(options: LocalPiSessionCapacityOptions) {
+    this.#catalogueDir = path.resolve(options.catalogueDir);
+    this.#executorRoot = path.resolve(options.executorRoot);
+    this.#recordsDir = path.join(this.#catalogueDir, "records");
+    this.#workspaceArtifactsDir = path.join(
+      this.#catalogueDir,
+      "workspace-checkpoints",
+    );
+    this.#sessionArtifactsDir = path.join(this.#catalogueDir, "session-logs");
+    this.#lockPath = path.join(this.#catalogueDir, "catalogue.lock");
+    this.#repositories = new Map(
+      Object.entries(options.repositories).map(([id, repository]) => [
+        id,
+        path.resolve(repository),
+      ]),
+    );
+    this.#executionProfileId = options.executionProfileId;
+    this.#runtimeFactory = options.runtimeFactory;
+    fs.mkdirSync(this.#recordsDir, { recursive: true });
+    fs.mkdirSync(this.#workspaceArtifactsDir, { recursive: true });
+    fs.mkdirSync(this.#sessionArtifactsDir, { recursive: true });
+    fs.mkdirSync(this.#executorRoot, { recursive: true });
+  }
+
+  getRecord(sessionId: string): PiCapacitySessionRecord {
+    const recordPath = this.#recordPath(sessionId);
+    if (!fs.existsSync(recordPath)) throw new SessionNotFoundError(sessionId);
+    return JSON.parse(
+      fs.readFileSync(recordPath, "utf8"),
+    ) as PiCapacitySessionRecord;
+  }
+
+  listSessions(): SessionMetadata[] {
+    return fs
+      .readdirSync(this.#recordsDir)
+      .filter((entry) => entry.endsWith(".json"))
+      .map((entry) =>
+        JSON.parse(fs.readFileSync(path.join(this.#recordsDir, entry), "utf8")),
+      )
+      .map((record: PiCapacitySessionRecord) => ({
+        id: record.sessionId,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        ...(record.sessionName ? { sessionName: record.sessionName } : {}),
+      }))
+      .sort((left, right) => right.updatedAt - left.updatedAt);
+  }
+
+  async createSession(
+    options: CreateLocalPiSessionOptions,
+  ): Promise<LocalPiSessionLease> {
+    this.#withCatalogueLock(() => {
+      if (fs.existsSync(this.#recordPath(options.sessionId))) {
+        throw new PiServerError(
+          "session_locked",
+          `session already exists: ${options.sessionId}`,
+        );
+      }
+    });
+    const repository = this.#repository(options.repositoryId);
+    const baseRevision = git(repository, [
+      "rev-parse",
+      "--verify",
+      `${options.baseRevision}^{commit}`,
+    ]);
+    const executorDir = this.#allocateExecutor(options.sessionId, 1);
+    const executor = this.#provisionExecutor(
+      repository,
+      baseRevision,
+      executorDir,
+    );
+    const sessionDir = path.join(executor.executorDir, "pi-session");
+    const manager = SessionManager.create(executor.workspacePath, sessionDir, {
+      id: options.sessionId,
+    });
+    if (options.name) manager.appendSessionInfo(options.name);
+    const sessionFile = persistSessionHeader(manager);
+    const persistedManager = SessionManager.open(
+      sessionFile,
+      sessionDir,
+      executor.workspacePath,
+    );
+    let runtime: PiSessionRuntime | undefined;
+
+    try {
+      runtime = await this.#runtimeFactory({
+        sessionManager: persistedManager,
+        model: options.model,
+        thinkingLevel: options.thinkingLevel,
+        reason: "create",
+      });
+      if (runtime.getPhase() !== "idle") {
+        throw new SessionBusyError("new session runtime is not idle");
+      }
+      const workspaceCheckpointRef = this.#persistWorkspaceCheckpoint(
+        executor.workspacePath,
+        baseRevision,
+      );
+      const sessionLogRef = this.#persistSessionLog(sessionFile);
+      const createdAt = timestamp(
+        persistedManager.getHeader()?.timestamp,
+        Date.now(),
+      );
+      const record: PiCapacitySessionRecord = {
+        sessionId: options.sessionId,
+        createdAt,
+        updatedAt: createdAt,
+        ...(options.name ? { sessionName: options.name } : {}),
+        workspace: { repositoryId: options.repositoryId, baseRevision },
+        workspaceCheckpointRef,
+        sessionLogRef,
+        executionProfileId: this.#executionProfileId,
+        leaseEpoch: 1,
+        lifecycle: "active",
+      };
+      this.#withCatalogueLock(() => {
+        if (fs.existsSync(this.#recordPath(options.sessionId))) {
+          throw new PiServerError(
+            "session_locked",
+            `session already exists: ${options.sessionId}`,
+          );
+        }
+        this.#writeRecord(record);
+      });
+      return this.#createLease(record, executor, sessionFile, runtime);
+    } catch (error) {
+      if (runtime) await runtime.dispose().catch(() => {});
+      fs.rmSync(executorDir, { force: true, recursive: true });
+      throw error;
+    }
+  }
+
+  async acquireSession(sessionId: string): Promise<LocalPiSessionLease> {
+    let record!: PiCapacitySessionRecord;
+    let runtime: PiSessionRuntime | undefined;
+    let executorDir: string | undefined;
+    this.#withCatalogueLock(() => {
+      const current = this.getRecord(sessionId);
+      if (current.lifecycle !== "suspended") {
+        throw new PiServerError(
+          "session_locked",
+          `session lease is ${current.lifecycle}: ${sessionId}`,
+        );
+      }
+      if (current.executionProfileId !== this.#executionProfileId) {
+        throw new Error(
+          `execution profile ${current.executionProfileId} is unavailable on this capacity`,
+        );
+      }
+      record = {
+        ...current,
+        updatedAt: Date.now(),
+        leaseEpoch: current.leaseEpoch + 1,
+        lifecycle: "active",
+      };
+      this.#writeRecord(record);
+    });
+
+    try {
+      const repository = this.#repository(record.workspace.repositoryId);
+      executorDir = this.#allocateExecutor(record.sessionId, record.leaseEpoch);
+      const executor = this.#provisionExecutor(
+        repository,
+        record.workspace.baseRevision,
+        executorDir,
+      );
+      this.#restoreWorkspace(
+        executor.workspacePath,
+        record.workspace.baseRevision,
+        record.workspaceCheckpointRef,
+      );
+      const sessionFile = this.#materializeSessionLog(
+        executor.executorDir,
+        record.sessionLogRef,
+      );
+      const manager = SessionManager.open(
+        sessionFile,
+        path.dirname(sessionFile),
+        executor.workspacePath,
+      );
+      if (manager.getSessionId() !== record.sessionId) {
+        throw new Error(
+          `session artifact ${record.sessionLogRef.key} contains ${manager.getSessionId()}, expected ${record.sessionId}`,
+        );
+      }
+      runtime = await this.#runtimeFactory({
+        sessionManager: manager,
+        reason: "open",
+      });
+      if (runtime.getPhase() !== "idle") {
+        throw new SessionBusyError("resumed session runtime is not idle");
+      }
+      return this.#createLease(record, executor, sessionFile, runtime);
+    } catch (error) {
+      if (runtime) await runtime.dispose().catch(() => {});
+      if (executorDir) {
+        try {
+          fs.rmSync(executorDir, { force: true, recursive: true });
+        } catch {
+          // Lease rollback must not depend on cleaning a failed executor path.
+        }
+      }
+      this.#withCatalogueLock(() => {
+        const current = this.getRecord(record.sessionId);
+        if (
+          current.leaseEpoch === record.leaseEpoch &&
+          current.lifecycle === "active"
+        ) {
+          this.#writeRecord({
+            ...current,
+            updatedAt: Date.now(),
+            lifecycle: "suspended",
+          });
+        }
+      });
+      throw error;
+    }
+  }
+
+  #createLease(
+    record: PiCapacitySessionRecord,
+    executor: { executorDir: string; workspacePath: string },
+    sessionFile: string,
+    runtime: PiSessionRuntime,
+  ): LocalPiSessionLease {
+    return new LocalPiSessionLease({
+      sessionId: record.sessionId,
+      leaseEpoch: record.leaseEpoch,
+      executorDir: executor.executorDir,
+      workspacePath: executor.workspacePath,
+      delegate: runtime,
+      suspend: () =>
+        this.#suspend(record, executor.workspacePath, sessionFile, runtime),
+    });
+  }
+
+  async #suspend(
+    lease: PiCapacitySessionRecord,
+    workspacePath: string,
+    sessionFile: string,
+    runtime: PiSessionRuntime,
+  ): Promise<void> {
+    this.#withCatalogueLock(() => {
+      const current = this.#authoritativeRecord(lease, "active");
+      this.#writeRecord({
+        ...current,
+        updatedAt: Date.now(),
+        lifecycle: "suspending",
+      });
+    });
+
+    await runtime.dispose();
+    const workspaceCheckpointRef = this.#persistWorkspaceCheckpoint(
+      workspacePath,
+      lease.workspace.baseRevision,
+    );
+    const sessionLogRef = this.#persistSessionLog(sessionFile);
+
+    this.#withCatalogueLock(() => {
+      const current = this.#authoritativeRecord(lease, "suspending");
+      this.#writeRecord({
+        ...current,
+        updatedAt: Date.now(),
+        workspaceCheckpointRef,
+        sessionLogRef,
+        lifecycle: "suspended",
+      });
+    });
+  }
+
+  #authoritativeRecord(
+    lease: PiCapacitySessionRecord,
+    lifecycle: PiCapacitySessionLifecycle,
+  ): PiCapacitySessionRecord {
+    const current = this.getRecord(lease.sessionId);
+    if (current.leaseEpoch !== lease.leaseEpoch) {
+      throw new PiServerError(
+        "session_locked",
+        `stale lease epoch ${lease.leaseEpoch}; current epoch is ${current.leaseEpoch}`,
+      );
+    }
+    if (current.lifecycle !== lifecycle) {
+      throw new PiServerError(
+        "session_locked",
+        `lease ${lease.leaseEpoch} is ${current.lifecycle}, expected ${lifecycle}`,
+      );
+    }
+    return current;
+  }
+
+  #allocateExecutor(sessionId: string, leaseEpoch: number): string {
+    return path.join(
+      this.#executorRoot,
+      `${Buffer.from(sessionId).toString("base64url")}-${leaseEpoch}-${randomUUID()}`,
+    );
+  }
+
+  #repository(repositoryId: string): string {
+    const repository = this.#repositories.get(repositoryId);
+    if (!repository) throw new Error(`unknown repository: ${repositoryId}`);
+    return repository;
+  }
+
+  #provisionExecutor(
+    repository: string,
+    baseRevision: string,
+    executorDir: string,
+  ): { executorDir: string; workspacePath: string } {
+    const resolvedExecutorDir = path.resolve(executorDir);
+    if (fs.existsSync(resolvedExecutorDir)) {
+      throw new Error(
+        `executor directory already exists: ${resolvedExecutorDir}`,
+      );
+    }
+    fs.mkdirSync(resolvedExecutorDir, { recursive: true });
+    const workspacePath = path.join(resolvedExecutorDir, "workspace");
+    command("git", [
+      "clone",
+      "--quiet",
+      "--no-checkout",
+      repository,
+      workspacePath,
+    ]);
+    git(workspacePath, ["checkout", "--quiet", "--detach", baseRevision]);
+    return { executorDir: resolvedExecutorDir, workspacePath };
+  }
+
+  #persistWorkspaceCheckpoint(
+    workspacePath: string,
+    baseRevision: string,
+  ): PiCapacityArtifactReference {
+    const key = `${randomUUID()}.bundle`;
+    const finalPath = path.join(this.#workspaceArtifactsDir, key);
+    const temporaryPath = `${finalPath}.tmp`;
+    const temporaryIndex = path.join(
+      path.dirname(workspacePath),
+      `.checkpoint-index-${randomUUID()}`,
+    );
+    const environment = {
+      GIT_INDEX_FILE: temporaryIndex,
+      GIT_AUTHOR_NAME: "pi capacity",
+      GIT_AUTHOR_EMAIL: "pi-capacity@local",
+      GIT_COMMITTER_NAME: "pi capacity",
+      GIT_COMMITTER_EMAIL: "pi-capacity@local",
+    };
+    const checkpointRef = "refs/pi-capacity/checkpoint";
+
+    try {
+      command(
+        "git",
+        ["-C", workspacePath, "read-tree", baseRevision],
+        environment,
+      );
+      command(
+        "git",
+        ["-C", workspacePath, "add", "-A", "-f", "--", "."],
+        environment,
+      );
+      const tree = command(
+        "git",
+        ["-C", workspacePath, "write-tree"],
+        environment,
+      );
+      const checkpoint = command(
+        "git",
+        [
+          "-C",
+          workspacePath,
+          "-c",
+          "commit.gpgSign=false",
+          "commit-tree",
+          tree,
+          "-p",
+          baseRevision,
+          "-m",
+          "pi capacity checkpoint",
+        ],
+        environment,
+      );
+      git(workspacePath, ["update-ref", checkpointRef, checkpoint]);
+      git(workspacePath, ["bundle", "create", temporaryPath, checkpointRef]);
+      acknowledgeFile(temporaryPath, finalPath);
+      return { key };
+    } finally {
+      fs.rmSync(temporaryIndex, { force: true });
+      fs.rmSync(temporaryPath, { force: true });
+      try {
+        git(workspacePath, ["update-ref", "-d", checkpointRef]);
+      } catch {
+        // The ref is temporary; preserve the original checkpoint failure.
+      }
+    }
+  }
+
+  #restoreWorkspace(
+    workspacePath: string,
+    baseRevision: string,
+    reference: PiCapacityArtifactReference,
+  ): void {
+    const artifact = path.join(this.#workspaceArtifactsDir, reference.key);
+    git(workspacePath, [
+      "fetch",
+      "--quiet",
+      artifact,
+      "refs/pi-capacity/checkpoint",
+    ]);
+    const checkpoint = git(workspacePath, ["rev-parse", "FETCH_HEAD"]);
+    git(workspacePath, ["read-tree", "--reset", "-u", checkpoint]);
+    git(workspacePath, ["read-tree", "--reset", baseRevision]);
+  }
+
+  #persistSessionLog(sessionFile: string): PiCapacityArtifactReference {
+    fsyncFile(sessionFile);
+    const key = `${randomUUID()}.jsonl`;
+    const finalPath = path.join(this.#sessionArtifactsDir, key);
+    const temporaryPath = `${finalPath}.tmp`;
+    fs.copyFileSync(sessionFile, temporaryPath, fs.constants.COPYFILE_EXCL);
+    fs.chmodSync(temporaryPath, 0o600);
+    acknowledgeFile(temporaryPath, finalPath);
+    return { key };
+  }
+
+  #materializeSessionLog(
+    executorDir: string,
+    reference: PiCapacityArtifactReference,
+  ): string {
+    const sessionDir = path.join(executorDir, "pi-session");
+    fs.mkdirSync(sessionDir, { recursive: true });
+    const sessionFile = path.join(sessionDir, "session.jsonl");
+    fs.copyFileSync(
+      path.join(this.#sessionArtifactsDir, reference.key),
+      sessionFile,
+      fs.constants.COPYFILE_EXCL,
+    );
+    fs.chmodSync(sessionFile, 0o600);
+    return sessionFile;
+  }
+
+  #recordPath(sessionId: string): string {
+    return path.join(
+      this.#recordsDir,
+      `${Buffer.from(sessionId).toString("base64url")}.json`,
+    );
+  }
+
+  #writeRecord(record: PiCapacitySessionRecord): void {
+    const recordPath = this.#recordPath(record.sessionId);
+    const temporaryPath = `${recordPath}.${randomUUID()}.tmp`;
+    fs.writeFileSync(temporaryPath, `${JSON.stringify(record, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    acknowledgeFile(temporaryPath, recordPath);
+  }
+
+  #withCatalogueLock<T>(operation: () => T): T {
+    let descriptor: number;
+    try {
+      descriptor = fs.openSync(this.#lockPath, "wx", 0o600);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new PiServerError("session_locked", "capacity catalogue is busy");
+      }
+      throw error;
+    }
+    try {
+      return operation();
+    } finally {
+      fs.closeSync(descriptor);
+      fs.rmSync(this.#lockPath, { force: true });
+    }
   }
 }
 
@@ -881,6 +1613,8 @@ export class RemotePiCapacityProvider implements PiCapacityProvider {
 
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it } = import.meta.vitest;
+  const { fauxAssistantMessage, fauxProvider } =
+    await import("@earendil-works/pi-ai");
   const { PiClient } = await import("@earendil-works/pi-client");
   const { createUnixTransportFactory } =
     await import("@earendil-works/pi-client/unix");
@@ -895,6 +1629,97 @@ if (import.meta.vitest) {
     );
     roots.push(root);
     return root;
+  };
+
+  const makeCatalogueRepository = (root: string) => {
+    const repository = path.join(root, "catalogue-repository");
+    fs.mkdirSync(repository);
+    command("git", ["init", "--quiet", "--initial-branch=main", repository]);
+    fs.writeFileSync(path.join(repository, "modified.txt"), "base\n");
+    fs.writeFileSync(path.join(repository, "deleted.txt"), "delete me\n");
+    git(repository, ["add", "."]);
+    git(repository, [
+      "-c",
+      "user.name=pi capacity test",
+      "-c",
+      "user.email=pi-capacity-test@local",
+      "-c",
+      "commit.gpgSign=false",
+      "commit",
+      "--quiet",
+      "-m",
+      "base",
+    ]);
+    return {
+      repository,
+      baseRevision: git(repository, ["rev-parse", "HEAD"]),
+    };
+  };
+
+  const makeFauxModelRuntime = async (root: string) => {
+    const faux = fauxProvider({
+      provider: `capacity-faux-${randomUUID()}`,
+      models: [{ id: "capacity-model", name: "Capacity model" }],
+    });
+    const modelRuntime = await ModelRuntime.create({
+      authPath: path.join(root, "agent", "auth.json"),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    modelRuntime.registerNativeProvider(faux.provider);
+    await modelRuntime.refresh({ allowNetwork: false });
+    const model = faux.getModel();
+    return {
+      faux,
+      modelRuntime,
+      model: { provider: model.provider, id: model.id },
+    };
+  };
+
+  const readCapacityRecord = (
+    catalogueDir: string,
+    sessionId: string,
+  ): PiCapacitySessionRecord =>
+    JSON.parse(
+      fs.readFileSync(
+        path.join(
+          catalogueDir,
+          "records",
+          `${Buffer.from(sessionId).toString("base64url")}.json`,
+        ),
+        "utf8",
+      ),
+    ) as PiCapacitySessionRecord;
+
+  const capacityService = (options: {
+    root: string;
+    catalogueDir: string;
+    executorRoot: string;
+    repository: string;
+    baseRevision: string;
+    modelRuntime: ModelRuntime;
+  }) =>
+    new PiSpawnServerService({
+      agentDir: path.join(options.root, "agent"),
+      modelRuntime: options.modelRuntime,
+      capacity: {
+        catalogueDir: options.catalogueDir,
+        executorRoot: options.executorRoot,
+        repositories: { dots: options.repository },
+        executionProfileId: "local-test",
+        admitSession: () => ({
+          repositoryId: "dots",
+          baseRevision: options.baseRevision,
+        }),
+      },
+    });
+
+  const waitFor = async (condition: () => boolean) => {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (condition()) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error("condition did not become true");
   };
 
   afterEach(() => {
@@ -959,6 +1784,299 @@ if (import.meta.vitest) {
       expect((await reopened.snapshot()).id).toBe("server-id");
       expect(runtimes).toHaveLength(2);
       await reopened.dispose();
+    });
+  });
+
+  describe("LocalPiSessionCapacity", () => {
+    it("serves real turns across an executor checkpoint and reacquirable failed placement", async () => {
+      const root = makeRoot();
+      const { repository, baseRevision } = makeCatalogueRepository(root);
+      const catalogueDir = path.join(root, "capacity-catalogue");
+      const executorRootA = path.join(root, "simulated-host-a", "executors");
+      const executorRootB = path.join(
+        root,
+        "simulated-host-b",
+        "different-executors",
+      );
+      const requestedCwd = path.join(root, "request-cwd-is-not-identity");
+      const { faux, modelRuntime, model } = await makeFauxModelRuntime(root);
+      faux.setResponses([
+        fauxAssistantMessage("first response"),
+        fauxAssistantMessage("second response"),
+      ]);
+
+      const serviceA = capacityService({
+        root,
+        catalogueDir,
+        executorRoot: executorRootA,
+        repository,
+        baseRevision,
+        modelRuntime,
+      });
+      const socketA = path.join(root, "host-a.sock");
+      const serverA = createUnixServer(serviceA, { path: socketA });
+      await serverA.start();
+      const clientA = await PiClient.connect({
+        transportFactory: createUnixTransportFactory({ path: socketA }),
+      });
+      let remoteA: RemoteSession | undefined;
+      let sessionId = "";
+      let workspaceA = "";
+      let executorA = "";
+      let dirtyStatus = "";
+
+      try {
+        remoteA = await RemoteSession.create(clientA, {
+          cwd: requestedCwd,
+          model,
+        });
+        sessionId = remoteA.id ?? "";
+        expect(sessionId).not.toBe("");
+        await remoteA.submit("first turn");
+        expect(remoteA.phase).toBe("idle");
+        expect(remoteA.state.transcript).toEqual([
+          expect.objectContaining({
+            role: "user",
+            content: [{ type: "text", text: "first turn" }],
+          }),
+          expect.objectContaining({
+            role: "assistant",
+            content: [{ type: "text", text: "first response" }],
+          }),
+        ]);
+
+        workspaceA = remoteA.snapshot?.cwd ?? "";
+        executorA = path.dirname(workspaceA);
+        expect(workspaceA.startsWith(`${executorRootA}${path.sep}`)).toBe(true);
+        fs.writeFileSync(path.join(workspaceA, "modified.txt"), "dirty\n");
+        fs.rmSync(path.join(workspaceA, "deleted.txt"));
+        fs.mkdirSync(path.join(workspaceA, "nested"));
+        fs.writeFileSync(
+          path.join(workspaceA, "nested", "untracked.txt"),
+          "untracked\n",
+        );
+        dirtyStatus = git(workspaceA, [
+          "status",
+          "--short",
+          "--untracked-files=all",
+        ]);
+        expect(dirtyStatus).toBe(
+          "D deleted.txt\n M modified.txt\n?? nested/untracked.txt",
+        );
+
+        await remoteA.dispose();
+        const suspended = readCapacityRecord(catalogueDir, sessionId);
+        expect(suspended).toMatchObject({
+          sessionId,
+          workspace: { repositoryId: "dots", baseRevision },
+          executionProfileId: "local-test",
+          leaseEpoch: 1,
+          lifecycle: "suspended",
+        });
+        expect(JSON.stringify(suspended)).not.toContain(workspaceA);
+        expect(JSON.stringify(suspended)).not.toContain(requestedCwd);
+      } finally {
+        await remoteA?.dispose().catch(() => {});
+        await clientA.dispose();
+        await serverA.close();
+      }
+
+      fs.rmSync(executorA, { recursive: true });
+      expect(fs.existsSync(executorA)).toBe(false);
+
+      const serviceB = capacityService({
+        root,
+        catalogueDir,
+        executorRoot: executorRootB,
+        repository,
+        baseRevision,
+        modelRuntime,
+      });
+      fs.rmSync(executorRootB, { recursive: true });
+      fs.writeFileSync(executorRootB, "block executor allocation\n");
+      const socketB = path.join(root, "host-b.sock");
+      const serverB = createUnixServer(serviceB, { path: socketB });
+      await serverB.start();
+      const clientB = await PiClient.connect({
+        transportFactory: createUnixTransportFactory({ path: socketB }),
+      });
+      let remoteB: RemoteSession | undefined;
+
+      try {
+        await expect(RemoteSession.open(clientB, sessionId)).rejects.toThrow();
+        expect(readCapacityRecord(catalogueDir, sessionId)).toMatchObject({
+          leaseEpoch: 2,
+          lifecycle: "suspended",
+        });
+        fs.rmSync(executorRootB);
+        fs.mkdirSync(executorRootB, { recursive: true });
+
+        remoteB = await RemoteSession.open(clientB, sessionId);
+        const workspaceB = remoteB.snapshot?.cwd ?? "";
+        expect(remoteB.id).toBe(sessionId);
+        expect(workspaceB).not.toBe(workspaceA);
+        expect(workspaceB.startsWith(`${executorRootB}${path.sep}`)).toBe(true);
+        expect(remoteB.state.transcript).toEqual([
+          expect.objectContaining({
+            role: "user",
+            content: [{ type: "text", text: "first turn" }],
+          }),
+          expect.objectContaining({
+            role: "assistant",
+            content: [{ type: "text", text: "first response" }],
+          }),
+        ]);
+        expect(
+          git(workspaceB, ["status", "--short", "--untracked-files=all"]),
+        ).toBe(dirtyStatus);
+        expect(
+          fs.readFileSync(path.join(workspaceB, "modified.txt"), "utf8"),
+        ).toBe("dirty\n");
+        expect(fs.existsSync(path.join(workspaceB, "deleted.txt"))).toBe(false);
+        expect(
+          fs.readFileSync(
+            path.join(workspaceB, "nested", "untracked.txt"),
+            "utf8",
+          ),
+        ).toBe("untracked\n");
+
+        await remoteB.submit("second turn");
+        expect(remoteB.phase).toBe("idle");
+        expect(remoteB.state.transcript).toEqual([
+          expect.objectContaining({
+            role: "user",
+            content: [{ type: "text", text: "first turn" }],
+          }),
+          expect.objectContaining({
+            role: "assistant",
+            content: [{ type: "text", text: "first response" }],
+          }),
+          expect.objectContaining({
+            role: "user",
+            content: [{ type: "text", text: "second turn" }],
+          }),
+          expect.objectContaining({
+            role: "assistant",
+            content: [{ type: "text", text: "second response" }],
+          }),
+        ]);
+        expect(readCapacityRecord(catalogueDir, sessionId)).toMatchObject({
+          leaseEpoch: 3,
+          lifecycle: "active",
+        });
+      } finally {
+        await remoteB?.dispose().catch(() => {});
+        await clientB.dispose();
+        await serverB.close();
+      }
+    }, 40_000);
+
+    it("rejects suspension during a real turn and fences the old lease", async () => {
+      const root = makeRoot();
+      const { repository, baseRevision } = makeCatalogueRepository(root);
+      const catalogueDir = path.join(root, "capacity-catalogue");
+      const { faux, modelRuntime, model } = await makeFauxModelRuntime(root);
+      let releaseTurn = () => {};
+      const turnGate = new Promise<void>((resolve) => {
+        releaseTurn = resolve;
+      });
+      faux.setResponses([
+        async () => {
+          await turnGate;
+          return fauxAssistantMessage("finished response");
+        },
+      ]);
+      const serviceA = capacityService({
+        root,
+        catalogueDir,
+        executorRoot: path.join(root, "host-a"),
+        repository,
+        baseRevision,
+        modelRuntime,
+      });
+      const acquiredA = await serviceA.createSession({
+        id: "fenced-session",
+        cwd: path.join(root, "ignored-request-cwd"),
+        model,
+      });
+      expect(acquiredA).toBeInstanceOf(LocalPiSessionLease);
+      const hostA = acquiredA as LocalPiSessionLease;
+      const turn = hostA.prompt({ text: "held turn" });
+      await waitFor(() => faux.state.callCount === 1);
+      expect(hostA.getPhase()).toBe("turn");
+      await expect(hostA.suspend()).rejects.toThrow(
+        "cannot suspend a busy session",
+      );
+      expect(readCapacityRecord(catalogueDir, hostA.sessionId).lifecycle).toBe(
+        "active",
+      );
+      releaseTurn();
+      await turn;
+      expect(hostA.getPhase()).toBe("idle");
+      await hostA.suspend();
+
+      const serviceB = capacityService({
+        root,
+        catalogueDir,
+        executorRoot: path.join(root, "host-b"),
+        repository,
+        baseRevision,
+        modelRuntime,
+      });
+      const acquiredB = await serviceB.openSession(hostA.sessionId);
+      expect(acquiredB).toBeInstanceOf(LocalPiSessionLease);
+      const hostB = acquiredB as LocalPiSessionLease;
+      const activeOnHostB = readCapacityRecord(catalogueDir, hostB.sessionId);
+      expect(activeOnHostB).toMatchObject({
+        leaseEpoch: 2,
+        lifecycle: "active",
+      });
+      await expect(hostA.suspend()).rejects.toThrow(
+        "stale lease epoch 1; current epoch is 2",
+      );
+      expect(readCapacityRecord(catalogueDir, hostB.sessionId)).toEqual(
+        activeOnHostB,
+      );
+      await hostB.suspend();
+    });
+
+    it("fails closed in suspending when a checkpoint artifact cannot publish", async () => {
+      const root = makeRoot();
+      const { repository, baseRevision } = makeCatalogueRepository(root);
+      const catalogueDir = path.join(root, "capacity-catalogue");
+      const { modelRuntime, model } = await makeFauxModelRuntime(root);
+      const service = capacityService({
+        root,
+        catalogueDir,
+        executorRoot: path.join(root, "host-a"),
+        repository,
+        baseRevision,
+        modelRuntime,
+      });
+      const acquired = await service.createSession({
+        id: "failed-checkpoint",
+        model,
+      });
+      expect(acquired).toBeInstanceOf(LocalPiSessionLease);
+      const lease = acquired as LocalPiSessionLease;
+      const acknowledged = readCapacityRecord(catalogueDir, lease.sessionId);
+      const sessionArtifacts = path.join(catalogueDir, "session-logs");
+      fs.rmSync(sessionArtifacts, { recursive: true });
+      fs.writeFileSync(sessionArtifacts, "block artifact publication\n");
+
+      await expect(lease.suspend()).rejects.toThrow();
+      expect(readCapacityRecord(catalogueDir, lease.sessionId)).toMatchObject({
+        workspaceCheckpointRef: acknowledged.workspaceCheckpointRef,
+        sessionLogRef: acknowledged.sessionLogRef,
+        leaseEpoch: 1,
+        lifecycle: "suspending",
+      });
+      await expect(lease.suspend()).rejects.toThrow(
+        "session suspension is already in progress",
+      );
+      await expect(service.openSession(lease.sessionId)).rejects.toThrow(
+        "session lease is suspending",
+      );
     });
   });
 
