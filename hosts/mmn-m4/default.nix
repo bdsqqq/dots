@@ -27,7 +27,6 @@ in
     inputs.home-manager.darwinModules.home-manager
     ../../modules/primary-user.nix
     ../../system/nix.nix
-    ../../system/nh.nix
     ../../system/sops.nix
     ../../system/homebrew-best-effort.nix
     ../../system/tailscale.nix
