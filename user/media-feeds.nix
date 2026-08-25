@@ -15,8 +15,14 @@ let
 
     [[ -e ${lib.escapeShellArg moduloImportMarker} ]] && exit 0
     mkdir -p ${lib.escapeShellArg moduloKindleDirectory}
+
+    torrent_file=$(${pkgs.coreutils}/bin/mktemp)
+    trap 'rm -f "$torrent_file"' EXIT
+    ${pkgs.curl}/bin/curl --fail --location --silent --show-error \
+      --output "$torrent_file" \
+      https://nyaa.si/download/2120944.torrent
     ${pkgs.transmission_4}/bin/transmission-remote 127.0.0.1:9091 \
-      --add https://nyaa.si/download/2120944.torrent \
+      --add "$torrent_file" \
       --download-dir ${lib.escapeShellArg moduloKindleDirectory}
     touch ${lib.escapeShellArg moduloImportMarker}
   '';
