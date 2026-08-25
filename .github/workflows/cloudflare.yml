@@ -136,7 +136,7 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          secret=secrets/cloudflare/t3.yaml
+          secret=cloudflare/secrets/t3.yaml
           if [[ -s "${secret}" || -z "${CLOUDFLARE_T3_TUNNEL_SECRET}" ]]; then
             exit 0
           fi
@@ -158,7 +158,7 @@ jobs:
           encrypted="$(mktemp)"
           jq -n --arg credential "${credential}" '{credential: $credential}' |
             nix shell nixpkgs#sops --command sops encrypt \
-              --filename-override secrets/cloudflare/t3.yaml \
+              --filename-override cloudflare/secrets/t3.yaml \
               --input-type json \
               --output-type yaml \
               /dev/stdin \
@@ -174,8 +174,8 @@ jobs:
           git add \
             cloudflare/runtime-bindings.json \
             cloudflare/terraform.tfstate
-          if [[ -s secrets/cloudflare/t3.yaml ]]; then
-            git add secrets/cloudflare/t3.yaml
+          if [[ -s cloudflare/secrets/t3.yaml ]]; then
+            git add cloudflare/secrets/t3.yaml
           fi
           if git diff --cached --quiet; then
             exit 0

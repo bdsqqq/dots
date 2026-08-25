@@ -14,9 +14,9 @@ let
   containerAddress = connector: "10.233.${toString connector.networkId}.2";
   authSecretName = trust: "cloudflare-connector-${trust}-tailscale-auth-key";
   authCredentialPath = trust:
-    inputs.self + "/secrets/tailscale/connectors/${trust}.yaml";
+    inputs.self + "/tailscale/secrets/connectors/${trust}.yaml";
   appSecretName = name: "cloudflare-tunnel-${name}";
-  credentialPath = name: inputs.self + "/secrets/cloudflare/${name}.yaml";
+  credentialPath = name: inputs.self + "/cloudflare/secrets/${name}.yaml";
   readyConnectors = lib.filterAttrs
     (trust: _: builtins.pathExists (authCredentialPath trust))
     cfg.connectors;
