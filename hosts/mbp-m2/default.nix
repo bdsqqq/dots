@@ -209,7 +209,11 @@ in
                 "lgo-z2e"
               ]
                 { };
-              kindle = syncthing.folderFor "kindle" config.home.homeDirectory true [ "kindle" ] { };
+              kindle = syncthing.folderFor "kindle" config.home.homeDirectory true [
+                "kindle"
+                "mmn-m4"
+              ]
+                { };
             };
           };
         };

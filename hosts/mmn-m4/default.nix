@@ -96,11 +96,14 @@ in
           ]) // {
             mbp-m2 = syncthing.devices.mbp-m2 // { introducer = false; };
           };
-          folders.commonplace = syncthing.folderForPath "commonplace" "/Users/bdsqqq/commonplace" [
-            "mbp-m2"
-            "htz-relay"
-          ]
-            { label = "commonplace"; };
+          folders = {
+            commonplace = syncthing.folderForPath "commonplace" "/Users/bdsqqq/commonplace" [
+              "mbp-m2"
+              "htz-relay"
+            ]
+              { label = "commonplace"; };
+            kindle = syncthing.folderFor "kindle" "/Users/bdsqqq" true [ "mbp-m2" ] { };
+          };
         };
       };
 
