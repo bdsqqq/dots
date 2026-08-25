@@ -146,6 +146,8 @@ export interface PiSpawnSessionMeta {
   sessionId?: string;
   sessionFile?: string;
   leafId?: string;
+  resultRef?: string;
+  workspaceApply?: PiWorkspaceResultApplyOutcome;
   unsupported?: string;
 }
 
@@ -219,6 +221,77 @@ export interface PiSpawnResult {
   lifecycle?: PiSpawnLifecycle;
 }
 
+export interface PiCapacitySessionRequest {
+  repositoryId: string;
+  baseRevision: string;
+  executionProfileId: string;
+  parentSessionId?: string;
+}
+
+export interface PiCapacityAdmission {
+  admissionRef: string;
+}
+
+export interface PiCapacitySessionBinding extends PiCapacityAdmission {
+  sessionId: string;
+}
+
+export interface PiWorkspaceResultReference {
+  id: string;
+}
+
+export interface PiCapacitySessionResult extends PiCapacitySessionBinding {
+  resultRef: PiWorkspaceResultReference;
+}
+
+export interface PiWorkspaceResultApplyRequest {
+  resultRef: PiWorkspaceResultReference;
+  sessionId: string;
+  repositoryId: string;
+  baseRevision: string;
+  targetCwd: string;
+}
+
+export type PiWorkspaceResultRejectionCode =
+  | "unknown_result"
+  | "repository_mismatch"
+  | "base_mismatch"
+  | "session_mismatch"
+  | "target_repository_mismatch"
+  | "incompatible_base"
+  | "staged_path";
+
+export type PiWorkspaceResultApplyOutcome =
+  | { status: "applied"; paths: string[] }
+  | { status: "already_applied" }
+  | { status: "conflict"; paths: string[]; message: string }
+  | {
+      status: "rejected";
+      code: PiWorkspaceResultRejectionCode;
+      message: string;
+      paths?: string[];
+    };
+
+/** Capacity facts and result capabilities which pi protocol v1 does not own. */
+export interface PiCapacityCoordinator {
+  admitSession(request: PiCapacitySessionRequest): Promise<PiCapacityAdmission>;
+  bindSession(
+    admission: PiCapacityAdmission,
+    sessionId: string,
+  ): Promise<PiCapacitySessionBinding>;
+  cancelAdmission(admission: PiCapacityAdmission): Promise<void>;
+  authorizeContinuation(
+    request: PiCapacitySessionRequest,
+    sessionId: string,
+  ): Promise<PiCapacitySessionBinding>;
+  getSessionResult(
+    binding: PiCapacitySessionBinding,
+  ): Promise<PiCapacitySessionResult>;
+  applyWorkspaceResult(
+    request: PiWorkspaceResultApplyRequest,
+  ): Promise<PiWorkspaceResultApplyOutcome>;
+}
+
 export interface PiSpawnConfig {
   cwd: string;
   task: string;
@@ -230,6 +303,7 @@ export interface PiSpawnConfig {
   onUpdate?: (result: PiSpawnResult) => void;
   session?: PiSpawnSession;
   repo?: string;
+  capacity?: PiCapacitySessionRequest;
   /**
    * override the global bds config path for the child process.
    *
@@ -1011,9 +1085,9 @@ export {
   type CreateLocalPiSessionOptions,
   type LocalPiSessionCapacityOptions,
   type PiCapacityArtifactReference,
+  type PiCapacityExecutionProfile,
   type PiCapacitySessionLifecycle,
   type PiCapacitySessionRecord,
-  type PiSpawnCapacityAdmission,
   type PiSpawnRuntimeFactory,
   type PiSpawnRuntimeFactoryOptions,
   type PiSpawnServerCapacityOptions,

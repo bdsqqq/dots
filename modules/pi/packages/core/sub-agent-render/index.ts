@@ -27,6 +27,7 @@ import {
   type PiSpawnModel,
   type PiSpawnLifecycle,
   type PiSpawnSessionMeta,
+  type PiWorkspaceResultApplyOutcome,
   type UsageStats,
 } from "@bds_pi/pi-spawn";
 import type { ToolCostDetails } from "@bds_pi/tool-cost";
@@ -56,6 +57,8 @@ export interface SingleResult {
   sessionId?: string;
   sessionFile?: string;
   leafId?: string;
+  resultRef?: string;
+  workspaceApply?: PiWorkspaceResultApplyOutcome;
   lifecycle?: PiSpawnLifecycle;
 }
 
@@ -69,6 +72,8 @@ export function applySessionMeta(
   target.sessionId = session?.sessionId;
   target.sessionFile = session?.sessionFile;
   target.leafId = session?.leafId;
+  target.resultRef = session?.resultRef;
+  target.workspaceApply = session?.workspaceApply;
 }
 
 export function getFinalOutput(messages: Message[]): string {
