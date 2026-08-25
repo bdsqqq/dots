@@ -1,0 +1,427 @@
+{
+    "name": "call-recording",
+    "AuxAudioDevice1": {
+        "prev_ver": 536936449,
+        "name": "mic - default",
+        "uuid": "a18d72b4-7ace-4f7a-aff0-b7e87315db2a",
+        "id": "coreaudio_input_capture",
+        "versioned_id": "coreaudio_input_capture",
+        "settings": {
+            "undo_uuid": "a18d72b4-7ace-4f7a-aff0-b7e87315db2a",
+            "device_id": "default"
+        },
+        "mixers": 3,
+        "sync": 0,
+        "flags": 0,
+        "volume": 1.0,
+        "balance": 0.5,
+        "enabled": true,
+        "muted": false,
+        "push-to-mute": false,
+        "push-to-mute-delay": 0,
+        "push-to-talk": false,
+        "push-to-talk-delay": 0,
+        "hotkeys": {
+            "libobs.mute": [],
+            "libobs.unmute": [],
+            "libobs.push-to-mute": [],
+            "libobs.push-to-talk": []
+        },
+        "deinterlace_mode": 0,
+        "deinterlace_field_order": 0,
+        "monitoring_type": 0,
+        "private_settings": {},
+        "filters": [
+            {
+                "prev_ver": 536936449,
+                "name": "Noise Suppression (low quality)",
+                "uuid": "33c48e7e-00e5-4ea6-ba61-02d4382af313",
+                "id": "noise_suppress_filter",
+                "versioned_id": "noise_suppress_filter_v2",
+                "settings": {
+                    "method": "speex"
+                },
+                "mixers": 255,
+                "sync": 0,
+                "flags": 0,
+                "volume": 1.0,
+                "balance": 0.5,
+                "enabled": false,
+                "muted": false,
+                "push-to-mute": false,
+                "push-to-mute-delay": 0,
+                "push-to-talk": false,
+                "push-to-talk-delay": 0,
+                "hotkeys": {},
+                "deinterlace_mode": 0,
+                "deinterlace_field_order": 0,
+                "monitoring_type": 0,
+                "private_settings": {}
+            },
+            {
+                "prev_ver": 536936449,
+                "name": "Noise Suppression (high quality)",
+                "uuid": "330429cf-b920-48c4-8f3b-0161b7f7faad",
+                "id": "noise_suppress_filter",
+                "versioned_id": "noise_suppress_filter_v2",
+                "settings": {},
+                "mixers": 255,
+                "sync": 0,
+                "flags": 0,
+                "volume": 1.0,
+                "balance": 0.5,
+                "enabled": true,
+                "muted": false,
+                "push-to-mute": false,
+                "push-to-mute-delay": 0,
+                "push-to-talk": false,
+                "push-to-talk-delay": 0,
+                "hotkeys": {},
+                "deinterlace_mode": 0,
+                "deinterlace_field_order": 0,
+                "monitoring_type": 0,
+                "private_settings": {}
+            },
+            {
+                "prev_ver": 536936449,
+                "name": "Noise Gate",
+                "uuid": "c1bc766b-d7b7-4929-b1a2-ed120636ee29",
+                "id": "noise_gate_filter",
+                "versioned_id": "noise_gate_filter",
+                "settings": {
+                    "open_threshold": -35.0,
+                    "close_threshold": -40.0
+                },
+                "mixers": 255,
+                "sync": 0,
+                "flags": 0,
+                "volume": 1.0,
+                "balance": 0.5,
+                "enabled": true,
+                "muted": false,
+                "push-to-mute": false,
+                "push-to-mute-delay": 0,
+                "push-to-talk": false,
+                "push-to-talk-delay": 0,
+                "hotkeys": {},
+                "deinterlace_mode": 0,
+                "deinterlace_field_order": 0,
+                "monitoring_type": 0,
+                "private_settings": {}
+            },
+            {
+                "prev_ver": 536936449,
+                "name": "EQ",
+                "uuid": "8c73eaff-2a5e-469a-b819-928066d78a2e",
+                "id": "vst_filter",
+                "versioned_id": "vst_filter",
+                "settings": {
+                    "chunk_hash": "",
+                    "plugin_path": "/Library/Audio/Plug-Ins/VST/TDR Nova.vst",
+                    "chunk_data": "VkMyITANAAA8P3htbCB2ZXJzaW9uPSIxLjAiIGVuY29kaW5nPSJVVEYtOCI/PiA8VERSTm92YSBiYW5kU2VsZWN0ZWRfMT0iT2ZmIiBiYW5kQWN0aXZlXzE9Ik9uIiBiYW5kR2Fpbl8xPSIwLjAiIGJhbmRRXzE9IjAuNDAiIGJhbmRGcmVxXzE9IjgwIiBiYW5kVHlwZV8xPSJMb3cgUyIgYmFuZER5bkFjdGl2ZV8xPSJPZmYiIGJhbmREeW5UaHJlc2hvbGRfMT0iMC4wIiBiYW5kRHluUmF0aW9fMT0iMi4wIiBiYW5kRHluU3BsaXRfMT0iT24iIGJhbmREeW5BdHRhY2tfMT0iMjAiIGJhbmREeW5SZWxlYXNlXzE9IjIwMCIgYmFuZFNlbGVjdGVkXzI9Ik9mZiIgYmFuZEFjdGl2ZV8yPSJPbiIgYmFuZEdhaW5fMj0iLTIuMCIgYmFuZFFfMj0iMS4wMCIgYmFuZEZyZXFfMj0iMTYwIiBiYW5kVHlwZV8yPSJCZWxsIiBiYW5kRHluQWN0aXZlXzI9Ik9mZiIgYmFuZER5blRocmVzaG9sZF8yPSIwLjAiIGJhbmREeW5SYXRpb18yPSIyLjAiIGJhbmREeW5TcGxpdF8yPSJPbiIgYmFuZER5bkF0dGFja18yPSIxMCIgYmFuZER5blJlbGVhc2VfMj0iMTgwIiBiYW5kU2VsZWN0ZWRfMz0iT2ZmIiBiYW5kQWN0aXZlXzM9Ik9uIiBiYW5kR2Fpbl8zPSIyLjAiIGJhbmRRXzM9IjEuMjAiIGJhbmRGcmVxXzM9IjI1MDAiIGJhbmRUeXBlXzM9IkJlbGwiIGJhbmREeW5BY3RpdmVfMz0iT2ZmIiBiYW5kRHluVGhyZXNob2xkXzM9IjAuMCIgYmFuZER5blJhdGlvXzM9IjIuMCIgYmFuZER5blNwbGl0XzM9Ik9uIiBiYW5kRHluQXR0YWNrXzM9IjUuMCIgYmFuZER5blJlbGVhc2VfMz0iMTYwIiBiYW5kU2VsZWN0ZWRfND0iT2ZmIiBiYW5kQWN0aXZlXzQ9Ik9uIiBiYW5kR2Fpbl80PSIyLjAiIGJhbmRRXzQ9IjAuNjAiIGJhbmRGcmVxXzQ9IjEwMDAwIiBiYW5kVHlwZV80PSJIaWdoIFMiIGJhbmREeW5BY3RpdmVfND0iT2ZmIiBiYW5kRHluVGhyZXNob2xkXzQ9IjAuMCIgYmFuZER5blJhdGlvXzQ9IjIuMCIgYmFuZER5blNwbGl0XzQ9Ik9uIiBiYW5kRHluQXR0YWNrXzQ9IjQuMCIgYmFuZER5blJlbGVhc2VfND0iMjMiIGhwU2VsZWN0ZWRfbWFzdGVyPSJPZmYiIGhwQWN0aXZlX21hc3Rlcj0iT2ZmIiBocEZyZXFfbWFzdGVyPSIxNSIgaHBUeXBlX21hc3Rlcj0iMjRkQi9vY3QiIGxwU2VsZWN0ZWRfbWFzdGVyPSJPZmYiIGxwQWN0aXZlX21hc3Rlcj0iT2ZmIiBscEZyZXFfbWFzdGVyPSIzMDAwMCIgbHBUeXBlX21hc3Rlcj0iMjRkQi9vY3QiIGJhbmRHYWluX3dpZGU9IjAuMCIgYmFuZER5bkFjdGl2ZV93aWRlPSJPZmYiIGJhbmREeW5UaHJlc2hvbGRfd2lkZT0iMC4wIiBiYW5kRHluUmF0aW9fd2lkZT0iMS41IiBiYW5kRHluQXR0YWNrX3dpZGU9IjguMCIgYmFuZER5blJlbGVhc2Vfd2lkZT0iMjAwIiBieXBhc3NfbWFzdGVyPSJPZmYiIGRlbHRhX21hc3Rlcj0iT2ZmIiBkcnlNaXhfbWFzdGVyPSIwLjAiIGdhaW5fbWFzdGVyPSIwLjAiIGVxQXV0b0dhaW5QYXJhbT0iT24iIHF1YWxpdHlQYXJhbT0iUHJlY2lzZS0iIGNoYW5uZWxzUGFyYW09IlN0ZXJlbyIgYW5hbHl6ZXJNb2RlUGFyYW09IkFuYWx5emVyOiBJbiIgZGlzcGxheUVxUmFuZ2VQYXJhbT0iLS8rIDEyIGRCIiBkaXNwbGF5RkZUUmFuZ2VQYXJhbT0iNDggZEIiIHNpZGVjaGFpbk1vZGVQYXJhbT0iSW50IFNDIiBhbmFseXplclNwZWVkUGFyYW09Ik5vcm1hbCIgc29sbz0iT2ZmIj48bG9naWNhbCBiYW5kU2VsZWN0ZWRfMT0iMC4wIiBiYW5kQWN0aXZlXzE9IjEuMCIgYmFuZEdhaW5fMT0iMC4wIiBiYW5kUV8xPSIwLjQiIGJhbmRGcmVxXzE9IjgwLjAiIGJhbmRUeXBlXzE9IjAuMCIgYmFuZER5bkFjdGl2ZV8xPSIwLjAiIGJhbmREeW5UaHJlc2hvbGRfMT0iMC4wIiBiYW5kRHluUmF0aW9fMT0iMi4wIiBiYW5kRHluU3BsaXRfMT0iMS4wIiBiYW5kRHluQXR0YWNrXzE9IjIwLjAiIGJhbmREeW5SZWxlYXNlXzE9IjIwMC4wIiBiYW5kU2VsZWN0ZWRfMj0iMC4wIiBiYW5kQWN0aXZlXzI9IjEuMCIgYmFuZEdhaW5fMj0iLTIuMCIgYmFuZFFfMj0iMS4wIiBiYW5kRnJlcV8yPSIxNjAuMCIgYmFuZFR5cGVfMj0iMS4wIiBiYW5kRHluQWN0aXZlXzI9IjAuMCIgYmFuZER5blRocmVzaG9sZF8yPSIwLjAiIGJhbmREeW5SYXRpb18yPSIyLjAiIGJhbmREeW5TcGxpdF8yPSIxLjAiIGJhbmREeW5BdHRhY2tfMj0iMTAuMCIgYmFuZER5blJlbGVhc2VfMj0iMTgwLjAiIGJhbmRTZWxlY3RlZF8zPSIwLjAiIGJhbmRBY3RpdmVfMz0iMS4wIiBiYW5kR2Fpbl8zPSIyLjAiIGJhbmRRXzM9IjEuMiIgYmFuZEZyZXFfMz0iMjUwMC4wIiBiYW5kVHlwZV8zPSIxLjAiIGJhbmREeW5BY3RpdmVfMz0iMC4wIiBiYW5kRHluVGhyZXNob2xkXzM9IjAuMCIgYmFuZER5blJhdGlvXzM9IjIuMCIgYmFuZER5blNwbGl0XzM9IjEuMCIgYmFuZER5bkF0dGFja18zPSI1LjAiIGJhbmREeW5SZWxlYXNlXzM9IjE2MC4wIiBiYW5kU2VsZWN0ZWRfND0iMC4wIiBiYW5kQWN0aXZlXzQ9IjEuMCIgYmFuZEdhaW5fND0iMi4wIiBiYW5kUV80PSIwLjYiIGJhbmRGcmVxXzQ9IjEwMDAwLjAiIGJhbmRUeXBlXzQ9IjIuMCIgYmFuZER5bkFjdGl2ZV80PSIwLjAiIGJhbmREeW5UaHJlc2hvbGRfND0iMC4wIiBiYW5kRHluUmF0aW9fND0iMi4wIiBiYW5kRHluU3BsaXRfND0iMS4wIiBiYW5kRHluQXR0YWNrXzQ9IjQuMCIgYmFuZER5blJlbGVhc2VfND0iMjMuMCIgaHBTZWxlY3RlZF9tYXN0ZXI9IjAuMCIgaHBBY3RpdmVfbWFzdGVyPSIwLjAiIGhwRnJlcV9tYXN0ZXI9IjE1LjAiIGhwVHlwZV9tYXN0ZXI9IjIuMCIgbHBTZWxlY3RlZF9tYXN0ZXI9IjAuMCIgbHBBY3RpdmVfbWFzdGVyPSIwLjAiIGxwRnJlcV9tYXN0ZXI9IjMwMDAwLjAiIGxwVHlwZV9tYXN0ZXI9IjIuMCIgYmFuZEdhaW5fd2lkZT0iMC4wIiBiYW5kRHluQWN0aXZlX3dpZGU9IjAuMCIgYmFuZER5blRocmVzaG9sZF93aWRlPSIwLjAiIGJhbmREeW5SYXRpb193aWRlPSIxLjUiIGJhbmREeW5BdHRhY2tfd2lkZT0iOC4wIiBiYW5kRHluUmVsZWFzZV93aWRlPSIyMDAuMCIgYnlwYXNzX21hc3Rlcj0iMC4wIiBkZWx0YV9tYXN0ZXI9IjAuMCIgZHJ5TWl4X21hc3Rlcj0iMC4wIiBnYWluX21hc3Rlcj0iMC4wIiBlcUF1dG9HYWluUGFyYW09IjEuMCIgcXVhbGl0eVBhcmFtPSIyLjAiIGNoYW5uZWxzUGFyYW09IjEuMCIgYW5hbHl6ZXJNb2RlUGFyYW09IjAuMCIgZGlzcGxheUVxUmFuZ2VQYXJhbT0iMC4wIiBkaXNwbGF5RkZUUmFuZ2VQYXJhbT0iMC4wIiBzaWRlY2hhaW5Nb2RlUGFyYW09IjAuMCIgYW5hbHl6ZXJTcGVlZFBhcmFtPSIxLjAiIHNvbG89IjAuMCIvPjxwcmVzZXRzIGFjdGl2ZT0iMTAwMCIvPjxBIF9BY3RpdmVfPSIxIi8+PEIgX0FjdGl2ZV89IjAiIF9MaW5rZWRfPSIxIi8+PHVuZG8vPjxpbmZvIHZlcnNpb249IjIuMi4xIi8+PHBhcmFtIGluc3RhbmNlPSJURFIgTm92YSAoMSkiLz48L1REUk5vdmE+AA=="
+                },
+                "mixers": 255,
+                "sync": 0,
+                "flags": 0,
+                "volume": 1.0,
+                "balance": 0.5,
+                "enabled": true,
+                "muted": false,
+                "push-to-mute": false,
+                "push-to-mute-delay": 0,
+                "push-to-talk": false,
+                "push-to-talk-delay": 0,
+                "hotkeys": {},
+                "deinterlace_mode": 0,
+                "deinterlace_field_order": 0,
+                "monitoring_type": 0,
+                "private_settings": {}
+            },
+            {
+                "prev_ver": 536936449,
+                "name": "Compressor",
+                "uuid": "0b3d48e2-ee72-4a34-9543-2725fd5eef04",
+                "id": "compressor_filter",
+                "versioned_id": "compressor_filter",
+                "settings": {
+                    "ratio": 4.0,
+                    "attack_time": 10,
+                    "output_gain": 2.0
+                },
+                "mixers": 255,
+                "sync": 0,
+                "flags": 0,
+                "volume": 1.0,
+                "balance": 0.5,
+                "enabled": true,
+                "muted": false,
+                "push-to-mute": false,
+                "push-to-mute-delay": 0,
+                "push-to-talk": false,
+                "push-to-talk-delay": 0,
+                "hotkeys": {},
+                "deinterlace_mode": 0,
+                "deinterlace_field_order": 0,
+                "monitoring_type": 0,
+                "private_settings": {}
+            },
+            {
+                "prev_ver": 536936449,
+                "name": "Limiter",
+                "uuid": "60d70fdf-2710-4b18-bb15-14852d4c56fe",
+                "id": "limiter_filter",
+                "versioned_id": "limiter_filter",
+                "settings": {
+                    "threshold": -3.0
+                },
+                "mixers": 255,
+                "sync": 0,
+                "flags": 0,
+                "volume": 1.0,
+                "balance": 0.5,
+                "enabled": true,
+                "muted": false,
+                "push-to-mute": false,
+                "push-to-mute-delay": 0,
+                "push-to-talk": false,
+                "push-to-talk-delay": 0,
+                "hotkeys": {},
+                "deinterlace_mode": 0,
+                "deinterlace_field_order": 0,
+                "monitoring_type": 0,
+                "private_settings": {}
+            }
+        ]
+    },
+    "sources": [
+        {
+            "prev_ver": 536936449,
+            "name": "desktop/call audio",
+            "uuid": "c4e6901e-f0c1-4d87-a5af-893a7e9d369b",
+            "id": "sck_audio_capture",
+            "versioned_id": "sck_audio_capture",
+            "settings": {},
+            "mixers": 5,
+            "sync": 0,
+            "flags": 0,
+            "volume": 1.0,
+            "balance": 0.5,
+            "enabled": true,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "libobs.mute": [],
+                "libobs.unmute": [],
+                "libobs.push-to-mute": [],
+                "libobs.push-to-talk": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 0,
+            "private_settings": {}
+        },
+        {
+            "prev_ver": 536936449,
+            "name": "macOS Screen Capture",
+            "uuid": "26caa97a-d311-474b-9a1b-7453526f260f",
+            "id": "screen_capture",
+            "versioned_id": "screen_capture",
+            "settings": {
+                "application": "net.imput.helium",
+                "display_uuid": "F52C49CD-C25B-48C6-9B07-BC83BECF35CF",
+                "type": 1,
+                "window": 5573,
+                "hide_obs": true,
+                "show_empty_names": false,
+                "show_hidden_windows": false
+            },
+            "mixers": 255,
+            "sync": 0,
+            "flags": 0,
+            "volume": 1.0,
+            "balance": 0.5,
+            "enabled": false,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "libobs.mute": [],
+                "libobs.unmute": [],
+                "libobs.push-to-mute": [],
+                "libobs.push-to-talk": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 0,
+            "private_settings": {}
+        },
+        {
+            "prev_ver": 536936449,
+            "name": "call-recording",
+            "uuid": "a3cc5c54-0441-408c-afcb-19c637b5e0cb",
+            "id": "scene",
+            "versioned_id": "scene",
+            "settings": {
+                "id_counter": 1,
+                "custom_size": false,
+                "items": [
+                    {
+                        "name": "desktop/call audio",
+                        "source_uuid": "c4e6901e-f0c1-4d87-a5af-893a7e9d369b",
+                        "visible": true,
+                        "locked": false,
+                        "rot": 0.0,
+                        "scale_ref": {
+                            "x": 1920.0,
+                            "y": 1080.0
+                        },
+                        "align": 5,
+                        "bounds_type": 0,
+                        "bounds_align": 0,
+                        "bounds_crop": false,
+                        "crop_left": 0,
+                        "crop_top": 0,
+                        "crop_right": 0,
+                        "crop_bottom": 0,
+                        "id": 1,
+                        "group_item_backup": false,
+                        "pos": {
+                            "x": 0.0,
+                            "y": 0.0
+                        },
+                        "pos_rel": {
+                            "x": -1.7777777910232544,
+                            "y": -1.0
+                        },
+                        "scale": {
+                            "x": 1.0,
+                            "y": 1.0
+                        },
+                        "scale_rel": {
+                            "x": 1.0,
+                            "y": 1.0
+                        },
+                        "bounds": {
+                            "x": 0.0,
+                            "y": 0.0
+                        },
+                        "bounds_rel": {
+                            "x": 0.0,
+                            "y": 0.0
+                        },
+                        "scale_filter": "disable",
+                        "blend_method": "default",
+                        "blend_type": "normal",
+                        "show_transition": {
+                            "duration": 0
+                        },
+                        "hide_transition": {
+                            "duration": 0
+                        },
+                        "private_settings": {}
+                    }
+                ]
+            },
+            "mixers": 0,
+            "sync": 0,
+            "flags": 0,
+            "volume": 1.0,
+            "balance": 0.5,
+            "enabled": true,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "OBSBasic.SelectScene": [],
+                "libobs.show_scene_item.1": [],
+                "libobs.hide_scene_item.1": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 0,
+            "canvas_uuid": "6c69626f-6273-4c00-9d88-c5136d61696e",
+            "private_settings": {}
+        }
+    ],
+    "groups": [],
+    "scene_order": [
+        {
+            "name": "call-recording"
+        }
+    ],
+    "current_scene": "call-recording",
+    "current_program_scene": "call-recording",
+    "canvases": [],
+    "current_transition": "Fade",
+    "transition_duration": 150,
+    "transitions": [],
+    "quick_transitions": [
+        {
+            "name": "Cut",
+            "duration": 300,
+            "hotkeys": [],
+            "id": 1,
+            "fade_to_black": false
+        },
+        {
+            "name": "Fade",
+            "duration": 300,
+            "hotkeys": [],
+            "id": 2,
+            "fade_to_black": false
+        },
+        {
+            "name": "Fade",
+            "duration": 300,
+            "hotkeys": [],
+            "id": 3,
+            "fade_to_black": true
+        }
+    ],
+    "saved_projectors": [],
+    "preview_locked": false,
+    "scaling_enabled": false,
+    "scaling_level": -12,
+    "scaling_off_x": 0.0,
+    "scaling_off_y": 0.0,
+    "virtual-camera": {
+        "type2": 3
+    },
+    "modules": {
+        "scripts-tool": [],
+        "output-timer": {
+            "streamTimerHours": 0,
+            "streamTimerMinutes": 0,
+            "streamTimerSeconds": 30,
+            "recordTimerHours": 0,
+            "recordTimerMinutes": 0,
+            "recordTimerSeconds": 30,
+            "autoStartStreamTimer": false,
+            "autoStartRecordTimer": false,
+            "pauseRecordTimer": true
+        },
+        "auto-scene-switcher": {
+            "interval": 300,
+            "non_matching_scene": "",
+            "switch_if_not_matching": false,
+            "active": false,
+            "switches": []
+        }
+    },
+    "resolution": {
+        "x": 1920,
+        "y": 1080
+    },
+    "migration_resolution": {
+        "x": 3600,
+        "y": 2338
+    },
+    "version": 2
+}

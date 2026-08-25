@@ -1,0 +1,36 @@
+{
+  "defaultProvider": "openai-codex",
+  "skills": [
+    "~/.config/agents/skills"
+  ],
+  "extensions": [
+    "~/.pi/agent/extensions/editor",
+    "~/.pi/agent/extensions/session-name.ts",
+    "~/.pi/agent/extensions/tool-harness.ts",
+    "~/.pi/agent/extensions/system-prompt.ts",
+    "~/.pi/agent/extensions/tools"
+  ],
+  "compaction": {
+    "enabled": true
+  },
+  "lastChangelogVersion": "0.84.2",
+  "defaultModel": "gpt-5.6-sol",
+  "defaultThinkingLevel": "high",
+  "hideThinkingBlock": true,
+  "steeringMode": "all",
+  "followUpMode": "all",
+  "collapseChangelog": true,
+  "doubleEscapeAction": "tree",
+  "quietStartup": true,
+  "enableSkillCommands": false,
+  "showHardwareCursor": true,
+  "transport": "auto",
+  "terminal": {
+    "showTerminalProgress": true
+  },
+  "treeFilterMode": "no-tools",
+  "theme": "dark",
+  "outputPad": 0,
+  "showCacheMissNotices": true,
+  "tuiMode": "fullscreen"
+}

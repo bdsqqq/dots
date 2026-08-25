@@ -1,7 +1,7 @@
 { lib, pkgs, inputs, config, modulesPath, ... }:
 
 let
-  syncthing = import ../../modules/syncthing.nix { inherit lib; };
+  syncthing = import ../../modules/syncthing/lib.nix { inherit lib; };
   homeManagerBackupCommand = pkgs.writeShellScript "home-manager-unique-backup" ''
     set -eu
 
@@ -41,7 +41,7 @@ in
   stylix = {
     enable = true;
     image = ../../assets/wallhaven-o5kpmm_3840x2400.png;
-    base16Scheme = ../../modules/shared/e-ink-scheme.yaml;
+    base16Scheme = ../../modules/e-ink-glass/e-ink-scheme.yaml;
     polarity = "dark";
 
     fonts = {
@@ -79,45 +79,56 @@ in
     ./legion-wmi-fan.nix
     ./legion-metrics.nix
 
-    # Shared system infrastructure
     ../../modules/primary-user.nix
-    ../../system/nix.nix
-    ../../system/nix-ld.nix
-    ../../system/ssh.nix
-    ../../system/tailscale.nix
-    ../../system/tailnet-registry.nix
-    ../../system/sops.nix
-    ../../system/authorized-keys.nix
-    ../../system/fonts.nix
-    ../../system/auto-upgrade.nix
-    ../../system/syncthing.nix
-    ../../system/bluetooth.nix
-    ../../system/audio.nix
-    ../../system/flatpak.nix
-    ../../system/niri.nix
-    ../../system/o11y
-    ../../system/o11y/hwmon.nix
-
-    # Configured user programs
-    ../../user/shell-baseline.nix
-    ../../user/node-pnpm
-    ../../user/mise.nix
-    ../../user/syncthing-automerge
-    ../../user/wikiman.nix
-    ../../user/yt-dlp.nix
-    ../../user/gallery-dl.nix
-    ../../user/rust.nix
-    ../../user/go.nix
-    ../../user/fairy-name.nix
-    ../../user/pi
-    ../../user/pi-memory.nix
-    ../../user/e-ink-glass.nix
-    ../../user/1password.nix
-    ../../user/helium.nix
-    ../../user/helium-remotes.nix
-    ../../user/ghostty.nix
-    ../../user/gaming.nix
-    ../../user/quickshell.nix
+    ../../modules/nix
+    ../../modules/nix/nix-ld.nix
+    ../../modules/ssh
+    ../../modules/ssh/authorized-keys.nix
+    ../../modules/tailscale
+    ../../modules/tailnet-registry
+    ../../modules/secrets
+    ../../modules/fonts
+    ../../modules/nix/auto-upgrade.nix
+    ../../modules/syncthing
+    ../../modules/bluetooth
+    ../../modules/audio
+    ../../modules/flatpak
+    ../../modules/niri
+    ../../modules/o11y
+    ../../modules/o11y/hwmon.nix
+    ../../modules/core-cli
+    ../../modules/shell
+    ../../modules/btop
+    ../../modules/homebrew/environment.nix
+    ../../modules/fzf
+    ../../modules/zoxide
+    ../../modules/nvim
+    ../../modules/git
+    ../../modules/tealdeer
+    ../../modules/trash
+    (import ../../modules/zmx).module
+    ../../modules/direnv
+    ../../modules/tmux
+    ../../modules/amp
+    ../../modules/agents
+    ../../modules/node-pnpm
+    ../../modules/mise
+    ../../modules/syncthing/automerge
+    ../../modules/wikiman
+    ../../modules/yt-dlp
+    ../../modules/gallery-dl
+    ../../modules/rust
+    ../../modules/go
+    ../../modules/fairy-name
+    ../../modules/pi
+    ../../modules/pi-memory
+    ../../modules/e-ink-glass
+    ../../modules/1password
+    ../../modules/helium
+    ../../modules/helium/remotes.nix
+    ../../modules/ghostty
+    ../../modules/gaming
+    ../../modules/quickshell
   ];
 
   my.primaryUser = "bdsqqq";

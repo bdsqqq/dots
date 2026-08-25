@@ -8,57 +8,68 @@
 , ...
 }:
 let
-  syncthing = import ../../modules/syncthing.nix { inherit lib; };
+  syncthing = import ../../modules/syncthing/lib.nix { inherit lib; };
 in
 {
   imports = [
     inputs.home-manager.darwinModules.home-manager
 
-    # Shared system infrastructure
     ../../modules/primary-user.nix
-    ../../system/nix.nix
-    ../../system/nix-ld.nix
-    ../../system/ssh.nix
-    ../../system/tailscale.nix
-    ../../system/tailnet-registry.nix
-    ../../system/sops.nix
-    ../../system/authorized-keys.nix
-    ../../system/fonts.nix
-    ../../system/auto-upgrade.nix
-    ../../system/o11y
-    ../../system/t3-code-server.nix
-    ../../system/syncthing.nix
-    ../../system/audio.nix
-    ../../system/bluetooth.nix
-    ../../system/flatpak.nix
-    ../../system/homebrew.nix
-    ../../system/homebrew-best-effort.nix
-    ../../system/macos-defaults.nix
-    ../../system/sleepless.nix
-    ../../system/kanata.nix
-    ../../system/cmux.nix
-
-    # Configured user programs
-    ../../user/shell-baseline.nix
-    ../../user/node-pnpm
-    ../../user/mise.nix
-    ../../user/syncthing-automerge
-    ../../user/wikiman.nix
-    ../../user/yt-dlp.nix
-    ../../user/gallery-dl.nix
-    ../../user/rust.nix
-    ../../user/go.nix
-    ../../user/fairy-name.nix
-    ../../user/pi
-    ../../user/pi-memory.nix
-    ../../user/e-ink-glass.nix
-    ../../user/ghostty.nix
-    ../../user/vscodium
-    ../../user/1password.nix
-    ../../user/orbstack.nix
-    ../../user/obs
-    ../../user/helium-remotes.nix
-    ../../user/gaming.nix
+    ../../modules/nix
+    ../../modules/nix/nix-ld.nix
+    ../../modules/ssh
+    ../../modules/ssh/authorized-keys.nix
+    ../../modules/tailscale
+    ../../modules/tailnet-registry
+    ../../modules/secrets
+    ../../modules/fonts
+    ../../modules/nix/auto-upgrade.nix
+    ../../modules/o11y
+    ../../modules/t3-code/server.nix
+    ../../modules/syncthing
+    ../../modules/audio
+    ../../modules/bluetooth
+    ../../modules/flatpak
+    ../../modules/homebrew
+    ../../modules/homebrew/environment.nix
+    ../../modules/homebrew/best-effort.nix
+    ../../modules/macos-defaults
+    ../../modules/sleepless
+    ../../modules/kanata
+    ../../modules/cmux
+    ../../modules/core-cli
+    ../../modules/shell
+    ../../modules/btop
+    ../../modules/fzf
+    ../../modules/zoxide
+    ../../modules/nvim
+    ../../modules/git
+    ../../modules/tealdeer
+    ../../modules/trash
+    (import ../../modules/zmx).module
+    ../../modules/direnv
+    ../../modules/tmux
+    ../../modules/amp
+    ../../modules/agents
+    ../../modules/node-pnpm
+    ../../modules/mise
+    ../../modules/syncthing/automerge
+    ../../modules/wikiman
+    ../../modules/yt-dlp
+    ../../modules/gallery-dl
+    ../../modules/rust
+    ../../modules/go
+    ../../modules/fairy-name
+    ../../modules/pi
+    ../../modules/pi-memory
+    ../../modules/e-ink-glass
+    ../../modules/ghostty
+    ../../modules/vscodium
+    ../../modules/1password
+    ../../modules/orbstack
+    ../../modules/obs
+    ../../modules/helium/remotes.nix
+    ../../modules/gaming
   ];
 
   homebrew = {
@@ -162,7 +173,7 @@ in
         home.file."commonplace/01_files/kindle".source =
           config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/kindle";
 
-        # declarative syncthing settings (daemon managed by launchd in system/syncthing.nix)
+        # declarative syncthing settings; the feature module owns the daemon.
         services.syncthing = {
           enable = true;
           overrideFolders = true;

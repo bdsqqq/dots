@@ -5,7 +5,7 @@
 , ...
 }:
 let
-  syncthing = import ../../modules/syncthing.nix { inherit lib; };
+  syncthing = import ../../modules/syncthing/lib.nix { inherit lib; };
   home = "/Users/bdsqqq";
   systemDaemonFromAgent = label: agentConfig: {
     serviceConfig = builtins.removeAttrs agentConfig [
@@ -26,26 +26,44 @@ in
   imports = [
     inputs.home-manager.darwinModules.home-manager
     ../../modules/primary-user.nix
-    ../../system/nix.nix
-    ../../system/sops.nix
-    ../../system/homebrew-best-effort.nix
-    ../../system/tailscale.nix
-    ../../system/tailnet-registry.nix
-    ../../system/syncthing.nix
-    ../../system/o11y
-    ../../system/sleepless.nix
-    ../../system/cmux.nix
-    ../../system/fonts.nix
+    ../../modules/nix
+    ../../modules/secrets
+    ../../modules/homebrew/best-effort.nix
+    ../../modules/tailscale
+    ../../modules/tailnet-registry
+    ../../modules/syncthing
+    ../../modules/o11y
+    ../../modules/sleepless
+    ../../modules/cmux
+    ../../modules/fonts
     ../../modules/household-intake/service.nix
-    ../../user/shell-baseline.nix
-    ../../user/node-pnpm
-    ../../user/1password.nix
-    ../../user/orbstack.nix
-    ../../user/ghostty.nix
-    ../../user/ipad-display.nix
-    ../../user/html-stuff
-    ../../user/media-feeds.nix
-    ../../user/storage-preview.nix
+    ../../modules/core-cli
+    ../../modules/shell
+    ../../modules/ssh/client.nix
+    ../../modules/btop
+    ../../modules/homebrew/environment.nix
+    ../../modules/fzf
+    ../../modules/zoxide
+    ../../modules/nvim
+    ../../modules/git
+    ../../modules/tealdeer
+    ../../modules/trash
+    (import ../../modules/zmx).module
+    ../../modules/direnv
+    ../../modules/tmux
+    ../../modules/amp
+    ../../modules/agents
+    ../../modules/node-pnpm
+    ../../modules/1password
+    ../../modules/orbstack
+    ../../modules/ghostty
+    ../../modules/ipad-display
+    ../../modules/html-stuff
+    ../../modules/media-feeds
+    ../../modules/backrest
+    ../../modules/files-browser/service.nix
+    ../../modules/photo-gallery/service.nix
+    ../../modules/photo-intelligence/service.nix
   ];
 
   networking = {
@@ -57,6 +75,33 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+
+  my.filesBrowser = {
+    source = "/Users/bdsqqq/commonplace";
+    state = "/Users/bdsqqq/Library/Caches/copyparty-files";
+    syncthingConfig = "/Users/bdsqqq/Library/Application Support/Syncthing/config.xml";
+  };
+  my.photoGallery = {
+    source = "/Volumes/ssd-01/igor/photos-library-2";
+    state = "/Users/bdsqqq/Library/Caches/copyparty-ssd";
+  };
+  my.photoIntelligence = {
+    source = "/Volumes/ssd-01/igor/photos-library-2";
+    state = "/Users/bdsqqq/Library/Application Support/photo-intelligence";
+  };
+  my.backrest = {
+    homeDirectory = "/Users/bdsqqq";
+    volumeRoot = "/Volumes/ssd-01";
+    volumeUuid = "967C80B3-674A-3C8C-A248-2E6B8230DFD7";
+    repository = {
+      id = "ssd-01-hetzner";
+      uri = "sftp:u646875@u646875.your-storagebox.de:/home/restic/ssd-01";
+      guid = "db9719f847da679dbbbdca1d9cbe716f1c462fa23966d5abdcf1cf0a04ad0993";
+      sshTarget = "u646875@u646875.your-storagebox.de";
+      sshPort = 23;
+    };
+  };
+
   environment.systemPackages = [ pkgs.git ];
 
   home-manager = {

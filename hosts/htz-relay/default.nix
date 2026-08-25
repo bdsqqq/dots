@@ -8,8 +8,8 @@
 }:
 
 let
-  mbpPubKey = lib.removeSuffix "\n" (builtins.readFile ../../system/ssh-keys/mbp-m2.pub);
-  syncthing = import ../../modules/syncthing.nix { inherit lib; };
+  mbpPubKey = lib.removeSuffix "\n" (builtins.readFile ../../modules/ssh/keys/mbp-m2.pub);
+  syncthing = import ../../modules/syncthing/lib.nix { inherit lib; };
   homeManagerBackupCommand = pkgs.writeShellScript "home-manager-unique-backup" ''
     set -eu
 
@@ -33,23 +33,37 @@ in
 {
   imports = ([
     ../../modules/primary-user.nix
-    ../../system/nix.nix
-    ../../system/nix-ld.nix
-    ../../system/ssh.nix
-    ../../system/tailscale.nix
-    ../../system/tailnet-registry.nix
-    ../../system/cloudflare-ingress-container.nix
-    ../../system/sops.nix
-    ../../system/authorized-keys.nix
-    ../../system/fonts.nix
-    ../../system/auto-upgrade.nix
-    ../../system/syncthing.nix
-    ../../system/o11y
-    ../../system/o11y/hwmon.nix
-    ../../user/shell-baseline.nix
-    ../../user/node-pnpm
-    ../../user/mise.nix
-    ../../user/syncthing-automerge
+    ../../modules/nix
+    ../../modules/nix/nix-ld.nix
+    ../../modules/ssh
+    ../../modules/ssh/authorized-keys.nix
+    ../../modules/tailscale
+    ../../modules/tailnet-registry
+    ../../modules/cloudflare-ingress
+    ../../modules/secrets
+    ../../modules/fonts
+    ../../modules/nix/auto-upgrade.nix
+    ../../modules/syncthing
+    ../../modules/o11y
+    ../../modules/o11y/hwmon.nix
+    ../../modules/core-cli
+    ../../modules/shell
+    ../../modules/btop
+    ../../modules/homebrew/environment.nix
+    ../../modules/fzf
+    ../../modules/zoxide
+    ../../modules/nvim
+    ../../modules/git
+    ../../modules/tealdeer
+    ../../modules/trash
+    (import ../../modules/zmx).module
+    ../../modules/direnv
+    ../../modules/tmux
+    ../../modules/amp
+    ../../modules/agents
+    ../../modules/node-pnpm
+    ../../modules/mise
+    ../../modules/syncthing/automerge
     ./apps-container.nix
   ])
   ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [

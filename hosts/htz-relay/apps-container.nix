@@ -42,10 +42,10 @@
     config =
       { pkgs, lib, ... }:
       let
-        htmlStuffServer = import ../../user/html-stuff/package.nix {
+        htmlStuffServer = import ../../modules/html-stuff/package.nix {
           inherit pkgs;
         };
-        filesBrowserServer = import ../../modules/files-browser { inherit pkgs; };
+        filesBrowserServer = import ../../modules/files-browser/package.nix { inherit pkgs; };
       in
       {
         networking = {
@@ -62,7 +62,7 @@
           openFirewall = true;
         };
 
-        imports = [ ../../system/tailnet-registry.nix ];
+        imports = [ ../../modules/tailnet-registry ];
         my.tailnetRegistry.directory = {
           enable = true;
           tailscaleService.enable = true;
