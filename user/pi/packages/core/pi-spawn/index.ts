@@ -1004,10 +1004,19 @@ export const piSpawn: PiSpawn = createPiSpawn(localPiCapacityProvider);
 
 export {
   AgentSessionPiRuntime,
+  LocalPiSessionCapacity,
+  LocalPiSessionLease,
   PiSpawnServerService,
   RemotePiCapacityProvider,
+  type CreateLocalPiSessionOptions,
+  type LocalPiSessionCapacityOptions,
+  type PiCapacityArtifactReference,
+  type PiCapacitySessionLifecycle,
+  type PiCapacitySessionRecord,
+  type PiSpawnCapacityAdmission,
   type PiSpawnRuntimeFactory,
   type PiSpawnRuntimeFactoryOptions,
+  type PiSpawnServerCapacityOptions,
   type PiSpawnServerServiceOptions,
 } from "./remote.js";
 
