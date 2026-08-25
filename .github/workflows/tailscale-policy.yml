@@ -8,7 +8,7 @@ on:
       - tailscale/capabilities.json
       - tailscale/policy.hujson
       - tailscale/services.json
-      - secrets/tailscale/connectors/*.yaml
+      - tailscale/secrets/connectors/*.yaml
       - .github/workflows/tailscale-policy.yml
   workflow_dispatch:
 
@@ -133,7 +133,7 @@ jobs:
           created=()
 
           while IFS=$'\t' read -r trust tag; do
-            secret="secrets/tailscale/connectors/${trust}.yaml"
+            secret="tailscale/secrets/connectors/${trust}.yaml"
             if [[ -s "${secret}" ]]; then
               continue
             fi

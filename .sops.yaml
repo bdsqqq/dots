@@ -15,13 +15,13 @@ creation_rules:
           - *host_gru_relay
           - *host_r56
           - *host_lgo_z2e
-  - path_regex: ^secrets/cloudflare/[^/]+\.yaml$
+  - path_regex: ^cloudflare/secrets/[^/]+\.yaml$
     key_groups:
       - age:
           - *user_bdsqqq
           - *host_htz_relay
           - *host_gru_relay
-  - path_regex: ^secrets/tailscale/connectors/[^/]+\.yaml$
+  - path_regex: ^tailscale/secrets/connectors/[^/]+\.yaml$
     key_groups:
       - age:
           - *user_bdsqqq
