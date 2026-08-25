@@ -82,7 +82,6 @@ in
     # Shared system infrastructure
     ../../modules/primary-user.nix
     ../../system/nix.nix
-    ../../system/nh.nix
     ../../system/nix-ld.nix
     ../../system/ssh.nix
     ../../system/tailscale.nix
