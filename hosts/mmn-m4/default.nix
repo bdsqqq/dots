@@ -111,6 +111,7 @@ in
       launchd.agents.ssd-gallery.enable = lib.mkForce false;
       launchd.agents.backup-health.enable = lib.mkForce false;
       launchd.agents.transmission-daemon.enable = lib.mkForce false;
+      launchd.agents.media-feed-import-modulo.enable = lib.mkForce false;
       launchd.agents.media-feed-poller.enable = lib.mkForce false;
       launchd.agents.photo-intelligence.enable = lib.mkForce false;
     };
@@ -125,6 +126,9 @@ in
   launchd.daemons.html-stuff = systemDaemonFromAgent
     "dev.html-stuff"
     config.home-manager.users.bdsqqq.launchd.agents.html-stuff.config;
+  launchd.daemons.media-feed-import-modulo = systemDaemonFromAgent
+    "dev.media-feed-import-modulo"
+    config.home-manager.users.bdsqqq.launchd.agents.media-feed-import-modulo.config;
   launchd.daemons.media-feed-poller = systemDaemonFromAgent
     "dev.media-feed-poller"
     config.home-manager.users.bdsqqq.launchd.agents.media-feed-poller.config;
@@ -150,6 +154,7 @@ in
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.files-browser.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.html-stuff.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.ipad-display.plist"} \
+      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.media-feed-import-modulo.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.media-feed-poller.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.photo-intelligence.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.ssd-gallery.plist"} \

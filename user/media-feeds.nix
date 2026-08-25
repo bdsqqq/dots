@@ -6,8 +6,20 @@ let
   configPath = "/Users/bdsqqq/.config/flexget/config.yml";
   variablesPath = "/Users/bdsqqq/.config/flexget/media-feed-variables.yml";
   onePieceKindleDirectory = "/Users/bdsqqq/kindle/one piece";
+  moduloKindleDirectory = "/Users/bdsqqq/kindle/jujutsu kaisen modulo";
+  moduloImportMarker = "/Users/bdsqqq/.config/flexget/nyaa-2120944.imported";
   transmissionConfigDir = "/Users/bdsqqq/.config/transmission-daemon";
   logPath = "/Users/bdsqqq/Library/Logs/media-feeds.log";
+  importModulo = pkgs.writeShellScript "import-jujutsu-kaisen-modulo" ''
+    set -euo pipefail
+
+    [[ -e ${lib.escapeShellArg moduloImportMarker} ]] && exit 0
+    mkdir -p ${lib.escapeShellArg moduloKindleDirectory}
+    ${pkgs.transmission_4}/bin/transmission-remote 127.0.0.1:9091 \
+      --add https://nyaa.si/download/2120944.torrent \
+      --download-dir ${lib.escapeShellArg moduloKindleDirectory}
+    touch ${lib.escapeShellArg moduloImportMarker}
+  '';
 in
 {
   options.my.mediaFeeds = {
@@ -62,6 +74,19 @@ in
           ];
           RunAtLoad = true;
           KeepAlive = true;
+          ProcessType = "Background";
+          StandardOutPath = logPath;
+          StandardErrorPath = logPath;
+        };
+      };
+
+      launchd.agents.media-feed-import-modulo = lib.mkIf cfg.polling.enable {
+        enable = true;
+        config = {
+          ProgramArguments = [ "${importModulo}" ];
+          RunAtLoad = true;
+          KeepAlive.SuccessfulExit = false;
+          ThrottleInterval = 5;
           ProcessType = "Background";
           StandardOutPath = logPath;
           StandardErrorPath = logPath;
