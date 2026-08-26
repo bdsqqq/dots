@@ -18,3 +18,15 @@ index bb022d4..58c7052 100644
          "@earendil-works/pi-coding-agent": piCodingAgentEntry,
          "@earendil-works/pi-agent-core": piAgentCoreEntry,
          "@earendil-works/pi-tui": piTuiEntry,
+diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/interactive/components/user-message.js
+--- a/dist/modes/interactive/components/user-message.js
++++ b/dist/modes/interactive/components/user-message.js
+@@ -26,7 +26,7 @@ export class UserMessageComponent extends Container {
+     }
+     rebuild() {
+         this.clear();
+-        const contentBox = new Box(this.outputPad, 1, (content) => theme.bg("userMessageBg", content));
++        const contentBox = new Box(this.outputPad, 0, (content) => theme.bg("userMessageBg", content));
+         contentBox.addChild(new Markdown(this.text, 0, 0, this.markdownTheme, {
+             color: (content) => theme.fg("userMessageText", content),
+         }, {
