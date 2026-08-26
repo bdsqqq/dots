@@ -1,0 +1,23 @@
+{
+  "name": "@bds_pi/session-recap",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "@bds_pi/background-completion": "workspace:*",
+    "@bds_pi/config": "workspace:*",
+    "@earendil-works/pi-ai": "catalog:",
+    "@earendil-works/pi-tui": "catalog:"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "catalog:"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
