@@ -4,6 +4,7 @@ packages:
 
 patchedDependencies:
   "@earendil-works/pi-coding-agent@0.84.3": patches/pi-coding-agent-0.84.3.patch
+  "@earendil-works/pi-tui@0.84.3": patches/pi-tui-0.84.3.patch
   "@letta-ai/trajectory@0.2.1": patches/letta-ai-trajectory-0.2.1.patch
 
 catalog:

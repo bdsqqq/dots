@@ -8,9 +8,11 @@ pi_workspace=$(CDPATH= cd -- "$tools_root/../pi" && pwd -P)
 # keep this selective bridge instead of adding the pi workspace's entire
 # node_modules/.bin to PATH. that would expose pi's oxlint, vitest, and other
 # dev tools as global commands, allowing them to conflict with project-local
-# versions elsewhere. the outer pnpm shim injects the global-tools NODE_PATH;
-# clear it here and keep parent and child pi processes on the source graph.
-unset NODE_PATH
-export PI_BIN="$pi_workspace/node_modules/.bin/pi"
+# versions elsewhere. replace the outer global-tools NODE_PATH with this
+# workspace's pnpm graph so unbundled pi and extensions resolve the same modules.
+# use the unbundled entrypoint so pnpm dependency patches remain authoritative;
+# the published bundle embeds stale copies of coding-agent and pi-tui modules.
+export NODE_PATH="$pi_workspace/node_modules/.pnpm/node_modules"
+export PI_BIN="$pi_workspace/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
 
 exec "$PI_BIN" "$@"

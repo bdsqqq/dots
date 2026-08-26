@@ -21,12 +21,286 @@ index bb022d4..58c7052 100644
 diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/interactive/components/user-message.js
 --- a/dist/modes/interactive/components/user-message.js
 +++ b/dist/modes/interactive/components/user-message.js
+@@ -1,4 +1,4 @@
+-import { Box, Container, Markdown } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { createMarkdownTransform } from "./markdown-transform.js";
+ const OSC133_ZONE_START = "\x1b]133;A\x07";
 @@ -26,7 +26,7 @@ export class UserMessageComponent extends Container {
      }
      rebuild() {
          this.clear();
 -        const contentBox = new Box(this.outputPad, 1, (content) => theme.bg("userMessageBg", content));
-+        const contentBox = new Box(this.outputPad, 0, (content) => theme.bg("userMessageBg", content));
++        const contentBox = new Box(0, 0, (content) => theme.bg("userMessageBg", content));
          contentBox.addChild(new Markdown(this.text, 0, 0, this.markdownTheme, {
              color: (content) => theme.fg("userMessageText", content),
          }, {
+@@ -34,7 +34,13 @@ export class UserMessageComponent extends Container {
+             preserveBackslashEscapes: true,
+             transform: createMarkdownTransform("user", false, this.markdownTransformers),
+         }));
+-        this.addChild(contentBox);
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), contentBox));
++        this.addChild(messageFrame);
+     }
++    invalidate() {
++        super.invalidate();
++        this.rebuild();
++    }
+     render(width) {
+         const lines = super.render(width);
+diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/interactive/components/user-message.d.ts
+--- a/dist/modes/interactive/components/user-message.d.ts
++++ b/dist/modes/interactive/components/user-message.d.ts
+@@ -10,6 +10,7 @@ export declare class UserMessageComponent extends Container {
+     private markdownTransformers;
+     constructor(text: string, markdownTheme?: MarkdownTheme, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
+     setOutputPad(padding: number): void;
++    invalidate(): void;
+     private rebuild;
+     render(width: number): string[];
+ }
+diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
+--- a/dist/modes/interactive/components/assistant-message.d.ts
++++ b/dist/modes/interactive/components/assistant-message.d.ts
+@@ -7,14 +7,20 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+ export declare class AssistantMessageComponent extends Container {
+     private contentContainer;
++    private markerColumn;
+     private hideThinkingBlock;
+     private markdownTheme;
+     private hiddenThinkingLabel;
+     private outputPad;
+     private markdownTransformers;
++    private requestRender?;
+     private lastMessage?;
+     private hasToolCalls;
+     private isStreaming;
+-    constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
++    private markerFrame;
++    private markerInterval;
++    constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[], requestRender?: () => void);
++    private updateMarker;
++    private stopMarkerAnimation;
+     invalidate(): void;
+     setHideThinkingBlock(hide: boolean): void;
+     setHiddenThinkingLabel(label: string): void;
+diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes/interactive/components/assistant-message.js
+--- a/dist/modes/interactive/components/assistant-message.js
++++ b/dist/modes/interactive/components/assistant-message.js
+@@ -1,4 +1,4 @@
+-import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { createMarkdownTransform } from "./markdown-transform.js";
+ const OSC133_ZONE_START = "\x1b]133;A\x07";
+@@ -9,6 +9,7 @@ const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
+  */
+ export class AssistantMessageComponent extends Container {
+     contentContainer;
++    markerColumn;
+     hideThinkingBlock;
+     markdownTheme;
+     hiddenThinkingLabel;
+@@ -16,21 +17,55 @@ export class AssistantMessageComponent extends Container {
+     markdownTransformers;
+     lastMessage;
+     hasToolCalls = false;
+     isStreaming = false;
+-    constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = []) {
++    requestRender;
++    markerFrame = 0;
++    markerInterval;
++    constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = [], requestRender) {
+         super();
+         this.hideThinkingBlock = hideThinkingBlock;
+         this.markdownTheme = markdownTheme;
+         this.hiddenThinkingLabel = hiddenThinkingLabel;
+         this.outputPad = outputPad;
+         this.markdownTransformers = markdownTransformers;
++        this.requestRender = requestRender;
+         // Container for text/thinking content
+         this.contentContainer = new Container();
+-        this.addChild(this.contentContainer);
++        this.markerColumn = new MarkerColumn("", this.contentContainer);
+         if (message) {
+             this.updateContent(message);
+         }
+     }
++    updateMarker(message) {
++        const failed = message.stopReason === "aborted" ||
++            message.stopReason === "error" ||
++            message.stopReason === "length";
++        if (failed) {
++            this.stopMarkerAnimation();
++            this.markerColumn.setMarker(theme.fg("error", "✕"));
++            return;
++        }
++        if (!this.isStreaming) {
++            this.stopMarkerAnimation();
++            this.markerColumn.setMarker(theme.fg("success", "●"));
++            return;
++        }
++        this.markerColumn.setMarker(theme.fg(this.markerFrame % 2 === 0 ? "muted" : "accent", "●"));
++        if (!this.markerInterval && this.requestRender) {
++            this.markerInterval = setInterval(() => {
++                this.markerFrame = (this.markerFrame + 1) % 2;
++                this.markerColumn.setMarker(theme.fg(this.markerFrame === 0 ? "muted" : "accent", "●"));
++                this.requestRender?.();
++            }, 320);
++            this.markerInterval.unref?.();
++        }
++    }
++    stopMarkerAnimation() {
++        if (this.markerInterval) {
++            clearInterval(this.markerInterval);
++            this.markerInterval = undefined;
++        }
++    }
+     invalidate() {
+         super.invalidate();
+         if (this.lastMessage) {
+@@ -67,12 +102,8 @@ export class AssistantMessageComponent extends Container {
+     updateContent(message, isStreaming = this.isStreaming) {
+         this.lastMessage = message;
+         this.isStreaming = isStreaming;
+-        // Clear content container
++        this.clear();
+         this.contentContainer.clear();
+-        const hasVisibleContent = message.content.some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
+-        if (hasVisibleContent) {
+-            this.contentContainer.addChild(new Spacer(1));
+-        }
+         // Render content in order
+         for (let i = 0; i < message.content.length; i++) {
+             const content = message.content[i];
+@@ -79,7 +110,7 @@ export class AssistantMessageComponent extends Container {
+             if (content.type === "text" && content.text.trim()) {
+                 // Assistant text messages with no background - trim the text
+                 // Set paddingY=0 to avoid extra spacing before tool executions
+-                this.contentContainer.addChild(new Markdown(content.text.trim(), this.outputPad, 0, this.markdownTheme, undefined, {
++                this.contentContainer.addChild(new Markdown(content.text.trim(), 0, 0, this.markdownTheme, undefined, {
+                     transform: createMarkdownTransform("assistant", this.isStreaming, this.markdownTransformers),
+                 }));
+             }
+@@ -107,10 +138,10 @@ export class AssistantMessageComponent extends Container {
+                 if (this.hideThinkingBlock) {
+                     // Show one static label for each run of thinking blocks when hidden.
+-                    this.contentContainer.addChild(new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0));
++                    this.contentContainer.addChild(new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), 0, 0));
+                 }
+                 else {
+                     // Render each run of thinking blocks as one Markdown section.
+-                    this.contentContainer.addChild(new Markdown(thinkingBlocks.join("\n\n"), this.outputPad, 0, this.markdownTheme, {
++                    this.contentContainer.addChild(new Markdown(thinkingBlocks.join("\n\n"), 0, 0, this.markdownTheme, {
+                         color: (text) => theme.fg("thinkingText", text),
+                         italic: true,
+                     }, {
+@@ -130,21 +161,34 @@ export class AssistantMessageComponent extends Container {
+         if (message.stopReason === "length") {
+-            this.contentContainer.addChild(new Spacer(1));
++            if (this.contentContainer.children.length > 0)
++                this.contentContainer.addChild(new Spacer(1));
+-            this.contentContainer.addChild(new Text(theme.fg("error", "Response was truncated before completion."), this.outputPad, 0));
++            this.contentContainer.addChild(new Text(theme.fg("error", "Response was truncated before completion."), 0, 0));
+         }
+         else if (!hasToolCalls) {
+             if (message.stopReason === "aborted") {
+                 const abortMessage = message.errorMessage && message.errorMessage !== "Request was aborted"
+                     ? message.errorMessage
+                     : "Operation aborted";
+-                this.contentContainer.addChild(new Spacer(1));
++                if (this.contentContainer.children.length > 0)
++                    this.contentContainer.addChild(new Spacer(1));
+-                this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), this.outputPad, 0));
++                this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), 0, 0));
+             }
+             else if (message.stopReason === "error") {
+                 const errorMsg = message.errorMessage || "Unknown error";
+-                this.contentContainer.addChild(new Spacer(1));
++                if (this.contentContainer.children.length > 0)
++                    this.contentContainer.addChild(new Spacer(1));
+-                this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
++                this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), 0, 0));
+             }
+         }
++        if (this.contentContainer.children.length > 0) {
++            this.updateMarker(message);
++            this.addChild(new Spacer(1));
++            const messageFrame = new Box(this.outputPad, 0);
++            messageFrame.addChild(this.markerColumn);
++            this.addChild(messageFrame);
++        }
++        else {
++            this.stopMarkerAnimation();
++        }
+     }
+ }
+ //# sourceMappingURL=assistant-message.js.map
+diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
+--- a/dist/modes/interactive/interactive-mode.js
++++ b/dist/modes/interactive/interactive-mode.js
+@@ -2614,7 +2614,7 @@ export class InteractiveMode {
+                     this.ui.requestRender();
+                 }
+                 else if (event.message.role === "assistant") {
+-                    this.streamingComponent = new AssistantMessageComponent(undefined, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers());
++                    this.streamingComponent = new AssistantMessageComponent(undefined, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers(), () => this.ui.requestRender());
+                     this.streamingMessage = event.message;
+                     this.chatContainer.addChild(this.streamingComponent);
+                     this.streamingComponent.updateContent(this.streamingMessage, true);
+@@ -2975,7 +2975,7 @@ export class InteractiveMode {
+                 break;
+             }
+             case "assistant": {
+-                const assistantComponent = new AssistantMessageComponent(message, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers());
++                const assistantComponent = new AssistantMessageComponent(message, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers(), () => this.ui.requestRender());
+                 this.chatContainer.addChild(assistantComponent);
+                 break;
+             }
+diff --git a/dist/core/export-html/tool-renderer.d.ts b/dist/core/export-html/tool-renderer.d.ts
+--- a/dist/core/export-html/tool-renderer.d.ts
++++ b/dist/core/export-html/tool-renderer.d.ts
+@@ -26,5 +26,6 @@ export interface ToolHtmlRenderer {
+         mimeType?: string;
+     }>, details: unknown, isError: boolean): {
++        call?: string;
+         collapsed?: string;
+         expanded?: string;
+     } | undefined;
+diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool-renderer.js
+--- a/dist/core/export-html/tool-renderer.js
++++ b/dist/core/export-html/tool-renderer.js
+@@ -85,6 +85,12 @@ export function createToolHtmlRenderer(deps) {
+                     details,
+                     isError,
+                 };
++                let call;
++                if (toolDef.renderCall) {
++                    const callComponent = toolDef.renderCall(renderedArgs.get(toolCallId), theme, createRenderContext(toolCallId, renderedCallComponents.get(toolCallId), false, false, isError));
++                    renderedCallComponents.set(toolCallId, callComponent);
++                    call = ansiLinesToHtml(callComponent.render(width));
++                }
+                 // Render collapsed
+                 const collapsedComponent = toolDef.renderResult(agentToolResult, { expanded: false, isPartial: false }, theme, createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), false, false, isError));
+                 renderedResultComponents.set(toolCallId, collapsedComponent);
+@@ -94,5 +100,6 @@ export function createToolHtmlRenderer(deps) {
+                 const expanded = ansiLinesToHtml(trimRenderedResultLines(expandedComponent.render(width)));
+                 return {
++                    ...(call ? { call } : {}),
+                     ...(collapsed && collapsed !== expanded ? { collapsed } : {}),
+                     expanded,
+                 };
+diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
+--- a/dist/core/export-html/index.js
++++ b/dist/core/export-html/index.js
+@@ -146,6 +146,7 @@ function preRenderCustomTools(entries, toolRenderer) {
+                 const rendered = toolRenderer.renderResult(msg.toolCallId, toolName, msg.content, msg.details, msg.isError || false);
+                 if (rendered) {
+                     renderedTools[msg.toolCallId] = {
+                         ...existing,
++                        callHtml: rendered.call ?? existing?.callHtml,
+                         resultHtmlCollapsed: rendered.collapsed,
+                         resultHtmlExpanded: rendered.expanded,
