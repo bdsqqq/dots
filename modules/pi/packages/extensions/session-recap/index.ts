@@ -286,11 +286,7 @@ export function createSessionRecapExtension(
           new Text(theme.fg("muted", metadata.join(" · ")), 0, 0),
         );
         content.addChild(
-          new Text(
-            theme.fg("dim", `${data.text}  /recap off`),
-            2,
-            0,
-          ),
+          new Text(theme.fg("dim", `${data.text}  /recap off`), 2, 0),
         );
         return new MarkerColumn(theme.fg("accent", "●"), content, {
           continuationMarker: theme.fg("muted", "│"),
