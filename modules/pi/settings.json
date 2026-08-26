@@ -3,6 +3,9 @@
   "skills": [
     "~/.config/agents/skills"
   ],
+  "themes": [
+    "~/.pi/agent/extensions/editor/themes"
+  ],
   "extensions": [
     "~/.pi/agent/extensions/editor",
     "~/.pi/agent/extensions/session-name.ts",
@@ -29,7 +32,7 @@
     "showTerminalProgress": true
   },
   "treeFilterMode": "no-tools",
-  "theme": "dark",
+  "theme": "unboxed-dark",
   "outputPad": 0,
   "showCacheMissNotices": true,
   "tuiMode": "fullscreen"

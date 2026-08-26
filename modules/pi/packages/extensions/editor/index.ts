@@ -518,20 +518,6 @@ function editorExtension(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI) return;
 
-    // make tool call backgrounds transparent — removes the colored box
-    // chrome that ToolExecutionComponent forces via Box(1,1,bgFn).
-    // the Box padding (1char/1row) remains but is invisible against
-    // the terminal's default background.
-    const theme = ctx.ui.theme as unknown as {
-      bgColors?: Map<string, string>;
-    };
-    if (theme.bgColors instanceof Map) {
-      const transparent = "\x1b[49m"; // ANSI bg reset = terminal default
-      theme.bgColors.set("toolPendingBg", transparent);
-      theme.bgColors.set("toolSuccessBg", transparent);
-      theme.bgColors.set("toolErrorBg", transparent);
-    }
-
     // replace editor with labeled box-drawing version
     ctx.ui.setEditorComponent(
       (tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
