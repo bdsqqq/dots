@@ -5,6 +5,7 @@
   "main": "index.ts",
   "types": "index.ts",
   "dependencies": {
+    "@bds_pi/box-chrome": "workspace:*",
     "@bds_pi/pi-spawn": "workspace:*",
     "@bds_pi/tool-cost": "workspace:*"
   },
