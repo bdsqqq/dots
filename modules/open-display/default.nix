@@ -39,21 +39,25 @@ let
         /usr/bin/open -gja "$app" --args -mode extend -autostart YES
       }
 
+      restart_app() {
+        /usr/bin/killall OpenDisplay >/dev/null 2>&1 || true
+        for _ in {1..30}; do
+          if ! /usr/bin/pgrep -x OpenDisplay >/dev/null; then
+            start_app
+            return
+          fi
+          /bin/sleep 1
+        done
+        echo "OpenDisplay did not stop" >&2
+        exit 1
+      }
+
       case "''${1:-}" in
         start)
           start_app
           ;;
-        restart)
-          /usr/bin/killall OpenDisplay >/dev/null 2>&1 || true
-          for _ in {1..30}; do
-            if ! /usr/bin/pgrep -x OpenDisplay >/dev/null; then
-              start_app
-              exit 0
-            fi
-            /bin/sleep 1
-          done
-          echo "OpenDisplay did not stop" >&2
-          exit 1
+        connect|restart)
+          restart_app
           ;;
         stop)
           /usr/bin/killall OpenDisplay >/dev/null 2>&1 || true
@@ -62,7 +66,7 @@ let
           /usr/bin/pgrep -x OpenDisplay
           ;;
         *)
-          echo "usage: open-display {start|restart|stop|status}" >&2
+          echo "usage: open-display {connect|start|restart|stop|status}" >&2
           exit 1
           ;;
       esac
@@ -70,10 +74,18 @@ let
   };
 in
 {
-  options.my.openDisplay.wifiServiceName = lib.mkOption {
-    type = lib.types.str;
-    default = "OpenDisplay";
-    description = "Bonjour service name advertised by the OpenDisplay iPad app.";
+  options.my.openDisplay = {
+    wifiServiceName = lib.mkOption {
+      type = lib.types.str;
+      default = "OpenDisplay";
+      description = "Bonjour service name advertised by the OpenDisplay iPad app.";
+    };
+
+    launchAtLogin = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Whether OpenDisplay starts automatically in the Aqua login session.";
+    };
   };
 
   config = {
@@ -86,6 +98,7 @@ in
       home.activation.openDisplayPreferences =
         lib.hm.dag.entryAfter [ "writeBoundary" ] ''
           changed=false
+          launch_at_login=${lib.boolToString cfg.launchAtLogin}
           receiver=${lib.escapeShellArg "wifi:${cfg.wifiServiceName}"}
           package=${lib.escapeShellArg openDisplayAppPath}
 
@@ -119,21 +132,26 @@ in
             changed=true
           fi
 
-          if [ "$changed" = true ]; then
+          # A manual-only sender may seed preferences, but must not steal the
+          # receiver from the login-managed headless Mac during activation.
+          if [ "$changed" = true ] \
+            && { [ "$launch_at_login" = true ] || /usr/bin/pgrep -x OpenDisplay >/dev/null; }; then
             ${openDisplayControl}/bin/open-display restart
           fi
         '';
     };
 
-    launchd.user.agents.open-display.serviceConfig = {
-      Label = "dev.open-display";
-      ProgramArguments = [ "${openDisplayControl}/bin/open-display" "start" ];
-      RunAtLoad = true;
-      LimitLoadToSessionType = "Aqua";
-      ProcessType = "Interactive";
-      ThrottleInterval = 30;
-      StandardOutPath = "/Users/bdsqqq/Library/Logs/open-display.log";
-      StandardErrorPath = "/Users/bdsqqq/Library/Logs/open-display.log";
+    launchd.user.agents.open-display = lib.mkIf cfg.launchAtLogin {
+      serviceConfig = {
+        Label = "dev.open-display";
+        ProgramArguments = [ "${openDisplayControl}/bin/open-display" "start" ];
+        RunAtLoad = true;
+        LimitLoadToSessionType = "Aqua";
+        ProcessType = "Interactive";
+        ThrottleInterval = 30;
+        StandardOutPath = "/Users/bdsqqq/Library/Logs/open-display.log";
+        StandardErrorPath = "/Users/bdsqqq/Library/Logs/open-display.log";
+      };
     };
   };
 }

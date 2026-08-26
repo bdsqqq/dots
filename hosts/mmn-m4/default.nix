@@ -77,6 +77,7 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+  my.openDisplay.launchAtLogin = true;
 
   power = {
     restartAfterPowerFailure = true;
