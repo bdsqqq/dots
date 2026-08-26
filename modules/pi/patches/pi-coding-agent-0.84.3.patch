@@ -666,7 +666,30 @@ diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool
 diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
 --- a/dist/core/export-html/index.js
 +++ b/dist/core/export-html/index.js
-@@ -146,6 +146,7 @@ function preRenderCustomTools(entries, toolRenderer) {
+@@ -117,6 +117,8 @@ function inlineAssets(template, css, templateJs, markedJs, hljsJs, theme) {
+ }
+ /** Tools rendered directly by the HTML template (not pre-rendered via TUI→ANSI→HTML pipeline) */
+ const TEMPLATE_RENDERED_TOOLS = new Set(["bash", "read", "write", "edit", "ls"]);
++/** Local renderer overrides whose lifecycle markers must replace the static template header. */
++const TUI_RENDERED_TOOL_OVERRIDES = new Set(["bash", "read", "ls"]);
+ /**
+  * Pre-render custom tools to HTML using their TUI renderers.
+  */
+@@ -129,7 +131,7 @@ function preRenderCustomTools(entries, toolRenderer) {
+         // Find tool calls in assistant messages
+         if (msg.role === "assistant" && Array.isArray(msg.content)) {
+             for (const block of msg.content) {
+-                if (block.type === "toolCall" && !TEMPLATE_RENDERED_TOOLS.has(block.name)) {
++                if (block.type === "toolCall" && (!TEMPLATE_RENDERED_TOOLS.has(block.name) || TUI_RENDERED_TOOL_OVERRIDES.has(block.name))) {
+                     const callHtml = toolRenderer.renderCall(block.id, block.name, block.arguments);
+                     if (callHtml) {
+                         renderedTools[block.id] = { callHtml };
+@@ -142,12 +144,13 @@ function preRenderCustomTools(entries, toolRenderer) {
+             const toolName = msg.toolName || "";
+             // Only render if we have a pre-rendered call OR it's not template-rendered
+             const existing = renderedTools[msg.toolCallId];
+-            if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName)) {
++            if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName) || TUI_RENDERED_TOOL_OVERRIDES.has(toolName)) {
                  const rendered = toolRenderer.renderResult(msg.toolCallId, toolName, msg.content, msg.details, msg.isError || false);
                  if (rendered) {
                      renderedTools[msg.toolCallId] = {
@@ -674,3 +697,5 @@ diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
 +                        callHtml: rendered.call ?? existing?.callHtml,
                          resultHtmlCollapsed: rendered.collapsed,
                          resultHtmlExpanded: rendered.expanded,
+                     };
+                 }
