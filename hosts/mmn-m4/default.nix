@@ -77,7 +77,10 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
-  my.openDisplay.launchAtLogin = true;
+  my.openDisplay = {
+    launchAtLogin = true;
+    wifiServiceName = "iPad";
+  };
   # household-storage is an aarch64-linux microVM. Keep its builds local to
   # this host instead of relying on mbp-m2's otherwise unrelated builder.
   nix = {
