@@ -45,9 +45,7 @@ jobs:
       - run: pnpm run build
 
       - name: test
-        # calldiff installs native grammars into a shared cache on demand. serial
-        # workers prevent concurrent npm installs from corrupting that cache.
-        run: pnpm exec vitest run --maxWorkers=1 --exclude 'packages/extensions/github/**'
+        run: pnpm exec vitest run --exclude 'packages/extensions/github/**'
         env:
           GH_TOKEN: ${{ github.token }}
 
