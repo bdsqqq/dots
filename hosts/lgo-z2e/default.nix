@@ -157,7 +157,7 @@ in
   networking.networkmanager.enable = true;
   networking.useDHCP = lib.mkDefault true;
 
-  time.timeZone = "Europe/London";
+  time.timeZone = "America/Sao_Paulo";
   i18n.defaultLocale = "en_US.UTF-8";
 
   environment.sessionVariables.DISPLAY = ":0";
