@@ -338,8 +338,6 @@ importers:
         specifier: '*'
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
 
-  packages/core/workflow-api: {}
-
   packages/extensions/apply-patch:
     dependencies:
       '@bds_pi/codex-patch':
@@ -1128,61 +1126,6 @@ importers:
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.84.3
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
-
-  packages/extensions/workflow:
-    dependencies:
-      '@bds_pi/code-review':
-        specifier: workspace:*
-        version: link:../code-review
-      '@bds_pi/delegate':
-        specifier: workspace:*
-        version: link:../delegate
-      '@bds_pi/finder':
-        specifier: workspace:*
-        version: link:../finder
-      '@bds_pi/librarian':
-        specifier: workspace:*
-        version: link:../librarian
-      '@bds_pi/look-at':
-        specifier: workspace:*
-        version: link:../look-at
-      '@bds_pi/oracle':
-        specifier: workspace:*
-        version: link:../oracle
-      '@bds_pi/pi-spawn':
-        specifier: workspace:*
-        version: link:../../core/pi-spawn
-      '@bds_pi/read-session':
-        specifier: workspace:*
-        version: link:../read-session
-      '@bds_pi/read-web-page':
-        specifier: workspace:*
-        version: link:../read-web-page
-      '@bds_pi/workflow-api':
-        specifier: workspace:*
-        version: link:../../core/workflow-api
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 0.84.3(patch_hash=67b07502abf5d8f718ef55bc74c615bf89e28b704b8adaca32978a49fde66d1a)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 0.84.3
-      proper-lockfile:
-        specifier: ^4.1.2
-        version: 4.1.2
-      typebox:
-        specifier: 'catalog:'
-        version: 1.1.38
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-    devDependencies:
-      '@types/proper-lockfile':
-        specifier: ^4.1.4
-        version: 4.1.4
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -2348,9 +2291,6 @@ packages:
 
   '@types/node@26.1.1':
     resolution: {integrity: sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==}
-
-  '@types/proper-lockfile@4.1.4':
-    resolution: {integrity: sha512-uo2ABllncSqg9F1D4nugVl9v93RmjxF6LJzQLMLDdPaXCUIDPeOJ21Gbqi43xNKzBi/WQ0Q0dICqufzQbMjipQ==}
 
   '@types/retry@0.12.0':
     resolution: {integrity: sha512-wWKOClTTiizcZhXnPY4wikVAwmdYHp8q6DmC+EJUzAMsycb7HB32Kh9RN4+0gExjmPmZSAQjgURXIGATPegAvA==}
@@ -4412,10 +4352,6 @@ snapshots:
     dependencies:
       undici-types: 8.3.0
     optional: true
-
-  '@types/proper-lockfile@4.1.4':
-    dependencies:
-      '@types/retry': 0.12.0
 
   '@types/retry@0.12.0': {}
 
