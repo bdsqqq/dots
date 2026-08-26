@@ -548,15 +548,16 @@ if (import.meta.vitest) {
       const lines = container.render(80);
       const output = lines.join("\n");
 
-      // tree connectors
+      // tree connector followed by the shared open result frame
       expect(output).toContain("├ ");
-      expect(output).toContain("╰ ");
+      expect(output).toContain("│ Found it in src/tools/grep.ts");
+      expect(output).toContain("╰────");
 
       // success icon
       expect(output).toContain("✓");
 
-      // summary section
-      expect(output).toContain("Summary:");
+      // final output no longer needs a redundant summary label
+      expect(output).not.toContain("Summary:");
 
       // usage stats
       expect(output).toContain("2 turns");
