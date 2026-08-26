@@ -397,7 +397,6 @@ export function createCodeReviewTool(
       renderAgentTree(details, container, expanded, theme, {
         label: "code_review",
         header: "none",
-        summary: "open-box",
       });
       return container;
     },
