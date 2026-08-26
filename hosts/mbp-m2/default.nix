@@ -64,6 +64,7 @@ in
     ../../modules/pi-memory
     ../../modules/e-ink-glass
     ../../modules/ghostty
+    ../../modules/open-display
     ../../modules/vscodium
     ../../modules/1password
     ../../modules/orbstack
@@ -245,6 +246,7 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+  my.openDisplay.launchAtLogin = false;
   # Bootstrap aarch64-linux guest builds without making the 16 GB storage host
   # carry a second build VM alongside the household appliance.
   nix = {
