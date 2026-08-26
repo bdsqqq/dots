@@ -26,7 +26,9 @@ import type {
 import { getShellConfig, highlightCode } from "@earendil-works/pi-coding-agent";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
+  renderLifecycleCall,
   boxRendererWindowed,
+  framedTextRenderer,
   type BoxSection,
   type Excerpt,
 } from "@bds_pi/box-format";
@@ -603,7 +605,11 @@ export function createBashTool(
           const last = highlighted.length - 1;
           highlighted[last] = `${highlighted[last] ?? ""}${timeoutSuffix}`;
         }
-        return new Text(highlighted.join("\n"), 0, 0);
+        return renderLifecycleCall(
+          new Text(highlighted.join("\n"), 0, 0),
+          theme,
+          context,
+        );
       }
 
       const rows = splitCommandDisplayRows(cmd).map((row, index) =>
@@ -611,20 +617,23 @@ export function createBashTool(
       );
       if (timeoutSuffix) rows[rows.length - 1] += timeoutSuffix;
 
-      return {
-        render(width: number): string[] {
-          const truncateToWidth = getTruncateToWidth();
-          return rows.map((row) => truncateToWidth(row, width, "…"));
+      return renderLifecycleCall(
+        {
+          render(width: number): string[] {
+            const truncateToWidth = getTruncateToWidth();
+            return rows.map((row) => truncateToWidth(row, width, "…"));
+          },
+          invalidate() {},
         },
-        invalidate() {},
-      };
+        theme,
+        context,
+      );
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
-      const Text = getText();
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text(theme.fg("dim", "(no output)"), 0, 0);
+        return framedTextRenderer(theme.fg("dim", "(no output)"), expanded);
 
       // extract command from structured details (preferred) or parse from content
       let text: string = content.text;
@@ -644,7 +653,7 @@ export function createBashTool(
       }
 
       if (!text || text === "(no output)")
-        return new Text(theme.fg("dim", "(no output)"), 0, 0);
+        return framedTextRenderer(theme.fg("dim", "(no output)"), expanded);
 
       const lines = text.split("\n");
 
@@ -1225,7 +1234,7 @@ if (import.meta.vitest) {
             cmd: "echo a-very-long-argument && printf another-long-argument",
           },
           theme as any,
-          { expanded: false } as any,
+          { expanded: false, isError: false, isPartial: false } as any,
         );
         const lines = component.render(18);
 
@@ -1233,6 +1242,8 @@ if (import.meta.vitest) {
           line.replace(/\x1b\[[0-9;]*m/g, ""),
         );
         expect(visibleLines).toHaveLength(2);
+        expect(visibleLines[0]).toMatch(/^✓ \$ /);
+        expect(visibleLines[1]).toMatch(/^  /);
         expect(visibleLines.every((line) => line.length <= 18)).toBe(true);
         expect(visibleLines.every((line) => line.endsWith("…"))).toBe(true);
       });
@@ -1241,14 +1252,14 @@ if (import.meta.vitest) {
         const component = tool.renderCall!(
           { cmd: 'echo one && printf "two"' },
           theme as any,
-          { expanded: true } as any,
+          { expanded: true, isError: false, isPartial: false } as any,
         );
         const rendered = component
           .render(120)
           .join("\n")
           .replace(/\x1b\[[0-9;]*m/g, "");
 
-        expect(rendered).toContain('$ echo one && printf "two"');
+        expect(rendered).toContain('✓ $ echo one && printf "two"');
       });
     });
 
@@ -1657,9 +1668,7 @@ if (import.meta.vitest) {
     describe("background commands", () => {
       it("returns immediately and writes output to a log file", async () => {
         const startedAt = Date.now();
-        const result = await execute(
-          `printf 'ready\\n'; sleep 60 &`,
-        );
+        const result = await execute(`printf 'ready\\n'; sleep 60 &`);
 
         expect(Date.now() - startedAt).toBeLessThan(1_000);
         expect(result.details?.background?.pid).toBeTruthy();

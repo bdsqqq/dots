@@ -25,7 +25,9 @@ import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "typebox";
 import { formatHeadTail } from "@bds_pi/output-buffer";
 import {
+  renderLifecycleCall,
   boxRendererWindowed,
+  framedTextRenderer,
   textSection,
   type Excerpt,
 } from "@bds_pi/box-format";
@@ -110,12 +112,16 @@ export function createGlobTool(
       ),
     }),
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const pattern = args.filePattern || "...";
-      return new Text(
-        theme.fg("toolTitle", theme.bold("Find ")) + theme.fg("dim", pattern),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("Find ")) + theme.fg("dim", pattern),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -126,7 +132,7 @@ export function createGlobTool(
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text("(no output)", 0, 0);
+        return framedTextRenderer("(no output)", expanded);
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {

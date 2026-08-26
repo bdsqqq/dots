@@ -26,7 +26,9 @@ import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
+  renderLifecycleCall,
   boxRendererWindowed,
+  framedTextRenderer,
   textSection,
   type Excerpt,
 } from "@bds_pi/box-format";
@@ -149,14 +151,18 @@ export function createSkillTool(): ToolDefinition<any> {
       ),
     }),
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const name = args.name || "...";
-      return new Text(
-        theme.fg("dim", "using ") +
-          theme.fg("toolTitle", theme.bold(name)) +
-          theme.fg("dim", " skill"),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("dim", "using ") +
+            theme.fg("toolTitle", theme.bold(name)) +
+            theme.fg("dim", " skill"),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -232,7 +238,7 @@ export function createSkillTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text("(no output)", 0, 0);
+        return framedTextRenderer("(no output)", expanded);
       if (content.text.startsWith("<loaded_skill")) {
         return boxRendererWindowed(
           () => [textSection(undefined, "skill loaded", true)],

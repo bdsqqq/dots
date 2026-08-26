@@ -23,7 +23,7 @@
  * rendered line exceeds terminal width.
  */
 
-import { Text, type Component } from "@earendil-works/pi-tui";
+import { MarkerColumn, Text, type Component } from "@earendil-works/pi-tui";
 import { boxBottom, boxTop } from "@bds_pi/box-chrome";
 import { windowItems, type Excerpt } from "@bds_pi/show";
 
@@ -300,7 +300,15 @@ export function formatBoxesWindowed(
     }
 
     // footer
-    out.push(boxBottom({ variant: "open", style: chrome }));
+    out.push(
+      safeWidth == null
+        ? boxBottom({ variant: "open", style: chrome })
+        : truncateToWidth(
+            boxBottom({ variant: "open", style: chrome }),
+            safeWidth,
+            "",
+          ),
+    );
   }
 
   // section elision
@@ -339,6 +347,20 @@ export function textSection(
   };
 }
 
+/** Frames short fallback text with the same open chrome as structured output. */
+export function framedTextRenderer(
+  text: string,
+  expanded = false,
+  dim = false,
+): Component & { invalidate(): void } {
+  return boxRendererWindowed(
+    () => [textSection(undefined, text, dim)],
+    { collapsed: {}, expanded: {} },
+    undefined,
+    expanded,
+  );
+}
+
 /**
  * visual-line-aware boxRenderer. uses formatBoxesWindowed under the hood.
  * caches by (width, expanded).
@@ -355,6 +377,7 @@ export function boxRendererWindowed(
 
   return {
     render(width: number): string[] {
+      if (width <= 0) return [];
       if (
         cachedLines !== undefined &&
         cachedExpanded === expanded &&
@@ -391,6 +414,90 @@ export function osc8Link(url: string, text: string): string {
   return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
 }
 
+const LIFECYCLE_CALL_INTERVAL_MS = 320;
+
+export interface LifecycleCallContext {
+  isError: boolean;
+  isPartial: boolean;
+  invalidate?: () => void;
+  lastComponent?: Component;
+}
+
+class LifecycleCallComponent implements Component {
+  private readonly row: MarkerColumn;
+  private frame = 0;
+  private interval?: ReturnType<typeof setInterval>;
+  private renderVersion = 0;
+  private requestRender?: () => void;
+
+  constructor(child: Component) {
+    this.row = new MarkerColumn("", child, { gap: 1 });
+  }
+
+  update(child: Component, theme: any, context: LifecycleCallContext): void {
+    this.renderVersion++;
+    this.requestRender = context.invalidate;
+    const active = context.isPartial && !context.isError;
+
+    if (active && this.requestRender && !this.interval) {
+      this.interval = setInterval(() => {
+        this.frame = (this.frame + 1) % 2;
+        const renderedVersion = this.renderVersion;
+        try {
+          this.requestRender?.();
+        } finally {
+          // a component removed from the transcript cannot settle through another
+          // renderCall. Stop after one unanswered invalidation instead of leaking.
+          if (this.renderVersion === renderedVersion) this.stop();
+        }
+      }, LIFECYCLE_CALL_INTERVAL_MS);
+      this.interval.unref?.();
+    } else if (!active) {
+      this.stop();
+    }
+
+    const marker = context.isError
+      ? theme.fg("error", "✕")
+      : active
+        ? theme.fg(this.frame % 2 === 0 ? "muted" : "accent", "●")
+        : theme.fg("success", "✓");
+    this.row.setMarker(marker);
+    this.row.setChild(child);
+  }
+
+  render(width: number): string[] {
+    return this.row.render(width);
+  }
+
+  invalidate(): void {
+    this.row.invalidate();
+  }
+
+  private stop(): void {
+    if (!this.interval) return;
+    clearInterval(this.interval);
+    this.interval = undefined;
+  }
+}
+
+/**
+ * adds a stable lifecycle column without taking over the tool's own call UI.
+ * reuse keeps one pulse timer attached to a row while MarkerColumn delegates
+ * wrapping to the original component at the remaining width.
+ */
+export function renderLifecycleCall(
+  content: Component,
+  theme: any,
+  context: LifecycleCallContext,
+): Component {
+  const component =
+    context.lastComponent instanceof LifecycleCallComponent
+      ? context.lastComponent
+      : new LifecycleCallComponent(content);
+  component.update(content, theme, context);
+  return component;
+}
+
 /**
  * standardized call-line component for renderCall.
  * renders: bold(label) dim(context)
@@ -416,7 +523,7 @@ export function renderCallLine(
 // --- inline tests ---
 
 if (import.meta.vitest) {
-  const { describe, it, expect } = import.meta.vitest;
+  const { describe, it, expect, vi } = import.meta.vitest;
 
   describe("visibleWidth", () => {
     it("counts plain text characters", () => {
@@ -512,6 +619,170 @@ if (import.meta.vitest) {
     it("sets highlight=false when dim=true", () => {
       const section = textSection("Title", "text", true);
       expect(section.blocks[0]?.lines[0]?.highlight).toBe(false);
+    });
+  });
+
+  describe("framedTextRenderer", () => {
+    it("frames fallback rows and closes exactly once", () => {
+      const lines = framedTextRenderer("first\nsecond")
+        .render(80)
+        .map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
+
+      expect(lines.slice(0, -1).every((line) => line.startsWith("│"))).toBe(
+        true,
+      );
+      expect(lines.filter((line) => line === "╰────")).toHaveLength(1);
+      expect(lines.at(-1)).toBe("╰────");
+    });
+
+    it("keeps footer chrome within narrow render widths", () => {
+      const component = framedTextRenderer("output");
+
+      for (const width of [0, 1, 2, 3, 4]) {
+        expect(
+          component.render(width).every((line) => visibleWidth(line) <= width),
+        ).toBe(true);
+      }
+    });
+  });
+
+  describe("renderLifecycleCall", () => {
+    const theme = {
+      fg: (_color: string, text: string) => text,
+    };
+
+    it("pulses active calls between muted and accent", () => {
+      vi.useFakeTimers();
+      try {
+        const colors: string[] = [];
+        const pulseTheme = {
+          fg: (color: string, text: string) => {
+            if (text === "●") colors.push(color);
+            return text;
+          },
+        };
+        let component: Component | undefined;
+        const renderActive = (): void => {
+          component = renderLifecycleCall(
+            new Text("Bash echo ok", 0, 0),
+            pulseTheme,
+            {
+              isError: false,
+              isPartial: true,
+              invalidate,
+              lastComponent: component,
+            },
+          );
+        };
+        const invalidate = vi.fn(renderActive);
+
+        renderActive();
+        expect(colors.at(-1)).toBe("muted");
+        vi.advanceTimersByTime(LIFECYCLE_CALL_INTERVAL_MS);
+        expect(colors.at(-1)).toBe("accent");
+        expect(invalidate).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("renders terminal success and error outcomes", () => {
+      const success = renderLifecycleCall(new Text("Read file", 0, 0), theme, {
+        isError: false,
+        isPartial: false,
+      });
+      const error = renderLifecycleCall(new Text("Read file", 0, 0), theme, {
+        isError: true,
+        isPartial: true,
+      });
+
+      expect(success.render(80)[0]?.trimEnd()).toBe("✓ Read file");
+      expect(error.render(80)[0]?.trimEnd()).toBe("✕ Read file");
+    });
+
+    it("reuses the last wrapper while replacing its content", () => {
+      const first = renderLifecycleCall(new Text("Read old", 0, 0), theme, {
+        isError: false,
+        isPartial: false,
+      });
+      const next = renderLifecycleCall(new Text("Read new", 0, 0), theme, {
+        isError: false,
+        isPartial: false,
+        lastComponent: first,
+      });
+
+      expect(next).toBe(first);
+      expect(next.render(80)[0]?.trimEnd()).toBe("✓ Read new");
+    });
+
+    it("hangs wrapped content after one marker cell and one gap", () => {
+      const component = renderLifecycleCall(
+        new Text("Delegate verify settlement and abort findings", 0, 0),
+        theme,
+        { isError: false, isPartial: false },
+      );
+
+      expect(component.render(24).map((line) => line.trimEnd())).toEqual([
+        "✓ Delegate verify",
+        "  settlement and abort",
+        "  findings",
+      ]);
+    });
+
+    it("stays within narrow widths", () => {
+      const component = renderLifecycleCall(
+        new Text("Read file", 0, 0),
+        theme,
+        {
+          isError: false,
+          isPartial: false,
+        },
+      );
+
+      expect(component.render(0)).toEqual([]);
+      expect(component.render(1)).toEqual(["✓"]);
+      expect(component.render(2)).toEqual(["✓ "]);
+      for (const width of [1, 2, 3, 8]) {
+        expect(
+          component.render(width).every((line) => visibleWidth(line) <= width),
+        ).toBe(true);
+      }
+    });
+
+    it("cleans up on settlement and after a detached render", () => {
+      vi.useFakeTimers();
+      try {
+        let component: Component | undefined;
+        const rerender = (): void => {
+          component = renderLifecycleCall(new Text("Bash test", 0, 0), theme, {
+            isError: false,
+            isPartial: true,
+            invalidate: rerender,
+            lastComponent: component,
+          });
+        };
+        rerender();
+        expect(vi.getTimerCount()).toBe(1);
+
+        component = renderLifecycleCall(new Text("Bash test", 0, 0), theme, {
+          isError: false,
+          isPartial: false,
+          invalidate: rerender,
+          lastComponent: component,
+        });
+        expect(vi.getTimerCount()).toBe(0);
+
+        renderLifecycleCall(new Text("Grep query", 0, 0), theme, {
+          isError: false,
+          isPartial: true,
+          invalidate: () => {},
+        });
+        expect(vi.getTimerCount()).toBe(1);
+        vi.advanceTimersByTime(LIFECYCLE_CALL_INTERVAL_MS);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

@@ -24,7 +24,9 @@ import {
 import * as toolPolicy from "@bds_pi/tool-policy";
 import { NORMAL_LIMITS, type ReadLimits } from "@bds_pi/read";
 import {
+  renderLifecycleCall,
   boxRendererWindowed,
+  framedTextRenderer,
   textSection,
   osc8Link,
   type Excerpt,
@@ -51,7 +53,7 @@ export function createLsTool(limits: ReadLimits): ToolDefinition<any> {
       ),
     }),
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const dirPath = args.path || ".";
       const home = os.homedir();
       const shortened = dirPath.startsWith(home)
@@ -60,10 +62,14 @@ export function createLsTool(limits: ReadLimits): ToolDefinition<any> {
       const linked = dirPath.startsWith("/")
         ? osc8Link(`file://${dirPath}`, shortened)
         : shortened;
-      return new Text(
-        theme.fg("toolTitle", theme.bold("ls ")) + theme.fg("dim", linked),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("ls ")) + theme.fg("dim", linked),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -74,7 +80,7 @@ export function createLsTool(limits: ReadLimits): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text("(no output)", 0, 0);
+        return framedTextRenderer("(no output)", expanded);
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {

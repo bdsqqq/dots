@@ -28,7 +28,9 @@ import { withFileLock } from "@bds_pi/mutex";
 import { resolveToAbsolute, resolveWithVariants } from "@bds_pi/fs";
 import * as toolPolicy from "@bds_pi/tool-policy";
 import {
+  renderLifecycleCall,
   boxRendererWindowed,
+  framedTextRenderer,
   textSection,
   osc8Link,
   type Excerpt,
@@ -124,7 +126,7 @@ export function createFormatFileTool(
       }),
     }),
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const filePath = args.path || "...";
       const home = os.homedir();
       const shortened = filePath.startsWith(home)
@@ -133,10 +135,15 @@ export function createFormatFileTool(
       const linked = filePath.startsWith("/")
         ? osc8Link(`file://${filePath}`, shortened)
         : shortened;
-      return new Text(
-        theme.fg("toolTitle", theme.bold("Format ")) + theme.fg("dim", linked),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("Format ")) +
+            theme.fg("dim", linked),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -147,7 +154,7 @@ export function createFormatFileTool(
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text("(no output)", 0, 0);
+        return framedTextRenderer("(no output)", expanded);
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
