@@ -24,7 +24,11 @@ import {
 import type { TUI, EditorTheme } from "@earendil-works/pi-tui";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { boxBorderLR, boxRow } from "@bds_pi/box-chrome";
-import { HorizontalLineWidget, WidgetRowRegistry } from "./widget-row";
+import {
+  HorizontalLineWidget,
+  sanitizeInlineText,
+  WidgetRowRegistry,
+} from "./widget-row";
 import type { KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import { execFile } from "node:child_process";
@@ -444,22 +448,31 @@ function hideNativeWorkingIndicator(ctx: ExtensionContext): void {
  * but we also extract a meaningful arg when possible (e.g. file path).
  */
 function describeToolCall(toolName: string, args: any): string {
-  // common pi tools have a `path` or `pattern` arg — show it if short
-  const hint =
-    args?.path ??
-    args?.pattern ??
-    args?.query ??
-    args?.filePattern ??
-    args?.cmd;
-  if (typeof hint === "string") {
-    // just the basename or first 24 chars
-    const short = hint.includes("/")
-      ? hint.split("/").pop()!
-      : hint.length > 24
-        ? hint.slice(0, 24) + "…"
-        : hint;
-    return `${toolName}(${short})`;
-  }
+  const candidates = [
+    { value: args?.path, useBasename: true },
+    { value: args?.pattern, useBasename: true },
+    { value: args?.query, useBasename: true },
+    { value: args?.filePattern, useBasename: true },
+    { value: args?.cmd, useBasename: false },
+  ];
+  const hint = candidates.find(
+    (candidate): candidate is { value: string; useBasename: boolean } =>
+      typeof candidate.value === "string",
+  );
+  if (!hint) return toolName;
+
+  const sanitized = sanitizeInlineText(hint.value)
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!sanitized) return toolName;
+
+  const display =
+    hint.useBasename && sanitized.includes("/")
+      ? sanitized.split("/").pop()!
+      : sanitized;
+  const short =
+    display.length > 24 ? display.slice(0, 24) + "…" : display;
+  if (short) return `${toolName}(${short})`;
   return toolName;
 }
 
@@ -996,6 +1009,18 @@ if (import.meta.vitest) {
         expect(describeToolCall("bash", { cmd: longCmd })).toBe(
           "bash(" + "a".repeat(24) + "…)",
         );
+      });
+
+      it("renders multiline heredoc commands as one bounded line", () => {
+        const cmd = `node --input-type=module - <<'JS'
+import path from "node:path";
+const packageRoot = path.resolve("modules/pi/node_modules/@earendil-works/pi-coding-agent");
+console.log(\`loaded; CommonJS resolver saw trajectory 0 time(s)\`);
+JS`;
+
+        const result = describeToolCall("bash", { cmd });
+        expect(result).toBe("bash(node --input-type=module…)");
+        expect(result).not.toMatch(/[\r\n]/);
       });
     });
 

@@ -1,4 +1,8 @@
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  stripTerminalSequences,
+  truncateToWidth,
+  visibleWidth,
+} from "@earendil-works/pi-tui";
 
 export type Align = "left" | "center" | "right";
 
@@ -10,6 +14,39 @@ export interface InlineSegment {
 
 export interface LayoutOptions {
   gap?: string;
+}
+
+const SAFE_INLINE_TERMINAL_SEQUENCE =
+  /\x1b\[[0-9:;]*m|\x1b\]8;[^\x00-\x1f\x7f-\x9f;]*;[^\x00-\x1f\x7f-\x9f]*(?:\x07|\x1b\\)/g;
+const UNSAFE_INLINE_TERMINAL_SEQUENCE =
+  /\x1b\[[0-?]*[ -/]*[@-~]|\x9b[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x9d[^\x07\x9c]*(?:\x07|\x9c)|\x1b[PX^_][\s\S]*?(?:\x07|\x1b\\)|[\x90\x98\x9e\x9f][\s\S]*?\x9c|\x1b[@-_]/g;
+const INLINE_CONTROL_CHARACTER =
+  /[\x00-\x1f\x7f-\x9f\u2028\u2029]+/g;
+
+function sanitizeUnsafeInlineText(text: string): string {
+  return stripTerminalSequences(
+    text.replace(UNSAFE_INLINE_TERMINAL_SEQUENCE, ""),
+  ).replace(INLINE_CONTROL_CHARACTER, " ");
+}
+
+/**
+ * A component array entry represents one physical terminal row. Preserve
+ * styling and hyperlinks, but remove controls that could move the terminal
+ * cursor independently of the TUI's differential screen model.
+ */
+export function sanitizeInlineText(text: string): string {
+  let result = "";
+  let offset = 0;
+
+  for (const match of text.matchAll(SAFE_INLINE_TERMINAL_SEQUENCE)) {
+    const index = match.index;
+    result += sanitizeUnsafeInlineText(text.slice(offset, index));
+    result += match[0];
+    offset = index + match[0].length;
+  }
+
+  result += sanitizeUnsafeInlineText(text.slice(offset));
+  return result;
 }
 
 export class WidgetRowRegistry {
@@ -59,7 +96,7 @@ function joinGroup(
   if (children.length === 0) return "";
   const ordered = sortByPriority(children);
   const parts = ordered
-    .map((child) => child.renderInline(width))
+    .map((child) => sanitizeInlineText(child.renderInline(width)))
     .filter((part) => part.length > 0);
   return parts.join(gap);
 }
@@ -229,6 +266,30 @@ if (import.meta.vitest) {
 
       it("returns empty string for empty array", () => {
         expect(joinGroup([], 80, " ")).toBe("");
+      });
+
+      it("normalizes multiline and cursor-moving segment output", () => {
+        const segments: InlineSegment[] = [
+          {
+            align: "left",
+            renderInline: () => "first\r\nsecond\x1b[2Athird",
+          },
+        ];
+
+        const result = joinGroup(segments, 80, " ");
+        expect(result).toBe("first secondthird");
+        expect(result).not.toMatch(/[\r\n]/);
+        expect(result).not.toContain("\x1b[2A");
+      });
+
+      it("preserves inline colors and hyperlinks", () => {
+        const styled =
+          "\x1b[31mred\x1b[0m \x1b]8;;https://example.com\x07link\x1b]8;;\x07";
+        const segments: InlineSegment[] = [
+          { align: "left", renderInline: () => styled },
+        ];
+
+        expect(joinGroup(segments, 80, " ")).toBe(styled);
       });
     });
 
