@@ -263,18 +263,6 @@ let
 
 in
 {
-  # Automatic login still requires disabling FileVault and entering the account
-  # password once in System Settings. Never store that password in Nix.
-  system.defaults.loginwindow.autoLoginUser = "bdsqqq";
-
-  power = {
-    restartAfterPowerFailure = true;
-    sleep = {
-      computer = "never";
-      display = "never";
-    };
-  };
-
   home-manager.users.bdsqqq = { ... }: {
     home.packages = [ betterDisplayApp ipadDisplay ];
 
