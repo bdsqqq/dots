@@ -1,9 +1,11 @@
-{ inputs
+{ config
+, inputs
 , lib
 , pkgs
 , ...
 }:
 let
+  cfg = config.my.householdIntake.storageVm;
   stateDirectory = "/var/lib/household-intake/vm";
   runner = inputs.self.nixosConfigurations.household-storage.config.microvm.declaredRunner;
   supervisor = pkgs.writeShellScript "household-storage-vm" ''
@@ -35,22 +37,27 @@ let
   '';
 in
 {
-  system.activationScripts.preActivation.text = lib.mkAfter ''
-    install -d -m 0700 -o root -g wheel ${stateDirectory}
-  '';
+  options.my.householdIntake.storageVm.enable = lib.mkEnableOption
+    "the household storage microVM";
 
-  launchd.daemons.household-storage = {
-    command = supervisor;
-    serviceConfig = {
-      Label = "dev.household-intake.storage-vm";
-      RunAtLoad = true;
-      KeepAlive = true;
-      ProcessType = "Background";
-      WorkingDirectory = stateDirectory;
-      ThrottleInterval = 10;
-      ExitTimeOut = 60;
-      StandardOutPath = "/var/log/household-storage-vm.log";
-      StandardErrorPath = "/var/log/household-storage-vm.log";
+  config = lib.mkIf cfg.enable {
+    system.activationScripts.preActivation.text = lib.mkAfter ''
+      install -d -m 0700 -o root -g wheel ${stateDirectory}
+    '';
+
+    launchd.daemons.household-storage = {
+      command = supervisor;
+      serviceConfig = {
+        Label = "dev.household-intake.storage-vm";
+        RunAtLoad = true;
+        KeepAlive = true;
+        ProcessType = "Background";
+        WorkingDirectory = stateDirectory;
+        ThrottleInterval = 10;
+        ExitTimeOut = 60;
+        StandardOutPath = "/var/log/household-storage-vm.log";
+        StandardErrorPath = "/var/log/household-storage-vm.log";
+      };
     };
   };
 }
