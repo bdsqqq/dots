@@ -8,7 +8,6 @@ let
   repoPi = "${commonplaceRoot}/01_files/nix/modules/pi";
   # repo path for mkOutOfStoreSymlink — edits take effect immediately without rebuild
   repoExtensions = "${repoPi}/packages/extensions";
-  piChatExtension = "${repoPi}/packages/optional/pi-chat";
   repoAgentPrompts = "${commonplaceRoot}/01_files/nix/modules/agents/agents";
 in
 {
@@ -18,33 +17,7 @@ in
     , lib
     , ...
     }:
-    let
-      piChat = pkgs.writeShellApplication {
-        name = "pi-chat";
-        runtimeInputs = [
-          pkgs.nodejs
-          pkgs.qemu
-          pkgs.tmux
-        ];
-        text = ''
-          umask 077
-          export PI_BIN="${commonplaceRoot}/01_files/nix/modules/node-pnpm/node_modules/.bin/pi"
-          export PI_CHAT_COMMONPLACE_ROOT="${commonplaceRoot}"
-          cd "$PI_CHAT_COMMONPLACE_ROOT"
-
-          exec "$PI_BIN" \
-            --no-extensions \
-            --no-skills \
-            --no-prompt-templates \
-            --no-context-files \
-            -e "${piChatExtension}" \
-            "$@"
-        '';
-      };
-    in
     {
-      home.packages = [ piChat ];
-
       home.file.".pi/agent/settings.json".source =
         config.lib.file.mkOutOfStoreSymlink "${repoPi}/settings.json";
       home.file.".pi/agent/tool-policy.json".source =
@@ -78,18 +51,6 @@ in
           "${pkgs.pnpm}/bin/pnpm" install --dir "${repoPi}" --frozen-lockfile
         fi
       '';
-
-      launchd.agents.pi-chat-workers = lib.mkIf pkgs.stdenv.isDarwin {
-        enable = true;
-        config = {
-          ProgramArguments = [ "${piChat}/bin/pi-chat" "-p" "/chat-spawn-all" ];
-          RunAtLoad = true;
-          StartInterval = 60;
-          ProcessType = "Background";
-          StandardOutPath = "${config.home.homeDirectory}/Library/Logs/pi-chat-workers.log";
-          StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/pi-chat-workers.log";
-        };
-      };
 
       # agent definitions — shared plaintext prompt files from the repo
       home.file.".pi/agent/agents".source = config.lib.file.mkOutOfStoreSymlink "${repoAgentPrompts}";
