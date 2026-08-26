@@ -28,7 +28,9 @@ import {
   truncate,
 } from "@bds_pi/github-api";
 import {
+  renderLifecycleCall,
   boxRendererWindowed,
+  framedTextRenderer,
   textSection,
   osc8Link,
   type BoxSection,
@@ -174,7 +176,7 @@ export function createReadGithubTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const path = args.path || "...";
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
@@ -184,11 +186,15 @@ export function createReadGithubTool(): ToolDefinition<any> {
         ? `${args.repository.replace(/\/$/, "")}/blob/HEAD/${path}`
         : "";
       const linked = url ? osc8Link(url, display) : display;
-      return new Text(
-        theme.fg("toolTitle", theme.bold("read_github ")) +
-          theme.fg("dim", linked),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("read_github ")) +
+            theme.fg("dim", linked),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -199,7 +205,7 @@ export function createReadGithubTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text("(no output)", 0, 0);
+        return framedTextRenderer("(no output)", expanded);
 
       // parse numbered lines into BoxLine[] with gutters
       const parsed: BoxLine[] = content.text.split("\n").map((line: string) => {
@@ -325,7 +331,7 @@ export function createSearchGithubTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const pattern = args.pattern || "...";
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
@@ -333,11 +339,15 @@ export function createSearchGithubTool(): ToolDefinition<any> {
       const linkedRepo = args.repository
         ? osc8Link(args.repository, repo)
         : repo;
-      return new Text(
-        theme.fg("toolTitle", theme.bold("search_github ")) +
-          theme.fg("dim", `/${pattern}/ in ${linkedRepo}`),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("search_github ")) +
+            theme.fg("dim", `/${pattern}/ in ${linkedRepo}`),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -348,7 +358,7 @@ export function createSearchGithubTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text("(no output)", 0, 0);
+        return framedTextRenderer("(no output)", expanded);
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
@@ -423,7 +433,7 @@ export function createListDirectoryGithubTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const path = args.path || "/";
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
@@ -433,11 +443,15 @@ export function createListDirectoryGithubTool(): ToolDefinition<any> {
         ? `${args.repository.replace(/\/$/, "")}/tree/HEAD/${path}`
         : "";
       const linked = url ? osc8Link(url, display) : display;
-      return new Text(
-        theme.fg("toolTitle", theme.bold("list_directory_github ")) +
-          theme.fg("dim", linked),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("list_directory_github ")) +
+            theme.fg("dim", linked),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -448,7 +462,7 @@ export function createListDirectoryGithubTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text("(no output)", 0, 0);
+        return framedTextRenderer("(no output)", expanded);
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
@@ -557,13 +571,17 @@ export function createListRepositoriesTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const query = args.pattern || args.organization || "...";
-      return new Text(
-        theme.fg("toolTitle", theme.bold("list_repositories ")) +
-          theme.fg("dim", query),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("list_repositories ")) +
+            theme.fg("dim", query),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -574,7 +592,7 @@ export function createListRepositoriesTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text("(no output)", 0, 0);
+        return framedTextRenderer("(no output)", expanded);
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
@@ -661,7 +679,7 @@ export function createGlobGithubTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const pattern = args.filePattern || "...";
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
@@ -669,11 +687,15 @@ export function createGlobGithubTool(): ToolDefinition<any> {
       const linkedRepo = args.repository
         ? osc8Link(args.repository, repo)
         : repo;
-      return new Text(
-        theme.fg("toolTitle", theme.bold("glob_github ")) +
-          theme.fg("dim", `${pattern} in ${linkedRepo}`),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("glob_github ")) +
+            theme.fg("dim", `${pattern} in ${linkedRepo}`),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -684,7 +706,7 @@ export function createGlobGithubTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text("(no output)", 0, 0);
+        return framedTextRenderer("(no output)", expanded);
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
@@ -807,7 +829,7 @@ export function createCommitSearchTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
         : "...";
@@ -815,11 +837,15 @@ export function createCommitSearchTool(): ToolDefinition<any> {
         ? osc8Link(args.repository, repo)
         : repo;
       const query = args.query || args.author || "";
-      return new Text(
-        theme.fg("toolTitle", theme.bold("commit_search ")) +
-          theme.fg("dim", `${linkedRepo} ${query}`.trim()),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("commit_search ")) +
+            theme.fg("dim", `${linkedRepo} ${query}`.trim()),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -830,7 +856,7 @@ export function createCommitSearchTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text("(no output)", 0, 0);
+        return framedTextRenderer("(no output)", expanded);
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
@@ -919,7 +945,7 @@ export function createDiffTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
         : "...";
@@ -927,11 +953,15 @@ export function createDiffTool(): ToolDefinition<any> {
         ? osc8Link(args.repository, repo)
         : repo;
       const range = `${args.base || "?"}...${args.head || "?"}`;
-      return new Text(
-        theme.fg("toolTitle", theme.bold("diff ")) +
-          theme.fg("dim", `${linkedRepo} ${range}`),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("diff ")) +
+            theme.fg("dim", `${linkedRepo} ${range}`),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -942,7 +972,7 @@ export function createDiffTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return new Text("(no output)", 0, 0);
+        return framedTextRenderer("(no output)", expanded);
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {

@@ -27,7 +27,9 @@ import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "typebox";
 import { headTail } from "@bds_pi/output-buffer";
 import {
+  renderLifecycleCall,
   boxRendererWindowed,
+  framedTextRenderer,
   osc8Link,
   type BoxSection,
   type BoxLine,
@@ -208,7 +210,7 @@ export function createGrepTool(
       ),
     }),
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const pattern = args.pattern || "...";
       const searchPath = args.path || args.glob || ".";
       const home = os.homedir();
@@ -219,11 +221,15 @@ export function createGrepTool(
         ? osc8Link(`file://${searchPath}`, shortened)
         : shortened;
       const caseSuffix = args.caseSensitive === false ? " -i" : "";
-      return new Text(
-        theme.fg("toolTitle", theme.bold("Grep ")) +
-          theme.fg("dim", `/${pattern}/${caseSuffix} in ${linkedPath}`),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("Grep ")) +
+            theme.fg("dim", `/${pattern}/${caseSuffix} in ${linkedPath}`),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -551,7 +557,7 @@ export function createGrepTool(
       // fallback for old results or error results without fileGroups
       if (!fileGroups?.length) {
         const text = result.content?.[0]?.text ?? "(no output)";
-        return new Text(text, 0, 0);
+        return framedTextRenderer(text, expanded);
       }
 
       const sections = grepToSections(fileGroups, config.maxPerFile);

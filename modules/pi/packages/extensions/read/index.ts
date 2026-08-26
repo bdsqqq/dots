@@ -21,7 +21,9 @@ import type {
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Text } from "@earendil-works/pi-tui";
 import {
+  renderLifecycleCall,
   boxRendererWindowed,
+  framedTextRenderer,
   osc8Link,
   type BoxSection,
   type BoxLine,
@@ -228,24 +230,28 @@ export function createReadTool(limits: ReadLimits): ToolDefinition<any> {
       ),
     }),
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const filePath = args.path || "...";
       const home = os.homedir();
       const shortened = filePath.startsWith(home)
         ? `~${filePath.slice(home.length)}`
         : filePath;
       const readRange = args.read_range;
-      let context = shortened;
+      let displayContext = shortened;
       if (Array.isArray(readRange) && readRange.length === 2) {
-        context += `:${readRange[0]}-${readRange[1]}`;
+        displayContext += `:${readRange[0]}-${readRange[1]}`;
       }
       const linked = filePath.startsWith("/")
-        ? osc8Link(`file://${filePath}`, context)
-        : context;
-      return new Text(
-        theme.fg("toolTitle", theme.bold("Read ")) + theme.fg("dim", linked),
-        0,
-        0,
+        ? osc8Link(`file://${filePath}`, displayContext)
+        : displayContext;
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("Read ")) + theme.fg("dim", linked),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -370,9 +376,14 @@ export function createReadTool(limits: ReadLimits): ToolDefinition<any> {
       }
     },
 
-    renderResult(result: any, _options: { expanded: boolean }, _theme: any) {
+    renderResult(
+      result: any,
+      { expanded }: { expanded: boolean },
+      _theme: any,
+    ) {
       const text = result.content?.[0];
-      if (text?.type !== "text") return new Text("(no output)", 0, 0);
+      if (text?.type !== "text")
+        return framedTextRenderer("(no output)", expanded);
 
       const _filePath: string = result.details?.filePath ?? "";
       const _isDir: boolean = result.details?.isDirectory ?? false;
@@ -417,7 +428,7 @@ export function createReadTool(limits: ReadLimits): ToolDefinition<any> {
           expanded: {},
         },
         notices,
-        _options.expanded,
+        expanded,
       );
     },
   };

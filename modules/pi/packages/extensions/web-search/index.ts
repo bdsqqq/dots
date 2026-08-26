@@ -31,7 +31,9 @@ import {
 } from "@bds_pi/config";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
+  renderLifecycleCall,
   boxRendererWindowed,
+  framedTextRenderer,
   osc8Link,
   type BoxSection,
   type Excerpt,
@@ -368,7 +370,7 @@ export function createWebSearchTool(
       return { content: [{ type: "text" as const, text: output }], details };
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const objective = args.objective || "...";
       const short =
         objective.length > 70 ? `${objective.slice(0, 70)}...` : objective;
@@ -378,7 +380,7 @@ export function createWebSearchTool(
       if (args.search_queries?.length) {
         text += theme.fg("muted", ` [${args.search_queries.join(", ")}]`);
       }
-      return new Text(text, 0, 0);
+      return renderLifecycleCall(new Text(text, 0, 0), theme, context);
     },
 
     renderResult(
@@ -389,10 +391,9 @@ export function createWebSearchTool(
       const sections: BoxSection[] | undefined = result.details?.resultSections;
       if (!sections?.length) {
         const text = result.content?.[0];
-        return new Text(
+        return framedTextRenderer(
           text?.type === "text" ? text.text : "(no output)",
-          0,
-          0,
+          expanded,
         );
       }
       return boxRendererWindowed(

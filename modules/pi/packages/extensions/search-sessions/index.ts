@@ -37,9 +37,11 @@ import {
   type MentionSourceContext,
 } from "@bds_pi/mentions";
 import {
+  renderLifecycleCall,
   type BoxSection,
   type Excerpt,
   boxRendererWindowed,
+  framedTextRenderer,
 } from "@bds_pi/box-format";
 import { Type } from "typebox";
 import {
@@ -683,7 +685,7 @@ export function createSearchSessionsTool(
       } as any;
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const parts: string[] = [];
       if (args.keyword) parts.push(args.keyword);
       if (args.file) parts.push(`file:${args.file}`);
@@ -691,11 +693,15 @@ export function createSearchSessionsTool(
       if (args.before) parts.push(`before:${args.before}`);
       if (args.workspace) parts.push(`ws:${args.workspace}`);
       const preview = parts.join(" ") || "...";
-      return new Text(
-        theme.fg("toolTitle", theme.bold("search_sessions ")) +
-          theme.fg("dim", preview),
-        0,
-        0,
+      return renderLifecycleCall(
+        new Text(
+          theme.fg("toolTitle", theme.bold("search_sessions ")) +
+            theme.fg("dim", preview),
+          0,
+          0,
+        ),
+        theme,
+        context,
       );
     },
 
@@ -706,7 +712,10 @@ export function createSearchSessionsTool(
     ) {
       const sections: BoxSection[] | undefined = result.details?.resultSections;
       if (!sections?.length)
-        return new Text(result.content?.[0]?.text ?? "(no output)", 0, 0);
+        return framedTextRenderer(
+          result.content?.[0]?.text ?? "(no output)",
+          expanded,
+        );
 
       const truncated: number = result.details?.truncated ?? 0;
       const notices =

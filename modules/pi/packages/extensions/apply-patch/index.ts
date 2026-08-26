@@ -18,6 +18,7 @@ import { resolveToAbsolute } from "@bds_pi/fs";
 import * as fileTracker from "@bds_pi/file-tracker";
 import { withFileLocks } from "@bds_pi/mutex";
 import * as toolPolicy from "@bds_pi/tool-policy";
+import { renderLifecycleCall } from "@bds_pi/box-format";
 
 const APPLY_PATCH_GRAMMAR = String.raw`start: begin_patch hunk+ end_patch
 begin_patch: "*** Begin Patch" LF
@@ -352,12 +353,13 @@ export function createApplyPatchTool(): ToolDefinition<
       const header =
         theme.fg("toolTitle", theme.bold("apply_patch ")) +
         theme.fg("dim", display);
-      if (!context.isPartial || !args?.input) return new Text(header, 0, 0);
+      if (!context.isPartial || !args?.input)
+        return renderLifecycleCall(new Text(header, 0, 0), theme, context);
       const component = new Container();
       component.addChild(new Text(header, 0, 0));
       component.addChild(new Spacer(1));
       component.addChild(new Text(args.input, 0, 0));
-      return component;
+      return renderLifecycleCall(component, theme, context);
     },
     async execute(toolCallId, params, signal, _onUpdate, ctx) {
       if (signal?.aborted) throw new Error("apply_patch aborted");
@@ -530,7 +532,7 @@ export function createApplyPatchTool(): ToolDefinition<
       };
       const changes = result.details?.changes ?? [];
       if (changes.length === 0) {
-        const text = result.content
+        const text = (result.content ?? [])
           .filter((part) => part.type === "text")
           .map((part) => part.text)
           .join("\n");

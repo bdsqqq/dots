@@ -5,6 +5,7 @@
   "main": "./index.ts",
   "types": "./index.ts",
   "dependencies": {
+    "@bds_pi/box-format": "workspace:*",
     "@bds_pi/codex-patch": "workspace:*",
     "@bds_pi/file-tracker": "workspace:*",
     "@bds_pi/fs": "workspace:*",
