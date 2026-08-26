@@ -395,10 +395,10 @@ function splitCommandDisplayRows(cmd: string): CommandDisplayRow[] {
 
 function styleCollapsedCommandRow(
   row: CommandDisplayRow,
-  first: boolean,
+  _first: boolean,
   theme: any,
 ): string {
-  const prefix = first ? `${theme.fg("accent", "$")} ` : "  ";
+  const prefix = `${theme.fg("accent", "$")} `;
   const separator = row.separator
     ? row.separator === "\n"
       ? " \\"
@@ -618,13 +618,13 @@ export function createBashTool(
       if (timeoutSuffix) rows[rows.length - 1] += timeoutSuffix;
 
       return renderLifecycleCall(
-        {
+        rows.map((row) => ({
           render(width: number): string[] {
             const truncateToWidth = getTruncateToWidth();
-            return rows.map((row) => truncateToWidth(row, width, "…"));
+            return [truncateToWidth(row, width, "…")];
           },
           invalidate() {},
-        },
+        })),
         theme,
         context,
       );
@@ -1220,12 +1220,12 @@ if (import.meta.vitest) {
         ]);
       });
 
-      it("renders one continuation marker for newline boundaries", () => {
+      it("keeps a prompt on each newline-delimited command", () => {
         const rows = splitCommandDisplayRows("echo one\necho two").map(
           (row, index) => styleCollapsedCommandRow(row, index === 0, theme),
         );
 
-        expect(rows).toEqual(["$ echo one \\", "  echo two"]);
+        expect(rows).toEqual(["$ echo one \\", "$ echo two"]);
       });
 
       it("truncates every collapsed row with a one-character ellipsis", () => {
@@ -1243,7 +1243,7 @@ if (import.meta.vitest) {
         );
         expect(visibleLines).toHaveLength(2);
         expect(visibleLines[0]).toMatch(/^✓ \$ /);
-        expect(visibleLines[1]).toMatch(/^  /);
+        expect(visibleLines[1]).toMatch(/^╰ \$ /);
         expect(visibleLines.every((line) => line.length <= 18)).toBe(true);
         expect(visibleLines.every((line) => line.endsWith("…"))).toBe(true);
       });
