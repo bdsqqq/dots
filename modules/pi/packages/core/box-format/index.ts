@@ -424,17 +424,25 @@ export interface LifecycleCallContext {
 }
 
 class LifecycleCallComponent implements Component {
-  private readonly row: MarkerColumn;
+  private rows: Component[];
+  private marker = "";
+  private middleMarker = "";
+  private endMarker = "";
+  private continuationMarker = "";
   private frame = 0;
   private interval?: ReturnType<typeof setInterval>;
   private renderVersion = 0;
   private requestRender?: () => void;
 
-  constructor(child: Component) {
-    this.row = new MarkerColumn("", child, { gap: 1 });
+  constructor(content: Component | readonly Component[]) {
+    this.rows = Array.isArray(content) ? [...content] : [content as Component];
   }
 
-  update(child: Component, theme: any, context: LifecycleCallContext): void {
+  update(
+    content: Component | readonly Component[],
+    theme: any,
+    context: LifecycleCallContext,
+  ): void {
     this.renderVersion++;
     this.requestRender = context.invalidate;
     const active = context.isPartial && !context.isError;
@@ -456,21 +464,36 @@ class LifecycleCallComponent implements Component {
       this.stop();
     }
 
-    const marker = context.isError
+    this.marker = context.isError
       ? theme.fg("error", "✕")
       : active
         ? theme.fg(this.frame % 2 === 0 ? "muted" : "accent", "●")
         : theme.fg("success", "✓");
-    this.row.setMarker(marker);
-    this.row.setChild(child);
+    this.middleMarker = theme.fg("muted", "├");
+    this.endMarker = theme.fg("muted", "╰");
+    this.continuationMarker = theme.fg("muted", "│");
+    this.rows = Array.isArray(content) ? [...content] : [content as Component];
   }
 
   render(width: number): string[] {
-    return this.row.render(width);
+    if (this.rows.length === 1) {
+      return new MarkerColumn(this.marker, this.rows[0]!).render(width);
+    }
+    return this.rows.flatMap((row, index) => {
+      const first = index === 0;
+      const last = index === this.rows.length - 1;
+      return new MarkerColumn(
+        first ? this.marker : last ? this.endMarker : this.middleMarker,
+        row,
+        {
+          continuationMarker: last ? "" : this.continuationMarker,
+        },
+      ).render(width);
+    });
   }
 
   invalidate(): void {
-    this.row.invalidate();
+    for (const row of this.rows) row.invalidate();
   }
 
   private stop(): void {
@@ -486,7 +509,7 @@ class LifecycleCallComponent implements Component {
  * wrapping to the original component at the remaining width.
  */
 export function renderLifecycleCall(
-  content: Component,
+  content: Component | readonly Component[],
   theme: any,
   context: LifecycleCallContext,
 ): Component {
@@ -726,6 +749,24 @@ if (import.meta.vitest) {
         "✓ Delegate verify",
         "  settlement and abort",
         "  findings",
+      ]);
+    });
+
+    it("uses compact tree connectors for multi-row calls", () => {
+      const component = renderLifecycleCall(
+        [
+          new Text("$ git diff --stat", 0, 0),
+          new Text("$ git diff --name-status", 0, 0),
+          new Text("$ git status --short", 0, 0),
+        ],
+        theme,
+        { isError: false, isPartial: false },
+      );
+
+      expect(component.render(40).map((line) => line.trimEnd())).toEqual([
+        "✓ $ git diff --stat",
+        "├ $ git diff --name-status",
+        "╰ $ git status --short",
       ]);
     });
 
