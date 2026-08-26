@@ -23,7 +23,7 @@ diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/inte
 +++ b/dist/modes/interactive/components/user-message.js
 @@ -1,4 +1,4 @@
 -import { Box, Container, Markdown } from "@earendil-works/pi-tui";
-+import { Box, Container, MarkerColumn, Markdown } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, truncateToWidth } from "@earendil-works/pi-tui";
  import { getMarkdownTheme, theme } from "../theme/theme.js";
  import { createMarkdownTransform } from "./markdown-transform.js";
  const OSC133_ZONE_START = "\x1b]133;A\x07";
@@ -36,7 +36,7 @@ diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/inte
          contentBox.addChild(new Markdown(this.text, 0, 0, this.markdownTheme, {
              color: (content) => theme.fg("userMessageText", content),
          }, {
-@@ -34,7 +34,13 @@ export class UserMessageComponent extends Container {
+@@ -34,7 +34,16 @@ export class UserMessageComponent extends Container {
              preserveBackslashEscapes: true,
              transform: createMarkdownTransform("user", false, this.markdownTransformers),
          }));
@@ -50,7 +50,11 @@ diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/inte
 +        this.rebuild();
 +    }
      render(width) {
-         const lines = super.render(width);
+-        const lines = super.render(width);
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        const lines = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
 diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/interactive/components/user-message.d.ts
 --- a/dist/modes/interactive/components/user-message.d.ts
 +++ b/dist/modes/interactive/components/user-message.d.ts
@@ -92,7 +96,7 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
 +++ b/dist/modes/interactive/components/assistant-message.js
 @@ -1,4 +1,4 @@
 -import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
-+import { Box, Container, MarkerColumn, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
  import { getMarkdownTheme, theme } from "../theme/theme.js";
  import { createMarkdownTransform } from "./markdown-transform.js";
  const OSC133_ZONE_START = "\x1b]133;A\x07";
@@ -149,7 +153,7 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
 +        if (!this.markerInterval && this.requestRender) {
 +            this.markerInterval = setInterval(() => {
 +                this.markerFrame = (this.markerFrame + 1) % 2;
-+                this.markerColumn.setMarker(theme.fg(this.markerFrame === 0 ? "muted" : "accent", "●"), continuationMarker);
++                this.markerColumn.setMarker(theme.fg(this.markerFrame === 0 ? "muted" : "accent", "●"), theme.fg("muted", "│"));
 +                this.requestRender?.();
 +            }, 320);
 +            this.markerInterval.unref?.();
@@ -164,6 +168,18 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
      invalidate() {
          super.invalidate();
          if (this.lastMessage) {
+@@ -59,7 +95,10 @@ export class AssistantMessageComponent extends Container {
+     }
+     render(width) {
+-        const lines = super.render(width);
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        const lines = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+         if (this.hasToolCalls || lines.length === 0) {
+             return lines;
+         }
+         lines[0] = OSC133_ZONE_START + lines[0];
 @@ -67,12 +102,8 @@ export class AssistantMessageComponent extends Container {
      updateContent(message, isStreaming = this.isStreaming) {
          this.lastMessage = message;
