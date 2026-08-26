@@ -339,6 +339,33 @@ function trimBlankLines(text: string): string {
   return lines.slice(start, end).join("\n");
 }
 
+function openFrame(
+  child: Component,
+  fg: (color: any, text: string) => string,
+): Component {
+  const marker = fg("muted", "│");
+  return new MarkerColumn(marker, child, {
+    continuationMarker: marker,
+    footerMarker: boxBottom({
+      variant: "open",
+      style: { dim: (text) => fg("muted", text) },
+    }),
+  });
+}
+
+export function renderSubAgentFallback(result: any, theme: any): Component {
+  const text =
+    trimBlankLines(
+      result.content
+        ?.filter(
+          (part: any) => part.type === "text" && typeof part.text === "string",
+        )
+        .map((part: any) => part.text)
+        .join("\n") ?? "",
+    ) || "(no output)";
+  return openFrame(new Text(text, 0, 0), theme.fg.bind(theme));
+}
+
 class SubAgentCallComponent implements Component {
   private row: MarkerColumn;
 
@@ -558,13 +585,7 @@ export function renderAgentTree(
 
   if (boxedSummary) {
     container.addChild(
-      new MarkerColumn(CONT, new Markdown(boxedSummary, 0, 0, mdTheme), {
-        continuationMarker: CONT,
-        footerMarker: boxBottom({
-          variant: "open",
-          style: { dim: (text) => fg("muted", text) },
-        }),
-      }),
+      openFrame(new Markdown(boxedSummary, 0, 0, mdTheme), fg),
     );
   }
 
@@ -603,6 +624,24 @@ if (import.meta.vitest) {
   describe("sub-agent rows", () => {
     it("removes surrounding blank lines without changing Markdown indentation", () => {
       expect(trimBlankLines("\n \n    code\n\n")).toBe("    code");
+    });
+
+    it("closes detail-less sub-agent results with one shared frame", () => {
+      const component = renderSubAgentFallback(
+        {
+          content: [
+            { type: "text", text: "first line" },
+            { type: "text", text: "second line" },
+          ],
+        },
+        mockTheme,
+      );
+
+      expect(component.render(40).map((line) => line.trimEnd())).toEqual([
+        "│ first line",
+        "│ second line",
+        "╰────",
+      ]);
     });
 
     it("closes final output with the shared open frame by default", () => {

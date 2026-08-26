@@ -38,6 +38,7 @@ import {
   getFinalOutput,
   renderAgentTree,
   renderSubAgentCall,
+  renderSubAgentFallback,
   registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
@@ -375,14 +376,7 @@ export function createCodeReviewTool(
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
       const details = result.details as SingleResult | undefined;
-      if (!details) {
-        const text = result.content[0];
-        return new Text(
-          text?.type === "text" ? text.text : "(no output)",
-          0,
-          0,
-        );
-      }
+      if (!details) return renderSubAgentFallback(result, theme);
 
       const container = new Container();
 
