@@ -59,6 +59,7 @@ in
     ../../modules/orbstack
     ../../modules/ghostty
     ../../modules/ipad-display
+    ../../modules/open-display
     ../../modules/html-stuff
     ../../modules/media-feeds
     ../../modules/backrest
@@ -76,6 +77,11 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+  my.ipadDisplay = {
+    mainDisplayName = "iPad mini virtual";
+    physicalDisplayName = "PHILIPS";
+    sidecarSpecifier = "123D3316-57BE-4B6A-A2FF-C320E9A2B45C";
+  };
 
   power = {
     restartAfterPowerFailure = true;

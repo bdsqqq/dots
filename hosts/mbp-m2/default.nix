@@ -246,6 +246,10 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+  my.ipadDisplay = {
+    mainDisplayName = "Built-in Display";
+    sidecarSpecifier = "123D3316-57BE-4B6A-A2FF-C320E9A2B45C";
+  };
   # Bootstrap aarch64-linux guest builds without making the 16 GB storage host
   # carry a second build VM alongside the household appliance.
   nix = {

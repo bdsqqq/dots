@@ -1,6 +1,7 @@
-{ lib, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 let
+  cfg = config.my.ipadDisplay;
   betterDisplayApp = pkgs.stdenvNoCC.mkDerivation {
     pname = "betterdisplay";
     version = "5.0.2-pre-release";
@@ -24,7 +25,6 @@ let
   betterDisplay = "${betterDisplayAppPath}/Contents/MacOS/BetterDisplay";
   virtualDisplayName = "iPad mini virtual";
   virtualDisplayResolution = "1512x992";
-  physicalDisplayName = "PHILIPS";
 
   ipadDisplay = pkgs.writeShellApplication {
     name = "ipad-display";
@@ -36,21 +36,23 @@ let
       better_display=${lib.escapeShellArg betterDisplay}
       virtual_display_name=${lib.escapeShellArg virtualDisplayName}
       virtual_display_resolution=${lib.escapeShellArg virtualDisplayResolution}
-      physical_display_name=${lib.escapeShellArg physicalDisplayName}
-      config_dir="''${XDG_CONFIG_HOME:-$HOME/.config}/ipad-display"
-      specifier_file="$config_dir/sidecar-specifier"
+      physical_display_name=${lib.escapeShellArg (
+        if cfg.physicalDisplayName == null then "" else cfg.physicalDisplayName
+      )}
+      main_display_name=${lib.escapeShellArg (
+        if cfg.mainDisplayName == null then "" else cfg.mainDisplayName
+      )}
+      sidecar_specifier=${lib.escapeShellArg cfg.sidecarSpecifier}
 
       usage() {
         cat <<'EOF'
       ipad-display setup
       ipad-display devices
-      ipad-display select <Sidecar name or UUID>
       ipad-display connect
       ipad-display disconnect
       ipad-display status
 
-      Run setup once after granting BetterDisplay its requested permissions.
-      Use devices and select once before connecting from Raycast.
+      setup reapplies the virtual display configuration declared in Nix.
       EOF
       }
 
@@ -81,32 +83,49 @@ let
           -type=VirtualScreen \
           -name="$virtual_display_name" \
           -useResolutionList=on \
-          -resolutionList="$virtual_display_resolution"
+          -resolutionList="$virtual_display_resolution" \
+          || return 1
 
         "$better_display" set \
           -type=VirtualScreen \
           -name="$virtual_display_name" \
           -connected=on \
           -resolution="$virtual_display_resolution" \
-          -hiDPI=on
+          -hiDPI=on \
+          || return 1
 
-        for _ in $(seq 1 10); do
-          if "$better_display" set -name="$virtual_display_name" -main=on; then
-            break
-          fi
-          sleep 1
-        done
+        if [[ -n "$main_display_name" ]]; then
+          local main_display_configured=false
+          for _ in $(seq 1 10); do
+            if "$better_display" set -name="$main_display_name" -main=on; then
+              main_display_configured=true
+              break
+            fi
+            sleep 1
+          done
+          [[ "$main_display_configured" == true ]] || return 1
+        fi
 
-        if "$better_display" get -name="$physical_display_name" -identifier >/dev/null 2>&1; then
+        if [[ -n "$physical_display_name" ]] \
+          && "$better_display" get -name="$physical_display_name" -identifier >/dev/null 2>&1; then
           "$better_display" set \
             -name="$virtual_display_name" \
             -mirror=on \
-            -targetName="$physical_display_name"
+            -targetName="$physical_display_name" \
+            || return 1
         fi
       }
 
       restore_virtual_display() {
-        configure_virtual_display >/dev/null 2>&1 || true
+        for _ in $(seq 1 5); do
+          if setup_virtual_display; then
+            return 0
+          fi
+          sleep 5
+        done
+
+        echo "Could not restore the declared virtual display configuration." >&2
+        return 1
       }
 
       setup_virtual_display() {
@@ -119,19 +138,15 @@ let
             -virtualScreenName="$virtual_display_name" \
             -useResolutionList=on \
             -resolutionList="$virtual_display_resolution" \
-            -virtualScreenHiDPI=on
+            -virtualScreenHiDPI=on \
+            || return 1
         fi
 
         configure_virtual_display
       }
 
       read_specifier() {
-        if [[ ! -s "$specifier_file" ]]; then
-          echo "No iPad selected. Run: ipad-display devices" >&2
-          echo "Then run: ipad-display select <Sidecar name or UUID>" >&2
-          exit 1
-        fi
-        head -n 1 "$specifier_file"
+        printf '%s\n' "$sidecar_specifier"
       }
 
       mirror_to_sidecar() {
@@ -156,7 +171,8 @@ let
           target_parameters+=("-targetName=$specifier")
         fi
 
-        if "$better_display" get -name="$physical_display_name" -identifier >/dev/null 2>&1; then
+        if [[ -n "$physical_display_name" ]] \
+          && "$better_display" get -name="$physical_display_name" -identifier >/dev/null 2>&1; then
           target_parameters+=("-targetName=$physical_display_name")
         fi
 
@@ -180,6 +196,10 @@ let
       # race while replacing the same virtual display.
       lock_file="''${TMPDIR:-/tmp}/ipad-display-$UID.lock"
       if ! /usr/bin/shlock -f "$lock_file" -p "$$"; then
+        if [[ "$command" == restore ]]; then
+          echo "An iPad display operation blocked startup restoration." >&2
+          exit 1
+        fi
         echo "An iPad display operation is already in progress."
         exit 0
       fi
@@ -197,16 +217,6 @@ let
         devices)
           start_better_display
           "$better_display" get -sidecarList
-          ;;
-        select)
-          if [[ $# -ne 2 || -z "$2" ]]; then
-            echo "usage: ipad-display select <Sidecar name or UUID>" >&2
-            exit 1
-          fi
-          mkdir -p "$config_dir"
-          printf '%s\n' "$2" > "$specifier_file"
-          chmod 600 "$specifier_file"
-          echo "Selected Sidecar device: $2"
           ;;
         connect)
           start_better_display
@@ -263,22 +273,44 @@ let
 
 in
 {
-  home-manager.users.bdsqqq = { ... }: {
-    home.packages = [ betterDisplayApp ipadDisplay ];
+  options.my.ipadDisplay = {
+    mainDisplayName = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional BetterDisplay display name to enforce as the macOS main display.";
+    };
 
-    home.file.".local/bin/ipad-display" = {
-      source = "${ipadDisplay}/bin/ipad-display";
-      force = true;
+    physicalDisplayName = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional physical display mirrored alongside the selected Sidecar device.";
+    };
+
+    sidecarSpecifier = lib.mkOption {
+      type = lib.types.str;
+      description = "BetterDisplay Sidecar name or UUID selected by connect and disconnect.";
     };
   };
 
-  launchd.user.agents.ipad-display.serviceConfig = {
-    Label = "dev.ipad-display";
-    ProgramArguments = [ "${ipadDisplay}/bin/ipad-display" "restore" ];
-    RunAtLoad = true;
-    ProcessType = "Interactive";
-    ThrottleInterval = 30;
-    StandardOutPath = "/Users/bdsqqq/Library/Logs/ipad-display.log";
-    StandardErrorPath = "/Users/bdsqqq/Library/Logs/ipad-display.log";
+  config = {
+    home-manager.users.bdsqqq = { ... }: {
+      home.packages = [ betterDisplayApp ipadDisplay ];
+
+      home.file.".local/bin/ipad-display" = {
+        source = "${ipadDisplay}/bin/ipad-display";
+        force = true;
+      };
+
+    };
+
+    launchd.user.agents.ipad-display.serviceConfig = {
+      Label = "dev.ipad-display";
+      ProgramArguments = [ "${ipadDisplay}/bin/ipad-display" "restore" ];
+      RunAtLoad = true;
+      ProcessType = "Interactive";
+      ThrottleInterval = 30;
+      StandardOutPath = "/Users/bdsqqq/Library/Logs/ipad-display.log";
+      StandardErrorPath = "/Users/bdsqqq/Library/Logs/ipad-display.log";
+    };
   };
 }
