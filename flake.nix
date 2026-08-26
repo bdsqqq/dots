@@ -245,6 +245,16 @@
           touch "$out"
         '';
 
+        checks.darwin-transcription = pkgs.runCommand "darwin-transcription-tests"
+          {
+            nativeBuildInputs = [ pkgs.python3 ];
+          } ''
+          cp ${./modules/darwin-transcription/darwin_transcription.py} darwin_transcription.py
+          cp ${./modules/darwin-transcription/test_darwin_transcription.py} test_darwin_transcription.py
+          python -m unittest -v test_darwin_transcription.py
+          touch "$out"
+        '';
+
         checks.tailnet-artifacts = pkgs.runCommand "tailnet-artifacts-check" { } ''
           ${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts \
             --check \
