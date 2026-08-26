@@ -36,6 +36,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  renderSubAgentCall,
   registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
@@ -273,7 +274,7 @@ export function createLookAtTool(
       return subAgentResult(text, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const path = args.path || "...";
       const objective = args.objective
         ? args.objective.length > 60
@@ -289,7 +290,7 @@ export function createLookAtTool(
           ` (+${args.referenceFiles.length} ref${args.referenceFiles.length > 1 ? "s" : ""})`,
         );
       }
-      return new Text(text, 0, 0);
+      return renderSubAgentCall(text, theme, context);
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
@@ -305,7 +306,7 @@ export function createLookAtTool(
       const container = new Container();
       renderAgentTree(details, container, expanded, theme, {
         label: "look_at",
-        header: "statusOnly",
+        header: "none",
       });
       return container;
     },

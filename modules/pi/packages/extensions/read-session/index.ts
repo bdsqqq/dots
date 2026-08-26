@@ -32,6 +32,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  renderSubAgentCall,
   registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
@@ -493,7 +494,7 @@ export function createReadSessionTool(
       return subAgentResult(text, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const goal = args.goal
         ? args.goal.length > 60
           ? `${args.goal.slice(0, 60)}...`
@@ -509,7 +510,7 @@ export function createReadSessionTool(
             : args.session_id;
         text += theme.fg("muted", ` (${shortId}...)`);
       }
-      return new Text(text, 0, 0);
+      return renderSubAgentCall(text, theme, context);
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
@@ -525,7 +526,7 @@ export function createReadSessionTool(
       const container = new Container();
       renderAgentTree(details, container, expanded, theme, {
         label: "read_session",
-        header: "statusOnly",
+        header: "none",
       });
       return container;
     },

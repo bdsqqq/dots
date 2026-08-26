@@ -48,6 +48,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  renderSubAgentCall,
   registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
@@ -302,14 +303,14 @@ export function createDelegateTool(
       return subAgentResult(finalText, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const desc = args.description || "...";
       const preview = desc.length > 80 ? `${desc.slice(0, 80)}...` : desc;
-      return new Text(
+      return renderSubAgentCall(
         theme.fg("toolTitle", theme.bold("Delegate ")) +
           theme.fg("dim", preview),
-        0,
-        0,
+        theme,
+        context,
       );
     },
 
@@ -326,7 +327,7 @@ export function createDelegateTool(
       const container = new Container();
       renderAgentTree(details, container, expanded, theme, {
         label: "Delegate",
-        header: "statusOnly",
+        header: "none",
       });
       return container;
     },

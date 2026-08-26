@@ -37,6 +37,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  renderSubAgentCall,
   registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
@@ -357,7 +358,7 @@ export function createCodeReviewTool(
       return subAgentResult(text, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const desc = args.diff_description || "...";
       const preview = desc.length > 70 ? `${desc.slice(0, 70)}...` : desc;
       let text =
@@ -369,7 +370,7 @@ export function createCodeReviewTool(
           ` (${args.files.length} file${args.files.length > 1 ? "s" : ""})`,
         );
       }
-      return new Text(text, 0, 0);
+      return renderSubAgentCall(text, theme, context);
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
@@ -395,7 +396,8 @@ export function createCodeReviewTool(
 
       renderAgentTree(details, container, expanded, theme, {
         label: "code_review",
-        header: "statusOnly",
+        header: "none",
+        summary: "open-box",
       });
       return container;
     },
@@ -1059,6 +1061,99 @@ if (import.meta.vitest) {
           throw new Error("expected container");
         const lines = result.children[0]?.render(80) ?? [];
         expect(lines.join("\n")).toContain("1 comment");
+      });
+
+      it("encapsulates the final report like tool output", async () => {
+        const { initTheme } = await import("@earendil-works/pi-coding-agent");
+        initTheme("dark", false);
+
+        const tool = createCodeReviewTool();
+        const mockTheme = {
+          fg: (_color: string, text: string) => text,
+          bold: (text: string) => text,
+        };
+        const markdownOutput = `# Code review
+
+## Summary
+
+No issues found.`;
+
+        const result = tool.renderResult!(
+          {
+            content: [{ type: "text", text: markdownOutput }],
+            details: {
+              agent: "code_review",
+              task: "test",
+              exitCode: 0,
+              messages: [
+                {
+                  role: "assistant",
+                  content: [
+                    {
+                      type: "toolCall",
+                      id: "tool-1",
+                      name: "bash",
+                      arguments: { cmd: "echo ok" },
+                    },
+                  ],
+                },
+                {
+                  role: "assistant",
+                  content: [{ type: "text", text: markdownOutput }],
+                },
+              ],
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                cost: 0,
+                contextTokens: 0,
+                turns: 0,
+              },
+            },
+          },
+          { expanded: false, isPartial: false },
+          mockTheme as any,
+          {} as any,
+        );
+
+        const lines = result.render(40);
+        expect(lines[0]).toBe("├ ⋯ Bash echo ok");
+        expect(lines.at(-1)).toBe("╰────");
+        expect(lines.slice(1, -1).every((line) => line.startsWith("│ "))).toBe(
+          true,
+        );
+        expect(lines.join("\n")).toContain("Code review");
+        expect(lines.join("\n")).not.toContain("Summary:");
+
+        const emptyResult = tool.renderResult!(
+          {
+            content: [{ type: "text", text: "(no output)" }],
+            details: {
+              agent: "code_review",
+              task: "test",
+              exitCode: 0,
+              messages: [],
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                cost: 0,
+                contextTokens: 0,
+                turns: 0,
+              },
+            },
+          },
+          { expanded: false, isPartial: false },
+          mockTheme as any,
+          {} as any,
+        );
+        expect(emptyResult.render(40).map((line) => line.trimEnd())).toEqual([
+          "│ (no output)",
+          "╰────",
+        ]);
       });
 
       it("handles result without details", () => {

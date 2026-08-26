@@ -36,6 +36,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  renderSubAgentCall,
   registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
@@ -228,17 +229,17 @@ export function createLibrarianTool(
       return subAgentResult(text, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const preview = args.query
         ? args.query.length > 80
           ? `${args.query.slice(0, 80)}...`
           : args.query
         : "...";
-      return new Text(
+      return renderSubAgentCall(
         theme.fg("toolTitle", theme.bold("librarian ")) +
           theme.fg("dim", preview),
-        0,
-        0,
+        theme,
+        context,
       );
     },
 
@@ -255,7 +256,7 @@ export function createLibrarianTool(
       const container = new Container();
       renderAgentTree(details, container, expanded, theme, {
         label: "librarian",
-        header: "statusOnly",
+        header: "none",
       });
       return container;
     },
