@@ -24,6 +24,16 @@ import {
 const CONFIG_NAMESPACE = "@bds_pi/session-recap";
 const ENTRY_TYPE = "@bds_pi/session-recap";
 const AUTHORED_INPUT_CHARS = 12_000;
+const RECAP_PROMPT = `Write only a terse session recap.
+
+Hard constraints:
+- At most {{maxWords}} words in one plain-text paragraph.
+- Use lowercase prose; preserve exact casing only for code, paths, commands, branches, and product names.
+- Lead with concrete completed work or current state. End with "next: ..." only when the transcript states a next step.
+- Include verification, commit state, failures, and blockers only when explicitly stated and relevant.
+- No first or second person. Never say "the agent".
+- No praise, framing, throat-clearing, hedging, filler, headings, bullets, markdown, or instructions to the reader.
+- Never infer progress, intent, causality, success, or a next step. Omit anything unsupported.`;
 
 type SessionRecapConfig = {
   idleMs: number;
@@ -215,7 +225,7 @@ export function createSessionRecapExtension(
           deps.complete,
           model,
           ctx.modelRegistry,
-          `Write one plain-text recap of at most ${config.maxWords} words. Include what changed or was decided, stated verification, blockers and commit state, and the immediate next action. Do not infer facts. No heading or preamble.\n\n${transcript}`,
+          `${RECAP_PROMPT.replace("{{maxWords}}", String(config.maxWords))}\n\nTranscript:\n${transcript}`,
           180,
           activeController.signal,
         );
