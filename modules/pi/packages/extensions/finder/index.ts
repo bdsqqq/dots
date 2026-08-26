@@ -41,6 +41,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  renderSubAgentCall,
   registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
@@ -209,16 +210,16 @@ export function createFinderTool(
       return subAgentResult(text, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const preview = args.query
         ? args.query.length > 80
           ? `${args.query.slice(0, 80)}...`
           : args.query
         : "...";
-      return new Text(
+      return renderSubAgentCall(
         theme.fg("toolTitle", theme.bold("finder ")) + theme.fg("dim", preview),
-        0,
-        0,
+        theme,
+        context,
       );
     },
 
@@ -235,7 +236,7 @@ export function createFinderTool(
       const container = new Container();
       renderAgentTree(details, container, expanded, theme, {
         label: "finder",
-        header: "statusOnly",
+        header: "none",
       });
       return container;
     },
@@ -457,7 +458,7 @@ if (import.meta.vitest) {
       dim: (text: string) => text,
     };
 
-    it("renders tree with connectors, icons, label, summary, and usage stats", () => {
+    it("renders tree with connectors, icons, summary, and usage stats", () => {
       const singleResult: SingleResult = {
         agent: "finder",
         task: "search for createGrepTool definition",
@@ -541,15 +542,15 @@ if (import.meta.vitest) {
       const container = new Container();
       renderAgentTree(singleResult, container, false, mockTheme, {
         label: "finder",
-        header: "statusOnly",
+        header: "none",
       });
 
       const lines = container.render(80);
       const output = lines.join("\n");
 
       // tree connectors
-      expect(output).toContain("├──");
-      expect(output).toContain("╰──");
+      expect(output).toContain("├ ");
+      expect(output).toContain("╰ ");
 
       // success icon
       expect(output).toContain("✓");
@@ -562,7 +563,7 @@ if (import.meta.vitest) {
       expect(output).toContain("gemini");
     });
 
-    it("renders error state with error icon and message", () => {
+    it("renders error metadata and message", () => {
       const singleResult: SingleResult = {
         agent: "finder",
         task: "search for nonexistent",
@@ -584,43 +585,24 @@ if (import.meta.vitest) {
       const container = new Container();
       renderAgentTree(singleResult, container, false, mockTheme, {
         label: "finder",
-        header: "statusOnly",
+        header: "none",
       });
 
       const lines = container.render(80);
       const output = lines.join("\n");
 
-      expect(output).toContain("✕");
+      expect(output).toContain("[error]");
       expect(output).toContain("connection timeout");
     });
 
-    it("renders pending state with warning icon", () => {
-      const singleResult: SingleResult = {
-        agent: "finder",
-        task: "search in progress",
-        exitCode: -1,
-        messages: [],
-        usage: {
-          input: 50,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          cost: 0,
-          contextTokens: 0,
-          turns: 0,
-        },
-      };
-
-      const container = new Container();
-      renderAgentTree(singleResult, container, false, mockTheme, {
-        label: "finder",
-        header: "statusOnly",
-      });
-
-      const lines = container.render(80);
+    it("renders an active status badge", () => {
+      const lines = renderSubAgentCall("finder search in progress", mockTheme, {
+        isError: false,
+        isPartial: true,
+      }).render(80);
       const output = lines.join("\n");
 
-      expect(output).toContain("⋯");
+      expect(output).toContain("●");
     });
   });
 

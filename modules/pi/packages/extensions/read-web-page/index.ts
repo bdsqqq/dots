@@ -40,6 +40,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  renderSubAgentCall,
   registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
@@ -357,7 +358,7 @@ export function createReadWebPageTool(
       return { content: [{ type: "text" as const, text: content }] } as any;
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const url = args.url || "...";
       const displayUrl = url.length > 60 ? `${url.slice(0, 60)}...` : url;
       const linkedUrl = url.startsWith("http")
@@ -371,7 +372,7 @@ export function createReadWebPageTool(
         const short = label.length > 40 ? `${label.slice(0, 40)}...` : label;
         text += theme.fg("muted", ` — ${short}`);
       }
-      return new Text(text, 0, 0);
+      return renderSubAgentCall(text, theme, context);
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
@@ -387,7 +388,7 @@ export function createReadWebPageTool(
       const container = new Container();
       renderAgentTree(details, container, expanded, theme, {
         label: "read_web_page",
-        header: "statusOnly",
+        header: "none",
       });
       return container;
     },

@@ -16,11 +16,16 @@ import {
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import {
+  type Component,
   Container,
+  MarkerColumn,
   Markdown,
   Text,
-  TruncatedText,
+  stripTerminalSequences,
+  truncateToWidth,
+  visibleWidth,
 } from "@earendil-works/pi-tui";
+import { boxBottom, boxRow } from "@bds_pi/box-chrome";
 import {
   modelCliString,
   toToolUsage,
@@ -288,25 +293,188 @@ function renderToolLine(
 // --- tree rendering ---
 
 const COLLAPSED_ITEM_COUNT = 10;
+const ACTIVE_BADGE_INTERVAL_MS = 320;
+const ACTIVE_BADGE_STATE = Symbol("sub-agent-active-badge");
+
+type ActiveBadgeState = {
+  frame: number;
+  interval?: ReturnType<typeof setInterval>;
+  renderVersion: number;
+};
+
+type SubAgentCallContext = {
+  isError: boolean;
+  isPartial: boolean;
+  invalidate?: () => void;
+  lastComponent?: Component;
+  state?: Record<PropertyKey, unknown>;
+};
+
+class SingleLineText implements Component {
+  constructor(private readonly text: string) {}
+
+  render(width: number): string[] {
+    const safeWidth = Math.max(0, Math.floor(width));
+    return safeWidth === 0
+      ? []
+      : [
+          truncateToWidth(
+            this.text.split(/\r\n|\r|\n/, 1)[0] ?? "",
+            safeWidth,
+            "…",
+          ),
+        ];
+  }
+
+  invalidate(): void {}
+}
+
+class OpenBox implements Component {
+  constructor(
+    private readonly child: Component,
+    private readonly dim: (text: string) => string,
+  ) {}
+
+  render(width: number): string[] {
+    const safeWidth = Math.max(0, Math.floor(width));
+    if (safeWidth === 0) return [];
+
+    const style = { dim: this.dim };
+    if (safeWidth === 1) {
+      return [this.dim("│"), this.dim("╰")];
+    }
+    if (safeWidth === 2) {
+      return [this.dim("│ "), this.dim("╰─")];
+    }
+
+    const rows = this.child
+      .render(safeWidth - 2)
+      .map((line) =>
+        truncateToWidth(
+          boxRow({ variant: "open", style, inner: line }),
+          safeWidth,
+          "",
+        ),
+      );
+    rows.push(
+      truncateToWidth(boxBottom({ variant: "open", style }), safeWidth, ""),
+    );
+    return rows;
+  }
+
+  invalidate(): void {
+    this.child.invalidate();
+  }
+}
+
+function trimBlankLines(text: string): string {
+  const lines = text.split(/\r\n|\r|\n/);
+  let start = 0;
+  let end = lines.length;
+
+  while (start < end && lines[start]!.trim() === "") start++;
+  while (end > start && lines[end - 1]!.trim() === "") end--;
+  return lines.slice(start, end).join("\n");
+}
+
+class SubAgentCallComponent implements Component {
+  private row: MarkerColumn;
+
+  constructor(icon: string, content: string) {
+    this.row = new MarkerColumn(icon, new Text(content, 0, 0));
+  }
+
+  update(icon: string, content: string): void {
+    this.row.setMarker(icon);
+    this.row.setChild(new Text(content, 0, 0));
+  }
+
+  render(width: number): string[] {
+    return this.row.render(width);
+  }
+
+  invalidate(): void {
+    this.row.invalidate();
+  }
+}
+
+export function renderSubAgentCall(
+  content: string,
+  theme: any,
+  context: SubAgentCallContext,
+): Component {
+  const state = context.state as
+    | (Record<PropertyKey, unknown> & {
+        [ACTIVE_BADGE_STATE]?: ActiveBadgeState;
+      })
+    | undefined;
+  const badge =
+    state &&
+    (state[ACTIVE_BADGE_STATE] ??= {
+      frame: 0,
+      renderVersion: 0,
+    });
+  if (badge) badge.renderVersion++;
+  const active = context.isPartial && !context.isError;
+
+  if (active && badge && context.invalidate && !badge.interval) {
+    badge.interval = setInterval(() => {
+      badge.frame = (badge.frame + 1) % 2;
+      const renderedVersion = badge.renderVersion;
+      context.invalidate?.();
+      if (badge.renderVersion === renderedVersion && badge.interval) {
+        clearInterval(badge.interval);
+        badge.interval = undefined;
+      }
+    }, ACTIVE_BADGE_INTERVAL_MS);
+    badge.interval.unref?.();
+  } else if (!active && badge?.interval) {
+    clearInterval(badge.interval);
+    badge.interval = undefined;
+  }
+
+  const icon = context.isError
+    ? theme.fg("error", "✕")
+    : active
+      ? theme.fg((badge?.frame ?? 0) % 2 === 0 ? "muted" : "accent", "●")
+      : theme.fg("success", "✓");
+  const component =
+    context.lastComponent instanceof SubAgentCallComponent
+      ? context.lastComponent
+      : new SubAgentCallComponent(icon, content);
+  component.update(icon, content);
+  return component;
+}
 
 export function renderAgentTree(
   r: SingleResult,
   container: Container,
   showExpanded: boolean,
   theme: any,
-  labelOrOpts?: string | { label?: string; header?: "full" | "statusOnly" },
+  labelOrOpts?:
+    | string
+    | {
+        label?: string;
+        header?: "full" | "none";
+        summary?: "tree" | "open-box";
+      },
 ): void {
   const fg = theme.fg.bind(theme);
   const opts =
     typeof labelOrOpts === "string"
-      ? { label: labelOrOpts, header: "full" as const }
+      ? {
+          label: labelOrOpts,
+          header: "full" as const,
+          summary: "tree" as const,
+        }
       : {
           label: labelOrOpts?.label,
           header: labelOrOpts?.header ?? ("full" as const),
+          summary: labelOrOpts?.summary ?? ("tree" as const),
         };
-  const MID = fg("muted", "├── ");
-  const END = fg("muted", "╰── ");
-  const CONT = fg("muted", "│   ");
+  const MID = fg("muted", "├");
+  const END = fg("muted", "╰");
+  const CONT = fg("muted", "│");
   const mdTheme = getMarkdownTheme();
 
   const isError =
@@ -324,19 +492,23 @@ export function renderAgentTree(
         ? fg("error", "✕")
         : fg("success", "✓");
 
-  if (opts.header === "statusOnly") {
-    let header = icon;
+  if (opts.header === "full") {
+    let header = fg("toolTitle", theme.bold(opts.label ?? r.agent));
     if (isError && errorLabel) header += ` ${fg("error", `[${errorLabel}]`)}`;
-    container.addChild(new Text(header, 0, 0));
-  } else {
-    let header = `${icon} ${fg("toolTitle", theme.bold(opts.label ?? r.agent))}`;
-    if (isError && errorLabel) header += ` ${fg("error", `[${errorLabel}]`)}`;
-    container.addChild(new Text(header, 0, 0));
+    container.addChild(new MarkerColumn(icon, new Text(header, 0, 0)));
   }
 
-  if (isError && r.errorMessage) {
+  if (isError && (errorLabel || r.errorMessage)) {
+    const error = [
+      errorLabel && fg("error", `[${errorLabel}]`),
+      r.errorMessage && fg("error", `Error: ${r.errorMessage}`),
+    ]
+      .filter(Boolean)
+      .join(" ");
     container.addChild(
-      new Text(MID + fg("error", `Error: ${r.errorMessage}`), 0, 0),
+      new MarkerColumn(MID, new Text(error, 0, 0), {
+        continuationMarker: CONT,
+      }),
     );
   }
 
@@ -345,6 +517,10 @@ export function renderAgentTree(
     (d): d is DisplayItem & { type: "toolCall" } => d.type === "toolCall",
   );
   const finalOutput = getFinalOutput(r.messages);
+  const boxedSummary =
+    opts.summary === "open-box"
+      ? trimBlankLines(finalOutput) || "(no output)"
+      : undefined;
 
   type TreeChild =
     | { kind: "text"; content: string }
@@ -363,39 +539,67 @@ export function renderAgentTree(
   if (skippedTools > 0)
     children.push({
       kind: "text",
-      content: `... ${skippedTools} earlier calls`,
+      content: `…${skippedTools} earlier calls`,
     });
   for (const tc of visibleTools) children.push({ kind: "tool", item: tc });
-  if (finalOutput)
+  if (finalOutput && opts.summary === "tree")
     children.push({ kind: "summary", output: finalOutput.trim() });
 
-  if (children.length === 0) {
-    container.addChild(new Text(END + fg("muted", "(no output)"), 0, 0));
+  if (children.length === 0 && !boxedSummary) {
+    container.addChild(
+      new MarkerColumn(END, new Text(fg("muted", "(no output)"), 0, 0)),
+    );
   } else {
     for (let i = 0; i < children.length; i++) {
       const child = children[i]!;
-      const isLast = i === children.length - 1;
+      const isLast = i === children.length - 1 && !boxedSummary;
       const connector = isLast ? END : MID;
+      const continuation = isLast ? "" : CONT;
 
       if (child.kind === "text") {
         container.addChild(
-          new Text(connector + fg("dim", child.content), 0, 0),
+          new MarkerColumn(
+            connector,
+            new Text(fg("dim", child.content), 0, 0),
+            { continuationMarker: continuation },
+          ),
         );
       } else if (child.kind === "tool") {
         container.addChild(
-          new TruncatedText(connector + renderToolLine(child.item, fg), 0, 0),
+          new MarkerColumn(
+            connector,
+            new SingleLineText(renderToolLine(child.item, fg)),
+            { continuationMarker: continuation },
+          ),
         );
       } else if (child.kind === "summary") {
-        container.addChild(new Text(connector + fg("muted", "Summary:"), 0, 0));
-        const indent = isLast ? "    " : CONT;
-        container.addChild(new Text(indent, 0, 0));
-        container.addChild(new Markdown(child.output, 0, 0, mdTheme));
+        const summary = new Container();
+        summary.addChild(new Text(fg("muted", "Summary:"), 0, 0));
+        summary.addChild(new Markdown(child.output, 0, 0, mdTheme));
+        container.addChild(
+          new MarkerColumn(connector, summary, {
+            continuationMarker: continuation,
+          }),
+        );
       }
     }
   }
 
   if (!showExpanded && toolCalls.length > COLLAPSED_ITEM_COUNT) {
-    container.addChild(new Text(fg("muted", "(Ctrl+O to expand)"), 0, 0));
+    const hint = new Text(fg("muted", "(Ctrl+O to expand)"), 0, 0);
+    container.addChild(
+      boxedSummary
+        ? new MarkerColumn(CONT, hint, { continuationMarker: CONT })
+        : hint,
+    );
+  }
+
+  if (boxedSummary) {
+    container.addChild(
+      new OpenBox(new Markdown(boxedSummary, 0, 0, mdTheme), (text) =>
+        fg("muted", text),
+      ),
+    );
   }
 
   const usageStr = formatUsageStats(r.usage, r.model);
@@ -405,7 +609,11 @@ export function renderAgentTree(
 // --- inline tests ---
 
 if (import.meta.vitest) {
-  const { describe, it, expect } = import.meta.vitest;
+  const { describe, it, expect, vi } = import.meta.vitest;
+  const mockTheme = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  };
   const assistantMessage = (
     content: Extract<Message, { role: "assistant" }>["content"],
   ): Message => ({
@@ -424,6 +632,219 @@ if (import.meta.vitest) {
     },
     stopReason: "stop",
     timestamp: 0,
+  });
+
+  describe("sub-agent rows", () => {
+    it("keeps open-box chrome bounded when content has no width", () => {
+      const child = {
+        render: vi.fn(() => ["hidden"]),
+        invalidate: vi.fn(),
+      };
+      const box = new OpenBox(child, (text) => text);
+
+      expect(box.render(1)).toEqual(["│", "╰"]);
+      expect(box.render(2)).toEqual(["│ ", "╰─"]);
+      expect(child.render).not.toHaveBeenCalled();
+    });
+
+    it("removes surrounding blank lines without changing Markdown indentation", () => {
+      expect(trimBlankLines("\n \n    code\n\n")).toBe("    code");
+    });
+
+    it("keeps wrapped call content aligned after its status column", () => {
+      const component = renderSubAgentCall(
+        "Delegate verify settlement and abort findings",
+        mockTheme,
+        { isError: false, isPartial: false },
+      );
+
+      expect(component.render(24).map((line) => line.trimEnd())).toEqual([
+        "✓ Delegate verify",
+        "  settlement and abort",
+        "  findings",
+      ]);
+      expect(component.render(1)).toEqual(["✓"]);
+      expect(component.render(2)).toEqual(["✓ "]);
+      for (const width of [1, 2, 3, 12]) {
+        expect(
+          component.render(width).every((line) => visibleWidth(line) <= width),
+        ).toBe(true);
+      }
+    });
+
+    it("gives errors precedence over pending call status", () => {
+      const line = renderSubAgentCall("Delegate task", mockTheme, {
+        isError: true,
+        isPartial: true,
+      }).render(80)[0];
+
+      expect(line?.trimEnd()).toBe("✕ Delegate task");
+    });
+
+    it("pulses active calls and settles the reused badge", () => {
+      vi.useFakeTimers();
+      try {
+        const colors: string[] = [];
+        const theme = {
+          fg: (color: string, text: string) => {
+            if (text === "●") colors.push(color);
+            return text;
+          },
+        };
+        const state: Record<PropertyKey, unknown> = {};
+        let component: Component | undefined;
+        const renderActive = (): void => {
+          component = renderSubAgentCall("Delegate task", theme, {
+            isError: false,
+            isPartial: true,
+            invalidate,
+            lastComponent: component,
+            state,
+          });
+        };
+        const invalidate = vi.fn(renderActive);
+        renderActive();
+        const initialComponent = component;
+
+        expect(colors.at(-1)).toBe("muted");
+        vi.advanceTimersByTime(ACTIVE_BADGE_INTERVAL_MS);
+        expect(invalidate).toHaveBeenCalledOnce();
+        expect(component).toBe(initialComponent);
+        expect(colors.at(-1)).toBe("accent");
+
+        component = renderSubAgentCall("Delegate task", theme, {
+          isError: false,
+          isPartial: false,
+          invalidate,
+          lastComponent: component,
+          state,
+        });
+        expect(component.render(80)[0]?.trimEnd()).toBe("✓ Delegate task");
+
+        vi.clearAllMocks();
+        vi.advanceTimersByTime(ACTIVE_BADGE_INTERVAL_MS * 2);
+        expect(invalidate).not.toHaveBeenCalled();
+
+        renderSubAgentCall("Delegate export", theme, {
+          isError: false,
+          isPartial: true,
+          invalidate: () => {},
+          state: {},
+        });
+        expect(vi.getTimerCount()).toBe(1);
+        vi.advanceTimersByTime(ACTIVE_BADGE_INTERVAL_MS);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps wrapped tree content inside the connector column", () => {
+      const result: SingleResult = {
+        agent: "delegate",
+        task: "verify settlement and abort findings",
+        exitCode: 0,
+        messages: [
+          assistantMessage([
+            {
+              type: "toolCall",
+              id: "tc1",
+              name: "grep",
+              arguments: { pattern: "failure", path: "." },
+            },
+          ]),
+        ],
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0,
+          contextTokens: 0,
+          turns: 0,
+        },
+      };
+      const container = new Container();
+
+      renderAgentTree(result, container, true, mockTheme, {
+        header: "none",
+      });
+
+      expect(
+        container
+          .render(20)
+          .map((line) => stripTerminalSequences(line).trimEnd()),
+      ).toEqual([
+        "├ verify settlement",
+        "│ and abort findings",
+        "╰ ⋯ Grep /failure/ …",
+      ]);
+    });
+
+    it("renders collapsed call counts in the shared tree column", () => {
+      const result: SingleResult = {
+        agent: "delegate",
+        task: "verify settlement",
+        exitCode: 0,
+        messages: [
+          assistantMessage(
+            Array.from({ length: 11 }, (_, index) => ({
+              type: "toolCall" as const,
+              id: `tc${index}`,
+              name: "read",
+              arguments: { path: `file-${index}.ts` },
+            })),
+          ),
+        ],
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0,
+          contextTokens: 0,
+          turns: 0,
+        },
+      };
+      const container = new Container();
+
+      renderAgentTree(result, container, false, mockTheme, {
+        header: "none",
+      });
+
+      expect(
+        stripTerminalSequences(container.render(80)[0] ?? "").trimEnd(),
+      ).toBe("├ …1 earlier calls");
+    });
+
+    it("keeps failure metadata when the call owns the status", () => {
+      const result: SingleResult = {
+        agent: "delegate",
+        task: "verify settlement",
+        exitCode: 1,
+        messages: [],
+        stopReason: "aborted",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0,
+          contextTokens: 0,
+          turns: 0,
+        },
+      };
+      const container = new Container();
+
+      renderAgentTree(result, container, false, mockTheme, {
+        header: "none",
+      });
+
+      expect(container.render(80).map((line) => line.trimEnd())).toEqual([
+        "├ [aborted]",
+        "╰ (no output)",
+      ]);
+    });
   });
 
   describe("registerSubAgentErrorNormalization", () => {

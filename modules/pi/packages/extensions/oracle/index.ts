@@ -39,6 +39,7 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
+  renderSubAgentCall,
   registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
@@ -239,7 +240,7 @@ export function createOracleTool(
       return subAgentResult(text, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any) {
+    renderCall(args: any, theme: any, context: any) {
       const preview = args.task
         ? args.task.length > 80
           ? `${args.task.slice(0, 80)}...`
@@ -253,7 +254,7 @@ export function createOracleTool(
           ` (${args.files.length} file${args.files.length > 1 ? "s" : ""})`,
         );
       }
-      return new Text(text, 0, 0);
+      return renderSubAgentCall(text, theme, context);
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
@@ -269,7 +270,7 @@ export function createOracleTool(
       const container = new Container();
       renderAgentTree(details, container, expanded, theme, {
         label: "oracle",
-        header: "statusOnly",
+        header: "none",
       });
       return container;
     },
@@ -536,6 +537,8 @@ if (import.meta.vitest) {
 
         const result = tool.renderCall!({ task: "short task" }, theme, {
           lastComponent: undefined,
+          isError: false,
+          isPartial: false,
         } as any);
         const lines = result.render(80);
 
@@ -553,10 +556,15 @@ if (import.meta.vitest) {
 
         const result = tool.renderCall!({ task: longTask }, theme, {
           lastComponent: undefined,
+          isError: false,
+          isPartial: false,
         } as any);
-        const lines = result.render(80);
+        const lines = result.render(80).map((line) => line.trimEnd());
 
-        expect(lines[0]).toMatch(/^oracle/);
+        expect(lines[0]).toBe("✓ oracle");
+        expect(lines.slice(1).every((line) => line.startsWith("  "))).toBe(
+          true,
+        );
       });
 
       it("shows file count when files provided", () => {
@@ -569,7 +577,11 @@ if (import.meta.vitest) {
         const result = tool.renderCall!(
           { task: "task", files: ["a.ts", "b.ts", "c.ts"] },
           theme,
-          { lastComponent: undefined } as any,
+          {
+            lastComponent: undefined,
+            isError: false,
+            isPartial: false,
+          } as any,
         );
         const lines = result.render(80);
 
