@@ -8,7 +8,7 @@ import type {
   ExtensionContext,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import {
   completeBackgroundText,
   type BackgroundComplete,
@@ -281,14 +281,18 @@ export function createSessionRecapExtension(
           data.title?.trim(),
           idleLabel(data.idleMs),
         ].filter((part): part is string => Boolean(part));
-        return new Text(
-          `${theme.fg("muted", metadata.join(" · "))}\n${theme.fg(
-            "dim",
-            `  ${data.text}  /recap off`,
-          )}`,
-          0,
-          0,
+        const content = new Container();
+        content.addChild(
+          new Text(theme.fg("muted", metadata.join(" · ")), 0, 0),
         );
+        content.addChild(
+          new Text(
+            theme.fg("dim", `${data.text}  /recap off`),
+            2,
+            0,
+          ),
+        );
+        return content;
       },
     );
 
@@ -515,6 +519,13 @@ if (import.meta.vitest) {
       ).toEqual([
         "※ recap · async metal execution · 2m idle",
         "  work is complete; next open the pr.  /recap off",
+      ]);
+      expect(
+        component.render(43).map((line: string) => line.trimEnd()),
+      ).toEqual([
+        "※ recap · async metal execution · 2m idle",
+        "  work is complete; next open the pr.",
+        "  /recap off",
       ]);
     });
 
