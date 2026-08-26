@@ -108,7 +108,7 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
      hideThinkingBlock;
      markdownTheme;
      hiddenThinkingLabel;
-@@ -16,21 +17,57 @@ export class AssistantMessageComponent extends Container {
+@@ -16,21 +17,58 @@ export class AssistantMessageComponent extends Container {
      markdownTransformers;
      lastMessage;
      hasToolCalls = false;
@@ -135,10 +135,11 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
      }
 +    updateMarker(message) {
 +        const continuationMarker = theme.fg("muted", "│");
-+        this.markerColumn.setFooterMarker(theme.fg("muted", "╰────"));
 +        const failed = message.stopReason === "aborted" ||
 +            message.stopReason === "error" ||
 +            message.stopReason === "length";
++        const hasResponseText = message.content.some((content) => content.type === "text" && content.text.trim());
++        this.markerColumn.setFooterMarker(failed || hasResponseText ? theme.fg("muted", "╰────") : undefined);
 +        if (failed) {
 +            this.stopMarkerAnimation();
 +            this.markerColumn.setMarker(theme.fg("error", "✕"), continuationMarker);
@@ -257,6 +258,298 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
      }
  }
  //# sourceMappingURL=assistant-message.js.map
+diff --git a/dist/modes/interactive/components/branch-summary-message.d.ts b/dist/modes/interactive/components/branch-summary-message.d.ts
+--- a/dist/modes/interactive/components/branch-summary-message.d.ts
++++ b/dist/modes/interactive/components/branch-summary-message.d.ts
+@@ -1,16 +1,19 @@
+-import { Box, type MarkdownTheme } from "@earendil-works/pi-tui";
++import { Container, type MarkdownTheme } from "@earendil-works/pi-tui";
+ import type { BranchSummaryMessage } from "../../../core/messages.ts";
+ /**
+  * Component that renders a branch summary message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export declare class BranchSummaryMessageComponent extends Box {
++export declare class BranchSummaryMessageComponent extends Container {
+     private expanded;
+     private message;
+     private markdownTheme;
+-    constructor(message: BranchSummaryMessage, markdownTheme?: MarkdownTheme);
++    private outputPad;
++    constructor(message: BranchSummaryMessage, markdownTheme?: MarkdownTheme, outputPad?: number);
+     setExpanded(expanded: boolean): void;
++    setOutputPad(outputPad: number): void;
+     invalidate(): void;
+     private updateDisplay;
++    render(width: number): string[];
+ }
+ //# sourceMappingURL=branch-summary-message.d.ts.map
+diff --git a/dist/modes/interactive/components/branch-summary-message.js b/dist/modes/interactive/components/branch-summary-message.js
+--- a/dist/modes/interactive/components/branch-summary-message.js
++++ b/dist/modes/interactive/components/branch-summary-message.js
+@@ -1,23 +1,33 @@
+-import { Box, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { keyText } from "./keybinding-hints.js";
+ /**
+  * Component that renders a branch summary message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export class BranchSummaryMessageComponent extends Box {
++export class BranchSummaryMessageComponent extends Container {
+     expanded = false;
+     message;
+     markdownTheme;
+-    constructor(message, markdownTheme = getMarkdownTheme()) {
+-        super(1, 1, (t) => theme.bg("customMessageBg", t));
++    outputPad;
++    constructor(message, markdownTheme = getMarkdownTheme(), outputPad = 1) {
++        super();
+         this.message = message;
+         this.markdownTheme = markdownTheme;
++        this.outputPad = outputPad;
+         this.updateDisplay();
+     }
+     setExpanded(expanded) {
+-        this.expanded = expanded;
+-        this.updateDisplay();
++        if (this.expanded !== expanded) {
++            this.expanded = expanded;
++            this.updateDisplay();
++        }
++    }
++    setOutputPad(outputPad) {
++        if (this.outputPad !== outputPad) {
++            this.outputPad = outputPad;
++            this.updateDisplay();
++        }
+     }
+     invalidate() {
+         super.invalidate();
+@@ -25,20 +35,33 @@ export class BranchSummaryMessageComponent extends Box {
+     }
+     updateDisplay() {
+         this.clear();
++        const content = new Box(0, 0, (text) => theme.bg("customMessageBg", text));
+         const label = theme.fg("customMessageLabel", `\x1b[1m[branch]\x1b[22m`);
+-        this.addChild(new Text(label, 0, 0));
+-        this.addChild(new Spacer(1));
++        content.addChild(new Text(label, 0, 0));
++        content.addChild(new Spacer(1));
+         if (this.expanded) {
+             const header = "**Branch Summary**\n\n";
+-            this.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
++            content.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
+                 color: (text) => theme.fg("customMessageText", text),
+             }));
+         }
+         else {
+-            this.addChild(new Text(theme.fg("customMessageText", "Branch summary (") +
++            content.addChild(new Text(theme.fg("customMessageText", "Branch summary (") +
+                 theme.fg("dim", keyText("app.tools.expand")) +
+                 theme.fg("customMessageText", " to expand)"), 0, 0));
+         }
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), content, {
++            continuationMarker: theme.fg("muted", "│"),
++            footerMarker: theme.fg("muted", "╰────"),
++        }));
++        this.addChild(messageFrame);
++    }
++    render(width) {
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+     }
+ }
+ //# sourceMappingURL=branch-summary-message.js.map
+diff --git a/dist/modes/interactive/components/compaction-summary-message.d.ts b/dist/modes/interactive/components/compaction-summary-message.d.ts
+--- a/dist/modes/interactive/components/compaction-summary-message.d.ts
++++ b/dist/modes/interactive/components/compaction-summary-message.d.ts
+@@ -1,16 +1,19 @@
+-import { Box, type MarkdownTheme } from "@earendil-works/pi-tui";
++import { Container, type MarkdownTheme } from "@earendil-works/pi-tui";
+ import type { CompactionSummaryMessage } from "../../../core/messages.ts";
+ /**
+  * Component that renders a compaction message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export declare class CompactionSummaryMessageComponent extends Box {
++export declare class CompactionSummaryMessageComponent extends Container {
+     private expanded;
+     private message;
+     private markdownTheme;
+-    constructor(message: CompactionSummaryMessage, markdownTheme?: MarkdownTheme);
++    private outputPad;
++    constructor(message: CompactionSummaryMessage, markdownTheme?: MarkdownTheme, outputPad?: number);
+     setExpanded(expanded: boolean): void;
++    setOutputPad(outputPad: number): void;
+     invalidate(): void;
+     private updateDisplay;
++    render(width: number): string[];
+ }
+ //# sourceMappingURL=compaction-summary-message.d.ts.map
+diff --git a/dist/modes/interactive/components/compaction-summary-message.js b/dist/modes/interactive/components/compaction-summary-message.js
+--- a/dist/modes/interactive/components/compaction-summary-message.js
++++ b/dist/modes/interactive/components/compaction-summary-message.js
+@@ -1,23 +1,33 @@
+-import { Box, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { keyText } from "./keybinding-hints.js";
+ /**
+  * Component that renders a compaction message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export class CompactionSummaryMessageComponent extends Box {
++export class CompactionSummaryMessageComponent extends Container {
+     expanded = false;
+     message;
+     markdownTheme;
+-    constructor(message, markdownTheme = getMarkdownTheme()) {
+-        super(1, 1, (t) => theme.bg("customMessageBg", t));
++    outputPad;
++    constructor(message, markdownTheme = getMarkdownTheme(), outputPad = 1) {
++        super();
+         this.message = message;
+         this.markdownTheme = markdownTheme;
++        this.outputPad = outputPad;
+         this.updateDisplay();
+     }
+     setExpanded(expanded) {
+-        this.expanded = expanded;
+-        this.updateDisplay();
++        if (this.expanded !== expanded) {
++            this.expanded = expanded;
++            this.updateDisplay();
++        }
++    }
++    setOutputPad(outputPad) {
++        if (this.outputPad !== outputPad) {
++            this.outputPad = outputPad;
++            this.updateDisplay();
++        }
+     }
+     invalidate() {
+         super.invalidate();
+@@ -25,21 +35,34 @@ export class CompactionSummaryMessageComponent extends Box {
+     }
+     updateDisplay() {
+         this.clear();
++        const content = new Box(0, 0, (text) => theme.bg("customMessageBg", text));
+         const tokenStr = this.message.tokensBefore.toLocaleString();
+         const label = theme.fg("customMessageLabel", `\x1b[1m[compaction]\x1b[22m`);
+-        this.addChild(new Text(label, 0, 0));
+-        this.addChild(new Spacer(1));
++        content.addChild(new Text(label, 0, 0));
++        content.addChild(new Spacer(1));
+         if (this.expanded) {
+             const header = `**Compacted from ${tokenStr} tokens**\n\n`;
+-            this.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
++            content.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
+                 color: (text) => theme.fg("customMessageText", text),
+             }));
+         }
+         else {
+-            this.addChild(new Text(theme.fg("customMessageText", `Compacted from ${tokenStr} tokens (`) +
++            content.addChild(new Text(theme.fg("customMessageText", `Compacted from ${tokenStr} tokens (`) +
+                 theme.fg("dim", keyText("app.tools.expand")) +
+                 theme.fg("customMessageText", " to expand)"), 0, 0));
+         }
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), content, {
++            continuationMarker: theme.fg("muted", "│"),
++            footerMarker: theme.fg("muted", "╰────"),
++        }));
++        this.addChild(messageFrame);
++    }
++    render(width) {
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+     }
+ }
+ //# sourceMappingURL=compaction-summary-message.js.map
+diff --git a/dist/modes/interactive/components/custom-message.d.ts b/dist/modes/interactive/components/custom-message.d.ts
+--- a/dist/modes/interactive/components/custom-message.d.ts
++++ b/dist/modes/interactive/components/custom-message.d.ts
+@@ -18,5 +18,6 @@ export declare class CustomMessageComponent extends Container {
+     setOutputPad(outputPad: number): void;
+     invalidate(): void;
+     private rebuild;
++    render(width: number): string[];
+ }
+ //# sourceMappingURL=custom-message.d.ts.map
+diff --git a/dist/modes/interactive/components/custom-message.js b/dist/modes/interactive/components/custom-message.js
+--- a/dist/modes/interactive/components/custom-message.js
++++ b/dist/modes/interactive/components/custom-message.js
+@@ -1,4 +1,4 @@
+-import { Box, Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ /**
+  * Component that renders a custom message entry from extensions.
+@@ -20,7 +20,7 @@ export class CustomMessageComponent extends Container {
+         this.outputPad = outputPad;
+         this.addChild(new Spacer(1));
+         // Create box with purple background (used for default rendering)
+-        this.box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
++        this.box = new Box(0, 0, (t) => theme.bg("customMessageBg", t));
+         this.rebuild();
+     }
+     setExpanded(expanded) {
+@@ -39,18 +39,14 @@ export class CustomMessageComponent extends Container {
+         this.rebuild();
+     }
+     rebuild() {
+-        // Remove previous content component
+-        if (this.customComponent) {
+-            this.removeChild(this.customComponent);
+-            this.customComponent = undefined;
+-        }
+-        this.removeChild(this.box);
++        this.clear();
++        this.customComponent = undefined;
++        this.addChild(new Spacer(1));
+         // Try custom renderer first - it handles its own styling
+         if (this.customRenderer) {
+             try {
+                 const component = this.customRenderer(this.message, { expanded: this._expanded, outputPad: this.outputPad }, theme);
+                 if (component) {
+-                    // Custom renderer provides its own styled component
+                     this.customComponent = component;
+                     this.addChild(component);
+                     return;
+@@ -63,7 +63,6 @@ export class CustomMessageComponent extends Container {
+             }
+         }
+         // Default rendering uses our box
+-        this.addChild(this.box);
+         this.box.clear();
+         // Default rendering: label + content
+         const label = theme.fg("customMessageLabel", `\x1b[1m[${this.message.customType}]\x1b[22m`);
+@@ -82,6 +81,18 @@ export class CustomMessageComponent extends Container {
+         this.box.addChild(new Markdown(text, 0, 0, this.markdownTheme, {
+             color: (text) => theme.fg("customMessageText", text),
+         }));
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), this.box, {
++            continuationMarker: theme.fg("muted", "│"),
++            footerMarker: theme.fg("muted", "╰────"),
++        }));
++        this.addChild(messageFrame);
++    }
++    render(width) {
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+     }
+ }
+ //# sourceMappingURL=custom-message.js.map
 diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
 --- a/dist/modes/interactive/components/tool-execution.js
 +++ b/dist/modes/interactive/components/tool-execution.js
@@ -302,6 +595,23 @@ diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive
                      this.streamingMessage = event.message;
                      this.chatContainer.addChild(this.streamingComponent);
                      this.streamingComponent.updateContent(this.streamingMessage, true);
+@@ -2933,14 +2933,14 @@ export class InteractiveMode {
+             }
+             case "compactionSummary": {
+                 this.chatContainer.addChild(new Spacer(1));
+-                const component = new CompactionSummaryMessageComponent(message, this.getMarkdownThemeWithSettings());
++                const component = new CompactionSummaryMessageComponent(message, this.getMarkdownThemeWithSettings(), this.outputPad);
+                 component.setExpanded(this.toolOutputExpanded);
+                 this.chatContainer.addChild(component);
+                 break;
+             }
+             case "branchSummary": {
+                 this.chatContainer.addChild(new Spacer(1));
+-                const component = new BranchSummaryMessageComponent(message, this.getMarkdownThemeWithSettings());
++                const component = new BranchSummaryMessageComponent(message, this.getMarkdownThemeWithSettings(), this.outputPad);
+                 component.setExpanded(this.toolOutputExpanded);
+                 this.chatContainer.addChild(component);
+                 break;
 @@ -2975,7 +2975,7 @@ export class InteractiveMode {
                  break;
              }
@@ -311,6 +621,15 @@ diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive
                  this.chatContainer.addChild(assistantComponent);
                  break;
              }
+@@ -3903,6 +3903,8 @@ export class InteractiveMode {
+                     if (this.streamingComponent || this.session.isStreaming) {
+                         for (const child of this.chatContainer.children) {
+                             if (child instanceof AssistantMessageComponent ||
++                                child instanceof BranchSummaryMessageComponent ||
++                                child instanceof CompactionSummaryMessageComponent ||
+                                 child instanceof CustomMessageComponent ||
+                                 child instanceof UserMessageComponent) {
+                                 child.setOutputPad(padding);
 diff --git a/dist/core/export-html/tool-renderer.d.ts b/dist/core/export-html/tool-renderer.d.ts
 --- a/dist/core/export-html/tool-renderer.d.ts
 +++ b/dist/core/export-html/tool-renderer.d.ts

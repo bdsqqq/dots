@@ -8,7 +8,7 @@ import type {
   ExtensionContext,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import { Container, Text } from "@earendil-works/pi-tui";
+import { Container, MarkerColumn, Text } from "@earendil-works/pi-tui";
 import {
   completeBackgroundText,
   type BackgroundComplete,
@@ -292,7 +292,10 @@ export function createSessionRecapExtension(
             0,
           ),
         );
-        return content;
+        return new MarkerColumn(theme.fg("accent", "●"), content, {
+          continuationMarker: theme.fg("muted", "│"),
+          footerMarker: theme.fg("muted", "╰────"),
+        });
       },
     );
 
@@ -517,15 +520,17 @@ if (import.meta.vitest) {
       expect(
         component.render(100).map((line: string) => line.trimEnd()),
       ).toEqual([
-        "※ recap · async metal execution · 2m idle",
-        "  work is complete; next open the pr.  /recap off",
+        "● ※ recap · async metal execution · 2m idle",
+        "│   work is complete; next open the pr.  /recap off",
+        "╰────",
       ]);
       expect(
         component.render(43).map((line: string) => line.trimEnd()),
       ).toEqual([
-        "※ recap · async metal execution · 2m idle",
-        "  work is complete; next open the pr.",
-        "  /recap off",
+        "● ※ recap · async metal execution · 2m idle",
+        "│   work is complete; next open the pr.",
+        "│   /recap off",
+        "╰────",
       ]);
     });
 
