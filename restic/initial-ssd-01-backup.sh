@@ -7,8 +7,6 @@ readonly SOURCE_IGOR="/Volumes/ssd-01/igor"
 readonly SECRET_FILE="/Users/bdsqqq/commonplace/01_files/nix/restic/secrets.yaml"
 readonly SOPS_KEY_FILE="/Users/bdsqqq/.config/sops/age/keys.txt"
 readonly SSH_KEY="/Users/bdsqqq/.ssh/id_ed25519"
-readonly HARK="${HARK:-$(command -v harkctl || true)}"
-readonly HARK_DEVICE="dev_DsQ9wLUj5uiOAp0d"
 readonly REPOSITORY="sftp:u646875@u646875.your-storagebox.de:/home/restic/ssd-01"
 # Performance note (2026-08-14): snapshot bc3be5bb added only 3.465 GiB
 # after deduplication, but its SFTP upload took 3h40m (~2.25 Mbps) while the
@@ -30,19 +28,8 @@ notify_failure() {
     return
   fi
 
-  notify_hark \
-    "The initial ssd-01 backup failed during ${stage}. Existing source files were not changed." \
-    --title "backup needs attention" \
-    --device "${HARK_DEVICE}" \
-    --idempotency-key "ssd-01-initial-backup-20260807-failure-v2" || true
   osascript -e "display notification \"Initial SSD backup failed during ${stage}.\" with title \"backup needs attention\" sound name \"Basso\"" || true
   exit "${exit_code}"
-}
-
-notify_hark() {
-  if [[ -n "${HARK}" ]]; then
-    "${HARK}" notify "$@"
-  fi
 }
 
 trap notify_failure EXIT
@@ -80,9 +67,4 @@ restic_command stats latest --mode raw-data
 finished=true
 trap - EXIT
 
-notify_hark \
-  "ssd-01 is encrypted, uploaded, and verified on Hetzner. The family photo archive is now off-site." \
-  --title "backup complete ✨" \
-  --device "${HARK_DEVICE}" \
-  --idempotency-key "ssd-01-initial-backup-20260807-success-v2"
 osascript -e 'display notification "The SSD is encrypted, uploaded, and verified on Hetzner." with title "backup complete ✨" sound name "Glass"'
