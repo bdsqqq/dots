@@ -20,7 +20,7 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Container, Text } from "@earendil-works/pi-tui";
+import { Container } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   clearConfigCache,
@@ -42,6 +42,7 @@ import {
   getFinalOutput,
   renderAgentTree,
   renderSubAgentCall,
+  renderSubAgentFallback,
   registerSubAgentErrorNormalization,
   subAgentResult,
   type SingleResult,
@@ -225,14 +226,7 @@ export function createFinderTool(
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
       const details = result.details as SingleResult | undefined;
-      if (!details) {
-        const text = result.content[0];
-        return new Text(
-          text?.type === "text" ? text.text : "(no output)",
-          0,
-          0,
-        );
-      }
+      if (!details) return renderSubAgentFallback(result, theme);
       const container = new Container();
       renderAgentTree(details, container, expanded, theme, {
         label: "finder",
