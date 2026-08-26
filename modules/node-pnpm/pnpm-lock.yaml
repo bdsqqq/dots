@@ -52,9 +52,6 @@ importers:
       diff:
         specifier: ^8.0.4
         version: 8.0.4
-      harkctl:
-        specifier: ^0.3.0
-        version: 0.3.0
       npm:
         specifier: ^11.18.0
         version: 11.18.0
@@ -2186,11 +2183,6 @@ packages:
     resolution: {integrity: sha512-nmT2T0lljbxdQZfspsno9hgrG3Uir6Ks5afism62poxqBM6sDnMEuPmzTq8XN0OEwqKLLdh1jQI3qyE66Nzb3w==}
     engines: {node: '>=6'}
     deprecated: this library is no longer supported
-
-  harkctl@0.3.0:
-    resolution: {integrity: sha512-s38SJdrVO8zEs5nGG7V8T92HUDhD4/FqY6AoR8TGbnnj1VYW8eSdYd5gDyZ8/EUEGxWY+CqYvioj+/oXMwYm/g==}
-    engines: {node: '>=22'}
-    hasBin: true
 
   has-ansi@2.0.0:
     resolution: {integrity: sha512-C8vBJ8DwUCx19vhm7urhTuUsr4/IyP6l4VzNQDv+ryHQObW3TTTp9yB68WpYgRe2bbaGuZ/se74IqFeVnMnLZg==}
@@ -5693,8 +5685,6 @@ snapshots:
     dependencies:
       ajv: 6.15.0
       har-schema: 2.0.0
-
-  harkctl@0.3.0: {}
 
   has-ansi@2.0.0:
     dependencies:

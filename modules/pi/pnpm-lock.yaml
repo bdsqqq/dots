@@ -703,34 +703,6 @@ importers:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
 
-  packages/extensions/hark:
-    dependencies:
-      '@bds_pi/editor':
-        specifier: workspace:*
-        version: link:../editor
-      proper-lockfile:
-        specifier: ^4.1.2
-        version: 4.1.2
-    devDependencies:
-      '@earendil-works/pi-ai':
-        specifier: 'catalog:'
-        version: 0.84.3(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 0.84.3(patch_hash=98bdf693b742eaa422549d9c3df4d0c64be13372892ddbadcaa27f1cc9b161b0)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 0.84.3
-      '@types/proper-lockfile':
-        specifier: ^4.1.4
-        version: 4.1.4
-      typebox:
-        specifier: 'catalog:'
-        version: 1.1.38
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
-
   packages/extensions/librarian:
     dependencies:
       '@bds_pi/config':
