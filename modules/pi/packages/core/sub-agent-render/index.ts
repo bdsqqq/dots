@@ -25,7 +25,7 @@ import {
   truncateToWidth,
   visibleWidth,
 } from "@earendil-works/pi-tui";
-import { boxBottom, boxRow } from "@bds_pi/box-chrome";
+import { boxBottom } from "@bds_pi/box-chrome";
 import {
   modelCliString,
   toToolUsage,
@@ -329,44 +329,6 @@ class SingleLineText implements Component {
   invalidate(): void {}
 }
 
-class OpenBox implements Component {
-  constructor(
-    private readonly child: Component,
-    private readonly dim: (text: string) => string,
-  ) {}
-
-  render(width: number): string[] {
-    const safeWidth = Math.max(0, Math.floor(width));
-    if (safeWidth === 0) return [];
-
-    const style = { dim: this.dim };
-    if (safeWidth === 1) {
-      return [this.dim("│"), this.dim("╰")];
-    }
-    if (safeWidth === 2) {
-      return [this.dim("│ "), this.dim("╰─")];
-    }
-
-    const rows = this.child
-      .render(safeWidth - 2)
-      .map((line) =>
-        truncateToWidth(
-          boxRow({ variant: "open", style, inner: line }),
-          safeWidth,
-          "",
-        ),
-      );
-    rows.push(
-      truncateToWidth(boxBottom({ variant: "open", style }), safeWidth, ""),
-    );
-    return rows;
-  }
-
-  invalidate(): void {
-    this.child.invalidate();
-  }
-}
-
 function trimBlankLines(text: string): string {
   const lines = text.split(/\r\n|\r|\n/);
   let start = 0;
@@ -465,12 +427,12 @@ export function renderAgentTree(
       ? {
           label: labelOrOpts,
           header: "full" as const,
-          summary: "tree" as const,
+          summary: "open-box" as const,
         }
       : {
           label: labelOrOpts?.label,
           header: labelOrOpts?.header ?? ("full" as const),
-          summary: labelOrOpts?.summary ?? ("tree" as const),
+          summary: labelOrOpts?.summary ?? ("open-box" as const),
         };
   const MID = fg("muted", "├");
   const END = fg("muted", "╰");
@@ -596,9 +558,13 @@ export function renderAgentTree(
 
   if (boxedSummary) {
     container.addChild(
-      new OpenBox(new Markdown(boxedSummary, 0, 0, mdTheme), (text) =>
-        fg("muted", text),
-      ),
+      new MarkerColumn(CONT, new Markdown(boxedSummary, 0, 0, mdTheme), {
+        continuationMarker: CONT,
+        footerMarker: boxBottom({
+          variant: "open",
+          style: { dim: (text) => fg("muted", text) },
+        }),
+      }),
     );
   }
 
@@ -635,20 +601,39 @@ if (import.meta.vitest) {
   });
 
   describe("sub-agent rows", () => {
-    it("keeps open-box chrome bounded when content has no width", () => {
-      const child = {
-        render: vi.fn(() => ["hidden"]),
-        invalidate: vi.fn(),
-      };
-      const box = new OpenBox(child, (text) => text);
-
-      expect(box.render(1)).toEqual(["│", "╰"]);
-      expect(box.render(2)).toEqual(["│ ", "╰─"]);
-      expect(child.render).not.toHaveBeenCalled();
-    });
-
     it("removes surrounding blank lines without changing Markdown indentation", () => {
       expect(trimBlankLines("\n \n    code\n\n")).toBe("    code");
+    });
+
+    it("closes final output with the shared open frame by default", () => {
+      const result: SingleResult = {
+        agent: "delegate",
+        task: "summarize",
+        exitCode: 0,
+        messages: [
+          assistantMessage([
+            { type: "text", text: "summary line one\nsummary line two" },
+          ]),
+        ],
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0,
+          contextTokens: 0,
+          turns: 0,
+        },
+      };
+      const container = new Container();
+
+      renderAgentTree(result, container, false, mockTheme, { header: "none" });
+
+      expect(container.render(40).map((line) => line.trimEnd())).toEqual([
+        "│ summary line one",
+        "│ summary line two",
+        "╰────",
+      ]);
     });
 
     it("keeps wrapped call content aligned after its status column", () => {
@@ -768,6 +753,7 @@ if (import.meta.vitest) {
 
       renderAgentTree(result, container, true, mockTheme, {
         header: "none",
+        summary: "tree",
       });
 
       expect(
@@ -842,7 +828,8 @@ if (import.meta.vitest) {
 
       expect(container.render(80).map((line) => line.trimEnd())).toEqual([
         "├ [aborted]",
-        "╰ (no output)",
+        "│ (no output)",
+        "╰────",
       ]);
     });
   });

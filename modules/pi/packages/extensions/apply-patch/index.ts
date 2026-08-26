@@ -7,7 +7,7 @@ import {
   type ExtensionAPI,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, MarkerColumn, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type, type Static, type TObject, type TString } from "typebox";
 import {
   applyPatchChunks,
@@ -521,6 +521,13 @@ export function createApplyPatchTool(): ToolDefinition<
     },
     renderResult(result, { expanded }, theme) {
       const component = new Container();
+      const frame = () => {
+        const marker = theme.fg("muted", "│");
+        return new MarkerColumn(marker, component, {
+          continuationMarker: marker,
+          footerMarker: theme.fg("muted", "╰────"),
+        });
+      };
       const changes = result.details?.changes ?? [];
       if (changes.length === 0) {
         const text = result.content
@@ -528,7 +535,7 @@ export function createApplyPatchTool(): ToolDefinition<
           .map((part) => part.text)
           .join("\n");
         component.addChild(new Text(text || "(no changes)", 0, 0));
-        return component;
+        return frame();
       }
       const shown = expanded ? changes : changes.slice(-1);
       component.addChild(
@@ -545,7 +552,7 @@ export function createApplyPatchTool(): ToolDefinition<
         component.addChild(new Spacer(1));
         component.addChild(new Text(renderDiff(change.diff), 0, 0));
       }
-      return component;
+      return frame();
     },
   };
 }
@@ -607,6 +614,47 @@ if (import.meta.vitest) {
     visit(root);
     return tree;
   }
+
+  it("closes fallback and structured results with one open frame", async () => {
+    const { initTheme } = await import("@earendil-works/pi-coding-agent");
+    initTheme("dark", false);
+    const tool = createApplyPatchTool();
+    const theme = { fg: (_color: string, text: string) => text };
+    const results = [
+      {
+        content: [{ type: "text" as const, text: "patch rejected" }],
+        details: { changes: [] },
+      },
+      {
+        content: [{ type: "text" as const, text: "modified file.txt" }],
+        details: {
+          changes: [
+            {
+              path: "file.txt",
+              kind: "modified" as const,
+              diff: "@@\n-old\n+new",
+            },
+          ],
+        },
+      },
+    ];
+
+    for (const result of results) {
+      const component = tool.renderResult!(
+        result,
+        { expanded: false, isPartial: false },
+        theme as never,
+        {} as never,
+      );
+      const lines = component.render(80).map((line) => line.trimEnd());
+
+      expect(lines.slice(0, -1).every((line) => line.startsWith("│"))).toBe(
+        true,
+      );
+      expect(lines.filter((line) => line === "╰────")).toHaveLength(1);
+      expect(lines.at(-1)).toBe("╰────");
+    }
+  });
 
   it("applies multi-file patches and tracks add, update, delete, and move", async () => {
     fs.writeFileSync(path.join(cwd, "update.txt"), "old\n", "utf8");
