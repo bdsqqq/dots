@@ -25,9 +25,6 @@ allowBuilds:
   koffi: true
   protobufjs: true
   ssh2: false
-  tree-sitter: true
-  tree-sitter-javascript: true
-  tree-sitter-typescript: true
 
 overrides:
   brace-expansion@>=2.0.0 <2.1.4: 2.1.4
