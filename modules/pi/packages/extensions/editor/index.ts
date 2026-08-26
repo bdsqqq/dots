@@ -24,16 +24,10 @@ import {
 import type { TUI, EditorTheme } from "@earendil-works/pi-tui";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { boxBorderLR, boxRow } from "@bds_pi/box-chrome";
-import {
-  HorizontalLineWidget,
-  sanitizeInlineText,
-  WidgetRowRegistry,
-} from "./widget-row";
 import type { KeybindingsManager } from "@earendil-works/pi-coding-agent";
-import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
+import type { TextContent } from "@earendil-works/pi-ai";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { hasToolCost } from "@bds_pi/tool-cost";
 
 const execFileAsync = promisify(execFile);
 
@@ -250,14 +244,6 @@ function shortenPath(cwd: string): string {
   return cwd;
 }
 
-function formatModelDisplay(
-  provider: string | undefined,
-  modelId: string,
-): string {
-  const providerDisplay = provider ? `(${provider})` : "";
-  return `${providerDisplay} ${modelId}`.trim();
-}
-
 /**
  * estimate context tokens from session entries using chars/4 heuristic.
  * fallback when provider hasn't reported usage yet (e.g., after compaction).
@@ -302,65 +288,41 @@ function updateStatsLabels(
   editor: LabeledEditor | null,
   pi: ExtensionAPI,
   ctx: ExtensionContext,
-  cachedLen?: { value: number },
 ): void {
   if (!editor) return;
 
-  // skip recomputation if branch length unchanged (cheap proxy for "nothing new happened")
   const branch = ctx.sessionManager.getBranch();
-  if (cachedLen && branch.length === cachedLen.value) return;
-  if (cachedLen) cachedLen.value = branch.length;
 
-  // top-left: context usage + cost (parent model + sub-agents)
+  // top-left: context usage
   const usage = ctx.getContextUsage();
   const model = ctx.model;
 
-  let cost = 0;
-  for (const entry of branch) {
-    if (entry.type !== "message") continue;
-    const msg = entry.message;
-    if (msg.role === "assistant") {
-      cost += (msg as AssistantMessage).usage?.cost?.total ?? 0;
-    } else if (msg.role === "toolResult") {
-      const details = (msg as { details?: unknown }).details;
-      if (hasToolCost(details)) cost += details.cost;
-    }
-  }
-
-  const topLeftParts: string[] = [];
-
   // use provider-reported usage if available and meaningful, otherwise estimate from entries
   if (usage?.percent != null && usage.tokens != null && usage.tokens > 0) {
-    topLeftParts.push(
+    editor.setLabel(
+      "stats",
       `${Math.round(usage.percent)}% of ${formatTokens(usage.contextWindow)}`,
+      "top",
+      "left",
     );
   } else if (model?.contextWindow) {
     // fallback: estimate tokens from session entries
     const estimatedTokens = estimateContextFromEntries(branch);
     const percent = (estimatedTokens / model.contextWindow) * 100;
-    topLeftParts.push(
+    editor.setLabel(
+      "stats",
       `~${Math.round(percent)}% of ${formatTokens(model.contextWindow)}`,
+      "top",
+      "left",
     );
   }
 
-  if (cost > 0) {
-    topLeftParts.push(`$${cost.toFixed(2)}`);
-  }
-  if (topLeftParts.length > 0) {
-    editor.setLabel("stats", topLeftParts.join(" · "), "top", "left");
-  }
-
-  // top-right: model + thinking level
-  const topRightParts: string[] = [];
-  if (model) {
-    topRightParts.push(formatModelDisplay(model.provider, model.id));
-  }
+  // top-right: effort is the only model setting that changes during a session
   const thinkingLevel = pi.getThinkingLevel();
   if (thinkingLevel && thinkingLevel !== "off") {
-    topRightParts.push(thinkingLevel);
-  }
-  if (topRightParts.length > 0) {
-    editor.setLabel("model", topRightParts.join(" · "), "top", "right");
+    editor.setLabel("effort", thinkingLevel, "top", "right");
+  } else {
+    editor.removeLabel("effort");
   }
 }
 
@@ -389,147 +351,26 @@ async function getGitDiffStats(cwd: string): Promise<string> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// animated activity spinner — renders rich status below the editor
-// ---------------------------------------------------------------------------
-
-const SPINNER_FRAMES = ["·", "•", "*", "⁑", "⁂", "⁑", "*", "•", "·"];
-
-export type ActivityPhase = "idle" | "thinking" | "tool" | "streaming";
-
-export interface ActivityState {
-  phase: ActivityPhase;
-  turnIndex: number;
-  /** tool names currently in-flight (supports parallel tool calls) */
-  activeTools: Map<string, string>;
-  /** epoch ms when agent_start fired */
-  startedAt: number;
-  /** interval handle for spinner animation */
-  intervalId: ReturnType<typeof setInterval> | null;
-  /** current braille frame index */
-  frame: number;
-}
-
-function createActivityState(): ActivityState {
-  return {
-    phase: "idle",
-    turnIndex: 0,
-    activeTools: new Map(),
-    startedAt: 0,
-    intervalId: null,
-    frame: 0,
-  };
-}
-
-function formatElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const rem = s % 60;
-  return `${m}m${rem > 0 ? `${rem}s` : ""}`;
-}
-
-interface WorkingIndicatorCapableUI {
-  setWorkingIndicator?: (options?: {
-    frames?: string[];
-    intervalMs?: number;
-  }) => void;
-}
-
-function hideNativeWorkingIndicator(ctx: ExtensionContext): void {
-  ctx.ui.setWorkingMessage(" ");
-  (ctx.ui as typeof ctx.ui & WorkingIndicatorCapableUI).setWorkingIndicator?.({
-    frames: [],
-  });
-}
-
-/**
- * shorten a tool name for display: "tool_execution" → "tool_execution",
- * but we also extract a meaningful arg when possible (e.g. file path).
- */
-function describeToolCall(toolName: string, args: any): string {
-  const candidates = [
-    { value: args?.path, useBasename: true },
-    { value: args?.pattern, useBasename: true },
-    { value: args?.query, useBasename: true },
-    { value: args?.filePattern, useBasename: true },
-    { value: args?.cmd, useBasename: false },
-  ];
-  const hint = candidates.find(
-    (candidate): candidate is { value: string; useBasename: boolean } =>
-      typeof candidate.value === "string",
-  );
-  if (!hint) return toolName;
-
-  const sanitized = sanitizeInlineText(hint.value)
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!sanitized) return toolName;
-
-  const display =
-    hint.useBasename && sanitized.includes("/")
-      ? sanitized.split("/").pop()!
-      : sanitized;
-  const short =
-    display.length > 24 ? display.slice(0, 24) + "…" : display;
-  if (short) return `${toolName}(${short})`;
-  return toolName;
-}
-
-function renderActivity(state: ActivityState): string {
-  if (state.phase === "idle") return "";
-
-  return [
-    SPINNER_FRAMES[state.frame % SPINNER_FRAMES.length]!,
-    renderActivityDetail(state),
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-/** stable activity text for surfaces that cannot animate, such as Live Activities. */
-function renderActivityDetail(state: ActivityState): string {
-  if (state.phase === "idle") return "";
-  const parts: string[] = [];
-  // turn number (0-indexed from the event, display as 1-indexed)
-  if (state.turnIndex > 0) {
-    parts.push(`turn ${state.turnIndex + 1}`);
-  }
-
-  // phase-specific info
-  if (state.activeTools.size > 0) {
-    const toolDescs = [...state.activeTools.values()];
-    // show up to 2 tool descriptions
-    const shown = toolDescs.slice(0, 2).join(", ");
-    const overflow = toolDescs.length > 2 ? ` +${toolDescs.length - 2}` : "";
-    parts.push(shown + overflow);
-  } else if (state.phase === "thinking") {
-    parts.push("thinking");
-  } else if (state.phase === "streaming") {
-    parts.push("writing");
-  }
-
-  // elapsed time
-  if (state.startedAt > 0) {
-    const elapsed = Date.now() - state.startedAt;
-    if (elapsed >= 1000) {
-      parts.push(formatElapsed(elapsed));
-    }
-  }
-
-  return parts.join(" · ");
-}
-
 function editorExtension(pi: ExtensionAPI): void {
   let editor: LabeledEditor | null = null;
-  const statsCacheBranchLen = { value: -1 };
   let gitBranch: string | null = null;
   let branchUnsub: (() => void) | null = null;
-  let statusRow: WidgetRowRegistry | null = null;
-  const activity = createActivityState();
+
+  const updateGitLabel = async (cwd: string): Promise<void> => {
+    const diffStats = await getGitDiffStats(cwd);
+    if (diffStats) {
+      editor?.setLabel("git-changes", diffStats, "bottom", "left");
+    } else {
+      editor?.removeLabel("git-changes");
+    }
+  };
 
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI) return;
+
+    // The border carries the durable state; transient activity adds noise and
+    // reserves a row even when there is nothing useful to show.
+    ctx.ui.setWorkingVisible(false);
 
     // replace editor with labeled box-drawing version
     ctx.ui.setEditorComponent(
@@ -562,19 +403,6 @@ function editorExtension(pi: ExtensionAPI): void {
       };
     });
 
-    ctx.ui.setWidget(
-      "status-line",
-      (tui) => {
-        statusRow = new WidgetRowRegistry(tui);
-        return new HorizontalLineWidget(
-          () => statusRow!.snapshot(),
-          { gap: "  " },
-          () => statusRow!.version,
-        );
-      },
-      { placement: "belowEditor" },
-    );
-
     // set initial bottom label with cwd
     function updateBottomLabel() {
       if (!editor) return;
@@ -584,106 +412,27 @@ function editorExtension(pi: ExtensionAPI): void {
     }
 
     updateBottomLabel();
-    updateStatsLabels(editor!, pi, ctx, statsCacheBranchLen);
-  });
-
-  // --- animated activity spinner + git changes widget ---
-  const ACTIVITY_SEGMENT = "activity";
-  const GIT_SEGMENT = "git-changes";
-
-  /** push current activity state into the widget row */
-  const syncActivitySegment = (): void => {
-    if (activity.phase === "idle") {
-      statusRow?.remove(ACTIVITY_SEGMENT);
-      return;
-    }
-    const text = renderActivity(activity);
-    if (!text) return;
-    statusRow?.set(ACTIVITY_SEGMENT, {
-      align: "left",
-      priority: 10,
-      renderInline: () => renderActivity(activity),
-    });
-  };
-
-  const startSpinner = (): void => {
-    if (activity.intervalId) return;
-    activity.intervalId = setInterval(() => {
-      activity.frame = (activity.frame + 1) % SPINNER_FRAMES.length;
-      syncActivitySegment();
-    }, 150);
-  };
-
-  const stopSpinner = (): void => {
-    if (activity.intervalId) {
-      clearInterval(activity.intervalId);
-      activity.intervalId = null;
-    }
-  };
-
-  const updateGitSegment = (text?: string): void => {
-    if (!text) {
-      statusRow?.remove(GIT_SEGMENT);
-      return;
-    }
-    statusRow?.set(GIT_SEGMENT, {
-      align: "right",
-      priority: 0,
-      renderInline: () => text,
-    });
-  };
-
-  pi.on("agent_start", async (_event, ctx) => {
-    // suppress pi's inline working UI — we render our own below the editor
-    hideNativeWorkingIndicator(ctx);
-
-    activity.phase = "thinking";
-    activity.turnIndex = 0;
-    activity.activeTools.clear();
-    activity.startedAt = Date.now();
-    activity.frame = 0;
-    startSpinner();
-    syncActivitySegment();
-  });
-
-  pi.on("turn_start", async (event, _ctx) => {
-    activity.turnIndex = event.turnIndex;
-    activity.phase = activity.activeTools.size > 0 ? "tool" : "thinking";
-    syncActivitySegment();
-  });
-
-  pi.on("tool_execution_start", async (event, _ctx) => {
-    activity.phase = "tool";
-    activity.activeTools.set(
-      event.toolCallId,
-      describeToolCall(event.toolName, event.args),
-    );
-    syncActivitySegment();
-  });
-
-  pi.on("tool_execution_end", async (event, ctx) => {
-    activity.activeTools.delete(event.toolCallId);
-    activity.phase = activity.activeTools.size > 0 ? "tool" : "thinking";
-    syncActivitySegment();
-    if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
-  });
-
-  pi.on("message_start", async (event, _ctx) => {
-    if ("role" in event.message && event.message.role === "assistant") {
-      activity.phase = activity.activeTools.size > 0 ? "tool" : "streaming";
-      syncActivitySegment();
-    }
+    updateStatsLabels(editor!, pi, ctx);
+    await updateGitLabel(ctx.cwd);
   });
 
   pi.on("agent_end", async (_event, ctx) => {
-    stopSpinner();
-    activity.phase = "idle";
-    activity.activeTools.clear();
-    statusRow?.remove(ACTIVITY_SEGMENT);
-    if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
+    updateStatsLabels(editor, pi, ctx);
+    await updateGitLabel(ctx.cwd);
+  });
 
-    const diffStats = await getGitDiffStats(ctx.cwd);
-    updateGitSegment(diffStats);
+  // Provider usage becomes authoritative at message_end. Refresh there rather
+  // than waiting for the whole tool/assistant loop to settle at agent_end.
+  pi.on("message_end", async (_event, ctx) => {
+    updateStatsLabels(editor, pi, ctx);
+  });
+
+  pi.on("session_compact", async (_event, ctx) => {
+    updateStatsLabels(editor, pi, ctx);
+  });
+
+  pi.on("session_tree", async (_event, ctx) => {
+    updateStatsLabels(editor, pi, ctx);
   });
 
   pi.events.on("editor:set-label", (data: unknown) => {
@@ -704,29 +453,17 @@ function editorExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("model_select", async (_event, ctx) => {
-    // update model display when user changes model via /model or Ctrl+P
-    statsCacheBranchLen.value = -1;
-    if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
+    updateStatsLabels(editor, pi, ctx);
   });
 
-  pi.on("session_start", async (event, ctx) => {
-    if (
-      event.reason === "new" ||
-      event.reason === "resume" ||
-      event.reason === "fork"
-    ) {
-      // editor component persists across session switches, just update stats
-      branchUnsub?.();
-      branchUnsub = null;
-      gitBranch = null;
-      stopSpinner();
-      activity.phase = "idle";
-      activity.activeTools.clear();
-      statusRow?.clear();
-      statsCacheBranchLen.value = -1;
-      if (editor) updateStatsLabels(editor, pi, ctx, statsCacheBranchLen);
+  pi.on("thinking_level_select", async (event) => {
+    if (event.level === "off") {
+      editor?.removeLabel("effort");
+    } else {
+      editor?.setLabel("effort", event.level, "top", "right");
     }
   });
+
 }
 
 export default editorExtension;
@@ -735,19 +472,13 @@ export default editorExtension;
 export {
   formatTokens,
   shortenPath,
-  formatModelDisplay,
   estimateContextFromEntries,
-  formatElapsed,
-  describeToolCall,
-  renderActivity,
-  renderActivityDetail,
-  createActivityState,
   updateStatsLabels,
   LabeledEditor,
 };
 
 if (import.meta.vitest) {
-  const { describe, expect, it, vi } = import.meta.vitest;
+  const { describe, expect, it } = import.meta.vitest;
 
   // --- LabeledEditor border tests ---
   // Testing buildBorderLine directly avoids mocking the entire CustomEditor
@@ -911,177 +642,68 @@ if (import.meta.vitest) {
       });
     });
 
-    describe("formatModelDisplay", () => {
-      it("formats model display string correctly", () => {
-        expect(
-          formatModelDisplay("anthropic", "claude-sonnet-4-20250514"),
-        ).toBe("(anthropic) claude-sonnet-4-20250514");
+    it("shows and refreshes context usage and effort without model or cost", () => {
+      let percent = 70;
+      let effort = "high";
+      const editor = new LabeledEditor(
+        { requestRender() {} } as any,
+        {} as any,
+        {} as any,
+        {
+          fg: (_: string, text: string) => text,
+          bg: (_: string, text: string) => text,
+        } as any,
+      );
+      const ctx = {
+        sessionManager: { getBranch: () => [] },
+        getContextUsage: () => ({
+          percent,
+          tokens: 190_000,
+          contextWindow: 272_000,
+        }),
+        model: {
+          provider: "openai-codex",
+          id: "gpt-5.6-sol",
+          contextWindow: 272_000,
+        },
+      } as any;
 
-        expect(formatModelDisplay("openai", "gpt-4o")).toBe("(openai) gpt-4o");
+      updateStatsLabels(
+        editor,
+        { getThinkingLevel: () => effort } as any,
+        ctx,
+      );
+      const border = editor["buildBorderLine"](
+        80,
+        { left: "╭", right: "╮" },
+        "top",
+        "",
+      );
 
-        expect(formatModelDisplay("openai-codex", "gpt-5.6-sol")).toBe(
-          "(openai-codex) gpt-5.6-sol",
-        );
+      expect(border).toContain("70% of 272.0k");
+      expect(border).toContain("high");
+      expect(border).not.toContain("openai-codex");
+      expect(border).not.toContain("gpt-5.6-sol");
+      expect(border).not.toContain("$");
 
-        expect(formatModelDisplay(undefined, "some-model")).toBe("some-model");
-      });
-    });
+      percent = 71;
+      effort = "medium";
+      updateStatsLabels(
+        editor,
+        { getThinkingLevel: () => effort } as any,
+        ctx,
+      );
+      const refreshed = editor["buildBorderLine"](
+        80,
+        { left: "╭", right: "╮" },
+        "top",
+        "",
+      );
 
-    describe("formatElapsed", () => {
-      it("formats seconds under 60s", () => {
-        expect(formatElapsed(0)).toBe("0s");
-        expect(formatElapsed(500)).toBe("0s");
-        expect(formatElapsed(1000)).toBe("1s");
-        expect(formatElapsed(30000)).toBe("30s");
-        expect(formatElapsed(59000)).toBe("59s");
-      });
-
-      it("formats minutes with remaining seconds", () => {
-        expect(formatElapsed(60000)).toBe("1m");
-        expect(formatElapsed(90000)).toBe("1m30s");
-        expect(formatElapsed(125000)).toBe("2m5s");
-      });
-    });
-
-    describe("hideNativeWorkingIndicator", () => {
-      it("hides both the native message and indicator when supported", () => {
-        const setWorkingMessage = vi.fn();
-        const setWorkingIndicator = vi.fn();
-
-        hideNativeWorkingIndicator({
-          ui: { setWorkingMessage, setWorkingIndicator },
-        } as any);
-
-        expect(setWorkingMessage).toHaveBeenCalledWith(" ");
-        expect(setWorkingIndicator).toHaveBeenCalledWith({ frames: [] });
-      });
-
-      it("still hides the message on older pi builds without indicator support", () => {
-        const setWorkingMessage = vi.fn();
-
-        expect(() =>
-          hideNativeWorkingIndicator({
-            ui: { setWorkingMessage },
-          } as any),
-        ).not.toThrow();
-
-        expect(setWorkingMessage).toHaveBeenCalledWith(" ");
-      });
-    });
-
-    describe("describeToolCall", () => {
-      it("returns tool name when no useful arg", () => {
-        expect(describeToolCall("read", {})).toBe("read");
-        expect(describeToolCall("write", null)).toBe("write");
-        expect(describeToolCall("bash", undefined)).toBe("bash");
-      });
-
-      it("extracts path arg and shows basename", () => {
-        expect(describeToolCall("read", { path: "/home/user/file.txt" })).toBe(
-          "read(file.txt)",
-        );
-        expect(describeToolCall("write", { path: "/a/b/c/d.md" })).toBe(
-          "write(d.md)",
-        );
-      });
-
-      it("extracts pattern arg", () => {
-        expect(describeToolCall("find", { pattern: "*.ts" })).toBe(
-          "find(*.ts)",
-        );
-      });
-
-      it("extracts query arg", () => {
-        expect(describeToolCall("search", { query: "some search" })).toBe(
-          "search(some search)",
-        );
-      });
-
-      it("extracts cmd arg", () => {
-        expect(describeToolCall("bash", { cmd: "npm test" })).toBe(
-          "bash(npm test)",
-        );
-      });
-
-      it("truncates long args to 24 chars", () => {
-        // Long command without slashes gets truncated
-        const longCmd = "a".repeat(30);
-        expect(describeToolCall("bash", { cmd: longCmd })).toBe(
-          "bash(" + "a".repeat(24) + "…)",
-        );
-      });
-
-      it("renders multiline heredoc commands as one bounded line", () => {
-        const cmd = `node --input-type=module - <<'JS'
-import path from "node:path";
-const packageRoot = path.resolve("modules/pi/node_modules/@earendil-works/pi-coding-agent");
-console.log(\`loaded; CommonJS resolver saw trajectory 0 time(s)\`);
-JS`;
-
-        const result = describeToolCall("bash", { cmd });
-        expect(result).toBe("bash(node --input-type=module…)");
-        expect(result).not.toMatch(/[\r\n]/);
-      });
-    });
-
-    describe("renderActivity", () => {
-      it("returns empty string when idle", () => {
-        const state = createActivityState();
-        expect(renderActivity(state)).toBe("");
-      });
-
-      it("shows thinking phase", () => {
-        const state = createActivityState();
-        state.phase = "thinking";
-        state.frame = 0;
-        expect(renderActivity(state)).toContain("·");
-        expect(renderActivity(state)).toContain("thinking");
-      });
-
-      it("shows streaming phase as writing", () => {
-        const state = createActivityState();
-        state.phase = "streaming";
-        state.frame = 2;
-        expect(renderActivity(state)).toContain("writing");
-      });
-
-      it("shows tool phase with active tools", () => {
-        const state = createActivityState();
-        state.phase = "tool";
-        state.frame = 0;
-        state.activeTools.set("call-1", "read(file.ts)");
-        expect(renderActivity(state)).toContain("read(file.ts)");
-      });
-
-      it("shows elapsed time after 1 second", () => {
-        const state = createActivityState();
-        state.phase = "thinking";
-        state.startedAt = Date.now() - 5000;
-        state.frame = 0;
-        expect(renderActivity(state)).toContain("5s");
-      });
-
-      it("shows turn number when > 0", () => {
-        const state = createActivityState();
-        state.phase = "thinking";
-        state.turnIndex = 2; // 0-indexed, displays as turn 3
-        state.frame = 0;
-        expect(renderActivity(state)).toContain("turn 3");
-      });
-
-      it("truncates tool descriptions to 2 with overflow count", () => {
-        const state = createActivityState();
-        state.phase = "tool";
-        state.frame = 0;
-        state.activeTools.set("call-1", "read(a.ts)");
-        state.activeTools.set("call-2", "write(b.ts)");
-        state.activeTools.set("call-3", "bash(cmd)");
-        const result = renderActivity(state);
-        expect(result).toContain("read(a.ts)");
-        expect(result).toContain("write(b.ts)");
-        expect(result).toContain("+1");
-        expect(result).not.toContain("bash(cmd)");
-      });
+      expect(refreshed).toContain("71% of 272.0k");
+      expect(refreshed).toContain("medium");
+      expect(refreshed).not.toContain("70% of 272.0k");
+      expect(refreshed).not.toContain("high");
     });
   });
 }
