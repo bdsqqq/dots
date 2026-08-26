@@ -52,6 +52,7 @@ in
     (import ../../modules/zmx).module
     ../../modules/direnv
     ../../modules/tmux
+    ../../modules/darwin-transcription
     ../../modules/amp
     ../../modules/agents
     ../../modules/node-pnpm
@@ -104,6 +105,7 @@ in
     source = "/Volumes/ssd-01/igor/photos-library-2";
     state = "/Users/bdsqqq/Library/Application Support/photo-intelligence";
   };
+  my.darwinTranscription.enable = true;
   my.backrest = {
     homeDirectory = "/Users/bdsqqq";
     volumeRoot = "/Volumes/ssd-01";
