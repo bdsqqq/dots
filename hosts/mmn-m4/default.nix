@@ -26,6 +26,7 @@ in
   imports = [
     inputs.home-manager.darwinModules.home-manager
     ../../modules/primary-user.nix
+    ../../modules/auto-login
     ../../modules/nix
     ../../modules/secrets
     ../../modules/homebrew/best-effort.nix
@@ -75,6 +76,14 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+
+  power = {
+    restartAfterPowerFailure = true;
+    sleep = {
+      computer = "never";
+      display = "never";
+    };
+  };
 
   my.filesBrowser = {
     source = "/Users/bdsqqq/commonplace";

@@ -64,6 +64,7 @@ in
     ../../modules/pi-memory
     ../../modules/e-ink-glass
     ../../modules/ghostty
+    ../../modules/ipad-display
     ../../modules/vscodium
     ../../modules/1password
     ../../modules/orbstack
