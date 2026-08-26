@@ -630,6 +630,12 @@ diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive
                                  child instanceof CustomMessageComponent ||
                                  child instanceof UserMessageComponent) {
                                  child.setOutputPad(padding);
+diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.js
+--- a/dist/core/export-html/template.js
++++ b/dist/core/export-html/template.js
+@@ -935 +935 @@ const htmlTemplate = `<!DOCTYPE html>
+-        switch (name) {
++        switch (renderedTools?.[call.id] ? '__pre_rendered__' : name) {
 diff --git a/dist/core/export-html/tool-renderer.d.ts b/dist/core/export-html/tool-renderer.d.ts
 --- a/dist/core/export-html/tool-renderer.d.ts
 +++ b/dist/core/export-html/tool-renderer.d.ts
