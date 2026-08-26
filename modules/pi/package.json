@@ -101,7 +101,6 @@
       "./dist/extensions/tool-harness.js",
       "./dist/extensions/undo-edit.js",
       "./dist/extensions/web-search.js",
-      "./dist/extensions/workflow.js",
       "./dist/extensions/zmx.js"
     ]
   }
