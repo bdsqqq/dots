@@ -2,10 +2,11 @@ diff --git a/dist/components/marker-column.d.ts b/dist/components/marker-column.
 new file mode 100644
 --- /dev/null
 +++ b/dist/components/marker-column.d.ts
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,22 @@
 +import type { Component } from "../tui.ts";
 +export interface MarkerColumnOptions {
 +    continuationMarker?: string;
++    footerMarker?: string;
 +    gap?: number;
 +}
 +/**
@@ -14,10 +15,12 @@ new file mode 100644
 +export declare class MarkerColumn implements Component {
 +    private marker;
 +    private continuationMarker;
++    private footerMarker;
 +    private child;
 +    private gap;
 +    constructor(marker: string, child: Component, options?: MarkerColumnOptions);
 +    setMarker(marker: string, continuationMarker?: string): void;
++    setFooterMarker(footerMarker?: string): void;
 +    setChild(child: Component): void;
 +    render(width: number): string[];
 +    invalidate(): void;
@@ -26,7 +29,7 @@ diff --git a/dist/components/marker-column.js b/dist/components/marker-column.js
 new file mode 100644
 --- /dev/null
 +++ b/dist/components/marker-column.js
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,55 @@
 +import { truncateToWidth, visibleWidth } from "../utils.js";
 +/**
 + * Reserves a stable marker column while the child owns wrapping and formatting.
@@ -34,17 +37,22 @@ new file mode 100644
 +export class MarkerColumn {
 +    marker;
 +    continuationMarker;
++    footerMarker;
 +    child;
 +    gap;
 +    constructor(marker, child, options = {}) {
 +        this.marker = marker;
 +        this.continuationMarker = options.continuationMarker ?? "";
++        this.footerMarker = options.footerMarker;
 +        this.child = child;
 +        this.gap = Math.max(0, Math.floor(options.gap ?? 1));
 +    }
 +    setMarker(marker, continuationMarker = this.continuationMarker) {
 +        this.marker = marker;
 +        this.continuationMarker = continuationMarker;
++    }
++    setFooterMarker(footerMarker) {
++        this.footerMarker = footerMarker;
 +    }
 +    setChild(child) {
 +        this.child = child;
@@ -60,12 +68,17 @@ new file mode 100644
 +            const fitted = truncateToWidth(value, columnWidth, "");
 +            return `${fitted}${" ".repeat(columnWidth - visibleWidth(fitted))}${" ".repeat(gapWidth)}`;
 +        };
++        const withFooter = (lines) => {
++            if (this.footerMarker)
++                lines.push(truncateToWidth(this.footerMarker, safeWidth, ""));
++            return lines;
++        };
 +        if (bodyWidth <= 0)
-+            return [prefix(this.marker)];
++            return withFooter([prefix(this.marker)]);
 +        const lines = this.child.render(bodyWidth);
 +        if (lines.length === 0)
-+            return [prefix(this.marker)];
-+        return lines.map((line, index) => truncateToWidth(`${prefix(index === 0 ? this.marker : this.continuationMarker)}${line}`, safeWidth, ""));
++            return withFooter([prefix(this.marker)]);
++        return withFooter(lines.map((line, index) => truncateToWidth(`${prefix(index === 0 ? this.marker : this.continuationMarker)}${line}`, safeWidth, "")));
 +    }
 +    invalidate() {
 +        this.child.invalidate();

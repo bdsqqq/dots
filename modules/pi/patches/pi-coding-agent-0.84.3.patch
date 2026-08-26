@@ -104,7 +104,7 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
      hideThinkingBlock;
      markdownTheme;
      hiddenThinkingLabel;
-@@ -16,21 +17,55 @@ export class AssistantMessageComponent extends Container {
+@@ -16,21 +17,57 @@ export class AssistantMessageComponent extends Container {
      markdownTransformers;
      lastMessage;
      hasToolCalls = false;
@@ -130,24 +130,26 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
          }
      }
 +    updateMarker(message) {
++        const continuationMarker = theme.fg("muted", "│");
++        this.markerColumn.setFooterMarker(theme.fg("muted", "╰────"));
 +        const failed = message.stopReason === "aborted" ||
 +            message.stopReason === "error" ||
 +            message.stopReason === "length";
 +        if (failed) {
 +            this.stopMarkerAnimation();
-+            this.markerColumn.setMarker(theme.fg("error", "✕"));
++            this.markerColumn.setMarker(theme.fg("error", "✕"), continuationMarker);
 +            return;
 +        }
 +        if (!this.isStreaming) {
 +            this.stopMarkerAnimation();
-+            this.markerColumn.setMarker(theme.fg("success", "●"));
++            this.markerColumn.setMarker(theme.fg("success", "●"), continuationMarker);
 +            return;
 +        }
-+        this.markerColumn.setMarker(theme.fg(this.markerFrame % 2 === 0 ? "muted" : "accent", "●"));
++        this.markerColumn.setMarker(theme.fg(this.markerFrame % 2 === 0 ? "muted" : "accent", "●"), continuationMarker);
 +        if (!this.markerInterval && this.requestRender) {
 +            this.markerInterval = setInterval(() => {
 +                this.markerFrame = (this.markerFrame + 1) % 2;
-+                this.markerColumn.setMarker(theme.fg(this.markerFrame === 0 ? "muted" : "accent", "●"));
++                this.markerColumn.setMarker(theme.fg(this.markerFrame === 0 ? "muted" : "accent", "●"), continuationMarker);
 +                this.requestRender?.();
 +            }, 320);
 +            this.markerInterval.unref?.();
@@ -239,6 +241,39 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
      }
  }
  //# sourceMappingURL=assistant-message.js.map
+diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
+--- a/dist/modes/interactive/components/tool-execution.js
++++ b/dist/modes/interactive/components/tool-execution.js
+@@ -1,4 +1,4 @@
+-import { Box, Container, getCapabilities, Image, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, getCapabilities, Image, MarkerColumn, Spacer, Text } from "@earendil-works/pi-tui";
+ import { createAllToolDefinitions } from "../../../core/tools/index.js";
+ import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
+ import { convertToPng } from "../../../utils/image-convert.js";
+@@ -111,7 +111,10 @@ export class ToolExecutionComponent extends Container {
+     createResultFallback() {
+         const output = this.getTextOutput();
+         if (!output) {
+-            return undefined;
++            return new MarkerColumn(theme.fg("muted", "│"), new Text(theme.fg("muted", "(no output)"), 0, 0), {
++                continuationMarker: theme.fg("muted", "│"),
++                footerMarker: theme.fg("muted", "╰────"),
++            });
+         }
+         const lines = output.split("\n");
+         const displayLines = this.expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES);
+@@ -120,7 +123,10 @@ export class ToolExecutionComponent extends Container {
+         if (remaining > 0) {
+             text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+         }
+-        return new Text(text, 0, 0);
++        return new MarkerColumn(theme.fg("muted", "│"), new Text(text, 0, 0), {
++            continuationMarker: theme.fg("muted", "│"),
++            footerMarker: theme.fg("muted", "╰────"),
++        });
+     }
+     updateArgs(args) {
+         this.args = args;
 diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
 --- a/dist/modes/interactive/interactive-mode.js
 +++ b/dist/modes/interactive/interactive-mode.js
