@@ -59,7 +59,6 @@ in
     ../../modules/1password
     ../../modules/orbstack
     ../../modules/ghostty
-    ../../modules/ipad-display
     ../../modules/open-display
     ../../modules/html-stuff
     ../../modules/media-feeds
@@ -78,11 +77,6 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
-  my.ipadDisplay = {
-    mainDisplayName = "iPad mini virtual";
-    physicalDisplayName = "PHILIPS";
-    sidecarSpecifier = "123D3316-57BE-4B6A-A2FF-C320E9A2B45C";
-  };
 
   power = {
     restartAfterPowerFailure = true;
@@ -217,7 +211,6 @@ in
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.backup-health.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.files-browser.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.html-stuff.plist"} \
-      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.ipad-display.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.media-feed-import-modulo.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.media-feed-poller.plist"} \
       ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.photo-intelligence.plist"} \
