@@ -5,14 +5,16 @@
  * keyed by extension namespace (e.g. `"@bds_pi/librarian"`).
  *
  * merge order: defaults → global (setGlobalSettingsPath() |
- * PI_BDS_CONFIG_PATH | ~/.pi/agent/bds-pi.json) → project-local
- * (.pi/settings.json). project-local is opt-in via `allowProjectConfig`
- * to prevent malicious repo overrides.
+ * PI_BDS_CONFIG_PATH | ~/.pi/agent/bds-pi.json) → mutable global overrides
+ * (~/.pi/agent/bds-pi.local.json) → project-local (.pi/settings.json).
+ * project-local is opt-in via `allowProjectConfig` to prevent malicious repo
+ * overrides.
  */
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 
 let _globalSettingsPath: string | null = null;
 
@@ -32,6 +34,16 @@ export function resolveGlobalSettingsPath(): string {
     process.env.PI_BDS_CONFIG_PATH ??
     path.join(os.homedir(), ".pi", "agent", "bds-pi.json")
   );
+}
+
+export function resolveGlobalOverridesPath(): string {
+  if (process.env.PI_BDS_CONFIG_OVERRIDES_PATH)
+    return process.env.PI_BDS_CONFIG_OVERRIDES_PATH;
+  const globalPath = resolveGlobalSettingsPath();
+  const extension = path.extname(globalPath);
+  return extension
+    ? `${globalPath.slice(0, -extension.length)}.local${extension}`
+    : `${globalPath}.local`;
 }
 
 function readJsonFile(filePath: string): Record<string, unknown> | null {
@@ -142,6 +154,14 @@ export function getExtensionConfig<T extends Record<string, unknown>>(
     );
   }
 
+  const globalOverrides = readJsonFile(resolveGlobalOverridesPath());
+  if (globalOverrides && isPlainObject(globalOverrides[namespace])) {
+    merged = deepMerge(
+      merged,
+      globalOverrides[namespace] as Record<string, unknown>,
+    );
+  }
+
   if (opts?.allowProjectConfig && opts.cwd) {
     const projectPath = path.join(opts.cwd, ".pi", "settings.json");
     const projectSettings = readJsonFile(projectPath);
@@ -186,6 +206,64 @@ export function getEnabledExtensionConfig<T extends Record<string, unknown>>(
   return { enabled, config };
 }
 
+/**
+ * persist a namespaced mutable override without replacing sibling config.
+ *
+ * the base config may be declarative or symlinked into the nix store. commands
+ * therefore write a sibling local override instead of replacing that source.
+ */
+export function updateGlobalExtensionConfig(
+  namespace: string,
+  patch: Record<string, unknown>,
+): void {
+  const filePath = resolveGlobalOverridesPath();
+  let settings: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (!isPlainObject(parsed))
+      throw new Error(
+        `global extension config must be a json object: ${filePath}`,
+      );
+    settings = parsed;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  const current = isPlainObject(settings[namespace])
+    ? (settings[namespace] as Record<string, unknown>)
+    : {};
+  const next = {
+    ...settings,
+    [namespace]: deepMerge(current, patch),
+  };
+  const directory = path.dirname(filePath);
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const temporary = `${filePath}.${randomUUID()}.tmp`;
+  let descriptor: number | undefined;
+  try {
+    descriptor = fs.openSync(temporary, "wx", 0o600);
+    fs.writeFileSync(descriptor, `${JSON.stringify(next, null, 2)}\n`);
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporary, filePath);
+    fs.chmodSync(filePath, 0o600);
+    const directoryDescriptor = fs.openSync(directory, "r");
+    try {
+      fs.fsyncSync(directoryDescriptor);
+    } finally {
+      fs.closeSync(directoryDescriptor);
+    }
+  } catch (error) {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    try {
+      fs.unlinkSync(temporary);
+    } catch {}
+    throw error;
+  }
+  _cache.set(filePath, next);
+}
+
 /** read a top-level (non-namespaced) key from the global settings file. */
 export function getGlobalConfig<T>(key: string): T | undefined {
   const globalPath = resolveGlobalSettingsPath();
@@ -211,6 +289,7 @@ if (import.meta.vitest) {
   }
 
   const originalPiBdsConfigPath = process.env.PI_BDS_CONFIG_PATH;
+  const originalPiBdsOverridesPath = process.env.PI_BDS_CONFIG_OVERRIDES_PATH;
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -220,6 +299,11 @@ if (import.meta.vitest) {
       delete process.env.PI_BDS_CONFIG_PATH;
     } else {
       process.env.PI_BDS_CONFIG_PATH = originalPiBdsConfigPath;
+    }
+    if (originalPiBdsOverridesPath === undefined) {
+      delete process.env.PI_BDS_CONFIG_OVERRIDES_PATH;
+    } else {
+      process.env.PI_BDS_CONFIG_OVERRIDES_PATH = originalPiBdsOverridesPath;
     }
   });
 
@@ -370,6 +454,24 @@ if (import.meta.vitest) {
       expect(result).toEqual({ a: "global", b: "project", c: "project" });
     });
 
+    test("mutable global overrides merge on top of base config", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-global-"));
+      const globalPath = writeTmpJson(dir, "bds-pi.json", {
+        "@bds_pi/test": { enabled: true, nested: { keep: true } },
+      });
+      writeTmpJson(dir, "bds-pi.local.json", {
+        "@bds_pi/test": { enabled: false },
+      });
+      setGlobalSettingsPath(globalPath);
+
+      expect(
+        getExtensionConfig("@bds_pi/test", {
+          enabled: true,
+          nested: { keep: false },
+        }),
+      ).toEqual({ enabled: false, nested: { keep: true } });
+    });
+
     test("project-local config is ignored when allowProjectConfig is false", () => {
       const globalDir = fs.mkdtempSync(path.join(tmpdir, "pi-config-global-"));
       const globalPath = writeTmpJson(globalDir, "settings.json", {
@@ -509,6 +611,53 @@ if (import.meta.vitest) {
       });
 
       expect(result).toEqual({ enabled: true, config: { foo: "overridden" } });
+    });
+  });
+
+  describe("updateGlobalExtensionConfig", () => {
+    test("persists a namespace patch without clobbering sibling settings", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-update-"));
+      const sourcePath = writeTmpJson(dir, "declarative.json", {
+        "@bds_pi/other": { keep: true },
+        "@bds_pi/test": { enabled: true, model: { id: "keep" } },
+      });
+      const settingsPath = path.join(dir, "bds-pi.json");
+      fs.symlinkSync(sourcePath, settingsPath);
+      const overridesPath = writeTmpJson(dir, "bds-pi.local.json", {
+        "@bds_pi/local-other": { keep: true },
+      });
+      setGlobalSettingsPath(settingsPath);
+
+      updateGlobalExtensionConfig("@bds_pi/test", { enabled: false });
+
+      expect(JSON.parse(fs.readFileSync(overridesPath, "utf8"))).toEqual({
+        "@bds_pi/local-other": { keep: true },
+        "@bds_pi/test": { enabled: false },
+      });
+      expect(JSON.parse(fs.readFileSync(settingsPath, "utf8"))).toEqual({
+        "@bds_pi/other": { keep: true },
+        "@bds_pi/test": { enabled: true, model: { id: "keep" } },
+      });
+      expect(fs.lstatSync(settingsPath).isSymbolicLink()).toBe(true);
+      expect(fs.statSync(overridesPath).mode & 0o777).toBe(0o600);
+      expect(
+        getEnabledExtensionConfig("@bds_pi/test", {
+          model: { id: "default" },
+        }),
+      ).toEqual({ enabled: false, config: { model: { id: "keep" } } });
+    });
+
+    test("refuses to overwrite malformed config", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-update-"));
+      const settingsPath = writeTmpJson(dir, "bds-pi.json", {});
+      const overridesPath = path.join(dir, "bds-pi.local.json");
+      fs.writeFileSync(overridesPath, "{broken");
+      setGlobalSettingsPath(settingsPath);
+
+      expect(() =>
+        updateGlobalExtensionConfig("@bds_pi/test", { enabled: false }),
+      ).toThrow();
+      expect(fs.readFileSync(overridesPath, "utf8")).toBe("{broken");
     });
   });
 

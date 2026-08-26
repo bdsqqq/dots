@@ -3,19 +3,15 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type {
-  Api,
-  AssistantMessage,
-  Context,
-  Model,
-  Message,
-  SimpleStreamOptions,
-} from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import type {
   ExtensionAPI,
-  ExtensionContext,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
+import {
+  completeBackgroundText,
+  type BackgroundComplete,
+} from "@bds_pi/background-completion";
 import {
   clearConfigCache,
   getEnabledExtensionConfig,
@@ -171,52 +167,10 @@ function parseSummary(text: string): string | null {
   return summary ? summary.slice(0, SUMMARY_MAX_CHARS) : null;
 }
 
-type Complete = (
-  model: Model<Api>,
-  context: Context,
-  options: SimpleStreamOptions,
-) => Promise<AssistantMessage>;
-
-async function modelText(
-  complete: Complete | undefined,
-  model: Model<Api>,
-  registry: ExtensionContext["modelRegistry"],
-  prompt: string,
-  maxTokens: number,
-  signal?: AbortSignal,
-): Promise<string | null> {
-  const auth = await registry.getApiKeyAndHeaders(model);
-  if (!auth.ok || (!auth.apiKey && !auth.headers)) return null;
-  const message: Message = {
-    role: "user",
-    content: [{ type: "text", text: prompt }],
-    timestamp: Date.now(),
-  };
-  const context = { messages: [message] };
-  const options: SimpleStreamOptions = {
-    apiKey: auth.apiKey,
-    headers: auth.headers,
-    signal,
-    maxTokens,
-    reasoning: "low",
-  };
-  const response = complete
-    ? await complete(model, context, options)
-    : await registry
-        .getProvider(model.provider)
-        ?.streamSimple(model, context, options)
-        .result();
-  if (!response) return null;
-  if (response.stopReason !== "stop") return null;
-  return response.content
-    .filter(
-      (part): part is { type: "text"; text: string } => part.type === "text",
-    )
-    .map((part) => part.text)
-    .join("");
-}
-
-function sessionNameExtension(pi: ExtensionAPI, complete?: Complete): void {
+function sessionNameExtension(
+  pi: ExtensionAPI,
+  complete?: BackgroundComplete,
+): void {
   const { enabled, config: cfg } = getEnabledExtensionConfig(
     "@bds_pi/session-name",
     CONFIG_DEFAULTS,
@@ -253,7 +207,7 @@ function sessionNameExtension(pi: ExtensionAPI, complete?: Complete): void {
       );
     const input =
       predictedTurns === 1 ? pendingPrompt.slice(0, 2_000) : branchText;
-    void modelText(
+    void completeBackgroundText(
       complete,
       model,
       ctx.modelRegistry,
@@ -291,7 +245,7 @@ function sessionNameExtension(pi: ExtensionAPI, complete?: Complete): void {
     if (!model) return;
     let output: string | null = null;
     try {
-      output = await modelText(
+      output = await completeBackgroundText(
         complete,
         model,
         ctx.modelRegistry,
@@ -477,7 +431,7 @@ if (import.meta.vitest) {
         stopReason: "stop",
         content: [{ type: "text", text: "recovered summary" }],
       });
-      sessionNameExtension(h.pi, complete as Complete);
+      sessionNameExtension(h.pi, complete as BackgroundComplete);
       await h.handlers.get("agent_settled")?.({}, context(branch));
       expect(complete).toHaveBeenCalledOnce();
       expect(h.appended.at(-1)?.data.summary).toBe("recovered summary");
@@ -490,7 +444,7 @@ if (import.meta.vitest) {
         stopReason: "stop",
         content: [{ type: "text", text: "durable result" }],
       });
-      sessionNameExtension(h.pi, complete as Complete);
+      sessionNameExtension(h.pi, complete as BackgroundComplete);
       await h.handlers.get("agent_settled")?.({}, context(branch));
       await h.handlers.get("agent_settled")?.({}, context(branch));
       expect(complete).toHaveBeenCalledOnce();
@@ -505,7 +459,7 @@ if (import.meta.vitest) {
         stopReason: "stop",
         content: [{ type: "text", text: "durable result" }],
       });
-      sessionNameExtension(h.pi, complete as Complete);
+      sessionNameExtension(h.pi, complete as BackgroundComplete);
       await h.handlers.get("agent_settled")?.({}, context(branch));
       const prompt = complete.mock.calls[0]![1].messages[0].content[0].text;
       expect(prompt).toContain("user goal");
@@ -557,7 +511,7 @@ if (import.meta.vitest) {
         stopReason: "stop",
         content: [{ type: "text", text: "new summary" }],
       });
-      sessionNameExtension(h.pi, complete as Complete);
+      sessionNameExtension(h.pi, complete as BackgroundComplete);
       await h.handlers.get("agent_settled")?.({}, context(branch));
       expect(complete).toHaveBeenCalledOnce();
       const prompt = complete.mock.calls[0]![1].messages[0].content[0].text;
@@ -582,7 +536,7 @@ if (import.meta.vitest) {
           stopReason: "stop",
           content: [{ type: "text", text: "valid summary" }],
         });
-      sessionNameExtension(h.pi, complete as Complete);
+      sessionNameExtension(h.pi, complete as BackgroundComplete);
       h.handlers.get("input")?.(
         { text: "long enough initial prompt" },
         context([]),

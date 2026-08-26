@@ -1,5 +1,5 @@
 {
-  "name": "@bds_pi/session-name",
+  "name": "@bds_pi/session-recap",
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
@@ -9,8 +9,8 @@
   "dependencies": {
     "@bds_pi/background-completion": "workspace:*",
     "@bds_pi/config": "workspace:*",
-    "@bds_pi/mentions": "workspace:*",
-    "@earendil-works/pi-ai": "catalog:"
+    "@earendil-works/pi-ai": "catalog:",
+    "@earendil-works/pi-tui": "catalog:"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "catalog:"

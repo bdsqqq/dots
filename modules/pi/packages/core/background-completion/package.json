@@ -1,0 +1,13 @@
+{
+  "name": "@bds_pi/background-completion",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "dependencies": {
+    "@earendil-works/pi-ai": "catalog:"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "catalog:"
+  }
+}
