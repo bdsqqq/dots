@@ -5,6 +5,7 @@ export { default as bash } from "../packages/extensions/bash/index";
 export { default as codeReview } from "../packages/extensions/code-review/index";
 export { default as cmuxNotify } from "../packages/extensions/cmux-notify/index";
 export { default as delegate } from "../packages/extensions/delegate/index";
+export { default as doneMarker } from "../packages/extensions/done-marker/index";
 export { default as editor } from "../packages/extensions/editor/index";
 export { default as finder } from "../packages/extensions/finder/index";
 export { default as formatFile } from "../packages/extensions/format-file/index";

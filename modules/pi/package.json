@@ -76,6 +76,7 @@
       "./dist/extensions/cmux-notify.js",
       "./dist/extensions/code-review.js",
       "./dist/extensions/delegate.js",
+      "./dist/extensions/done-marker.js",
       "./dist/extensions/editor.js",
       "./dist/extensions/finder.js",
       "./dist/extensions/format-file.js",
