@@ -217,15 +217,50 @@ function unquoteShellWord(word: string): string {
 }
 
 function matchHeredoc(cmd: string, index: number): Heredoc | null {
-  const match = cmd.slice(index).match(/^<<(-)?[ \t]*([^\s;|&<>]+)/);
-  const word = match?.[2];
-  return word === undefined
-    ? null
-    : { delimiter: unquoteShellWord(word), stripTabs: match?.[1] === "-" };
+  const match = cmd.slice(index).match(/^<<(-)?[ \t]*/);
+  if (!match) return null;
+
+  let quote: "'" | '"' | undefined;
+  let escaped = false;
+  let word = "";
+  for (let offset = match[0].length; index + offset < cmd.length; offset++) {
+    const char = cmd[index + offset];
+    if (!char) break;
+    if (escaped) {
+      word += char;
+      escaped = false;
+    } else if (char === "\\" && quote !== "'") {
+      const next = cmd[index + offset + 1];
+      if (next === "\n") {
+        offset++;
+        continue;
+      }
+      if (next === "\r" && cmd[index + offset + 2] === "\n") {
+        offset += 2;
+        continue;
+      }
+      word += char;
+      escaped = true;
+    } else if (quote) {
+      word += char;
+      if (char === quote) quote = undefined;
+    } else if (char === "'" || char === '"') {
+      word += char;
+      quote = char;
+    } else if (/[\s;|&<>]/.test(char)) {
+      break;
+    } else {
+      word += char;
+    }
+  }
+
+  return word
+    ? { delimiter: unquoteShellWord(word), stripTabs: match[1] === "-" }
+    : null;
 }
 
 function isCommentOnly(text: string): boolean {
-  return /^(?:[({]\s*)*#/.test(text.trimStart());
+  return /^(?:(?:\(\s*)|(?:\{\s+))*#/.test(text.trimStart());
 }
 
 /**
@@ -250,7 +285,11 @@ function splitCommandDisplayRows(cmd: string): CommandDisplayRow[] {
   const push = (end: number, separator?: string, command = true) => {
     const text = cmd
       .slice(start, end)
-      .replace(/[ \t]*\\\r?\n[ \t]*/g, " ")
+      .replace(
+        /([ \t]*)\\\r?\n([ \t]*)/g,
+        (_continuation, leading: string, trailing: string) =>
+          leading || trailing ? " " : "",
+      )
       .trim();
     if (text) {
       rows.push({
@@ -304,6 +343,14 @@ function splitCommandDisplayRows(cmd: string): CommandDisplayRow[] {
       continue;
     }
 
+    if (ch === "\\" && next === "\n") {
+      i++;
+      continue;
+    }
+    if (ch === "\\" && next === "\r" && cmd[i + 2] === "\n") {
+      i += 2;
+      continue;
+    }
     if (ch === "\\") {
       escaped = true;
       continue;
@@ -348,7 +395,7 @@ function splitCommandDisplayRows(cmd: string): CommandDisplayRow[] {
       continue;
     }
 
-    if (ch === "#" && (i === start || /[\s;|&(){}]/.test(cmd[i - 1] ?? ""))) {
+    if (ch === "#" && (i === start || /[\s;|&()]/.test(cmd[i - 1] ?? ""))) {
       inComment = true;
       continue;
     }
@@ -612,8 +659,18 @@ export function createBashTool(
         );
       }
 
-      const rows = splitCommandDisplayRows(cmd).map((row, index) =>
-        styleCollapsedCommandRow(row, index === 0, theme),
+      const displayRows = splitCommandDisplayRows(cmd);
+      const commandRows = displayRows.filter((row) => row.command !== false);
+      const collapsedRows =
+        commandRows.length > 0 ? commandRows : displayRows.slice(0, 1);
+      const rows = collapsedRows.map((row, index) =>
+        styleCollapsedCommandRow(
+          index === collapsedRows.length - 1
+            ? { ...row, separator: undefined }
+            : row,
+          index === 0,
+          theme,
+        ),
       );
       if (timeoutSuffix) rows[rows.length - 1] += timeoutSuffix;
 
@@ -1186,6 +1243,21 @@ if (import.meta.vitest) {
         ]);
       });
 
+      it("renders a heredoc as one collapsed command row", () => {
+        const component = tool.renderCall!(
+          {
+            cmd: "node --input-type=module <<'NODE'\nconsole.log('ok');\nNODE",
+            timeout: 30,
+          },
+          theme as any,
+          { expanded: false, isError: false, isPartial: false } as any,
+        );
+
+        expect(component.render(120).map((line) => line.trimEnd())).toEqual([
+          "✓ $ node --input-type=module <<'NODE' (timeout 30s)",
+        ]);
+      });
+
       it("removes backslash quoting from heredoc delimiters", () => {
         expect(
           splitCommandDisplayRows("cat <<\\EOF\na && b\nEOF\necho done"),
@@ -1195,6 +1267,47 @@ if (import.meta.vitest) {
           { text: "EOF", separator: "\n", command: false },
           { text: "echo done" },
         ]);
+      });
+
+      it("recognizes quoted heredoc delimiters containing spaces", () => {
+        const component = tool.renderCall!(
+          {
+            cmd: "cat <<'END MARK'\nnot a command\nEND MARK\necho legit",
+          },
+          theme as any,
+          { expanded: false, isError: false, isPartial: false } as any,
+        );
+
+        expect(component.render(80).map((line) => line.trimEnd())).toEqual([
+          "✓ $ cat <<'END MARK' \\",
+          "╰ $ echo legit",
+        ]);
+      });
+
+      it("removes line continuations from heredoc delimiters", () => {
+        expect(
+          splitCommandDisplayRows(
+            "cat <<EO\\\nF\nnot a command\nEOF\necho legit",
+          ),
+        ).toEqual([
+          { text: "cat <<EOF", separator: "\n" },
+          { text: "not a command", separator: "\n", command: false },
+          { text: "EOF", separator: "\n", command: false },
+          { text: "echo legit" },
+        ]);
+        expect(
+          splitCommandDisplayRows(
+            "cat <<EO\\\r\nF\r\nnot a command\r\nEOF\r\necho legit",
+          ),
+        ).toEqual([
+          { text: "cat <<EOF", separator: "\n" },
+          { text: "not a command", separator: "\n", command: false },
+          { text: "EOF", separator: "\n", command: false },
+          { text: "echo legit" },
+        ]);
+        expect(getCommandPolicyCandidates("rm\\\n  /tmp/x")).toContain(
+          "rm /tmp/x",
+        );
       });
 
       it("supports empty quoted heredoc delimiters", () => {
@@ -1217,6 +1330,25 @@ if (import.meta.vitest) {
           { text: "(# ignored;rm nope", separator: "\n", command: false },
           { text: "true", separator: "\n" },
           { text: ")" },
+        ]);
+        expect(splitCommandDisplayRows("{#run; rm /tmp/x")).toEqual([
+          { text: "{#run", separator: ";" },
+          { text: "rm /tmp/x" },
+        ]);
+        expect(getCommandPolicyCandidates("{#run; rm /tmp/x")).toContain(
+          "rm /tmp/x",
+        );
+      });
+
+      it("keeps a comment-only call visible", () => {
+        const component = tool.renderCall!(
+          { cmd: "# intentional no-op", timeout: 5 },
+          theme as any,
+          { expanded: false, isError: false, isPartial: false } as any,
+        );
+
+        expect(component.render(80).map((line) => line.trimEnd())).toEqual([
+          "✓ $ # intentional no-op (timeout 5s)",
         ]);
       });
 
