@@ -88,7 +88,6 @@ in
     linux-builder.enable = true;
     settings.trusted-users = [ "@admin" ];
   };
-  my.householdIntake.storageVm.enable = true;
 
   power = {
     restartAfterPowerFailure = true;

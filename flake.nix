@@ -92,7 +92,7 @@
         root = ./.;
       };
 
-      mkDarwinSystemWithModules = hostModules: inputs.nix-darwin.lib.darwinSystem {
+      mkDarwinSystem = hostModule: inputs.nix-darwin.lib.darwinSystem {
         specialArgs = {
           inherit inputs tailnetApps;
           hostSystem = "aarch64-darwin";
@@ -134,7 +134,7 @@
               repositoryUrl = "https://github.com/bdsqqq/dots";
             };
           })
-        ] ++ hostModules ++ [
+          hostModule
           {
             _module.args = {
               inherit inputs;
@@ -144,7 +144,6 @@
           }
         ];
       };
-      mkDarwinSystem = hostModule: mkDarwinSystemWithModules [ hostModule ];
       householdStorage = inputs.nixpkgs.lib.nixosSystem {
         system = "aarch64-linux";
         specialArgs = {
@@ -280,13 +279,6 @@
         darwinConfigurations = {
           "mbp-m2" = mkDarwinSystem ./hosts/mbp-m2/default.nix;
           "mmn-m4" = mkDarwinSystem ./hosts/mmn-m4/default.nix;
-          "mmn-m4-bootstrap" = mkDarwinSystemWithModules [
-            ./hosts/mmn-m4/default.nix
-            {
-              my.householdIntake.storageVm.enable =
-                inputs.nixpkgs.lib.mkForce false;
-            }
-          ];
         };
 
         nixosConfigurations = {
