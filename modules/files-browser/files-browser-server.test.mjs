@@ -16,6 +16,7 @@ import {
   startBackend,
   stopBackend,
   waitForBackend,
+  waitForPublication,
 } from "./files-browser-server.mjs";
 
 test("parses required server options", () => {
@@ -64,6 +65,24 @@ test("allows ignored local deletion errors but not missing indexed content", () 
   assert.equal(folderReady(synchronized), true);
   assert.equal(folderReady({ ...synchronized, needFiles: 1 }), false);
   assert.equal(folderReady({ ...synchronized, state: "syncing" }), false);
+});
+
+test("waits for Syncthing before publishing instead of exiting", async () => {
+  let attempts = 0;
+  let ready = false;
+
+  await waitForPublication(
+    async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("config not ready");
+      ready = attempts === 3;
+    },
+    () => ready,
+    0,
+    () => {}
+  );
+
+  assert.equal(attempts, 3);
 });
 
 test("remote deletion invalidates the token and disappears from publication", async () => {

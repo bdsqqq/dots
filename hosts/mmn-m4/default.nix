@@ -1,5 +1,4 @@
-{ config
-, inputs
+{ inputs
 , pkgs
 , lib
 , ...
@@ -7,20 +6,6 @@
 let
   syncthing = import ../../modules/syncthing/lib.nix { inherit lib; };
   home = "/Users/bdsqqq";
-  systemDaemonFromAgent = label: agentConfig: {
-    serviceConfig = builtins.removeAttrs agentConfig [
-      "GroupName"
-      "Label"
-      "LimitLoadToSessionType"
-      "UserName"
-    ] // {
-      Label = label;
-      UserName = "bdsqqq";
-      GroupName = "staff";
-      RunAtLoad = true;
-      EnvironmentVariables.HOME = home;
-    };
-  };
 in
 {
   imports = [
@@ -37,7 +22,6 @@ in
     ../../modules/sleepless
     ../../modules/cmux
     ../../modules/fonts
-    ../../modules/household-intake/service.nix
     ../../modules/core-cli
     ../../modules/shell
     ../../modules/ssh/client.nix
@@ -82,13 +66,6 @@ in
     launchAtLogin = true;
     wifiServiceName = "iPad";
   };
-  # household-storage is an aarch64-linux microVM. Keep its builds local to
-  # this host instead of relying on mbp-m2's otherwise unrelated builder.
-  nix = {
-    linux-builder.enable = true;
-    settings.trusted-users = [ "@admin" ];
-  };
-
   power = {
     restartAfterPowerFailure = true;
     sleep = {
@@ -173,63 +150,21 @@ in
         };
       };
 
-      launchd.agents.syncthing.enable = lib.mkForce false;
-      launchd.agents.syncthing-init.enable = lib.mkForce false;
-      launchd.agents.files-browser.enable = lib.mkForce false;
-      launchd.agents.html-stuff.enable = lib.mkForce false;
-      launchd.agents.ssd-gallery.enable = lib.mkForce false;
-      launchd.agents.backup-health.enable = lib.mkForce false;
-      launchd.agents.transmission-daemon.enable = lib.mkForce false;
-      launchd.agents.media-feed-import-modulo.enable = lib.mkForce false;
-      launchd.agents.media-feed-poller.enable = lib.mkForce false;
-      launchd.agents.photo-intelligence.enable = lib.mkForce false;
+      launchd.agents = {
+        backup-health.domain = "user";
+        files-browser.domain = "user";
+        html-stuff.domain = "user";
+        media-feed-import-modulo.domain = "user";
+        media-feed-poller.domain = "user";
+        photo-intelligence.domain = "user";
+        ssd-gallery.domain = "user";
+        syncthing.domain = "user";
+        syncthing-init.domain = "user";
+        transmission-daemon.domain = "user";
+      };
+
     };
   };
-
-  launchd.daemons.backup-health = systemDaemonFromAgent
-    "dev.backup-health"
-    config.home-manager.users.bdsqqq.launchd.agents.backup-health.config;
-  launchd.daemons.files-browser = systemDaemonFromAgent
-    "dev.files-browser"
-    config.home-manager.users.bdsqqq.launchd.agents.files-browser.config;
-  launchd.daemons.html-stuff = systemDaemonFromAgent
-    "dev.html-stuff"
-    config.home-manager.users.bdsqqq.launchd.agents.html-stuff.config;
-  launchd.daemons.media-feed-import-modulo = systemDaemonFromAgent
-    "dev.media-feed-import-modulo"
-    config.home-manager.users.bdsqqq.launchd.agents.media-feed-import-modulo.config;
-  launchd.daemons.media-feed-poller = systemDaemonFromAgent
-    "dev.media-feed-poller"
-    config.home-manager.users.bdsqqq.launchd.agents.media-feed-poller.config;
-  launchd.daemons.photo-intelligence = systemDaemonFromAgent
-    "dev.photo-intelligence"
-    config.home-manager.users.bdsqqq.launchd.agents.photo-intelligence.config;
-  launchd.daemons.ssd-gallery = systemDaemonFromAgent
-    "dev.ssd-gallery"
-    config.home-manager.users.bdsqqq.launchd.agents.ssd-gallery.config;
-  launchd.daemons.syncthing = systemDaemonFromAgent
-    "dev.syncthing"
-    config.home-manager.users.bdsqqq.launchd.agents.syncthing.config;
-  launchd.daemons.syncthing-init = systemDaemonFromAgent
-    "dev.syncthing.init"
-    config.home-manager.users.bdsqqq.launchd.agents.syncthing-init.config;
-  launchd.daemons.transmission = systemDaemonFromAgent
-    "dev.transmission"
-    config.home-manager.users.bdsqqq.launchd.agents.transmission-daemon.config;
-
-  system.activationScripts.preActivation.text = lib.mkAfter ''
-    rm -f \
-      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.backup-health.plist"} \
-      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.files-browser.plist"} \
-      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.html-stuff.plist"} \
-      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.media-feed-import-modulo.plist"} \
-      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.media-feed-poller.plist"} \
-      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.photo-intelligence.plist"} \
-      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.ssd-gallery.plist"} \
-      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.syncthing.plist"} \
-      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.syncthing-init.plist"} \
-      ${lib.escapeShellArg "${home}/Library/LaunchAgents/org.nix-community.home.transmission-daemon.plist"}
-  '';
 
   homebrew = {
     enable = true;

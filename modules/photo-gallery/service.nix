@@ -2,6 +2,20 @@
 let
   cfg = config.my.photoGallery;
   server = import ./package.nix { inherit pkgs; };
+  launcher = pkgs.writeShellScript "photo-gallery-launcher" ''
+    set -eu
+
+    while [ ! -d ${lib.escapeShellArg cfg.source} ]; do
+      echo "waiting for photo source: ${cfg.source}" >&2
+      ${pkgs.coreutils}/bin/sleep 15
+    done
+
+    exec ${server}/bin/photo-gallery-server \
+      --source ${lib.escapeShellArg cfg.source} \
+      --state ${lib.escapeShellArg cfg.state} \
+      --port 3923 \
+      --intelligence-url http://127.0.0.1:3924
+  '';
 in
 {
   options.my.photoGallery = {
@@ -35,15 +49,7 @@ in
         enable = true;
         config = {
           ProgramArguments = [
-            "${server}/bin/photo-gallery-server"
-            "--source"
-            cfg.source
-            "--state"
-            cfg.state
-            "--port"
-            "3923"
-            "--intelligence-url"
-            "http://127.0.0.1:3924"
+            "${launcher}"
           ];
           RunAtLoad = true;
           KeepAlive = true;
