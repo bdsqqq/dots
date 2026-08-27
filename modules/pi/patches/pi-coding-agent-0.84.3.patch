@@ -147,7 +147,7 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
 +        }
 +        if (!this.isStreaming) {
 +            this.stopMarkerAnimation();
-+            this.markerColumn.setMarker(theme.fg("success", "●"), continuationMarker);
++            this.markerColumn.setMarker(theme.fg(hasResponseText ? "success" : "muted", "●"), continuationMarker);
 +            return;
 +        }
 +        this.markerColumn.setMarker(theme.fg(this.markerFrame % 2 === 0 ? "muted" : "accent", "●"), continuationMarker);
