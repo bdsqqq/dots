@@ -36,7 +36,7 @@ let
       app=${lib.escapeShellArg openDisplayAppPath}
 
       start_app() {
-        /usr/bin/open -gja "$app" --args -mode extend -autostart YES
+        /usr/bin/open -gja "$app" --args -mode ${lib.escapeShellArg cfg.mode} -autostart YES
       }
 
       restart_app() {
@@ -86,6 +86,12 @@ in
       default = true;
       description = "Whether OpenDisplay starts automatically in the Aqua login session.";
     };
+
+    mode = lib.mkOption {
+      type = lib.types.enum [ "extend" "mirror" ];
+      default = "extend";
+      description = "Whether OpenDisplay extends or mirrors the Mac display.";
+    };
   };
 
   config = {
@@ -106,8 +112,8 @@ in
             /usr/bin/defaults write ${preferenceDomain} autostart -bool true
             changed=true
           fi
-          if [ "$(/usr/bin/defaults read ${preferenceDomain} mode 2>/dev/null || true)" != extend ]; then
-            /usr/bin/defaults write ${preferenceDomain} mode -string extend
+          if [ "$(/usr/bin/defaults read ${preferenceDomain} mode 2>/dev/null || true)" != ${lib.escapeShellArg cfg.mode} ]; then
+            /usr/bin/defaults write ${preferenceDomain} mode -string ${lib.escapeShellArg cfg.mode}
             changed=true
           fi
 

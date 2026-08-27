@@ -248,6 +248,7 @@ in
   my.primaryUser = "bdsqqq";
   my.openDisplay = {
     launchAtLogin = false;
+    mode = "mirror";
     wifiServiceName = "iPad";
   };
   # Bootstrap aarch64-linux guest builds without making the 16 GB storage host
