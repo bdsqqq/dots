@@ -1,13 +1,17 @@
 import { randomUUID } from "node:crypto";
 import {
   chmodSync,
+  closeSync,
   existsSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   readdirSync,
+  rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -72,6 +76,11 @@ export type RepairHistoryReport = {
 
 const TRAILER = "Pi-Memory-Receipt:";
 const PATHS = [":(glob)**/*.md", ":(exclude,glob).qmd/**"];
+const GIT_MAX_BUFFER = 64 * 1024 * 1024;
+const VERIFICATION_LOCK_TIMEOUT_MS = 30_000;
+const VERIFICATION_LOCK_OWNER_GRACE_MS = 1_000;
+const VERIFICATION_LOCK_WAIT_MS = 25;
+const verificationLockWaiter = new Int32Array(new SharedArrayBuffer(4));
 const gitDir = (cfg: MemoryConfig) => join(cfg.data, "v2/history.git");
 const receiptsDir = (cfg: MemoryConfig) => join(cfg.data, "v2/mutations");
 const gitEnv: NodeJS.ProcessEnv = (() => {
@@ -99,8 +108,10 @@ const checkpointPath = (cfg: MemoryConfig) =>
   join(cfg.data, "v2/history-verification.json");
 const checkpointMarkerPath = (cfg: MemoryConfig) =>
   join(cfg.data, "v2/history-verification.initialized");
+const verificationLockPath = (cfg: MemoryConfig) =>
+  join(cfg.data, "v2/history-verification.lock");
 type HistoryCheckpoint = VerifiedHistoryBasis & {
-  version: 1;
+  version: 1 | 2;
   root: string;
   objectFormat: string;
   expectedRemote: string | null;
@@ -113,7 +124,7 @@ function git(cfg: MemoryConfig, args: string[], tolerate = false): string {
   const result = spawnSync(
     "git",
     [`--git-dir=${gitDir(cfg)}`, `--work-tree=${cfg.root}`, ...args],
-    { encoding: "utf8", env: gitEnv },
+    { encoding: "utf8", env: gitEnv, maxBuffer: GIT_MAX_BUFFER },
   );
   if (result.error) throw result.error;
   if (result.status !== 0 && !tolerate)
@@ -129,7 +140,7 @@ function gitInput(
   const result = spawnSync(
     "git",
     [`--git-dir=${gitDir(cfg)}`, `--work-tree=${cfg.root}`, ...args],
-    { encoding: "utf8", env: gitEnv, input },
+    { encoding: "utf8", env: gitEnv, input, maxBuffer: GIT_MAX_BUFFER },
   );
   if (result.error) throw result.error;
   if (result.status !== 0 && !tolerate)
@@ -548,7 +559,7 @@ function writeReceiptCache(cfg: MemoryConfig, receipt: HistoryReceipt): void {
 function commitInternal(
   cfg: MemoryConfig,
   core: HistoryReceiptCore,
-  empty = false,
+  allowEmpty = false,
 ): { commit: string; mutationId: string } {
   if (core.version !== 2 || !/^[A-Za-z0-9_.-]+$/.test(core.mutationId))
     throw new Error("invalid history receipt");
@@ -556,7 +567,14 @@ function commitInternal(
   if (core.parentCommit && core.parentCommit !== parent)
     throw new Error("receipt parent does not match HEAD");
   let receipt = { ...core, parentCommit: core.parentCommit ?? parent };
-  git(cfg, ["add", "-A", "--", ...PATHS], empty);
+  const unstaged = git(cfg, [
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+    "--",
+    ...PATHS,
+  ]);
+  if (unstaged.trim()) git(cfg, ["add", "-A", "--", ...PATHS]);
   const actualChanges = stagedChanges(cfg);
   if (
     core.kind !== "baseline" &&
@@ -565,7 +583,7 @@ function commitInternal(
   )
     throw new Error("history receipt changes do not match staged memory diff");
   receipt = { ...receipt, changes: actualChanges };
-  if (!empty && git(cfg, ["diff", "--cached", "--quiet"], true) === "") {
+  if (!allowEmpty && git(cfg, ["diff", "--cached", "--quiet"], true) === "") {
     const changed = git(cfg, ["diff", "--cached", "--name-only"]);
     if (!changed.trim()) throw new Error("no memory changes to commit");
   }
@@ -744,9 +762,37 @@ export function diffHistory(
   return git(cfg, args);
 }
 function repositoryIdentity(cfg: MemoryConfig): string {
-  const path = realpathSync(gitDir(cfg));
-  const stat = statSync(path);
-  return `${path}:${stat.dev}:${stat.ino}`;
+  return realpathSync(gitDir(cfg));
+}
+
+function configuredRepositoryId(cfg: MemoryConfig): string | undefined {
+  const id = git(
+    cfg,
+    ["config", "--get", "pi-memory.repositoryId"],
+    true,
+  ).trim();
+  if (!id) return undefined;
+  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id))
+    throw new Error(
+      "history repository identity is corrupt; explicit history recovery is required",
+    );
+  return id;
+}
+
+function stableRepositoryIdentity(cfg: MemoryConfig, id: string): string {
+  return `${repositoryIdentity(cfg)}:${id}`;
+}
+
+function legacyRepositoryIdentityMatches(
+  cfg: MemoryConfig,
+  identity: string,
+): boolean {
+  const repository = repositoryIdentity(cfg);
+  if (!identity.startsWith(`${repository}:`)) return false;
+  const fields = identity.slice(repository.length + 1).split(":");
+  if (fields.length !== 2 || !fields.every((field) => /^\d+$/.test(field)))
+    return false;
+  return fields[1] === String(statSync(repository).ino);
 }
 
 function readCheckpoint(cfg: MemoryConfig): HistoryCheckpoint | undefined {
@@ -757,12 +803,16 @@ function readCheckpoint(cfg: MemoryConfig): HistoryCheckpoint | undefined {
       );
     return undefined;
   }
+  if (!existsSync(checkpointMarkerPath(cfg)))
+    throw new Error(
+      "history verification checkpoint marker is missing; explicit history recovery is required",
+    );
   try {
     const value = JSON.parse(
       readFileSync(checkpointPath(cfg), "utf8"),
     ) as HistoryCheckpoint;
     if (
-      value.version !== 1 ||
+      (value.version !== 1 && value.version !== 2) ||
       !Number.isSafeInteger(value.policyVersion) ||
       !/^[0-9a-f]{40,64}$/.test(value.head) ||
       typeof value.repository !== "string" ||
@@ -777,6 +827,70 @@ function readCheckpoint(cfg: MemoryConfig): HistoryCheckpoint | undefined {
     throw new Error(
       "history verification checkpoint is corrupt; explicit history recovery is required",
     );
+  }
+}
+
+function withHistoryVerificationLock<T>(
+  cfg: MemoryConfig,
+  operation: () => T,
+): T {
+  const path = verificationLockPath(cfg);
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const deadline = Date.now() + VERIFICATION_LOCK_TIMEOUT_MS;
+  while (true) {
+    let descriptor: number;
+    try {
+      descriptor = openSync(path, "wx", 0o600);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      let owner = 0;
+      try {
+        owner = Number(readFileSync(path, "utf8"));
+      } catch {}
+      let stale = false;
+      if (owner > 0)
+        try {
+          process.kill(owner, 0);
+        } catch (ownerError) {
+          if ((ownerError as NodeJS.ErrnoException).code === "ESRCH")
+            stale = true;
+        }
+      else
+        try {
+          stale =
+            Date.now() - statSync(path).mtimeMs >=
+            VERIFICATION_LOCK_OWNER_GRACE_MS;
+        } catch (statError) {
+          if ((statError as NodeJS.ErrnoException).code === "ENOENT") continue;
+          throw statError;
+        }
+      if (stale) {
+        rmSync(path, { force: true });
+        continue;
+      }
+      if (Date.now() >= deadline)
+        throw new Error("history verification is busy; retry verification");
+      Atomics.wait(verificationLockWaiter, 0, 0, VERIFICATION_LOCK_WAIT_MS);
+      continue;
+    }
+    try {
+      writeFileSync(descriptor, `${process.pid}\n`);
+    } catch (error) {
+      closeSync(descriptor);
+      rmSync(path, { force: true });
+      throw error;
+    }
+    closeSync(descriptor);
+    break;
+  }
+  try {
+    return operation();
+  } finally {
+    let owner = 0;
+    try {
+      owner = Number(readFileSync(path, "utf8"));
+    } catch {}
+    if (owner === process.pid) rmSync(path, { force: true });
   }
 }
 
@@ -855,7 +969,11 @@ function batchRevisionFiles(
       "cat-file",
       "--batch",
     ],
-    { env: gitEnv, input: Buffer.from(`${objects.join("\n")}\n`) },
+    {
+      env: gitEnv,
+      input: Buffer.from(`${objects.join("\n")}\n`),
+      maxBuffer: GIT_MAX_BUFFER,
+    },
   );
   if (result.error) throw result.error;
   if (result.status !== 0)
@@ -943,7 +1061,7 @@ function verifyCommittedSemanticHistory(
   };
 }
 
-function verifyHistoryImpl(
+function verifyHistoryUnlocked(
   cfg: MemoryConfig,
   options: {
     recoverCheckpoint?: boolean;
@@ -955,7 +1073,8 @@ function verifyHistoryImpl(
   if (!isHistoryInitialized(cfg))
     return { ok: false, issues: ["history not initialized"] };
   const head = git(cfg, ["rev-parse", "--verify", "HEAD^{commit}"]).trim();
-  const repository = repositoryIdentity(cfg);
+  let repository = repositoryIdentity(cfg);
+  let repositoryId: string | undefined;
   let mode = "full";
   let commitsVerified = 0;
   let blobsVerified = 0;
@@ -967,6 +1086,12 @@ function verifyHistoryImpl(
   )
     issues.push("dirty memory worktree");
   try {
+    try {
+      repositoryId = configuredRepositoryId(cfg);
+    } catch (error) {
+      if (!options.recoverCheckpoint) throw error;
+    }
+    if (repositoryId) repository = stableRepositoryIdentity(cfg, repositoryId);
     const remote = validateRemote(cfg) ?? null;
     const root = realpathSync(cfg.root);
     const objectFormat =
@@ -974,10 +1099,13 @@ function verifyHistoryImpl(
     const checkpoint = options.recoverCheckpoint
       ? undefined
       : readCheckpoint(cfg);
+    let migratingCheckpoint = false;
     if (checkpoint) {
       checkpointStatus = "loaded";
       if (
-        checkpoint.repository !== repository ||
+        (checkpoint.version === 1
+          ? !legacyRepositoryIdentityMatches(cfg, checkpoint.repository)
+          : checkpoint.repository !== repository) ||
         checkpoint.root !== root ||
         checkpoint.objectFormat !== objectFormat ||
         checkpoint.expectedRemote !== remote
@@ -985,7 +1113,20 @@ function verifyHistoryImpl(
         throw new Error(
           "history verification checkpoint identity changed; explicit history recovery is required",
         );
-      if (checkpoint.policyVersion !== HISTORY_POLICY_VERSION) {
+      if (checkpoint.version === 1) {
+        if (
+          checkpoint.head !== head &&
+          !historyContainsAncestor(cfg, checkpoint.head, head)
+        )
+          throw new Error(
+            "history was rewritten or moved backward; explicit history recovery is required",
+          );
+        // v1 persisted APFS device ids, which can change after a reboot. A full
+        // semantic pass earns the stable path identity before publishing v2.
+        migratingCheckpoint = true;
+        mode = "full";
+        checkpointStatus = "identity-migration";
+      } else if (checkpoint.policyVersion !== HISTORY_POLICY_VERSION) {
         mode = "full";
         checkpointStatus = "policy-reverify";
       } else if (checkpoint.head === head) mode = "durable-hit";
@@ -998,6 +1139,7 @@ function verifyHistoryImpl(
     }
     if (
       !options.recoverCheckpoint &&
+      !migratingCheckpoint &&
       latestProcessAnchor?.repository === repository &&
       latestProcessAnchor.policyVersion === HISTORY_POLICY_VERSION
     ) {
@@ -1046,9 +1188,14 @@ function verifyHistoryImpl(
       (options.recoverCheckpoint ||
         (mode !== "durable-hit" && mode !== "process-hit"))
     ) {
+      if (!repositoryId) {
+        repositoryId = randomUUID();
+        git(cfg, ["config", "pi-memory.repositoryId", repositoryId]);
+        repository = stableRepositoryIdentity(cfg, repositoryId);
+      }
       atomicWrite(
         checkpointPath(cfg),
-        `${canonical({ version: 1, policyVersion: HISTORY_POLICY_VERSION, head, repository, root, objectFormat, expectedRemote: remote })}\n`,
+        `${canonical({ version: 2, policyVersion: HISTORY_POLICY_VERSION, head, repository, root, objectFormat, expectedRemote: remote })}\n`,
       );
       atomicWrite(checkpointMarkerPath(cfg), "initialized\n");
       checkpointStatus = "advanced";
@@ -1081,6 +1228,18 @@ function verifyHistoryImpl(
       elapsedMs: Date.now() - started,
     },
   };
+}
+
+function verifyHistoryImpl(
+  cfg: MemoryConfig,
+  options: {
+    recoverCheckpoint?: boolean;
+    allowDirtyWorktree?: boolean;
+  } = {},
+): VerifyHistoryReport {
+  return withHistoryVerificationLock(cfg, () =>
+    verifyHistoryUnlocked(cfg, options),
+  );
 }
 function syncHistoryImpl(cfg: MemoryConfig): SyncHistoryReport {
   if (!isHistoryInitialized(cfg))
@@ -1200,14 +1359,18 @@ function repairHistoryImpl(
   if (!refreshed.ok)
     throw new Error(`memory history refresh failed: ${refreshed.error}`);
   if (options.mode === "adopt") {
-    const result = commitHistory(cfg, {
-      version: 2,
-      mutationId: `repair_${randomUUID().replaceAll("-", "")}`,
-      kind: "repair-adopt",
-      reason: options.reason,
-      changes: [],
-      provenance: { source: "pi-memory repair" },
-    });
+    const result = commitHistory(
+      cfg,
+      {
+        version: 2,
+        mutationId: `repair_${randomUUID().replaceAll("-", "")}`,
+        kind: "repair-adopt",
+        reason: options.reason,
+        changes: [],
+        provenance: { source: "pi-memory repair" },
+      },
+      { allowEmpty: true },
+    );
     const verification = verifyHistoryImpl(cfg, { recoverCheckpoint: true });
     if (!verification.ok)
       throw new Error(
