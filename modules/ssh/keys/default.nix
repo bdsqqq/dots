@@ -5,6 +5,6 @@
   # Shortcuts can only open the display portal. The generated iPad key cannot
   # request a shell, PTY, forwarding, or a different command.
   openDisplayPortalKeys = [
-    ''restrict,command="/etc/profiles/per-user/bdsqqq/bin/open-display connect" ${lib.trim (builtins.readFile ./ipad-shortcuts.pub)}''
+    ''restrict,command="/Users/bdsqqq/.local/bin/open-display-portal connect" ${lib.trim (builtins.readFile ./ipad-shortcuts.pub)}''
   ];
 }

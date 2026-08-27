@@ -97,6 +97,10 @@ in
   config = {
     home-manager.users.bdsqqq = { lib, ... }: {
       home.packages = [ openDisplayApp openDisplayControl ];
+      home.file.".local/bin/open-display-portal" = {
+        source = "${openDisplayControl}/bin/open-display";
+        executable = true;
+      };
 
       # OpenDisplay only auto-connects remembered Wi-Fi receivers during its
       # launch window. Seed that stable intent and restart only when managed
