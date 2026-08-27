@@ -16,6 +16,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -667,11 +668,23 @@ function promptWorkerPackageRoot(modulePath: string): string {
     : resolve(dirname(modulePath), "../..");
 }
 
-function resolveJitiRegister(): string {
-  if (typeof import.meta.resolve === "function")
-    return import.meta.resolve("jiti/register");
+export function resolveJitiRegister(
+  modulePath: string,
+  resolveModule:
+    | ((specifier: string) => string)
+    | undefined = typeof import.meta.resolve === "function"
+    ? (specifier) => import.meta.resolve(specifier)
+    : undefined,
+): string {
+  // Jiti's import.meta.resolve shim applies CJS export conditions, which reject
+  // its ESM-only `./register` entry. Resolve the package root as a stable fallback.
+  try {
+    if (resolveModule) return resolveModule("jiti/register");
+  } catch {}
   return join(
-    dirname(createRequire(import.meta.url).resolve("jiti/package.json")),
+    dirname(
+      createRequire(realpathSync(modulePath)).resolve("jiti/package.json"),
+    ),
     "lib/jiti-register.mjs",
   );
 }
@@ -714,7 +727,7 @@ export function preparePromptInWorker(
 ): Promise<PromptSnapshot> {
   if (signal?.aborted) return Promise.reject(promptWorkerAbortError());
   const modulePath = fileURLToPath(import.meta.url);
-  const jitiRegister = resolveJitiRegister();
+  const jitiRegister = resolveJitiRegister(modulePath);
   const child = spawn(
     process.execPath,
     ["--import", jitiRegister, modulePath, sessionId, cwd],
@@ -2331,6 +2344,16 @@ if (import.meta.vitest) {
       const afterRollback = await loadPromptSnapshot("session-2", "/workspace");
       expect(afterRollback.externalPointerRefs).toEqual([]);
       expect(afterRollback.snapshotSha256).not.toBe(first.snapshotSha256);
+    });
+
+    it("falls back when Jiti's import.meta.resolve shim rejects register", () => {
+      const linkedModulePath = join(testDir, "linked-agent-memory.ts");
+      symlinkSync(fileURLToPath(import.meta.url), linkedModulePath);
+      const register = resolveJitiRegister(linkedModulePath, () => {
+        throw new Error("CJS conditions reject the ESM-only register export");
+      });
+      expect(register).toMatch(/jiti-register\.mjs$/);
+      expect(existsSync(register)).toBe(true);
     });
 
     it("prepares snapshots outside the parent event loop", async () => {
