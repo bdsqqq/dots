@@ -5,13 +5,16 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { sha256 } from "./catalog.js";
 import { describe, expect, it, vi } from "vitest";
 import type { MemoryConfig } from "./catalog.js";
@@ -169,6 +172,52 @@ describe("private memory history", () => {
     expect(existsSync(join(cfg.root, "extra.md"))).toBe(false);
   });
 
+  it("records a clean adopt repair as an empty commit", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(join(cfg.root, "one.md"), "one\n");
+    initHistory(cfg);
+
+    const repaired = repairHistory(cfg, {
+      mode: "adopt",
+      reason: "reseed clean history",
+    });
+
+    expect(repaired.commit).toMatch(/^[0-9a-f]{40,64}$/);
+    expect(headHistoryReceipt(cfg)).toMatchObject({
+      commit: repaired.commit,
+      kind: "repair-adopt",
+      changes: [],
+    });
+  });
+
+  it("does not suppress staging failures for empty repairs", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(join(cfg.root, "one.md"), "one\n");
+    const initialized = initHistory(cfg);
+    withWritableMemoryRoot(cfg, () =>
+      writeFileSync(join(cfg.root, "one.md"), "two\n"),
+    );
+    const lock = join(cfg.data, "v2/history.git/index.lock");
+    writeFileSync(lock, "held\n");
+
+    expect(() =>
+      repairHistory(cfg, {
+        mode: "adopt",
+        reason: "must not bypass staging",
+      }),
+    ).toThrow(/index\.lock/);
+    expect(
+      spawnSync(
+        "git",
+        [`--git-dir=${join(cfg.data, "v2/history.git")}`, "rev-parse", "HEAD"],
+        { encoding: "utf8" },
+      ).stdout.trim(),
+    ).toBe(initialized.commit);
+    rmSync(lock);
+  });
+
   it("restores sealing after helper failure and syncs without a remote", () => {
     const cfg = config();
     mkdirSync(cfg.root, { recursive: true });
@@ -228,6 +277,26 @@ describe("private memory history", () => {
     });
   });
 
+  it("verifies history beyond the default subprocess output limit", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    initHistory(cfg);
+    expect(verifyHistory(cfg).ok).toBe(true);
+    commitHistory(
+      cfg,
+      {
+        ...core("large_receipt"),
+        reason: "x".repeat(1024 * 1024),
+      },
+      { allowEmpty: true },
+    );
+
+    expect(verifyHistory(cfg)).toMatchObject({
+      ok: true,
+      telemetry: { mode: "suffix", commits: 1 },
+    });
+  });
+
   it("keeps volatile checks live on a proof hit and fails closed on checkpoint loss", () => {
     const cfg = config();
     mkdirSync(cfg.root, { recursive: true });
@@ -254,10 +323,167 @@ describe("private memory history", () => {
         { encoding: "utf8" },
       ),
     );
+    rmSync(join(cfg.data, "v2/history-verification.initialized"));
+    expect(verifyHistory(cfg).issues).toContain(
+      "history verification checkpoint marker is missing; explicit history recovery is required",
+    );
+    writeFileSync(
+      join(cfg.data, "v2/history-verification.initialized"),
+      "initialized\n",
+    );
     rmSync(join(cfg.data, "v2/history-verification.json"));
     expect(verifyHistory(cfg).issues).toContain(
       "history verification checkpoint is missing; explicit history recovery is required",
     );
+  });
+
+  it("migrates a v1 checkpoint after device-id churn", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(join(cfg.root, "one.md"), "one\n");
+    initHistory(cfg);
+    expect(verifyHistory(cfg).ok).toBe(true);
+    const path = join(cfg.data, "v2/history-verification.json");
+    const checkpoint = JSON.parse(readFileSync(path, "utf8"));
+    const history = join(cfg.data, "v2/history.git");
+    const repository = realpathSync(history);
+    const inode = lstatSync(history).ino;
+    writeFileSync(
+      path,
+      `${JSON.stringify({
+        ...checkpoint,
+        version: 1,
+        repository: `${repository}:999999:${inode}`,
+      })}\n`,
+    );
+
+    expect(verifyHistory(cfg)).toMatchObject({
+      ok: true,
+      telemetry: { mode: "full", commits: 1 },
+    });
+    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
+      version: 2,
+    });
+    expect(JSON.parse(readFileSync(path, "utf8")).repository).toMatch(
+      new RegExp(
+        `^${repository.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:[0-9a-f-]{36}$`,
+      ),
+    );
+  });
+
+  it("refuses a v1 checkpoint for a replaced repository", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(join(cfg.root, "one.md"), "one\n");
+    initHistory(cfg);
+    expect(verifyHistory(cfg).ok).toBe(true);
+    const path = join(cfg.data, "v2/history-verification.json");
+    const checkpoint = JSON.parse(readFileSync(path, "utf8"));
+    const history = join(cfg.data, "v2/history.git");
+    const repository = realpathSync(history);
+    const inode = lstatSync(history).ino;
+    writeFileSync(
+      path,
+      `${JSON.stringify({
+        ...checkpoint,
+        version: 1,
+        repository: `${repository}:999999:${inode + 1}`,
+      })}\n`,
+    );
+
+    expect(verifyHistory(cfg).issues).toContain(
+      "history verification checkpoint identity changed; explicit history recovery is required",
+    );
+  });
+
+  it("refuses a v2 repository replaced at the same path", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(join(cfg.root, "one.md"), "one\n");
+    initHistory(cfg);
+    expect(verifyHistory(cfg).ok).toBe(true);
+    const history = join(cfg.data, "v2/history.git");
+    const replaced = join(cfg.data, "v2/replaced-history.git");
+    renameSync(history, replaced);
+    expect(
+      spawnSync("git", ["clone", "--bare", replaced, history], {
+        encoding: "utf8",
+      }).status,
+    ).toBe(0);
+    expect(
+      spawnSync("git", [`--git-dir=${history}`, "remote", "remove", "origin"], {
+        encoding: "utf8",
+      }).status,
+    ).toBe(0);
+
+    expect(verifyHistory(cfg).issues).toContain(
+      "history verification checkpoint identity changed; explicit history recovery is required",
+    );
+  });
+
+  it("serializes concurrent repository identity publication", async () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(join(cfg.root, "one.md"), "one\n");
+    initHistory(cfg);
+    const run = () =>
+      new Promise<{ code: number | null; stderr: string }>((resolveRun) => {
+        const child = spawn(
+          "bun",
+          [
+            "run",
+            join(process.cwd(), "packages/core/agent-memory/index.ts"),
+            "history",
+            "verify",
+          ],
+          {
+            cwd: process.cwd(),
+            env: {
+              ...process.env,
+              PI_MEMORY_DATA_DIR: cfg.data,
+              PI_MEMORY_ROOT: cfg.root,
+              PI_MEMORY_STATE_DIR: cfg.state,
+            },
+            stdio: ["ignore", "ignore", "pipe"],
+          },
+        );
+        let stderr = "";
+        child.stderr.setEncoding("utf8");
+        child.stderr.on("data", (chunk) => {
+          stderr += chunk;
+        });
+        child.on("close", (code) => resolveRun({ code, stderr }));
+      });
+
+    const results = await Promise.all([run(), run()]);
+
+    expect(results).toEqual([
+      { code: 0, stderr: "" },
+      { code: 0, stderr: "" },
+    ]);
+    const checkpoint = JSON.parse(
+      readFileSync(join(cfg.data, "v2/history-verification.json"), "utf8"),
+    );
+    expect(checkpoint).toMatchObject({ version: 2 });
+    expect(verifyHistory(cfg)).toMatchObject({
+      ok: true,
+      basis: { repository: checkpoint.repository },
+    });
+  });
+
+  it("reclaims abandoned verification locks", () => {
+    const cfg = config();
+    mkdirSync(cfg.root, { recursive: true });
+    writeFileSync(join(cfg.root, "one.md"), "one\n");
+    initHistory(cfg);
+    const lock = join(cfg.data, "v2/history-verification.lock");
+    writeFileSync(lock, "");
+    utimesSync(lock, new Date(0), new Date(0));
+    expect(verifyHistory(cfg).ok).toBe(true);
+
+    writeFileSync(lock, "2147483647\n");
+    expect(verifyHistory(cfg).ok).toBe(true);
+    expect(existsSync(lock)).toBe(false);
   });
 
   it("reconstructs receipt caches and refuses a changed origin", () => {
