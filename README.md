@@ -1,7 +1,7 @@
 # dots
 
-multi-host Nix configuration for nix-darwin, NixOS, Home Manager, and a
-microVM. hosts select capabilities explicitly; each capability keeps its
+multi-host Nix configuration for nix-darwin, NixOS, and Home Manager. hosts
+select capabilities explicitly; each capability keeps its
 system, user, package, scripts, tests, and assets together.
 
 ## architecture
@@ -50,7 +50,6 @@ flowchart TD
 | `lgo-z2e` | x86_64-linux | Niri/Jovian graphical system |
 | `htz-relay` | x86_64-linux | storage, Syncthing, and application relay |
 | `gru-relay` | x86_64-linux | Tailscale exit node and ingress relay |
-| `household-storage` | aarch64-linux | vfkit-backed storage microVM |
 
 ## common operations
 

@@ -2,6 +2,22 @@
 let
   cfg = config.my.photoIntelligence;
   server = import ./package.nix { inherit pkgs; };
+  sentinel = "${cfg.source}/.osxphotos_export.db";
+  launcher = pkgs.writeShellScript "photo-intelligence-launcher" ''
+    set -eu
+
+    while [ ! -d ${lib.escapeShellArg cfg.source} ] \
+      || [ ! -f ${lib.escapeShellArg sentinel} ]; do
+      echo "waiting for photo source: ${cfg.source}" >&2
+      ${pkgs.coreutils}/bin/sleep 15
+    done
+
+    exec ${server}/bin/photo-intelligence-server \
+      --source ${lib.escapeShellArg cfg.source} \
+      --state ${lib.escapeShellArg cfg.state} \
+      --sentinel .osxphotos_export.db \
+      --port 3924
+  '';
 in
 {
   options.my.photoIntelligence = {
@@ -25,15 +41,7 @@ in
       enable = true;
       config = {
         ProgramArguments = [
-          "${server}/bin/photo-intelligence-server"
-          "--source"
-          cfg.source
-          "--state"
-          cfg.state
-          "--sentinel"
-          ".osxphotos_export.db"
-          "--port"
-          "3924"
+          "${launcher}"
         ];
         RunAtLoad = true;
         KeepAlive = true;

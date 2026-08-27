@@ -123,6 +123,24 @@ export function folderReady(status) {
   );
 }
 
+export async function waitForPublication(
+  refresh,
+  publicationReady,
+  retryIntervalMs = REFRESH_INTERVAL_MS,
+  reportError = console.error
+) {
+  while (!publicationReady()) {
+    try {
+      await refresh();
+    } catch (error) {
+      reportError("initial publication failed", error);
+    }
+    if (!publicationReady()) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, retryIntervalMs));
+    }
+  }
+}
+
 async function publishItem(sourceRoot, snapshotRoot, item) {
   const source = safePath(sourceRoot, dirname(item.path), item.path.split("/").at(-1));
   const destination = safePath(snapshotRoot, dirname(item.path), item.path.split("/").at(-1));
@@ -341,8 +359,6 @@ async function main() {
   await rm(snapshotsRoot, { recursive: true, force: true });
   await rm(join(config.state, "history"), { recursive: true, force: true });
   await mkdir(snapshotsRoot, { recursive: true });
-  config.apiKey = apiKeyFromConfig(await readFile(config.syncthingConfig, "utf8"));
-
   let active = null;
   let generation = 0;
   let lastModelToken = null;
@@ -353,6 +369,7 @@ async function main() {
     if (refreshing) return;
     refreshing = true;
     try {
+      config.apiKey ??= apiKeyFromConfig(await readFile(config.syncthingConfig, "utf8"));
       const status = await syncthingRequest(
         config,
         `/rest/db/status?folder=${encodeURIComponent(FOLDER_ID)}`
@@ -413,8 +430,7 @@ async function main() {
     }
   };
 
-  await refresh();
-  if (!active) throw new Error("Syncthing folder is not ready for publication");
+  await waitForPublication(refresh, () => active !== null);
 
   const server = proxyServer(() => active);
   await new Promise((resolvePromise, reject) => {
