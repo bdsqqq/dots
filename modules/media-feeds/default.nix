@@ -6,26 +6,46 @@ let
   configPath = "/Users/bdsqqq/.config/flexget/config.yml";
   variablesPath = "/Users/bdsqqq/.config/flexget/media-feed-variables.yml";
   onePieceKindleDirectory = "/Users/bdsqqq/kindle/one piece";
+  jujutsuKaisenKindleDirectory = "/Users/bdsqqq/kindle/jujutsu kaisen";
+  jujutsuKaisenImportMarker = "/Users/bdsqqq/.config/flexget/nyaa-2114639.imported";
   moduloKindleDirectory = "/Users/bdsqqq/kindle/jujutsu kaisen modulo";
   moduloImportMarker = "/Users/bdsqqq/.config/flexget/nyaa-2120944.imported";
   transmissionConfigDir = "/Users/bdsqqq/.config/transmission-daemon";
   logPath = "/Users/bdsqqq/Library/Logs/media-feeds.log";
-  importModulo = pkgs.writeShellScript "import-jujutsu-kaisen-modulo" ''
-    set -euo pipefail
+  mkTorrentImporter =
+    { name
+    , directory
+    , marker
+    , torrentId
+    ,
+    }: pkgs.writeShellScript name ''
+      set -euo pipefail
 
-    [[ -e ${lib.escapeShellArg moduloImportMarker} ]] && exit 0
-    mkdir -p ${lib.escapeShellArg moduloKindleDirectory}
+      [[ -e ${lib.escapeShellArg marker} ]] && exit 0
+      mkdir -p ${lib.escapeShellArg directory}
 
-    torrent_file=$(${pkgs.coreutils}/bin/mktemp)
-    trap 'rm -f "$torrent_file"' EXIT
-    ${pkgs.curl}/bin/curl --fail --location --silent --show-error \
-      --output "$torrent_file" \
-      https://nyaa.si/download/2120944.torrent
-    ${pkgs.transmission_4}/bin/transmission-remote 127.0.0.1:9091 \
-      --add "$torrent_file" \
-      --download-dir ${lib.escapeShellArg moduloKindleDirectory}
-    touch ${lib.escapeShellArg moduloImportMarker}
-  '';
+      torrent_file=$(${pkgs.coreutils}/bin/mktemp)
+      trap 'rm -f "$torrent_file"' EXIT
+      ${pkgs.curl}/bin/curl --fail --location --silent --show-error \
+        --output "$torrent_file" \
+        https://nyaa.si/download/${torrentId}.torrent
+      ${pkgs.transmission_4}/bin/transmission-remote 127.0.0.1:9091 \
+        --add "$torrent_file" \
+        --download-dir ${lib.escapeShellArg directory}
+      touch ${lib.escapeShellArg marker}
+    '';
+  importJujutsuKaisen = mkTorrentImporter {
+    name = "import-jujutsu-kaisen";
+    directory = jujutsuKaisenKindleDirectory;
+    marker = jujutsuKaisenImportMarker;
+    torrentId = "2114639";
+  };
+  importModulo = mkTorrentImporter {
+    name = "import-jujutsu-kaisen-modulo";
+    directory = moduloKindleDirectory;
+    marker = moduloImportMarker;
+    torrentId = "2120944";
+  };
 in
 {
   options.my.mediaFeeds = {
@@ -90,6 +110,19 @@ in
         enable = true;
         config = {
           ProgramArguments = [ "${importModulo}" ];
+          RunAtLoad = true;
+          KeepAlive.SuccessfulExit = false;
+          ThrottleInterval = 5;
+          ProcessType = "Background";
+          StandardOutPath = logPath;
+          StandardErrorPath = logPath;
+        };
+      };
+
+      launchd.agents.media-feed-import-jujutsu-kaisen = lib.mkIf cfg.polling.enable {
+        enable = true;
+        config = {
+          ProgramArguments = [ "${importJujutsuKaisen}" ];
           RunAtLoad = true;
           KeepAlive.SuccessfulExit = false;
           ThrottleInterval = 5;
