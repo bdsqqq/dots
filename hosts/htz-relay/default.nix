@@ -162,7 +162,10 @@ in
   services.tailscale = {
     enable = true;
     useRoutingFeatures = "client";
-    extraSetFlags = [ "--operator=bdsqqq" ];
+    extraSetFlags = [
+      "--operator=bdsqqq"
+      "--advertise-tags=tag:ssh-accept"
+    ];
     extraUpFlags = [
       "--ssh"
       "--accept-dns=false"
