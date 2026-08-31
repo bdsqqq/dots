@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension>
+	<information>
+		<name>Tailscale Autostart</name>
+		<version>0.3</version>
+		<author>bdsqqq</author>
+		<id>tailscale-autostart</id>
+	</information>
+	<menus>
+		<menu type="json" dynamic="true">menu.json</menu>
+	</menus>
+</extension>

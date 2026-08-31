@@ -2,6 +2,7 @@
 	"tagOwners": {
 		// Service hosts use a device identity rather than a person's identity.
 		"tag:service-host": ["autogroup:owner"],
+		"tag:ssh-accept": ["autogroup:owner"],
 		"tag:depot-runner": ["autogroup:owner"],
 		"tag:cf-ingress":   ["autogroup:owner"],
 		"tag:cf-files-ingress": ["autogroup:owner"],
@@ -31,13 +32,25 @@
 		},
 		{
 			"src": ["autogroup:owner"],
-			"dst": ["tag:service-host"],
+			"dst": ["tag:service-host", "tag:ssh-accept"],
 			"ip":  ["*"],
+		},
+		// Selected personal devices retain their owner-device reachability after
+		// adopting the identity used to exempt them from SSH check mode.
+		{
+			"src": ["tag:ssh-accept"],
+			"dst": ["autogroup:owner", "tag:service-host", "tag:ssh-accept", "autogroup:internet"],
+			"ip":  ["*"],
+		},
+		{
+			"src": ["tag:ssh-accept"],
+			"dst": ["svc:apps", "svc:html-stuff", "svc:files", "svc:photos", "svc:t3"],
+			"ip":  ["443"],
 		},
 		// Service hosts fetch manifests and synchronize app data from owner devices.
 		{
 			"src": ["tag:service-host"],
-			"dst": ["autogroup:owner", "tag:service-host"],
+			"dst": ["autogroup:owner", "tag:service-host", "tag:ssh-accept"],
 			"ip":  ["5252", "22000"],
 		},
 
@@ -96,6 +109,15 @@
 	],
 
 	"ssh": [
+		// These explicitly tagged devices permit unattended owner SSH. Other
+		// personal devices continue through the self-device check rule below.
+		{
+			"action": "accept",
+			"src":    ["autogroup:owner"],
+			"dst":    ["tag:ssh-accept"],
+			"users":  ["bdsqqq", "root"],
+		},
+
 		// Keep administrative access after a host adopts the service identity.
 		{
 			"action": "check",

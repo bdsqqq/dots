@@ -1,0 +1,11 @@
+{
+  "items": [
+    {
+      "name": "Reconnect Tailscale",
+      "action": "./bin/ensure-tailscale.sh",
+      "exitmenu": false,
+      "status": true,
+      "onboot": true
+    }
+  ]
+}

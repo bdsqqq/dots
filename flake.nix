@@ -227,6 +227,9 @@
         apps.household-intake-smb-audit.program =
           "${config.packages.household-intake-smb-audit}/bin/household-intake-smb-audit";
 
+        packages.kindle-tailscale-autostart =
+          import ./modules/kindle-tailscale-autostart { inherit pkgs; };
+
         checks.household-intake-smb-audit = pkgs.runCommand "household-intake-smb-audit-tests" { } ''
           ${pkgs.nodejs}/bin/node --test ${./modules/household-intake}/smb-audit.test.mjs
           touch "$out"
