@@ -10,11 +10,14 @@ let
   kanataPlist = "/Library/LaunchDaemons/${kanataLabel}.plist";
   virtualhidPlist = "/Library/LaunchDaemons/${virtualhidLabel}.plist";
   virtualhidDaemon = "/Library/Application Support/org.pqrs/Karabiner-DriverKit-VirtualHIDDevice/Applications/Karabiner-VirtualHIDDevice-Daemon.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Daemon";
-  # stable path so macOS TCC grants can survive nix rebuilds.
-  # this must be a real file, not a symlink into /nix/store, because TCC resolves
-  # symlinks and would still see the versioned store path. after first install or
-  # codesign changes, grant this path both input monitoring and accessibility.
+  # TCC resolves symlinks, so Kanata and its non-system libraries must be real
+  # files at stable paths rather than references into a garbage-collected store
+  # generation. A package update changes Kanata's signature and may still require
+  # macOS or MDM to renew Input Monitoring and Accessibility approval.
   kanataStablePath = "/usr/local/bin/kanata";
+  kanataStableLibDir = "/usr/local/lib/kanata";
+  kanataLibiconv = "${pkgs.libiconv}/lib/libiconv.2.dylib";
+  kanataLibcharset = "${pkgs.libiconv}/lib/libcharset.1.dylib";
 
   toggleKanata = pkgs.writeShellScriptBin "toggle-kanata" ''
     set -euo pipefail
@@ -124,7 +127,6 @@ let
 in
 if isDarwin then {
   environment.systemPackages = [
-    pkgs.kanata
     toggleKanata
     # 60s timeout prevents keyboard lockout if config is broken
     (pkgs.writeShellScriptBin "kanata-test" ''
@@ -160,13 +162,43 @@ if isDarwin then {
       echo "warning: Karabiner VirtualHIDDevice daemon missing; install/activate it manually before starting kanata" >&2
     fi
 
-    mkdir -p /usr/local/bin
-    if [ ! -x ${kanataStablePath} ]; then
-      install -m 0755 ${pkgs.kanata}/bin/kanata ${kanataStablePath}
-      /usr/bin/codesign -fs - -i com.bdsqqq.kanata ${kanataStablePath} 2>/dev/null || true
-    elif ! cmp -s ${pkgs.kanata}/bin/kanata ${kanataStablePath}; then
-      echo "warning: ${kanataStablePath} differs from nixpkgs kanata; not replacing it because macOS TCC grants are cdhash-bound" >&2
+    mkdir -p /usr/local/bin ${kanataStableLibDir}
+    kanata_stage="$(mktemp -d /usr/local/.kanata-stage.XXXXXX)"
+    cleanup_kanata_stage() { rm -rf "$kanata_stage"; }
+    trap cleanup_kanata_stage EXIT
+    mkdir -p "$kanata_stage/bin" "$kanata_stage/lib"
+
+    install -m 0755 ${pkgs.kanata}/bin/kanata "$kanata_stage/bin/kanata"
+    install -m 0644 ${kanataLibiconv} "$kanata_stage/lib/libiconv.2.dylib"
+    install -m 0644 ${kanataLibcharset} "$kanata_stage/lib/libcharset.1.dylib"
+
+    /usr/bin/install_name_tool \
+      -change ${kanataLibiconv} @executable_path/../lib/kanata/libiconv.2.dylib \
+      "$kanata_stage/bin/kanata"
+    /usr/bin/install_name_tool \
+      -id @loader_path/libcharset.1.dylib \
+      "$kanata_stage/lib/libcharset.1.dylib"
+    /usr/bin/install_name_tool \
+      -id @loader_path/libiconv.2.dylib \
+      -change ${kanataLibcharset} @loader_path/libcharset.1.dylib \
+      "$kanata_stage/lib/libiconv.2.dylib"
+
+    /usr/bin/codesign --force --sign - "$kanata_stage/lib/libcharset.1.dylib"
+    /usr/bin/codesign --force --sign - "$kanata_stage/lib/libiconv.2.dylib"
+    /usr/bin/codesign --force --sign - --identifier ${kanataLabel} "$kanata_stage/bin/kanata"
+
+    if [ ! -x ${kanataStablePath} ] \
+      || [ ! -f ${kanataStableLibDir}/libiconv.2.dylib ] \
+      || [ ! -f ${kanataStableLibDir}/libcharset.1.dylib ] \
+      || ! cmp -s "$kanata_stage/bin/kanata" ${kanataStablePath} \
+      || ! cmp -s "$kanata_stage/lib/libiconv.2.dylib" ${kanataStableLibDir}/libiconv.2.dylib \
+      || ! cmp -s "$kanata_stage/lib/libcharset.1.dylib" ${kanataStableLibDir}/libcharset.1.dylib; then
+      mv -f "$kanata_stage/lib/libcharset.1.dylib" ${kanataStableLibDir}/libcharset.1.dylib
+      mv -f "$kanata_stage/lib/libiconv.2.dylib" ${kanataStableLibDir}/libiconv.2.dylib
+      mv -f "$kanata_stage/bin/kanata" ${kanataStablePath}
     fi
+    cleanup_kanata_stage
+    trap - EXIT
   '';
 
   launchd.daemons.karabiner-virtualhid-daemon = {
