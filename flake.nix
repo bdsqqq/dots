@@ -88,16 +88,6 @@
         inherit (inputs.nixpkgs) lib;
         root = ./.;
       };
-      istatMenusOverlay = final: prev: {
-        istat-menus = prev.istat-menus.overrideAttrs {
-          version = "7.3";
-          src = final.fetchurl {
-            url = "https://cdn.istatmenus.app/files/istatmenus7/versions/iStatMenus7.30.zip";
-            hash = "sha256-qCgMEUjHUsEP+B+e2nylse9T/Xnt765RzV0WtBSWSPY=";
-          };
-        };
-      };
-
       mkDarwinSystem = { deployAnnotations ? true }: hostModule: inputs.nix-darwin.lib.darwinSystem {
         specialArgs = {
           inherit inputs tailnetApps;
@@ -113,7 +103,6 @@
                 (import ./modules/zmx).overlay
                 (import ./overlays/axiom-cli.nix)
                 (import ./overlays/libplist-darwin.nix)
-                istatMenusOverlay
               ];
             };
         };
@@ -129,7 +118,6 @@
                 (import ./modules/zmx).overlay
                 (import ./overlays/axiom-cli.nix)
                 (import ./overlays/libplist-darwin.nix)
-                istatMenusOverlay
               ];
             };
             system.configurationRevision = flakeRevision;
