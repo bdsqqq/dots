@@ -147,10 +147,8 @@ in
           httpie
           fastfetch
           mkcert
-          istat-menus
           libimobiledevice
           ifuse
-          blockbench
           vscode
           obsidian
           rclone

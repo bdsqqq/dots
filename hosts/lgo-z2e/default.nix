@@ -304,7 +304,6 @@ in
         tailscale
         nvtopPackages.amd
         radeontop
-        blockbench
         vscode
         obsidian
         rclone
