@@ -230,7 +230,7 @@ rec {
         label = name;
         inherit path;
         type = "sendreceive";
-        rescanIntervalS = 60;
+        rescanIntervalS = 3600;
         devices = deviceNames;
         versioning = {
           type = "trashcan";
