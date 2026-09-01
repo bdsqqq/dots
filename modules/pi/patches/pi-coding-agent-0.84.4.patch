@@ -1097,3 +1097,10 @@ index a27754f8db8c6026bb88155da9f42bcc619f5ea0..dfd7c8988e4d6ce637183a01903db660
                                  child instanceof CustomMessageComponent ||
                                  child instanceof UserMessageComponent) {
                                  child.setOutputPad(padding);
+diff --git a/package.json b/package.json
+index 8aa47351db845e14d68615a4250705faaf7bdcfb..a28a9617a55d95bf3851a8ba5f8639949e2b20fa 100644
+--- a/package.json
++++ b/package.json
+@@ -10 +10 @@
+-		"pi": "dist/bundle/cli.js"
++		"pi": "dist/cli.js"
