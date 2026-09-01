@@ -1,11 +1,58 @@
-{ inputs, pkgs, ... }:
+{ inputs
+, pkgs
+, systems ? [ ]
+, pkgsFor ? null
+, ...
+}:
 {
   imports = [
     inputs.home-manager.darwinModules.home-manager
 
+    ../../modules/primary-user.nix
     ../../modules/nix
-    ../../modules/shell/path-order.nix
+    ../../modules/nix/nix-ld.nix
+    ../../modules/ssh
+    ../../modules/ssh/authorized-keys.nix
+    ../../modules/tailscale
+    ../../modules/fonts
+    ../../modules/homebrew
+    ../../modules/homebrew/environment.nix
+    ../../modules/homebrew/best-effort.nix
+    ../../modules/macos-defaults
+    ../../modules/sleepless
+    ../../modules/kanata
+    ../../modules/cmux
+    ../../modules/core-cli
+    ../../modules/shell
+    ../../modules/btop
+    ../../modules/fzf
+    ../../modules/zoxide
+    ../../modules/nvim
+    ../../modules/git
+    ../../modules/tealdeer
+    ../../modules/trash
+    (import ../../modules/zmx).module
+    ../../modules/direnv
+    ../../modules/tmux
     ../../modules/amp
+    ../../modules/agents
+    ../../modules/node-pnpm
+    ../../modules/mise
+    ../../modules/wikiman
+    ../../modules/yt-dlp
+    ../../modules/gallery-dl
+    ../../modules/rust
+    ../../modules/go
+    ../../modules/fairy-name
+    ../../modules/pi
+    ../../modules/e-ink-glass
+    ../../modules/ghostty
+    ../../modules/open-display
+    ../../modules/vscodium
+    ../../modules/1password
+    ../../modules/orbstack
+    ../../modules/obs
+    ../../modules/helium/remotes.nix
   ];
 
   networking = {
@@ -16,12 +63,38 @@
 
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
+  my.primaryUser = "bdsqqq";
+  my.openDisplay = {
+    launchAtLogin = false;
+    mode = "mirror";
+    wifiServiceName = "iPad";
+  };
+  my.heliumRemotes = {
+    enable = true;
+    tabsExtension.enable = true;
+  };
+
+  nix = {
+    linux-builder.enable = true;
+    settings.trusted-users = [ "@admin" ];
+  };
+
+  homebrew.casks = [
+    "cleanshot"
+    "tailscale-app"
+    "tableplus"
+    "figma"
+    "obs"
+    "transmission"
+    "linear"
+    "vscodium"
+  ];
 
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
     extraSpecialArgs = {
-      inherit inputs;
+      inherit inputs systems pkgsFor;
       isDarwin = true;
       hostSystem = "aarch64-darwin";
       headMode = "graphical";
@@ -32,85 +105,55 @@
         homeDirectory = "/Users/bdsqqq";
         stateVersion = "25.05";
         packages = with pkgs; [
-          ast-grep
-          bat
-          bun
           coreutils
-          curl
-          deadnix
-          delta
-          eza
-          fd
-          gh
-          git
-          go
-          httpie
-          jq
-          lazygit
-          nil
-          nixpkgs-fmt
-          nodejs
-          p7zip
-          pnpm
-          python3
+          exiftool
+          sops
+          age
+          ssh-to-age
+          pscale
           ripgrep
-          statix
-          tree
+          ast-grep
+          fd
+          bat
+          eza
+          ctop
+          lazydocker
+          curl
           wget
+          jq
           yq
+          tree
+          p7zip
+          cloc
+          stow
+          yazi
+          tmux
+          ffmpeg
+          httpie
+          fastfetch
+          mkcert
+          istat-menus
+          libimobiledevice
+          ifuse
+          blockbench
+          vscode
+          obsidian
+          rclone
+          qpdf
+          inputs.lnr.packages.aarch64-darwin.default
+          axiom-cli
+          iina
+          ollama
+          lua-language-server
+          stylua
+          typescript
+          typescript-language-server
+          nil
+          nixfmt
+          statix
         ];
-        sessionVariables = {
-          EDITOR = "nvim";
-          VISUAL = "nvim";
-        };
       };
-
-      programs = {
-        direnv = {
-          enable = true;
-          nix-direnv.enable = true;
-          config.global.hide_env_diff = true;
-        };
-        fzf = {
-          enable = true;
-          defaultCommand = "rg --files --hidden --follow";
-          defaultOptions = [ "--height=40%" "--layout=reverse" ];
-        };
-        git = {
-          enable = true;
-          lfs.enable = true;
-          settings = {
-            init.defaultBranch = "main";
-            pull.rebase = true;
-            rebase.autoStash = true;
-          };
-        };
-        home-manager.enable = true;
-        neovim = {
-          enable = true;
-          defaultEditor = true;
-          viAlias = true;
-          vimAlias = true;
-          withPython3 = false;
-          withRuby = false;
-        };
-        ssh = {
-          enable = true;
-          enableDefaultConfig = false;
-          settings."*" = {
-            AddKeysToAgent = "no";
-            ForwardAgent = false;
-          };
-        };
-        zoxide = {
-          enable = true;
-          enableZshIntegration = true;
-        };
-        zsh = {
-          enable = true;
-          history.path = "$HOME/.zsh_history";
-        };
-      };
+      programs.home-manager.enable = true;
     };
   };
 
