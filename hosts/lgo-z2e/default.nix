@@ -222,7 +222,7 @@ in
             "mbp-m2"
           ]
             {
-              rescanIntervalS = 120;
+              rescanIntervalS = 3600;
               versioning = null;
             };
         pi-sessions =

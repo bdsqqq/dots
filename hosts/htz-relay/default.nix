@@ -239,7 +239,7 @@ in
         helium-remotes =
           syncthing.folderForPath "helium-remotes" "/mnt/storage-01/helium-remotes" [ "mbp-m2" "lgo-z2e" ]
             {
-              rescanIntervalS = 60;
+              rescanIntervalS = 3600;
             };
       };
     };
