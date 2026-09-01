@@ -1,0 +1,21 @@
+# based on https://github.com/e-ink-colorscheme/e-ink.ghostty/blob/main/e-ink
+background = #C2C2C2
+foreground = #101010
+selection-background = #E5E5E5
+selection-foreground = #000000
+palette = 0=#C2C2C2
+palette = 1=#333333
+palette = 2=#9A9A9A
+palette = 3=#868686
+palette = 4=#727272
+palette = 5=#AEAEAE
+palette = 6=#4A4A4A
+palette = 7=#5E5E5E
+palette = 8=#5E5E5E
+palette = 9=#333333
+palette = 10=#9A9A9A
+palette = 11=#99FFE4
+palette = 12=#727272
+palette = 13=#FFC799
+palette = 14=#4A4A4A
+palette = 15=#7C7C7C

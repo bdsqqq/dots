@@ -1,0 +1,9 @@
+{
+  "amp.gauge": "cost",
+  "amp.mcpServers": {
+    "paper": {
+      "url": "http://127.0.0.1:29979/mcp"
+    }
+  },
+  "amp.remoteThreadCreation.enabled": true
+}

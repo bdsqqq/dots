@@ -127,6 +127,8 @@ in
     ../../modules/helium
     ../../modules/helium/remotes.nix
     ../../modules/ghostty
+    ../../modules/vscodium
+    ../../modules/obsidian
     ../../modules/gaming
     ../../modules/quickshell
   ];
@@ -304,8 +306,6 @@ in
         tailscale
         nvtopPackages.amd
         radeontop
-        vscode
-        obsidian
         rclone
         qpdf
         inputs.lnr.packages.x86_64-linux.default

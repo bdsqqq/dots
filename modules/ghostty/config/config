@@ -1,0 +1,21 @@
+font-family = "Berkeley Mono"
+font-size = 14
+macos-titlebar-style = "hidden"
+window-padding-x = 16
+window-padding-y = 4
+background-opacity = 0.7
+background-blur-radius = 8
+background-opacity-cells = true
+background-blur = "macos-glass-clear"
+
+theme = light:lauds-light,dark:compline-dark
+
+# keep ghostty defaults except split bindings, plus super+9 for the last tab.
+# super+d / super+shift+d -> super+| / super+_
+keybind = super+d=unbind
+keybind = super+shift+d=unbind
+keybind = super+|=new_split:right
+keybind = super+_=new_split:down
+keybind = super+digit_9=goto_tab:9
+keybind = super+9=goto_tab:9
+keybind = super+k=toggle_command_palette

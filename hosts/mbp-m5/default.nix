@@ -55,6 +55,7 @@ in
     ../../modules/ghostty
     ../../modules/open-display
     ../../modules/vscodium
+    ../../modules/obsidian
     ../../modules/1password
     ../../modules/orbstack
     ../../modules/obs
@@ -140,8 +141,6 @@ in
           mkcert
           libimobiledevice
           ifuse
-          vscode
-          obsidian
           rclone
           qpdf
           inputs.lnr.packages.aarch64-darwin.default

@@ -1,0 +1,46 @@
+[
+  {
+    "context": "Editor",
+    "bindings": {
+      "cmd-r n": "editor::Rename",
+      "cmd-g d": "editor::GoToDefinition",
+      "cmd-g t": "editor::GoToTypeDefinition"
+    }
+  },
+  {
+    "context": "Workspace",
+    "bindings": {
+      "cmd-:": "workspace::ToggleLeftDock"
+    }
+  },
+  {
+    "context": "Workspace",
+    "unbind": {
+      "cmd-b": "workspace::ToggleLeftDock"
+    }
+  },
+  {
+    "context": "Editor",
+    "unbind": {
+      "cmd-;": "editor::ToggleLineNumbers"
+    }
+  },
+  {
+    "context": "Workspace",
+    "bindings": {
+      "cmd-;": "workspace::ToggleRightDock"
+    }
+  },
+  {
+    "context": "Workspace",
+    "unbind": {
+      "cmd-r": "workspace::ToggleRightDock"
+    }
+  },
+  {
+    "context": "Workspace",
+    "unbind": {
+      "alt-cmd-b": "workspace::ToggleRightDock"
+    }
+  }
+]

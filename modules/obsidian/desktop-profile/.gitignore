@@ -1,0 +1,4 @@
+.DS_Store
+.seeded-from-legacy
+*.sync-conflict-*
+workspace*.json

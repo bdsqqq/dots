@@ -1,5 +1,6 @@
 { config, ... }:
 let
+  repoSettings = "${config.my.paths.commonplace}/01_files/nix/modules/amp/settings.json";
   # This host is the composition point; Amp remains a capture adapter while
   # the installed pi-memory service owns every semantic pipeline stage.
   enableLocalMemory =
@@ -30,6 +31,11 @@ in
             "${pkgs.bash}/bin/bash"
         fi
       '';
+
+      home.file.".config/amp/settings.json" = {
+        source = config.lib.file.mkOutOfStoreSymlink repoSettings;
+        force = true;
+      };
 
       home.file.".config/amp/plugins/pi-memory.ts" =
         lib.mkIf enableLocalMemory {
