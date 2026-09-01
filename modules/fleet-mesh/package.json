@@ -1,0 +1,16 @@
+{
+  "name": "fleet-mesh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "demo": "node demo.ts",
+    "lab": "node lab.ts",
+    "test": "node --test *.test.ts",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.2"
+  }
+}
