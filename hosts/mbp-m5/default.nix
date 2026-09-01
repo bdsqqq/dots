@@ -1,9 +1,13 @@
-{ inputs
+{ lib
+, inputs
 , pkgs
 , systems ? [ ]
 , pkgsFor ? null
 , ...
 }:
+let
+  syncthing = import ../../modules/syncthing/lib.nix { inherit lib; };
+in
 {
   imports = [
     inputs.home-manager.darwinModules.home-manager
@@ -38,6 +42,8 @@
     ../../modules/agents
     ../../modules/node-pnpm
     ../../modules/mise
+    ../../modules/syncthing
+    ../../modules/syncthing/automerge
     ../../modules/wikiman
     ../../modules/yt-dlp
     ../../modules/gallery-dl
@@ -154,6 +160,67 @@
         ];
       };
       programs.home-manager.enable = true;
+
+      services.syncthing = {
+        enable = true;
+        overrideFolders = true;
+        overrideDevices = true;
+        guiAddress = "0.0.0.0:8384";
+
+        settings = {
+          gui = {
+            user = "bdsqqq";
+            password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
+          };
+          options = {
+            urAccepted = -1;
+            globalAnnounceEnabled = false;
+            localAnnounceEnabled = false;
+            relaysEnabled = false;
+            natEnabled = false;
+          };
+          devices = syncthing.devicesFor [
+            "mbp-m2"
+            "htz-relay"
+            "lgo-z2e"
+            "mmn-m4"
+            "iph16"
+            "ipd"
+          ];
+          folders = {
+            commonplace = syncthing.folderFor "commonplace" "/Users/bdsqqq" true [
+              "mbp-m2"
+              "htz-relay"
+              "lgo-z2e"
+              "mmn-m4"
+              "iph16"
+              "ipd"
+            ] { label = "commonplace"; };
+            pi-sessions = syncthing.folderFor "pi-sessions" "/Users/bdsqqq" true [
+              "mbp-m2"
+              "lgo-z2e"
+            ] { };
+          };
+        };
+      };
+
+      home.file.".local/state/syncthing/.keep".text = "";
+      launchd.agents = {
+        syncthing.config = {
+          RunAtLoad = true;
+          StandardOutPath = lib.mkForce "/Users/bdsqqq/.local/state/syncthing/stdout.log";
+          StandardErrorPath = lib.mkForce "/Users/bdsqqq/.local/state/syncthing/stderr.log";
+        };
+        syncthing-init.config = {
+          RunAtLoad = true;
+          StandardOutPath = lib.mkForce "/Users/bdsqqq/.local/state/syncthing/init-stdout.log";
+          StandardErrorPath = lib.mkForce "/Users/bdsqqq/.local/state/syncthing/init-stderr.log";
+        };
+        syncthing-automerge.config = {
+          StandardOutPath = lib.mkForce "/Users/bdsqqq/.local/state/syncthing/automerge.log";
+          StandardErrorPath = lib.mkForce "/Users/bdsqqq/.local/state/syncthing/automerge.log";
+        };
+      };
     };
   };
 

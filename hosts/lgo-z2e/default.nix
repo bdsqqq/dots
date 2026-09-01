@@ -202,11 +202,16 @@ in
         natEnabled = false;
       };
 
-      devices = syncthing.devicesFor [ "mbp-m2" "htz-relay" ];
+      devices = syncthing.devicesFor [
+        "mbp-m2"
+        "mbp-m5"
+        "htz-relay"
+      ];
 
       folders = {
         commonplace = syncthing.folderFor "commonplace" "/home/bdsqqq" false [
           "mbp-m2"
+          "mbp-m5"
           "htz-relay"
         ]
           { };
@@ -219,7 +224,7 @@ in
               versioning = null;
             };
         pi-sessions =
-          syncthing.folderFor "pi-sessions" "/home/bdsqqq" false [ "mbp-m2" ]
+          syncthing.folderFor "pi-sessions" "/home/bdsqqq" false [ "mbp-m2" "mbp-m5" ]
             { };
         helium-remotes =
           syncthing.folderFor "helium-remotes" "/home/bdsqqq" false [
