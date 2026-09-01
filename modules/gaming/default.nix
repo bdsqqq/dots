@@ -43,12 +43,12 @@ in
 lib.mkMerge [
   (lib.optionalAttrs isDarwin {
     homebrew.casks = [ "prismlauncher" ];
+    environment.systemPackages = [ prismLauncherManaged ];
   })
   {
   home-manager.users.bdsqqq = { config, lib, pkgs, ... }: {
     home.packages =
-      lib.optionals isDarwin [ prismLauncherManaged ]
-      ++ lib.optionals isLinux [ pkgs.prismlauncher steam-gamescope pkgs.gamescope ];
+      lib.optionals isLinux [ pkgs.prismlauncher steam-gamescope pkgs.gamescope ];
 
     home.file.".local/share/PrismLauncher/prismlauncher.cfg" =
       lib.mkIf isDarwin {
