@@ -1,0 +1,1007 @@
+diff --git a/dist/components/box.d.ts b/dist/components/box.d.ts
+index 909ef1e2831d2ca3d20d92af13f70eb6484d2551..d59b26d264b075dd8392353f85473d0428425f4f 100644
+--- a/dist/components/box.d.ts
++++ b/dist/components/box.d.ts
+@@ -1,4 +1,4 @@
+-import type { Component } from "../tui.ts";
++import { type Component, type TuiMouseDispatchResult, type TuiMouseEvent } from "../tui.ts";
+ /**
+  * Box component - a container that applies padding and background to all children
+  */
+@@ -8,6 +8,7 @@ export declare class Box implements Component {
+     private paddingY;
+     private bgFn?;
+     private cache?;
++    private mouseLayout?;
+     constructor(paddingX?: number, paddingY?: number, bgFn?: (text: string) => string);
+     addChild(component: Component): void;
+     removeChild(component: Component): void;
+@@ -16,6 +17,7 @@ export declare class Box implements Component {
+     private invalidateCache;
+     private matchCache;
+     invalidate(): void;
++    handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | undefined;
+     render(width: number): string[];
+     private applyBg;
+ }
+diff --git a/dist/components/box.js b/dist/components/box.js
+index 5de0f24bfe4e9ccb7b9476dae9ea55f882acce75..2b31b950ed25cabfaee1f630e97a056ea60b84f7 100644
+--- a/dist/components/box.js
++++ b/dist/components/box.js
+@@ -1,3 +1,4 @@
++import { dispatchMouseEvent } from "../tui.js";
+ import { applyBackgroundToLine, visibleWidth } from "../utils.js";
+ /**
+  * Box component - a container that applies padding and background to all children
+@@ -9,6 +10,7 @@ export class Box {
+     bgFn;
+     // Cache for rendered output
+     cache;
++    mouseLayout;
+     constructor(paddingX = 1, paddingY = 1, bgFn) {
+         this.paddingX = paddingX;
+         this.paddingY = paddingY;
+@@ -50,6 +52,30 @@ export class Box {
+             child.invalidate?.();
+         }
+     }
++    handleMouse(event) {
++        const contentWidth = Math.max(1, event.width - this.paddingX * 2);
++        const contentY = event.y - this.paddingY;
++        const contentX = event.x - this.paddingX;
++        if (contentY < 0 || contentX < 0 || contentX >= contentWidth)
++            return undefined;
++        const mouseChildren = this.mouseLayout?.width === contentWidth
++            ? this.mouseLayout.children
++            : this.children.map((component) => ({ component, height: component.render(contentWidth).length }));
++        let childY = 0;
++        for (const { component: child, height: childHeight } of mouseChildren) {
++            if (contentY >= childY && contentY < childY + childHeight) {
++                return dispatchMouseEvent(child, {
++                    ...event,
++                    x: contentX,
++                    y: contentY - childY,
++                    width: contentWidth,
++                    height: childHeight,
++                });
++            }
++            childY += childHeight;
++        }
++        return undefined;
++    }
+     render(width) {
+         if (this.children.length === 0) {
+             return [];
+@@ -58,12 +84,15 @@ export class Box {
+         const leftPad = " ".repeat(this.paddingX);
+         // Render all children
+         const childLines = [];
++        const mouseChildren = [];
+         for (const child of this.children) {
+             const lines = child.render(contentWidth);
++            mouseChildren.push({ component: child, height: lines.length });
+             for (const line of lines) {
+                 childLines.push(leftPad + line);
+             }
+         }
++        this.mouseLayout = { width: contentWidth, children: mouseChildren };
+         if (childLines.length === 0) {
+             return [];
+         }
+diff --git a/dist/components/marker-column.d.ts b/dist/components/marker-column.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..58613b246cad3c70be2004cda4eb52644479c8e9
+--- /dev/null
++++ b/dist/components/marker-column.d.ts
+@@ -0,0 +1,30 @@
++import type { Component, TuiMouseDispatchResult, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
++export interface MarkerColumnOptions {
++    continuationMarker?: string;
++    footerMarker?: string;
++    gap?: number;
++    onGutterClick?: () => void;
++}
++/**
++ * Reserves a stable marker column while the child owns wrapping and formatting.
++ */
++export declare class MarkerColumn implements Component {
++    private marker;
++    private continuationMarker;
++    private footerMarker;
++    private child;
++    private gap;
++    private onGutterClick?;
++    private renderedColumnWidth;
++    private renderedBodyHeight;
++    private renderedBodyOffset;
++    private renderedBodyWidth;
++    private renderedChildHeight;
++    constructor(marker: string, child: Component, options?: MarkerColumnOptions);
++    setMarker(marker: string, continuationMarker?: string): void;
++    setFooterMarker(footerMarker?: string): void;
++    setChild(child: Component): void;
++    render(width: number): string[];
++    handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | TuiMouseEventResult | undefined;
++    invalidate(): void;
++}
+diff --git a/dist/components/marker-column.js b/dist/components/marker-column.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..47ed6124b6e5daef8016b3513735bbe8fb58e8fd
+--- /dev/null
++++ b/dist/components/marker-column.js
+@@ -0,0 +1,103 @@
++import { dispatchMouseEvent } from "../tui.js";
++import { truncateToWidth, visibleWidth } from "../utils.js";
++/**
++ * Reserves a stable marker column while the child owns wrapping and formatting.
++ */
++export class MarkerColumn {
++    marker;
++    continuationMarker;
++    footerMarker;
++    child;
++    gap;
++    onGutterClick;
++    renderedColumnWidth = 0;
++    renderedBodyHeight = 0;
++    renderedBodyOffset = 0;
++    renderedBodyWidth = 0;
++    renderedChildHeight = 0;
++    constructor(marker, child, options = {}) {
++        this.marker = marker;
++        this.continuationMarker = options.continuationMarker ?? "";
++        this.footerMarker = options.footerMarker;
++        this.child = child;
++        this.gap = Math.max(0, Math.floor(options.gap ?? 1));
++        this.onGutterClick = options.onGutterClick;
++    }
++    setMarker(marker, continuationMarker = this.continuationMarker) {
++        this.marker = marker;
++        this.continuationMarker = continuationMarker;
++    }
++    setFooterMarker(footerMarker) {
++        this.footerMarker = footerMarker;
++    }
++    setChild(child) {
++        this.child = child;
++    }
++    render(width) {
++        const safeWidth = Math.max(0, Math.floor(width));
++        if (safeWidth === 0) {
++            this.renderedColumnWidth = 0;
++            this.renderedBodyHeight = 0;
++            this.renderedBodyOffset = 0;
++            this.renderedBodyWidth = 0;
++            this.renderedChildHeight = 0;
++            return [];
++        }
++        const columnWidth = Math.min(safeWidth, Math.max(visibleWidth(this.marker), visibleWidth(this.continuationMarker)));
++        const gapWidth = Math.min(this.gap, Math.max(0, safeWidth - columnWidth));
++        const bodyWidth = safeWidth - columnWidth - gapWidth;
++        this.renderedColumnWidth = columnWidth;
++        this.renderedBodyOffset = columnWidth + gapWidth;
++        this.renderedBodyWidth = bodyWidth;
++        this.renderedChildHeight = 0;
++        const prefix = (value) => {
++            const fitted = truncateToWidth(value, columnWidth, "");
++            return `${fitted}${" ".repeat(columnWidth - visibleWidth(fitted))}${" ".repeat(gapWidth)}`;
++        };
++        const withFooter = (lines) => {
++            this.renderedBodyHeight = lines.length;
++            if (this.footerMarker)
++                lines.push(truncateToWidth(this.footerMarker, safeWidth, ""));
++            return lines;
++        };
++        if (bodyWidth <= 0)
++            return withFooter([prefix(this.marker)]);
++        const lines = this.child.render(bodyWidth);
++        this.renderedChildHeight = lines.length;
++        if (lines.length === 0)
++            return withFooter([prefix(this.marker)]);
++        return withFooter(lines.map((line, index) => truncateToWidth(`${prefix(index === 0 ? this.marker : this.continuationMarker)}${line}`, safeWidth, "")));
++    }
++    handleMouse(event) {
++        const inBodyRow = event.y >= 0 && event.y < this.renderedBodyHeight;
++        const inGutter = event.x >= 0 && event.x < this.renderedColumnWidth;
++        if (this.onGutterClick &&
++            inBodyRow &&
++            inGutter &&
++            event.type === "click" &&
++            event.button === "left" &&
++            !event.shift &&
++            !event.alt &&
++            !event.ctrl) {
++            this.onGutterClick();
++            return { handled: true };
++        }
++        const childX = event.x - this.renderedBodyOffset;
++        if (!inBodyRow ||
++            event.y >= this.renderedChildHeight ||
++            childX < 0 ||
++            childX >= this.renderedBodyWidth) {
++            return undefined;
++        }
++        return dispatchMouseEvent(this.child, {
++            ...event,
++            x: childX,
++            width: this.renderedBodyWidth,
++            height: this.renderedChildHeight,
++        });
++    }
++    invalidate() {
++        this.child.invalidate();
++    }
++}
++//# sourceMappingURL=marker-column.js.map
+diff --git a/dist/components/mouse-region.d.ts b/dist/components/mouse-region.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..812f6486d9ca33fd6238217a075bc1aaf7c4b262
+--- /dev/null
++++ b/dist/components/mouse-region.d.ts
+@@ -0,0 +1,12 @@
++import { type Component, type TuiMouseDispatchResult, type TuiMouseEvent, type TuiMouseEventResult } from "../tui.ts";
++export type MouseRegionHandler = (event: TuiMouseEvent) => TuiMouseEventResult | undefined;
++/** Adds mouse handling to an existing component without changing its rendering. */
++export declare class MouseRegion implements Component {
++    private readonly child;
++    private readonly onMouse;
++    constructor(child: Component, onMouse: MouseRegionHandler);
++    render(width: number): string[];
++    handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | TuiMouseEventResult | undefined;
++    invalidate(): void;
++}
++//# sourceMappingURL=mouse-region.d.ts.map
+\ No newline at end of file
+diff --git a/dist/components/mouse-region.js b/dist/components/mouse-region.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..8dde35c1e394d49682f6fad7fd6a77252bc4d123
+--- /dev/null
++++ b/dist/components/mouse-region.js
+@@ -0,0 +1,21 @@
++import { dispatchMouseEvent, } from "../tui.js";
++/** Adds mouse handling to an existing component without changing its rendering. */
++export class MouseRegion {
++    child;
++    onMouse;
++    constructor(child, onMouse) {
++        this.child = child;
++        this.onMouse = onMouse;
++    }
++    render(width) {
++        return this.child.render(width);
++    }
++    handleMouse(event) {
++        const childResult = dispatchMouseEvent(this.child, event);
++        return childResult ?? this.onMouse(event);
++    }
++    invalidate() {
++        this.child.invalidate();
++    }
++}
++//# sourceMappingURL=mouse-region.js.map
+\ No newline at end of file
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index cc05e9679cec9dd6a748f73595004dc7203d2716..73640a16502d26ceac0ac85558dd44c09aba9399 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -7,7 +7,9 @@ export { HStack } from "./components/h-stack.ts";
+ export { Image, type ImageOptions, type ImageTheme } from "./components/image.ts";
+ export { Input } from "./components/input.ts";
+ export { Loader, type LoaderIndicatorOptions } from "./components/loader.ts";
++export { MarkerColumn, type MarkerColumnOptions } from "./components/marker-column.ts";
+ export { type DefaultTextStyle, Markdown, type MarkdownOptions, type MarkdownTheme } from "./components/markdown.ts";
++export { MouseRegion, type MouseRegionHandler } from "./components/mouse-region.ts";
+ export { ScrollView, type ScrollViewOptions, type ScrollViewScrollbar, type ScrollViewScrollToOptions, } from "./components/scroll-view.ts";
+ export { type SelectItem, SelectList, type SelectListLayoutOptions, type SelectListTheme, type SelectListTruncatePrimaryContext, } from "./components/select-list.ts";
+ export { type SettingItem, SettingsList, type SettingsListTheme } from "./components/settings-list.ts";
+@@ -24,7 +26,7 @@ export { StdinBuffer, type StdinBufferEventMap, type StdinBufferOptions } from "
+ export { ProcessTerminal, type Terminal } from "./terminal.ts";
+ export { parseOsc11BackgroundColor, parseTerminalColorSchemeReport, type RgbColor, type TerminalColorScheme, } from "./terminal-colors.ts";
+ export { allocateImageId, type CellDimensions, calculateImageRows, deleteAllKittyImages, deleteKittyImage, detectCapabilities, encodeITerm2, encodeKitty, getCapabilities, getCellDimensions, getGifDimensions, getImageDimensions, getJpegDimensions, getPngDimensions, getWebpDimensions, hyperlink, type ImageDimensions, type ImageProtocol, type ImageRenderOptions, imageFallback, renderImage, resetCapabilitiesCache, setCapabilities, setCapabilityOverrides, setCellDimensions, type TerminalCapabilities, } from "./terminal-image.ts";
+-export { type Component, Container, CURSOR_MARKER, compositeTuiLine, type Focusable, isFocusable, isViewportTUI, type OverlayAnchor, type OverlayHandle, type OverlayMargin, type OverlayOptions, type OverlayUnfocusOptions, type SizeValue, type TUI, type TuiInputListener, type TuiInputListenerResult, type TuiMode, type TuiStopOptions, type ViewportTUI, } from "./tui.ts";
++export { type Component, Container, CURSOR_MARKER, compositeTuiLine, type Focusable, isFocusable, isViewportTUI, type OverlayAnchor, type OverlayHandle, type OverlayMargin, type OverlayOptions, type OverlayUnfocusOptions, type SizeValue, type TUI, type TuiInputListener, type TuiInputListenerResult, type TuiMode, type TuiMouseButton, type TuiMouseEvent, type TuiMouseEventResult, type TuiMouseEventType, type TuiStopOptions, type ViewportTUI, } from "./tui.ts";
+ export { TuiAltScreen, type TuiAltScreenOptions } from "./tui-alt-screen.ts";
+ export { TuiMainScreen, type TuiMainScreenRenderState } from "./tui-main-screen.ts";
+ export { getOsc8LinkAtColumn, sliceByColumn, stripTerminalSequences, truncateToWidth, visibleWidth, wrapTextWithAnsi, } from "./utils.ts";
+diff --git a/dist/index.js b/dist/index.js
+index ecc0bd54a55b2c9e0213cfd5553e61262b54c57c..55cbe4bf457535c5dc404f56af6bb5e025c42e43 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -10,7 +10,9 @@ export { HStack } from "./components/h-stack.js";
+ export { Image } from "./components/image.js";
+ export { Input } from "./components/input.js";
+ export { Loader } from "./components/loader.js";
++export { MarkerColumn } from "./components/marker-column.js";
+ export { Markdown } from "./components/markdown.js";
++export { MouseRegion } from "./components/mouse-region.js";
+ export { ScrollView, } from "./components/scroll-view.js";
+ export { SelectList, } from "./components/select-list.js";
+ export { SettingsList } from "./components/settings-list.js";
+diff --git a/dist/layout.d.ts b/dist/layout.d.ts
+index e031103f84d5fbb8d9007b00cb4940bbee046c41..afec7f8438c38a3ce220213fb07ace0b21ec6cd7 100644
+--- a/dist/layout.d.ts
++++ b/dist/layout.d.ts
+@@ -35,6 +35,8 @@ export interface ScrollbarGeometry {
+ }
+ export declare function getScrollbarGeometry(box: LayoutBox): ScrollbarGeometry | undefined;
+ export declare function renderLayoutFrame(root: Component, width: number, height: number, requestRender: () => void): LayoutFrame;
++/** Return the visual hit path from the deepest component to the layout root. */
++export declare function getLayoutBoxesAt(frame: LayoutFrame, x: number, y: number): LayoutBox[];
+ export declare function getScrollViewBox(frame: LayoutFrame, scrollView: ScrollView): LayoutBox | undefined;
+ export declare function getScrollViewsAt(frame: LayoutFrame, x: number, y: number): ScrollView[];
+ //# sourceMappingURL=layout.d.ts.map
+\ No newline at end of file
+diff --git a/dist/layout.js b/dist/layout.js
+index 6661b31cfacfef8e3385fd12da9626e851d97e96..e993980510a837c252816886c2e8968af516c6c2 100644
+--- a/dist/layout.js
++++ b/dist/layout.js
+@@ -291,6 +291,20 @@ export function renderLayoutFrame(root, width, height, requestRender) {
+ function containsPoint(rect, x, y) {
+     return x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
+ }
++/** Return the visual hit path from the deepest component to the layout root. */
++export function getLayoutBoxesAt(frame, x, y) {
++    const result = [];
++    const visit = (box, depth) => {
++        if (!containsPoint(box.clip, x, y))
++            return;
++        result.push({ box, depth });
++        for (const child of box.children)
++            visit(child, depth + 1);
++    };
++    visit(frame.root, 0);
++    result.sort((a, b) => b.box.layer - a.box.layer || b.depth - a.depth);
++    return result.map(({ box }) => box);
++}
+ export function getScrollViewBox(frame, scrollView) {
+     const visit = (box) => {
+         if (box.scrollView === scrollView)
+diff --git a/dist/tui-alt-screen.d.ts b/dist/tui-alt-screen.d.ts
+index 088fb03dd198094d518453150aee4011bd8a14d3..180f0624952d49c8f9a20a1a93bbf49100fbf448 100644
+--- a/dist/tui-alt-screen.d.ts
++++ b/dist/tui-alt-screen.d.ts
+@@ -52,6 +52,11 @@ export declare class TuiAltScreen extends TuiBase implements ViewportTUI {
+     private activeSearch?;
+     private pressedUrl?;
+     private selectionDragged;
++    private mouseCapture?;
++    private mousePressTarget?;
++    private mousePressPoint?;
++    private mousePressMoved;
++    private lastComponentClick?;
+     private readonly wheelScrollLines;
+     private readonly mouseEnabled;
+     private readonly searchMatchStyle;
+@@ -91,7 +96,16 @@ export declare class TuiAltScreen extends TuiBase implements ViewportTUI {
+     /** Show a transient message in the alternate-screen flash stack. */
+     flash(message: string, durationMs?: number): void;
+     private shouldDeferViewportInputToOverlay;
++    private clearComponentMouseGesture;
+     private handleViewportInput;
++    private decodeMouseButton;
++    private createMouseEvent;
++    private dispatchMouseToLayout;
++    private applyMouseDispatchResult;
++    private dispatchMouseToTarget;
++    private getComponentClickCount;
++    private clearTextSelection;
++    private handleMouseEvent;
+     private parseWheelEvent;
+     private routeWheel;
+     private parseSgrMouseEvent;
+diff --git a/dist/tui-alt-screen.js b/dist/tui-alt-screen.js
+index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5ae6b3367 100644
+--- a/dist/tui-alt-screen.js
++++ b/dist/tui-alt-screen.js
+@@ -3,9 +3,10 @@ import { AltScreenFlashContainer } from "./components/alt-screen-flash.js";
+ import { ScrollView } from "./components/scroll-view.js";
+ import { getKeybindings } from "./keybindings.js";
+ import { isKeyRelease } from "./keys.js";
+-import { getScrollbarGeometry, getScrollViewBox, getScrollViewsAt, renderLayoutFrame, } from "./layout.js";
++import { getLayoutBoxesAt, getScrollbarGeometry, getScrollViewBox, getScrollViewsAt, renderLayoutFrame, } from "./layout.js";
++import { getLayoutNode } from "./layout-node.js";
+ import { deleteAllKittyImages, deleteAllKittyPlacements, deleteKittyImage, getCapabilities, getKittyImagePlacement, isImageLine, setCapabilities, } from "./terminal-image.js";
+-import { CURSOR_MARKER, compositeTuiLine, TuiBase, VIEWPORT_TUI, } from "./tui.js";
++import { Container, CURSOR_MARKER, compositeTuiLine, dispatchMouseEvent, retargetMouseEvent, TuiBase, VIEWPORT_TUI, } from "./tui.js";
+ import { extractAnsiCode, getGraphemeCellRange, getOsc8LinkAtColumn, getWordSegmenter, sliceByColumn, stripTerminalSequences, visibleWidth, } from "./utils.js";
+ const ENTER_ALT_SCREEN = "\x1b[?1049h";
+ const EXIT_ALT_SCREEN = "\x1b[?1049l";
+@@ -60,6 +61,11 @@ export class TuiAltScreen extends TuiBase {
+     activeSearch;
+     pressedUrl;
+     selectionDragged = false;
++    mouseCapture;
++    mousePressTarget;
++    mousePressPoint;
++    mousePressMoved = false;
++    lastComponentClick;
+     wheelScrollLines;
+     mouseEnabled;
+     searchMatchStyle;
+@@ -72,6 +78,7 @@ export class TuiAltScreen extends TuiBase {
+         super(terminal, showHardwareCursor, logDirectory);
+         this.implicitDocument = {
+             render: (width) => super.render(width),
++            handleMouse: (event) => super.handleMouse(event),
+             invalidate: () => {
+                 for (const child of this.children)
+                     child.invalidate();
+@@ -151,6 +158,8 @@ export class TuiAltScreen extends TuiBase {
+         this.lastClick = undefined;
+         this.pressedUrl = undefined;
+         this.selectionDragged = false;
++        this.clearComponentMouseGesture();
++        this.lastComponentClick = undefined;
+         this.resetRenderState();
+         const term = process.env.TERM?.toLowerCase() ?? "";
+         // Multiplexers can lag when every pointer movement is forwarded. Button-motion
+@@ -170,6 +179,7 @@ export class TuiAltScreen extends TuiBase {
+         this.selectionPressActive = false;
+         this.stopScrollbarHover();
+         this.stopScrollbarDrag();
++        this.clearComponentMouseGesture();
+         this.flashes.dispose();
+         if (!this.altScreenActive)
+             return;
+@@ -400,6 +410,12 @@ export class TuiAltScreen extends TuiBase {
+     shouldDeferViewportInputToOverlay() {
+         return this.isOverlayFocused() && this.activeSearch?.overlay?.isFocused() !== true;
+     }
++    clearComponentMouseGesture() {
++        this.mouseCapture = undefined;
++        this.mousePressTarget = undefined;
++        this.mousePressPoint = undefined;
++        this.mousePressMoved = false;
++    }
+     handleViewportInput(data) {
+         if (data === FOCUS_OUT) {
+             const hadActiveSelection = this.selectionPressActive;
+@@ -410,6 +426,8 @@ export class TuiAltScreen extends TuiBase {
+             this.stopScrollbarDrag();
+             this.pressedUrl = undefined;
+             this.selectionDragged = false;
++            this.clearComponentMouseGesture();
++            this.lastComponentClick = undefined;
+             if (hadActiveSelection) {
+                 this.selectionAnchor = undefined;
+                 this.selectionFocus = undefined;
+@@ -425,6 +443,16 @@ export class TuiAltScreen extends TuiBase {
+             return { consume: true };
+         const wheelEvent = this.parseWheelEvent(data);
+         if (wheelEvent) {
++            const event = this.createMouseEvent("wheel", wheelEvent.button, wheelEvent.x, wheelEvent.y, {
++                wheelDelta: wheelEvent.direction * this.wheelScrollLines,
++            });
++            const overlay = this.dispatchMouseToOverlay(event);
++            const result = overlay.result ?? (overlay.hit ? undefined : this.dispatchMouseToLayout(event));
++            if (result) {
++                if (this.applyMouseDispatchResult(event, result))
++                    this.requestRender();
++                return { consume: true };
++            }
+             if (this.shouldDeferViewportInputToOverlay())
+                 return undefined;
+             this.routeWheel(wheelEvent);
+@@ -432,13 +460,7 @@ export class TuiAltScreen extends TuiBase {
+         }
+         const mouseEvent = this.parseSgrMouseEvent(data);
+         if (mouseEvent) {
+-            if (this.handleRightClickPaste(mouseEvent))
+-                return { consume: true };
+-            const handled = this.handleScrollbarMouseEvent(mouseEvent);
+-            if (!this.scrollbarDrag)
+-                this.updateScrollbarHover(mouseEvent.x, mouseEvent.y);
+-            if (!handled)
+-                this.handleSelectionMouseEvent(mouseEvent);
++            this.handleMouseEvent(mouseEvent);
+             return { consume: true };
+         }
+         if (this.isMouseSequence(data))
+@@ -523,6 +545,161 @@ export class TuiAltScreen extends TuiBase {
+         }
+         return undefined;
+     }
++    decodeMouseButton(button) {
++        switch (button & 3) {
++            case 0:
++                return "left";
++            case 1:
++                return "middle";
++            case 2:
++                return "right";
++            default:
++                return "none";
++        }
++    }
++    createMouseEvent(type, button, x, y, extra = {}) {
++        return {
++            type,
++            button: type === "wheel" ? "none" : this.decodeMouseButton(button),
++            x,
++            y,
++            screenX: x,
++            screenY: y,
++            width: Math.max(1, this.terminal.columns),
++            height: Math.max(1, this.terminal.rows),
++            shift: (button & 4) !== 0,
++            alt: (button & 8) !== 0,
++            ctrl: (button & 16) !== 0,
++            ...(extra.wheelDelta === undefined ? {} : { wheelDelta: extra.wheelDelta }),
++            ...(extra.clickCount === undefined ? {} : { clickCount: extra.clickCount }),
++        };
++    }
++    dispatchMouseToLayout(event) {
++        if (!this.currentLayout)
++            return undefined;
++        const visited = new Set();
++        const boxes = getLayoutBoxesAt(this.currentLayout, event.screenX, event.screenY);
++        for (const box of boxes) {
++            if (visited.has(box.component))
++                continue;
++            if (getLayoutNode(box.component) && box.component.handleMouse === Container.prototype.handleMouse)
++                continue;
++            visited.add(box.component);
++            const result = dispatchMouseEvent(box.component, {
++                ...event,
++                x: event.screenX - box.rect.x,
++                y: event.screenY - box.rect.y,
++                width: box.rect.width,
++                height: box.rect.height,
++            });
++            if (result)
++                return result;
++        }
++        return undefined;
++    }
++    applyMouseDispatchResult(event, result) {
++        const focusTarget = this.resolveMouseFocusTarget(result.focusTarget ?? result.target.component);
++        const focusChanged = result.focus === true && this.getFocusedComponent() !== focusTarget;
++        if (result.focus)
++            this.setFocus(focusTarget);
++        if (result.capture)
++            this.mouseCapture = result.target;
++        return (result.render ??
++            (focusChanged ||
++                event.type === "press" ||
++                event.type === "click" ||
++                event.type === "drag" ||
++                event.type === "wheel"));
++    }
++    dispatchMouseToTarget(event, target) {
++        return dispatchMouseEvent(target.component, retargetMouseEvent(event, target));
++    }
++    getComponentClickCount(target, x, y) {
++        const now = Date.now();
++        const previous = this.lastComponentClick;
++        const count = previous &&
++            now - previous.timestamp <= DOUBLE_CLICK_INTERVAL_MS &&
++            previous.component === target.component &&
++            previous.x === x &&
++            previous.y === y
++            ? (previous.count % 3) + 1
++            : 1;
++        this.lastComponentClick = { timestamp: now, count, component: target.component, x, y };
++        return count;
++    }
++    clearTextSelection() {
++        this.stopSelectionAutoScroll();
++        this.selectionPressActive = false;
++        this.selectionAnchor = undefined;
++        this.selectionFocus = undefined;
++        this.selectionGranularity = "character";
++        this.selectionInitialRange = undefined;
++        this.pressedUrl = undefined;
++        this.selectionDragged = false;
++    }
++    handleMouseEvent(raw) {
++        const isMotion = (raw.button & 32) !== 0;
++        const type = raw.release
++            ? "release"
++            : isMotion
++                ? this.decodeMouseButton(raw.button) === "none"
++                    ? "move"
++                    : "drag"
++                : "press";
++        const event = this.createMouseEvent(type, raw.button, raw.x, raw.y);
++        if (this.mouseCapture || this.mousePressTarget) {
++            const target = this.mouseCapture ?? this.mousePressTarget;
++            if (this.mousePressPoint && (raw.x !== this.mousePressPoint.x || raw.y !== this.mousePressPoint.y)) {
++                this.mousePressMoved = true;
++                this.lastComponentClick = undefined;
++            }
++            let render = false;
++            const targetResult = this.dispatchMouseToTarget(event, target);
++            if (targetResult)
++                render = this.applyMouseDispatchResult(event, targetResult);
++            if (raw.release) {
++                if (!this.mousePressMoved && this.mousePressPoint?.x === raw.x && this.mousePressPoint.y === raw.y) {
++                    const clickEvent = this.createMouseEvent("click", raw.button, raw.x, raw.y, {
++                        clickCount: this.getComponentClickCount(target, raw.x, raw.y),
++                    });
++                    const clickResult = this.dispatchMouseToTarget(clickEvent, target);
++                    if (clickResult)
++                        render = this.applyMouseDispatchResult(clickEvent, clickResult) || render;
++                }
++                this.clearComponentMouseGesture();
++            }
++            if (render)
++                this.requestRender();
++            return;
++        }
++        const overlay = this.dispatchMouseToOverlay(event);
++        if (!overlay.hit) {
++            const scrollbarHandled = this.handleScrollbarMouseEvent(raw);
++            if (!this.scrollbarDrag)
++                this.updateScrollbarHover(raw.x, raw.y);
++            if (scrollbarHandled)
++                return;
++        }
++        else {
++            this.stopScrollbarHover();
++        }
++        const result = overlay.result ?? (overlay.hit ? undefined : this.dispatchMouseToLayout(event));
++        if (result) {
++            const render = this.applyMouseDispatchResult(event, result);
++            if (type === "press") {
++                this.clearTextSelection();
++                this.mousePressTarget = result.target;
++                this.mousePressPoint = { x: raw.x, y: raw.y };
++                this.mousePressMoved = false;
++            }
++            if (render)
++                this.requestRender();
++            return;
++        }
++        if (this.handleRightClickPaste(raw))
++            return;
++        this.handleSelectionMouseEvent(raw);
++    }
+     parseWheelEvent(data) {
+         const sgr = /^\x1b\[<(\d+);(\d+);(\d+)[Mm]$/.exec(data);
+         if (sgr) {
+@@ -536,6 +713,7 @@ export class TuiAltScreen extends TuiBase {
+                 direction: direction === 0 ? -1 : 1,
+                 x: Number.parseInt(sgr[2], 10) - 1,
+                 y: Number.parseInt(sgr[3], 10) - 1,
++                button,
+             };
+         }
+         if (data.length === 6 && data.startsWith("\x1b[M")) {
+@@ -549,6 +727,7 @@ export class TuiAltScreen extends TuiBase {
+                 direction: direction === 0 ? -1 : 1,
+                 x: data.charCodeAt(4) - 33,
+                 y: data.charCodeAt(5) - 33,
++                button,
+             };
+         }
+         return undefined;
+@@ -843,12 +1022,11 @@ export class TuiAltScreen extends TuiBase {
+             if (!this.selectionAnchor)
+                 return;
+             this.updateSelectionFocus(point);
+-            const clickedUrl = !this.selectionDragged &&
++            const isClick = !this.selectionDragged &&
+                 this.selectionAnchor.scrollView === point.scrollView &&
+                 this.selectionAnchor.row === point.row &&
+-                this.selectionAnchor.col === point.col
+-                ? this.pressedUrl
+-                : undefined;
++                this.selectionAnchor.col === point.col;
++            const clickedUrl = isClick ? this.pressedUrl : undefined;
+             this.pressedUrl = undefined;
+             if (clickedUrl && this.openUrl) {
+                 this.selectionAnchor = undefined;
+@@ -862,6 +1040,20 @@ export class TuiAltScreen extends TuiBase {
+                 this.requestRender();
+                 return;
+             }
++            if (isClick) {
++                const clickEvent = this.createMouseEvent("click", event.button, event.x, event.y, {
++                    clickCount: this.lastClick?.count ?? 1,
++                });
++                const overlay = this.dispatchMouseToOverlay(clickEvent);
++                const result = overlay.result ?? (overlay.hit ? undefined : this.dispatchMouseToLayout(clickEvent));
++                if (result) {
++                    const render = this.applyMouseDispatchResult(clickEvent, result);
++                    this.clearTextSelection();
++                    if (render)
++                        this.requestRender();
++                    return;
++                }
++            }
+             if (this.copyOnSelect)
+                 void this.copySelectionToClipboard();
+             this.requestRender();
+diff --git a/dist/tui.d.ts b/dist/tui.d.ts
+index 5b9b224586c313d8e3d42c9a2f0f05b7a1107f40..e039c8ec8b65f2f0f7ef541e601d75aaca387755 100644
+--- a/dist/tui.d.ts
++++ b/dist/tui.d.ts
+@@ -7,6 +7,64 @@ import { visibleWidth } from "./utils.ts";
+ /**
+  * Component interface - all components must implement this
+  */
++export type TuiMouseEventType = "press" | "release" | "move" | "drag" | "click" | "wheel";
++export type TuiMouseButton = "left" | "middle" | "right" | "none";
++/** Normalized cell-based mouse event. Coordinates are zero-based. */
++export interface TuiMouseEvent {
++    type: TuiMouseEventType;
++    button: TuiMouseButton;
++    /** Coordinates local to the receiving component. */
++    x: number;
++    y: number;
++    /** Absolute terminal coordinates. */
++    screenX: number;
++    screenY: number;
++    /** Current component bounds. */
++    width: number;
++    height: number;
++    shift: boolean;
++    alt: boolean;
++    ctrl: boolean;
++    /** Logical lines. Negative values scroll up. */
++    wheelDelta?: number;
++    /** Consecutive click count when type is click. */
++    clickCount?: number;
++}
++export interface TuiMouseEventResult {
++    /** Stop propagation and suppress renderer-level fallback behavior. */
++    handled?: boolean;
++    /** Route subsequent drag/release events to this component. Implies handled. */
++    capture?: boolean;
++    /** Give keyboard focus to this component. Implies handled. */
++    focus?: boolean;
++    /**
++     * Explicitly request or suppress a render. Move and release default to false;
++     * press, click, drag, and wheel default to true.
++     */
++    render?: boolean;
++}
++/** Internal target metadata used by containers and alternate-screen dispatch. */
++export interface TuiMouseDispatchTarget {
++    component: Component;
++    originX: number;
++    originY: number;
++    width: number;
++    height: number;
++}
++/** Result of dispatching to a concrete component. */
++export interface TuiMouseDispatchResult extends TuiMouseEventResult {
++    handled: true;
++    target: TuiMouseDispatchTarget;
++    /** Keyboard focus target, which may be a delegating parent container. */
++    focusTarget?: Component;
++}
++/**
++ * Dispatch an event to a component and retain the exact target and coordinate
++ * transform. Containers use this when forwarding events to nested children.
++ */
++export declare function dispatchMouseEvent(component: Component, event: TuiMouseEvent): TuiMouseDispatchResult | undefined;
++/** Recreate local coordinates for a previously dispatched mouse target. */
++export declare function retargetMouseEvent(event: TuiMouseEvent, target: TuiMouseDispatchTarget): TuiMouseEvent;
+ export interface Component {
+     /**
+      * Render the component to lines for the given viewport width
+@@ -14,10 +72,10 @@ export interface Component {
+      * @returns Array of strings, each representing a line
+      */
+     render(width: number): string[];
+-    /**
+-     * Optional handler for keyboard input when component has focus
+-     */
++    /** Optional handler for keyboard input when component has focus. */
+     handleInput?(data: string): void;
++    /** Optional normalized mouse handler. */
++    handleMouse?(event: TuiMouseEvent): TuiMouseEventResult | undefined;
+     /**
+      * If true, component receives key release events (Kitty protocol).
+      * Default is false - release events are filtered out.
+@@ -128,10 +186,12 @@ export interface OverlayHandle {
+  */
+ export declare class Container implements Component {
+     children: Component[];
++    private mouseLayout?;
+     addChild(component: Component): void;
+     removeChild(component: Component): void;
+     clear(): void;
+     invalidate(): void;
++    handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | undefined;
+     render(width: number): string[];
+ }
+ /** Composite overlay content into a terminal line at a fixed column. */
+@@ -202,6 +262,7 @@ export declare abstract class TuiBase extends Container implements TUI {
+     protected readonly logDirectory: string;
+     private focusOrderCounter;
+     private overlayStack;
++    private renderedOverlayLayouts;
+     get hasOverlayEntries(): boolean;
+     private overlayFocusRestore;
+     constructor(terminal: Terminal, showHardwareCursor?: boolean, logDirectory?: string);
+@@ -244,6 +305,13 @@ export declare abstract class TuiBase extends Container implements TUI {
+     hasOverlay(): boolean;
+     /** Check if the focused component is a visible overlay */
+     protected isOverlayFocused(): boolean;
++    /** Keep overlay containers as keyboard focus owners when a nested control is clicked. */
++    protected resolveMouseFocusTarget(component: Component): Component;
++    /** Dispatch to the visually topmost overlay under the pointer. */
++    protected dispatchMouseToOverlay(event: TuiMouseEvent): {
++        hit: boolean;
++        result?: TuiMouseDispatchResult;
++    };
+     /** Check if an overlay entry is currently visible */
+     private isOverlayVisible;
+     /** Find the visual-frontmost visible capturing overlay, if any */
+diff --git a/dist/tui.js b/dist/tui.js
+index 94adbdcffd98b770d34ee55771f57ec8004df2eb..950b03abf226e0def4cf466ba670768503c77e09 100644
+--- a/dist/tui.js
++++ b/dist/tui.js
+@@ -8,6 +8,41 @@ import { isKeyRelease, matchesKey } from "./keys.js";
+ import { isOsc11BackgroundColorResponse, parseOsc11BackgroundColor, parseTerminalColorSchemeReport, } from "./terminal-colors.js";
+ import { getCapabilities, isImageLine, setCellDimensions } from "./terminal-image.js";
+ import { extractSegments, normalizeTerminalOutput, sliceByColumn, sliceWithWidth, visibleWidth } from "./utils.js";
++/**
++ * Dispatch an event to a component and retain the exact target and coordinate
++ * transform. Containers use this when forwarding events to nested children.
++ */
++export function dispatchMouseEvent(component, event) {
++    const result = component.handleMouse?.(event);
++    if (!result)
++        return undefined;
++    if ("target" in result)
++        return result;
++    if (!result.handled && !result.capture && !result.focus)
++        return undefined;
++    return {
++        ...result,
++        handled: true,
++        ...(result.focus ? { focusTarget: component } : {}),
++        target: {
++            component,
++            originX: event.screenX - event.x,
++            originY: event.screenY - event.y,
++            width: event.width,
++            height: event.height,
++        },
++    };
++}
++/** Recreate local coordinates for a previously dispatched mouse target. */
++export function retargetMouseEvent(event, target) {
++    return {
++        ...event,
++        x: event.screenX - target.originX,
++        y: event.screenY - target.originY,
++        width: target.width,
++        height: target.height,
++    };
++}
+ /** Type guard to check if a component implements Focusable */
+ export function isFocusable(component) {
+     return component !== null && "focused" in component;
+@@ -38,6 +73,7 @@ function parseSizeValue(value, referenceSize) {
+  */
+ export class Container {
+     children = [];
++    mouseLayout;
+     addChild(component) {
+         this.children.push(component);
+     }
+@@ -55,14 +91,39 @@ export class Container {
+             child.invalidate?.();
+         }
+     }
++    handleMouse(event) {
++        if (event.y < 0 || event.y >= event.height)
++            return undefined;
++        const mouseChildren = this.mouseLayout?.width === event.width
++            ? this.mouseLayout.children
++            : this.children.map((component) => ({ component, height: component.render(event.width).length }));
++        let childY = 0;
++        for (const { component: child, height: childHeight } of mouseChildren) {
++            if (event.y >= childY && event.y < childY + childHeight) {
++                const result = dispatchMouseEvent(child, {
++                    ...event,
++                    y: event.y - childY,
++                    height: childHeight,
++                });
++                if (result?.focus && this.handleInput)
++                    return { ...result, focusTarget: this };
++                return result;
++            }
++            childY += childHeight;
++        }
++        return undefined;
++    }
+     render(width) {
+         const lines = [];
++        const mouseChildren = [];
+         for (const child of this.children) {
+             const childLines = child.render(width);
++            mouseChildren.push({ component: child, height: childLines.length });
+             for (const line of childLines) {
+                 lines.push(line);
+             }
+         }
++        this.mouseLayout = { width, children: mouseChildren };
+         return lines;
+     }
+ }
+@@ -120,6 +181,7 @@ export class TuiBase extends Container {
+     // Overlay stack for modal components rendered on top of base content
+     focusOrderCounter = 0;
+     overlayStack = [];
++    renderedOverlayLayouts = [];
+     get hasOverlayEntries() {
+         return this.overlayStack.length > 0;
+     }
+@@ -405,6 +467,42 @@ export class TuiBase extends Container {
+     isOverlayFocused() {
+         return this.overlayStack.some((entry) => entry.component === this.focusedComponent && this.isOverlayVisible(entry));
+     }
++    /** Keep overlay containers as keyboard focus owners when a nested control is clicked. */
++    resolveMouseFocusTarget(component) {
++        for (let index = this.overlayStack.length - 1; index >= 0; index--) {
++            const overlay = this.overlayStack[index];
++            if (this.isOverlayVisible(overlay) && this.containsComponent(overlay.component, component)) {
++                return overlay.component;
++            }
++        }
++        return component;
++    }
++    /** Dispatch to the visually topmost overlay under the pointer. */
++    dispatchMouseToOverlay(event) {
++        for (let index = this.renderedOverlayLayouts.length - 1; index >= 0; index--) {
++            const layout = this.renderedOverlayLayouts[index];
++            if (event.screenX < layout.col ||
++                event.screenX >= layout.col + layout.width ||
++                event.screenY < layout.row ||
++                event.screenY >= layout.row + layout.height) {
++                continue;
++            }
++            const result = dispatchMouseEvent(layout.entry.component, {
++                ...event,
++                x: event.screenX - layout.col,
++                y: event.screenY - layout.row,
++                width: layout.width,
++                height: layout.height,
++            });
++            return result
++                ? {
++                    hit: true,
++                    result: result.focus ? { ...result, focusTarget: layout.entry.component } : result,
++                }
++                : { hit: true };
++        }
++        return { hit: false };
++    }
+     /** Check if an overlay entry is currently visible */
+     isOverlayVisible(entry) {
+         if (entry.hidden)
+@@ -800,8 +898,10 @@ export class TuiBase extends Container {
+     }
+     /** Composite all overlays into content lines (sorted by focusOrder, higher = on top). */
+     compositeOverlays(lines, termWidth, termHeight) {
+-        if (this.overlayStack.length === 0)
++        if (this.overlayStack.length === 0) {
++            this.renderedOverlayLayouts = [];
+             return lines;
++        }
+         const result = [...lines];
+         // Pre-render all visible overlays and calculate positions
+         const rendered = [];
+@@ -821,9 +921,16 @@ export class TuiBase extends Container {
+             }
+             // Get final row/col with actual overlay height
+             const { row, col } = this.resolveOverlayLayout(options, overlayLines.length, termWidth, termHeight);
+-            rendered.push({ overlayLines, row, col, w: width });
++            rendered.push({ entry, overlayLines, row, col, w: width });
+             minLinesNeeded = Math.max(minLinesNeeded, row + overlayLines.length);
+         }
++        this.renderedOverlayLayouts = rendered.map(({ entry, row, col, w, overlayLines }) => ({
++            entry,
++            row,
++            col,
++            width: w,
++            height: overlayLines.length,
++        }));
+         // Pad to at least terminal height so overlays have screen-relative positions.
+         // Excludes maxLinesRendered: the historical high-water mark caused self-reinforcing
+         // inflation that pushed content into scrollback on terminal widen.

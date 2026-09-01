@@ -82,8 +82,8 @@ const WEB_SEARCH_CONFIG_SCHEMA: ExtensionConfigSchema<WebSearchExtConfig> = {
   validate: isWebSearchConfig,
 };
 
-/** per-result excerpts for collapsed display — first 5 visual lines */
-const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
+/** Native ctrl+o collapse keeps tool results transcript-sized. */
+const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 3 }];
 
 interface SearchResult {
   url: string;
@@ -399,7 +399,7 @@ export function createWebSearchTool(
       return boxRendererWindowed(
         () => sections,
         {
-          collapsed: { maxSections: 3, excerpts: COLLAPSED_EXCERPTS },
+          collapsed: { maxSections: 1, excerpts: COLLAPSED_EXCERPTS },
           expanded: {},
         },
         undefined,

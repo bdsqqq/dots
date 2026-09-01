@@ -253,7 +253,7 @@ export function formatBoxesWindowed(
       if (!block) continue;
       // gap marker between blocks
       if (bi > 0) {
-        out.push(gw > 0 ? `${DIM}${pad} ·${RST}` : `${DIM}·${RST}`);
+        out.push(clamp(gw > 0 ? `${DIM}${pad} ·${RST}` : `${DIM}·${RST}`));
       }
 
       // expand to visual lines at content width
@@ -266,7 +266,7 @@ export function formatBoxesWindowed(
               expanded,
               excerpts,
               (count): VisualBoxLine => ({
-                text: `· ··· ${count} more lines`,
+                text: `⋮ ${count} more ${count === 1 ? "line" : "lines"}`,
                 gutter: "",
                 highlight: false,
                 isElision: true,
@@ -281,7 +281,7 @@ export function formatBoxesWindowed(
       for (const vl of windowed.items) {
         if (vl.isElision) {
           const prefix = gw > 0 ? `${pad} ` : "";
-          out.push(`${DIM}${prefix}${vl.text}${RST}`);
+          out.push(clamp(`${DIM}${prefix}${vl.text}${RST}`));
         } else if (gw > 0) {
           const gutter = vl.gutter.padStart(gw);
           if (vl.highlight) {
@@ -314,7 +314,7 @@ export function formatBoxesWindowed(
   // section elision
   if (sections.length > maxSections) {
     const rem = sections.length - maxSections;
-    out.push(`${DIM}… ${rem} more${RST}`);
+    out.push(clamp(`${DIM}… ${rem} more${RST}`));
   }
 
   if (notices?.length) {
@@ -355,7 +355,10 @@ export function framedTextRenderer(
 ): Component & { invalidate(): void } {
   return boxRendererWindowed(
     () => [textSection(undefined, text, dim)],
-    { collapsed: {}, expanded: {} },
+    {
+      collapsed: { excerpts: [{ focus: "head", context: 3 }] },
+      expanded: {},
+    },
     undefined,
     expanded,
   );
@@ -666,6 +669,85 @@ if (import.meta.vitest) {
           component.render(width).every((line) => visibleWidth(line) <= width),
         ).toBe(true);
       }
+    });
+
+    it("keeps native collapsed fallback output to three rows", () => {
+      const text = "one\ntwo\nthree\nfour";
+      const collapsed = framedTextRenderer(text).render(80).join("\n");
+      const expanded = framedTextRenderer(text, true).render(80).join("\n");
+
+      expect(collapsed).not.toContain("four");
+      expect(expanded).toContain("four");
+    });
+  });
+
+  describe("formatBoxesWindowed", () => {
+    const section = textSection(undefined, "one\ntwo\nthree\nfour");
+
+    it("uses compact singular elision copy", () => {
+      const output = formatBoxesWindowed(
+        [section],
+        {
+          excerpts: [
+            { focus: "head", context: 2 },
+            { focus: "tail", context: 1 },
+          ],
+        },
+        undefined,
+        80,
+      ).replace(/\x1b\[[0-9;]*m/g, "");
+
+      expect(output).toContain("⋮ 1 more line");
+      expect(output).not.toContain("· ···");
+    });
+
+    it("pluralizes elided lines", () => {
+      const output = formatBoxesWindowed(
+        [section],
+        {
+          excerpts: [
+            { focus: "head", context: 1 },
+            { focus: "tail", context: 1 },
+          ],
+        },
+        undefined,
+        80,
+      ).replace(/\x1b\[[0-9;]*m/g, "");
+
+      expect(output).toContain("⋮ 2 more lines");
+
+      for (const width of [1, 2, 3, 8, 13, 14]) {
+        expect(
+          formatBoxesWindowed(
+            [section],
+            {
+              excerpts: [
+                { focus: "head", context: 1 },
+                { focus: "tail", context: 1 },
+              ],
+            },
+            undefined,
+            width,
+          )
+            .split("\n")
+            .every((line) => visibleWidth(line) <= Math.max(1, width - 2)),
+        ).toBe(true);
+      }
+    });
+
+    it("keeps section elision within narrow widths", () => {
+      const output = formatBoxesWindowed(
+        [section, section],
+        { maxSections: 1 },
+        undefined,
+        5,
+      );
+
+      expect(
+        output
+          .split("\n")
+          .every((line) => visibleWidth(line) <= 3),
+      ).toBe(true);
     });
   });
 

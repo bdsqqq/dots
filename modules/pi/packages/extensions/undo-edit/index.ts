@@ -42,7 +42,6 @@ import {
 
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },
-  { focus: "tail" as const, context: 5 },
 ];
 
 /**

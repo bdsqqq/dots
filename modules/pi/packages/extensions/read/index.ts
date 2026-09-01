@@ -413,10 +413,9 @@ export function createReadTool(limits: ReadLimits): ToolDefinition<any> {
 
       const notices = notice ? [notice] : undefined;
 
-      /** collapsed: head 3 + tail 5 visual lines */
+      /** Native ctrl+o collapse keeps tool results transcript-sized. */
       const COLLAPSED_EXCERPTS: Excerpt[] = [
         { focus: "head", context: 3 },
-        { focus: "tail", context: 5 },
       ];
 
       const section: BoxSection = { blocks: [{ lines: parsed }] };
