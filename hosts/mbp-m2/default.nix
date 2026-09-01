@@ -157,6 +157,7 @@ in
           qpdf
           inputs.lnr.packages.aarch64-darwin.default
           axiom-cli
+          hcloud
           iina
           ollama
           lua-language-server
