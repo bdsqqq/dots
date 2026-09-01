@@ -1,0 +1,23 @@
+# based on https://github.com/studio1804/ghostty-theme/blob/main/themes/studio1804-modern.conf
+# and https://github.com/raunofreiberg/vesper/blob/main/themes/Vesper-dark-color-theme.json
+palette = 0=101010
+palette = 1=dc2626
+palette = 2=6b7280
+palette = 3=f97316
+palette = 4=374151
+palette = 5=d1d5db
+palette = 6=6b7280
+palette = 7=c2c2c2
+palette = 8=404040
+palette = 9=ef4444
+palette = 10=9ca3af
+palette = 11=#99FFE4
+palette = 12=6b7280
+palette = 13=#FFC799
+palette = 14=9ca3af
+palette = 15=ffffff
+background = 101010
+foreground = c2c2c2
+cursor-color = FFC799
+selection-background = A4A4A4
+selection-foreground = ffffff

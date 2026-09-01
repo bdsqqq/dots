@@ -1,8 +1,10 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.my.mediaFeeds;
-  configSource = "/Users/bdsqqq/commonplace/01_files/nix/modules/media-feeds/config.yml";
-  pollerSource = "/Users/bdsqqq/commonplace/01_files/nix/modules/media-feeds/poll.sh";
+  moduleSource = "${config.my.paths.commonplace}/01_files/nix/modules/media-feeds";
+  configSource = "${moduleSource}/config.yml";
+  pollerSource = "${moduleSource}/poll.sh";
+  transmissionSettingsSource = "${moduleSource}/transmission-settings.json";
   configPath = "/Users/bdsqqq/.config/flexget/config.yml";
   variablesPath = "/Users/bdsqqq/.config/flexget/media-feed-variables.yml";
   onePieceKindleDirectory = "/Users/bdsqqq/kindle/one piece";
@@ -68,8 +70,13 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    home-manager.users.bdsqqq = { lib, ... }: {
+    home-manager.users.bdsqqq = { config, lib, ... }: {
       home.packages = [ pkgs.flexget pkgs.transmission_4 ];
+
+      home.file.".config/transmission-daemon/settings.json" = {
+        source = config.lib.file.mkOutOfStoreSymlink transmissionSettingsSource;
+        force = true;
+      };
 
       home.activation.mediaFeedState =
         lib.hm.dag.entryAfter [ "writeBoundary" ] ''

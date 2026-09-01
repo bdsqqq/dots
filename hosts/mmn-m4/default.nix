@@ -45,6 +45,7 @@ in
     ../../modules/orbstack
     ../../modules/ghostty
     ../../modules/open-display
+    ../../modules/obsidian
     ../../modules/html-stuff
     ../../modules/media-feeds
     ../../modules/backrest
@@ -172,7 +173,6 @@ in
     enable = true;
     casks = [
       "cleanshot"
-      "obsidian"
       "raycast"
       "tableplus"
       "tailscale-app"

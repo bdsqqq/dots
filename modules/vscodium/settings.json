@@ -146,7 +146,6 @@
   },
   "oxc.enable.oxfmt": true,
   "oxc.enable.oxlint": true,
-  "oxc.path.node": "/Users/bdsqqq/.local/share/mise/installs/node/24.18.0/bin/node",
   "oxc.lint.run": "onType",
   "oxc.fixKind": "safe_fix",
   "oxc.requireConfig": true,
