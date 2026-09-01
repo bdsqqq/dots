@@ -98,7 +98,7 @@
         };
       };
 
-      mkDarwinSystem = hostModule: inputs.nix-darwin.lib.darwinSystem {
+      mkDarwinSystem = { deployAnnotations ? true }: hostModule: inputs.nix-darwin.lib.darwinSystem {
         specialArgs = {
           inherit inputs tailnetApps;
           hostSystem = "aarch64-darwin";
@@ -120,7 +120,7 @@
         modules = [
           inputs.sops-nix.darwinModules.sops
           inputs.axiom-deploy-annotation.darwinModules.default
-          ({ config, ... }: {
+          ({ config, lib, ... }: {
             nixpkgs = {
               hostPlatform = "aarch64-darwin";
               config.allowUnfree = true;
@@ -134,7 +134,7 @@
             };
             system.configurationRevision = flakeRevision;
 
-            services.axiom-deploy-annotation = {
+            services.axiom-deploy-annotation = lib.mkIf deployAnnotations {
               enable = true;
               tokenPath = config.sops.secrets."axiom/personal_token".path;
               apiEndpoint = "https://api.axiom.co/v2/annotations";
@@ -267,8 +267,9 @@
 
       flake = {
         darwinConfigurations = {
-          "mbp-m2" = mkDarwinSystem ./hosts/mbp-m2/default.nix;
-          "mmn-m4" = mkDarwinSystem ./hosts/mmn-m4/default.nix;
+          "mbp-m2" = mkDarwinSystem { } ./hosts/mbp-m2/default.nix;
+          "mbp-m5" = mkDarwinSystem { deployAnnotations = false; } ./hosts/mbp-m5/default.nix;
+          "mmn-m4" = mkDarwinSystem { } ./hosts/mmn-m4/default.nix;
         };
 
         nixosConfigurations = {
