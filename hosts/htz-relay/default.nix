@@ -221,6 +221,7 @@ in
 
       devices = syncthing.devicesFor [
         "mbp-m2"
+        "mbp-m5"
         "mmn-m4"
         "ipd"
         "iph16"
@@ -230,6 +231,7 @@ in
       folders = {
         commonplace = syncthing.folderForPath "commonplace" "/mnt/storage-01/commonplace" [
           "mbp-m2"
+          "mbp-m5"
           "mmn-m4"
           "ipd"
           "iph16"

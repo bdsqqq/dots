@@ -135,6 +135,7 @@ in
           };
           devices = (syncthing.devicesFor [
             "mbp-m2"
+            "mbp-m5"
             "htz-relay"
           ]) // {
             mbp-m2 = syncthing.devices.mbp-m2 // { introducer = false; };
@@ -142,6 +143,7 @@ in
           folders = {
             commonplace = syncthing.folderForPath "commonplace" "/Users/bdsqqq/commonplace" [
               "mbp-m2"
+              "mbp-m5"
               "htz-relay"
             ]
               { label = "commonplace"; };

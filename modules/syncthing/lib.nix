@@ -21,6 +21,13 @@ rec {
     introduce new devices to the mesh.
   */
   devices = {
+    mbp-m5 = {
+      id = "MJSGAAL-5HSLF5A-MWDQKMP-7TYXAEU-JREH45K-EN7FZ32-YATBON3-ZNGNWAK";
+      addresses = [
+        "tcp://mbp-m5:22000"
+        "quic://mbp-m5:22000"
+      ];
+    };
     mbp-m2 = {
       id = "6QPGO5Z-ZBZZVDW-MCYFBKB-MGZQO47-GITV6C5-5YGBXLT-VWHNAQ4-5XMKDAG";
       addresses = [

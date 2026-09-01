@@ -197,6 +197,7 @@ in
             };
 
             devices = syncthing.devicesFor [
+              "mbp-m5"
               "htz-relay"
               "lgo-z2e"
               "mmn-m4"
@@ -207,6 +208,7 @@ in
 
             folders = {
               commonplace = syncthing.folderFor "commonplace" config.home.homeDirectory true [
+                "mbp-m5"
                 "htz-relay"
                 "lgo-z2e"
                 "mmn-m4"
@@ -214,7 +216,10 @@ in
                 "ipd"
               ]
                 { label = "commonplace"; };
-              pi-sessions = syncthing.folderFor "pi-sessions" config.home.homeDirectory true [ "lgo-z2e" ] { };
+              pi-sessions = syncthing.folderFor "pi-sessions" config.home.homeDirectory true [
+                "mbp-m5"
+                "lgo-z2e"
+              ] { };
               helium-remotes = syncthing.folderFor "helium-remotes" config.home.homeDirectory true [
                 "htz-relay"
                 "lgo-z2e"
