@@ -263,7 +263,10 @@ let
           }
 
           _zmx_connect() {
-            zxs
+            # ZLE widgets do not expose their stdin/stdout as TTYs. fzf opens
+            # /dev/tty itself, but zmx needs an explicit handoff to attach.
+            zle -I
+            zxs </dev/tty >/dev/tty 2>&1
             zle reset-prompt
           }
           if [[ -t 1 ]]; then
