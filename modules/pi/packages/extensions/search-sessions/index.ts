@@ -270,8 +270,8 @@ function createSessionMentionSource(): MentionSource {
   };
 }
 
-/** per-block excerpts for collapsed display — first 5 visual lines */
-const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
+/** Native ctrl+o collapse keeps tool results transcript-sized. */
+const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 3 }];
 
 // --- search filtering ---
 
@@ -724,7 +724,7 @@ export function createSearchSessionsTool(
       return boxRendererWindowed(
         () => sections,
         {
-          collapsed: { maxSections: 3, excerpts: COLLAPSED_EXCERPTS },
+          collapsed: { maxSections: 1, excerpts: COLLAPSED_EXCERPTS },
           expanded: {},
         },
         notices,

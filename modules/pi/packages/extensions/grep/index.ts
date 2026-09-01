@@ -86,9 +86,17 @@ const GREP_CONFIG_SCHEMA: ExtensionConfigSchema<GrepExtConfig> = {
 };
 
 /** max files shown in collapsed display */
-const COLLAPSED_MAX_FILES = 3;
-/** per-block excerpts for collapsed display — show first 5 visual lines */
-const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
+const COLLAPSED_MAX_FILES = 1;
+/** Native ctrl+o collapse keeps tool results transcript-sized. */
+const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 3 }];
+
+function compactCollapsedSections(sections: BoxSection[]): BoxSection[] {
+  return sections.map((section, index) =>
+    index === 0
+      ? { ...section, blocks: section.blocks.slice(0, 1) }
+      : section,
+  );
+}
 
 function truncateLine(line: string, maxChars: number): string {
   if (line.length <= maxChars) return line;
@@ -561,6 +569,9 @@ export function createGrepTool(
       }
 
       const sections = grepToSections(fileGroups, config.maxPerFile);
+      const omittedMatchGroups = expanded
+        ? 0
+        : Math.max(0, (sections[0]?.blocks.length ?? 0) - 1);
 
       // wrap section headers in OSC 8 file:// links
       if (basePath) {
@@ -578,7 +589,7 @@ export function createGrepTool(
       }
 
       return boxRendererWindowed(
-        () => sections,
+        () => (expanded ? sections : compactCollapsedSections(sections)),
         {
           collapsed: {
             maxSections: COLLAPSED_MAX_FILES,
@@ -586,7 +597,14 @@ export function createGrepTool(
           },
           expanded: {},
         },
-        notices.length > 0 ? notices : undefined,
+        [
+          ...notices,
+          ...(omittedMatchGroups > 0
+            ? [
+                `${omittedMatchGroups} more match group${omittedMatchGroups === 1 ? "" : "s"}`,
+              ]
+            : []),
+        ],
         expanded,
       );
     },

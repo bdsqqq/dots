@@ -1,0 +1,1099 @@
+diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
+index 417584fdd403a468a385ed2695dae51d8ba91bd8..b9c30af4e9091d4a70e44d1f20b1c0111cefa22c 100644
+--- a/dist/core/export-html/index.js
++++ b/dist/core/export-html/index.js
+@@ -117,6 +117,8 @@ function generateHtml(sessionData, themeName) {
+ }
+ /** Tools rendered directly by the HTML template (not pre-rendered via TUI→ANSI→HTML pipeline) */
+ const TEMPLATE_RENDERED_TOOLS = new Set(["bash", "read", "write", "edit", "ls"]);
++/** Local renderer overrides whose lifecycle markers must replace the static template header. */
++const TUI_RENDERED_TOOL_OVERRIDES = new Set(["bash", "read", "ls"]);
+ /**
+  * Pre-render custom tools to HTML using their TUI renderers.
+  */
+@@ -129,7 +131,7 @@ function preRenderCustomTools(entries, toolRenderer) {
+         // Find tool calls in assistant messages
+         if (msg.role === "assistant" && Array.isArray(msg.content)) {
+             for (const block of msg.content) {
+-                if (block.type === "toolCall" && !TEMPLATE_RENDERED_TOOLS.has(block.name)) {
++                if (block.type === "toolCall" && (!TEMPLATE_RENDERED_TOOLS.has(block.name) || TUI_RENDERED_TOOL_OVERRIDES.has(block.name))) {
+                     const callHtml = toolRenderer.renderCall(block.id, block.name, block.arguments);
+                     if (callHtml) {
+                         renderedTools[block.id] = { callHtml };
+@@ -142,11 +144,12 @@ function preRenderCustomTools(entries, toolRenderer) {
+             const toolName = msg.toolName || "";
+             // Only render if we have a pre-rendered call OR it's not template-rendered
+             const existing = renderedTools[msg.toolCallId];
+-            if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName)) {
++            if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName) || TUI_RENDERED_TOOL_OVERRIDES.has(toolName)) {
+                 const rendered = toolRenderer.renderResult(msg.toolCallId, toolName, msg.content, msg.details, msg.isError || false);
+                 if (rendered) {
+                     renderedTools[msg.toolCallId] = {
+                         ...existing,
++                        callHtml: rendered.call ?? existing?.callHtml,
+                         resultHtmlCollapsed: rendered.collapsed,
+                         resultHtmlExpanded: rendered.expanded,
+                     };
+diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.js
+index cfdd16120371d53076be7612471ababc29a4455a..8b416312fcc33372fcdaf3f0e35db5c55791233d 100644
+--- a/dist/core/export-html/template.js
++++ b/dist/core/export-html/template.js
+@@ -935 +935 @@
+-        switch (name) {
++        switch (renderedTools?.[call.id] ? '__pre_rendered__' : name) {
+diff --git a/dist/core/export-html/tool-renderer.d.ts b/dist/core/export-html/tool-renderer.d.ts
+index f4ebbbf71ec62b5e7cd0a54419992d390366fe31..261d2a3f85f3c087fd69c8da432d43adb994192a 100644
+--- a/dist/core/export-html/tool-renderer.d.ts
++++ b/dist/core/export-html/tool-renderer.d.ts
+@@ -26,6 +26,7 @@ export interface ToolHtmlRenderer {
+         data?: string;
+         mimeType?: string;
+     }>, details: unknown, isError: boolean): {
++        call?: string;
+         collapsed?: string;
+         expanded?: string;
+     } | undefined;
+diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool-renderer.js
+index 9bd365b8c4efbfc29a00372bb83620e6c998388b..095a5bebd3a1f5e4d8f65889699baccea61b1806 100644
+--- a/dist/core/export-html/tool-renderer.js
++++ b/dist/core/export-html/tool-renderer.js
+@@ -85,6 +85,12 @@ export function createToolHtmlRenderer(deps) {
+                     details,
+                     isError,
+                 };
++                let call;
++                if (toolDef.renderCall) {
++                    const callComponent = toolDef.renderCall(renderedArgs.get(toolCallId), theme, createRenderContext(toolCallId, renderedCallComponents.get(toolCallId), false, false, isError));
++                    renderedCallComponents.set(toolCallId, callComponent);
++                    call = ansiLinesToHtml(callComponent.render(width));
++                }
+                 // Render collapsed
+                 const collapsedComponent = toolDef.renderResult(agentToolResult, { expanded: false, isPartial: false }, theme, createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), false, false, isError));
+                 renderedResultComponents.set(toolCallId, collapsedComponent);
+@@ -94,6 +100,7 @@ export function createToolHtmlRenderer(deps) {
+                 renderedResultComponents.set(toolCallId, expandedComponent);
+                 const expanded = ansiLinesToHtml(trimRenderedResultLines(expandedComponent.render(width)));
+                 return {
++                    ...(call ? { call } : {}),
+                     ...(collapsed && collapsed !== expanded ? { collapsed } : {}),
+                     expanded,
+                 };
+diff --git a/dist/core/extensions/loader.js b/dist/core/extensions/loader.js
+index bb022d43f66ca443fb2ba21bf998ded56a0ebf79..58c7052be74efab4cdc28c64b22a1ba689f3ac16 100644
+--- a/dist/core/extensions/loader.js
++++ b/dist/core/extensions/loader.js
+@@ -69,6 +69,7 @@ function getAliases() {
+         return _aliases;
+     const __dirname = path.dirname(fileURLToPath(import.meta.url));
+     const packageIndex = path.resolve(__dirname, "../..", "index.js");
++    const packageClient = path.resolve(__dirname, "../..", "client/index.js");
+     const typeboxEntry = require.resolve("typebox");
+     const typeboxCompileEntry = require.resolve("typebox/compile");
+     const typeboxValueEntry = require.resolve("typebox/value");
+@@ -90,6 +91,7 @@ function getAliases() {
+     const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@earendil-works/pi-ai/oauth");
+     const piAiProvidersEntry = resolveWorkspaceOrImport("ai/dist/providers/all.js", "@earendil-works/pi-ai/providers/all");
+     _aliases = {
++        "@earendil-works/pi-coding-agent/client": packageClient,
+         "@earendil-works/pi-coding-agent": piCodingAgentEntry,
+         "@earendil-works/pi-agent-core": piAgentCoreEntry,
+         "@earendil-works/pi-tui": piTuiEntry,
+diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
+index 3eb9e0bf570a79398fb3b81fc88eca79b286201e..f544ab5eebfd3a911136a38f7a5fe44a273a73ee 100644
+--- a/dist/modes/interactive/components/assistant-message.d.ts
++++ b/dist/modes/interactive/components/assistant-message.d.ts
+@@ -6,15 +6,23 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+  */
+ export declare class AssistantMessageComponent extends Container {
+     private contentContainer;
++    private markerColumn;
+     private hideThinkingBlock;
+     private markdownTheme;
+     private hiddenThinkingLabel;
+     private outputPad;
+     private markdownTransformers;
++    private requestRender?;
+     private lastMessage?;
+     private hasToolCalls;
+     private isStreaming;
+-    constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
++    private collapsed;
++    private markerFrame;
++    private markerInterval;
++    constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[], requestRender?: () => void);
++    private updateMarker;
++    private stopMarkerAnimation;
++    setCollapsed(collapsed: boolean): void;
+     invalidate(): void;
+     setHideThinkingBlock(hide: boolean): void;
+     setHiddenThinkingLabel(label: string): void;
+diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes/interactive/components/assistant-message.js
+index 56061b12694b1fa89862fa21dd15b76c254d8e77..53375235b1ac00a4f744bad636b299b588ab6283 100644
+--- a/dist/modes/interactive/components/assistant-message.js
++++ b/dist/modes/interactive/components/assistant-message.js
+@@ -1,4 +1,4 @@
+-import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { createMarkdownTransform } from "./markdown-transform.js";
+ const OSC133_ZONE_START = "\x1b]133;A\x07";
+@@ -9,6 +9,7 @@ const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
+  */
+ export class AssistantMessageComponent extends Container {
+     contentContainer;
++    markerColumn;
+     hideThinkingBlock;
+     markdownTheme;
+     hiddenThinkingLabel;
+@@ -17,20 +18,68 @@ export class AssistantMessageComponent extends Container {
+     lastMessage;
+     hasToolCalls = false;
+     isStreaming = false;
+-    constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = []) {
++    collapsed = false;
++    requestRender;
++    markerFrame = 0;
++    markerInterval;
++    constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = [], requestRender) {
+         super();
+         this.hideThinkingBlock = hideThinkingBlock;
+         this.markdownTheme = markdownTheme;
+         this.hiddenThinkingLabel = hiddenThinkingLabel;
+         this.outputPad = outputPad;
+         this.markdownTransformers = markdownTransformers;
++        this.requestRender = requestRender;
+         // Container for text/thinking content
+         this.contentContainer = new Container();
+-        this.addChild(this.contentContainer);
++        this.markerColumn = new MarkerColumn("", this.contentContainer, {
++            onGutterClick: () => this.setCollapsed(!this.collapsed),
++        });
+         if (message) {
+             this.updateContent(message);
+         }
+     }
++    updateMarker(message) {
++        const continuationMarker = theme.fg("muted", "│");
++        const failed = message.stopReason === "aborted" ||
++            message.stopReason === "error" ||
++            message.stopReason === "length";
++        const hasResponseText = message.content.some((content) => content.type === "text" && content.text.trim());
++        this.markerColumn.setFooterMarker(!this.collapsed && (failed || hasResponseText) ? theme.fg("muted", "╰────") : undefined);
++        if (failed) {
++            this.stopMarkerAnimation();
++            this.markerColumn.setMarker(theme.fg("error", "✕"), continuationMarker);
++            return;
++        }
++        if (!this.isStreaming) {
++            this.stopMarkerAnimation();
++            this.markerColumn.setMarker(theme.fg(hasResponseText ? "success" : "muted", "●"), continuationMarker);
++            return;
++        }
++        this.markerColumn.setMarker(theme.fg(this.markerFrame % 2 === 0 ? "muted" : "accent", "●"), continuationMarker);
++        if (!this.markerInterval && this.requestRender) {
++            this.markerInterval = setInterval(() => {
++                this.markerFrame = (this.markerFrame + 1) % 2;
++                this.markerColumn.setMarker(theme.fg(this.markerFrame === 0 ? "muted" : "accent", "●"), theme.fg("muted", "│"));
++                this.requestRender?.();
++            }, 320);
++            this.markerInterval.unref?.();
++        }
++    }
++    stopMarkerAnimation() {
++        if (this.markerInterval) {
++            clearInterval(this.markerInterval);
++            this.markerInterval = undefined;
++        }
++    }
++    setCollapsed(collapsed) {
++        if (this.collapsed === collapsed)
++            return;
++        this.collapsed = collapsed;
++        this.markerColumn.setChild(collapsed ? new Text(theme.fg("muted", "…"), 0, 0) : this.contentContainer);
++        if (this.lastMessage)
++            this.updateMarker(this.lastMessage);
++    }
+     invalidate() {
+         super.invalidate();
+         if (this.lastMessage) {
+@@ -56,7 +105,10 @@ export class AssistantMessageComponent extends Container {
+         }
+     }
+     render(width) {
+-        const lines = super.render(width);
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        const lines = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+         if (this.hasToolCalls || lines.length === 0) {
+             return lines;
+         }
+@@ -67,19 +119,15 @@ export class AssistantMessageComponent extends Container {
+     updateContent(message, isStreaming = this.isStreaming) {
+         this.lastMessage = message;
+         this.isStreaming = isStreaming;
+-        // Clear content container
++        this.clear();
+         this.contentContainer.clear();
+-        const hasVisibleContent = message.content.some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
+-        if (hasVisibleContent) {
+-            this.contentContainer.addChild(new Spacer(1));
+-        }
+         // Render content in order
+         for (let i = 0; i < message.content.length; i++) {
+             const content = message.content[i];
+             if (content.type === "text" && content.text.trim()) {
+                 // Assistant text messages with no background - trim the text
+                 // Set paddingY=0 to avoid extra spacing before tool executions
+-                this.contentContainer.addChild(new Markdown(content.text.trim(), this.outputPad, 0, this.markdownTheme, undefined, {
++                this.contentContainer.addChild(new Markdown(content.text.trim(), 0, 0, this.markdownTheme, undefined, {
+                     transform: createMarkdownTransform("assistant", this.isStreaming, this.markdownTransformers),
+                 }));
+             }
+@@ -106,11 +154,11 @@ export class AssistantMessageComponent extends Container {
+                     .some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
+                 if (this.hideThinkingBlock) {
+                     // Show one static label for each run of thinking blocks when hidden.
+-                    this.contentContainer.addChild(new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0));
++                    this.contentContainer.addChild(new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), 0, 0));
+                 }
+                 else {
+                     // Render each run of thinking blocks as one Markdown section.
+-                    this.contentContainer.addChild(new Markdown(thinkingBlocks.join("\n\n"), this.outputPad, 0, this.markdownTheme, {
++                    this.contentContainer.addChild(new Markdown(thinkingBlocks.join("\n\n"), 0, 0, this.markdownTheme, {
+                         color: (text) => theme.fg("thinkingText", text),
+                         italic: true,
+                     }, {
+@@ -128,23 +176,37 @@ export class AssistantMessageComponent extends Container {
+         const hasToolCalls = message.content.some((c) => c.type === "toolCall");
+         this.hasToolCalls = hasToolCalls;
+         if (message.stopReason === "length") {
+-            this.contentContainer.addChild(new Spacer(1));
+-            this.contentContainer.addChild(new Text(theme.fg("error", "Response was truncated before completion."), this.outputPad, 0));
++            if (this.contentContainer.children.length > 0)
++                this.contentContainer.addChild(new Spacer(1));
++            this.contentContainer.addChild(new Text(theme.fg("error", "Response was truncated before completion."), 0, 0));
+         }
+         else if (!hasToolCalls) {
+             if (message.stopReason === "aborted") {
+                 const abortMessage = message.errorMessage && message.errorMessage !== "Request was aborted"
+                     ? message.errorMessage
+                     : "Operation aborted";
+-                this.contentContainer.addChild(new Spacer(1));
+-                this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), this.outputPad, 0));
++                if (this.contentContainer.children.length > 0)
++                    this.contentContainer.addChild(new Spacer(1));
++                this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), 0, 0));
+             }
+             else if (message.stopReason === "error") {
+                 const errorMsg = message.errorMessage || "Unknown error";
+-                this.contentContainer.addChild(new Spacer(1));
+-                this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
++                if (this.contentContainer.children.length > 0)
++                    this.contentContainer.addChild(new Spacer(1));
++                this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), 0, 0));
+             }
+         }
++        if (this.contentContainer.children.length > 0) {
++            this.markerColumn.setChild(this.collapsed ? new Text(theme.fg("muted", "…"), 0, 0) : this.contentContainer);
++            this.updateMarker(message);
++            this.addChild(new Spacer(1));
++            const messageFrame = new Box(this.outputPad, 0);
++            messageFrame.addChild(this.markerColumn);
++            this.addChild(messageFrame);
++        }
++        else {
++            this.stopMarkerAnimation();
++        }
+     }
+ }
+ //# sourceMappingURL=assistant-message.js.map
+diff --git a/dist/modes/interactive/components/bash-execution.js b/dist/modes/interactive/components/bash-execution.js
+index d8e5ddb397177550ff2be2d26ee4ab48213bb09b..528bf9686f1cba7b44f70b5d307e44bf3b5db91f 100644
+--- a/dist/modes/interactive/components/bash-execution.js
++++ b/dist/modes/interactive/components/bash-execution.js
+@@ -1,7 +1,7 @@
+ /**
+  * Component for displaying bash command execution with streaming output.
+  */
+-import { Container, Loader, Spacer, Text } from "@earendil-works/pi-tui";
++import { Container, Loader, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateTail, } from "../../../core/tools/truncate.js";
+ import { stripAnsi } from "../../../utils/ansi.js";
+ import { theme } from "../theme/theme.js";
+@@ -9,7 +9,7 @@ import { DynamicBorder } from "./dynamic-border.js";
+ import { keyHint, keyText } from "./keybinding-hints.js";
+ import { truncateToVisualLines } from "./visual-truncate.js";
+ // Preview line limit when not expanded (matches tool execution behavior)
+-const PREVIEW_LINES = 20;
++const PREVIEW_LINES = 3;
+ export class BashExecutionComponent extends Container {
+     command;
+     outputLines = [];
+@@ -92,8 +92,7 @@ export class BashExecutionComponent extends Container {
+         // Get the lines to potentially display (after context truncation)
+         const availableLines = contextTruncation.content ? contextTruncation.content.split("\n") : [];
+         // Apply preview truncation based on expanded state
+-        const previewLogicalLines = availableLines.slice(-PREVIEW_LINES);
+-        const hiddenLineCount = availableLines.length - previewLogicalLines.length;
++        const hiddenLineCount = Math.max(0, availableLines.length - PREVIEW_LINES);
+         // Rebuild content container
+         this.contentContainer.clear();
+         // Command header
+@@ -108,15 +107,18 @@ export class BashExecutionComponent extends Container {
+             }
+             else {
+                 // Use shared visual truncation utility with width-aware caching
+-                const styledOutput = previewLogicalLines.map((line) => theme.fg("muted", line)).join("\n");
+-                const styledInput = `\n${styledOutput}`;
++                const styledOutput = availableLines.map((line) => theme.fg("muted", line)).join("\n");
+                 let cachedWidth;
+                 let cachedLines;
+                 this.contentContainer.addChild({
+                     render: (width) => {
+                         if (cachedLines === undefined || cachedWidth !== width) {
+-                            const result = truncateToVisualLines(styledInput, PREVIEW_LINES, width, 1);
+-                            cachedLines = result.visualLines;
++                            const result = truncateToVisualLines(styledOutput, PREVIEW_LINES, width, 1);
++                            cachedLines = ["", ...result.visualLines];
++                            if (this.status !== "running" && result.skippedCount > 0) {
++                                const noun = result.skippedCount === 1 ? "line" : "lines";
++                                cachedLines.push(truncateToWidth(`${theme.fg("muted", ` ... ${result.skippedCount} more ${noun} (`)}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`, Math.max(0, width), ""));
++                            }
+                             cachedWidth = width;
+                         }
+                         return cachedLines ?? [];
+@@ -135,14 +137,8 @@ export class BashExecutionComponent extends Container {
+         else {
+             const statusParts = [];
+             // Show how many lines are hidden (collapsed preview)
+-            if (hiddenLineCount > 0) {
+-                if (this.expanded) {
+-                    statusParts.push(`${theme.fg("muted", "(")}${keyHint("app.tools.expand", "to collapse")}${theme.fg("muted", ")")}`);
+-                }
+-                else {
+-                    statusParts.push(`${theme.fg("muted", `... ${hiddenLineCount} more lines (`)}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`);
+-                }
+-            }
++            if (hiddenLineCount > 0 && this.expanded)
++                statusParts.push(`${theme.fg("muted", "(")}${keyHint("app.tools.expand", "to collapse")}${theme.fg("muted", ")")}`);
+             if (this.status === "cancelled") {
+                 statusParts.push(theme.fg("warning", "(cancelled)"));
+             }
+diff --git a/dist/modes/interactive/components/branch-summary-message.d.ts b/dist/modes/interactive/components/branch-summary-message.d.ts
+index 6ad17106122631376ac9c49c93890d4b858d71b0..8d4f97eccecd25f69bd10a1c36438da1be41bef1 100644
+--- a/dist/modes/interactive/components/branch-summary-message.d.ts
++++ b/dist/modes/interactive/components/branch-summary-message.d.ts
+@@ -1,16 +1,19 @@
+-import { Box, type MarkdownTheme } from "@earendil-works/pi-tui";
++import { Container, type MarkdownTheme } from "@earendil-works/pi-tui";
+ import type { BranchSummaryMessage } from "../../../core/messages.ts";
+ /**
+  * Component that renders a branch summary message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export declare class BranchSummaryMessageComponent extends Box {
++export declare class BranchSummaryMessageComponent extends Container {
+     private expanded;
+     private message;
+     private markdownTheme;
+-    constructor(message: BranchSummaryMessage, markdownTheme?: MarkdownTheme);
++    private outputPad;
++    constructor(message: BranchSummaryMessage, markdownTheme?: MarkdownTheme, outputPad?: number);
+     setExpanded(expanded: boolean): void;
++    setOutputPad(outputPad: number): void;
+     invalidate(): void;
+     private updateDisplay;
++    render(width: number): string[];
+ }
+ //# sourceMappingURL=branch-summary-message.d.ts.map
+\ No newline at end of file
+diff --git a/dist/modes/interactive/components/branch-summary-message.js b/dist/modes/interactive/components/branch-summary-message.js
+index e23ca6db02a29814112dd4945bd868604eb6676f..d68112578788b69a4e472105cde411e5e7d04a96 100644
+--- a/dist/modes/interactive/components/branch-summary-message.js
++++ b/dist/modes/interactive/components/branch-summary-message.js
+@@ -1,23 +1,33 @@
+-import { Box, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { keyText } from "./keybinding-hints.js";
+ /**
+  * Component that renders a branch summary message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export class BranchSummaryMessageComponent extends Box {
++export class BranchSummaryMessageComponent extends Container {
+     expanded = false;
+     message;
+     markdownTheme;
+-    constructor(message, markdownTheme = getMarkdownTheme()) {
+-        super(1, 1, (t) => theme.bg("customMessageBg", t));
++    outputPad;
++    constructor(message, markdownTheme = getMarkdownTheme(), outputPad = 1) {
++        super();
+         this.message = message;
+         this.markdownTheme = markdownTheme;
++        this.outputPad = outputPad;
+         this.updateDisplay();
+     }
+     setExpanded(expanded) {
+-        this.expanded = expanded;
+-        this.updateDisplay();
++        if (this.expanded !== expanded) {
++            this.expanded = expanded;
++            this.updateDisplay();
++        }
++    }
++    setOutputPad(outputPad) {
++        if (this.outputPad !== outputPad) {
++            this.outputPad = outputPad;
++            this.updateDisplay();
++        }
+     }
+     invalidate() {
+         super.invalidate();
+@@ -25,20 +35,33 @@ export class BranchSummaryMessageComponent extends Box {
+     }
+     updateDisplay() {
+         this.clear();
++        const content = new Box(0, 0, (text) => theme.bg("customMessageBg", text));
+         const label = theme.fg("customMessageLabel", `\x1b[1m[branch]\x1b[22m`);
+-        this.addChild(new Text(label, 0, 0));
+-        this.addChild(new Spacer(1));
++        content.addChild(new Text(label, 0, 0));
++        content.addChild(new Spacer(1));
+         if (this.expanded) {
+             const header = "**Branch Summary**\n\n";
+-            this.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
++            content.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
+                 color: (text) => theme.fg("customMessageText", text),
+             }));
+         }
+         else {
+-            this.addChild(new Text(theme.fg("customMessageText", "Branch summary (") +
++            content.addChild(new Text(theme.fg("customMessageText", "Branch summary (") +
+                 theme.fg("dim", keyText("app.tools.expand")) +
+                 theme.fg("customMessageText", " to expand)"), 0, 0));
+         }
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), content, {
++            continuationMarker: theme.fg("muted", "│"),
++            footerMarker: theme.fg("muted", "╰────"),
++        }));
++        this.addChild(messageFrame);
++    }
++    render(width) {
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+     }
+ }
+ //# sourceMappingURL=branch-summary-message.js.map
+\ No newline at end of file
+diff --git a/dist/modes/interactive/components/compaction-summary-message.d.ts b/dist/modes/interactive/components/compaction-summary-message.d.ts
+index 88bfa501c86b3ddaed0b7e80ea486f7e287e2c21..622301f3438081f7b39042282cf7ed4cf0b1d3cf 100644
+--- a/dist/modes/interactive/components/compaction-summary-message.d.ts
++++ b/dist/modes/interactive/components/compaction-summary-message.d.ts
+@@ -1,16 +1,19 @@
+-import { Box, type MarkdownTheme } from "@earendil-works/pi-tui";
++import { Container, type MarkdownTheme } from "@earendil-works/pi-tui";
+ import type { CompactionSummaryMessage } from "../../../core/messages.ts";
+ /**
+  * Component that renders a compaction message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export declare class CompactionSummaryMessageComponent extends Box {
++export declare class CompactionSummaryMessageComponent extends Container {
+     private expanded;
+     private message;
+     private markdownTheme;
+-    constructor(message: CompactionSummaryMessage, markdownTheme?: MarkdownTheme);
++    private outputPad;
++    constructor(message: CompactionSummaryMessage, markdownTheme?: MarkdownTheme, outputPad?: number);
+     setExpanded(expanded: boolean): void;
++    setOutputPad(outputPad: number): void;
+     invalidate(): void;
+     private updateDisplay;
++    render(width: number): string[];
+ }
+ //# sourceMappingURL=compaction-summary-message.d.ts.map
+\ No newline at end of file
+diff --git a/dist/modes/interactive/components/compaction-summary-message.js b/dist/modes/interactive/components/compaction-summary-message.js
+index 48c22718e1dff7cf4faa4cc09b8a917301b0d892..f595fb65b136f11ca5ec71280ba6bec180dd98dd 100644
+--- a/dist/modes/interactive/components/compaction-summary-message.js
++++ b/dist/modes/interactive/components/compaction-summary-message.js
+@@ -1,23 +1,33 @@
+-import { Box, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { keyText } from "./keybinding-hints.js";
+ /**
+  * Component that renders a compaction message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export class CompactionSummaryMessageComponent extends Box {
++export class CompactionSummaryMessageComponent extends Container {
+     expanded = false;
+     message;
+     markdownTheme;
+-    constructor(message, markdownTheme = getMarkdownTheme()) {
+-        super(1, 1, (t) => theme.bg("customMessageBg", t));
++    outputPad;
++    constructor(message, markdownTheme = getMarkdownTheme(), outputPad = 1) {
++        super();
+         this.message = message;
+         this.markdownTheme = markdownTheme;
++        this.outputPad = outputPad;
+         this.updateDisplay();
+     }
+     setExpanded(expanded) {
+-        this.expanded = expanded;
+-        this.updateDisplay();
++        if (this.expanded !== expanded) {
++            this.expanded = expanded;
++            this.updateDisplay();
++        }
++    }
++    setOutputPad(outputPad) {
++        if (this.outputPad !== outputPad) {
++            this.outputPad = outputPad;
++            this.updateDisplay();
++        }
+     }
+     invalidate() {
+         super.invalidate();
+@@ -25,21 +35,34 @@ export class CompactionSummaryMessageComponent extends Box {
+     }
+     updateDisplay() {
+         this.clear();
++        const content = new Box(0, 0, (text) => theme.bg("customMessageBg", text));
+         const tokenStr = this.message.tokensBefore.toLocaleString();
+         const label = theme.fg("customMessageLabel", `\x1b[1m[compaction]\x1b[22m`);
+-        this.addChild(new Text(label, 0, 0));
+-        this.addChild(new Spacer(1));
++        content.addChild(new Text(label, 0, 0));
++        content.addChild(new Spacer(1));
+         if (this.expanded) {
+             const header = `**Compacted from ${tokenStr} tokens**\n\n`;
+-            this.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
++            content.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
+                 color: (text) => theme.fg("customMessageText", text),
+             }));
+         }
+         else {
+-            this.addChild(new Text(theme.fg("customMessageText", `Compacted from ${tokenStr} tokens (`) +
++            content.addChild(new Text(theme.fg("customMessageText", `Compacted from ${tokenStr} tokens (`) +
+                 theme.fg("dim", keyText("app.tools.expand")) +
+                 theme.fg("customMessageText", " to expand)"), 0, 0));
+         }
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), content, {
++            continuationMarker: theme.fg("muted", "│"),
++            footerMarker: theme.fg("muted", "╰────"),
++        }));
++        this.addChild(messageFrame);
++    }
++    render(width) {
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+     }
+ }
+ //# sourceMappingURL=compaction-summary-message.js.map
+\ No newline at end of file
+diff --git a/dist/modes/interactive/components/custom-message.d.ts b/dist/modes/interactive/components/custom-message.d.ts
+index 4f55bb82e2327168f49beb5dca16e9a61b58b49b..c8abb34742a6dde9ffaf5f6e6fc00a417f30d3c3 100644
+--- a/dist/modes/interactive/components/custom-message.d.ts
++++ b/dist/modes/interactive/components/custom-message.d.ts
+@@ -18,5 +18,6 @@ export declare class CustomMessageComponent extends Container {
+     setOutputPad(outputPad: number): void;
+     invalidate(): void;
+     private rebuild;
++    render(width: number): string[];
+ }
+ //# sourceMappingURL=custom-message.d.ts.map
+\ No newline at end of file
+diff --git a/dist/modes/interactive/components/custom-message.js b/dist/modes/interactive/components/custom-message.js
+index 7c6fb37daea606e59d1616d24fb18d689fed6023..2e723f3e1fe9a539d62ce5dc7a98b8fd22cbf23e 100644
+--- a/dist/modes/interactive/components/custom-message.js
++++ b/dist/modes/interactive/components/custom-message.js
+@@ -1,4 +1,4 @@
+-import { Box, Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ /**
+  * Component that renders a custom message entry from extensions.
+@@ -20,7 +20,7 @@ export class CustomMessageComponent extends Container {
+         this.outputPad = outputPad;
+         this.addChild(new Spacer(1));
+         // Create box with purple background (used for default rendering)
+-        this.box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
++        this.box = new Box(0, 0, (t) => theme.bg("customMessageBg", t));
+         this.rebuild();
+     }
+     setExpanded(expanded) {
+@@ -40,18 +40,14 @@ export class CustomMessageComponent extends Container {
+         this.rebuild();
+     }
+     rebuild() {
+-        // Remove previous content component
+-        if (this.customComponent) {
+-            this.removeChild(this.customComponent);
+-            this.customComponent = undefined;
+-        }
+-        this.removeChild(this.box);
++        this.clear();
++        this.customComponent = undefined;
++        this.addChild(new Spacer(1));
+         // Try custom renderer first - it handles its own styling
+         if (this.customRenderer) {
+             try {
+                 const component = this.customRenderer(this.message, { expanded: this._expanded, outputPad: this.outputPad }, theme);
+                 if (component) {
+-                    // Custom renderer provides its own styled component
+                     this.customComponent = component;
+                     this.addChild(component);
+                     return;
+@@ -62,7 +58,6 @@ export class CustomMessageComponent extends Container {
+             }
+         }
+         // Default rendering uses our box
+-        this.addChild(this.box);
+         this.box.clear();
+         // Default rendering: label + content
+         const label = theme.fg("customMessageLabel", `\x1b[1m[${this.message.customType}]\x1b[22m`);
+@@ -82,6 +77,18 @@ export class CustomMessageComponent extends Container {
+         this.box.addChild(new Markdown(text, 0, 0, this.markdownTheme, {
+             color: (text) => theme.fg("customMessageText", text),
+         }));
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), this.box, {
++            continuationMarker: theme.fg("muted", "│"),
++            footerMarker: theme.fg("muted", "╰────"),
++        }));
++        this.addChild(messageFrame);
++    }
++    render(width) {
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+     }
+ }
+ //# sourceMappingURL=custom-message.js.map
+\ No newline at end of file
+diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/interactive/components/tool-execution.d.ts
+index 4a22d5c5159d72c18f4be5b607572238fdedd7cb..9aa26612ff64a6e49e54e8e0ce2a7a06b2f139ba 100644
+--- a/dist/modes/interactive/components/tool-execution.d.ts
++++ b/dist/modes/interactive/components/tool-execution.d.ts
+@@ -1,4 +1,4 @@
+-import { Container, type TUI } from "@earendil-works/pi-tui";
++import { Container, type TuiMouseDispatchResult, type TuiMouseEvent, type TuiMouseEventResult, type TUI } from "@earendil-works/pi-tui";
+ import type { ToolDefinition } from "../../../core/extensions/types.ts";
+ export interface ToolExecutionOptions {
+     showImages?: boolean;
+@@ -29,6 +29,10 @@ export declare class ToolExecutionComponent extends Container {
+     private result?;
+     private convertedImages;
+     private hideComponent;
++    private collapsed;
++    private renderedGutterCells;
++    private renderedHiddenLineCount;
++    private renderedCanCollapse;
+     constructor(toolName: string, toolCallId: string, args: any, options: ToolExecutionOptions | undefined, toolDefinition: ToolDefinition<any, any> | undefined, ui: TUI, cwd: string);
+     private getCallRenderer;
+     private getResultRenderer;
+@@ -37,6 +41,7 @@ export declare class ToolExecutionComponent extends Container {
+     private getRenderContext;
+     private createCallFallback;
+     private createResultFallback;
++    private compactResultFallback;
+     updateArgs(args: any): void;
+     markExecutionStarted(): void;
+     setArgsComplete(): void;
+@@ -55,7 +60,13 @@ export declare class ToolExecutionComponent extends Container {
+     setShowImages(show: boolean): void;
+     setImageWidthCells(width: number): void;
+     invalidate(): void;
++    handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | TuiMouseEventResult | undefined;
+     render(width: number): string[];
++    private compactFallbackLines;
++    private foldRenderedLines;
++    private captureGutterRows;
++    private findGutterCell;
++    private countHiddenLines;
+     private updateDisplay;
+     private getTextOutput;
+     private formatToolExecution;
+diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
+index c33fc3972c1ebd8d3a7f430d4b71f2d99ad619ca..cc1abaf439effe21ff6d72223643da80beb1c911 100644
+--- a/dist/modes/interactive/components/tool-execution.js
++++ b/dist/modes/interactive/components/tool-execution.js
+@@ -1,10 +1,9 @@
+-import { Box, Container, getCapabilities, Image, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, getCapabilities, Image, MarkerColumn, Spacer, stripTerminalSequences, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+ import { createAllToolDefinitions } from "../../../core/tools/index.js";
+ import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
+ import { convertToPng } from "../../../utils/image-convert.js";
+ import { theme } from "../theme/theme.js";
+-import { keyHint } from "./keybinding-hints.js";
+-const FALLBACK_PREVIEW_LINES = 10;
++const FALLBACK_PREVIEW_LINES = 3;
+ export class ToolExecutionComponent extends Container {
+     contentBox;
+     contentText;
+@@ -30,6 +29,10 @@ export class ToolExecutionComponent extends Container {
+     result;
+     convertedImages = new Map();
+     hideComponent = false;
++    collapsed = false;
++    renderedGutterCells = new Map();
++    renderedHiddenLineCount = 0;
++    renderedCanCollapse = false;
+     constructor(toolName, toolCallId, args, options = {}, toolDefinition, ui, cwd) {
+         super();
+         this.toolName = toolName;
+@@ -106,21 +109,46 @@ export class ToolExecutionComponent extends Container {
+         };
+     }
+     createCallFallback() {
+-        return new Text(theme.fg("toolTitle", theme.bold(this.toolName)), 0, 0);
++        const marker = this.result?.isError
++            ? theme.fg("error", "✕")
++            : this.isPartial
++                ? theme.fg("muted", "●")
++                : theme.fg("success", "✓");
++        return new MarkerColumn(marker, new Text(theme.fg("toolTitle", theme.bold(this.toolName)), 0, 0));
+     }
+     createResultFallback() {
+         const output = this.getTextOutput();
+         if (!output) {
+-            return undefined;
++            const frame = new MarkerColumn(theme.fg("muted", "│"), new Text(theme.fg("muted", "(no output)"), 0, 0), {
++                continuationMarker: theme.fg("muted", "│"),
++                footerMarker: theme.fg("muted", "╰────"),
++            });
++            return this.expanded ? frame : this.compactResultFallback(frame);
+         }
+         const lines = output.split("\n");
+-        const displayLines = this.expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES);
+-        const remaining = lines.length - displayLines.length;
+-        let text = displayLines.map((line) => theme.fg("toolOutput", line)).join("\n");
+-        if (remaining > 0) {
+-            text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+-        }
+-        return new Text(text, 0, 0);
++        const text = lines.map((line) => theme.fg("toolOutput", line)).join("\n");
++        const frame = new MarkerColumn(theme.fg("muted", "│"), new Text(text, 0, 0), {
++            continuationMarker: theme.fg("muted", "│"),
++            footerMarker: theme.fg("muted", "╰────"),
++        });
++        return this.expanded ? frame : this.compactResultFallback(frame);
++    }
++    compactResultFallback(component) {
++        return {
++            render: (width) => {
++                const lines = component.render(width);
++                const footerIndex = lines.findIndex((line) => /^╰─*$/u.test(stripTerminalSequences(line).trim()));
++                const bodyEnd = footerIndex >= 0 ? footerIndex : lines.length;
++                const body = lines.slice(0, bodyEnd);
++                if (body.length <= FALLBACK_PREVIEW_LINES)
++                    return lines;
++                const hiddenCount = body.length - FALLBACK_PREVIEW_LINES;
++                const noun = hiddenCount === 1 ? "line" : "lines";
++                const hint = truncateToWidth(theme.fg("muted", `⋮ ${hiddenCount} more ${noun}`), Math.max(0, width), "");
++                return [...body.slice(0, FALLBACK_PREVIEW_LINES), hint, ...lines.slice(bodyEnd)];
++            },
++            invalidate: () => component.invalidate(),
++        };
+     }
+     updateArgs(args) {
+         this.args = args;
+@@ -169,6 +197,8 @@ export class ToolExecutionComponent extends Container {
+     }
+     setExpanded(expanded) {
+         this.expanded = expanded;
++        if (expanded)
++            this.collapsed = false;
+         this.updateDisplay();
+     }
+     setShowImages(show) {
+@@ -183,12 +213,30 @@ export class ToolExecutionComponent extends Container {
+         super.invalidate();
+         this.updateDisplay();
+     }
++    handleMouse(event) {
++        if (event.type === "click" &&
++            event.button === "left" &&
++            !event.shift &&
++            !event.alt &&
++            !event.ctrl &&
++            event.x === this.renderedGutterCells.get(event.y) &&
++            (this.collapsed || this.renderedCanCollapse)) {
++            this.collapsed = !this.collapsed;
++            this.ui.requestRender();
++            return { handled: true };
++        }
++        if (this.collapsed)
++            return undefined;
++        return super.handleMouse(event);
++    }
+     render(width) {
+-        if (this.hideComponent) {
++        if (this.hideComponent || width <= 0) {
++            this.renderedGutterCells = new Map();
+             return [];
+         }
++        const safeWidth = Math.max(0, Math.floor(width));
+         if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
+-            const contentLines = this.selfRenderContainer.render(width);
++            const contentLines = this.selfRenderContainer.render(safeWidth);
+             if (contentLines.length === 0 && this.imageComponents.length === 0) {
+                 return [];
+             }
+@@ -200,16 +248,91 @@ export class ToolExecutionComponent extends Container {
+             for (let i = 0; i < this.imageComponents.length; i++) {
+                 const spacer = this.imageSpacers[i];
+                 if (spacer) {
+-                    lines.push(...spacer.render(width));
++                    lines.push(...spacer.render(safeWidth));
+                 }
+                 const imageComponent = this.imageComponents[i];
+                 if (imageComponent) {
+-                    lines.push(...imageComponent.render(width));
++                    lines.push(...imageComponent.render(safeWidth));
+                 }
+             }
++            const clamped = lines.map((line) => truncateToWidth(line, safeWidth, ""));
++            return this.foldRenderedLines(this.compactFallbackLines(clamped, safeWidth), safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
++        }
++        const clamped = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
++        return this.foldRenderedLines(this.compactFallbackLines(clamped, safeWidth), safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
++    }
++    compactFallbackLines(lines, width) {
++        if (this.expanded || !this.result || this.hasRendererDefinition())
++            return lines;
++        const meaningfulRows = lines.flatMap((line, index) => {
++            const plain = stripTerminalSequences(line).trim();
++            return !plain || /^╰─*$/u.test(plain) ? [] : [index];
++        });
++        if (meaningfulRows.length <= FALLBACK_PREVIEW_LINES + 1)
++            return lines;
++        const headerIndex = meaningfulRows[0];
++        const shownRows = meaningfulRows.slice(1, FALLBACK_PREVIEW_LINES + 1);
++        const hiddenCount = meaningfulRows.length - shownRows.length - 1;
++        const indent = shownRows.length > 0 ? this.findGutterCell(lines[shownRows[0]]) ?? 0 : 0;
++        const noun = hiddenCount === 1 ? "line" : "lines";
++        const hint = truncateToWidth(`${" ".repeat(indent)}${theme.fg("muted", `⋮ ${hiddenCount} more ${noun}`)}`, Math.max(0, width), "");
++        const footerIndex = lines.findIndex((line, index) => index > headerIndex && /^╰─*$/u.test(stripTerminalSequences(line).trim()));
++        const trailingStart = footerIndex >= 0 ? footerIndex : (meaningfulRows.at(-1) ?? headerIndex) + 1;
++        return [
++            ...lines.slice(0, headerIndex + 1),
++            ...shownRows.map((index) => lines[index]),
++            hint,
++            ...lines.slice(trailingStart),
++        ];
++    }
++    foldRenderedLines(lines, width) {
++        const headerIndex = lines.findIndex((line) => {
++            const plain = stripTerminalSequences(line);
++            const markerIndex = plain.search(/[●✓✕]/u);
++            return markerIndex >= 0 && /^ *$/u.test(plain.slice(0, markerIndex));
++        });
++        if (headerIndex < 0) {
++            this.renderedHiddenLineCount = 0;
++            this.renderedCanCollapse = false;
++            this.captureGutterRows(lines);
++            return lines;
++        }
++        const headerColumn = this.findGutterCell(lines[headerIndex]) ?? 0;
++        this.renderedHiddenLineCount = this.countHiddenLines(lines.slice(headerIndex + 1));
++        this.renderedCanCollapse =
++            this.result !== undefined &&
++                (this.renderedHiddenLineCount > 0 ||
++                    lines.slice(headerIndex + 1).some((line) => /[│├╰⋮]/u.test(stripTerminalSequences(line))));
++        if (!this.collapsed) {
++            this.captureGutterRows(lines);
+             return lines;
+         }
+-        return super.render(width);
++        const noun = this.renderedHiddenLineCount === 1 ? "line" : "lines";
++        const summary = truncateToWidth(`${" ".repeat(headerColumn)}${theme.fg("muted", `⋮ ${this.renderedHiddenLineCount} ${noun} hidden.`)}`, Math.max(0, width), "");
++        const folded = [...lines.slice(0, headerIndex), lines[headerIndex], summary];
++        this.captureGutterRows(folded);
++        return folded;
++    }
++    captureGutterRows(lines) {
++        this.renderedGutterCells = new Map(lines.flatMap((line, index) => {
++            const column = this.findGutterCell(line);
++            return column === undefined ? [] : [[index, column]];
++        }));
++    }
++    findGutterCell(line) {
++        const plain = stripTerminalSequences(line);
++        const markerIndex = plain.search(/[●✓✕│├╰⋮]/u);
++        if (markerIndex < 0 || !/^ *$/u.test(plain.slice(0, markerIndex)))
++            return undefined;
++        return visibleWidth(plain.slice(0, markerIndex));
++    }
++    countHiddenLines(lines) {
++        return lines.reduce((count, line) => {
++            const plain = stripTerminalSequences(line).trim();
++            if (!plain || /^[●✓✕│├╰⋮](?:─+)?$/u.test(plain))
++                return count;
++            return count + 1;
++        }, 0);
+     }
+     updateDisplay() {
+         const bgFn = this.isPartial
+@@ -311,7 +434,12 @@ export class ToolExecutionComponent extends Container {
+         return getRenderedTextOutput(this.result, this.showImages);
+     }
+     formatToolExecution() {
+-        let text = theme.fg("toolTitle", theme.bold(this.toolName));
++        const marker = this.result?.isError
++            ? theme.fg("error", "✕")
++            : this.isPartial
++                ? theme.fg("muted", "●")
++                : theme.fg("success", "✓");
++        let text = `${marker} ${theme.fg("toolTitle", theme.bold(this.toolName))}`;
+         const content = JSON.stringify(this.args, null, 2);
+         if (content) {
+             text += `\n\n${content}`;
+diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/interactive/components/user-message.d.ts
+index 387f2a525c16748da6771b46416d0d6b6d2fbbf3..81929ac6306a777fe412e23444b6134463cac677 100644
+--- a/dist/modes/interactive/components/user-message.d.ts
++++ b/dist/modes/interactive/components/user-message.d.ts
+@@ -8,8 +8,11 @@ export declare class UserMessageComponent extends Container {
+     private markdownTheme;
+     private outputPad;
+     private markdownTransformers;
++    private collapsed;
+     constructor(text: string, markdownTheme?: MarkdownTheme, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
+     setOutputPad(padding: number): void;
++    setCollapsed(collapsed: boolean): void;
++    invalidate(): void;
+     private rebuild;
+     render(width: number): string[];
+ }
+diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/interactive/components/user-message.js
+index 2e0490362d3396995b587f502ff3e69a7cad9a43..0acec18a4d07e1262cd7aa81ca9b2a8091cebcc3 100644
+--- a/dist/modes/interactive/components/user-message.js
++++ b/dist/modes/interactive/components/user-message.js
+@@ -1,4 +1,4 @@
+-import { Box, Container, Markdown } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { createMarkdownTransform } from "./markdown-transform.js";
+ const OSC133_ZONE_START = "\x1b]133;A\x07";
+@@ -12,6 +12,7 @@ export class UserMessageComponent extends Container {
+     markdownTheme;
+     outputPad;
+     markdownTransformers;
++    collapsed = false;
+     constructor(text, markdownTheme = getMarkdownTheme(), outputPad = 1, markdownTransformers = []) {
+         super();
+         this.text = text;
+@@ -24,20 +25,43 @@ export class UserMessageComponent extends Container {
+         this.outputPad = padding;
+         this.rebuild();
+     }
++    setCollapsed(collapsed) {
++        if (this.collapsed === collapsed)
++            return;
++        this.collapsed = collapsed;
++        this.rebuild();
++    }
+     rebuild() {
+         this.clear();
+-        const contentBox = new Box(this.outputPad, 1, (content) => theme.bg("userMessageBg", content));
+-        contentBox.addChild(new Markdown(this.text, 0, 0, this.markdownTheme, {
+-            color: (content) => theme.fg("userMessageText", content),
+-        }, {
+-            preserveOrderedListMarkers: true,
+-            preserveBackslashEscapes: true,
+-            transform: createMarkdownTransform("user", false, this.markdownTransformers),
++        const contentBox = new Box(0, 0, (content) => theme.bg("userMessageBg", content));
++        if (this.collapsed) {
++            contentBox.addChild(new Text(theme.fg("muted", "…"), 0, 0));
++        }
++        else {
++            contentBox.addChild(new Markdown(this.text, 0, 0, this.markdownTheme, {
++                color: (content) => theme.fg("userMessageText", content),
++            }, {
++                preserveOrderedListMarkers: true,
++                preserveBackslashEscapes: true,
++                transform: createMarkdownTransform("user", false, this.markdownTransformers),
++            }));
++        }
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), contentBox, {
++            continuationMarker: theme.fg("muted", "│"),
++            onGutterClick: () => this.setCollapsed(!this.collapsed),
+         }));
+-        this.addChild(contentBox);
++        this.addChild(messageFrame);
++    }
++    invalidate() {
++        super.invalidate();
++        this.rebuild();
+     }
+     render(width) {
+-        const lines = super.render(width);
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        const lines = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+         if (lines.length === 0) {
+             return lines;
+         }
+diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
+index a27754f8db8c6026bb88155da9f42bcc619f5ea0..dfd7c8988e4d6ce637183a01903db66021588e5c 100644
+--- a/dist/modes/interactive/interactive-mode.js
++++ b/dist/modes/interactive/interactive-mode.js
+@@ -2629,7 +2629,7 @@ export class InteractiveMode {
+                     this.ui.requestRender();
+                 }
+                 else if (event.message.role === "assistant") {
+-                    this.streamingComponent = new AssistantMessageComponent(undefined, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers());
++                    this.streamingComponent = new AssistantMessageComponent(undefined, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers(), () => this.ui.requestRender());
+                     this.streamingMessage = event.message;
+                     this.chatContainer.addChild(this.streamingComponent);
+                     this.streamingComponent.updateContent(this.streamingMessage, true);
+@@ -2948,14 +2948,14 @@ export class InteractiveMode {
+             }
+             case "compactionSummary": {
+                 this.chatContainer.addChild(new Spacer(1));
+-                const component = new CompactionSummaryMessageComponent(message, this.getMarkdownThemeWithSettings());
++                const component = new CompactionSummaryMessageComponent(message, this.getMarkdownThemeWithSettings(), this.outputPad);
+                 component.setExpanded(this.toolOutputExpanded);
+                 this.chatContainer.addChild(component);
+                 break;
+             }
+             case "branchSummary": {
+                 this.chatContainer.addChild(new Spacer(1));
+-                const component = new BranchSummaryMessageComponent(message, this.getMarkdownThemeWithSettings());
++                const component = new BranchSummaryMessageComponent(message, this.getMarkdownThemeWithSettings(), this.outputPad);
+                 component.setExpanded(this.toolOutputExpanded);
+                 this.chatContainer.addChild(component);
+                 break;
+@@ -2990,7 +2990,7 @@ export class InteractiveMode {
+                 break;
+             }
+             case "assistant": {
+-                const assistantComponent = new AssistantMessageComponent(message, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers());
++                const assistantComponent = new AssistantMessageComponent(message, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers(), () => this.ui.requestRender());
+                 this.chatContainer.addChild(assistantComponent);
+                 break;
+             }
+@@ -3914,6 +3914,8 @@ export class InteractiveMode {
+                     if (this.streamingComponent || this.session.isStreaming) {
+                         for (const child of this.chatContainer.children) {
+                             if (child instanceof AssistantMessageComponent ||
++                                child instanceof BranchSummaryMessageComponent ||
++                                child instanceof CompactionSummaryMessageComponent ||
+                                 child instanceof CustomMessageComponent ||
+                                 child instanceof UserMessageComponent) {
+                                 child.setOutputPad(padding);

@@ -19,6 +19,7 @@ import * as fileTracker from "@bds_pi/file-tracker";
 import { withFileLocks } from "@bds_pi/mutex";
 import * as toolPolicy from "@bds_pi/tool-policy";
 import { renderLifecycleCall } from "@bds_pi/box-format";
+import { makeShowRenderer } from "@bds_pi/show-renderer";
 
 const APPLY_PATCH_GRAMMAR = String.raw`start: begin_patch hunk+ end_patch
 begin_patch: "*** Begin Patch" LF
@@ -552,7 +553,12 @@ export function createApplyPatchTool(): ToolDefinition<
       );
       for (const change of shown) {
         component.addChild(new Spacer(1));
-        component.addChild(new Text(renderDiff(change.diff), 0, 0));
+        const diff = renderDiff(change.diff);
+        component.addChild(
+          expanded
+            ? new Text(diff, 0, 0)
+            : makeShowRenderer(diff, [{ focus: "head", context: 3 }]),
+        );
       }
       return frame();
     },
@@ -656,6 +662,47 @@ if (import.meta.vitest) {
       expect(lines.filter((line) => line === "╰────")).toHaveLength(1);
       expect(lines.at(-1)).toBe("╰────");
     }
+  });
+
+  it("keeps native collapsed patch output to three diff rows", async () => {
+    const { initTheme } = await import("@earendil-works/pi-coding-agent");
+    initTheme("dark", false);
+    const tool = createApplyPatchTool();
+    const theme = { fg: (_color: string, text: string) => text };
+    const result = {
+      content: [{ type: "text" as const, text: "modified file.txt" }],
+      details: {
+        changes: [
+          {
+            path: "file.txt",
+            kind: "modified" as const,
+            diff: "@@\n-old-1\n-old-2\n+new-1\n+new-2\n+new-3",
+          },
+        ],
+      },
+    };
+
+    const collapsed = tool
+      .renderResult!(
+        result,
+        { expanded: false, isPartial: false },
+        theme as never,
+        {} as never,
+      )
+      .render(80)
+      .join("\n");
+    const expanded = tool
+      .renderResult!(
+        result,
+        { expanded: true, isPartial: false },
+        theme as never,
+        {} as never,
+      )
+      .render(80)
+      .join("\n");
+
+    expect(collapsed).not.toContain("+new-3");
+    expect(expanded).toContain("+new-3");
   });
 
   it("applies multi-file patches and tracks add, update, delete, and move", async () => {

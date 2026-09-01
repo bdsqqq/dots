@@ -292,7 +292,8 @@ function renderToolLine(
 
 // --- tree rendering ---
 
-const COLLAPSED_ITEM_COUNT = 10;
+const COLLAPSED_ITEM_COUNT = 3;
+const COLLAPSED_SUMMARY_ROWS = 3;
 const ACTIVE_BADGE_INTERVAL_MS = 320;
 const ACTIVE_BADGE_STATE = Symbol("sub-agent-active-badge");
 
@@ -301,6 +302,32 @@ type ActiveBadgeState = {
   interval?: ReturnType<typeof setInterval>;
   renderVersion: number;
 };
+
+function compactVisualRows(
+  component: Component,
+  maxRows: number,
+  fg: (color: string, text: string) => string,
+): Component {
+  return {
+    render(width: number): string[] {
+      const lines = component.render(width);
+      if (lines.length <= maxRows) return lines;
+      const hidden = lines.length - maxRows;
+      const noun = hidden === 1 ? "line" : "lines";
+      return [
+        ...lines.slice(0, maxRows),
+        truncateToWidth(
+          fg("muted", `⋮ ${hidden} more ${noun}`),
+          Math.max(0, width),
+          "",
+        ),
+      ];
+    },
+    invalidate(): void {
+      component.invalidate();
+    },
+  };
+}
 
 type SubAgentCallContext = {
   isError: boolean;
@@ -584,8 +611,14 @@ export function renderAgentTree(
   }
 
   if (boxedSummary) {
+    const summary = new Markdown(boxedSummary, 0, 0, mdTheme);
     container.addChild(
-      openFrame(new Markdown(boxedSummary, 0, 0, mdTheme), fg),
+      openFrame(
+        showExpanded
+          ? summary
+          : compactVisualRows(summary, COLLAPSED_SUMMARY_ROWS, fg),
+        fg,
+      ),
     );
   }
 
@@ -673,6 +706,38 @@ if (import.meta.vitest) {
         "│ summary line two",
         "╰────",
       ]);
+    });
+
+    it("keeps collapsed final output to three visual rows", () => {
+      const result: SingleResult = {
+        agent: "delegate",
+        task: "summarize",
+        exitCode: 0,
+        messages: [
+          assistantMessage([
+            { type: "text", text: "one\ntwo\nthree\nfour\nfive" },
+          ]),
+        ],
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0,
+          contextTokens: 0,
+          turns: 0,
+        },
+      };
+      const collapsed = new Container();
+      const expanded = new Container();
+
+      renderAgentTree(result, collapsed, false, mockTheme, { header: "none" });
+      renderAgentTree(result, expanded, true, mockTheme, { header: "none" });
+
+      const collapsedText = collapsed.render(40).join("\n");
+      expect(collapsedText).not.toContain("four");
+      expect(collapsedText).toContain("⋮ 2 more lines");
+      expect(expanded.render(40).join("\n")).toContain("five");
     });
 
     it("keeps wrapped call content aligned after its status column", () => {
@@ -839,7 +904,7 @@ if (import.meta.vitest) {
 
       expect(
         stripTerminalSequences(container.render(80)[0] ?? "").trimEnd(),
-      ).toBe("├ …1 earlier calls");
+      ).toBe("├ …8 earlier calls");
     });
 
     it("keeps failure metadata when the call owns the status", () => {

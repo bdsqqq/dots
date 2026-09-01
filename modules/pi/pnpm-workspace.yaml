@@ -3,17 +3,17 @@ packages:
   - packages/extensions/*
 
 patchedDependencies:
-  "@earendil-works/pi-coding-agent@0.84.3": patches/pi-coding-agent-0.84.3.patch
-  "@earendil-works/pi-tui@0.84.3": patches/pi-tui-0.84.3.patch
+  "@earendil-works/pi-coding-agent@0.84.4": patches/pi-coding-agent-0.84.4.patch
+  "@earendil-works/pi-tui@0.84.4": patches/pi-tui-0.84.4.patch
   "@letta-ai/trajectory@0.2.1": patches/letta-ai-trajectory-0.2.1.patch
 
 catalog:
-  "@earendil-works/pi-ai": ^0.84.3
-  "@earendil-works/pi-client": ^0.84.3
-  "@earendil-works/pi-coding-agent": ^0.84.3
-  "@earendil-works/pi-protocol": ^0.84.3
-  "@earendil-works/pi-server": ^0.84.3
-  "@earendil-works/pi-tui": ^0.84.3
+  "@earendil-works/pi-ai": ^0.84.4
+  "@earendil-works/pi-client": ^0.84.4
+  "@earendil-works/pi-coding-agent": ^0.84.4
+  "@earendil-works/pi-protocol": ^0.84.4
+  "@earendil-works/pi-server": ^0.84.4
+  "@earendil-works/pi-tui": ^0.84.4
   typebox: ^1.1.38
 
 allowBuilds:

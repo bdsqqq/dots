@@ -38,10 +38,9 @@ import {
   type Excerpt,
 } from "@bds_pi/box-format";
 
-/** collapsed: head 3 + tail 5 = 8 visual lines */
+/** Native ctrl+o collapse keeps tool results transcript-sized. */
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },
-  { focus: "tail" as const, context: 5 },
 ];
 
 // --- typed params interfaces ---
@@ -219,7 +218,7 @@ export function createReadGithubTool(): ToolDefinition<any> {
       return boxRendererWindowed(
         () => [section],
         {
-          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          collapsed: { maxSections: 1, excerpts: COLLAPSED_EXCERPTS },
           expanded: {},
         },
         undefined,
@@ -362,7 +361,7 @@ export function createSearchGithubTool(): ToolDefinition<any> {
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
-          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          collapsed: { maxSections: 1, excerpts: COLLAPSED_EXCERPTS },
           expanded: {},
         },
         undefined,
@@ -466,7 +465,7 @@ export function createListDirectoryGithubTool(): ToolDefinition<any> {
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
-          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          collapsed: { maxSections: 1, excerpts: COLLAPSED_EXCERPTS },
           expanded: {},
         },
         undefined,
@@ -596,7 +595,7 @@ export function createListRepositoriesTool(): ToolDefinition<any> {
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
-          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          collapsed: { maxSections: 1, excerpts: COLLAPSED_EXCERPTS },
           expanded: {},
         },
         undefined,
@@ -710,7 +709,7 @@ export function createGlobGithubTool(): ToolDefinition<any> {
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
-          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          collapsed: { maxSections: 1, excerpts: COLLAPSED_EXCERPTS },
           expanded: {},
         },
         undefined,
@@ -860,7 +859,7 @@ export function createCommitSearchTool(): ToolDefinition<any> {
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
-          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          collapsed: { maxSections: 1, excerpts: COLLAPSED_EXCERPTS },
           expanded: {},
         },
         undefined,
@@ -976,7 +975,7 @@ export function createDiffTool(): ToolDefinition<any> {
       return boxRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
-          collapsed: { excerpts: COLLAPSED_EXCERPTS },
+          collapsed: { maxSections: 1, excerpts: COLLAPSED_EXCERPTS },
           expanded: {},
         },
         undefined,

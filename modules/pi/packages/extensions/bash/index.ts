@@ -591,10 +591,9 @@ async function cleanupBackgroundProcesses(
   );
 }
 
-/** per-block excerpts for collapsed display — head 3 + tail 5 = 8 visual lines */
+/** Native ctrl+o collapse keeps tool results transcript-sized. */
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },
-  { focus: "tail" as const, context: 5 },
 ];
 
 // --- tool factory ---
