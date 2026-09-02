@@ -6,6 +6,12 @@
       "service": "svc:files:443",
       "tailnetAudience": "owner"
     },
+    "fleet-mesh": {
+      "connectorDestination": null,
+      "connectorTrust": null,
+      "service": "svc:fleet-mesh:443",
+      "tailnetAudience": "owner"
+    },
     "html-stuff": {
       "connectorDestination": "svc:html-stuff:443",
       "connectorTrust": "shared",

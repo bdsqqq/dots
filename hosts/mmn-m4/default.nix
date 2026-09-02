@@ -1,7 +1,8 @@
-{ inputs
-, pkgs
-, lib
-, ...
+{
+  inputs,
+  pkgs,
+  lib,
+  ...
 }:
 let
   syncthing = import ../../modules/syncthing/lib.nix { inherit lib; };
@@ -17,6 +18,7 @@ in
     ../../modules/homebrew/best-effort.nix
     ../../modules/tailscale
     ../../modules/tailnet-registry
+    ../../modules/fleet-mesh
     ../../modules/syncthing
     ../../modules/o11y
     ../../modules/sleepless
@@ -134,20 +136,23 @@ in
             relaysEnabled = false;
             natEnabled = false;
           };
-          devices = (syncthing.devicesFor [
-            "mbp-m2"
-            "mbp-m5"
-            "htz-relay"
-          ]) // {
-            mbp-m2 = syncthing.devices.mbp-m2 // { introducer = false; };
-          };
+          devices =
+            (syncthing.devicesFor [
+              "mbp-m2"
+              "mbp-m5"
+              "htz-relay"
+            ])
+            // {
+              mbp-m2 = syncthing.devices.mbp-m2 // {
+                introducer = false;
+              };
+            };
           folders = {
             commonplace = syncthing.folderForPath "commonplace" "/Users/bdsqqq/commonplace" [
               "mbp-m2"
               "mbp-m5"
               "htz-relay"
-            ]
-              { label = "commonplace"; };
+            ] { label = "commonplace"; };
             kindle = syncthing.folderFor "kindle" "/Users/bdsqqq" true [ "mbp-m2" ] { };
           };
         };
@@ -156,6 +161,9 @@ in
       launchd.agents = {
         backup-health.domain = "user";
         files-browser.domain = "user";
+        fleet-mesh-mmn-m4.domain = "user";
+        fleet-mesh-relay.domain = "user";
+        fleet-mesh-virtual-esp32.domain = "user";
         html-stuff.domain = "user";
         media-feed-import-modulo.domain = "user";
         media-feed-poller.domain = "user";
@@ -187,6 +195,66 @@ in
   my.tailnetRegistry.directory = {
     enable = true;
     tailscaleService.enable = true;
+  };
+  my.fleetMesh = {
+    enable = true;
+    authority = {
+      id = "fleet-admin";
+      publicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAJvCiyp+31mkd6AkLv8z8TfTZd4Scd/iCqHo2qCy/dhI=\n-----END PUBLIC KEY-----\n";
+    };
+    roster = [
+      {
+        id = "mmn-m4";
+        signingPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA6a737oiTfFZpFNVZ4nAMcnDDKJLEqmVTpuIY5l7OTfY=\n-----END PUBLIC KEY-----\n";
+        encryptionPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VuAyEAVqYfbya+KJEf8PQtiMc3+v51vWo0cngP+3Xj+tccnlw=\n-----END PUBLIC KEY-----\n";
+      }
+      {
+        id = "relay";
+        signingPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEADbanwhNFTi9/KIlLBPkON/iYTAlwcgbC8k9swFIN6qo=\n-----END PUBLIC KEY-----\n";
+        encryptionPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VuAyEAxSkUr3WkzBe0Sbs1YvGfrGZDzsw0vwi48MwHGwMu11c=\n-----END PUBLIC KEY-----\n";
+      }
+      {
+        id = "virtual-esp32";
+        signingPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAQ53zLO6hz6y04PB1jQEyLpEGC/w9m9rwUucbvSIy79s=\n-----END PUBLIC KEY-----\n";
+        encryptionPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VuAyEAvSWKMuD2FRRMY9FV0zp6E5493qc54cl1EAUccNPgBRc=\n-----END PUBLIC KEY-----\n";
+      }
+    ];
+    nodes = {
+      mmn-m4 = {
+        port = 43120;
+        identitySecret = "fleet-mesh/bridge-identity";
+        peers = [
+          {
+            id = "relay";
+            url = "http://127.0.0.1:43121";
+          }
+        ];
+      };
+      relay = {
+        port = 43121;
+        identitySecret = "fleet-mesh/relay-identity";
+        peers = [
+          {
+            id = "mmn-m4";
+            url = "http://127.0.0.1:43120";
+          }
+          {
+            id = "virtual-esp32";
+            url = "http://127.0.0.1:43122";
+          }
+        ];
+      };
+      virtual-esp32 = {
+        port = 43122;
+        identitySecret = "fleet-mesh/virtual-esp32-identity";
+        peers = [
+          {
+            id = "relay";
+            url = "http://127.0.0.1:43121";
+          }
+        ];
+      };
+    };
   };
   my.tailnetRegistry.hostChecks.syncthing = {
     enable = true;

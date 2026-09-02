@@ -21,6 +21,22 @@
     },
     "title": "files"
   },
+  "fleet-mesh": {
+    "cloudflare": null,
+    "description": "encrypted fleet command relay",
+    "id": "fleet-mesh",
+    "path": "/",
+    "schemaVersion": 1,
+    "source": "modules/fleet-mesh/tailnet-app.nix",
+    "tailnet": {
+      "audience": "owner",
+      "service": {
+        "name": "fleet-mesh",
+        "port": 443
+      }
+    },
+    "title": "fleet mesh"
+  },
   "html-stuff": {
     "cloudflare": {
       "accessName": "family html stuff",
