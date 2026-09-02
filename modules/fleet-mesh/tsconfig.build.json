@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "declaration": true,
+    "noEmit": false,
+    "outDir": "dist",
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": ".",
+    "sourceMap": true
+  },
+  "include": [
+    "daemon.ts",
+    "fleet-bin.ts",
+    "fleet-cli.ts",
+    "fleet-cli-main.ts",
+    "fleet-contract.ts",
+    "fleet-mesh.ts",
+    "fleet-node.ts",
+    "fleet-operations.ts",
+    "fleet-public.ts",
+    "fleet-router.ts",
+    "fleet-schema.ts",
+    "local-fleet-config.ts",
+    "local-fleet-runtime.ts"
+  ]
+}

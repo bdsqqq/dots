@@ -1,0 +1,57 @@
+{
+  "authority": {
+    "id": "fixture-authority",
+    "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9qVfr2RXI0/e03Hj/2Ie5jf5hSEq47WybW/gk3aDblk=\n-----END PUBLIC KEY-----\n"
+  },
+  "identity": {
+    "id": "fixture-node",
+    "signingPrivateKey": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIPtT1fa3H5Si2bT+ktdk7aDih2fGAP7/zJOnQm17XQP1\n-----END PRIVATE KEY-----\n",
+    "signingPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAbVKCDapfWHhQtDK72w5dzZ/luC6+1lvwHfhonNdU3e0=\n-----END PUBLIC KEY-----\n",
+    "encryptionPrivateKey": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VuBCIEIKBzJcSGHZUm3FqXy79wOeRreU7xsQqXV5B+jL/vcrRJ\n-----END PRIVATE KEY-----\n",
+    "encryptionPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VuAyEApwSdZFoSHZL2mj6CDRhllbxqHPHtbRTnG9j/5VrwgHU=\n-----END PUBLIC KEY-----\n"
+  },
+  "command": {
+    "kind": "command",
+    "header": {
+      "version": 1,
+      "fleet": "home",
+      "to": "fixture-node",
+      "resource": "fixture:value",
+      "operation": "set",
+      "revision": {
+        "epoch": 1,
+        "sequence": 1
+      },
+      "notBefore": null,
+      "expiresAt": null
+    },
+    "encryption": {
+      "ephemeralPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VuAyEAXsgIBHCQoUIR0iFFXHvYwLw01FaaglYpv2hrWbSOHjE=\n-----END PUBLIC KEY-----\n",
+      "iv": "Q1PnOKzUhpdNa9pn",
+      "ciphertext": "npmV7GEMrwU7qj/nJk7H8WXr11QIDlAR3mc=",
+      "authTag": "ZMIXt1890QvTJ0DFHpTpxQ=="
+    },
+    "authority": "fixture-authority",
+    "signature": "A6furaAMo1TspHPBRo7xQtKRWQKzOHj1eaicNhNM16oYUP59Nc4nfWdSIN1qB4Vp7Jxd5OjzdGEPy1bVOdJLAA==",
+    "id": "e0bb33698d9141c727a049d0c7b576092e7959f48dee9fce99909c5211010832"
+  },
+  "receipt": {
+    "kind": "receipt",
+    "commandId": "e0bb33698d9141c727a049d0c7b576092e7959f48dee9fce99909c5211010832",
+    "node": "fixture-node",
+    "resource": "fixture:value",
+    "revision": {
+      "epoch": 1,
+      "sequence": 1
+    },
+    "status": "applied",
+    "reason": null,
+    "resultingRevision": {
+      "epoch": 1,
+      "sequence": 1
+    },
+    "recordedAt": "2026-09-01T12:00:00.000Z",
+    "signature": "jrPdN3EXO+6BrrBBMrj85K9kZpzohYY9pPepCZ6FlmNAz6VENUyNM/7YvcoW/lgJWIxASXxtiMGKhZ98faafDQ==",
+    "id": "e1aaf7e65212a718aa565c2ab237aacfc469543f9f45cf6ff6c300c36d9159e1"
+  }
+}

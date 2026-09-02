@@ -2,17 +2,24 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { MeshNode, type MeshNodeSnapshot, type MeshRecord } from "./fleet-mesh.ts";
+import { MeshNode, type MeshNodeSnapshot } from "./fleet-mesh.ts";
+import {
+  validateV1MeshNodeSnapshot,
+  validateV1MeshRecords,
+} from "./fleet-schema.ts";
 
 const MAX_GOSSIP_BYTES = 1024 * 1024;
 
-async function readBody(request: IncomingMessage): Promise<Buffer> {
+async function readLimitedBody(
+  source: AsyncIterable<Uint8Array>,
+  tooLargeMessage: string,
+): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let length = 0;
-  for await (const chunk of request) {
+  for await (const chunk of source) {
     const buffer = Buffer.from(chunk);
     length += buffer.length;
-    if (length > MAX_GOSSIP_BYTES) throw new Error("gossip request exceeds 1 MiB");
+    if (length > MAX_GOSSIP_BYTES) throw new Error(tooLargeMessage);
     chunks.push(buffer);
   }
   return Buffer.concat(chunks);
@@ -29,7 +36,9 @@ function json(response: ServerResponse, status: number, value: unknown): void {
 
 export async function readSnapshot(path: string): Promise<MeshNodeSnapshot | undefined> {
   try {
-    return JSON.parse(await readFile(path, "utf8")) as MeshNodeSnapshot;
+    const snapshot: unknown = JSON.parse(await readFile(path, "utf8"));
+    validateV1MeshNodeSnapshot(snapshot);
+    return snapshot;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
@@ -59,19 +68,23 @@ export async function startMeshDaemon(options: {
   const hostname = options.hostname ?? "127.0.0.1";
   let save = Promise.resolve();
   const persist = () => {
-    save = save.then(() => writeSnapshot(options.statePath, options.node.snapshot()));
-    return save;
+    const write = save
+      .catch(() => undefined)
+      .then(() => writeSnapshot(options.statePath, options.node.snapshot()));
+    save = write.catch(() => undefined);
+    return write;
   };
 
   const server = createServer(async (request, response) => {
     try {
       if (request.method === "POST" && request.url === "/gossip") {
-        const body = JSON.parse((await readBody(request)).toString("utf8")) as unknown;
-        if (!Array.isArray(body)) {
-          json(response, 400, { error: "gossip body must be a record array" });
-          return;
-        }
-        const accepted = options.node.ingest(body as MeshRecord[]);
+        const body: unknown = JSON.parse(
+          (
+            await readLimitedBody(request, "gossip request exceeds 1 MiB")
+          ).toString("utf8"),
+        );
+        validateV1MeshRecords(body);
+        const accepted = options.node.ingest(body);
         await persist();
         json(response, 200, { accepted, records: options.node.records() });
         return;
@@ -107,9 +120,18 @@ export async function startMeshDaemon(options: {
         body: JSON.stringify(options.node.records()),
       });
       if (!response.ok) throw new Error(`peer returned HTTP ${response.status}`);
-      const result = (await response.json()) as { records?: unknown };
-      if (!Array.isArray(result.records)) throw new Error("peer returned invalid gossip records");
-      const accepted = options.node.ingest(result.records as MeshRecord[]);
+      if (!response.body) throw new Error("peer returned an empty gossip response");
+      const result: unknown = JSON.parse(
+        (
+          await readLimitedBody(response.body, "peer gossip response exceeds 1 MiB")
+        ).toString("utf8"),
+      );
+      if (typeof result !== "object" || result === null || !("records" in result)) {
+        throw new Error("peer returned invalid gossip response");
+      }
+      const records = result.records;
+      validateV1MeshRecords(records);
+      const accepted = options.node.ingest(records);
       await persist();
       return accepted;
     },
