@@ -2465,6 +2465,8 @@ if (import.meta.vitest) {
       const secondGate = new Promise<void>((resolve) => {
         releaseSecond = resolve;
       });
+      let continuationContext: Message[] = [];
+      let inspectedContext: Message[] = [];
       faux.setResponses([
         async () => {
           await firstGate;
@@ -2499,7 +2501,8 @@ if (import.meta.vitest) {
           );
         },
         fauxAssistantMessage("first response"),
-        async () => {
+        async (context) => {
+          continuationContext = [...context.messages];
           await secondGate;
           return fauxAssistantMessage(
             [
@@ -2516,7 +2519,10 @@ if (import.meta.vitest) {
             { stopReason: "toolUse" },
           );
         },
-        fauxAssistantMessage("second response"),
+        (context) => {
+          inspectedContext = [...context.messages];
+          return fauxAssistantMessage("second response");
+        },
       ]);
 
       const serviceA = capacityService({
@@ -2568,7 +2574,8 @@ if (import.meta.vitest) {
           continueId?: string;
           resultRef?: string;
           workspaceApply?: PiWorkspaceResultApplyOutcome;
-          messages: Message[];
+          messages?: Message[];
+          toolCalls?: Array<{ name: string }>;
         };
       };
       const sessionId = first.details.sessionId ?? "";
@@ -2582,14 +2589,9 @@ if (import.meta.vitest) {
           status: "applied",
           paths: ["deleted.txt", "modified.txt", "nested/untracked.txt"],
         });
+        expect(first.details.messages).toBeUndefined();
         expect(
-          first.details.messages.some(
-            (message) =>
-              message.role === "assistant" &&
-              message.content.some(
-                (part) => part.type === "toolCall" && part.name === "write",
-              ),
-          ),
+          first.details.toolCalls?.some((call) => call.name === "write"),
         ).toBe(true);
         expect(
           fs.readFileSync(path.join(repository, "modified.txt"), "utf8"),
@@ -2941,15 +2943,30 @@ if (import.meta.vitest) {
         expect(second.details.sessionId).toBe(sessionId);
         expect(second.details.continueId).toBe(sessionId);
         expect(second.details.workspaceApply.status).toBe("already_applied");
+        expect(second.details.messages).toBeUndefined();
         expect(
-          second.details.messages.filter(
-            (message: Message) => message.role === "user",
+          second.details.toolCalls.some(
+            (call: { name: string }) => call.name === "bash",
           ),
+        ).toBe(true);
+        expect(second.details.output).toBe("second response");
+        expect(
+          continuationContext.filter((message) => message.role === "user"),
         ).toHaveLength(2);
         expect(
-          (second.details.messages as Message[])
+          continuationContext.some(
+            (message) =>
+              message.role === "assistant" &&
+              message.content.some(
+                (part) =>
+                  part.type === "text" && part.text === "first response",
+              ),
+          ),
+        ).toBe(true);
+        expect(
+          inspectedContext
             .filter(
-              (message: Message): message is ToolResultMessage<unknown> =>
+              (message): message is ToolResultMessage<unknown> =>
                 message.role === "toolResult" && message.toolName === "bash",
             )
             .map((message) =>
@@ -2962,26 +2979,6 @@ if (import.meta.vitest) {
         ).toContain(
           "modified=child modified\ndeleted=missing\nnested=child untracked",
         );
-        expect(
-          second.details.messages.some(
-            (message: Message) =>
-              message.role === "assistant" &&
-              message.content.some(
-                (part) =>
-                  part.type === "text" && part.text === "first response",
-              ),
-          ),
-        ).toBe(true);
-        expect(
-          second.details.messages.some(
-            (message: Message) =>
-              message.role === "assistant" &&
-              message.content.some(
-                (part) =>
-                  part.type === "text" && part.text === "second response",
-              ),
-          ),
-        ).toBe(true);
         expect(fs.existsSync(executorB)).toBe(false);
         expect(readCapacityRecord(catalogueDir, sessionId)).toMatchObject({
           leaseEpoch: 3,

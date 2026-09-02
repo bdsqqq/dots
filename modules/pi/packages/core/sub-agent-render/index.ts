@@ -49,11 +49,22 @@ export type DisplayItem =
       isError?: boolean;
     };
 
+export type ToolDisplayItem = {
+  id: string;
+  name: string;
+  summary: string;
+  isError?: boolean;
+};
+
 export interface SingleResult {
   agent: string;
   task: string;
   exitCode: number;
-  messages: Message[];
+  /** Present only while a child is running and when reading legacy results. */
+  messages?: Message[];
+  /** Durable rendering state derived before the child transcript is released. */
+  output?: string;
+  toolCalls?: ToolDisplayItem[];
   usage: UsageStats;
   model?: PiSpawnModel;
   stopReason?: string;
@@ -145,9 +156,16 @@ export function subAgentResult(
   usage: Usage;
   isError?: boolean;
 } {
+  const { messages, ...metadata } = details;
+  const transcript = messages ?? [];
   return {
     content: [{ type: "text" as const, text }],
-    details: { ...details, cost: details.usage.cost },
+    details: {
+      ...metadata,
+      output: details.output ?? getFinalOutput(transcript),
+      toolCalls: details.toolCalls ?? getToolDisplayItems(transcript),
+      cost: details.usage.cost,
+    },
     usage: toToolUsage(details.usage),
     ...(isError && { isError: true }),
   };
@@ -277,8 +295,33 @@ function toolArgSummary(
   }
 }
 
+const TOOL_SUMMARY_MAX_CHARS = 500;
+
+export function getToolDisplayItems(messages: Message[]): ToolDisplayItem[] {
+  return getDisplayItems(messages).flatMap((item) => {
+    if (item.type !== "toolCall") return [];
+    const rawSummary = toolArgSummary(item.name, item.args);
+    const summary =
+      rawSummary.length <= TOOL_SUMMARY_MAX_CHARS
+        ? rawSummary
+        : `${rawSummary.slice(0, TOOL_SUMMARY_MAX_CHARS - 1)}…`;
+    return [
+      {
+        id: item.id,
+        name: item.name,
+        summary,
+        isError: item.isError,
+      },
+    ];
+  });
+}
+
+export function getResultOutput(result: SingleResult): string {
+  return result.output ?? getFinalOutput(result.messages ?? []);
+}
+
 function renderToolLine(
-  item: DisplayItem & { type: "toolCall" },
+  item: ToolDisplayItem,
   fg: (color: any, text: string) => string,
 ): string {
   const icon =
@@ -287,21 +330,12 @@ function renderToolLine(
       : item.isError === false
         ? fg("success", "✓")
         : fg("muted", "⋯");
-  return `${icon} ${fg("accent", toolLabel(item.name))} ${fg("dim", toolArgSummary(item.name, item.args))}`;
+  return `${icon} ${fg("accent", toolLabel(item.name))} ${fg("dim", item.summary)}`;
 }
 
 // --- tree rendering ---
 
 const COLLAPSED_ITEM_COUNT = 10;
-const ACTIVE_BADGE_INTERVAL_MS = 320;
-const ACTIVE_BADGE_STATE = Symbol("sub-agent-active-badge");
-
-type ActiveBadgeState = {
-  frame: number;
-  interval?: ReturnType<typeof setInterval>;
-  renderVersion: number;
-};
-
 type SubAgentCallContext = {
   isError: boolean;
   isPartial: boolean;
@@ -368,14 +402,24 @@ export function renderSubAgentFallback(result: any, theme: any): Component {
 
 class SubAgentCallComponent implements Component {
   private row: MarkerColumn;
+  private icon: string;
+  private content: string;
 
   constructor(icon: string, content: string) {
+    this.icon = icon;
+    this.content = content;
     this.row = new MarkerColumn(icon, new Text(content, 0, 0));
   }
 
   update(icon: string, content: string): void {
-    this.row.setMarker(icon);
-    this.row.setChild(new Text(content, 0, 0));
+    if (this.icon !== icon) {
+      this.icon = icon;
+      this.row.setMarker(icon);
+    }
+    if (this.content !== content) {
+      this.content = content;
+      this.row.setChild(new Text(content, 0, 0));
+    }
   }
 
   render(width: number): string[] {
@@ -392,40 +436,12 @@ export function renderSubAgentCall(
   theme: any,
   context: SubAgentCallContext,
 ): Component {
-  const state = context.state as
-    | (Record<PropertyKey, unknown> & {
-        [ACTIVE_BADGE_STATE]?: ActiveBadgeState;
-      })
-    | undefined;
-  const badge =
-    state &&
-    (state[ACTIVE_BADGE_STATE] ??= {
-      frame: 0,
-      renderVersion: 0,
-    });
-  if (badge) badge.renderVersion++;
   const active = context.isPartial && !context.isError;
-
-  if (active && badge && context.invalidate && !badge.interval) {
-    badge.interval = setInterval(() => {
-      badge.frame = (badge.frame + 1) % 2;
-      const renderedVersion = badge.renderVersion;
-      context.invalidate?.();
-      if (badge.renderVersion === renderedVersion && badge.interval) {
-        clearInterval(badge.interval);
-        badge.interval = undefined;
-      }
-    }, ACTIVE_BADGE_INTERVAL_MS);
-    badge.interval.unref?.();
-  } else if (!active && badge?.interval) {
-    clearInterval(badge.interval);
-    badge.interval = undefined;
-  }
 
   const icon = context.isError
     ? theme.fg("error", "✕")
     : active
-      ? theme.fg((badge?.frame ?? 0) % 2 === 0 ? "muted" : "accent", "●")
+      ? theme.fg("accent", "●")
       : theme.fg("success", "✓");
   const component =
     context.lastComponent instanceof SubAgentCallComponent
@@ -501,11 +517,8 @@ export function renderAgentTree(
     );
   }
 
-  const displayItems = getDisplayItems(r.messages);
-  const toolCalls = displayItems.filter(
-    (d): d is DisplayItem & { type: "toolCall" } => d.type === "toolCall",
-  );
-  const finalOutput = getFinalOutput(r.messages);
+  const toolCalls = r.toolCalls ?? getToolDisplayItems(r.messages ?? []);
+  const finalOutput = getResultOutput(r);
   const boxedSummary =
     opts.summary === "open-box"
       ? trimBlankLines(finalOutput) || "(no output)"
@@ -513,7 +526,7 @@ export function renderAgentTree(
 
   type TreeChild =
     | { kind: "text"; content: string }
-    | { kind: "tool"; item: DisplayItem & { type: "toolCall" } }
+    | { kind: "tool"; item: ToolDisplayItem }
     | { kind: "summary"; output: string };
   const children: TreeChild[] = [];
 
@@ -596,7 +609,7 @@ export function renderAgentTree(
 // --- inline tests ---
 
 if (import.meta.vitest) {
-  const { describe, it, expect, vi } = import.meta.vitest;
+  const { describe, it, expect } = import.meta.vitest;
   const mockTheme = {
     fg: (_color: string, text: string) => text,
     bold: (text: string) => text,
@@ -705,62 +718,27 @@ if (import.meta.vitest) {
       expect(line?.trimEnd()).toBe("✕ Delegate task");
     });
 
-    it("pulses active calls and settles the reused badge", () => {
-      vi.useFakeTimers();
-      try {
-        const colors: string[] = [];
-        const theme = {
-          fg: (color: string, text: string) => {
-            if (text === "●") colors.push(color);
-            return text;
-          },
-        };
-        const state: Record<PropertyKey, unknown> = {};
-        let component: Component | undefined;
-        const renderActive = (): void => {
-          component = renderSubAgentCall("Delegate task", theme, {
-            isError: false,
-            isPartial: true,
-            invalidate,
-            lastComponent: component,
-            state,
-          });
-        };
-        const invalidate = vi.fn(renderActive);
-        renderActive();
-        const initialComponent = component;
+    it("keeps active calls static and reuses their component", () => {
+      const colors: string[] = [];
+      const theme = {
+        fg: (color: string, text: string) => {
+          if (text === "●") colors.push(color);
+          return text;
+        },
+      };
+      const first = renderSubAgentCall("Delegate task", theme, {
+        isError: false,
+        isPartial: true,
+      });
+      const second = renderSubAgentCall("Delegate task", theme, {
+        isError: false,
+        isPartial: true,
+        lastComponent: first,
+      });
 
-        expect(colors.at(-1)).toBe("muted");
-        vi.advanceTimersByTime(ACTIVE_BADGE_INTERVAL_MS);
-        expect(invalidate).toHaveBeenCalledOnce();
-        expect(component).toBe(initialComponent);
-        expect(colors.at(-1)).toBe("accent");
-
-        component = renderSubAgentCall("Delegate task", theme, {
-          isError: false,
-          isPartial: false,
-          invalidate,
-          lastComponent: component,
-          state,
-        });
-        expect(component.render(80)[0]?.trimEnd()).toBe("✓ Delegate task");
-
-        vi.clearAllMocks();
-        vi.advanceTimersByTime(ACTIVE_BADGE_INTERVAL_MS * 2);
-        expect(invalidate).not.toHaveBeenCalled();
-
-        renderSubAgentCall("Delegate export", theme, {
-          isError: false,
-          isPartial: true,
-          invalidate: () => {},
-          state: {},
-        });
-        expect(vi.getTimerCount()).toBe(1);
-        vi.advanceTimersByTime(ACTIVE_BADGE_INTERVAL_MS);
-        expect(vi.getTimerCount()).toBe(0);
-      } finally {
-        vi.useRealTimers();
-      }
+      expect(second).toBe(first);
+      expect(colors).toEqual(["accent", "accent"]);
+      expect(second.render(80)[0]?.trimEnd()).toBe("● Delegate task");
     });
 
     it("keeps wrapped tree content inside the connector column", () => {
@@ -1286,6 +1264,9 @@ if (import.meta.vitest) {
       const result = subAgentResult("found it", details);
 
       expect(result.content).toEqual([{ type: "text", text: "found it" }]);
+      expect(result.details).not.toHaveProperty("messages");
+      expect(result.details.output).toBe("");
+      expect(result.details.toolCalls).toEqual([]);
       expect(result.details.cost).toBe(0.002);
       expect(result.details.model).toBe("gemini-flash");
       expect(result.usage).toEqual({
@@ -1303,6 +1284,47 @@ if (import.meta.vitest) {
         },
       });
       expect(result.isError).toBeUndefined();
+    });
+
+    it("keeps compact render data instead of the child transcript", () => {
+      const details: SingleResult = {
+        agent: "finder",
+        task: "inspect",
+        exitCode: 0,
+        messages: [
+          assistantMessage([
+            {
+              type: "toolCall",
+              id: "tc1",
+              name: "read",
+              arguments: { path: "/tmp/example.ts" },
+            },
+          ]),
+          assistantMessage([{ type: "text", text: "final answer" }]),
+        ],
+        usage: {
+          turns: 1,
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0,
+          contextTokens: 0,
+        },
+      };
+
+      const result = subAgentResult("final answer", details);
+
+      expect(result.details).not.toHaveProperty("messages");
+      expect(result.details.output).toBe("final answer");
+      expect(result.details.toolCalls).toEqual([
+        {
+          id: "tc1",
+          name: "read",
+          summary: "/tmp/example.ts",
+          isError: undefined,
+        },
+      ]);
     });
 
     it("sets isError when passed true", () => {

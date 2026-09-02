@@ -69,7 +69,7 @@ diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/in
 diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
 --- a/dist/modes/interactive/components/assistant-message.d.ts
 +++ b/dist/modes/interactive/components/assistant-message.d.ts
-@@ -7,14 +7,20 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+@@ -7,14 +7,18 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
  export declare class AssistantMessageComponent extends Container {
      private contentContainer;
 +    private markerColumn;
@@ -78,16 +78,14 @@ diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/mod
      private hiddenThinkingLabel;
      private outputPad;
      private markdownTransformers;
-+    private requestRender?;
      private lastMessage?;
      private hasToolCalls;
      private isStreaming;
 -    constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
-+    private markerFrame;
-+    private markerInterval;
++    private cachedWidth;
++    private cachedLines;
 +    constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[], requestRender?: () => void);
 +    private updateMarker;
-+    private stopMarkerAnimation;
      invalidate(): void;
      setHideThinkingBlock(hide: boolean): void;
      setHiddenThinkingLabel(label: string): void;
@@ -108,15 +106,14 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
      hideThinkingBlock;
      markdownTheme;
      hiddenThinkingLabel;
-@@ -16,21 +17,58 @@ export class AssistantMessageComponent extends Container {
+@@ -16,21 +17,42 @@ export class AssistantMessageComponent extends Container {
      markdownTransformers;
      lastMessage;
      hasToolCalls = false;
      isStreaming = false;
 -    constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = []) {
-+    requestRender;
-+    markerFrame = 0;
-+    markerInterval;
++    cachedWidth;
++    cachedLines;
 +    constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = [], requestRender) {
          super();
          this.hideThinkingBlock = hideThinkingBlock;
@@ -124,7 +121,6 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
          this.hiddenThinkingLabel = hiddenThinkingLabel;
          this.outputPad = outputPad;
          this.markdownTransformers = markdownTransformers;
-+        this.requestRender = requestRender;
          // Container for text/thinking content
          this.contentContainer = new Container();
 -        this.addChild(this.contentContainer);
@@ -141,48 +137,41 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
 +        const hasResponseText = message.content.some((content) => content.type === "text" && content.text.trim());
 +        this.markerColumn.setFooterMarker(failed || hasResponseText ? theme.fg("muted", "╰────") : undefined);
 +        if (failed) {
-+            this.stopMarkerAnimation();
 +            this.markerColumn.setMarker(theme.fg("error", "✕"), continuationMarker);
 +            return;
 +        }
 +        if (!this.isStreaming) {
-+            this.stopMarkerAnimation();
 +            this.markerColumn.setMarker(theme.fg(hasResponseText ? "success" : "muted", "●"), continuationMarker);
 +            return;
 +        }
-+        this.markerColumn.setMarker(theme.fg(this.markerFrame % 2 === 0 ? "muted" : "accent", "●"), continuationMarker);
-+        if (!this.markerInterval && this.requestRender) {
-+            this.markerInterval = setInterval(() => {
-+                this.markerFrame = (this.markerFrame + 1) % 2;
-+                this.markerColumn.setMarker(theme.fg(this.markerFrame === 0 ? "muted" : "accent", "●"), theme.fg("muted", "│"));
-+                this.requestRender?.();
-+            }, 320);
-+            this.markerInterval.unref?.();
-+        }
-+    }
-+    stopMarkerAnimation() {
-+        if (this.markerInterval) {
-+            clearInterval(this.markerInterval);
-+            this.markerInterval = undefined;
-+        }
++        this.markerColumn.setMarker(theme.fg("accent", "●"), continuationMarker);
 +    }
      invalidate() {
++        this.cachedWidth = undefined;
++        this.cachedLines = undefined;
          super.invalidate();
          if (this.lastMessage) {
-@@ -59,7 +95,10 @@ export class AssistantMessageComponent extends Container {
+@@ -59,7 +81,14 @@ export class AssistantMessageComponent extends Container {
      }
      render(width) {
 -        const lines = super.render(width);
 +        if (width <= 0)
 +            return [];
 +        const safeWidth = Math.floor(width);
++        if (this.cachedWidth === safeWidth && this.cachedLines)
++            return this.cachedLines;
 +        const lines = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
++        this.cachedWidth = safeWidth;
++        this.cachedLines = lines;
          if (this.hasToolCalls || lines.length === 0) {
              return lines;
          }
          lines[0] = OSC133_ZONE_START + lines[0];
-@@ -67,12 +102,8 @@ export class AssistantMessageComponent extends Container {
+@@ -67,12 +96,11 @@ export class AssistantMessageComponent extends Container {
      updateContent(message, isStreaming = this.isStreaming) {
++        this.cachedWidth = undefined;
++        this.cachedLines = undefined;
++        this.markerColumn.invalidate();
          this.lastMessage = message;
          this.isStreaming = isStreaming;
 -        // Clear content container
@@ -195,7 +184,7 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
          // Render content in order
          for (let i = 0; i < message.content.length; i++) {
              const content = message.content[i];
-@@ -79,7 +110,7 @@ export class AssistantMessageComponent extends Container {
+@@ -79,7 +107,7 @@ export class AssistantMessageComponent extends Container {
              if (content.type === "text" && content.text.trim()) {
                  // Assistant text messages with no background - trim the text
                  // Set paddingY=0 to avoid extra spacing before tool executions
@@ -204,7 +193,7 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
                      transform: createMarkdownTransform("assistant", this.isStreaming, this.markdownTransformers),
                  }));
              }
-@@ -107,10 +138,10 @@ export class AssistantMessageComponent extends Container {
+@@ -107,10 +135,10 @@ export class AssistantMessageComponent extends Container {
                  if (this.hideThinkingBlock) {
                      // Show one static label for each run of thinking blocks when hidden.
 -                    this.contentContainer.addChild(new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0));
@@ -217,7 +206,7 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
                          color: (text) => theme.fg("thinkingText", text),
                          italic: true,
                      }, {
-@@ -130,21 +161,34 @@ export class AssistantMessageComponent extends Container {
+@@ -130,21 +158,31 @@ export class AssistantMessageComponent extends Container {
          if (message.stopReason === "length") {
 -            this.contentContainer.addChild(new Spacer(1));
 +            if (this.contentContainer.children.length > 0)
@@ -251,9 +240,6 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
 +            const messageFrame = new Box(this.outputPad, 0);
 +            messageFrame.addChild(this.markerColumn);
 +            this.addChild(messageFrame);
-+        }
-+        else {
-+            this.stopMarkerAnimation();
 +        }
      }
  }

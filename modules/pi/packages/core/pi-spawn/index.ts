@@ -94,15 +94,31 @@ export function getNestedMessages(
   result: ToolResultMessage<unknown> | undefined,
 ): Message[] {
   if (!result?.details || typeof result.details !== "object") return [];
-  const messages = (result.details as { messages?: unknown }).messages;
-  if (!Array.isArray(messages)) return [];
-  return messages.filter(
-    (message): message is Message =>
-      typeof message === "object" &&
-      message !== null &&
-      "role" in message &&
-      ["user", "assistant", "toolResult"].includes(String(message.role)),
-  );
+  const details = result.details as {
+    messages?: unknown;
+    sessionFile?: unknown;
+  };
+  const filterMessages = (messages: unknown[]): Message[] =>
+    messages.filter(
+      (message): message is Message =>
+        typeof message === "object" &&
+        message !== null &&
+        "role" in message &&
+        ["user", "assistant", "toolResult"].includes(String(message.role)),
+    );
+
+  if (Array.isArray(details.messages)) return filterMessages(details.messages);
+  if (typeof details.sessionFile !== "string") return [];
+
+  try {
+    return filterMessages(
+      SessionManager.open(details.sessionFile)
+        .getEntries()
+        .flatMap((entry) => (entry.type === "message" ? [entry.message] : [])),
+    );
+  } catch {
+    return [];
+  }
 }
 
 function killSpawnedProcess(child: ChildProcess, signal: NodeJS.Signals): void {
@@ -1163,6 +1179,55 @@ if (import.meta.vitest) {
           cacheWrite: 0.25,
           total: 1.85,
         },
+      });
+    });
+  });
+
+  describe("getNestedMessages", () => {
+    it("loads compact sub-agent transcripts from their session sidecar", () => {
+      const cwd = makeTmpDir();
+      const session = SessionManager.create(cwd, path.join(cwd, "sessions"));
+      session.appendMessage({
+        role: "user",
+        content: "sidecar prompt",
+        timestamp: 1,
+      });
+      session.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: "sidecar response" }],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "test",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        stopReason: "stop",
+        timestamp: 2,
+      });
+      const result = {
+        role: "toolResult",
+        toolCallId: "delegate-1",
+        toolName: "delegate",
+        content: [{ type: "text", text: "done" }],
+        details: { sessionFile: session.getSessionFile() },
+        isError: false,
+        timestamp: 2,
+      } as ToolResultMessage<unknown>;
+
+      expect(getNestedMessages(result)[0]).toMatchObject({
+        role: "user",
+        content: "sidecar prompt",
       });
     });
   });

@@ -37,7 +37,7 @@ import { Type } from "typebox";
 import { withFileLock } from "@bds_pi/mutex";
 import * as toolPolicy from "@bds_pi/tool-policy";
 import { resolveToAbsolute } from "@bds_pi/fs";
-import { OutputBuffer } from "@bds_pi/output-buffer";
+import { headTailChars, OutputBuffer } from "@bds_pi/output-buffer";
 import {
   clearConfigCache,
   getEnabledExtensionConfig,
@@ -83,6 +83,9 @@ const CONFIG_DEFAULTS: BashExtConfig = {
   tailLines: 50,
   sigkillDelayMs: 3000,
 };
+
+const MAX_FOREGROUND_PREVIEW_CHARS = 50 * 1024;
+const MAX_FOREGROUND_ARTIFACTS = 20;
 
 const DEFAULT_DEPS: BashExtensionDeps = {
   getEnabledExtensionConfig,
@@ -591,6 +594,26 @@ async function cleanupBackgroundProcesses(
   );
 }
 
+function registerOutputArtifact(
+  artifactDirs: Set<string>,
+  artifactDir: string,
+): void {
+  artifactDirs.add(artifactDir);
+  while (artifactDirs.size > MAX_FOREGROUND_ARTIFACTS) {
+    const oldest = artifactDirs.values().next().value;
+    if (typeof oldest !== "string") break;
+    artifactDirs.delete(oldest);
+    fs.rmSync(oldest, { recursive: true, force: true });
+  }
+}
+
+function cleanupOutputArtifacts(artifactDirs: Set<string>): void {
+  for (const artifactDir of artifactDirs) {
+    fs.rmSync(artifactDir, { recursive: true, force: true });
+  }
+  artifactDirs.clear();
+}
+
 /** per-block excerpts for collapsed display — head 3 + tail 5 = 8 visual lines */
 const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "head" as const, context: 3 },
@@ -602,6 +625,7 @@ const COLLAPSED_EXCERPTS: Excerpt[] = [
 export function createBashTool(
   backgroundState: BackgroundState = createBackgroundState(),
   config: BashExtConfig = CONFIG_DEFAULTS,
+  artifactDirs: Set<string> = new Set(),
 ): ToolDefinition<any> {
   return {
     name: "bash",
@@ -612,7 +636,7 @@ export function createBashTool(
       "- A leading `cd dir && cmd` is normalized into `cwd` + `cmd` for compatibility with model habits\n" +
       "- A trailing `&` runs the command in the background and returns immediately with a PID and log path\n" +
       "- Do NOT use interactive commands (REPLs, editors, password prompts)\n" +
-      `- Output shows first ${config.headLines} and last ${config.tailLines} lines; middle is truncated for large outputs\n` +
+      `- Output shows first ${config.headLines} and last ${config.tailLines} lines; truncated full output is saved to a temp file\n` +
       "- Environment variables and `cd` do not persist between commands; use the `cwd` parameter instead\n" +
       "- Commands run in the workspace root by default; only use `cwd` when you need a different directory\n" +
       '- ALWAYS quote file paths: `cat "path with spaces/file.txt"`\n' +
@@ -808,6 +832,7 @@ export function createBashTool(
               onUpdate,
               config,
               env,
+              artifactDirs,
             );
 
       if (isGitCommand(command)) {
@@ -862,11 +887,46 @@ async function runForegroundCommand(
   onUpdate: ((update: any) => void) | undefined,
   config: BashExtConfig,
   env: NodeJS.ProcessEnv,
+  artifactDirs: Set<string>,
 ): Promise<any> {
   const { shell, args } = getShellConfig();
   const startedAt = new Date().toISOString();
 
   return new Promise((resolve) => {
+    let artifactDir: string | undefined;
+    let fullOutputPath: string | undefined;
+    let artifactFd: number | undefined;
+    let pendingArtifactChunks: Buffer[] = [];
+    let pendingArtifactBytes = 0;
+    const ensureArtifact = () => {
+      if (artifactFd !== undefined) return;
+      artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-bash-"));
+      fullOutputPath = path.join(artifactDir, "output.log");
+      artifactFd = fs.openSync(fullOutputPath, "wx", 0o600);
+      for (const chunk of pendingArtifactChunks)
+        fs.writeSync(artifactFd, chunk);
+      pendingArtifactChunks = [];
+      pendingArtifactBytes = 0;
+    };
+    const appendArtifact = (data: Buffer) => {
+      if (artifactFd !== undefined) {
+        fs.writeSync(artifactFd, data);
+        return;
+      }
+      pendingArtifactChunks.push(Buffer.from(data));
+      pendingArtifactBytes += data.byteLength;
+    };
+    const closeArtifact = () => {
+      if (artifactFd === undefined) return;
+      fs.closeSync(artifactFd);
+      artifactFd = undefined;
+    };
+    const discardArtifact = () => {
+      closeArtifact();
+      pendingArtifactChunks = [];
+      pendingArtifactBytes = 0;
+      if (artifactDir) fs.rmSync(artifactDir, { recursive: true, force: true });
+    };
     const child = spawn(shell, [...args, command], {
       cwd,
       detached: true,
@@ -901,10 +961,19 @@ async function runForegroundCommand(
 
     const handleData = (data: Buffer) => {
       output.add(data.toString("utf-8"));
+      appendArtifact(data);
+      if (
+        artifactFd === undefined &&
+        (output.totalLines > config.headLines + config.tailLines ||
+          pendingArtifactBytes > MAX_FOREGROUND_PREVIEW_CHARS)
+      ) {
+        ensureArtifact();
+      }
 
       if (onUpdate) {
         const { text } = output.format();
-        onUpdate({ content: [{ type: "text", text }] });
+        const preview = headTailChars(text, MAX_FOREGROUND_PREVIEW_CHARS).text;
+        onUpdate({ content: [{ type: "text", text: preview }] });
       }
     };
 
@@ -927,6 +996,7 @@ async function runForegroundCommand(
       if (timeoutHandle) clearTimeout(timeoutHandle);
       if (drainHandle) clearTimeout(drainHandle);
       signal?.removeEventListener("abort", onAbort);
+      discardArtifact();
       resolve({
         content: [
           { type: "text" as const, text: `command error: ${err.message}` },
@@ -956,7 +1026,22 @@ async function runForegroundCommand(
       if (drainHandle) clearTimeout(drainHandle);
       signal?.removeEventListener("abort", onAbort);
 
-      const { text: outputText } = output.format();
+      const formatted = output.format();
+      const charPreview = headTailChars(
+        formatted.text,
+        MAX_FOREGROUND_PREVIEW_CHARS,
+      );
+      const truncated = formatted.truncatedLines > 0 || charPreview.truncated;
+      if (truncated) ensureArtifact();
+      closeArtifact();
+      if (truncated && artifactDir)
+        registerOutputArtifact(artifactDirs, artifactDir);
+      const preservedOutputPath = truncated ? fullOutputPath : undefined;
+      const artifactNotice = truncated
+        ? `\n\n[full output: ${preservedOutputPath}]`
+        : "";
+      const outputText = charPreview.text + artifactNotice;
+      if (!truncated) discardArtifact();
       const finish = (
         text: string,
         status: BashProcessStatus,
@@ -967,6 +1052,9 @@ async function runForegroundCommand(
           details: {
             command: displayCommand,
             cwd,
+            ...(preservedOutputPath
+              ? { fullOutputPath: preservedOutputPath }
+              : {}),
             process: {
               pid: child.pid,
               processGroupId: child.pid,
@@ -1124,6 +1212,7 @@ if (import.meta.vitest) {
     details?: {
       command: string;
       cwd?: string;
+      fullOutputPath?: string;
       process?: {
         pid?: number;
         processGroupId?: number;
@@ -1151,7 +1240,8 @@ if (import.meta.vitest) {
   };
 
   const backgroundState = createBackgroundState();
-  const tool = createBashTool(backgroundState);
+  const artifactDirs = new Set<string>();
+  const tool = createBashTool(backgroundState, CONFIG_DEFAULTS, artifactDirs);
   const mockCtx = {
     cwd: "/tmp",
     sessionManager: {
@@ -1163,12 +1253,18 @@ if (import.meta.vitest) {
     cmd: string,
     ctxOverride: Partial<typeof mockCtx>,
     timeout?: number,
+    updates?: string[],
   ): Promise<BashToolResult> {
     return (await tool.execute!(
       "test-id",
       { cmd, timeout },
       undefined,
-      undefined,
+      updates
+        ? (update) => {
+            const content = update.content?.[0];
+            if (content?.type === "text") updates.push(content.text);
+          }
+        : undefined,
       {
         ...mockCtx,
         ...ctxOverride,
@@ -1187,6 +1283,7 @@ if (import.meta.vitest) {
   afterEach(async () => {
     vi.restoreAllMocks();
     await cleanupBackgroundProcesses(backgroundState, 100);
+    cleanupOutputArtifacts(artifactDirs);
   });
 
   describe("bash tool output formatting", () => {
@@ -1425,23 +1522,54 @@ if (import.meta.vitest) {
     });
 
     describe("large output (truncation)", () => {
-      it("shows head + tail for large output", async () => {
+      it("shows head + tail and preserves the full output artifact", async () => {
         const result = await execute(
           `awk 'BEGIN { for (i = 1; i <= 200; i++) print "line " i }'`,
         );
         const text = result.content[0].text;
+        const fullOutputPath = result.details?.fullOutputPath;
 
         expect(text).toContain("line 1");
         expect(text).toContain("line 2");
         expect(text).toContain("line 199");
         expect(text).toContain("line 200");
         expect(text).toContain("truncated");
+        expect(fullOutputPath).toBeTypeOf("string");
+        expect(text).toContain(`[full output: ${fullOutputPath}]`);
+        const fullOutput = fs.readFileSync(fullOutputPath!, "utf8");
+        expect(fullOutput).toContain("line 100");
+        expect(fullOutput).toContain("line 200");
 
         const headIndex = text.indexOf("line 1");
         const markerIndex = text.indexOf("truncated");
         const tailIndex = text.indexOf("line 200");
         expect(headIndex).toBeLessThan(markerIndex);
         expect(markerIndex).toBeLessThan(tailIndex);
+        fs.rmSync(path.dirname(fullOutputPath!), {
+          recursive: true,
+          force: true,
+        });
+      }, 10_000);
+
+      it("bounds a single long line by characters", async () => {
+        const updates: string[] = [];
+        const result = await executeWithCtx(
+          `node -e 'process.stdout.write("x".repeat(60000))'`,
+          {},
+          undefined,
+          updates,
+        );
+        const fullOutputPath = result.details?.fullOutputPath;
+
+        expect(result.content[0].text.length).toBeLessThan(55_000);
+        expect(updates.length).toBeGreaterThan(0);
+        expect(updates.every((update) => update.length < 55_000)).toBe(true);
+        expect(fullOutputPath).toBeTypeOf("string");
+        expect(fs.statSync(fullOutputPath!).size).toBe(60_000);
+        fs.rmSync(path.dirname(fullOutputPath!), {
+          recursive: true,
+          force: true,
+        });
       }, 10_000);
     });
 
@@ -1855,8 +1983,11 @@ function createBashExtension(
     if (!enabled) return;
 
     const backgroundState = createBackgroundState();
+    const artifactDirs = new Set<string>();
 
-    pi.registerTool(deps.withPromptPatch(createBashTool(backgroundState, cfg)));
+    pi.registerTool(
+      deps.withPromptPatch(createBashTool(backgroundState, cfg, artifactDirs)),
+    );
     pi.on("tool_result", async (event) => {
       if (
         event.toolName.toLowerCase() === "bash" &&
@@ -1867,6 +1998,7 @@ function createBashExtension(
     });
     pi.on("session_shutdown", async () => {
       await cleanupBackgroundProcesses(backgroundState, cfg.sigkillDelayMs);
+      cleanupOutputArtifacts(artifactDirs);
     });
     pi.on("session_start", async (event) => {
       if (
@@ -1875,6 +2007,7 @@ function createBashExtension(
         event.reason === "fork"
       ) {
         await cleanupBackgroundProcesses(backgroundState, cfg.sigkillDelayMs);
+        cleanupOutputArtifacts(artifactDirs);
       }
     });
   };
