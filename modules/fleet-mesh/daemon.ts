@@ -55,7 +55,7 @@ export async function writeSnapshot(path: string, snapshot: MeshNodeSnapshot): P
 
 export interface MeshDaemon {
   url: string;
-  contact(peerUrl: string): Promise<number>;
+  contact(peerUrl: string, options?: { signal?: AbortSignal }): Promise<number>;
   stop(): Promise<void>;
 }
 
@@ -89,8 +89,12 @@ export async function startMeshDaemon(options: {
         json(response, 200, { accepted, records: options.node.records() });
         return;
       }
-      if (request.method === "GET" && request.url === "/state") {
-        json(response, 200, options.node.snapshot());
+      if (request.method === "GET" && request.url === "/health") {
+        json(response, 200, {
+          kind: "fleet.mesh-daemon-health",
+          version: 1,
+          node: options.node.id,
+        });
         return;
       }
       json(response, 404, { error: "not found" });
@@ -106,18 +110,28 @@ export async function startMeshDaemon(options: {
       resolve();
     });
   });
-  await persist();
+  try {
+    await persist();
+  } catch (error) {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    throw error;
+  }
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("daemon has no TCP address");
   const url = `http://${hostname}:${address.port}`;
 
   return {
     url,
-    async contact(peerUrl: string): Promise<number> {
+    async contact(peerUrl: string, contactOptions = {}): Promise<number> {
+      const body = JSON.stringify(options.node.records());
+      if (Buffer.byteLength(body) > MAX_GOSSIP_BYTES) {
+        throw new Error("gossip request exceeds 1 MiB");
+      }
       const response = await fetch(new URL("/gossip", peerUrl), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(options.node.records()),
+        body,
+        signal: contactOptions.signal,
       });
       if (!response.ok) throw new Error(`peer returned HTTP ${response.status}`);
       if (!response.body) throw new Error("peer returned an empty gossip response");
@@ -136,10 +150,10 @@ export async function startMeshDaemon(options: {
       return accepted;
     },
     async stop(): Promise<void> {
-      await persist();
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       });
+      await persist();
     },
   };
 }

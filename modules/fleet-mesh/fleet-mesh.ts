@@ -251,11 +251,17 @@ export class FleetAuthority {
   readonly publicKey: string;
   readonly #privateKey: string;
 
-  constructor(id = "fleet-admin") {
-    const keys = generateKeyPairSync("ed25519");
+  constructor(id = "fleet-admin", privateKey?: string) {
     this.id = id;
-    this.#privateKey = keyToPem(keys.privateKey, "pkcs8");
-    this.publicKey = keyToPem(keys.publicKey, "spki");
+    if (privateKey === undefined) {
+      const keys = generateKeyPairSync("ed25519");
+      this.#privateKey = keyToPem(keys.privateKey, "pkcs8");
+      this.publicKey = keyToPem(keys.publicKey, "spki");
+    } else {
+      const key = canonicalPrivateKey(privateKey, "ed25519", "authority privateKey");
+      this.#privateKey = privateKey;
+      this.publicKey = keyToPem(createPublicKey(key), "spki");
+    }
   }
 
   issueSet(options: {

@@ -84,6 +84,20 @@ test("delivers through a relay and gossips the applied receipt back", () => {
   assert.equal(nodes.bridge.receiptFor(command.id)?.status, "applied");
 });
 
+test("a persisted authority private key reopens the same signer", () => {
+  const generated = generateKeyPairSync("ed25519");
+  const privateKey = generated.privateKey.export({
+    format: "pem",
+    type: "pkcs8",
+  }).toString();
+  const authority = new FleetAuthority("fleet-admin", privateKey);
+
+  assert.equal(
+    authority.publicKey,
+    generated.publicKey.export({ format: "pem", type: "spki" }).toString(),
+  );
+});
+
 test("trusted ingestion accepts readonly record arrays", () => {
   const { nodes } = fixture();
   const records: readonly MeshRecord[] = [];

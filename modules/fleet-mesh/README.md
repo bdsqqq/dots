@@ -28,11 +28,10 @@ pnpm run lab
 `fleet-mesh.ts` is the protocol reference, not the eventual esp32 runtime. its
 tests should become shared conformance vectors for a bounded esp-idf
 implementation. `daemon.ts` supplies atomic snapshots and real HTTP contacts;
-`lab.ts` runs `mbp-m2`, `lgo-z2e`, and `virtual-esp32` as separate HTTP
-endpoints, then carries an encrypted wi-fi profile and its receipt through the
-relay. the next slice can run this adapter on the two physical hosts; ble
-discovery and the embedded port can implement the same record exchange
-contract.
+`lab.ts` runs three disposable HTTP endpoints. the supervised deployment instead
+runs `mmn-m4`, `relay`, and `virtual-esp32` as three logical daemons on mmn.
+ble discovery and the embedded port can later implement the same record
+exchange contract.
 
 ## package boundaries
 
@@ -103,6 +102,39 @@ FLEET_CONFIG=/path/to/fleet.json fleet node exists virtual-esp32
 `--json` is output-only and emits one stable JSON document. `node.list` has no
 input flag.
 
+## supervised mmn deployment
+
+`fleet-daemon` owns exactly one private node identity. it reads:
+
+- a public Nix-store configuration containing the authority, complete roster,
+  loopback listener, state path, explicit peer URLs, and bounded contact timing;
+- one SOPS-produced `0400` identity file containing only that daemon's public
+  and private node keys.
+
+mmn supervises three launchd agents on fixed loopback ports:
+
+| logical node | port | explicit peers |
+|---|---:|---|
+| `mmn-m4` bridge | 43120 | `relay` |
+| `relay` | 43121 | `mmn-m4`, `virtual-esp32` |
+| `virtual-esp32` | 43122 | `relay` |
+
+only the bridge is published. `tailnet-app.nix` and the tailnet registry expose
+its `/` route through the owner-only `svc:fleet-mesh` Tailscale Service;
+`/health` is the non-sensitive health probe. no daemon binds `0.0.0.0`, and no
+other host runs a fleet service.
+
+`real-deployment.test.ts` injects one authority-signed command into the bridge
+gossip endpoint. autonomous contacts carry it through the relay, apply it once
+on `virtual-esp32`, and return its signed receipt. the test then reconstructs
+the virtual node from its snapshot, replays contact, and proves its durable
+execution count remains one.
+
+the first mmn deployment reproduced that proof live on 2026-09-02. remote
+dry/full host builds passed, all three launchd agents activated, the
+owner-only Tailscale Service reached only the bridge, and restarting
+`virtual-esp32` preserved the signed receipt and `executions = 1`.
+
 ## third-operation extension cost
 
 `node.exists` is the extension-cost probe. its hand-authored production touch
@@ -115,6 +147,5 @@ points are:
 
 tests added assertions in `fleet-schema.test.ts`, `fleet-operations.test.ts`,
 and `fleet-cli.test.ts`. `fleet-cli.ts` required no operation-specific change:
-public oRPC traversal discovered and invoked the new procedure. this is a
-static touch-point measurement because the initial vertical slice remains one
-uncommitted work unit, not a commit-to-commit measurement.
+public oRPC traversal discovered and invoked the new procedure. this remains
+the static touch-point measurement recorded during the initial implementation.

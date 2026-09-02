@@ -1,6 +1,6 @@
 # portable entities, operations, and projections
 
-status: first vertical slice implemented and verified
+status: local slice and first mmn deployment verified
 scope: portable entities and operations in dots, beginning with fleet-mesh and
 a projected local CLI. site integration, repository unification, and remote
 transport are later consumers.
@@ -1000,8 +1000,8 @@ production touch points are:
 tests changed in `fleet-schema.test.ts`, `fleet-operations.test.ts`, and
 `fleet-cli.test.ts`. `fleet-cli.ts` required no operation-specific wiring;
 public oRPC traversal discovered and invoked the new operation. because the
-initial vertical slice remains one uncommitted work unit, this is a static
-touch-point measurement rather than a commit-to-commit measurement.
+measurement was captured within the initial implementation work unit, this is
+a static touch-point measurement rather than a commit-to-commit measurement.
 
 the resulting workflow is:
 
@@ -1036,6 +1036,66 @@ flowchart LR
 > **decision:** `node.list` and `node.describe` are sufficient initial
 > operations. the decisive acceptance test is adding a third operation after
 > the machinery exists and measuring the required changes.
+
+## real deployment slice
+
+the first physical deployment remains one host with three logical nodes. mmn
+supervises all three; mbp and lgo run no fleet daemon.
+
+### 1. separate public and private configuration
+
+each daemon consumes one public Nix-store configuration containing the fleet,
+public authority, complete public roster, loopback listener, durable state
+path, explicit peers, and bounded contact timing. it separately consumes one
+SOPS-produced `0400` file containing exactly one `NodeIdentity`. no launchd job
+receives the authority private key or another node's identity.
+
+### 2. supervise three loopback daemons on mmn
+
+launchd runs `mmn-m4` on port 43120, `relay` on 43121, and
+`virtual-esp32` on 43122. all listeners are fixed to `127.0.0.1`; configuration
+validation rejects public binds, missing peers, roster drift, duplicate ids,
+private/public key mismatch, invalid key algorithms, and invalid key pairs.
+
+### 3. preserve tailnet-only reachability
+
+the bridge is the sole externally reachable daemon. the repository's tailnet
+app catalog and registry publish its `/` route through the owner-only
+`svc:fleet-mesh` Tailscale Service. `/health` exposes only the protocol kind,
+version, and logical node id. `/state` is not an API. relay and
+`virtual-esp32` remain loopback-only.
+
+### 4. contact explicit peers autonomously
+
+the bridge contacts only `relay`; `relay` contacts the bridge and
+`virtual-esp32`; `virtual-esp32` contacts only `relay`. each process permits
+one contact round at a time, bounds contact duration, bounds gossip bodies, and
+continues after peer-specific transient failures. shutdown cancels active
+contacts, drains the current round, closes the listener, and atomically
+persists the final snapshot.
+
+### 5. prove relay, durability, and replay
+
+the executable proof injects one authority-signed fixture command at the
+bridge's existing gossip boundary. autonomous contact must carry that exact
+record through the relay, apply it once on `virtual-esp32`, and return the
+node-signed receipt to the bridge. after stopping and reconstructing the
+virtual node from its snapshot, another relay contact must preserve the
+resource, receipt, and durable execution count of one.
+
+local schema, runtime, package, and topology checks precede deployment. the
+mandatory `darwinConfigurations.mmn-m4.system` dry-run/full build and the
+authorized live proof run on mmn because the current workstation lacks safe
+Nix store headroom; no local garbage collection is authorized.
+
+the 2026-09-02 deployment passed both remote builds and activated all three
+loopback launchd daemons. SOPS produced three exact `0400` identity files, and
+the system tailnet-registry daemon published `/` through `svc:fleet-mesh` to
+port 43120. one live authority-signed command crossed bridge, relay, and
+`virtual-esp32`; it applied once and returned the same signed receipt after the
+virtual process restarted. snapshot replay preserved `executions = 1`. a stale
+user-domain registry job was unloaded and removed so the system daemon remains
+the sole registry lock owner.
 
 ## deferred work
 

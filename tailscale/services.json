@@ -11,6 +11,12 @@
       "tcp:443"
     ]
   },
+  "svc:fleet-mesh": {
+    "comment": "encrypted fleet command relay",
+    "ports": [
+      "tcp:443"
+    ]
+  },
   "svc:html-stuff": {
     "comment": "generated documents and visual artifacts",
     "ports": [

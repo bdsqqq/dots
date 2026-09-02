@@ -1,19 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { type } from "arktype";
-
+import { NodeIdentityV1Schema } from "./fleet-node-schema.ts";
 import { PublicIdentityV1Schema } from "./fleet-schema.ts";
 import type { LocalFleetRuntimeOptions } from "./local-fleet-runtime.ts";
 
-const NodeIdentityV1Schema = type({
-  "+": "reject",
-  id: "string",
-  signingPublicKey: "string",
-  encryptionPublicKey: "string",
-  signingPrivateKey: "string",
-  encryptionPrivateKey: "string",
-});
+import { type } from "arktype";
 
 const LocalFleetConfigurationV1Schema = type({
   "+": "reject",

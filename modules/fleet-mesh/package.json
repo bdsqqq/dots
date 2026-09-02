@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "fleet": "./dist/fleet-bin.js"
+    "fleet": "./dist/fleet-bin.js",
+    "fleet-daemon": "./dist/fleet-daemon-bin.js"
   },
   "exports": {
     ".": {
