@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+secret_file="$repo_root/config/infra-secrets.yaml"
+token_key="hcloud_read_token"
+
+case "${1:-}" in
+apply | destroy)
+  if [[ "${HCLOUD_ALLOW_WRITE:-}" != 1 ]]; then
+    echo "refusing $1 without HCLOUD_ALLOW_WRITE=1" >&2
+    exit 1
+  fi
+  token_key="hcloud_write_token"
+  ;;
+esac
+
+export HCLOUD_TOKEN
+HCLOUD_TOKEN="$(sops --decrypt --extract "[\"$token_key\"]" "$secret_file")"
+
+export TF_VAR_state_passphrase
+TF_VAR_state_passphrase="$(sops --decrypt --extract '["htz_relay_state_passphrase"]' "$secret_file")"
+
+exec tofu -chdir="$repo_root/hosts/htz-relay" "$@"

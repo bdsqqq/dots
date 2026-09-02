@@ -9,22 +9,22 @@ terraform {
   }
 
   encryption {
-    key_provider "pbkdf2" "repo_state" {
+    key_provider "pbkdf2" "host_state" {
       passphrase               = var.state_passphrase
-      encrypted_metadata_alias = "htz-relay-repo-state"
+      encrypted_metadata_alias = "htz-relay-host-state-v1"
     }
 
-    method "aes_gcm" "repo_state" {
-      keys = key_provider.pbkdf2.repo_state
+    method "aes_gcm" "host_state" {
+      keys = key_provider.pbkdf2.host_state
     }
 
     state {
-      method   = method.aes_gcm.repo_state
+      method   = method.aes_gcm.host_state
       enforced = true
     }
 
     plan {
-      method   = method.aes_gcm.repo_state
+      method   = method.aes_gcm.host_state
       enforced = true
     }
   }

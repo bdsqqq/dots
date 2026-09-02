@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+
+export HCLOUD_TOKEN
+HCLOUD_TOKEN="$(
+  sops \
+    --decrypt \
+    --extract '["hcloud_read_token"]' \
+    "$repo_root/config/infra-secrets.yaml"
+)"
+
+exec hcloud "$@"

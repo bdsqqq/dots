@@ -156,6 +156,7 @@ in
           inputs.lnr.packages.aarch64-darwin.default
           axiom-cli
           hcloud
+          opentofu
           iina
           ollama
           lua-language-server
