@@ -127,7 +127,6 @@
 
                    export AMI_INSTALL="$HOME/.ami"
                    export PATH="$AMI_INSTALL/bin:$PATH"
-                   export HCLOUD_TOKEN="$(cat /run/secrets/htz_token 2>/dev/null || echo "$HCLOUD_TOKEN")"
                    export GH_TOKEN="$(cat /run/secrets/gh_token 2>/dev/null || echo "$GH_TOKEN")"
                    export HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || echo "$HF_TOKEN")"
                    export PARALLEL_API_KEY="$(cat /run/secrets/parallel_api_key 2>/dev/null || echo "$PARALLEL_API_KEY")"

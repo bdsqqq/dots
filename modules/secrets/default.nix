@@ -22,7 +22,6 @@ in
     defaultSopsFile = ../../secrets.yaml;
     secrets = {
       tailscale_auth_key = { owner = "bdsqqq"; };
-      htz_token = { owner = "bdsqqq"; };
       gh_token = { owner = "bdsqqq"; };
       hf_token = { owner = "bdsqqq"; };
       artificial_analysis_api_key = { owner = "bdsqqq"; };
