@@ -1,16 +1,44 @@
 {
   "name": "fleet-mesh",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "bin": {
+    "fleet": "./dist/fleet-bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/fleet-public.d.ts",
+      "import": "./dist/fleet-public.js"
+    },
+    "./cli": {
+      "types": "./dist/fleet-cli.d.ts",
+      "import": "./dist/fleet-cli.js"
+    },
+    "./node": {
+      "types": "./dist/fleet-node.d.ts",
+      "import": "./dist/fleet-node.js"
+    }
+  },
+  "files": [
+    "README.md",
+    "dist"
+  ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "demo": "node demo.ts",
     "lab": "node lab.ts",
+    "prepack": "pnpm run build",
     "test": "node --test *.test.ts",
     "typecheck": "tsc"
   },
+  "dependencies": {
+    "@orpc/contract": "1.13.6",
+    "@orpc/server": "1.13.6",
+    "arktype": "2.2.3"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "esbuild": "0.28.2",
     "typescript": "^5.9.2"
   }
 }

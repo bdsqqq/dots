@@ -13,91 +13,44 @@ import {
   type KeyObject,
 } from "node:crypto";
 
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+import {
+  validateV1JsonValue,
+  validateV1Revision,
+  type CommandEnvelope,
+  type JsonValue,
+  type MeshNodeSnapshot,
+  type MeshRecord,
+  type PublicIdentity,
+  type ReceiptEnvelope,
+  type Revision,
+} from "./fleet-schema.ts";
 
-export interface Revision {
-  epoch: number;
-  sequence: number;
-}
+export type {
+  CommandEnvelope,
+  JsonValue,
+  MeshNodeSnapshot,
+  MeshRecord,
+  PublicIdentity,
+  ReceiptEnvelope,
+  Revision,
+} from "./fleet-schema.ts";
 
-interface CommandHeader {
-  version: 1;
-  fleet: string;
-  to: string;
-  resource: string;
-  operation: "set";
-  revision: Revision;
-  notBefore: string | null;
-  expiresAt: string | null;
-}
+type CommandHeader = CommandEnvelope["header"];
+type EncryptedPayload = CommandEnvelope["encryption"];
+export type ReceiptStatus = ReceiptEnvelope["status"];
 
-interface EncryptedPayload {
-  ephemeralPublicKey: string;
-  iv: string;
-  ciphertext: string;
-  authTag: string;
-}
-
-export interface CommandEnvelope {
-  kind: "command";
-  id: string;
-  header: CommandHeader;
-  encryption: EncryptedPayload;
-  authority: string;
-  signature: string;
-}
-
-export type ReceiptStatus = "applied" | "rejected";
-
-export interface ReceiptEnvelope {
-  kind: "receipt";
-  id: string;
-  commandId: string;
-  node: string;
-  resource: string;
-  revision: Revision;
-  status: ReceiptStatus;
-  reason: "stale" | "expired" | null;
-  resultingRevision: Revision | null;
-  recordedAt: string;
-  signature: string;
-}
-
-export type MeshRecord = CommandEnvelope | ReceiptEnvelope;
-
-export interface PublicIdentity {
-  id: string;
-  signingPublicKey: string;
-  encryptionPublicKey: string;
-}
-
-export interface NodeIdentity extends PublicIdentity {
+export type NodeIdentity = PublicIdentity & {
   signingPrivateKey: string;
   encryptionPrivateKey: string;
-}
+};
 
-interface ResourceState {
-  revision: Revision;
-  value: JsonValue;
-  commandId: string;
-}
+type ResourceState = MeshNodeSnapshot["resources"][number][1];
+type CommandOutcome = MeshNodeSnapshot["outcomes"][number][1];
 
-interface CommandOutcome {
-  receiptId: string;
-  executions: number;
-}
-
-export interface MeshNodeSnapshot {
-  version: 1;
-  records: MeshRecord[];
-  resources: Array<[string, ResourceState]>;
-  outcomes: Array<[string, CommandOutcome]>;
+class InvalidCommandError extends Error {
+  constructor(commandId: string, cause: unknown) {
+    super(`command ${commandId} cannot be decrypted or decoded`, { cause });
+  }
 }
 
 export interface ReconcileResult {
@@ -127,6 +80,51 @@ export function publicIdentity(identity: NodeIdentity): PublicIdentity {
     signingPublicKey: identity.signingPublicKey,
     encryptionPublicKey: identity.encryptionPublicKey,
   };
+}
+
+function canonicalPrivateKey(pem: string, algorithm: "ed25519" | "x25519", label: string) {
+  const key = createPrivateKey(pem);
+  if (key.asymmetricKeyType !== algorithm || keyToPem(key, "pkcs8") !== pem) {
+    throw new Error(`${label} must be a canonical ${algorithm} PKCS#8 private key`);
+  }
+  return key;
+}
+
+function canonicalPublicKey(pem: string, algorithm: "ed25519" | "x25519", label: string) {
+  const key = createPublicKey(pem);
+  if (key.asymmetricKeyType !== algorithm || keyToPem(key, "spki") !== pem) {
+    throw new Error(`${label} must be a canonical ${algorithm} SPKI public key`);
+  }
+  return key;
+}
+
+export function validateNodeIdentityKeys(identity: NodeIdentity): void {
+  const signingPrivate = canonicalPrivateKey(
+    identity.signingPrivateKey,
+    "ed25519",
+    "signingPrivateKey",
+  );
+  canonicalPublicKey(identity.signingPublicKey, "ed25519", "signingPublicKey");
+  if (keyToPem(createPublicKey(signingPrivate), "spki") !== identity.signingPublicKey) {
+    throw new Error("signing public key does not match signing private key");
+  }
+
+  const encryptionPrivate = canonicalPrivateKey(
+    identity.encryptionPrivateKey,
+    "x25519",
+    "encryptionPrivateKey",
+  );
+  canonicalPublicKey(identity.encryptionPublicKey, "x25519", "encryptionPublicKey");
+  if (
+    keyToPem(createPublicKey(encryptionPrivate), "spki") !==
+    identity.encryptionPublicKey
+  ) {
+    throw new Error("encryption public key does not match encryption private key");
+  }
+}
+
+export function validateAuthorityPublicKey(publicKey: string): void {
+  canonicalPublicKey(publicKey, "ed25519", "authority publicKey");
 }
 
 function canonicalJson(value: JsonValue): string {
@@ -243,7 +241,9 @@ export function decryptCommand(command: CommandEnvelope, identity: NodeIdentity)
     decipher.update(Buffer.from(command.encryption.ciphertext, "base64")),
     decipher.final(),
   ]);
-  return JSON.parse(plaintext.toString("utf8")) as JsonValue;
+  const value: unknown = JSON.parse(plaintext.toString("utf8"));
+  validateV1JsonValue(value);
+  return value;
 }
 
 export class FleetAuthority {
@@ -267,6 +267,8 @@ export class FleetAuthority {
     notBefore?: Date;
     expiresAt?: Date;
   }): CommandEnvelope {
+    validateV1Revision(options.revision);
+    validateV1JsonValue(options.value);
     const header: CommandHeader = {
       version: 1,
       fleet: options.fleet,
@@ -309,6 +311,7 @@ export class MeshNode {
   readonly #records = new Map<string, MeshRecord>();
   readonly #resources = new Map<string, ResourceState>();
   readonly #outcomes = new Map<string, CommandOutcome>();
+  readonly #suppressedCommands = new Set<string>();
 
   constructor(options: {
     identity: NodeIdentity;
@@ -352,18 +355,18 @@ export class MeshNode {
     };
   }
 
-  ingest(records: MeshRecord[]): number {
-    let accepted = 0;
+  ingest(records: readonly MeshRecord[]): number {
+    const acceptedIds: string[] = [];
     const commandsFirst = [...records].sort((left, right) =>
       left.kind === right.kind ? 0 : left.kind === "command" ? -1 : 1,
     );
     for (const record of commandsFirst) {
       if (this.#records.has(record.id) || !this.#validRecord(record)) continue;
       this.#records.set(record.id, copy(record));
-      accepted += 1;
+      acceptedIds.push(record.id);
     }
     this.processPending();
-    return accepted;
+    return acceptedIds.filter((id) => this.#records.has(id)).length;
   }
 
   processPending(): void {
@@ -372,10 +375,21 @@ export class MeshNode {
         (record): record is CommandEnvelope =>
           record.kind === "command" &&
           record.header.to === this.id &&
-          !this.#outcomes.has(record.id),
+          !this.#outcomes.has(record.id) &&
+          !this.#suppressedCommands.has(record.id),
       )
       .sort((left, right) => compareRevision(right.header.revision, left.header.revision));
-    for (const command of pending) this.#process(command);
+    for (const command of pending) {
+      try {
+        this.#processAtomically(command);
+      } catch (error) {
+        if (error instanceof InvalidCommandError) {
+          this.#suppressedCommands.add(command.id);
+          continue;
+        }
+        throw error;
+      }
+    }
   }
 
   readResource(resource: string): ResourceState | null {
@@ -442,13 +456,35 @@ export class MeshNode {
       this.#recordOutcome(command, "rejected", "stale", current.revision, 0);
       return;
     }
-    const value = decryptCommand(command, this.identity);
+    let value: JsonValue;
+    try {
+      value = decryptCommand(command, this.identity);
+    } catch (error) {
+      throw new InvalidCommandError(command.id, error);
+    }
     this.#resources.set(command.header.resource, {
       revision: copy(command.header.revision),
       value,
       commandId: command.id,
     });
     this.#recordOutcome(command, "applied", null, command.header.revision, 1);
+  }
+
+  #processAtomically(command: CommandEnvelope): void {
+    const records = new Map(this.#records);
+    const resources = new Map(this.#resources);
+    const outcomes = new Map(this.#outcomes);
+    try {
+      this.#process(command);
+    } catch (error) {
+      this.#records.clear();
+      for (const entry of records) this.#records.set(...entry);
+      this.#resources.clear();
+      for (const entry of resources) this.#resources.set(...entry);
+      this.#outcomes.clear();
+      for (const entry of outcomes) this.#outcomes.set(...entry);
+      throw error;
+    }
   }
 
   #recordOutcome(
