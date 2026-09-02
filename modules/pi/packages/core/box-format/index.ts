@@ -29,6 +29,7 @@ import { windowItems, type Excerpt } from "@bds_pi/show";
 
 const DIM = "\x1b[2m";
 const RST = "\x1b[0m";
+const TOOL_PREVIEW_HINT_SENTINEL = "\x1b_pi:tool-preview\x1b\\";
 
 /**
  * ANSI-aware visible width + truncation.
@@ -42,7 +43,9 @@ const ANSI_RE = /\x1b\[[0-9;]*m|\x1b\]8;;[^\x07]*\x07/g;
 const TAB_WIDTH = 4;
 
 function visibleWidth(text: string): number {
-  const stripped = text.replace(ANSI_RE, "");
+  const stripped = text
+    .replaceAll(TOOL_PREVIEW_HINT_SENTINEL, "")
+    .replace(ANSI_RE, "");
   let w = 0;
   for (const ch of stripped) {
     w += ch === "\t" ? TAB_WIDTH : 1;
@@ -64,6 +67,10 @@ function truncateToWidth(
   let visible = 0;
   let i = 0;
   while (i < text.length && visible < target) {
+    if (text.startsWith(TOOL_PREVIEW_HINT_SENTINEL, i)) {
+      i += TOOL_PREVIEW_HINT_SENTINEL.length;
+      continue;
+    }
     // skip SGR escape sequences (\x1b[...m)
     if (text[i] === "\x1b" && text[i + 1] === "[") {
       const end = text.indexOf("m", i);
@@ -266,7 +273,7 @@ export function formatBoxesWindowed(
               expanded,
               excerpts,
               (count): VisualBoxLine => ({
-                text: `⋮ ${count} more ${count === 1 ? "line" : "lines"}`,
+                text: `${TOOL_PREVIEW_HINT_SENTINEL}⋮ ${count} more ${count === 1 ? "line" : "lines"}`,
                 gutter: "",
                 highlight: false,
                 isElision: true,
@@ -572,6 +579,10 @@ if (import.meta.vitest) {
         visibleWidth("\x1b]8;;https://example.com\x07link\x1b]8;;\x07"),
       ).toBe(4);
     });
+
+    it("ignores tool-preview metadata", () => {
+      expect(visibleWidth(`${TOOL_PREVIEW_HINT_SENTINEL}hint`)).toBe(4);
+    });
   });
 
   describe("truncateToWidth", () => {
@@ -715,6 +726,7 @@ if (import.meta.vitest) {
       ).replace(/\x1b\[[0-9;]*m/g, "");
 
       expect(output).toContain("⋮ 2 more lines");
+      expect(output).toContain(TOOL_PREVIEW_HINT_SENTINEL);
 
       for (const width of [1, 2, 3, 8, 13, 14]) {
         expect(

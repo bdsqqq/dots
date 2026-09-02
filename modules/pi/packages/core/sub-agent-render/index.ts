@@ -296,6 +296,7 @@ const COLLAPSED_ITEM_COUNT = 3;
 const COLLAPSED_SUMMARY_ROWS = 3;
 const ACTIVE_BADGE_INTERVAL_MS = 320;
 const ACTIVE_BADGE_STATE = Symbol("sub-agent-active-badge");
+const TOOL_PREVIEW_HINT_SENTINEL = "\x1b_pi:tool-preview\x1b\\";
 
 type ActiveBadgeState = {
   frame: number;
@@ -317,7 +318,7 @@ function compactVisualRows(
       return [
         ...lines.slice(0, maxRows),
         truncateToWidth(
-          fg("muted", `⋮ ${hidden} more ${noun}`),
+          `${TOOL_PREVIEW_HINT_SENTINEL}${fg("muted", `⋮ ${hidden} more ${noun}`)}`,
           Math.max(0, width),
           "",
         ),

@@ -1,3 +1,20 @@
+diff --git a/dist/core/export-html/ansi-to-html.js b/dist/core/export-html/ansi-to-html.js
+index f11d2278d513ba99b8580cb25b904b147d86b8c4..478fc0cb8200dad339c8780874ddebbd2e159a75 100644
+--- a/dist/core/export-html/ansi-to-html.js
++++ b/dist/core/export-html/ansi-to-html.js
+@@ -193,10 +193,12 @@ function applySgrCode(params, style) {
+ }
+ // Match ANSI escape sequences: ESC[ followed by params and ending with 'm'
+ const ANSI_REGEX = /\x1b\[([\d;]*)m/g;
++const APC_REGEX = /\x1b_.*?\x1b\\/g;
+ /**
+  * Convert ANSI-escaped text to HTML with inline styles.
+  */
+ export function ansiToHtml(text) {
++    text = text.replace(APC_REGEX, "");
+     const style = createEmptyStyle();
+     let result = "";
+     let lastIndex = 0;
 diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
 index 417584fdd403a468a385ed2695dae51d8ba91bd8..b9c30af4e9091d4a70e44d1f20b1c0111cefa22c 100644
 --- a/dist/core/export-html/index.js
@@ -99,10 +116,10 @@ index bb022d43f66ca443fb2ba21bf998ded56a0ebf79..58c7052be74efab4cdc28c64b22a1ba6
          "@earendil-works/pi-agent-core": piAgentCoreEntry,
          "@earendil-works/pi-tui": piTuiEntry,
 diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
-index 3eb9e0bf570a79398fb3b81fc88eca79b286201e..f544ab5eebfd3a911136a38f7a5fe44a273a73ee 100644
+index 3eb9e0bf570a79398fb3b81fc88eca79b286201e..ff0b284e9cfbb1f2a369742ec907f7878d48588e 100644
 --- a/dist/modes/interactive/components/assistant-message.d.ts
 +++ b/dist/modes/interactive/components/assistant-message.d.ts
-@@ -6,15 +6,23 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+@@ -6,15 +6,25 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
   */
  export declare class AssistantMessageComponent extends Container {
      private contentContainer;
@@ -118,8 +135,10 @@ index 3eb9e0bf570a79398fb3b81fc88eca79b286201e..f544ab5eebfd3a911136a38f7a5fe44a
      private isStreaming;
 -    constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
 +    private collapsed;
++    private canCollapse;
 +    private markerFrame;
 +    private markerInterval;
++    private renderVersion;
 +    constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[], requestRender?: () => void);
 +    private updateMarker;
 +    private stopMarkerAnimation;
@@ -128,16 +147,35 @@ index 3eb9e0bf570a79398fb3b81fc88eca79b286201e..f544ab5eebfd3a911136a38f7a5fe44a
      setHideThinkingBlock(hide: boolean): void;
      setHiddenThinkingLabel(label: string): void;
 diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes/interactive/components/assistant-message.js
-index 56061b12694b1fa89862fa21dd15b76c254d8e77..53375235b1ac00a4f744bad636b299b588ab6283 100644
+index 56061b12694b1fa89862fa21dd15b76c254d8e77..2e41f34228689756aa692715847fb07978064d07 100644
 --- a/dist/modes/interactive/components/assistant-message.js
 +++ b/dist/modes/interactive/components/assistant-message.js
-@@ -1,4 +1,4 @@
+@@ -1,14 +1,31 @@
 -import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 +import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
  import { getMarkdownTheme, theme } from "../theme/theme.js";
  import { createMarkdownTransform } from "./markdown-transform.js";
  const OSC133_ZONE_START = "\x1b]133;A\x07";
-@@ -9,6 +9,7 @@ const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
+ const OSC133_ZONE_END = "\x1b]133;B\x07";
+ const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
++function foldableTail(component, isCollapsed, setCollapsible) {
++    return {
++        render: (width) => {
++            const lines = component.render(width);
++            const canCollapse = lines.length > 1;
++            setCollapsible(canCollapse);
++            if (!canCollapse || !isCollapsed())
++                return lines;
++            const hiddenCount = lines.length - 1;
++            const noun = hiddenCount === 1 ? "line" : "lines";
++            const summary = truncateToWidth(theme.fg("muted", `⋮ ${hiddenCount} ${noun} hidden.`), Math.max(0, width), "");
++            return [summary, lines.at(-1)];
++        },
++        invalidate: () => component.invalidate(),
++    };
++}
+ /**
+  * Component that renders a complete assistant message
   */
  export class AssistantMessageComponent extends Container {
      contentContainer;
@@ -145,15 +183,17 @@ index 56061b12694b1fa89862fa21dd15b76c254d8e77..53375235b1ac00a4f744bad636b299b5
      hideThinkingBlock;
      markdownTheme;
      hiddenThinkingLabel;
-@@ -17,20 +18,68 @@ export class AssistantMessageComponent extends Container {
+@@ -17,20 +34,83 @@ export class AssistantMessageComponent extends Container {
      lastMessage;
      hasToolCalls = false;
      isStreaming = false;
 -    constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = []) {
 +    collapsed = false;
++    canCollapse = false;
 +    requestRender;
 +    markerFrame = 0;
 +    markerInterval;
++    renderVersion = 0;
 +    constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = [], requestRender) {
          super();
          this.hideThinkingBlock = hideThinkingBlock;
@@ -165,8 +205,17 @@ index 56061b12694b1fa89862fa21dd15b76c254d8e77..53375235b1ac00a4f744bad636b299b5
          // Container for text/thinking content
          this.contentContainer = new Container();
 -        this.addChild(this.contentContainer);
-+        this.markerColumn = new MarkerColumn("", this.contentContainer, {
++        const foldedContent = foldableTail(this.contentContainer, () => this.collapsed, (canCollapse) => {
++            this.canCollapse = canCollapse;
++            if (!canCollapse && this.collapsed) {
++                this.collapsed = false;
++                if (this.lastMessage)
++                    this.updateMarker(this.lastMessage);
++            }
++        });
++        this.markerColumn = new MarkerColumn("", foldedContent, {
 +            onGutterClick: () => this.setCollapsed(!this.collapsed),
++            isGutterInteractive: () => this.canCollapse,
 +        });
          if (message) {
              this.updateContent(message);
@@ -192,9 +241,12 @@ index 56061b12694b1fa89862fa21dd15b76c254d8e77..53375235b1ac00a4f744bad636b299b5
 +        this.markerColumn.setMarker(theme.fg(this.markerFrame % 2 === 0 ? "muted" : "accent", "●"), continuationMarker);
 +        if (!this.markerInterval && this.requestRender) {
 +            this.markerInterval = setInterval(() => {
++                const renderVersion = this.renderVersion;
 +                this.markerFrame = (this.markerFrame + 1) % 2;
 +                this.markerColumn.setMarker(theme.fg(this.markerFrame === 0 ? "muted" : "accent", "●"), theme.fg("muted", "│"));
 +                this.requestRender?.();
++                if (this.renderVersion === renderVersion)
++                    this.stopMarkerAnimation();
 +            }, 320);
 +            this.markerInterval.unref?.();
 +        }
@@ -206,17 +258,18 @@ index 56061b12694b1fa89862fa21dd15b76c254d8e77..53375235b1ac00a4f744bad636b299b5
 +        }
 +    }
 +    setCollapsed(collapsed) {
++        if (collapsed && !this.canCollapse)
++            return;
 +        if (this.collapsed === collapsed)
 +            return;
 +        this.collapsed = collapsed;
-+        this.markerColumn.setChild(collapsed ? new Text(theme.fg("muted", "…"), 0, 0) : this.contentContainer);
 +        if (this.lastMessage)
 +            this.updateMarker(this.lastMessage);
 +    }
      invalidate() {
          super.invalidate();
          if (this.lastMessage) {
-@@ -56,7 +105,10 @@ export class AssistantMessageComponent extends Container {
+@@ -56,7 +136,10 @@ export class AssistantMessageComponent extends Container {
          }
      }
      render(width) {
@@ -228,8 +281,11 @@ index 56061b12694b1fa89862fa21dd15b76c254d8e77..53375235b1ac00a4f744bad636b299b5
          if (this.hasToolCalls || lines.length === 0) {
              return lines;
          }
-@@ -67,19 +119,15 @@ export class AssistantMessageComponent extends Container {
+@@ -65,21 +148,18 @@ export class AssistantMessageComponent extends Container {
+         return lines;
+     }
      updateContent(message, isStreaming = this.isStreaming) {
++        this.renderVersion++;
          this.lastMessage = message;
          this.isStreaming = isStreaming;
 -        // Clear content container
@@ -250,7 +306,7 @@ index 56061b12694b1fa89862fa21dd15b76c254d8e77..53375235b1ac00a4f744bad636b299b5
                      transform: createMarkdownTransform("assistant", this.isStreaming, this.markdownTransformers),
                  }));
              }
-@@ -106,11 +154,11 @@ export class AssistantMessageComponent extends Container {
+@@ -106,11 +186,11 @@ export class AssistantMessageComponent extends Container {
                      .some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
                  if (this.hideThinkingBlock) {
                      // Show one static label for each run of thinking blocks when hidden.
@@ -264,7 +320,7 @@ index 56061b12694b1fa89862fa21dd15b76c254d8e77..53375235b1ac00a4f744bad636b299b5
                          color: (text) => theme.fg("thinkingText", text),
                          italic: true,
                      }, {
-@@ -128,23 +176,37 @@ export class AssistantMessageComponent extends Container {
+@@ -128,23 +208,36 @@ export class AssistantMessageComponent extends Container {
          const hasToolCalls = message.content.some((c) => c.type === "toolCall");
          this.hasToolCalls = hasToolCalls;
          if (message.stopReason === "length") {
@@ -295,7 +351,6 @@ index 56061b12694b1fa89862fa21dd15b76c254d8e77..53375235b1ac00a4f744bad636b299b5
              }
          }
 +        if (this.contentContainer.children.length > 0) {
-+            this.markerColumn.setChild(this.collapsed ? new Text(theme.fg("muted", "…"), 0, 0) : this.contentContainer);
 +            this.updateMarker(message);
 +            this.addChild(new Spacer(1));
 +            const messageFrame = new Box(this.outputPad, 0);
@@ -685,27 +740,27 @@ index 7c6fb37daea606e59d1616d24fb18d689fed6023..2e723f3e1fe9a539d62ce5dc7a98b8fd
  //# sourceMappingURL=custom-message.js.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/interactive/components/tool-execution.d.ts
-index 4a22d5c5159d72c18f4be5b607572238fdedd7cb..9aa26612ff64a6e49e54e8e0ce2a7a06b2f139ba 100644
+index 4a22d5c5159d72c18f4be5b607572238fdedd7cb..0452baf93c253aa1b3674bae1933ee2a35ddbe5b 100644
 --- a/dist/modes/interactive/components/tool-execution.d.ts
 +++ b/dist/modes/interactive/components/tool-execution.d.ts
-@@ -1,4 +1,4 @@
--import { Container, type TUI } from "@earendil-works/pi-tui";
-+import { Container, type TuiMouseDispatchResult, type TuiMouseEvent, type TuiMouseEventResult, type TUI } from "@earendil-works/pi-tui";
- import type { ToolDefinition } from "../../../core/extensions/types.ts";
- export interface ToolExecutionOptions {
-     showImages?: boolean;
-@@ -29,6 +29,10 @@ export declare class ToolExecutionComponent extends Container {
+@@ -6,7 +6,6 @@ export interface ToolExecutionOptions {
+ }
+ export declare class ToolExecutionComponent extends Container {
+     private contentBox;
+-    private contentText;
+     private selfRenderContainer;
+     private callRendererComponent?;
+     private resultRendererComponent?;
+@@ -29,6 +28,8 @@ export declare class ToolExecutionComponent extends Container {
      private result?;
      private convertedImages;
      private hideComponent;
 +    private collapsed;
-+    private renderedGutterCells;
-+    private renderedHiddenLineCount;
-+    private renderedCanCollapse;
++    private resultFoldComponent?;
      constructor(toolName: string, toolCallId: string, args: any, options: ToolExecutionOptions | undefined, toolDefinition: ToolDefinition<any, any> | undefined, ui: TUI, cwd: string);
      private getCallRenderer;
      private getResultRenderer;
-@@ -37,6 +41,7 @@ export declare class ToolExecutionComponent extends Container {
+@@ -37,6 +38,7 @@ export declare class ToolExecutionComponent extends Container {
      private getRenderContext;
      private createCallFallback;
      private createResultFallback;
@@ -713,27 +768,25 @@ index 4a22d5c5159d72c18f4be5b607572238fdedd7cb..9aa26612ff64a6e49e54e8e0ce2a7a06
      updateArgs(args: any): void;
      markExecutionStarted(): void;
      setArgsComplete(): void;
-@@ -55,7 +60,13 @@ export declare class ToolExecutionComponent extends Container {
-     setShowImages(show: boolean): void;
+@@ -56,8 +58,10 @@ export declare class ToolExecutionComponent extends Container {
      setImageWidthCells(width: number): void;
      invalidate(): void;
-+    handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | TuiMouseEventResult | undefined;
      render(width: number): string[];
-+    private compactFallbackLines;
-+    private foldRenderedLines;
-+    private captureGutterRows;
-+    private findGutterCell;
-+    private countHiddenLines;
++    private wrapResult;
++    private wrapCall;
++    private toggleResultCollapsed;
      private updateDisplay;
      private getTextOutput;
-     private formatToolExecution;
+-    private formatToolExecution;
+ }
+ //# sourceMappingURL=tool-execution.d.ts.map
 diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
-index c33fc3972c1ebd8d3a7f430d4b71f2d99ad619ca..cc1abaf439effe21ff6d72223643da80beb1c911 100644
+index c33fc3972c1ebd8d3a7f430d4b71f2d99ad619ca..ab225f30bdae2a28eba1c9c381f776f0808d72df 100644
 --- a/dist/modes/interactive/components/tool-execution.js
 +++ b/dist/modes/interactive/components/tool-execution.js
-@@ -1,10 +1,9 @@
+@@ -1,13 +1,238 @@
 -import { Box, Container, getCapabilities, Image, Spacer, Text } from "@earendil-works/pi-tui";
-+import { Box, Container, getCapabilities, Image, MarkerColumn, Spacer, stripTerminalSequences, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
++import { Box, Container, dispatchMouseEvent, getCapabilities, Image, MarkerColumn, Spacer, stripTerminalSequences, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
  import { createAllToolDefinitions } from "../../../core/tools/index.js";
  import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
  import { convertToPng } from "../../../utils/image-convert.js";
@@ -741,21 +794,270 @@ index c33fc3972c1ebd8d3a7f430d4b71f2d99ad619ca..cc1abaf439effe21ff6d72223643da80
 -import { keyHint } from "./keybinding-hints.js";
 -const FALLBACK_PREVIEW_LINES = 10;
 +const FALLBACK_PREVIEW_LINES = 3;
++const TOOL_PREVIEW_HINT_SENTINEL = "\x1b_pi:tool-preview\x1b\\";
++const HOVER_GLYPHS = new Map([
++    ["●", "◉"],
++    ["✓", "✔"],
++    ["✕", "✖"],
++    ["│", "┃"],
++    ["├", "┣"],
++    ["╰", "┗"],
++    ["⋮", "⋮"],
++]);
++class ClickableToolCall {
++    child;
++    canToggle;
++    toggle;
++    hovered = false;
++    renderedGutterCells = new Map();
++    renderedHeight = 0;
++    constructor(child, canToggle, toggle) {
++        this.child = child;
++        this.canToggle = canToggle;
++        this.toggle = toggle;
++    }
++    render(width) {
++        const safeWidth = Math.max(0, Math.floor(width));
++        const lines = this.child.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
++        this.renderedHeight = lines.length;
++        this.renderedGutterCells = new Map();
++        for (let index = 0; index < lines.length; index++) {
++            const gutter = this.findGutterCell(lines[index]);
++            if (gutter !== undefined)
++                this.renderedGutterCells.set(index, gutter);
++        }
++        return this.hovered
++            ? lines.map((line, index) => this.highlightGutter(line, index))
++            : lines;
++    }
++    handleMouse(event) {
++        if (event.type === "leave") {
++            const changed = this.hovered;
++            this.hovered = false;
++            return changed ? { handled: true, render: true } : undefined;
++        }
++        const gutter = this.renderedGutterCells.get(event.y);
++        if (event.type === "move") {
++            const hovered = this.canToggle() && gutter !== undefined && event.x === gutter;
++            const changed = hovered !== this.hovered;
++            this.hovered = hovered;
++            if (hovered || changed)
++                return { handled: true, render: changed };
++        }
++        if (event.type === "click" &&
++            event.button === "left" &&
++            !event.shift &&
++            !event.alt &&
++            !event.ctrl &&
++            this.canToggle() &&
++            gutter !== undefined &&
++            event.x === gutter) {
++            this.toggle();
++            return { handled: true };
++        }
++        if (event.y < 0 || event.y >= this.renderedHeight)
++            return undefined;
++        return dispatchMouseEvent(this.child, event);
++    }
++    findGutterCell(line) {
++        const plain = stripTerminalSequences(line);
++        const markerIndex = plain.search(/[●✓✕│├╰⋮]/u);
++        if (markerIndex < 0 || !/^ *$/u.test(plain.slice(0, markerIndex)))
++            return undefined;
++        return visibleWidth(plain.slice(0, markerIndex));
++    }
++    highlightGutter(line, index) {
++        if (!this.renderedGutterCells.has(index))
++            return line;
++        return line.replace(/[●✓✕│├╰⋮]/u, (glyph) => HOVER_GLYPHS.get(glyph) ?? glyph);
++    }
++    invalidate() {
++        this.child.invalidate();
++    }
++}
++class FoldableToolResult {
++    child;
++    getCollapsed;
++    toggleCollapsed;
++    expandPreview;
++    hovered = false;
++    renderedGutterCells = new Map();
++    renderedPreviewHints = new Map();
++    renderedHeight = 0;
++    renderedCanCollapse = false;
++    constructor(child, getCollapsed, toggleCollapsed, expandPreview) {
++        this.child = child;
++        this.getCollapsed = getCollapsed;
++        this.toggleCollapsed = toggleCollapsed;
++        this.expandPreview = expandPreview;
++    }
++    render(width) {
++        const safeWidth = Math.max(0, Math.floor(width));
++        const source = this.child.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
++        this.renderedCanCollapse = this.canCollapse(source);
++        if (!this.renderedCanCollapse && this.getCollapsed())
++            this.toggleCollapsed();
++        const lines = this.getCollapsed() ? this.collapseToTail(source, safeWidth) : source;
++        this.captureRows(lines);
++        return this.hovered ? lines.map((line, index) => this.highlightGutter(line, index)) : lines;
++    }
++    isCollapsible() {
++        return this.renderedCanCollapse;
++    }
++    canCollapse(lines) {
++        let contentRows = 0;
++        for (const line of lines) {
++            const plain = stripTerminalSequences(line).trim();
++            if (line.includes(TOOL_PREVIEW_HINT_SENTINEL))
++                return true;
++            if (!plain || /^╰─*$/u.test(plain) || /^[●✓✕│├╰⋮](?:─+)?$/u.test(plain))
++                continue;
++            contentRows++;
++            if (contentRows > 1)
++                return true;
++        }
++        return false;
++    }
++    handleMouse(event) {
++        if (event.type === "leave") {
++            const changed = this.hovered;
++            this.hovered = false;
++            return changed ? { handled: true, render: true } : undefined;
++        }
++        const gutter = this.renderedGutterCells.get(event.y);
++        if (event.type === "move") {
++            const hovered = gutter !== undefined && event.x === gutter;
++            const changed = hovered !== this.hovered;
++            this.hovered = hovered;
++            if (hovered || changed)
++                return { handled: true, render: changed };
++        }
++        if (event.type === "click" &&
++            event.button === "left" &&
++            !event.shift &&
++            !event.alt &&
++            !event.ctrl) {
++            const previewHint = this.renderedPreviewHints.get(event.y);
++            if (previewHint && event.x >= previewHint.start && event.x < previewHint.end) {
++                this.expandPreview();
++                return { handled: true };
++            }
++            if (gutter !== undefined && event.x === gutter) {
++                this.toggleCollapsed();
++                return { handled: true };
++            }
++        }
++        if (this.getCollapsed() || event.y < 0 || event.y >= this.renderedHeight)
++            return undefined;
++        return dispatchMouseEvent(this.child, event);
++    }
++    collapseToTail(lines, width) {
++        const previewHintPattern = /⋮\s+(\d+)\s+more lines?/u;
++        let nativeHiddenCount = 0;
++        let finalFooterIndex = -1;
++        const contentRows = [];
++        for (let index = 0; index < lines.length; index++) {
++            const plain = stripTerminalSequences(lines[index]).trim();
++            if (/^╰─*$/u.test(plain)) {
++                finalFooterIndex = index;
++                continue;
++            }
++            if (!plain || /^[●✓✕│├╰⋮](?:─+)?$/u.test(plain))
++                continue;
++            const hint = lines[index].includes(TOOL_PREVIEW_HINT_SENTINEL)
++                ? previewHintPattern.exec(plain)
++                : undefined;
++            if (hint) {
++                nativeHiddenCount += Number.parseInt(hint[1], 10);
++                continue;
++            }
++            contentRows.push(index);
++        }
++        const lastContentRow = contentRows.at(-1);
++        if (lastContentRow === undefined)
++            return lines;
++        const hiddenCount = nativeHiddenCount + contentRows.length - 1;
++        if (hiddenCount <= 0)
++            return lines;
++        const gutter = this.findGutterCell(lines[lastContentRow]) ?? 0;
++        const noun = hiddenCount === 1 ? "line" : "lines";
++        const summary = truncateToWidth(`${" ".repeat(gutter)}${theme.fg("muted", `⋮ ${hiddenCount} ${noun} hidden.`)}`, width, "");
++        const trailingFooter = finalFooterIndex > lastContentRow ? [lines[finalFooterIndex]] : [];
++        return [summary, lines[lastContentRow], ...trailingFooter];
++    }
++    captureRows(lines) {
++        this.renderedHeight = lines.length;
++        this.renderedGutterCells = new Map();
++        this.renderedPreviewHints = new Map();
++        for (let index = 0; index < lines.length; index++) {
++            const plain = stripTerminalSequences(lines[index]);
++            const gutter = this.findGutterCell(lines[index]);
++            if (gutter !== undefined && this.renderedCanCollapse)
++                this.renderedGutterCells.set(index, gutter);
++            const hint = lines[index].includes(TOOL_PREVIEW_HINT_SENTINEL)
++                ? /⋮\s+\d+\s+more lines?/u.exec(plain)
++                : undefined;
++            if (hint) {
++                this.renderedPreviewHints.set(index, {
++                    start: visibleWidth(plain.slice(0, hint.index)),
++                    end: visibleWidth(plain.slice(0, hint.index + hint[0].length)),
++                });
++            }
++        }
++    }
++    findGutterCell(line) {
++        const plain = stripTerminalSequences(line);
++        const markerIndex = plain.search(/[●✓✕│├╰⋮]/u);
++        if (markerIndex < 0 || !/^ *$/u.test(plain.slice(0, markerIndex)))
++            return undefined;
++        return visibleWidth(plain.slice(0, markerIndex));
++    }
++    highlightGutter(line, index) {
++        if (!this.renderedGutterCells.has(index))
++            return line;
++        return line.replace(/[●✓✕│├╰⋮]/u, (glyph) => HOVER_GLYPHS.get(glyph) ?? glyph);
++    }
++    invalidate() {
++        this.child.invalidate();
++    }
++}
  export class ToolExecutionComponent extends Container {
      contentBox;
-     contentText;
-@@ -30,6 +29,10 @@ export class ToolExecutionComponent extends Container {
+-    contentText;
+     selfRenderContainer;
+     callRendererComponent;
+     resultRendererComponent;
+@@ -30,6 +255,8 @@ export class ToolExecutionComponent extends Container {
      result;
      convertedImages = new Map();
      hideComponent = false;
 +    collapsed = false;
-+    renderedGutterCells = new Map();
-+    renderedHiddenLineCount = 0;
-+    renderedCanCollapse = false;
++    resultFoldComponent;
      constructor(toolName, toolCallId, args, options = {}, toolDefinition, ui, cwd) {
          super();
          this.toolName = toolName;
-@@ -106,21 +109,46 @@ export class ToolExecutionComponent extends Container {
+@@ -42,17 +269,15 @@ export class ToolExecutionComponent extends Container {
+         this.ui = ui;
+         this.cwd = cwd;
+         this.addChild(new Spacer(1));
+-        // Always create all shell variants. contentBox is used for default renderer-based composition.
+-        // selfRenderContainer is used when the tool renders its own framing.
+-        // contentText is reserved for generic fallback rendering when no tool definition exists.
++        // Always create both shells. Historical/unregistered tools use the self-render
++        // shell so their call and result remain independently interactive.
+         this.contentBox = new Box(1, 1, (text) => theme.bg("toolPendingBg", text));
+-        this.contentText = new Text("", 1, 1, (text) => theme.bg("toolPendingBg", text));
+         this.selfRenderContainer = new Container();
+         if (this.hasRendererDefinition()) {
+             this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
+         }
+         else {
+-            this.addChild(this.contentText);
++            this.addChild(this.selfRenderContainer);
+         }
+         this.updateDisplay();
+     }
+@@ -106,21 +331,56 @@ export class ToolExecutionComponent extends Container {
          };
      }
      createCallFallback() {
@@ -765,7 +1067,12 @@ index c33fc3972c1ebd8d3a7f430d4b71f2d99ad619ca..cc1abaf439effe21ff6d72223643da80
 +            : this.isPartial
 +                ? theme.fg("muted", "●")
 +                : theme.fg("success", "✓");
-+        return new MarkerColumn(marker, new Text(theme.fg("toolTitle", theme.bold(this.toolName)), 0, 0));
++        const title = theme.fg("toolTitle", theme.bold(this.toolName));
++        const args = JSON.stringify(this.args, null, 2);
++        const content = args && args !== "{}" ? `${title}\n${theme.fg("dim", args)}` : title;
++        return new MarkerColumn(marker, new Text(content, 0, 0), {
++            continuationMarker: theme.fg("muted", "│"),
++        });
      }
      createResultFallback() {
          const output = this.getTextOutput();
@@ -803,15 +1110,20 @@ index c33fc3972c1ebd8d3a7f430d4b71f2d99ad619ca..cc1abaf439effe21ff6d72223643da80
 +                    return lines;
 +                const hiddenCount = body.length - FALLBACK_PREVIEW_LINES;
 +                const noun = hiddenCount === 1 ? "line" : "lines";
-+                const hint = truncateToWidth(theme.fg("muted", `⋮ ${hiddenCount} more ${noun}`), Math.max(0, width), "");
-+                return [...body.slice(0, FALLBACK_PREVIEW_LINES), hint, ...lines.slice(bodyEnd)];
++                const hint = truncateToWidth(`${TOOL_PREVIEW_HINT_SENTINEL}${theme.fg("muted", `⋮ ${hiddenCount} more ${noun}`)}`, Math.max(0, width), "");
++                return [
++                    ...body.slice(0, FALLBACK_PREVIEW_LINES - 1),
++                    hint,
++                    body.at(-1),
++                    ...lines.slice(bodyEnd),
++                ];
 +            },
 +            invalidate: () => component.invalidate(),
 +        };
      }
      updateArgs(args) {
          this.args = args;
-@@ -169,6 +197,8 @@ export class ToolExecutionComponent extends Container {
+@@ -169,6 +429,8 @@ export class ToolExecutionComponent extends Container {
      }
      setExpanded(expanded) {
          this.expanded = expanded;
@@ -820,40 +1132,23 @@ index c33fc3972c1ebd8d3a7f430d4b71f2d99ad619ca..cc1abaf439effe21ff6d72223643da80
          this.updateDisplay();
      }
      setShowImages(show) {
-@@ -183,12 +213,30 @@ export class ToolExecutionComponent extends Container {
-         super.invalidate();
+@@ -184,11 +446,12 @@ export class ToolExecutionComponent extends Container {
          this.updateDisplay();
      }
-+    handleMouse(event) {
-+        if (event.type === "click" &&
-+            event.button === "left" &&
-+            !event.shift &&
-+            !event.alt &&
-+            !event.ctrl &&
-+            event.x === this.renderedGutterCells.get(event.y) &&
-+            (this.collapsed || this.renderedCanCollapse)) {
-+            this.collapsed = !this.collapsed;
-+            this.ui.requestRender();
-+            return { handled: true };
-+        }
-+        if (this.collapsed)
-+            return undefined;
-+        return super.handleMouse(event);
-+    }
      render(width) {
 -        if (this.hideComponent) {
 +        if (this.hideComponent || width <= 0) {
-+            this.renderedGutterCells = new Map();
              return [];
          }
-+        const safeWidth = Math.max(0, Math.floor(width));
-         if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
+-        if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
 -            const contentLines = this.selfRenderContainer.render(width);
++        const safeWidth = Math.max(0, Math.floor(width));
++        if (!this.hasRendererDefinition() || this.getRenderShell() === "self") {
 +            const contentLines = this.selfRenderContainer.render(safeWidth);
              if (contentLines.length === 0 && this.imageComponents.length === 0) {
                  return [];
              }
-@@ -200,16 +248,91 @@ export class ToolExecutionComponent extends Container {
+@@ -200,16 +463,37 @@ export class ToolExecutionComponent extends Container {
              for (let i = 0; i < this.imageComponents.length; i++) {
                  const spacer = this.imageSpacers[i];
                  if (spacer) {
@@ -866,111 +1161,136 @@ index c33fc3972c1ebd8d3a7f430d4b71f2d99ad619ca..cc1abaf439effe21ff6d72223643da80
 +                    lines.push(...imageComponent.render(safeWidth));
                  }
              }
+-            return lines;
 +            const clamped = lines.map((line) => truncateToWidth(line, safeWidth, ""));
-+            return this.foldRenderedLines(this.compactFallbackLines(clamped, safeWidth), safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
-+        }
-+        const clamped = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
-+        return this.foldRenderedLines(this.compactFallbackLines(clamped, safeWidth), safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
-+    }
-+    compactFallbackLines(lines, width) {
-+        if (this.expanded || !this.result || this.hasRendererDefinition())
-+            return lines;
-+        const meaningfulRows = lines.flatMap((line, index) => {
-+            const plain = stripTerminalSequences(line).trim();
-+            return !plain || /^╰─*$/u.test(plain) ? [] : [index];
-+        });
-+        if (meaningfulRows.length <= FALLBACK_PREVIEW_LINES + 1)
-+            return lines;
-+        const headerIndex = meaningfulRows[0];
-+        const shownRows = meaningfulRows.slice(1, FALLBACK_PREVIEW_LINES + 1);
-+        const hiddenCount = meaningfulRows.length - shownRows.length - 1;
-+        const indent = shownRows.length > 0 ? this.findGutterCell(lines[shownRows[0]]) ?? 0 : 0;
-+        const noun = hiddenCount === 1 ? "line" : "lines";
-+        const hint = truncateToWidth(`${" ".repeat(indent)}${theme.fg("muted", `⋮ ${hiddenCount} more ${noun}`)}`, Math.max(0, width), "");
-+        const footerIndex = lines.findIndex((line, index) => index > headerIndex && /^╰─*$/u.test(stripTerminalSequences(line).trim()));
-+        const trailingStart = footerIndex >= 0 ? footerIndex : (meaningfulRows.at(-1) ?? headerIndex) + 1;
-+        return [
-+            ...lines.slice(0, headerIndex + 1),
-+            ...shownRows.map((index) => lines[index]),
-+            hint,
-+            ...lines.slice(trailingStart),
-+        ];
-+    }
-+    foldRenderedLines(lines, width) {
-+        const headerIndex = lines.findIndex((line) => {
-+            const plain = stripTerminalSequences(line);
-+            const markerIndex = plain.search(/[●✓✕]/u);
-+            return markerIndex >= 0 && /^ *$/u.test(plain.slice(0, markerIndex));
-+        });
-+        if (headerIndex < 0) {
-+            this.renderedHiddenLineCount = 0;
-+            this.renderedCanCollapse = false;
-+            this.captureGutterRows(lines);
-+            return lines;
-+        }
-+        const headerColumn = this.findGutterCell(lines[headerIndex]) ?? 0;
-+        this.renderedHiddenLineCount = this.countHiddenLines(lines.slice(headerIndex + 1));
-+        this.renderedCanCollapse =
-+            this.result !== undefined &&
-+                (this.renderedHiddenLineCount > 0 ||
-+                    lines.slice(headerIndex + 1).some((line) => /[│├╰⋮]/u.test(stripTerminalSequences(line))));
-+        if (!this.collapsed) {
-+            this.captureGutterRows(lines);
-             return lines;
++            return clamped;
          }
 -        return super.render(width);
-+        const noun = this.renderedHiddenLineCount === 1 ? "line" : "lines";
-+        const summary = truncateToWidth(`${" ".repeat(headerColumn)}${theme.fg("muted", `⋮ ${this.renderedHiddenLineCount} ${noun} hidden.`)}`, Math.max(0, width), "");
-+        const folded = [...lines.slice(0, headerIndex), lines[headerIndex], summary];
-+        this.captureGutterRows(folded);
++        const clamped = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
++        return clamped;
++    }
++    wrapResult(component) {
++        const folded = new FoldableToolResult(component, () => this.collapsed, () => {
++            this.toggleResultCollapsed();
++        }, () => {
++            this.setExpanded(true);
++            this.ui.requestRender();
++        });
++        this.resultFoldComponent = folded;
 +        return folded;
 +    }
-+    captureGutterRows(lines) {
-+        this.renderedGutterCells = new Map(lines.flatMap((line, index) => {
-+            const column = this.findGutterCell(line);
-+            return column === undefined ? [] : [[index, column]];
-+        }));
++    wrapCall(component) {
++        return new ClickableToolCall(component, () => this.resultFoldComponent?.isCollapsible() ?? false, () => this.toggleResultCollapsed());
 +    }
-+    findGutterCell(line) {
-+        const plain = stripTerminalSequences(line);
-+        const markerIndex = plain.search(/[●✓✕│├╰⋮]/u);
-+        if (markerIndex < 0 || !/^ *$/u.test(plain.slice(0, markerIndex)))
-+            return undefined;
-+        return visibleWidth(plain.slice(0, markerIndex));
-+    }
-+    countHiddenLines(lines) {
-+        return lines.reduce((count, line) => {
-+            const plain = stripTerminalSequences(line).trim();
-+            if (!plain || /^[●✓✕│├╰⋮](?:─+)?$/u.test(plain))
-+                return count;
-+            return count + 1;
-+        }, 0);
++    toggleResultCollapsed() {
++        if (!this.collapsed && !this.resultFoldComponent?.isCollapsible())
++            return;
++        this.collapsed = !this.collapsed;
++        this.ui.requestRender();
      }
      updateDisplay() {
          const bgFn = this.isPartial
-@@ -311,7 +434,12 @@ export class ToolExecutionComponent extends Container {
+@@ -219,6 +503,7 @@ export class ToolExecutionComponent extends Container {
+                 : (text) => theme.bg("toolSuccessBg", text);
+         let hasContent = false;
+         this.hideComponent = false;
++        this.resultFoldComponent = undefined;
+         if (this.hasRendererDefinition()) {
+             const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
+             if (renderContainer instanceof Box) {
+@@ -227,19 +512,19 @@ export class ToolExecutionComponent extends Container {
+             renderContainer.clear();
+             const callRenderer = this.getCallRenderer();
+             if (!callRenderer) {
+-                renderContainer.addChild(this.createCallFallback());
++                renderContainer.addChild(this.wrapCall(this.createCallFallback()));
+                 hasContent = true;
+             }
+             else {
+                 try {
+                     const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
+                     this.callRendererComponent = component;
+-                    renderContainer.addChild(component);
++                    renderContainer.addChild(this.wrapCall(component));
+                     hasContent = true;
+                 }
+                 catch {
+                     this.callRendererComponent = undefined;
+-                    renderContainer.addChild(this.createCallFallback());
++                    renderContainer.addChild(this.wrapCall(this.createCallFallback()));
+                     hasContent = true;
+                 }
+             }
+@@ -248,7 +533,7 @@ export class ToolExecutionComponent extends Container {
+                 if (!resultRenderer) {
+                     const component = this.createResultFallback();
+                     if (component) {
+-                        renderContainer.addChild(component);
++                        renderContainer.addChild(this.wrapResult(component));
+                         hasContent = true;
+                     }
+                 }
+@@ -256,14 +541,14 @@ export class ToolExecutionComponent extends Container {
+                     try {
+                         const component = resultRenderer({ content: this.result.content, details: this.result.details }, { expanded: this.expanded, isPartial: this.isPartial }, theme, this.getRenderContext(this.resultRendererComponent));
+                         this.resultRendererComponent = component;
+-                        renderContainer.addChild(component);
++                        renderContainer.addChild(this.wrapResult(component));
+                         hasContent = true;
+                     }
+                     catch {
+                         this.resultRendererComponent = undefined;
+                         const component = this.createResultFallback();
+                         if (component) {
+-                            renderContainer.addChild(component);
++                            renderContainer.addChild(this.wrapResult(component));
+                             hasContent = true;
+                         }
+                     }
+@@ -271,8 +556,13 @@ export class ToolExecutionComponent extends Container {
+             }
+         }
+         else {
+-            this.contentText.setCustomBgFn(bgFn);
+-            this.contentText.setText(this.formatToolExecution());
++            this.selfRenderContainer.clear();
++            this.selfRenderContainer.addChild(this.wrapCall(this.createCallFallback()));
++            if (this.result) {
++                const component = this.createResultFallback();
++                if (component)
++                    this.selfRenderContainer.addChild(this.wrapResult(component));
++            }
+             hasContent = true;
+         }
+         for (const img of this.imageComponents) {
+@@ -310,17 +600,5 @@ export class ToolExecutionComponent extends Container {
+     getTextOutput() {
          return getRenderedTextOutput(this.result, this.showImages);
      }
-     formatToolExecution() {
+-    formatToolExecution() {
 -        let text = theme.fg("toolTitle", theme.bold(this.toolName));
-+        const marker = this.result?.isError
-+            ? theme.fg("error", "✕")
-+            : this.isPartial
-+                ? theme.fg("muted", "●")
-+                : theme.fg("success", "✓");
-+        let text = `${marker} ${theme.fg("toolTitle", theme.bold(this.toolName))}`;
-         const content = JSON.stringify(this.args, null, 2);
-         if (content) {
-             text += `\n\n${content}`;
+-        const content = JSON.stringify(this.args, null, 2);
+-        if (content) {
+-            text += `\n\n${content}`;
+-        }
+-        const output = this.getTextOutput();
+-        if (output) {
+-            text += `\n${output}`;
+-        }
+-        return text;
+-    }
+ }
+ //# sourceMappingURL=tool-execution.js.map
 diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/interactive/components/user-message.d.ts
-index 387f2a525c16748da6771b46416d0d6b6d2fbbf3..81929ac6306a777fe412e23444b6134463cac677 100644
+index 387f2a525c16748da6771b46416d0d6b6d2fbbf3..b98297d0559cf1e81c5ff67faa23a843d1690ef8 100644
 --- a/dist/modes/interactive/components/user-message.d.ts
 +++ b/dist/modes/interactive/components/user-message.d.ts
-@@ -8,8 +8,11 @@ export declare class UserMessageComponent extends Container {
+@@ -8,8 +8,12 @@ export declare class UserMessageComponent extends Container {
      private markdownTheme;
      private outputPad;
      private markdownTransformers;
 +    private collapsed;
++    private canCollapse;
      constructor(text: string, markdownTheme?: MarkdownTheme, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
      setOutputPad(padding: number): void;
 +    setCollapsed(collapsed: boolean): void;
@@ -979,28 +1299,52 @@ index 387f2a525c16748da6771b46416d0d6b6d2fbbf3..81929ac6306a777fe412e23444b61344
      render(width: number): string[];
  }
 diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/interactive/components/user-message.js
-index 2e0490362d3396995b587f502ff3e69a7cad9a43..0acec18a4d07e1262cd7aa81ca9b2a8091cebcc3 100644
+index 2e0490362d3396995b587f502ff3e69a7cad9a43..e6879e13cd35fedded381a75f41d95a350a62d5a 100644
 --- a/dist/modes/interactive/components/user-message.js
 +++ b/dist/modes/interactive/components/user-message.js
-@@ -1,4 +1,4 @@
+@@ -1,9 +1,25 @@
 -import { Box, Container, Markdown } from "@earendil-works/pi-tui";
-+import { Box, Container, MarkerColumn, Markdown, Text, truncateToWidth } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, truncateToWidth } from "@earendil-works/pi-tui";
  import { getMarkdownTheme, theme } from "../theme/theme.js";
  import { createMarkdownTransform } from "./markdown-transform.js";
  const OSC133_ZONE_START = "\x1b]133;A\x07";
-@@ -12,6 +12,7 @@ export class UserMessageComponent extends Container {
+ const OSC133_ZONE_END = "\x1b]133;B\x07";
+ const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
++function foldableTail(component, isCollapsed, setCollapsible) {
++    return {
++        render: (width) => {
++            const lines = component.render(width);
++            const canCollapse = lines.length > 1;
++            setCollapsible(canCollapse);
++            if (!canCollapse || !isCollapsed())
++                return lines;
++            const hiddenCount = lines.length - 1;
++            const noun = hiddenCount === 1 ? "line" : "lines";
++            const summary = truncateToWidth(theme.fg("muted", `⋮ ${hiddenCount} ${noun} hidden.`), Math.max(0, width), "");
++            return [summary, lines.at(-1)];
++        },
++        invalidate: () => component.invalidate(),
++    };
++}
+ /**
+  * Component that renders a user message
+  */
+@@ -12,6 +28,8 @@ export class UserMessageComponent extends Container {
      markdownTheme;
      outputPad;
      markdownTransformers;
 +    collapsed = false;
++    canCollapse = false;
      constructor(text, markdownTheme = getMarkdownTheme(), outputPad = 1, markdownTransformers = []) {
          super();
          this.text = text;
-@@ -24,20 +25,43 @@ export class UserMessageComponent extends Container {
+@@ -24,9 +42,17 @@ export class UserMessageComponent extends Container {
          this.outputPad = padding;
          this.rebuild();
      }
 +    setCollapsed(collapsed) {
++        if (collapsed && !this.canCollapse)
++            return;
 +        if (this.collapsed === collapsed)
 +            return;
 +        this.collapsed = collapsed;
@@ -1009,31 +1353,26 @@ index 2e0490362d3396995b587f502ff3e69a7cad9a43..0acec18a4d07e1262cd7aa81ca9b2a80
      rebuild() {
          this.clear();
 -        const contentBox = new Box(this.outputPad, 1, (content) => theme.bg("userMessageBg", content));
--        contentBox.addChild(new Markdown(this.text, 0, 0, this.markdownTheme, {
--            color: (content) => theme.fg("userMessageText", content),
--        }, {
--            preserveOrderedListMarkers: true,
--            preserveBackslashEscapes: true,
--            transform: createMarkdownTransform("user", false, this.markdownTransformers),
 +        const contentBox = new Box(0, 0, (content) => theme.bg("userMessageBg", content));
-+        if (this.collapsed) {
-+            contentBox.addChild(new Text(theme.fg("muted", "…"), 0, 0));
-+        }
-+        else {
-+            contentBox.addChild(new Markdown(this.text, 0, 0, this.markdownTheme, {
-+                color: (content) => theme.fg("userMessageText", content),
-+            }, {
-+                preserveOrderedListMarkers: true,
-+                preserveBackslashEscapes: true,
-+                transform: createMarkdownTransform("user", false, this.markdownTransformers),
-+            }));
-+        }
-+        const messageFrame = new Box(this.outputPad, 0);
-+        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), contentBox, {
-+            continuationMarker: theme.fg("muted", "│"),
-+            onGutterClick: () => this.setCollapsed(!this.collapsed),
+         contentBox.addChild(new Markdown(this.text, 0, 0, this.markdownTheme, {
+             color: (content) => theme.fg("userMessageText", content),
+         }, {
+@@ -34,10 +60,28 @@ export class UserMessageComponent extends Container {
+             preserveBackslashEscapes: true,
+             transform: createMarkdownTransform("user", false, this.markdownTransformers),
          }));
 -        this.addChild(contentBox);
++        const foldedContent = foldableTail(contentBox, () => this.collapsed, (canCollapse) => {
++            this.canCollapse = canCollapse;
++            if (!canCollapse)
++                this.collapsed = false;
++        });
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), foldedContent, {
++            continuationMarker: theme.fg("muted", "│"),
++            onGutterClick: () => this.setCollapsed(!this.collapsed),
++            isGutterInteractive: () => this.canCollapse,
++        }));
 +        this.addChild(messageFrame);
 +    }
 +    invalidate() {
