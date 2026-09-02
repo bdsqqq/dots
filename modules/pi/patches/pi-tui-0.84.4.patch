@@ -90,16 +90,17 @@ index 5de0f24bfe4e9ccb7b9476dae9ea55f882acce75..2b31b950ed25cabfaee1f630e97a056e
          }
 diff --git a/dist/components/marker-column.d.ts b/dist/components/marker-column.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..58613b246cad3c70be2004cda4eb52644479c8e9
+index 0000000000000000000000000000000000000000..5e3f1bc0e8e0180913733b95ef8a9abb31a4cce8
 --- /dev/null
 +++ b/dist/components/marker-column.d.ts
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,33 @@
 +import type { Component, TuiMouseDispatchResult, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 +export interface MarkerColumnOptions {
 +    continuationMarker?: string;
 +    footerMarker?: string;
 +    gap?: number;
 +    onGutterClick?: () => void;
++    isGutterInteractive?: () => boolean;
 +}
 +/**
 + * Reserves a stable marker column while the child owns wrapping and formatting.
@@ -111,11 +112,13 @@ index 0000000000000000000000000000000000000000..58613b246cad3c70be2004cda4eb5264
 +    private child;
 +    private gap;
 +    private onGutterClick?;
++    private isGutterInteractive;
 +    private renderedColumnWidth;
 +    private renderedBodyHeight;
 +    private renderedBodyOffset;
 +    private renderedBodyWidth;
 +    private renderedChildHeight;
++    private hovered;
 +    constructor(marker: string, child: Component, options?: MarkerColumnOptions);
 +    setMarker(marker: string, continuationMarker?: string): void;
 +    setFooterMarker(footerMarker?: string): void;
@@ -126,12 +129,25 @@ index 0000000000000000000000000000000000000000..58613b246cad3c70be2004cda4eb5264
 +}
 diff --git a/dist/components/marker-column.js b/dist/components/marker-column.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..47ed6124b6e5daef8016b3513735bbe8fb58e8fd
+index 0000000000000000000000000000000000000000..7bdfc66931145bb84197f88f5e4f191ce783dee7
 --- /dev/null
 +++ b/dist/components/marker-column.js
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,136 @@
 +import { dispatchMouseEvent } from "../tui.js";
 +import { truncateToWidth, visibleWidth } from "../utils.js";
++const HOVER_GLYPHS = new Map([
++    ["●", "◉"],
++    ["✓", "✔"],
++    ["✕", "✖"],
++    ["│", "┃"],
++    ["├", "┣"],
++    ["╰", "┗"],
++    ["─", "━"],
++    ["⋮", "⋮"],
++]);
++function hoverMarker(marker) {
++    return marker.replace(/[●✓✕│├╰─⋮]/gu, (glyph) => HOVER_GLYPHS.get(glyph) ?? glyph);
++}
 +/**
 + * Reserves a stable marker column while the child owns wrapping and formatting.
 + */
@@ -142,11 +158,13 @@ index 0000000000000000000000000000000000000000..47ed6124b6e5daef8016b3513735bbe8
 +    child;
 +    gap;
 +    onGutterClick;
++    isGutterInteractive;
 +    renderedColumnWidth = 0;
 +    renderedBodyHeight = 0;
 +    renderedBodyOffset = 0;
 +    renderedBodyWidth = 0;
 +    renderedChildHeight = 0;
++    hovered = false;
 +    constructor(marker, child, options = {}) {
 +        this.marker = marker;
 +        this.continuationMarker = options.continuationMarker ?? "";
@@ -154,6 +172,7 @@ index 0000000000000000000000000000000000000000..47ed6124b6e5daef8016b3513735bbe8
 +        this.child = child;
 +        this.gap = Math.max(0, Math.floor(options.gap ?? 1));
 +        this.onGutterClick = options.onGutterClick;
++        this.isGutterInteractive = options.isGutterInteractive ?? (() => true);
 +    }
 +    setMarker(marker, continuationMarker = this.continuationMarker) {
 +        this.marker = marker;
@@ -183,27 +202,44 @@ index 0000000000000000000000000000000000000000..47ed6124b6e5daef8016b3513735bbe8
 +        this.renderedBodyWidth = bodyWidth;
 +        this.renderedChildHeight = 0;
 +        const prefix = (value) => {
++            if (this.hovered)
++                value = hoverMarker(value);
 +            const fitted = truncateToWidth(value, columnWidth, "");
 +            return `${fitted}${" ".repeat(columnWidth - visibleWidth(fitted))}${" ".repeat(gapWidth)}`;
 +        };
 +        const withFooter = (lines) => {
-+            this.renderedBodyHeight = lines.length;
 +            if (this.footerMarker)
-+                lines.push(truncateToWidth(this.footerMarker, safeWidth, ""));
++                lines.push(truncateToWidth(this.hovered ? hoverMarker(this.footerMarker) : this.footerMarker, safeWidth, ""));
++            this.renderedBodyHeight = lines.length;
 +            return lines;
 +        };
 +        if (bodyWidth <= 0)
 +            return withFooter([prefix(this.marker)]);
 +        const lines = this.child.render(bodyWidth);
++        if (this.hovered && (!this.onGutterClick || !this.isGutterInteractive()))
++            this.hovered = false;
 +        this.renderedChildHeight = lines.length;
 +        if (lines.length === 0)
 +            return withFooter([prefix(this.marker)]);
 +        return withFooter(lines.map((line, index) => truncateToWidth(`${prefix(index === 0 ? this.marker : this.continuationMarker)}${line}`, safeWidth, "")));
 +    }
 +    handleMouse(event) {
++        if (event.type === "leave") {
++            const changed = this.hovered;
++            this.hovered = false;
++            return changed ? { handled: true, render: true } : undefined;
++        }
 +        const inBodyRow = event.y >= 0 && event.y < this.renderedBodyHeight;
 +        const inGutter = event.x >= 0 && event.x < this.renderedColumnWidth;
++        if (event.type === "move") {
++            const hovered = Boolean(this.onGutterClick) && this.isGutterInteractive() && inBodyRow && inGutter;
++            const changed = hovered !== this.hovered;
++            this.hovered = hovered;
++            if (hovered || changed)
++                return { handled: true, render: changed };
++        }
 +        if (this.onGutterClick &&
++            this.isGutterInteractive() &&
 +            inBodyRow &&
 +            inGutter &&
 +            event.type === "click" &&
@@ -281,7 +317,7 @@ index 0000000000000000000000000000000000000000..8dde35c1e394d49682f6fad7fd6a7725
 +//# sourceMappingURL=mouse-region.js.map
 \ No newline at end of file
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index cc05e9679cec9dd6a748f73595004dc7203d2716..73640a16502d26ceac0ac85558dd44c09aba9399 100644
+index cc05e9679cec9dd6a748f73595004dc7203d2716..8e9c878ff1fc880cad2eda4e4b709a4d3130b80f 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -7,7 +7,9 @@ export { HStack } from "./components/h-stack.ts";
@@ -299,12 +335,12 @@ index cc05e9679cec9dd6a748f73595004dc7203d2716..73640a16502d26ceac0ac85558dd44c0
  export { parseOsc11BackgroundColor, parseTerminalColorSchemeReport, type RgbColor, type TerminalColorScheme, } from "./terminal-colors.ts";
  export { allocateImageId, type CellDimensions, calculateImageRows, deleteAllKittyImages, deleteKittyImage, detectCapabilities, encodeITerm2, encodeKitty, getCapabilities, getCellDimensions, getGifDimensions, getImageDimensions, getJpegDimensions, getPngDimensions, getWebpDimensions, hyperlink, type ImageDimensions, type ImageProtocol, type ImageRenderOptions, imageFallback, renderImage, resetCapabilitiesCache, setCapabilities, setCapabilityOverrides, setCellDimensions, type TerminalCapabilities, } from "./terminal-image.ts";
 -export { type Component, Container, CURSOR_MARKER, compositeTuiLine, type Focusable, isFocusable, isViewportTUI, type OverlayAnchor, type OverlayHandle, type OverlayMargin, type OverlayOptions, type OverlayUnfocusOptions, type SizeValue, type TUI, type TuiInputListener, type TuiInputListenerResult, type TuiMode, type TuiStopOptions, type ViewportTUI, } from "./tui.ts";
-+export { type Component, Container, CURSOR_MARKER, compositeTuiLine, type Focusable, isFocusable, isViewportTUI, type OverlayAnchor, type OverlayHandle, type OverlayMargin, type OverlayOptions, type OverlayUnfocusOptions, type SizeValue, type TUI, type TuiInputListener, type TuiInputListenerResult, type TuiMode, type TuiMouseButton, type TuiMouseEvent, type TuiMouseEventResult, type TuiMouseEventType, type TuiStopOptions, type ViewportTUI, } from "./tui.ts";
++export { type Component, Container, CURSOR_MARKER, compositeTuiLine, dispatchMouseEvent, type Focusable, isFocusable, isViewportTUI, type OverlayAnchor, type OverlayHandle, type OverlayMargin, type OverlayOptions, type OverlayUnfocusOptions, type SizeValue, type TUI, type TuiInputListener, type TuiInputListenerResult, type TuiMode, type TuiMouseButton, type TuiMouseEvent, type TuiMouseEventResult, type TuiMouseEventType, type TuiStopOptions, type ViewportTUI, } from "./tui.ts";
  export { TuiAltScreen, type TuiAltScreenOptions } from "./tui-alt-screen.ts";
  export { TuiMainScreen, type TuiMainScreenRenderState } from "./tui-main-screen.ts";
  export { getOsc8LinkAtColumn, sliceByColumn, stripTerminalSequences, truncateToWidth, visibleWidth, wrapTextWithAnsi, } from "./utils.ts";
 diff --git a/dist/index.js b/dist/index.js
-index ecc0bd54a55b2c9e0213cfd5553e61262b54c57c..55cbe4bf457535c5dc404f56af6bb5e025c42e43 100644
+index ecc0bd54a55b2c9e0213cfd5553e61262b54c57c..059f7ac92fc39456a97fe43632a2dc60ea6a9110 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -10,7 +10,9 @@ export { HStack } from "./components/h-stack.js";
@@ -317,6 +353,15 @@ index ecc0bd54a55b2c9e0213cfd5553e61262b54c57c..55cbe4bf457535c5dc404f56af6bb5e0
  export { ScrollView, } from "./components/scroll-view.js";
  export { SelectList, } from "./components/select-list.js";
  export { SettingsList } from "./components/settings-list.js";
+@@ -34,7 +36,7 @@ export { ProcessTerminal } from "./terminal.js";
+ export { parseOsc11BackgroundColor, parseTerminalColorSchemeReport, } from "./terminal-colors.js";
+ // Terminal image support
+ export { allocateImageId, calculateImageRows, deleteAllKittyImages, deleteKittyImage, detectCapabilities, encodeITerm2, encodeKitty, getCapabilities, getCellDimensions, getGifDimensions, getImageDimensions, getJpegDimensions, getPngDimensions, getWebpDimensions, hyperlink, imageFallback, renderImage, resetCapabilitiesCache, setCapabilities, setCapabilityOverrides, setCellDimensions, } from "./terminal-image.js";
+-export { Container, CURSOR_MARKER, compositeTuiLine, isFocusable, isViewportTUI, } from "./tui.js";
++export { Container, CURSOR_MARKER, compositeTuiLine, dispatchMouseEvent, isFocusable, isViewportTUI, } from "./tui.js";
+ export { TuiAltScreen } from "./tui-alt-screen.js";
+ export { TuiMainScreen } from "./tui-main-screen.js";
+ // Utilities
 diff --git a/dist/layout.d.ts b/dist/layout.d.ts
 index e031103f84d5fbb8d9007b00cb4940bbee046c41..afec7f8438c38a3ce220213fb07ace0b21ec6cd7 100644
 --- a/dist/layout.d.ts
@@ -357,14 +402,15 @@ index 6661b31cfacfef8e3385fd12da9626e851d97e96..e993980510a837c252816886c2e8968a
      const visit = (box) => {
          if (box.scrollView === scrollView)
 diff --git a/dist/tui-alt-screen.d.ts b/dist/tui-alt-screen.d.ts
-index 088fb03dd198094d518453150aee4011bd8a14d3..180f0624952d49c8f9a20a1a93bbf49100fbf448 100644
+index 088fb03dd198094d518453150aee4011bd8a14d3..709ac18c571b5a12d78f83844ea70e1b7cd17b02 100644
 --- a/dist/tui-alt-screen.d.ts
 +++ b/dist/tui-alt-screen.d.ts
-@@ -52,6 +52,11 @@ export declare class TuiAltScreen extends TuiBase implements ViewportTUI {
+@@ -52,6 +52,12 @@ export declare class TuiAltScreen extends TuiBase implements ViewportTUI {
      private activeSearch?;
      private pressedUrl?;
      private selectionDragged;
 +    private mouseCapture?;
++    private mouseHoverTarget?;
 +    private mousePressTarget?;
 +    private mousePressPoint?;
 +    private mousePressMoved;
@@ -372,17 +418,19 @@ index 088fb03dd198094d518453150aee4011bd8a14d3..180f0624952d49c8f9a20a1a93bbf491
      private readonly wheelScrollLines;
      private readonly mouseEnabled;
      private readonly searchMatchStyle;
-@@ -91,7 +96,16 @@ export declare class TuiAltScreen extends TuiBase implements ViewportTUI {
+@@ -91,7 +97,18 @@ export declare class TuiAltScreen extends TuiBase implements ViewportTUI {
      /** Show a transient message in the alternate-screen flash stack. */
      flash(message: string, durationMs?: number): void;
      private shouldDeferViewportInputToOverlay;
 +    private clearComponentMouseGesture;
++    private clearMouseHover;
      private handleViewportInput;
 +    private decodeMouseButton;
 +    private createMouseEvent;
 +    private dispatchMouseToLayout;
 +    private applyMouseDispatchResult;
 +    private dispatchMouseToTarget;
++    private updateMouseHover;
 +    private getComponentClickCount;
 +    private clearTextSelection;
 +    private handleMouseEvent;
@@ -390,7 +438,7 @@ index 088fb03dd198094d518453150aee4011bd8a14d3..180f0624952d49c8f9a20a1a93bbf491
      private routeWheel;
      private parseSgrMouseEvent;
 diff --git a/dist/tui-alt-screen.js b/dist/tui-alt-screen.js
-index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5ae6b3367 100644
+index 8bfcffd4dd99653930ec0a88055c18e14943e363..ee7b8953994b6fde65b8a2cf28bec668be1e16b4 100644
 --- a/dist/tui-alt-screen.js
 +++ b/dist/tui-alt-screen.js
 @@ -3,9 +3,10 @@ import { AltScreenFlashContainer } from "./components/alt-screen-flash.js";
@@ -406,11 +454,12 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
  import { extractAnsiCode, getGraphemeCellRange, getOsc8LinkAtColumn, getWordSegmenter, sliceByColumn, stripTerminalSequences, visibleWidth, } from "./utils.js";
  const ENTER_ALT_SCREEN = "\x1b[?1049h";
  const EXIT_ALT_SCREEN = "\x1b[?1049l";
-@@ -60,6 +61,11 @@ export class TuiAltScreen extends TuiBase {
+@@ -60,6 +61,12 @@ export class TuiAltScreen extends TuiBase {
      activeSearch;
      pressedUrl;
      selectionDragged = false;
 +    mouseCapture;
++    mouseHoverTarget;
 +    mousePressTarget;
 +    mousePressPoint;
 +    mousePressMoved = false;
@@ -418,7 +467,7 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
      wheelScrollLines;
      mouseEnabled;
      searchMatchStyle;
-@@ -72,6 +78,7 @@ export class TuiAltScreen extends TuiBase {
+@@ -72,6 +79,7 @@ export class TuiAltScreen extends TuiBase {
          super(terminal, showHardwareCursor, logDirectory);
          this.implicitDocument = {
              render: (width) => super.render(width),
@@ -426,7 +475,7 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
              invalidate: () => {
                  for (const child of this.children)
                      child.invalidate();
-@@ -151,6 +158,8 @@ export class TuiAltScreen extends TuiBase {
+@@ -151,6 +159,8 @@ export class TuiAltScreen extends TuiBase {
          this.lastClick = undefined;
          this.pressedUrl = undefined;
          this.selectionDragged = false;
@@ -435,7 +484,7 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
          this.resetRenderState();
          const term = process.env.TERM?.toLowerCase() ?? "";
          // Multiplexers can lag when every pointer movement is forwarded. Button-motion
-@@ -170,6 +179,7 @@ export class TuiAltScreen extends TuiBase {
+@@ -170,6 +180,7 @@ export class TuiAltScreen extends TuiBase {
          this.selectionPressActive = false;
          this.stopScrollbarHover();
          this.stopScrollbarDrag();
@@ -443,7 +492,42 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
          this.flashes.dispose();
          if (!this.altScreenActive)
              return;
-@@ -400,6 +410,12 @@ export class TuiAltScreen extends TuiBase {
+@@ -258,14 +269,17 @@ export class TuiAltScreen extends TuiBase {
+         this.currentLayout = undefined;
+     }
+     scrollBy(lines) {
++        this.clearMouseHover();
+         this.getPrimaryScrollView().scrollBy(lines);
+         this.requestRender();
+     }
+     scrollToTop() {
++        this.clearMouseHover();
+         this.getPrimaryScrollView().scrollToStart();
+         this.requestRender();
+     }
+     scrollToBottom() {
++        this.clearMouseHover();
+         this.getPrimaryScrollView().scrollToEnd();
+         this.requestRender();
+     }
+@@ -279,6 +293,7 @@ export class TuiAltScreen extends TuiBase {
+         for (let row = scrollView.scrollTop + direction; row >= 0 && row < lines.length; row += direction) {
+             if (!OSC133_PROMPT_START.test(lines[row] ?? ""))
+                 continue;
++            this.clearMouseHover();
+             scrollView.scrollTo(row);
+             this.requestRender();
+             return;
+@@ -390,6 +405,8 @@ export class TuiAltScreen extends TuiBase {
+         if (firstSegment.row < before || lastSegment.row > visibleBottom) {
+             target = firstSegment.row - Math.floor(scrollView.viewportHeight / 3);
+         }
++        if (target !== before)
++            this.clearMouseHover();
+         scrollView.scrollTo(target, { disableFollow: true });
+         return scrollView.scrollTop !== before;
+     }
+@@ -400,6 +417,34 @@ export class TuiAltScreen extends TuiBase {
      shouldDeferViewportInputToOverlay() {
          return this.isOverlayFocused() && this.activeSearch?.overlay?.isFocused() !== true;
      }
@@ -453,19 +537,42 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
 +        this.mousePressPoint = undefined;
 +        this.mousePressMoved = false;
 +    }
++    clearMouseHover() {
++        const target = this.mouseHoverTarget;
++        this.mouseHoverTarget = undefined;
++        if (!target)
++            return;
++        const event = {
++            type: "leave",
++            button: "none",
++            x: 0,
++            y: 0,
++            screenX: target.originX,
++            screenY: target.originY,
++            width: target.width,
++            height: target.height,
++            shift: false,
++            alt: false,
++            ctrl: false,
++        };
++        const result = dispatchMouseEvent(target.component, event);
++        if (result && this.applyMouseDispatchResult(event, result))
++            this.requestRender();
++    }
      handleViewportInput(data) {
          if (data === FOCUS_OUT) {
              const hadActiveSelection = this.selectionPressActive;
-@@ -410,6 +426,8 @@ export class TuiAltScreen extends TuiBase {
+@@ -410,6 +455,9 @@ export class TuiAltScreen extends TuiBase {
              this.stopScrollbarDrag();
              this.pressedUrl = undefined;
              this.selectionDragged = false;
++            this.clearMouseHover();
 +            this.clearComponentMouseGesture();
 +            this.lastComponentClick = undefined;
              if (hadActiveSelection) {
                  this.selectionAnchor = undefined;
                  this.selectionFocus = undefined;
-@@ -425,6 +443,16 @@ export class TuiAltScreen extends TuiBase {
+@@ -425,6 +473,16 @@ export class TuiAltScreen extends TuiBase {
              return { consume: true };
          const wheelEvent = this.parseWheelEvent(data);
          if (wheelEvent) {
@@ -482,7 +589,7 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
              if (this.shouldDeferViewportInputToOverlay())
                  return undefined;
              this.routeWheel(wheelEvent);
-@@ -432,13 +460,7 @@ export class TuiAltScreen extends TuiBase {
+@@ -432,13 +490,7 @@ export class TuiAltScreen extends TuiBase {
          }
          const mouseEvent = this.parseSgrMouseEvent(data);
          if (mouseEvent) {
@@ -497,7 +604,7 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
              return { consume: true };
          }
          if (this.isMouseSequence(data))
-@@ -523,6 +545,161 @@ export class TuiAltScreen extends TuiBase {
+@@ -523,6 +575,178 @@ export class TuiAltScreen extends TuiBase {
          }
          return undefined;
      }
@@ -570,6 +677,20 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
 +    dispatchMouseToTarget(event, target) {
 +        return dispatchMouseEvent(target.component, retargetMouseEvent(event, target));
 +    }
++    updateMouseHover(event, result) {
++        if (event.type !== "move")
++            return false;
++        const previous = this.mouseHoverTarget;
++        const next = result?.target;
++        let render = false;
++        if (previous && previous.component !== next?.component) {
++            const leaveResult = this.dispatchMouseToTarget({ ...event, type: "leave", button: "none" }, previous);
++            if (leaveResult)
++                render = this.applyMouseDispatchResult(event, leaveResult);
++        }
++        this.mouseHoverTarget = next;
++        return render;
++    }
 +    getComponentClickCount(target, x, y) {
 +        const now = Date.now();
 +        const previous = this.lastComponentClick;
@@ -640,8 +761,9 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
 +            this.stopScrollbarHover();
 +        }
 +        const result = overlay.result ?? (overlay.hit ? undefined : this.dispatchMouseToLayout(event));
++        const hoverRender = this.updateMouseHover(event, result);
 +        if (result) {
-+            const render = this.applyMouseDispatchResult(event, result);
++            const render = this.applyMouseDispatchResult(event, result) || hoverRender;
 +            if (type === "press") {
 +                this.clearTextSelection();
 +                this.mousePressTarget = result.target;
@@ -652,6 +774,8 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
 +                this.requestRender();
 +            return;
 +        }
++        if (hoverRender)
++            this.requestRender();
 +        if (this.handleRightClickPaste(raw))
 +            return;
 +        this.handleSelectionMouseEvent(raw);
@@ -659,7 +783,7 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
      parseWheelEvent(data) {
          const sgr = /^\x1b\[<(\d+);(\d+);(\d+)[Mm]$/.exec(data);
          if (sgr) {
-@@ -536,6 +713,7 @@ export class TuiAltScreen extends TuiBase {
+@@ -536,6 +760,7 @@ export class TuiAltScreen extends TuiBase {
                  direction: direction === 0 ? -1 : 1,
                  x: Number.parseInt(sgr[2], 10) - 1,
                  y: Number.parseInt(sgr[3], 10) - 1,
@@ -667,7 +791,7 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
              };
          }
          if (data.length === 6 && data.startsWith("\x1b[M")) {
-@@ -549,6 +727,7 @@ export class TuiAltScreen extends TuiBase {
+@@ -549,11 +774,13 @@ export class TuiAltScreen extends TuiBase {
                  direction: direction === 0 ? -1 : 1,
                  x: data.charCodeAt(4) - 33,
                  y: data.charCodeAt(5) - 33,
@@ -675,7 +799,22 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
              };
          }
          return undefined;
-@@ -843,12 +1022,11 @@ export class TuiAltScreen extends TuiBase {
+     }
+     routeWheel(event) {
++        this.clearMouseHover();
+         let remaining = event.direction * this.wheelScrollLines;
+         const seen = new Set();
+         for (const scrollView of this.currentLayout ? getScrollViewsAt(this.currentLayout, event.x, event.y) : []) {
+@@ -637,6 +864,8 @@ export class TuiAltScreen extends TuiBase {
+                 const maxThumbOffset = geometry.trackHeight - geometry.thumbHeight;
+                 const thumbOffset = Math.max(0, Math.min(maxThumbOffset, event.y - geometry.trackTop - this.scrollbarDrag.grabOffset));
+                 const scrollTop = maxThumbOffset === 0 ? 0 : Math.round((thumbOffset / maxThumbOffset) * geometry.maxScrollTop);
++                if (scrollTop !== this.scrollbarDrag.scrollView.scrollTop)
++                    this.clearMouseHover();
+                 this.scrollbarDrag.scrollView.scrollTo(scrollTop);
+             }
+             return true;
+@@ -843,12 +1072,11 @@ export class TuiAltScreen extends TuiBase {
              if (!this.selectionAnchor)
                  return;
              this.updateSelectionFocus(point);
@@ -691,7 +830,7 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
              this.pressedUrl = undefined;
              if (clickedUrl && this.openUrl) {
                  this.selectionAnchor = undefined;
-@@ -862,6 +1040,20 @@ export class TuiAltScreen extends TuiBase {
+@@ -862,6 +1090,20 @@ export class TuiAltScreen extends TuiBase {
                  this.requestRender();
                  return;
              }
@@ -713,14 +852,14 @@ index 8bfcffd4dd99653930ec0a88055c18e14943e363..bb76c158bb35a4f3f4bf449a62312bf5
                  void this.copySelectionToClipboard();
              this.requestRender();
 diff --git a/dist/tui.d.ts b/dist/tui.d.ts
-index 5b9b224586c313d8e3d42c9a2f0f05b7a1107f40..e039c8ec8b65f2f0f7ef541e601d75aaca387755 100644
+index 5b9b224586c313d8e3d42c9a2f0f05b7a1107f40..5e8f4391f6108203c72cfe00e6e4845210a15a65 100644
 --- a/dist/tui.d.ts
 +++ b/dist/tui.d.ts
 @@ -7,6 +7,64 @@ import { visibleWidth } from "./utils.ts";
  /**
   * Component interface - all components must implement this
   */
-+export type TuiMouseEventType = "press" | "release" | "move" | "drag" | "click" | "wheel";
++export type TuiMouseEventType = "press" | "release" | "move" | "leave" | "drag" | "click" | "wheel";
 +export type TuiMouseButton = "left" | "middle" | "right" | "none";
 +/** Normalized cell-based mouse event. Coordinates are zero-based. */
 +export interface TuiMouseEvent {
