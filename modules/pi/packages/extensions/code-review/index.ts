@@ -36,6 +36,7 @@ import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   applySessionMeta,
   getFinalOutput,
+  getResultOutput,
   renderAgentTree,
   renderSubAgentCall,
   renderSubAgentFallback,
@@ -381,7 +382,7 @@ export function createCodeReviewTool(
       const container = new Container();
 
       // parse Markdown comments from output for summary line
-      const output = getFinalOutput(details.messages);
+      const output = getResultOutput(details);
       const comments = parseReviewMarkdown(output);
       if (comments.length > 0) {
         const summary = formatReviewSummary(comments);

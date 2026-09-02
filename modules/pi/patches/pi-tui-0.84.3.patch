@@ -2,7 +2,7 @@ diff --git a/dist/components/marker-column.d.ts b/dist/components/marker-column.
 new file mode 100644
 --- /dev/null
 +++ b/dist/components/marker-column.d.ts
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,25 @@
 +import type { Component } from "../tui.ts";
 +export interface MarkerColumnOptions {
 +    continuationMarker?: string;
@@ -18,18 +18,21 @@ new file mode 100644
 +    private footerMarker;
 +    private child;
 +    private gap;
++    private cachedWidth;
++    private cachedLines;
 +    constructor(marker: string, child: Component, options?: MarkerColumnOptions);
 +    setMarker(marker: string, continuationMarker?: string): void;
 +    setFooterMarker(footerMarker?: string): void;
 +    setChild(child: Component): void;
 +    render(width: number): string[];
++    private clearCache;
 +    invalidate(): void;
 +}
 diff --git a/dist/components/marker-column.js b/dist/components/marker-column.js
 new file mode 100644
 --- /dev/null
 +++ b/dist/components/marker-column.js
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,78 @@
 +import { truncateToWidth, visibleWidth } from "../utils.js";
 +/**
 + * Reserves a stable marker column while the child owns wrapping and formatting.
@@ -40,6 +43,8 @@ new file mode 100644
 +    footerMarker;
 +    child;
 +    gap;
++    cachedWidth;
++    cachedLines;
 +    constructor(marker, child, options = {}) {
 +        this.marker = marker;
 +        this.continuationMarker = options.continuationMarker ?? "";
@@ -48,19 +53,30 @@ new file mode 100644
 +        this.gap = Math.max(0, Math.floor(options.gap ?? 1));
 +    }
 +    setMarker(marker, continuationMarker = this.continuationMarker) {
++        if (this.marker === marker && this.continuationMarker === continuationMarker)
++            return;
 +        this.marker = marker;
 +        this.continuationMarker = continuationMarker;
++        this.clearCache();
 +    }
 +    setFooterMarker(footerMarker) {
++        if (this.footerMarker === footerMarker)
++            return;
 +        this.footerMarker = footerMarker;
++        this.clearCache();
 +    }
 +    setChild(child) {
++        if (this.child === child)
++            return;
 +        this.child = child;
++        this.clearCache();
 +    }
 +    render(width) {
 +        const safeWidth = Math.max(0, Math.floor(width));
 +        if (safeWidth === 0)
 +            return [];
++        if (this.cachedWidth === safeWidth && this.cachedLines)
++            return this.cachedLines;
 +        const columnWidth = Math.min(safeWidth, Math.max(visibleWidth(this.marker), visibleWidth(this.continuationMarker)));
 +        const gapWidth = Math.min(this.gap, Math.max(0, safeWidth - columnWidth));
 +        const bodyWidth = safeWidth - columnWidth - gapWidth;
@@ -73,14 +89,24 @@ new file mode 100644
 +                lines.push(truncateToWidth(this.footerMarker, safeWidth, ""));
 +            return lines;
 +        };
-+        if (bodyWidth <= 0)
-+            return withFooter([prefix(this.marker)]);
++        if (bodyWidth <= 0) {
++            this.cachedWidth = safeWidth;
++            this.cachedLines = withFooter([prefix(this.marker)]);
++            return this.cachedLines;
++        }
 +        const lines = this.child.render(bodyWidth);
-+        if (lines.length === 0)
-+            return withFooter([prefix(this.marker)]);
-+        return withFooter(lines.map((line, index) => truncateToWidth(`${prefix(index === 0 ? this.marker : this.continuationMarker)}${line}`, safeWidth, "")));
++        this.cachedWidth = safeWidth;
++        this.cachedLines = lines.length === 0
++            ? withFooter([prefix(this.marker)])
++            : withFooter(lines.map((line, index) => truncateToWidth(`${prefix(index === 0 ? this.marker : this.continuationMarker)}${line}`, safeWidth, "")));
++        return this.cachedLines;
++    }
++    clearCache() {
++        this.cachedWidth = undefined;
++        this.cachedLines = undefined;
 +    }
 +    invalidate() {
++        this.clearCache();
 +        this.child.invalidate();
 +    }
 +}

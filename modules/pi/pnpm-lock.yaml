@@ -37,8 +37,8 @@ overrides:
   undici@>=8.0.0 <8.9.0: 8.9.0
 
 patchedDependencies:
-  '@earendil-works/pi-coding-agent@0.84.3': bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637
-  '@earendil-works/pi-tui@0.84.3': 4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1
+  '@earendil-works/pi-coding-agent@0.84.3': d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650
+  '@earendil-works/pi-tui@0.84.3': c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e
   '@letta-ai/trajectory@0.2.1': f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157
 
 importers:
@@ -50,10 +50,10 @@ importers:
         version: 0.84.3(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       defuddle:
         specifier: ^0.18.1
         version: 0.18.1
@@ -125,7 +125,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
 
   packages/core/box-chrome:
     devDependencies:
@@ -143,7 +143,7 @@ importers:
         version: link:../show
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
     devDependencies:
       vitest:
         specifier: ^3.0.0
@@ -251,7 +251,7 @@ importers:
         version: 0.84.3
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-protocol':
         specifier: 'catalog:'
         version: 0.84.3
@@ -274,7 +274,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
 
   packages/core/sessions:
     dependencies:
@@ -286,7 +286,7 @@ importers:
     dependencies:
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
     devDependencies:
       vitest:
         specifier: ^3.0.0
@@ -300,7 +300,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -372,10 +372,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -412,10 +412,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -424,7 +424,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/code-review:
     dependencies:
@@ -467,10 +467,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -522,10 +522,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -537,10 +537,10 @@ importers:
         version: 0.84.3(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
 
   packages/extensions/finder:
     dependencies:
@@ -574,10 +574,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -608,10 +608,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -624,7 +624,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -646,10 +646,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -674,10 +674,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -702,10 +702,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -733,10 +733,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -767,10 +767,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -798,10 +798,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -841,10 +841,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -875,10 +875,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -909,10 +909,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -946,10 +946,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -974,10 +974,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -999,7 +999,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/session-recap:
     dependencies:
@@ -1014,17 +1014,17 @@ importers:
         version: 0.84.3(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/session-settlement:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/skill:
     dependencies:
@@ -1040,10 +1040,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -1065,13 +1065,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/tool-harness:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -1105,10 +1105,10 @@ importers:
         version: link:../apply-patch
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -1133,10 +1133,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
@@ -1145,10 +1145,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)
+        version: 0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+        version: 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
 
 packages:
 
@@ -3742,13 +3742,13 @@ snapshots:
     dependencies:
       '@earendil-works/pi-protocol': 0.84.3
 
-  '@earendil-works/pi-coding-agent@0.84.3(patch_hash=bfa37c5d8ad183e5b25127996ec65bfa2a0993088172f7962c5085a4c7141637)(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-coding-agent@0.84.3(patch_hash=d91a088051d16bba4de1b58cf5ccce3fe9ae03d7b8f74887e2aa70e52f524650)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
       '@earendil-works/pi-agent-core': 0.84.3(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-ai': 0.84.3(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-client': 0.84.3
       '@earendil-works/pi-protocol': 0.84.3
-      '@earendil-works/pi-tui': 0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)
+      '@earendil-works/pi-tui': 0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 5.6.2
       cross-spawn: 7.0.6
@@ -3792,7 +3792,7 @@ snapshots:
 
   '@earendil-works/pi-telemetry@0.84.3': {}
 
-  '@earendil-works/pi-tui@0.84.3(patch_hash=4a5ae204aa923ac64dcb314ea00139c225e7fb77b571e91c5ad56fa0916397f1)':
+  '@earendil-works/pi-tui@0.84.3(patch_hash=c23150178759d3410bba143ce3b6b7874219c689b23f9d7b5dfccbc04dc6464e)':
     dependencies:
       get-east-asian-width: 1.6.0
       marked: 18.0.5
