@@ -3,9 +3,12 @@
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isLinux = lib.hasInfix "linux" hostSystem;
+  prismHost = config.networking.localHostName or config.networking.hostName;
   prismRoot = "${config.home-manager.users.bdsqqq.home.homeDirectory}/.local/share/PrismLauncher";
+  # Prism persists macOS security bookmarks and window state in its main cfg;
+  # sharing that file across hosts creates invalid bookmarks and noisy conflicts.
   prismConfig =
-    "${config.my.paths.commonplace}/01_files/nix/modules/gaming/prismlauncher.cfg";
+    "${config.my.paths.commonplace}/01_files/nix/modules/gaming/prismlauncher/${prismHost}.cfg";
   prismInfoPlist = pkgs.writeText "prism-launcher-managed-info.plist"
     (lib.generators.toPlist { escape = true; } {
       CFBundleDisplayName = "Prism Launcher Managed";
