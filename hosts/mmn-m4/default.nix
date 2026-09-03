@@ -90,6 +90,12 @@ in
     state = "/Users/bdsqqq/Library/Application Support/photo-intelligence";
   };
   my.darwinTranscription.enable = true;
+  # Build the disposable aarch64-linux storage appliance locally without
+  # coupling its lifecycle to mmn-m4's launch agents.
+  nix = {
+    linux-builder.enable = true;
+    settings.trusted-users = [ "@admin" ];
+  };
   my.backrest = {
     homeDirectory = "/Users/bdsqqq";
     volumeRoot = "/Volumes/ssd-01";
