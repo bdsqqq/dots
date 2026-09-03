@@ -4,7 +4,7 @@ import {
   fleetContract,
   type FleetClient,
   type FleetOperationMetadata,
-} from "./fleet-contract.ts";
+} from "./node-catalog/public.ts";
 
 interface ProjectedOperation {
   path: readonly string[];

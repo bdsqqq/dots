@@ -3,13 +3,14 @@ import test from "node:test";
 
 import { ORPCError } from "@orpc/server";
 
+import { createFleetClient } from "./local.ts";
 import {
   describeFleetNode,
   fleetNodeExists,
   listFleetNodes,
+  nodeCatalogSchemaCatalog,
   type FleetNodeReader,
-} from "./fleet-operations.ts";
-import { createFleetClient } from "./fleet-router.ts";
+} from "./public.ts";
 
 const reader: FleetNodeReader = {
   listConfiguredNodes: () => [
@@ -33,6 +34,19 @@ const reader: FleetNodeReader = {
   findConfiguredNode: (id) =>
     reader.listConfiguredNodes().find((node) => node.identity.id === id),
 };
+
+test("owns stable ids and versions for node-catalog schemas", () => {
+  assert.deepEqual(Object.keys(nodeCatalogSchemaCatalog), [
+    "fleet.node-summary",
+    "fleet.node-summary-list",
+    "fleet.node-description",
+    "fleet.node-presence",
+    "fleet.node-not-found",
+  ]);
+  for (const versions of Object.values(nodeCatalogSchemaCatalog)) {
+    assert.deepEqual(Object.keys(versions), ["1"]);
+  }
+});
 
 test("plain use cases expose only explicit public read models", () => {
   assert.deepEqual(listFleetNodes(reader), [

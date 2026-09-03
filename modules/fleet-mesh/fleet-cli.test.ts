@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { runFleetCli, projectFleetOperations, type FleetCliIO } from "./fleet-cli.ts";
-import type { FleetNodeReader } from "./fleet-operations.ts";
-import { createFleetClient } from "./fleet-router.ts";
+import { createFleetClient } from "./node-catalog/local.ts";
+import type { FleetNodeReader } from "./node-catalog/public.ts";
 
 const reader: FleetNodeReader = {
   listConfiguredNodes: () => [
