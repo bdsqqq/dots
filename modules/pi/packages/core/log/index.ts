@@ -288,6 +288,115 @@ function secureCurrentLog(directory: string): void {
   if (existsSync(path)) chmodSync(path, 0o600);
 }
 
+export type LogRetentionReport = {
+  capBytes: number;
+  beforeBytes: number;
+  afterBytes: number;
+  acknowledgedFilesRemoved: number;
+  unacknowledgedFilesRemoved: number;
+  droppedBytes: number;
+};
+
+function acknowledgementDirectory(directory: string): string {
+  return join(directory, "acknowledged");
+}
+
+function acknowledgementPath(directory: string, name: string): string {
+  return join(
+    acknowledgementDirectory(directory),
+    `${createHash("sha256").update(name).digest("hex")}.ack`,
+  );
+}
+
+export function acknowledgeLogFile(directory: string, name: string): void {
+  if (!/^\d{4}-\d{2}-\d{2}(?:[T._-][A-Za-z0-9._-]+)?\.jsonl$/.test(name))
+    throw new Error("invalid acknowledged log name");
+  const acknowledged = acknowledgementDirectory(directory);
+  secureDirectory(acknowledged);
+  const path = acknowledgementPath(directory, name);
+  writeFileSync(path, `${name}\n`, { mode: 0o600 });
+  fsyncPath(path);
+  fsyncPath(acknowledged);
+}
+
+function writeTelemetryGap(
+  directory: string,
+  report: LogRetentionReport,
+): void {
+  const path = join(directory, "telemetry-gap.json");
+  let prior = { droppedFiles: 0, droppedBytes: 0 };
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8")) as typeof prior;
+    if (
+      Number.isSafeInteger(value.droppedFiles) &&
+      Number.isSafeInteger(value.droppedBytes)
+    )
+      prior = value;
+  } catch {}
+  const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  writeFileSync(
+    temporary,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      reason: "local-hard-cap-eviction",
+      observedAt: new Date().toISOString(),
+      droppedFiles: prior.droppedFiles + report.unacknowledgedFilesRemoved,
+      droppedBytes: prior.droppedBytes + report.droppedBytes,
+    })}\n`,
+    { mode: 0o600 },
+  );
+  fsyncPath(temporary);
+  renameSync(temporary, path);
+  fsyncPath(directory);
+}
+
+export function enforceLocalLogCap(
+  directory: string,
+  capBytes: number = Number(
+    process.env.BDS_PI_LOG_MAX_BYTES || 128 * 1024 * 1024,
+  ),
+): LogRetentionReport {
+  if (!Number.isSafeInteger(capBytes) || capBytes < 1)
+    throw new Error("invalid local log byte cap");
+  secureDirectory(directory);
+  const files = readdirSync(directory)
+    .filter((name) => name.endsWith(".jsonl"))
+    .map((name) => ({
+      name,
+      path: join(directory, name),
+      bytes: statSync(join(directory, name)).size,
+      acknowledged: existsSync(acknowledgementPath(directory, name)),
+    }));
+  const beforeBytes = files.reduce((sum, file) => sum + file.bytes, 0);
+  const report: LogRetentionReport = {
+    capBytes,
+    beforeBytes,
+    afterBytes: beforeBytes,
+    acknowledgedFilesRemoved: 0,
+    unacknowledgedFilesRemoved: 0,
+    droppedBytes: 0,
+  };
+  for (const file of files.sort((left, right) => {
+    if (left.acknowledged !== right.acknowledged)
+      return left.acknowledged ? -1 : 1;
+    return left.name.localeCompare(right.name);
+  })) {
+    if (report.afterBytes <= capBytes) break;
+    unlinkSync(file.path);
+    report.afterBytes -= file.bytes;
+    if (file.acknowledged) {
+      report.acknowledgedFilesRemoved += 1;
+      unlinkSync(acknowledgementPath(directory, file.name));
+    } else {
+      report.unacknowledgedFilesRemoved += 1;
+      report.droppedBytes += file.bytes;
+    }
+  }
+  if (report.unacknowledgedFilesRemoved > 0)
+    writeTelemetryGap(directory, report);
+  return report;
+}
+
 function appendedEventExists(
   path: string,
   offset: number,
@@ -437,6 +546,7 @@ function localDrain(directory: string): LogDrain {
           fsyncPath(directory);
           removeMarker(directory, operationId);
         }
+        enforceLocalLogCap(directory);
       } catch (error) {
         reportFailure("cannot secure local logs", error);
       }
@@ -665,3 +775,37 @@ export function createWideEvent(options: {
 }
 
 export { createError, parseError };
+
+if (import.meta.vitest) {
+  const { describe, expect, it } = import.meta.vitest;
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+
+  describe("local telemetry retention", () => {
+    it("evicts acknowledged rotations first and records forced telemetry gaps", () => {
+      const directory = mkdtempSync(join(tmpdir(), "pi-log-retention-"));
+      writeFileSync(join(directory, "2026-09-01.jsonl"), "12345678");
+      writeFileSync(join(directory, "2026-09-02.jsonl"), "12345678");
+      writeFileSync(join(directory, "2026-09-03.jsonl"), "12345678");
+      acknowledgeLogFile(directory, "2026-09-01.jsonl");
+      const report = enforceLocalLogCap(directory, 12);
+      expect(report).toMatchObject({
+        beforeBytes: 24,
+        afterBytes: 8,
+        acknowledgedFilesRemoved: 1,
+        unacknowledgedFilesRemoved: 1,
+        droppedBytes: 8,
+      });
+      expect(existsSync(join(directory, "2026-09-01.jsonl"))).toBe(false);
+      expect(existsSync(join(directory, "2026-09-02.jsonl"))).toBe(false);
+      expect(existsSync(join(directory, "2026-09-03.jsonl"))).toBe(true);
+      expect(
+        JSON.parse(readFileSync(join(directory, "telemetry-gap.json"), "utf8")),
+      ).toMatchObject({
+        reason: "local-hard-cap-eviction",
+        droppedFiles: 1,
+        droppedBytes: 8,
+      });
+    });
+  });
+}
