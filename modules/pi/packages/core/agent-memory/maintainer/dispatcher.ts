@@ -12,6 +12,7 @@ import {
   createWorkflow,
   deterministicWorkflowId,
   listWorkflows,
+  loadWorkflow,
   reconcileWorkflowStore,
   transitionWorkflow,
   type WorkflowFailure,
@@ -39,6 +40,7 @@ export type DispatchReport = {
   demandSatisfied: boolean;
   workBoundaryReached: boolean;
   elapsedMs: number;
+  cpuMs: number;
 };
 
 const scopeKind = (scope: string): WorkflowKind => {
@@ -57,7 +59,6 @@ function ensureDemandWorkflows(
   cfg: DispatcherConfig,
   demand: MaintenanceDemand,
 ): number {
-  const existing = new Set(listWorkflows(cfg).map((record) => record.id));
   let created = 0;
   for (const scope of demand.scopes) {
     const kind = scopeKind(scope);
@@ -66,7 +67,13 @@ function ensureDemandWorkflows(
       `${demand.generation}:${scope}`,
       new Date(demand.updatedAt),
     );
-    if (existing.has(id)) continue;
+    try {
+      loadWorkflow(cfg, id);
+      continue;
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "workflow not found")
+        throw error;
+    }
     createWorkflow(
       cfg,
       {
@@ -85,7 +92,6 @@ function ensureDemandWorkflows(
       },
       () => new Date(demand.updatedAt),
     );
-    existing.add(id);
     created += 1;
   }
   return created;
@@ -117,10 +123,13 @@ export async function dispatchSlice(
     clock?: () => Date;
     maxWorkflows?: number;
     maxWallMs?: number;
+    maxCpuMs?: number;
   } = {},
 ): Promise<DispatchReport> {
   const clock = options.clock ?? (() => new Date());
   const startedAt = clock();
+  const startedCpu = process.cpuUsage();
+  reconcileWorkflowStore(cfg, clock);
   const demand = readMaintenanceDemand(cfg);
   const report: DispatchReport = {
     generation: demand?.generation ?? null,
@@ -133,10 +142,10 @@ export async function dispatchSlice(
     demandSatisfied: false,
     workBoundaryReached: false,
     elapsedMs: 0,
+    cpuMs: 0,
   };
-  if (!demand || demand.satisfiedThrough >= demand.generation) return report;
-  reconcileWorkflowStore(cfg, clock);
-  report.workflowsCreated = ensureDemandWorkflows(cfg, demand);
+  if (demand && demand.satisfiedThrough < demand.generation)
+    report.workflowsCreated = ensureDemandWorkflows(cfg, demand);
   const maxWorkflows = Math.min(
     options.maxWorkflows ?? RESOURCE_LIMITS.maxWorkflowsPerSlice,
     RESOURCE_LIMITS.maxWorkflowsPerSlice,
@@ -145,9 +154,17 @@ export async function dispatchSlice(
     options.maxWallMs ?? RESOURCE_LIMITS.maxTurnWallMs,
     RESOURCE_LIMITS.maxTurnWallMs,
   );
+  const maxCpuMs = Math.min(
+    options.maxCpuMs ?? RESOURCE_LIMITS.maxTurnCpuMs,
+    RESOURCE_LIMITS.maxTurnCpuMs,
+  );
   const owner = options.owner ?? `dispatcher-${process.pid}`;
   for (let index = 0; index < maxWorkflows; index += 1) {
-    if (clock().getTime() - startedAt.getTime() >= maxWallMs) {
+    const cpu = process.cpuUsage(startedCpu);
+    if (
+      clock().getTime() - startedAt.getTime() >= maxWallMs ||
+      (cpu.user + cpu.system) / 1_000 >= maxCpuMs
+    ) {
       report.workBoundaryReached = true;
       break;
     }
@@ -201,11 +218,15 @@ export async function dispatchSlice(
       (record.state.type === "ready" &&
         record.state.availableAt <= now.toISOString()),
   );
-  report.demandSatisfied = satisfyMaintenanceDemand(cfg, demand.generation, {
-    eligibleWorkRemains: eligible,
-    suspended: report.workflowsSuspended > 0,
-  });
+  report.demandSatisfied = demand
+    ? satisfyMaintenanceDemand(cfg, demand.generation, {
+        eligibleWorkRemains: eligible,
+        suspended: report.workflowsSuspended > 0,
+      })
+    : false;
   report.elapsedMs = Math.max(0, now.getTime() - startedAt.getTime());
+  const cpu = process.cpuUsage(startedCpu);
+  report.cpuMs = (cpu.user + cpu.system) / 1_000;
   return report;
 }
 
@@ -235,7 +256,8 @@ if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest;
   const { mkdtempSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
+  const nodePath = await import("node:path");
+  const join = (...paths: string[]) => nodePath.join(...paths);
   const { requestMaintenance } = await import("./demand.js");
 
   const fixed = "2026-09-03T12:00:00.000Z";
@@ -319,6 +341,33 @@ if (import.meta.vitest) {
       expect(report.workflowsWaiting).toBe(1);
       expect(listWorkflows(root, ["leased"])).toHaveLength(0);
       expect(listWorkflows(root, ["waiting"])).toHaveLength(1);
+    });
+
+    it("suspends successfully at the finite cpu boundary", async () => {
+      const root = cfg();
+      requestMaintenance(
+        root,
+        { reason: "cpu boundary", scopes: ["sources"] },
+        () => new Date(fixed),
+      );
+      const report = await dispatchSlice(
+        root,
+        {
+          "source-reconcile": () => ({
+            type: "succeed",
+            outputs: [],
+            retainUntil: "2026-10-03T12:00:00.000Z",
+          }),
+        },
+        { clock: () => new Date(later), maxCpuMs: 0 },
+      );
+      expect(report).toMatchObject({
+        workflowsClaimed: 0,
+        workBoundaryReached: true,
+        demandSatisfied: false,
+      });
+      expect(report.cpuMs).toBeGreaterThanOrEqual(0);
+      expect(listWorkflows(root, ["ready"])).toHaveLength(1);
     });
 
     it("enforces one asynchronous model invocation per host", async () => {

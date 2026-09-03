@@ -222,8 +222,12 @@ function validateInput(input: AdmissionInput): void {
 
 function validateEvidence(input: AdmissionInput): string[] {
   const reasons: string[] = [];
-  if (!input.claims.length) reasons.push("missing-claims");
-  if (!input.evidence.length) reasons.push("missing-claim-bearing-evidence");
+  const addsAssertions = input.changes.some(
+    (change) => change.afterContent !== null,
+  );
+  if (addsAssertions && !input.claims.length) reasons.push("missing-claims");
+  if (addsAssertions && !input.evidence.length)
+    reasons.push("missing-claim-bearing-evidence");
   const ids = new Set<string>();
   const claimIds = new Set<string>();
   let bytes = 0;
@@ -546,7 +550,8 @@ if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest;
   const { mkdtempSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
+  const nodePath = await import("node:path");
+  const join = (...paths: string[]) => nodePath.join(...paths);
 
   function input(overrides: Partial<AdmissionInput> = {}): AdmissionInput {
     const afterContent = "# preference\n\nuse pnpm for this repository.\n";

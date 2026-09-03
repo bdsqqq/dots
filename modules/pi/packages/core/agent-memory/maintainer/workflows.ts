@@ -50,12 +50,12 @@ export const WORKFLOW_STATES = [
   "expired",
 ] as const;
 export type WorkflowStateType = (typeof WORKFLOW_STATES)[number];
-export const TERMINAL_WORKFLOW_STATES = [
+export const TERMINAL_WORKFLOW_STATES: readonly WorkflowStateType[] = [
   "succeeded",
   "failed",
   "cancelled",
   "expired",
-] as const satisfies readonly WorkflowStateType[];
+];
 
 export type ArtifactRef = {
   sha256: string;
@@ -688,6 +688,110 @@ export function transitionWorkflow(
       attempt:
         transition.type === "suspend" ? record.attempt - 1 : record.attempt,
       state: nextState(record.state, transition, now),
+    };
+    replace(cfg, record, next);
+    return next;
+  });
+}
+
+export function resumeWaitingWorkflow(
+  cfg: WorkflowRoot,
+  workflowId: string,
+  invocationId: string,
+  clock: () => Date = () => new Date(),
+): WorkflowRecord {
+  boundedString(invocationId, "invocation id", 200);
+  return withDirectoryLock(lockPath(cfg), () => {
+    const record = loadWorkflow(cfg, workflowId);
+    if (
+      record.state.type !== "waiting" ||
+      record.state.wait.type === "timer" ||
+      record.state.wait.invocationId !== invocationId
+    )
+      throw new Error("workflow is not waiting for invocation");
+    const now = clock().toISOString();
+    if (record.state.expiresAt <= now)
+      throw new Error("workflow invocation wait expired");
+    const next: WorkflowRecord = {
+      ...record,
+      revision: record.revision + 1,
+      updatedAt: now,
+      state: {
+        type: "ready",
+        step: record.state.step,
+        availableAt: now,
+        continuation: record.state.continuation,
+      },
+    };
+    replace(cfg, record, next);
+    return next;
+  });
+}
+
+export function retryWaitingWorkflow(
+  cfg: WorkflowRoot,
+  workflowId: string,
+  invocationId: string,
+  error: WorkflowFailure,
+  nextAttemptAt: string,
+  expiresAt: string,
+  clock: () => Date = () => new Date(),
+): WorkflowRecord {
+  return withDirectoryLock(lockPath(cfg), () => {
+    const record = loadWorkflow(cfg, workflowId);
+    if (
+      record.state.type !== "waiting" ||
+      record.state.wait.type === "timer" ||
+      record.state.wait.invocationId !== invocationId ||
+      !error.retryable
+    )
+      throw new Error("workflow is not retryable waiting invocation");
+    const now = clock().toISOString();
+    const next: WorkflowRecord = {
+      ...record,
+      revision: record.revision + 1,
+      updatedAt: now,
+      state: {
+        type: "retry-scheduled",
+        step: "invoke",
+        nextAttemptAt: timestamp(nextAttemptAt, "invocation retry time"),
+        expiresAt: timestamp(expiresAt, "invocation retry expiry"),
+        error: parseFailure(error),
+        continuation: record.state.continuation,
+      },
+    };
+    replace(cfg, record, next);
+    return next;
+  });
+}
+
+export function failWaitingWorkflow(
+  cfg: WorkflowRoot,
+  workflowId: string,
+  invocationId: string,
+  error: WorkflowFailure,
+  retainUntil: string,
+  clock: () => Date = () => new Date(),
+): WorkflowRecord {
+  return withDirectoryLock(lockPath(cfg), () => {
+    const record = loadWorkflow(cfg, workflowId);
+    if (
+      record.state.type !== "waiting" ||
+      record.state.wait.type === "timer" ||
+      record.state.wait.invocationId !== invocationId
+    )
+      throw new Error("workflow is not waiting for failed invocation");
+    const now = clock().toISOString();
+    const next: WorkflowRecord = {
+      ...record,
+      revision: record.revision + 1,
+      updatedAt: now,
+      state: {
+        type: "failed",
+        failedAt: now,
+        error: parseFailure(error),
+        retainUntil: timestamp(retainUntil, "failed invocation retention"),
+      },
     };
     replace(cfg, record, next);
     return next;

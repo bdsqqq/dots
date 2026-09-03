@@ -19,6 +19,7 @@ import {
   TURN_RECEIPT_ENTRY_TYPE,
   validateTurnReceiptBinding,
 } from "../receipt.js";
+import { observeMemoryOperation } from "../observability.js";
 import {
   canonicalJson,
   durableCreate,
@@ -963,7 +964,7 @@ function assertSafeSourcePath(root: string, relativePath: string): string {
   return sourcePath;
 }
 
-export function reconcileSource(options: {
+function reconcileSourceImpl(options: {
   cfg: SourceRoot;
   policy: SourcePolicy;
   relativePath: string;
@@ -1067,7 +1068,7 @@ export function reconcileSource(options: {
           proof.length !== prior.accepted.boundaryProof.length ||
           sha256(proof) !== prior.accepted.boundaryProof.sha256
         )
-          return reconcileSource({ ...options, forceFallback: true });
+          return reconcileSourceImpl({ ...options, forceFallback: true });
         priorBoundary = proof;
         start = prior.accepted.byteCursor;
       }
@@ -1196,7 +1197,7 @@ export function reconcileSource(options: {
   } catch (error) {
     if (error instanceof InjectedSourceCrash) throw error;
     if (append && !options.forceFallback)
-      return reconcileSource({
+      return reconcileSourceImpl({
         ...options,
         continuation: undefined,
         forceFallback: true,
@@ -1253,6 +1254,46 @@ export function reconcileSource(options: {
     metrics.filesReplaced += 1;
     return { type: "quarantined", record, metrics };
   }
+}
+
+export function reconcileSource(
+  options: Parameters<typeof reconcileSourceImpl>[0],
+): ReconcileSourceOutcome {
+  return observeMemoryOperation(
+    {
+      operation: "memory.source-reconcile",
+      correlation: {
+        sourceId: sourceId(
+          options.policy,
+          safeRelativePath(options.relativePath),
+        ),
+      },
+      fields: {
+        sourceKind: options.policy.kind,
+        sourcePolicyVersion: options.policy.version,
+      },
+      result: (outcome) => ({
+        outcome:
+          outcome.type === "quarantined"
+            ? "degraded"
+            : outcome.type === "unchanged"
+              ? "skipped"
+              : "success",
+        fields: {
+          reconciliationOutcome: outcome.type,
+          readMode: outcome.metrics.mode,
+          bytesStatted: outcome.metrics.bytesStatted,
+          bytesRead: outcome.metrics.bytesRead,
+          recordsParsed: outcome.metrics.recordsParsed,
+          filesOpened: outcome.metrics.filesOpened,
+          filesCreated: outcome.metrics.filesCreated,
+          filesReplaced: outcome.metrics.filesReplaced,
+          wholePrefixValidated: outcome.metrics.wholePrefixValidated,
+        },
+      }),
+    },
+    () => reconcileSourceImpl(options),
+  );
 }
 
 export type DiscoveryCursor = {
@@ -1338,6 +1379,7 @@ if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest;
   const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
+  const { withMemoryWideEventFactory } = await import("../observability.js");
 
   function fixture() {
     const base = mkdtempSync(join(tmpdir(), "pi-memory-source-v3-"));
@@ -1397,6 +1439,62 @@ if (import.meta.vitest) {
         metrics: { bytesRead: 0, filesReplaced: 0, filesCreated: 0 },
       });
       expect(reads).toBe(0);
+    });
+
+    it("emits one bounded terminal event for one source reconciliation", () => {
+      const test = fixture();
+      const events: Array<{
+        operation: string;
+        correlation: unknown;
+        fields: unknown;
+        terminals: Array<{ outcome: string; fields: unknown }>;
+      }> = [];
+      const outcome = withMemoryWideEventFactory(
+        (options) => {
+          const event: (typeof events)[number] = {
+            operation: options.operation,
+            correlation: options.correlation,
+            fields: options.fields,
+            terminals: [],
+          };
+          events.push(event);
+          return {
+            id: "source-observation",
+            set: () => {},
+            error: () => {},
+            finish: (terminalOutcome, fields) =>
+              event.terminals.push({ outcome: terminalOutcome, fields }),
+          };
+        },
+        () =>
+          reconcileSource({
+            cfg: test.cfg,
+            policy: test.policy,
+            relativePath: "session.jsonl",
+          }),
+      );
+
+      expect(outcome.type).toBe("accepted");
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        operation: "memory.source-reconcile",
+        fields: {
+          sourceKind: "pi-session-jsonl",
+          sourcePolicyVersion: 1,
+        },
+        terminals: [
+          {
+            outcome: "success",
+            fields: {
+              reconciliationOutcome: "accepted",
+              readMode: "fallback",
+              recordsParsed: 2,
+            },
+          },
+        ],
+      });
+      expect(JSON.stringify(events)).not.toContain("remember this");
+      expect(Buffer.byteLength(JSON.stringify(events))).toBeLessThan(2_000);
     });
 
     it("validates only the bounded continuity proof and appended records", () => {

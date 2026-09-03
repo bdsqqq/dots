@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type { MemoryConfig } from "../catalog.js";
+import { observeMemoryOperation } from "../observability.js";
 import {
   unsafeCanonicalValue,
   type AdmissionDecision,
@@ -206,6 +207,21 @@ export function fetchCanonicalHead(cfg: HistoryConfig): string {
   return head;
 }
 
+export function lastFetchedCanonicalHead(
+  cfg: HistoryConfig,
+): string | undefined {
+  initLocalHistory(cfg);
+  const head = text(
+    cfg,
+    ["rev-parse", "--verify", "refs/remotes/origin/main"],
+    { tolerate: true },
+  ).trim();
+  if (!head) return undefined;
+  if (!HASH.test(head)) throw new Error("invalid last fetched canonical head");
+  validateTree(cfg, head);
+  return head;
+}
+
 function canonicalTreePath(path: string): string {
   const result = safeRelativePath(path);
   const segments = result.split("/");
@@ -349,8 +365,8 @@ function createCommit(
     const apply = (path: string, artifact: ArtifactRef | null): void => {
       canonicalTreePath(path);
       if (!artifact) {
-        text(cfg, ["update-index", "--force-remove", "--", path], {
-          tolerate: true,
+        text(cfg, ["update-index", "--index-info"], {
+          input: `0 ${"0".repeat(40)}\t${path}\n`,
           env,
         });
         return;
@@ -481,6 +497,24 @@ export function prepareCommit(
     candidatePath(cfg, record.proposalId),
     `${JSON.stringify(record, null, 2)}\n`,
   );
+  return record;
+}
+
+export function loadCandidate(
+  cfg: HistoryConfig,
+  proposalId: string,
+): CandidateRecord | undefined {
+  const path = candidatePath(cfg, proposalId);
+  if (!existsSync(path)) return undefined;
+  const record = JSON.parse(readFileSync(path, "utf8")) as CandidateRecord;
+  if (
+    record.schemaVersion !== 3 ||
+    record.proposalId !== proposalId ||
+    !HASH.test(record.candidateCommit) ||
+    !HASH.test(record.parentCommit)
+  )
+    throw new Error("invalid persisted candidate");
+  validateCandidate(cfg, record);
   return record;
 }
 
@@ -710,6 +744,27 @@ export function auditCanonicalHistory(
   return { verifiedV3, legacyUnverified };
 }
 
+export function findCanonicalMutation(
+  cfg: HistoryConfig,
+  head: string,
+  identifier: string,
+): { commit: string; receipt: CanonicalReceipt } | undefined {
+  const commits = text(cfg, ["rev-list", "--first-parent", head])
+    .split("\n")
+    .filter(Boolean);
+  for (const commit of commits) {
+    const receipt = verifyCanonicalCommit(cfg, commit);
+    if (
+      receipt &&
+      (identifier === commit ||
+        identifier === receipt.mutationId ||
+        identifier === receipt.proposalId)
+    )
+      return { commit, receipt };
+  }
+  return undefined;
+}
+
 function validateCandidate(cfg: HistoryConfig, record: CandidateRecord): void {
   const actualTree = text(cfg, [
     "show",
@@ -819,6 +874,13 @@ function persistAcceptedReceipt(
     throw new Error("accepted receipt collision");
 }
 
+function finalizeCandidate(cfg: HistoryConfig, proposalId: string): void {
+  durableRemove(candidatePath(cfg, proposalId));
+  text(cfg, ["update-ref", "-d", `refs/pi-memory/proposals/${proposalId}`], {
+    tolerate: true,
+  });
+}
+
 function copyCanonicalTree(
   cfg: HistoryConfig,
   head: string,
@@ -920,7 +982,7 @@ function recoverMaterialization(cfg: HistoryConfig): void {
   durableRemove(path);
 }
 
-export function materializeCanonicalHead(
+function materializeCanonicalHeadImpl(
   cfg: HistoryConfig,
   head: string,
   fault?: (point: MaterializationCrashPoint) => void,
@@ -977,7 +1039,25 @@ export function materializeCanonicalHead(
   }
 }
 
-export function mergeCommit(
+export function materializeCanonicalHead(
+  cfg: HistoryConfig,
+  head: string,
+  fault?: (point: MaterializationCrashPoint) => void,
+): boolean {
+  return observeMemoryOperation(
+    {
+      operation: "memory.checkout-materialize",
+      correlation: { canonicalHead: head },
+      result: (materialized) => ({
+        outcome: materialized ? "success" : "degraded",
+        fields: { canonicalHead: head, materialized },
+      }),
+    },
+    () => materializeCanonicalHeadImpl(cfg, head, fault),
+  );
+}
+
+function mergeCommitImpl(
   cfg: HistoryConfig,
   initial: CandidateRecord,
   transport: HistoryTransport = nativeTransport,
@@ -991,6 +1071,7 @@ export function mergeCommit(
   const accepted = acceptedByMutation(cfg, head, initial);
   if (accepted) {
     persistAcceptedReceipt(cfg, accepted.commit, accepted.receipt);
+    finalizeCandidate(cfg, initial.proposalId);
     return {
       type: "accepted",
       commit: accepted.commit,
@@ -1030,6 +1111,7 @@ export function mergeCommit(
   if (!acceptedReceipt)
     throw new Error("accepted candidate lacks canonical receipt");
   persistAcceptedReceipt(cfg, acceptedHead, acceptedReceipt);
+  finalizeCandidate(cfg, record.proposalId);
   return {
     type: "accepted",
     commit: acceptedHead,
@@ -1039,10 +1121,49 @@ export function mergeCommit(
   };
 }
 
+export function mergeCommit(
+  cfg: HistoryConfig,
+  initial: CandidateRecord,
+  transport: HistoryTransport = nativeTransport,
+): MergeOutcome {
+  return observeMemoryOperation(
+    {
+      operation: "memory.canonical-merge",
+      correlation: {
+        proposalId: initial.proposalId,
+        mutationId: initial.mutationId,
+      },
+      fields: {
+        preparedBase: initial.parentCommit,
+        candidateCommit: initial.candidateCommit,
+        admissionDecisionId: initial.admissionDecisionId,
+      },
+      result: (outcome) => ({
+        outcome:
+          outcome.type === "accepted"
+            ? "success"
+            : outcome.type === "retry"
+              ? "degraded"
+              : "degraded",
+        fields: {
+          mergeOutcome: outcome.type,
+          acceptedRemoteHead:
+            outcome.type === "accepted" ? outcome.commit : undefined,
+          retryReason: outcome.type === "retry" ? outcome.reason : undefined,
+          blockedPaths:
+            outcome.type === "basis-changed" ? outcome.paths : undefined,
+        },
+      }),
+    },
+    () => mergeCommitImpl(cfg, initial, transport),
+  );
+}
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest;
   const { tmpdir } = await import("node:os");
   const { evaluateAdmission } = await import("./admission.js");
+  const { withMemoryWideEventFactory } = await import("../observability.js");
 
   function command(args: string[], cwd?: string): string {
     const result = spawnSync(
@@ -1173,6 +1294,50 @@ if (import.meta.vitest) {
         readFileSync(join(hostB.root, "beta_source__agent.md"), "utf8"),
       ).toBe("# beta\n");
       expect(candidateA.candidateCommit).not.toBe(candidateB.candidateCommit);
+    });
+
+    it("emits one merge and one checkout terminal for an accepted mutation", () => {
+      const test = fixture();
+      const host = test.host("observed");
+      const head = fetchCanonicalHead(host);
+      const proposal = admitted(host, head, "observed", "# observed\n");
+      const candidate = prepareCommit(host, {
+        head,
+        decision: proposal.decision,
+        changes: [proposal.change],
+      });
+      const events: Array<{
+        operation: string;
+        terminals: Array<{ outcome: string; fields: unknown }>;
+      }> = [];
+      const result = withMemoryWideEventFactory(
+        (options) => {
+          const event: (typeof events)[number] = {
+            operation: options.operation,
+            terminals: [],
+          };
+          events.push(event);
+          return {
+            id: `history-observation-${events.length}`,
+            set: () => {},
+            error: () => {},
+            finish: (outcome, fields) =>
+              event.terminals.push({ outcome, fields }),
+          };
+        },
+        () => mergeCommit(host, candidate),
+      );
+
+      expect(result.type).toBe("accepted");
+      expect(events.map((event) => event.operation)).toEqual([
+        "memory.canonical-merge",
+        "memory.checkout-materialize",
+      ]);
+      expect(events.every((event) => event.terminals.length === 1)).toBe(true);
+      expect(events.map((event) => event.terminals[0]?.outcome)).toEqual([
+        "success",
+        "success",
+      ]);
     });
 
     it("blocks changed targets without mutating the checkout", () => {

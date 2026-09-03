@@ -10,13 +10,14 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import type { MemoryConfig } from "../catalog.js";
+import { scanCatalog, writeCatalog, type MemoryConfig } from "../catalog.js";
 import {
   canonicalJson,
   durableWrite,
   safeRelativePath,
   sha256,
   v3Data,
+  v3State,
   withDirectoryLock,
   type JsonValue,
 } from "./common.js";
@@ -125,15 +126,31 @@ function projectedMarkdown(root: string, directory = root): string[] {
 }
 
 export function publishVerifiedQmdSource(
-  cfg: HistoryConfig,
+  cfg: HistoryConfig & MemoryConfig,
   head: string,
   clock?: () => Date,
 ): QmdSourceManifest {
+  const checkout = JSON.parse(
+    readFileSync(v3State(cfg, "checkout/current.json"), "utf8"),
+  ) as { head?: string };
+  if (checkout.head !== head)
+    throw new Error("qmd source head is not the materialized checkout");
+  const catalog = scanCatalog(cfg.root, "1970-01-01T00:00:00.000Z");
+  const canonical = new Set(listCanonicalMarkdown(cfg, head));
+  for (const entry of catalog.entries) {
+    if (!canonical.has(entry.path))
+      throw new Error(`catalog path absent from accepted head ${entry.path}`);
+    if (sha256(readCanonicalFile(cfg, head, entry.path)) !== entry.sha256)
+      throw new Error(
+        `catalog digest differs from accepted head ${entry.path}`,
+      );
+  }
+  writeCatalog(cfg);
   return publishQmdSource(
     cfg,
     head,
     {
-      list: (commit) => listCanonicalMarkdown(cfg, commit),
+      list: () => catalog.entries.map((entry) => entry.path),
       read: (commit, path) => readCanonicalFile(cfg, commit, path),
     },
     clock,
