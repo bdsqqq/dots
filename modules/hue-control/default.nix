@@ -28,11 +28,14 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    my.tailnetRegistry.providers.hue = {
+    my.tailnetRegistry.services.hue = {
+      title = "hue";
+      description = "nearby Hue bulb control";
       target = "http://127.0.0.1:${toString cfg.port}";
       scheme = "https";
       port = cfg.port;
       healthPath = "/health";
+      access.tailnet = "owner";
     };
 
     home-manager.users.bdsqqq = { config, lib, ... }: {

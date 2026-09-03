@@ -135,14 +135,18 @@ export class HueProtocolSession {
       );
       await this.#subscribe(HUE_CHARACTERISTICS.colorXy, "colorXy", decodeColorXy);
 
-      const [power, brightness, colorTemperature, colorXy, model, name] = await Promise.all([
-        this.#connection.read(HUE_CHARACTERISTICS.power).then(decodePower),
-        this.#connection.read(HUE_CHARACTERISTICS.brightness).then(decodeBrightness),
-        this.#connection.read(HUE_CHARACTERISTICS.colorTemperature).then(decodeColorTemperature),
-        this.#connection.read(HUE_CHARACTERISTICS.colorXy).then(decodeColorXy),
-        this.#connection.read(HUE_CHARACTERISTICS.model).then(decodeText),
-        this.#connection.read(HUE_CHARACTERISTICS.name).then(decodeText),
-      ]);
+      // CoreBluetooth serializes GATT operations. Some adapters return an
+      // empty native value instead of queueing concurrent reads.
+      const power = decodePower(await this.#connection.read(HUE_CHARACTERISTICS.power));
+      const brightness = decodeBrightness(
+        await this.#connection.read(HUE_CHARACTERISTICS.brightness),
+      );
+      const colorTemperature = decodeColorTemperature(
+        await this.#connection.read(HUE_CHARACTERISTICS.colorTemperature),
+      );
+      const colorXy = decodeColorXy(await this.#connection.read(HUE_CHARACTERISTICS.colorXy));
+      const model = decodeText(await this.#connection.read(HUE_CHARACTERISTICS.model));
+      const name = decodeText(await this.#connection.read(HUE_CHARACTERISTICS.name));
       this.#state = { brightness, colorTemperature, colorXy, model, name, power };
       this.#emit();
       return success(this.#state);
