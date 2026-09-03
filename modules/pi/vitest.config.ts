@@ -20,6 +20,9 @@ export default defineConfig({
       "@bds_pi/pi-memory/catalog": resolve(
         "packages/core/agent-memory/catalog.ts",
       ),
+      "@bds_pi/pi-memory/demand": resolve(
+        "packages/core/agent-memory/maintainer/demand.ts",
+      ),
       "@bds_pi/pi-memory/evidence": resolve(
         "packages/core/agent-memory/evidence.ts",
       ),

@@ -8,12 +8,12 @@
   "exports": {
     ".": "./index.ts",
     "./catalog": "./catalog.ts",
+    "./demand": "./maintainer/demand.ts",
     "./events": "./events.ts",
     "./evidence": "./evidence.ts",
     "./receipt": "./receipt.ts",
     "./tiering": "./tiering.ts",
-    "./observability": "./observability.ts",
-    "./adaptation": "./adaptation.ts"
+    "./observability": "./observability.ts"
   },
   "dependencies": {
     "@bds_pi/config": "workspace:*",
