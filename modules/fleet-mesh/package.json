@@ -25,11 +25,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
     "demo": "node demo.ts",
     "lab": "node lab.ts",
     "prepack": "pnpm run build",
-    "test": "node --test *.test.ts",
+    "test": "node --test",
     "typecheck": "tsc"
   },
   "dependencies": {
