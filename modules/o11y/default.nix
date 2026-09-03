@@ -39,18 +39,20 @@ let
   ];
   containerNames = if isLinux then builtins.attrNames config.containers else [ ];
   containerJournaldReceiverNames = map (name: "journald/${name}") containerNames;
-  containerJournaldReceiversYaml = lib.concatMapStrings (name:
-    "\n  journald/${name}:\n"
-    + "    directory: /var/lib/nixos-containers/${name}/var/log/journal\n"
-    + "    storage: file_storage\n"
-    + "    operators:\n"
-    + "      - type: add\n"
-    + "        field: resource[\"container.name\"]\n"
-    + "        value: ${builtins.toJSON name}\n"
-    + "      - type: add\n"
-    + "        field: attributes.log_source\n"
-    + "        value: journald\n"
-  ) containerNames;
+  containerJournaldReceiversYaml = lib.concatMapStrings
+    (name:
+      "\n  journald/${name}:\n"
+      + "    directory: /var/lib/nixos-containers/${name}/var/log/journal\n"
+      + "    storage: file_storage\n"
+      + "    operators:\n"
+      + "      - type: add\n"
+      + "        field: resource[\"container.name\"]\n"
+      + "        value: ${builtins.toJSON name}\n"
+      + "      - type: add\n"
+      + "        field: attributes.log_source\n"
+      + "        value: journald\n"
+    )
+    containerNames;
   linuxLogReceiversYaml =
     "  journald:\n"
     + "    directory: /var/log/journal\n"
@@ -87,8 +89,32 @@ let
       + "        mute_process_io_error: true\n"
       + "        mute_process_user_error: true\n"
     );
+  piWideEventsReceiverYaml =
+    "  filelog/pi-wide-events:\n"
+    + "    include:\n"
+    + "      - ${homeDir}/.local/state/pi/logs/*.jsonl\n"
+    + "    exclude:\n"
+    + "      - ${homeDir}/.local/state/pi/logs/pending/**\n"
+    + "      - ${homeDir}/.local/state/pi/logs/*.sync-conflict-*\n"
+    + "    poll_interval: 30s\n"
+    + "    include_file_name: true\n"
+    + "    include_file_path: true\n"
+    + "    start_at: end\n"
+    + "    storage: file_storage\n"
+    + "    operators:\n"
+    + "      - type: json_parser\n"
+    + "        parse_from: body\n"
+    + "      - type: add\n"
+    + "        field: resource[\"service.name\"]\n"
+    + "        value: pi\n"
+    + "      - type: add\n"
+    + "        field: resource[\"deployment.environment\"]\n"
+    + "        value: personal-host\n"
+    + "      - type: add\n"
+    + "        field: attributes.log_source\n"
+    + "        value: pi-wide-event\n";
   logReceiversYaml =
-    if isDarwin then ''
+    (if isDarwin then ''
         filelog/darwin_services:
           include:
       ${darwinLogFilesYaml}
@@ -112,10 +138,10 @@ let
               field: attributes.log_source
               value: file
     '' else
-      linuxLogReceiversYaml;
+      linuxLogReceiversYaml) + piWideEventsReceiverYaml;
   logReceivers =
     if isDarwin then
-      "filelog/darwin_services"
+      "filelog/darwin_services, filelog/pi-wide-events"
     else
       lib.concatStringsSep ", " (
         [ "journald" ]
@@ -123,6 +149,7 @@ let
         ++ [
           "filelog/user_logs"
           "filelog/papertrail"
+          "filelog/pi-wide-events"
         ]
       );
   deployDatasetsJson = builtins.toJSON deployCfg.datasets;

@@ -62,10 +62,7 @@ in
         text = ''
           collections:
             agent-memories:
-              path: ${commonplace}/01_files/_utilities/agent-memories
-              pattern: "*.md"
-            pi-sessions:
-              path: ${homeDir}/.local/share/pi-memory/pi-sessions
+              path: ${homeDir}/.local/share/pi-memory/v3/projections/qmd-source
               pattern: "**/*.md"
           models:
             embed: hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf

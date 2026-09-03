@@ -1,5 +1,6 @@
 // trailing slashes ignore only directory contents, letting syncthing replace the local directory shell.
 02_temp
+01_files/_utilities/agent-memories
 
 **/.git
 **/.svn
