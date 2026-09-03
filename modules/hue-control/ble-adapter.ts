@@ -34,7 +34,7 @@ async function characteristics(
   server: BluetoothRemoteGATTServer,
 ): Promise<Map<string, BluetoothRemoteGATTCharacteristic>> {
   const result = new Map<string, BluetoothRemoteGATTCharacteristic>();
-  for (const serviceUuid of [HUE_SERVICE_UUID, DEVICE_INFORMATION_SERVICE, LIGHT_CONTROL_SERVICE]) {
+  for (const serviceUuid of [DEVICE_INFORMATION_SERVICE, LIGHT_CONTROL_SERVICE]) {
     const service = await server.getPrimaryService(serviceUuid);
     for (const characteristic of await service.getCharacteristics()) {
       result.set(characteristic.uuid.toLowerCase(), characteristic);
@@ -49,18 +49,32 @@ function bytes(value: DataView): Uint8Array {
 
 class WebBluetoothConnection implements HueBleConnection {
   readonly #characteristics: Map<string, BluetoothRemoteGATTCharacteristic>;
+  readonly #name: string;
   readonly #server: BluetoothRemoteGATTServer;
 
   constructor(
     server: BluetoothRemoteGATTServer,
     availableCharacteristics: Map<string, BluetoothRemoteGATTCharacteristic>,
+    name: string,
   ) {
     this.#server = server;
     this.#characteristics = availableCharacteristics;
+    this.#name = name;
   }
 
   async read(characteristic: string): Promise<Uint8Array> {
-    return bytes(await this.#characteristic(characteristic).readValue());
+    if (
+      characteristic.toLowerCase() === HUE_CHARACTERISTICS.name &&
+      !this.#characteristics.has(HUE_CHARACTERISTICS.name)
+    ) {
+      return new TextEncoder().encode(this.#name);
+    }
+    try {
+      return bytes(await this.#characteristic(characteristic).readValue());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`failed to read ${characteristic}: ${message}`);
+    }
   }
 
   async write(characteristic: string, value: Uint8Array): Promise<void> {
@@ -118,7 +132,10 @@ export class WebBluetoothHueAdapter implements HueBleAdapter {
     const device = await bluetooth.requestDevice(requestOptions());
     device.addEventListener("gattserverdisconnected", disconnected, { once: true });
     const server = await device.gatt.connect();
-    return new WebBluetoothConnection(server, await characteristics(server));
+    const name = device.name?.startsWith("Unknown or Unsupported Device")
+      ? "Hue light"
+      : device.name || "Hue light";
+    return new WebBluetoothConnection(server, await characteristics(server), name);
   }
 }
 

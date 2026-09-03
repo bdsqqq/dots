@@ -1,1 +1,6 @@
 packages: []
+
+# The release already contains signed Darwin prebuilds; compiling SimpleBLE is
+# both unnecessary and less reproducible than verifying the shipped artifact.
+allowBuilds:
+  webbluetooth: false
