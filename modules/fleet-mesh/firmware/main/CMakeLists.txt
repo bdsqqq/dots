@@ -1,0 +1,21 @@
+idf_component_register(
+  SRCS
+    "app_main.c"
+    "fm_config.c"
+    "fm_crypto.c"
+    "fm_http.c"
+    "fm_openeth.c"
+    "fm_protocol.c"
+  INCLUDE_DIRS "."
+  REQUIRES
+    esp_eth
+    esp_event
+    esp_http_client
+    esp_http_server
+    esp_netif
+    esp_partition
+    json
+    mbedtls
+    nvs_flash
+    espressif__libsodium
+)

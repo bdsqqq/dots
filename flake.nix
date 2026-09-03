@@ -78,6 +78,9 @@
       flake = false;
     };
 
+    esp-dev.url = "github:mirrexagon/nixpkgs-esp-dev/5287d6e1ca9e15ebd5113c41b9590c468e1e001b";
+    qemu-espressif.url = "github:SFrijters/nix-qemu-espressif/5bc8896e7604682383a876e62c6501929775589c";
+
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:

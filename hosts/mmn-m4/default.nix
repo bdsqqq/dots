@@ -1,8 +1,7 @@
-{
-  inputs,
-  pkgs,
-  lib,
-  ...
+{ inputs
+, pkgs
+, lib
+, ...
 }:
 let
   syncthing = import ../../modules/syncthing/lib.nix { inherit lib; };
@@ -152,7 +151,8 @@ in
               "mbp-m2"
               "mbp-m5"
               "htz-relay"
-            ] { label = "commonplace"; };
+            ]
+              { label = "commonplace"; };
             kindle = syncthing.folderFor "kindle" "/Users/bdsqqq" true [ "mbp-m2" ] { };
           };
         };
@@ -218,6 +218,21 @@ in
         signingPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAQ53zLO6hz6y04PB1jQEyLpEGC/w9m9rwUucbvSIy79s=\n-----END PUBLIC KEY-----\n";
         encryptionPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VuAyEAvSWKMuD2FRRMY9FV0zp6E5493qc54cl1EAUccNPgBRc=\n-----END PUBLIC KEY-----\n";
       }
+      {
+        id = "esp32-sim-1";
+        signingPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAVkfLyPlkJWBfWlTP3P9dgNxFs9GcCDTZzoA7dY7Ec08=\n-----END PUBLIC KEY-----\n";
+        encryptionPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VuAyEAHQRrpphDj/ErtbRDH4hN8DcTwLNEnTAihxzvmsgoyxA=\n-----END PUBLIC KEY-----\n";
+      }
+      {
+        id = "esp32-sim-2";
+        signingPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAAX986rEB/IpeJHLtfT3KPyQc+oZQsjkgt6Lulj3sVz8=\n-----END PUBLIC KEY-----\n";
+        encryptionPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VuAyEAzvn4hlPUo/HZThujLpj/3eFFUnbJCT36p13zGMAtnQU=\n-----END PUBLIC KEY-----\n";
+      }
+      {
+        id = "esp32-sim-3";
+        signingPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAJ2R7nKLTn5H2Ol3lLgMLXD68AdAllMaXTkuX+PDAp/8=\n-----END PUBLIC KEY-----\n";
+        encryptionPublicKey = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VuAyEATpj+sgwNng5digkQRlOglz+wwNFoUCg8Po3TwoxIr3k=\n-----END PUBLIC KEY-----\n";
+      }
     ];
     nodes = {
       mmn-m4 = {
@@ -242,6 +257,18 @@ in
             id = "virtual-esp32";
             url = "http://127.0.0.1:43122";
           }
+          {
+            id = "esp32-sim-1";
+            url = "http://127.0.0.1:43201";
+          }
+          {
+            id = "esp32-sim-2";
+            url = "http://127.0.0.1:43202";
+          }
+          {
+            id = "esp32-sim-3";
+            url = "http://127.0.0.1:43203";
+          }
         ];
       };
       virtual-esp32 = {
@@ -251,6 +278,38 @@ in
           {
             id = "relay";
             url = "http://127.0.0.1:43121";
+          }
+        ];
+      };
+    };
+    simulatedNodes = {
+      esp32-sim-1 = {
+        port = 43201;
+        identitySecret = "fleet-mesh/esp32-sim-1-identity";
+        peers = [
+          {
+            id = "relay";
+            url = "http://10.0.2.2:43121";
+          }
+        ];
+      };
+      esp32-sim-2 = {
+        port = 43202;
+        identitySecret = "fleet-mesh/esp32-sim-2-identity";
+        peers = [
+          {
+            id = "relay";
+            url = "http://10.0.2.2:43121";
+          }
+        ];
+      };
+      esp32-sim-3 = {
+        port = 43203;
+        identitySecret = "fleet-mesh/esp32-sim-3-identity";
+        peers = [
+          {
+            id = "relay";
+            url = "http://10.0.2.2:43121";
           }
         ];
       };
