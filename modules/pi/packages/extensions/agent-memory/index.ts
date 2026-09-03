@@ -1,6 +1,5 @@
 /** Captures hash-bound memory exposure before publishing settled checkpoints. */
 
-import { EventEmitter } from "node:events";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
 import {
@@ -29,6 +28,10 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createWideEvent, flushLogs } from "@bds_pi/log";
+import {
+  readMaintenanceDemand,
+  requestMaintenance as publishMaintenanceDemand,
+} from "@bds_pi/pi-memory/demand";
 import {
   deriveAdaptationQuality,
   memoryScopeRank,
@@ -77,8 +80,6 @@ const MAINTENANCE_IDLE_MS = 30_000;
 const PROMPT_WORKER_ENV = "PI_AGENT_MEMORY_PROMPT_WORKER";
 const PROMPT_WORKER_KILL_GRACE_MS = 500;
 const PROMPT_WORKER_STDERR_MAX_BYTES = 64 * 1024;
-let maintenanceWake: ChildProcess | undefined;
-let maintenanceWakePending = false;
 
 type PromptWorkerMessage =
   | {
@@ -1400,30 +1401,20 @@ function buildTurnReceipt(options: {
   return { ...identity, receiptId: canonicalTurnReceiptId(identity) };
 }
 
-export function wakeMemoryMaintenance(
-  spawnProcess: typeof spawn = spawn,
-): void {
-  if (maintenanceWake) {
-    maintenanceWakePending = true;
-    return;
-  }
-  const child = spawnProcess(
-    process.env.PI_MEMORY_BIN || "pi-memory",
-    ["maintain"],
-    { detached: true, stdio: "ignore" },
+export function wakeMemoryMaintenance(): void {
+  publishMaintenanceDemand(
+    {
+      state: envPath(
+        "PI_MEMORY_STATE_DIR",
+        join(HOME, ".local/state/pi-memory"),
+      ),
+    },
+    {
+      reason: "extension settlement",
+      scopes: ["sources"],
+      priority: "normal",
+    },
   );
-  maintenanceWake = child;
-  const settled = () => {
-    if (maintenanceWake !== child) return;
-    maintenanceWake = undefined;
-    if (maintenanceWakePending) {
-      maintenanceWakePending = false;
-      wakeMemoryMaintenance(spawnProcess);
-    }
-  };
-  child.once("error", settled);
-  child.once("exit", settled);
-  child.unref();
 }
 
 export function createAgentMemoryExtension(
@@ -2268,8 +2259,7 @@ if (import.meta.vitest) {
     delete process.env.PI_MEMORY_ROOT;
     delete process.env.PI_MEMORY_DATA_DIR;
     delete process.env.PI_MEMORY_BIN;
-    maintenanceWake = undefined;
-    maintenanceWakePending = false;
+    delete process.env.PI_MEMORY_STATE_DIR;
     rmSync(testDir, { recursive: true, force: true });
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -3442,19 +3432,18 @@ if (import.meta.vitest) {
       }
     });
 
-    it("coalesces detached maintenance wakes", () => {
-      const children: ChildProcess[] = [];
-      const spawnProcess = vi.fn(() => {
-        const child = new EventEmitter() as ChildProcess;
-        child.unref = vi.fn();
-        children.push(child);
-        return child;
-      }) as unknown as typeof spawn;
-      wakeMemoryMaintenance(spawnProcess);
-      wakeMemoryMaintenance(spawnProcess);
-      expect(spawnProcess).toHaveBeenCalledOnce();
-      children[0]!.emit("exit", 0, null);
-      expect(spawnProcess).toHaveBeenCalledTimes(2);
+    it("publishes extension wakes through durable host demand", () => {
+      const state = join(testDir, "state");
+      process.env.PI_MEMORY_STATE_DIR = state;
+      wakeMemoryMaintenance();
+      wakeMemoryMaintenance();
+      expect(readMaintenanceDemand({ state })).toMatchObject({
+        generation: 2,
+        satisfiedThrough: 0,
+        reasons: ["extension settlement"],
+        scopes: ["sources"],
+      });
+      expect(existsSync(join(state, "v3/demand/wake"))).toBe(true);
     });
   });
 }
