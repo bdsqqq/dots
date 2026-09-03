@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { runFleetCli, type FleetCliIO } from "./fleet-cli.ts";
-import { createFleetClient } from "./fleet-router.ts";
+import { createFleetClient } from "./node-catalog/local.ts";
 import { LocalFleetRuntime } from "./local-fleet-runtime.ts";
 import { loadLocalFleetRuntimeOptions } from "./local-fleet-config.ts";
 

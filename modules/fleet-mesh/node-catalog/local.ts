@@ -1,12 +1,12 @@
 import { createRouterClient, implement } from "@orpc/server";
 
-import { fleetContract } from "./fleet-contract.ts";
 import {
   describeFleetNode,
+  fleetContract,
   fleetNodeExists,
   listFleetNodes,
   type FleetNodeReader,
-} from "./fleet-operations.ts";
+} from "./public.ts";
 
 export function createFleetRouter(reader: FleetNodeReader) {
   const os = implement(fleetContract);

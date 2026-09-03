@@ -13,6 +13,8 @@ import {
   type KeyObject,
 } from "node:crypto";
 
+import { type } from "arktype";
+
 import {
   validateV1JsonValue,
   validateV1Revision,
@@ -23,7 +25,7 @@ import {
   type PublicIdentity,
   type ReceiptEnvelope,
   type Revision,
-} from "./fleet-schema.ts";
+} from "./fleet-protocol.ts";
 
 export type {
   CommandEnvelope,
@@ -33,16 +35,21 @@ export type {
   PublicIdentity,
   ReceiptEnvelope,
   Revision,
-} from "./fleet-schema.ts";
+} from "./fleet-protocol.ts";
 
 type CommandHeader = CommandEnvelope["header"];
 type EncryptedPayload = CommandEnvelope["encryption"];
 export type ReceiptStatus = ReceiptEnvelope["status"];
 
-export type NodeIdentity = PublicIdentity & {
-  signingPrivateKey: string;
-  encryptionPrivateKey: string;
-};
+export const NodeIdentityV1Schema = type({
+  "+": "reject",
+  id: "string",
+  signingPublicKey: "string",
+  encryptionPublicKey: "string",
+  signingPrivateKey: "string",
+  encryptionPrivateKey: "string",
+});
+export type NodeIdentity = typeof NodeIdentityV1Schema.infer;
 
 type ResourceState = MeshNodeSnapshot["resources"][number][1];
 type CommandOutcome = MeshNodeSnapshot["outcomes"][number][1];

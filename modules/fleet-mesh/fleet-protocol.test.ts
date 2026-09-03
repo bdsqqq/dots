@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  fleetSchemaCatalog,
+  fleetProtocolSchemaCatalog,
   MeshRecordV1Schema,
   RevisionV1Schema,
   validateV1JsonValue,
   validateV1MeshNodeSnapshot,
   validateV1MeshRecord,
   type MeshRecord,
-} from "./fleet-schema.ts";
+} from "./fleet-protocol.ts";
 
 function command(): MeshRecord {
   return {
@@ -82,8 +82,8 @@ test("enforces recursive safe integers and plain JSON objects", () => {
   );
 });
 
-test("exports one stable id and version for every public schema", () => {
-  assert.deepEqual(Object.keys(fleetSchemaCatalog), [
+test("owns stable ids and versions for protocol schemas", () => {
+  assert.deepEqual(Object.keys(fleetProtocolSchemaCatalog), [
     "fleet.json-value",
     "fleet.no-input",
     "fleet.node-id",
@@ -93,13 +93,8 @@ test("exports one stable id and version for every public schema", () => {
     "fleet.receipt-envelope",
     "fleet.mesh-record",
     "fleet.mesh-node-snapshot",
-    "fleet.node-summary",
-    "fleet.node-summary-list",
-    "fleet.node-description",
-    "fleet.node-presence",
-    "fleet.node-not-found",
   ]);
-  for (const versions of Object.values(fleetSchemaCatalog)) {
+  for (const versions of Object.values(fleetProtocolSchemaCatalog)) {
     assert.deepEqual(Object.keys(versions), ["1"]);
   }
 });

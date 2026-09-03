@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { NodeIdentityV1Schema } from "./fleet-node-schema.ts";
-import { PublicIdentityV1Schema } from "./fleet-schema.ts";
+import { NodeIdentityV1Schema } from "./fleet-mesh.ts";
+import { PublicIdentityV1Schema } from "./fleet-protocol.ts";
 import type { LocalFleetRuntimeOptions } from "./local-fleet-runtime.ts";
 
 import { type } from "arktype";

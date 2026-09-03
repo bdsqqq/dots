@@ -10,7 +10,7 @@ import {
   publicIdentity,
   type NodeIdentity,
 } from "./fleet-mesh.ts";
-import { listFleetNodes } from "./fleet-operations.ts";
+import { listFleetNodes } from "./node-catalog/public.ts";
 import {
   LocalFleetRuntime,
   type LocalFleetNodeConfiguration,

@@ -4,13 +4,13 @@ import { dirname, resolve } from "node:path";
 import { type } from "arktype";
 
 import {
+  NodeIdentityV1Schema,
   validateAuthorityPublicKey,
   validateNodeIdentityKeys,
   type NodeIdentity,
   type PublicIdentity,
 } from "./fleet-mesh.ts";
-import { NodeIdentityV1Schema } from "./fleet-node-schema.ts";
-import { PublicIdentityV1Schema } from "./fleet-schema.ts";
+import { PublicIdentityV1Schema } from "./fleet-protocol.ts";
 
 const FleetDaemonPublicConfigurationV1Schema = type({
   "+": "reject",
