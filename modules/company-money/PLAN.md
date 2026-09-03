@@ -66,6 +66,14 @@ modules/agents/skills/company-money/
 
 the Nix module should install a manually invoked CLI on `mbp-m2`. v1 does not need a daemon, schedule, server, tailnet declaration, or activation-created data directory.
 
+the private runtime root is `/Users/bdsqqq/commonplace/01_files/money/company-ledger`. this location is approved only behind the privacy gate in phase 5: no private configuration, evidence, ledger, report, lock, or transient envelope may be created there until the outer `commonplace` Syncthing exclusion, independent files-browser exclusion, dedicated private-folder topology, and live publication checks have all passed.
+
+“commonplace syncthing” means reusing the existing Syncthing installation and declared device inventory, not sending the ledger through the existing broad `commonplace` folder. v1 uses a distinct `company-ledger` Syncthing folder rooted at the selected private path. the outer `commonplace` folder ignores that subtree on every managed peer, while the dedicated folder is shared only with an explicit trusted-device allowlist.
+
+v1 is single-writer: `mbp-m2` is the only ledger writer and sends the durable private folder to receive-only backup peers. the in-process CAS protects concurrent local ingestion; it is not a distributed lock and must not be treated as protection against multiple Syncthing writers. selecting another writable peer requires a separate conflict and recovery design.
+
+entity values use the neutral canonical field name `entityId`. whether that field contains an opaque alias or the literal registered legal name remains unresolved and must be selected before the first private ingest.
+
 ## goals
 
 - maintain an auditable, read-only view of company money from multiple evidence sources;
@@ -73,7 +81,8 @@ the Nix module should install a manually invoked CLI on `mbp-m2`. v1 does not ne
 - preserve provenance, statuses, classifications, and transfer relationships;
 - ingest incrementally and idempotently;
 - report receipts, revenue, and outgoing money separately for each native currency;
-- keep source access read-only and all private state outside git and publication paths;
+- keep source access read-only and private state outside git, files-browser, HTML publication, containers, and unintended Syncthing peers;
+- replicate durable private state only to explicitly selected trusted plaintext Syncthing receivers;
 - make future Wise CSV or read-only API adapters additive rather than architectural changes.
 
 ## non-goals
@@ -85,6 +94,8 @@ the Nix module should install a manually invoked CLI on `mbp-m2`. v1 does not ne
 - no public or private HTTP service, scheduled poller, or remote deployment;
 - no transaction UI or HTML artifact;
 - no private fixtures, real transaction values, account identifiers, counterparties, references, credentials, or source documents in git;
+- no multi-writer ledger, Syncthing conflict reconciliation, or application-level encryption in v1;
+- no encrypted/untrusted-device Syncthing design unless bdsqqq separately selects and scopes one;
 - no generic adapter/plugin framework before a second implementation needs one.
 
 “read-only” describes external evidence and financial systems. the private local ledger is the feature’s intentional mutation.
@@ -95,17 +106,20 @@ the Nix module should install a manually invoked CLI on `mbp-m2`. v1 does not ne
 2. every ArkType object uses `"+": "reject"`. validation never defaults, transforms, normalizes, or coerces, and tests prove `schema.assert(value) === value`.
 3. every amount is a positive safe integer in the currency’s provider-native minor unit. direction carries the sign.
 4. currency totals never mix and are never converted.
-5. configured entity and account aliases are opaque identities. adapters must not invent them.
+5. configured account aliases are opaque identities and adapters must not invent them. canonical entity identity is represented as `entityId`; its opaque-alias-versus-legal-name policy remains a required private-deployment decision.
 6. source identity, evidence identity, transaction identity, and reconciliation identity remain separate.
 7. incoming does not imply revenue. uncertain classification is `unclassified` and stays out of revenue totals.
 8. cancelled and failed transactions remain canonical but contribute zero to completed totals.
 9. internal transfers remain two transactions joined by a separate relation; neither side is deleted.
-10. automatic transfer linking requires one globally unambiguous one-to-one match. ambiguity remains visible.
+10. automatic transfer linking uses inclusive `bookedOn` distance of at most three calendar days and requires one globally unambiguous degree-one match on both sides. ambiguity remains visible.
 11. unknown or malformed templates produce metadata-only quarantine entries without raw bodies or rows.
 12. processing identical evidence again produces no new transaction and byte-identical canonical state.
 13. incompatible evidence aborts the ingestion commit; partial batches are not persisted.
 14. existing state is validated before use. corrupt or future-version state fails closed.
-15. canonical and derived files use destination-local create-exclusive temporary files, `fsync`, atomic rename, directory `fsync`, and mode `0600` under a `0700` root.
+15. canonical and derived files use destination-local create-exclusive temporary files, `fsync`, atomic rename, directory `fsync`, and mode `0600` under a `0700` root. every private subdirectory is also `0700`.
+16. `/Users/bdsqqq/commonplace/01_files/money/company-ledger` remains unwritten until the phase-5 privacy gate passes.
+17. `mbp-m2` is the sole v1 ledger writer. selected Syncthing receivers are receive-only and are not application execution targets.
+18. no dedicated private folder may use introducers, automatic folder acceptance, or an implicit device set; its devices and paths are declared explicitly.
 
 ## architecture
 
@@ -141,7 +155,7 @@ flowchart LR
 - `ledger/sha256-identity.ts`: Node-only length-delimited SHA-256 identity implementation.
 - `evidence/nubank-statement.ts`: exact bounded Nubank statement-envelope schemas and normalization into ingest candidates or sanitized quarantine outcomes.
 - `evidence/wise-gmail.ts`: exact bounded transient-envelope schemas and translation of supported Wise notification families. it does not fetch mail, manage OAuth, load credentials, issue Google Workspace requests, or retain message bodies.
-- `private-config.ts`: Node-only loading and validation of private entity/account aliases and classification policy.
+- `private-config.ts`: Node-only loading and validation of `entityId`, opaque account aliases, confirmed owner-funding rules, confirmed internal-transfer rules, and classification policy from one local `0600` file. private values never enter Nix, source, tests, the skill, logs, or errors.
 - `company-money-contract.ts`: handler-free assembly manifest combining the operation declarations exported by `ledger/ingest.ts` and `ledger/report.ts`. it owns no domain schema or use-case logic.
 - `company-money-router.ts`: `implement(companyMoneyContract)`, expected domain-result to oRPC-error translation, dependency binding, and in-process local-client creation.
 - `company-money-public.ts`: browser-safe exports and the aggregate public schema catalog. it must not reach evidence translators, filesystem, crypto, configuration, process, environment, or other Node-only modules.
@@ -175,7 +189,7 @@ public v1 model ownership:
 | `money.ts` | `company-money.money` | literal kind/version, ISO currency, positive safe-integer `minorUnits` |
 | `ledger/state.ts` | `company-money.evidence-ref` | deterministic id, provider, generic channel, opaque source reference, content digest, grade, parser id/version |
 | `ledger/state.ts` | `company-money.classification` | value, confidence, basis, rule id or null, supporting evidence ids |
-| `ledger/ingest.ts` | `company-money.transaction-candidate` | entity/account aliases, occurred/booked dates, money, direction, status, normalized facts, provider id or null, fallback occurrence ordinal, evidence |
+| `ledger/ingest.ts` | `company-money.transaction-candidate` | `entityId`, opaque account alias, occurred/booked dates, money, direction, status, normalized facts, provider id or null, stable provider row/source position for fallback identity, evidence |
 | `ledger/state.ts` | `company-money.transaction` | candidate facts plus deterministic id and identity method |
 | `ledger/state.ts` | `company-money.quarantine-entry` | deterministic id, provider/channel, evidence id/hash, parser version, sanitized reason, resolution state |
 | `ledger/state.ts` | `company-money.transfer-link` | deterministic id, outgoing id, incoming id, reconciliation-rule version |
@@ -221,7 +235,7 @@ the operation accepts normalized candidates and quarantine outcomes. provider ac
 - input: `company-money.report-query@1`
 - output: `company-money.report@1`
 
-`from` and `through` are required inclusive dates. recommended v1 reporting basis is `bookedOn`; `occurredOn` remains provenance.
+`from` and `through` are required inclusive dates. v1 reports exclusively by `bookedOn`; `occurredOn` remains provenance and does not determine period membership.
 
 ### expected errors
 
@@ -287,7 +301,7 @@ Node-only implementations and translators:
 - `JsonlLedgerStore` in `ledger/jsonl-store.ts`: exact reads, exclusive/advisory locking, compare-and-swap, permissions, canonical serialization, and atomic replacement.
 - `NubankStatementTranslator` in `evidence/nubank-statement.ts`: translates bounded provider-issued PJ statements as primary evidence.
 - `WiseGmailTranslator` in `evidence/wise-gmail.ts`: translates supported Wise notifications from bounded transient envelopes as secondary evidence.
-- private config loading in `private-config.ts`: reads entity/account aliases and classification policy from a local `0600` file.
+- private config loading in `private-config.ts`: reads `entityId`, opaque account aliases, and confirmed owner-funding/internal-transfer aliases and rules from a local `0600` file.
 - CLI composition: validates arguments, selects a translator, invokes the local oRPC client, and emits sanitized counts unless report output is explicitly requested.
 
 `wise-gmail.ts` has no mailbox capability. Gmail search, message retrieval, attachment retrieval, OAuth, credentials, and request scopes stay in the existing read-only Amp Google Workspace skill. the company-money skill supplies a bounded date interval and narrow search, materializes only the minimum transient envelope, invokes the CLI, and removes the envelope after a durable ingest or quarantine result.
@@ -298,45 +312,59 @@ future financial APIs are permitted only as explicit read-only evidence vertical
 
 ### persistence
 
-recommended defaults:
+the fixed v1 private layout is:
 
 ```text
-$XDG_CONFIG_HOME/company-money/config.json
-$XDG_DATA_HOME/company-money/ledger.jsonl
-$XDG_STATE_HOME/company-money/
+/Users/bdsqqq/commonplace/01_files/money/company-ledger/
+├── config.json
+├── ledger.jsonl
+├── state/
+└── exports/
 ```
 
-with normal fallbacks to `~/.config`, `~/.local/share`, and `~/.local/state`. do not default beneath `~/commonplace`; see the threat model.
+the root, `state/`, and `exports/` are `0700`. `config.json`, `ledger.jsonl`, reports, locks, and temporary files are `0600`. `--help` and other non-mutating commands do not create this layout. the first mutating command fails closed unless the phase-5 privacy preflight has been recorded as successful.
 
-`ledger.jsonl` is canonical. each line is one cataloged v1 record, ordered by record kind and deterministic id. because v1 is expected to remain small, successful ingestion may rewrite the full canonical file atomically.
+`ledger.jsonl` is the durable canonical state. each line is one cataloged v1 record, ordered by record kind and deterministic id. because v1 is expected to remain small, successful ingestion may rewrite the full canonical file atomically.
 
 the store revision is the SHA-256 digest of the exact canonical JSONL bytes. it is returned alongside the validated snapshot and used as the compare-and-swap token, but it is not embedded in those bytes or in `LedgerSnapshotV1`. the absent ledger has revision `null`; every committed non-empty or explicitly serialized empty ledger has a digest revision.
 
-CSV and JSON summaries are derived, include the canonical revision, and are written only when explicitly requested. each file gets its own atomic replacement; if a multi-file export must be observed as one unit, write a versioned export directory and atomically switch a manifest pointer.
+`state/`, bounded transient envelopes, lock files, and destination-local temporary names are excluded from the dedicated Syncthing folder. transient envelopes remain bounded `0600` local files and are removed after either a durable ingestion or durable quarantine result.
+
+`config.json`, `ledger.jsonl`, and explicitly requested files under `exports/` are durable and are included in the dedicated private Syncthing folder. CSV and JSON reports include the canonical revision and are written only by an explicit report command; ingestion never refreshes reports implicitly.
+
+each export gets its own atomic replacement. if a multi-file export must be observed as one unit, write a versioned export directory and atomically switch a manifest pointer.
 
 ### deterministic identity and deduplication
 
 1. deduplicate evidence by deterministic evidence id.
-2. prefer provider + account alias + provider transaction id.
-3. otherwise hash provider, account alias, booked date, currency, minor units, direction, normalized counterparty, normalized reference, and occurrence ordinal among identical rows in one ordered source.
-4. exact repeated evidence is a no-op.
-5. compatible evidence merges provenance in deterministic order.
-6. incompatible facts under one identity produce `INGEST_CONFLICT`; arrival order never chooses a winner.
-7. primary evidence may supersede secondary observations only through an explicit field-by-field precedence table. contradictory equal-grade terminal states conflict.
-
-the occurrence ordinal prevents two legitimate identical statement rows from collapsing. it is only stable when the adapter has a provider-defined row order or equivalent source position.
+2. prefer provider + opaque account alias + provider transaction id.
+3. otherwise hash provider, account alias, `bookedOn`, currency, minor units, direction, normalized counterparty, normalized reference, and a stable provider row/source position.
+4. the row/source position is a provider-defined row id when available; otherwise it is the ordinal within an adapter-defined deterministic ordered source. adapters without a stable ordering quarantine fallback-identity candidates rather than inventing an ordinal.
+5. exact repeated evidence is a no-op.
+6. compatible evidence merges provenance in deterministic order.
+7. incompatible immutable facts under one identity produce `INGEST_CONFLICT`; arrival order never chooses a winner.
+8. evidence precedence is field-specific, never a catch-all grade comparison:
+   - provider, account alias, `entityId`, provider transaction id, currency, minor units, and direction must agree whenever both observations provide them;
+   - non-null primary `bookedOn`, `occurredOn`, normalized counterparty, and normalized reference supersede secondary values;
+   - a missing primary value never erases a present secondary value;
+   - a primary terminal status supersedes a contradictory secondary terminal status;
+   - nonterminal-to-terminal status progression is allowed, but contradictory equal-grade terminal states conflict;
+   - differing non-null values at the same grade conflict;
+   - every mergeable canonical field must appear in the checked-in precedence table; an unlisted disagreement conflicts.
 
 ### internal-transfer reconciliation
 
-build a bipartite graph between completed outgoing and incoming transactions already classified as `internal-transfer`. an edge requires:
+private `0600` configuration supplies confirmed owner-funding rules and the account pairs eligible for confirmed internal-transfer classification. adapters do not infer either classification from direction or counterparty text alone.
 
-- distinct configured accounts;
-- same currency and minor units;
+build a bipartite graph between completed outgoing and incoming transactions classified as confirmed `internal-transfer`. an edge requires:
+
+- distinct configured opaque account aliases;
+- a configured internal-transfer account relationship;
+- identical currency and minor units;
 - opposite directions;
-- dates within the configured v1 window;
-- compatible evidence and classification confidence.
+- inclusive absolute `bookedOn` distance of no more than three calendar days.
 
-create a `TransferLinkV1` only when both vertices have degree one. ambiguous components remain unlinked and appear in diagnostics. sort vertices and edges by deterministic id before evaluation.
+create a `TransferLinkV1` only when both vertices have degree one in the complete candidate graph. ambiguous components remain unlinked and appear in diagnostics. sort vertices and edges by deterministic id before evaluation.
 
 the separate link model avoids nullable reciprocal pointers and makes asymmetric transfer state impossible.
 
@@ -347,35 +375,50 @@ the separate link model avoids nullable reciprocal pointers and makes asymmetric
 - outgoing: completed outgoing transactions not linked/classified as internal transfers;
 - cancelled and failed: retained and counted diagnostically, never totaled;
 - each currency has an independent summary;
-- tentative or unresolved classifications remain visible but excluded from revenue.
+- tentative or unresolved classifications remain visible but excluded from revenue;
+- report interval membership uses inclusive `bookedOn` only;
+- confirmed owner funding and internal transfers come from the private configuration policy, not direction-only inference.
 
 ## privacy and threat model
 
-the private root should default outside `commonplace`, not merely rely on repository ignore rules.
+the approved private root is `/Users/bdsqqq/commonplace/01_files/money/company-ledger`, but the current broad `commonplace` synchronization and publication topology is unsafe for that data without additional controls.
 
 repository evidence:
 
-- `hosts/mbp-m2/default.nix` configures Syncthing for the broader commonplace tree;
-- `modules/syncthing/lib.nix` currently has no money-specific generated exclusion;
-- `hosts/htz-relay/apps-container.nix` bind-mounts the commonplace tree into its application container;
-- `modules/files-browser/files-browser-server.mjs` materializes Syncthing-indexed entries before publication;
-- `modules/html-stuff/server.ts` serves every eligible HTML artifact from `html_stuff`.
+- `mbp-m2` shares the current `commonplace` folder with `mbp-m5`, `htz-relay`, `lgo-z2e`, `mmn-m4`, `iph16`, and `ipd`;
+- generated `.stignore` content currently has no protected company-ledger exclusion;
+- files-browser trusts the `commonplace` Syncthing model and hard-links every indexed regular file into a served snapshot;
+- the htz apps container bind-mounts `/mnt/storage-01/commonplace`;
+- `html-stuff` reads only direct `.html` files from the separate `01_files/html_stuff` root.
 
-therefore neither `/Users/bdsqqq/commonplace/01_files/money/company-ledger` nor `html_stuff` is a safe default until a complete publication and synchronization exclusion is designed and verified.
+the required topology is therefore:
 
-controls:
+1. add exact root-relative `/01_files/money/company-ledger` to the generated outer `commonplace` `.stignore` as a protected pattern without `(?d)` and without a trailing slash. it must match the directory and all descendants and must not authorize Syncthing to delete the private root.
+2. deploy and verify that generated ignore on every Nix-managed host participating in the outer `commonplace` folder. `.stignore` is local and is not synchronized.
+3. add a distinct `company-ledger` folder id in `modules/syncthing/lib.nix`.
+4. configure that dedicated folder on `mbp-m2` as `sendonly`, with an explicit receiver allowlist and no introducer or automatic-accept behavior.
+5. configure each selected backup peer as `receiveonly`, with versioning and a private `0700` path outside publication roots and container bind mounts.
+6. keep htz-relay out of the dedicated folder unless bdsqqq explicitly selects it and supplies a receiving path outside `/mnt/storage-01/commonplace` and every apps-container bind mount.
+7. add an independent files-browser `--exclude-prefix 01_files/money/company-ledger` control. exact matches and descendants are pruned before manifest hashing or materialization; an allowed symlink may not target the denied subtree.
+8. pass that exclusion from both `modules/files-browser/service.nix` and `hosts/htz-relay/apps-container.nix`, with tests showing that a hostile Syncthing model containing the path still cannot publish it.
+9. do not change `modules/html-stuff/server.ts`; instead prove its configured root remains disjoint and make company-money reject export destinations outside the private `exports/` directory.
+10. only after the ignore, dedicated-folder allowlist, files-browser deny, container-path check, and live publication checks pass may the private root or private data be created.
+
+controls retained throughout:
 
 - private directories `0700`; config, ledger, reports, locks, and transient envelopes `0600`;
 - reject symlinks and non-regular files; use `O_NOFOLLOW` where supported;
-- cap envelope, message, attachment, row, and ledger sizes before parsing;
-- never log raw envelopes, counterparties, references, account aliases, values, paths, or schema validation dumps;
-- quarantine contains hashes, opaque source references, parser version, and sanitized reason only;
-- remove transient inputs after either committed ingestion or committed quarantine;
-- stdout defaults to counts. aggregate values require an explicit report command;
-- no private fixtures, snapshots, telemetry, crash reporting, HTML publication, tailnet route, or remote backup in v1;
-- filesystem permissions are the v1 at-rest control. cross-device sync requires a separate encryption and recovery design.
+- cap envelope, message, attachment, row, source-file, ledger, and report sizes before parsing;
+- never log raw envelopes, counterparties, references, account aliases, values, paths, schema validation dumps, or private configuration;
+- quarantine stores only hashes, opaque source references, parser version, and sanitized reason;
+- remove transient inputs after committed ingestion or committed quarantine;
+- stdout defaults to sanitized counts; aggregate values require an explicit report command;
+- no private fixtures, snapshots, telemetry, crash reporting, HTML artifacts, tailnet route, or application server;
+- verify the chosen root has no Git worktree ancestor before first write, and fail closed if that changes.
 
-credentials and tokens follow `SECRETS.md`: if a future standalone adapter needs one, consume a SOPS-produced runtime file path and never copy the value into a Nix derivation or process environment. Gmail through Amp must continue using the existing credential boundary rather than adding another secret.
+Syncthing’s normal mode encrypts transport between authenticated devices but leaves synchronized files, names, configuration, reports, and versioned/deleted copies readable on every selected receiver. v1 therefore trusts each selected receiver, its administrators, storage, backups, and local account security. `0700`/`0600` provide discretionary filesystem isolation; they do not protect against a compromised host, privileged administrator, or copied disk. no encrypted/untrusted-device folder is introduced by this plan because none was selected.
+
+credentials and tokens continue to follow `SECRETS.md`. Gmail access remains entirely inside the existing read-only Amp Google Workspace skill. company-money receives only bounded transient envelopes and gains no Google SDK, OAuth flow, credential loader, mailbox search, or mailbox-write capability.
 
 ## incremental phases
 
@@ -388,13 +431,14 @@ credentials and tokens follow `SECRETS.md`: if a future standalone adapter needs
 - implement `ledger.ingest` in `ledger/ingest.ts`, including schemas, operation declaration, capabilities, deterministic identity selection, provenance merge, bounded CAS retry behavior, and conflict outcomes;
 - implement `ledger.report` in `ledger/report.ts`, including schemas, operation declaration, its read-only capability, and classification-safe native-currency reporting;
 - assemble the thin contract, router/local-client, and browser-safe public entry;
+- use neutral `entityId` naming so portable implementation can proceed before its private value policy is selected; do not place a real entity value in fixtures;
 - test schemas and behavior beside each vertical plus router/client and package boundaries.
 
 ### phase 2 — durable local-ledger vertical
 
 - implement length-delimited SHA-256 identity in `ledger/sha256-identity.ts`;
 - implement exact canonical JSONL reads, revision hashing, locking, compare-and-swap, permissions, and atomic commits in `ledger/jsonl-store.ts`;
-- implement private configuration loading and validation;
+- implement exact private configuration loading for `entityId`, opaque account aliases, and confirmed owner-funding/internal-transfer rules; reject unknown fields, symlinks, wrong modes, duplicate aliases, invalid account relationships, and rules referencing unknown aliases;
 - expose the Node and CLI entrypoints without expanding the public entry;
 - add replay, reordering, concurrent-ingestion, interruption, permissions, symlink, corruption, oversized-input, and output-redaction tests.
 
@@ -402,6 +446,8 @@ credentials and tokens follow `SECRETS.md`: if a future standalone adapter needs
 
 - implement `evidence/nubank-statement.ts` first because provider-issued statements are primary evidence;
 - translate bounded Nubank PJ CSV statements into normalized candidates or sanitized quarantine outcomes;
+- implement the checked-in field-precedence table and stable provider row/source-position fallback identity;
+- prove primary Nubank facts supersede only listed secondary fields and that equal-grade contradictions fail the entire batch;
 - cover delimiter, BOM, semantic date, currency/minor-unit, amount, status, provider-id, fallback-ordinal, malformed-row, and size-limit behavior with synthetic fixtures;
 - exercise the complete translator → local client → ingest → report path;
 - do not add a generic translator registry.
@@ -413,17 +459,39 @@ credentials and tokens follow `SECRETS.md`: if a future standalone adapter needs
 - quarantine unknown templates and malformed records without retaining bodies or raw values;
 - cover received, Pix received, sent, cashback, cancelled/failed, unknown-template, malformed-envelope, and size-limit cases with synthetic fixtures;
 - add the instructions-only company-money skill;
+- keep collection manually invoked; the skill must require a bounded date interval and narrow query on every run and must not add scheduling or recurrence;
 - require that skill to delegate bounded read-only mailbox access to the existing Google Workspace skill, materialize the minimum envelope, invoke ingestion, remove the envelope after a durable result, and report sanitized counts.
 
-### phase 5 — Nix packaging, host selection, and private smoke test
+### phase 5 — privacy gate, Nix packaging, host selection, and private smoke test
 
-- add `package.nix` using the fleet-mesh pnpm/TypeScript packaging pattern;
-- add `default.nix` installing the CLI through Home Manager;
-- import only on `mbp-m2`;
-- do not touch `modules/secrets`, `htz-relay`, `html-stuff`, or files-browser;
-- run the required Darwin host build because Nix consumes the package source, metadata, lockfile, entrypoints, and module;
-- reload project skills and run one bounded private comparison without recording values in git, tests, logs, or conversation;
-- keep v1 manually invoked, local-only, and free of financial or mailbox writes.
+perform this phase as ordered slices. do not create the private root or handle private evidence before slice 5a and its live deployment checks pass.
+
+#### slice 5a — synchronization and publication exclusion
+
+- add the protected outer-folder ignore and dedicated `company-ledger` folder id in `modules/syncthing/lib.nix` and the generated `.stignore` path;
+- add files-browser exact-prefix exclusion, symlink-target enforcement, and synthetic tests;
+- pass the exclusion through `modules/files-browser/service.nix` and `hosts/htz-relay/apps-container.nix`;
+- do not change `modules/html-stuff/server.ts`;
+- deploy the outer ignore and files-browser exclusion to every affected host before adding the dedicated folder;
+- prove the outer `commonplace` model, files-browser snapshot, served files, and apps container contain no company-ledger path.
+
+#### slice 5b — dedicated private Syncthing folder
+
+- after bdsqqq selects the receiver topology, configure `mbp-m2` as the sole `sendonly` writer;
+- configure only selected trusted peers as `receiveonly`;
+- use explicit device lists, no introducer-derived peers, no automatic folder acceptance, and no receiving path under a Git worktree, publication root, `html_stuff`, or container bind mount;
+- install dedicated-folder ignore rules for state, transient envelopes, locks, and atomic temporary names;
+- verify the live folder configuration exposes exactly the selected devices and no others;
+- only then allow creation of the `0700` private root.
+
+#### slice 5c — package and private smoke test
+
+- add `package.nix` using the fleet-mesh pnpm/TypeScript pattern;
+- add `default.nix` installing the manually invoked CLI through Home Manager;
+- import the CLI only on `mbp-m2`;
+- do not add a daemon, schedule, HTTP service, tailnet declaration, secret, OAuth implementation, or activation-created ledger;
+- reload project skills and run one bounded private comparison without recording values in git, tests, logs, build output, or conversation;
+- keep all financial and mailbox access read-only. only local canonical state and selected receive-only Syncthing replicas are mutated.
 
 ## verification per phase
 
@@ -452,6 +520,7 @@ prove:
 - deterministic candidate identity, provenance merge, conflict behavior, and byte-stable in-memory ordering;
 - cancelled/failed exclusion, classification-safe receipts/revenue/outgoing totals, and currency separation;
 - ambiguous and unambiguous transfer graphs;
+- inclusive `bookedOn` report ranges and the exact three-day degree-one transfer boundary;
 - complete contract implementation and local-client input/output validation;
 - a browser-safe public bundle;
 - recursive rejection of Node-only imports using relative-path allowlists for the nested module graph.
@@ -481,6 +550,7 @@ prove:
 - destination-local create-exclusive temporary files are cleaned after success and failure;
 - file and directory modes are `0600` and `0700`;
 - symlinks, non-regular files, and oversized inputs are rejected;
+- confirmed private-config rules and wrong-mode rejection;
 - errors and default stdout reveal no private fields, values, paths, or validation dumps;
 - importing the public entry cannot reach JSONL, crypto, config, CLI, process, environment, or filesystem modules.
 
@@ -498,7 +568,7 @@ node --test \
 pnpm run build
 ```
 
-use synthetic fixtures only. prove Nubank delimiter/BOM/date/amount/status handling, duplicate provider ids, fallback occurrence ordinals, primary-evidence precedence, owner funding, cashback, unclassified receipts, quarantine redaction, replay idempotence, and the translator → local client → ingest → report path.
+use synthetic fixtures only. prove Nubank delimiter/BOM/date/amount/status handling, duplicate provider ids, every field-precedence-table row, stable provider source positions, primary-evidence precedence, owner funding, cashback, unclassified receipts, quarantine redaction, replay idempotence, and the translator → local client → ingest → report path.
 
 ### phase 4
 
@@ -513,7 +583,7 @@ node --test \
 pnpm run build
 ```
 
-use synthetic fixtures only. prove supported Wise received, Pix received, sent, cashback, cancelled/failed, malformed-envelope, and unknown-template outcomes; secondary-evidence precedence; quarantine redaction; envelope and message size limits; replay idempotence; and cleanup behavior.
+use synthetic fixtures only. prove supported Wise received, Pix received, sent, cashback, cancelled/failed, malformed-envelope, and unknown-template outcomes; secondary-evidence precedence; quarantine redaction; envelope and message size limits; replay idempotence; cleanup behavior; and that collection remains bounded, read-only, manually invoked, and credential-free.
 
 the package-boundary test must also prove that `evidence/wise-gmail.ts` accepts a bounded value or stream supplied by the caller and imports no Google client, OAuth, credential, mailbox-search, or mailbox-write capability.
 
@@ -521,7 +591,20 @@ reload project skills and inspect the consumed `SKILL.md`. no standalone executa
 
 ### phase 5
 
-all package, source, lockfile, Nix, and host-import changes are consumed by Nix. run the required current-host checks:
+run the files-browser regression first:
+
+```bash
+node --test modules/files-browser/files-browser-server.test.mjs
+```
+
+prove with synthetic names and contents only:
+
+- an exact denied directory and every descendant are absent from the manifest and snapshot even if supplied by the Syncthing model;
+- similarly prefixed siblings remain publishable;
+- a symlink targeting the denied subtree cannot enter the snapshot;
+- argument parsing rejects absolute, empty, traversal, and malformed exclude prefixes.
+
+all package, source, lockfile, Nix, host-import, Syncthing, and files-browser wiring changes consumed by the current Darwin host require:
 
 ```bash
 nix build .#darwinConfigurations.mbp-m2.system --dry-run
@@ -529,16 +612,41 @@ nix build .#darwinConfigurations.mbp-m2.system
 ./result/sw/bin/company-money --help
 ```
 
-`--help` must not create config, state, ledger, lock, or report files. do not cross-build Linux unless another host selects the module.
+evaluate the changed htz-relay configuration without cross-building it:
+
+```bash
+nix eval --raw '.#nixosConfigurations.htz-relay.config.system.build.toplevel.drvPath'
+```
+
+report that htz-relay was evaluated but not built on Darwin. build it separately only when operating on that host or when bdsqqq explicitly requests a cross-build.
+
+after deploying slice 5a, use authenticated local Syncthing runtime inspection without printing API keys or configuration contents to prove:
+
+- the outer `commonplace` ignore contains exact `/01_files/money/company-ledger` on every managed outer-folder peer;
+- the outer folder’s local and remote models contain no exact or descendant path;
+- files-browser’s active snapshot and HTTP interface contain no exact or descendant path;
+- the apps container cannot resolve the private receiving path;
+- `html-stuff` remains rooted only at `01_files/html_stuff`.
+
+after deploying slice 5b, prove:
+
+- the dedicated folder device set exactly equals `mbp-m2` plus the selected receivers;
+- `mbp-m2` is `sendonly`, receivers are `receiveonly`, and no introducer or automatic acceptance can expand the set;
+- every receiving path is outside publication roots, Git worktrees, and container bind mounts;
+- root and directory modes are `0700`, and durable files are `0600`;
+- state, locks, transient envelopes, and atomic temporary names are absent from receiver models.
+
+`--help` must not create config, state, ledger, lock, report, Syncthing, or publication files.
 
 for the bounded private smoke test:
 
-- inspect private-root ownership and modes without reading contents;
-- verify no ledger path is configured beneath Syncthing, files-browser, `html_stuff`, tailnet publication, or the commonplace tree;
-- run the same bounded read-only mailbox query twice, creating a fresh minimum envelope for each run;
+- inspect ownership and modes without printing contents;
+- run the same manually invoked bounded read-only mailbox query twice, creating a fresh minimum envelope for each run;
 - ingest and remove each envelope independently; confirm that the second run inserts zero transactions;
 - compare only sanitized counts and explicitly requested native-currency aggregates;
-- inspect `git status` and search tracked content for credentials, private fixture markers, generated reports, transient envelopes, and accidental financial data.
+- verify an explicit report is written only under the private `exports/` directory;
+- inspect `git status` and tracked content for credentials, private fixture markers, generated reports, transient envelopes, and accidental financial data;
+- verify the Syncthing receiver has the same canonical revision without printing canonical contents.
 
 ## migration and reuse from old `01_files/money`
 
@@ -562,7 +670,7 @@ do not reuse:
 migration procedure:
 
 1. inspect old code shapes only; never copy old data or private constants into dots.
-2. configure opaque account/entity aliases privately.
+2. configure the selected `entityId` representation, opaque account aliases, and confirmed owner-funding/internal-transfer rules privately.
 3. re-ingest original provider evidence through new adapters where possible.
 4. if legacy-only evidence is required, add a one-time Node adapter with synthetic tests; do not import the old lossy normalized objects.
 5. compare old/new counts and classifications privately by bounded interval and native currency.
@@ -570,51 +678,16 @@ migration procedure:
 
 ## open questions for bdsqqq
 
-recommended defaults are marked **recommended**. implementation should not pass the affected phase until each relevant answer is selected.
-
-- [x] **private root**
-  - [ ] **recommended:** `$XDG_DATA_HOME/company-money` with no Syncthing, files-browser, tailnet, or commonplace storage.
-  - [x] `/Users/bdsqqq/commonplace/01_files/money/company-ledger`, but only after adding and proving a complete Syncthing/publication exclusion.
-  - [ ] another explicitly named private path: `________________`.
+all other questionnaire decisions are incorporated above. only these inputs remain unresolved.
 
 - [ ] **entity identity in canonical records**
-  - [ ] **recommended:** opaque `entityAlias` in the ledger; legal display name remains in private config.
-  - [ ] literal registered legal name in every canonical record.
+  - [ ] opaque `entityId`; the registered legal display name remains only in private `0600` configuration.
+  - [ ] literal registered legal name as `entityId` in every canonical transaction and every plaintext Syncthing replica.
 
-- [x] **account and classification policy**
-  - [x] **recommended:** provide opaque account aliases plus confirmed owner-funding/internal-transfer aliases and rules in a local `0600` config.
-  - [ ] leave unmatched incoming transactions `unclassified` for manual review.
-  - private values must not be added to this plan, Nix, source, tests, or the skill.
+- [ ] **dedicated Syncthing receiver topology**
+  - name every trusted plaintext receiving device: `________________`.
+  - give each receiving path: `________________`.
+  - confirm `mbp-m2` is the sole `sendonly` writer and every receiver is `receiveonly`: `yes / no`.
+  - if `htz-relay` is selected, provide a path outside `/mnt/storage-01/commonplace` and every apps-container bind mount: `________________`.
 
-- [x] **reporting date basis**
-  - [x] **recommended:** inclusive `bookedOn` ranges; retain `occurredOn` only as provenance.
-  - [ ] use `occurredOn`, accepting provider timing differences in reconciliation and period reports.
-
-- [x] **internal-transfer date window**
-  - [x] **recommended:** up to three calendar days, same currency/minor units, preclassified accounts, degree-one graph match.
-  - [ ] another window: `____` days.
-
-- [x] **evidence precedence**
-  - [x] **recommended:** provider statement/API fields outrank notification fields only through an explicit field-level table; equal-grade contradictions fail ingestion.
-  - [ ] never supersede; every contradiction requires manual resolution.
-
-- [x] **fallback duplicate identity**
-  - [x] **recommended:** include provider-defined row/source ordinal so legitimate identical transactions survive.
-  - [ ] quarantine identical fallback candidates until manually distinguished.
-
-- [x] **derived output policy**
-  - [x] **recommended:** canonical JSONL is always durable; CSV/JSON reports are generated only on explicit request into a private export directory.
-  - [ ] atomically refresh private derived reports after every successful ingestion.
-
-- [x] **v1 source scope**
-  - [x] **recommended:** Nubank PJ CSV statements plus bounded Wise Gmail envelopes supplied by the existing read-only Google Workspace skill; defer Wise CSV/API until authoritative read-only access exists.
-  - [ ] include another read-only source in v1: `________________`.
-
-- [x] **Amp orchestration timing**
-  - [x] **recommended:** manually invoked bounded collections only.
-  - [ ] recurring collection, which requires a separate schedule, overlap, lock, and failure-notification design.
-
-- [x] **private sync/backups**
-  - [ ] **recommended:** local-only v1; design encryption and key recovery before any sync or backup.
-  - [ ] require encrypted cross-device backup in v1, expanding phase 2 scope.
-  - [x] commonplace syncthing
+normal Syncthing replication leaves files readable at rest on every selected receiver and may retain prior versions. if no listed device is trusted to hold plaintext config, ledger, reports, and version history, the checked “commonplace syncthing” decision cannot be implemented safely without separately reopening encryption and recovery scope.
