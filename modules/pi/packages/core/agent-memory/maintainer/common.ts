@@ -205,6 +205,15 @@ export function durableCreate(path: string, value: string | Buffer): boolean {
   }
 }
 
+export function durableRemove(path: string): void {
+  try {
+    rmSync(path);
+    fsyncDirectory(dirname(path));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
 type LockOwner = {
   version: 1;
   pid: number;
