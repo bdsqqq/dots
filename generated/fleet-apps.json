@@ -59,6 +59,22 @@
     },
     "title": "html stuff"
   },
+  "hue": {
+    "cloudflare": null,
+    "description": "nearby Hue bulb control",
+    "id": "hue",
+    "path": "/",
+    "schemaVersion": 1,
+    "source": "modules/hue-control/tailnet-app.nix",
+    "tailnet": {
+      "audience": "owner",
+      "service": {
+        "name": "hue",
+        "port": 443
+      }
+    },
+    "title": "hue"
+  },
   "photos": {
     "cloudflare": {
       "accessName": "family photos",

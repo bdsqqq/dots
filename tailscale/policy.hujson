@@ -18,6 +18,7 @@
 			"svc:apps":       ["tag:service-host"],
 			"svc:fleet-mesh": ["tag:service-host"],
 			"svc:html-stuff": ["tag:service-host"],
+			"svc:hue":        ["tag:service-host"],
 			"svc:files":      ["tag:service-host"],
 			"svc:photos":     ["tag:service-host"],
 			"svc:t3":         ["tag:service-host"],
@@ -45,7 +46,7 @@
 		},
 		{
 			"src": ["tag:ssh-accept"],
-			"dst": ["svc:apps", "svc:fleet-mesh", "svc:html-stuff", "svc:files", "svc:photos", "svc:t3"],
+			"dst": ["svc:apps", "svc:fleet-mesh", "svc:html-stuff", "svc:hue", "svc:files", "svc:photos", "svc:t3"],
 			"ip":  ["443"],
 		},
 		// Service hosts fetch manifests and synchronize app data from owner devices.
@@ -58,7 +59,7 @@
 		// Portable services begin as owner-only canaries.
 		{
 			"src": ["autogroup:owner"],
-			"dst": ["svc:apps", "svc:fleet-mesh", "svc:html-stuff", "svc:files", "svc:photos", "svc:t3"],
+			"dst": ["svc:apps", "svc:fleet-mesh", "svc:html-stuff", "svc:hue", "svc:files", "svc:photos", "svc:t3"],
 			"ip":  ["443"],
 		},
 		{
@@ -95,17 +96,17 @@
 		{
 			"src":    "tag:cf-ingress",
 			"accept": ["svc:html-stuff:443", "svc:photos:443"],
-			"deny":   ["svc:apps:443", "svc:fleet-mesh:443", "svc:files:443", "svc:t3:443"],
+			"deny":   ["svc:apps:443", "svc:fleet-mesh:443", "svc:files:443", "svc:hue:443", "svc:t3:443"],
 		},
 		{
 			"src":    "tag:cf-files-ingress",
 			"accept": ["svc:files:443"],
-			"deny":   ["svc:apps:443", "svc:fleet-mesh:443", "svc:html-stuff:443", "svc:photos:443", "svc:t3:443"],
+			"deny":   ["svc:apps:443", "svc:fleet-mesh:443", "svc:html-stuff:443", "svc:hue:443", "svc:photos:443", "svc:t3:443"],
 		},
 		{
 			"src":    "tag:cf-t3-ingress",
 			"accept": ["mbp-m2:8443"],
-			"deny":   ["svc:apps:443", "svc:fleet-mesh:443", "svc:files:443", "svc:html-stuff:443", "svc:photos:443"],
+			"deny":   ["svc:apps:443", "svc:fleet-mesh:443", "svc:files:443", "svc:html-stuff:443", "svc:hue:443", "svc:photos:443"],
 		},
 	],
 

@@ -21,6 +21,7 @@ in
     ../../modules/ssh/authorized-keys.nix
     ../../modules/tailscale
     ../../modules/tailnet-registry
+    ../../modules/hue-control
     ../../modules/secrets
     ../../modules/fonts
     ../../modules/nix/auto-upgrade.nix
@@ -251,6 +252,7 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+  my.hueControl.enable = true;
   my.openDisplay = {
     launchAtLogin = false;
     mode = "mirror";

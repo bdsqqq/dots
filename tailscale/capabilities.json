@@ -18,6 +18,12 @@
       "service": "svc:html-stuff:443",
       "tailnetAudience": "owner"
     },
+    "hue": {
+      "connectorDestination": null,
+      "connectorTrust": null,
+      "service": "svc:hue:443",
+      "tailnetAudience": "owner"
+    },
     "photos": {
       "connectorDestination": "svc:photos:443",
       "connectorTrust": "shared",
