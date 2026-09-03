@@ -249,6 +249,12 @@ export class HueProtocolSession {
 
   #emit(): void {
     if (!this.#state) return;
-    for (const listener of this.#listeners) listener(this.#state);
+    for (const listener of this.#listeners) {
+      try {
+        listener(this.#state);
+      } catch {
+        // One consumer must not disrupt protocol state or other consumers.
+      }
+    }
   }
 }
