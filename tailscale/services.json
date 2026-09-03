@@ -23,6 +23,12 @@
       "tcp:443"
     ]
   },
+  "svc:hue": {
+    "comment": "nearby Hue bulb control",
+    "ports": [
+      "tcp:443"
+    ]
+  },
   "svc:photos": {
     "comment": "read-only household photo gallery",
     "ports": [
