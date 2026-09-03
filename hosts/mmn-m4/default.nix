@@ -19,7 +19,6 @@ in
     ../../modules/tailnet-registry
     ../../modules/fleet-mesh
     ../../modules/syncthing
-    ../../modules/o11y
     ../../modules/sleepless
     ../../modules/cmux
     ../../modules/fonts
