@@ -2,11 +2,8 @@ import { type } from "arktype";
 
 import {
   CalendarDateV1Schema,
-  ISO_CURRENCY_MINOR_UNITS,
-  IsoCurrencyV1Schema,
   compareCodeUnits,
   parseMinorUnits,
-  type IsoCurrency,
 } from "../money.ts";
 import type {
   IngestBatchV1,
@@ -54,16 +51,8 @@ export interface NubankStatementTranslatorOptions {
   readonly classify: (facts: NubankClassificationFacts) => ClassificationV1;
 }
 
-const expectedHeader = [
-  "date",
-  "amount",
-  "currency",
-  "direction",
-  "status",
-  "transaction_id",
-  "counterparty",
-  "reference",
-] as const;
+const expectedHeader = ["Data", "Valor", "Identificador", "Descrição"] as const;
+const NUBANK_STATEMENT_CURRENCY = "BRL" as const;
 
 function normalizeText(value: string): string | null {
   const normalized = value.normalize("NFKC").trim().replace(/\s+/g, " ");
@@ -150,28 +139,24 @@ function safeEnvelope(value: unknown, identity: StableIdentity): {
   }
 }
 
-function direction(value: string): TransactionCandidateV1["direction"] {
-  if (value === "incoming") return "incoming";
-  if (value === "outgoing") return "outgoing";
-  throw new TypeError("malformed record");
+function calendarDate(value: string): string {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
+  if (!match) throw new TypeError("malformed record");
+  const normalized = `${match[3]}-${match[2]}-${match[1]}`;
+  CalendarDateV1Schema.assert(normalized);
+  return normalized;
 }
 
-function status(value: string): TransactionCandidateV1["status"] {
-  if (
-    value === "pending" ||
-    value === "completed" ||
-    value === "cancelled" ||
-    value === "failed"
-  ) {
-    return value;
-  }
-  throw new TypeError("malformed record");
-}
-
-function currency(value: string): IsoCurrency {
-  const normalized = value.trim().toUpperCase();
-  IsoCurrencyV1Schema.assert(normalized);
-  return normalized as IsoCurrency;
+function signedAmount(value: string): {
+  readonly direction: TransactionCandidateV1["direction"];
+  readonly minorUnits: number;
+} {
+  const match = /^(-?)(0|[1-9]\d*)\.(\d{2})$/.exec(value.trim());
+  if (!match) throw new TypeError("malformed record");
+  return {
+    direction: match[1] === "-" ? "outgoing" : "incoming",
+    minorUnits: parseMinorUnits(`${match[2]}.${match[3]}`, NUBANK_STATEMENT_CURRENCY),
+  };
 }
 
 function candidateFromRow(
@@ -181,14 +166,10 @@ function candidateFromRow(
   options: NubankStatementTranslatorOptions,
 ): TransactionCandidateV1 {
   if (fields.length !== expectedHeader.length) throw new TypeError("malformed record");
-  const bookedOn = fields[0].trim();
-  CalendarDateV1Schema.assert(bookedOn);
-  const selectedCurrency = currency(fields[2]);
-  const selectedDirection = direction(fields[3].trim().toLowerCase());
-  const selectedStatus = status(fields[4].trim().toLowerCase());
-  const normalizedCounterparty = normalizeText(fields[6]);
-  const normalizedReference = normalizeText(fields[7]);
-  const providerTransactionId = normalizeText(fields[5]);
+  const bookedOn = calendarDate(fields[0]);
+  const amount = signedAmount(fields[1]);
+  const providerTransactionId = normalizeText(fields[2]);
+  const normalizedReference = normalizeText(fields[3]);
   const contentDigest = options.identity.digest("company-money/nubank-row-content/v1", fields);
   const evidenceId = options.identity.digest("company-money/evidence/nubank/v1", [
     sourceRef,
@@ -218,19 +199,19 @@ function candidateFromRow(
     money: {
       kind: "company-money.money",
       version: 1,
-      currency: selectedCurrency,
-      minorUnits: parseMinorUnits(fields[1], selectedCurrency),
+      currency: NUBANK_STATEMENT_CURRENCY,
+      minorUnits: amount.minorUnits,
     },
-    direction: selectedDirection,
-    status: selectedStatus,
-    normalizedCounterparty,
+    direction: amount.direction,
+    status: "completed",
+    normalizedCounterparty: null,
     normalizedReference,
     providerTransactionId,
     sourcePosition,
     classification: options.classify({
       accountAlias: options.accountAlias,
-      direction: selectedDirection,
-      counterpartyEntityId: normalizedCounterparty,
+      direction: amount.direction,
+      counterpartyEntityId: null,
       evidenceId,
     }),
     evidence,
@@ -275,7 +256,15 @@ export function translateNubankStatement(
     .replace(/^\uFEFF/, "")
     .split(/\r?\n/)
     .filter((line) => line.length > 0);
-  if (lines.length < 2 || lines.length - 1 > MAX_NUBANK_STATEMENT_ROWS) {
+  if (lines.length === 0) {
+    return {
+      kind: "company-money.ingest-batch",
+      version: 1,
+      candidates: [],
+      quarantine: [],
+    };
+  }
+  if (lines.length - 1 > MAX_NUBANK_STATEMENT_ROWS) {
     return {
       kind: "company-money.ingest-batch",
       version: 1,
@@ -285,7 +274,7 @@ export function translateNubankStatement(
           options.identity,
           envelope.sourceRef,
           statementDigest,
-          lines.length - 1 > MAX_NUBANK_STATEMENT_ROWS ? "size-limit" : "malformed-record",
+          "size-limit",
         ),
       ],
     };
@@ -295,7 +284,7 @@ export function translateNubankStatement(
   let rows: string[][];
   try {
     delimiter = delimiterFor(lines[0]);
-    const header = parseRow(lines[0], delimiter).map((entry) => entry.trim().toLowerCase());
+    const header = parseRow(lines[0], delimiter).map((entry) => entry.trim());
     if (!expectedHeader.every((entry, index) => header[index] === entry)) {
       throw new TypeError("malformed record");
     }
@@ -322,17 +311,12 @@ export function translateNubankStatement(
         candidateFromRow(fields, sourcePosition, envelope.sourceRef, options),
       );
     } catch {
-      const rawCurrency = fields[2]?.trim().toUpperCase();
-      const reason =
-        rawCurrency && !Object.hasOwn(ISO_CURRENCY_MINOR_UNITS, rawCurrency)
-          ? "unsupported-currency"
-          : "malformed-record";
       quarantined.push(
         quarantine(
           options.identity,
           `${envelope.sourceRef}:${sourcePosition}`,
           rowDigest,
-          reason,
+          "malformed-record",
         ),
       );
     }

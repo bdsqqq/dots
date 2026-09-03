@@ -155,7 +155,10 @@ function privateConfig(): PrivateConfigV1 {
     kind: "company-money.private-config",
     version: 1,
     entityId: "Example Widgets Ltd.",
-    accounts: [{ alias: "reserve", provider: "wise" }],
+    accounts: [
+      { alias: "operating", provider: "nubank" },
+      { alias: "reserve", provider: "wise" },
+    ],
     entityAliases: [],
     ownerFundingRules: [],
     internalTransferRules: [],
@@ -211,6 +214,49 @@ test("node runtime removes each bounded Wise envelope only after a durable resul
     assert.equal((await lstat(exportPath)).mode & 0o777, 0o600);
     assert.deepEqual(await readdir(join(root, "exports")), ["january.json"]);
     await assert.rejects(() => runtime.report(query, "../escape.json"), /invalid/);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("node runtime ingests the observed Nubank shape without deleting primary evidence", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "company-money-nubank-cli-"));
+  const root = join(parent, "ledger");
+  const input = join(parent, "statement.csv");
+  await mkdir(root, { mode: 0o700 });
+  await writeFile(
+    input,
+    "Data, Valor, Identificador, Descrição\n10/01/2026,12.34,synthetic-1,Synthetic receipt\n",
+    { mode: 0o600 },
+  );
+  try {
+    const runtime = new CompanyMoneyNodeRuntime(root, privateConfig());
+    assert.deepEqual(
+      await runtime.ingest("nubank-statement", input),
+      {
+        kind: "company-money.ingest-result",
+        version: 1,
+        committedRevision: (await runtime.store.read()).revision,
+        insertedCount: 1,
+        duplicateCount: 0,
+        conflictCount: 0,
+        quarantineCount: 0,
+        linkCount: 0,
+      },
+    );
+    assert.equal((await runtime.ingest("nubank-statement", input)).duplicateCount, 1);
+    assert.ok(await lstat(input));
+
+    const reported = await runtime.report({
+      kind: "company-money.report-query",
+      version: 1,
+      from: "2026-01-01",
+      through: "2026-01-31",
+    });
+    assert.equal(reported.currencies[0].currency, "BRL");
+    assert.equal(reported.currencies[0].receiptsMinorUnits, 0);
+    assert.equal(reported.diagnostics.transactionCount, 1);
+    assert.equal(reported.diagnostics.unresolvedCount, 1);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
