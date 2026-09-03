@@ -51,6 +51,7 @@ in
     ../../modules/tmux
     ../../modules/amp
     ../../modules/agents
+    ../../modules/company-money
     ../../modules/node-pnpm
     ../../modules/mise
     ../../modules/syncthing/automerge

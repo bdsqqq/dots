@@ -66,13 +66,11 @@ modules/agents/skills/company-money/
 
 the Nix module should install a manually invoked CLI on `mbp-m2`. v1 does not need a daemon, schedule, server, tailnet declaration, or activation-created data directory.
 
-the private runtime root is `/Users/bdsqqq/commonplace/01_files/money/company-ledger`. this location is approved only behind the privacy gate in phase 5: no private configuration, evidence, ledger, report, lock, or transient envelope may be created there until the outer `commonplace` Syncthing exclusion, independent files-browser exclusion, dedicated private-folder topology, and live publication checks have all passed.
+the private runtime root is `/Users/bdsqqq/commonplace/01_files/money/company-ledger`. the existing broad `commonplace` Syncthing setup handles this path. company-money does not add a dedicated Syncthing folder, receiver topology, files-browser exclusion, or multi-host privacy gate.
 
-“commonplace syncthing” means reusing the existing Syncthing installation and declared device inventory, not sending the ledger through the existing broad `commonplace` folder. v1 uses a distinct `company-ledger` Syncthing folder rooted at the selected private path. the outer `commonplace` folder ignores that subtree on every managed peer, while the dedicated folder is shared only with an explicit trusted-device allowlist.
+v1 remains single-writer at the application layer: `mbp-m2` is the only intended ledger writer. the in-process CAS protects concurrent local ingestion; it is not a distributed lock and must not be treated as protection against multiple Syncthing writers.
 
-v1 is single-writer: `mbp-m2` is the only ledger writer and sends the durable private folder to receive-only backup peers. the in-process CAS protects concurrent local ingestion; it is not a distributed lock and must not be treated as protection against multiple Syncthing writers. selecting another writable peer requires a separate conflict and recovery design.
-
-entity values use the neutral canonical field name `entityId`. whether that field contains an opaque alias or the literal registered legal name remains unresolved and must be selected before the first private ingest.
+canonical `entityId` values are literal registered legal entity names. a private manually maintained dictionary maps canonical counterparty/entity ids to user-facing aliases; multiple canonical ids may intentionally share one display alias when they represent the same person or entity. real names and mappings never enter source or tests.
 
 ## goals
 
@@ -81,8 +79,8 @@ entity values use the neutral canonical field name `entityId`. whether that fiel
 - preserve provenance, statuses, classifications, and transfer relationships;
 - ingest incrementally and idempotently;
 - report receipts, revenue, and outgoing money separately for each native currency;
-- keep source access read-only and private state outside git, files-browser, HTML publication, containers, and unintended Syncthing peers;
-- replicate durable private state only to explicitly selected trusted plaintext Syncthing receivers;
+- keep source access read-only and private state outside git, tests, logs, HTML artifacts, and application servers;
+- let the existing broad `commonplace` Syncthing setup replicate the selected private runtime path without feature-specific topology changes;
 - make future Wise CSV or read-only API adapters additive rather than architectural changes.
 
 ## non-goals
@@ -95,7 +93,6 @@ entity values use the neutral canonical field name `entityId`. whether that fiel
 - no transaction UI or HTML artifact;
 - no private fixtures, real transaction values, account identifiers, counterparties, references, credentials, or source documents in git;
 - no multi-writer ledger, Syncthing conflict reconciliation, or application-level encryption in v1;
-- no encrypted/untrusted-device Syncthing design unless bdsqqq separately selects and scopes one;
 - no generic adapter/plugin framework before a second implementation needs one.
 
 “read-only” describes external evidence and financial systems. the private local ledger is the feature’s intentional mutation.
@@ -106,7 +103,7 @@ entity values use the neutral canonical field name `entityId`. whether that fiel
 2. every ArkType object uses `"+": "reject"`. validation never defaults, transforms, normalizes, or coerces, and tests prove `schema.assert(value) === value`.
 3. every amount is a positive safe integer in the currency’s provider-native minor unit. direction carries the sign.
 4. currency totals never mix and are never converted.
-5. configured account aliases are opaque identities and adapters must not invent them. canonical entity identity is represented as `entityId`; its opaque-alias-versus-legal-name policy remains a required private-deployment decision.
+5. configured account aliases are opaque identities and adapters must not invent them. canonical `entityId` values are literal registered legal names. private display aliases never replace canonical ids.
 6. source identity, evidence identity, transaction identity, and reconciliation identity remain separate.
 7. incoming does not imply revenue. uncertain classification is `unclassified` and stays out of revenue totals.
 8. cancelled and failed transactions remain canonical but contribute zero to completed totals.
@@ -117,9 +114,9 @@ entity values use the neutral canonical field name `entityId`. whether that fiel
 13. incompatible evidence aborts the ingestion commit; partial batches are not persisted.
 14. existing state is validated before use. corrupt or future-version state fails closed.
 15. canonical and derived files use destination-local create-exclusive temporary files, `fsync`, atomic rename, directory `fsync`, and mode `0600` under a `0700` root. every private subdirectory is also `0700`.
-16. `/Users/bdsqqq/commonplace/01_files/money/company-ledger` remains unwritten until the phase-5 privacy gate passes.
-17. `mbp-m2` is the sole v1 ledger writer. selected Syncthing receivers are receive-only and are not application execution targets.
-18. no dedicated private folder may use introducers, automatic folder acceptance, or an implicit device set; its devices and paths are declared explicitly.
+16. private alias values, evidence, ledger records, reports, and account identifiers never enter git, source fixtures, tests, logs, or build output.
+17. `mbp-m2` is the sole intended v1 application writer; CAS protects concurrent local runs only.
+18. company-money does not alter Syncthing topology or publication services solely for this feature.
 
 ## architecture
 
@@ -254,6 +251,7 @@ CLI commands translate source-specific bounded inputs and then invoke the same l
 company-money ingest --adapter wise-gmail --input <private-envelope>
 company-money ingest --adapter nubank-statement --input <private-statement>
 company-money report --from <date> --through <date> --json
+company-money report --from <date> --through <date> --json --output <name.json>
 ```
 
 adapter names and paths are CLI concerns, not public contract fields.
@@ -301,7 +299,7 @@ Node-only implementations and translators:
 - `JsonlLedgerStore` in `ledger/jsonl-store.ts`: exact reads, exclusive/advisory locking, compare-and-swap, permissions, canonical serialization, and atomic replacement.
 - `NubankStatementTranslator` in `evidence/nubank-statement.ts`: translates bounded provider-issued PJ statements as primary evidence.
 - `WiseGmailTranslator` in `evidence/wise-gmail.ts`: translates supported Wise notifications from bounded transient envelopes as secondary evidence.
-- private config loading in `private-config.ts`: reads `entityId`, opaque account aliases, and confirmed owner-funding/internal-transfer aliases and rules from a local `0600` file.
+- private config loading in `private-config.ts`: reads the literal legal `entityId`, opaque account aliases, the private canonical-id-to-display-alias dictionary, and confirmed owner-funding/internal-transfer aliases and rules from a local `0600` file.
 - CLI composition: validates arguments, selects a translator, invokes the local oRPC client, and emits sanitized counts unless report output is explicitly requested.
 
 `wise-gmail.ts` has no mailbox capability. Gmail search, message retrieval, attachment retrieval, OAuth, credentials, and request scopes stay in the existing read-only Amp Google Workspace skill. the company-money skill supplies a bounded date interval and narrow search, materializes only the minimum transient envelope, invokes the CLI, and removes the envelope after a durable ingest or quarantine result.
@@ -322,15 +320,15 @@ the fixed v1 private layout is:
 └── exports/
 ```
 
-the root, `state/`, and `exports/` are `0700`. `config.json`, `ledger.jsonl`, reports, locks, and temporary files are `0600`. `--help` and other non-mutating commands do not create this layout. the first mutating command fails closed unless the phase-5 privacy preflight has been recorded as successful.
+the root, `state/`, and `exports/` are `0700`. `config.json`, `ledger.jsonl`, reports, locks, and temporary files are `0600`. `--help` and other non-mutating commands do not create this layout.
 
 `ledger.jsonl` is the durable canonical state. each line is one cataloged v1 record, ordered by record kind and deterministic id. because v1 is expected to remain small, successful ingestion may rewrite the full canonical file atomically.
 
 the store revision is the SHA-256 digest of the exact canonical JSONL bytes. it is returned alongside the validated snapshot and used as the compare-and-swap token, but it is not embedded in those bytes or in `LedgerSnapshotV1`. the absent ledger has revision `null`; every committed non-empty or explicitly serialized empty ledger has a digest revision.
 
-`state/`, bounded transient envelopes, lock files, and destination-local temporary names are excluded from the dedicated Syncthing folder. transient envelopes remain bounded `0600` local files and are removed after either a durable ingestion or durable quarantine result.
+bounded transient envelopes remain `0600` files and are removed after either a durable ingestion or durable quarantine result.
 
-`config.json`, `ledger.jsonl`, and explicitly requested files under `exports/` are durable and are included in the dedicated private Syncthing folder. CSV and JSON reports include the canonical revision and are written only by an explicit report command; ingestion never refreshes reports implicitly.
+`config.json`, `ledger.jsonl`, and explicitly requested files under `exports/` are durable inside the existing `commonplace` tree. JSON reports include the canonical revision and are written only by an explicit report command; ingestion never refreshes reports implicitly. output names are plain `.json` filenames and cannot escape `exports/`.
 
 each export gets its own atomic replacement. if a multi-file export must be observed as one unit, write a versioned export directory and atomically switch a manifest pointer.
 
@@ -381,30 +379,9 @@ the separate link model avoids nullable reciprocal pointers and makes asymmetric
 
 ## privacy and threat model
 
-the approved private root is `/Users/bdsqqq/commonplace/01_files/money/company-ledger`, but the current broad `commonplace` synchronization and publication topology is unsafe for that data without additional controls.
+the approved private root is `/Users/bdsqqq/commonplace/01_files/money/company-ledger`. the user explicitly accepts replication through the existing broad `commonplace` Syncthing topology, including its existing trusted devices and retention behavior. no dedicated folder, receiver allowlist, files-browser exclusion, container exclusion, or deployment gate is part of company-money.
 
-repository evidence:
-
-- `mbp-m2` shares the current `commonplace` folder with `mbp-m5`, `htz-relay`, `lgo-z2e`, `mmn-m4`, `iph16`, and `ipd`;
-- generated `.stignore` content currently has no protected company-ledger exclusion;
-- files-browser trusts the `commonplace` Syncthing model and hard-links every indexed regular file into a served snapshot;
-- the htz apps container bind-mounts `/mnt/storage-01/commonplace`;
-- `html-stuff` reads only direct `.html` files from the separate `01_files/html_stuff` root.
-
-the required topology is therefore:
-
-1. add exact root-relative `/01_files/money/company-ledger` to the generated outer `commonplace` `.stignore` as a protected pattern without `(?d)` and without a trailing slash. it must match the directory and all descendants and must not authorize Syncthing to delete the private root.
-2. deploy and verify that generated ignore on every Nix-managed host participating in the outer `commonplace` folder. `.stignore` is local and is not synchronized.
-3. add a distinct `company-ledger` folder id in `modules/syncthing/lib.nix`.
-4. configure that dedicated folder on `mbp-m2` as `sendonly`, with an explicit receiver allowlist and no introducer or automatic-accept behavior.
-5. configure each selected backup peer as `receiveonly`, with versioning and a private `0700` path outside publication roots and container bind mounts.
-6. keep htz-relay out of the dedicated folder unless bdsqqq explicitly selects it and supplies a receiving path outside `/mnt/storage-01/commonplace` and every apps-container bind mount.
-7. add an independent files-browser `--exclude-prefix 01_files/money/company-ledger` control. exact matches and descendants are pruned before manifest hashing or materialization; an allowed symlink may not target the denied subtree.
-8. pass that exclusion from both `modules/files-browser/service.nix` and `hosts/htz-relay/apps-container.nix`, with tests showing that a hostile Syncthing model containing the path still cannot publish it.
-9. do not change `modules/html-stuff/server.ts`; instead prove its configured root remains disjoint and make company-money reject export destinations outside the private `exports/` directory.
-10. only after the ignore, dedicated-folder allowlist, files-browser deny, container-path check, and live publication checks pass may the private root or private data be created.
-
-controls retained throughout:
+this acceptance does not weaken local application controls:
 
 - private directories `0700`; config, ledger, reports, locks, and transient envelopes `0600`;
 - reject symlinks and non-regular files; use `O_NOFOLLOW` where supported;
@@ -416,7 +393,7 @@ controls retained throughout:
 - no private fixtures, snapshots, telemetry, crash reporting, HTML artifacts, tailnet route, or application server;
 - verify the chosen root has no Git worktree ancestor before first write, and fail closed if that changes.
 
-Syncthing’s normal mode encrypts transport between authenticated devices but leaves synchronized files, names, configuration, reports, and versioned/deleted copies readable on every selected receiver. v1 therefore trusts each selected receiver, its administrators, storage, backups, and local account security. `0700`/`0600` provide discretionary filesystem isolation; they do not protect against a compromised host, privileged administrator, or copied disk. no encrypted/untrusted-device folder is introduced by this plan because none was selected.
+Syncthing’s normal mode encrypts transport between authenticated devices but leaves synchronized files, names, configuration, reports, and versioned/deleted copies readable on existing receivers. that exposure is an explicit user decision. `0700`/`0600` provide discretionary filesystem isolation; they do not protect against a compromised host, privileged administrator, copied disk, or another authorized Syncthing receiver.
 
 credentials and tokens continue to follow `SECRETS.md`. Gmail access remains entirely inside the existing read-only Amp Google Workspace skill. company-money receives only bounded transient envelopes and gains no Google SDK, OAuth flow, credential loader, mailbox search, or mailbox-write capability.
 
@@ -431,14 +408,14 @@ credentials and tokens continue to follow `SECRETS.md`. Gmail access remains ent
 - implement `ledger.ingest` in `ledger/ingest.ts`, including schemas, operation declaration, capabilities, deterministic identity selection, provenance merge, bounded CAS retry behavior, and conflict outcomes;
 - implement `ledger.report` in `ledger/report.ts`, including schemas, operation declaration, its read-only capability, and classification-safe native-currency reporting;
 - assemble the thin contract, router/local-client, and browser-safe public entry;
-- use neutral `entityId` naming so portable implementation can proceed before its private value policy is selected; do not place a real entity value in fixtures;
+- use literal registered legal names as canonical `entityId` values; tests use synthetic legal names only;
 - test schemas and behavior beside each vertical plus router/client and package boundaries.
 
 ### phase 2 — durable local-ledger vertical
 
 - implement length-delimited SHA-256 identity in `ledger/sha256-identity.ts`;
 - implement exact canonical JSONL reads, revision hashing, locking, compare-and-swap, permissions, and atomic commits in `ledger/jsonl-store.ts`;
-- implement exact private configuration loading for `entityId`, opaque account aliases, and confirmed owner-funding/internal-transfer rules; reject unknown fields, symlinks, wrong modes, duplicate aliases, invalid account relationships, and rules referencing unknown aliases;
+- implement exact private configuration loading for the legal `entityId`, opaque account aliases, private canonical-id-to-display-alias mappings, and confirmed owner-funding/internal-transfer rules; reject unknown fields, symlinks, wrong modes, duplicate canonical alias keys, invalid account relationships, and rules referencing unknown account aliases;
 - expose the Node and CLI entrypoints without expanding the public entry;
 - add replay, reordering, concurrent-ingestion, interruption, permissions, symlink, corruption, oversized-input, and output-redaction tests.
 
@@ -462,36 +439,15 @@ credentials and tokens continue to follow `SECRETS.md`. Gmail access remains ent
 - keep collection manually invoked; the skill must require a bounded date interval and narrow query on every run and must not add scheduling or recurrence;
 - require that skill to delegate bounded read-only mailbox access to the existing Google Workspace skill, materialize the minimum envelope, invoke ingestion, remove the envelope after a durable result, and report sanitized counts.
 
-### phase 5 — privacy gate, Nix packaging, host selection, and private smoke test
-
-perform this phase as ordered slices. do not create the private root or handle private evidence before slice 5a and its live deployment checks pass.
-
-#### slice 5a — synchronization and publication exclusion
-
-- add the protected outer-folder ignore and dedicated `company-ledger` folder id in `modules/syncthing/lib.nix` and the generated `.stignore` path;
-- add files-browser exact-prefix exclusion, symlink-target enforcement, and synthetic tests;
-- pass the exclusion through `modules/files-browser/service.nix` and `hosts/htz-relay/apps-container.nix`;
-- do not change `modules/html-stuff/server.ts`;
-- deploy the outer ignore and files-browser exclusion to every affected host before adding the dedicated folder;
-- prove the outer `commonplace` model, files-browser snapshot, served files, and apps container contain no company-ledger path.
-
-#### slice 5b — dedicated private Syncthing folder
-
-- after bdsqqq selects the receiver topology, configure `mbp-m2` as the sole `sendonly` writer;
-- configure only selected trusted peers as `receiveonly`;
-- use explicit device lists, no introducer-derived peers, no automatic folder acceptance, and no receiving path under a Git worktree, publication root, `html_stuff`, or container bind mount;
-- install dedicated-folder ignore rules for state, transient envelopes, locks, and atomic temporary names;
-- verify the live folder configuration exposes exactly the selected devices and no others;
-- only then allow creation of the `0700` private root.
-
-#### slice 5c — package and private smoke test
+### phase 5 — Nix packaging and host selection
 
 - add `package.nix` using the fleet-mesh pnpm/TypeScript pattern;
 - add `default.nix` installing the manually invoked CLI through Home Manager;
 - import the CLI only on `mbp-m2`;
 - do not add a daemon, schedule, HTTP service, tailnet declaration, secret, OAuth implementation, or activation-created ledger;
-- reload project skills and run one bounded private comparison without recording values in git, tests, logs, build output, or conversation;
-- keep all financial and mailbox access read-only. only local canonical state and selected receive-only Syncthing replicas are mutated.
+- do not alter Syncthing, files-browser, container, or HTML publication topology solely for company-money;
+- use synthetic proof in development and CI. private smoke testing is a separate, explicitly authorized local action;
+- keep all financial and mailbox access read-only. only local canonical state and existing Syncthing replication are intentional mutations.
 
 ## verification per phase
 
@@ -591,20 +547,7 @@ reload project skills and inspect the consumed `SKILL.md`. no standalone executa
 
 ### phase 5
 
-run the files-browser regression first:
-
-```bash
-node --test modules/files-browser/files-browser-server.test.mjs
-```
-
-prove with synthetic names and contents only:
-
-- an exact denied directory and every descendant are absent from the manifest and snapshot even if supplied by the Syncthing model;
-- similarly prefixed siblings remain publishable;
-- a symlink targeting the denied subtree cannot enter the snapshot;
-- argument parsing rejects absolute, empty, traversal, and malformed exclude prefixes.
-
-all package, source, lockfile, Nix, host-import, Syncthing, and files-browser wiring changes consumed by the current Darwin host require:
+all package, source, lockfile, Nix, and host-import changes consumed by the current Darwin host require:
 
 ```bash
 nix build .#darwinConfigurations.mbp-m2.system --dry-run
@@ -612,41 +555,17 @@ nix build .#darwinConfigurations.mbp-m2.system
 ./result/sw/bin/company-money --help
 ```
 
-evaluate the changed htz-relay configuration without cross-building it:
-
-```bash
-nix eval --raw '.#nixosConfigurations.htz-relay.config.system.build.toplevel.drvPath'
-```
-
-report that htz-relay was evaluated but not built on Darwin. build it separately only when operating on that host or when bdsqqq explicitly requests a cross-build.
-
-after deploying slice 5a, use authenticated local Syncthing runtime inspection without printing API keys or configuration contents to prove:
-
-- the outer `commonplace` ignore contains exact `/01_files/money/company-ledger` on every managed outer-folder peer;
-- the outer folder’s local and remote models contain no exact or descendant path;
-- files-browser’s active snapshot and HTTP interface contain no exact or descendant path;
-- the apps container cannot resolve the private receiving path;
-- `html-stuff` remains rooted only at `01_files/html_stuff`.
-
-after deploying slice 5b, prove:
-
-- the dedicated folder device set exactly equals `mbp-m2` plus the selected receivers;
-- `mbp-m2` is `sendonly`, receivers are `receiveonly`, and no introducer or automatic acceptance can expand the set;
-- every receiving path is outside publication roots, Git worktrees, and container bind mounts;
-- root and directory modes are `0700`, and durable files are `0600`;
-- state, locks, transient envelopes, and atomic temporary names are absent from receiver models.
-
 `--help` must not create config, state, ledger, lock, report, Syncthing, or publication files.
 
-for the bounded private smoke test:
+synthetic runtime tests must prove:
 
 - inspect ownership and modes without printing contents;
-- run the same manually invoked bounded read-only mailbox query twice, creating a fresh minimum envelope for each run;
+- ingest the same bounded synthetic Wise envelope twice, creating a fresh minimum envelope for each run;
 - ingest and remove each envelope independently; confirm that the second run inserts zero transactions;
 - compare only sanitized counts and explicitly requested native-currency aggregates;
 - verify an explicit report is written only under the private `exports/` directory;
 - inspect `git status` and tracked content for credentials, private fixture markers, generated reports, transient envelopes, and accidental financial data;
-- verify the Syncthing receiver has the same canonical revision without printing canonical contents.
+- do not create or inspect the real runtime root, Gmail, Syncthing state, or financial records during development proof.
 
 ## migration and reuse from old `01_files/money`
 
@@ -670,24 +589,13 @@ do not reuse:
 migration procedure:
 
 1. inspect old code shapes only; never copy old data or private constants into dots.
-2. configure the selected `entityId` representation, opaque account aliases, and confirmed owner-funding/internal-transfer rules privately.
+2. configure the literal registered legal `entityId`, opaque account aliases, private display aliases, and confirmed owner-funding/internal-transfer rules privately.
 3. re-ingest original provider evidence through new adapters where possible.
 4. if legacy-only evidence is required, add a one-time Node adapter with synthetic tests; do not import the old lossy normalized objects.
 5. compare old/new counts and classifications privately by bounded interval and native currency.
 6. retain the old scripts read-only until discrepancies are resolved. deletion is a separate authorized task.
 
-## open questions for bdsqqq
+## resolved decisions
 
-all other questionnaire decisions are incorporated above. only these inputs remain unresolved.
-
-- [ ] **entity identity in canonical records**
-  - [ ] opaque `entityId`; the registered legal display name remains only in private `0600` configuration.
-  - [ ] literal registered legal name as `entityId` in every canonical transaction and every plaintext Syncthing replica.
-
-- [ ] **dedicated Syncthing receiver topology**
-  - name every trusted plaintext receiving device: `________________`.
-  - give each receiving path: `________________`.
-  - confirm `mbp-m2` is the sole `sendonly` writer and every receiver is `receiveonly`: `yes / no`.
-  - if `htz-relay` is selected, provide a path outside `/mnt/storage-01/commonplace` and every apps-container bind mount: `________________`.
-
-normal Syncthing replication leaves files readable at rest on every selected receiver and may retain prior versions. if no listed device is trusted to hold plaintext config, ledger, reports, and version history, the checked “commonplace syncthing” decision cannot be implemented safely without separately reopening encryption and recovery scope.
+- canonical `entityId` is the literal registered legal name. private canonical-id-to-display-alias mappings provide user-facing grouping without changing canonical identity.
+- the existing broad `commonplace` Syncthing setup handles the runtime path. no company-money-specific folder, receiver policy, publication exclusion, or multi-host privacy gate is added.

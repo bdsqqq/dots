@@ -1,0 +1,38 @@
+{
+  "name": "company-money",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "company-money": "./dist/company-money-bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/company-money-public.d.ts",
+      "import": "./dist/company-money-public.js"
+    },
+    "./node": {
+      "types": "./dist/company-money-node.d.ts",
+      "import": "./dist/company-money-node.js"
+    }
+  },
+  "files": [
+    "README.md",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build",
+    "test": "node --test \"**/*.test.ts\"",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@orpc/contract": "1.13.6",
+    "@orpc/server": "1.13.6",
+    "arktype": "2.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "0.28.2",
+    "typescript": "^5.9.2"
+  }
+}
