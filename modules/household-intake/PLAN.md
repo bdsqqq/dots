@@ -8,7 +8,7 @@
 - triggering user message, verbatim: “sounds good, persist this plan artifact, with provenance to your session and message, and lets start working on this.”
 - architecture review request, verbatim: “alright, now ask oracle to review this updated understanding of the project”
 - review provenance: Oracle reviewed the corrected architecture in this Amp thread after the architecture review request. Its accepted recommendations are incorporated below; corrections made after review remain explicit.
-- storage-appliance amendment: after the user chose “a single microvm,” Oracle independently compared colocated and split-VM topologies in the same thread. the target is one NixOS storage appliance VM, conditional on the disposable-disk acceptance gate below. native macOS SMB remains the fallback if raw ownership is unreliable.
+- deployment correction (2026-09-03): the local Linux microVM design is retired. `mmn-m4` remains Darwin-native; Linux workloads belong on Hetzner hosts. do not reintroduce a local Linux builder or storage VM.
 
 this artifact records decisions from the conversation, not merely the implementation at one commit. update it when a product invariant changes; ordinary implementation detail belongs beside the code that owns it.
 
@@ -94,56 +94,46 @@ one app-colocated `household-intake` module owns the product boundary:
 ```text
 modules/household-intake/
 ├── PLAN.md
-├── default.nix
-├── service.nix
-├── vm.nix
 ├── household-intake-server.mjs
 ├── catalog.mjs
 ├── naming.mjs
-├── backup-proof.mjs
-└── service.nix
+└── backup-proof.mjs
 ```
 
 the intended responsibilities are:
 
-- macOS disk broker: verifies physical identity, unmounts the SSD, and grants one vfkit process exclusive raw-block ownership;
-- NixOS storage appliance VM: owns the mounted SSD and all services requiring filesystem access;
-- Samba inside the appliance: network filesystem transport only, exposed through the guest's Tailscale identity;
+- macOS mount guard: verifies the SSD's physical identity before host-native services access it;
+- native macOS file sharing: network filesystem transport only, restricted to the intended identity and network boundary;
 - intake daemon: sole durable writer, reconciliation, naming, placement, proof, and cleanup;
 - append-only manifests: disaster-recovery authority for provenance;
 - SQLite: rebuildable query/index/job state;
-- Backrest: whole-root encrypted snapshots and exact snapshot lifecycle;
+- host-native Backrest: whole-root encrypted snapshots and exact snapshot lifecycle;
 - gallery/files UI: read-only searchable views over intake APIs and canonical files.
 
-do not implement SMB in Node. Samba, intake, Backrest, copyparty, gallery, and catalog run as separately sandboxed NixOS services in one appliance VM. the VM is a storage ownership boundary, not one VM per application. no other VM or the host may mount the same exFAT filesystem while the appliance owns it.
+do not implement SMB in Node. file sharing, intake, Backrest, copyparty, gallery, and catalog remain separate host-native services. fail-closed mount checks, not a VM boundary, prevent services from operating on a substitute path when the SSD is absent.
 
-inside the guest the SSD mounts at `/srv/ssd-01`; `/igor` and `/fenfe` remain the stable ownership-relative paths. host paths under `/Volumes/ssd-01` exist only during stopped-VM recovery. receipts record both logical relative paths and the concrete snapshot path because pre-migration and appliance snapshots use different mount prefixes.
+the stable SSD root is `/Volumes/ssd-01`; `/igor` and `/fenfe` remain the ownership-relative paths. receipts record logical relative paths and concrete snapshot paths.
 
-## storage appliance and SMB acceptance gate
+## host-native storage and SMB acceptance gate
 
-the appliance is not production-ready merely because Linux boots or Finder can mount a share. before attaching `ssd-01`, a disposable physical exFAT disk must prove:
+the intake path is not production-ready merely because Finder can mount a share. before enabling automatic cleanup, a disposable physical exFAT disk must prove:
 
-- a root launchd broker starts vfkit before GUI login and survives reboot, sleep, wake, and Wi-Fi changes;
 - physical identity uses filesystem UUID plus stable device evidence, never `/dev/diskN` alone;
-- every host partition is unmounted before raw attachment and macOS cannot remount it while vfkit owns the descriptor;
-- absent or wrong media prevents VM startup and never creates a substitute storage tree;
-- clean shutdown releases the descriptor for direct read-only macOS recovery;
+- absent or wrong media disables storage services and never creates a substitute storage tree;
 - forced termination, cable removal, changed disk number, fsck, and remount produce defined reconciliation behavior;
 - a 72-hour soak has no unexplained I/O, detach, or remount event.
 
-after raw ownership passes, Samba inside the guest must prove all of the following:
+native macOS file sharing must prove all of the following:
 
 - the exact SSD UUID is mounted before any path or share is created;
-- the share path is exactly `/srv/ssd-01/igor/00_inbox`;
+- the share path is exactly `/Volumes/ssd-01/igor/00_inbox`;
 - guest and anonymous authentication fail;
 - a dedicated non-admin, sharing-only account can write;
 - SMB3 encryption is negotiated;
 - `01_files`, `.storage-system`, sibling shares, and `fenfe` are inaccessible;
-- absent or wrong-volume state disables the share and never creates a ghost `/srv/ssd-01` tree on the VM state disk;
+- absent or wrong-volume state disables the share and never creates a ghost path on the host filesystem;
 - LAN access is denied if tailnet-only exposure is required;
 - exFAT permissions, open-file behavior, rename behavior, and remount identity match the cleanup assumptions.
-
-Samba uses explicit users, `map to guest = never`, SMB3 encryption, and the guest's Tailscale interface. native macOS SMB remains a fallback only if the raw-appliance gate fails and native SMB independently passes dedicated credentials, guest denial, network restriction, and fail-closed mount behavior.
 
 the currently configured macOS Public share has guest access enabled. it is unrelated existing state and is not evidence that the intake share meets this gate.
 
@@ -266,9 +256,9 @@ lineage claims remain narrow:
 
 ## milestones
 
-### 1. disposable-disk microVM and exFAT acceptance spike
+### 1. host-native disposable-disk and exFAT acceptance spike
 
-boot a minimal NixOS guest through microvm.nix and vfkit without production storage. then attach a sacrificial physical exFAT disk and test raw ownership, wrong/missing-volume behavior, Finder upload semantics, and exFAT crash assumptions. do not attach `ssd-01` until the storage-appliance gate passes.
+attach a sacrificial physical exFAT disk and test mount identity, wrong/missing-volume behavior, Finder upload semantics, and exFAT crash assumptions. do not enable cleanup on `ssd-01` until the host-native storage gate passes.
 
 initial observation on 2026-08-24:
 
@@ -277,7 +267,7 @@ initial observation on 2026-08-24:
 - TCP 445 refuses connections over both `mmn-m4`'s Tailscale address and LAN address;
 - unauthenticated `smbutil view` cannot connect.
 
-there is therefore no live native SMB server to inherit accidentally. the appliance must keep Apple File Sharing disabled; the existing Public share record must not be mistaken for a running or secure service.
+there is therefore no live native SMB server to inherit accidentally. the existing Public share record must not be mistaken for a running or secure service.
 
 ### 2. vertical safety slice
 
