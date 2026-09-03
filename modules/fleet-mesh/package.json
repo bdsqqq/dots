@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "fleet": "./dist/fleet-bin.js",
-    "fleet-daemon": "./dist/fleet-daemon-bin.js"
+    "fleet": "dist/fleet-bin.js",
+    "fleet-daemon": "dist/fleet-daemon-bin.js"
   },
   "exports": {
     ".": {
@@ -41,5 +41,10 @@
     "@types/node": "^24.0.0",
     "esbuild": "0.28.2",
     "typescript": "^5.9.2"
-  }
+  },
+  "description": "executable reference model for a delay-tolerant fleet message plane. virtual nodes exchange immutable records whenever a transport gives them contact; the core does not know whether that contact came from ble, a lan, tailnet, serial, or a simulator.",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }
