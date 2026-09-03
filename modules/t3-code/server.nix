@@ -1,9 +1,8 @@
-{
-  config,
-  hostSystem,
-  lib,
-  pkgs,
-  ...
+{ config
+, hostSystem
+, lib
+, pkgs
+, ...
 }:
 let
   isDarwin = lib.hasSuffix "-darwin" hostSystem;
@@ -58,6 +57,10 @@ let
       exec node ${lib.escapeShellArg developmentServer} "$@"
     '';
   };
+  t3DeployPnpm = pkgs.pnpm.override {
+    version = "11.10.0";
+    hash = "sha256-YgtmBepPYvxWptCphzP0eQcdAyHgPkhrUix+mnRhdDE=";
+  };
   t3PiDeploy = pkgs.writeShellApplication {
     name = "t3-pi-deploy";
     runtimeInputs = [
@@ -66,7 +69,7 @@ let
       pkgs.gnused
       pkgs.git
       pkgs.nodejs
-      pkgs.pnpm
+      t3DeployPnpm
     ];
     text = ''
       repo="''${T3CODE_FORK_DIR:-${config.my.paths.commonplace}/02_temp/t3code}"
