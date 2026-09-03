@@ -8,8 +8,12 @@
     "test": "node --test",
     "typecheck": "tsc"
   },
+  "dependencies": {
+    "webbluetooth": "3.7.0"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/web-bluetooth": "^0.0.21",
     "typescript": "^5.9.2"
   }
 }
