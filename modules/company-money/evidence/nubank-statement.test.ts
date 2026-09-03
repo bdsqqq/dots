@@ -12,8 +12,7 @@ import {
   translateNubankStatement,
 } from "./nubank-statement.ts";
 
-const header =
-  "date,amount,currency,direction,status,transaction_id,counterparty,reference";
+const header = "Data, Valor, Identificador, Descrição";
 
 function classification(evidenceId: string): ClassificationV1 {
   return {
@@ -44,34 +43,55 @@ function envelope(csv: string) {
   };
 }
 
-test("parses BOM, comma/semicolon delimiters, native amounts, statuses, and provider ids", () => {
-  const comma = translateNubankStatement(
+test("parses the observed Nubank PJ shape into completed native-BRL movements", () => {
+  const batch = translateNubankStatement(
     envelope(
-      `\uFEFF${header}\n2026-01-02,12.34,BRL,incoming,completed,txn-1,Synthetic Customer LLC,Invoice 1\n`,
+      `\uFEFF${header}\n02/01/2026,12.34,txn-in,Synthetic receipt\n` +
+        `03/01/2026,-10.50,txn-out,"Synthetic expense, with detail"\n`,
     ),
     options,
   );
-  assert.equal(comma.candidates.length, 1);
-  assert.equal(comma.candidates[0].money.minorUnits, 1234);
-  assert.equal(comma.candidates[0].evidence.grade, "primary");
-  assert.equal(comma.candidates[0].providerTransactionId, "txn-1");
-
-  const semicolonHeader = header.replaceAll(",", ";");
-  const semicolon = translateNubankStatement(
-    envelope(
-      `${semicolonHeader}\n2026-01-03;10,50;EUR;outgoing;cancelled;;Synthetic Vendor;Refund\n`,
-    ),
-    options,
+  assert.deepEqual(
+    batch.candidates.map((candidate) => ({
+      bookedOn: candidate.bookedOn,
+      currency: candidate.money.currency,
+      direction: candidate.direction,
+      minorUnits: candidate.money.minorUnits,
+      normalizedCounterparty: candidate.normalizedCounterparty,
+      normalizedReference: candidate.normalizedReference,
+      providerTransactionId: candidate.providerTransactionId,
+      status: candidate.status,
+    })),
+    [
+      {
+        bookedOn: "2026-01-02",
+        currency: "BRL",
+        direction: "incoming",
+        minorUnits: 1234,
+        normalizedCounterparty: null,
+        normalizedReference: "Synthetic receipt",
+        providerTransactionId: "txn-in",
+        status: "completed",
+      },
+      {
+        bookedOn: "2026-01-03",
+        currency: "BRL",
+        direction: "outgoing",
+        minorUnits: 1050,
+        normalizedCounterparty: null,
+        normalizedReference: "Synthetic expense, with detail",
+        providerTransactionId: "txn-out",
+        status: "completed",
+      },
+    ],
   );
-  assert.equal(semicolon.candidates[0].money.minorUnits, 1050);
-  assert.equal(semicolon.candidates[0].status, "cancelled");
-  assert.equal(semicolon.candidates[0].providerTransactionId, null);
+  assert.ok(batch.candidates.every((candidate) => candidate.evidence.grade === "primary"));
 });
 
 test("fallback source positions are stable under row reordering", () => {
   const rows = [
-    "2026-01-03,2.00,BRL,incoming,completed,,Synthetic B,Second",
-    "2026-01-02,1.00,BRL,incoming,completed,,Synthetic A,First",
+    "03/01/2026,-2.00,,Synthetic second",
+    "02/01/2026,1.00,,Synthetic first",
   ];
   const first = translateNubankStatement(envelope(`${header}\n${rows.join("\n")}\n`), options);
   const second = translateNubankStatement(
@@ -85,20 +105,29 @@ test("fallback source positions are stable under row reordering", () => {
   );
 });
 
-test("malformed rows and unsupported currencies quarantine metadata only", () => {
+test("malformed provider rows quarantine metadata only", () => {
   const secret = "SYNTHETIC-RAW-MARKER";
   const batch = translateNubankStatement(
     envelope(
-      `${header}\n2026-02-30,1.00,BRL,incoming,completed,txn-bad,${secret},bad date\n` +
-        `2026-01-02,1.00,ZZZ,incoming,completed,txn-currency,${secret},bad currency\n`,
+      `${header}\n30/02/2026,1.00,txn-date,${secret}\n` +
+        `02/01/2026,1,txn-amount,${secret}\n`,
     ),
     options,
   );
-  assert.deepEqual(
-    batch.quarantine.map((entry) => entry.reason).sort(),
-    ["malformed-record", "unsupported-currency"],
-  );
+  assert.deepEqual(batch.quarantine.map((entry) => entry.reason), [
+    "malformed-record",
+    "malformed-record",
+  ]);
   assert.doesNotMatch(JSON.stringify(batch.quarantine), new RegExp(secret));
+});
+
+test("accepts the provider's empty no-header statement without inventing activity", () => {
+  assert.deepEqual(translateNubankStatement(envelope("\uFEFF\n"), options), {
+    kind: "company-money.ingest-batch",
+    version: 1,
+    candidates: [],
+    quarantine: [],
+  });
 });
 
 test("oversized and structurally malformed envelopes quarantine instead of throwing", () => {
@@ -114,7 +143,7 @@ test("oversized and structurally malformed envelopes quarantine instead of throw
 test("translator to local client to report is incremental and idempotent", async () => {
   const batch = translateNubankStatement(
     envelope(
-      `${header}\n2026-01-02,12.34,BRL,incoming,completed,txn-1,Synthetic Customer LLC,Invoice 1\n`,
+      `${header}\n02/01/2026,12.34,txn-1,Synthetic invoice 1\n`,
     ),
     options,
   );
@@ -138,8 +167,8 @@ test("translator to local client to report is incremental and idempotent", async
 test("duplicate provider ids with contradictory primary facts fail the batch", async () => {
   const batch = translateNubankStatement(
     envelope(
-      `${header}\n2026-01-02,1.00,BRL,incoming,completed,same-id,Synthetic A,One\n` +
-        `2026-01-02,2.00,BRL,incoming,completed,same-id,Synthetic A,Two\n`,
+      `${header}\n02/01/2026,1.00,same-id,Synthetic one\n` +
+        `02/01/2026,2.00,same-id,Synthetic two\n`,
     ),
     options,
   );
