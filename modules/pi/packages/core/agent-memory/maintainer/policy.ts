@@ -4,7 +4,28 @@ import { object } from "./common.js";
 export const V3_POLICY_VERSION = 1;
 export const ADMISSION_POLICY_VERSION = 1;
 
-export const RESOURCE_LIMITS = Object.freeze({
+type ResourceLimits = Readonly<{
+  version: number;
+  maxTurnWallMs: number;
+  maxTurnCpuMs: number;
+  maxReadBytes: number;
+  maxRecordBytes: number;
+  maxArtifactBytes: number;
+  maxBufferedBytes: number;
+  maxContinuationBytes: number;
+  maxSourceHints: number;
+  maxDiscoveryEntries: number;
+  maxWorkflowsPerSlice: number;
+  maxProposalBacklog: number;
+  maxLocalTelemetryBytes: number;
+  maxEvidenceEntries: number;
+  maxEvidenceEntryBytes: number;
+  maxEvidenceCapsuleBytes: number;
+  maxLocatorBytes: number;
+  checkoutLockTargetMs: number;
+}>;
+
+export const RESOURCE_LIMITS: ResourceLimits = Object.freeze({
   version: 1,
   maxTurnWallMs: 2_000,
   maxTurnCpuMs: 1_500,
@@ -32,7 +53,7 @@ export type SourceKind =
   | "skill-artifact";
 
 export type SourcePolicy = {
-  version: 1;
+  version: number;
   rootId: string;
   root: string;
   kind: SourceKind;
@@ -53,7 +74,8 @@ export function sourcePathRejected(relativePath: string): boolean {
 export function parseSourcePolicy(value: unknown): SourcePolicy {
   if (
     !object(value) ||
-    value.version !== 1 ||
+    !Number.isSafeInteger(value.version) ||
+    Number(value.version) < 1 ||
     typeof value.rootId !== "string" ||
     !/^[a-z][a-z0-9-]{0,63}$/.test(value.rootId) ||
     typeof value.root !== "string" ||
@@ -77,7 +99,16 @@ export function parseSourcePolicy(value: unknown): SourcePolicy {
   return value as SourcePolicy;
 }
 
-export const RETENTION_CLASSES = Object.freeze({
+type RetentionClasses = Readonly<{
+  canonical: string;
+  nonterminal: string;
+  producerSource: string;
+  terminalLocal: string;
+  derived: string;
+  telemetry: string;
+}>;
+
+export const RETENTION_CLASSES: RetentionClasses = Object.freeze({
   canonical: "indefinite",
   nonterminal: "until-safe-terminal",
   producerSource: "producer-owned",
@@ -86,7 +117,13 @@ export const RETENTION_CLASSES = Object.freeze({
   telemetry: "bounded-best-effort",
 });
 
-export const AXIOM_DATASET_POLICY = Object.freeze({
+type AxiomDatasetPolicy = Readonly<{
+  dataset: string;
+  retention: string;
+  authority: string;
+}>;
+
+export const AXIOM_DATASET_POLICY: AxiomDatasetPolicy = Object.freeze({
   dataset: "papertrail",
   retention: "inherited-account-policy",
   authority: "cost-and-privacy-only",

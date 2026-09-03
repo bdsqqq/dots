@@ -1362,6 +1362,51 @@ function actionsFor(
   ];
 }
 
+export function prepareCanonicalMemoryChanges(
+  cfg: MemoryConfig,
+  operation: MemoryOperation,
+  mutationId: string,
+): Array<{
+  path: string;
+  beforeSha256: string | null;
+  afterContent: string | null;
+  afterSha256: string | null;
+}> {
+  const changes = new Map<
+    string,
+    {
+      path: string;
+      beforeSha256: string | null;
+      afterContent: string | null;
+      afterSha256: string | null;
+    }
+  >();
+  for (const action of actionsFor(cfg, operation, mutationId)) {
+    if (action.from) {
+      const path = relative(cfg.root, action.from).replaceAll("\\", "/");
+      changes.set(path, {
+        path,
+        beforeSha256:
+          action.before === undefined ? null : sha256(action.before),
+        afterContent: action.from === action.to ? action.after : null,
+        afterSha256: action.from === action.to ? sha256(action.after) : null,
+      });
+    }
+    if (action.from !== action.to && !action.to.includes("/.archive/")) {
+      const path = relative(cfg.root, action.to).replaceAll("\\", "/");
+      changes.set(path, {
+        path,
+        beforeSha256: null,
+        afterContent: action.after,
+        afterSha256: sha256(action.after),
+      });
+    }
+  }
+  return [...changes.values()].sort((left, right) =>
+    left.path.localeCompare(right.path),
+  );
+}
+
 function restoreTransactionActions(transaction: Transaction): void {
   const reversed = transaction.actions.slice().reverse();
   for (const action of reversed) {
