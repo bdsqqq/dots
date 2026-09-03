@@ -6,7 +6,7 @@ import { MeshNode, type MeshNodeSnapshot } from "./fleet-mesh.ts";
 import {
   validateV1MeshNodeSnapshot,
   validateV1MeshRecords,
-} from "./fleet-schema.ts";
+} from "./fleet-protocol.ts";
 
 const MAX_GOSSIP_BYTES = 1024 * 1024;
 

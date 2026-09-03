@@ -7,8 +7,8 @@ import {
   type NodeIdentity,
   type PublicIdentity,
 } from "./fleet-mesh.ts";
-import type { FleetNodeReader, FleetNodeRecord } from "./fleet-operations.ts";
-import { PublicIdentityV1Schema } from "./fleet-schema.ts";
+import type { FleetNodeReader, FleetNodeRecord } from "./node-catalog/public.ts";
+import { PublicIdentityV1Schema } from "./fleet-protocol.ts";
 
 export interface LocalFleetNodeConfiguration {
   identity: NodeIdentity;

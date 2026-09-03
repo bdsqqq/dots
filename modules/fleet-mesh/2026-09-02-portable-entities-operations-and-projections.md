@@ -989,19 +989,23 @@ tests parse its `--json` result as one array.
 
 ### 5. prove extension cost
 
-`node.exists` is the third read operation. its measured hand-authored
-production touch points are:
+`node.exists` exposed a structural failure in the initial implementation: its
+schema, contract, use case, and binding were separated by technical role. the
+four-file change was predictable, but it was still a horizontal slice that
+made one behavior harder to understand and delete.
 
-1. `fleet-schema.ts` for `FleetNodePresenceV1` and its catalog entry;
-2. `fleet-contract.ts` for the operation and scalar-input metadata;
-3. `fleet-operations.ts` for the plain use case;
-4. `fleet-router.ts` for the implementation binding.
+the corrected structure colocates node discovery in `node-catalog/`. that
+vertical owns its read-model schemas and inferred types, reader port, plain use
+cases, oRPC declarations, local binding, and tests. its `public.ts` stays
+portable while `local.ts` injects the Node-local implementation.
+`fleet-protocol.ts` separately owns the shared v1 record language.
+`fleet-public.ts` is only their browser-safe composition boundary and stable
+schema catalog.
 
-tests changed in `fleet-schema.test.ts`, `fleet-operations.test.ts`, and
-`fleet-cli.test.ts`. `fleet-cli.ts` required no operation-specific wiring;
-public oRPC traversal discovered and invoked the new operation. because the
-measurement was captured within the initial implementation work unit, this is
-a static touch-point measurement rather than a commit-to-commit measurement.
+`node-catalog/node-catalog.test.ts` exercises the behavior through both direct
+function calls and its local oRPC client. `fleet-cli.ts` still requires no
+operation-specific wiring: public oRPC traversal discovers and invokes the
+new procedure.
 
 the resulting workflow is:
 

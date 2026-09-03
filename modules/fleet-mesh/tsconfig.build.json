@@ -17,15 +17,13 @@
     "fleet-bin.ts",
     "fleet-cli.ts",
     "fleet-cli-main.ts",
-    "fleet-contract.ts",
     "fleet-mesh.ts",
     "fleet-node.ts",
-    "fleet-node-schema.ts",
-    "fleet-operations.ts",
+    "fleet-protocol.ts",
     "fleet-public.ts",
-    "fleet-router.ts",
-    "fleet-schema.ts",
     "local-fleet-config.ts",
-    "local-fleet-runtime.ts"
+    "local-fleet-runtime.ts",
+    "node-catalog/local.ts",
+    "node-catalog/public.ts"
   ]
 }

@@ -9,7 +9,7 @@ import {
   type NodeIdentity,
   type ReceiptEnvelope,
 } from "./fleet-mesh.ts";
-import { validateV1MeshRecord } from "./fleet-schema.ts";
+import { validateV1MeshRecord } from "./fleet-protocol.ts";
 
 interface ConformanceFixture {
   authority: {

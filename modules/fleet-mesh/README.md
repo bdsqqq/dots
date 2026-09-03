@@ -35,8 +35,11 @@ exchange contract.
 
 ## package boundaries
 
-- `fleet-public.ts` exports browser-safe ArkType schemas, plain use cases, and
-  handler-free oRPC contracts.
+- `fleet-protocol.ts` owns the browser-safe v1 record language and validation.
+- `node-catalog/` owns its read-model schemas, inferred types, reader port, use
+  cases, oRPC contract, local binding, and tests as one behavior.
+- `fleet-public.ts` composes those verticals into the public schema catalog and
+  browser-safe package surface.
 - `fleet-node.ts` exports crypto, persistence, `LocalFleetRuntime`, and the
   implemented local client.
 - `fleet-cli.ts` projects public oRPC metadata and invokes that same client. it
@@ -135,17 +138,11 @@ dry/full host builds passed, all three launchd agents activated, the
 owner-only Tailscale Service reached only the bridge, and restarting
 `virtual-esp32` preserved the signed receipt and `executions = 1`.
 
-## third-operation extension cost
+## behavioral extension cost
 
-`node.exists` is the extension-cost probe. its hand-authored production touch
-points are:
-
-1. `fleet-schema.ts` — add `FleetNodePresenceV1` and its catalog entry;
-2. `fleet-contract.ts` — declare the operation and scalar input metadata;
-3. `fleet-operations.ts` — add the plain use case;
-4. `fleet-router.ts` — bind the use case to the contract implementation.
-
-tests added assertions in `fleet-schema.test.ts`, `fleet-operations.test.ts`,
-and `fleet-cli.test.ts`. `fleet-cli.ts` required no operation-specific change:
-public oRPC traversal discovered and invoked the new procedure. this remains
-the static touch-point measurement recorded during the initial implementation.
+`node.exists` is colocated with the rest of node discovery in `node-catalog/`.
+that vertical owns the operation's schema, inferred types, metadata, use case,
+and oRPC binding. its `public.ts` is portable; its `local.ts` injects a reader
+into the local oRPC binding. `fleet-cli.ts` remains a generic adapter: public
+oRPC traversal discovers and invokes a new operation without
+operation-specific CLI wiring.
