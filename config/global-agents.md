@@ -69,18 +69,14 @@ skip retrieval for greetings, status updates, self-contained questions or transf
 
 when retrieval is warranted, use narrow keywords:
 ```bash
-MEMORY_ROOT="${MEMORY_ROOT:-$HOME/commonplace/01_files/_utilities/agent-memories}"
-(cd "$MEMORY_ROOT" && qmd search -c agent-memories "KEYWORDS" -n 10) || rg "KEYWORDS" "$MEMORY_ROOT"/*source__agent*.md
+qmd search -c agent-memories "KEYWORDS" -n 10
 ```
 
-use relevant memory as constraints, prior solutions, and failure modes. the bounded `<memory_catalog>` contains pointers and triggers, not full memory content: retrieve the referenced file before relying on it. qmd is an on-demand search index; files remain the source of truth.
+use relevant memory as constraints, prior solutions, and failure modes. the bounded `<memory_catalog>` contains pointers and triggers, not full memory content: retrieve the referenced file before relying on it. qmd searches only the verified projection of the current accepted canonical Git head; do not fall back to searching raw sessions or the canonical checkout because audit evidence, conflict files, and unverified files are not retrieval inputs.
 
-choose the collection by question:
-- `agent-memories`: durable preferences, decisions, patterns, and gotchas
-- `pi-sessions`: episodic evidence about what happened in prior pi sessions
-- both, queried separately: when prior events and their durable lesson both matter
+the `agent-memories` collection contains durable preferences, decisions, patterns, and gotchas. raw sessions remain producer-owned evidence and are not directly searchable memory.
 
-pi session projections are generated caches, not memories. background reflection produces corpus-aware memory or skill proposals under `~/.local/share/pi-memory/v2`; it never edits active memory. memory changes require explicit `pi-memory review <id> accept` with a reason and remain rollbackable. accepted skill proposals are drafts only and never modify installed skills.
+pi session projections are generated caches, not memories. the v3 maintainer durably reconciles source evidence into proposals and changes canonical memory only after admission and remote compare-and-swap acceptance. manual proposals remain reviewable and accepted skill proposals are drafts only; they never modify installed skills.
 
 **steering**: REMEMBER user preferences, codebase conventions, correction patterns. these are learnings too.
 - cross-cutting/personal → personal memory with trigger condition + example

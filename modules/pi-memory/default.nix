@@ -14,6 +14,7 @@ let
       export QMD_BIN="${toolsBin}/qmd"
       export PI_MEMORY_MODEL="openai-codex/gpt-5.6-sol"
       export PI_MEMORY_REASONING_LEVEL="low"
+      export PI_MEMORY_CLEANUP_ENABLED=1
       export PI_MEMORY_SKILLS_ROOT="${repoRoot}/modules/agents/skills"
       export PI_MEMORY_GIT_REMOTE="git@github.com:bdsqqq/pi-memory.git"
       exec bun run "${repoRoot}/modules/pi/packages/core/agent-memory/index.ts" "$@"
@@ -32,8 +33,7 @@ in
         StartInterval = 3600;
         KeepAlive = {
           PathState = {
-            "${config.home.homeDirectory}/.local/state/pi-memory/wake" = true;
-            "${config.home.homeDirectory}/.local/state/pi-memory/wake.claimed" = true;
+            "${config.home.homeDirectory}/.local/state/pi-memory/v3/demand/wake" = true;
           };
         };
         ProcessType = "Background";
@@ -59,6 +59,12 @@ in
         Persistent = true;
       };
       Install.WantedBy = [ "timers.target" ];
+    };
+
+    systemd.user.paths.pi-memory = lib.mkIf isLinux {
+      Unit.Description = "Run agent memory maintenance when durable demand arrives";
+      Path.PathExists = "${config.home.homeDirectory}/.local/state/pi-memory/v3/demand/wake";
+      Install.WantedBy = [ "default.target" ];
     };
   };
 }
