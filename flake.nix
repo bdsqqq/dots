@@ -91,6 +91,11 @@
         inherit (inputs.nixpkgs) lib;
         root = ./.;
       };
+      nixosObservabilityModules = [
+        inputs.sops-nix.nixosModules.sops
+        inputs.axiom-deploy-annotation.nixosModules.default
+        ./modules/o11y
+      ];
       mkDarwinSystem = { deployAnnotations ? true }: hostModule: inputs.nix-darwin.lib.darwinSystem {
         specialArgs = {
           inherit inputs tailnetApps;
@@ -112,6 +117,7 @@
         modules = [
           inputs.sops-nix.darwinModules.sops
           inputs.axiom-deploy-annotation.darwinModules.default
+          ./modules/o11y
           ({ config, lib, ... }: {
             nixpkgs = {
               hostPlatform = "aarch64-darwin";
@@ -270,9 +276,7 @@
               hostSystem = "x86_64-linux";
               headMode = "headless";
             };
-            modules = [
-              inputs.sops-nix.nixosModules.sops
-              inputs.axiom-deploy-annotation.nixosModules.default
+            modules = nixosObservabilityModules ++ [
               stylix.nixosModules.stylix
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.home-manager.nixosModules.home-manager
@@ -308,9 +312,7 @@
               hostSystem = "x86_64-linux";
               headMode = "headless";
             };
-            modules = [
-              inputs.sops-nix.nixosModules.sops
-              inputs.axiom-deploy-annotation.nixosModules.default
+            modules = nixosObservabilityModules ++ [
               stylix.nixosModules.stylix
               inputs.nix-flatpak.nixosModules.nix-flatpak
               inputs.home-manager.nixosModules.home-manager
@@ -344,9 +346,7 @@
               hostSystem = "x86_64-linux";
               headMode = "graphical";
             };
-            modules = [
-              inputs.sops-nix.nixosModules.sops
-              inputs.axiom-deploy-annotation.nixosModules.default
+            modules = nixosObservabilityModules ++ [
               stylix.nixosModules.stylix
               inputs.home-manager.nixosModules.home-manager
               inputs.nix-flatpak.nixosModules.nix-flatpak

@@ -25,7 +25,6 @@ in
     ../../modules/secrets
     ../../modules/fonts
     ../../modules/nix/auto-upgrade.nix
-    ../../modules/o11y
     ../../modules/t3-code/server.nix
     ../../modules/syncthing
     ../../modules/audio

@@ -287,6 +287,8 @@ let
   '';
 in
 {
+  imports = lib.optionals isDarwin [ ./darwin.nix ];
+
   options.services.o11y = {
     enable = lib.mkOption {
       type = lib.types.bool;
@@ -347,6 +349,11 @@ in
       lib.mkMerge [
         common
         {
+          sops.age = {
+            sshKeyPaths = lib.mkDefault [ "${homeDir}/.ssh/id_ed25519" ];
+            keyFile = lib.mkDefault "${homeDir}/.config/sops/age/keys.txt";
+          };
+
           launchd.daemons.otelcol-axiom = {
             script = ''
               pid_file=/var/run/otelcol-axiom.pid

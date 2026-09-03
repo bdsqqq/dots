@@ -44,7 +44,6 @@ in
     ../../modules/fonts
     ../../modules/nix/auto-upgrade.nix
     ../../modules/syncthing
-    ../../modules/o11y
     ../../modules/o11y/hwmon.nix
     ../../modules/core-cli
     ../../modules/shell

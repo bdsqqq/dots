@@ -36,7 +36,6 @@ in
     ../../modules/secrets
     ../../modules/fonts
     ../../modules/nix/auto-upgrade.nix
-    ../../modules/o11y
     ../../modules/o11y/hwmon.nix
     ../../modules/core-cli
     ../../modules/shell
