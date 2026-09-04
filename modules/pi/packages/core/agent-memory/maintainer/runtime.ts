@@ -37,7 +37,7 @@ import {
   type JsonValue,
 } from "./common.js";
 import type { MaintainerConfig } from "./config.js";
-import { requestMaintenance } from "./demand.js";
+import { maintenanceWakePending, requestMaintenance } from "./demand.js";
 import {
   dispatchSlice,
   type DispatcherHandlers,
@@ -1422,7 +1422,7 @@ export async function runMaintainer(
   });
   try {
     const migration = ensureMigration(cfg, clock);
-    if (options.request !== false)
+    if (options.request !== false && !maintenanceWakePending(cfg))
       requestMaintenance(
         cfg,
         {
@@ -1622,19 +1622,37 @@ if (import.meta.vitest) {
       Parameters<typeof runMaintainer>[1]
     >["invokeModel"],
   ): Promise<void> {
+    const generation = readMaintenanceDemand(cfg)?.generation;
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await runMaintainer(cfg, {
-        request: false,
         clock,
         ...(invokeModel ? { invokeModel } : {}),
       });
       const demand = readMaintenanceDemand(cfg);
+      expect(demand?.generation).toBe(generation);
       if (!demand || demand.satisfiedThrough === demand.generation) return;
     }
     throw new Error("runtime fixture did not settle");
   }
 
   describe("v3 maintainer runtime", () => {
+    it("creates periodic demand only after the previous generation settles", async () => {
+      const cfg = runtimeFixture();
+      const clock = () => new Date("2026-09-03T12:00:00.000Z");
+      const first = await runMaintainer(cfg, { clock });
+      expect(first.slices[0]).toMatchObject({
+        generation: 1,
+        workflowsCreated: 3,
+      });
+      if (maintenanceWakePending(cfg)) await settle(cfg, clock, undefined);
+      expect(maintenanceWakePending(cfg)).toBe(false);
+      const next = await runMaintainer(cfg, { clock });
+      expect(next.slices[0]).toMatchObject({
+        generation: 2,
+        workflowsCreated: 3,
+      });
+    });
+
     it("admits, audits, projects, and compensates through remote CAS", () => {
       const cfg = runtimeFixture();
       const created = submitAndReconcileManualProposal(
