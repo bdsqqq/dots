@@ -5,6 +5,7 @@
   nodejs,
   pnpm_10,
   pnpmConfigHook,
+  runtimeShell,
   stdenvNoCC,
 }:
 
@@ -52,6 +53,13 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       --platform=node \
       --target=node24
 
+    esbuild hue-cli.ts \
+      --bundle \
+      --format=esm \
+      --outfile=hue-cli.mjs \
+      --platform=node \
+      --target=node24
+
     ${lib.getExe nodejs} -e "import('webbluetooth')"
 
     runHook postBuild
@@ -61,10 +69,17 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     runHook preInstall
 
     app="$out/Applications/Hue Control.app"
-    mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+    mkdir -p "$out/bin" "$app/Contents/MacOS" "$app/Contents/Resources"
     install -m755 ${lib.getExe nodejs} "$app/Contents/MacOS/HueControl"
     install -m644 hue-control.mjs "$app/Contents/Resources/hue-control.mjs"
+    install -m644 hue-cli.mjs "$app/Contents/Resources/hue-cli.mjs"
     cp -R node_modules "$app/Contents/Resources/node_modules"
+
+    cat > "$out/bin/hue" <<EOF
+    #!${runtimeShell}
+    exec "$app/Contents/MacOS/HueControl" "$app/Contents/Resources/hue-cli.mjs" "\$@"
+    EOF
+    chmod 755 "$out/bin/hue"
 
     cat > "$app/Contents/Info.plist" <<'PLIST'
     <?xml version="1.0" encoding="UTF-8"?>
