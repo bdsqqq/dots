@@ -33,6 +33,17 @@ export interface HueGattConnection {
   write(characteristic: string, value: Uint8Array): Promise<void>;
 }
 
+type WritableHueState = Pick<HueState, "power" | "brightness" | "colorTemperature" | "colorXy">;
+type WritableHueKey = keyof WritableHueState;
+
+interface PendingWrite {
+  characteristic: string;
+  encoded: Uint8Array;
+  key: WritableHueKey;
+  resolve: Array<(result: HueResult<HueState>) => void>;
+  value: WritableHueState[WritableHueKey];
+}
+
 const success = <T>(value: T): HueResult<T> => ({ ok: true, value });
 
 const failure = (error: HueControlError, message: string): HueResult<never> => ({
@@ -107,9 +118,10 @@ function decodeText(value: Uint8Array): string {
 export class HueProtocolSession {
   readonly #connection: HueGattConnection;
   readonly #listeners = new Set<(state: HueState) => void>();
+  readonly #pendingWrites = new Map<string, PendingWrite>();
   readonly #unsubscribers: Array<() => Promise<void>> = [];
   #state: HueState | null = null;
-  #writeQueue = Promise.resolve();
+  #writing = false;
 
   constructor(connection: HueGattConnection) {
     this.#connection = connection;
@@ -230,25 +242,60 @@ export class HueProtocolSession {
     this.#unsubscribers.push(unsubscribe);
   }
 
-  #write<K extends "power" | "brightness" | "colorTemperature" | "colorXy">(
+  #write<K extends WritableHueKey>(
     key: K,
     characteristic: string,
     encoded: Uint8Array,
     value: HueState[K],
   ): Promise<HueResult<HueState>> {
     if (!this.#state) return Promise.resolve(failure("unavailable", "light is not connected"));
-    const operation = this.#writeQueue.then(async () => {
-      try {
-        await this.#connection.write(characteristic, encoded);
-        this.#state = { ...this.#state!, [key]: value };
-        this.#emit();
-        return success(this.#state);
-      } catch (error) {
-        return failure("unavailable", error instanceof Error ? error.message : String(error));
+    return new Promise((resolve) => {
+      const pending = this.#pendingWrites.get(characteristic);
+      if (pending) {
+        pending.encoded = encoded;
+        pending.value = value;
+        pending.resolve.push(resolve);
+      } else {
+        this.#pendingWrites.set(characteristic, {
+          characteristic,
+          encoded,
+          key,
+          resolve: [resolve],
+          value,
+        });
       }
+      void this.#drainWrites();
     });
-    this.#writeQueue = operation.then(() => undefined);
-    return operation;
+  }
+
+  async #drainWrites(): Promise<void> {
+    if (this.#writing) return;
+    this.#writing = true;
+    try {
+      while (this.#pendingWrites.size > 0) {
+        const [characteristic, pending] = this.#pendingWrites.entries().next().value!;
+        this.#pendingWrites.delete(characteristic);
+        let result: HueResult<HueState>;
+        try {
+          await this.#connection.write(pending.characteristic, pending.encoded);
+          this.#state = { ...this.#state!, [pending.key]: pending.value };
+          this.#emit();
+          result = success(this.#state);
+        } catch (error) {
+          result = failure("unavailable", error instanceof Error ? error.message : String(error));
+        }
+        for (const resolve of pending.resolve) resolve(result);
+        if (!result.ok) {
+          for (const queued of this.#pendingWrites.values()) {
+            for (const resolve of queued.resolve) resolve(result);
+          }
+          this.#pendingWrites.clear();
+          return;
+        }
+      }
+    } finally {
+      this.#writing = false;
+    }
   }
 
   #emit(): void {
