@@ -373,6 +373,7 @@
                   (import ./overlays/unstable.nix inputs)
                   (import ./modules/zmx).overlay
                   (import ./overlays/quickshell.nix inputs)
+                  inputs.niri.overlays.niri
                 ];
                 system.configurationRevision = flakeRevision;
 
