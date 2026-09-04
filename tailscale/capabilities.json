@@ -24,6 +24,12 @@
       "service": "svc:hue:443",
       "tailnetAudience": "owner"
     },
+    "money": {
+      "connectorDestination": "svc:money:443",
+      "connectorTrust": "shared",
+      "service": "svc:money:443",
+      "tailnetAudience": "owner"
+    },
     "photos": {
       "connectorDestination": "svc:photos:443",
       "connectorTrust": "shared",

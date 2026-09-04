@@ -45,6 +45,9 @@
         htmlStuffServer = import ../../modules/html-stuff/package.nix {
           inherit pkgs;
         };
+        companyMoneyPortal = import ../../modules/company-money/portal/package.nix {
+          inherit pkgs;
+        };
         filesBrowserServer = import ../../modules/files-browser/package.nix { inherit pkgs; };
       in
       {
@@ -73,6 +76,12 @@
           port = 8765;
           healthPath = "/";
         };
+        my.tailnetRegistry.providers.money = {
+          target = "http://127.0.0.1:3929";
+          scheme = "https";
+          port = 3930;
+          healthPath = "/healthz";
+        };
         my.tailnetRegistry.providers.files = {
           target = "http://127.0.0.1:3925";
           scheme = "https";
@@ -93,6 +102,21 @@
             Restart = "always";
             RestartSec = "5s";
             User = "bdsqqq";
+          };
+        };
+
+        systemd.services.company-money-portal = {
+          description = "Synthetic company-money capability portal";
+          wantedBy = [ "multi-user.target" ];
+          serviceConfig = {
+            ExecStart = "${companyMoneyPortal}/bin/company-money-portal --port 3929";
+            Restart = "always";
+            RestartSec = "5s";
+            DynamicUser = true;
+            NoNewPrivileges = true;
+            PrivateTmp = true;
+            ProtectHome = true;
+            ProtectSystem = "strict";
           };
         };
 

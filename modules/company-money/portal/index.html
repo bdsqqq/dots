@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="A synthetic walkthrough of the company-money evidence ledger.">
+    <title>company money — evidence, with receipts</title>
+    <link rel="stylesheet" href="/portal.css">
+    <script src="/portal.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="company money home">
+        <span class="brand-mark" aria-hidden="true">cm</span>
+        <span>company money</span>
+      </a>
+      <nav aria-label="main navigation">
+        <a href="#workflow">workflow</a>
+        <a href="#capabilities">capabilities</a>
+        <a href="#boundaries">boundaries</a>
+      </nav>
+      <span class="access-badge"><i aria-hidden="true"></i> owner access</span>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">local-first evidence ledger <span>v1</span></p>
+          <h1 id="hero-title">Every movement,<br><em>accounted for.</em></h1>
+          <p class="lede">
+            Company money turns bounded bank evidence into a deterministic ledger:
+            traceable, replayable, and reported in the currency it arrived in.
+          </p>
+          <div class="hero-actions">
+            <a class="primary-action" href="#workflow">run the walkthrough <span aria-hidden="true">↓</span></a>
+            <a class="text-action" href="#boundaries">see the trust boundary</a>
+          </div>
+          <p class="synthetic-note"><span aria-hidden="true">◇</span> this portal uses synthetic records only</p>
+        </div>
+
+        <div class="report-shell" aria-label="synthetic native-currency report">
+          <div class="window-bar">
+            <div class="window-title">
+              <span class="window-mark" aria-hidden="true">$</span>
+              <div>
+                <strong>report@1</strong>
+                <small>synthetic · completed only</small>
+              </div>
+            </div>
+            <span class="verified">schema valid</span>
+          </div>
+          <div class="currency-tabs" role="tablist" aria-label="report currency">
+            <button id="currency-brl" type="button" role="tab" aria-controls="currency-report" aria-selected="true" data-currency="BRL">BRL</button>
+            <button id="currency-eur" type="button" role="tab" aria-controls="currency-report" aria-selected="false" tabindex="-1" data-currency="EUR">EUR</button>
+            <span>no implicit fx</span>
+          </div>
+          <div class="balance-block" id="currency-report" role="tabpanel" aria-labelledby="currency-brl" aria-live="polite">
+            <small>classified incoming</small>
+            <strong id="receipt-total">R$ 18.400,00</strong>
+            <span id="receipt-caption">3 completed movements</span>
+          </div>
+          <dl class="report-rows">
+            <div><dt>revenue</dt><dd id="revenue-total">R$ 15.000,00</dd></div>
+            <div><dt>owner funding</dt><dd id="funding-total">R$ 3.000,00</dd></div>
+            <div><dt>cashback</dt><dd id="cashback-total">R$ 400,00</dd></div>
+            <div class="excluded"><dt>failed / cancelled</dt><dd id="excluded-total">2 excluded</dd></div>
+          </dl>
+          <div class="report-footer">
+            <span><i class="provenance-dot" aria-hidden="true"></i> source revision <code>7f4c…91aa</code></span>
+            <span>integer minor units</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="proof-strip" aria-label="operating guarantees">
+        <div><strong>2</strong><span>evidence adapters</span></div>
+        <div><strong>exact</strong><span>versioned schemas</span></div>
+        <div><strong>CAS</strong><span>atomic JSONL state</span></div>
+        <div><strong>native</strong><span>currency partitions</span></div>
+        <div><strong>zero</strong><span>provider writes</span></div>
+      </section>
+
+      <section class="workflow section" id="workflow" aria-labelledby="workflow-title">
+        <div class="section-heading">
+          <p class="eyebrow">synthetic walkthrough <span>interactive</span></p>
+          <h2 id="workflow-title">From evidence to answer,<br>without losing the trail.</h2>
+          <p>Select a phase to inspect what the ledger knows, what it refuses to guess, and what survives a replay.</p>
+        </div>
+
+        <div class="workflow-board">
+          <ol class="phase-list" aria-label="ledger phases">
+            <li>
+              <button type="button" class="phase active" data-phase="collect" aria-pressed="true">
+                <span>01</span><strong>collect</strong><small>bounded envelopes</small>
+              </button>
+            </li>
+            <li>
+              <button type="button" class="phase" data-phase="normalize" aria-pressed="false">
+                <span>02</span><strong>normalize</strong><small>exact schemas</small>
+              </button>
+            </li>
+            <li>
+              <button type="button" class="phase" data-phase="deduplicate" aria-pressed="false">
+                <span>03</span><strong>deduplicate</strong><small>stable identity</small>
+              </button>
+            </li>
+            <li>
+              <button type="button" class="phase" data-phase="classify" aria-pressed="false">
+                <span>04</span><strong>classify</strong><small>explicit policy</small>
+              </button>
+            </li>
+            <li>
+              <button type="button" class="phase" data-phase="report" aria-pressed="false">
+                <span>05</span><strong>report</strong><small>native currency</small>
+              </button>
+            </li>
+          </ol>
+
+          <div class="phase-detail" aria-live="polite">
+            <div class="detail-topline">
+              <span id="phase-kicker">evidence boundary</span>
+              <code id="phase-schema">nubank-statement-envelope@1</code>
+            </div>
+            <h3 id="phase-title">Only the smallest useful input crosses in.</h3>
+            <p id="phase-description">
+              Provider collection stays outside the ledger. Nubank statement CSV and bounded Wise notification envelopes enter manually, read-only.
+            </p>
+            <div class="evidence-card" id="phase-visual">
+              <div class="evidence-head">
+                <span>synthetic_statement.csv</span>
+                <span class="grade">grade · direct</span>
+              </div>
+              <div class="evidence-row labels"><span>date</span><span>reference</span><span>amount</span></div>
+              <div class="evidence-row"><span>12/08/2026</span><span>ACME STUDIO · INV-104</span><span>+ 8.500,00</span></div>
+              <div class="evidence-row"><span>13/08/2026</span><span>HOSTING CO · AUG</span><span>− 219,00</span></div>
+              <div class="evidence-row muted"><span>…</span><span>content remains private</span><span>…</span></div>
+            </div>
+            <div class="run-controls">
+              <button class="run-button" id="run-button" type="button">
+                <span class="run-icon" aria-hidden="true">▶</span>
+                <span id="run-label">simulate first ingest</span>
+              </button>
+              <p id="run-summary"><strong>ready</strong> four valid synthetic movements and one malformed observation</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="capabilities section" id="capabilities" aria-labelledby="capabilities-title">
+        <div class="section-heading compact">
+          <p class="eyebrow">capability map <span>contract-first</span></p>
+          <h2 id="capabilities-title">Firm where it matters.<br>Plain where it doesn’t.</h2>
+        </div>
+        <div class="capability-grid">
+          <article>
+            <span class="cap-number">01</span>
+            <div class="cap-icon" aria-hidden="true">↳</div>
+            <h3>Two evidence paths</h3>
+            <p>Provider-issued Nubank statement CSVs and bounded Wise notification envelopes normalize through separate adapters.</p>
+          </article>
+          <article>
+            <span class="cap-number">02</span>
+            <div class="cap-icon" aria-hidden="true">≡</div>
+            <h3>Deterministic identity</h3>
+            <p>Stable provider IDs lead. Content-derived fallback IDs make incremental ingestion safe to replay.</p>
+          </article>
+          <article>
+            <span class="cap-number">03</span>
+            <div class="cap-icon" aria-hidden="true">◇</div>
+            <h3>Graded provenance</h3>
+            <p>Every transaction keeps opaque source evidence, parser identity, content digest, and confidence grade.</p>
+          </article>
+          <article>
+            <span class="cap-number">04</span>
+            <div class="cap-icon" aria-hidden="true">±</div>
+            <h3>Honest money</h3>
+            <p>Amounts stay as integer minor units. BRL, EUR, and every other currency remain separate—never silently converted.</p>
+          </article>
+          <article>
+            <span class="cap-number">05</span>
+            <div class="cap-icon" aria-hidden="true">⇄</div>
+            <h3>Transfer reconciliation</h3>
+            <p>Internal movements are linked as their own records, rather than being disguised as revenue or expense.</p>
+          </article>
+          <article>
+            <span class="cap-number">06</span>
+            <div class="cap-icon" aria-hidden="true">!</div>
+            <h3>Useful refusal</h3>
+            <p>Malformed and unknown evidence is quarantined with sanitized reasons. Failed and cancelled movements remain, but leave totals alone.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="boundaries section" id="boundaries" aria-labelledby="boundaries-title">
+        <div class="boundary-copy">
+          <p class="eyebrow">trust boundary <span>designed in</span></p>
+          <h2 id="boundaries-title">The portal knows the model.<br>It never sees the money.</h2>
+          <p>
+            This deployment is a static, synthetic explainer. The operational ledger stays local and private; the portal has no data mount, runtime API, mailbox access, or provider credential.
+          </p>
+          <ul class="boundary-list">
+            <li><i aria-hidden="true">✓</i><span><strong>read-only collection</strong> stays manually invoked outside the package</span></li>
+            <li><i aria-hidden="true">✓</i><span><strong>atomic local state</strong> uses 0700 directories and 0600 files</span></li>
+            <li><i aria-hidden="true">✓</i><span><strong>owner-only access</strong> guards this synthetic portal at the edge</span></li>
+          </ul>
+        </div>
+        <div class="boundary-diagram" aria-label="privacy architecture">
+          <div class="zone private-zone">
+            <span>private device</span>
+            <strong>evidence → ledger → report</strong>
+            <small>local runtime · no server dependency</small>
+          </div>
+          <div class="separation" aria-hidden="true">
+            <span></span><em>no data path</em><span></span>
+          </div>
+          <div class="zone portal-zone">
+            <span>this portal</span>
+            <strong>schemas → capabilities → synthetic demo</strong>
+            <small>static assets · owner access</small>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="brand footer-brand"><span class="brand-mark" aria-hidden="true">cm</span><span>company money</span></div>
+      <p>Evidence with receipts. Totals with boundaries.</p>
+      <a href="#top">back to top ↑</a>
+    </footer>
+  </body>
+</html>
