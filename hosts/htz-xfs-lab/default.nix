@@ -1,4 +1,5 @@
 {
+  inputs,
   lib,
   modulesPath,
   pkgs,
@@ -53,9 +54,68 @@ let
   };
 in
 {
-  imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
+  imports = [
+    (modulesPath + "/profiles/qemu-guest.nix")
+    ../../modules/primary-user.nix
+    ../../modules/nix
+    ../../modules/nix/nix-ld.nix
+    ../../modules/tailscale
+    ../../modules/tailnet-registry
+    ../../modules/core-cli
+    ../../modules/shell
+    ../../modules/btop
+    ../../modules/fzf
+    ../../modules/zoxide
+    ../../modules/nvim
+    ../../modules/git
+    ../../modules/tealdeer
+    ../../modules/trash
+    (import ../../modules/zmx).module
+    ../../modules/direnv
+    ../../modules/tmux
+    ../../modules/amp
+    ../../modules/agents
+    ../../modules/node-pnpm
+    ../../modules/mise
+    ../../modules/rust
+    ../../modules/go
+    ../../modules/fairy-name
+    ../../modules/pi
+    ../../modules/pi-memory
+    ../../modules/t3-code/server.nix
+  ];
 
   nixpkgs.hostPlatform = "x86_64-linux";
+
+  my.primaryUser = "bdsqqq";
+  my.paths.commonplace = "/home/bdsqqq/commonplace";
+
+  home-manager = {
+    useGlobalPkgs = true;
+    useUserPackages = true;
+    users.bdsqqq = {
+      home = {
+        stateVersion = "26.11";
+        packages = with pkgs; [
+          age
+          hcloud
+          inputs.lnr.packages.x86_64-linux.default
+          lua-language-server
+          nil
+          nixfmt
+          opentofu
+          pscale
+          sops
+          ssh-to-age
+          statix
+          stylua
+          typescript
+          typescript-language-server
+        ];
+      };
+      programs.home-manager.enable = true;
+    };
+  };
 
   networking = {
     hostName = "htz-xfs-lab";

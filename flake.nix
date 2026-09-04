@@ -275,12 +275,22 @@
         nixosConfigurations = {
           "htz-xfs-lab" = inputs.nixpkgs.lib.nixosSystem {
             specialArgs = {
-              inherit inputs;
+              inherit inputs tailnetApps;
               hostSystem = "x86_64-linux";
               headMode = "headless";
             };
             modules = [
               inputs.disko.nixosModules.disko
+              inputs.home-manager.nixosModules.home-manager
+              {
+                nixpkgs = {
+                  config.allowUnfree = true;
+                  overlays = [
+                    (import ./overlays/unstable.nix inputs)
+                    (import ./modules/zmx).overlay
+                  ];
+                };
+              }
               ./hosts/htz-xfs-lab/default.nix
             ];
           };

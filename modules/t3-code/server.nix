@@ -226,13 +226,13 @@ if isLinux then
         ../node-pnpm/pnpm-lock.yaml
       ];
 
-      path = [
+      environment.PATH = lib.mkForce "${toolsBin}:${lib.makeBinPath [
+        pkgs.cloudflared
         pkgs.coreutils
         pkgs.git
         pkgs.gnused
         pkgs.nodejs
-        toolsBin
-      ];
+      ]}";
       serviceConfig = {
         Type = "exec";
         User = "bdsqqq";
