@@ -120,6 +120,7 @@ export class WebBluetoothHueAdapter implements HueBleAdapter {
       deviceFound: () => true,
       scanTime: this.#scanTime,
     });
+    if (!(await bluetooth.getAvailability())) throw new Error("bluetooth adapter is unavailable");
     const device = await bluetooth.requestDevice(requestOptions());
     return { id: device.id, name: device.name || "Hue light" };
   }
@@ -129,6 +130,7 @@ export class WebBluetoothHueAdapter implements HueBleAdapter {
       deviceFound: (device) => device.id === deviceId,
       scanTime: this.#scanTime,
     });
+    if (!(await bluetooth.getAvailability())) throw new Error("bluetooth adapter is unavailable");
     const device = await bluetooth.requestDevice(requestOptions());
     device.addEventListener("gattserverdisconnected", disconnected, { once: true });
     const server = await device.gatt.connect();
