@@ -16,6 +16,9 @@
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
 
+    disko.url = "github:nix-community/disko";
+    disko.inputs.nixpkgs.follows = "nixpkgs";
+
     berkeley-mono.url = "path:./modules/fonts/berkeley-mono";
     berkeley-mono.flake = false;
 
@@ -270,6 +273,18 @@
         };
 
         nixosConfigurations = {
+          "htz-xfs-lab" = inputs.nixpkgs.lib.nixosSystem {
+            specialArgs = {
+              inherit inputs;
+              hostSystem = "x86_64-linux";
+              headMode = "headless";
+            };
+            modules = [
+              inputs.disko.nixosModules.disko
+              ./hosts/htz-xfs-lab/default.nix
+            ];
+          };
+
           "htz-relay" = inputs.nixpkgs.lib.nixosSystem {
             specialArgs = {
               inherit inputs tailnetApps;
