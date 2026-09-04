@@ -1,6 +1,6 @@
-import { oc, type ContractRouterClient } from "@orpc/contract";
 import { type } from "arktype";
 
+import { fleetOperation } from "../fleet-operation.ts";
 import {
   NodeIdV1Schema,
   NoInputV1Schema,
@@ -102,21 +102,8 @@ export function fleetNodeExists(reader: FleetNodeReader, id: string): FleetNodeP
   };
 }
 
-export interface FleetOperationMetadata {
-  id?: string;
-  version?: 1;
-  summary?: string;
-  cli?: {
-    input: "none" | "scalar";
-    argument?: string;
-  };
-}
-
-const operation = oc.$meta<FleetOperationMetadata>({});
-
-export const fleetContract = operation.router({
-  node: {
-    list: operation
+export const nodeCatalogContract = fleetOperation.router({
+  list: fleetOperation
       .input(NoInputV1Schema)
       .output(FleetNodeSummaryListV1Schema)
       .meta({
@@ -125,7 +112,7 @@ export const fleetContract = operation.router({
         summary: "list configured fleet nodes",
         cli: { input: "none" },
       }),
-    describe: operation
+  describe: fleetOperation
       .input(NodeIdV1Schema)
       .output(FleetNodeDescriptionV1Schema)
       .errors({
@@ -139,7 +126,7 @@ export const fleetContract = operation.router({
         summary: "describe one configured fleet node",
         cli: { input: "scalar", argument: "id" },
       }),
-    exists: operation
+  exists: fleetOperation
       .input(NodeIdV1Schema)
       .output(FleetNodePresenceV1Schema)
       .meta({
@@ -148,7 +135,4 @@ export const fleetContract = operation.router({
         summary: "check whether a fleet node is configured",
         cli: { input: "scalar", argument: "id" },
       }),
-  },
 });
-
-export type FleetClient = ContractRouterClient<typeof fleetContract>;

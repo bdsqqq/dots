@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { runFleetCli, type FleetCliIO } from "./fleet-cli.ts";
-import { createFleetClient } from "./node-catalog/local.ts";
+import { createFleetClient } from "./fleet-node.ts";
 import { LocalFleetRuntime } from "./local-fleet-runtime.ts";
 import { loadLocalFleetRuntimeOptions } from "./local-fleet-config.ts";
 
@@ -12,6 +12,13 @@ export interface FleetCliMainOptions {
 }
 
 const processIO: FleetCliIO = {
+  stdin: async () => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  },
   stdout: (value) => process.stdout.write(value),
   stderr: (value) => process.stderr.write(value),
 };
@@ -39,7 +46,7 @@ export async function fleetCliMain(options: FleetCliMainOptions = {}): Promise<n
     );
     return runFleetCli({
       argv,
-      client: createFleetClient(runtime),
+      client: createFleetClient(runtime, runtime.desiredStateController),
       io,
     });
   } catch (error) {

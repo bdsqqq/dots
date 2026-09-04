@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { ORPCError } from "@orpc/server";
 
-import { createFleetClient } from "./local.ts";
+import { createFleetClient } from "../fleet-node.ts";
 import {
   describeFleetNode,
   fleetNodeExists,

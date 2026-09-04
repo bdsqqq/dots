@@ -35,10 +35,12 @@
   "dependencies": {
     "@orpc/contract": "1.13.6",
     "@orpc/server": "1.13.6",
-    "arktype": "2.2.3"
+    "arktype": "2.2.3",
+    "proper-lockfile": "4.1.2"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/proper-lockfile": "4.1.4",
     "esbuild": "0.28.2",
     "typescript": "^5.9.2"
   },

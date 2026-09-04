@@ -4,7 +4,7 @@ import {
   fleetContract,
   type FleetClient,
   type FleetOperationMetadata,
-} from "./node-catalog/public.ts";
+} from "./fleet-public.ts";
 
 interface ProjectedOperation {
   path: readonly string[];
@@ -12,6 +12,7 @@ interface ProjectedOperation {
 }
 
 export interface FleetCliIO {
+  stdin?(): Promise<string>;
   stdout(value: string): void;
   stderr(value: string): void;
 }
@@ -40,7 +41,9 @@ function operationMetadata(
     metadata.version !== 1 ||
     typeof metadata.summary !== "string" ||
     !metadata.cli ||
-    (metadata.cli.input !== "none" && metadata.cli.input !== "scalar") ||
+    (metadata.cli.input !== "none" &&
+      metadata.cli.input !== "scalar" &&
+      metadata.cli.input !== "json") ||
     (metadata.cli.input === "scalar" && typeof metadata.cli.argument !== "string")
   ) {
     throw new Error(`operation ${path.join(".")} has incomplete CLI metadata`);
@@ -104,10 +107,15 @@ function commandUsage(programName: string, operation: ProjectedOperation): strin
     operation.metadata.cli.input === "scalar"
       ? ` <${operation.metadata.cli.argument}>`
       : "";
+  const input =
+    operation.metadata.cli.input === "json"
+      ? ["", "Input:", "  exact JSON on stdin"]
+      : [];
   return [
     `Usage: ${programName} ${operation.path.join(" ")}${argument} [--json]`,
     "",
     operation.metadata.summary,
+    ...input,
     "",
     "Options:",
     "  --json  emit one stable JSON document",
@@ -121,6 +129,8 @@ function rootUsage(programName: string, operations: readonly ProjectedOperation[
     const argument =
       operation.metadata.cli.input === "scalar"
         ? ` <${operation.metadata.cli.argument}>`
+        : operation.metadata.cli.input === "json"
+          ? " <json-stdin>"
         : "";
     return `  ${operation.path.join(" ")}${argument}  ${operation.metadata.summary}`;
   });
@@ -196,14 +206,30 @@ export async function runFleetCli(options: RunFleetCliOptions): Promise<number> 
     );
     return 2;
   }
+  if (operation.metadata.cli.input === "json" && positional.length !== 0) {
+    options.io.stderr(`${operation.metadata.id} reads JSON from stdin\n`);
+    return 2;
+  }
 
   try {
     if (!options.client) throw new Error("local client is required to invoke a command");
     const procedure = clientProcedure(options.client, operation.path);
-    const result =
-      operation.metadata.cli.input === "none"
-        ? await procedure()
-        : await procedure(positional[0]);
+    let result: unknown;
+    if (operation.metadata.cli.input === "none") {
+      result = await procedure();
+    } else if (operation.metadata.cli.input === "scalar") {
+      result = await procedure(positional[0]);
+    } else {
+      if (!options.io.stdin) throw new Error("JSON stdin is unavailable");
+      const source = await options.io.stdin();
+      let input: unknown;
+      try {
+        input = JSON.parse(source);
+      } catch {
+        throw new Error("stdin must contain valid JSON");
+      }
+      result = await procedure(input);
+    }
     const stable = stableValue(result);
     options.io.stdout(
       jsonFlags === 1 ? `${JSON.stringify(stable)}\n` : `${JSON.stringify(stable, null, 2)}\n`,

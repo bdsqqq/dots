@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +11,7 @@ import {
   publicIdentity,
   type NodeIdentity,
 } from "./fleet-mesh.ts";
+import { loadLocalFleetRuntimeOptions } from "./local-fleet-config.ts";
 import { listFleetNodes } from "./node-catalog/public.ts";
 import {
   LocalFleetRuntime,
@@ -25,6 +27,13 @@ function configuration(
     publicIdentity: publicIdentity(identity),
     statePath: join(directory, `${identity.id}.json`),
   };
+}
+
+function authorityPrivateKey(): string {
+  return generateKeyPairSync("ed25519").privateKey.export({
+    format: "pem",
+    type: "pkcs8",
+  }).toString();
 }
 
 test("missing snapshots create explicit fresh nodes and expose public configuration only", async () => {
@@ -48,6 +57,52 @@ test("missing snapshots create explicit fresh nodes and expose public configurat
       "id",
       "signingPublicKey",
     ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("public-only nodes and private desired-state control load through explicit config", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fleet-runtime-"));
+  try {
+    const privateKey = authorityPrivateKey();
+    const authority = new FleetAuthority("fleet-admin", privateKey);
+    const recipient = publicIdentity(createNodeIdentity("esp32-sim-1"));
+    const privateKeyPath = join(directory, "authority.pem");
+    const configurationPath = join(directory, "fleet.json");
+    await writeFile(privateKeyPath, privateKey);
+    await writeFile(
+      configurationPath,
+      JSON.stringify({
+        version: 1,
+        fleet: "home",
+        authority: { id: authority.id, publicKey: authority.publicKey },
+        nodes: [],
+        publicNodes: [recipient],
+        desiredState: {
+          authorityPrivateKeyPath: "authority.pem",
+          bridgeOrigin: "http://127.0.0.1:43120",
+          revisionStatePath: "authority-revision.json",
+        },
+      }),
+    );
+
+    const options = await loadLocalFleetRuntimeOptions(configurationPath);
+    assert.equal(options.desiredState?.authorityPrivateKey, privateKey);
+    assert.equal(
+      options.desiredState?.revisionStatePath,
+      join(directory, "authority-revision.json"),
+    );
+    const runtime = await LocalFleetRuntime.create(options);
+    assert.deepEqual(listFleetNodes(runtime), [
+      {
+        kind: "fleet.node-summary",
+        version: 1,
+        id: "esp32-sim-1",
+        fleet: "home",
+      },
+    ]);
+    assert.ok(runtime.desiredStateController);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

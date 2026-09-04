@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { runFleetCli, projectFleetOperations, type FleetCliIO } from "./fleet-cli.ts";
-import { createFleetClient } from "./node-catalog/local.ts";
+import { createFleetClient } from "./fleet-node.ts";
+import type { DesiredStateController } from "./fleet-public.ts";
 import type { FleetNodeReader } from "./node-catalog/public.ts";
 
 const reader: FleetNodeReader = {
@@ -29,10 +30,11 @@ const reader: FleetNodeReader = {
   },
 };
 
-function capture() {
+function capture(stdin?: string) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const io: FleetCliIO = {
+    stdin: stdin === undefined ? undefined : async () => stdin,
     stdout: (value) => stdout.push(value),
     stderr: (value) => stderr.push(value),
   };
@@ -42,8 +44,62 @@ function capture() {
 test("projects every command from the public oRPC operation catalog", () => {
   assert.deepEqual(
     projectFleetOperations().map((operation) => operation.metadata.id),
-    ["node.describe", "node.exists", "node.list"],
+    [
+      "desired-state.set",
+      "desired-state.status",
+      "node.describe",
+      "node.exists",
+      "node.list",
+    ],
   );
+});
+
+test("JSON stdin reaches structured operations without adapter wiring", async () => {
+  let received: unknown;
+  const desiredState: DesiredStateController = {
+    set: async (input) => {
+      received = input;
+      return {
+        kind: "fleet.desired-state-submission",
+        version: 1,
+        commandId: "command-1",
+        revision: { epoch: 1, sequence: 0 },
+      };
+    },
+    status: async () => undefined,
+  };
+  const input = {
+    nodeId: "alpha",
+    resource: "display:portrait",
+    value: { page: 2 },
+  };
+  const output = capture(JSON.stringify(input));
+  assert.equal(
+    await runFleetCli({
+      argv: ["desired-state", "set", "--json"],
+      client: createFleetClient(reader, desiredState),
+      io: output.io,
+    }),
+    0,
+  );
+  assert.deepEqual(received, input);
+  assert.deepEqual(JSON.parse(output.stdout[0]), {
+    commandId: "command-1",
+    kind: "fleet.desired-state-submission",
+    revision: { epoch: 1, sequence: 0 },
+    version: 1,
+  });
+
+  const malformed = capture("{");
+  assert.equal(
+    await runFleetCli({
+      argv: ["desired-state", "set"],
+      client: createFleetClient(reader, desiredState),
+      io: malformed.io,
+    }),
+    1,
+  );
+  assert.match(malformed.stderr.join(""), /valid JSON/);
 });
 
 test("no-input help and argv never expose or accept synthetic input", async () => {

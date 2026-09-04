@@ -12,5 +12,5 @@
     "target": "es2023",
     "types": ["node"]
   },
-  "include": ["*.ts", "node-catalog/*.ts"]
+  "include": ["*.ts", "desired-state/*.ts", "node-catalog/*.ts"]
 }
