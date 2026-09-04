@@ -252,7 +252,10 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
-  my.hueControl.enable = true;
+  my.hueControl = {
+    enable = true;
+    runDaemon = false;
+  };
   my.openDisplay = {
     launchAtLogin = false;
     mode = "mirror";
