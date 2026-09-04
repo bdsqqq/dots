@@ -20,6 +20,12 @@ in
       description = "Loopback port for the Hue control service.";
     };
 
+    publishService = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Advertise this host as the native svc:hue provider after commissioning.";
+    };
+
     statePath = lib.mkOption {
       type = lib.types.str;
       default = "/Users/bdsqqq/Library/Application Support/hue-control/state.json";
@@ -36,6 +42,7 @@ in
       port = cfg.port;
       healthPath = "/health";
       access.tailnet = "owner";
+      tailscaleService.enable = cfg.publishService;
     };
 
     home-manager.users.bdsqqq = { config, lib, ... }: {

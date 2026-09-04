@@ -40,17 +40,14 @@ export const hueControlHtml = `<!doctype html>
     <button id="reconnect" class="secondary">reconnect</button>
   </section>
   <section id="setup">
-    <p>put the bulb in hue voice-assistant pairing mode, then scan from the mac.</p>
-    <button id="scan">scan for bulb</button>
-    <p id="candidate"></p>
-    <button id="enroll" disabled>use this bulb</button>
+    <p>make the bulb discoverable in Hue, then approve the macOS Bluetooth prompts.</p>
+    <button id="commission">commission bulb</button>
   </section>
   <p id="error"></p>
 </main>
 <script type="module">
   const q = (id) => document.getElementById(id);
   let state;
-  let candidate;
   let pendingCommand;
   let sendingCommand = false;
 
@@ -120,18 +117,12 @@ export const hueControlHtml = `<!doctype html>
   q("temperature").onchange = (event) => command({ colorTemperature: Number(event.target.value) });
   q("color").onchange = (event) => command({ colorXy: xyFromHex(event.target.value) });
   q("reconnect").onclick = async () => { await request("/api/reconnect", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }); await refresh(); };
-  q("scan").onclick = async () => {
-    q("error").textContent = "scanning… approve bluetooth on the mac if prompted";
+  q("commission").onclick = async () => {
+    q("error").textContent = "commissioning… approve Bluetooth on the host if prompted";
     try {
-      candidate = await request("/api/discover", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-      q("candidate").textContent = candidate.name + " — " + candidate.id;
-      q("enroll").disabled = false;
-      q("error").textContent = "";
+      await request("/api/commission", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      await refresh();
     } catch (error) { q("error").textContent = error.message; }
-  };
-  q("enroll").onclick = async () => {
-    await request("/api/enroll", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deviceId: candidate.id }) });
-    await refresh();
   };
   await refresh();
   setInterval(refresh, 3000);

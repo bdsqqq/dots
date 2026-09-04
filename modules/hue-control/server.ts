@@ -105,6 +105,14 @@ export function createHueControlServer(runtime: HueRuntimeApi): Server {
         json(response, 200, await runtime.discover());
         return;
       }
+      if (request.method === "POST" && url.pathname === "/api/commission") {
+        await body(request);
+        const device = await runtime.discover();
+        await runtime.enroll(device.id);
+        const snapshot = runtime.snapshot();
+        json(response, snapshot.status === "available" ? 200 : 503, snapshot);
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/api/enroll") {
         const value = record(await body(request));
         if (

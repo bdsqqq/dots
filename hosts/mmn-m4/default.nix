@@ -52,6 +52,7 @@ in
     ../../modules/files-browser/service.nix
     ../../modules/photo-gallery/service.nix
     ../../modules/photo-intelligence/service.nix
+    ../../modules/hue-control
   ];
 
   networking = {
@@ -89,6 +90,8 @@ in
     state = "/Users/bdsqqq/Library/Application Support/photo-intelligence";
   };
   my.darwinTranscription.enable = true;
+  # Keep the native service unpublished until this host has its own BLE bond.
+  my.hueControl.enable = true;
   my.backrest = {
     homeDirectory = "/Users/bdsqqq";
     volumeRoot = "/Volumes/ssd-01";
