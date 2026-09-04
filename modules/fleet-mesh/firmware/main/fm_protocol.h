@@ -5,6 +5,7 @@
 
 #include "cJSON.h"
 #include "esp_err.h"
+#include "fm_clock.h"
 #include "fm_config.h"
 #include "fm_limits.h"
 
@@ -29,6 +30,7 @@ typedef struct {
 
 typedef struct {
     const fm_config_t *config;
+    const fm_clock_t *clock;
     cJSON *records[FM_MAX_RECORDS];
     size_t record_count;
     fm_resource_state_t resources[FM_MAX_RESOURCES];
@@ -38,8 +40,10 @@ typedef struct {
     void *lock;
 } fm_protocol_t;
 
-esp_err_t fm_protocol_init(fm_protocol_t *protocol, const fm_config_t *config);
+esp_err_t fm_protocol_init(fm_protocol_t *protocol, const fm_config_t *config,
+                           const fm_clock_t *clock);
 void fm_protocol_deinit(fm_protocol_t *protocol);
+esp_err_t fm_protocol_process_pending(fm_protocol_t *protocol);
 esp_err_t fm_protocol_ingest(fm_protocol_t *protocol, const uint8_t *json, size_t json_len,
                              size_t *accepted);
 esp_err_t fm_protocol_records_json(fm_protocol_t *protocol, char **json, size_t *json_len);
