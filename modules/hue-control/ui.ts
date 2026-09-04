@@ -51,6 +51,8 @@ export const hueControlHtml = `<!doctype html>
   const q = (id) => document.getElementById(id);
   let state;
   let candidate;
+  let pendingCommand;
+  let sendingCommand = false;
 
   async function request(path, options) {
     const response = await fetch(path, options);
@@ -72,15 +74,27 @@ export const hueControlHtml = `<!doctype html>
   }
 
   async function command(value) {
+    pendingCommand = value;
+    if (sendingCommand) return;
+    sendingCommand = true;
     q("error").textContent = "";
     try {
-      await request("/api/light", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(value),
-      });
+      while (pendingCommand) {
+        const nextCommand = pendingCommand;
+        pendingCommand = undefined;
+        await request("/api/light", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(nextCommand),
+        });
+      }
       await refresh();
-    } catch (error) { q("error").textContent = error.message; }
+    } catch (error) {
+      pendingCommand = undefined;
+      q("error").textContent = error.message;
+    } finally {
+      sendingCommand = false;
+    }
   }
 
   async function refresh() {
