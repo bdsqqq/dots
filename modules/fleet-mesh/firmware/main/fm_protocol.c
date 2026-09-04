@@ -797,25 +797,24 @@ static bool parse_time(const char *text, int64_t *milliseconds) {
     return true;
 }
 
-static int64_t now_milliseconds(void) {
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    return (int64_t)now.tv_sec * 1000 + now.tv_usec / 1000;
+static int64_t milliseconds(const struct timeval *now) {
+    return (int64_t)now->tv_sec * 1000 + now->tv_usec / 1000;
 }
 
-static void now_iso8601(char output[25]) {
-    struct timeval now;
-    gettimeofday(&now, NULL);
+static bool iso8601(const struct timeval *now, char output[25]) {
     struct tm utc;
-    gmtime_r(&now.tv_sec, &utc);
-    strftime(output, 20, "%Y-%m-%dT%H:%M:%S", &utc);
-    unsigned milliseconds = (unsigned)(now.tv_usec / 1000) % 1000;
+    if (!gmtime_r(&now->tv_sec, &utc) ||
+        strftime(output, 20, "%Y-%m-%dT%H:%M:%S", &utc) != 19) {
+        return false;
+    }
+    unsigned milliseconds = (unsigned)(now->tv_usec / 1000) % 1000;
     output[19] = '.';
     output[20] = (char)('0' + milliseconds / 100);
     output[21] = (char)('0' + milliseconds / 10 % 10);
     output[22] = (char)('0' + milliseconds % 10);
     output[23] = 'Z';
     output[24] = '\0';
+    return true;
 }
 
 static esp_err_t decrypt_command(const fm_protocol_t *protocol,
@@ -873,12 +872,13 @@ static esp_err_t decrypt_command(const fm_protocol_t *protocol,
 }
 
 static esp_err_t create_receipt(fm_protocol_t *protocol, const fm_command_view_t *command,
-                                const char *status, const char *reason,
-                                const fm_revision_t *resulting, uint32_t executions) {
+                                 const char *status, const char *reason,
+                                 const fm_revision_t *resulting, uint32_t executions,
+                                 const struct timeval *now) {
     if (protocol->record_count >= FM_MAX_RECORDS ||
         protocol->outcome_count >= FM_MAX_OUTCOMES) return ESP_ERR_NO_MEM;
     char recorded_at[25];
-    now_iso8601(recorded_at);
+    if (!iso8601(now, recorded_at)) return ESP_ERR_INVALID_STATE;
     fm_receipt_view_t receipt = {
         .command_id = command->id, .node = protocol->config->identity_id,
         .resource = command->resource, .status = status, .reason = reason,
@@ -943,16 +943,19 @@ static esp_err_t process_command(fm_protocol_t *protocol, cJSON *root) {
     fm_command_view_t command;
     if (!command_schema(root, &command) || strcmp(command.to, protocol->config->identity_id) != 0 ||
         find_outcome(protocol, command.id)) return ESP_OK;
-    int64_t current_time = now_milliseconds(), boundary;
+    struct timeval now;
+    if (!fm_clock_now(protocol->clock, &now)) return ESP_OK;
+    int64_t current_time = milliseconds(&now), boundary;
     if (command.not_before && parse_time(command.not_before, &boundary) && current_time < boundary) {
         return ESP_OK;
     }
     if (command.expires_at && parse_time(command.expires_at, &boundary) && current_time >= boundary) {
-        return create_receipt(protocol, &command, "rejected", "expired", NULL, 0);
+        return create_receipt(protocol, &command, "rejected", "expired", NULL, 0, &now);
     }
     fm_resource_state_t *state = find_resource(protocol, command.resource);
     if (state && compare_revision(command.revision, state->revision) <= 0) {
-        return create_receipt(protocol, &command, "rejected", "stale", &state->revision, 0);
+        return create_receipt(protocol, &command, "rejected", "stale", &state->revision, 0,
+                              &now);
     }
     uint8_t *plaintext = NULL;
     size_t plaintext_len = 0;
@@ -974,12 +977,14 @@ static esp_err_t process_command(fm_protocol_t *protocol, cJSON *root) {
     snprintf(state->command_id, sizeof(state->command_id), "%s", command.id);
     state->value_utf8 = plaintext;
     state->value_len = plaintext_len;
-    return create_receipt(protocol, &command, "applied", NULL, &command.revision, 1);
+    return create_receipt(protocol, &command, "applied", NULL, &command.revision, 1, &now);
 }
 
-esp_err_t fm_protocol_init(fm_protocol_t *protocol, const fm_config_t *config) {
+esp_err_t fm_protocol_init(fm_protocol_t *protocol, const fm_config_t *config,
+                           const fm_clock_t *clock) {
     memset(protocol, 0, sizeof(*protocol));
     protocol->config = config;
+    protocol->clock = clock;
     protocol->lock = xSemaphoreCreateMutex();
     if (!protocol->lock) return ESP_ERR_NO_MEM;
     const esp_partition_t *partition = esp_partition_find_first(
@@ -1002,6 +1007,58 @@ void fm_protocol_deinit(fm_protocol_t *protocol) {
         vSemaphoreDelete((SemaphoreHandle_t)protocol->lock);
     }
     memset(protocol, 0, sizeof(*protocol));
+}
+
+static esp_err_t process_pending_locked(fm_protocol_t *protocol, bool *changed) {
+    /* Highest revisions run first, matching the reference model's stale receipts. */
+    bool attempted[FM_MAX_RECORDS] = {0};
+    for (;;) {
+        size_t best_index = FM_MAX_RECORDS;
+        fm_revision_t best_revision = {0};
+        for (size_t i = 0; i < protocol->record_count; ++i) {
+            fm_command_view_t command;
+            if (!attempted[i] && command_schema(protocol->records[i], &command) &&
+                strcmp(command.to, protocol->config->identity_id) == 0 &&
+                !find_outcome(protocol, command.id) &&
+                (best_index == FM_MAX_RECORDS ||
+                 compare_revision(command.revision, best_revision) > 0)) {
+                best_index = i;
+                best_revision = command.revision;
+            }
+        }
+        if (best_index == FM_MAX_RECORDS) return ESP_OK;
+        attempted[best_index] = true;
+        size_t outcomes_before = protocol->outcome_count;
+        esp_err_t err = process_command(protocol, protocol->records[best_index]);
+        if (err != ESP_OK) return err;
+        if (protocol->outcome_count != outcomes_before) *changed = true;
+    }
+}
+
+static void rollback(fm_protocol_t *protocol) {
+    esp_err_t reload_err = reload_state(protocol);
+    if (reload_err != ESP_OK) {
+        ESP_LOGE(TAG, "state rollback failed: %s", esp_err_to_name(reload_err));
+        /* Never expose a signed outcome that the durable snapshot cannot reproduce. */
+        abort();
+    }
+}
+
+static esp_err_t persist_changes(fm_protocol_t *protocol, bool changed) {
+    esp_err_t err = ESP_OK;
+    if (changed && !state_fits_gossip_response(protocol)) err = ESP_ERR_INVALID_SIZE;
+    if (err == ESP_OK && changed) err = persist_state(protocol);
+    return err;
+}
+
+esp_err_t fm_protocol_process_pending(fm_protocol_t *protocol) {
+    xSemaphoreTake((SemaphoreHandle_t)protocol->lock, portMAX_DELAY);
+    bool changed = false;
+    esp_err_t err = process_pending_locked(protocol, &changed);
+    if (err == ESP_OK) err = persist_changes(protocol, changed);
+    if (err != ESP_OK) rollback(protocol);
+    xSemaphoreGive((SemaphoreHandle_t)protocol->lock);
+    return err;
 }
 
 esp_err_t fm_protocol_ingest(fm_protocol_t *protocol, const uint8_t *json, size_t json_len,
@@ -1061,36 +1118,11 @@ esp_err_t fm_protocol_ingest(fm_protocol_t *protocol, const uint8_t *json, size_
         }
     }
     if (err == ESP_OK) {
-        /* Highest revisions run first, matching the reference model's stale receipts. */
-        bool attempted[FM_MAX_RECORDS] = {0};
-        for (;;) {
-            size_t best_index = FM_MAX_RECORDS;
-            fm_revision_t best_revision = {0};
-            for (size_t i = 0; i < protocol->record_count; ++i) {
-                fm_command_view_t command;
-                if (!attempted[i] && command_schema(protocol->records[i], &command) &&
-                    strcmp(command.to, protocol->config->identity_id) == 0 &&
-                    !find_outcome(protocol, command.id) &&
-                    (best_index == FM_MAX_RECORDS ||
-                     compare_revision(command.revision, best_revision) > 0)) {
-                    best_index = i; best_revision = command.revision;
-                }
-            }
-            if (best_index == FM_MAX_RECORDS) break;
-            attempted[best_index] = true;
-            size_t outcomes_before = protocol->outcome_count;
-            err = process_command(protocol, protocol->records[best_index]);
-            if (err != ESP_OK) break;
-            if (protocol->outcome_count != outcomes_before) changed = true;
-        }
+        err = process_pending_locked(protocol, &changed);
     }
-    if (err == ESP_OK && changed && !state_fits_gossip_response(protocol)) {
-        err = ESP_ERR_INVALID_SIZE;
-    }
-    if (err == ESP_OK && changed) err = persist_state(protocol);
+    if (err == ESP_OK) err = persist_changes(protocol, changed);
     if (err != ESP_OK) {
-        esp_err_t reload_err = reload_state(protocol);
-        if (reload_err != ESP_OK) ESP_LOGE(TAG, "state rollback failed: %s", esp_err_to_name(reload_err));
+        rollback(protocol);
         *accepted = 0;
     }
     xSemaphoreGive((SemaphoreHandle_t)protocol->lock);

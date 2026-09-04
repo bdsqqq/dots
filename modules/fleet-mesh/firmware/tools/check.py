@@ -84,6 +84,13 @@ def main() -> int:
     for expected in (command["id"], command["signature"], receipt["id"], receipt["signature"],
                      '{\\"count\\":7,\\"enabled\\":true}'):
         assert expected in source
+    clock = (ROOT / "main" / "fm_clock.c").read_text()
+    assert "esp_netif_sntp_init" in clock
+    assert "esp_netif_sntp_sync_wait" in clock
+    assert "fm_clock_now(protocol->clock, &now)" in source
+    assert "fm_protocol_process_pending(server_protocol)" in (
+        ROOT / "main" / "fm_http.c"
+    ).read_text()
     print("host checks passed; guest crypto remains an ESP startup check")
     return 0
 
