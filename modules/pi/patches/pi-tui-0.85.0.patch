@@ -2,12 +2,13 @@ diff --git a/dist/components/marker-column.d.ts b/dist/components/marker-column.
 new file mode 100644
 --- /dev/null
 +++ b/dist/components/marker-column.d.ts
-@@ -0,0 +1,25 @@
-+import type { Component } from "../tui.ts";
+@@ -0,0 +1,30 @@
++import type { Component, TuiMouseDispatchResult, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 +export interface MarkerColumnOptions {
 +    continuationMarker?: string;
 +    footerMarker?: string;
 +    gap?: number;
++    onGutterClick?: () => void;
 +}
 +/**
 + * Reserves a stable marker column while the child owns wrapping and formatting.
@@ -18,21 +19,26 @@ new file mode 100644
 +    private footerMarker;
 +    private child;
 +    private gap;
-+    private cachedWidth;
-+    private cachedLines;
++    private onGutterClick?;
++    private renderedColumnWidth;
++    private renderedBodyHeight;
++    private renderedBodyOffset;
++    private renderedBodyWidth;
++    private renderedChildHeight;
 +    constructor(marker: string, child: Component, options?: MarkerColumnOptions);
 +    setMarker(marker: string, continuationMarker?: string): void;
 +    setFooterMarker(footerMarker?: string): void;
 +    setChild(child: Component): void;
 +    render(width: number): string[];
-+    private clearCache;
++    handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | TuiMouseEventResult | undefined;
 +    invalidate(): void;
 +}
 diff --git a/dist/components/marker-column.js b/dist/components/marker-column.js
 new file mode 100644
 --- /dev/null
 +++ b/dist/components/marker-column.js
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,103 @@
++import { dispatchMouseEvent } from "../tui.js";
 +import { truncateToWidth, visibleWidth } from "../utils.js";
 +/**
 + * Reserves a stable marker column while the child owns wrapping and formatting.
@@ -43,70 +49,94 @@ new file mode 100644
 +    footerMarker;
 +    child;
 +    gap;
-+    cachedWidth;
-+    cachedLines;
++    onGutterClick;
++    renderedColumnWidth = 0;
++    renderedBodyHeight = 0;
++    renderedBodyOffset = 0;
++    renderedBodyWidth = 0;
++    renderedChildHeight = 0;
 +    constructor(marker, child, options = {}) {
 +        this.marker = marker;
 +        this.continuationMarker = options.continuationMarker ?? "";
 +        this.footerMarker = options.footerMarker;
 +        this.child = child;
 +        this.gap = Math.max(0, Math.floor(options.gap ?? 1));
++        this.onGutterClick = options.onGutterClick;
 +    }
 +    setMarker(marker, continuationMarker = this.continuationMarker) {
-+        if (this.marker === marker && this.continuationMarker === continuationMarker)
-+            return;
 +        this.marker = marker;
 +        this.continuationMarker = continuationMarker;
-+        this.clearCache();
 +    }
 +    setFooterMarker(footerMarker) {
-+        if (this.footerMarker === footerMarker)
-+            return;
 +        this.footerMarker = footerMarker;
-+        this.clearCache();
 +    }
 +    setChild(child) {
-+        if (this.child === child)
-+            return;
 +        this.child = child;
-+        this.clearCache();
 +    }
 +    render(width) {
 +        const safeWidth = Math.max(0, Math.floor(width));
-+        if (safeWidth === 0)
++        if (safeWidth === 0) {
++            this.renderedColumnWidth = 0;
++            this.renderedBodyHeight = 0;
++            this.renderedBodyOffset = 0;
++            this.renderedBodyWidth = 0;
++            this.renderedChildHeight = 0;
 +            return [];
-+        if (this.cachedWidth === safeWidth && this.cachedLines)
-+            return this.cachedLines;
++        }
 +        const columnWidth = Math.min(safeWidth, Math.max(visibleWidth(this.marker), visibleWidth(this.continuationMarker)));
 +        const gapWidth = Math.min(this.gap, Math.max(0, safeWidth - columnWidth));
 +        const bodyWidth = safeWidth - columnWidth - gapWidth;
++        this.renderedColumnWidth = columnWidth;
++        this.renderedBodyOffset = columnWidth + gapWidth;
++        this.renderedBodyWidth = bodyWidth;
++        this.renderedChildHeight = 0;
 +        const prefix = (value) => {
 +            const fitted = truncateToWidth(value, columnWidth, "");
 +            return `${fitted}${" ".repeat(columnWidth - visibleWidth(fitted))}${" ".repeat(gapWidth)}`;
 +        };
 +        const withFooter = (lines) => {
++            this.renderedBodyHeight = lines.length;
 +            if (this.footerMarker)
 +                lines.push(truncateToWidth(this.footerMarker, safeWidth, ""));
 +            return lines;
 +        };
-+        if (bodyWidth <= 0) {
-+            this.cachedWidth = safeWidth;
-+            this.cachedLines = withFooter([prefix(this.marker)]);
-+            return this.cachedLines;
-+        }
++        if (bodyWidth <= 0)
++            return withFooter([prefix(this.marker)]);
 +        const lines = this.child.render(bodyWidth);
-+        this.cachedWidth = safeWidth;
-+        this.cachedLines = lines.length === 0
-+            ? withFooter([prefix(this.marker)])
-+            : withFooter(lines.map((line, index) => truncateToWidth(`${prefix(index === 0 ? this.marker : this.continuationMarker)}${line}`, safeWidth, "")));
-+        return this.cachedLines;
++        this.renderedChildHeight = lines.length;
++        if (lines.length === 0)
++            return withFooter([prefix(this.marker)]);
++        return withFooter(lines.map((line, index) => truncateToWidth(`${prefix(index === 0 ? this.marker : this.continuationMarker)}${line}`, safeWidth, "")));
 +    }
-+    clearCache() {
-+        this.cachedWidth = undefined;
-+        this.cachedLines = undefined;
++    handleMouse(event) {
++        const inBodyRow = event.y >= 0 && event.y < this.renderedBodyHeight;
++        const inGutter = event.x >= 0 && event.x < this.renderedColumnWidth;
++        if (this.onGutterClick &&
++            inBodyRow &&
++            inGutter &&
++            event.type === "click" &&
++            event.button === "left" &&
++            !event.shift &&
++            !event.alt &&
++            !event.ctrl) {
++            this.onGutterClick();
++            return { handled: true };
++        }
++        const childX = event.x - this.renderedBodyOffset;
++        if (!inBodyRow ||
++            event.y >= this.renderedChildHeight ||
++            childX < 0 ||
++            childX >= this.renderedBodyWidth) {
++            return undefined;
++        }
++        return dispatchMouseEvent(this.child, {
++            ...event,
++            x: childX,
++            width: this.renderedBodyWidth,
++            height: this.renderedChildHeight,
++        });
 +    }
 +    invalidate() {
-+        this.clearCache();
 +        this.child.invalidate();
 +    }
 +}
@@ -120,8 +150,8 @@ diff --git a/dist/index.d.ts b/dist/index.d.ts
  export { Loader, type LoaderIndicatorOptions } from "./components/loader.ts";
 +export { MarkerColumn, type MarkerColumnOptions } from "./components/marker-column.ts";
  export { type DefaultTextStyle, Markdown, type MarkdownOptions, type MarkdownTheme } from "./components/markdown.ts";
+ export { MouseRegion, type MouseRegionHandler } from "./components/mouse-region.ts";
  export { ScrollView, type ScrollViewOptions, type ScrollViewScrollbar, type ScrollViewScrollToOptions, } from "./components/scroll-view.ts";
- export { type SelectItem, SelectList, type SelectListLayoutOptions, type SelectListTheme, type SelectListTruncatePrimaryContext, } from "./components/select-list.ts";
 diff --git a/dist/index.js b/dist/index.js
 --- a/dist/index.js
 +++ b/dist/index.js
@@ -131,5 +161,5 @@ diff --git a/dist/index.js b/dist/index.js
  export { Loader } from "./components/loader.js";
 +export { MarkerColumn } from "./components/marker-column.js";
  export { Markdown } from "./components/markdown.js";
+ export { MouseRegion } from "./components/mouse-region.js";
  export { ScrollView, } from "./components/scroll-view.js";
- export { SelectList, } from "./components/select-list.js";

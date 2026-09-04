@@ -1,8 +1,94 @@
+diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
+index 417584f..b9c30af 100644
+--- a/dist/core/export-html/index.js
++++ b/dist/core/export-html/index.js
+@@ -117,6 +117,8 @@ function generateHtml(sessionData, themeName) {
+ }
+ /** Tools rendered directly by the HTML template (not pre-rendered via TUI→ANSI→HTML pipeline) */
+ const TEMPLATE_RENDERED_TOOLS = new Set(["bash", "read", "write", "edit", "ls"]);
++/** Local renderer overrides whose lifecycle markers must replace the static template header. */
++const TUI_RENDERED_TOOL_OVERRIDES = new Set(["bash", "read", "ls"]);
+ /**
+  * Pre-render custom tools to HTML using their TUI renderers.
+  */
+@@ -129,7 +131,7 @@ function preRenderCustomTools(entries, toolRenderer) {
+         // Find tool calls in assistant messages
+         if (msg.role === "assistant" && Array.isArray(msg.content)) {
+             for (const block of msg.content) {
+-                if (block.type === "toolCall" && !TEMPLATE_RENDERED_TOOLS.has(block.name)) {
++                if (block.type === "toolCall" && (!TEMPLATE_RENDERED_TOOLS.has(block.name) || TUI_RENDERED_TOOL_OVERRIDES.has(block.name))) {
+                     const callHtml = toolRenderer.renderCall(block.id, block.name, block.arguments);
+                     if (callHtml) {
+                         renderedTools[block.id] = { callHtml };
+@@ -142,11 +144,12 @@ function preRenderCustomTools(entries, toolRenderer) {
+             const toolName = msg.toolName || "";
+             // Only render if we have a pre-rendered call OR it's not template-rendered
+             const existing = renderedTools[msg.toolCallId];
+-            if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName)) {
++            if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName) || TUI_RENDERED_TOOL_OVERRIDES.has(toolName)) {
+                 const rendered = toolRenderer.renderResult(msg.toolCallId, toolName, msg.content, msg.details, msg.isError || false);
+                 if (rendered) {
+                     renderedTools[msg.toolCallId] = {
+                         ...existing,
++                        callHtml: rendered.call ?? existing?.callHtml,
+                         resultHtmlCollapsed: rendered.collapsed,
+                         resultHtmlExpanded: rendered.expanded,
+                     };
+diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.js
+index cfdd161..8b41631 100644
+--- a/dist/core/export-html/template.js
++++ b/dist/core/export-html/template.js
+@@ -932,7 +932,7 @@
+ 
+         const invalidArg = '<span class="tool-error">[invalid arg]</span>';
+ 
+-        switch (name) {
++        switch (renderedTools?.[call.id] ? '__pre_rendered__' : name) {
+           case 'bash': {
+             const command = str(args.command);
+             const cmdDisplay = command === null ? invalidArg : escapeHtml(command || '...');
+diff --git a/dist/core/export-html/tool-renderer.d.ts b/dist/core/export-html/tool-renderer.d.ts
+index f4ebbbf..261d2a3 100644
+--- a/dist/core/export-html/tool-renderer.d.ts
++++ b/dist/core/export-html/tool-renderer.d.ts
+@@ -26,6 +26,7 @@ export interface ToolHtmlRenderer {
+         data?: string;
+         mimeType?: string;
+     }>, details: unknown, isError: boolean): {
++        call?: string;
+         collapsed?: string;
+         expanded?: string;
+     } | undefined;
+diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool-renderer.js
+index 9bd365b..095a5be 100644
+--- a/dist/core/export-html/tool-renderer.js
++++ b/dist/core/export-html/tool-renderer.js
+@@ -85,6 +85,12 @@ export function createToolHtmlRenderer(deps) {
+                     details,
+                     isError,
+                 };
++                let call;
++                if (toolDef.renderCall) {
++                    const callComponent = toolDef.renderCall(renderedArgs.get(toolCallId), theme, createRenderContext(toolCallId, renderedCallComponents.get(toolCallId), false, false, isError));
++                    renderedCallComponents.set(toolCallId, callComponent);
++                    call = ansiLinesToHtml(callComponent.render(width));
++                }
+                 // Render collapsed
+                 const collapsedComponent = toolDef.renderResult(agentToolResult, { expanded: false, isPartial: false }, theme, createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), false, false, isError));
+                 renderedResultComponents.set(toolCallId, collapsedComponent);
+@@ -94,6 +100,7 @@ export function createToolHtmlRenderer(deps) {
+                 renderedResultComponents.set(toolCallId, expandedComponent);
+                 const expanded = ansiLinesToHtml(trimRenderedResultLines(expandedComponent.render(width)));
+                 return {
++                    ...(call ? { call } : {}),
+                     ...(collapsed && collapsed !== expanded ? { collapsed } : {}),
+                     expanded,
+                 };
 diff --git a/dist/core/extensions/loader.js b/dist/core/extensions/loader.js
-index bb022d4..58c7052 100644
+index e8e8859..037a2eb 100644
 --- a/dist/core/extensions/loader.js
 +++ b/dist/core/extensions/loader.js
-@@ -69,6 +69,7 @@ function getAliases() {
+@@ -68,6 +68,7 @@ function getAliases() {
          return _aliases;
      const __dirname = path.dirname(fileURLToPath(import.meta.url));
      const packageIndex = path.resolve(__dirname, "../..", "index.js");
@@ -18,83 +104,36 @@ index bb022d4..58c7052 100644
          "@earendil-works/pi-coding-agent": piCodingAgentEntry,
          "@earendil-works/pi-agent-core": piAgentCoreEntry,
          "@earendil-works/pi-tui": piTuiEntry,
-diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/interactive/components/user-message.js
---- a/dist/modes/interactive/components/user-message.js
-+++ b/dist/modes/interactive/components/user-message.js
-@@ -1,4 +1,4 @@
--import { Box, Container, Markdown } from "@earendil-works/pi-tui";
-+import { Box, Container, MarkerColumn, Markdown, truncateToWidth } from "@earendil-works/pi-tui";
- import { getMarkdownTheme, theme } from "../theme/theme.js";
- import { createMarkdownTransform } from "./markdown-transform.js";
- const OSC133_ZONE_START = "\x1b]133;A\x07";
-@@ -26,7 +26,7 @@ export class UserMessageComponent extends Container {
-     }
-     rebuild() {
-         this.clear();
--        const contentBox = new Box(this.outputPad, 1, (content) => theme.bg("userMessageBg", content));
-+        const contentBox = new Box(0, 0, (content) => theme.bg("userMessageBg", content));
-         contentBox.addChild(new Markdown(this.text, 0, 0, this.markdownTheme, {
-             color: (content) => theme.fg("userMessageText", content),
-         }, {
-@@ -34,7 +34,16 @@ export class UserMessageComponent extends Container {
-             preserveBackslashEscapes: true,
-             transform: createMarkdownTransform("user", false, this.markdownTransformers),
-         }));
--        this.addChild(contentBox);
-+        const messageFrame = new Box(this.outputPad, 0);
-+        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), contentBox));
-+        this.addChild(messageFrame);
-     }
-+    invalidate() {
-+        super.invalidate();
-+        this.rebuild();
-+    }
-     render(width) {
--        const lines = super.render(width);
-+        if (width <= 0)
-+            return [];
-+        const safeWidth = Math.floor(width);
-+        const lines = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
-diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/interactive/components/user-message.d.ts
---- a/dist/modes/interactive/components/user-message.d.ts
-+++ b/dist/modes/interactive/components/user-message.d.ts
-@@ -10,6 +10,7 @@ export declare class UserMessageComponent extends Container {
-     private markdownTransformers;
-     constructor(text: string, markdownTheme?: MarkdownTheme, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
-     setOutputPad(padding: number): void;
-+    invalidate(): void;
-     private rebuild;
-     render(width: number): string[];
- }
 diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
+index ecc378b..508ae82 100644
 --- a/dist/modes/interactive/components/assistant-message.d.ts
 +++ b/dist/modes/interactive/components/assistant-message.d.ts
-@@ -7,14 +7,18 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+@@ -6,6 +6,7 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+  */
  export declare class AssistantMessageComponent extends Container {
      private contentContainer;
 +    private markerColumn;
      private hideThinkingBlock;
      private markdownTheme;
      private hiddenThinkingLabel;
-     private outputPad;
-     private markdownTransformers;
-     private lastMessage?;
+@@ -15,7 +16,10 @@ export declare class AssistantMessageComponent extends Container {
      private hasToolCalls;
      private isStreaming;
--    constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
+     private thinkingVisibilityOverrides;
 +    private cachedWidth;
 +    private cachedLines;
-+    constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[], requestRender?: () => void);
+     constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
 +    private updateMarker;
      invalidate(): void;
      setHideThinkingBlock(hide: boolean): void;
      setHiddenThinkingLabel(label: string): void;
 diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes/interactive/components/assistant-message.js
+index 6280084..a94783b 100644
 --- a/dist/modes/interactive/components/assistant-message.js
 +++ b/dist/modes/interactive/components/assistant-message.js
 @@ -1,4 +1,4 @@
--import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
-+import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+-import { Container, Markdown, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, MouseRegion, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
  import { getMarkdownTheme, theme } from "../theme/theme.js";
  import { createMarkdownTransform } from "./markdown-transform.js";
  const OSC133_ZONE_START = "\x1b]133;A\x07";
@@ -106,20 +145,16 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
      hideThinkingBlock;
      markdownTheme;
      hiddenThinkingLabel;
-@@ -16,21 +17,42 @@ export class AssistantMessageComponent extends Container {
-     markdownTransformers;
-     lastMessage;
+@@ -18,6 +19,8 @@ export class AssistantMessageComponent extends Container {
      hasToolCalls = false;
      isStreaming = false;
--    constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = []) {
+     thinkingVisibilityOverrides = new Map();
 +    cachedWidth;
 +    cachedLines;
-+    constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = [], requestRender) {
+     constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = []) {
          super();
          this.hideThinkingBlock = hideThinkingBlock;
-         this.markdownTheme = markdownTheme;
-         this.hiddenThinkingLabel = hiddenThinkingLabel;
-         this.outputPad = outputPad;
+@@ -27,12 +30,31 @@ export class AssistantMessageComponent extends Container {
          this.markdownTransformers = markdownTransformers;
          // Container for text/thinking content
          this.contentContainer = new Container();
@@ -151,7 +186,9 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
 +        this.cachedLines = undefined;
          super.invalidate();
          if (this.lastMessage) {
-@@ -59,7 +81,14 @@ export class AssistantMessageComponent extends Container {
+             this.updateContent(this.lastMessage);
+@@ -58,7 +80,14 @@ export class AssistantMessageComponent extends Container {
+         }
      }
      render(width) {
 -        const lines = super.render(width);
@@ -166,8 +203,9 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
          if (this.hasToolCalls || lines.length === 0) {
              return lines;
          }
-         lines[0] = OSC133_ZONE_START + lines[0];
-@@ -67,12 +96,11 @@ export class AssistantMessageComponent extends Container {
+@@ -67,14 +96,13 @@ export class AssistantMessageComponent extends Container {
+         return lines;
+     }
      updateContent(message, isStreaming = this.isStreaming) {
 +        this.cachedWidth = undefined;
 +        this.cachedLines = undefined;
@@ -182,9 +220,9 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
 -            this.contentContainer.addChild(new Spacer(1));
 -        }
          // Render content in order
+         let thinkingRunIndex = 0;
          for (let i = 0; i < message.content.length; i++) {
-             const content = message.content[i];
-@@ -79,7 +107,7 @@ export class AssistantMessageComponent extends Container {
+@@ -82,7 +110,7 @@ export class AssistantMessageComponent extends Container {
              if (content.type === "text" && content.text.trim()) {
                  // Assistant text messages with no background - trim the text
                  // Set paddingY=0 to avoid extra spacing before tool executions
@@ -193,25 +231,25 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
                      transform: createMarkdownTransform("assistant", this.isStreaming, this.markdownTransformers),
                  }));
              }
-@@ -107,10 +135,10 @@ export class AssistantMessageComponent extends Container {
-                 if (this.hideThinkingBlock) {
-                     // Show one static label for each run of thinking blocks when hidden.
--                    this.contentContainer.addChild(new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0));
-+                    this.contentContainer.addChild(new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), 0, 0));
-                 }
-                 else {
-                     // Render each run of thinking blocks as one Markdown section.
--                    this.contentContainer.addChild(new Markdown(thinkingBlocks.join("\n\n"), this.outputPad, 0, this.markdownTheme, {
-+                    this.contentContainer.addChild(new Markdown(thinkingBlocks.join("\n\n"), 0, 0, this.markdownTheme, {
+@@ -110,8 +138,8 @@ export class AssistantMessageComponent extends Container {
+                 const runIndex = thinkingRunIndex++;
+                 const hidden = this.thinkingVisibilityOverrides.get(runIndex) ?? this.hideThinkingBlock;
+                 const thinkingComponent = hidden
+-                    ? new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0)
+-                    : new Markdown(thinkingBlocks.join("\n\n"), this.outputPad, 0, this.markdownTheme, {
++                    ? new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), 0, 0)
++                    : new Markdown(thinkingBlocks.join("\n\n"), 0, 0, this.markdownTheme, {
                          color: (text) => theme.fg("thinkingText", text),
                          italic: true,
                      }, {
-@@ -130,21 +158,31 @@ export class AssistantMessageComponent extends Container {
+@@ -136,23 +164,33 @@ export class AssistantMessageComponent extends Container {
+         const hasToolCalls = message.content.some((c) => c.type === "toolCall");
+         this.hasToolCalls = hasToolCalls;
          if (message.stopReason === "length") {
 -            this.contentContainer.addChild(new Spacer(1));
+-            this.contentContainer.addChild(new Text(theme.fg("error", "Response was truncated before completion."), this.outputPad, 0));
 +            if (this.contentContainer.children.length > 0)
 +                this.contentContainer.addChild(new Spacer(1));
--            this.contentContainer.addChild(new Text(theme.fg("error", "Response was truncated before completion."), this.outputPad, 0));
 +            this.contentContainer.addChild(new Text(theme.fg("error", "Response was truncated before completion."), 0, 0));
          }
          else if (!hasToolCalls) {
@@ -220,17 +258,17 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
                      ? message.errorMessage
                      : "Operation aborted";
 -                this.contentContainer.addChild(new Spacer(1));
+-                this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), this.outputPad, 0));
 +                if (this.contentContainer.children.length > 0)
 +                    this.contentContainer.addChild(new Spacer(1));
--                this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), this.outputPad, 0));
 +                this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), 0, 0));
              }
              else if (message.stopReason === "error") {
                  const errorMsg = message.errorMessage || "Unknown error";
 -                this.contentContainer.addChild(new Spacer(1));
+-                this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
 +                if (this.contentContainer.children.length > 0)
 +                    this.contentContainer.addChild(new Spacer(1));
--                this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
 +                this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), 0, 0));
              }
          }
@@ -244,7 +282,9 @@ diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes
      }
  }
  //# sourceMappingURL=assistant-message.js.map
+\ No newline at end of file
 diff --git a/dist/modes/interactive/components/branch-summary-message.d.ts b/dist/modes/interactive/components/branch-summary-message.d.ts
+index 6ad1710..8d4f97e 100644
 --- a/dist/modes/interactive/components/branch-summary-message.d.ts
 +++ b/dist/modes/interactive/components/branch-summary-message.d.ts
 @@ -1,16 +1,19 @@
@@ -270,7 +310,9 @@ diff --git a/dist/modes/interactive/components/branch-summary-message.d.ts b/dis
 +    render(width: number): string[];
  }
  //# sourceMappingURL=branch-summary-message.d.ts.map
+\ No newline at end of file
 diff --git a/dist/modes/interactive/components/branch-summary-message.js b/dist/modes/interactive/components/branch-summary-message.js
+index e23ca6d..d681125 100644
 --- a/dist/modes/interactive/components/branch-summary-message.js
 +++ b/dist/modes/interactive/components/branch-summary-message.js
 @@ -1,23 +1,33 @@
@@ -351,7 +393,9 @@ diff --git a/dist/modes/interactive/components/branch-summary-message.js b/dist/
      }
  }
  //# sourceMappingURL=branch-summary-message.js.map
+\ No newline at end of file
 diff --git a/dist/modes/interactive/components/compaction-summary-message.d.ts b/dist/modes/interactive/components/compaction-summary-message.d.ts
+index 88bfa50..622301f 100644
 --- a/dist/modes/interactive/components/compaction-summary-message.d.ts
 +++ b/dist/modes/interactive/components/compaction-summary-message.d.ts
 @@ -1,16 +1,19 @@
@@ -377,7 +421,9 @@ diff --git a/dist/modes/interactive/components/compaction-summary-message.d.ts b
 +    render(width: number): string[];
  }
  //# sourceMappingURL=compaction-summary-message.d.ts.map
+\ No newline at end of file
 diff --git a/dist/modes/interactive/components/compaction-summary-message.js b/dist/modes/interactive/components/compaction-summary-message.js
+index 48c2271..f595fb6 100644
 --- a/dist/modes/interactive/components/compaction-summary-message.js
 +++ b/dist/modes/interactive/components/compaction-summary-message.js
 @@ -1,23 +1,33 @@
@@ -459,7 +505,9 @@ diff --git a/dist/modes/interactive/components/compaction-summary-message.js b/d
      }
  }
  //# sourceMappingURL=compaction-summary-message.js.map
+\ No newline at end of file
 diff --git a/dist/modes/interactive/components/custom-message.d.ts b/dist/modes/interactive/components/custom-message.d.ts
+index 4f55bb8..c8abb34 100644
 --- a/dist/modes/interactive/components/custom-message.d.ts
 +++ b/dist/modes/interactive/components/custom-message.d.ts
 @@ -18,5 +18,6 @@ export declare class CustomMessageComponent extends Container {
@@ -469,7 +517,9 @@ diff --git a/dist/modes/interactive/components/custom-message.d.ts b/dist/modes/
 +    render(width: number): string[];
  }
  //# sourceMappingURL=custom-message.d.ts.map
+\ No newline at end of file
 diff --git a/dist/modes/interactive/components/custom-message.js b/dist/modes/interactive/components/custom-message.js
+index 7c6fb37..2e723f3 100644
 --- a/dist/modes/interactive/components/custom-message.js
 +++ b/dist/modes/interactive/components/custom-message.js
 @@ -1,4 +1,4 @@
@@ -487,7 +537,7 @@ diff --git a/dist/modes/interactive/components/custom-message.js b/dist/modes/in
          this.rebuild();
      }
      setExpanded(expanded) {
-@@ -39,18 +39,14 @@ export class CustomMessageComponent extends Container {
+@@ -40,18 +40,14 @@ export class CustomMessageComponent extends Container {
          this.rebuild();
      }
      rebuild() {
@@ -509,7 +559,7 @@ diff --git a/dist/modes/interactive/components/custom-message.js b/dist/modes/in
                      this.customComponent = component;
                      this.addChild(component);
                      return;
-@@ -63,7 +63,6 @@ export class CustomMessageComponent extends Container {
+@@ -62,7 +58,6 @@ export class CustomMessageComponent extends Container {
              }
          }
          // Default rendering uses our box
@@ -517,7 +567,7 @@ diff --git a/dist/modes/interactive/components/custom-message.js b/dist/modes/in
          this.box.clear();
          // Default rendering: label + content
          const label = theme.fg("customMessageLabel", `\x1b[1m[${this.message.customType}]\x1b[22m`);
-@@ -82,6 +81,18 @@ export class CustomMessageComponent extends Container {
+@@ -82,6 +77,18 @@ export class CustomMessageComponent extends Container {
          this.box.addChild(new Markdown(text, 0, 0, this.markdownTheme, {
              color: (text) => theme.fg("customMessageText", text),
          }));
@@ -536,16 +586,18 @@ diff --git a/dist/modes/interactive/components/custom-message.js b/dist/modes/in
      }
  }
  //# sourceMappingURL=custom-message.js.map
+\ No newline at end of file
 diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
+index 811f0f0..1cf1073 100644
 --- a/dist/modes/interactive/components/tool-execution.js
 +++ b/dist/modes/interactive/components/tool-execution.js
 @@ -1,4 +1,4 @@
--import { Box, Container, getCapabilities, Image, Spacer, Text } from "@earendil-works/pi-tui";
-+import { Box, Container, getCapabilities, Image, MarkerColumn, Spacer, Text } from "@earendil-works/pi-tui";
- import { createAllToolDefinitions } from "../../../core/tools/index.js";
+-import { Box, Container, getCapabilities, Image, MouseRegion, Spacer, Text, } from "@earendil-works/pi-tui";
++import { Box, Container, getCapabilities, Image, MarkerColumn, MouseRegion, Spacer, Text, } from "@earendil-works/pi-tui";
  import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
  import { convertToPng } from "../../../utils/image-convert.js";
-@@ -111,7 +111,10 @@ export class ToolExecutionComponent extends Container {
+ import { theme } from "../theme/theme.js";
+@@ -93,7 +93,10 @@ export class ToolExecutionComponent extends Container {
      createResultFallback() {
          const output = this.getTextOutput();
          if (!output) {
@@ -557,7 +609,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
          }
          const lines = output.split("\n");
          const displayLines = this.expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES);
-@@ -120,7 +123,10 @@ export class ToolExecutionComponent extends Container {
+@@ -102,7 +105,10 @@ export class ToolExecutionComponent extends Container {
          if (remaining > 0) {
              text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
          }
@@ -567,20 +619,65 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
 +            footerMarker: theme.fg("muted", "╰────"),
 +        });
      }
-     updateArgs(args) {
-         this.args = args;
+     createResultRegion(component) {
+         return new MouseRegion(component, (event) => {
+diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/interactive/components/user-message.d.ts
+index 387f2a5..fceb086 100644
+--- a/dist/modes/interactive/components/user-message.d.ts
++++ b/dist/modes/interactive/components/user-message.d.ts
+@@ -10,6 +10,7 @@ export declare class UserMessageComponent extends Container {
+     private markdownTransformers;
+     constructor(text: string, markdownTheme?: MarkdownTheme, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
+     setOutputPad(padding: number): void;
++    invalidate(): void;
+     private rebuild;
+     render(width: number): string[];
+ }
+diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/interactive/components/user-message.js
+index 2e04903..6e4673d 100644
+--- a/dist/modes/interactive/components/user-message.js
++++ b/dist/modes/interactive/components/user-message.js
+@@ -1,4 +1,4 @@
+-import { Box, Container, Markdown } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { createMarkdownTransform } from "./markdown-transform.js";
+ const OSC133_ZONE_START = "\x1b]133;A\x07";
+@@ -26,7 +26,7 @@ export class UserMessageComponent extends Container {
+     }
+     rebuild() {
+         this.clear();
+-        const contentBox = new Box(this.outputPad, 1, (content) => theme.bg("userMessageBg", content));
++        const contentBox = new Box(0, 0, (content) => theme.bg("userMessageBg", content));
+         contentBox.addChild(new Markdown(this.text, 0, 0, this.markdownTheme, {
+             color: (content) => theme.fg("userMessageText", content),
+         }, {
+@@ -34,10 +34,19 @@ export class UserMessageComponent extends Container {
+             preserveBackslashEscapes: true,
+             transform: createMarkdownTransform("user", false, this.markdownTransformers),
+         }));
+-        this.addChild(contentBox);
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), contentBox));
++        this.addChild(messageFrame);
++    }
++    invalidate() {
++        super.invalidate();
++        this.rebuild();
+     }
+     render(width) {
+-        const lines = super.render(width);
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        const lines = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+         if (lines.length === 0) {
+             return lines;
+         }
 diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
+index a1e7d98..b785d0c 100644
 --- a/dist/modes/interactive/interactive-mode.js
 +++ b/dist/modes/interactive/interactive-mode.js
-@@ -2614,7 +2614,7 @@ export class InteractiveMode {
-                     this.ui.requestRender();
-                 }
-                 else if (event.message.role === "assistant") {
--                    this.streamingComponent = new AssistantMessageComponent(undefined, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers());
-+                    this.streamingComponent = new AssistantMessageComponent(undefined, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers(), () => this.ui.requestRender());
-                     this.streamingMessage = event.message;
-                     this.chatContainer.addChild(this.streamingComponent);
-                     this.streamingComponent.updateContent(this.streamingMessage, true);
 @@ -2933,14 +2933,14 @@ export class InteractiveMode {
              }
              case "compactionSummary": {
@@ -598,16 +695,7 @@ diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive
                  component.setExpanded(this.toolOutputExpanded);
                  this.chatContainer.addChild(component);
                  break;
-@@ -2975,7 +2975,7 @@ export class InteractiveMode {
-                 break;
-             }
-             case "assistant": {
--                const assistantComponent = new AssistantMessageComponent(message, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers());
-+                const assistantComponent = new AssistantMessageComponent(message, this.hideThinkingBlock, this.getMarkdownThemeWithSettings(), this.hiddenThinkingLabel, this.outputPad, this.getMarkdownTransformers(), () => this.ui.requestRender());
-                 this.chatContainer.addChild(assistantComponent);
-                 break;
-             }
-@@ -3903,6 +3903,8 @@ export class InteractiveMode {
+@@ -3929,6 +3929,8 @@ export class InteractiveMode {
                      if (this.streamingComponent || this.session.isStreaming) {
                          for (const child of this.chatContainer.children) {
                              if (child instanceof AssistantMessageComponent ||
@@ -616,78 +704,3 @@ diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive
                                  child instanceof CustomMessageComponent ||
                                  child instanceof UserMessageComponent) {
                                  child.setOutputPad(padding);
-diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.js
---- a/dist/core/export-html/template.js
-+++ b/dist/core/export-html/template.js
-@@ -935 +935 @@ const htmlTemplate = `<!DOCTYPE html>
--        switch (name) {
-+        switch (renderedTools?.[call.id] ? '__pre_rendered__' : name) {
-diff --git a/dist/core/export-html/tool-renderer.d.ts b/dist/core/export-html/tool-renderer.d.ts
---- a/dist/core/export-html/tool-renderer.d.ts
-+++ b/dist/core/export-html/tool-renderer.d.ts
-@@ -26,5 +26,6 @@ export interface ToolHtmlRenderer {
-         mimeType?: string;
-     }>, details: unknown, isError: boolean): {
-+        call?: string;
-         collapsed?: string;
-         expanded?: string;
-     } | undefined;
-diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool-renderer.js
---- a/dist/core/export-html/tool-renderer.js
-+++ b/dist/core/export-html/tool-renderer.js
-@@ -85,6 +85,12 @@ export function createToolHtmlRenderer(deps) {
-                     details,
-                     isError,
-                 };
-+                let call;
-+                if (toolDef.renderCall) {
-+                    const callComponent = toolDef.renderCall(renderedArgs.get(toolCallId), theme, createRenderContext(toolCallId, renderedCallComponents.get(toolCallId), false, false, isError));
-+                    renderedCallComponents.set(toolCallId, callComponent);
-+                    call = ansiLinesToHtml(callComponent.render(width));
-+                }
-                 // Render collapsed
-                 const collapsedComponent = toolDef.renderResult(agentToolResult, { expanded: false, isPartial: false }, theme, createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), false, false, isError));
-                 renderedResultComponents.set(toolCallId, collapsedComponent);
-@@ -94,5 +100,6 @@ export function createToolHtmlRenderer(deps) {
-                 const expanded = ansiLinesToHtml(trimRenderedResultLines(expandedComponent.render(width)));
-                 return {
-+                    ...(call ? { call } : {}),
-                     ...(collapsed && collapsed !== expanded ? { collapsed } : {}),
-                     expanded,
-                 };
-diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
---- a/dist/core/export-html/index.js
-+++ b/dist/core/export-html/index.js
-@@ -117,6 +117,8 @@ function inlineAssets(template, css, templateJs, markedJs, hljsJs, theme) {
- }
- /** Tools rendered directly by the HTML template (not pre-rendered via TUI→ANSI→HTML pipeline) */
- const TEMPLATE_RENDERED_TOOLS = new Set(["bash", "read", "write", "edit", "ls"]);
-+/** Local renderer overrides whose lifecycle markers must replace the static template header. */
-+const TUI_RENDERED_TOOL_OVERRIDES = new Set(["bash", "read", "ls"]);
- /**
-  * Pre-render custom tools to HTML using their TUI renderers.
-  */
-@@ -129,7 +131,7 @@ function preRenderCustomTools(entries, toolRenderer) {
-         // Find tool calls in assistant messages
-         if (msg.role === "assistant" && Array.isArray(msg.content)) {
-             for (const block of msg.content) {
--                if (block.type === "toolCall" && !TEMPLATE_RENDERED_TOOLS.has(block.name)) {
-+                if (block.type === "toolCall" && (!TEMPLATE_RENDERED_TOOLS.has(block.name) || TUI_RENDERED_TOOL_OVERRIDES.has(block.name))) {
-                     const callHtml = toolRenderer.renderCall(block.id, block.name, block.arguments);
-                     if (callHtml) {
-                         renderedTools[block.id] = { callHtml };
-@@ -142,12 +144,13 @@ function preRenderCustomTools(entries, toolRenderer) {
-             const toolName = msg.toolName || "";
-             // Only render if we have a pre-rendered call OR it's not template-rendered
-             const existing = renderedTools[msg.toolCallId];
--            if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName)) {
-+            if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName) || TUI_RENDERED_TOOL_OVERRIDES.has(toolName)) {
-                 const rendered = toolRenderer.renderResult(msg.toolCallId, toolName, msg.content, msg.details, msg.isError || false);
-                 if (rendered) {
-                     renderedTools[msg.toolCallId] = {
-                         ...existing,
-+                        callHtml: rendered.call ?? existing?.callHtml,
-                         resultHtmlCollapsed: rendered.collapsed,
-                         resultHtmlExpanded: rendered.expanded,
-                     };
-                 }
