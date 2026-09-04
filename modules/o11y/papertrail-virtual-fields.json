@@ -1,0 +1,56 @@
+[
+  {
+    "dataset": "papertrail",
+    "name": "normalized_payload",
+    "description": "JSON-decoded log body used by the other normalized projections.",
+    "expression": "parse_json(tostring(body))"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_host",
+    "description": "Stable short host name across OTLP resources, legacy events, and journald payloads.",
+    "expression": "trim_end_regex(\"[.]local$\", coalesce(tostring(['resource.host.name']), tostring(host), tostring(normalized_payload._HOSTNAME)))"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_source",
+    "description": "Collector or application source for the event.",
+    "expression": "coalesce(tostring(['attributes.log_source']), tostring(source_type), tostring(event_source), tostring(normalized_payload.source_type), tostring(normalized_payload.event_source), case(isnotempty(tostring(normalized_payload._SYSTEMD_UNIT)) or isnotempty(tostring(normalized_payload.SYSLOG_IDENTIFIER)), \"journald\", \"unknown\"))"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_service",
+    "description": "Service identity across structured events, OTLP resources, journald, and file logs.",
+    "expression": "coalesce(tostring(['attributes.service']), tostring(['service.name']), tostring(normalized_payload.SYSLOG_IDENTIFIER), tostring(normalized_payload._SYSTEMD_UNIT), tostring(['attributes.app']), tostring(['attributes.log.file.name']))"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_message",
+    "description": "Human-readable message across journald, legacy events, and raw file logs.",
+    "expression": "coalesce(tostring(normalized_payload.MESSAGE), tostring(message), tostring(body))"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_systemd_unit",
+    "description": "Systemd unit extracted from a journald payload when present.",
+    "expression": "tostring(normalized_payload._SYSTEMD_UNIT)"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_operation",
+    "description": "Wide-event operation name when present.",
+    "expression": "coalesce(tostring(['attributes.operation']), tostring(normalized_payload.operation))"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_severity",
+    "description": "Normalized severity from structured levels, journald priority, or Darwin unified-log text.",
+    "expression": "case(isnotempty(tostring(['attributes.level'])), tolower(tostring(['attributes.level'])), isnotempty(tostring(normalized_payload.level)), tolower(tostring(normalized_payload.level)), isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) <= 2, \"fatal\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) == 3, \"error\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) == 4, \"warn\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) <= 6, \"info\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) == 7, \"debug\", tostring(body) contains \"<Fault>\", \"fatal\", tostring(body) contains \"<Error>\", \"error\", tostring(body) contains \"<Warning>\", \"warn\", tostring(body) contains \"<Notice>\" or tostring(body) contains \"<Info>\", \"info\", tostring(body) contains \"<Debug>\", \"debug\", \"unknown\")"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_severity_number",
+    "description": "OpenTelemetry severity band for normalized_severity: trace 1, debug 5, info 9, warn 13, error 17, fatal 21.",
+    "expression": "case(normalized_severity == \"fatal\" or normalized_severity == \"critical\", 21, normalized_severity == \"error\", 17, normalized_severity == \"warn\" or normalized_severity == \"warning\", 13, normalized_severity == \"info\" or normalized_severity == \"notice\", 9, normalized_severity == \"debug\", 5, normalized_severity == \"trace\", 1, 0)"
+  }
+]
