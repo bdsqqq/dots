@@ -29,6 +29,12 @@
       "tcp:443"
     ]
   },
+  "svc:money": {
+    "comment": "synthetic read-only company-money capability portal",
+    "ports": [
+      "tcp:443"
+    ]
+  },
   "svc:photos": {
     "comment": "read-only household photo gallery",
     "ports": [

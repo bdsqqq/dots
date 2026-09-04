@@ -46,14 +46,29 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
         if: github.event_name != 'schedule'
 
+      - name: Create an ephemeral money tunnel bootstrap secret
+        if: github.event_name != 'schedule'
+        working-directory: .
+        run: |
+          set -euo pipefail
+          if [[ -s cloudflare/secrets/money.yaml ]]; then
+            echo "CLOUDFLARE_MONEY_TUNNEL_SECRET=" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+
+          secret="$(openssl rand -base64 32)"
+          echo "::add-mask::${secret}"
+          echo "CLOUDFLARE_MONEY_TUNNEL_SECRET=${secret}" >> "${GITHUB_ENV}"
+
       - name: Prepare available tunnel bootstrap secrets
         run: |
           set -euo pipefail
           tunnel_secrets="$(
             jq -cn \
               --arg html_stuff "${CLOUDFLARE_HTML_STUFF_TUNNEL_SECRET}" \
+              --arg money "${CLOUDFLARE_MONEY_TUNNEL_SECRET:-}" \
               --arg t3 "${CLOUDFLARE_T3_TUNNEL_SECRET}" \
-              '{"html-stuff": $html_stuff, t3: $t3}
+              '{"html-stuff": $html_stuff, money: $money, t3: $t3}
                | with_entries(select(.value != ""))'
           )"
           echo "TF_VAR_tunnel_secrets=${tunnel_secrets}" >> "${GITHUB_ENV}"
@@ -136,35 +151,42 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          secret=cloudflare/secrets/t3.yaml
-          if [[ -s "${secret}" || -z "${CLOUDFLARE_T3_TUNNEL_SECRET}" ]]; then
-            exit 0
-          fi
+          encrypt_credential() {
+            local app="$1"
+            local tunnel_secret="$2"
+            local secret="cloudflare/secrets/${app}.yaml"
+            if [[ -s "${secret}" || -z "${tunnel_secret}" ]]; then
+              return
+            fi
 
-          tunnel_id="$(jq -er '.t3.tunnelId' cloudflare/runtime-bindings.json)"
-          credential="$(
-            jq -cn \
-              --arg account "${CLOUDFLARE_ACCOUNT_ID}" \
-              --arg id "${tunnel_id}" \
-              --arg tunnel_secret "${CLOUDFLARE_T3_TUNNEL_SECRET}" \
-              '{
-                AccountTag: $account,
-                TunnelID: $id,
-                TunnelSecret: $tunnel_secret,
-                Endpoint: ""
-              }'
-          )"
-          mkdir -p "$(dirname "${secret}")"
-          encrypted="$(mktemp)"
-          jq -n --arg credential "${credential}" '{credential: $credential}' |
-            nix shell nixpkgs#sops --command sops encrypt \
-              --filename-override cloudflare/secrets/t3.yaml \
-              --input-type json \
-              --output-type yaml \
-              /dev/stdin \
-              > "${encrypted}"
-          install -m 0600 "${encrypted}" "${secret}"
-          rm "${encrypted}"
+            local tunnel_id credential encrypted
+            tunnel_id="$(jq -er --arg app "${app}" '.[$app].tunnelId' cloudflare/runtime-bindings.json)"
+            credential="$(
+              jq -cn \
+                --arg account "${CLOUDFLARE_ACCOUNT_ID}" \
+                --arg id "${tunnel_id}" \
+                --arg tunnel_secret "${tunnel_secret}" \
+                '{
+                  AccountTag: $account,
+                  TunnelID: $id,
+                  TunnelSecret: $tunnel_secret,
+                  Endpoint: ""
+                }'
+            )"
+            encrypted="$(mktemp)"
+            jq -n --arg credential "${credential}" '{credential: $credential}' |
+              nix shell nixpkgs#sops --command sops encrypt \
+                --filename-override "${secret}" \
+                --input-type json \
+                --output-type yaml \
+                /dev/stdin \
+                > "${encrypted}"
+            install -m 0600 "${encrypted}" "${secret}"
+            rm "${encrypted}"
+          }
+
+          encrypt_credential money "${CLOUDFLARE_MONEY_TUNNEL_SECRET:-}"
+          encrypt_credential t3 "${CLOUDFLARE_T3_TUNNEL_SECRET}"
 
       - name: Commit encrypted state and applied bindings
         if: github.event_name != 'schedule'
@@ -176,6 +198,9 @@ jobs:
             cloudflare/terraform.tfstate
           if [[ -s cloudflare/secrets/t3.yaml ]]; then
             git add cloudflare/secrets/t3.yaml
+          fi
+          if [[ -s cloudflare/secrets/money.yaml ]]; then
+            git add cloudflare/secrets/money.yaml
           fi
           if git diff --cached --quiet; then
             exit 0
