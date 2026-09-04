@@ -1,5 +1,6 @@
 minimumReleaseAge: 2880
 minimumReleaseAgeExclude:
+  - "@earendil-works/*"
   - "@openai/codex"
   - "@openai/codex-*"
   - "@tobilu/qmd"

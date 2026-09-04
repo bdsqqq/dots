@@ -21,7 +21,12 @@ import {
   Theme,
   estimateTokens,
 } from "@earendil-works/pi-coding-agent";
-import type { TUI, EditorTheme } from "@earendil-works/pi-tui";
+import type {
+  TUI,
+  EditorTheme,
+  TuiMouseEvent,
+  TuiMouseEventResult,
+} from "@earendil-works/pi-tui";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { boxBorderLR, boxRow } from "@bds_pi/box-chrome";
 import type { KeybindingsManager } from "@earendil-works/pi-coding-agent";
@@ -51,6 +56,17 @@ interface RemoveLabelPayload {
 
 const SEPARATOR = " · ";
 const HORIZONTAL = "─";
+
+function translateFramedEditorMouseEvent(
+  event: TuiMouseEvent,
+): TuiMouseEvent | undefined {
+  const innerWidth = event.width - 2;
+  if (innerWidth < 4) return event;
+
+  const x = event.x - 1;
+  if (x < 0 || x >= innerWidth) return undefined;
+  return { ...event, x, width: innerWidth };
+}
 
 class LabeledEditor extends CustomEditor {
   private labels: Map<string, Label> = new Map();
@@ -230,6 +246,11 @@ class LabeledEditor extends CustomEditor {
     }
 
     return result;
+  }
+
+  override handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+    const translated = translateFramedEditorMouseEvent(event);
+    return translated ? super.handleMouse(translated) : undefined;
   }
 }
 
@@ -474,6 +495,7 @@ export {
   shortenPath,
   estimateContextFromEntries,
   updateStatsLabels,
+  translateFramedEditorMouseEvent,
   LabeledEditor,
 };
 
@@ -609,6 +631,40 @@ if (import.meta.vitest) {
         themeTag = "[old]";
         editor.invalidate();
       }
+    });
+  });
+
+  describe("framed editor mouse coordinates", () => {
+    const event: TuiMouseEvent = {
+      type: "click",
+      button: "left",
+      x: 5,
+      y: 2,
+      screenX: 15,
+      screenY: 12,
+      width: 20,
+      height: 6,
+      shift: false,
+      alt: false,
+      ctrl: false,
+    };
+
+    it("maps content clicks into the inset editor", () => {
+      expect(translateFramedEditorMouseEvent(event)).toMatchObject({
+        x: 4,
+        width: 18,
+        screenX: 15,
+        screenY: 12,
+      });
+    });
+
+    it("leaves side-rail clicks to the outer transcript", () => {
+      expect(
+        translateFramedEditorMouseEvent({ ...event, x: 0 }),
+      ).toBeUndefined();
+      expect(
+        translateFramedEditorMouseEvent({ ...event, x: 19 }),
+      ).toBeUndefined();
     });
   });
 

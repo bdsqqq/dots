@@ -7,6 +7,10 @@
   "dependencies": {
     "@bds_pi/config": "workspace:*",
     "@bds_pi/interpolate": "workspace:*",
+    "@bds_pi/pi-client-legacy": "npm:@earendil-works/pi-client@0.84.4",
+    "@bds_pi/pi-coding-agent-legacy": "npm:@earendil-works/pi-coding-agent@0.84.4",
+    "@bds_pi/pi-protocol-legacy": "npm:@earendil-works/pi-protocol@0.84.4",
+    "@bds_pi/pi-server-legacy": "npm:@earendil-works/pi-server@0.84.4",
     "@earendil-works/pi-client": "catalog:",
     "@earendil-works/pi-coding-agent": "catalog:",
     "@earendil-works/pi-protocol": "catalog:",
