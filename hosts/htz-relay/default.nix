@@ -163,6 +163,7 @@ in
     useRoutingFeatures = "client";
     extraSetFlags = [ "--operator=bdsqqq" ];
     extraUpFlags = [
+      "--operator=bdsqqq"
       "--ssh"
       "--accept-dns=false"
       "--shields-up=false"

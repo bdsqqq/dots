@@ -138,12 +138,21 @@ in
     extraSetFlags = [
       "--hostname=gru-relay"
       "--ssh"
+      "--advertise-exit-node"
+      "--accept-dns=false"
+      "--shields-up=false"
+      "--netfilter-mode=nodivert"
+    ];
+    extraUpFlags = [
+      "--hostname=gru-relay"
+      "--ssh"
       "--advertise-tags=tag:ssh-accept"
       "--advertise-exit-node"
       "--accept-dns=false"
       "--shields-up=false"
       "--netfilter-mode=nodivert"
     ];
+    authKeyFile = config.sops.secrets.tailscale_auth_key.path;
   };
 
   # Keep public ingress owned by the NixOS firewall while still letting
