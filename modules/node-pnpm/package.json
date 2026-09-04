@@ -8,7 +8,6 @@
     "@tobilu/qmd": "^2.5.3",
     "agent-browser": "^0.25.5",
     "biome": "^0.3.3",
-    "bun": "1.3.14",
     "diff": "^8.0.4",
     "npm": "^11.18.0",
     "openportal": "^0.1.32",
