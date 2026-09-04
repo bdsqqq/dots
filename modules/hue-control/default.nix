@@ -26,6 +26,12 @@ in
       description = "Advertise this host as the native svc:hue provider after commissioning.";
     };
 
+    runDaemon = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Run the host-local BLE daemon in addition to installing the API client.";
+    };
+
     statePath = lib.mkOption {
       type = lib.types.str;
       default = "/Users/bdsqqq/Library/Application Support/hue-control/state.json";
@@ -34,7 +40,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    my.tailnetRegistry.services.hue = {
+    my.tailnetRegistry.services.hue = lib.mkIf cfg.runDaemon {
       title = "hue";
       description = "nearby Hue bulb control";
       target = "http://127.0.0.1:${toString cfg.port}";
@@ -52,7 +58,7 @@ in
         chmod 700 ${lib.escapeShellArg (builtins.dirOf cfg.statePath)}
       '';
 
-      launchd.agents.hue-control = {
+      launchd.agents.hue-control = lib.mkIf cfg.runDaemon {
         enable = true;
         config = {
           ProgramArguments = [
