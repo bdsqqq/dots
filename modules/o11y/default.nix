@@ -26,6 +26,7 @@ let
   ];
   darwinLogFilesYaml = lib.concatMapStringsSep "\n" (path: "      - ${path}") [
     "${homeDir}/Library/Logs/**/*.log"
+    "${homeDir}/.local/state/log/**/*.log"
     "/Library/Logs/**/*.log"
     "/var/log/**/*.log"
   ];
@@ -130,8 +131,12 @@ let
               if: 'attributes["log.file.path"] matches "^${homeDir}/Library/Logs/[^/]+/.*[.]log$"'
               parse_from: attributes["log.file.path"]
               regex: '^${homeDir}/Library/Logs/(?P<app>[^/]+)/.*[.]log$'
+            - type: regex_parser
+              if: 'attributes["log.file.path"] matches "^${homeDir}/[.]local/state/log/[^/]+/.*[.]log$"'
+              parse_from: attributes["log.file.path"]
+              regex: '^${homeDir}/[.]local/state/log/(?P<app>[^/]+)/.*[.]log$'
             - type: add
-              if: 'attributes["log.file.path"] matches "^${homeDir}/Library/Logs/"'
+              if: 'attributes["log.file.path"] matches "^${homeDir}/(Library/Logs/|[.]local/state/log/)"'
               field: attributes.user
               value: bdsqqq
             - type: add
