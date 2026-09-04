@@ -25,6 +25,13 @@ const LocalFleetConfigurationV1Schema = type({
     },
     "[]",
   ],
+  "publicNodes?": [PublicIdentityV1Schema, "[]"],
+  "desiredState?": {
+    "+": "reject",
+    authorityPrivateKeyPath: "string",
+    bridgeOrigin: "string",
+    revisionStatePath: "string",
+  },
 });
 
 export async function loadLocalFleetRuntimeOptions(
@@ -35,6 +42,9 @@ export async function loadLocalFleetRuntimeOptions(
   if (configuration !== value) {
     throw new TypeError("local fleet configuration validation must preserve object identity");
   }
+  if (configuration.desiredState && !configuration.publicNodes?.length) {
+    throw new TypeError("desiredState requires at least one publicNodes entry");
+  }
   const directory = dirname(path);
   return {
     fleet: configuration.fleet,
@@ -44,5 +54,22 @@ export async function loadLocalFleetRuntimeOptions(
       publicIdentity: { ...node.publicIdentity },
       statePath: resolve(directory, node.statePath),
     })),
+    publicNodes: configuration.publicNodes?.map((identity) => ({ ...identity })),
+    desiredState: configuration.desiredState
+      ? {
+          authorityPrivateKey: await readFile(
+            resolve(directory, configuration.desiredState.authorityPrivateKeyPath),
+            "utf8",
+          ),
+          recipients: (configuration.publicNodes ?? []).map((identity) => ({
+            ...identity,
+          })),
+          bridgeOrigin: configuration.desiredState.bridgeOrigin,
+          revisionStatePath: resolve(
+            directory,
+            configuration.desiredState.revisionStatePath,
+          ),
+        }
+      : undefined,
   };
 }

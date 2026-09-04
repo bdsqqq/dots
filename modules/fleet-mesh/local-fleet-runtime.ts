@@ -1,5 +1,10 @@
 import { readSnapshot } from "./daemon.ts";
 import {
+  FileDesiredStateController,
+  type FileDesiredStateControllerOptions,
+} from "./desired-state/local.ts";
+import type { DesiredStateController } from "./desired-state/public.ts";
+import {
   MeshNode,
   publicIdentity,
   validateAuthorityPublicKey,
@@ -23,12 +28,21 @@ export interface LocalFleetRuntimeOptions {
     publicKey: string;
   };
   nodes: readonly LocalFleetNodeConfiguration[];
+  publicNodes?: readonly PublicIdentity[];
+  desiredState?: Pick<
+    FileDesiredStateControllerOptions,
+    | "authorityPrivateKey"
+    | "recipients"
+    | "bridgeOrigin"
+    | "revisionStatePath"
+    | "fetch"
+  >;
   clock?: () => Date;
 }
 
 interface LoadedFleetNode {
   record: FleetNodeRecord;
-  node: MeshNode;
+  node?: MeshNode;
 }
 
 function identitiesEqual(left: PublicIdentity, right: PublicIdentity): boolean {
@@ -41,9 +55,14 @@ function identitiesEqual(left: PublicIdentity, right: PublicIdentity): boolean {
 
 export class LocalFleetRuntime implements FleetNodeReader {
   readonly #nodes: ReadonlyMap<string, LoadedFleetNode>;
+  readonly desiredStateController: DesiredStateController | undefined;
 
-  private constructor(nodes: ReadonlyMap<string, LoadedFleetNode>) {
+  private constructor(
+    nodes: ReadonlyMap<string, LoadedFleetNode>,
+    desiredStateController: DesiredStateController | undefined,
+  ) {
     this.#nodes = nodes;
+    this.desiredStateController = desiredStateController;
   }
 
   static async create(options: LocalFleetRuntimeOptions): Promise<LocalFleetRuntime> {
@@ -68,6 +87,24 @@ export class LocalFleetRuntime implements FleetNodeReader {
         },
         statePath: configuration.statePath,
       })),
+      publicNodes: options.publicNodes?.map((identity) => ({
+        id: identity.id,
+        signingPublicKey: identity.signingPublicKey,
+        encryptionPublicKey: identity.encryptionPublicKey,
+      })),
+      desiredState: options.desiredState
+        ? {
+            authorityPrivateKey: options.desiredState.authorityPrivateKey,
+            recipients: options.desiredState.recipients.map((identity) => ({
+              id: identity.id,
+              signingPublicKey: identity.signingPublicKey,
+              encryptionPublicKey: identity.encryptionPublicKey,
+            })),
+            bridgeOrigin: options.desiredState.bridgeOrigin,
+            revisionStatePath: options.desiredState.revisionStatePath,
+            fetch: options.desiredState.fetch,
+          }
+        : undefined,
       clock: options.clock,
     };
     validateAuthorityPublicKey(captured.authority.publicKey);
@@ -79,6 +116,13 @@ export class LocalFleetRuntime implements FleetNodeReader {
         throw new Error(`duplicate configured node id: ${configuration.publicIdentity.id}`);
       }
       ids.add(configuration.publicIdentity.id);
+    }
+    for (const identity of captured.publicNodes ?? []) {
+      PublicIdentityV1Schema.assert(identity);
+      if (ids.has(identity.id)) {
+        throw new Error(`duplicate configured node id: ${identity.id}`);
+      }
+      ids.add(identity.id);
     }
 
     const roster = captured.nodes.map((configuration) => ({
@@ -111,8 +155,27 @@ export class LocalFleetRuntime implements FleetNodeReader {
       }),
     );
 
+    const desiredStateController = captured.desiredState
+      ? new FileDesiredStateController({
+          fleet: captured.fleet,
+          authority: captured.authority,
+          ...captured.desiredState,
+          clock: captured.clock,
+        })
+      : undefined;
     return new LocalFleetRuntime(
-      new Map(loaded.map((entry) => [entry.record.identity.id, entry])),
+      new Map(
+        [
+          ...loaded,
+          ...(captured.publicNodes ?? []).map((identity) => ({
+            record: {
+              fleet: captured.fleet,
+              identity: { ...identity },
+            },
+          })),
+        ].map((entry) => [entry.record.identity.id, entry]),
+      ),
+      desiredStateController,
     );
   }
 

@@ -92,6 +92,18 @@ let
       )
       cfg.simulatedNodes;
   });
+  controlConfiguration = pkgs.writeText "fleet-mesh-control.json" (builtins.toJSON {
+    version = 1;
+    fleet = cfg.fleet;
+    inherit (cfg) authority;
+    nodes = [ ];
+    publicNodes = cfg.roster;
+    desiredState = {
+      authorityPrivateKeyPath = config.sops.secrets."fleet-mesh/authority-private-key".path;
+      bridgeOrigin = "http://127.0.0.1:${toString bridgePort}";
+      revisionStatePath = "${cfg.stateDirectory}/authority-revision.json";
+    };
+  });
 in
 {
   options.my.fleetMesh = {
@@ -195,6 +207,12 @@ in
         owner = "bdsqqq";
         mode = "0400";
       };
+      "fleet-mesh/authority-private-key" = {
+        sopsFile = ./secrets.yaml;
+        key = "authority_private_key";
+        owner = "bdsqqq";
+        mode = "0400";
+      };
     };
 
     my.tailnetRegistry.providers.fleet-mesh = {
@@ -205,6 +223,7 @@ in
     };
 
     home-manager.users.bdsqqq = { config, lib, ... }: {
+      home.sessionVariables.FLEET_CONFIG = controlConfiguration;
       home.packages = [
         daemonPackage
         poolPackage

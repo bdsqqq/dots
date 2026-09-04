@@ -31,7 +31,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     inherit pnpm;
     fetcherVersion = 3;
     pnpmInstallFlags = [ "--prod" ];
-    hash = "sha256-zH5oMwOjfc7NJYrru1XE8zhMyNBvyg8rL5nqB8C1238=";
+    hash = "sha256-ZWaO3eI6m4hnsSEqdthSOEO4TgwKmq2zSLwzxytYVnQ=";
   };
   pnpmInstallFlags = [ "--prod" ];
 
@@ -52,6 +52,13 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       --outfile=fleet-daemon.mjs \
       --platform=node \
       --target=node22
+    esbuild fleet-bin.ts \
+      --bundle \
+      --format=esm \
+      --outfile=fleet.mjs \
+      --platform=node \
+      --target=node22 \
+      --banner:js='import { createRequire } from "node:module"; const require = createRequire(import.meta.url);'
 
     runHook postBuild
   '';
@@ -60,8 +67,11 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     runHook preInstall
 
     install -Dm644 fleet-daemon.mjs "$out/lib/fleet-mesh/fleet-daemon.mjs"
+    install -Dm644 fleet.mjs "$out/lib/fleet-mesh/fleet.mjs"
     makeWrapper ${lib.getExe nodejs} "$out/bin/fleet-daemon" \
       --add-flags "$out/lib/fleet-mesh/fleet-daemon.mjs"
+    makeWrapper ${lib.getExe nodejs} "$out/bin/fleet" \
+      --add-flags "$out/lib/fleet-mesh/fleet.mjs"
 
     runHook postInstall
   '';

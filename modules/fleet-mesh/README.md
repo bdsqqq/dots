@@ -38,12 +38,14 @@ exchange contract.
 - `fleet-protocol.ts` owns the browser-safe v1 record language and validation.
 - `node-catalog/` owns its read-model schemas, inferred types, reader port, use
   cases, oRPC contract, local binding, and tests as one behavior.
+- `desired-state/` owns command submission and receipt status, including its
+  schemas, operation contract, authority-backed local runtime, and tests.
 - `fleet-public.ts` composes those verticals into the public schema catalog and
   browser-safe package surface.
 - `fleet-node.ts` exports crypto, persistence, `LocalFleetRuntime`, and the
   implemented local client.
 - `fleet-cli.ts` projects public oRPC metadata and invokes that same client. it
-  supports only genuine no-input and scalar-positional operations.
+  supports genuine no-input, scalar-positional, and exact JSON-stdin operations.
 
 protocol v1 values remain unchanged. schema identity and version live in
 `fleetSchemaCatalog` when the existing wire value does not already carry them.
@@ -64,9 +66,11 @@ faithful conversion. there is no parallel hand-authored JSON Schema catalog.
 ## local CLI
 
 the packaged `fleet` executable reads an explicit runtime configuration from
-`FLEET_CONFIG`. relative state paths resolve beside that configuration file.
-the file belongs inside the existing secrets boundary because node identities
-contain private keys.
+`FLEET_CONFIG`. relative state and secret paths resolve beside that
+configuration file. the mmn control configuration carries only public nodes
+and a separately permissioned authority-key path. configurations using local
+emulator nodes still contain their private identities inline and must remain
+inside the existing secrets boundary.
 
 ```json
 {
@@ -76,34 +80,32 @@ contain private keys.
     "id": "fleet-admin",
     "publicKey": "<PEM>"
   },
-  "nodes": [
+  "nodes": [],
+  "publicNodes": [
     {
-      "identity": {
-        "id": "virtual-esp32",
-        "signingPublicKey": "<PEM>",
-        "encryptionPublicKey": "<PEM>",
-        "signingPrivateKey": "<PEM>",
-        "encryptionPrivateKey": "<PEM>"
-      },
-      "publicIdentity": {
-        "id": "virtual-esp32",
-        "signingPublicKey": "<same PEM>",
-        "encryptionPublicKey": "<same PEM>"
-      },
-      "statePath": "virtual-esp32.json"
+      "id": "esp32-sim-1",
+      "signingPublicKey": "<PEM>",
+      "encryptionPublicKey": "<PEM>"
     }
-  ]
+  ],
+  "desiredState": {
+    "authorityPrivateKeyPath": "/run/secrets/fleet-mesh/authority-private-key",
+    "bridgeOrigin": "http://127.0.0.1:43120",
+    "revisionStatePath": "authority-revision.json"
+  }
 }
 ```
 
 ```bash
 FLEET_CONFIG=/path/to/fleet.json fleet node list --json
-FLEET_CONFIG=/path/to/fleet.json fleet node describe virtual-esp32
-FLEET_CONFIG=/path/to/fleet.json fleet node exists virtual-esp32
+printf '%s' '{"nodeId":"esp32-sim-1","resource":"demo:count","value":7}' |
+  FLEET_CONFIG=/path/to/fleet.json fleet desired-state set --json
+FLEET_CONFIG=/path/to/fleet.json fleet desired-state status <command-id> --json
 ```
 
-`--json` is output-only and emits one stable JSON document. `node.list` has no
-input flag.
+`--json` remains output-only and emits one stable JSON document. structured
+operations read their exact input from stdin; `node.list` still has no input
+flag.
 
 ## supervised mmn deployment
 
@@ -113,6 +115,11 @@ input flag.
   loopback listener, state path, explicit peer URLs, and bounded contact timing;
 - one SOPS-produced `0400` identity file containing only that daemon's public
   and private node keys.
+
+the interactive `fleet` process may separately read the authority private key
+to issue commands. that key is never passed to a daemon or QEMU guest. its
+durable revision file is locked and atomically replaced before submission, so
+separate CLI invocations cannot reuse a revision.
 
 mmn supervises three launchd agents on fixed loopback ports:
 

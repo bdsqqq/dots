@@ -191,6 +191,46 @@ function receiptId(receipt: Omit<ReceiptEnvelope, "id">): string {
   return hash(receipt);
 }
 
+export function validV1CommandRecord(
+  command: CommandEnvelope,
+  fleet: string,
+  authority: { id: string; publicKey: string },
+): boolean {
+  if (
+    command.header.version !== 1 ||
+    command.header.fleet !== fleet ||
+    command.authority !== authority.id
+  ) {
+    return false;
+  }
+  const { id, signature, ...unsigned } = command;
+  return (
+    id === commandId({ ...unsigned, signature }) &&
+    validSignature(commandSignedFields(unsigned), signature, authority.publicKey)
+  );
+}
+
+export function validV1ReceiptRecord(
+  receipt: ReceiptEnvelope,
+  command: CommandEnvelope,
+  signer: PublicIdentity,
+): boolean {
+  if (
+    receipt.node !== signer.id ||
+    receipt.node !== command.header.to ||
+    receipt.commandId !== command.id ||
+    receipt.resource !== command.header.resource ||
+    compareRevision(receipt.revision, command.header.revision) !== 0
+  ) {
+    return false;
+  }
+  const { id, signature, ...unsigned } = receipt;
+  return (
+    id === receiptId({ ...unsigned, signature }) &&
+    validSignature(receiptSignedFields(unsigned), signature, signer.signingPublicKey)
+  );
+}
+
 function encryptionKey(sharedSecret: Buffer, header: CommandHeader): Buffer {
   return Buffer.from(
     hkdfSync(
@@ -426,34 +466,17 @@ export class MeshNode {
 
   #validRecord(record: MeshRecord): boolean {
     if (record.kind === "command") {
-      if (
-        record.header.version !== 1 ||
-        record.header.fleet !== this.#fleet ||
-        record.authority !== this.#authorityId
-      ) {
-        return false;
-      }
-      const { id, signature, ...unsigned } = record;
-      return (
-        id === commandId({ ...unsigned, signature }) &&
-        validSignature(commandSignedFields(unsigned), signature, this.#authorityPublicKey)
-      );
+      return validV1CommandRecord(record, this.#fleet, {
+        id: this.#authorityId,
+        publicKey: this.#authorityPublicKey,
+      });
     }
     const signer = this.#roster.get(record.node);
     const command = this.#records.get(record.commandId);
-    if (
-      !signer ||
-      command?.kind !== "command" ||
-      record.node !== command.header.to ||
-      record.resource !== command.header.resource ||
-      compareRevision(record.revision, command.header.revision) !== 0
-    ) {
-      return false;
-    }
-    const { id, signature, ...unsigned } = record;
-    return (
-      id === receiptId({ ...unsigned, signature }) &&
-      validSignature(receiptSignedFields(unsigned), signature, signer.signingPublicKey)
+    return Boolean(
+      signer &&
+        command?.kind === "command" &&
+        validV1ReceiptRecord(record, command, signer),
     );
   }
 

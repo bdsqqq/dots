@@ -11,6 +11,8 @@
   },
   "include": [
     "daemon.ts",
+    "desired-state/local.ts",
+    "desired-state/public.ts",
     "fleet-daemon-bin.ts",
     "fleet-daemon-config.ts",
     "fleet-daemon-main.ts",
@@ -19,6 +21,7 @@
     "fleet-cli-main.ts",
     "fleet-mesh.ts",
     "fleet-node.ts",
+    "fleet-operation.ts",
     "fleet-protocol.ts",
     "fleet-public.ts",
     "local-fleet-config.ts",

@@ -1,6 +1,30 @@
-import { fleetProtocolSchemaCatalog } from "./fleet-protocol.ts";
-import { nodeCatalogSchemaCatalog } from "./node-catalog/public.ts";
+import type { ContractRouterClient } from "@orpc/contract";
 
+import {
+  desiredStateContract,
+  desiredStateSchemaCatalog,
+} from "./desired-state/public.ts";
+import { fleetOperation } from "./fleet-operation.ts";
+import { fleetProtocolSchemaCatalog } from "./fleet-protocol.ts";
+import {
+  nodeCatalogContract,
+  nodeCatalogSchemaCatalog,
+} from "./node-catalog/public.ts";
+
+export {
+  CommandNotFoundV1Schema,
+  desiredStateContract,
+  DesiredStateSetInputV1Schema,
+  DesiredStateStatusV1Schema,
+  DesiredStateSubmissionV1Schema,
+  getDesiredStateStatus,
+  setDesiredState,
+  type CommandNotFoundV1,
+  type DesiredStateController,
+  type DesiredStateSetInputV1,
+  type DesiredStateStatusV1,
+  type DesiredStateSubmissionV1,
+} from "./desired-state/public.ts";
 export {
   CommandEnvelopeV1Schema,
   JsonValueV1Schema,
@@ -28,7 +52,6 @@ export {
 } from "./fleet-protocol.ts";
 export {
   describeFleetNode,
-  fleetContract,
   fleetNodeExists,
   FleetNodeDescriptionV1Schema,
   FleetNodePresenceV1Schema,
@@ -36,15 +59,20 @@ export {
   FleetNodeSummaryV1Schema,
   listFleetNodes,
   NodeNotFoundV1Schema,
-  type FleetClient,
   type FleetNodeDescriptionV1,
   type FleetNodePresenceV1,
   type FleetNodeReader,
   type FleetNodeRecord,
   type FleetNodeSummaryV1,
-  type FleetOperationMetadata,
   type NodeNotFoundV1,
 } from "./node-catalog/public.ts";
+export type { FleetOperationMetadata } from "./fleet-operation.ts";
+
+export const fleetContract = fleetOperation.router({
+  node: nodeCatalogContract,
+  "desired-state": desiredStateContract,
+});
+export type FleetClient = ContractRouterClient<typeof fleetContract>;
 
 /**
  * Schema ownership follows behavior; this root catalog only gives consumers one
@@ -53,4 +81,5 @@ export {
 export const fleetSchemaCatalog = {
   ...fleetProtocolSchemaCatalog,
   ...nodeCatalogSchemaCatalog,
+  ...desiredStateSchemaCatalog,
 } as const;
