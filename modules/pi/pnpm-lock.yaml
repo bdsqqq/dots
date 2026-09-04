@@ -47,16 +47,16 @@ importers:
     dependencies:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.85.0(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       defuddle:
-        specifier: ^0.18.1
-        version: 0.18.1
+        specifier: ^0.19.1
+        version: 0.19.1
       diff:
         specifier: ^8.0.0
         version: 8.0.4
@@ -84,7 +84,7 @@ importers:
         version: 24.12.4
       '@vitest/coverage-v8':
         specifier: ^3.0.0
-        version: 3.2.4(vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0))
+        version: 3.2.4(supports-color@7.2.0)(vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0))
       oxfmt:
         specifier: ^0.35.0
         version: 0.35.0
@@ -99,7 +99,7 @@ importers:
         version: 0.21.4(typescript@5.9.3)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/agent-memory:
     dependencies:
@@ -115,23 +115,23 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/background-completion:
     dependencies:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.85.0(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
 
   packages/core/box-chrome:
     devDependencies:
       vitest:
         specifier: '*'
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/box-format:
     dependencies:
@@ -147,19 +147,19 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/codex-patch:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/config:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/file-tracker:
     dependencies:
@@ -169,32 +169,32 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/fs:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/github-api:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/html-to-md:
     dependencies:
       defuddle:
-        specifier: ^0.18.1
-        version: 0.18.1
+        specifier: ^0.19.1
+        version: 0.19.1
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/interpolate:
     dependencies:
@@ -204,7 +204,7 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/log:
     dependencies:
@@ -214,7 +214,7 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/mentions:
     dependencies:
@@ -224,19 +224,19 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/mutex:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/output-buffer:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/pi-spawn:
     dependencies:
@@ -251,32 +251,32 @@ importers:
         version: '@earendil-works/pi-client@0.84.4'
       '@bds_pi/pi-coding-agent-legacy':
         specifier: npm:@earendil-works/pi-coding-agent@0.84.4
-        version: '@earendil-works/pi-coding-agent@0.84.4(ws@8.21.3)(zod@4.4.3)'
+        version: '@earendil-works/pi-coding-agent@0.84.4(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)'
       '@bds_pi/pi-protocol-legacy':
         specifier: npm:@earendil-works/pi-protocol@0.84.4
         version: '@earendil-works/pi-protocol@0.84.4'
       '@bds_pi/pi-server-legacy':
         specifier: npm:@earendil-works/pi-server@0.84.4
-        version: '@earendil-works/pi-server@0.84.4(ws@8.21.3)(zod@4.4.3)'
+        version: '@earendil-works/pi-server@0.84.4(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)'
       '@earendil-works/pi-client':
         specifier: 'catalog:'
         version: 0.85.0
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-protocol':
         specifier: 'catalog:'
         version: 0.85.0
       '@earendil-works/pi-server':
         specifier: 'catalog:'
-        version: 0.85.0(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.85.0(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/prompt-patch:
     dependencies:
@@ -286,7 +286,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
 
   packages/core/sessions:
     dependencies:
@@ -302,7 +302,7 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/show-renderer:
     dependencies:
@@ -315,7 +315,7 @@ importers:
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/sub-agent-render:
     dependencies:
@@ -331,16 +331,16 @@ importers:
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.85.0(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/tool-cost:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/tool-policy:
     dependencies:
@@ -350,13 +350,13 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/core/tui:
     devDependencies:
       vitest:
         specifier: '*'
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/apply-patch:
     dependencies:
@@ -384,13 +384,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/bash:
     dependencies:
@@ -424,19 +424,19 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/cmux-notify:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/code-review:
     dependencies:
@@ -479,13 +479,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/delegate:
     dependencies:
@@ -534,22 +534,22 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/editor:
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.85.0(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
@@ -586,13 +586,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/format-file:
     dependencies:
@@ -620,13 +620,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/git:
     dependencies:
@@ -636,10 +636,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/github:
     dependencies:
@@ -658,13 +658,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/glob:
     dependencies:
@@ -686,13 +686,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/grep:
     dependencies:
@@ -714,13 +714,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/librarian:
     dependencies:
@@ -745,13 +745,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/look-at:
     dependencies:
@@ -779,13 +779,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/ls:
     dependencies:
@@ -810,13 +810,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/oracle:
     dependencies:
@@ -853,13 +853,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/read:
     dependencies:
@@ -887,13 +887,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/read-session:
     dependencies:
@@ -921,13 +921,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/read-web-page:
     dependencies:
@@ -958,13 +958,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/search-sessions:
     dependencies:
@@ -986,13 +986,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/session-name:
     dependencies:
@@ -1007,11 +1007,11 @@ importers:
         version: link:../../core/mentions
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.85.0(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/session-recap:
     dependencies:
@@ -1023,20 +1023,20 @@ importers:
         version: link:../../core/config
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.85.0(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/session-settlement:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/skill:
     dependencies:
@@ -1052,13 +1052,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/system-prompt:
     dependencies:
@@ -1077,16 +1077,16 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/tool-harness:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/undo-edit:
     dependencies:
@@ -1117,13 +1117,13 @@ importers:
         version: link:../apply-patch
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/web-search:
     dependencies:
@@ -1145,19 +1145,19 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
 
   packages/extensions/zmx:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)
+        version: 0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
@@ -2568,10 +2568,9 @@ packages:
   '@vitest/utils@3.2.6':
     resolution: {integrity: sha512-lI23nIs4bnT3T8NIoh+vFaz5s2/DdP0Jgt2jxwgWljvwn82cLJtyi/If+fjFyoLMGIOz0U/fKvWE0d4jsNQEfg==}
 
-  '@xmldom/xmldom@0.8.13':
-    resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
-    engines: {node: '>=10.0.0'}
-    deprecated: this version has critical issues, please update to the latest version
+  '@xmldom/xmldom@0.9.12':
+    resolution: {integrity: sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A==}
+    engines: {node: '>=14.6'}
 
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
@@ -2627,8 +2626,9 @@ packages:
   birpc@4.0.0:
     resolution: {integrity: sha512-LShSxJP0KTmd101b6DRyGBj57LZxSDYWKitQNW/mi8GRMvZb078Uf9+pveax1DrVL89vm7mWe+TovdI/UDOuPw==}
 
-  boolbase@1.0.0:
-    resolution: {integrity: sha512-JZOSA7Mo9sNGB8+UjSgzdLtokWAky1zbztM3WRLCbZ70/3cTANmQmOdR7y2g+J0e2WXywy1yS468tY+IruqEww==}
+  boolbase@2.0.0:
+    resolution: {integrity: sha512-DkVaaQHymRhpYEYo9x1oo7Q7B0Y6KJUsjm3c9eTyFDby4MHLBTwZ6ZDWBel5zrYxj1WsZgC5oLpiz+93MluXeA==}
+    engines: {node: '>=20.19.0'}
 
   bowser@2.14.1:
     resolution: {integrity: sha512-tzPjzCxygAKWFOJP011oxFHs57HzIhOEracIgAePE4pqB3LikALKnSzUyU4MGs9/iCEUuHlAJTjTc5M+u7YEGg==}
@@ -2678,16 +2678,17 @@ packages:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
 
-  css-select@5.2.2:
-    resolution: {integrity: sha512-TizTzUddG/xYLA3NXodFM0fSbNizXjOKhqiQQwvhlspadZokn1KDy0NZFS0wuEubIYAV5/c1/lAr0TaaFXEXzw==}
+  css-select@7.0.0:
+    resolution: {integrity: sha512-snmjEVXy+1LnwXdxhYvTMj1d9tOh4HxkA1YmoayVBeeyR2C14Pum7fcxJIm4SswYspVy866eYNwlH6xC3/VH5g==}
+    engines: {node: '>=20.19.0'}
 
   css-tree@3.2.1:
     resolution: {integrity: sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0}
 
-  css-what@6.2.2:
-    resolution: {integrity: sha512-u/O3vwbptzhMs3L1fQE82ZSLHQQfto5gyZzwteVIEyeaY5Fc7R4dapF/BvRoSYFeqfBk4m0V1Vafq5Pjv25wvA==}
-    engines: {node: '>= 6'}
+  css-what@8.0.0:
+    resolution: {integrity: sha512-DH0Bqq3DNp5tdOReuNyAA+Ev4Y2GS5FMbZpeTLP6C4CDi0h5nL0BmUPChXw3o/qbHLDWHl49sbNqQVY7bMSDdw==}
+    engines: {node: '>=20.19.0'}
 
   cssom@0.5.0:
     resolution: {integrity: sha512-iKuQcq+NdHqlAcwUY0o/HL69XQrUaQdMjmStJ8JFmUaiiQErlhrmuigkg/CU4E2J0IyUKUrMAgl36TvN67MqTw==}
@@ -2719,8 +2720,8 @@ packages:
   defu@6.1.5:
     resolution: {integrity: sha512-pwdBJxJuJXmqrLO6s0VBmfbRz+G7FUzkjldAsdi9Yrv86mPyzq0ll1o8+8gB4Gsr6GJHbK1Lh3ngllgTInDCjA==}
 
-  defuddle@0.18.1:
-    resolution: {integrity: sha512-AvFPFOsoDjt5xUOA1QxzafSSzJ5dqEIC63yO72tHYtSjj1DYY/XM0XTPUCsHkm5A2f1X9ulBvoSVFJrd4s2ckA==}
+  defuddle@0.19.1:
+    resolution: {integrity: sha512-7e2IVQYuNncMe9Ws8KkU/KHD8H1LFfFPmdTgRVuQNgJPOeQQSqZzAhacCyNAGwg44cM2vwuCW1cy9fmbdOZ+pA==}
     hasBin: true
 
   diff@8.0.4:
@@ -2730,15 +2731,31 @@ packages:
   dom-serializer@2.0.0:
     resolution: {integrity: sha512-wIkAryiqt/nV5EQKqQpo3SToSOV9J0DnbJqwK7Wv/Trc92zIAYZ4FlMu+JPFW1DfGFt81ZTCGgDEabffXeLyJg==}
 
+  dom-serializer@3.1.1:
+    resolution: {integrity: sha512-4MEa38/QexBob6gFNwu+EGdWvhJ1OKuNwdYY3Y3NyeWDQfnGeDYQUDfIRzWu5B5gsv03so2Uxd28YC6zrsx3Lw==}
+    engines: {node: '>=20.19.0'}
+
   domelementtype@2.3.0:
     resolution: {integrity: sha512-OLETBj6w0OsagBwdXnPdN0cnMfF9opN69co+7ZrbfPGrdpPVNBUj02spi6B1N7wChLQiPn4CSH/zJvXw56gmHw==}
+
+  domelementtype@3.0.0:
+    resolution: {integrity: sha512-umCQid3jKbDmVjx8jGaW7uUykm4DEUeyV21hPxNMo2nV955DhUThwqyOIDtreepP31hl84X7G5U9ZfsWvIB3Pg==}
+    engines: {node: '>=20.19.0'}
 
   domhandler@5.0.3:
     resolution: {integrity: sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w==}
     engines: {node: '>= 4'}
 
+  domhandler@6.0.1:
+    resolution: {integrity: sha512-gYzvtM72ZtxQO0T048kd6HWSbbGCNOUwcnfQ01cqIJ4X2IYKFFHZ5mKvrQETcFXxsRObZulDaKmy//R7TPtsBg==}
+    engines: {node: '>=20.19.0'}
+
   domutils@3.2.2:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
+
+  domutils@4.0.2:
+    resolution: {integrity: sha512-qI4JLRKnSzqFqr7hAlS5xQDusBCjKSEG4t4+7aNrIQMHBcsC2TGEhuyABJdYkgSewL57PNLYEiibY2iPKhKpaA==}
+    engines: {node: '>=20.19.0'}
 
   dts-resolver@2.1.3:
     resolution: {integrity: sha512-bihc7jPC90VrosXNzK0LTE2cuLP6jr0Ro8jk+kMugHReJVLIpHz/xadeq3MhuwyO4TD4OA3L1Q8pBBFRc08Tsw==}
@@ -3033,8 +3050,8 @@ packages:
   jws@4.0.1:
     resolution: {integrity: sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==}
 
-  linkedom@0.18.12:
-    resolution: {integrity: sha512-jalJsOwIKuQJSeTvsgzPe9iJzyfVaEJiEXl+25EkKevsULHvMJzpNqwvj1jOESWdmgKDiXObyjOYwlUqG7wo1Q==}
+  linkedom@0.18.13:
+    resolution: {integrity: sha512-ES/o9qotMpzpN2MHs+Iq/JcVoOj8Fa5wiQYrTdFpvAnwXL0g66XHHUc9WUMk6nAlBtGsFQ24ne+SYnvnaQ2FSw==}
     engines: {node: '>=16'}
     peerDependencies:
       canvas: '>= 2'
@@ -3070,8 +3087,8 @@ packages:
     engines: {node: '>= 20'}
     hasBin: true
 
-  mathml-to-latex@1.5.0:
-    resolution: {integrity: sha512-rrWn0eEvcEcdMM4xfHcSGIy+i01DX9byOdXTLWg+w1iJ6O6ohP5UXY1dVzNUZLhzfl3EGcRekWLhY7JT5Omaew==}
+  mathml-to-latex@1.8.0:
+    resolution: {integrity: sha512-gQ0uK3zqB8HwlfaXJkEL5rgaZNbKUiBMmBP/B/W+b+t6KcseLSuYb1b0BjLgS9ZiQa24ePkqTX8/6FaQuDL7wQ==}
 
   mdn-data@2.27.1:
     resolution: {integrity: sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==}
@@ -3105,8 +3122,9 @@ packages:
     resolution: {integrity: sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
-  nth-check@2.1.1:
-    resolution: {integrity: sha512-lqjrjmaOoAnWfMmBPL+XNnynZh2+swxiX3WUE0s4yEHI6m+AwrK2UZOimIRl3X/4QctVqS8AiZjFqyOGrMXb/w==}
+  nth-check@3.0.1:
+    resolution: {integrity: sha512-GX0gsdbGVCgnRgbeGaubfjpBXyYRWOOCVeYh08bSQvDZqxz5ndXs1OTfAt/h36G1xvI94YIspsI0sVFqAV9+RQ==}
+    engines: {node: '>=20.19.0'}
 
   obug@2.1.1:
     resolution: {integrity: sha512-uTqF9MuPraAQ+IsnPf366RG4cP9RtUi7MLO1N3KEc+wb0a6yKpeL0lmk2IB1jY5KHPAlTc6T/JRdC/YqxHNwkQ==}
@@ -3321,8 +3339,8 @@ packages:
   symbol-tree@3.2.4:
     resolution: {integrity: sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==}
 
-  temml@0.13.3:
-    resolution: {integrity: sha512-GLNEdf5qBWux3adbOxFus4jlds8nCdEIkkKq99m/4GGTfqnsjlVlK/i371Ux7yYSg/WNmOyAkNT/GJlZoJ0v+w==}
+  temml@0.13.5:
+    resolution: {integrity: sha512-aPkDDgunanpLNL0ql32HbolqLep+w8DRcVXRql7rWrMt/PhczdLgL4UBYYVU3BYjCNjkGq4EqwIicu/zWr1iOg==}
     engines: {node: '>=18.13.0'}
 
   test-exclude@7.0.2:
@@ -3930,9 +3948,9 @@ snapshots:
     dependencies:
       esbuild: 0.28.1
 
-  '@earendil-works/pi-agent-core@0.84.4(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-agent-core@0.84.4(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
-      '@earendil-works/pi-ai': 0.84.4(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-ai': 0.84.4(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-telemetry': 0.84.4
       diff: 8.0.4
       ignore: 7.0.5
@@ -3946,10 +3964,10 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-agent-core@0.85.0(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-agent-core@0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
       '@earendil-works/chord': 0.85.0
-      '@earendil-works/pi-ai': 0.85.0(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-ai': 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-telemetry': 0.85.0
       diff: 8.0.4
       ignore: 7.0.5
@@ -3963,15 +3981,15 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.84.4(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-ai@0.84.4(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.91.1(zod@4.4.3)
       '@aws-sdk/client-bedrock-runtime': 3.1048.0
       '@earendil-works/pi-telemetry': 0.84.4
-      '@google/genai': 1.52.0
+      '@google/genai': 1.52.0(supports-color@7.2.0)
       '@smithy/node-http-handler': 4.7.3
-      http-proxy-agent: 7.0.2
-      https-proxy-agent: 7.0.6
+      http-proxy-agent: 7.0.2(supports-color@7.2.0)
+      https-proxy-agent: 7.0.6(supports-color@7.2.0)
       openai: 6.40.0(ws@8.21.3)(zod@4.4.3)
       partial-json: 0.1.7
       typebox: 1.3.7
@@ -3983,15 +4001,15 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.85.0(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-ai@0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.123.0(zod@4.4.3)
       '@aws-sdk/client-bedrock-runtime': 3.1048.0
       '@earendil-works/pi-telemetry': 0.85.0
-      '@google/genai': 1.52.0
+      '@google/genai': 1.52.0(supports-color@7.2.0)
       '@smithy/node-http-handler': 4.7.3
-      http-proxy-agent: 7.0.2
-      https-proxy-agent: 7.0.6
+      http-proxy-agent: 7.0.2(supports-color@7.2.0)
+      https-proxy-agent: 7.0.6(supports-color@7.2.0)
       openai: 6.40.0(ws@8.21.3)(zod@4.4.3)
       partial-json: 0.1.7
       typebox: 1.3.7
@@ -4012,10 +4030,10 @@ snapshots:
       '@earendil-works/chord': 0.85.0
       '@earendil-works/pi-protocol': 0.85.0
 
-  '@earendil-works/pi-coding-agent@0.84.4(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-coding-agent@0.84.4(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
-      '@earendil-works/pi-agent-core': 0.84.4(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-ai': 0.84.4(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-agent-core': 0.84.4(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-ai': 0.84.4(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-client': 0.84.4
       '@earendil-works/pi-protocol': 0.84.4
       '@earendil-works/pi-tui': 0.84.4
@@ -4044,11 +4062,11 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-coding-agent@0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-coding-agent@0.85.0(patch_hash=116b0f85ef39c453537d7bb4ccbad0f3500bb1e3967543ff529079f4fba360d8)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
       '@earendil-works/chord': 0.85.0
-      '@earendil-works/pi-agent-core': 0.85.0(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-ai': 0.85.0(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-agent-core': 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-ai': 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-client': 0.85.0
       '@earendil-works/pi-protocol': 0.85.0
       '@earendil-works/pi-tui': 0.85.0(patch_hash=372a77997a7f0995ca48c676dc3ba2165e4d9203540c5ad9341ecb748440390a)
@@ -4086,9 +4104,9 @@ snapshots:
       '@earendil-works/chord': 0.85.0
       typebox: 1.3.7
 
-  '@earendil-works/pi-server@0.84.4(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-server@0.84.4(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
-      '@earendil-works/pi-ai': 0.84.4(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-ai': 0.84.4(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-protocol': 0.84.4
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
@@ -4098,10 +4116,10 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-server@0.85.0(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-server@0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
       '@earendil-works/chord': 0.85.0
-      '@earendil-works/pi-agent-core': 0.85.0(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-agent-core': 0.85.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-protocol': 0.85.0
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
@@ -4299,9 +4317,9 @@ snapshots:
 
   '@exodus/bytes@1.15.0': {}
 
-  '@google/genai@1.52.0':
+  '@google/genai@1.52.0(supports-color@7.2.0)':
     dependencies:
-      google-auth-library: 10.9.0
+      google-auth-library: 10.9.0(supports-color@7.2.0)
       p-retry: 4.6.2
       protobufjs: 7.6.5
       ws: 8.21.3
@@ -4776,22 +4794,22 @@ snapshots:
 
   '@types/tough-cookie@4.0.5': {}
 
-  '@vitest/coverage-v8@3.2.4(vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0))':
+  '@vitest/coverage-v8@3.2.4(supports-color@7.2.0)(vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0))':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@bcoe/v8-coverage': 1.0.2
       ast-v8-to-istanbul: 0.3.12
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
       istanbul-lib-coverage: 3.2.2
       istanbul-lib-report: 3.0.1
-      istanbul-lib-source-maps: 5.0.6
+      istanbul-lib-source-maps: 5.0.6(supports-color@7.2.0)
       istanbul-reports: 3.2.0
       magic-string: 0.30.21
       magicast: 0.3.5
       std-env: 3.10.0
       test-exclude: 7.0.2
       tinyrainbow: 2.0.0
-      vitest: 3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+      vitest: 3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -4841,7 +4859,7 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
-  '@xmldom/xmldom@0.8.13':
+  '@xmldom/xmldom@0.9.12':
     optional: true
 
   agent-base@7.1.4: {}
@@ -4886,7 +4904,7 @@ snapshots:
 
   birpc@4.0.0: {}
 
-  boolbase@1.0.0:
+  boolbase@2.0.0:
     optional: true
 
   bowser@2.14.1: {}
@@ -4931,13 +4949,13 @@ snapshots:
       shebang-command: 2.0.0
       which: 2.0.2
 
-  css-select@5.2.2:
+  css-select@7.0.0:
     dependencies:
-      boolbase: 1.0.0
-      css-what: 6.2.2
-      domhandler: 5.0.3
-      domutils: 3.2.2
-      nth-check: 2.1.1
+      boolbase: 2.0.0
+      css-what: 8.0.0
+      domhandler: 6.0.1
+      domutils: 4.0.2
+      nth-check: 3.0.1
     optional: true
 
   css-tree@3.2.1:
@@ -4945,7 +4963,7 @@ snapshots:
       mdn-data: 2.27.1
       source-map-js: 1.2.1
 
-  css-what@6.2.2:
+  css-what@8.0.0:
     optional: true
 
   cssom@0.5.0:
@@ -4960,9 +4978,11 @@ snapshots:
     transitivePeerDependencies:
       - '@noble/hashes'
 
-  debug@4.4.3:
+  debug@4.4.3(supports-color@7.2.0):
     dependencies:
       ms: 2.1.3
+    optionalDependencies:
+      supports-color: 7.2.0
 
   decimal.js@10.6.0: {}
 
@@ -4970,13 +4990,13 @@ snapshots:
 
   defu@6.1.5: {}
 
-  defuddle@0.18.1:
+  defuddle@0.19.1:
     dependencies:
       commander: 12.1.0
     optionalDependencies:
-      linkedom: 0.18.12
-      mathml-to-latex: 1.5.0
-      temml: 0.13.3
+      linkedom: 0.18.13
+      mathml-to-latex: 1.8.0
+      temml: 0.13.5
       turndown: 7.2.4
     transitivePeerDependencies:
       - canvas
@@ -4990,7 +5010,17 @@ snapshots:
       entities: 4.5.0
     optional: true
 
+  dom-serializer@3.1.1:
+    dependencies:
+      domelementtype: 3.0.0
+      domhandler: 6.0.1
+      entities: 8.0.0
+    optional: true
+
   domelementtype@2.3.0:
+    optional: true
+
+  domelementtype@3.0.0:
     optional: true
 
   domhandler@5.0.3:
@@ -4998,11 +5028,23 @@ snapshots:
       domelementtype: 2.3.0
     optional: true
 
+  domhandler@6.0.1:
+    dependencies:
+      domelementtype: 3.0.0
+    optional: true
+
   domutils@3.2.2:
     dependencies:
       dom-serializer: 2.0.0
       domelementtype: 2.3.0
       domhandler: 5.0.3
+    optional: true
+
+  domutils@4.0.2:
+    dependencies:
+      dom-serializer: 3.1.1
+      domelementtype: 3.0.0
+      domhandler: 6.0.1
     optional: true
 
   dts-resolver@2.1.3: {}
@@ -5130,17 +5172,17 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
-  gaxios@7.2.0:
+  gaxios@7.2.0(supports-color@7.2.0):
     dependencies:
       extend: 3.0.2
-      https-proxy-agent: 7.0.6
+      https-proxy-agent: 7.0.6(supports-color@7.2.0)
       node-fetch: 3.3.2
     transitivePeerDependencies:
       - supports-color
 
-  gcp-metadata@8.1.2:
+  gcp-metadata@8.1.2(supports-color@7.2.0):
     dependencies:
-      gaxios: 7.2.0
+      gaxios: 7.2.0(supports-color@7.2.0)
       google-logging-utils: 1.1.3
       json-bigint: 1.0.0
     transitivePeerDependencies:
@@ -5161,12 +5203,12 @@ snapshots:
       package-json-from-dist: 1.0.1
       path-scurry: 1.11.1
 
-  google-auth-library@10.9.0:
+  google-auth-library@10.9.0(supports-color@7.2.0):
     dependencies:
       base64-js: 1.5.1
       ecdsa-sig-formatter: 1.0.11
-      gaxios: 7.2.0
-      gcp-metadata: 8.1.2
+      gaxios: 7.2.0(supports-color@7.2.0)
+      gcp-metadata: 8.1.2(supports-color@7.2.0)
       google-logging-utils: 1.1.3
       jws: 4.0.1
     transitivePeerDependencies:
@@ -5207,17 +5249,17 @@ snapshots:
       entities: 7.0.1
     optional: true
 
-  http-proxy-agent@7.0.2:
+  http-proxy-agent@7.0.2(supports-color@7.2.0):
     dependencies:
       agent-base: 7.1.4
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
 
-  https-proxy-agent@7.0.6:
+  https-proxy-agent@7.0.6(supports-color@7.2.0):
     dependencies:
       agent-base: 7.1.4
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -5239,10 +5281,10 @@ snapshots:
       make-dir: 4.0.0
       supports-color: 7.2.0
 
-  istanbul-lib-source-maps@5.0.6:
+  istanbul-lib-source-maps@5.0.6(supports-color@7.2.0):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
       istanbul-lib-coverage: 3.2.2
     transitivePeerDependencies:
       - supports-color
@@ -5312,9 +5354,9 @@ snapshots:
       jwa: 2.0.1
       safe-buffer: 5.2.1
 
-  linkedom@0.18.12:
+  linkedom@0.18.13:
     dependencies:
-      css-select: 5.2.2
+      css-select: 7.0.0
       cssom: 0.5.0
       html-escaper: 3.0.3
       htmlparser2: 10.1.0
@@ -5345,9 +5387,9 @@ snapshots:
 
   marked@18.0.5: {}
 
-  mathml-to-latex@1.5.0:
+  mathml-to-latex@1.8.0:
     dependencies:
-      '@xmldom/xmldom': 0.8.13
+      '@xmldom/xmldom': 0.9.12
     optional: true
 
   mdn-data@2.27.1: {}
@@ -5374,9 +5416,9 @@ snapshots:
       fetch-blob: 3.2.0
       formdata-polyfill: 4.0.10
 
-  nth-check@2.1.1:
+  nth-check@3.0.1:
     dependencies:
-      boolbase: 1.0.0
+      boolbase: 2.0.0
     optional: true
 
   obug@2.1.1: {}
@@ -5645,7 +5687,7 @@ snapshots:
 
   symbol-tree@3.2.4: {}
 
-  temml@0.13.3:
+  temml@0.13.5:
     optional: true
 
   test-exclude@7.0.2:
@@ -5761,10 +5803,10 @@ snapshots:
     dependencies:
       rolldown: 1.0.0-rc.9
 
-  vite-node@3.2.4(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0):
+  vite-node@3.2.4(@types/node@24.12.4)(jiti@2.7.0)(supports-color@7.2.0)(yaml@2.9.0):
     dependencies:
       cac: 6.7.14
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
       es-module-lexer: 1.7.0
       pathe: 2.0.3
       vite: 7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)
@@ -5782,10 +5824,10 @@ snapshots:
       - tsx
       - yaml
 
-  vite-node@3.2.4(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0):
+  vite-node@3.2.4(@types/node@26.1.1)(jiti@2.7.0)(supports-color@7.2.0)(yaml@2.9.0):
     dependencies:
       cac: 6.7.14
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
       es-module-lexer: 1.7.0
       pathe: 2.0.3
       vite: 7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
@@ -5831,7 +5873,7 @@ snapshots:
       jiti: 2.7.0
       yaml: 2.9.0
 
-  vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0):
+  vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.6
@@ -5842,7 +5884,7 @@ snapshots:
       '@vitest/spy': 3.2.6
       '@vitest/utils': 3.2.6
       chai: 5.3.3
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
       expect-type: 1.4.0
       magic-string: 0.30.21
       pathe: 2.0.3
@@ -5854,7 +5896,7 @@ snapshots:
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
       vite: 7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)
-      vite-node: 3.2.4(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)
+      vite-node: 3.2.4(@types/node@24.12.4)(jiti@2.7.0)(supports-color@7.2.0)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 24.12.4
@@ -5873,7 +5915,7 @@ snapshots:
       - tsx
       - yaml
 
-  vitest@3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0):
+  vitest@3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(supports-color@7.2.0)(yaml@2.9.0):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.6
@@ -5884,7 +5926,7 @@ snapshots:
       '@vitest/spy': 3.2.6
       '@vitest/utils': 3.2.6
       chai: 5.3.3
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
       expect-type: 1.4.0
       magic-string: 0.30.21
       pathe: 2.0.3
@@ -5896,7 +5938,7 @@ snapshots:
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
       vite: 7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
-      vite-node: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
+      vite-node: 3.2.4(@types/node@26.1.1)(jiti@2.7.0)(supports-color@7.2.0)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 26.1.1
