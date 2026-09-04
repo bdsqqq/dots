@@ -161,14 +161,12 @@ in
   services.tailscale = {
     enable = true;
     useRoutingFeatures = "client";
-    extraSetFlags = [
-      "--operator=bdsqqq"
-      "--advertise-tags=tag:ssh-accept"
-    ];
+    extraSetFlags = [ "--operator=bdsqqq" ];
     extraUpFlags = [
       "--ssh"
       "--accept-dns=false"
       "--shields-up=false"
+      "--advertise-tags=tag:ssh-accept"
     ];
     authKeyFile = lib.mkIf (
       config.sops.secrets ? tailscale_auth_key
