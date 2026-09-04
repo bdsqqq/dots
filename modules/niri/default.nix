@@ -1,8 +1,8 @@
-{ lib, config, pkgs, inputs, ... }: {
+{ lib, config, pkgs, ... }: {
   imports = [ ../login ];
 
   programs.niri.enable = true;
-  programs.niri.package = inputs.niri.packages.${pkgs.stdenv.hostPlatform.system}.niri-unstable;
+  programs.niri.package = pkgs.niri-unstable;
   programs.dconf.enable = true;
 
   boot.kernelModules = lib.mkIf (config.networking.hostName == "lgo-z2e") [ "uinput" ];
@@ -38,7 +38,7 @@
     system.nixos.tags = [ "greeter-quickshell" ];
   };
 
-  home-manager.users.bdsqqq = { config, pkgs, lib, inputs, ... }:
+  home-manager.users.bdsqqq = { config, pkgs, lib, ... }:
     let
       yaziFileChooser = pkgs.writeShellScript "yazi-file-chooser" ''
         set -eu
