@@ -1,0 +1,10 @@
+menu "Fleet mesh"
+
+config FLEET_TIME_SERVER
+    string "SNTP server"
+    default "162.159.200.1"
+    help
+        Hostname or numeric address used to establish UTC before this node
+        applies commands or creates signed receipts.
+
+endmenu

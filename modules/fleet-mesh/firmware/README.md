@@ -41,6 +41,20 @@ plain HTTP is intentional only for the QEMU/lab transport. it does not provide
 peer authentication or confidentiality for envelope metadata. command payloads
 remain encrypted, and every relayed record is validated cryptographically.
 
+after DHCP, `fm_clock` synchronizes UTC from the compile-time
+`CONFIG_FLEET_TIME_SERVER` using ESP-IDF's SNTP service. HTTP and opaque relay
+remain available while time is unavailable, but recipient commands stay pending:
+the node does not apply state or create a signed receipt until the first
+successful synchronization. the peer loop retries pending commands locally, so
+`notBefore` does not depend on another successful gossip response.
+
+the default server is Cloudflare's numeric anycast endpoint
+`162.159.200.1`, avoiding a DNS dependency in Espressif QEMU, with ESP-IDF's
+hourly resynchronization. SNTP does not authenticate time. this baseline assumes
+the device's network and configured time path are inside the deployment trust
+boundary; temporal commands need an authenticated time provider before use on
+hostile networks. existing signed receipts retain their original timestamps.
+
 ## provision contract
 
 `partitions.csv` describes one 4 MiB flash image:
@@ -123,6 +137,11 @@ together. corrupt or incompatible state fails boot and is never auto-erased.
 replaying a command with a durable outcome therefore leaves its execution count
 at one.
 
+the QEMU supervisor upgrades a changed firmware image by atomically replacing
+the executable flash regions while copying the exact `fleet_state` partition
+bytes into the new image. it then rewrites immutable `fleet_cfg`. incompatible
+snapshot data still fails closed in the new firmware rather than being erased.
+
 ## merge three guest images
 
 build once, create three configurations, then merge three independent flash
@@ -188,6 +207,7 @@ curl --fail http://127.0.0.1:18083/health
 contacts are sequential in configured peer order. every contact has the explicit
 `contactTimeoutMs`; a DNS, connect, HTTP, schema, capacity, or crypto failure is
 logged and retried in the next interval. peer failures do not reboot the guest.
+clock synchronization also retries without rebooting.
 
 ## v1 protocol boundary
 

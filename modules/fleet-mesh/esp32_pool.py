@@ -17,6 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+FLEET_STATE_OFFSET = 0x210000
+FLEET_STATE_SIZE = 0x40000
+
 
 class ConfigurationError(ValueError):
     pass
@@ -134,6 +137,25 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _replace_marker(marker: Path, value: str) -> None:
+    temporary = marker.with_name(f"{marker.name}.tmp")
+    with temporary.open("w") as destination:
+        destination.write(f"{value}\n")
+        destination.flush()
+        os.fsync(destination.fileno())
+    os.chmod(temporary, 0o600)
+    temporary.replace(marker)
+    _fsync_directory(marker.parent)
+
+
 def _load_guest_configuration(device: Device) -> bytes:
     public = _exact_object(
         json.loads(device.public_configuration_path.read_text()),
@@ -172,20 +194,41 @@ def prepare_device(configuration: PoolConfiguration, device: Device) -> Path:
     flash = device_directory / "flash.bin"
     marker = device_directory / "firmware.sha256"
     expected_hash = _sha256(configuration.firmware_image)
+    actual_marker = marker.read_text().strip() if marker.exists() else ""
 
     if flash.exists():
-        actual_marker = marker.read_text().strip() if marker.exists() else ""
         if actual_marker != expected_hash:
-            raise ConfigurationError(
-                f"{device.id} firmware changed; remove its state directory to reset explicitly"
-            )
+            state_end = FLEET_STATE_OFFSET + FLEET_STATE_SIZE
+            if (
+                flash.stat().st_size < state_end
+                or configuration.firmware_image.stat().st_size < state_end
+            ):
+                raise ConfigurationError(
+                    f"{device.id} firmware image cannot preserve fleet_state"
+                )
+            with flash.open("rb") as previous:
+                previous.seek(FLEET_STATE_OFFSET)
+                fleet_state = previous.read(FLEET_STATE_SIZE)
+            _replace_marker(marker, "updating")
+            temporary = device_directory / "flash.bin.tmp"
+            shutil.copyfile(configuration.firmware_image, temporary)
+            os.chmod(temporary, 0o600)
+            with temporary.open("r+b") as destination:
+                destination.seek(FLEET_STATE_OFFSET)
+                destination.write(fleet_state)
+                destination.flush()
+                os.fsync(destination.fileno())
+            temporary.replace(flash)
+            _fsync_directory(device_directory)
     else:
         temporary = device_directory / "flash.bin.tmp"
         shutil.copyfile(configuration.firmware_image, temporary)
         os.chmod(temporary, 0o600)
+        with temporary.open("r+b") as destination:
+            destination.flush()
+            os.fsync(destination.fileno())
         temporary.replace(flash)
-        marker.write_text(f"{expected_hash}\n")
-        os.chmod(marker, 0o600)
+        _fsync_directory(device_directory)
 
     payload = _load_guest_configuration(device)
     framed = struct.pack("<I", len(payload)) + payload
@@ -201,6 +244,10 @@ def prepare_device(configuration: PoolConfiguration, device: Device) -> Path:
         destination.seek(configuration.config_offset)
         destination.write(framed)
         destination.write(b"\xff" * (configuration.config_size - len(framed)))
+        destination.flush()
+        os.fsync(destination.fileno())
+    if actual_marker != expected_hash:
+        _replace_marker(marker, expected_hash)
     return flash
 
 

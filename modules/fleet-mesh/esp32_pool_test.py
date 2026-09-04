@@ -3,9 +3,13 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import esp32_pool
 from esp32_pool import (
     ConfigurationError,
+    FLEET_STATE_OFFSET,
+    FLEET_STATE_SIZE,
     load_configuration,
     prepare_device,
     qemu_arguments,
@@ -84,12 +88,75 @@ class Esp32PoolTest(unittest.TestCase):
         )
         self.assertEqual(flash.stat().st_mode & 0o777, 0o600)
 
-    def test_rejects_firmware_replacement_without_explicit_state_reset(self):
-        configuration = self.configuration()
-        prepare_device(configuration, configuration.devices[0])
-        self.firmware.write_bytes(b"changed" + b"\xff" * 4089)
-        with self.assertRaisesRegex(ConfigurationError, "remove its state directory"):
-            prepare_device(configuration, configuration.devices[0])
+    def test_firmware_upgrade_preserves_the_exact_fleet_state_partition(self):
+        image_size = 0x260000
+        self.firmware.write_bytes(b"\xaa" * image_size)
+        configuration = self.configuration(
+            configOffset=0x250000,
+            configSize=0x10000,
+        )
+        device = configuration.devices[0]
+        flash = prepare_device(configuration, device)
+        preserved = bytes(index % 251 for index in range(FLEET_STATE_SIZE))
+        with flash.open("r+b") as destination:
+            destination.seek(FLEET_STATE_OFFSET)
+            destination.write(preserved)
+
+        self.firmware.write_bytes(b"\xbb" * image_size)
+        upgraded = prepare_device(configuration, device).read_bytes()
+        self.assertEqual(upgraded[:16], b"\xbb" * 16)
+        self.assertEqual(
+            upgraded[FLEET_STATE_OFFSET : FLEET_STATE_OFFSET + FLEET_STATE_SIZE],
+            preserved,
+        )
+
+    def test_interrupted_upgrade_cannot_confuse_a_later_rollback(self):
+        image_size = 0x260000
+        original = b"\xaa" * image_size
+        self.firmware.write_bytes(original)
+        configuration = self.configuration(
+            configOffset=0x250000,
+            configSize=0x10000,
+        )
+        device = configuration.devices[0]
+        flash = prepare_device(configuration, device)
+        preserved = b"\x5a" * FLEET_STATE_SIZE
+        with flash.open("r+b") as destination:
+            destination.seek(FLEET_STATE_OFFSET)
+            destination.write(preserved)
+
+        self.firmware.write_bytes(b"\xbb" * image_size)
+        replace_marker = esp32_pool._replace_marker
+        calls = 0
+
+        def interrupt_final_marker(marker, value):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("simulated power loss")
+            replace_marker(marker, value)
+
+        with mock.patch.object(
+            esp32_pool,
+            "_replace_marker",
+            side_effect=interrupt_final_marker,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "simulated power loss"):
+                prepare_device(configuration, device)
+
+        marker = flash.parent / "firmware.sha256"
+        self.assertEqual(marker.read_text().strip(), "updating")
+        self.assertEqual(flash.read_bytes()[:16], b"\xbb" * 16)
+
+        self.firmware.write_bytes(original)
+        rolled_back = prepare_device(configuration, device).read_bytes()
+        self.assertEqual(rolled_back[:16], b"\xaa" * 16)
+        self.assertEqual(
+            rolled_back[
+                FLEET_STATE_OFFSET : FLEET_STATE_OFFSET + FLEET_STATE_SIZE
+            ],
+            preserved,
+        )
 
     def test_qemu_is_s3_with_openeth_and_loopback_forward(self):
         configuration = self.configuration()

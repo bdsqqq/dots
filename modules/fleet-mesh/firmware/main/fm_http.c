@@ -179,6 +179,11 @@ static esp_err_t contact_peer(fm_protocol_t *protocol, const fm_config_t *config
 static void peer_loop(void *argument) {
     (void)argument;
     for (;;) {
+        esp_err_t pending_err = fm_protocol_process_pending(server_protocol);
+        if (pending_err != ESP_OK) {
+            ESP_LOGE(TAG, "pending command processing failed: %s",
+                     esp_err_to_name(pending_err));
+        }
         for (size_t i = 0; i < server_config->peer_count; ++i) {
             esp_err_t err = contact_peer(server_protocol, server_config, &server_config->peers[i]);
             if (err != ESP_OK) {

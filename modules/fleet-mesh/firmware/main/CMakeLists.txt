@@ -1,6 +1,7 @@
 idf_component_register(
   SRCS
     "app_main.c"
+    "fm_clock.c"
     "fm_config.c"
     "fm_crypto.c"
     "fm_http.c"
