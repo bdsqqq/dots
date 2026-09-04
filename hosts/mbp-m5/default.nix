@@ -202,7 +202,14 @@ in
       };
 
       home.file.".local/state/syncthing/.keep".text = "";
+      # linkGeneration creates this user-owned directory before launchd bootstrap.
+      # only the marker is store-backed; launchd creates the mutable log itself.
+      home.file.".local/state/log/helium-tabs-agent/.keep".text = "";
       launchd.agents = {
+        helium-tabs-agent.config = {
+          StandardOutPath = lib.mkForce "/Users/bdsqqq/.local/state/log/helium-tabs-agent/agent.log";
+          StandardErrorPath = lib.mkForce "/Users/bdsqqq/.local/state/log/helium-tabs-agent/agent.log";
+        };
         syncthing.config = {
           RunAtLoad = true;
           StandardOutPath = lib.mkForce "/Users/bdsqqq/.local/state/syncthing/stdout.log";
