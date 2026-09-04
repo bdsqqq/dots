@@ -10,7 +10,7 @@ import type {
   Usage,
   UserMessage,
 } from "@earendil-works/pi-ai";
-import type { PiClient } from "@earendil-works/pi-client";
+import type { PiClient } from "@bds_pi/pi-client-legacy";
 import {
   AgentSessionRuntime,
   createAgentSessionFromServices,
@@ -22,7 +22,12 @@ import {
   type AgentSession,
   type CreateAgentSessionRuntimeFactory,
 } from "@earendil-works/pi-coding-agent";
-import { RemoteSession } from "@earendil-works/pi-coding-agent/client";
+/**
+ * pi 0.85 replaced its experimental remote protocol wholesale. capacity is
+ * still opt-in, so keep that lane on the last compatible protocol while the
+ * normal cli, sdk, and every loaded extension use the current runtime.
+ */
+import { RemoteSession } from "@bds_pi/pi-coding-agent-legacy/client";
 import type {
   ModelMetadata,
   ModelRef,
@@ -32,7 +37,7 @@ import type {
   ThinkingLevel,
   TranscriptItem,
   Usage as ProtocolUsage,
-} from "@earendil-works/pi-protocol";
+} from "@bds_pi/pi-protocol-legacy";
 import {
   PiServerError,
   SessionBusyError,
@@ -47,7 +52,7 @@ import {
   type PiSessionRuntimeEvent,
   type PromptInput,
   type SteerInput,
-} from "@earendil-works/pi-server";
+} from "@bds_pi/pi-server-legacy";
 import type {
   PiCapacityAdmission,
   PiCapacityCoordinator,
@@ -2219,12 +2224,12 @@ if (import.meta.vitest) {
   const { afterEach, describe, expect, it } = import.meta.vitest;
   const { fauxAssistantMessage, fauxProvider } =
     await import("@earendil-works/pi-ai");
-  const { PiClient } = await import("@earendil-works/pi-client");
+  const { PiClient } = await import("@bds_pi/pi-client-legacy");
   const { createUnixTransportFactory } =
-    await import("@earendil-works/pi-client/unix");
+    await import("@bds_pi/pi-client-legacy/unix");
   const { TEST_MODEL, TestServerService, TestSessionRuntime } =
-    await import("@earendil-works/pi-server/testing");
-  const { createUnixServer } = await import("@earendil-works/pi-server/unix");
+    await import("@bds_pi/pi-server-legacy/testing");
+  const { createUnixServer } = await import("@bds_pi/pi-server-legacy/unix");
   const { clearConfigCache, setGlobalSettingsPath } =
     await import("@bds_pi/config");
   const roots: string[] = [];
