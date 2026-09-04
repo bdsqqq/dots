@@ -96,6 +96,14 @@ test("server exposes UI, health, state, discovery, enrollment, and controls", as
     });
     assert.deepEqual(await discovered.json(), { id: "device-id", name: "desk" });
 
+    const commissioned = await fetch(`${origin}/api/commission`, {
+      body: "{}",
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    assert.equal(commissioned.status, 200);
+    assert.equal(runtime.enrolled, "device-id");
+
     const enrolled = await fetch(`${origin}/api/enroll`, {
       body: JSON.stringify({ deviceId: "device-id" }),
       headers: { "content-type": "application/json" },
