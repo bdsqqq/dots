@@ -4,6 +4,7 @@
 		"tag:service-host": ["autogroup:owner"],
 		"tag:ssh-accept": ["autogroup:owner"],
 		"tag:depot-runner": ["autogroup:owner"],
+		"tag:amp-orb": ["autogroup:owner"],
 		"tag:cf-ingress":   ["autogroup:owner"],
 		"tag:cf-files-ingress": ["autogroup:owner"],
 		"tag:cf-t3-ingress": ["autogroup:owner"],
@@ -35,7 +36,7 @@
 		},
 		{
 			"src": ["autogroup:owner"],
-			"dst": ["tag:service-host", "tag:ssh-accept"],
+			"dst": ["tag:service-host", "tag:ssh-accept", "tag:amp-orb"],
 			"ip":  ["*"],
 		},
 		// Selected personal devices retain their owner-device reachability after
