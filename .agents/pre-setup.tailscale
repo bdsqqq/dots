@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+required_version="1.90.1"
+
+installed_version() {
+  tailscale version 2>/dev/null | head -n 1
+}
+
+if ! command -v tailscale >/dev/null 2>&1 ||
+  ! dpkg --compare-versions "$(installed_version)" ge "$required_version"; then
+  sudo install -d -m 0755 /usr/share/keyrings
+  sudo curl --proto '=https' --tlsv1.2 -fsSL \
+    https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg \
+    -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+  sudo curl --proto '=https' --tlsv1.2 -fsSL \
+    https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list \
+    -o /etc/apt/sources.list.d/tailscale.list
+  sudo apt-get update
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale
+fi
+
+sudo install -d -m 0755 /etc/systemd/system/tailscaled.service.d
+sudo tee /etc/systemd/system/tailscaled.service.d/amp-orb.conf >/dev/null <<'EOF'
+[Service]
+Environment=TS_ASSUME_NETWORK_UP_FOR_TEST=true
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now tailscaled
+
+sudo install -d -m 0755 /usr/local/libexec
+sudo tee /usr/local/libexec/amp-tailscale-up >/dev/null <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+
+log() {
+  printf '[amp tailscale] %s\n' "$*" >&2
+}
+
+if [[ -r /etc/amp-tailscale.env ]]; then
+  # shellcheck disable=SC1091
+  source /etc/amp-tailscale.env
+fi
+
+if [[ -z "${TAILSCALE_CLIENT_ID:-}" || -z "${TAILSCALE_AUDIENCE:-}" ]]; then
+  log "TAILSCALE_CLIENT_ID and TAILSCALE_AUDIENCE are not configured; skipping login"
+  exit 0
+fi
+
+if tailscale status --json 2>/dev/null |
+  jq -e '.BackendState == "Running"' >/dev/null; then
+  log "connected"
+  exit 0
+fi
+
+if ! sudo systemctl start tailscaled; then
+  log "could not start tailscaled"
+  exit 0
+fi
+
+identity_token="$(
+  amp orb id-token \
+    --audience "$TAILSCALE_AUDIENCE" \
+    --subject-scope user
+)" || {
+  log "runtime amp workload identity is not ready"
+  exit 1
+}
+trap 'unset identity_token' EXIT
+
+thread_suffix="$(
+  python3 -c '
+import base64
+import json
+import sys
+
+payload = sys.stdin.read().strip().split(".")[1]
+payload += "=" * (-len(payload) % 4)
+thread_id = json.loads(base64.urlsafe_b64decode(payload))["thread_id"]
+print(thread_id.removeprefix("T-").split("-", 1)[0])
+' <<<"$identity_token"
+)" || thread_suffix="orb"
+
+if sudo tailscale up \
+  --client-id="${TAILSCALE_CLIENT_ID}?ephemeral=true&preauthorized=true" \
+  --id-token="$identity_token" \
+  --advertise-tags="${TAILSCALE_TAG:-tag:amp-orb}" \
+  --hostname="amp-orb-${thread_suffix}"; then
+  log "connected"
+else
+  log "login failed; inspect the Tailscale trust credential and systemctl status amp-tailscale-up"
+  exit 1
+fi
+EOF
+sudo chmod 0755 /usr/local/libexec/amp-tailscale-up
+
+for name in TAILSCALE_CLIENT_ID TAILSCALE_AUDIENCE TAILSCALE_TAG; do
+  value="${!name:-}"
+  if [[ "$value" == *$'\n'* ]]; then
+    printf '[amp tailscale] %s must not contain a newline\n' "$name" >&2
+    exit 1
+  fi
+done
+{
+  printf 'TAILSCALE_CLIENT_ID=%q\n' "${TAILSCALE_CLIENT_ID:-}"
+  printf 'TAILSCALE_AUDIENCE=%q\n' "${TAILSCALE_AUDIENCE:-}"
+  printf 'TAILSCALE_TAG=%q\n' "${TAILSCALE_TAG:-tag:amp-orb}"
+} | sudo tee /etc/amp-tailscale.env >/dev/null
+sudo chmod 0644 /etc/amp-tailscale.env
+
+sudo tee /etc/systemd/system/amp-tailscale-up.service >/dev/null <<'EOF'
+[Unit]
+Description=Connect this amp orb to Tailscale
+After=network-online.target tailscaled.service
+Wants=network-online.target tailscaled.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/amp-tailscale-up
+EOF
+
+sudo tee /etc/systemd/system/amp-tailscale-up.timer >/dev/null <<'EOF'
+[Unit]
+Description=Keep this amp orb connected to Tailscale
+
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=30s
+Unit=amp-tailscale-up.service
+
+[Install]
+WantedBy=timers.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now amp-tailscale-up.timer
+
+printf '[amp tailscale] prepared (%s)\n' "$(installed_version)"
