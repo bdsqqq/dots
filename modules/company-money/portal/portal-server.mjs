@@ -2,15 +2,16 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { readTally } from "./tally.ts";
 
 const SECURITY_HEADERS = {
-  "cache-control": "public, max-age=300",
+  "cache-control": "private, no-store",
   "content-security-policy": [
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self'",
     "img-src 'self' data:",
-    "connect-src 'none'",
+    "connect-src 'self'",
     "font-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'none'",
@@ -39,6 +40,7 @@ export function parseArgs(argv) {
       throw new Error(`invalid argument near ${flag ?? "end of arguments"}`);
     }
     const name = flag.slice(2);
+    if (!["host", "port", "html", "css", "js", "root"].includes(name)) throw new Error("unknown argument");
     if (options.has(name)) throw new Error(`duplicate argument --${name}`);
     options.set(name, value);
   }
@@ -50,6 +52,7 @@ export function parseArgs(argv) {
   return {
     host,
     port,
+    root: resolve(required(options, "root")),
     html: resolve(required(options, "html")),
     css: resolve(required(options, "css")),
     js: resolve(required(options, "js")),
@@ -68,8 +71,8 @@ function send(response, requestMethod, status, contentType, body, headers = {}) 
   else response.end(contents);
 }
 
-export function portalServer(assets) {
-  return createServer((request, response) => {
+export function portalServer(assets, tally = async () => { throw new Error("unavailable"); }) {
+  return createServer(async (request, response) => {
     const method = request.method ?? "GET";
     if (method !== "GET" && method !== "HEAD") {
       send(response, method, 405, "text/plain; charset=utf-8", "method not allowed\n", {
@@ -79,6 +82,14 @@ export function portalServer(assets) {
       return;
     }
     const url = new URL(request.url ?? "/", "http://portal.local");
+    if (url.pathname === "/api/tally") {
+      try {
+        send(response, method, 200, "application/json", JSON.stringify(await tally()));
+      } catch {
+        send(response, method, 503, "application/json", '{"error":"ledger unavailable"}');
+      }
+      return;
+    }
     if (url.pathname === "/") {
       send(response, method, 200, "text/html; charset=utf-8", assets.html);
       return;
@@ -110,15 +121,15 @@ async function main() {
     css: await readFile(config.css, "utf8"),
     js: await readFile(config.js, "utf8"),
   };
-  const server = portalServer(assets);
+  const server = portalServer(assets, () => readTally(config.root));
   server.listen(config.port, config.host, () => {
     process.stdout.write(`company-money portal listening on ${config.host}:${config.port}\n`);
   });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  main().catch((error) => {
-    process.stderr.write(`company-money portal failed: ${error.message}\n`);
+  main().catch(() => {
+    process.stderr.write("company-money portal failed\n");
     process.exitCode = 1;
   });
 }

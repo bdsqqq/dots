@@ -22,6 +22,10 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       ./package.json
       ./pnpm-lock.yaml
       ./pnpm-workspace.yaml
+      ./portal/portal-server.mjs
+      ./portal/index.html
+      ./portal/portal.css
+      ./portal/portal.js
       (lib.fileset.fileFilter (file: lib.hasSuffix ".ts" file.name) ./.)
     ];
   };
@@ -53,6 +57,8 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       --platform=node \
       --target=node22
 
+    esbuild portal/portal-server.mjs --bundle --format=esm --outfile=portal-server.mjs --platform=node --target=node22
+
     runHook postBuild
   '';
 
@@ -63,6 +69,11 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     makeWrapper ${lib.getExe nodejs} "$out/bin/company-money" \
       --add-flags "$out/lib/company-money/company-money.mjs"
 
+    install -Dm644 portal-server.mjs "$out/lib/company-money/portal-server.mjs"
+    cp portal/index.html portal/portal.css portal/portal.js "$out/lib/company-money/"
+    makeWrapper ${lib.getExe nodejs} "$out/bin/company-money-portal" \
+      --add-flags "$out/lib/company-money/portal-server.mjs --html $out/lib/company-money/index.html --css $out/lib/company-money/portal.css --js $out/lib/company-money/portal.js"
+
     runHook postInstall
   '';
 
@@ -70,6 +81,6 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     description = "Private local company-money evidence ledger";
     license = lib.licenses.mit;
     mainProgram = "company-money";
-    platforms = lib.platforms.darwin;
+    platforms = lib.platforms.darwin ++ lib.platforms.linux;
   };
 })

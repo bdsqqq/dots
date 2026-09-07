@@ -106,13 +106,14 @@
         };
 
         systemd.services.company-money-portal = {
-          description = "Synthetic company-money capability portal";
+          description = "Read-only company Nubank tally";
           wantedBy = [ "multi-user.target" ];
           serviceConfig = {
-            ExecStart = "${companyMoneyPortal}/bin/company-money-portal --port 3929";
+            ExecStart = "${companyMoneyPortal}/bin/company-money-portal --port 3929 --root /srv/commonplace/01_files/money/company-ledger";
             Restart = "always";
             RestartSec = "5s";
-            DynamicUser = true;
+            User = "bdsqqq";
+            ReadOnlyPaths = [ "/srv/commonplace" ];
             NoNewPrivileges = true;
             PrivateTmp = true;
             ProtectHome = true;

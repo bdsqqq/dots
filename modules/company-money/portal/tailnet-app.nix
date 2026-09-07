@@ -2,7 +2,7 @@
   schemaVersion = 1;
   id = "money";
   title = "company money";
-  description = "synthetic read-only company-money capability portal";
+  description = "read-only company Nubank tally";
   path = "/";
 
   tailnet = {
