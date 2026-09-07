@@ -28,8 +28,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: 7c1219e69201df160c85fc5e030efe36
-      CLOUDFLARE_HTML_STUFF_TUNNEL_SECRET: ${{ secrets.CLOUDFLARE_HTML_STUFF_TUNNEL_SECRET }}
-      CLOUDFLARE_T3_TUNNEL_SECRET: ${{ secrets.CLOUDFLARE_T3_TUNNEL_SECRET }}
+      CLOUDFLARE_ZONE_ID: f6f9ce4af454779e269f70c8e1e8d158
       TF_IN_AUTOMATION: "true"
       TF_INPUT: "false"
       TF_VAR_family_emails: ${{ secrets.CLOUDFLARE_FAMILY_EMAILS }}
@@ -46,31 +45,27 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
         if: github.event_name != 'schedule'
 
-      - name: Create an ephemeral money tunnel bootstrap secret
+      - name: Create ephemeral tunnel bootstrap secrets
         if: github.event_name != 'schedule'
         working-directory: .
         run: |
           set -euo pipefail
-          if [[ -s cloudflare/secrets/money.yaml ]]; then
-            echo "CLOUDFLARE_MONEY_TUNNEL_SECRET=" >> "${GITHUB_ENV}"
-            exit 0
-          fi
+          tunnel_secrets='{}'
+          while read -r app; do
+            if [[ -s "cloudflare/secrets/${app}.yaml" ]]; then
+              continue
+            fi
 
-          secret="$(openssl rand -base64 32)"
-          echo "::add-mask::${secret}"
-          echo "CLOUDFLARE_MONEY_TUNNEL_SECRET=${secret}" >> "${GITHUB_ENV}"
-
-      - name: Prepare available tunnel bootstrap secrets
-        run: |
-          set -euo pipefail
-          tunnel_secrets="$(
-            jq -cn \
-              --arg html_stuff "${CLOUDFLARE_HTML_STUFF_TUNNEL_SECRET}" \
-              --arg money "${CLOUDFLARE_MONEY_TUNNEL_SECRET:-}" \
-              --arg t3 "${CLOUDFLARE_T3_TUNNEL_SECRET}" \
-              '{"html-stuff": $html_stuff, money: $money, t3: $t3}
-               | with_entries(select(.value != ""))'
-          )"
+            secret="$(openssl rand -base64 32)"
+            echo "::add-mask::${secret}"
+            tunnel_secrets="$(
+              jq -c \
+                --arg app "${app}" \
+                --arg secret "${secret}" \
+                '. + {($app): $secret}' \
+                <<< "${tunnel_secrets}"
+            )"
+          done < <(jq -r '.apps | keys[]' cloudflare/apps.auto.tfvars.json)
           echo "TF_VAR_tunnel_secrets=${tunnel_secrets}" >> "${GITHUB_ENV}"
 
       - name: Reject stale revisions
@@ -92,6 +87,35 @@ jobs:
       - name: Require committed encrypted state
         run: |
           test -s terraform.tfstate
+
+      - name: Adopt existing DNS records
+        if: github.event_name != 'schedule'
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r app hostname; do
+            address="cloudflare_dns_record.app[\"${app}\"]"
+            if tofu state show "${address}" >/dev/null 2>&1; then
+              continue
+            fi
+
+            records="$(
+              curl --fail-with-body --silent --show-error --get \
+                -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+                --data-urlencode "name=${hostname}" \
+                "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records"
+            )"
+            count="$(jq -er '.result | length' <<< "${records}")"
+            if [[ "${count}" == 0 ]]; then
+              continue
+            fi
+            if [[ "${count}" != 1 ]]; then
+              echo "Refusing to adopt ${count} DNS records for ${hostname}." >&2
+              exit 1
+            fi
+
+            record_id="$(jq -er '.result[0].id' <<< "${records}")"
+            tofu import "${address}" "${CLOUDFLARE_ZONE_ID}/${record_id}"
+          done < <(jq -r '.apps | to_entries[] | [.key, .value.cloudflare.hostname] | @tsv' apps.auto.tfvars.json)
 
       - name: Plan
         id: plan
@@ -185,8 +209,9 @@ jobs:
             rm "${encrypted}"
           }
 
-          encrypt_credential money "${CLOUDFLARE_MONEY_TUNNEL_SECRET:-}"
-          encrypt_credential t3 "${CLOUDFLARE_T3_TUNNEL_SECRET}"
+          while IFS=$'\t' read -r app tunnel_secret; do
+            encrypt_credential "${app}" "${tunnel_secret}"
+          done < <(jq -r 'to_entries[] | [.key, .value] | @tsv' <<< "${TF_VAR_tunnel_secrets:-{}}")
 
       - name: Commit encrypted state and applied bindings
         if: github.event_name != 'schedule'
@@ -196,12 +221,7 @@ jobs:
           git add \
             cloudflare/runtime-bindings.json \
             cloudflare/terraform.tfstate
-          if [[ -s cloudflare/secrets/t3.yaml ]]; then
-            git add cloudflare/secrets/t3.yaml
-          fi
-          if [[ -s cloudflare/secrets/money.yaml ]]; then
-            git add cloudflare/secrets/money.yaml
-          fi
+          git add cloudflare/secrets/*.yaml
           if git diff --cached --quiet; then
             exit 0
           fi

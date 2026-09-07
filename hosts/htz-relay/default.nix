@@ -79,6 +79,10 @@ in
     enable = true;
     externalInterface = "enp1s0";
     connectors = {
+      dash = {
+        connectorName = "cf-dash-ingress-htz";
+        networkId = 5;
+      };
       files = {
         connectorName = "cf-files-ingress-htz";
         networkId = 3;
