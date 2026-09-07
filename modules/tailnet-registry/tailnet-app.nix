@@ -16,7 +16,7 @@
   cloudflare = {
     hostname = "dash.igorbedesqui.com";
     audience = "owner";
-    connectorTrust = "dash";
+    connectorTrust = "shared";
     tunnelName = "dash";
     accessName = "owner tailnet services";
   };
