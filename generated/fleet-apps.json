@@ -3,7 +3,7 @@
     "cloudflare": {
       "accessName": "owner tailnet services",
       "audience": "owner",
-      "connectorTrust": "dash",
+      "connectorTrust": "shared",
       "hostname": "dash.igorbedesqui.com",
       "tunnelName": "dash"
     },

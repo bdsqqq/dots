@@ -2,7 +2,7 @@
   "apps": {
     "dash": {
       "connectorDestination": "svc:apps:443",
-      "connectorTrust": "dash",
+      "connectorTrust": "shared",
       "service": "svc:apps:443",
       "tailnetAudience": "owner"
     },
@@ -50,7 +50,6 @@
     }
   },
   "connectorTags": {
-    "dash": "tag:cf-dash-ingress",
     "files": "tag:cf-files-ingress",
     "shared": "tag:cf-ingress",
     "t3": "tag:cf-t3-ingress"

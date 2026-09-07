@@ -78,7 +78,6 @@ let
     { }
     declarations;
   connectorTags = {
-    dash = "tag:cf-dash-ingress";
     files = "tag:cf-files-ingress";
     shared = "tag:cf-ingress";
     t3 = "tag:cf-t3-ingress";
