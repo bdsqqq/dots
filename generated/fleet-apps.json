@@ -1,4 +1,26 @@
 {
+  "dash": {
+    "cloudflare": {
+      "accessName": "owner tailnet services",
+      "audience": "owner",
+      "connectorTrust": "dash",
+      "hostname": "dash.igorbedesqui.com",
+      "tunnelName": "dash"
+    },
+    "description": "fleet-wide machine and service inventory",
+    "id": "dash",
+    "path": "/",
+    "schemaVersion": 1,
+    "source": "modules/tailnet-registry/tailnet-app.nix",
+    "tailnet": {
+      "audience": "owner",
+      "service": {
+        "name": "apps",
+        "port": 443
+      }
+    },
+    "title": "tailnet services"
+  },
   "files": {
     "cloudflare": {
       "accessName": "owner files",

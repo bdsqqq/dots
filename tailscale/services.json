@@ -1,6 +1,6 @@
 {
   "svc:apps": {
-    "comment": "portable app directory",
+    "comment": "fleet-wide machine and service inventory",
     "ports": [
       "tcp:443"
     ]
