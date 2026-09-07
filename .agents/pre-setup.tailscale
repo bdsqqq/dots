@@ -37,6 +37,10 @@ log() {
   printf '[amp tailscale] %s\n' "$*" >&2
 }
 
+if ((EUID != 0)); then
+  exec sudo "$0"
+fi
+
 if [[ -r /etc/amp-tailscale.env ]]; then
   # shellcheck disable=SC1091
   source /etc/amp-tailscale.env
@@ -48,12 +52,12 @@ if [[ -z "${TAILSCALE_CLIENT_ID:-}" || -z "${TAILSCALE_AUDIENCE:-}" ]]; then
 fi
 
 if tailscale status --json 2>/dev/null |
-  jq -e '.BackendState == "Running"' >/dev/null; then
+  jq -e '.BackendState == "Running" and .Self.Online == true' >/dev/null; then
   log "connected"
   exit 0
 fi
 
-if ! sudo systemctl start tailscaled; then
+if ! systemctl start tailscaled; then
   log "could not start tailscaled"
   exit 0
 fi
@@ -81,7 +85,8 @@ print(thread_id.removeprefix("T-").split("-", 1)[0])
 ' <<<"$identity_token"
 )" || thread_suffix="orb"
 
-if sudo tailscale up \
+tailscale logout >/dev/null 2>&1 || true
+if tailscale up \
   --client-id="${TAILSCALE_CLIENT_ID}?ephemeral=true&preauthorized=true" \
   --id-token="$identity_token" \
   --advertise-tags="${TAILSCALE_TAG:-tag:amp-orb}" \
@@ -94,16 +99,17 @@ fi
 EOF
 sudo chmod 0755 /usr/local/libexec/amp-tailscale-up
 
-for name in TAILSCALE_CLIENT_ID TAILSCALE_AUDIENCE TAILSCALE_TAG; do
+for name in TAILSCALE_CLIENT_ID TAILSCALE_AUDIENCE TAILSCALE_AUDIENCE_AND_CLAIM TAILSCALE_TAG; do
   value="${!name:-}"
   if [[ "$value" == *$'\n'* ]]; then
     printf '[amp tailscale] %s must not contain a newline\n' "$name" >&2
     exit 1
   fi
 done
+tailscale_audience="${TAILSCALE_AUDIENCE:-${TAILSCALE_AUDIENCE_AND_CLAIM:-}}"
 {
   printf 'TAILSCALE_CLIENT_ID=%q\n' "${TAILSCALE_CLIENT_ID:-}"
-  printf 'TAILSCALE_AUDIENCE=%q\n' "${TAILSCALE_AUDIENCE:-}"
+  printf 'TAILSCALE_AUDIENCE=%q\n' "$tailscale_audience"
   printf 'TAILSCALE_TAG=%q\n' "${TAILSCALE_TAG:-tag:amp-orb}"
 } | sudo tee /etc/amp-tailscale.env >/dev/null
 sudo chmod 0644 /etc/amp-tailscale.env
