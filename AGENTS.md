@@ -1,76 +1,137 @@
 ## verification
 
-every change slice must pass the smallest local verification that exercises its
-changed behavior. being inside this repository does not by itself warrant
-rebuilding the host, but skipping the host build does not waive local
-verification.
+verify each coherent change slice with the smallest executable checks that
+exercise its changed behavior. choose verification by how files are consumed,
+not just their extension. repeat affected checks after further changes, not
+after every intermediate edit.
 
-### full host build
+### 1. local checks — every change
 
-run a full build when changed files can alter nix evaluation or a nix-produced
-artifact, including:
+run the nearest applicable parser, typecheck, targeted test, build, or safe
+runtime probe. formatting and inspection alone do not verify behavior.
 
-- `*.nix`, `flake.nix`, or `flake.lock`
-- host imports, nix options, overlays, packages, activation scripts, services, or
-  home-manager links
-- source files, manifests, patches, hashes, or lockfiles read or copied by nix
-- mixed changes containing any of the above
+documentation-only changes need the nearest available markdown/link check.
+if no executable check exists, inspect the consumed/rendered artifact and
+report that limitation.
 
-run both commands for the current host:
+files used only through out-of-store symlinks or absolute working-tree paths
+normally need local/runtime checks, not nix builds. changing the nix wiring
+that creates those links also needs evaluation.
+
+### 2. nix evaluation — configuration and evaluation inputs
+
+evaluate an affected output when changing nix expressions, imports, options,
+overlays, flake inputs, or files read during nix evaluation. force a relevant
+derivation's `.drvPath`; merely listing flake outputs or parsing nix syntax is
+not enough. comment/format-only nix changes need only syntax/format checks.
+
+for host/module wiring, evaluate an affected host's system derivation. choose
+only a target matching the execution platform:
 
 ```bash
-# on darwin
-nix build .#darwinConfigurations.mbp-m2.system --dry-run
-nix build .#darwinConfigurations.mbp-m2.system
+# linux default, when lgo-z2e consumes the change
+target=nixosConfigurations.lgo-z2e.config.system.build.toplevel
 
-# on linux
-nix build .#nixosConfigurations.lgo-z2e.config.system.build.toplevel --dry-run
-nix build .#nixosConfigurations.lgo-z2e.config.system.build.toplevel
+# darwin default, when mbp-m2 consumes the change
+target=darwinConfigurations.mbp-m2.system
+
+# run after choosing ONE target above
+nix eval --raw --no-write-lock-file ".#${target}.drvPath"
 ```
 
-do not cross-build by default. when running on darwin, skip linux builds unless
-the user asks. when running on linux, skip darwin builds unless the user asks.
+use another affected host when the default does not import the changed module.
+for isolated packages/checks, evaluate their derivation instead. trace ambiguous
+inputs before deciding that a host or package covers them.
 
-### targeted verification
+evaluation is the normal stopping point for ordinary option/import/link changes
+that do not alter build logic or require the integration coverage below.
 
-do not run a full host build for documentation, tests, development tooling, or
-runtime files reached only through an out-of-store symlink or an absolute path
-into the working tree. use the nearest formatter, typecheck, test, parser, or
-runtime probe instead. run at least one applicable local check for every slice;
-do not substitute inspection when an executable check exists.
+### 3. targeted nix build — artifact and packaging changes
 
-for `modules/pi`:
+build the smallest consuming derivation when a change can affect fetching,
+patching, compilation, bundling, installation, wrappers, or generated artifact
+contents. this includes relevant source files, manifests, patches, fixed-output
+hashes, and dependency lockfiles consumed by nix, even when no `.nix` file changes.
 
-- changes to `modules/pi/default.nix` require a full host build
-- changes to `modules/pi/packages/extensions/zmx/package.json` or its
-  `zmx-rows.ts` entrypoint require a full host build because
-  `modules/zmx/default.nix` reads or copies them through nix
-- ordinary extension and core typescript changes do not require a host build;
-  follow `modules/pi/AGENTS.md`, run
-  `(cd modules/pi && pnpm exec tsc -p tsconfig.build.json --noEmit)`, and run the
-  narrowest relevant vitest target
-- changes to root exports, generated `dist` output, or extension-manifest
-  synchronization require `(cd modules/pi && pnpm run build)`
-- `settings.json`, `tool-policy.json`, `keybindings.json`, `models.json`, and
-  ordinary extension manifests are runtime inputs; parse them and exercise the
-  relevant pi reload/runtime path without rebuilding the host
-- prompt changes require the narrowest relevant prompt load or runtime probe,
-  not a host build
-- dependency or lockfile changes require
+changes to runtime code copied into the store need local behavior checks and a
+build of the consuming artifact. evaluation-only data changes need evaluation;
+they do not automatically require a build if the produced artifact is unchanged.
+
+prefer an existing `packages` or `checks` output, or select the affected
+derivation from the evaluated host configuration. a home-manager
+`home.activationPackage` build can cover home integration without building the
+entire system. do not invent new flake outputs merely to satisfy this policy.
+
+use `nix build --no-link --no-write-lock-file` for verification builds.
+evaluation or `--dry-run` does not verify fetch hashes or build/install phases.
+building a wrapper also does not replace testing the code it launches.
+
+### 4. full host build — integration escalation
+
+escalate to a full affected host build when:
+
+- the user explicitly requests one or the task is preparing a host deployment;
+- core input updates or shared infrastructure changes have broad impact, such
+  as a nixpkgs, home-manager, or nix-darwin refresh;
+- changes affect boot/kernel/initrd, disks/filesystems, or host-wide security,
+  service ordering, or activation behavior that narrower checks cannot cover;
+- evaluation and targeted builds leave a concrete integration risk that only
+  assembling the host closure can check.
+
+run once for the final coherent change, not for every intermediate edit:
+
+```bash
+nix build --no-link --no-write-lock-file ".#${target}"
+```
+
+`--dry-run` is optional for estimating the build/download scope, not a mandatory
+step before an actual build. mixed changes require the union of relevant checks,
+not an automatic full build.
+
+use a native target matching the machine's OS and architecture. do not build
+the other OS or every configured host by default. record uncovered platforms.
+a build is not activation: do not switch configurations, deploy, or execute
+state-changing activation scripts merely to verify a change.
+
+### modules/pi
+
+follow `modules/pi/AGENTS.md` and these consumption boundaries:
+
+- ordinary extension/core typescript: run
+  `(cd modules/pi && pnpm exec tsc -p tsconfig.build.json --noEmit)` and the
+  narrowest relevant vitest target; no host build;
+- root exports, generated `dist`, or extension-manifest synchronization: also
+  run `(cd modules/pi && pnpm run build)`;
+- settings, tool policy, keybindings, models, ordinary extension manifests, and
+  prompts: parse/load them and exercise the relevant reload/runtime path;
+- dependencies or lockfiles: run
   `(cd modules/pi && pnpm install --frozen-lockfile)` plus relevant pi checks;
-  add a host build only when nix also consumes the changed file
+  add nix verification only where nix consumes the changed content;
+- `modules/pi/default.nix`: evaluate an affected host; build the home-manager
+  activation package when changing generated activation behavior. a full host
+  build is not automatic;
+- `packages/extensions/zmx/package.json`: evaluate the bin/export contract read
+  by `modules/zmx/default.nix`; build the `zmx-rows` wrapper when its generated
+  content or selected source changes;
+- `packages/extensions/zmx/zmx-rows.ts`: run pi checks and build its consuming
+  `zmx-rows` wrapper because nix copies this entrypoint into the store.
+  building `pkgs.zmx` alone does not cover that wrapper.
 
-documentation-only slices require the nearest available markdown or link check.
-if no executable check exists, inspect the rendered or consumed artifact and
-report that limitation explicitly.
+### reporting and limits
 
-trace ambiguous files before choosing. a nix path copied into the store warrants
-a build; a path deliberately resolved from the working tree at runtime usually
-does not.
+report commands/targets run, their outcomes, and meaningful checks skipped with
+the reason and remaining coverage gap. distinguish “evaluated”, “artifact
+built”, “host built”, and “runtime tested”.
 
-**do not assume nix changes work.** evaluation errors, hash mismatches, and
-derivation failures only surface at build time. when the full-build criteria
-apply, run the build yourself before asking the user to verify.
+if a selected check is blocked by missing tooling, network/cache failures,
+resource limits, or an unexpectedly large build, complete the useful cheaper
+checks and report partial verification. do not spend an unbounded amount of
+time repairing the environment or retrying unrelated failures. identify the
+remaining command rather than claiming verification passed.
+
+never silently downgrade a failed check. evaluation catches missing attributes,
+type errors, and assertions in the evaluated path; actual artifact builds check
+packaging; runtime probes check behavior. none substitutes for all the others.
 
 common failure modes:
 - `hash mismatch` — upstream changed, update the hash
