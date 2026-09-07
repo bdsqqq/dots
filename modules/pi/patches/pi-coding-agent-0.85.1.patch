@@ -84,26 +84,6 @@ index 9bd365b..095a5be 100644
                      ...(collapsed && collapsed !== expanded ? { collapsed } : {}),
                      expanded,
                  };
-diff --git a/dist/core/extensions/loader.js b/dist/core/extensions/loader.js
-index e8e8859..037a2eb 100644
---- a/dist/core/extensions/loader.js
-+++ b/dist/core/extensions/loader.js
-@@ -68,6 +68,7 @@ function getAliases() {
-         return _aliases;
-     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-     const packageIndex = path.resolve(__dirname, "../..", "index.js");
-+    const packageClient = path.resolve(__dirname, "../..", "client/index.js");
-     const typeboxEntry = require.resolve("typebox");
-     const typeboxCompileEntry = require.resolve("typebox/compile");
-     const typeboxValueEntry = require.resolve("typebox/value");
-@@ -89,6 +90,7 @@ function getAliases() {
-     const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@earendil-works/pi-ai/oauth");
-     const piAiProvidersEntry = resolveWorkspaceOrImport("ai/dist/providers/all.js", "@earendil-works/pi-ai/providers/all");
-     _aliases = {
-+        "@earendil-works/pi-coding-agent/client": packageClient,
-         "@earendil-works/pi-coding-agent": piCodingAgentEntry,
-         "@earendil-works/pi-agent-core": piAgentCoreEntry,
-         "@earendil-works/pi-tui": piTuiEntry,
 diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
 index ecc378b..508ae82 100644
 --- a/dist/modes/interactive/components/assistant-message.d.ts
