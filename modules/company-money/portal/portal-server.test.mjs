@@ -10,8 +10,8 @@ const assets = {
   js: "document.documentElement.dataset.ready = 'true'",
 };
 
-async function withServer(run) {
-  const server = portalServer(assets);
+async function withServer(run, tally) {
+  const server = portalServer(assets, tally);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     await run(`http://127.0.0.1:${server.address().port}`);
@@ -26,6 +26,7 @@ test("parses an exact local server configuration", () => {
       "--html", "/ui/index.html",
       "--css", "/ui/portal.css",
       "--js", "/ui/portal.js",
+      "--root", "/synthetic",
       "--host", "0.0.0.0",
       "--port", "8090",
     ]),
@@ -33,6 +34,7 @@ test("parses an exact local server configuration", () => {
       html: "/ui/index.html",
       css: "/ui/portal.css",
       js: "/ui/portal.js",
+      root: "/synthetic",
       host: "0.0.0.0",
       port: 8090,
     },
@@ -61,7 +63,7 @@ test("serves only static portal assets with restrictive browser policy", async (
       assert.equal(await response.text(), body);
       assert.equal(response.headers.get("x-frame-options"), "DENY");
       assert.equal(response.headers.get("referrer-policy"), "no-referrer");
-      assert.match(response.headers.get("content-security-policy"), /connect-src 'none'/);
+      assert.match(response.headers.get("content-security-policy"), /connect-src 'self'/);
     }
 
     const head = await fetch(`${origin}/`, { method: "HEAD" });
@@ -78,15 +80,30 @@ test("serves only static portal assets with restrictive browser policy", async (
   });
 });
 
-test("committed portal assets contain synthetic capability copy and no private boundary values", async () => {
+test("portal assets contain no private boundary values or fake totals", async () => {
   const root = new URL("./", import.meta.url);
   const contents = await Promise.all(
     ["index.html", "portal.css", "portal.js"].map((name) => readFile(new URL(name, root), "utf8")),
   );
   const joined = contents.join("\n");
-  assert.match(joined, /synthetic records only/);
-  assert.match(joined, /no implicit fx/);
-  assert.match(joined, /quarantined/);
+  assert.match(joined, /net movement is not your bank balance/);
+  assert.match(joined, /ledger unavailable/);
   assert.doesNotMatch(joined, /\/Users\/|company-ledger\/config|IGOR BEDESQUI/);
-  assert.doesNotMatch(joined, /fetch\s*\(|WebSocket|EventSource/);
+  assert.doesNotMatch(joined, /innerHTML|WebSocket|EventSource/);
+});
+
+test("read-only tally is uncached; failures are sanitized", async () => {
+  await withServer(async (origin) => {
+    const response = await fetch(`${origin}/api/tally`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+    assert.deepEqual(await response.json(), { kind: "synthetic" });
+    assert.equal((await fetch(`${origin}/api/tally`, { method: "POST" })).status, 405);
+  }, async () => ({ kind: "synthetic" }));
+  await withServer(async (origin) => {
+    const response = await fetch(`${origin}/api/tally`);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+    assert.deepEqual(await response.json(), { error: "ledger unavailable" });
+  }, async () => { throw new Error("synthetic sensitive content"); });
 });

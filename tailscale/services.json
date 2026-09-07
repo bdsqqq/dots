@@ -30,7 +30,7 @@
     ]
   },
   "svc:money": {
-    "comment": "synthetic read-only company-money capability portal",
+    "comment": "read-only company Nubank tally",
     "ports": [
       "tcp:443"
     ]
