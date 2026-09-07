@@ -85,6 +85,10 @@ in
       };
     };
 
+    home.file.".local/state/log/wikiman-update/.keep" = lib.mkIf isDarwin {
+      text = "";
+    };
+
     home.packages = [ wikimanPackage wikimanUpdate ];
 
     launchd.agents.wikiman-update = lib.mkIf isDarwin {
@@ -97,8 +101,8 @@ in
           Hour = 9;
           Minute = 0;
         }];
-        StandardOutPath = "${config.home.homeDirectory}/Library/Logs/wikiman-update.log";
-        StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/wikiman-update.log";
+        StandardOutPath = "${config.home.homeDirectory}/.local/state/log/wikiman-update/agent.log";
+        StandardErrorPath = "${config.home.homeDirectory}/.local/state/log/wikiman-update/agent.log";
       };
     };
 
