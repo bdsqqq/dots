@@ -245,6 +245,8 @@
           touch "$out"
         '';
 
+        checks.wikiman-logging = import ./modules/wikiman/logging-check.nix { inherit pkgs; };
+
         checks.tailnet-artifacts = pkgs.runCommand "tailnet-artifacts-check" { } ''
           ${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts \
             --check \
