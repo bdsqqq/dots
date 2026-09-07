@@ -39,6 +39,13 @@ let
   t3Serve = pkgs.writeShellScript "t3-code-serve" ''
     set -eu
 
+    if [ -n "''${CREDENTIALS_DIRECTORY:-}" ]; then
+      export GH_TOKEN="$(<"$CREDENTIALS_DIRECTORY/gh_token")"
+      export HF_TOKEN="$(<"$CREDENTIALS_DIRECTORY/hf_token")"
+      export PARALLEL_API_KEY="$(<"$CREDENTIALS_DIRECTORY/parallel_api_key")"
+      export artificial_analysis_api_key="$(<"$CREDENTIALS_DIRECTORY/artificial_analysis_api_key")"
+    fi
+
     if [ -f ${lib.escapeShellArg developmentServer} ]; then
       t3_command="${pkgs.nodejs}/bin/node ${developmentServer}"
     else
@@ -226,7 +233,7 @@ if isLinux then
         ../node-pnpm/pnpm-lock.yaml
       ];
 
-      environment.PATH = lib.mkForce "${toolsBin}:${lib.makeBinPath [
+      environment.PATH = lib.mkForce "${config.users.users.bdsqqq.home}/.local/lib/amp-auth/bin:${config.users.users.bdsqqq.home}/.local/bin:${config.users.users.bdsqqq.home}/.amp/bin:${toolsBin}:${lib.makeBinPath [
         pkgs.cloudflared
         pkgs.coreutils
         pkgs.git
@@ -238,6 +245,12 @@ if isLinux then
         User = "bdsqqq";
         Group = "users";
         WorkingDirectory = "/home/bdsqqq";
+        LoadCredential = [
+          "artificial_analysis_api_key:${config.sops.secrets.artificial_analysis_api_key.path}"
+          "gh_token:${config.sops.secrets.gh_token.path}"
+          "hf_token:${config.sops.secrets.hf_token.path}"
+          "parallel_api_key:${config.sops.secrets.parallel_api_key.path}"
+        ];
         ExecStart = t3Serve;
         Restart = "always";
         RestartSec = "5s";

@@ -5,6 +5,7 @@ keys:
   - &host_gru_relay age1mrchzy02nezwnh8ygp33vq2r5vjv3xs4fenz0kwtjptjaknw2a6sxwl2vq
   - &host_r56 age1wzdqusx4v0wpn7lgda4x4tw3qkd4jlcyy89pxrh4g679m0ajadtsh49e6t
   - &host_lgo_z2e age1qepnuljqzftv5sg72nj4wt0njcnezvnlhsq0dg8zqls5e2twzuwsyxklww
+  - &host_htz_xfs_lab age17jh6jw9nq0fk9ytkm0jntrsma7wnp4mw0nlze8ftz6rawtkhhscq5pkwd0
 creation_rules:
   - path_regex: ^config/infra-secrets\.yaml$
     key_groups:
@@ -19,6 +20,7 @@ creation_rules:
           - *host_gru_relay
           - *host_r56
           - *host_lgo_z2e
+          - *host_htz_xfs_lab
   - path_regex: ^cloudflare/secrets/[^/]+\.yaml$
     key_groups:
       - age:

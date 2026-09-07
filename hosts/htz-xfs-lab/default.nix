@@ -1,4 +1,5 @@
 {
+  config,
   inputs,
   lib,
   modulesPath,
@@ -89,6 +90,22 @@ in
 
   my.primaryUser = "bdsqqq";
   my.paths.commonplace = "/home/bdsqqq/commonplace";
+  my.amp.apiKeyFile = config.sops.secrets.amp_api_key.path;
+
+  sops = {
+    age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+    defaultSopsFile = ../../secrets.yaml;
+    secrets = lib.genAttrs [
+      "amp_api_key"
+      "artificial_analysis_api_key"
+      "gh_token"
+      "hf_token"
+      "parallel_api_key"
+    ] (_: {
+      owner = "bdsqqq";
+      mode = "0400";
+    });
+  };
 
   home-manager = {
     useGlobalPkgs = true;

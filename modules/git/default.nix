@@ -187,10 +187,25 @@ let
         -c "credential.helper=!$amp_bin git-credential-helper" \
         push amp-skills "$projection_sha:refs/heads/main"
     '';
+  ghCredentialWrapper = pkgs: pkgs.writeShellScript "gh-with-api-key" ''
+    if [ -z "''${GH_TOKEN:-}" ] && [ -r /run/secrets/gh_token ]; then
+      export GH_TOKEN="$(</run/secrets/gh_token)"
+    fi
+    exec ${pkgs.gh}/bin/gh "$@"
+  '';
 in
 {
-  home-manager.users.bdsqqq = { pkgs, lib, ... }: {
+  home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
     imports = [ inputs.hunk.homeManagerModules.default ];
+
+    custom.path.segments = [
+      {
+        order = 70;
+        value = "${config.home.homeDirectory}/.local/lib/github-auth/bin";
+      }
+    ];
+
+    home.file.".local/lib/github-auth/bin/gh".source = ghCredentialWrapper pkgs;
 
     programs.git = {
       enable = true;
@@ -210,6 +225,14 @@ in
 
         core.excludesFile = "~/.gitignore_global";
         core.hooksPath = "~/.config/git/hooks";
+        credential."https://ampcode.com" = {
+          helper = "!amp git-credential-helper";
+          username = "x-amp-user";
+        };
+        credential."https://github.com" = {
+          helper = "!${ghCredentialWrapper pkgs} auth git-credential";
+          username = "x-access-token";
+        };
         interactive.diffFilter = "${pkgs.delta}/bin/delta --color-only";
         delta = {
           navigate = true;
