@@ -5,7 +5,7 @@
   "main": "index.ts",
   "types": "index.ts",
   "dependencies": {
-    "defuddle": "^0.18.1",
+    "defuddle": "^0.19.1",
     "jsdom": "^29.1.1"
   },
   "devDependencies": {
