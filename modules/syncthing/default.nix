@@ -10,9 +10,12 @@ let
   isLinux = lib.hasInfix "linux" system;
   isDarwin = lib.hasInfix "darwin" system;
   syncthing = import ./lib.nix { inherit lib; };
-  stignore = pkgs.writeText "commonplace-stignore" (
+  sharedIgnores = pkgs.writeText "commonplace-stignore-common" (
     syncthing.mkStignore (builtins.readFile ../../config/ignore-common)
   );
+  stignore = pkgs.writeText "commonplace-stignore" ''
+    #include .stignore-common
+  '';
 
   linuxCommonplacePath = lib.attrByPath [
     "services"
@@ -29,6 +32,7 @@ let
     ];
 
     system.activationScripts.commonplaceStignore = lib.stringAfter [ "users" ] ''
+      install -m 0644 -o bdsqqq -g users ${sharedIgnores} ${lib.escapeShellArg "${linuxCommonplacePath}/.stignore-common"}
       install -m 0644 -o bdsqqq -g users ${stignore} ${lib.escapeShellArg "${linuxCommonplacePath}/.stignore"}
     '';
   };
@@ -49,6 +53,7 @@ let
       {
         home.activation.commonplaceStignore = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
           mkdir -p ${lib.escapeShellArg commonplacePath}
+          install -m 0644 ${sharedIgnores} ${lib.escapeShellArg "${commonplacePath}/.stignore-common"}
           rm -f ${lib.escapeShellArg "${commonplacePath}/.stignore"}
           install -m 0644 ${stignore} ${lib.escapeShellArg "${commonplacePath}/.stignore"}
         '';
