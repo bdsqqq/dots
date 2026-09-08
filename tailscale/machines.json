@@ -1,0 +1,14 @@
+{
+  "machines": {
+    "htz-xfs-lab": {
+      "ageRecipients": [
+        "age17jh6jw9nq0fk9ytkm0jntrsma7wnp4mw0nlze8ftz6rawtkhhscq5pkwd0"
+      ],
+      "bootstrapGeneration": 1,
+      "tag": "tag:service-host"
+    }
+  },
+  "recoveryRecipients": [
+    "age1j2lyxxhxj0g2fw05h8c856fjxy2f0salxlk78pwglpv2nxjm3ptsgxcce4"
+  ]
+}

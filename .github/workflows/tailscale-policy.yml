@@ -6,9 +6,11 @@ on:
     paths:
       - .sops.yaml
       - tailscale/capabilities.json
+      - tailscale/machines.json
       - tailscale/policy.hujson
       - tailscale/services.json
       - tailscale/secrets/connectors/*.yaml
+      - tailscale/secrets/machines/*.yaml
       - .github/workflows/tailscale-policy.yml
   workflow_dispatch:
 
@@ -27,6 +29,22 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+
+      - name: Validate machine bootstrap declarations
+        run: |
+          jq -e '
+            (.recoveryRecipients | type == "array" and length > 0 and
+              all(.[]; test("^age1[0-9a-z]+$"))) and
+            (.machines | type == "object" and length > 0) and
+            all(.machines | to_entries[];
+              (.key | test("^[a-z0-9][a-z0-9-]*$")) and
+              (.value.ageRecipients | type == "array" and length > 0 and
+                all(.[]; test("^age1[0-9a-z]+$"))) and
+              (.value.bootstrapGeneration |
+                type == "number" and . > 0 and floor == .) and
+              (.value.tag | test("^tag:[a-z0-9-]+$"))
+            )
+          ' tailscale/machines.json >/dev/null
 
       - name: Reject stale revisions
         run: |
@@ -236,5 +254,133 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git commit -m "chore(tailscale): provision connector auth keys [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Provision machine bootstrap auth keys
+        env:
+          TS_TAILNET: ${{ vars.TS_TAILNET }}
+        run: |
+          set -euo pipefail
+          tailnet="$(jq -rn --arg value "${TS_TAILNET}" '$value | @uri')"
+          keys_url="https://api.tailscale.com/api/v2/tailnet/${tailnet}/keys"
+          created=()
+
+          while IFS=$'\t' read -r machine generation tag recipients; do
+            secret="tailscale/secrets/machines/${machine}.yaml"
+            current_generation="$(
+              sed -n 's/^bootstrapGeneration_unencrypted: //p' "${secret}" 2>/dev/null || true
+            )"
+            if [[ "${current_generation}" == "${generation}" ]]; then
+              continue
+            fi
+
+            description="dots-machine-${machine}-bootstrap-${generation}"
+            keys="$(
+              curl --fail-with-body --silent --show-error \
+                -H "Authorization: Bearer ${TS_API_TOKEN}" \
+                "${keys_url}"
+            )"
+            while read -r key_id; do
+              metadata="$(
+                curl --fail-with-body --silent --show-error \
+                  -H "Authorization: Bearer ${TS_API_TOKEN}" \
+                  "${keys_url}/${key_id}"
+              )"
+              if jq -e --arg description "${description}" \
+                '.description == $description' <<< "${metadata}" >/dev/null
+              then
+                curl --fail-with-body --silent --show-error \
+                  -X DELETE \
+                  -H "Authorization: Bearer ${TS_API_TOKEN}" \
+                  "${keys_url}/${key_id}"
+              fi
+            done < <(
+              jq -r '
+                if type == "array" then .[]?.id
+                else (.keys // .authKeys // [])[]?.id
+                end
+              ' <<< "${keys}"
+            )
+
+            response="$(mktemp)"
+            status="$(
+              jq -n \
+                --arg description "${description}" \
+                --arg tag "${tag}" \
+                '{
+                  capabilities: {
+                    devices: {
+                      create: {
+                        reusable: false,
+                        ephemeral: false,
+                        preauthorized: true,
+                        tags: [$tag]
+                      }
+                    }
+                  },
+                  expirySeconds: 604800,
+                  description: $description
+                }' |
+                curl --silent --show-error \
+                  -X POST \
+                  -H "Authorization: Bearer ${TS_API_TOKEN}" \
+                  -H 'Content-Type: application/json' \
+                  --data-binary @- \
+                  --output "${response}" \
+                  --write-out '%{http_code}' \
+                  "${keys_url}"
+            )"
+            if [[ ! "${status}" =~ ^2[0-9][0-9]$ ]]; then
+              jq -r '.message // .error // "Tailscale rejected the auth key"' \
+                "${response}" >&2
+              rm "${response}"
+              exit 1
+            fi
+
+            auth_key="$(jq -er '.key' "${response}")"
+            rm "${response}"
+            echo "::add-mask::${auth_key}"
+            mkdir -p "$(dirname "${secret}")"
+            encrypted="$(mktemp)"
+            export AUTH_KEY="${auth_key}"
+            jq -n --argjson generation "${generation}" \
+              '{
+                authKey: env.AUTH_KEY,
+                bootstrapGeneration_unencrypted: $generation
+              }' |
+              nix shell nixpkgs#sops --command sops --config /dev/null encrypt \
+                --age "${recipients}" \
+                --unencrypted-suffix _unencrypted \
+                --filename-override "${secret}" \
+                --input-type json \
+                --output-type yaml \
+                /dev/stdin \
+                > "${encrypted}"
+            unset AUTH_KEY auth_key
+            install -m 0600 "${encrypted}" "${secret}"
+            rm "${encrypted}"
+            created+=("${secret}")
+          done < <(
+            jq -r '
+              .recoveryRecipients as $recovery |
+              .machines | to_entries[] |
+              [
+                .key,
+                (.value.bootstrapGeneration | tostring),
+                .value.tag,
+                (($recovery + .value.ageRecipients) | join(","))
+              ] | @tsv
+            ' tailscale/machines.json
+          )
+
+          if (( ${#created[@]} == 0 )); then
+            exit 0
+          fi
+
+          git add "${created[@]}"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "chore(tailscale): provision machine bootstrap keys [skip ci]"
           git pull --rebase origin main
           git push origin HEAD:main
