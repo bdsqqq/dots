@@ -107,7 +107,11 @@ in
         mode = "0400";
       })
       // {
-        tailscale_auth_key.mode = "0400";
+        tailscale_auth_key = {
+          sopsFile = ../../tailscale/secrets/machines/htz-xfs-lab.yaml;
+          key = "authKey";
+          mode = "0400";
+        };
       };
   };
 
