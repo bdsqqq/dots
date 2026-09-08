@@ -95,16 +95,20 @@ in
   sops = {
     age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
     defaultSopsFile = ../../secrets.yaml;
-    secrets = lib.genAttrs [
-      "amp_api_key"
-      "artificial_analysis_api_key"
-      "gh_token"
-      "hf_token"
-      "parallel_api_key"
-    ] (_: {
-      owner = "bdsqqq";
-      mode = "0400";
-    });
+    secrets =
+      lib.genAttrs [
+        "amp_api_key"
+        "artificial_analysis_api_key"
+        "gh_token"
+        "hf_token"
+        "parallel_api_key"
+      ] (_: {
+        owner = "bdsqqq";
+        mode = "0400";
+      })
+      // {
+        tailscale_auth_key.mode = "0400";
+      };
   };
 
   home-manager = {
@@ -191,6 +195,7 @@ in
       PermitRootLogin = "prohibit-password";
     };
   };
+  services.tailscale.authKeyFile = config.sops.secrets.tailscale_auth_key.path;
   services.lvm = {
     dmeventd.enable = true;
     boot.vdo.enable = true;
