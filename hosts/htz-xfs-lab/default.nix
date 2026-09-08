@@ -9,10 +9,37 @@
 
 let
   operatorKey = lib.removeSuffix "\n" (builtins.readFile ../../modules/ssh/keys/mbp-m2.pub);
-  ampRemoteRepositories = {
-    dots = "/mnt/xfs-vdo/repos/dots";
-    sisyphus-showdown = "/mnt/xfs-vdo/repos/sisyphus-showdown";
-    t3code = "/mnt/xfs-vdo/repos/t3code";
+  ampRemoteRepositoryRoot = "/mnt/xfs-vdo/repos";
+  ampRemoteReconcile = pkgs.writeShellApplication {
+    name = "amp-remote-reconcile";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.findutils
+      pkgs.systemd
+    ];
+    text = ''
+      declare -A expected=()
+
+      while IFS= read -r -d "" directory; do
+        if [[ ! -e "$directory/.git" ]]; then
+          continue
+        fi
+
+        repository="$(basename "$directory")"
+        instance="$(systemd-escape "$repository")"
+        unit="amp-remote@$instance.service"
+        expected["$unit"]=1
+        if ! systemctl start "$unit"; then
+          echo "failed to start $unit" >&2
+        fi
+      done < <(find ${lib.escapeShellArg ampRemoteRepositoryRoot} -mindepth 1 -maxdepth 1 -type d -print0)
+
+      while read -r unit _; do
+        if [[ -z "''${expected[$unit]:-}" ]]; then
+          systemctl stop "$unit"
+        fi
+      done < <(systemctl list-units --all --type=service --plain --no-legend "amp-remote@*.service")
+    '';
   };
   initializeVdo = pkgs.writeShellApplication {
     name = "initialize-xfs-vdo";
@@ -210,10 +237,9 @@ in
     boot.vdo.enable = true;
   };
 
-  systemd.services = lib.mapAttrs' (repository: directory:
-    lib.nameValuePair "amp-remote-${repository}" {
-      description = "Amp remote runner for ${repository}";
-      wantedBy = [ "multi-user.target" ];
+  systemd.services = {
+    "amp-remote@" = {
+      description = "Amp remote runner for %I";
       wants = [ "network-online.target" ];
       requires = [
         "home-manager-bdsqqq.service"
@@ -228,12 +254,32 @@ in
         Type = "exec";
         User = "bdsqqq";
         Group = "users";
-        WorkingDirectory = directory;
-        ExecStart = "/home/bdsqqq/.local/lib/amp-auth/bin/amp --no-tui --remote-control-terminal --runner-id htz-xfs-lab-${repository}";
+        WorkingDirectory = "${ampRemoteRepositoryRoot}/%I";
+        ExecStart = "/home/bdsqqq/.local/lib/amp-auth/bin/amp --no-tui --remote-control-terminal --runner-id htz-xfs-lab-%I";
         Restart = "always";
         RestartSec = "5s";
       };
-    }) ampRemoteRepositories;
+    };
+
+    amp-remote-reconcile = {
+      description = "Reconcile Amp remote runners with cloned repositories";
+      requires = [ "mnt-xfs\\x2dvdo.mount" ];
+      after = [ "mnt-xfs\\x2dvdo.mount" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = lib.getExe ampRemoteReconcile;
+      };
+    };
+  };
+
+  systemd.timers.amp-remote-reconcile = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "5s";
+      OnUnitActiveSec = "30s";
+      Unit = "amp-remote-reconcile.service";
+    };
+  };
 
   users.users = {
     root.openssh.authorizedKeys.keys = [ operatorKey ];
