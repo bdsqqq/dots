@@ -9,6 +9,11 @@
 
 let
   operatorKey = lib.removeSuffix "\n" (builtins.readFile ../../modules/ssh/keys/mbp-m2.pub);
+  ampRemoteRepositories = {
+    dots = "/mnt/xfs-vdo/repos/dots";
+    sisyphus-showdown = "/mnt/xfs-vdo/repos/sisyphus-showdown";
+    t3code = "/mnt/xfs-vdo/repos/t3code";
+  };
   initializeVdo = pkgs.writeShellApplication {
     name = "initialize-xfs-vdo";
     runtimeInputs = [
@@ -204,6 +209,31 @@ in
     dmeventd.enable = true;
     boot.vdo.enable = true;
   };
+
+  systemd.services = lib.mapAttrs' (repository: directory:
+    lib.nameValuePair "amp-remote-${repository}" {
+      description = "Amp remote runner for ${repository}";
+      wantedBy = [ "multi-user.target" ];
+      wants = [ "network-online.target" ];
+      requires = [
+        "home-manager-bdsqqq.service"
+        "mnt-xfs\\x2dvdo.mount"
+      ];
+      after = [
+        "home-manager-bdsqqq.service"
+        "mnt-xfs\\x2dvdo.mount"
+        "network-online.target"
+      ];
+      serviceConfig = {
+        Type = "exec";
+        User = "bdsqqq";
+        Group = "users";
+        WorkingDirectory = directory;
+        ExecStart = "/home/bdsqqq/.local/lib/amp-auth/bin/amp --no-tui --remote-control-terminal --runner-id htz-xfs-lab-${repository}";
+        Restart = "always";
+        RestartSec = "5s";
+      };
+    }) ampRemoteRepositories;
 
   users.users = {
     root.openssh.authorizedKeys.keys = [ operatorKey ];
