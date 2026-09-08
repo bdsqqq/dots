@@ -1,5 +1,13 @@
-{ lib, ... }: {
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: {
   imports = [ ./path-order.nix ];
+
+  programs.zsh.enable = true;
+  users.users.${config.my.primaryUser}.shell = pkgs.zsh;
 
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
     # define my.defaultShell option here, derived from enabled shell programs
