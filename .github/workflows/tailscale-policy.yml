@@ -70,14 +70,15 @@ jobs:
               "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${TS_AUDIENCE}" |
               jq -er '.value'
           )"
-          api_token="$(
+          exchange_response="$(
             curl --fail-with-body --silent --show-error \
               --data-urlencode "client_id=${TS_OAUTH_ID}" \
               --data-urlencode "jwt=${id_token}" \
-              https://api.tailscale.com/api/v2/oauth/token-exchange |
-              jq -er '.access_token'
+              https://api.tailscale.com/api/v2/oauth/token-exchange
           )"
+          api_token="$(jq -er '.access_token' <<< "${exchange_response}")"
           echo "::add-mask::${api_token}"
+          jq '{scope, tags}' <<< "${exchange_response}"
           echo "TS_API_TOKEN=${api_token}" >> "${GITHUB_ENV}"
 
       - name: Define Tailscale services
