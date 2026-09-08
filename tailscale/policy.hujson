@@ -1,7 +1,7 @@
 {
 	"tagOwners": {
 		// Service hosts use a device identity rather than a person's identity.
-		"tag:service-host": ["autogroup:owner"],
+		"tag:service-host": ["autogroup:owner", "tag:service-host"],
 		"tag:ssh-accept": ["autogroup:owner"],
 		"tag:depot-runner": ["autogroup:owner"],
 		"tag:amp-orb": ["autogroup:owner"],
