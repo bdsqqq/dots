@@ -41,7 +41,10 @@
 
       ".agents/skills".source = skills;
       ".cursor/skills".source = skills;
-      ".cursor/agents".source = agentPrompts;
+      ".cursor/agents" = {
+        source = agentPrompts;
+        recursive = true;
+      };
     };
   };
 }
