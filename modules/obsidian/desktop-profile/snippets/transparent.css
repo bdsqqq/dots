@@ -1,0 +1,4 @@
+/* Make the sidebar and editor background transparent */
+.workspace, .workspace-leaf, .side-dock, .mod-header, .cm-s-obsidian {
+  background-color: rgba(0, 0, 0, 0.2) !important; /* Adjust alpha for transparency */
+}
