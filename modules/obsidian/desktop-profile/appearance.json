@@ -1,0 +1,13 @@
+{
+  "cssTheme": "Minimal",
+  "accentColor": "",
+  "showRibbon": false,
+  "translucency": true,
+  "enabledCssSnippets": [
+    "heading-hashes"
+  ],
+  "interfaceFontFamily": "Inter",
+  "textFontFamily": "Inter",
+  "monospaceFontFamily": "Berkeley Mono",
+  "showViewHeader": false
+}

@@ -1,0 +1,12 @@
+.agent-provenance,
+.agent-provenance .cm-underline {
+	color: var(--text-muted);
+	color: color-mix(
+		in srgb,
+		var(--text-normal) 72%,
+		var(--background-primary)
+	);
+	font-family: var(--font-text);
+	text-decoration: none !important;
+	cursor: text;
+}

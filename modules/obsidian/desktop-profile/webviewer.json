@@ -1,0 +1,7 @@
+{
+  "openExternalURLs": false,
+  "enableAdblocking": true,
+  "markdownPath": "00_inbox",
+  "customSearchEngine": "https://unduck.link?q=%s",
+  "searchEngine": "custom"
+}
