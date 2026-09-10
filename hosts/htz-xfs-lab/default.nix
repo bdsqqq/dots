@@ -240,6 +240,7 @@ in
   systemd.services = {
     "amp-remote@" = {
       description = "Amp remote runner for %I";
+      path = [ pkgs.tmux ];
       wants = [ "network-online.target" ];
       requires = [
         "home-manager-bdsqqq.service"
