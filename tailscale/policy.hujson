@@ -2,6 +2,7 @@
 	"tagOwners": {
 		// Service hosts use a device identity rather than a person's identity.
 		"tag:service-host": ["autogroup:owner", "tag:service-host"],
+		"tag:exit-client": ["autogroup:owner"],
 		"tag:ssh-accept": ["autogroup:owner"],
 		"tag:depot-runner": ["autogroup:owner"],
 		"tag:amp-orb": ["autogroup:owner"],
@@ -57,6 +58,12 @@
 			"dst": ["autogroup:owner", "tag:service-host", "tag:ssh-accept"],
 			"ip":  ["5252", "22000"],
 		},
+		// Exit-node use is opt-in without granting personal-device access.
+		{
+			"src": ["tag:exit-client"],
+			"dst": ["autogroup:internet"],
+			"ip":  ["*"],
+		},
 
 		// Portable services begin as owner-only canaries.
 		{
@@ -95,6 +102,15 @@
 	],
 
 	"tests": [
+		{
+			"src":    "tag:exit-client",
+			"accept": ["1.1.1.1:443", "[2606:4700:4700::1111]:443"],
+			"deny":   ["mbp-m2:22", "svc:files:443"],
+		},
+		{
+			"src":  "tag:service-host",
+			"deny": ["1.1.1.1:443", "[2606:4700:4700::1111]:443"],
+		},
 		{
 			"src":    "tag:cf-ingress",
 			"accept": ["svc:apps:443", "svc:html-stuff:443", "svc:money:443", "svc:photos:443"],
