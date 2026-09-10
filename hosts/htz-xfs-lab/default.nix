@@ -286,6 +286,7 @@ in
     root.openssh.authorizedKeys.keys = [ operatorKey ];
     bdsqqq = {
       isNormalUser = true;
+      shell = pkgs.zsh;
       extraGroups = [ "wheel" ];
       openssh.authorizedKeys.keys = [ operatorKey ];
     };
