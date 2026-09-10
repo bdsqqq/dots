@@ -25,6 +25,7 @@ in
     ../../modules/macos-defaults
     ../../modules/sleepless
     ../../modules/kanata
+    ../../modules/dji-mic
     ../../modules/cmux
     ../../modules/core-cli
     ../../modules/shell
