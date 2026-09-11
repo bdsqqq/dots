@@ -1,37 +1,128 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <Carbon/Carbon.h>
+#include <arpa/inet.h>
 #include <dispatch/dispatch.h>
 #include <errno.h>
+#include <netinet/in.h>
 #include <spawn.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #include <xpc/xpc.h>
 
 extern char **environ;
 
 static CFMachPortRef event_tap;
+static dispatch_queue_t dictation_queue;
+static dispatch_source_t kanata_drain_timer;
+static int kanata_socket = -1;
 
-static bool rewrite_f18(CGEventType type, CGEventRef event) {
+static bool is_f18(CGEventType type, CGEventRef event) {
   if (type != kCGEventKeyDown && type != kCGEventKeyUp)
     return false;
 
   CGKeyCode keycode =
       (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
-  if (keycode != kVK_F18)
-    return false;
+  return keycode == kVK_F18;
+}
 
-  /*
-   * F18 is reserved session-wide as the DJI sentinel, so a physical F18 key
-   * intentionally shares this behavior. Replacing its secondary-Fn flag also
-   * keeps terminals from encoding the otherwise unhandled function key.
-   */
-  CGEventSetIntegerValueField(event, kCGKeyboardEventKeycode, kVK_Space);
-  CGEventSetFlags(event, kCGEventFlagMaskControl | kCGEventFlagMaskAlternate |
-                            kCGEventFlagMaskCommand);
-  CGEventKeyboardSetUnicodeString(event, 0, NULL);
+static void disconnect_kanata(void) {
+  if (kanata_socket == -1)
+    return;
+
+  close(kanata_socket);
+  kanata_socket = -1;
+}
+
+static bool connect_kanata(void) {
+  kanata_socket = socket(AF_INET, SOCK_STREAM, 0);
+  if (kanata_socket == -1) {
+    perror("socket");
+    return false;
+  }
+
+  int no_sigpipe = 1;
+  if (setsockopt(kanata_socket, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe,
+                 sizeof(no_sigpipe)) == -1) {
+    perror("setsockopt SO_NOSIGPIPE");
+    disconnect_kanata();
+    return false;
+  }
+
+  struct sockaddr_in address = {
+      .sin_family = AF_INET,
+      .sin_port = htons(5829),
+      .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+  };
+  if (connect(kanata_socket, (struct sockaddr *)&address, sizeof(address)) ==
+      -1) {
+    perror("connect kanata");
+    disconnect_kanata();
+    return false;
+  }
+
   return true;
+}
+
+static void drain_kanata_messages(void) {
+  if (kanata_socket == -1)
+    return;
+
+  char buffer[1024];
+  for (;;) {
+    ssize_t result =
+        recv(kanata_socket, buffer, sizeof(buffer), MSG_DONTWAIT);
+    if (result > 0)
+      continue;
+    if (result == -1 && errno == EINTR)
+      continue;
+    if (result == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
+      return;
+
+    disconnect_kanata();
+    return;
+  }
+}
+
+static bool send_dictation_message(void) {
+  static const char message[] =
+      "{\"ActOnFakeKey\":{\"name\":\"dji-dictation\",\"action\":\"Tap\"}}";
+  size_t sent = 0;
+  while (sent < sizeof(message) - 1) {
+    ssize_t result =
+        send(kanata_socket, message + sent, sizeof(message) - 1 - sent, 0);
+    if (result == -1) {
+      if (errno == EINTR)
+        continue;
+      return false;
+    }
+    if (result == 0)
+      return false;
+    sent += (size_t)result;
+  }
+
+  return true;
+}
+
+static void trigger_dictation(void) {
+  /*
+   * Kanata's virtual keyboard enters macOS before global-hotkey dispatch.
+   * Event-tap rewrites and CGEventPost arrive too late for Raycast to accept.
+   * Reusing one connection also avoids leaking Kanata's per-client socket.
+   */
+  drain_kanata_messages();
+  for (int attempt = 0; attempt < 2; attempt++) {
+    if (kanata_socket == -1 && !connect_kanata())
+      return;
+    if (send_dictation_message())
+      return;
+    disconnect_kanata();
+  }
+
+  perror("send kanata");
 }
 
 static CGEventRef handle_keyboard_event(CGEventTapProxy proxy, CGEventType type,
@@ -45,7 +136,21 @@ static CGEventRef handle_keyboard_event(CGEventTapProxy proxy, CGEventType type,
     return event;
   }
 
-  rewrite_f18(type, event);
+  if (is_f18(type, event)) {
+    /*
+     * F18 is reserved session-wide as the DJI sentinel, so a physical F18 key
+     * intentionally shares this behavior. Only key-down triggers the shortcut;
+     * both halves are suppressed so terminals never encode the sentinel.
+     */
+    if (type == kCGEventKeyDown &&
+        CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat) == 0) {
+      dispatch_async(dictation_queue, ^{
+        trigger_dictation();
+      });
+    }
+    return NULL;
+  }
+
   return event;
 }
 
@@ -87,17 +192,9 @@ static int run_self_test(void) {
   if (event == NULL)
     return 1;
 
-  CGEventSetFlags(event, kCGEventFlagMaskSecondaryFn);
-  bool rewritten = rewrite_f18(kCGEventKeyDown, event);
-  CGKeyCode keycode =
-      (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
-  CGEventFlags flags = CGEventGetFlags(event);
+  bool matched = is_f18(kCGEventKeyDown, event);
   CFRelease(event);
-
-  CGEventFlags expected_flags = kCGEventFlagMaskControl |
-                               kCGEventFlagMaskAlternate |
-                               kCGEventFlagMaskCommand;
-  return rewritten && keycode == kVK_Space && flags == expected_flags ? 0 : 1;
+  return matched ? 0 : 1;
 }
 
 int main(int argc, char **argv) {
@@ -118,6 +215,19 @@ int main(int argc, char **argv) {
 
   /* Cover a receiver that was already attached when the agent started. */
   apply_mapping();
+
+  dictation_queue =
+      dispatch_queue_create("com.bdsqqq.dji-mic-hid-remap.dictation", NULL);
+  kanata_drain_timer =
+      dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dictation_queue);
+  dispatch_source_set_timer(
+      kanata_drain_timer,
+      dispatch_time(DISPATCH_TIME_NOW, (int64_t)NSEC_PER_SEC), NSEC_PER_SEC,
+      NSEC_PER_MSEC * 100);
+  dispatch_source_set_event_handler(kanata_drain_timer, ^{
+    drain_kanata_messages();
+  });
+  dispatch_resume(kanata_drain_timer);
 
   CGEventMask mask =
       CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp);
