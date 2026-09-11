@@ -19,6 +19,11 @@ static CFMachPortRef event_tap;
 static dispatch_queue_t dictation_queue;
 static dispatch_source_t kanata_drain_timer;
 static int kanata_socket = -1;
+static bool release_pending = true;
+static const char press_message[] =
+    "{\"ActOnFakeKey\":{\"name\":\"dji-dictation\",\"action\":\"Press\"}}";
+static const char release_message[] =
+    "{\"ActOnFakeKey\":{\"name\":\"dji-dictation\",\"action\":\"Release\"}}";
 
 static bool is_f18(CGEventType type, CGEventRef event) {
   if (type != kCGEventKeyDown && type != kCGEventKeyUp)
@@ -87,13 +92,12 @@ static void drain_kanata_messages(void) {
   }
 }
 
-static bool send_dictation_message(void) {
-  static const char message[] =
-      "{\"ActOnFakeKey\":{\"name\":\"dji-dictation\",\"action\":\"Tap\"}}";
+static bool send_kanata_message(const char *message) {
+  size_t message_length = strlen(message);
   size_t sent = 0;
-  while (sent < sizeof(message) - 1) {
+  while (sent < message_length) {
     ssize_t result =
-        send(kanata_socket, message + sent, sizeof(message) - 1 - sent, 0);
+        send(kanata_socket, message + sent, message_length - sent, 0);
     if (result == -1) {
       if (errno == EINTR)
         continue;
@@ -107,22 +111,43 @@ static bool send_dictation_message(void) {
   return true;
 }
 
+static bool send_kanata_message_with_reconnect(const char *message) {
+  drain_kanata_messages();
+  int send_error = EIO;
+  for (int attempt = 0; attempt < 2; attempt++) {
+    if (kanata_socket == -1 && !connect_kanata())
+      return false;
+    if (send_kanata_message(message))
+      return true;
+    send_error = errno;
+    disconnect_kanata();
+  }
+
+  errno = send_error;
+  perror("send kanata");
+  return false;
+}
+
 static void trigger_dictation(void) {
   /*
    * Kanata's virtual keyboard enters macOS before global-hotkey dispatch.
    * Event-tap rewrites and CGEventPost arrive too late for Raycast to accept.
-   * Reusing one connection also avoids leaking Kanata's per-client socket.
+   * Raycast also needs a measurable press; Kanata's zero-duration Tap action
+   * produced incomplete modifier combinations in its shortcut recorder.
    */
-  drain_kanata_messages();
-  for (int attempt = 0; attempt < 2; attempt++) {
-    if (kanata_socket == -1 && !connect_kanata())
+  if (release_pending) {
+    if (!send_kanata_message_with_reconnect(release_message))
       return;
-    if (send_dictation_message())
-      return;
-    disconnect_kanata();
+    release_pending = false;
   }
 
-  perror("send kanata");
+  if (!send_kanata_message_with_reconnect(press_message))
+    return;
+
+  release_pending = true;
+  usleep(120000);
+  if (send_kanata_message_with_reconnect(release_message))
+    release_pending = false;
 }
 
 static CGEventRef handle_keyboard_event(CGEventTapProxy proxy, CGEventType type,
@@ -225,7 +250,12 @@ int main(int argc, char **argv) {
       dispatch_time(DISPATCH_TIME_NOW, (int64_t)NSEC_PER_SEC), NSEC_PER_SEC,
       NSEC_PER_MSEC * 100);
   dispatch_source_set_event_handler(kanata_drain_timer, ^{
-    drain_kanata_messages();
+    if (release_pending) {
+      if (send_kanata_message_with_reconnect(release_message))
+        release_pending = false;
+    } else {
+      drain_kanata_messages();
+    }
   });
   dispatch_resume(kanata_drain_timer);
 
