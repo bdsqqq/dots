@@ -77,6 +77,7 @@ in
     mode = "mirror";
     wifiServiceName = "iPad";
   };
+  my.kanata.tcpPort = 5829;
   my.heliumRemotes = {
     enable = true;
     tabsExtension.enable = true;

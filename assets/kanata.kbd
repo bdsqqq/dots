@@ -51,6 +51,10 @@
   lcmd-sym (tap-hold-press 150 250 (layer-switch base) lmet) ;; In symnav: switch to base
 )
 
+(defvirtualkeys
+  dji-dictation C-A-M-spc
+)
+
 (deflayer base
   @hyp @a @s @d @f @j @k @l @;
   q w e r t y u i o p

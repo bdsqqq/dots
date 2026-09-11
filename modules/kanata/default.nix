@@ -1,8 +1,11 @@
-{ lib, pkgs, hostSystem ? null, ... }:
+{ config, lib, pkgs, hostSystem ? null, ... }:
 
 let
+  cfg = config.my.kanata;
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isLinux = lib.hasInfix "linux" hostSystem;
+  tcpArgument =
+    if cfg.tcpPort == null then "" else " --port 127.0.0.1:${toString cfg.tcpPort}";
 
   # shared with launchd configs below
   kanataLabel = "com.bdsqqq.kanata";
@@ -125,7 +128,17 @@ let
     esac
   '';
 in
-if isDarwin then {
+{
+  options.my.kanata.tcpPort = lib.mkOption {
+    type = lib.types.nullOr lib.types.port;
+    default = null;
+    description = ''
+      Enable Kanata's unauthenticated loopback control server on this port.
+      Only use this on a host where local processes are trusted.
+    '';
+  };
+
+  config = if isDarwin then {
   environment.systemPackages = [
     toggleKanata
     # 60s timeout prevents keyboard lockout if config is broken
@@ -221,7 +234,7 @@ if isDarwin then {
       ProgramArguments = [
         "/bin/bash"
         "-c"
-        "sleep 5 && ${kanataStablePath} --no-wait --cfg /etc/kanata/kanata.kbd"
+        "sleep 5 && ${kanataStablePath} --no-wait --cfg /etc/kanata/kanata.kbd${tcpArgument}"
       ];
       RunAtLoad = true;
       KeepAlive = true;
@@ -233,4 +246,5 @@ if isDarwin then {
   environment.systemPackages = [ pkgs.kanata toggleKanata ];
   environment.etc."kanata/kanata.kbd".source = ../../assets/kanata.kbd;
 } else
-  { }
+  { };
+}
