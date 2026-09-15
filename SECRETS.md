@@ -6,7 +6,8 @@ encrypted secrets that live safely in git. private keys stay local, encrypted fi
 
 - **private keys** never leave your machine
 - **public keys** in `.sops.yaml` (committed)
-- **encrypted secrets** in `secrets.yaml` (committed)
+- **encrypted secrets** live beside the module that owns them
+- **cross-cutting secrets** may remain in the root `secrets.yaml`
 - **runtime** decryption via your local key
 
 ## setup (once per machine)
@@ -34,7 +35,7 @@ copy the `age1...` output.
 keys:
   - &user_bdsqqq age1wzdqusx4v0wpn7lgda4x4tw3qkd4jlcyy89pxrh4g679m0ajadtsh49e6t
 creation_rules:
-  - path_regex: secrets\.yaml$
+  - path_regex: (^|/)secrets\.yaml$
     key_groups:
       - age:
           - *user_bdsqqq
@@ -43,7 +44,7 @@ creation_rules:
 ### create secrets
 
 ```bash
-sops secrets.yaml
+sops modules/<feature>/secrets.yaml
 ```
 
 add your actual keys:
@@ -63,27 +64,23 @@ sudo darwin-rebuild switch --flake .
 
 ## daily usage
 
-**edit secrets**: `sops secrets.yaml`  
-**view encrypted**: `cat secrets.yaml` (gibberish - safe for git)
+**edit secrets**: `sops modules/<feature>/secrets.yaml`
+
+**view encrypted**: `cat modules/<feature>/secrets.yaml` (gibberish - safe for git)
 
 ## fallback behavior
 
-robust by design:
+fallbacks are consumer-specific. the declared `sopsFile` must exist during nix
+evaluation. pi's shell wiring preserves an existing environment value when its
+runtime secret file is unreadable; do not assume other modules do the same.
 
-- **secrets.yaml exists**: uses sops → falls back to env vars
-- **secrets.yaml missing**: uses env vars only
-- **sops broken**: still works via env vars
-
-### bootstrap without secrets
+### temporary runtime override
 
 ```bash
-export ANTHROPIC_API_KEY="temp-key"
-sudo darwin-rebuild switch --flake .  # works
-
-# add secrets later
-sops secrets.yaml
-sudo darwin-rebuild switch --flake .  # now uses sops
+export PARALLEL_API_KEY="temp-key"
 ```
+
+this bypasses declarative secret management for the current process only.
 
 ## backup/recovery
 
@@ -100,29 +97,29 @@ cat ~/.config/sops/age/keys.txt
 1. `age-keygen -o ~/.config/sops/age/keys.txt`
 2. `age-keygen -y ~/.config/sops/age/keys.txt`
 3. update `.sops.yaml` with new public key
-4. `sops updatekeys secrets.yaml`
+4. run `sops updatekeys <file>` for every encrypted file the key must decrypt
 
 ### new machines
 
 1. generate age key on new machine
 2. add public key to `.sops.yaml`
-3. `sops updatekeys secrets.yaml`
+3. run `sops updatekeys <file>` for every encrypted file the machine consumes
 4. commit updated secrets
 
 ## what gets committed
 
 ```
-.sops.yaml          ✓ (public keys)
-secrets.yaml        ✓ (encrypted)
-modules/secrets/default.nix  ✓ (secret declarations)
-modules/<feature>/           ✓ (secret consumers)
-~/.config/sops/age/keys.txt  ✗ (NEVER)
+.sops.yaml                       ✓ (public keys)
+modules/<feature>/secrets.yaml   ✓ (encrypted)
+modules/<feature>/*.nix          ✓ (declaration and consumer)
+secrets.yaml                     ✓ (cross-cutting encrypted secrets only)
+~/.config/sops/age/keys.txt      ✗ (NEVER)
 ```
 
 ## security notes
 
 - encrypted files safe for public repos
-- secrets become individual files in `$XDG_RUNTIME_DIR/secrets/`
+- secrets become individual files in `/run/secrets/`
 - only your user can read them
 
 ## troubleshooting
@@ -134,23 +131,32 @@ rebuild first: `sudo darwin-rebuild switch --flake .`
 
 - check key exists: `ls ~/.config/sops/age/keys.txt`
 - verify public key matches in `.sops.yaml`
-- re-encrypt: `sops updatekeys secrets.yaml`
+- re-encrypt: `sops updatekeys modules/<feature>/secrets.yaml`
 
 **"no such file: secrets.yaml"**
 
-run the command from the repository root and verify the encrypted file exists.
+run the command from the repository root and verify the owning module's encrypted
+file exists.
 
 ## adding secrets
 
-1. `sops secrets.yaml`
-2. declare it in `modules/secrets/default.nix`:
+1. choose the narrowest module that owns the credential.
+2. create or edit `modules/<feature>/secrets.yaml` with `sops`.
+3. declare it in that module:
    ```nix
-   sops.secrets.new_secret = { owner = "bdsqqq"; };
+   sops.secrets.new_secret = {
+     sopsFile = ./secrets.yaml;
+     owner = "bdsqqq";
+     mode = "0400";
+   };
    ```
-3. use `config.sops.secrets.new_secret.path` in the owning feature's service
-   configuration. avoid copying the secret into the Nix store or a process
-   environment.
-4. `sudo darwin-rebuild switch --flake .`
+4. use `config.sops.secrets.new_secret.path` in the owning feature's service
+   configuration. avoid copying the secret into the Nix store; expose it through
+   the process environment only when the consumer API requires that.
+5. `sudo darwin-rebuild switch --flake .`
+
+use the root `secrets.yaml` and `modules/secrets/default.nix` only when multiple
+unrelated modules genuinely share the credential.
 
 ## refs
 

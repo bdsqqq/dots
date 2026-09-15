@@ -133,7 +133,6 @@ in
         "artificial_analysis_api_key"
         "gh_token"
         "hf_token"
-        "parallel_api_key"
       ] (_: {
         owner = "bdsqqq";
         mode = "0400";

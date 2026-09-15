@@ -95,13 +95,13 @@ generated JSON is output, not an additional source of truth.
 ## secrets
 
 secrets use sops-nix. `.sops.yaml` contains public recipients, while encrypted
-values live in `secrets.yaml` and feature-local files such as
-`modules/o11y/secrets.yaml`. runtime declarations live in
-`modules/secrets/default.nix`.
+values and runtime declarations live beside the feature that owns them. the
+root `secrets.yaml` and `modules/secrets/default.nix` are reserved for
+credentials shared by unrelated features.
 
 ```bash
-sops secrets.yaml
-sops updatekeys secrets.yaml
+sops modules/<feature>/secrets.yaml
+sops updatekeys modules/<feature>/secrets.yaml
 ```
 
 never commit private age keys. see [SECRETS.md](./SECRETS.md) for setup and
