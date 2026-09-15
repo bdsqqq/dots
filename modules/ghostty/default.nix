@@ -25,10 +25,8 @@ let
 
 in lib.mkIf (headMode == "graphical") (if isDarwin then lib.mkMerge [ ghosttyHome {
   homebrew.casks = [ "ghostty" ];
-  home-manager.users.bdsqqq = {
-    home.sessionVariables.TERMINFO_DIRS =
-      "/Applications/Ghostty.app/Contents/Resources/terminfo:/usr/share/terminfo";
-  };
+  environment.variables.TERMINFO_DIRS =
+    lib.mkBefore [ "/Applications/Ghostty.app/Contents/Resources/terminfo" ];
 } ] else if isLinux then lib.mkMerge [ ghosttyHome {
   home-manager.users.bdsqqq.home.packages = [ pkgs.ghostty ];
 } ] else
