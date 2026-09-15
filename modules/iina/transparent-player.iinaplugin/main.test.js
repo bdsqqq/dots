@@ -113,7 +113,6 @@ test("launches mpv with transparency and restores active playback", async functi
   assert.equal(state.pauseCount, 1);
   assert.equal(state.resumeCount, 0);
   assert.deepEqual(Array.from(state.args), [
-    "--no-config",
     "--no-terminal",
     "--vo=gpu-next",
     "--background=none",
