@@ -120,7 +120,7 @@ test("launches mpv with transparency and restores active playback", async functi
     "--border=no",
     "--hwdec=no",
     "--keep-open=yes",
-    "--vf=lavfi=[format=rgba,colorkey=0x00ff00:0.20:0.08]",
+    "--vf=lavfi=[chromakey=0x00ff00:0.12:0.08,format=rgba,despill=type=green:mix=0.5:expand=0.15]",
     "--start=12.5",
     "--speed=1",
     "--volume=75",
