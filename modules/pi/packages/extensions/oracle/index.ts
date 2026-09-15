@@ -1,5 +1,5 @@
 /**
- * oracle tool — expert technical advisor via gpt-5.6-sol high sub-agent.
+ * oracle tool — expert technical advisor via gpt-6-astra xhigh sub-agent.
  *
  * replaces the generic subagent(agent: "oracle", task: ...) pattern
  * with a dedicated tool. the model calls
@@ -46,7 +46,7 @@ import {
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
 
-const ORACLE_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:high";
+const ORACLE_DEFAULT_MODEL = "openai-codex/gpt-6-astra:xhigh";
 
 type OracleExtConfig = {
   model: PiSpawnModel;
