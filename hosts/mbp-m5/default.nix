@@ -18,6 +18,7 @@ in
     ../../modules/ssh
     ../../modules/ssh/authorized-keys.nix
     ../../modules/tailscale
+    ../../modules/secrets
     ../../modules/fonts
     ../../modules/homebrew
     ../../modules/homebrew/environment.nix
@@ -167,10 +168,6 @@ in
         guiAddress = "0.0.0.0:8384";
 
         settings = {
-          gui = {
-            user = "bdsqqq";
-            password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
-          };
           options = {
             urAccepted = -1;
             globalAnnounceEnabled = false;

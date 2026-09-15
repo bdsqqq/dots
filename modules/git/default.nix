@@ -195,6 +195,9 @@ let
   '';
 in
 {
+  imports = [ ../github/credential.nix ];
+  my.github.credential.required = true;
+
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
     imports = [ inputs.hunk.homeManagerModules.default ];
 

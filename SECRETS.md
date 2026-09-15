@@ -4,10 +4,11 @@ encrypted secrets that live safely in git. private keys stay local, encrypted fi
 
 ## how it works
 
-- **private keys** never leave your machine
+- **private keys** never enter the repository; automation gets a scoped key
 - **public keys** in `.sops.yaml` (committed)
-- **encrypted secrets** live beside the module that owns them
-- **cross-cutting secrets** may remain in the root `secrets.yaml`
+- **encrypted secrets** have one stable domain owner
+- **owner files** are adjacent `credential.nix` and `secrets.yaml` files
+- **consumers** import the owner and set its `credential.required` option
 - **runtime** decryption via your local key
 
 ## setup (once per machine)
@@ -111,8 +112,8 @@ cat ~/.config/sops/age/keys.txt
 ```
 .sops.yaml                       ✓ (public keys)
 modules/<feature>/secrets.yaml   ✓ (encrypted)
-modules/<feature>/*.nix          ✓ (declaration and consumer)
-secrets.yaml                     ✓ (cross-cutting encrypted secrets only)
+modules/<feature>/credential.nix ✓ (stable owner and declaration)
+modules/<consumer>/*.nix         ✓ (owner import and requirement)
 ~/.config/sops/age/keys.txt      ✗ (NEVER)
 ```
 
@@ -140,23 +141,43 @@ file exists.
 
 ## adding secrets
 
-1. choose the narrowest module that owns the credential.
-2. create or edit `modules/<feature>/secrets.yaml` with `sops`.
-3. declare it in that module:
+1. choose the domain that owns the credential. ownership does not change when
+   the credential gains another consumer.
+2. create or edit the owner's adjacent `secrets.yaml` with `sops`.
+3. declare it in the owner's `credential.nix`, gated by a requirement option:
    ```nix
-   sops.secrets.new_secret = {
-     sopsFile = ./secrets.yaml;
-     owner = "bdsqqq";
-     mode = "0400";
+   options.my.feature.credential.required =
+     lib.mkEnableOption "the feature credential";
+
+   config = lib.mkIf config.my.feature.credential.required {
+     sops.secrets.new_secret = {
+       sopsFile = ./secrets.yaml;
+       owner = "bdsqqq";
+       mode = "0400";
+     };
    };
    ```
-4. use `config.sops.secrets.new_secret.path` in the owning feature's service
-   configuration. avoid copying the secret into the Nix store; expose it through
-   the process environment only when the consumer API requires that.
-5. `sudo darwin-rebuild switch --flake .`
+4. each consumer imports `credential.nix`, sets the requirement when enabled,
+   and uses `config.sops.secrets.new_secret.path`. repeated imports are
+   deduplicated by the Nix module system.
+5. avoid copying plaintext into Nix options or the store. pass the runtime file
+   directly where possible; use process-local environment adaptation only when
+   the consumer API requires a value.
+6. run the ownership and host-closure checks before rebuilding:
+   ```bash
+   nix build .#checks.aarch64-darwin.credential-ownership
+   nix build .#checks.aarch64-darwin.credential-host-closures
+   ```
 
-use the root `secrets.yaml` and `modules/secrets/default.nix` only when multiple
-unrelated modules genuinely share the credential.
+retained future credentials may remain encrypted beside their owner while their
+requirement stays false. `modules/secrets/default.nix` is infrastructure only;
+it configures age key lookup and does not own credentials.
+
+## automation credentials
+
+automation age keys must be path-scoped in `.sops.yaml`. Cloudflare Actions
+receives `CLOUDFLARE_SOPS_AGE_KEY`, whose recipient can decrypt only
+`cloudflare/secrets.yaml`; host and personal credential files exclude it.
 
 ## refs
 

@@ -22,6 +22,7 @@ in
     ../../modules/tailscale
     ../../modules/tailnet-registry
     ../../modules/hue-control
+    ../../modules/cloudflare/credential.nix
     ../../modules/secrets
     ../../modules/fonts
     ../../modules/nix/auto-upgrade.nix
@@ -76,6 +77,8 @@ in
     ../../modules/helium/remotes.nix
     ../../modules/gaming
   ];
+
+  my.cloudflare.credential.required = true;
 
   homebrew = {
     casks = [
@@ -185,10 +188,6 @@ in
           guiAddress = "0.0.0.0:8384";
 
           settings = {
-            gui = {
-              user = "bdsqqq";
-              password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
-            };
             options = {
               urAccepted = -1;
               globalAnnounceEnabled = false;
