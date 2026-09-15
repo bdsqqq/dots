@@ -25,8 +25,13 @@ let
 
 in lib.mkIf (headMode == "graphical") (if isDarwin then lib.mkMerge [ ghosttyHome {
   homebrew.casks = [ "ghostty" ];
-  environment.variables.TERMINFO_DIRS =
-    lib.mkBefore [ "/Applications/Ghostty.app/Contents/Resources/terminfo" ];
+  home-manager.users.bdsqqq = { config, ... }: {
+    # macos zsh needs the entry before startup scripts set TERMINFO_DIRS.
+    # link only this entry so other user-installed terminal definitions survive.
+    home.file.".terminfo/78/xterm-ghostty".source =
+      config.lib.file.mkOutOfStoreSymlink
+        "/Applications/Ghostty.app/Contents/Resources/terminfo/78/xterm-ghostty";
+  };
 } ] else if isLinux then lib.mkMerge [ ghosttyHome {
   home-manager.users.bdsqqq.home.packages = [ pkgs.ghostty ];
 } ] else
