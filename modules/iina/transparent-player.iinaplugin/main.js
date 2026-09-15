@@ -32,7 +32,6 @@
     // The software filter needs CPU-backed frames. background=none then keeps its
     // alpha instead of flattening the keyed pixels onto an mpv background.
     var args = [
-      "--no-config",
       "--no-terminal",
       "--vo=gpu-next",
       "--background=none",

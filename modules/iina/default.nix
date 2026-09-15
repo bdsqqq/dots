@@ -24,8 +24,24 @@ let
       (mpvPatch "13eca7a59de7ece3537f05ec9f325b74e909ef47" "sha256-hlnLZb081VtSjWRvSnpzJFF7S+iN1CYCrhfF/b3vHUY=")
     ];
   });
+  patchedMpv = pkgs.mpv.override {
+    mpv-unwrapped = patchedMpvUnwrapped;
+  };
   transparentMpv = pkgs.mpv.override {
     mpv-unwrapped = patchedMpvUnwrapped;
+    scripts = with pkgs.mpvScripts; [
+      quality-menu
+      thumbfast
+      uosc
+    ];
+    # Keep the transparent player polished without inheriting or mutating the
+    # user's regular mpv setup.
+    extraMakeWrapperArgs = [
+      "--add-flags"
+      "--config-dir=${./transparent-player.mpv}"
+      "--add-flags"
+      "--script-opts-append=thumbfast-mpv_path=${patchedMpvUnwrapped}/Applications/mpv.app/Contents/MacOS/mpv"
+    ];
   };
   transparentPlayerPlugin =
     pkgs.runCommand "iina-transparent-player-plugin-1.0.0"
@@ -64,7 +80,7 @@ lib.mkIf (headMode == "graphical" && isDarwin) {
     {
       home.packages = [
         pkgs.iina
-        transparentMpv
+        patchedMpv
       ];
 
       home.file."Library/Application Support/com.colliderli.iina/plugins/${pluginIdentifier}.iinaplugin" =
