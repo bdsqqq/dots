@@ -7,10 +7,10 @@
   var utils = iina.utils;
 
   var mpvExecutable = "@mpv@";
-  // colorkey's second and third values control green tolerance and edge softness.
-  // rgba gives the filter an alpha channel that mpv can pass to WindowServer.
+  // chromakey averages neighboring chroma samples for a smoother matte than the
+  // RGB key. despill then removes green from semi-transparent edge pixels.
   var chromaKeyFilter =
-    "lavfi=[format=rgba,colorkey=0x00ff00:0.20:0.08]";
+    "lavfi=[chromakey=0x00ff00:0.12:0.08,format=rgba,despill=type=green:mix=0.5:expand=0.15]";
 
   function addNumericOption(args, property, option, predicate) {
     var value = mpv.getNumber(property);
