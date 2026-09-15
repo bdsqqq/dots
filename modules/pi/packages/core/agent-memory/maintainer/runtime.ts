@@ -1411,7 +1411,7 @@ export async function runMaintainer(
 ): Promise<MaintainerRunReport> {
   const clock = options.clock ?? (() => new Date());
   const model = options.model ?? {
-    model: process.env.PI_MEMORY_MODEL || "openai-codex/gpt-5.6-sol",
+    model: process.env.PI_MEMORY_MODEL || "openai-codex/gpt-6-astra",
     reasoning: (process.env.PI_MEMORY_REASONING_LEVEL ||
       "low") as ModelConfig["reasoning"],
   };

@@ -1,11 +1,11 @@
 /**
- * librarian tool — cross-repo codebase understanding via gpt-5.6-sol sub-agent.
+ * librarian tool — cross-repo codebase understanding via gpt-6-astra sub-agent.
  *
  * replaces the generic subagent pattern with a dedicated tool. the model
  * calls librarian(query: "...", context?: "...")
  * directly.
  *
- * spawns `pi --mode json` with gpt-5.6-sol, constrained to the
+ * spawns `pi --mode json` with gpt-6-astra, constrained to the
  * github tools (read_github, search_github, list_directory_github,
  * list_repositories, glob_github, commit_search, diff). the librarian
  * explores repos thoroughly before providing comprehensive answers.
@@ -42,7 +42,7 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-const LIBRARIAN_DEFAULT_MODEL = "openai-codex/gpt-5.6-sol:high";
+const LIBRARIAN_DEFAULT_MODEL = "openai-codex/gpt-6-astra:low";
 
 type LibrarianExtConfig = {
   model: PiSpawnModel;
