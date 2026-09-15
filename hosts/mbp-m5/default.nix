@@ -57,6 +57,7 @@ in
     ../../modules/open-display
     ../../modules/vscodium
     ../../modules/obsidian
+    ../../modules/iina
     ../../modules/1password
     ../../modules/orbstack
     ../../modules/obs
@@ -147,7 +148,6 @@ in
           qpdf
           inputs.lnr.packages.aarch64-darwin.default
           axiom-cli
-          iina
           ollama
           lua-language-server
           stylua
