@@ -1,0 +1,14 @@
+{
+  "name": "Transparent Player",
+  "identifier": "com.bdsqqq.transparent-player",
+  "version": "1.0.0",
+  "author": {
+    "name": "bdsqqq"
+  },
+  "description": "Opens the current video in mpv with its green background keyed to window transparency.",
+  "entry": "main.js",
+  "permissions": [
+    "file-system",
+    "show-osd"
+  ]
+}

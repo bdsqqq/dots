@@ -69,6 +69,7 @@ in
     ../../modules/vscodium
     ../../modules/zed
     ../../modules/obsidian
+    ../../modules/iina
     ../../modules/1password
     ../../modules/orbstack
     ../../modules/obs
@@ -158,7 +159,6 @@ in
           axiom-cli
           hcloud
           opentofu
-          iina
           ollama
           lua-language-server
           stylua
