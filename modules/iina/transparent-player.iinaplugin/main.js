@@ -38,6 +38,7 @@
       "--background=none",
       "--border=no",
       "--hwdec=no",
+      "--keep-open=yes",
       "--vf=" + chromaKeyFilter,
     ];
 
