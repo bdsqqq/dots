@@ -186,15 +186,11 @@ in
     authKeyFile = lib.mkIf (config.sops.secrets ? tailscale_auth_key)
       config.sops.secrets.tailscale_auth_key.path;
   };
+  my.tailscale.credential.required = true;
 
   # syncthing mesh
   services.syncthing = {
     settings = {
-      gui = {
-        user = "bdsqqq";
-        password =
-          "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
-      };
       options = {
         urAccepted = -1;
         globalAnnounceEnabled = false;
@@ -484,37 +480,4 @@ in
 
   system.stateVersion = "25.05";
 
-  systemd.services.syncthing-gui-password = {
-    description = "Set Syncthing GUI password hash from sops secret";
-    after = [ "syncthing-init.service" "sops-install-secrets.service" ];
-    before = [ "syncthing.service" ];
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      Type = "oneshot";
-      User = "bdsqqq";
-      RemainAfterExit = true;
-    };
-    path = [ pkgs.gnused pkgs.coreutils ];
-    script = ''
-      set -euo pipefail
-
-      SECRET_FILE="/run/secrets/syncthing_gui_password_hash"
-      if [ ! -f "$SECRET_FILE" ]; then
-        echo "syncthing-gui-password: secret not found, skipping"
-        exit 0
-      fi
-
-      HASH="$(cat "$SECRET_FILE")"
-      CFG_FILE="/home/bdsqqq/.config/syncthing/config.xml"
-
-      if [ ! -f "$CFG_FILE" ]; then
-        echo "syncthing-gui-password: config.xml not found, skipping"
-        exit 0
-      fi
-
-      sed -i "s|<password>.*</password>|<password>$HASH</password>|" "$CFG_FILE"
-
-      echo "syncthing-gui-password: hash updated in config.xml"
-    '';
-  };
 }

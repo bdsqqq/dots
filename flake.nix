@@ -235,6 +235,150 @@
           touch "$out"
         '';
 
+        checks.credential-ownership =
+          pkgs.runCommand "credential-ownership"
+            {
+              nativeBuildInputs = [
+                (pkgs.python3.withPackages (python: [ python.pyyaml ]))
+              ];
+            } ''
+            python ${./scripts/check-credential-ownership.py} --root ${self}
+            touch "$out"
+          '';
+
+        checks.credential-host-closures =
+          let
+            actual = {
+              mbp-m2 = builtins.attrNames self.darwinConfigurations.mbp-m2.config.sops.secrets;
+              mbp-m5 = builtins.attrNames self.darwinConfigurations.mbp-m5.config.sops.secrets;
+              mmn-m4 = builtins.attrNames self.darwinConfigurations.mmn-m4.config.sops.secrets;
+              lgo-z2e = builtins.attrNames self.nixosConfigurations.lgo-z2e.config.sops.secrets;
+              htz-relay = builtins.attrNames self.nixosConfigurations.htz-relay.config.sops.secrets;
+              htz-xfs-lab = builtins.attrNames self.nixosConfigurations.htz-xfs-lab.config.sops.secrets;
+              gru-relay = builtins.attrNames self.nixosConfigurations.gru-relay.config.sops.secrets;
+            };
+            expected = {
+              mbp-m2 = [
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "cloudflare_cert_pem"
+                "cookies"
+                "gh_token"
+                "hf_token"
+                "parallel_api_key"
+                "syncthing_gui_password"
+              ];
+              mbp-m5 = [
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "cookies"
+                "gh_token"
+                "hf_token"
+                "parallel_api_key"
+                "syncthing_gui_password"
+              ];
+              mmn-m4 = [
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "fleet-mesh/authority-private-key"
+                "fleet-mesh/bridge-identity"
+                "fleet-mesh/esp32-sim-1-identity"
+                "fleet-mesh/esp32-sim-2-identity"
+                "fleet-mesh/esp32-sim-3-identity"
+                "fleet-mesh/relay-identity"
+                "fleet-mesh/virtual-esp32-identity"
+                "gh_token"
+                "hf_token"
+                "syncthing_gui_password"
+              ];
+              lgo-z2e = [
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "cookies"
+                "gh_token"
+                "hf_token"
+                "parallel_api_key"
+                "syncthing_gui_password"
+                "tailscale_auth_key"
+              ];
+              htz-relay = [
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "cloudflare-connector-files-tailscale-auth-key"
+                "cloudflare-connector-shared-tailscale-auth-key"
+                "cloudflare-connector-t3-tailscale-auth-key"
+                "cloudflare-tunnel-dash"
+                "cloudflare-tunnel-files"
+                "cloudflare-tunnel-html-stuff"
+                "cloudflare-tunnel-money"
+                "cloudflare-tunnel-photos"
+                "cloudflare-tunnel-t3"
+                "gh_token"
+                "hf_token"
+                "syncthing_gui_password"
+                "tailscale_auth_key"
+              ];
+              htz-xfs-lab = [
+                "amp_api_key"
+                "artificial_analysis_api_key"
+                "gh_token"
+                "hf_token"
+                "parallel_api_key"
+                "tailscale_auth_key"
+              ];
+              gru-relay = [
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "cloudflare-connector-files-tailscale-auth-key"
+                "cloudflare-connector-shared-tailscale-auth-key"
+                "cloudflare-connector-t3-tailscale-auth-key"
+                "cloudflare-tunnel-dash"
+                "cloudflare-tunnel-files"
+                "cloudflare-tunnel-html-stuff"
+                "cloudflare-tunnel-money"
+                "cloudflare-tunnel-photos"
+                "cloudflare-tunnel-t3"
+                "gh_token"
+                "hf_token"
+                "tailscale_auth_key"
+              ];
+            };
+          in
+          assert actual == expected;
+          pkgs.runCommand "credential-host-closures" { } ''
+            touch "$out"
+          '';
+
         checks.darwin-transcription = pkgs.runCommand "darwin-transcription-tests"
           {
             nativeBuildInputs = [ pkgs.python3 ];

@@ -9,9 +9,11 @@ let
   # repo path for mkOutOfStoreSymlink — edits take effect immediately without rebuild
   repoExtensions = "${repoPi}/packages/extensions";
   repoAgentPrompts = "${commonplaceRoot}/01_files/nix/modules/agents/agents";
+  parallelApiKeyPath = config.sops.secrets.parallel_api_key.path;
 in
 {
-  imports = [ ./packages/extensions/web-search/secrets.nix ];
+  imports = [ ./packages/extensions/web-search/credential.nix ];
+  my.parallelWebSearch.credential.required = true;
 
   home-manager.users.bdsqqq =
     { pkgs
@@ -28,6 +30,9 @@ in
         config.lib.file.mkOutOfStoreSymlink "${repoPi}/keybindings.json";
       home.file.".pi/agent/models.json".source =
         config.lib.file.mkOutOfStoreSymlink "${repoPi}/models.json";
+      programs.zsh.initContent = lib.mkAfter ''
+        export PARALLEL_API_KEY="$(cat ${parallelApiKeyPath} 2>/dev/null || echo "$PARALLEL_API_KEY")"
+      '';
 
       # extensions — single directory symlink, pi scans subdirectories for package.json with pi.extensions
       home.file.".pi/agent/extensions".source = config.lib.file.mkOutOfStoreSymlink "${repoExtensions}";

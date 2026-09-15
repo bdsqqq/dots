@@ -44,6 +44,11 @@ let
       export HF_TOKEN="$(<"$CREDENTIALS_DIRECTORY/hf_token")"
       export PARALLEL_API_KEY="$(<"$CREDENTIALS_DIRECTORY/parallel_api_key")"
       export artificial_analysis_api_key="$(<"$CREDENTIALS_DIRECTORY/artificial_analysis_api_key")"
+    else
+      export GH_TOKEN="$(<${lib.escapeShellArg config.sops.secrets.gh_token.path})"
+      export HF_TOKEN="$(<${lib.escapeShellArg config.sops.secrets.hf_token.path})"
+      export PARALLEL_API_KEY="$(<${lib.escapeShellArg config.sops.secrets.parallel_api_key.path})"
+      export artificial_analysis_api_key="$(<${lib.escapeShellArg config.sops.secrets.artificial_analysis_api_key.path})"
     fi
 
     if [ -f ${lib.escapeShellArg developmentServer} ]; then
@@ -201,99 +206,118 @@ let
     '';
   };
 in
-if isLinux then
-  {
-    my.tailnetRegistry.services.t3-code = {
-      title = "t3 code";
-      description = "remote coding workspace";
-      target = "http://127.0.0.1:3773";
-      scheme = "https";
-      port = tailscaleServePort;
-      healthPath = "/.well-known/t3/environment";
-      audience = "owner";
-      adoptExisting = true;
-    };
+{
+  imports = [
+    ../artificial-analysis/credential.nix
+    ../github/credential.nix
+    ../huggingface/credential.nix
+    ../pi/packages/extensions/web-search/credential.nix
+  ];
 
-    environment.systemPackages = [
-      t3Fork
-      t3PiDeploy
-    ];
+  config = lib.mkMerge [
+    {
+      my.artificialAnalysis.credential.required = true;
+      my.github.credential.required = true;
+      my.huggingface.credential.required = true;
+      my.parallelWebSearch.credential.required = true;
+    }
+    (
+      if isLinux then
+        {
+          my.tailnetRegistry.services.t3-code = {
+            title = "t3 code";
+            description = "remote coding workspace";
+            target = "http://127.0.0.1:3773";
+            scheme = "https";
+            port = tailscaleServePort;
+            healthPath = "/.well-known/t3/environment";
+            audience = "owner";
+            adoptExisting = true;
+          };
 
-    systemd.services.t3-code = {
-      description = "T3 Code server";
-      wantedBy = [ "multi-user.target" ];
-      wants = [ "tailscaled.service" ];
-      requires = [ "home-manager-bdsqqq.service" ];
-      after = [
-        "tailscaled.service"
-        "home-manager-bdsqqq.service"
-      ];
-      restartTriggers = [
-        ../node-pnpm/package.json
-        ../node-pnpm/pnpm-lock.yaml
-      ];
+          environment.systemPackages = [
+            t3Fork
+            t3PiDeploy
+          ];
 
-      environment.PATH = lib.mkForce "${config.users.users.bdsqqq.home}/.local/lib/amp-auth/bin:${config.users.users.bdsqqq.home}/.local/bin:${config.users.users.bdsqqq.home}/.amp/bin:${toolsBin}:${lib.makeBinPath [
-        pkgs.cloudflared
-        pkgs.coreutils
-        pkgs.git
-        pkgs.gnused
-        pkgs.nodejs
-      ]}";
-      serviceConfig = {
-        Type = "exec";
-        User = "bdsqqq";
-        Group = "users";
-        WorkingDirectory = "/home/bdsqqq";
-        LoadCredential = [
-          "artificial_analysis_api_key:${config.sops.secrets.artificial_analysis_api_key.path}"
-          "gh_token:${config.sops.secrets.gh_token.path}"
-          "hf_token:${config.sops.secrets.hf_token.path}"
-          "parallel_api_key:${config.sops.secrets.parallel_api_key.path}"
-        ];
-        ExecStart = t3Serve;
-        Restart = "always";
-        RestartSec = "5s";
-      };
-    };
-  }
-else if isDarwin then
-  {
-    my.tailnetRegistry.services.t3-code = {
-      title = "t3 code";
-      description = "remote coding workspace";
-      target = "http://127.0.0.1:3773";
-      scheme = "https";
-      port = tailscaleServePort;
-      healthPath = "/.well-known/t3/environment";
-      audience = "owner";
-      adoptExisting = true;
-    };
+          systemd.services.t3-code = {
+            description = "T3 Code server";
+            wantedBy = [ "multi-user.target" ];
+            wants = [ "tailscaled.service" ];
+            requires = [ "home-manager-bdsqqq.service" ];
+            after = [
+              "tailscaled.service"
+              "home-manager-bdsqqq.service"
+            ];
+            restartTriggers = [
+              ../node-pnpm/package.json
+              ../node-pnpm/pnpm-lock.yaml
+            ];
 
-    environment.systemPackages = [
-      t3Fork
-      t3PiDeploy
-    ];
+            environment.PATH = lib.mkForce "${config.users.users.bdsqqq.home}/.local/lib/amp-auth/bin:${config.users.users.bdsqqq.home}/.local/bin:${config.users.users.bdsqqq.home}/.amp/bin:${toolsBin}:${lib.makeBinPath [
+              pkgs.cloudflared
+              pkgs.coreutils
+              pkgs.git
+              pkgs.gnused
+              pkgs.nodejs
+            ]}";
+            serviceConfig = {
+              Type = "exec";
+              User = "bdsqqq";
+              Group = "users";
+              WorkingDirectory = "/home/bdsqqq";
+              LoadCredential = [
+                "artificial_analysis_api_key:${config.sops.secrets.artificial_analysis_api_key.path}"
+                "gh_token:${config.sops.secrets.gh_token.path}"
+                "hf_token:${config.sops.secrets.hf_token.path}"
+                "parallel_api_key:${config.sops.secrets.parallel_api_key.path}"
+              ];
+              ExecStart = t3Serve;
+              Restart = "always";
+              RestartSec = "5s";
+            };
+          };
+        }
+      else if isDarwin then
+        {
+          my.tailnetRegistry.services.t3-code = {
+            title = "t3 code";
+            description = "remote coding workspace";
+            target = "http://127.0.0.1:3773";
+            scheme = "https";
+            port = tailscaleServePort;
+            healthPath = "/.well-known/t3/environment";
+            audience = "owner";
+            adoptExisting = true;
+          };
 
-    launchd.user.agents.t3-code = {
-      path = [
-        pkgs.coreutils
-        pkgs.gnused
-        pkgs.git
-        pkgs.nodejs
-        "/usr/local/bin"
-        toolsBin
-      ];
-      command = t3Serve;
-      serviceConfig = {
-        Label = "dev.t3-code.server";
-        RunAtLoad = true;
-        KeepAlive = true;
-        WorkingDirectory = "/Users/bdsqqq";
-        StandardOutPath = "/Users/bdsqqq/Library/Logs/t3-code.log";
-        StandardErrorPath = "/Users/bdsqqq/Library/Logs/t3-code-error.log";
-      };
-    };
-  }
-else
-  { }
+          environment.systemPackages = [
+            t3Fork
+            t3PiDeploy
+          ];
+
+          launchd.user.agents.t3-code = {
+            path = [
+              pkgs.coreutils
+              pkgs.gnused
+              pkgs.git
+              pkgs.nodejs
+              "/usr/local/bin"
+              toolsBin
+            ];
+            command = t3Serve;
+            serviceConfig = {
+              Label = "dev.t3-code.server";
+              RunAtLoad = true;
+              KeepAlive = true;
+              WorkingDirectory = "/Users/bdsqqq";
+              StandardOutPath = "/Users/bdsqqq/Library/Logs/t3-code.log";
+              StandardErrorPath = "/Users/bdsqqq/Library/Logs/t3-code-error.log";
+            };
+          };
+        }
+      else
+        { }
+    )
+  ];
+}
