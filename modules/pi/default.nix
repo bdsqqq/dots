@@ -11,6 +11,8 @@ let
   repoAgentPrompts = "${commonplaceRoot}/01_files/nix/modules/agents/agents";
 in
 {
+  imports = [ ./packages/extensions/web-search/secrets.nix ];
+
   home-manager.users.bdsqqq =
     { pkgs
     , config
