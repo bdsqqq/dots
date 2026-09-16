@@ -94,6 +94,7 @@ in
     ../../modules/audio
     ../../modules/flatpak
     ../../modules/niri
+    ../../modules/mpv
     ../../modules/o11y/hwmon.nix
     ../../modules/core-cli
     ../../modules/shell
