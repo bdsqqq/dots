@@ -27,11 +27,16 @@ let
   patchedMpv = pkgs.mpv.override {
     mpv-unwrapped = patchedMpvUnwrapped;
   };
+  # Thumbfast normally drops arbitrary lavfi graphs, which makes its previews
+  # show the original green background instead of the transparent composition.
+  transparentThumbfast = pkgs.mpvScripts.thumbfast.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./thumbfast-preserve-lavfi.patch ];
+  });
   transparentMpv = pkgs.mpv.override {
     mpv-unwrapped = patchedMpvUnwrapped;
     scripts = with pkgs.mpvScripts; [
       quality-menu
-      thumbfast
+      transparentThumbfast
       uosc
     ];
     # Keep the transparent player polished without inheriting or mutating the
@@ -39,6 +44,8 @@ let
     extraMakeWrapperArgs = [
       "--add-flags"
       "--config-dir=${./transparent-player.mpv}"
+      "--add-flags"
+      "--osd-fonts-dir=${pkgs.mpvScripts.uosc}/share/fonts"
       "--add-flags"
       "--script-opts-append=thumbfast-mpv_path=${patchedMpvUnwrapped}/Applications/mpv.app/Contents/MacOS/mpv"
     ];
