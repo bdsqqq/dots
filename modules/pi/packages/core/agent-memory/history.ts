@@ -81,7 +81,9 @@ const VERIFICATION_LOCK_TIMEOUT_MS = 30_000;
 const VERIFICATION_LOCK_OWNER_GRACE_MS = 1_000;
 const VERIFICATION_LOCK_WAIT_MS = 25;
 const verificationLockWaiter = new Int32Array(new SharedArrayBuffer(4));
-const gitDir = (cfg: MemoryConfig) => join(cfg.data, "v2/history.git");
+const verificationRepositories = new WeakMap<MemoryConfig, string>();
+const gitDir = (cfg: MemoryConfig) =>
+  verificationRepositories.get(cfg) ?? join(cfg.data, "v2/history.git");
 const receiptsDir = (cfg: MemoryConfig) => join(cfg.data, "v2/mutations");
 const gitEnv: NodeJS.ProcessEnv = (() => {
   const env = { ...process.env };
@@ -1059,6 +1061,23 @@ function verifyCommittedSemanticHistory(
     blobs: uniqueObjects.length,
     processes: uniqueObjects.length > 0 ? 3 : 2,
   };
+}
+
+/** Reuse the legacy semantic verifier without checking out or mutating v2 state. */
+export function verifyLegacyHistoryPrefix(
+  cfg: Pick<MemoryConfig, "root" | "data" | "state">,
+  directory: string,
+  head: string,
+): void {
+  const isolated: MemoryConfig = { ...cfg, skillsRoot: cfg.root };
+  verificationRepositories.set(isolated, directory);
+  try {
+    const result = verifyCommittedSemanticHistory(isolated, revision(head));
+    if (result.issues.length)
+      throw new Error(`invalid legacy canonical prefix: ${result.issues.join("; ")}`);
+  } finally {
+    verificationRepositories.delete(isolated);
+  }
 }
 
 function verifyHistoryUnlocked(

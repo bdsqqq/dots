@@ -5,8 +5,10 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -14,6 +16,7 @@ import { scanCatalog, writeCatalog, type MemoryConfig } from "../catalog.js";
 import {
   canonicalJson,
   durableWrite,
+  fsyncDirectory,
   safeRelativePath,
   sha256,
   v3Data,
@@ -22,6 +25,7 @@ import {
   type JsonValue,
 } from "./common.js";
 import {
+  auditCanonicalHistory,
   listCanonicalMarkdown,
   readCanonicalFile,
   type HistoryConfig,
@@ -71,7 +75,9 @@ function publishQmdSourceLocked(
   const root = v3Data(cfg, "projections/qmd-source");
   mkdirSync(dirname(root), { recursive: true, mode: 0o700 });
   const staging = mkdtempSync(join(dirname(root), ".qmd-source-"));
-  const backup = `${root}.backup.${process.pid}.${Date.now()}`;
+  const backup = `${root}.legacy`;
+  const pointer = `${staging}.pointer`;
+  let installed = false;
   try {
     const listed = reader.list(head);
     if (new Set(listed).size !== listed.length)
@@ -81,7 +87,7 @@ function publishQmdSourceLocked(
       const content = reader.read(head, path);
       const target = join(staging, path);
       mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
-      writeFileSync(target, content, { mode: 0o600 });
+      durableWrite(target, content);
       return { path, sha256: sha256(content), bytes: content.length };
     });
     const manifest: QmdSourceManifest = {
@@ -90,25 +96,42 @@ function publishQmdSourceLocked(
       publishedAt: clock().toISOString(),
       files,
     };
-    writeFileSync(
+    try {
+      const previous = verifyQmdSource(cfg, head);
+      if (existsSync(root) && canonicalJson(previous.files as unknown as JsonValue) ===
+          canonicalJson(files as unknown as JsonValue)) {
+        const report = v3Data(cfg, "projections/qmd-source-manifest.json");
+        const content = `${JSON.stringify(previous, null, 2)}\n`;
+        if (!existsSync(report) || readFileSync(report, "utf8") !== content)
+          durableWrite(report, content);
+        return previous;
+      }
+    } catch {
+      // Missing or damaged projections are repaired only from the accepted reader.
+    }
+    durableWrite(
       join(staging, ".verified-manifest.json"),
       `${canonicalJson(manifest as unknown as JsonValue)}\n`,
-      { mode: 0o600 },
     );
-    if (existsSync(root)) {
-      if (lstatSync(root).isSymbolicLink())
-        throw new Error("qmd source cannot be a symlink");
+    // Retain complete generations so a reader resolving the previous pointer
+    // can finish without observing files from a different accepted head.
+    symlinkSync(staging, pointer, "dir");
+    if (existsSync(root) && !lstatSync(root).isSymbolicLink()) {
+      if (existsSync(backup))
+        throw new Error("unresolved legacy qmd source migration");
       renameSync(root, backup);
     }
-    renameSync(staging, root);
-    rmSync(backup, { recursive: true, force: true });
+    renameSync(pointer, root);
+    installed = true;
+    fsyncDirectory(dirname(root));
     durableWrite(
       v3Data(cfg, "projections/qmd-source-manifest.json"),
       `${JSON.stringify(manifest, null, 2)}\n`,
     );
     return manifest;
   } finally {
-    rmSync(staging, { recursive: true, force: true });
+    rmSync(pointer, { force: true });
+    if (!installed) rmSync(staging, { recursive: true, force: true });
   }
 }
 
@@ -135,6 +158,7 @@ export function publishVerifiedQmdSource(
   ) as { head?: string };
   if (checkout.head !== head)
     throw new Error("qmd source head is not the materialized checkout");
+  auditCanonicalHistory(cfg, head);
   const catalog = scanCatalog(cfg.root, "1970-01-01T00:00:00.000Z");
   const canonical = new Set(listCanonicalMarkdown(cfg, head));
   for (const entry of catalog.entries) {
@@ -161,7 +185,30 @@ export function verifyQmdSource(
   cfg: ProjectionConfig,
   expectedHead?: string,
 ): QmdSourceManifest {
-  const manifestPath = v3Data(cfg, "projections/qmd-source-manifest.json");
+  return loadVerifiedQmdGeneration(cfg, expectedHead).manifest;
+}
+
+export function loadVerifiedQmdGeneration(
+  cfg: ProjectionConfig,
+  expectedHead?: string,
+): { root: string; manifest: QmdSourceManifest } {
+  // Resolve once: manifest and content must come from the same generation,
+  // even when a publisher switches the current pointer during verification.
+  const current = v3Data(cfg, "projections/qmd-source");
+  const root = realpathSync(
+    existsSync(current) ? current : `${current}.legacy`,
+  );
+  const parent = realpathSync(dirname(current));
+  if (
+    dirname(root) !== parent ||
+    !(
+      root === join(parent, "qmd-source") ||
+      root === join(parent, "qmd-source.legacy") ||
+      root.startsWith(join(parent, ".qmd-source-"))
+    )
+  )
+    throw new Error("qmd source points outside its generation directory");
+  const manifestPath = join(root, ".verified-manifest.json");
   const manifest = JSON.parse(
     readFileSync(manifestPath, "utf8"),
   ) as QmdSourceManifest;
@@ -172,7 +219,6 @@ export function verifyQmdSource(
     !Array.isArray(manifest.files)
   )
     throw new Error("invalid qmd source manifest");
-  const root = v3Data(cfg, "projections/qmd-source");
   const expectedPaths = manifest.files.map((file) => file.path).sort();
   const actualPaths = projectedMarkdown(root).sort();
   if (JSON.stringify(actualPaths) !== JSON.stringify(expectedPaths))
@@ -183,7 +229,7 @@ export function verifyQmdSource(
     if (value.length !== file.bytes || sha256(value) !== file.sha256)
       throw new Error(`qmd source changed ${path}`);
   }
-  return manifest;
+  return { root, manifest };
 }
 
 if (import.meta.vitest) {
@@ -258,6 +304,36 @@ if (import.meta.vitest) {
       expect(() => verifyQmdSource(cfg)).toThrow(
         "contains unverified markdown",
       );
+    });
+
+    it("keeps old generations readable and ignores a stale reporting manifest", () => {
+      const cfg = { data: mkdtempSync(join(tmpdir(), "pi-memory-qmd-")) };
+      const reader = (value: string): VerifiedCanonicalReader => ({
+        list: () => ["memory.md"],
+        read: () => Buffer.from(value),
+      });
+      publishQmdSource(cfg, "a".repeat(40), reader("old"));
+      const oldRoot = realpathSync(v3Data(cfg, "projections/qmd-source"));
+      publishQmdSource(cfg, "b".repeat(40), reader("new"));
+      writeFileSync(v3Data(cfg, "projections/qmd-source-manifest.json"), "{}");
+      expect(verifyQmdSource(cfg).canonicalHead).toBe("b".repeat(40));
+      expect(readFileSync(join(oldRoot, "memory.md"), "utf8")).toBe("old");
+    });
+
+    it("recovers a legacy-directory migration interrupted before pointer installation", () => {
+      const cfg = { data: mkdtempSync(join(tmpdir(), "pi-memory-qmd-")) };
+      const reader: VerifiedCanonicalReader = {
+        list: () => ["memory.md"],
+        read: () => Buffer.from("accepted"),
+      };
+      publishQmdSource(cfg, "a".repeat(40), reader);
+      const root = v3Data(cfg, "projections/qmd-source");
+      const generation = realpathSync(root);
+      rmSync(root);
+      renameSync(generation, `${root}.legacy`);
+      expect(verifyQmdSource(cfg).canonicalHead).toBe("a".repeat(40));
+      publishQmdSource(cfg, "b".repeat(40), reader);
+      expect(verifyQmdSource(cfg).canonicalHead).toBe("b".repeat(40));
     });
   });
 }

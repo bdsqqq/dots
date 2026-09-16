@@ -17,6 +17,9 @@ function collectAliases(base: string): Record<string, string> {
 export default defineConfig({
   resolve: {
     alias: {
+      "@bds_pi/pi-memory/projection": resolve(
+        "packages/core/agent-memory/maintainer/projection.ts",
+      ),
       "@bds_pi/pi-memory/catalog": resolve(
         "packages/core/agent-memory/catalog.ts",
       ),

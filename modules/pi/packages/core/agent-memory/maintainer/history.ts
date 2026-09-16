@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type { MemoryConfig } from "../catalog.js";
+import { verifyLegacyHistoryPrefix } from "../history.js";
 import { observeMemoryOperation } from "../observability.js";
 import {
   unsafeCanonicalValue,
@@ -80,6 +81,8 @@ export type MergeOutcome =
   | {
       type: "accepted";
       commit: string;
+      canonicalHead: string;
+      admissionDecisionId: string;
       mutationId: string;
       idempotent: boolean;
       materialized: boolean;
@@ -531,6 +534,9 @@ function parseReceipt(message: string): CanonicalReceipt | undefined {
   } catch {
     throw new Error("invalid v3 canonical receipt encoding");
   }
+  if (object(value) && value.version === 2 && value.schemaVersion === undefined)
+    return undefined;
+  if (!object(value)) throw new Error("invalid v3 canonical receipt");
   const record = value as Partial<CanonicalReceipt>;
   if (
     record.schemaVersion !== 3 ||
@@ -720,19 +726,31 @@ export function verifyCanonicalCommit(
   return receipt;
 }
 
+const verifiedHistory = new Map<string, { verifiedV3: number; legacyUnverified: number }>();
+
 export function auditCanonicalHistory(
   cfg: HistoryConfig,
   head: string,
 ): { verifiedV3: number; legacyUnverified: number } {
+  const cacheKey = `${gitDir(cfg)}:${head}`;
+  const cached = verifiedHistory.get(cacheKey);
+  if (cached) return { ...cached };
   const commits = text(cfg, ["rev-list", "--first-parent", "--reverse", head])
     .split("\n")
     .filter(Boolean);
   let verifiedV3 = 0;
   let legacyUnverified = 0;
+  let legacyHead: string | undefined;
+  let hasLegacyReceipt = false;
   const mutationIds = new Set<string>();
   for (const commit of commits) {
     const receipt = verifyCanonicalCommit(cfg, commit);
     if (!receipt) {
+      if (verifiedV3 > 0)
+        throw new Error("receiptless commit after v3 canonical history");
+      legacyHead = commit;
+      hasLegacyReceipt ||= text(cfg, ["show", "-s", "--format=%B", commit])
+        .split("\n").some((line) => line.startsWith(TRAILER));
       legacyUnverified += 1;
       continue;
     }
@@ -741,7 +759,15 @@ export function auditCanonicalHistory(
     mutationIds.add(receipt.mutationId);
     verifiedV3 += 1;
   }
-  return { verifiedV3, legacyUnverified };
+  if (hasLegacyReceipt && legacyHead)
+    verifyLegacyHistoryPrefix(cfg, gitDir(cfg), legacyHead);
+  else if (legacyUnverified > 1)
+    throw new Error("unverified receiptless canonical prefix");
+  const result = { verifiedV3, legacyUnverified };
+  if (verifiedHistory.size >= 128)
+    verifiedHistory.delete(verifiedHistory.keys().next().value!);
+  verifiedHistory.set(cacheKey, result);
+  return { ...result };
 }
 
 export function findCanonicalMutation(
@@ -874,11 +900,33 @@ function persistAcceptedReceipt(
     throw new Error("accepted receipt collision");
 }
 
+/** replay local acceptance bookkeeping even when remote acceptance preceded a crash. */
+export function finalizeVerifiedAcceptance(
+  cfg: HistoryConfig,
+  head: string,
+  accepted: { commit: string; receipt: CanonicalReceipt },
+): void {
+  const verified = findCanonicalMutation(cfg, head, accepted.commit);
+  if (
+    !verified ||
+    canonicalJson(verified.receipt as unknown as JsonValue) !==
+      canonicalJson(accepted.receipt as unknown as JsonValue)
+  )
+    throw new Error("acceptance is not verified in canonical history");
+  const candidate = loadCandidate(cfg, verified.receipt.proposalId);
+  if (
+    candidate &&
+    (candidate.proposalSha256 !== verified.receipt.proposalSha256 ||
+      candidate.mutationId !== verified.receipt.mutationId)
+  )
+    throw new Error("accepted candidate binding changed");
+  persistAcceptedReceipt(cfg, verified.commit, verified.receipt);
+  finalizeCandidate(cfg, verified.receipt.proposalId);
+}
+
 function finalizeCandidate(cfg: HistoryConfig, proposalId: string): void {
   durableRemove(candidatePath(cfg, proposalId));
-  text(cfg, ["update-ref", "-d", `refs/pi-memory/proposals/${proposalId}`], {
-    tolerate: true,
-  });
+  text(cfg, ["update-ref", "-d", `refs/pi-memory/proposals/${proposalId}`]);
 }
 
 function copyCanonicalTree(
@@ -1053,7 +1101,10 @@ export function materializeCanonicalHead(
         fields: { canonicalHead: head, materialized },
       }),
     },
-    () => materializeCanonicalHeadImpl(cfg, head, fault),
+    () => {
+      auditCanonicalHistory(cfg, head);
+      return materializeCanonicalHeadImpl(cfg, head, fault);
+    },
   );
 }
 
@@ -1068,13 +1119,15 @@ function mergeCommitImpl(
   } catch {
     return { type: "retry", reason: "remote-unavailable" };
   }
+  auditCanonicalHistory(cfg, head);
   const accepted = acceptedByMutation(cfg, head, initial);
   if (accepted) {
-    persistAcceptedReceipt(cfg, accepted.commit, accepted.receipt);
-    finalizeCandidate(cfg, initial.proposalId);
+    finalizeVerifiedAcceptance(cfg, head, accepted);
     return {
       type: "accepted",
       commit: accepted.commit,
+      canonicalHead: head,
+      admissionDecisionId: accepted.receipt.admissionDecisionId,
       mutationId: initial.mutationId,
       idempotent: true,
       materialized: materializeCanonicalHead(cfg, head),
@@ -1085,8 +1138,7 @@ function mergeCommitImpl(
   const conflicts: string[] = [];
   for (const change of initial.changes) {
     const observed = treeDigest(cfg, head, change.path);
-    if (observed !== change.beforeSha256 && observed !== change.afterSha256)
-      conflicts.push(change.path);
+    if (observed !== change.beforeSha256) conflicts.push(change.path);
   }
   if (conflicts.length)
     return { type: "basis-changed", head, paths: conflicts.sort() };
@@ -1095,6 +1147,8 @@ function mergeCommitImpl(
       ? initial
       : rebaseCandidate(cfg, initial, head);
   validateCandidate(cfg, record);
+  if (!verifyCanonicalCommit(cfg, record.candidateCommit))
+    throw new Error("candidate lacks canonical receipt");
   const pushed = transport.push(cfg, record.candidateCommit);
   if (pushed === "unknown")
     return { type: "retry", reason: "push-result-unknown" };
@@ -1105,16 +1159,14 @@ function mergeCommitImpl(
   } catch {
     return { type: "retry", reason: "push-result-unknown" };
   }
-  if (acceptedHead !== record.candidateCommit)
-    return { type: "retry", reason: "remote-race" };
-  const acceptedReceipt = verifyCanonicalCommit(cfg, acceptedHead);
-  if (!acceptedReceipt)
-    throw new Error("accepted candidate lacks canonical receipt");
-  persistAcceptedReceipt(cfg, acceptedHead, acceptedReceipt);
-  finalizeCandidate(cfg, record.proposalId);
+  const confirmed = acceptedByMutation(cfg, acceptedHead, record);
+  if (!confirmed) return { type: "retry", reason: "remote-race" };
+  finalizeVerifiedAcceptance(cfg, acceptedHead, confirmed);
   return {
     type: "accepted",
-    commit: acceptedHead,
+    commit: confirmed.commit,
+    canonicalHead: acceptedHead,
+    admissionDecisionId: confirmed.receipt.admissionDecisionId,
     mutationId: record.mutationId,
     idempotent: false,
     materialized: materializeCanonicalHead(cfg, acceptedHead),
@@ -1148,7 +1200,7 @@ export function mergeCommit(
         fields: {
           mergeOutcome: outcome.type,
           acceptedRemoteHead:
-            outcome.type === "accepted" ? outcome.commit : undefined,
+            outcome.type === "accepted" ? outcome.canonicalHead : undefined,
           retryReason: outcome.type === "retry" ? outcome.reason : undefined,
           blockedPaths:
             outcome.type === "basis-changed" ? outcome.paths : undefined,
@@ -1161,6 +1213,7 @@ export function mergeCommit(
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest;
+  const { initHistory } = await import("../history.js");
   const { tmpdir } = await import("node:os");
   const { evaluateAdmission } = await import("./admission.js");
   const { withMemoryWideEventFactory } = await import("../observability.js");
@@ -1203,17 +1256,18 @@ if (import.meta.vitest) {
     cfg: HistoryConfig,
     head: string,
     name: string,
-    content: string,
+    content: string | null,
     pathName = name,
+    beforeSha256: string | null = null,
   ) {
     const path = `${pathName}_source__agent.md`;
     const safeBytes = `the user requested ${name}`;
     const evaluatedAt = "2026-09-03T12:00:00.000Z";
     const change: CanonicalChange = {
       path,
-      beforeSha256: null,
+      beforeSha256,
       afterContent: content,
-      afterSha256: sha256(content),
+      afterSha256: content === null ? null : sha256(content),
     };
     const decision = evaluateAdmission(cfg, {
       proposalId: `prop_${name}`,
@@ -1230,17 +1284,20 @@ if (import.meta.vitest) {
         modelPolicyVersion: 1,
       },
       changes: [change],
-      claims: [
-        {
-          claimId: `claim_${name}`,
-          path,
-          startByte: 0,
-          endByte: Buffer.byteLength(content),
-          textSha256: sha256(content),
-          epistemic: "user-statement",
-          evidenceEntryIds: [`evidence_${name}`],
-        },
-      ],
+      claims:
+        content === null
+          ? []
+          : [
+              {
+                claimId: `claim_${name}`,
+                path,
+                startByte: 0,
+                endByte: Buffer.byteLength(content),
+                textSha256: sha256(content),
+                epistemic: "user-statement",
+                evidenceEntryIds: [`evidence_${name}`],
+              },
+            ],
       evidence: [
         {
           evidenceEntryId: `evidence_${name}`,
@@ -1263,6 +1320,77 @@ if (import.meta.vitest) {
   }
 
   describe("v3 canonical history", () => {
+    it.each(["write", "delete"])(
+      "rejects identical overlapping %s from a distinct mutation",
+      (operation) => {
+        const test = fixture();
+        const first = test.host("overlap-a");
+        const second = test.host("overlap-b");
+        const head = fetchCanonicalHead(first);
+        fetchCanonicalHead(second);
+        const content = operation === "delete" ? null : "# identical\n";
+        const path = operation === "delete" ? "baseline" : "same";
+        const before = operation === "delete" ? sha256("# baseline\n") : null;
+        const a = admitted(first, head, "overlap_a", content, path, before);
+        const b = admitted(second, head, "overlap_b", content, path, before);
+        const candidateA = prepareCommit(first, {
+          head,
+          decision: a.decision,
+          changes: [a.change],
+        });
+        const candidateB = prepareCommit(second, {
+          head,
+          decision: b.decision,
+          changes: [b.change],
+        });
+        expect(mergeCommit(first, candidateA).type).toBe("accepted");
+        const acceptedHead = fetchCanonicalHead(first);
+        expect(
+          mergeCommit(second, candidateB, {
+            push() {
+              throw new Error("must not push");
+            },
+          }),
+        ).toEqual({
+          type: "basis-changed",
+          head: acceptedHead,
+          paths: [a.change.path],
+        });
+        expect(fetchCanonicalHead(second)).toBe(acceptedHead);
+        expect(auditCanonicalHistory(second, acceptedHead)).toEqual({
+          verifiedV3: 1,
+          legacyUnverified: 1,
+        });
+      },
+    );
+
+    it("fully verifies candidate audit bindings before pushing", () => {
+      const test = fixture();
+      const host = test.host("invalid");
+      const head = fetchCanonicalHead(host);
+      const proposal = admitted(host, head, "invalid", "# invalid\n");
+      const base = candidateBase(host, {
+        head,
+        decision: proposal.decision,
+        changes: [proposal.change],
+      });
+      const candidate = createCommit(host, {
+        ...base,
+        admissionExpiresAt: "2026-10-04T12:00:00.000Z",
+      });
+      let pushed = false;
+      expect(() =>
+        mergeCommit(host, candidate, {
+          push() {
+            pushed = true;
+            return "accepted";
+          },
+        }),
+      ).toThrow("canonical admission binding changed");
+      expect(pushed).toBe(false);
+      expect(fetchCanonicalHead(host)).toBe(head);
+    });
+
     it("serializes disjoint host candidates and materializes only accepted heads", () => {
       const test = fixture();
       const hostA = test.host("a");
@@ -1365,6 +1493,35 @@ if (import.meta.vitest) {
       expect(existsSync(secondHost.root)).toBe(false);
     });
 
+    it("does not finalize an unaccepted candidate", () => {
+      const test = fixture();
+      const host = test.host("unaccepted");
+      const head = fetchCanonicalHead(host);
+      const proposal = admitted(host, head, "unaccepted", "# unaccepted\n");
+      const candidate = prepareCommit(host, {
+        head,
+        decision: proposal.decision,
+        changes: [proposal.change],
+      });
+      const accepted = {
+        commit: candidate.candidateCommit,
+        receipt: verifyCanonicalCommit(host, candidate.candidateCommit)!,
+      };
+      expect(() => finalizeVerifiedAcceptance(host, head, accepted)).toThrow(
+        "acceptance is not verified in canonical history",
+      );
+      expect(loadCandidate(host, candidate.proposalId)).toEqual(candidate);
+      expect(existsSync(acceptedReceiptPath(host, candidate.mutationId))).toBe(
+        false,
+      );
+      expect(
+        text(host, [
+          "rev-parse",
+          `refs/pi-memory/proposals/${candidate.proposalId}`,
+        ]).trim(),
+      ).toBe(candidate.candidateCommit);
+    });
+
     it("recovers a lost push response by immutable mutation receipt", () => {
       const test = fixture();
       const host = test.host("lost");
@@ -1386,10 +1543,56 @@ if (import.meta.vitest) {
         reason: "push-result-unknown",
       });
       expect(existsSync(host.root)).toBe(false);
+      expect(loadCandidate(host, candidate.proposalId)).toEqual(candidate);
+      expect(existsSync(acceptedReceiptPath(host, candidate.mutationId))).toBe(
+        false,
+      );
+      const other = test.host("after-lost");
+      const otherHead = fetchCanonicalHead(other);
+      const otherProposal = admitted(other, otherHead, "later", "# later\n");
+      const otherCandidate = prepareCommit(other, {
+        head: otherHead,
+        decision: otherProposal.decision,
+        changes: [otherProposal.change],
+      });
+      expect(mergeCommit(other, otherCandidate).type).toBe("accepted");
       expect(mergeCommit(host, candidate)).toMatchObject({
         type: "accepted",
+        commit: candidate.candidateCommit,
+        canonicalHead: otherCandidate.candidateCommit,
         idempotent: true,
+        materialized: true,
       });
+      expect(
+        verifyMaterializedTree(host, otherCandidate.candidateCommit, host.root),
+      ).toBe(true);
+      expect(loadCandidate(host, candidate.proposalId)).toBeUndefined();
+      expect(
+        text(host, [
+          "for-each-ref",
+          "--format=%(refname)",
+          `refs/pi-memory/proposals/${candidate.proposalId}`,
+        ]).trim(),
+      ).toBe("");
+      const accepted = {
+        commit: candidate.candidateCommit,
+        receipt: verifyCanonicalCommit(host, candidate.candidateCommit)!,
+      };
+      expect(
+        JSON.parse(
+          readFileSync(acceptedReceiptPath(host, candidate.mutationId), "utf8"),
+        ),
+      ).toEqual(accepted);
+      finalizeVerifiedAcceptance(
+        host,
+        otherCandidate.candidateCommit,
+        accepted,
+      );
+      expect(
+        JSON.parse(
+          readFileSync(acceptedReceiptPath(host, candidate.mutationId), "utf8"),
+        ),
+      ).toEqual(accepted);
       expect(
         readFileSync(join(host.root, "lost_source__agent.md"), "utf8"),
       ).toBe("# lost\n");
@@ -1544,6 +1747,61 @@ if (import.meta.vitest) {
       });
       expect(materializeCanonicalHead(fresh, acceptedHead)).toBe(true);
       expect(existsSync(join(fresh.root, ".pi-memory/evidence"))).toBe(true);
+      const tree = text(fresh, ["rev-parse", `${acceptedHead}^{tree}`]).trim();
+      const unreceipted = text(fresh, [
+        "commit-tree", tree, "-p", acceptedHead, "-m", "unadmitted change",
+      ]).trim();
+      expect(() => auditCanonicalHistory(fresh, unreceipted)).toThrow(
+        "receiptless commit after v3",
+      );
+      expect(() => materializeCanonicalHead(fresh, unreceipted)).toThrow(
+        "receiptless commit after v3",
+      );
+    });
+
+    it("verifies a v2 baseline before accepting v3 successors", () => {
+      const base = mkdtempSync(join(tmpdir(), "pi-memory-legacy-prefix-"));
+      const legacy = {
+        data: join(base, "legacy-data"),
+        state: join(base, "legacy-state"),
+        root: join(base, "legacy-root"),
+        skillsRoot: join(base, "skills"),
+      };
+      mkdirSync(legacy.root, { recursive: true });
+      writeFileSync(join(legacy.root, "baseline_source__agent.md"), "# legacy\n");
+      const initialized = initHistory(legacy);
+      expect(initialized.commit).toBeTruthy();
+      const remote = join(base, "remote.git");
+      command(["init", "--bare", "--initial-branch=main", remote]);
+      command(["--git-dir", initialized.gitDir, "push", remote, "HEAD:refs/heads/main"]);
+      const fresh: HistoryConfig = {
+        data: join(base, "fresh-data"), state: join(base, "fresh-state"),
+        root: join(base, "fresh-root"), remote,
+      };
+      const head = fetchCanonicalHead(fresh);
+      expect(auditCanonicalHistory(fresh, head)).toEqual({
+        verifiedV3: 0, legacyUnverified: 1,
+      });
+      const forgedReceipt = Buffer.from(JSON.stringify({
+        version: 2, mutationId: "forged", kind: "review", reason: "test",
+        parentCommit: head, provenance: null,
+        changes: [{ path: "baseline_source__agent.md", afterSha256: "0".repeat(64), status: "active" }],
+      })).toString("base64url");
+      const forged = text(fresh, [
+        "commit-tree", text(fresh, ["rev-parse", `${head}^{tree}`]).trim(),
+        "-p", head, "-m", `forged\n\n${TRAILER} ${forgedReceipt}\n`,
+      ]).trim();
+      expect(() => auditCanonicalHistory(fresh, forged)).toThrow();
+      const proposed = admitted(fresh, head, "new", "# new\n");
+      const candidate = prepareCommit(fresh, {
+        head, decision: proposed.decision, changes: [proposed.change],
+      });
+      const accepted = mergeCommit(fresh, candidate);
+      expect(accepted.type).toBe("accepted");
+      if (accepted.type !== "accepted") throw new Error("acceptance failed");
+      expect(auditCanonicalHistory(fresh, accepted.canonicalHead)).toEqual({
+        verifiedV3: 1, legacyUnverified: 1,
+      });
     });
 
     it.each<MaterializationCrashPoint>([

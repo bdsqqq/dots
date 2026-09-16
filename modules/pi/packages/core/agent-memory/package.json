@@ -13,7 +13,8 @@
     "./evidence": "./evidence.ts",
     "./receipt": "./receipt.ts",
     "./tiering": "./tiering.ts",
-    "./observability": "./observability.ts"
+    "./observability": "./observability.ts",
+    "./projection": "./maintainer/projection.ts"
   },
   "dependencies": {
     "@bds_pi/config": "workspace:*",
