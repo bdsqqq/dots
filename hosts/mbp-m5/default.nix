@@ -18,6 +18,7 @@ in
     ../../modules/ssh
     ../../modules/ssh/authorized-keys.nix
     ../../modules/tailscale
+    ../../modules/secrets
     ../../modules/fonts
     ../../modules/homebrew
     ../../modules/homebrew/environment.nix
@@ -57,6 +58,7 @@ in
     ../../modules/open-display
     ../../modules/vscodium
     ../../modules/obsidian
+    ../../modules/iina
     ../../modules/1password
     ../../modules/orbstack
     ../../modules/obs
@@ -147,7 +149,6 @@ in
           qpdf
           inputs.lnr.packages.aarch64-darwin.default
           axiom-cli
-          iina
           ollama
           lua-language-server
           stylua
@@ -167,10 +168,6 @@ in
         guiAddress = "0.0.0.0:8384";
 
         settings = {
-          gui = {
-            user = "bdsqqq";
-            password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
-          };
           options = {
             urAccepted = -1;
             globalAnnounceEnabled = false;

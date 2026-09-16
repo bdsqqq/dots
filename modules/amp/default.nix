@@ -8,6 +8,8 @@ let
     (config.networking.localHostName or "") == "mbp-m2";
 in
 {
+  imports = [ ./credential.nix ];
+
   options.my.amp.apiKeyFile = lib.mkOption {
     type = lib.types.nullOr lib.types.str;
     default = null;

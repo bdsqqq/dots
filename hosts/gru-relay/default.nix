@@ -154,6 +154,7 @@ in
     ];
     authKeyFile = config.sops.secrets.tailscale_auth_key.path;
   };
+  my.tailscale.credential.required = true;
 
   # Keep public ingress owned by the NixOS firewall while still letting
   # Tailscale's exit-node forwarding and masquerade chains do their job.

@@ -7,6 +7,9 @@ on:
       - "cloudflare/**.tf"
       - "cloudflare/apps.auto.tfvars.json"
       - "cloudflare/.terraform.lock.hcl"
+      - "cloudflare/secrets.yaml"
+      - "cloudflare/tofu-with-secrets"
+      - ".sops.yaml"
       - ".github/workflows/cloudflare.yml"
   schedule:
     - cron: "23 10 * * *"
@@ -31,7 +34,6 @@ jobs:
       CLOUDFLARE_ZONE_ID: f6f9ce4af454779e269f70c8e1e8d158
       TF_IN_AUTOMATION: "true"
       TF_INPUT: "false"
-      TF_VAR_family_emails: ${{ secrets.CLOUDFLARE_FAMILY_EMAILS }}
       TF_VAR_owner_email: ${{ secrets.CLOUDFLARE_OWNER_EMAIL }}
       TF_VAR_state_passphrase: ${{ secrets.TOFU_STATE_PASSPHRASE }}
     steps:
@@ -43,7 +45,9 @@ jobs:
           tofu_wrapper: false
 
       - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
-        if: github.event_name != 'schedule'
+
+      - name: Install secret tooling
+        run: nix profile install nixpkgs#sops nixpkgs#jq
 
       - name: Create ephemeral tunnel bootstrap secrets
         if: github.event_name != 'schedule'
@@ -82,7 +86,10 @@ jobs:
             exit 1
           fi
 
-      - run: tofu init
+      - name: Initialize OpenTofu
+        run: ./tofu-with-secrets init
+        env:
+          SOPS_AGE_KEY: ${{ secrets.CLOUDFLARE_SOPS_AGE_KEY }}
 
       - name: Require committed encrypted state
         run: |
@@ -94,7 +101,7 @@ jobs:
           set -euo pipefail
           while IFS=$'\t' read -r app hostname; do
             address="cloudflare_dns_record.app[\"${app}\"]"
-            if tofu state show "${address}" >/dev/null 2>&1; then
+            if ./tofu-with-secrets state show "${address}" >/dev/null 2>&1; then
               continue
             fi
 
@@ -114,14 +121,16 @@ jobs:
             fi
 
             record_id="$(jq -er '.result[0].id' <<< "${records}")"
-            tofu import "${address}" "${CLOUDFLARE_ZONE_ID}/${record_id}"
+            ./tofu-with-secrets import "${address}" "${CLOUDFLARE_ZONE_ID}/${record_id}"
           done < <(jq -r '.apps | to_entries[] | [.key, .value.cloudflare.hostname] | @tsv' apps.auto.tfvars.json)
+        env:
+          SOPS_AGE_KEY: ${{ secrets.CLOUDFLARE_SOPS_AGE_KEY }}
 
       - name: Plan
         id: plan
         run: |
           set +e
-          tofu plan -detailed-exitcode -out=cloudflare.tfplan
+          ./tofu-with-secrets plan -detailed-exitcode -out=cloudflare.tfplan
           status=$?
           set -e
 
@@ -130,23 +139,27 @@ jobs:
             2) echo "changes=true" >> "${GITHUB_OUTPUT}" ;;
             *) exit "${status}" ;;
           esac
+        env:
+          SOPS_AGE_KEY: ${{ secrets.CLOUDFLARE_SOPS_AGE_KEY }}
 
       - name: Reject destructive plans
         run: |
           set -euo pipefail
-          tofu show -json cloudflare.tfplan > cloudflare.tfplan.json
           destructive="$(
-            jq '[
-              .resource_changes[]? |
-              select(.change.actions | index("delete")) |
-              .address
-            ]' cloudflare.tfplan.json
+            ./tofu-with-secrets show -json cloudflare.tfplan |
+              jq -ce '[
+                .resource_changes[]? |
+                select(.change.actions | index("delete")) |
+                .address
+              ]'
           )"
           if [[ "${destructive}" != "[]" ]]; then
             echo "Refusing a plan that deletes or replaces Cloudflare resources:" >&2
             jq -r '.[]' <<< "${destructive}" >&2
             exit 1
           fi
+        env:
+          SOPS_AGE_KEY: ${{ secrets.CLOUDFLARE_SOPS_AGE_KEY }}
 
       - name: Report drift
         if: github.event_name == 'schedule' && steps.plan.outputs.changes == 'true'
@@ -156,19 +169,31 @@ jobs:
 
       - name: Apply
         if: github.event_name != 'schedule' && steps.plan.outputs.changes == 'true'
-        run: tofu apply cloudflare.tfplan
+        run: ./tofu-with-secrets apply cloudflare.tfplan
+        env:
+          SOPS_AGE_KEY: ${{ secrets.CLOUDFLARE_SOPS_AGE_KEY }}
 
       - name: Require convergence
         if: github.event_name != 'schedule'
-        run: tofu plan -detailed-exitcode
+        run: ./tofu-with-secrets plan -detailed-exitcode
+        env:
+          SOPS_AGE_KEY: ${{ secrets.CLOUDFLARE_SOPS_AGE_KEY }}
 
       - name: Report connector identifiers
         if: github.event_name != 'schedule'
-        run: tofu output
+        run: ./tofu-with-secrets output
+        env:
+          SOPS_AGE_KEY: ${{ secrets.CLOUDFLARE_SOPS_AGE_KEY }}
 
       - name: Write applied runtime bindings
         if: github.event_name != 'schedule'
-        run: tofu output -json runtime_bindings > runtime-bindings.json
+        run: ./tofu-with-secrets output -json runtime_bindings > runtime-bindings.json
+        env:
+          SOPS_AGE_KEY: ${{ secrets.CLOUDFLARE_SOPS_AGE_KEY }}
+
+      - name: Remove transient plans
+        if: always()
+        run: rm -f -- cloudflare.tfplan cloudflare.tfplan.json
 
       - name: Encrypt new tunnel credentials
         if: github.event_name != 'schedule'
