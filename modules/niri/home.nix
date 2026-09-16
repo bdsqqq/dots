@@ -30,6 +30,17 @@ let
         }
     }
 
+    // Preserve mpv's video alpha as ordinary compositor transparency. This
+    // must follow the generic effect rule because niri applies later values.
+    window-rule {
+        match app-id="^mpv-transparent$"
+
+        background-effect {
+            blur false
+            xray false
+        }
+    }
+
     layer-rule {
         match namespace="quickshell-notifications"
         opacity 0.95
@@ -332,17 +343,32 @@ else {
       prefer-no-csd = true;
       screenshot-path = "${screenshotDir}/%Y-%m-%dT%H-%M-%S -- source__screenshot.png";
 
-      window-rules = [{
-        draw-border-with-background = false;
-        opacity = 0.95;
-        geometry-corner-radius = {
-          top-left = 8.0;
-          top-right = 8.0;
-          bottom-right = 8.0;
-          bottom-left = 8.0;
-        };
-        clip-to-geometry = true;
-      }];
+      window-rules = [
+        {
+          draw-border-with-background = false;
+          opacity = 0.95;
+          geometry-corner-radius = {
+            top-left = 8.0;
+            top-right = 8.0;
+            bottom-right = 8.0;
+            bottom-left = 8.0;
+          };
+          clip-to-geometry = true;
+        }
+        {
+          # Keep mpv's keyed alpha exact rather than compositing it twice.
+          matches = [ { app-id = "^mpv-transparent$"; } ];
+          open-floating = true;
+          opacity = 1.0;
+          geometry-corner-radius = {
+            top-left = 0.0;
+            top-right = 0.0;
+            bottom-right = 0.0;
+            bottom-left = 0.0;
+          };
+          clip-to-geometry = false;
+        }
+      ];
 
       layer-rules = [{
         # swaybg in backdrop so it doesn't move with workspaces

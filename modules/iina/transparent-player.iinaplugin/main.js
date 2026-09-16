@@ -7,10 +7,6 @@
   var utils = iina.utils;
 
   var mpvExecutable = "@mpv@";
-  // chromakey averages neighboring chroma samples for a smoother matte than the
-  // RGB key. despill then removes green from semi-transparent edge pixels.
-  var chromaKeyFilter =
-    "lavfi=[chromakey=0x00ff00:0.12:0.08,format=rgba,despill=type=green:mix=0.5:expand=0.15]";
 
   function addNumericOption(args, property, option, predicate) {
     var value = mpv.getNumber(property);
@@ -29,17 +25,7 @@
     }
 
     var wasPaused = mpv.getFlag("pause");
-    // The software filter needs CPU-backed frames. background=none then keeps its
-    // alpha instead of flattening the keyed pixels onto an mpv background.
-    var args = [
-      "--no-terminal",
-      "--vo=gpu-next",
-      "--background=none",
-      "--border=no",
-      "--hwdec=no",
-      "--keep-open=yes",
-      "--vf=" + chromaKeyFilter,
-    ];
+    var args = ["--no-terminal"];
 
     addNumericOption(args, "time-pos", "start", function (value) {
       return value > 0;

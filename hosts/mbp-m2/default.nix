@@ -70,6 +70,7 @@ in
     ../../modules/vscodium
     ../../modules/zed
     ../../modules/obsidian
+    ../../modules/mpv
     ../../modules/iina
     ../../modules/1password
     ../../modules/orbstack

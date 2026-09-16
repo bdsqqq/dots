@@ -24,6 +24,7 @@ function deferred() {
 function loadPlugin(options) {
   var state = {
     args: null,
+    executable: null,
     errors: [],
     osd: [],
     pauseCount: 0,
@@ -80,7 +81,8 @@ function loadPlugin(options) {
       },
     },
     utils: {
-      exec: function (_executable, args) {
+      exec: function (executable, args) {
+        state.executable = executable;
         state.args = args;
         return child.promise;
       },
@@ -105,21 +107,19 @@ async function flushPromises() {
   });
 }
 
-test("launches mpv with transparency and restores active playback", async function () {
+test("launches the transparent player and restores active playback", async function () {
   var state = loadPlugin({});
 
   state.action();
 
   assert.equal(state.pauseCount, 1);
   assert.equal(state.resumeCount, 0);
+  assert.ok(
+    state.executable === "@mpv@" ||
+      state.executable.endsWith("/bin/mpv-transparent"),
+  );
   assert.deepEqual(Array.from(state.args), [
     "--no-terminal",
-    "--vo=gpu-next",
-    "--background=none",
-    "--border=no",
-    "--hwdec=no",
-    "--keep-open=yes",
-    "--vf=lavfi=[chromakey=0x00ff00:0.12:0.08,format=rgba,despill=type=green:mix=0.5:expand=0.15]",
     "--start=12.5",
     "--speed=1",
     "--volume=75",

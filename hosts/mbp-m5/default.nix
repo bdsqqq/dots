@@ -58,6 +58,7 @@ in
     ../../modules/open-display
     ../../modules/vscodium
     ../../modules/obsidian
+    ../../modules/mpv
     ../../modules/iina
     ../../modules/1password
     ../../modules/orbstack
