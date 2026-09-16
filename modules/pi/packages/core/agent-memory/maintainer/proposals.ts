@@ -28,6 +28,7 @@ export type ProposalIndexRecord = {
   createdAt: string;
   expiresAt: string;
   admissionDecisionId: string | null;
+  reflectionInvocationId?: string;
 };
 
 export type TransactionIndexRecord = {
@@ -107,6 +108,7 @@ export function saveIndexedProposal(
   expiresAt: string = new Date(
     Date.parse(proposal.provenance.createdAt) + 30 * 86_400_000,
   ).toISOString(),
+  reflectionInvocationId?: string,
 ): ProposalIndexRecord {
   proposal = parseStoredProposal(JSON.stringify(proposal));
   const bytes = `${canonicalJson(proposal as unknown as JsonValue)}\n`;
@@ -124,6 +126,7 @@ export function saveIndexedProposal(
     createdAt: identity.createdAt,
     expiresAt,
     admissionDecisionId: null,
+    ...(reflectionInvocationId ? { reflectionInvocationId } : {}),
   };
   const storedPath = proposalPath(cfg, state, identity.id);
   if (
@@ -138,6 +141,7 @@ export function saveIndexedProposal(
     );
     if (
       existing.proposalSha256 !== record.proposalSha256 ||
+      existing.reflectionInvocationId !== record.reflectionInvocationId ||
       existing.state !== record.state
     )
       throw new Error(`proposal index collision ${identity.id}`);
@@ -163,6 +167,12 @@ function parseProposalIndex(value: unknown): ProposalIndexRecord {
       typeof value.admissionDecisionId !== "string")
   )
     throw new Error("invalid proposal index");
+  if (
+    value.reflectionInvocationId !== undefined &&
+    (typeof value.reflectionInvocationId !== "string" ||
+      !/^inv_[a-f0-9]{32}$/.test(value.reflectionInvocationId))
+  )
+    throw new Error("invalid proposal reflection binding");
   safeRelativePath(value.artifact.relativePath);
   timestamp(value.createdAt, "proposal index createdAt");
   timestamp(value.expiresAt, "proposal index expiresAt");
