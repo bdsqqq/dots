@@ -492,6 +492,7 @@ export function parseStoredProposal(
     ![
       "evidence,id,lane,operation,provenance,status,supersedes,version",
       "digestVersion,evidence,id,lane,operation,provenance,status,supersedes,version",
+      "destination,digestVersion,evidence,id,lane,operation,provenance,status,supersedes,version",
     ].includes(Object.keys(value).sort().join(",")) ||
     value.version !== 2 ||
     (value.digestVersion !== undefined && value.digestVersion !== 2) ||
@@ -535,6 +536,23 @@ export function parseStoredProposal(
         !/^(?:pi|https):\/\//.test(value.provenance.source)))
   )
     throw new Error("invalid stored proposal");
+  if (value.destination !== undefined) {
+    const destination = value.destination;
+    if (
+      value.digestVersion !== 2 ||
+      !object(destination) ||
+      !(
+        (destination.type === "personal" &&
+          Object.keys(destination).join(",") === "type") ||
+        (destination.type === "project" &&
+          Object.keys(destination).sort().join(",") === "repositoryId,type" &&
+          (destination.repositoryId === null ||
+            (typeof destination.repositoryId === "string" &&
+              /^[a-z0-9.-]+\/[A-Za-z0-9._/-]+$/.test(destination.repositoryId))))
+      )
+    )
+      throw new Error("invalid proposal destination");
+  }
   if (value.operation.type === "skill-draft" && value.lane !== "skill")
     throw new Error("proposal lane mismatch");
   if (value.operation.type !== "skill-draft" && value.lane !== "memory")
