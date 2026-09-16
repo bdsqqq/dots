@@ -1,0 +1,21 @@
+diff --git a/thumbfast.lua b/thumbfast.lua
+index 4512327..3763bc7 100644
+--- a/thumbfast.lua
++++ b/thumbfast.lua
+@@ -160 +160 @@
+-local filters_reset = {["lavfi-crop"]=true, ["crop"]=true}
++local filters_reset = {["lavfi-crop"]=true, ["crop"]=true, ["lavfi"]=true}
+@@ -162 +162 @@
+-local filters_all = {["hflip"]=true, ["vflip"]=true, ["lavfi-crop"]=true, ["crop"]=true}
++local filters_all = {["hflip"]=true, ["vflip"]=true, ["lavfi-crop"]=true, ["crop"]=true, ["lavfi"]=true}
+@@ -333,6 +333,9 @@ local function vf_string(filters, full)
+     if vf_table and #vf_table > 0 then
+         for i = #vf_table, 1, -1 do
+-            if filters[vf_table[i].name] then
++            local name = vf_table[i].name
++            if name == "lavfi" and filters[name] and vf_table[i].enabled ~= false and vf_table[i].params.graph then
++                vf = vf .. "lavfi=[" .. vf_table[i].params.graph .. "],"
++            elseif name ~= "lavfi" and filters[name] then
+                 local args = ""
+                 for key, value in pairs(vf_table[i].params) do
+                     if args ~= "" then
