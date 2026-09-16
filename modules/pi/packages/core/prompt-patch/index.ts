@@ -1,98 +1,4 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type, type TObject, type TSchema, type TUnion } from "typebox";
-
-function closeObjectSchemas<T>(
-  value: T,
-  seen = new WeakMap<object, unknown>(),
-): T {
-  if (value === null || typeof value !== "object") return value;
-  const cached = seen.get(value);
-  if (cached) return cached as T;
-
-  if (Array.isArray(value)) {
-    const clone: unknown[] = [];
-    seen.set(value, clone);
-    for (const item of value) clone.push(closeObjectSchemas(item, seen));
-    return clone as T;
-  }
-
-  const clone = Object.create(Object.getPrototypeOf(value)) as Record<
-    PropertyKey,
-    unknown
-  >;
-  seen.set(value, clone);
-  for (const key of Reflect.ownKeys(value)) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-    if ("value" in descriptor) {
-      descriptor.value = closeObjectSchemas(descriptor.value, seen);
-    }
-    Object.defineProperty(clone, key, descriptor);
-  }
-  if (clone.type === "object") {
-    if (clone.additionalProperties === undefined) {
-      clone.additionalProperties = false;
-    }
-    const properties = clone.properties as Record<string, TSchema> | undefined;
-    if (properties) {
-      const originallyRequired = new Set(
-        Array.isArray(clone.required) ? clone.required : [],
-      );
-      for (const [key, schema] of Object.entries(properties)) {
-        if (!originallyRequired.has(key)) {
-          properties[key] = Type.Union([schema, Type.Null()]);
-        }
-      }
-      clone.required = Object.keys(properties);
-    }
-  }
-  return clone as T;
-}
-
-function schemaAllowsNull(schema: unknown): boolean {
-  if (schema === null || typeof schema !== "object") return false;
-  const value = schema as Record<string, unknown>;
-  if (value.const === null) return true;
-  if (Array.isArray(value.enum) && value.enum.includes(null)) return true;
-  if (value.type === "null") return true;
-  if (Array.isArray(value.type) && value.type.includes("null")) return true;
-  return [value.anyOf, value.oneOf].some(
-    (variants) =>
-      Array.isArray(variants) &&
-      variants.some((item) => schemaAllowsNull(item)),
-  );
-}
-
-function restoreOptionalArguments<T>(value: T, schema: unknown): T {
-  if (value === null || typeof value !== "object") return value;
-  const shape =
-    schema !== null && typeof schema === "object"
-      ? (schema as Record<string, unknown>)
-      : undefined;
-
-  if (Array.isArray(value)) {
-    return value.map((item) =>
-      restoreOptionalArguments(item, shape?.items),
-    ) as T;
-  }
-
-  const properties = shape?.properties as Record<string, unknown> | undefined;
-  const required = new Set(
-    Array.isArray(shape?.required) ? (shape.required as string[]) : [],
-  );
-  const restored: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(value)) {
-    const propertySchema = properties?.[key];
-    const syntheticNull =
-      child === null &&
-      propertySchema !== undefined &&
-      !required.has(key) &&
-      !schemaAllowsNull(propertySchema);
-    if (!syntheticNull) {
-      restored[key] = restoreOptionalArguments(child, propertySchema);
-    }
-  }
-  return restored as T;
-}
 
 /**
  * derives promptSnippet and promptGuidelines from a tool's description
@@ -112,17 +18,8 @@ export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
     patched.promptGuidelines = guidelines;
   }
   if (patched.constrainedSampling === undefined) {
-    const originalParameters = patched.parameters;
-    patched.parameters = closeObjectSchemas(originalParameters);
-    const execute = patched.execute.bind(patched);
-    patched.execute = (toolCallId, params, signal, onUpdate, ctx) =>
-      execute(
-        toolCallId,
-        restoreOptionalArguments(params, originalParameters),
-        signal,
-        onUpdate,
-        ctx,
-      );
+    // pi-ai owns strict wire-schema conversion and optional-null normalization.
+    // rewriting parameters here makes optional fields required before execute.
     patched.constrainedSampling = {
       type: "json_schema",
       strict: "prefer",
@@ -135,6 +32,7 @@ export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
 if (import.meta.vitest) {
   const { describe, it, expect } = await import("vitest");
   const { Type } = await import("typebox");
+  const { validateToolArguments } = await import("@earendil-works/pi-ai");
 
   function makeTool(overrides: Partial<ToolDefinition> = {}): ToolDefinition {
     return {
@@ -243,7 +141,7 @@ if (import.meta.vitest) {
       expect(patched.promptGuidelines).toBeUndefined();
     });
 
-    it("prefers strict JSON-schema sampling with closed object schemas", () => {
+    it("prefers strict sampling without changing the local tool contract", () => {
       const tool = makeTool({
         parameters: Type.Object({
           nested: Type.Object({ value: Type.String() }),
@@ -257,21 +155,8 @@ if (import.meta.vitest) {
         type: "json_schema",
         strict: "prefer",
       });
-      expect(patched.parameters).not.toBe(tool.parameters);
-      type ClosedObject = TObject & { additionalProperties?: boolean };
-      const parameters = patched.parameters as ClosedObject;
-      expect(parameters.additionalProperties).toBe(false);
-      expect(parameters.required).toEqual(["nested", "optionalNested"]);
-      const nested = parameters.properties.nested as ClosedObject;
-      expect(nested.additionalProperties).toBe(false);
-      expect(nested.required).toEqual(["value"]);
-      const optional = parameters.properties.optionalNested as TUnion;
-      const optionalNested = optional.anyOf[0] as ClosedObject;
-      expect(optionalNested.additionalProperties).toBe(false);
-      expect(optionalNested.required).toEqual(["value"]);
-      expect(
-        (tool.parameters as ClosedObject).additionalProperties,
-      ).toBeUndefined();
+      expect(patched.parameters).toBe(tool.parameters);
+      expect(patched.execute).toBe(tool.execute);
     });
 
     it("preserves an explicit constrained-sampling choice", () => {
@@ -279,8 +164,58 @@ if (import.meta.vitest) {
       expect(patched.constrainedSampling).toBe(false);
     });
 
-    it("removes only synthetic optional null placeholders", async () => {
-      let received: unknown;
+    it.each([
+      {
+        name: "read",
+        parameters: Type.Object({
+          path: Type.String(),
+          read_range: Type.Optional(
+            Type.Array(Type.Number(), { minItems: 2, maxItems: 2 }),
+          ),
+        }),
+        minimal: { path: "/tmp/example" },
+        placeholders: { path: "/tmp/example", read_range: null },
+        explicit: { path: "/tmp/example", read_range: [1, 20] },
+        invalid: { path: "/tmp/example", read_range: [1] },
+      },
+      {
+        name: "web_search",
+        parameters: Type.Object({
+          objective: Type.String(),
+          search_queries: Type.Optional(Type.Array(Type.String())),
+          max_results: Type.Optional(Type.Number()),
+        }),
+        minimal: { objective: "mpv wayland transparency" },
+        placeholders: {
+          objective: "mpv wayland transparency",
+          search_queries: null,
+          max_results: null,
+        },
+        explicit: {
+          objective: "mpv wayland transparency",
+          search_queries: ["mpv background=none"],
+          max_results: 5,
+        },
+        invalid: { objective: "mpv wayland transparency", max_results: {} },
+      },
+    ])("validates $name optional arguments before execution", (fixture) => {
+      const patched = withPromptPatch(makeTool(fixture));
+      const validate = (args: Record<string, unknown>) =>
+        validateToolArguments(patched, {
+          type: "toolCall",
+          id: "test",
+          name: patched.name,
+          arguments: args,
+        });
+
+      expect(validate(fixture.minimal)).toEqual(fixture.minimal);
+      expect(validate(fixture.placeholders)).toEqual(fixture.minimal);
+      expect(validate(fixture.explicit)).toEqual(fixture.explicit);
+      expect(() => validate({})).toThrow();
+      expect(() => validate(fixture.invalid)).toThrow();
+    });
+
+    it("normalizes only synthetic nulls through upstream validation", () => {
       const tool = makeTool({
         parameters: Type.Object({
           omitted: Type.Optional(Type.String()),
@@ -290,30 +225,22 @@ if (import.meta.vitest) {
             Type.Object({ omitted: Type.Optional(Type.String()) }),
           ),
         }),
-        async execute(_id, params, _signal, _onUpdate, _ctx) {
-          received = params;
-          return {
-            content: [{ type: "text", text: "ok" }],
-            details: undefined,
-          };
-        },
       });
       const patched = withPromptPatch(tool);
 
-      await patched.execute(
-        "id",
-        {
+      const validated = validateToolArguments(patched, {
+        type: "toolCall",
+        id: "test",
+        name: patched.name,
+        arguments: {
           omitted: null,
           nullable: null,
           requiredNullable: null,
           rows: [{ omitted: null }],
-        } as never,
-        undefined,
-        undefined,
-        {} as never,
-      );
+        },
+      });
 
-      expect(received).toEqual({
+      expect(validated).toEqual({
         nullable: null,
         requiredNullable: null,
         rows: [{}],
