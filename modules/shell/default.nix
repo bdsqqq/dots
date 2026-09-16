@@ -4,10 +4,18 @@
   pkgs,
   ...
 }: {
-  imports = [ ./path-order.nix ];
+  imports = [
+    ./path-order.nix
+    ../artificial-analysis/credential.nix
+    ../github/credential.nix
+    ../huggingface/credential.nix
+  ];
 
   programs.zsh.enable = true;
   users.users.${config.my.primaryUser}.shell = lib.mkDefault pkgs.zsh;
+  my.artificialAnalysis.credential.required = true;
+  my.github.credential.required = true;
+  my.huggingface.credential.required = true;
 
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
     # define my.defaultShell option here, derived from enabled shell programs
@@ -137,9 +145,8 @@
                    export PATH="$AMI_INSTALL/bin:$PATH"
                    export GH_TOKEN="$(cat /run/secrets/gh_token 2>/dev/null || echo "$GH_TOKEN")"
                    export HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || echo "$HF_TOKEN")"
-                   export PARALLEL_API_KEY="$(cat /run/secrets/parallel_api_key 2>/dev/null || echo "$PARALLEL_API_KEY")"
                    export SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || echo "$SENTRY_AUTH_TOKEN")"
-                   export artificial_analysis_api_key="$(cat /run/secrets/artificial_analysis_api_key 2>/dev/null || echo "$parallel_api_key")"
+                   export artificial_analysis_api_key="$(cat /run/secrets/artificial_analysis_api_key 2>/dev/null || echo "$artificial_analysis_api_key")"
 
                    export NIX_CONFIG="access-tokens = github.com=$(cat /run/secrets/gh_token 2>/dev/null || echo "")"
 

@@ -36,7 +36,7 @@ examples:
   download-media -d ~/Downloads https://twitter.com/user/status/123
   download-media --dry-run https://instagram.com/p/abc123
 
-cookies are read from sops-nix at /run/user/\$UID/secrets/cookies if available.
+cookies are read from sops-nix at /run/secrets/cookies if available.
 falls back to yt-dlp → gallery-dl in sequence.
 EOF
 }

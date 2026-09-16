@@ -173,6 +173,7 @@ in
       config.sops.secrets ? tailscale_auth_key
     ) config.sops.secrets.tailscale_auth_key.path;
   };
+  my.tailscale.credential.required = true;
 
   # copyparty file server
   services.copyparty = {
@@ -197,10 +198,6 @@ in
     openDefaultPorts = false;
     guiAddress = "0.0.0.0:8384";
     settings = {
-      gui = {
-        user = "bdsqqq";
-        password = "$2a$10$jGT.D5kEaNOxsNaCvrmfqukdEW5e9ugrXU/dR15oSAACbDEYIR5YO";
-      };
       options = {
         urAccepted = -1;
         listenAddress = [

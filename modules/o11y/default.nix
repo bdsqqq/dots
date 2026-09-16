@@ -319,7 +319,7 @@ let
   '';
 in
 {
-  imports = lib.optionals isDarwin [ ./darwin.nix ];
+  imports = [ ./credential.nix ] ++ lib.optionals isDarwin [ ./darwin.nix ];
 
   options.services.o11y = {
     enable = lib.mkOption {
@@ -345,34 +345,7 @@ in
   config = lib.mkIf cfg.enable (
     let
       common = {
-        sops.secrets = {
-          "axiom/personal_url" = {
-            sopsFile = ./secrets.yaml;
-            key = "personal_url";
-            owner = "bdsqqq";
-          };
-          "axiom/personal_org_id" = {
-            sopsFile = ./secrets.yaml;
-            key = "personal_org_id";
-            owner = "bdsqqq";
-          };
-          "axiom/personal_token" = {
-            sopsFile = ./secrets.yaml;
-            key = "personal_token";
-            owner = "bdsqqq";
-          };
-          "axiom/papertrail_token" = {
-            sopsFile = ./secrets.yaml;
-            key = "papertrail_token";
-            owner = "bdsqqq";
-          };
-          "axiom/host_metrics_token" = {
-            sopsFile = ./secrets.yaml;
-            key = "host_metrics_token";
-            owner = "bdsqqq";
-          };
-        };
-
+        my.o11y.credential.required = true;
         environment.systemPackages = [ pkgs.opentelemetry-collector-contrib ];
         environment.etc."otelcol/axiom.yaml".source = otelcolConfig;
       };

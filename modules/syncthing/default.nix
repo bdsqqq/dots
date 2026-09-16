@@ -60,31 +60,40 @@ let
       };
   };
 in
-if isLinux then
-  lib.recursiveUpdate linuxStignoreConfig {
-    # NixOS uses system service; declarative folder/device config in host files
-    services.syncthing = {
-      enable = true;
-      user = "bdsqqq";
-      dataDir = "/home/bdsqqq";
-      configDir = "/home/bdsqqq/.config/syncthing";
-      guiAddress = "0.0.0.0:8384";
-    };
+{
+  imports = [ ./credential.nix ];
 
-    networking.firewall.interfaces."tailscale0".allowedTCPPorts = [
-      8384
-      22000
-    ];
-    networking.firewall.interfaces."tailscale0".allowedUDPPorts = [
-      22000
-      21027
-    ];
-  }
-else if isDarwin then
-  darwinStignoreConfig
-  // {
-    # darwin: syncthing managed entirely by home-manager's services.syncthing
-    # (creates launchd agents for both daemon and config init)
-  }
-else
-  { }
+  config = lib.mkMerge [
+    { my.syncthing.credential.required = true; }
+    (
+      if isLinux then
+        lib.recursiveUpdate linuxStignoreConfig {
+          # NixOS uses system service; declarative folder/device config in host files
+          services.syncthing = {
+            enable = true;
+            user = "bdsqqq";
+            dataDir = "/home/bdsqqq";
+            configDir = "/home/bdsqqq/.config/syncthing";
+            guiAddress = "0.0.0.0:8384";
+          };
+
+          networking.firewall.interfaces."tailscale0".allowedTCPPorts = [
+            8384
+            22000
+          ];
+          networking.firewall.interfaces."tailscale0".allowedUDPPorts = [
+            22000
+            21027
+          ];
+        }
+      else if isDarwin then
+        darwinStignoreConfig
+        // {
+          # darwin: syncthing managed entirely by home-manager's services.syncthing
+          # (creates launchd agents for both daemon and config init)
+        }
+      else
+        { }
+    )
+  ];
+}

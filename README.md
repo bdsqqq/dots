@@ -40,6 +40,8 @@ flowchart TD
 | `lib.nix` | pure data or helpers without a NixOS option graph |
 | `service.nix` | explicit deployment integration when packaging and service policy are separate |
 | `tailnet-app.nix` | declarative tailnet and Cloudflare metadata discovered by the catalog |
+| `credential.nix` | the feature's stable credential owner; consumers import it and set its requirement flag |
+| `secrets.yaml` | canonical ciphertext adjacent to its `credential.nix` owner |
 
 ## configurations
 
@@ -95,14 +97,17 @@ generated JSON is output, not an additional source of truth.
 ## secrets
 
 secrets use sops-nix. `.sops.yaml` contains public recipients, while encrypted
-values live in `secrets.yaml` and feature-local files such as
-`modules/o11y/secrets.yaml`. runtime declarations live in
-`modules/secrets/default.nix`.
+values and runtime declarations live beside the domain that owns them. consumer
+count does not affect ownership: a second consumer imports the same
+`credential.nix` rather than moving or copying its ciphertext.
 
 ```bash
-sops secrets.yaml
-sops updatekeys secrets.yaml
+sops modules/<feature>/secrets.yaml
+sops updatekeys modules/<feature>/secrets.yaml
+nix build .#checks.aarch64-darwin.credential-ownership
+nix build .#checks.aarch64-darwin.credential-host-closures
 ```
 
+`modules/secrets/default.nix` owns only shared sops/age infrastructure.
 never commit private age keys. see [SECRETS.md](./SECRETS.md) for setup and
 rotation.

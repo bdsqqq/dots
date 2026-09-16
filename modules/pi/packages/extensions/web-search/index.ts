@@ -314,7 +314,8 @@ export function createWebSearchTool(
           content: [
             {
               type: "text" as const,
-              text: "PARALLEL_API_KEY not set. add it to secrets.yaml and export in shell.nix.",
+              text:
+                "PARALLEL_API_KEY not set. configure modules/pi/packages/extensions/web-search/secrets.yaml and rebuild, or export it for this process.",
             },
           ],
           isError: true,
