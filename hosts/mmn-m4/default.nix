@@ -53,6 +53,7 @@ in
     ../../modules/photo-gallery/service.nix
     ../../modules/photo-intelligence/service.nix
     ../../modules/hue-control
+    ../../modules/hue-homekit
   ];
 
   networking = {
@@ -93,6 +94,10 @@ in
   my.hueControl = {
     enable = true;
     publishService = true;
+  };
+  my.hueHomekit = {
+    enable = true;
+    interface = "en1";
   };
   my.backrest = {
     homeDirectory = "/Users/bdsqqq";

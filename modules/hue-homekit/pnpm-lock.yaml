@@ -1,0 +1,307 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@homebridge/hap-nodejs':
+        specifier: 2.2.3
+        version: 2.2.3
+      color-convert:
+        specifier: 3.1.3
+        version: 3.1.3
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.4
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+packages:
+
+  '@homebridge/ciao@1.3.12':
+    resolution: {integrity: sha512-84/0u0kqKy4qcKupIDaTtbkmk+3qFDuMzxTC0NPfVlHcUT+jHGdP+QCqwEw94/GJxRezDeBLwxaclkBZgCdeUg==}
+    hasBin: true
+
+  '@homebridge/dbus-native@0.7.9':
+    resolution: {integrity: sha512-PFOeWyXfH2eoM4o6Zmj9PzCUDlrrbtrbAJVzHYXpXK5rh/dz84Ygu79WHKK3DWW2/oXieYPV6up+i1izSPbc3g==}
+    hasBin: true
+
+  '@homebridge/hap-nodejs@2.2.3':
+    resolution: {integrity: sha512-7aML96ZSjHcUunb5d3mYRIzoH4m//hb7NBT6LXNqAWHnHRjlVEbqIiV2knjYrNrFOvD4ib8+f4fXhJ4a3fFupw==}
+    engines: {node: ^22 || ^24 || ^26}
+
+  '@leichtgewicht/ip-codec@2.0.5':
+    resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
+
+  '@types/node@24.13.4':
+    resolution: {integrity: sha512-YJ7EqCstVTzIr0fMr7qul/977en+pQHrfmuKIo6Zr9i75Be21dr3MovcfvGtyvi2HAUrRerWps5sMO9I7WaxDw==}
+
+  bonjour-hap@3.10.5:
+    resolution: {integrity: sha512-8E81oIQF0pjlDNVAKcAGwPYYG9BKD42Q8Fi7eJ/vYxEwyL/M8YpjM4gnFC1QTmagWI3jzbw7jPI0q2C1qWfQLQ==}
+
+  buffer-from@1.1.2:
+    resolution: {integrity: sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ==}
+
+  color-convert@3.1.3:
+    resolution: {integrity: sha512-fasDH2ont2GqF5HpyO4w0+BcewlhHEZOFn9c1ckZdHpJ56Qb7MHhH/IcJZbBGgvdtwdwNbLvxiBEdg336iA9Sg==}
+    engines: {node: '>=14.6'}
+
+  color-name@2.1.1:
+    resolution: {integrity: sha512-p2FdgwVx1a9yWBHP2wI0VgShkDpgN4kZISkxdNipGBJWpa5G6b04OINlVWCyJj0JmfvcPrgqt95E9k8yvaOJFg==}
+    engines: {node: '>=12.20'}
+
+  debug@4.4.3:
+    resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
+    engines: {node: '>=6.0'}
+    peerDependencies:
+      supports-color: '*'
+    peerDependenciesMeta:
+      supports-color:
+        optional: true
+
+  dns-packet@5.6.1:
+    resolution: {integrity: sha512-l4gcSouhcgIKRvyy99RNVOgxXiicE+2jZoNmaNmZ6JXiGajBOJAesk1OBlJuM5k2c+eudGdLxDqXuPCKIj6kpw==}
+    engines: {node: '>=6'}
+
+  duplexer@0.1.2:
+    resolution: {integrity: sha512-jtD6YG370ZCIi/9GTaJKQxWTZD045+4R4hTk/x1UyoqadyJ9x9CgSi1RlVDQF8U2sxLLSnFkCaMihqljHIWgMg==}
+
+  event-stream@4.0.1:
+    resolution: {integrity: sha512-qACXdu/9VHPBzcyhdOWR5/IahhGMf0roTeZJfzz077GwylcDd90yOHLouhmv7GJ5XzPi6ekaQWd8AvPP2nOvpA==}
+
+  fast-deep-equal@3.1.3:
+    resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
+
+  fast-srp-hap@2.0.4:
+    resolution: {integrity: sha512-lHRYYaaIbMrhZtsdGTwPN82UbqD9Bv8QfOlKs+Dz6YRnByZifOh93EYmf2iEWFtkOEIqR2IK8cFD0UN5wLIWBQ==}
+    engines: {node: '>=10.17.0'}
+
+  from@0.1.7:
+    resolution: {integrity: sha512-twe20eF1OxVxp/ML/kq2p1uc6KvFK/+vs8WjEbeKmV2He22MKm7YF2ANIt+EOqhJ5L3K/SuuPhk0hWQDjOM23g==}
+
+  futoin-hkdf@1.5.3:
+    resolution: {integrity: sha512-SewY5KdMpaoCeh7jachEWFsh1nNlaDjNHZXWqL5IGwtpEYHTgkr2+AMCgNwKWkcc0wpSYrZfR7he4WdmHFtDxQ==}
+    engines: {node: '>=8'}
+
+  hexy@0.4.0:
+    resolution: {integrity: sha512-HxJ6HCV/zrSBeAVRNEhr3CE6yTlCYklMHfCVfJkp7kC+HJqSP1SQ+howWPiHK37t++ELUtgoAoGJut5HyRhIvg==}
+    engines: {node: '>=14.0.0'}
+    hasBin: true
+
+  long@5.3.2:
+    resolution: {integrity: sha512-mNAgZ1GmyNhD7AuqnTG3/VQ26o760+ZYBPKjPvugO8+nLbYfX6TVpJPseBvopbdY+qpZ/lKUnmEc1LeZYS3QAA==}
+
+  map-stream@0.0.7:
+    resolution: {integrity: sha512-C0X0KQmGm3N2ftbTGBhSyuydQ+vV1LC3f3zPvT3RXHXNZrvfPZcoXp/N5DOa8vedX/rTMm2CjTtivFg2STJMRQ==}
+
+  minimist@1.2.8:
+    resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
+
+  ms@2.1.3:
+    resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
+
+  multicast-dns-service-types@1.1.0:
+    resolution: {integrity: sha512-cnAsSVxIDsYt0v7HmC0hWZFwwXSh+E6PgCrREDuN/EsjgLwA5XRmlMHhSiDPrt6HxY1gTivEa/Zh7GtODoLevQ==}
+
+  multicast-dns@7.2.5:
+    resolution: {integrity: sha512-2eznPJP8z2BFLX50tf0LuODrpINqP1RVIm/CObbTcBRITQgmC/TjcREF1NeTBzIcR5XO/ukWo+YHOjBbFwIupg==}
+    hasBin: true
+
+  pause-stream@0.0.11:
+    resolution: {integrity: sha512-e3FBlXLmN/D1S+zHzanP4E/4Z60oFAa3O051qt1pxa7DEJWKAyil6upYVXCWadEnuoqa4Pkc9oUx9zsxYeRv8A==}
+
+  safe-buffer@5.2.1:
+    resolution: {integrity: sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==}
+
+  sax@1.6.1:
+    resolution: {integrity: sha512-42tBVwLWnaQvW5zc4HbZrTuWccECCZfBi92FDuwtqxasH+JbPB3/FOKb1m222K42R4WxuxzzMsTswfzgtSu64Q==}
+    engines: {node: '>=11.0.0'}
+
+  source-map-support@0.5.21:
+    resolution: {integrity: sha512-uBHU3L3czsIyYXKX88fdrGovxdSCoTGDRZ6SYXtSRxLZUzHg5P/66Ht6uoUlHu9EZod+inXhKo3qQgwXUT/y1w==}
+
+  source-map@0.6.1:
+    resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
+    engines: {node: '>=0.10.0'}
+
+  split@1.0.1:
+    resolution: {integrity: sha512-mTyOoPbrivtXnwnIxZRFYRrPNtEFKlpB2fvjSnCQUiAA6qAZzqwna5envK4uk6OIeP17CsdF3rSBGYVBsU0Tkg==}
+
+  stream-combiner@0.2.2:
+    resolution: {integrity: sha512-6yHMqgLYDzQDcAkL+tjJDC5nSNuNIx0vZtRZeiPh7Saef7VHX9H5Ijn9l2VIol2zaNYlYEX6KyuT/237A58qEQ==}
+
+  through@2.3.8:
+    resolution: {integrity: sha512-w89qg7PI8wAdvX60bMDP+bFoD5Dvhm9oLheFp5O4a2QF0cSBGsBX4qZmadPMvVqlLJBBci+WqGGOAPvcDeNSVg==}
+
+  thunky@1.1.0:
+    resolution: {integrity: sha512-eHY7nBftgThBqOyHGVN+l8gF0BucP09fMo0oO/Lb0w1OF80dJv+lDVpXG60WMQvkcxAkNybKsrEIE3ZtKGmPrA==}
+
+  tslib@2.8.1:
+    resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
+
+  tweetnacl@1.0.3:
+    resolution: {integrity: sha512-6rt+RN7aOi1nGMyC4Xa5DdYiukl2UWCbcJft7YhxReBGQD7OAM8Pbxw6YMo4r2diNEA8FEmu32YOn9rhaiE5yw==}
+
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
+  undici-types@7.18.2:
+    resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
+
+  xml2js@0.6.2:
+    resolution: {integrity: sha512-T4rieHaC1EXcES0Kxxj4JWgaUQHDk+qwHcYOCFHfiwKz7tOVPLq7Hjq9dM1WCMhylqMEfP7hMcOIChvotiZegA==}
+    engines: {node: '>=4.0.0'}
+
+  xmlbuilder@11.0.1:
+    resolution: {integrity: sha512-fDlsI/kFEx7gLvbecc0/ohLG50fugQp8ryHzMTuW9vSa1GJ0XYWKnhsUx7oie3G98+r56aTQIUB4kht42R3JvA==}
+    engines: {node: '>=4.0'}
+
+snapshots:
+
+  '@homebridge/ciao@1.3.12':
+    dependencies:
+      debug: 4.4.3
+      fast-deep-equal: 3.1.3
+      source-map-support: 0.5.21
+      tslib: 2.8.1
+    transitivePeerDependencies:
+      - supports-color
+
+  '@homebridge/dbus-native@0.7.9':
+    dependencies:
+      event-stream: 4.0.1
+      hexy: 0.4.0
+      long: 5.3.2
+      minimist: 1.2.8
+      safe-buffer: 5.2.1
+      xml2js: 0.6.2
+
+  '@homebridge/hap-nodejs@2.2.3':
+    dependencies:
+      '@homebridge/ciao': 1.3.12
+      '@homebridge/dbus-native': 0.7.9
+      bonjour-hap: 3.10.5
+      debug: 4.4.3
+      fast-srp-hap: 2.0.4
+      futoin-hkdf: 1.5.3
+      source-map-support: 0.5.21
+      tslib: 2.8.1
+      tweetnacl: 1.0.3
+    transitivePeerDependencies:
+      - supports-color
+
+  '@leichtgewicht/ip-codec@2.0.5': {}
+
+  '@types/node@24.13.4':
+    dependencies:
+      undici-types: 7.18.2
+
+  bonjour-hap@3.10.5:
+    dependencies:
+      fast-deep-equal: 3.1.3
+      multicast-dns: 7.2.5
+      multicast-dns-service-types: 1.1.0
+
+  buffer-from@1.1.2: {}
+
+  color-convert@3.1.3:
+    dependencies:
+      color-name: 2.1.1
+
+  color-name@2.1.1: {}
+
+  debug@4.4.3:
+    dependencies:
+      ms: 2.1.3
+
+  dns-packet@5.6.1:
+    dependencies:
+      '@leichtgewicht/ip-codec': 2.0.5
+
+  duplexer@0.1.2: {}
+
+  event-stream@4.0.1:
+    dependencies:
+      duplexer: 0.1.2
+      from: 0.1.7
+      map-stream: 0.0.7
+      pause-stream: 0.0.11
+      split: 1.0.1
+      stream-combiner: 0.2.2
+      through: 2.3.8
+
+  fast-deep-equal@3.1.3: {}
+
+  fast-srp-hap@2.0.4: {}
+
+  from@0.1.7: {}
+
+  futoin-hkdf@1.5.3: {}
+
+  hexy@0.4.0: {}
+
+  long@5.3.2: {}
+
+  map-stream@0.0.7: {}
+
+  minimist@1.2.8: {}
+
+  ms@2.1.3: {}
+
+  multicast-dns-service-types@1.1.0: {}
+
+  multicast-dns@7.2.5:
+    dependencies:
+      dns-packet: 5.6.1
+      thunky: 1.1.0
+
+  pause-stream@0.0.11:
+    dependencies:
+      through: 2.3.8
+
+  safe-buffer@5.2.1: {}
+
+  sax@1.6.1: {}
+
+  source-map-support@0.5.21:
+    dependencies:
+      buffer-from: 1.1.2
+      source-map: 0.6.1
+
+  source-map@0.6.1: {}
+
+  split@1.0.1:
+    dependencies:
+      through: 2.3.8
+
+  stream-combiner@0.2.2:
+    dependencies:
+      duplexer: 0.1.2
+      through: 2.3.8
+
+  through@2.3.8: {}
+
+  thunky@1.1.0: {}
+
+  tslib@2.8.1: {}
+
+  tweetnacl@1.0.3: {}
+
+  typescript@5.9.3: {}
+
+  undici-types@7.18.2: {}
+
+  xml2js@0.6.2:
+    dependencies:
+      sax: 1.6.1
+      xmlbuilder: 11.0.1
+
+  xmlbuilder@11.0.1: {}
