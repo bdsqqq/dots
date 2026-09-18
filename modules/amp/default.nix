@@ -1,6 +1,10 @@
 { config, lib, ... }:
 let
   cfg = config.my.amp;
+  axiomCredentialsEnabled = config.my.o11y.credential.required or false;
+  axiomTokenFile = if axiomCredentialsEnabled then config.sops.secrets."axiom/personal_token".path else "";
+  axiomOrgFile = if axiomCredentialsEnabled then config.sops.secrets."axiom/personal_org_id".path else "";
+  credentialWrapperEnabled = cfg.apiKeyFile != null || axiomCredentialsEnabled;
   repoSettings = "${config.my.paths.commonplace}/01_files/nix/modules/amp/settings.json";
   # This host is the composition point; Amp remains a capture adapter while
   # the installed pi-memory service owns every semantic pipeline stage.
@@ -20,13 +24,14 @@ in
     { config, lib, pkgs, ... }:
     let
       ampCredentialWrapper =
-        if cfg.apiKeyFile == null then
+        if !credentialWrapperEnabled then
           null
         else
-          pkgs.writeShellScript "amp-with-api-key" ''
-            set -eu
-            export AMP_API_KEY="$(<${lib.escapeShellArg cfg.apiKeyFile})"
-            exec ${lib.escapeShellArg "${config.home.homeDirectory}/.amp/bin/amp"} "$@"
+          pkgs.writeShellScript "amp-with-credentials" ''
+            exec ${pkgs.bash}/bin/bash ${./launch-with-credentials.sh} \
+              ${lib.escapeShellArg "${config.home.homeDirectory}/.amp/bin/amp"} \
+              ${lib.escapeShellArg (if cfg.apiKeyFile == null then "" else cfg.apiKeyFile)} \
+              ${lib.escapeShellArg axiomTokenFile} ${lib.escapeShellArg axiomOrgFile} "$@"
           '';
       memoryPlugin = pkgs.runCommand "amp-pi-memory-plugin" { } ''
         mkdir -p "$out/plugins" "$out/lib"
@@ -36,7 +41,7 @@ in
     in
     {
       custom.path.segments =
-        lib.optionals (cfg.apiKeyFile != null) [
+        lib.optionals credentialWrapperEnabled [
           {
             order = 70;
             value = "${config.home.homeDirectory}/.local/lib/amp-auth/bin";
@@ -57,7 +62,7 @@ in
         fi
       '';
 
-      home.file.".local/lib/amp-auth/bin/amp" = lib.mkIf (cfg.apiKeyFile != null) {
+      home.file.".local/lib/amp-auth/bin/amp" = lib.mkIf credentialWrapperEnabled {
         source = ampCredentialWrapper;
       };
 
