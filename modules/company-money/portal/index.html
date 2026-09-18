@@ -9,15 +9,24 @@
 </head>
 <body><main>
   <header><h1>money</h1><button id="refresh" type="button">refresh</button></header>
-  <p id="entity">nubank · company account</p>
+  <p id="entity">company accounts</p>
   <p id="status" role="status">loading ledger…</p>
   <section id="totals" aria-label="money in, out, and net movement"></section>
-  <p class="note">completed movements in the imported statements, including unclassified money and transfers. net movement is not your bank balance or profit.</p>
+  <p class="note">completed movements across configured company accounts, including unclassified money and internal transfers. wise dates are notification dates, not confirmed bank booking dates. net movement is not your bank balance or profit.</p>
   <div class="table-wrap"><table>
     <caption>transactions</caption>
-    <thead><tr><th scope="col">date</th><th scope="col">description</th><th scope="col">classification / status</th><th scope="col" class="amount">amount</th></tr></thead>
+    <thead><tr><th scope="col">date</th><th scope="col">source / description</th><th scope="col">classification / status</th><th scope="col" class="amount">amount</th></tr></thead>
     <tbody id="transactions"></tbody>
   </table></div>
+  <section id="mail" aria-labelledby="mail-title">
+    <h2 id="mail-title">mail evidence</h2>
+    <p id="mail-status" role="status">loading saved work mail…</p>
+    <p class="note">confirmed transfers appear in the ledger above. evidence below is not added again; unresolved candidate amounts are excluded. received dates are email dates, not booking dates. ownership-ambiguous amounts are hidden.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">received (utc)</th><th scope="col">source</th><th scope="col">outcome</th><th scope="col">candidate amounts · not counted</th></tr></thead>
+      <tbody id="mail-records"></tbody>
+    </table></div>
+  </section>
   <noscript>javascript is required to load the private tally.</noscript>
 </main></body>
 </html>

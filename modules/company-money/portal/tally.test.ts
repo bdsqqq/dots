@@ -3,7 +3,8 @@ import test from "node:test";
 import { mkdtemp, writeFile, readFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createTally, readTally, TallyV1Schema } from "./tally.ts";
+import { createTally, readTally, TallyV2Schema } from "./tally.ts";
+import { createMailReview } from "./mail-review.ts";
 import { PrivateConfigV1Schema } from "../private-config.ts";
 import { applyIngestBatch } from "../ledger/ingest.ts";
 import { emptyLedgerSnapshot } from "../ledger/state.ts";
@@ -41,7 +42,7 @@ test("tally scopes entity/account/provider, counts unresolved flows, separates c
   ]);
   assert.ok(tally.transactions.every(t => t.classification === "unresolved"));
   assert.deepEqual(createTally({ ...ledger, transactions: [...ledger.transactions].reverse() }, "revision", config), tally);
-  assert.throws(() => TallyV1Schema.assert({ ...tally, rawEvidence: "forbidden" }));
+  assert.throws(() => TallyV2Schema.assert({ ...tally, rawEvidence: "forbidden" }));
   const large = structuredClone(ledger);
   const selected = large.transactions.find(t => t.entityId === config.entityId && t.provider === "nubank" && t.accountAlias === "operating")!;
   large.transactions = [selected, { ...selected, id: "other" }];
@@ -59,9 +60,38 @@ test("disk tally is read-only and missing/corrupt state fails rather than showin
     const store = new JsonlLedgerStore({ rootPath: root });
     await store.compareAndSwap(null, snapshot());
     const before = await readFile(join(root, "ledger.jsonl"));
-    assert.equal((await readTally(root)).transactions.length, 6);
+    const missingMail = await readTally(root);
+    assert.equal(missingMail.transactions.length, 6);
+    assert.equal(missingMail.mail.status, "missing");
+    const observationSet = { kind: "company-money.mail-observation-set", version: 1, scope: "gmail-exact-work-label", records: [] };
+    await writeFile(join(root, "state", "work-mail-observations.v1.json"), JSON.stringify(observationSet), { mode: 0o600 });
+    const withMail = await readTally(root);
+    assert.deepEqual(withMail.mail, createMailReview(observationSet));
+    assert.deepEqual(withMail.currencies, missingMail.currencies);
+    await writeFile(join(root, "state", "work-mail-observations.v1.json"), "corrupt");
+    const badMail = await readTally(root);
+    assert.equal(badMail.mail.status, "unavailable");
+    assert.deepEqual(badMail.currencies, missingMail.currencies);
     assert.deepEqual(await readFile(join(root, "ledger.jsonl")), before);
     await writeFile(join(root, "ledger.jsonl"), "corrupt");
     await assert.rejects(readTally(root));
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("configured Wise transfers feed native-currency totals while failed, cancelled and pending transfers remain excluded", () => {
+  const ledger = snapshot();
+  const wise = ledger.transactions.find(t => t.provider === "wise")!;
+  wise.accountAlias = "reserve";
+  wise.money.currency = "USD";
+  ledger.transactions.push(...(["failed", "cancelled", "pending"] as const).map(status => ({ ...wise, id: `wise-${status}`, status })));
+  const accounts = [...config.accounts, { alias: "reserve", provider: "wise" as const }];
+  const tally = createTally(ledger, "revision", { ...config, accounts });
+  assert.equal(tally.transactions.filter(t => t.provider === "wise").length, 4);
+  assert.deepEqual(tally.currencies, [
+    { currency: "BRL", decimals: 2, incoming: 1250, outgoing: 1250, net: 0 },
+    { currency: "USD", decimals: 2, incoming: 2500, outgoing: 0, net: 2500 },
+  ]);
+  const wiseOnly = createTally(ledger, "revision", { ...config, accounts: [{ alias: "reserve", provider: "wise" }] });
+  assert.equal(wiseOnly.transactions.length, 4);
+  assert.deepEqual(wiseOnly.currencies, [{ currency: "USD", decimals: 2, incoming: 1250, outgoing: 0, net: 1250 }]);
 });
