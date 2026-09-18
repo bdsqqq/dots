@@ -5,7 +5,7 @@ description: Reviews code changes and pull requests for proven correctness, hone
 
 # meaningful contribution
 
-Based on embarassing feedback on a bad PR for AXM-10598, and written from my beliefs; with only a little bit of copy pasting, because to be human is to copy from a shitload of places until it becomes your own. 
+Based on embarassing feedback on a bad PR for AXM-10598, and written from my beliefs; with only a little bit of copy pasting, because to be human is to copy from a shitload of places until it becomes your own.
 
 ## A contribution is not code, it's proven working code
 
@@ -17,7 +17,7 @@ agent-generated code is cheap. anyone can prompt an LLM to produce a thousand-li
 
 ### 1. proven correctness
 
-if you haven't tested it, it doesn't work. 
+if you haven't tested it, it doesn't work.
 if it happens to work, that's luck.
 
 to actually prove something works, we:
@@ -38,7 +38,7 @@ naming something `VersionedStructuredRequestWithOptions` and then passing unvers
 i don't know how to prove that something makes sense, but a good start is:
 
 - you can explain it in plain english; from start to finish, and each part in isolation.
-- you can explicitly articulate the expected inputs and outputs, and what happens if one of those is unexpected. 
+- you can explicitly articulate the expected inputs and outputs, and what happens if one of those is unexpected.
 
 ## what doesn't qualify
 
