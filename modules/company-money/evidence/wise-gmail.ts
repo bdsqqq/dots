@@ -92,7 +92,8 @@ type WiseFamily =
   | "sent"
   | "cashback"
   | "cancelled"
-  | "failed";
+  | "failed"
+  | "returned";
 
 function family(subject: string): WiseFamily | null {
   const normalized = subject.normalize("NFKC").trim().toLowerCase();
@@ -104,7 +105,79 @@ function family(subject: string): WiseFamily | null {
     "wise: cancelled": "cancelled",
     "wise: failed": "failed",
   };
-  return families[normalized] ?? null;
+  if (families[normalized]) return families[normalized];
+  if (/^transfer sent \(#\d+\)$/.test(normalized)) return "sent";
+  if (/^transfer cancelled \(#\d+\)$/.test(normalized)) return "cancelled";
+  if (/^there[’']s a problem with your transfer \(#\d+\)$/.test(normalized)) return "returned";
+  if (/^money received from .+$/.test(normalized)) return "received";
+  if (/^pix of [\d,.]+ [a-z]{3} received$/.test(normalized)) return "pix-received";
+  if (/^your business received cashback for [a-z]+$/.test(normalized)) return "cashback";
+  return null;
+}
+
+function nativeFields(message: WiseGmailEnvelopeV1["messages"][number], selected: WiseFamily, entityId: string): ReadonlyMap<string, string> {
+  const lines = message.body.normalize("NFKC").split(/\r?\n/).map(line => line.trim().replace(/\s+/g, " ")).filter(Boolean);
+  const body = lines.join(" ");
+  const accountMarker = `for the business account of ${entityId.normalize("NFKC").toLowerCase().replace(/\.$/, "")}.`;
+  if (!body.toLowerCase().includes(`${accountMarker} `) && !body.toLowerCase().endsWith(accountMarker)) throw new TypeError("account ownership unresolved");
+  const field = (name: string) => {
+    const indexes = lines.flatMap((line, i) => line.toLowerCase() === `${name.toLowerCase()}:` ? [i] : []);
+    if (indexes.length !== 1 || !lines[indexes[0] + 1]) throw new TypeError("missing or ambiguous field");
+    return lines[indexes[0] + 1];
+  };
+  const money = (value: string) => {
+    const match = /^(\d+(?:\.\d+)?|\d{1,3}(?:,\d{3})+(?:\.\d+)?) ([A-Z]{3})$/.exec(value);
+    if (!match) throw new TypeError("malformed amount");
+    const amount = match[1].replace(/,/g, "");
+    const currency = selectedCurrency(match[2]);
+    return { amount, currency, units: parseMinorUnits(amount, currency) };
+  };
+  const agrees = (narrative: string, expected: ReturnType<typeof money>) => {
+    const actual = money(narrative);
+    return actual.currency === expected.currency && actual.units === expected.units;
+  };
+  const fields = new Map<string, string>();
+  let amount: ReturnType<typeof money>;
+  if (selected === "received" || selected === "pix-received") {
+    amount = money(field("Amount received"));
+    const confirmation = /You received (?:a Pix of )?([\d,.]+ [A-Z]{3}) from /.exec(body);
+    if (!confirmation || !agrees(confirmation[1], amount)) throw new TypeError("receipt not confirmed");
+    fields.set("counterparty", field("From"));
+    fields.set("reference", field("Reference"));
+    fields.set("transaction-id", field("Transfer number").replace(/^#/, ""));
+  } else if (selected === "sent") {
+    amount = money(field("Amount"));
+    const confirmation = /([\d,.]+ [A-Z]{3}) is now in (.+?)[’']s account\./.exec(body);
+    if (!confirmation || !agrees(confirmation[1], amount)) throw new TypeError("delivery not confirmed");
+    if (!new RegExp(`^0(?:\\.0+)? ${amount.currency}$`).test(field("Wise fee"))) throw new TypeError("nonzero fee requires statement evidence");
+    fields.set("counterparty", confirmation[2]);
+    fields.set("transaction-id", field("Transfer number").replace(/^#/, ""));
+  } else if (selected === "cancelled" || selected === "returned") {
+    const confirmation = selected === "cancelled"
+      ? /We[’']ve cancelled your transfer of ([\d,.]+ [A-Z]{3})\./.exec(body)
+      : /Your transfer of ([\d,.]+ [A-Z]{3}) to .+? was sent back to us\./.exec(body);
+    if (!confirmation) throw new TypeError("transfer state unconfirmed");
+    amount = money(confirmation[1]);
+    fields.set("transaction-id", /\(#(\d+)\)$/.exec(message.subject)?.[1] ?? "");
+  } else if (selected === "cashback") {
+    const matches = [...body.matchAll(/You[’']ve received ([\d,.]+ [A-Z]{3}) cashback for ([A-Za-z]+)\./g)];
+    if (matches.length !== 1 || !message.subject.toLowerCase().endsWith(` for ${matches[0][2].toLowerCase()}`)) throw new TypeError("cashback unconfirmed");
+    amount = money(matches[0][1]);
+    const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+    const month = months.indexOf(matches[0][2].toLowerCase()) + 1;
+    if (!month) throw new TypeError("unknown cashback period");
+    const received = new Date(message.receivedAt);
+    const year = received.getUTCFullYear() - (month > received.getUTCMonth() + 1 ? 1 : 0);
+    fields.set("transaction-id", `cashback-period:${year}-${String(month).padStart(2, "0")}`);
+    fields.set("reference", `cashback for ${year}-${String(month).padStart(2, "0")}`);
+  } else throw new TypeError("unsupported native family");
+  const subjectId = /\(#(\d+)\)$/.exec(message.subject)?.[1];
+  const id = fields.get("transaction-id");
+  if (!id || (selected !== "cashback" && !/^\d+$/.test(id)) || (subjectId && subjectId !== id)) throw new TypeError("transfer identity mismatch");
+  fields.set("amount", amount.amount);
+  fields.set("currency", amount.currency);
+  fields.set("date", message.receivedAt.slice(0, 10));
+  return fields;
 }
 
 function bodyFields(body: string): ReadonlyMap<string, string> {
@@ -205,7 +278,8 @@ function candidateFromMessage(
   selectedFamily: WiseFamily,
   options: WiseGmailTranslatorOptions,
 ): TransactionCandidateV1 {
-  const fields = bodyFields(message.body);
+  const native = !/^wise:/i.test(message.subject.normalize("NFKC").trim());
+  const fields = native ? nativeFields(message, selectedFamily, options.entityId) : bodyFields(message.body);
   const bookedOn = fields.get("date")!;
   CalendarDateV1Schema.assert(bookedOn);
   const currency = selectedCurrency(fields.get("currency")!);
@@ -228,6 +302,8 @@ function candidateFromMessage(
       ? "cancelled"
       : selectedFamily === "failed"
         ? "failed"
+        : selectedFamily === "returned"
+          ? "pending"
         : "completed";
   const counterparty = fields.get("counterparty") ?? null;
   const reference = fields.get("reference") ?? null;
@@ -237,7 +313,7 @@ function candidateFromMessage(
     entityId: options.entityId,
     accountAlias: options.accountAlias,
     provider: "wise",
-    occurredOn: bookedOn,
+    occurredOn: native ? null : bookedOn,
     bookedOn,
     money: {
       kind: "company-money.money",
@@ -269,7 +345,7 @@ function candidateFromMessage(
       sourceRef: message.sourceRef,
       contentDigest,
       grade: "secondary",
-      parserId: PARSER_ID,
+      parserId: native ? `${PARSER_ID}/native-notification` : PARSER_ID,
       parserVersion: 1,
     },
   };

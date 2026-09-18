@@ -25,6 +25,13 @@ caption { text-align: left; font-weight: 600; margin-bottom: 16px; }
 th, td { padding: 13px 10px; border-bottom: 1px solid #e4e2dd; text-align: left; vertical-align: top; }
 th { font-size: 12px; color: #666; font-weight: 500; }
 td { font-size: 13px; }
+.provider { display: block; color: #666; font-size: 11px; }
 td:nth-child(2) { overflow-wrap: anywhere; max-width: 400px; }
 .amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#mail { margin-top: 40px; }
+#mail h2 { font-size: 17px; margin: 0; }
+#mail-status { color: #666; font-size: 13px; }
+#mail .note { margin-bottom: 16px; }
+#mail td { overflow-wrap: anywhere; }
+#mail td:first-child { white-space: nowrap; }
 @media (max-width: 600px) { main { margin: 24px auto; padding: 0 16px; } .totals { grid-template-columns: 1fr; } .total { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; } .total + .total { border-left: 0; border-top: 1px solid #eee; } .total strong { margin: 0; font-size: 23px; } th, td { padding: 10px 6px; } }
