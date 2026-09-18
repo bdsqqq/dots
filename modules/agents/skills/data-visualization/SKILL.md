@@ -1,5 +1,5 @@
 ---
-name: data-visualization 
+name: data-visualization
 description: >-
   Use when creating, reviewing, or styling charts, graphs, dashboards,
   sparklines, or any data visualization. 

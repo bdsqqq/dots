@@ -19,12 +19,22 @@ let
         runHook postInstall
       '';
     };
+  work-skills-projection = { pkgs }:
+    pkgs.writeShellScriptBin "project-work-skills" ''
+      export PATH="${pkgs.lib.makeBinPath [ pkgs.git pkgs.coreutils ]}:$PATH"
+      ${builtins.readFile ./project-skills.sh}
+    '';
+  work-skills-signer = { pkgs }:
+    pkgs.writeShellScript "sign-work-skills" ''
+      exec ${pkgs.direnv}/bin/direnv exec "$HOME/www/depot" \
+        "$HOME/.amp/bin/amp" sign-commit "$@"
+    '';
   agent-projection-hooks = { pkgs }:
     pkgs.writeShellScriptBin "pre-push" ''
       set -euo pipefail
 
       remote_name="$1"
-      if [[ "$remote_name" == "amp-skills" || "$remote_name" == "agentfiles" ]]; then
+      if [[ "$remote_name" == "amp-skills" || "$remote_name" == "amp-work-skills" || "$remote_name" == "agentfiles" ]]; then
         exit 0
       fi
 
@@ -57,10 +67,15 @@ let
       }
 
       amp_remote="$(${pkgs.git}/bin/git -C "$root" remote get-url amp-skills 2>/dev/null || true)"
+      work_skills_url="https://ampcode.com/git/@user_01M0FV2QST661GTC2JVTZJ9SXZ/-/skills"
+      work_skills_remote="$(${pkgs.git}/bin/git -C "$root" remote get-url amp-work-skills 2>/dev/null || true)"
+      work_skills_push_remote="$(${pkgs.git}/bin/git -C "$root" remote get-url --push --all amp-work-skills 2>/dev/null || true)"
       agentfiles_remote="$(${pkgs.git}/bin/git -C "$root" remote get-url agentfiles 2>/dev/null || true)"
       agentfiles_push_remote="$(${pkgs.git}/bin/git -C "$root" \
         remote get-url --push --all agentfiles 2>/dev/null || true)"
       if [[ "$amp_remote" != "https://ampcode.com/git/@user_01KTSZFRFVGGBPHVEF4Y6JYCH7/-/skills" ]] &&
+        { [[ "$work_skills_remote" != "$work_skills_url" ]] ||
+          [[ "$work_skills_push_remote" != "$work_skills_url" ]]; } &&
         { [[ "$agentfiles_remote" != "git@github.com:depot/agentfiles.git" ]] ||
           [[ "$agentfiles_push_remote" != "git@github.com:depot/agentfiles.git" ]]; }; then
         exit 0
@@ -137,6 +152,22 @@ let
           ${pkgs.git}/bin/git -C "$root" \
             push agentfiles "$projection_sha:refs/heads/main"
         fi
+      fi
+
+      if [[ "$work_skills_remote" == "$work_skills_url" ]] &&
+        [[ "$work_skills_push_remote" == "$work_skills_url" ]]; then
+        # Work credentials live in the depot direnv context. Use the actual Amp
+        # binary so the optional personal SOPS wrapper cannot override them.
+        work_amp=( ${pkgs.direnv}/bin/direnv exec "$HOME/www/depot" "$HOME/.amp/bin/amp" )
+        work_repositories="$("''${work_amp[@]}" skills repositories)"
+        if [[ "$work_repositories" != *"$work_skills_url"* ]]; then
+          echo "error: depot direnv did not select the expected work Amp account" >&2
+          exit 1
+        fi
+        "${work-skills-projection { inherit pkgs; }}/bin/project-work-skills" \
+          "$root" "$main_sha" amp-work-skills \
+          '!${pkgs.direnv}/bin/direnv exec "$HOME/www/depot" "$HOME/.amp/bin/amp" git-credential-helper' \
+          "${work-skills-signer { inherit pkgs; }}"
       fi
 
       if [[ "$amp_remote" != "https://ampcode.com/git/@user_01KTSZFRFVGGBPHVEF4Y6JYCH7/-/skills" ]]; then
@@ -286,6 +317,15 @@ in
           fi
           ${pkgs.git}/bin/git -C "$dots_repo" config \
             remote.amp-skills.skipFetchAll true
+          if ${pkgs.git}/bin/git -C "$dots_repo" remote get-url amp-work-skills >/dev/null 2>&1; then
+            ${pkgs.git}/bin/git -C "$dots_repo" remote set-url amp-work-skills \
+              "https://ampcode.com/git/@user_01M0FV2QST661GTC2JVTZJ9SXZ/-/skills"
+          else
+            ${pkgs.git}/bin/git -C "$dots_repo" remote add amp-work-skills \
+              "https://ampcode.com/git/@user_01M0FV2QST661GTC2JVTZJ9SXZ/-/skills"
+          fi
+          ${pkgs.git}/bin/git -C "$dots_repo" config \
+            remote.amp-work-skills.skipFetchAll true
         fi
       '';
 

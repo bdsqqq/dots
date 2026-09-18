@@ -162,4 +162,4 @@ bidirectional traversal discovers components you didn't know existed.
 ## references
 
 - [AXM-10608-investigation-report.md](references/AXM-10608-investigation-report.md) — multi-dataset assumption mapping
-- [2025-10-22T21:50-process-summary.md](references/2025-10-22T21:50-process-summary.md) — rc-menu dependency discovery evolution
+- [2025-10-22T21-50-process-summary.md](references/2025-10-22T21-50-process-summary.md) — rc-menu dependency discovery evolution
