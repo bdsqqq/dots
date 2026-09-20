@@ -286,15 +286,17 @@ function splitCommandDisplayRows(cmd: string): CommandDisplayRow[] {
   let nestedParenDepth = 0;
 
   const push = (end: number, separator?: string, command = true) => {
-    const text = cmd
-      .slice(start, end)
-      .replace(
-        /([ \t]*)\\\r?\n([ \t]*)/g,
-        (_continuation, leading: string, trailing: string) =>
-          leading || trailing ? " " : "",
-      )
-      .trim();
-    if (text) {
+    const raw = cmd.slice(start, end);
+    const text = !command
+      ? raw.replace(/\r$/, "")
+      : raw
+          .replace(
+            /([ \t]*)\\\r?\n([ \t]*)/g,
+            (_continuation, leading: string, trailing: string) =>
+              leading || trailing ? " " : "",
+          )
+          .trim();
+    if (text || !command) {
       rows.push({
         text,
         ...(separator ? { separator } : {}),
@@ -449,21 +451,22 @@ function styleCollapsedCommandRow(
   theme: any,
 ): string {
   const prefix = `${theme.fg("accent", "$")} `;
+  const text = row.text.replace(/\r?\n/g, "↵");
   const separator = row.separator
     ? row.separator === "\n"
-      ? " \\"
+      ? " ↵"
       : ` ${row.separator} \\`
     : "";
   if (row.command === false) {
-    return prefix + theme.fg("muted", row.text + separator);
+    return prefix + theme.fg("muted", text + separator);
   }
 
   const match = row.text.match(/^((?:(?:\{|\(|!)\s+)*)(\S+)(.*)$/s);
-  if (!match) return prefix + theme.fg("muted", row.text + separator);
+  if (!match) return prefix + theme.fg("muted", text + separator);
 
   const structure = match[1] ?? "";
-  const command = match[2] ?? row.text;
-  const args = match[3] ?? "";
+  const command = match[2] ?? text;
+  const args = (match[3] ?? "").replace(/\r?\n/g, "↵");
   return (
     prefix +
     theme.fg("text", structure) +
@@ -684,9 +687,20 @@ export function createBashTool(
       }
 
       const displayRows = splitCommandDisplayRows(cmd);
-      const commandRows = displayRows.filter((row) => row.command !== false);
-      const collapsedRows =
-        commandRows.length > 0 ? commandRows : displayRows.slice(0, 1);
+      const collapsedRows: CommandDisplayRow[] = [];
+      for (const row of displayRows) {
+        const previous = collapsedRows.at(-1);
+        if (row.command === false && previous) {
+          const separator =
+            previous.separator && previous.separator !== "\n"
+              ? ` ${previous.separator}`
+              : "\n";
+          previous.text += separator + row.text;
+          previous.separator = row.separator;
+        } else {
+          collapsedRows.push({ ...row });
+        }
+      }
       const rows = collapsedRows.map((row, index) =>
         styleCollapsedCommandRow(
           index === collapsedRows.length - 1
@@ -1351,7 +1365,7 @@ if (import.meta.vitest) {
         );
 
         expect(component.render(120).map((line) => line.trimEnd())).toEqual([
-          "✓ $ node --input-type=module <<'NODE' (timeout 30s)",
+          "✓ $ node --input-type=module <<'NODE'↵console.log('ok');↵NODE (timeout 30s)",
         ]);
       });
 
@@ -1366,6 +1380,21 @@ if (import.meta.vitest) {
         ]);
       });
 
+      it("preserves heredoc whitespace and keeps body arrows muted without a space before <<", () => {
+        const component = tool.renderCall!(
+          { cmd: "cat<<'EOF'\n\n  indented  \n\nEOF" },
+          {
+            ...theme,
+            fg: (color: string, text: string) =>
+              color === "muted" ? `\x1b[90m${text}\x1b[39m` : text,
+          } as any,
+          { expanded: false, isError: false, isPartial: false } as any,
+        );
+        expect(component.render(120)).toEqual([
+          "✓ $ cat<<'EOF'\x1b[90m↵↵  indented  ↵↵EOF\x1b[39m",
+        ]);
+      });
+
       it("recognizes quoted heredoc delimiters containing spaces", () => {
         const component = tool.renderCall!(
           {
@@ -1376,7 +1405,7 @@ if (import.meta.vitest) {
         );
 
         expect(component.render(80).map((line) => line.trimEnd())).toEqual([
-          "✓ $ cat <<'END MARK' \\",
+          "✓ $ cat <<'END MARK'↵not a command↵END MARK ↵",
           "╰ $ echo legit",
         ]);
       });
@@ -1413,6 +1442,7 @@ if (import.meta.vitest) {
         ).toEqual([
           { text: "cat <<''", separator: "\n" },
           { text: "body", separator: "\n", command: false },
+          { text: "", separator: "\n", command: false },
           { text: "rm nope", separator: ";" },
           { text: "true" },
         ]);
@@ -1449,12 +1479,71 @@ if (import.meta.vitest) {
         ]);
       });
 
+      it.each([";", "&&"])(
+        "keeps %s and its following comment outside command styling",
+        (separator) => {
+          const component = tool.renderCall!(
+            { cmd: `true ${separator} # note` },
+            {
+              ...theme,
+              bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
+            } as any,
+            { expanded: false, isError: false, isPartial: false } as any,
+          );
+          expect(component.render(80)).toEqual([
+            `✓ $ \x1b[1mtrue\x1b[22m ${separator} # note`,
+          ]);
+        },
+      );
+
       it("keeps a prompt on each newline-delimited command", () => {
         const rows = splitCommandDisplayRows("echo one\necho two").map(
           (row, index) => styleCollapsedCommandRow(row, index === 0, theme),
         );
 
-        expect(rows).toEqual(["$ echo one \\", "$ echo two"]);
+        expect(rows).toEqual(["$ echo one ↵", "$ echo two"]);
+      });
+
+      it.each(["\n", "\r\n"])(
+        "renders embedded %j as muted arrows without decoding literal escapes",
+        (newline) => {
+          const args = Object.freeze({
+            cmd: `printf '%s\\n' 'one${newline}${newline}two'`,
+          });
+          const coloredTheme = {
+            ...theme,
+            fg: (color: string, text: string) =>
+              color === "muted" ? `\x1b[90m${text}\x1b[39m` : text,
+          };
+          const component = tool.renderCall!(
+            args,
+            coloredTheme as any,
+            { expanded: false, isError: false, isPartial: false } as any,
+          );
+          const lines = component.render(120);
+          expect(lines).toHaveLength(1);
+          expect(lines[0]).toContain("\x1b[90m '%s\\n' 'one↵↵two'\x1b[39m");
+          expect(lines[0]).not.toMatch(/[\r\n]/);
+          for (const width of [8, 18, 40]) {
+            const narrow = component.render(width);
+            expect(narrow).toHaveLength(1);
+            expect(
+              narrow[0]!.replace(/\x1b\[[0-9;]*m/g, "").length,
+            ).toBeLessThanOrEqual(width);
+          }
+        },
+      );
+
+      it("preserves embedded newlines and literal escapes when expanded", () => {
+        const component = tool.renderCall!(
+          { cmd: "printf '%s\\n' 'one\ntwo'" },
+          theme as any,
+          { expanded: true, isError: false, isPartial: false } as any,
+        );
+        const lines = component
+          .render(120)
+          .map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
+        expect(lines).toEqual(["✓ $ printf '%s\\n' 'one", "  two'"]);
       });
 
       it("truncates every collapsed row with a one-character ellipsis", () => {
