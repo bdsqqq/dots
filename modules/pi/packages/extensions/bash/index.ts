@@ -455,7 +455,7 @@ function styleCollapsedCommandRow(
   const separator = row.separator
     ? row.separator === "\n"
       ? " ↵"
-      : ` ${row.separator} \\`
+      : ` ${row.separator}`
     : "";
   if (row.command === false) {
     return prefix + theme.fg("muted", text + separator);
@@ -1503,6 +1503,21 @@ if (import.meta.vitest) {
 
         expect(rows).toEqual(["$ echo one ↵", "$ echo two"]);
       });
+
+      it.each(["&&", "||", "|", "|&", ";"])(
+        "keeps %s between command rows without synthetic continuations",
+        (operator) => {
+          const component = tool.renderCall!(
+            { cmd: `echo one ${operator} echo two` },
+            theme as any,
+            { expanded: false, isError: false, isPartial: false } as any,
+          );
+          expect(component.render(80)).toEqual([
+            `✓ $ echo one ${operator}`,
+            "╰ $ echo two",
+          ]);
+        },
+      );
 
       it.each(["\n", "\r\n"])(
         "renders embedded %j as muted arrows without decoding literal escapes",
