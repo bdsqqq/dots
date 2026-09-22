@@ -4,6 +4,7 @@ export { default as applyPatch } from "../packages/extensions/apply-patch/index"
 export { default as bash } from "../packages/extensions/bash/index";
 export { default as codeReview } from "../packages/extensions/code-review/index";
 export { default as cmuxNotify } from "../packages/extensions/cmux-notify/index";
+export { default as commandPalette } from "../packages/extensions/command-palette/index";
 export { default as delegate } from "../packages/extensions/delegate/index";
 export { default as doneMarker } from "../packages/extensions/done-marker/index";
 export { default as editor } from "../packages/extensions/editor/index";
