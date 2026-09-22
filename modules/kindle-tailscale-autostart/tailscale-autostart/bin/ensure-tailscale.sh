@@ -12,14 +12,14 @@ event() {
     "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$1" "$2" >>"$EVENTS"
 }
 
-if [ ! -x "$TAILSCALE/start_tailscaled_tun.sh" ] || [ ! -x "$TAILSCALE/start_tailscale.sh" ]; then
+if [ ! -x "$TAILSCALE/start_tailscaled_proxy.sh" ] || [ ! -x "$TAILSCALE/tailscale" ]; then
   event missing_scripts error
   exit 1
 fi
 
 if ! pidof tailscaled >/dev/null 2>&1; then
   event starting_daemon info
-  if ! "$TAILSCALE/start_tailscaled_tun.sh"; then
+  if ! "$TAILSCALE/start_tailscaled_proxy.sh"; then
     event daemon_start_failed error
     exit 1
   fi
@@ -36,14 +36,9 @@ if [ ! -S "$SOCKET" ]; then
   exit 1
 fi
 
-if timeout 30 "$TAILSCALE/start_tailscale.sh"; then
-  if "$TAILSCALE/tailscale" --socket="$SOCKET" set --advertise-tags=tag:ssh-accept; then
-    event connected info
-    exit 0
-  fi
-
-  event tag_configuration_failed error
-  exit 1
+if timeout 30 "$TAILSCALE/tailscale" --socket="$SOCKET" up --ssh --advertise-tags=tag:ssh-accept; then
+  event connected info
+  exit 0
 fi
 
 event connect_failed error
