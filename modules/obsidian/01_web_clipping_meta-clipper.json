@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "0.1.0",
+  "name": "01_web_clipping_meta",
+  "behavior": "create",
+  "noteContentFormat": "{{content}}",
+  "properties": [
+    {
+      "name": "source",
+      "value": "{{url}}",
+      "type": "text"
+    }
+  ],
+  "triggers": [],
+  "noteNameFormat": "{{date|date:\"YYYY-MM-DD\"}} {{title|safe_name}} - {{author|split:\", \"|first}} {{site}} -- source__clipper",
+  "path": "00_inbox/{{date|date:\"YYYY-MM-DD\"}} {{title|safe_name}} - {{author|split:\", \"|first}} {{site}} -- source__clipper"
+}
