@@ -18,7 +18,11 @@ import { resolveToAbsolute } from "@bds_pi/fs";
 import * as fileTracker from "@bds_pi/file-tracker";
 import { withFileLocks } from "@bds_pi/mutex";
 import * as toolPolicy from "@bds_pi/tool-policy";
-import { renderLifecycleCall } from "@bds_pi/box-format";
+import {
+  boxRendererWindowed,
+  renderLifecycleCall,
+  textSection,
+} from "@bds_pi/box-format";
 
 const APPLY_PATCH_GRAMMAR = String.raw`start: begin_patch hunk+ end_patch
 begin_patch: "*** Begin Patch" LF
@@ -353,12 +357,17 @@ export function createApplyPatchTool(): ToolDefinition<
       const header =
         theme.fg("toolTitle", theme.bold("apply_patch ")) +
         theme.fg("dim", display);
-      if (!context.isPartial || !args?.input)
+      if (!context.expanded || !context.isPartial || !args?.input)
         return renderLifecycleCall(new Text(header, 0, 0), theme, context);
       const component = new Container();
       component.addChild(new Text(header, 0, 0));
       component.addChild(new Spacer(1));
-      component.addChild(new Text(args.input, 0, 0));
+      component.addChild(
+        boxRendererWindowed(() => [textSection(undefined, args.input)], {
+          collapsed: { excerpts: [{ focus: "tail", context: 8 }] },
+          expanded: {},
+        }),
+      );
       return renderLifecycleCall(component, theme, context);
     },
     async execute(toolCallId, params, signal, _onUpdate, ctx) {
@@ -539,18 +548,33 @@ export function createApplyPatchTool(): ToolDefinition<
         component.addChild(new Text(text || "(no changes)", 0, 0));
         return frame();
       }
-      const shown = expanded ? changes : changes.slice(-1);
+      let added = 0;
+      let removed = 0;
+      for (const change of changes) {
+        const lines = change.diff.split("\n");
+        const body =
+          lines[0]?.startsWith("--- ") && lines[1]?.startsWith("+++ ")
+            ? lines.slice(2)
+            : lines;
+        for (const line of body) {
+          if (line.startsWith("+")) added++;
+          else if (line.startsWith("-")) removed++;
+        }
+      }
       component.addChild(
         new Text(
-          theme.fg(
-            "dim",
-            `${changes.length} file${changes.length === 1 ? "" : "s"} changed`,
-          ),
+          theme.fg("toolDiffAdded", `+${added}`) +
+            " " +
+            theme.fg("toolDiffRemoved", `-${removed}`) +
+            (changes.length > 1
+              ? theme.fg("dim", ` (${changes.length} files)`)
+              : ""),
           0,
           0,
         ),
       );
-      for (const change of shown) {
+      if (!expanded) return frame();
+      for (const change of changes) {
         component.addChild(new Spacer(1));
         component.addChild(new Text(renderDiff(change.diff), 0, 0));
       }
@@ -616,6 +640,137 @@ if (import.meta.vitest) {
     visit(root);
     return tree;
   }
+
+  it("shows a rolling visual-line window while patch calls stream", () => {
+    const tool = createApplyPatchTool();
+    const theme = {
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+    };
+    const header = "*** Begin Patch\n*** Update File: file.txt\n@@\n";
+    const input =
+      header + Array.from({ length: 100 }, (_, i) => `+line ${i}`).join("\n");
+    for (const expanded of [false, true]) {
+      for (const width of [30, 80]) {
+        for (const partial of [input, input + "\n+newest"]) {
+          const component = tool.renderCall!(
+            { input: partial },
+            theme as never,
+            { expanded, isPartial: true, isError: false } as never,
+          );
+          const lines = component
+            .render(width)
+            .map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
+          if (!expanded) {
+            expect(lines).toEqual(["● apply_patch file.txt"]);
+            continue;
+          }
+          expect(lines).toHaveLength(12);
+          expect(lines[0]).toBe("● apply_patch file.txt");
+          expect(lines[2]).toContain("more lines");
+          expect(lines.at(-2)).toContain(
+            partial.endsWith("+newest") ? "+newest" : "+line 99",
+          );
+          expect(lines.join("\n")).not.toContain("*** Begin Patch");
+          expect(lines.every((line) => line.length <= width)).toBe(true);
+        }
+        const wrapped = tool.renderCall!(
+          { input: header + "+" + "x".repeat(1000) + "END" },
+          theme as never,
+          { expanded, isPartial: true, isError: false } as never,
+        );
+        expect(wrapped.render(width)).toHaveLength(expanded ? 12 : 1);
+        if (expanded) expect(wrapped.render(width).at(-2)).toContain("END");
+      }
+    }
+
+    const settled = tool.renderCall!(
+      { input: input + "*** End Patch\n" },
+      theme as never,
+      { expanded: false, isPartial: false, isError: false } as never,
+    );
+    expect(settled.render(80).map((line) => line.trimEnd())).toEqual([
+      "✓ apply_patch file.txt",
+    ]);
+  });
+
+  it("hides completed diffs when collapsed and reveals all files when expanded", async () => {
+    const { initTheme } = await import("@earendil-works/pi-coding-agent");
+    initTheme("dark", false);
+    const tool = createApplyPatchTool();
+    const theme = { fg: (_color: string, text: string) => text };
+    const result = {
+      content: [{ type: "text" as const, text: "M first.txt\nM second.txt" }],
+      details: {
+        changes: ["first", "second"].map((name) => ({
+          path: `${name}.txt`,
+          kind: "modified" as const,
+          diff:
+            `@@\n-old-${name}\n` +
+            Array.from({ length: 100 }, (_, i) => `+new-${name}-${i}`).join(
+              "\n",
+            ),
+        })),
+      },
+    };
+    for (const expanded of [false, true]) {
+      const component = tool.renderResult!(
+        result,
+        { expanded, isPartial: false },
+        theme as never,
+        {} as never,
+      );
+      const lines = component
+        .render(80)
+        .map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
+      if (expanded) {
+        expect(lines.join("\n")).toContain("new-first-99");
+        expect(lines.join("\n")).toContain("new-second-99");
+      } else {
+        expect(lines).toEqual(["│ +200 -2 (2 files)", "╰────"]);
+      }
+    }
+  });
+
+  it.each([
+    ["", "one\ntwo\n", 2, 0],
+    ["one\ntwo\n", "", 0, 2],
+    ["old\n", "new\n", 1, 1],
+    ["-- old\n", "++ new\n", 1, 1],
+    ["same\n", "same\n", 0, 0],
+  ])(
+    "counts changed lines, not diff headers: %j → %j",
+    (before, after, added, removed) => {
+      const component = createApplyPatchTool().renderResult!(
+        {
+          content: [],
+          details: {
+            changes: [
+              {
+                path: "file.txt",
+                kind: "modified",
+                diff: fileTracker.simpleDiff("file.txt", before, after),
+              },
+            ],
+          },
+        },
+        { expanded: false, isPartial: false },
+        {
+          fg: (color: string, text: string) =>
+            color === "toolDiffAdded"
+              ? `\x1b[32m${text}\x1b[39m`
+              : color === "toolDiffRemoved"
+                ? `\x1b[31m${text}\x1b[39m`
+                : text,
+        } as never,
+        {} as never,
+      );
+      expect(component.render(80).map((line) => line.trimEnd())).toEqual([
+        `│ \x1b[32m+${added}\x1b[39m \x1b[31m-${removed}\x1b[39m`,
+        "╰────",
+      ]);
+    },
+  );
 
   it("closes fallback and structured results with one open frame", async () => {
     const { initTheme } = await import("@earendil-works/pi-coding-agent");
