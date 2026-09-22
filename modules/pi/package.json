@@ -75,6 +75,7 @@
       "./dist/extensions/bash.js",
       "./dist/extensions/cmux-notify.js",
       "./dist/extensions/code-review.js",
+      "./dist/extensions/command-palette.js",
       "./dist/extensions/delegate.js",
       "./dist/extensions/done-marker.js",
       "./dist/extensions/editor.js",
