@@ -5,4 +5,6 @@ pkgs.runCommand "kindle-tailscale-autostart" { } ''
   mkdir -p "$target"
   cp -R ${./tailscale-autostart}/. "$target/"
   chmod +x "$target/bin/"*.sh
+  mkdir -p "$out/upstart"
+  cp ${./upstart}/*.conf "$out/upstart/"
 ''
