@@ -8,6 +8,13 @@ let
   cfg = config.my.hueHomekit;
   package = pkgs.callPackage ./package.nix { };
   daemonUrl = "http://127.0.0.1:${toString config.my.hueControl.port}";
+  bridges = {
+    hue-homekit = {
+      name = "Desk Light Bridge";
+      port = 51826;
+    };
+  }
+  // lib.mapAttrs' (name: value: lib.nameValuePair "hue-homekit-${name}" value) cfg.additionalBridges;
 in
 {
   options.my.hueHomekit = {
@@ -17,12 +24,30 @@ in
       default = "en0";
       description = "LAN interface for HomeKit discovery and paired connections.";
     };
+    additionalBridges = lib.mkOption {
+      default = { };
+      description = "Independent pairings for separate Apple homes, sharing the same bulb daemon.";
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            name = lib.mkOption { type = lib.types.str; };
+            port = lib.mkOption { type = lib.types.port; };
+          };
+        }
+      );
+    };
   };
   config = lib.mkIf cfg.enable {
     assertions = [
       {
         assertion = config.my.hueControl.enable && config.my.hueControl.runDaemon;
         message = "Hue HomeKit requires the local Hue BLE daemon.";
+      }
+      {
+        assertion =
+          lib.length (lib.unique (map (bridge: bridge.port) (lib.attrValues bridges)))
+          == lib.length (lib.attrNames bridges);
+        message = "Hue HomeKit bridges must use distinct ports (51826 is reserved for the original bridge).";
       }
     ];
     home-manager.users.bdsqqq = { config, lib, ... }: {
@@ -32,14 +57,17 @@ in
         /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
           -f "${package}/Applications/Hue HomeKit.app"
       '';
-      launchd.agents.hue-homekit = {
+      # Each process needs its own HAP storage; sharing it would share the pairing.
+      launchd.agents = lib.mapAttrs (id: bridge: {
         enable = true;
         config = {
           ProgramArguments = [
             "${package}/bin/hue-homekit"
-            "${config.home.homeDirectory}/Library/Application Support/hue-homekit"
+            "${config.home.homeDirectory}/Library/Application Support/${id}"
             daemonUrl
             cfg.interface
+            (toString bridge.port)
+            bridge.name
           ];
           RunAtLoad = true;
           KeepAlive = true;
@@ -47,10 +75,10 @@ in
           ProcessType = "Interactive";
           ThrottleInterval = 10;
           Umask = 63;
-          StandardOutPath = "${config.home.homeDirectory}/Library/Logs/hue-homekit.log";
-          StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/hue-homekit.log";
+          StandardOutPath = "${config.home.homeDirectory}/Library/Logs/${id}.log";
+          StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/${id}.log";
         };
-      };
+      }) bridges;
     };
   };
 }
