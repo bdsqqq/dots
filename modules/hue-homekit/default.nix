@@ -44,9 +44,7 @@ in
         message = "Hue HomeKit requires the local Hue BLE daemon.";
       }
       {
-        assertion =
-          lib.length (lib.unique (map (bridge: bridge.port) (lib.attrValues bridges)))
-          == lib.length (lib.attrNames bridges);
+        assertion = lib.allUnique (map (bridge: bridge.port) (lib.attrValues bridges));
         message = "Hue HomeKit bridges must use distinct ports (51826 is reserved for the original bridge).";
       }
     ];
