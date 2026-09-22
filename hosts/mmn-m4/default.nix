@@ -98,6 +98,10 @@ in
   my.hueHomekit = {
     enable = true;
     interface = "en1";
+    additionalBridges.wife = {
+      name = "Desk Light Second Home";
+      port = 51827;
+    };
   };
   my.backrest = {
     homeDirectory = "/Users/bdsqqq";
