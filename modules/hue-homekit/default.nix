@@ -25,7 +25,13 @@ in
         message = "Hue HomeKit requires the local Hue BLE daemon.";
       }
     ];
-    home-manager.users.bdsqqq = { config, ... }: {
+    home-manager.users.bdsqqq = { config, lib, ... }: {
+      home.packages = [ package ];
+      # Local Network settings cannot display or authorize an unregistered app.
+      home.activation.registerHueHomekit = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+          -f "${package}/Applications/Hue HomeKit.app"
+      '';
       launchd.agents.hue-homekit = {
         enable = true;
         config = {
