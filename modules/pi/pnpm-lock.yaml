@@ -358,19 +358,6 @@ importers:
         specifier: '*'
         version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
 
-  packages/core/web-retrieval:
-    dependencies:
-      typebox:
-        specifier: 'catalog:'
-        version: 1.1.38
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 0.85.1(patch_hash=04a98ea7f38a518013a1fda959b273843de1fa32341e8d08d6eec049f063b1d1)(ws@8.21.3)(zod@4.4.3)
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
-
   packages/extensions/apply-patch:
     dependencies:
       '@bds_pi/box-format':
@@ -953,12 +940,18 @@ importers:
       '@bds_pi/html-to-md':
         specifier: workspace:*
         version: link:../../core/html-to-md
+      '@bds_pi/output-buffer':
+        specifier: workspace:*
+        version: link:../../core/output-buffer
+      '@bds_pi/pi-spawn':
+        specifier: workspace:*
+        version: link:../../core/pi-spawn
       '@bds_pi/prompt-patch':
         specifier: workspace:*
         version: link:../../core/prompt-patch
-      '@bds_pi/web-retrieval':
+      '@bds_pi/sub-agent-render':
         specifier: workspace:*
-        version: link:../../core/web-retrieval
+        version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
         version: 1.1.38
@@ -1143,9 +1136,9 @@ importers:
       '@bds_pi/prompt-patch':
         specifier: workspace:*
         version: link:../../core/prompt-patch
-      '@bds_pi/web-retrieval':
+      '@bds_pi/tool-cost':
         specifier: workspace:*
-        version: link:../../core/web-retrieval
+        version: link:../../core/tool-cost
       typebox:
         specifier: 'catalog:'
         version: 1.1.38
