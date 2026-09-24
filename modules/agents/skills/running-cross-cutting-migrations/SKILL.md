@@ -34,7 +34,7 @@ load skills by name when their stage is needed; their contracts own the details:
 
 | capability | handoff |
 | --- | --- |
-| `product-design` | scoped outcome and owned issues |
+| `shaping-and-shipping-software` | scoped outcome and owned issues |
 | `inventorying-codebase-patterns` | reproducible occurrence map and exceptions |
 | `building-review-playgrounds` | reachable representative consumer states |
 | `desloping-code-changes` | justified diff and retained constraints |

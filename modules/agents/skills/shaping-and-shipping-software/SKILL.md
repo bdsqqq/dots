@@ -1,11 +1,11 @@
 ---
-name: product-design
-description: Applies Linear Method principles to product direction, goals, project scope, issue writing, design projects, momentum, and launches. Use when planning product work, shaping projects, writing issues, or advising software teams on execution practices.
+name: shaping-and-shipping-software
+description: Guides software teams from product direction through scoped projects, clear issues, user feedback, and frequent launches. Use when setting goals, prioritizing work, shaping projects, writing issues, or planning execution and delivery.
 ---
 
-# Applying the Linear Method
+# Shaping and Shipping Software
 
-Use the imported Linear Method source material as guidance for product planning and software execution.
+Build software through clear direction, small scopes, explicit ownership, user feedback, and frequent shipping. The bundled Linear Method documents provide the source guidance for these practices.
 
 ## Workflow
 
