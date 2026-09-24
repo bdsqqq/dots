@@ -7,8 +7,8 @@
  *
  * the delegate sub-agent inherits the parent's default model (no --model
  * flag). it gets most tools: read/write, edit, grep, bash, finder,
- * skill, format_file. the description is shown to the user in the
- * TUI; the prompt is the full instruction for the sub-agent.
+ * skill, format_file, web_search, read_web_page. the description is shown
+ * to the user in the TUI; the prompt is the full instruction for the sub-agent.
  *
  * no custom system prompt — the sub-agent uses pi's default prompt.
  * the delegate prompt itself contains all necessary context and instructions.
@@ -83,6 +83,8 @@ const CONFIG_DEFAULTS: DelegateExtConfig = {
     "format_file",
     "skill",
     "finder",
+    "web_search",
+    "read_web_page",
   ],
 };
 
@@ -157,7 +159,7 @@ export function createDelegateTool(
     label: "Delegate",
     description:
       "Delegate a task (a sub-task of the user's overall task) using a sub-agent that has access to " +
-      "the following tools: Read, Grep, Find, ls, Bash, Edit, Write, format_file, skill, finder.\n\n" +
+      "the following tools by default: read, grep, find, ls, bash, apply_patch, format_file, skill, finder, web_search, read_web_page.\n\n" +
       "When to use the delegate tool:\n" +
       "- When you need to perform complex multi-step tasks\n" +
       "- When you need to run an operation that will produce a lot of output (tokens) " +
@@ -436,6 +438,27 @@ if (import.meta.vitest) {
   });
 
   describe("delegate extension", () => {
+    it("registers a tool documenting its default web capabilities", () => {
+      const extension = createDelegateExtension({
+        ...DEFAULT_DEPS,
+        getEnabledExtensionConfig: (_namespace, defaults) => ({
+          enabled: true,
+          config: defaults,
+        }),
+        withPromptPatch: (tool) => tool,
+      });
+      const harness = createMockExtensionApiHarness();
+      extension(harness.pi);
+
+      expect(harness.tools).toHaveLength(1);
+      const tool = harness.tools[0] as ToolDefinition;
+      expect(tool.name).toBe("delegate");
+      for (const name of ["web_search", "read_web_page"]) {
+        expect(CONFIG_DEFAULTS.extensionTools).toContain(name);
+        expect(tool.description).toContain(name);
+      }
+    });
+
     it("resolves the effective tool config", () => {
       const config = {
         builtinTools: ["read"],

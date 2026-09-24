@@ -64,7 +64,15 @@ type OracleExtensionDeps = {
 
 const CONFIG_DEFAULTS: OracleExtConfig = {
   model: ORACLE_DEFAULT_MODEL,
-  extensionTools: ["read", "grep", "find", "ls", "bash"],
+  extensionTools: [
+    "read",
+    "grep",
+    "find",
+    "ls",
+    "bash",
+    "web_search",
+    "read_web_page",
+  ],
   builtinTools: ["read", "grep", "find", "ls", "bash"],
   promptFile: "agent.amp.oracle.md",
   promptString: "",
@@ -124,7 +132,7 @@ export function createOracleTool(
     description:
       "Consult the oracle - an AI advisor powered by a reasoning model " +
       "that can plan, review, and provide expert guidance.\n\n" +
-      "The oracle has access to tools: Read, Grep, Find, ls, Bash.\n\n" +
+      "The oracle has access to tools by default: Read, Grep, Find, ls, Bash, web_search, read_web_page.\n\n" +
       "You should consult the oracle for:\n" +
       "- Code reviews and architecture feedback\n" +
       "- Finding difficult bugs across many files\n" +
@@ -400,6 +408,10 @@ if (import.meta.vitest) {
         );
         expect(tools).toHaveLength(1);
         expect(tools[0].name).toBe("oracle");
+        for (const name of ["web_search", "read_web_page"]) {
+          expect(CONFIG_DEFAULTS.extensionTools).toContain(name);
+          expect(tools[0].description).toContain(name);
+        }
       });
 
       it("does not register any tools when disabled", () => {
