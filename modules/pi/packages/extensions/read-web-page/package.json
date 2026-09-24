@@ -8,8 +8,10 @@
     "@bds_pi/box-format": "workspace:*",
     "@bds_pi/config": "workspace:*",
     "@bds_pi/html-to-md": "workspace:*",
+    "@bds_pi/output-buffer": "workspace:*",
+    "@bds_pi/pi-spawn": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
-    "@bds_pi/web-retrieval": "workspace:*",
+    "@bds_pi/sub-agent-render": "workspace:*",
     "typebox": "catalog:"
   },
   "devDependencies": {

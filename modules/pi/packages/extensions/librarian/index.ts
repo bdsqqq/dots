@@ -7,8 +7,7 @@
  *
  * spawns `pi --mode json` with gpt-6-astra, constrained to the
  * github tools (read_github, search_github, list_directory_github,
- * list_repositories, glob_github, commit_search, diff) and web tools
- * (web_search, read_web_page). the librarian
+ * list_repositories, glob_github, commit_search, diff). the librarian
  * explores repos thoroughly before providing comprehensive answers.
  *
  * default prompt loaded from the shared repo prompt file.
@@ -70,7 +69,6 @@ const CONFIG_DEFAULTS: LibrarianExtConfig = {
     "commit_search",
     "diff",
     "web_search",
-    "read_web_page",
   ],
   builtinTools: [],
   promptFile: "agent.amp.librarian.md",
@@ -132,7 +130,6 @@ export function createLibrarianTool(
       "questions about large, complex codebases across GitHub repositories.\n\n" +
       "The Librarian reads from GitHub — it can see public repositories and private " +
       "repositories you have access to via `gh` CLI auth.\n\n" +
-      "By default, it also has web_search and read_web_page for web sources.\n\n" +
       "WHEN TO USE THE LIBRARIAN:\n" +
       "- Understanding complex multi-repository codebases\n" +
       "- Exploring relationships between different repositories\n" +
@@ -317,30 +314,6 @@ if (import.meta.vitest) {
   const { describe, expect, it, vi } = import.meta.vitest;
 
   describe("resolveLibrarianConfig", () => {
-    it("registers a tool documenting its default web capabilities", () => {
-      const tools: ToolDefinition[] = [];
-      const extension = createLibrarianExtension({
-        getEnabledExtensionConfig: (_namespace, defaults) => ({
-          enabled: true,
-          config: defaults,
-        }),
-        resolvePrompt: () => "system prompt",
-        withPromptPatch: (tool) => tool,
-      });
-      extension({
-        registerTool: (tool: ToolDefinition) => tools.push(tool),
-        on() {},
-      } as unknown as ExtensionAPI);
-
-      expect(tools).toHaveLength(1);
-      expect(tools[0]?.name).toBe("librarian");
-      for (const name of ["web_search", "read_web_page"]) {
-        expect(CONFIG_DEFAULTS.extensionTools).toContain(name);
-        expect(tools[0]?.description).toContain(name);
-      }
-      expect(CONFIG_DEFAULTS.builtinTools).toEqual([]);
-    });
-
     it("resolves the effective tool config", () => {
       const extensionConfig = {
         model: "custom/model",
