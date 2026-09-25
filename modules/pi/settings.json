@@ -9,7 +9,7 @@
   "compaction": {
     "enabled": true
   },
-  "lastChangelogVersion": "0.85.1",
+  "lastChangelogVersion": "0.87.1",
   "defaultModel": "gpt-6-astra",
   "defaultThinkingLevel": "low",
   "hideThinkingBlock": true,
