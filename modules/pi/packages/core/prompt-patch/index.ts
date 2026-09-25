@@ -33,6 +33,14 @@ if (import.meta.vitest) {
   const { describe, it, expect } = await import("vitest");
   const { Type } = await import("typebox");
   const { validateToolArguments } = await import("@earendil-works/pi-ai");
+  const { convertResponsesTools } =
+    await import("@earendil-works/pi-ai/api/openai-responses-shared");
+  // Codex supplies strict:null, not the converter's default false.
+  const codexOptions = {
+    strict: null,
+    supportsStrictMode: true,
+    supportsOpenAIGrammarTools: true,
+  } as const;
 
   function makeTool(overrides: Partial<ToolDefinition> = {}): ToolDefinition {
     return {
@@ -164,7 +172,111 @@ if (import.meta.vitest) {
       expect(patched.constrainedSampling).toBe(false);
     });
 
-    it.each([
+    it("explicitly falls back on the Codex wire without weakening local uniqueness", () => {
+      const tool = withPromptPatch(
+        makeTool({
+          parameters: Type.Object({
+            output: Type.Optional(
+              Type.Array(Type.String(), { uniqueItems: true }),
+            ),
+          }),
+        }),
+      );
+      const original = JSON.stringify(tool.parameters);
+      const [wire] = convertResponsesTools([tool], codexOptions);
+      expect(wire).toMatchObject({
+        type: "function",
+        strict: false,
+        parameters: tool.parameters,
+      });
+      expect(JSON.stringify(tool.parameters)).toBe(original);
+      expect(() =>
+        validateToolArguments(tool, {
+          type: "toolCall",
+          id: "duplicate",
+          name: tool.name,
+          arguments: { output: ["document", "document"] },
+        }),
+      ).toThrow();
+    });
+
+    for (const keyword of ["uniqueItems", "not"]) {
+      it(`does not advertise unsupported ${keyword} as strict`, () => {
+        const tool = withPromptPatch(
+          makeTool({
+            parameters: Type.Object({
+              nested: Type.Object({
+                output: Type.Array(Type.String(), { [keyword]: true }),
+              }),
+            }),
+          }),
+        );
+        expect(convertResponsesTools([tool], codexOptions)[0]).toMatchObject({
+          strict: false,
+        });
+        expect(() =>
+          convertResponsesTools(
+            [
+              {
+                ...tool,
+                constrainedSampling: { type: "json_schema", strict: "require" },
+              },
+            ],
+            codexOptions,
+          ),
+        ).toThrow(`Tool "test_tool"`);
+      });
+    }
+
+    it("preserves upstream handling of schema annotations", () => {
+      const tool = makeTool({
+        parameters: Type.Object({
+          output: Type.String({ default: "document" }),
+        }),
+        constrainedSampling: { type: "json_schema", strict: "require" },
+      });
+      expect(convertResponsesTools([tool], codexOptions)[0]).toMatchObject({
+        strict: true,
+        parameters: {
+          properties: { output: { type: "string", default: "document" } },
+        },
+      });
+    });
+
+    it("checks schema keywords, not property names or literal data", () => {
+      const tool = withPromptPatch(
+        makeTool({
+          parameters: Type.Object({
+            uniqueItems: Type.Optional(Type.String()),
+            not: Type.String({
+              enum: ["uniqueItems", "not"],
+              description: "uniqueItems is a value here",
+            }),
+          }),
+        }),
+      );
+      expect(convertResponsesTools([tool], codexOptions)[0]).toMatchObject({
+        strict: true,
+        parameters: {
+          required: ["uniqueItems", "not"],
+          properties: {
+            uniqueItems: { anyOf: [{ type: "string" }, { type: "null" }] },
+          },
+        },
+      });
+    });
+
+    type ToolArguments = Parameters<
+      typeof validateToolArguments
+    >[1]["arguments"];
+    it.each<{
+      name: string;
+      parameters: ToolDefinition["parameters"];
+      minimal: ToolArguments;
+      placeholders: ToolArguments;
+      explicit: ToolArguments;
+      invalid: ToolArguments;
+    }>([
       {
         name: "read",
         parameters: Type.Object({
@@ -200,7 +312,7 @@ if (import.meta.vitest) {
       },
     ])("validates $name optional arguments before execution", (fixture) => {
       const patched = withPromptPatch(makeTool(fixture));
-      const validate = (args: Record<string, unknown>) =>
+      const validate = (args: ToolArguments) =>
         validateToolArguments(patched, {
           type: "toolCall",
           id: "test",

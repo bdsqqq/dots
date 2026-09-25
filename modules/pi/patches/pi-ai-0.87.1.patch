@@ -1,0 +1,24 @@
+diff --git a/dist/api/constrained-sampling.js b/dist/api/constrained-sampling.js
+index ee45d3f..3c327aa 100644
+--- a/dist/api/constrained-sampling.js
++++ b/dist/api/constrained-sampling.js
+@@ -12,6 +12,7 @@ const UNSUPPORTED_STRICT_SCHEMA_KEYS = [
+     "unevaluatedProperties",
+     "propertyNames",
+     "contains",
++    "uniqueItems",
+     "prefixItems",
+     "not",
+     "if",
+@@ -172,8 +173,10 @@ export function resolveJsonSchemaStrictSampling(tool, supportsStrictMode) {
+         catch (error) {
+             if (!(error instanceof UnsupportedStrictJsonSchemaError))
+                 throw error;
++            // undefined inherits Codex's strict:null, which may re-enable server-side
++            // strict normalization. Unsupported prefer schemas need an explicit opt-out.
+             if (config.strict !== "require")
+-                return undefined;
++                return false;
+             throw new Error(`Tool "${tool.name}" requires JSON-schema constrained sampling, but ${error.message}.`);
+         }
+     }

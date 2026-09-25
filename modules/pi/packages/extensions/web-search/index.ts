@@ -1,20 +1,10 @@
 /**
- * web_search tool — direct HTTP call to Parallel AI's Search API.
- *
- * uses curl (not fetch/SDK) because pi extensions run in a nix-built
- * environment where adding npm deps requires a rebuild. curl is always
- * available and the single-endpoint usage doesn't justify the SDK.
- *
- * cost is derived from the response's usage array, not hardcoded —
- * the API returns UsageItem[] with SKU counts, we multiply by known
- * unit prices. if the API omits usage, we fall back to base search cost.
- *
- * refs:
- *   schema: https://docs.parallel.ai/public-openapi.json (UsageItem)
- *   pricing: https://docs.parallel.ai/pricing (Search API section)
+ * retrieval, not research delegation. let the calling model control coverage and
+ * evidence budgets; keep provider defaults adaptive rather than compressing every
+ * source to an arbitrary local limit.
+ * contract: https://docs.parallel.ai/api-reference/search/search.md
  */
 
-import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -30,21 +20,37 @@ import {
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
+import { renderLifecycleCall, framedTextRenderer } from "@bds_pi/box-format";
 import {
-  renderLifecycleCall,
-  boxRendererWindowed,
-  framedTextRenderer,
-  osc8Link,
-  type BoxSection,
-  type Excerpt,
-} from "@bds_pi/box-format";
-import { Type } from "typebox";
-import type { ToolCostDetails } from "@bds_pi/tool-cost";
+  Type,
+  type Static,
+  type TObject,
+  type TOptional,
+  type TString,
+  type TArray,
+  type TInteger,
+  type TUnsafe,
+} from "typebox";
+import { Assert } from "typebox/value";
+import {
+  parallelRequest,
+  retrievalIdentity,
+  publishResult,
+  continueResult,
+  formatWarnings,
+  usageCost,
+  fetchPolicySchema,
+  resolveFetchPolicy,
+} from "@bds_pi/web-retrieval";
+
+type SearchMode = "turbo" | "fast" | "basic" | "advanced";
 
 type WebSearchExtConfig = {
   defaultMaxResults: number;
   endpoint: string;
-  curlTimeoutSecs: number;
+  requestTimeoutSecs: number;
+  defaultMode: SearchMode;
+  maxRetries: number;
 };
 
 type WebSearchExtensionDeps = {
@@ -54,8 +60,10 @@ type WebSearchExtensionDeps = {
 
 const CONFIG_DEFAULTS: WebSearchExtConfig = {
   defaultMaxResults: 10,
-  endpoint: "https://api.parallel.ai/v1beta/search",
-  curlTimeoutSecs: 30,
+  endpoint: "https://api.parallel.ai/v1/search",
+  requestTimeoutSecs: 120,
+  defaultMode: "advanced",
+  maxRetries: 2,
 };
 
 const DEFAULT_DEPS: WebSearchExtensionDeps = {
@@ -70,11 +78,17 @@ function isWebSearchConfig(
     typeof value.defaultMaxResults === "number" &&
     Number.isInteger(value.defaultMaxResults) &&
     value.defaultMaxResults >= 1 &&
-    typeof value.endpoint === "string" &&
-    value.endpoint.trim().length > 0 &&
-    typeof value.curlTimeoutSecs === "number" &&
-    Number.isInteger(value.curlTimeoutSecs) &&
-    value.curlTimeoutSecs >= 1
+    value.defaultMaxResults <= 20 &&
+    value.endpoint === CONFIG_DEFAULTS.endpoint &&
+    typeof value.requestTimeoutSecs === "number" &&
+    Number.isInteger(value.requestTimeoutSecs) &&
+    value.requestTimeoutSecs >= 1 &&
+    typeof value.defaultMode === "string" &&
+    ["turbo", "fast", "basic", "advanced"].includes(value.defaultMode) &&
+    typeof value.maxRetries === "number" &&
+    Number.isInteger(value.maxRetries) &&
+    value.maxRetries >= 0 &&
+    value.maxRetries <= 2
   );
 }
 
@@ -82,293 +96,311 @@ const WEB_SEARCH_CONFIG_SCHEMA: ExtensionConfigSchema<WebSearchExtConfig> = {
   validate: isWebSearchConfig,
 };
 
-/** per-result excerpts for collapsed display — first 5 visual lines */
-const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
-
 interface SearchResult {
   url: string;
-  title: string;
-  publish_date?: string;
+  title?: string | null;
+  publish_date?: string | null;
   excerpts: string[];
 }
 
-/**
- * usage line item from the API response.
- * schema: https://docs.parallel.ai/public-openapi.json → UsageItem
- */
-interface UsageItem {
-  name: string;
-  count: number;
+function formatResults(results: SearchResult[]): string {
+  if (!results.length) return "(no results found)";
+  return results
+    .map((result) => {
+      const sections = [`### ${result.title || "(untitled)"}`, result.url];
+      if (result.publish_date) sections.push(`*${result.publish_date}*`);
+      if (result.excerpts.length)
+        sections.push("", result.excerpts.join("\n\n"));
+      return sections.join("\n");
+    })
+    .join("\n\n---\n\n");
 }
 
-/** per-unit pricing by SKU name ($/unit). ref: https://docs.parallel.ai/pricing */
-const SKU_UNIT_COST: Record<string, number> = {
-  sku_search: 0.005,
-  sku_search_additional_results: 0.001,
-};
+const searchSchema: TObject<{
+  objective: TOptional<TString>;
+  search_queries: TOptional<TArray<TString>>;
+  mode: TOptional<TUnsafe<SearchMode>>;
+  max_results: TOptional<TInteger>;
+  max_chars_total: TOptional<TInteger>;
+  max_chars_per_result: TOptional<TInteger>;
+  source_policy: TOptional<
+    TObject<{
+      include_domains: TOptional<TArray<TString>>;
+      exclude_domains: TOptional<TArray<TString>>;
+      after_date: TOptional<TString>;
+    }>
+  >;
+  fetch_policy: TOptional<typeof fetchPolicySchema>;
+  location: TOptional<TString>;
+  session_id: TOptional<TString>;
+  cursor: TOptional<TString>;
+  max_length: TOptional<TInteger>;
+}> = Type.Object(
+  {
+    objective: Type.Optional(
+      Type.String({
+        minLength: 1,
+        maxLength: 5000,
+        description:
+          "Self-contained research goal and context. Prefer sources here; source_policy is a HARD filter.",
+      }),
+    ),
+    search_queries: Type.Optional(
+      Type.Array(Type.String({ minLength: 1, maxLength: 200 }), {
+        minItems: 1,
+        maxItems: 5,
+        description:
+          "Required for a new search: 1–5 concise keyword queries. Usually 2–3 distinct angles, not repeated instructions.",
+      }),
+    ),
+    mode: Type.Optional(
+      Type.Unsafe<SearchMode>({
+        type: "string",
+        enum: ["turbo", "fast", "basic", "advanced"],
+        description:
+          "Default advanced: deeper retrieval/compression. basic: extended snippets. fast: low latency. turbo: simplest, English/Japanese; no path filters.",
+      }),
+    ),
+    max_results: Type.Optional(
+      Type.Integer({
+        minimum: 1,
+        maximum: 20,
+        description:
+          "Default 10; upstream maximum 20. Broader coverage needs distinct searches, which may run concurrently.",
+      }),
+    ),
+    max_chars_total: Type.Optional(
+      Type.Integer({
+        minimum: 1,
+        maximum: Number.MAX_SAFE_INTEGER,
+        description:
+          "Total excerpt-character budget. Omit for provider-adaptive sizing; no local 2,000-character cap.",
+      }),
+    ),
+    max_chars_per_result: Type.Optional(
+      Type.Integer({
+        minimum: 1,
+        maximum: Number.MAX_SAFE_INTEGER,
+        description:
+          "Optional excerpt-character budget per source. Omit to let the provider choose.",
+      }),
+    ),
+    source_policy: Type.Optional(
+      Type.Object(
+        {
+          include_domains: Type.Optional(
+            Type.Array(Type.String({ minLength: 1 }), {
+              maxItems: 200,
+              description:
+                "Only these domains/path prefixes/extensions. Cannot combine nonempty include and exclude lists.",
+            }),
+          ),
+          exclude_domains: Type.Optional(
+            Type.Array(Type.String({ minLength: 1 }), {
+              maxItems: 200,
+              description:
+                "Block these domains/path prefixes/extensions. No schemes, ports or wildcards.",
+            }),
+          ),
+          after_date: Type.Optional(
+            Type.String({
+              pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+              description:
+                "Earliest publication date YYYY-MM-DD; NOT cache freshness.",
+            }),
+          ),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+    fetch_policy: Type.Optional(fetchPolicySchema),
+    location: Type.Optional(
+      Type.String({
+        pattern: "^[a-zA-Z]{2}$",
+        description:
+          "Country code, e.g. br/us/gb. Unset by default. Upstream may warn for unsupported codes.",
+      }),
+    ),
+    session_id: Type.Optional(
+      Type.String({
+        minLength: 1,
+        maxLength: 1000,
+        description:
+          "Optional explicit grouping across Search/Extract. Default is opaque and task/branch-scoped; overrides deliberately share context.",
+      }),
+    ),
+    cursor: Type.Optional(
+      Type.String({
+        minLength: 1,
+        description:
+          "Continue an existing search snapshot in this session branch; no new API call. Exclusive with search fields. Expires after 24h.",
+      }),
+    ),
+    max_length: Type.Optional(
+      Type.Integer({
+        minimum: 1,
+        maximum: Number.MAX_SAFE_INTEGER,
+        description:
+          "Visible page length, not retrieval budget. Remaining evidence is available via cursor.",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
 
-/** falls back to base search cost when API omits usage (e.g., older API versions). */
-function costFromUsage(usage: UsageItem[] | undefined): number {
-  if (!usage?.length) return SKU_UNIT_COST.sku_search ?? 0;
-  let total = 0;
-  for (const item of usage) {
-    total += (SKU_UNIT_COST[item.name] ?? 0) * item.count;
+export type WebSearchParams = Static<typeof searchSchema>;
+
+function validateParams(input: WebSearchParams): WebSearchParams {
+  const p = Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value != null),
+  );
+  Assert(searchSchema, p);
+  if (p.cursor) {
+    if (Object.keys(p).some((key) => key !== "cursor" && key !== "max_length"))
+      throw new Error(
+        "cursor is exclusive with search controls; only max_length is allowed",
+      );
+    return p;
   }
-  return total;
-}
-
-interface SearchResponse {
-  search_id?: string;
-  results: SearchResult[];
-  warnings?: string[];
-  usage?: UsageItem[];
-}
-
-function searchParallel(
-  apiKey: string,
-  body: Record<string, unknown>,
-  endpoint: string,
-  curlTimeoutSecs: number,
-  signal?: AbortSignal,
-): Promise<{ data?: SearchResponse; error?: string }> {
-  return new Promise((resolve) => {
-    const payload = JSON.stringify(body);
-
-    const args = [
-      "-sL",
-      "-X",
-      "POST",
-      "-H",
-      "Content-Type: application/json",
-      "-H",
-      `x-api-key: ${apiKey}`,
-      "-H",
-      "parallel-beta: search-extract-2025-10-10",
-      "-m",
-      String(curlTimeoutSecs),
-      "-d",
-      payload,
-      endpoint,
-    ];
-
-    const child = spawn("curl", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let aborted = false;
-
-    const onAbort = () => {
-      aborted = true;
-      if (!child.killed) child.kill("SIGTERM");
-    };
-    if (signal) {
-      if (signal.aborted) {
-        onAbort();
-      } else signal.addEventListener("abort", onAbort, { once: true });
-    }
-
-    child.stdout?.on("data", (data: Buffer) => {
-      stdout += data.toString("utf-8");
-    });
-
-    child.stderr?.on("data", (data: Buffer) => {
-      stderr += data.toString("utf-8");
-    });
-
-    child.on("error", (err) => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve({ error: `curl error: ${err.message}` });
-    });
-
-    child.on("close", (code) => {
-      signal?.removeEventListener("abort", onAbort);
-      if (aborted) {
-        resolve({ error: "search aborted" });
-        return;
-      }
-      if (code !== 0) {
-        resolve({
-          error: `search failed: ${stderr.trim() || `curl exited with code ${code}`}`,
-        });
-        return;
-      }
-      try {
-        const parsed = JSON.parse(stdout) as SearchResponse;
-        resolve({ data: parsed });
-      } catch {
-        resolve({
-          error: `invalid response from Parallel API: ${stdout.slice(0, 200)}`,
-        });
-      }
-    });
-  });
-}
-
-function formatResults(results: SearchResult[]): {
-  text: string;
-  headerLineIndices: number[];
-} {
-  if (results.length === 0)
-    return { text: "(no results found)", headerLineIndices: [] };
-
-  const lines: string[] = [];
-  const headerLineIndices: number[] = [];
-
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i]!;
-    headerLineIndices.push(lines.length);
-    lines.push(`### ${r.title || "(untitled)"}`);
-    lines.push(r.url!);
-    if (r.publish_date) lines.push(`*${r.publish_date}*`);
-    if (r.excerpts?.length) {
-      lines.push("");
-      for (let j = 0; j < r.excerpts.length; j++) {
-        const excerptLines = r.excerpts[j]!.split("\n");
-        lines.push(...excerptLines);
-        if (j < r.excerpts.length - 1) lines.push("");
-      }
-    }
-
-    if (i < results.length - 1) {
-      lines.push("");
-      lines.push("---");
-      lines.push("");
-    }
+  if (
+    !p.search_queries?.length ||
+    p.search_queries.some((query) => !query.trim())
+  )
+    throw new Error(
+      "search_queries requires 1–5 nonempty keyword queries; objective alone is not a v1 search",
+    );
+  const {
+    include_domains = [],
+    exclude_domains = [],
+    after_date,
+  } = p.source_policy ?? {};
+  if (include_domains.length && exclude_domains.length)
+    throw new Error(
+      "choose include_domains OR exclude_domains: upstream ignores excludes when includes are set",
+    );
+  if (include_domains.length + exclude_domains.length > 200)
+    throw new Error("source filters exceed the upstream combined limit of 200");
+  for (const source of [...include_domains, ...exclude_domains]) {
+    if (/[:?#*\s]/.test(source) || source.startsWith("/"))
+      throw new Error(
+        "source filters must be bare domains, extensions, or domain/path prefixes",
+      );
+    if (p.mode === "turbo" && source.includes("/"))
+      throw new Error(
+        "turbo does not support path filters; use fast/basic/advanced",
+      );
   }
-
-  return { text: lines.join("\n"), headerLineIndices };
+  if (
+    after_date &&
+    (!Number.isFinite(Date.parse(after_date)) ||
+      new Date(after_date).toISOString().slice(0, 10) !== after_date)
+  )
+    throw new Error("after_date must be a real YYYY-MM-DD date");
+  return p;
 }
 
-/** convert raw SearchResult[] into BoxSection[] for box-format rendering. */
-function resultsToSections(results: SearchResult[]): BoxSection[] {
-  return results.map((r) => {
-    const lines = [];
-    lines.push({ text: osc8Link(r.url, r.url), highlight: true });
-    if (r.publish_date) lines.push({ text: r.publish_date, highlight: true });
-    if (r.excerpts?.length) {
-      lines.push({ text: "", highlight: false });
-      for (let j = 0; j < r.excerpts.length; j++) {
-        for (const l of r.excerpts[j]!.split("\n")) {
-          lines.push({ text: l, highlight: false });
-        }
-        if (j < r.excerpts.length - 1)
-          lines.push({ text: "", highlight: false });
-      }
-    }
-    return {
-      header: r.title || "(untitled)",
-      blocks: [{ lines }],
-    };
-  });
-}
-
-interface WebSearchParams {
-  objective: string;
-  search_queries?: string[];
-  max_results?: number;
+function isResult(value: unknown): value is SearchResult {
+  if (typeof value !== "object" || !value) return false;
+  const r = value as Record<string, unknown>;
+  return (
+    typeof r.url === "string" &&
+    /^https?:\/\//.test(r.url) &&
+    (r.title == null || typeof r.title === "string") &&
+    (r.publish_date == null || typeof r.publish_date === "string") &&
+    Array.isArray(r.excerpts) &&
+    r.excerpts.every((excerpt) => typeof excerpt === "string")
+  );
 }
 
 export function createWebSearchTool(
   config: WebSearchExtConfig = CONFIG_DEFAULTS,
-): ToolDefinition<any> {
+): ToolDefinition<typeof searchSchema> {
   return {
     name: "web_search",
     label: "Web Search",
     description:
-      "Search the web for information relevant to a research objective.\n\n" +
-      "Use when you need up-to-date or precise documentation. " +
-      "Use `read_web_page` to fetch full content from a specific URL.\n\n" +
-      "# Examples\n\n" +
-      "Get API documentation for a specific provider\n" +
-      '```json\n{"objective":"I want to know the request fields for the Stripe billing create customer API. Prefer Stripe\'s docs site."}\n```\n\n' +
-      "See usage documentation for newly released library features\n" +
-      '```json\n{"objective":"I want to know how to use SvelteKit remote functions, which is a new feature shipped in the last month.","search_queries":["sveltekit","remote function"]}\n```',
+      "Search the web for ranked URLs and source excerpts, not generated answers. " +
+      `Default mode ${config.defaultMode}, ${config.defaultMaxResults} results, adaptive excerpt budgets. ` +
+      "Send a self-contained objective plus concise keyword search_queries. " +
+      "Independent information needs can be searched concurrently; related query angles share one request. " +
+      "Use read_web_page for document or focused extraction from known URLs. " +
+      "Time-sensitive facts can request fetch_policy with a maximum cache age; publication date is separate. " +
+      "Oversized evidence is retained for 24h: pass its cursor to this tool to continue without searching again.\n" +
+      'Example: {"objective":"Find Stripe customer creation fields; prefer official documentation","search_queries":["Stripe create customer API fields"]}',
+    parameters: searchSchema,
 
-    parameters: Type.Object({
-      objective: Type.String({
-        description:
-          "A natural-language description of the broader task or research goal, " +
-          "including any source or freshness guidance.",
-      }),
-      search_queries: Type.Optional(
-        Type.Array(Type.String(), {
-          description:
-            "Optional keyword queries to ensure matches for specific terms are " +
-            "prioritized (recommended for best results).",
-        }),
-      ),
-      max_results: Type.Optional(
-        Type.Number({
-          description: `The maximum number of results to return (default: ${config.defaultMaxResults}).`,
-        }),
-      ),
-    }),
-
-    async execute(_toolCallId, params, signal) {
-      const p = params as WebSearchParams;
-      const apiKey = process.env.PARALLEL_API_KEY;
-      if (!apiKey) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text:
-                "PARALLEL_API_KEY not set. configure modules/pi/packages/extensions/web-search/secrets.yaml and rebuild, or export it for this process.",
-            },
-          ],
-          isError: true,
-        } as any;
-      }
-
-      const body: Record<string, unknown> = {
-        objective: p.objective,
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      signal?.throwIfAborted();
+      const p = validateParams(params);
+      if (p.cursor)
+        return continueResult(p.cursor, ctx, "web_search", p.max_length);
+      const mode = p.mode ?? config.defaultMode;
+      // Validate mode-dependent constraints against the effective, not merely explicit, mode.
+      validateParams({ ...p, mode });
+      const policy = resolveFetchPolicy(p.fetch_policy);
+      const settings = {
         max_results: p.max_results ?? config.defaultMaxResults,
-        excerpts: { max_chars_per_result: 2000 },
+        ...(p.source_policy ? { source_policy: p.source_policy } : {}),
+        ...(policy ? { fetch_policy: policy } : {}),
+        ...(p.location ? { location: p.location.toLowerCase() } : {}),
+        ...(p.max_chars_per_result !== undefined
+          ? {
+              excerpt_settings: {
+                max_chars_per_result: p.max_chars_per_result,
+              },
+            }
+          : {}),
       };
-      if (p.search_queries?.length) {
-        body.search_queries = p.search_queries;
-      }
-
-      const { data, error } = await searchParallel(
-        apiKey,
-        body,
-        config.endpoint,
-        config.curlTimeoutSecs,
+      const body = {
+        search_queries: p.search_queries,
+        ...(p.objective !== undefined ? { objective: p.objective } : {}),
+        mode,
+        ...retrievalIdentity(ctx, p.session_id),
+        ...(p.max_chars_total !== undefined
+          ? { max_chars_total: p.max_chars_total }
+          : {}),
+        advanced_settings: settings,
+      };
+      const data = await parallelRequest(config.endpoint, body, {
         signal,
+        maxRetries: config.maxRetries,
+        timeoutSeconds: Math.max(
+          config.requestTimeoutSecs,
+          (policy?.timeout_seconds ?? 0) + 30,
+        ),
+      });
+      if (!Array.isArray(data.results) || !data.results.every(isResult))
+        throw new Error(
+          "malformed Parallel search response: expected results with URLs and excerpt arrays",
+        );
+      const text = formatResults(data.results);
+      const metadata = Object.fromEntries(
+        Object.entries(data).filter(([key]) => key !== "results"),
       );
-
-      if (error) {
-        return {
-          content: [{ type: "text" as const, text: error }],
-          isError: true,
-        } as any;
-      }
-
-      if (!data?.results) {
-        return {
-          content: [{ type: "text" as const, text: "(no results)" }],
-        } as any;
-      }
-
-      const { text, headerLineIndices } = formatResults(data.results);
-      let output = text;
-
-      if (data.warnings?.length) {
-        output += `\n\n**Warnings:** ${data.warnings.join("; ")}`;
-      }
-
-      const resultSections = resultsToSections(data.results);
-      const details: ToolCostDetails & {
-        matchLineIndices?: number[];
-        resultSections?: BoxSection[];
-      } = {
-        cost: costFromUsage(data.usage),
-        matchLineIndices: headerLineIndices,
-        resultSections,
-      };
-      return { content: [{ type: "text" as const, text: output }], details };
+      const base = mode === "fast" || mode === "turbo" ? 0.001 : 0.005;
+      const cost = usageCost(
+        data.usage,
+        base + Math.max(0, data.results.length - 10) * 0.001,
+        base,
+      );
+      const warnings = formatWarnings(data.warnings);
+      const output = [
+        `search metadata: ${JSON.stringify({ ...metadata, mode, fetch_policy: policy })}`,
+        warnings && `warnings:\n${warnings}`,
+        cost.unknownSkus?.length &&
+          `cost unknown: unrecognized usage SKUs ${cost.unknownSkus.join(", ")}`,
+        text,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      signal?.throwIfAborted();
+      return publishResult(
+        output,
+        ctx,
+        { ...metadata, mode, ...cost },
+        "web_search",
+        { length: p.max_length },
+      );
     },
 
     renderCall(args: any, theme: any, context: any) {
@@ -389,21 +421,9 @@ export function createWebSearchTool(
       { expanded }: { expanded: boolean },
       _theme: any,
     ) {
-      const sections: BoxSection[] | undefined = result.details?.resultSections;
-      if (!sections?.length) {
-        const text = result.content?.[0];
-        return framedTextRenderer(
-          text?.type === "text" ? text.text : "(no output)",
-          expanded,
-        );
-      }
-      return boxRendererWindowed(
-        () => sections,
-        {
-          collapsed: { maxSections: 3, excerpts: COLLAPSED_EXCERPTS },
-          expanded: {},
-        },
-        undefined,
+      const text = result.content?.[0];
+      return framedTextRenderer(
+        text?.type === "text" ? text.text : "(no output)",
         expanded,
       );
     },
@@ -455,8 +475,271 @@ if (import.meta.vitest) {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     clearConfigCache();
     setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  });
+
+  describe("search v1 evidence contract", () => {
+    it("preserves excerpt whitespace and source boundaries", () => {
+      expect(
+        formatResults([
+          {
+            url: "https://example.com",
+            title: "source 🌍",
+            publish_date: "2026-01-01",
+            excerpts: ["first\n", "", "last"],
+          },
+          { url: "https://example.org", excerpts: [] },
+        ]),
+      ).toBe(
+        "### source 🌍\nhttps://example.com\n*2026-01-01*\n\nfirst\n\n\n\n\nlast\n\n---\n\n### (untitled)\nhttps://example.org",
+      );
+    });
+    type Context = Parameters<
+      ReturnType<typeof createWebSearchTool>["execute"]
+    >[4];
+    const entries: unknown[] = [];
+    const ctx = {
+      model: { id: "test-model" },
+      sessionManager: {
+        getSessionId: () => "search-contract-test",
+        getBranch: () => entries,
+      },
+    } as unknown as Context;
+    const run = (params: WebSearchParams) =>
+      createWebSearchTool({ ...CONFIG_DEFAULTS, maxRetries: 0 }).execute(
+        "search",
+        params,
+        undefined,
+        undefined,
+        ctx,
+      );
+    function network(
+      results: unknown = [
+        { url: "https://example.com", title: null, excerpts: ["evidence"] },
+      ],
+    ) {
+      vi.stubEnv("PARALLEL_API_KEY", "test-key");
+      return vi.spyOn(globalThis, "fetch").mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              search_id: "search-id",
+              session_id: "server-session",
+              results,
+              warnings: [
+                {
+                  type: "new_warning_type",
+                  message: "upstream warning",
+                  detail: { constraint: 20 },
+                },
+              ],
+              usage: [{ name: "sku_search", count: 1 }],
+            }),
+          ),
+      );
+    }
+    it("sends the GA shape with quality-first adaptive defaults and model context", async () => {
+      const fetch = network();
+      const result = await run({
+        search_queries: ["precise keyword query"],
+        objective: "a focused goal",
+      });
+      expect(fetch.mock.calls[0]![0]).toEqual(
+        new URL("https://api.parallel.ai/v1/search"),
+      );
+      const request = JSON.parse(fetch.mock.calls[0]![1]!.body as string);
+      expect(request).toEqual({
+        search_queries: ["precise keyword query"],
+        objective: "a focused goal",
+        mode: "advanced",
+        client_model: "test-model",
+        session_id: expect.any(String),
+        advanced_settings: { max_results: 10 },
+      });
+      expect(result.content[0]).toMatchObject({
+        text: expect.stringContaining("upstream warning"),
+      });
+      expect(result.content[0]).toMatchObject({
+        text: expect.stringContaining("evidence"),
+      });
+      expect(result.details).toMatchObject({
+        search_id: "search-id",
+        session_id: "server-session",
+        cost: 0.005,
+      });
+    });
+    it("exposes the complete retrieval controls without silently shrinking them", async () => {
+      const fetch = network();
+      await run({
+        search_queries: ["one", "two", "three", "four", "five"],
+        mode: "basic",
+        max_results: 20,
+        max_chars_total: 200000,
+        max_chars_per_result: 60000,
+        location: "BR",
+        session_id: "explicit",
+        source_policy: {
+          include_domains: ["docs.example.com/api"],
+          after_date: "2026-01-01",
+        },
+        fetch_policy: { max_age_seconds: 600, timeout_seconds: 60 },
+      });
+      expect(JSON.parse(fetch.mock.calls[0]![1]!.body as string)).toMatchObject(
+        {
+          max_chars_total: 200000,
+          session_id: "explicit",
+          advanced_settings: {
+            max_results: 20,
+            location: "br",
+            excerpt_settings: { max_chars_per_result: 60000 },
+            source_policy: {
+              include_domains: ["docs.example.com/api"],
+              after_date: "2026-01-01",
+            },
+            fetch_policy: {
+              max_age_seconds: 600,
+              timeout_seconds: 60,
+              disable_cache_fallback: true,
+            },
+          },
+        },
+      );
+    });
+    it("preserves an explicitly permitted stale-cache fallback", async () => {
+      const fetch = network();
+      await run({
+        search_queries: ["query"],
+        fetch_policy: { max_age_seconds: 600, disable_cache_fallback: false },
+      });
+      expect(
+        JSON.parse(fetch.mock.calls[0]![1]!.body as string).advanced_settings
+          .fetch_policy.disable_cache_fallback,
+      ).toBe(false);
+    });
+    it("prices the shared search SKU according to the selected mode", async () => {
+      network();
+      const result = await run({ search_queries: ["query"], mode: "fast" });
+      expect(result.details).toMatchObject({
+        cost: 0.001,
+        costEstimated: false,
+      });
+    });
+    for (const invalid of [
+      {},
+      { objective: "no keywords" },
+      { search_queries: ["  "] },
+      { search_queries: Array(6).fill("query") },
+      { search_queries: ["query"], max_results: 100 },
+      { search_queries: ["query"], max_results: 2.5 },
+      { search_queries: ["query"], max_chars_total: 0 },
+      {
+        search_queries: ["query"],
+        mode: "turbo",
+        source_policy: { include_domains: ["example.com/path"] },
+      },
+      {
+        search_queries: ["query"],
+        source_policy: {
+          include_domains: ["example.com"],
+          exclude_domains: ["other.com"],
+        },
+      },
+      {
+        search_queries: ["query"],
+        source_policy: { after_date: "2026-02-30" },
+      },
+      { search_queries: ["query"], fetch_policy: { max_age_seconds: 0 } },
+      { search_queries: ["query"], cursor: "not-a-cursor" },
+    ]) {
+      it(`rejects invalid request before network ${JSON.stringify(invalid).slice(0, 100)}`, async () => {
+        const fetch = network();
+        await expect(run(invalid as WebSearchParams)).rejects.toThrow();
+        expect(fetch).not.toHaveBeenCalled();
+      });
+    }
+    it("does not turn HTTP or malformed-response errors into empty success", async () => {
+      const fetch = network();
+      fetch.mockResolvedValueOnce(
+        new Response('{"error":{"message":"denied"}}', { status: 401 }),
+      );
+      await expect(run({ search_queries: ["query"] })).rejects.toThrow(
+        "HTTP 401",
+      );
+      fetch.mockResolvedValueOnce(
+        new Response('{"error":{"message":"wrong shape"}}'),
+      );
+      await expect(run({ search_queries: ["query"] })).rejects.toThrow(
+        "malformed",
+      );
+    });
+    it("reports genuinely empty results and unknown prices honestly", async () => {
+      const fetch = network([]);
+      expect(
+        (await run({ search_queries: ["query"] })).content[0],
+      ).toMatchObject({ text: expect.stringContaining("no results found") });
+      fetch.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            results: [],
+            usage: [{ name: "new_sku", count: 1 }],
+          }),
+        ),
+      );
+      const result = await run({ search_queries: ["query"] });
+      expect(result.details).not.toHaveProperty("cost");
+      expect(result.content[0]).toMatchObject({
+        text: expect.stringContaining("cost unknown"),
+      });
+    });
+    it("continues retained excerpts without another request or charge", async () => {
+      const fetch = network([
+        { url: "https://example.com", excerpts: ["evidence\n".repeat(6000)] },
+      ]);
+      const first = await run({ search_queries: ["query"] });
+      entries.push({
+        type: "message",
+        message: {
+          role: "toolResult",
+          toolName: "web_search",
+          details: first.details,
+        },
+      });
+      const cursor = (first.details as { webPage: { nextCursor: string } })
+        .webPage.nextCursor;
+      const next = await run({ cursor });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(next.details).toMatchObject({ cost: 0, continuation: true });
+    });
+    it("publishes huge multiline excerpts instead of exceeding the argument limit", async () => {
+      const fetch = network([
+        {
+          url: "https://example.com",
+          excerpts: ["evidence\n".repeat(150000)],
+        },
+      ]);
+      const first = await run({ search_queries: ["large document"] });
+      expect(first.details).toMatchObject({
+        cost: 0.005,
+        webPage: { total: expect.any(Number), nextCursor: expect.any(String) },
+      });
+      entries.push({
+        type: "message",
+        message: {
+          role: "toolResult",
+          toolName: "web_search",
+          details: first.details,
+        },
+      });
+      const cursor = (first.details as { webPage: { nextCursor: string } })
+        .webPage.nextCursor;
+      const next = await run({ cursor });
+      expect(next.content[0]).toMatchObject({
+        text: expect.stringContaining("evidence\n"),
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("web-search extension", () => {
