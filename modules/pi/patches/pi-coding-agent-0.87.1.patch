@@ -35,10 +35,10 @@ index 417584f..b9c30af 100644
                          resultHtmlExpanded: rendered.expanded,
                      };
 diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.js
-index cfdd161..8b41631 100644
+index e4578bf..8c28e59 100644
 --- a/dist/core/export-html/template.js
 +++ b/dist/core/export-html/template.js
-@@ -932,7 +932,7 @@
+@@ -937,7 +937,7 @@
  
          const invalidArg = '<span class="tool-error">[invalid arg]</span>';
  
@@ -292,12 +292,12 @@ index 6ad1710..8d4f97e 100644
  //# sourceMappingURL=branch-summary-message.d.ts.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/branch-summary-message.js b/dist/modes/interactive/components/branch-summary-message.js
-index e23ca6d..d681125 100644
+index 8bca6de..2a52b59 100644
 --- a/dist/modes/interactive/components/branch-summary-message.js
 +++ b/dist/modes/interactive/components/branch-summary-message.js
 @@ -1,23 +1,33 @@
--import { Box, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
-+import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+-import { Box, Container, Markdown, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, MouseRegion, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
  import { getMarkdownTheme, theme } from "../theme/theme.js";
  import { keyText } from "./keybinding-hints.js";
  /**
@@ -335,34 +335,30 @@ index e23ca6d..d681125 100644
      }
      invalidate() {
          super.invalidate();
-@@ -25,20 +35,33 @@ export class BranchSummaryMessageComponent extends Box {
+@@ -25,7 +35,7 @@ export class BranchSummaryMessageComponent extends Box {
      }
      updateDisplay() {
          this.clear();
+-        const content = new Container();
 +        const content = new Box(0, 0, (text) => theme.bg("customMessageBg", text));
          const label = theme.fg("customMessageLabel", `\x1b[1m[branch]\x1b[22m`);
--        this.addChild(new Text(label, 0, 0));
--        this.addChild(new Spacer(1));
-+        content.addChild(new Text(label, 0, 0));
-+        content.addChild(new Spacer(1));
-         if (this.expanded) {
-             const header = "**Branch Summary**\n\n";
--            this.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
-+            content.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
-                 color: (text) => theme.fg("customMessageText", text),
-             }));
-         }
-         else {
--            this.addChild(new Text(theme.fg("customMessageText", "Branch summary (") +
-+            content.addChild(new Text(theme.fg("customMessageText", "Branch summary (") +
+         content.addChild(new Text(label, 0, 0));
+         content.addChild(new Spacer(1));
+@@ -40,12 +50,23 @@ export class BranchSummaryMessageComponent extends Box {
                  theme.fg("dim", keyText("app.tools.expand")) +
                  theme.fg("customMessageText", " to expand)"), 0, 0));
          }
+-        this.addChild(new MouseRegion(content, (event) => {
 +        const messageFrame = new Box(this.outputPad, 0);
-+        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), content, {
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), new MouseRegion(content, (event) => {
+             if (event.type !== "click" || event.button !== "left")
+                 return undefined;
+             this.setExpanded(!this.expanded);
+             return { handled: true };
++        }), {
 +            continuationMarker: theme.fg("muted", "│"),
 +            footerMarker: theme.fg("muted", "╰────"),
-+        }));
+         }));
 +        this.addChild(messageFrame);
 +    }
 +    render(width) {
@@ -372,8 +368,9 @@ index e23ca6d..d681125 100644
 +        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
      }
  }
- //# sourceMappingURL=branch-summary-message.js.map
+-//# sourceMappingURL=branch-summary-message.js.map
 \ No newline at end of file
++//# sourceMappingURL=branch-summary-message.js.map
 diff --git a/dist/modes/interactive/components/compaction-summary-message.d.ts b/dist/modes/interactive/components/compaction-summary-message.d.ts
 index 88bfa50..622301f 100644
 --- a/dist/modes/interactive/components/compaction-summary-message.d.ts
@@ -403,12 +400,12 @@ index 88bfa50..622301f 100644
  //# sourceMappingURL=compaction-summary-message.d.ts.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/compaction-summary-message.js b/dist/modes/interactive/components/compaction-summary-message.js
-index 48c2271..f595fb6 100644
+index 8b8cc05..c5c2a37 100644
 --- a/dist/modes/interactive/components/compaction-summary-message.js
 +++ b/dist/modes/interactive/components/compaction-summary-message.js
 @@ -1,23 +1,33 @@
--import { Box, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
-+import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+-import { Box, Container, Markdown, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, MouseRegion, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
  import { getMarkdownTheme, theme } from "../theme/theme.js";
  import { keyText } from "./keybinding-hints.js";
  /**
@@ -446,35 +443,30 @@ index 48c2271..f595fb6 100644
      }
      invalidate() {
          super.invalidate();
-@@ -25,21 +35,34 @@ export class CompactionSummaryMessageComponent extends Box {
+@@ -25,7 +35,7 @@ export class CompactionSummaryMessageComponent extends Box {
      }
      updateDisplay() {
          this.clear();
+-        const content = new Container();
 +        const content = new Box(0, 0, (text) => theme.bg("customMessageBg", text));
          const tokenStr = this.message.tokensBefore.toLocaleString();
          const label = theme.fg("customMessageLabel", `\x1b[1m[compaction]\x1b[22m`);
--        this.addChild(new Text(label, 0, 0));
--        this.addChild(new Spacer(1));
-+        content.addChild(new Text(label, 0, 0));
-+        content.addChild(new Spacer(1));
-         if (this.expanded) {
-             const header = `**Compacted from ${tokenStr} tokens**\n\n`;
--            this.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
-+            content.addChild(new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
-                 color: (text) => theme.fg("customMessageText", text),
-             }));
-         }
-         else {
--            this.addChild(new Text(theme.fg("customMessageText", `Compacted from ${tokenStr} tokens (`) +
-+            content.addChild(new Text(theme.fg("customMessageText", `Compacted from ${tokenStr} tokens (`) +
+         content.addChild(new Text(label, 0, 0));
+@@ -41,12 +51,23 @@ export class CompactionSummaryMessageComponent extends Box {
                  theme.fg("dim", keyText("app.tools.expand")) +
                  theme.fg("customMessageText", " to expand)"), 0, 0));
          }
+-        this.addChild(new MouseRegion(content, (event) => {
 +        const messageFrame = new Box(this.outputPad, 0);
-+        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), content, {
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), new MouseRegion(content, (event) => {
+             if (event.type !== "click" || event.button !== "left")
+                 return undefined;
+             this.setExpanded(!this.expanded);
+             return { handled: true };
++        }), {
 +            continuationMarker: theme.fg("muted", "│"),
 +            footerMarker: theme.fg("muted", "╰────"),
-+        }));
+         }));
 +        this.addChild(messageFrame);
 +    }
 +    render(width) {
@@ -484,8 +476,9 @@ index 48c2271..f595fb6 100644
 +        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
      }
  }
- //# sourceMappingURL=compaction-summary-message.js.map
+-//# sourceMappingURL=compaction-summary-message.js.map
 \ No newline at end of file
++//# sourceMappingURL=compaction-summary-message.js.map
 diff --git a/dist/modes/interactive/components/custom-message.d.ts b/dist/modes/interactive/components/custom-message.d.ts
 index 4f55bb8..c8abb34 100644
 --- a/dist/modes/interactive/components/custom-message.d.ts
@@ -568,7 +561,7 @@ index 7c6fb37..2e723f3 100644
  //# sourceMappingURL=custom-message.js.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
-index 811f0f0..1cf1073 100644
+index 6d0356c..99e7bc0 100644
 --- a/dist/modes/interactive/components/tool-execution.js
 +++ b/dist/modes/interactive/components/tool-execution.js
 @@ -1,4 +1,4 @@
@@ -655,10 +648,10 @@ index 2e04903..6e4673d 100644
              return lines;
          }
 diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
-index a1e7d98..b785d0c 100644
+index 2c17c2f..59162b5 100644
 --- a/dist/modes/interactive/interactive-mode.js
 +++ b/dist/modes/interactive/interactive-mode.js
-@@ -2933,14 +2933,14 @@ export class InteractiveMode {
+@@ -3053,14 +3053,14 @@ export class InteractiveMode {
              }
              case "compactionSummary": {
                  this.chatContainer.addChild(new Spacer(1));
@@ -675,7 +668,7 @@ index a1e7d98..b785d0c 100644
                  component.setExpanded(this.toolOutputExpanded);
                  this.chatContainer.addChild(component);
                  break;
-@@ -3929,6 +3929,8 @@ export class InteractiveMode {
+@@ -4080,6 +4080,8 @@ export class InteractiveMode {
                      if (this.streamingComponent || this.session.isStreaming) {
                          for (const child of this.chatContainer.children) {
                              if (child instanceof AssistantMessageComponent ||
@@ -684,3 +677,16 @@ index a1e7d98..b785d0c 100644
                                  child instanceof CustomMessageComponent ||
                                  child instanceof UserMessageComponent) {
                                  child.setOutputPad(padding);
+diff --git a/package.json b/package.json
+index 62c01de..0db085e 100644
+--- a/package.json
++++ b/package.json
+@@ -7,7 +7,7 @@
+ 		"configDir": ".pi"
+ 	},
+ 	"bin": {
+-		"pi": "dist/bundle/cli.js"
++		"pi": "dist/cli.js"
+ 	},
+ 	"main": "./dist/index.js",
+ 	"types": "./dist/index.d.ts",

@@ -41,6 +41,11 @@
     "check": "pnpm run format:check && pnpm run lint && pnpm run test"
   },
   "dependencies": {
+    "@earendil-works/chord": "catalog:",
+    "@earendil-works/pi-agent-core": "catalog:",
+    "@earendil-works/pi-client": "catalog:",
+    "@earendil-works/pi-protocol": "catalog:",
+    "@earendil-works/pi-server": "catalog:",
     "defuddle": "^0.18.1",
     "diff": "^8.0.0",
     "evlog": "^2.22.4",

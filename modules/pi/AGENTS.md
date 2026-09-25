@@ -47,6 +47,14 @@ verify with:
 - `pnpm exec tsc -p tsconfig.build.json --noEmit`
 - `pnpm run test`
 
+tool-schema changes must exercise the provider request builder, not just
+TypeBox validation or registration. run the `packages/core/prompt-patch`
+tests; after building, set `PI_TEST_BUILT_TOOLS=1` to also compare source and
+built registries. with authorization for an existing Codex OAuth request,
+`node scripts/check-codex-tools.mjs --live` checks actual provider acceptance
+(`--built` checks dist). it disables tool execution and sends no session history.
+an SDK dependency patch requires restarting pi; `/reload` only reloads extensions.
+
 ## style
 
 - smallest viable diff.

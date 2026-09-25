@@ -5,12 +5,10 @@ import { spawnSync } from "node:child_process";
 import type {
   AssistantMessage,
   Message,
-  ToolCall,
   ToolResultMessage,
-  Usage,
-  UserMessage,
 } from "@earendil-works/pi-ai";
-import type { PiClient } from "@bds_pi/pi-client-legacy";
+import type { Client } from "@earendil-works/pi-client";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
   AgentSessionRuntime,
   createAgentSessionFromServices,
@@ -22,37 +20,18 @@ import {
   type AgentSession,
   type CreateAgentSessionRuntimeFactory,
 } from "@earendil-works/pi-coding-agent";
-/**
- * pi 0.85 replaced its experimental remote protocol wholesale. capacity is
- * still opt-in, so keep that lane on the last compatible protocol while the
- * normal cli, sdk, and every loaded extension use the current runtime.
- */
-import { RemoteSession } from "@bds_pi/pi-coding-agent-legacy/client";
-import type {
-  ModelMetadata,
-  ModelRef,
-  SessionMetadata,
-  SessionPhase,
-  SessionSnapshot,
-  ThinkingLevel,
-  TranscriptItem,
-  Usage as ProtocolUsage,
-} from "@bds_pi/pi-protocol-legacy";
+import { ServerError, SessionNotFoundError } from "@earendil-works/pi-server";
 import {
-  PiServerError,
-  SessionBusyError,
-  SessionNotFoundError,
-  toProtocolAssistantMessage,
-  toProtocolModelMetadata,
-  toProtocolToolResultMessage,
-  toProtocolUserMessage,
-  type CreateSessionOptions,
-  type PiServerService,
-  type PiSessionRuntime,
-  type PiSessionRuntimeEvent,
-  type PromptInput,
-  type SteerInput,
-} from "@bds_pi/pi-server-legacy";
+  createPiSpawnServerHost,
+  SpawnPresentation,
+  observeSpawn,
+  type SpawnExecutor,
+  type SpawnObservation,
+  type SpawnModel,
+  type SpawnCatalogueEntry,
+  type SpawnCreateRequest,
+} from "./remote-services.js";
+export { createPiSpawnServerHost } from "./remote-services.js";
 import type {
   PiCapacityAdmission,
   PiCapacityCoordinator,
@@ -81,7 +60,7 @@ export interface PiCapacityExecutionProfile {
 
 export interface PiSpawnRuntimeFactoryOptions {
   sessionManager: SessionManager;
-  model?: ModelRef;
+  model?: SpawnModel;
   thinkingLevel?: ThinkingLevel;
   executionProfile?: PiCapacityExecutionProfile;
   reason: "create" | "open";
@@ -90,7 +69,7 @@ export interface PiSpawnRuntimeFactoryOptions {
 /** Acquires one live runtime. Placement may remain local or lease another executor. */
 export type PiSpawnRuntimeFactory = (
   options: PiSpawnRuntimeFactoryOptions,
-) => Promise<PiSessionRuntime>;
+) => Promise<SpawnExecutor>;
 
 export interface PiSpawnServerCapacityOptions {
   catalogueDir: string;
@@ -108,7 +87,6 @@ export interface PiSpawnServerServiceOptions {
   capacity?: PiSpawnServerCapacityOptions;
   modelRuntime?: ModelRuntime;
   runtimeFactory?: PiSpawnRuntimeFactory;
-  listModels?: () => Promise<ModelMetadata[]>;
 }
 
 function timestamp(value: string | undefined, fallback: number): number {
@@ -137,6 +115,29 @@ function persistSessionHeader(sessionManager: SessionManager): string {
   return sessionFile;
 }
 
+/** Relocate SDK-owned cwd instructions, never user/tool transcript text. */
+function relocateSessionCwd(lines: string[], cwd: string): void {
+  const header = JSON.parse(lines[0] ?? "null");
+  if (header?.type !== "session" || typeof header.cwd !== "string") {
+    throw new Error("capacity session artifact has no valid cwd header");
+  }
+  const before = `<cwd>\n${header.cwd}\n</cwd>`;
+  for (let index = 1; index < lines.length; index += 1) {
+    const entry = JSON.parse(lines[index]!);
+    const message =
+      entry.type === "message"
+        ? entry.message
+        : entry.type === "compaction"
+          ? entry.systemMessage
+          : undefined;
+    if (message?.role === "system" && message.sections?.cwd === before) {
+      message.sections.cwd = `<cwd>\n${cwd}\n</cwd>`;
+      lines[index] = JSON.stringify(entry);
+    }
+  }
+  lines[0] = JSON.stringify({ ...header, cwd });
+}
+
 function parentSessionId(
   parentSessionPath: string | undefined,
 ): string | undefined {
@@ -153,7 +154,7 @@ function parentSessionId(
   }
 }
 
-function isProtocolMessage(message: { role: string }): message is Message {
+function isConversationMessage(message: { role: string }): message is Message {
   return (
     message.role === "user" ||
     message.role === "assistant" ||
@@ -161,141 +162,95 @@ function isProtocolMessage(message: { role: string }): message is Message {
   );
 }
 
-function transcriptItemId(
-  sessionId: string,
-  message: Message,
-  index: number,
-): string {
-  return `${sessionId}:${message.role}:${message.timestamp}:${index}`;
-}
-
-function toProtocolTranscript(session: AgentSession): TranscriptItem[] {
-  const messages = session.messages.filter(isProtocolMessage);
-  const entryIds = new Map<object, string>();
-  for (const entry of session.sessionManager.getEntries()) {
-    if (entry.type === "message" && isProtocolMessage(entry.message)) {
-      entryIds.set(entry.message, entry.id);
-    }
-  }
-
-  const calls = new Map<string, ToolCall>();
-  return messages.map((message, index) => {
-    const id =
-      entryIds.get(message) ??
-      transcriptItemId(session.sessionId, message, index);
-    if (message.role === "user") {
-      return toProtocolUserMessage(message, { id });
-    }
-    if (message.role === "assistant") {
-      for (const part of message.content) {
-        if (part.type === "toolCall") calls.set(part.id, part);
-      }
-      return toProtocolAssistantMessage(message, { id });
-    }
-
-    const call = calls.get(message.toolCallId);
-    if (!call) {
-      throw new TypeError(
-        `tool result ${message.toolCallId} has no preceding tool call`,
-      );
-    }
-    return toProtocolToolResultMessage(message, { id, call });
-  });
-}
-
-function runtimePhase(session: AgentSession): SessionPhase {
+function runtimePhase(session: AgentSession): SpawnObservation["phase"] {
   if (session.isRetrying) return "retry";
   if (session.isCompacting) return "compaction";
   if (session.isStreaming) return "turn";
   return "idle";
 }
 
-/** Adapts a coding-agent runtime to upstream pi's transport-neutral runtime. */
-export class AgentSessionPiRuntime implements PiSessionRuntime {
+/** Owns execution independently of any presentation attachment. */
+export class AgentSessionPiRuntime implements SpawnExecutor {
   readonly #runtime: AgentSessionRuntime;
-  readonly #createdAt: number;
-  readonly #listeners = new Set<(event: PiSessionRuntimeEvent) => void>();
+  readonly #listeners = new Set<() => void>();
   readonly #unsubscribe: () => void;
-  #revision = 0;
-  #updatedAt: number;
   #startingTurn = false;
   #disposed = false;
+  #streaming: AssistantMessage | undefined;
 
   constructor(runtime: AgentSessionRuntime) {
     this.#runtime = runtime;
-    const now = Date.now();
-    this.#createdAt = timestamp(
-      runtime.session.sessionManager.getHeader()?.timestamp,
-      now,
-    );
-    this.#updatedAt = now;
-    this.#unsubscribe = runtime.session.subscribe(() => {
-      this.#revision += 1;
-      this.#updatedAt = Date.now();
-      for (const listener of this.#listeners) listener({ type: "snapshot" });
+    this.#unsubscribe = runtime.session.subscribe((event) => {
+      if (
+        (event.type === "message_start" || event.type === "message_update") &&
+        event.message.role === "assistant"
+      ) {
+        this.#streaming = event.message;
+      } else if (
+        event.type === "message_end" &&
+        event.message.role === "assistant"
+      ) {
+        this.#streaming = undefined;
+      }
+      for (const listener of this.#listeners) listener();
     });
   }
 
-  snapshot(): SessionSnapshot {
+  snapshot(): SpawnObservation {
     this.#assertLive();
-    const session = this.#runtime.session;
-    const model = session.model;
-    if (!model)
-      throw new PiServerError("invalid_request", "session has no model");
-    const transcript = toProtocolTranscript(session);
-    const lastTimestamp = transcript.reduce(
-      (latest, item) => Math.max(latest, item.timestamp),
-      this.#createdAt,
+    // SDK messages may own optional undefined properties; JSON omits those.
+    return observeSpawn(
+      JSON.parse(
+        JSON.stringify({
+          id: this.#runtime.session.sessionId,
+          phase: this.getPhase(),
+          messages: [
+            ...this.#runtime.session.messages.filter(isConversationMessage),
+            ...(this.#streaming ? [this.#streaming] : []),
+          ],
+        }),
+      ),
     );
-    const queuedSteer = session.getSteeringMessages().map((text, index) => ({
-      id: `${session.sessionId}:steer:${index}`,
-      role: "user" as const,
-      content: [{ type: "text" as const, text }],
-      timestamp: this.#updatedAt,
-    }));
-
-    return {
-      id: session.sessionId,
-      ...(session.sessionName ? { name: session.sessionName } : {}),
-      cwd: this.#runtime.cwd,
-      createdAt: this.#createdAt,
-      updatedAt: Math.max(this.#updatedAt, lastTimestamp),
-      phase: this.getPhase(),
-      model: { provider: model.provider, id: model.id },
-      thinkingLevel: session.thinkingLevel,
-      attached: false,
-      locked: true,
-      revision: this.#revision,
-      transcript,
-      queuedSteer,
-      queuedSteerCount: queuedSteer.length,
-    };
   }
 
-  getPhase(): SessionPhase {
+  getPhase(): SpawnObservation["phase"] {
     if (this.#disposed) return "idle";
     return this.#startingTurn ? "turn" : runtimePhase(this.#runtime.session);
   }
 
-  async prompt(input: PromptInput): Promise<void> {
+  async prompt(input: { text: string }): Promise<void> {
     this.#assertLive();
     if (this.getPhase() !== "idle") {
-      throw new SessionBusyError("session is already running");
+      throw new ServerError(
+        "service_not_allowed",
+        "session is already running",
+      );
     }
     this.#startingTurn = true;
+    const previous = lastAssistant(
+      this.#runtime.session.messages.filter(isConversationMessage),
+    );
     try {
       await this.#runtime.session.prompt(input.text, { source: "rpc" });
+      const final = lastAssistant(
+        this.#runtime.session.messages.filter(isConversationMessage),
+      );
+      if (
+        !final ||
+        final === previous ||
+        !["stop", "length"].includes(final.stopReason)
+      ) {
+        throw new ServerError(
+          "service_not_allowed",
+          final?.errorMessage ??
+            "prompt did not produce a successful terminal assistant response",
+        );
+      }
     } finally {
       this.#startingTurn = false;
+      this.#streaming = undefined;
+      for (const listener of this.#listeners) listener();
     }
-  }
-
-  async steer(input: SteerInput): Promise<void> {
-    this.#assertLive();
-    if (this.getPhase() !== "turn") {
-      throw new SessionBusyError("session has no active turn to steer");
-    }
-    await this.#runtime.session.steer(input.text);
   }
 
   async abort(): Promise<void> {
@@ -303,27 +258,22 @@ export class AgentSessionPiRuntime implements PiSessionRuntime {
     await this.#runtime.session.abort();
   }
 
-  async setModel(model: ModelRef): Promise<void> {
+  async setModel(model: SpawnModel): Promise<void> {
     this.#assertIdle("change model");
     const resolved = this.#runtime.session.modelRuntime.getModel(
       model.provider,
       model.id,
     );
     if (!resolved) {
-      throw new PiServerError(
-        "invalid_request",
+      throw new ServerError(
+        "service_invalid_value",
         `unknown model: ${model.provider}/${model.id}`,
       );
     }
     await this.#runtime.session.setModel(resolved);
   }
 
-  async setThinking(thinkingLevel: ThinkingLevel): Promise<void> {
-    this.#assertIdle("change thinking level");
-    this.#runtime.session.setThinkingLevel(thinkingLevel);
-  }
-
-  subscribe(listener: (event: PiSessionRuntimeEvent) => void): () => void {
+  subscribe(listener: () => void): () => void {
     this.#assertLive();
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
@@ -344,13 +294,19 @@ export class AgentSessionPiRuntime implements PiSessionRuntime {
   #assertIdle(action: string): void {
     this.#assertLive();
     if (this.getPhase() !== "idle") {
-      throw new SessionBusyError(`cannot ${action} while session is busy`);
+      throw new ServerError(
+        "service_not_allowed",
+        `cannot ${action} while session is busy`,
+      );
     }
   }
 
   #assertLive(): void {
     if (this.#disposed) {
-      throw new PiServerError("session_locked", "session runtime is disposed");
+      throw new ServerError(
+        "service_not_allowed",
+        "session runtime is disposed",
+      );
     }
   }
 }
@@ -358,18 +314,15 @@ export class AgentSessionPiRuntime implements PiSessionRuntime {
 /**
  * durable session catalogue and runtime acquisition boundary for pi servers.
  *
- * PiServer supplies connection ownership and transport. this service persists
- * its exact server-assigned IDs, while runtimeFactory is the capacity seam.
+ * createPiSpawnServerHost assigns durable ids; the upstream router owns live
+ * attachment ids. runtimeFactory remains the local/leased execution seam.
  */
-export class PiSpawnServerService
-  implements PiServerService, PiCapacityCoordinator
-{
+export class PiSpawnServerService implements PiCapacityCoordinator {
   readonly #defaultCwd: string;
   readonly #agentDir: string;
   readonly #sessionDir: string | undefined;
   readonly #runtimeFactory: PiSpawnRuntimeFactory;
   readonly #capacity: LocalPiSessionCapacity | undefined;
-  readonly #listModelsOverride: (() => Promise<ModelMetadata[]>) | undefined;
   #pendingAdmission:
     | {
         admissionRef: string;
@@ -396,7 +349,6 @@ export class PiSpawnServerService
           runtimeFactory: this.#runtimeFactory,
         })
       : undefined;
-    this.#listModelsOverride = options.listModels;
     if (options.modelRuntime) {
       this.#modelRuntimePromise = Promise.resolve(options.modelRuntime);
     }
@@ -407,8 +359,8 @@ export class PiSpawnServerService
   ): Promise<PiCapacityAdmission> {
     const capacity = this.#requireCapacity();
     if (this.#pendingAdmission) {
-      throw new PiServerError(
-        "session_locked",
+      throw new ServerError(
+        "service_not_allowed",
         "capacity already has a pending session admission",
       );
     }
@@ -475,7 +427,7 @@ export class PiSpawnServerService
     return this.#requireCapacity().applyWorkspaceResult(request);
   }
 
-  async listSessions(): Promise<SessionMetadata[]> {
+  async listSessions(): Promise<SpawnCatalogueEntry[]> {
     if (this.#capacity) return this.#capacity.listSessions();
     const sessions = await this.#sessions();
     return sessions.map((session) => {
@@ -491,32 +443,22 @@ export class PiSpawnServerService
     });
   }
 
-  async listModels(): Promise<ModelMetadata[]> {
-    if (this.#listModelsOverride) return this.#listModelsOverride();
-    const runtime = await this.#modelRuntime();
-    const available = new Set(
-      (await runtime.getAvailable()).map(
-        (model) => `${model.provider}\0${model.id}`,
-      ),
-    );
-    return runtime
-      .getModels()
-      .map((model) =>
-        toProtocolModelMetadata(
-          model,
-          available.has(`${model.provider}\0${model.id}`),
-        ),
-      );
-  }
-
   async createSession(
-    options: CreateSessionOptions,
-  ): Promise<PiSessionRuntime> {
+    options: SpawnCreateRequest & {
+      id: string;
+      name?: string;
+      thinkingLevel?: ThinkingLevel;
+    },
+  ): Promise<SpawnExecutor> {
     if (this.#capacity) {
       const admission = this.#pendingAdmission;
-      if (!admission || admission.sessionId) {
-        throw new PiServerError(
-          "invalid_request",
+      if (
+        !admission ||
+        admission.sessionId ||
+        options.admissionRef !== admission.admissionRef
+      ) {
+        throw new ServerError(
+          "service_invalid_value",
           "capacity session creation requires a pending coordinator admission",
         );
       }
@@ -533,8 +475,8 @@ export class PiSpawnServerService
       });
     }
     if ((await this.#find(options.id)) !== undefined) {
-      throw new PiServerError(
-        "session_locked",
+      throw new ServerError(
+        "service_not_allowed",
         `session already exists: ${options.id}`,
       );
     }
@@ -569,7 +511,7 @@ export class PiSpawnServerService
     }
   }
 
-  async openSession(sessionId: string): Promise<PiSessionRuntime> {
+  async openSession(sessionId: string): Promise<SpawnExecutor> {
     if (this.#capacity) return this.#capacity.acquireSession(sessionId);
     const session = await this.#find(sessionId);
     if (!session) throw new SessionNotFoundError(sessionId);
@@ -611,7 +553,7 @@ export class PiSpawnServerService
 
   async #createLocalRuntime(
     options: PiSpawnRuntimeFactoryOptions,
-  ): Promise<PiSessionRuntime> {
+  ): Promise<SpawnExecutor> {
     const modelRuntime = await this.#modelRuntime();
     const createRuntime: CreateAgentSessionRuntimeFactory = async (target) => {
       const profile = options.executionProfile;
@@ -646,8 +588,8 @@ export class PiSpawnServerService
           )
         : undefined;
       if (options.model && !model) {
-        throw new PiServerError(
-          "invalid_request",
+        throw new ServerError(
+          "service_invalid_value",
           `unknown model: ${options.model.provider}/${options.model.id}`,
         );
       }
@@ -725,7 +667,7 @@ export interface CreateLocalPiSessionOptions extends PiCapacitySessionRequest {
   sessionId: string;
   admissionRef: string;
   name?: string;
-  model?: ModelRef;
+  model?: SpawnModel;
   thinkingLevel?: ThinkingLevel;
 }
 
@@ -791,30 +733,33 @@ function acknowledgeFile(temporaryPath: string, finalPath: string): void {
 /**
  * One fenced, host-local materialization of a durable pi session.
  *
- * PiServer calls dispose when an idle runtime loses its final attachment. Here
+ * The routed handle disposes execution after its final attachment releases. Here
  * that operation checkpoints the workspace and session log before releasing the
  * lease, so the server never needs to treat an executor path as durable state.
  */
-export class LocalPiSessionLease implements PiSessionRuntime {
+export class LocalPiSessionLease implements SpawnExecutor {
   readonly sessionId: string;
   readonly leaseEpoch: number;
   readonly executorDir: string;
   readonly workspacePath: string;
-  readonly #delegate: PiSessionRuntime;
-  readonly #suspendOperation: (
-    publishWorkspaceResult: boolean,
-  ) => Promise<void>;
+  readonly #delegate: SpawnExecutor;
+  readonly #suspendOperation: () => Promise<void>;
+  readonly #invalidateResult: () => void;
+  readonly #completeTurn: () => void;
   #state: PiCapacitySessionLifecycle = "active";
   #inFlight = 0;
-  #publishWorkspaceResult = true;
+  #promptActive = false;
+  #aborted = false;
 
   constructor(options: {
     sessionId: string;
     leaseEpoch: number;
     executorDir: string;
     workspacePath: string;
-    delegate: PiSessionRuntime;
-    suspend: (publishWorkspaceResult: boolean) => Promise<void>;
+    delegate: SpawnExecutor;
+    suspend: () => Promise<void>;
+    invalidateResult: () => void;
+    completeTurn: () => void;
   }) {
     this.sessionId = options.sessionId;
     this.leaseEpoch = options.leaseEpoch;
@@ -822,55 +767,79 @@ export class LocalPiSessionLease implements PiSessionRuntime {
     this.workspacePath = options.workspacePath;
     this.#delegate = options.delegate;
     this.#suspendOperation = options.suspend;
+    this.#invalidateResult = options.invalidateResult;
+    this.#completeTurn = options.completeTurn;
   }
 
-  snapshot(): SessionSnapshot | Promise<SessionSnapshot> {
+  snapshot(): SpawnObservation {
     this.#assertActive();
     return this.#delegate.snapshot();
   }
 
-  getPhase(): SessionPhase {
+  getPhase(): SpawnObservation["phase"] {
     return this.#state === "active" ? this.#delegate.getPhase() : "idle";
   }
 
-  prompt(input: PromptInput): Promise<void> {
-    return this.#run(() => this.#delegate.prompt(input));
-  }
-
-  steer(input: SteerInput): Promise<void> {
-    return this.#run(() => this.#delegate.steer(input));
+  async prompt(input: { text: string }): Promise<void> {
+    this.#assertActive();
+    if (this.#inFlight > 0 || this.#delegate.getPhase() !== "idle") {
+      throw new ServerError(
+        "service_not_allowed",
+        "session is already running",
+      );
+    }
+    this.#invalidateResult();
+    this.#promptActive = true;
+    this.#aborted = false;
+    try {
+      await this.#run(async () => {
+        await this.#delegate.prompt(input);
+        const final = lastAssistant(this.#delegate.snapshot().messages);
+        if (
+          !this.#aborted &&
+          (final?.stopReason === "stop" || final?.stopReason === "length")
+        ) {
+          this.#completeTurn();
+        }
+      });
+    } finally {
+      this.#promptActive = false;
+    }
   }
 
   abort(): Promise<void> {
-    this.#publishWorkspaceResult = false;
+    this.#aborted = true;
+    if (this.#promptActive) this.#invalidateResult();
     return this.#run(() => this.#delegate.abort());
   }
 
-  setModel(model: ModelRef): Promise<void> {
+  setModel(model: SpawnModel): Promise<void> {
     return this.#run(() => this.#delegate.setModel(model));
   }
 
-  setThinking(thinkingLevel: ThinkingLevel): Promise<void> {
-    return this.#run(() => this.#delegate.setThinking(thinkingLevel));
-  }
-
-  subscribe(listener: (event: PiSessionRuntimeEvent) => void): () => void {
+  subscribe(listener: () => void): () => void {
     this.#assertActive();
     return this.#delegate.subscribe(listener);
   }
 
   async suspend(): Promise<void> {
     if (this.#state === "suspending") {
-      throw new SessionBusyError("session suspension is already in progress");
+      throw new ServerError(
+        "service_not_allowed",
+        "session suspension is already in progress",
+      );
     }
     if (this.#state === "active") {
       if (this.#inFlight > 0 || this.#delegate.getPhase() !== "idle") {
-        throw new SessionBusyError("cannot suspend a busy session");
+        throw new ServerError(
+          "service_not_allowed",
+          "cannot suspend a busy session",
+        );
       }
       this.#state = "suspending";
     }
 
-    await this.#suspendOperation(this.#publishWorkspaceResult);
+    await this.#suspendOperation();
     this.#state = "suspended";
   }
 
@@ -891,8 +860,8 @@ export class LocalPiSessionLease implements PiSessionRuntime {
 
   #assertActive(): void {
     if (this.#state !== "active") {
-      throw new PiServerError(
-        "session_locked",
+      throw new ServerError(
+        "service_not_allowed",
         `session lease is ${this.#state}`,
       );
     }
@@ -986,7 +955,7 @@ export class LocalPiSessionCapacity {
         `admission ${binding.admissionRef} does not own session ${binding.sessionId}`,
       );
     }
-    if (record.lifecycle !== "suspended" || !record.workspaceResultRef) {
+    if (record.lifecycle === "suspending" || !record.workspaceResultRef) {
       throw new Error(`session result is not available: ${binding.sessionId}`);
     }
     return { ...binding, resultRef: record.workspaceResultRef };
@@ -1256,7 +1225,7 @@ export class LocalPiSessionCapacity {
     }
   }
 
-  listSessions(): SessionMetadata[] {
+  listSessions(): SpawnCatalogueEntry[] {
     return fs
       .readdirSync(this.#recordsDir)
       .filter((entry) => entry.endsWith(".json"))
@@ -1277,8 +1246,8 @@ export class LocalPiSessionCapacity {
   ): Promise<LocalPiSessionLease> {
     this.#withCatalogueLock(() => {
       if (fs.existsSync(this.#recordPath(options.sessionId))) {
-        throw new PiServerError(
-          "session_locked",
+        throw new ServerError(
+          "service_not_allowed",
           `session already exists: ${options.sessionId}`,
         );
       }
@@ -1306,7 +1275,7 @@ export class LocalPiSessionCapacity {
       sessionDir,
       executor.workspacePath,
     );
-    let runtime: PiSessionRuntime | undefined;
+    let runtime: SpawnExecutor | undefined;
 
     try {
       runtime = await this.#runtimeFactory({
@@ -1317,7 +1286,10 @@ export class LocalPiSessionCapacity {
         reason: "create",
       });
       if (runtime.getPhase() !== "idle") {
-        throw new SessionBusyError("new session runtime is not idle");
+        throw new ServerError(
+          "service_not_allowed",
+          "new session runtime is not idle",
+        );
       }
       const workspaceCheckpointRef = this.#persistWorkspaceCheckpoint(
         executor.workspacePath,
@@ -1346,8 +1318,8 @@ export class LocalPiSessionCapacity {
       };
       this.#withCatalogueLock(() => {
         if (fs.existsSync(this.#recordPath(options.sessionId))) {
-          throw new PiServerError(
-            "session_locked",
+          throw new ServerError(
+            "service_not_allowed",
             `session already exists: ${options.sessionId}`,
           );
         }
@@ -1363,13 +1335,13 @@ export class LocalPiSessionCapacity {
 
   async acquireSession(sessionId: string): Promise<LocalPiSessionLease> {
     let record!: PiCapacitySessionRecord;
-    let runtime: PiSessionRuntime | undefined;
+    let runtime: SpawnExecutor | undefined;
     let executorDir: string | undefined;
     this.#withCatalogueLock(() => {
       const current = this.getRecord(sessionId);
       if (current.lifecycle !== "suspended") {
-        throw new PiServerError(
-          "session_locked",
+        throw new ServerError(
+          "service_not_allowed",
           `session lease is ${current.lifecycle}: ${sessionId}`,
         );
       }
@@ -1416,7 +1388,10 @@ export class LocalPiSessionCapacity {
         reason: "open",
       });
       if (runtime.getPhase() !== "idle") {
-        throw new SessionBusyError("resumed session runtime is not idle");
+        throw new ServerError(
+          "service_not_allowed",
+          "resumed session runtime is not idle",
+        );
       }
       return this.#createLease(record, executor, sessionFile, runtime);
     } catch (error) {
@@ -1449,7 +1424,7 @@ export class LocalPiSessionCapacity {
     record: PiCapacitySessionRecord,
     executor: { executorDir: string; workspacePath: string },
     sessionFile: string,
-    runtime: PiSessionRuntime,
+    runtime: SpawnExecutor,
   ): LocalPiSessionLease {
     return new LocalPiSessionLease({
       sessionId: record.sessionId,
@@ -1457,14 +1432,48 @@ export class LocalPiSessionCapacity {
       executorDir: executor.executorDir,
       workspacePath: executor.workspacePath,
       delegate: runtime,
-      suspend: (publishWorkspaceResult) =>
-        this.#suspend(
-          record,
-          executor.workspacePath,
-          sessionFile,
-          runtime,
-          publishWorkspaceResult,
-        ),
+      invalidateResult: () =>
+        this.#withCatalogueLock(() => {
+          const current = this.#authoritativeRecord(record, "active");
+          const { workspaceResultRef: _previousResult, ...remaining } = current;
+          this.#writeRecord({ ...remaining, updatedAt: Date.now() });
+        }),
+      completeTurn: () =>
+        this.#completeTurn(record, executor.workspacePath, sessionFile),
+      suspend: () =>
+        this.#suspend(record, executor.workspacePath, sessionFile, runtime),
+    });
+  }
+
+  /** A completed turn is publishable even while another presentation observes it. */
+  #completeTurn(
+    lease: PiCapacitySessionRecord,
+    workspacePath: string,
+    sessionFile: string,
+  ): void {
+    this.#withCatalogueLock(() => {
+      const current = this.#authoritativeRecord(lease, "active");
+      const workspaceCheckpointRef = this.#persistWorkspaceCheckpoint(
+        workspacePath,
+        lease.workspace.baseRevision,
+      );
+      const sessionLogRef = this.#persistSessionLog(sessionFile);
+      const workspaceResultRef = { id: randomUUID() };
+      this.#writeWorkspaceResult({
+        id: workspaceResultRef.id,
+        admissionRef: lease.admissionRef,
+        sessionId: lease.sessionId,
+        repositoryId: lease.workspace.repositoryId,
+        baseRevision: lease.workspace.baseRevision,
+        workspaceCheckpointRef,
+      });
+      this.#writeRecord({
+        ...current,
+        updatedAt: Date.now(),
+        workspaceCheckpointRef,
+        sessionLogRef,
+        workspaceResultRef,
+      });
     });
   }
 
@@ -1472,8 +1481,7 @@ export class LocalPiSessionCapacity {
     lease: PiCapacitySessionRecord,
     workspacePath: string,
     sessionFile: string,
-    runtime: PiSessionRuntime,
-    publishWorkspaceResult: boolean,
+    runtime: SpawnExecutor,
   ): Promise<void> {
     this.#withCatalogueLock(() => {
       const current = this.#authoritativeRecord(lease, "active");
@@ -1490,19 +1498,6 @@ export class LocalPiSessionCapacity {
       lease.workspace.baseRevision,
     );
     const sessionLogRef = this.#persistSessionLog(sessionFile);
-    let workspaceResultRef: PiWorkspaceResultReference | undefined;
-    if (publishWorkspaceResult) {
-      workspaceResultRef = { id: randomUUID() };
-      this.#writeWorkspaceResult({
-        id: workspaceResultRef.id,
-        admissionRef: lease.admissionRef,
-        sessionId: lease.sessionId,
-        repositoryId: lease.workspace.repositoryId,
-        baseRevision: lease.workspace.baseRevision,
-        workspaceCheckpointRef,
-      });
-    }
-
     this.#withCatalogueLock(() => {
       const current = this.#authoritativeRecord(lease, "suspending");
       this.#writeRecord({
@@ -1510,7 +1505,6 @@ export class LocalPiSessionCapacity {
         updatedAt: Date.now(),
         workspaceCheckpointRef,
         sessionLogRef,
-        ...(workspaceResultRef ? { workspaceResultRef } : {}),
         lifecycle: "suspended",
       });
     });
@@ -1523,14 +1517,14 @@ export class LocalPiSessionCapacity {
   ): PiCapacitySessionRecord {
     const current = this.getRecord(lease.sessionId);
     if (current.leaseEpoch !== lease.leaseEpoch) {
-      throw new PiServerError(
-        "session_locked",
+      throw new ServerError(
+        "service_not_allowed",
         `stale lease epoch ${lease.leaseEpoch}; current epoch is ${current.leaseEpoch}`,
       );
     }
     if (current.lifecycle !== lifecycle) {
-      throw new PiServerError(
-        "session_locked",
+      throw new ServerError(
+        "service_not_allowed",
         `lease ${lease.leaseEpoch} is ${current.lifecycle}, expected ${lifecycle}`,
       );
     }
@@ -1683,7 +1677,7 @@ export class LocalPiSessionCapacity {
         "capacity session artifacts cannot persist parentSession paths",
       );
     }
-    lines[0] = JSON.stringify({ ...header, cwd: "." });
+    relocateSessionCwd(lines, ".");
     fs.writeFileSync(temporaryPath, `${lines.join("\n")}\n`, {
       encoding: "utf8",
       flag: "wx",
@@ -1706,6 +1700,10 @@ export class LocalPiSessionCapacity {
       fs.constants.COPYFILE_EXCL,
     );
     fs.chmodSync(sessionFile, 0o600);
+    const workspacePath = path.join(executorDir, "workspace");
+    const lines = fs.readFileSync(sessionFile, "utf8").trimEnd().split("\n");
+    relocateSessionCwd(lines, workspacePath);
+    fs.writeFileSync(sessionFile, `${lines.join("\n")}\n`);
     return sessionFile;
   }
 
@@ -1751,7 +1749,10 @@ export class LocalPiSessionCapacity {
       descriptor = fs.openSync(this.#lockPath, "wx", 0o600);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-        throw new PiServerError("session_locked", "capacity catalogue is busy");
+        throw new ServerError(
+          "service_not_allowed",
+          "capacity catalogue is busy",
+        );
       }
       throw error;
     }
@@ -1781,7 +1782,7 @@ function remoteUnsupported(config: PiSpawnConfig): string | undefined {
     : undefined;
 }
 
-function modelRef(model: PiSpawnModel): ModelRef {
+function modelRef(model: PiSpawnModel): SpawnModel {
   if (typeof model !== "string") {
     return { provider: model.provider, id: model.id };
   }
@@ -1793,91 +1794,6 @@ function modelRef(model: PiSpawnModel): ModelRef {
     provider: model.slice(0, separator),
     id: model.slice(separator + 1),
   };
-}
-
-function fromProtocolUsage(usage: ProtocolUsage): Usage {
-  return {
-    input: usage.input,
-    output: usage.output,
-    cacheRead: usage.cacheRead,
-    cacheWrite: usage.cacheWrite,
-    ...(usage.reasoning === undefined ? {} : { reasoning: usage.reasoning }),
-    totalTokens: usage.totalTokens,
-    cost: { ...usage.cost },
-  };
-}
-
-function emptyAiUsage(): Usage {
-  return {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-}
-
-function fromProtocolTranscript(
-  transcript: readonly TranscriptItem[],
-  models: readonly ModelMetadata[],
-): Message[] {
-  return transcript.map((item): Message => {
-    if (item.role === "user") {
-      return {
-        role: "user",
-        content: item.content.map((part) => ({ ...part })),
-        timestamp: item.timestamp,
-      } satisfies UserMessage;
-    }
-    if (item.role === "assistant") {
-      const model = models.find(
-        (candidate) =>
-          candidate.provider === item.model.provider &&
-          candidate.id === item.model.id,
-      );
-      if (!model) {
-        throw new Error(
-          `remote server omitted model metadata for ${item.model.provider}/${item.model.id}`,
-        );
-      }
-      const stopReason =
-        item.status === "streaming" ? "pending" : item.stopReason;
-      return {
-        role: "assistant",
-        content: item.content.map((part) =>
-          part.type === "toolCall"
-            ? {
-                type: "toolCall" as const,
-                id: part.toolCallId,
-                name: part.toolName,
-                arguments: part.input as Record<string, unknown>,
-              }
-            : { ...part },
-        ),
-        provider: item.model.provider,
-        model: item.model.id,
-        api: model.api as AssistantMessage["api"],
-        ...(item.responseModel ? { responseModel: item.responseModel } : {}),
-        usage: item.usage ? fromProtocolUsage(item.usage) : emptyAiUsage(),
-        stopReason,
-        ...(item.status === "error" || item.status === "aborted"
-          ? { errorMessage: item.errorMessage }
-          : {}),
-        timestamp: item.timestamp,
-      } satisfies AssistantMessage;
-    }
-    return {
-      role: "toolResult",
-      toolCallId: item.toolCallId,
-      toolName: item.toolName,
-      content: item.content.map((part) => ({ ...part })),
-      ...(item.details === undefined ? {} : { details: item.details }),
-      ...(item.usage ? { usage: fromProtocolUsage(item.usage) } : {}),
-      isError: item.isError,
-      timestamp: item.timestamp,
-    } satisfies ToolResultMessage;
-  });
 }
 
 function emptyUsage(): UsageStats {
@@ -1933,16 +1849,14 @@ function lastAssistant(
 }
 
 function remoteResult(
-  transcript: readonly TranscriptItem[],
+  messages: readonly Message[],
   lifecycle: PiSpawnLifecycle,
   sessionId?: string,
-  models: readonly ModelMetadata[] = [],
 ): PiSpawnResult {
-  const messages = fromProtocolTranscript(transcript, models);
   const assistant = lastAssistant(messages);
   return {
     exitCode: 0,
-    messages,
+    messages: [...messages],
     stderr: "",
     usage: usageFromMessages(messages),
     ...(assistant
@@ -1959,12 +1873,12 @@ function remoteResult(
   };
 }
 
-/** Runs compatible piSpawn work through an upstream RemoteSession/PiClient. */
+/** Runs piSpawn work through application-owned services on the Pi router. */
 export class RemotePiCapacityProvider implements PiCapacityProvider {
-  readonly #client: PiClient;
+  readonly #client: Client;
   readonly #coordinator: PiCapacityCoordinator | undefined;
 
-  constructor(client: PiClient, coordinator?: PiCapacityCoordinator) {
+  constructor(client: Client, coordinator?: PiCapacityCoordinator) {
     this.#client = client;
     this.#coordinator = coordinator;
   }
@@ -2031,7 +1945,7 @@ export class RemotePiCapacityProvider implements PiCapacityProvider {
       };
     }
 
-    let remote: RemoteSession | undefined;
+    let remote: SpawnPresentation | undefined;
     let result = remoteResult([], lifecycle);
     let unsubscribe: (() => void) | undefined;
     let timeout: NodeJS.Timeout | undefined;
@@ -2071,9 +1985,12 @@ export class RemotePiCapacityProvider implements PiCapacityProvider {
       if (interruption) throw new Error("remote pi session interrupted");
 
       if (config.session?.id) {
-        remote = await RemoteSession.open(this.#client, config.session.id);
+        remote = await SpawnPresentation.attach(this.#client, {
+          id: config.session.id,
+        });
       } else {
-        remote = await RemoteSession.create(this.#client, {
+        remote = await SpawnPresentation.attach(this.#client, {
+          ...(admission ? { admissionRef: admission.admissionRef } : {}),
           cwd: config.capacity ? "." : config.cwd,
           ...(requestedModel ? { model: requestedModel } : {}),
         });
@@ -2088,35 +2005,24 @@ export class RemotePiCapacityProvider implements PiCapacityProvider {
       }
 
       if (!interruption) lifecycle.status = "running";
-      result = remoteResult(
-        remote.state.transcript,
-        lifecycle,
-        remote.id,
-        remote.models,
-      );
+      result = remoteResult(remote.state.messages, lifecycle, remote.id);
       unsubscribe = remote.subscribe((state) => {
-        result = remoteResult(
-          state.transcript,
-          lifecycle,
-          remote?.id,
-          remote?.models,
-        );
+        result = remoteResult(state.messages, lifecycle, remote?.id);
         config.onUpdate?.({ ...result, messages: [...result.messages] });
       });
       if (config.timeoutMs !== undefined && !interruption) {
         timeout = setTimeout(() => requestAbort("timed_out"), config.timeoutMs);
       }
 
-      if (!interruption) {
-        await remote.submit(`Delegated task: ${config.task}`);
-      }
+      const completed = !interruption
+        ? await remote.submit(`Delegated task: ${config.task}`)
+        : remote.state;
+      // Replicated updates may still be hydrating after the request response.
+      // Only the prompt reply establishes the terminal observation for this call.
+      unsubscribe?.();
+      unsubscribe = undefined;
       if (abortPromise) await abortPromise;
-      result = remoteResult(
-        remote.state.transcript,
-        lifecycle,
-        remote.id,
-        remote.models,
-      );
+      result = remoteResult(completed.messages, lifecycle, remote.id);
 
       const assistant = lastAssistant(result.messages);
       if (interruption) {
@@ -2131,8 +2037,8 @@ export class RemotePiCapacityProvider implements PiCapacityProvider {
         lifecycle.errorKind =
           interruption === "cancelled" ? "cancelled" : "timeout";
       } else if (
-        assistant?.stopReason === "error" ||
-        assistant?.stopReason === "aborted"
+        !assistant ||
+        !["stop", "length"].includes(assistant.stopReason)
       ) {
         result.exitCode = 1;
         lifecycle.status = "failed";
@@ -2224,12 +2130,10 @@ if (import.meta.vitest) {
   const { afterEach, describe, expect, it } = import.meta.vitest;
   const { fauxAssistantMessage, fauxProvider } =
     await import("@earendil-works/pi-ai");
-  const { PiClient } = await import("@bds_pi/pi-client-legacy");
+  const { Client } = await import("@earendil-works/pi-client");
   const { createUnixTransportFactory } =
-    await import("@bds_pi/pi-client-legacy/unix");
-  const { TEST_MODEL, TestServerService, TestSessionRuntime } =
-    await import("@bds_pi/pi-server-legacy/testing");
-  const { createUnixServer } = await import("@bds_pi/pi-server-legacy/unix");
+    await import("@earendil-works/pi-client/unix");
+  const { createUnixServer } = await import("@earendil-works/pi-server/unix");
   const { clearConfigCache, setGlobalSettingsPath } =
     await import("@bds_pi/config");
   const roots: string[] = [];
@@ -2268,10 +2172,14 @@ if (import.meta.vitest) {
     };
   };
 
-  const makeFauxModelRuntime = async (root: string) => {
+  const makeFauxModelRuntime = async (
+    root: string,
+    tokensPerSecond?: number,
+  ) => {
     const faux = fauxProvider({
       provider: `capacity-faux-${randomUUID()}`,
       models: [{ id: "capacity-model", name: "Capacity model" }],
+      tokensPerSecond,
     });
     const modelRuntime = await ModelRuntime.create({
       authPath: path.join(root, "agent", "auth.json"),
@@ -2356,63 +2264,498 @@ if (import.meta.vitest) {
     }
   });
 
-  describe("PiSpawnServerService", () => {
-    it("persists server-assigned ids and reacquires disposed sessions", async () => {
+  describe("current routed services", () => {
+    it("retires an unclaimed creator after disconnect between handle acquisition and attachment", async () => {
       const root = makeRoot();
-      const runtimes: InstanceType<typeof TestSessionRuntime>[] = [];
-      const service = new PiSpawnServerService({
-        defaultCwd: root,
-        sessionDir: path.join(root, "sessions"),
-        listModels: async () => [TEST_MODEL],
-        runtimeFactory: async ({ sessionManager }) => {
-          const createdAt = timestamp(
-            sessionManager.getHeader()?.timestamp,
-            Date.now(),
-          );
-          const runtime = new TestSessionRuntime(
-            {
-              snapshot: {
-                id: sessionManager.getSessionId(),
-                cwd: sessionManager.getCwd(),
-                createdAt,
-                updatedAt: createdAt,
-                phase: "idle",
-                model: { provider: TEST_MODEL.provider, id: TEST_MODEL.id },
-                thinkingLevel: "off",
-                attached: false,
-                locked: true,
-                revision: 0,
-                transcript: [],
-                queuedSteer: [],
-                queuedSteerCount: 0,
-              },
-            },
-            () => {},
-          );
-          runtimes.push(runtime);
-          return runtime;
+      const { repository, baseRevision } = makeCatalogueRepository(root);
+      const catalogueDir = path.join(root, "catalogue");
+      const executorRoot = path.join(root, "executors");
+      const { faux, modelRuntime, model } = await makeFauxModelRuntime(root);
+      const service = capacityService({
+        root,
+        catalogueDir,
+        executorRoot,
+        repository,
+        modelRuntime,
+      });
+      const host = createPiSpawnServerHost(service);
+      let acquired = false;
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const gatedHost: typeof host = {
+        ...host,
+        async openSession(metadata, context) {
+          const handle = await host.openSession(metadata, context);
+          acquired = true;
+          await gate;
+          return handle;
+        },
+      };
+      let connections = 0;
+      const serverId = randomUUID();
+      const socketPath = path.join(root, "unclaimed.sock");
+      const server = createUnixServer(gatedHost, {
+        serverId,
+        path: socketPath,
+        onConnectionCountChanged: (count) => {
+          connections = count;
         },
       });
-
-      const first = await service.createSession({
-        id: "server-id",
-        cwd: root,
-        name: "worker task",
+      await server.start();
+      const client = await Client.connect({
+        serverId,
+        transportFactory: createUnixTransportFactory({ path: socketPath }),
       });
-      await first.dispose();
+      let resumed: SpawnPresentation | undefined;
+      try {
+        const admission = await service.admitSession({
+          repositoryId: "dots",
+          baseRevision,
+          executionProfileId: "delegate",
+        });
+        const pending = SpawnPresentation.attach(client, {
+          admissionRef: admission.admissionRef,
+          model,
+        }).then(
+          () => {
+            throw new Error("disconnected creation unexpectedly attached");
+          },
+          (error: unknown) => error,
+        );
+        await waitFor(() => acquired);
+        const id = (await service.listSessions())[0]!.id;
+        expect(readCapacityRecord(catalogueDir, id).lifecycle).toBe("active");
+        expect(fs.readdirSync(executorRoot)).toHaveLength(1);
+        client.disconnect();
+        await waitFor(() => connections === 0);
+        expect(await pending).toBeInstanceOf(Error);
+        release();
+        await waitFor(
+          () => readCapacityRecord(catalogueDir, id).lifecycle === "suspended",
+        );
+        expect(fs.readdirSync(executorRoot)).toHaveLength(0);
+        expect(
+          readCapacityRecord(catalogueDir, id).workspaceResultRef,
+        ).toBeUndefined();
+        await service.bindSession(admission, id);
+        await client.reconnect();
+        resumed = await SpawnPresentation.attach(client, { id });
+        faux.setResponses([
+          fauxAssistantMessage("resumed after failed attachment"),
+        ]);
+        const completed = await resumed.submit("continue");
+        expect(lastAssistant(completed.messages)?.content).toEqual([
+          { type: "text", text: "resumed after failed attachment" },
+        ]);
+        expect(readCapacityRecord(catalogueDir, id).leaseEpoch).toBe(2);
+        await resumed.dispose();
+        expect(fs.readdirSync(executorRoot)).toHaveLength(0);
+      } finally {
+        release();
+        await resumed?.dispose();
+        await client.dispose();
+        await server.close();
+      }
+    }, 30_000);
 
-      expect(await service.listSessions()).toEqual([
-        expect.objectContaining({
-          id: "server-id",
-          cwd: root,
-          sessionName: "worker task",
+    it("publishes provider results with an attached observer and preserves untouched resumes", async () => {
+      const root = makeRoot();
+      const { repository, baseRevision } = makeCatalogueRepository(root);
+      const catalogueDir = path.join(root, "catalogue");
+      const executorRoot = path.join(root, "executors");
+      const { faux, modelRuntime } = await makeFauxModelRuntime(root);
+      const service = capacityService({
+        root,
+        catalogueDir,
+        executorRoot,
+        repository,
+        modelRuntime,
+      });
+      const serverId = randomUUID();
+      const socketPath = path.join(root, "observer.sock");
+      const server = createUnixServer(createPiSpawnServerHost(service), {
+        serverId,
+        path: socketPath,
+      });
+      await server.start();
+      const connect = () =>
+        Client.connect({
+          serverId,
+          transportFactory: createUnixTransportFactory({ path: socketPath }),
+        });
+      const client = await connect();
+      const observerClient = await connect();
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      faux.setResponses([
+        async () => {
+          await gate;
+          return fauxAssistantMessage(
+            [
+              {
+                type: "toolCall",
+                id: "write",
+                name: "write",
+                arguments: {
+                  path: "modified.txt",
+                  content: "observed change\n",
+                },
+              },
+            ],
+            { stopReason: "toolUse" },
+          );
+        },
+        fauxAssistantMessage("done"),
+      ]);
+      let observer: SpawnPresentation | undefined;
+      try {
+        const pending = new RemotePiCapacityProvider(client, service).run({
+          cwd: repository,
+          task: "edit",
+          capacity: {
+            repositoryId: "dots",
+            baseRevision,
+            executionProfileId: "delegate",
+          },
+        });
+        await waitFor(() => faux.state.callCount === 1);
+        const id = (await service.listSessions())[0]!.id;
+        observer = await SpawnPresentation.attach(observerClient, { id });
+        release();
+        const result = await pending;
+        expect(result.lifecycle?.status).toBe("succeeded");
+        expect(result.session?.resultRef).toBeTruthy();
+        expect(result.session?.workspaceApply?.status).toBe("applied");
+        expect(
+          fs.readFileSync(path.join(repository, "modified.txt"), "utf8"),
+        ).toBe("observed change\n");
+        const active = readCapacityRecord(catalogueDir, id);
+        expect(active.lifecycle).toBe("active");
+        expect(fs.readdirSync(executorRoot)).toHaveLength(1);
+        const binding = { sessionId: id, admissionRef: active.admissionRef };
+        const published = await service.getSessionResult(binding);
+        expect(published.resultRef.id).toBe(result.session!.resultRef);
+        await observer.abort();
+        expect(await service.getSessionResult(binding)).toEqual(published);
+        await observer.dispose();
+        expect(await service.getSessionResult(binding)).toEqual(published);
+        observer = await SpawnPresentation.attach(observerClient, { id });
+        expect(await service.getSessionResult(binding)).toEqual(published);
+        await observer.dispose();
+        expect(await service.getSessionResult(binding)).toEqual(published);
+        expect(faux.state.callCount).toBe(2);
+        expect(fs.readdirSync(executorRoot)).toHaveLength(0);
+        expect(
+          fs.readdirSync(path.join(catalogueDir, "workspace-results")),
+        ).toHaveLength(1);
+      } finally {
+        release();
+        await observer?.dispose();
+        await client.dispose();
+        await observerClient.dispose();
+        await server.close();
+      }
+    }, 30_000);
+
+    it("shares one executor across presentations, streams, and rejects stale routes", async () => {
+      const root = makeRoot();
+      const { repository, baseRevision } = makeCatalogueRepository(root);
+      const catalogueDir = path.join(root, "catalogue");
+      const executorRoot = path.join(root, "executors");
+      const { faux, modelRuntime, model } = await makeFauxModelRuntime(
+        root,
+        30,
+      );
+      const service = capacityService({
+        root,
+        catalogueDir,
+        executorRoot,
+        repository,
+        modelRuntime,
+      });
+      const serverId = randomUUID();
+      const socketPath = path.join(root, "multi.sock");
+      const server = createUnixServer(createPiSpawnServerHost(service), {
+        serverId,
+        path: socketPath,
+      });
+      await server.start();
+      const connect = () =>
+        Client.connect({
+          serverId,
+          transportFactory: createUnixTransportFactory({ path: socketPath }),
+        });
+      const clients = await Promise.all([connect(), connect(), connect()]);
+      const presentations: SpawnPresentation[] = [];
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      faux.setResponses([
+        async () => {
+          await gate;
+          return fauxAssistantMessage("shared response");
+        },
+        fauxAssistantMessage("continued response"),
+      ]);
+      try {
+        const admission = await service.admitSession({
+          repositoryId: "dots",
+          baseRevision,
+          executionProfileId: "delegate",
+        });
+        const first = await SpawnPresentation.attach(clients[0]!, {
+          admissionRef: admission.admissionRef,
+          model,
+        });
+        presentations.push(first);
+        await service.bindSession(admission, first.id);
+        const peers = await Promise.all(
+          clients
+            .slice(1)
+            .map((client) =>
+              SpawnPresentation.attach(client, { id: first.id }),
+            ),
+        );
+        presentations.push(...peers);
+        expect(readCapacityRecord(catalogueDir, first.id).leaseEpoch).toBe(1);
+        expect(fs.readdirSync(executorRoot)).toHaveLength(1);
+        await expect(
+          SpawnPresentation.attach(clients[0]!, { id: first.id }),
+        ).rejects.toThrow("existing presentation");
+        const oldTarget = clients[0]!.attachment!;
+        await expect(
+          clients[0]!.request(oldTarget, {
+            serviceId: "bds.pi-spawn.execution",
+            member: "prompt",
+            args: [123],
+          }),
+        ).rejects.toMatchObject({ code: "service_invalid_value" });
+        const seen: SpawnObservation[] = [];
+        const unsubscribe = peers[0]!.subscribe((state) => seen.push(state));
+        const pending = first.submit("first turn");
+        await waitFor(() => faux.state.callCount === 1);
+        await expect(peers[1]!.submit("overlapping turn")).rejects.toThrow(
+          "already running",
+        );
+        await peers[1]!.dispose();
+        expect(fs.readdirSync(executorRoot)).toHaveLength(1);
+        release();
+        await waitFor(() =>
+          seen.some((state) =>
+            state.messages.some(
+              (message) =>
+                message.role === "assistant" &&
+                message.stopReason === "pending",
+            ),
+          ),
+        );
+        const completed = await pending;
+        expect(lastAssistant(completed.messages)?.content).toEqual([
+          { type: "text", text: "shared response" },
+        ]);
+        await waitFor(() =>
+          seen.some((state) =>
+            state.messages.some((message) => message.role === "assistant"),
+          ),
+        );
+        unsubscribe();
+        await first.dispose();
+        expect(readCapacityRecord(catalogueDir, first.id).lifecycle).toBe(
+          "active",
+        );
+        await peers[0]!.dispose();
+        expect(readCapacityRecord(catalogueDir, first.id).lifecycle).toBe(
+          "suspended",
+        );
+        expect(fs.readdirSync(executorRoot)).toHaveLength(0);
+        const reopened = await SpawnPresentation.attach(clients[0]!, {
+          id: first.id,
+        });
+        presentations.push(reopened);
+        expect(clients[0]!.attachment?.attachmentId).not.toBe(
+          oldTarget.attachmentId,
+        );
+        await expect(
+          clients[0]!.request(oldTarget, {
+            serviceId: "bds.pi-spawn.execution",
+            member: "abort",
+            args: [],
+          }),
+        ).rejects.toMatchObject({ code: "session_not_attached" });
+        const next = await reopened.submit("continue");
+        expect(
+          next.messages.filter((message) => message.role === "user"),
+        ).toHaveLength(2);
+        expect(lastAssistant(next.messages)?.content).toEqual([
+          { type: "text", text: "continued response" },
+        ]);
+        const [, raced] = await Promise.all([
+          reopened.dispose(),
+          SpawnPresentation.attach(clients[1]!, { id: first.id }),
+        ]);
+        presentations.push(raced);
+        expect(fs.readdirSync(executorRoot)).toHaveLength(1);
+        expect(readCapacityRecord(catalogueDir, first.id).lifecycle).toBe(
+          "active",
+        );
+        await raced.dispose();
+        expect([2, 3]).toContain(
+          readCapacityRecord(catalogueDir, first.id).leaseEpoch,
+        );
+        expect(fs.readdirSync(executorRoot)).toHaveLength(0);
+      } finally {
+        release();
+        for (const presentation of presentations) await presentation.dispose();
+        for (const client of clients) await client.dispose();
+        await server.close();
+      }
+    }, 30_000);
+
+    it("does not report success or discard accepted work after disconnect", async () => {
+      const root = makeRoot();
+      const { repository, baseRevision } = makeCatalogueRepository(root);
+      const catalogueDir = path.join(root, "catalogue");
+      const executorRoot = path.join(root, "executors");
+      const { faux, modelRuntime } = await makeFauxModelRuntime(root);
+      const service = capacityService({
+        root,
+        catalogueDir,
+        executorRoot,
+        repository,
+        modelRuntime,
+      });
+      const serverId = randomUUID();
+      const socketPath = path.join(root, "disconnect.sock");
+      const server = createUnixServer(createPiSpawnServerHost(service), {
+        serverId,
+        path: socketPath,
+      });
+      await server.start();
+      const client = await Client.connect({
+        serverId,
+        transportFactory: createUnixTransportFactory({ path: socketPath }),
+      });
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      faux.setResponses([
+        async () => {
+          await gate;
+          return fauxAssistantMessage("survived disconnect");
+        },
+      ]);
+      try {
+        const pending = new RemotePiCapacityProvider(client, service).run({
+          cwd: repository,
+          task: "held task",
+          capacity: {
+            repositoryId: "dots",
+            baseRevision,
+            executionProfileId: "delegate",
+          },
+        });
+        await waitFor(() => faux.state.callCount === 1);
+        client.disconnect();
+        const failed = await pending;
+        expect(failed.lifecycle).toMatchObject({
+          status: "failed",
+          errorKind: "transport",
+        });
+        expect(failed.session?.resultRef).toBeUndefined();
+        const id = failed.session!.sessionId!;
+        expect(readCapacityRecord(catalogueDir, id).lifecycle).toBe("active");
+        release();
+        await waitFor(
+          () => readCapacityRecord(catalogueDir, id).lifecycle === "suspended",
+        );
+        expect(fs.readdirSync(executorRoot)).toHaveLength(0);
+        await client.reconnect();
+        const restored = await SpawnPresentation.attach(client, { id });
+        expect(lastAssistant(restored.state.messages)?.content).toEqual([
+          { type: "text", text: "survived disconnect" },
+        ]);
+        expect(faux.state.callCount).toBe(1);
+        await restored.dispose();
+      } finally {
+        release();
+        await client.dispose();
+        await server.close();
+      }
+    }, 30_000);
+
+    it("publishes no result for a failed turn, including failed continuation", async () => {
+      const root = makeRoot();
+      const { repository, baseRevision } = makeCatalogueRepository(root);
+      const catalogueDir = path.join(root, "catalogue");
+      const executorRoot = path.join(root, "executors");
+      const { faux, modelRuntime } = await makeFauxModelRuntime(root);
+      const service = capacityService({
+        root,
+        catalogueDir,
+        executorRoot,
+        repository,
+        modelRuntime,
+      });
+      const serverId = randomUUID();
+      const socketPath = path.join(root, "failure.sock");
+      const server = createUnixServer(createPiSpawnServerHost(service), {
+        serverId,
+        path: socketPath,
+      });
+      await server.start();
+      const client = await Client.connect({
+        serverId,
+        transportFactory: createUnixTransportFactory({ path: socketPath }),
+      });
+      faux.setResponses([
+        fauxAssistantMessage("ok"),
+        fauxAssistantMessage("", {
+          stopReason: "aborted",
+          errorMessage: "provider stopped",
         }),
       ]);
-      const reopened = await service.openSession("server-id");
-      expect((await reopened.snapshot()).id).toBe("server-id");
-      expect(runtimes).toHaveLength(2);
-      await reopened.dispose();
-    });
+      try {
+        const provider = new RemotePiCapacityProvider(client, service);
+        const config = {
+          cwd: repository,
+          task: "task",
+          capacity: {
+            repositoryId: "dots",
+            baseRevision,
+            executionProfileId: "delegate",
+          },
+        };
+        const first = await provider.run(config);
+        expect(first.lifecycle?.status).toBe("succeeded");
+        const before = fs.readdirSync(
+          path.join(catalogueDir, "workspace-results"),
+        );
+        const failed = await provider.run({
+          ...config,
+          session: { id: first.session!.sessionId },
+        });
+        expect(failed.lifecycle?.status).toBe("failed");
+        expect(failed.errorMessage).toContain("provider stopped");
+        expect(failed.session?.resultRef).toBeUndefined();
+        expect(
+          readCapacityRecord(catalogueDir, first.session!.sessionId!)
+            .workspaceResultRef,
+        ).toBeUndefined();
+        expect(
+          fs.readdirSync(path.join(catalogueDir, "workspace-results")),
+        ).toEqual(before);
+        expect(fs.readdirSync(executorRoot)).toHaveLength(0);
+      } finally {
+        await client.dispose();
+        await server.close();
+      }
+    }, 30_000);
   });
 
   describe("LocalPiSessionCapacity", () => {
@@ -2446,7 +2789,7 @@ if (import.meta.vitest) {
       setGlobalSettingsPath(settingsPath);
       clearConfigCache();
       const delegateTool = (
-        client: PiClient,
+        client: Client,
         coordinator: PiCapacityCoordinator,
       ) => {
         const tools: Array<{ execute: (...args: any[]) => Promise<any> }> = [];
@@ -2537,10 +2880,15 @@ if (import.meta.vitest) {
         repository,
         modelRuntime,
       });
+      const serverId = randomUUID();
       const socketA = path.join(root, "host-a.sock");
-      const serverA = createUnixServer(serviceA, { path: socketA });
+      const serverA = createUnixServer(createPiSpawnServerHost(serviceA), {
+        serverId,
+        path: socketA,
+      });
       await serverA.start();
-      const clientA = await PiClient.connect({
+      const clientA = await Client.connect({
+        serverId,
         transportFactory: createUnixTransportFactory({ path: socketA }),
       });
       const delegateA = delegateTool(clientA, serviceA);
@@ -2897,9 +3245,13 @@ if (import.meta.vitest) {
       fs.rmSync(executorRootB, { recursive: true });
       fs.writeFileSync(executorRootB, "block executor allocation\n");
       const socketB = path.join(root, "host-b.sock");
-      const serverB = createUnixServer(serviceB, { path: socketB });
+      const serverB = createUnixServer(createPiSpawnServerHost(serviceB), {
+        serverId,
+        path: socketB,
+      });
       await serverB.start();
-      const clientB = await PiClient.connect({
+      const clientB = await Client.connect({
+        serverId,
         transportFactory: createUnixTransportFactory({ path: socketB }),
       });
       const delegateB = delegateTool(clientB, serviceB);
@@ -2971,7 +3323,7 @@ if (import.meta.vitest) {
         expect(
           inspectedContext
             .filter(
-              (message): message is ToolResultMessage<unknown> =>
+              (message): message is ToolResultMessage =>
                 message.role === "toolResult" && message.toolName === "bash",
             )
             .map((message) =>
@@ -3024,6 +3376,7 @@ if (import.meta.vitest) {
       });
       const acquiredA = await serviceA.createSession({
         id: "fenced-session",
+        admissionRef: admission.admissionRef,
         cwd: path.join(root, "ignored-request-cwd"),
         model,
       });
@@ -3087,6 +3440,7 @@ if (import.meta.vitest) {
       });
       const acquired = await service.createSession({
         id: "failed-checkpoint",
+        admissionRef: admission.admissionRef,
         model,
       });
       await service.bindSession(admission, "failed-checkpoint");
@@ -3114,81 +3468,14 @@ if (import.meta.vitest) {
   });
 
   describe("RemotePiCapacityProvider", () => {
-    it("runs a piSpawn task through RemoteSession over a unix transport", async () => {
-      const root = makeRoot();
-      const socketPath = path.join(root, "pi.sock");
-      const service = new TestServerService();
-      const server = createUnixServer(service, { path: socketPath });
-      await server.start();
-      const client = await PiClient.connect({
-        transportFactory: createUnixTransportFactory({ path: socketPath }),
-      });
-
-      try {
-        const provider = new RemotePiCapacityProvider(client);
-        const pending = provider.run({ cwd: root, task: "inspect this tree" });
-        while (!service.lastCreatedId) {
-          await new Promise((resolve) => setTimeout(resolve, 1));
-        }
-        const runtime = service.latestRuntime(service.lastCreatedId);
-        while (runtime.getPhase() === "idle") {
-          await new Promise((resolve) => setTimeout(resolve, 1));
-        }
-        runtime.finishPrompt();
-
-        const result = await pending;
-        expect(result.lifecycle?.status).toBe("succeeded");
-        expect(result.session?.sessionId).toBe(service.lastCreatedId);
-        expect(
-          result.messages
-            .filter((message) => message.role === "assistant")
-            .flatMap((message) => message.content)
-            .filter((part) => part.type === "text")
-            .map((part) => part.text)
-            .join(""),
-        ).toContain("reply:Delegated task: inspect this tree");
-        await runtime.disposed.promise;
-      } finally {
-        await client.dispose();
-        await server.close();
-      }
-    });
-
-    it("aborts and disposes remote work when its lease times out", async () => {
-      const root = makeRoot();
-      const socketPath = path.join(root, "pi.sock");
-      const service = new TestServerService();
-      const server = createUnixServer(service, { path: socketPath });
-      await server.start();
-      const client = await PiClient.connect({
-        transportFactory: createUnixTransportFactory({ path: socketPath }),
-      });
-
-      try {
-        const provider = new RemotePiCapacityProvider(client);
-        const result = await provider.run({
-          cwd: root,
-          task: "keep working",
-          timeoutMs: 20,
-        });
-        const runtime = service.latestRuntime(service.lastCreatedId!);
-
-        expect(result.lifecycle).toMatchObject({
-          status: "timed_out",
-          errorKind: "timeout",
-        });
-        expect(result.lifecycle?.timedOutAt).not.toBeNull();
-        expect(result.stopReason).toBe("aborted");
-        await runtime.disposed.promise;
-      } finally {
-        await client.dispose();
-        await server.close();
-      }
-    });
-
-    it.each(["cancelled", "timed_out"] as const)(
-      "does not publish a capacity result when remote work is %s",
-      async (interruption) => {
+    it.each([
+      ["cancelled", false],
+      ["timed_out", false],
+      ["cancelled", true],
+      ["timed_out", true],
+    ] as const)(
+      "does not publish or reuse a capacity result when remote work is %s (resume=%s)",
+      async (interruption, resume) => {
         const root = makeRoot();
         const { repository, baseRevision } = makeCatalogueRepository(root);
         const catalogueDir = path.join(root, "capacity-catalogue");
@@ -3199,6 +3486,7 @@ if (import.meta.vitest) {
           releaseTurn = resolve;
         });
         faux.setResponses([
+          ...(resume ? [fauxAssistantMessage("previous success")] : []),
           async () => {
             await turnGate;
             return fauxAssistantMessage("too late");
@@ -3211,16 +3499,22 @@ if (import.meta.vitest) {
           repository,
           modelRuntime,
         });
+        const serverId = randomUUID();
         const socketPath = path.join(root, "pi.sock");
-        const server = createUnixServer(service, { path: socketPath });
+        const server = createUnixServer(createPiSpawnServerHost(service), {
+          serverId,
+          path: socketPath,
+        });
         await server.start();
-        const client = await PiClient.connect({
+        const client = await Client.connect({
+          serverId,
           transportFactory: createUnixTransportFactory({ path: socketPath }),
         });
         const controller = new AbortController();
 
         try {
-          const pending = new RemotePiCapacityProvider(client, service).run({
+          const provider = new RemotePiCapacityProvider(client, service);
+          const config = {
             cwd: repository,
             task: "keep working",
             capacity: {
@@ -3228,10 +3522,30 @@ if (import.meta.vitest) {
               baseRevision,
               executionProfileId: "delegate",
             },
+          };
+          const previous = resume ? await provider.run(config) : undefined;
+          if (previous) expect(previous.lifecycle?.status).toBe("succeeded");
+          const pending = provider.run({
+            ...config,
+            ...(previous
+              ? { session: { id: previous.session!.sessionId } }
+              : {}),
             signal: controller.signal,
             ...(interruption === "timed_out" ? { timeoutMs: 20 } : {}),
           });
-          await waitFor(() => faux.state.callCount === 1);
+          await waitFor(() => faux.state.callCount === (resume ? 2 : 1));
+          if (previous) {
+            const record = readCapacityRecord(
+              catalogueDir,
+              previous.session!.sessionId!,
+            );
+            await expect(
+              service.getSessionResult({
+                sessionId: record.sessionId,
+                admissionRef: record.admissionRef,
+              }),
+            ).rejects.toThrow("not available");
+          }
           if (interruption === "cancelled") controller.abort();
           await new Promise((resolve) => setTimeout(resolve, 30));
           releaseTurn();
@@ -3247,7 +3561,13 @@ if (import.meta.vitest) {
           expect(record.workspaceResultRef).toBeUndefined();
           expect(
             fs.readdirSync(path.join(catalogueDir, "workspace-results")),
-          ).toHaveLength(0);
+          ).toHaveLength(resume ? 1 : 0);
+          await expect(
+            service.getSessionResult({
+              sessionId,
+              admissionRef: record.admissionRef,
+            }),
+          ).rejects.toThrow("not available");
           expect(fs.readdirSync(executorRoot)).toHaveLength(0);
         } finally {
           releaseTurn();
@@ -3258,21 +3578,30 @@ if (import.meta.vitest) {
       30_000,
     );
 
-    it("fails before admission when a spawn profile cannot cross protocol v1", async () => {
+    it("fails before admission when a spawn profile cannot cross the execution service", async () => {
       let admissionCount = 0;
       let transportCount = 0;
-      const client = new PiClient({
+      const client = new Client({
+        serverId: randomUUID(),
         transportFactory: async () => {
           transportCount += 1;
           throw new Error("transport should not be opened");
         },
       });
-      const coordinator = {
+      const unexpected = async (): Promise<never> => {
+        throw new Error("coordinator should not be called");
+      };
+      const coordinator: PiCapacityCoordinator = {
         async admitSession() {
           admissionCount += 1;
-          throw new Error("admission should not be requested");
+          return unexpected();
         },
-      } as unknown as PiCapacityCoordinator;
+        bindSession: unexpected,
+        cancelAdmission: unexpected,
+        authorizeContinuation: unexpected,
+        getSessionResult: unexpected,
+        applyWorkspaceResult: unexpected,
+      };
       const provider = new RemotePiCapacityProvider(client, coordinator);
 
       const capacity = {

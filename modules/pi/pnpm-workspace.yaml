@@ -3,17 +3,21 @@ packages:
   - packages/extensions/*
 
 patchedDependencies:
-  "@earendil-works/pi-coding-agent@0.85.1": patches/pi-coding-agent-0.85.1.patch
-  "@earendil-works/pi-tui@0.85.1": patches/pi-tui-0.85.1.patch
+  "@earendil-works/pi-ai@0.87.1": patches/pi-ai-0.87.1.patch
+  # The unbundled CLI must consume our SDK/provider patches, like the global bridge.
+  "@earendil-works/pi-coding-agent@0.87.1": patches/pi-coding-agent-0.87.1.patch
+  "@earendil-works/pi-tui@0.87.1": patches/pi-tui-0.87.1.patch
   "@letta-ai/trajectory@0.2.1": patches/letta-ai-trajectory-0.2.1.patch
 
 catalog:
-  "@earendil-works/pi-ai": ^0.85.1
-  "@earendil-works/pi-client": ^0.85.1
-  "@earendil-works/pi-coding-agent": ^0.85.1
-  "@earendil-works/pi-protocol": ^0.85.1
-  "@earendil-works/pi-server": ^0.85.1
-  "@earendil-works/pi-tui": ^0.85.1
+  "@earendil-works/chord": 0.87.1
+  "@earendil-works/pi-agent-core": 0.87.1
+  "@earendil-works/pi-ai": 0.87.1
+  "@earendil-works/pi-client": 0.87.1
+  "@earendil-works/pi-coding-agent": 0.87.1
+  "@earendil-works/pi-protocol": 0.87.1
+  "@earendil-works/pi-server": 0.87.1
+  "@earendil-works/pi-tui": 0.87.1
   typebox: ^1.1.38
 
 allowBuilds:

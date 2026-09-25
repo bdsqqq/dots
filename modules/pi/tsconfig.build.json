@@ -6,6 +6,7 @@
   },
   "include": [
     "packages/core/*/index.ts",
+    "packages/core/prompt-patch/provider-contract.ts",
     "packages/extensions/*/index.ts",
     "src/**/*.ts"
   ]

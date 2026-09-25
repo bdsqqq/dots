@@ -1286,6 +1286,9 @@ if (import.meta.vitest) {
       },
       on(event, handler) {
         if (event === "session_start") sessionStart = handler as () => void;
+        return () => {
+          if (event === "session_start") sessionStart = undefined;
+        };
       },
       getActiveTools() {
         return active;

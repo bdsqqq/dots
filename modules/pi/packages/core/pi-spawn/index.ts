@@ -71,16 +71,16 @@ export function getToolCalls(messages: Message[]): RecordedToolCall[] {
 export function getToolResults(
   messages: Message[],
   toolName?: string,
-): ToolResultMessage<unknown>[] {
+): ToolResultMessage[] {
   return messages.filter(
-    (message): message is ToolResultMessage<unknown> =>
+    (message): message is ToolResultMessage =>
       message.role === "toolResult" &&
       (toolName === undefined || message.toolName === toolName),
   );
 }
 
 export function getToolResultText(
-  result: ToolResultMessage<unknown> | undefined,
+  result: ToolResultMessage | undefined,
 ): string {
   return (
     result?.content
@@ -91,7 +91,7 @@ export function getToolResultText(
 }
 
 export function getNestedMessages(
-  result: ToolResultMessage<unknown> | undefined,
+  result: ToolResultMessage | undefined,
 ): Message[] {
   if (!result?.details || typeof result.details !== "object") return [];
   const details = result.details as {
@@ -352,9 +352,9 @@ export interface PiSpawnConfig {
 /**
  * one source of pi execution capacity.
  *
- * admission and placement belong here; session control belongs to pi's
- * PiServerService/PiSessionRuntime boundary. the local provider remains the
- * default while remote providers reach feature parity.
+ * admission and placement stay independent of session control. remote capacity
+ * uses application-owned chord services over pi's ServerHost router; the local
+ * provider remains the default while remote profiles reach feature parity.
  */
 export interface PiCapacityProvider {
   run(config: PiSpawnConfig): Promise<PiSpawnResult>;
@@ -1097,6 +1097,7 @@ export {
   LocalPiSessionCapacity,
   LocalPiSessionLease,
   PiSpawnServerService,
+  createPiSpawnServerHost,
   RemotePiCapacityProvider,
   type CreateLocalPiSessionOptions,
   type LocalPiSessionCapacityOptions,
@@ -1223,7 +1224,7 @@ if (import.meta.vitest) {
         details: { sessionFile: session.getSessionFile() },
         isError: false,
         timestamp: 2,
-      } as ToolResultMessage<unknown>;
+      } as ToolResultMessage;
 
       expect(getNestedMessages(result)[0]).toMatchObject({
         role: "user",
