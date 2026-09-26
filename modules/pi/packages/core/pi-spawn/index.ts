@@ -27,6 +27,7 @@ import type {
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveGlobalSettingsPath } from "@bds_pi/config";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
+import { parseIncludedTools } from "./tool-selection.js";
 
 // --- types ---
 
@@ -312,7 +313,12 @@ export interface PiSpawnConfig {
   cwd: string;
   task: string;
   model?: PiSpawnModel;
+  /** native CLI fallback allowlist when extensionTools is omitted. */
   builtinTools?: string[];
+  /**
+   * complete tool allowlist (legacy name), not additive to builtinTools.
+   * [] disables all tools; undefined retains the inherited env constraint.
+   */
   extensionTools?: string[];
   systemPromptBody?: string;
   signal?: AbortSignal;
@@ -716,11 +722,21 @@ async function runLocalPi(config: PiSpawnConfig): Promise<PiSpawnResult> {
     : ["--mode", "json", "-p", ...sessionRouting.args];
 
   if (config.model) args.push("--model", modelCliString(config.model));
-  if (config.builtinTools !== undefined) {
-    if (config.builtinTools.length === 0) {
+  // the SDK now filters extension definitions too. admit exactly the final
+  // selection: a broader union can reactivate excluded tools on registry refresh.
+  const includedTools = parseIncludedTools(spawnEnv.PI_INCLUDE_TOOLS);
+  let tools = config.builtinTools;
+  if (config.extensionTools !== undefined) {
+    tools = includedTools ?? [];
+  } else if (includedTools !== undefined) {
+    tools =
+      tools?.filter((name) => includedTools.includes(name)) ?? includedTools;
+  }
+  if (tools !== undefined) {
+    if (tools.length === 0) {
       args.push("--no-tools");
     } else {
-      args.push("--tools", config.builtinTools.join(","));
+      args.push("--tools", tools.join(","));
     }
   }
 
@@ -1475,5 +1491,288 @@ if (import.meta.vitest) {
         expect(isPidAlive(childPid)).toBe(false);
       },
     );
+  });
+
+  describe("child tool registry", () => {
+    const extensionNames = [
+      "read",
+      "bash",
+      "glob",
+      "grep",
+      "ls",
+      "apply-patch",
+      "format-file",
+      "skill",
+      "finder",
+      "web-search",
+      "read-web-page",
+      "github",
+      "tool-harness",
+    ];
+    const delegateTools = [
+      "read",
+      "grep",
+      "find",
+      "ls",
+      "bash",
+      "apply_patch",
+      "format_file",
+      "skill",
+      "finder",
+      "web_search",
+      "read_web_page",
+    ];
+
+    /**
+     * Exercise piSpawn's actual argv/env in a child, then initialize the pinned
+     * CLI parser and SDK without prompting. Real extension definitions matter:
+     * a harness spy cannot detect names removed before registry construction.
+     */
+    const probeTools = async (
+      selection: Pick<
+        PiSpawnConfig,
+        "builtinTools" | "extensionTools" | "env" | "followUp"
+      >,
+    ) => {
+      const { getPackageDir } = await import("@earendil-works/pi-coding-agent");
+      const { fileURLToPath, pathToFileURL } = await import("node:url");
+      const cwd = makeTmpDir();
+      const probe = path.join(cwd, "probe.mjs");
+      const root = fileURLToPath(new URL("../../../", import.meta.url));
+      const paths = extensionNames.map((name) =>
+        path.join(
+          root,
+          process.env.PI_TEST_BUILT_TOOLS === "1"
+            ? `dist/extensions/${name}.js`
+            : `packages/extensions/${name}/index.ts`,
+        ),
+      );
+      fs.writeFileSync(
+        probe,
+        `
+        import { createAgentSession, DefaultResourceLoader, ModelRuntime,
+          SessionManager, SettingsManager } from ${JSON.stringify(pathToFileURL(path.join(getPackageDir(), "dist/index.js")).href)};
+        import { parseArgs } from ${JSON.stringify(pathToFileURL(path.join(getPackageDir(), "dist/cli/args.js")).href)};
+        import { InMemoryCredentialStore } from ${JSON.stringify(pathToFileURL(path.join(root, "node_modules/@earendil-works/pi-ai/dist/index.js")).href)};
+        const parsed = parseArgs(process.argv.slice(2));
+        const settingsManager = SettingsManager.inMemory();
+        let registerLateTool;
+        const resourceLoader = new DefaultResourceLoader({
+          cwd: process.cwd(), agentDir: process.cwd(), settingsManager,
+          noExtensions: true, noSkills: true, noPromptTemplates: true,
+          noThemes: true, noContextFiles: true,
+          additionalExtensionPaths: ${JSON.stringify(paths)},
+          extensionFactories: [(pi) => {
+            registerLateTool = () => pi.registerTool({
+              name: "late_tool", label: "late", description: "late test tool",
+              parameters: { type: "object", properties: {} },
+              execute: async () => ({ content: [], details: undefined }),
+            });
+          }],
+        });
+        await resourceLoader.reload();
+        const errors = resourceLoader.getExtensions().errors;
+        if (errors.length) throw new Error(JSON.stringify(errors));
+        const modelRuntime = await ModelRuntime.create({
+          credentials: new InMemoryCredentialStore(), refreshOnCreate: false, modelsPath: null,
+        });
+        const { session } = await createAgentSession({
+          cwd: process.cwd(), agentDir: process.cwd(), settingsManager, resourceLoader,
+          modelRuntime, sessionManager: SessionManager.inMemory(),
+          tools: parsed.tools,
+          noTools: parsed.noTools ? "all" : parsed.noBuiltinTools ? "builtin" : undefined,
+          excludeTools: parsed.excludeTools,
+        });
+        try {
+          await session.bindExtensions({ mode: "json" });
+          const active = session.getActiveToolNames().sort();
+          const registry = session.getAllTools().map(t => t.name).sort();
+          const advertised = session.agent.state.tools.map(t => t.name).sort();
+          const sources = Object.fromEntries(session.getAllTools().map(t => [t.name, t.sourceInfo]));
+          // A native allowlist must survive refresh, not just session_start.
+          registerLateTool();
+          console.error(JSON.stringify({
+            active, registry, advertised, sources, afterRefresh: session.getActiveToolNames().sort(),
+          }));
+        } finally { session.dispose(); }
+      `,
+      );
+      process.env.PI_BIN = makeFakePi(
+        `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(probe)} "$@"`,
+      );
+      const spawnUnderTest: PiSpawn =
+        process.env.PI_TEST_BUILT_TOOLS === "1"
+          ? (
+              await import(
+                pathToFileURL(path.join(root, "dist/core/pi-spawn.js")).href
+              )
+            ).piSpawn
+          : piSpawn;
+      const result = await spawnUnderTest({
+        cwd,
+        task: "registry probe",
+        session: { persist: false },
+        timeoutMs: 15000,
+        ...selection,
+        env: {
+          PI_OFFLINE: "1",
+          PI_INCLUDE_TOOLS: undefined,
+          PI_BDS_CONFIG_PATH: path.join(cwd, "settings.json"),
+          ...selection.env,
+        },
+      });
+      // RPC deliberately exits before any model turn; only startup is probed.
+      expect(result.lifecycle?.exitCode, result.stderr).toBe(0);
+      expect(result.exitCode, result.stderr).toBe(selection.followUp ? 1 : 0);
+      return JSON.parse(result.stderr.trim().split("\n").at(-1)!);
+    };
+
+    it("admits delegate web and mutation tools without unrelated tools", async () => {
+      const result = await probeTools({
+        builtinTools: ["read", "grep", "find", "ls", "bash"],
+        extensionTools: delegateTools,
+      });
+      expect(result.active).toEqual([...delegateTools].sort());
+      expect(result.registry).toEqual(result.active);
+      expect(result.advertised).toEqual(result.active);
+      expect(result.afterRefresh).toEqual(result.active);
+    });
+
+    it.each([
+      {
+        name: "librarian extension-only selection despite empty builtins",
+        selection: {
+          builtinTools: [],
+          extensionTools: ["read_github", "web_search", "read_web_page"],
+        },
+        expected: ["read_github", "web_search", "read_web_page"],
+      },
+      {
+        name: "eval selection without builtin defaults",
+        selection: { extensionTools: ["finder"] },
+        expected: ["finder"],
+      },
+      {
+        name: "excludes a builtin omitted from the final list, even after refresh",
+        selection: { builtinTools: ["read", "bash"], extensionTools: ["read"] },
+        expected: ["read"],
+      },
+      {
+        name: "empty extension selection overrides nonempty builtins",
+        selection: { builtinTools: ["read"], extensionTools: [] },
+        expected: [],
+      },
+      {
+        name: "read-session disables everything",
+        selection: { builtinTools: [], extensionTools: [] },
+        expected: [],
+      },
+      {
+        name: "empty extension selection without builtin override",
+        selection: { extensionTools: [] },
+        expected: [],
+      },
+      {
+        name: "native builtin fallback",
+        selection: { builtinTools: ["read"] },
+        expected: ["read"],
+      },
+      {
+        name: "empty native fallback means no tools, not no builtins",
+        selection: { builtinTools: [] },
+        expected: [],
+      },
+      {
+        name: "aliases resolve before registry filtering and deduplicate overlaps",
+        selection: {
+          builtinTools: [],
+          extensionTools: [
+            "glob",
+            "find",
+            "edit_file",
+            "create_file",
+            "apply_patch",
+          ],
+        },
+        expected: ["find", "apply_patch"],
+      },
+      {
+        name: "unknown-only explicit selection does not restore defaults",
+        selection: { extensionTools: ["missing_tool"] },
+        expected: [],
+      },
+      {
+        name: "inherited env narrows the native fallback",
+        selection: {
+          builtinTools: ["read", "bash"],
+          env: { PI_INCLUDE_TOOLS: "read,web_search" },
+        },
+        expected: ["read"],
+      },
+      {
+        name: "inherited env selects extensions when builtin fallback is absent",
+        selection: {
+          env: { PI_INCLUDE_TOOLS: " web_search , glob,create_file " },
+        },
+        expected: ["web_search", "find", "apply_patch"],
+      },
+      {
+        name: "inherited NONE disables nonempty builtin fallback",
+        selection: {
+          builtinTools: ["read"],
+          env: { PI_INCLUDE_TOOLS: "NONE" },
+        },
+        expected: [],
+      },
+      {
+        name: "blank legacy env retains fallback",
+        selection: {
+          builtinTools: ["read"],
+          env: { PI_INCLUDE_TOOLS: " , , " },
+        },
+        expected: ["read"],
+      },
+      {
+        name: "explicit child selection replaces inherited NONE",
+        selection: {
+          extensionTools: ["web_search"],
+          env: { PI_INCLUDE_TOOLS: "NONE" },
+        },
+        expected: ["web_search"],
+      },
+      {
+        name: "RPC uses the same exact registry selection",
+        selection: {
+          builtinTools: ["read", "bash"],
+          extensionTools: ["read", "web_search"],
+          followUp: "unused offline follow-up",
+        },
+        expected: ["read", "web_search"],
+      },
+    ])("$name", async ({ selection, expected }) => {
+      const result = await probeTools(selection);
+      expect(result.active).toEqual([...expected].sort());
+      expect(result.registry).toEqual(result.active);
+      expect(result.advertised).toEqual(result.active);
+      expect(result.afterRefresh).toEqual(result.active);
+      if (expected.includes("read"))
+        expect(JSON.stringify(result.sources.read)).toContain(
+          "/extensions/read",
+        );
+    });
+
+    it("leaves SDK defaults and unrestricted extensions alone when both lists are omitted", async () => {
+      const result = await probeTools({});
+      expect(result.active).toEqual(
+        expect.arrayContaining([...delegateTools, "read_github"]),
+      );
+      // apply-patch's startup handler disables native edit/write.
+      expect(result.active).not.toContain("edit");
+      expect(result.active).not.toContain("write");
+      expect(result.advertised).toEqual(result.active);
+      expect(result.afterRefresh).toEqual(
+        [...result.active, "late_tool"].sort(),
+      );
+    });
   });
 }
