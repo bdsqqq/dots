@@ -1,60 +1,31 @@
 /**
  * tool-harness — env-gated tool filtering for pi extensions.
  *
- * pi's --tools/--no-tools flags only gate built-in tools. extension tools
- * registered via pi.registerTool() always load. this extension reads
- * PI_INCLUDE_TOOLS on session start and calls pi.setActiveTools() to
- * filter down to exactly the specified set — both built-in and extension.
+ * compatibility for direct PI_INCLUDE_TOOLS consumers. piSpawn also compiles
+ * this selection into native CLI flags: setActiveTools cannot restore tools
+ * omitted from the SDK registry, or enforce exclusions across registry refresh.
  *
  * env var format: PI_INCLUDE_TOOLS=read,grep,find,bash
  * when unset, all tools remain active (no filtering).
- * when set to "NONE", all extension tools are disabled.
+ * when set to "NONE", all tools are disabled.
  *
- * designed for sub-agent spawning: the sub-agents extension passes
+ * designed for sub-agent spawning: piSpawn passes
  * PI_INCLUDE_TOOLS in the child process env to control tool visibility.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-
-/**
- * backward-compat alias map: old names -> registered names.
- */
-const TOOL_ALIASES: Record<string, string> = {
-  glob: "find",
-  edit_file: "apply_patch",
-  create_file: "apply_patch",
-};
-
-export function resolveAliases(names: string[]): string[] {
-  return [...new Set(names.map((name) => TOOL_ALIASES[name] ?? name))];
-}
-
-export const TOOL_ALIASES_EXPORT: typeof TOOL_ALIASES = TOOL_ALIASES;
+import {
+  parseIncludedTools,
+  resolveAliases,
+} from "../../core/pi-spawn/tool-selection.js";
+export {
+  resolveAliases,
+  TOOL_ALIASES as TOOL_ALIASES_EXPORT,
+} from "../../core/pi-spawn/tool-selection.js";
 
 export default function (pi: ExtensionAPI): void {
-  const raw = process.env.PI_INCLUDE_TOOLS;
-  if (!raw) return;
-
-  // explicit "no extension tools" sentinel
-  if (raw === "NONE") {
-    const applyEmpty = () => pi.setActiveTools([]);
-    pi.on("session_start", async () => {
-      applyEmpty();
-    });
-    pi.on("before_agent_start", async () => {
-      applyEmpty();
-    });
-    return;
-  }
-
-  const allowed = resolveAliases(
-    raw
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean),
-  );
-
-  if (allowed.length === 0) return;
+  const allowed = parseIncludedTools(process.env.PI_INCLUDE_TOOLS);
+  if (allowed === undefined) return;
 
   const applyFilter = () => pi.setActiveTools(allowed);
 
@@ -62,9 +33,8 @@ export default function (pi: ExtensionAPI): void {
     applyFilter();
   });
 
-  // sub-agents/index.ts re-registers the subagent tool on before_agent_start
-  // to pick up project-scoped agents. re-registration may bypass a prior
-  // setActiveTools() call, so we re-apply the filter on the same event.
+  // direct env consumers still need a per-turn filter when tools change.
+  // piSpawn's native allowlist enforces exclusions during registry refresh too.
   pi.on("before_agent_start", async () => {
     applyFilter();
   });
@@ -103,7 +73,7 @@ if (import.meta.vitest) {
     });
   });
 
-  describe("tool-harness extension (SDK integration)", () => {
+  describe("tool-harness event handlers", () => {
     const originalEnv = process.env.PI_INCLUDE_TOOLS;
 
     beforeEach(() => {
