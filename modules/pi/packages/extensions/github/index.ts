@@ -2,8 +2,7 @@
  * github tools — 7 tools for reading, searching, and exploring github repos.
  *
  * designed for the librarian sub-agent but registered as top-level extension
- * tools. the librarian spawns a pi process with PI_INCLUDE_TOOLS set to
- * include these tool names.
+ * tools. the librarian selects them through pi's native tool allowlist.
  *
  * all tools use `gh api` CLI under the hood. requires authenticated gh CLI.
  *

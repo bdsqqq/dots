@@ -1102,15 +1102,6 @@ importers:
         specifier: 'catalog:'
         version: 0.87.1(patch_hash=4e5c2c9984a1d334ff6fdc9ce85e527d476449afe730dd5bc21990e6a7015634)(ws@8.21.3)(zod@4.4.3)
 
-  packages/extensions/tool-harness:
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 0.87.1(patch_hash=4e5c2c9984a1d334ff6fdc9ce85e527d476449afe730dd5bc21990e6a7015634)(ws@8.21.3)(zod@4.4.3)
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
-
   packages/extensions/undo-edit:
     dependencies:
       '@bds_pi/box-format':

@@ -48,8 +48,8 @@ const CODE_REVIEW_DEFAULT_MODEL = "openai-codex/gpt-6-astra:xhigh";
 
 type CodeReviewExtConfig = {
   model: PiSpawnModel;
-  builtinTools: string[];
-  extensionTools: string[];
+  tools: string[];
+  excludeTools: string[];
   promptFile: string;
   promptString: string;
   reportPromptFile: string;
@@ -64,16 +64,8 @@ type CodeReviewExtensionDeps = {
 
 const CONFIG_DEFAULTS: CodeReviewExtConfig = {
   model: CODE_REVIEW_DEFAULT_MODEL,
-  builtinTools: ["read", "grep", "find", "ls", "bash"],
-  extensionTools: [
-    "read",
-    "grep",
-    "find",
-    "ls",
-    "bash",
-    "web_search",
-    "read_web_page",
-  ],
+  excludeTools: [],
+  tools: ["read", "grep", "find", "ls", "bash", "web_search", "read_web_page"],
   promptFile: "",
   promptString: "",
   reportPromptFile: "",
@@ -156,8 +148,8 @@ function isCodeReviewConfig(
 ): value is CodeReviewExtConfig {
   return (
     isPiSpawnModelValue(value.model) &&
-    isStringArray(value.builtinTools) &&
-    isStringArray(value.extensionTools) &&
+    isStringArray(value.tools) &&
+    isStringArray(value.excludeTools) &&
     typeof value.promptFile === "string" &&
     typeof value.promptString === "string" &&
     typeof value.reportPromptFile === "string" &&
@@ -173,8 +165,8 @@ export interface CodeReviewConfig {
   systemPrompt?: string;
   reportFormat?: string;
   model?: PiSpawnModel;
-  builtinTools?: string[];
-  extensionTools?: string[];
+  tools?: string[];
+  excludeTools?: string[];
 }
 
 // --- Markdown parsing ---
@@ -314,8 +306,8 @@ export function createCodeReviewTool(
         cwd: ctx.cwd,
         task: fullTask,
         model: config.model ?? CONFIG_DEFAULTS.model,
-        builtinTools: config.builtinTools ?? CONFIG_DEFAULTS.builtinTools,
-        extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
+        tools: config.tools ?? CONFIG_DEFAULTS.tools,
+        excludeTools: config.excludeTools ?? CONFIG_DEFAULTS.excludeTools,
         systemPromptBody: systemPrompt,
         followUp: reportFormat,
         signal,
@@ -420,8 +412,8 @@ export function resolveCodeReviewConfig(
         ? deps.resolvePrompt(config.reportPromptString, config.reportPromptFile)
         : undefined,
       model: config.model,
-      builtinTools: config.builtinTools,
-      extensionTools: config.extensionTools,
+      tools: config.tools,
+      excludeTools: config.excludeTools,
     },
   };
 }
@@ -721,8 +713,8 @@ if (import.meta.vitest) {
       it("validates complete config", () => {
         const valid = {
           model: CODE_REVIEW_DEFAULT_MODEL,
-          builtinTools: ["read", "bash"],
-          extensionTools: ["read", "web_search"],
+          tools: ["read", "web_search"],
+          excludeTools: ["bash"],
           promptFile: "",
           promptString: "",
           reportPromptFile: "",
@@ -734,8 +726,8 @@ if (import.meta.vitest) {
       it("rejects empty model", () => {
         const invalid = {
           model: "",
-          builtinTools: ["read"],
-          extensionTools: ["read"],
+          tools: ["read"],
+          excludeTools: [],
           promptFile: "",
           promptString: "",
           reportPromptFile: "",
@@ -747,8 +739,8 @@ if (import.meta.vitest) {
       it("rejects non-array tools", () => {
         const invalid = {
           model: "some-model",
-          builtinTools: "read",
-          extensionTools: ["read"],
+          tools: ["read"],
+          excludeTools: "read",
           promptFile: "",
           promptString: "",
           reportPromptFile: "",
@@ -769,8 +761,8 @@ if (import.meta.vitest) {
         const config = {
           ...CONFIG_DEFAULTS,
           model: "provider/model",
-          builtinTools: ["read"],
-          extensionTools: ["grep"],
+          tools: ["grep"],
+          excludeTools: ["read"],
           promptString: "system source",
           promptFile: "system.md",
           reportPromptString: "report source",
@@ -795,8 +787,8 @@ if (import.meta.vitest) {
             systemPrompt: "system source:system.md",
             reportFormat: "report source:report.md",
             model: "provider/model",
-            builtinTools: ["read"],
-            extensionTools: ["grep"],
+            tools: ["grep"],
+            excludeTools: ["read"],
           },
         });
         expect(resolvePrompt).toHaveBeenCalledTimes(2);

@@ -104,7 +104,6 @@
       "./dist/extensions/session-settlement.js",
       "./dist/extensions/skill.js",
       "./dist/extensions/system-prompt.js",
-      "./dist/extensions/tool-harness.js",
       "./dist/extensions/undo-edit.js",
       "./dist/extensions/web-search.js",
       "./dist/extensions/zmx.js"

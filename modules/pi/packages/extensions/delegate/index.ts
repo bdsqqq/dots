@@ -56,8 +56,8 @@ import {
 } from "@bds_pi/sub-agent-render";
 
 type DelegateExtConfig = {
-  builtinTools: string[];
-  extensionTools: string[];
+  tools: string[];
+  excludeTools: string[];
   capacity?: {
     repositoryId: string;
     executionProfileId: string;
@@ -72,8 +72,8 @@ type DelegateExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: DelegateExtConfig = {
-  builtinTools: ["read", "grep", "find", "ls", "bash"],
-  extensionTools: [
+  excludeTools: [],
+  tools: [
     "read",
     "grep",
     "find",
@@ -104,8 +104,8 @@ function isDelegateConfig(
   value: Record<string, unknown>,
 ): value is DelegateExtConfig {
   return (
-    isStringArray(value.builtinTools) &&
-    isStringArray(value.extensionTools) &&
+    isStringArray(value.tools) &&
+    isStringArray(value.excludeTools) &&
     (value.capacity === undefined ||
       (typeof value.capacity === "object" &&
         value.capacity !== null &&
@@ -128,8 +128,8 @@ export interface DelegateParams {
 }
 
 export interface DelegateConfig {
-  builtinTools?: string[];
-  extensionTools?: string[];
+  tools?: string[];
+  excludeTools?: string[];
   capacity?: {
     repositoryId: string;
     executionProfileId: string;
@@ -214,9 +214,8 @@ export function createDelegateTool(
         /* graceful */
       }
 
-      const builtinTools = config.builtinTools ?? CONFIG_DEFAULTS.builtinTools;
-      const extensionTools =
-        config.extensionTools ?? CONFIG_DEFAULTS.extensionTools;
+      const tools = config.tools ?? CONFIG_DEFAULTS.tools;
+      const excludeTools = config.excludeTools ?? CONFIG_DEFAULTS.excludeTools;
       if (config.capacity) {
         if (!capacityPiSpawn) {
           throw new Error(
@@ -224,12 +223,11 @@ export function createDelegateTool(
           );
         }
         if (
-          builtinTools.join("\0") !== CONFIG_DEFAULTS.builtinTools.join("\0") ||
-          extensionTools.join("\0") !==
-            CONFIG_DEFAULTS.extensionTools.join("\0")
+          tools.join("\0") !== CONFIG_DEFAULTS.tools.join("\0") ||
+          excludeTools.length > 0
         ) {
           throw new Error(
-            "delegate capacity profiles own tool configuration; remove builtinTools and extensionTools overrides",
+            "delegate capacity profiles own tool configuration; remove tools and excludeTools overrides",
           );
         }
       }
@@ -254,7 +252,7 @@ export function createDelegateTool(
                 ...(parentSessionId ? { parentSessionId } : {}),
               },
             }
-          : { builtinTools, extensionTools }),
+          : { tools, excludeTools }),
         signal,
         session: {
           id: p.continueId,
@@ -342,8 +340,8 @@ export function resolveDelegateConfig(
   return {
     enabled,
     config: {
-      builtinTools: config.builtinTools,
-      extensionTools: config.extensionTools,
+      tools: config.tools,
+      excludeTools: config.excludeTools,
       ...(config.capacity ? { capacity: config.capacity } : {}),
     },
   };
@@ -454,15 +452,15 @@ if (import.meta.vitest) {
       const tool = harness.tools[0] as ToolDefinition;
       expect(tool.name).toBe("delegate");
       for (const name of ["web_search", "read_web_page"]) {
-        expect(CONFIG_DEFAULTS.extensionTools).toContain(name);
+        expect(CONFIG_DEFAULTS.tools).toContain(name);
         expect(tool.description).toContain(name);
       }
     });
 
     it("resolves the effective tool config", () => {
       const config = {
-        builtinTools: ["read"],
-        extensionTools: ["finder"],
+        tools: ["finder"],
+        excludeTools: ["read"],
       };
       const getEnabledExtensionConfigSpy = vi.fn(() => ({
         enabled: true,
@@ -513,8 +511,8 @@ if (import.meta.vitest) {
         { schema: DELEGATE_CONFIG_SCHEMA },
       );
       expect(createDelegateToolSpy).toHaveBeenCalledWith({
-        builtinTools: CONFIG_DEFAULTS.builtinTools,
-        extensionTools: CONFIG_DEFAULTS.extensionTools,
+        tools: CONFIG_DEFAULTS.tools,
+        excludeTools: CONFIG_DEFAULTS.excludeTools,
       });
       expect(withPromptPatchSpy).toHaveBeenCalledWith(tool);
       expect(harness.tools).toHaveLength(1);
@@ -555,7 +553,7 @@ if (import.meta.vitest) {
       const capacityPiSpawn = vi.fn();
       const tool = createDelegateTool(
         {
-          builtinTools: ["read"],
+          tools: ["read"],
           capacity: {
             repositoryId: "dots",
             executionProfileId: "delegate",
@@ -580,8 +578,8 @@ if (import.meta.vitest) {
       const dir = fs.mkdtempSync(path.join(tmpdir, "pi-delegate-test-"));
       const settingsPath = writeTmpJson(dir, "settings.json", {
         "@bds_pi/delegate": {
-          builtinTools: ["read", 123],
-          extensionTools: "finder",
+          tools: ["read", 123],
+          excludeTools: "finder",
         },
       });
       setGlobalSettingsPath(settingsPath);
@@ -606,8 +604,8 @@ if (import.meta.vitest) {
         "[@bds_pi/config] invalid config for @bds_pi/delegate; falling back to defaults.",
       );
       expect(createDelegateToolSpy).toHaveBeenCalledWith({
-        builtinTools: CONFIG_DEFAULTS.builtinTools,
-        extensionTools: CONFIG_DEFAULTS.extensionTools,
+        tools: CONFIG_DEFAULTS.tools,
+        excludeTools: CONFIG_DEFAULTS.excludeTools,
       });
       expect(withPromptPatchSpy).toHaveBeenCalledWith(tool);
       expect(harness.tools).toHaveLength(1);
@@ -625,7 +623,7 @@ if (import.meta.vitest) {
           cwd: process.cwd(),
           task: `You must call delegate exactly once. Ask it to create ${testFile} with the exact content "${testContent}". Do not create the file yourself.`,
           model: E2E_MODEL,
-          extensionTools: ["delegate"],
+          tools: ["delegate"],
           session: { persist: false },
         });
 
@@ -662,7 +660,7 @@ if (import.meta.vitest) {
             "then run `printf fallback-ok` and return the command output.",
           ].join(" "),
           model: E2E_MODEL,
-          extensionTools: ["delegate"],
+          tools: ["delegate"],
           configPath: childConfigPath,
           session: { persist: false },
         });
