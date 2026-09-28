@@ -50,8 +50,8 @@ const ORACLE_DEFAULT_MODEL = "openai-codex/gpt-6-astra:xhigh";
 
 type OracleExtConfig = {
   model: PiSpawnModel;
-  extensionTools: string[];
-  builtinTools: string[];
+  tools: string[];
+  excludeTools: string[];
   promptFile: string;
   promptString: string;
 };
@@ -64,16 +64,8 @@ type OracleExtensionDeps = {
 
 const CONFIG_DEFAULTS: OracleExtConfig = {
   model: ORACLE_DEFAULT_MODEL,
-  extensionTools: [
-    "read",
-    "grep",
-    "find",
-    "ls",
-    "bash",
-    "web_search",
-    "read_web_page",
-  ],
-  builtinTools: ["read", "grep", "find", "ls", "bash"],
+  tools: ["read", "grep", "find", "ls", "bash", "web_search", "read_web_page"],
+  excludeTools: [],
   promptFile: "agent.amp.oracle.md",
   promptString: "",
 };
@@ -99,8 +91,8 @@ function isOracleConfig(
 ): value is OracleExtConfig {
   return (
     isPiSpawnModelValue(value.model) &&
-    isStringArray(value.extensionTools) &&
-    isStringArray(value.builtinTools) &&
+    isStringArray(value.tools) &&
+    isStringArray(value.excludeTools) &&
     typeof value.promptFile === "string" &&
     typeof value.promptString === "string"
   );
@@ -119,8 +111,8 @@ export interface OracleParams {
 export interface OracleConfig {
   systemPrompt?: string;
   model?: PiSpawnModel;
-  extensionTools?: string[];
-  builtinTools?: string[];
+  tools?: string[];
+  excludeTools?: string[];
 }
 
 export function createOracleTool(
@@ -204,8 +196,8 @@ export function createOracleTool(
         cwd: ctx.cwd,
         task: fullTask,
         model: config.model ?? CONFIG_DEFAULTS.model,
-        builtinTools: config.builtinTools ?? CONFIG_DEFAULTS.builtinTools,
-        extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
+        tools: config.tools ?? CONFIG_DEFAULTS.tools,
+        excludeTools: config.excludeTools ?? CONFIG_DEFAULTS.excludeTools,
         systemPromptBody: config.systemPrompt,
         signal,
         session: { persist: true, parentSession },
@@ -298,8 +290,8 @@ export function resolveOracleConfig(
         ? deps.resolvePrompt(config.promptString, config.promptFile)
         : undefined,
       model: config.model,
-      extensionTools: config.extensionTools,
-      builtinTools: config.builtinTools,
+      tools: config.tools,
+      excludeTools: config.excludeTools,
     },
   };
 }
@@ -350,8 +342,8 @@ if (import.meta.vitest) {
       it("resolves the effective tool config", () => {
         const extensionConfig = {
           model: "custom/model",
-          extensionTools: ["read"],
-          builtinTools: ["bash"],
+          tools: ["read"],
+          excludeTools: ["bash"],
           promptFile: "custom.md",
           promptString: "inline",
         };
@@ -373,8 +365,8 @@ if (import.meta.vitest) {
           config: {
             systemPrompt: "resolved prompt",
             model: extensionConfig.model,
-            extensionTools: extensionConfig.extensionTools,
-            builtinTools: extensionConfig.builtinTools,
+            tools: extensionConfig.tools,
+            excludeTools: extensionConfig.excludeTools,
           },
         });
         expect(resolvePromptSpy).toHaveBeenCalledWith("inline", "custom.md");
@@ -409,7 +401,7 @@ if (import.meta.vitest) {
         expect(tools).toHaveLength(1);
         expect(tools[0].name).toBe("oracle");
         for (const name of ["web_search", "read_web_page"]) {
-          expect(CONFIG_DEFAULTS.extensionTools).toContain(name);
+          expect(CONFIG_DEFAULTS.tools).toContain(name);
           expect(tools[0].description).toContain(name);
         }
       });
@@ -439,8 +431,8 @@ if (import.meta.vitest) {
       it("passes config values to createOracleTool", () => {
         const customConfig = {
           model: "custom/model",
-          extensionTools: ["read", "grep"],
-          builtinTools: ["bash"],
+          tools: ["read", "grep"],
+          excludeTools: ["bash"],
           promptFile: "custom-prompt.md",
           promptString: "",
         };
@@ -470,8 +462,8 @@ if (import.meta.vitest) {
       it("uses provided config values even when potentially invalid", () => {
         const weirdConfig = {
           model: "",
-          extensionTools: ["read"],
-          builtinTools: ["bash"],
+          tools: ["read"],
+          excludeTools: ["bash"],
           promptFile: "custom.md",
           promptString: "",
         };
@@ -525,8 +517,8 @@ if (import.meta.vitest) {
     it("applies custom config to tool", () => {
       const tool = createOracleTool({
         model: "custom/model",
-        extensionTools: ["read"],
-        builtinTools: ["grep"],
+        tools: ["read"],
+        excludeTools: ["grep"],
         systemPrompt: "custom prompt",
       });
 
@@ -638,8 +630,8 @@ if (import.meta.vitest) {
     describe("isOracleConfig", () => {
       const validConfig = {
         model: ORACLE_DEFAULT_MODEL,
-        extensionTools: ["read", "grep"],
-        builtinTools: ["read", "grep"],
+        tools: ["read", "grep"],
+        excludeTools: [],
         promptFile: "prompt.md",
         promptString: "",
       };
@@ -652,14 +644,14 @@ if (import.meta.vitest) {
         expect(isOracleConfig({ ...validConfig, model: "" })).toBe(false);
       });
 
-      it("returns false when extensionTools contains non-strings", () => {
-        expect(
-          isOracleConfig({ ...validConfig, extensionTools: ["read", 123] }),
-        ).toBe(false);
+      it("returns false when tools contains non-strings", () => {
+        expect(isOracleConfig({ ...validConfig, tools: ["read", 123] })).toBe(
+          false,
+        );
       });
 
-      it("returns false when builtinTools is not an array", () => {
-        expect(isOracleConfig({ ...validConfig, builtinTools: "bash" })).toBe(
+      it("returns false when excludeTools is not an array", () => {
+        expect(isOracleConfig({ ...validConfig, excludeTools: "bash" })).toBe(
           false,
         );
       });
@@ -685,7 +677,7 @@ if (import.meta.vitest) {
         cwd: process.cwd(),
         task: 'You must call oracle exactly once with task "What is 2+2? Answer with just the number.". Do not answer directly.',
         model: E2E_MODEL,
-        extensionTools: ["oracle"],
+        tools: ["oracle"],
         session: { persist: false },
       });
 

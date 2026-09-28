@@ -51,8 +51,8 @@ const FINDER_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 type FinderExtConfig = {
   model: PiSpawnModel;
-  extensionTools: string[];
-  builtinTools: string[];
+  tools: string[];
+  excludeTools: string[];
   promptFile: string;
   promptString: string;
 };
@@ -65,8 +65,8 @@ type FinderExtensionDeps = {
 
 const CONFIG_DEFAULTS: FinderExtConfig = {
   model: FINDER_DEFAULT_MODEL,
-  extensionTools: ["read", "grep", "find", "ls"],
-  builtinTools: ["read", "grep", "find", "ls"],
+  tools: ["read", "grep", "find", "ls"],
+  excludeTools: [],
   promptFile: "agent.amp.finder.md",
   promptString: "",
 };
@@ -88,8 +88,8 @@ function isFinderConfig(
 ): value is FinderExtConfig {
   return (
     isPiSpawnModelValue(value.model) &&
-    isStringArray(value.extensionTools) &&
-    isStringArray(value.builtinTools) &&
+    isStringArray(value.tools) &&
+    isStringArray(value.excludeTools) &&
     typeof value.promptFile === "string" &&
     typeof value.promptString === "string"
   );
@@ -102,8 +102,8 @@ const FINDER_CONFIG_SCHEMA: ExtensionConfigSchema<FinderExtConfig> = {
 export interface FinderConfig {
   systemPrompt?: string;
   model?: PiSpawnModel;
-  extensionTools?: string[];
-  builtinTools?: string[];
+  tools?: string[];
+  excludeTools?: string[];
 }
 
 export interface FinderParams {
@@ -166,8 +166,8 @@ export function createFinderTool(
         cwd: ctx.cwd,
         task: p.query,
         model: config.model ?? CONFIG_DEFAULTS.model,
-        builtinTools: config.builtinTools ?? CONFIG_DEFAULTS.builtinTools,
-        extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
+        tools: config.tools ?? CONFIG_DEFAULTS.tools,
+        excludeTools: config.excludeTools ?? CONFIG_DEFAULTS.excludeTools,
         systemPromptBody: config.systemPrompt,
         signal,
         session: { persist: false, parentSession },
@@ -256,8 +256,8 @@ export function resolveFinderConfig(
         ? deps.resolvePrompt(config.promptString, config.promptFile)
         : undefined,
       model: config.model,
-      extensionTools: config.extensionTools,
-      builtinTools: config.builtinTools,
+      tools: config.tools,
+      excludeTools: config.excludeTools,
     },
   };
 }
@@ -312,8 +312,8 @@ if (import.meta.vitest) {
     it("resolves the effective tool config", () => {
       const extensionConfig = {
         model: "custom/model",
-        extensionTools: ["read"],
-        builtinTools: ["grep"],
+        tools: ["read"],
+        excludeTools: ["grep"],
         promptFile: "custom.md",
         promptString: "inline",
       };
@@ -334,8 +334,8 @@ if (import.meta.vitest) {
         config: {
           systemPrompt: "resolved prompt",
           model: extensionConfig.model,
-          extensionTools: extensionConfig.extensionTools,
-          builtinTools: extensionConfig.builtinTools,
+          tools: extensionConfig.tools,
+          excludeTools: extensionConfig.excludeTools,
         },
       });
       expect(resolvePromptSpy).toHaveBeenCalledWith("inline", "custom.md");
@@ -410,8 +410,8 @@ if (import.meta.vitest) {
       const settingsPath = writeTmpJson(dir, "settings.json", {
         "@bds_pi/finder": {
           model: "",
-          extensionTools: ["read", 123],
-          builtinTools: "grep",
+          tools: ["read", 123],
+          excludeTools: "grep",
           promptFile: 123,
           promptString: false,
         },
@@ -613,7 +613,7 @@ if (import.meta.vitest) {
         cwd: process.cwd(),
         task: 'You must call finder exactly once with query "where is SessionManager defined?". Do not answer from memory.',
         model: E2E_MODEL,
-        extensionTools: ["finder"],
+        tools: ["finder"],
         session: { persist: false },
       });
 

@@ -27,7 +27,6 @@ import type {
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveGlobalSettingsPath } from "@bds_pi/config";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
-import { parseIncludedTools } from "./tool-selection.js";
 
 // --- types ---
 
@@ -313,13 +312,9 @@ export interface PiSpawnConfig {
   cwd: string;
   task: string;
   model?: PiSpawnModel;
-  /** native CLI fallback allowlist when extensionTools is omitted. */
-  builtinTools?: string[];
-  /**
-   * complete tool allowlist (legacy name), not additive to builtinTools.
-   * [] disables all tools; undefined retains the inherited env constraint.
-   */
-  extensionTools?: string[];
+  /** native tool names: undefined preserves defaults; [] disables all tools. */
+  tools?: string[];
+  excludeTools?: string[];
   systemPromptBody?: string;
   signal?: AbortSignal;
   onUpdate?: (result: PiSpawnResult) => void;
@@ -640,13 +635,6 @@ async function runLocalPi(config: PiSpawnConfig): Promise<PiSpawnResult> {
     PI_BDS_CONFIG_PATH: config.configPath ?? resolveGlobalSettingsPath(),
     ...config.env,
   };
-  if (config.extensionTools !== undefined) {
-    if (config.extensionTools.length === 0) {
-      spawnEnv.PI_INCLUDE_TOOLS = "NONE";
-    } else {
-      spawnEnv.PI_INCLUDE_TOOLS = config.extensionTools.join(",");
-    }
-  }
 
   const startedAt = new Date().toISOString();
   const parentSessionFile = normalizedSessionValue(
@@ -722,22 +710,15 @@ async function runLocalPi(config: PiSpawnConfig): Promise<PiSpawnResult> {
     : ["--mode", "json", "-p", ...sessionRouting.args];
 
   if (config.model) args.push("--model", modelCliString(config.model));
-  // the SDK now filters extension definitions too. admit exactly the final
-  // selection: a broader union can reactivate excluded tools on registry refresh.
-  const includedTools = parseIncludedTools(spawnEnv.PI_INCLUDE_TOOLS);
-  let tools = config.builtinTools;
-  if (config.extensionTools !== undefined) {
-    tools = includedTools ?? [];
-  } else if (includedTools !== undefined) {
-    tools =
-      tools?.filter((name) => includedTools.includes(name)) ?? includedTools;
-  }
-  if (tools !== undefined) {
-    if (tools.length === 0) {
+  if (config.tools !== undefined) {
+    if (config.tools.length === 0) {
       args.push("--no-tools");
     } else {
-      args.push("--tools", tools.join(","));
+      args.push("--tools", config.tools.join(","));
     }
+  }
+  if (config.excludeTools?.length) {
+    args.push("--exclude-tools", config.excludeTools.join(","));
   }
 
   let tmpPromptDir: string | null = null;
@@ -1507,7 +1488,6 @@ if (import.meta.vitest) {
       "web-search",
       "read-web-page",
       "github",
-      "tool-harness",
     ];
     const delegateTools = [
       "read",
@@ -1529,10 +1509,7 @@ if (import.meta.vitest) {
      * a harness spy cannot detect names removed before registry construction.
      */
     const probeTools = async (
-      selection: Pick<
-        PiSpawnConfig,
-        "builtinTools" | "extensionTools" | "env" | "followUp"
-      >,
+      selection: Pick<PiSpawnConfig, "tools" | "excludeTools" | "followUp">,
     ) => {
       const { getPackageDir } = await import("@earendil-works/pi-coding-agent");
       const { fileURLToPath, pathToFileURL } = await import("node:url");
@@ -1616,9 +1593,7 @@ if (import.meta.vitest) {
         ...selection,
         env: {
           PI_OFFLINE: "1",
-          PI_INCLUDE_TOOLS: undefined,
           PI_BDS_CONFIG_PATH: path.join(cwd, "settings.json"),
-          ...selection.env,
         },
       });
       // RPC deliberately exits before any model turn; only startup is probed.
@@ -1629,8 +1604,7 @@ if (import.meta.vitest) {
 
     it("admits delegate web and mutation tools without unrelated tools", async () => {
       const result = await probeTools({
-        builtinTools: ["read", "grep", "find", "ls", "bash"],
-        extensionTools: delegateTools,
+        tools: delegateTools,
       });
       expect(result.active).toEqual([...delegateTools].sort());
       expect(result.registry).toEqual(result.active);
@@ -1640,111 +1614,59 @@ if (import.meta.vitest) {
 
     it.each([
       {
-        name: "librarian extension-only selection despite empty builtins",
+        name: "librarian extension-only selection",
         selection: {
-          builtinTools: [],
-          extensionTools: ["read_github", "web_search", "read_web_page"],
+          tools: ["read_github", "web_search", "read_web_page"],
         },
         expected: ["read_github", "web_search", "read_web_page"],
       },
       {
         name: "eval selection without builtin defaults",
-        selection: { extensionTools: ["finder"] },
+        selection: { tools: ["finder"] },
         expected: ["finder"],
       },
       {
-        name: "excludes a builtin omitted from the final list, even after refresh",
-        selection: { builtinTools: ["read", "bash"], extensionTools: ["read"] },
+        name: "exclusion wins over the allowlist, even for a shadowed builtin",
+        selection: { tools: ["read", "bash"], excludeTools: ["bash"] },
         expected: ["read"],
       },
       {
-        name: "empty extension selection overrides nonempty builtins",
-        selection: { builtinTools: ["read"], extensionTools: [] },
+        name: "exclusion can remove the entire allowlist",
+        selection: { tools: ["web_search"], excludeTools: ["web_search"] },
         expected: [],
       },
       {
         name: "read-session disables everything",
-        selection: { builtinTools: [], extensionTools: [] },
+        selection: { tools: [] },
         expected: [],
       },
       {
-        name: "empty extension selection without builtin override",
-        selection: { extensionTools: [] },
+        name: "empty allowlist stays empty with exclusions",
+        selection: { tools: [], excludeTools: ["bash"] },
         expected: [],
       },
       {
-        name: "native builtin fallback",
-        selection: { builtinTools: ["read"] },
+        name: "empty exclusion list does not narrow the allowlist",
+        selection: { tools: ["read"], excludeTools: [] },
         expected: ["read"],
       },
       {
-        name: "empty native fallback means no tools, not no builtins",
-        selection: { builtinTools: [] },
-        expected: [],
-      },
-      {
-        name: "aliases resolve before registry filtering and deduplicate overlaps",
+        name: "native registry deduplicates repeated tool names",
         selection: {
-          builtinTools: [],
-          extensionTools: [
-            "glob",
-            "find",
-            "edit_file",
-            "create_file",
-            "apply_patch",
-          ],
+          tools: ["find", "find", "apply_patch"],
         },
         expected: ["find", "apply_patch"],
       },
       {
         name: "unknown-only explicit selection does not restore defaults",
-        selection: { extensionTools: ["missing_tool"] },
+        selection: { tools: ["missing_tool"] },
         expected: [],
-      },
-      {
-        name: "inherited env narrows the native fallback",
-        selection: {
-          builtinTools: ["read", "bash"],
-          env: { PI_INCLUDE_TOOLS: "read,web_search" },
-        },
-        expected: ["read"],
-      },
-      {
-        name: "inherited env selects extensions when builtin fallback is absent",
-        selection: {
-          env: { PI_INCLUDE_TOOLS: " web_search , glob,create_file " },
-        },
-        expected: ["web_search", "find", "apply_patch"],
-      },
-      {
-        name: "inherited NONE disables nonempty builtin fallback",
-        selection: {
-          builtinTools: ["read"],
-          env: { PI_INCLUDE_TOOLS: "NONE" },
-        },
-        expected: [],
-      },
-      {
-        name: "blank legacy env retains fallback",
-        selection: {
-          builtinTools: ["read"],
-          env: { PI_INCLUDE_TOOLS: " , , " },
-        },
-        expected: ["read"],
-      },
-      {
-        name: "explicit child selection replaces inherited NONE",
-        selection: {
-          extensionTools: ["web_search"],
-          env: { PI_INCLUDE_TOOLS: "NONE" },
-        },
-        expected: ["web_search"],
       },
       {
         name: "RPC uses the same exact registry selection",
         selection: {
-          builtinTools: ["read", "bash"],
-          extensionTools: ["read", "web_search"],
+          tools: ["read", "bash", "web_search"],
+          excludeTools: ["bash"],
           followUp: "unused offline follow-up",
         },
         expected: ["read", "web_search"],
@@ -1759,6 +1681,27 @@ if (import.meta.vitest) {
         expect(JSON.stringify(result.sources.read)).toContain(
           "/extensions/read",
         );
+    });
+
+    it("excludes builtin, extension, and late-registered tools without an allowlist", async () => {
+      const excluded = [
+        "bash",
+        "write",
+        "web_search",
+        "apply_patch",
+        "late_tool",
+      ];
+      const result = await probeTools({ excludeTools: excluded });
+      for (const name of excluded) {
+        expect(result.registry).not.toContain(name);
+        expect(result.active).not.toContain(name);
+        expect(result.afterRefresh).not.toContain(name);
+      }
+      expect(result.active).toEqual(
+        expect.arrayContaining(["read", "read_web_page"]),
+      );
+      expect(result.advertised).toEqual(result.active);
+      expect(result.afterRefresh).toEqual(result.active);
     });
 
     it("leaves SDK defaults and unrestricted extensions alone when both lists are omitted", async () => {

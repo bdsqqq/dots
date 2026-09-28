@@ -1767,8 +1767,8 @@ export class LocalPiSessionCapacity {
 
 function remoteUnsupported(config: PiSpawnConfig): string | undefined {
   const unsupported: string[] = [];
-  if (config.builtinTools !== undefined) unsupported.push("builtinTools");
-  if (config.extensionTools !== undefined) unsupported.push("extensionTools");
+  if (config.tools !== undefined) unsupported.push("tools");
+  if (config.excludeTools !== undefined) unsupported.push("excludeTools");
   if (config.systemPromptBody?.trim()) unsupported.push("systemPromptBody");
   if (config.followUp !== undefined) unsupported.push("followUp");
   if (config.env !== undefined) unsupported.push("env");
@@ -3610,8 +3610,8 @@ if (import.meta.vitest) {
         executionProfileId: "delegate",
       };
       const unsupportedCases: Array<[string, Partial<PiSpawnConfig>]> = [
-        ["builtinTools", { builtinTools: ["read"] }],
-        ["extensionTools", { extensionTools: ["finder"] }],
+        ["tools", { tools: ["read"] }],
+        ["excludeTools", { excludeTools: ["finder"] }],
         ["systemPromptBody", { systemPromptBody: "custom" }],
         ["env", { env: { PI_TEST: "1" } }],
         ["configPath", { configPath: "/tmp/local-config.json" }],

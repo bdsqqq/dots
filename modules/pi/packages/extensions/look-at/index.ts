@@ -47,8 +47,8 @@ const LOOK_AT_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 type LookAtExtConfig = {
   model: PiSpawnModel;
-  extensionTools: string[];
-  builtinTools: string[];
+  tools: string[];
+  excludeTools: string[];
   promptFile: string;
   promptString: string;
 };
@@ -61,8 +61,8 @@ type LookAtExtensionDeps = {
 
 const CONFIG_DEFAULTS: LookAtExtConfig = {
   model: LOOK_AT_DEFAULT_MODEL,
-  extensionTools: ["read", "ls"],
-  builtinTools: ["read", "ls"],
+  tools: ["read", "ls"],
+  excludeTools: [],
   promptFile: "",
   promptString: "",
 };
@@ -88,8 +88,8 @@ function isLookAtExtConfig(
 ): value is LookAtExtConfig {
   return (
     isPiSpawnModelValue(value.model) &&
-    isStringArray(value.extensionTools) &&
-    isStringArray(value.builtinTools) &&
+    isStringArray(value.tools) &&
+    isStringArray(value.excludeTools) &&
     typeof value.promptFile === "string" &&
     typeof value.promptString === "string"
   );
@@ -131,7 +131,7 @@ When reference files are provided alongside the main file, you are being asked t
 `;
 
 export interface LookAtConfig extends Partial<
-  Pick<LookAtExtConfig, "model" | "extensionTools" | "builtinTools">
+  Pick<LookAtExtConfig, "model" | "tools" | "excludeTools">
 > {
   systemPrompt?: string;
 }
@@ -230,8 +230,8 @@ export function createLookAtTool(
         cwd: ctx.cwd,
         task: fullTask,
         model: config.model ?? CONFIG_DEFAULTS.model,
-        builtinTools: config.builtinTools ?? CONFIG_DEFAULTS.builtinTools,
-        extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
+        tools: config.tools ?? CONFIG_DEFAULTS.tools,
+        excludeTools: config.excludeTools ?? CONFIG_DEFAULTS.excludeTools,
         systemPromptBody: systemPrompt,
         signal,
         session: { persist: false, parentSession },
@@ -326,8 +326,8 @@ export function resolveLookAtConfig(
         ? deps.resolvePrompt(config.promptString, config.promptFile)
         : undefined,
       model: config.model,
-      extensionTools: config.extensionTools,
-      builtinTools: config.builtinTools,
+      tools: config.tools,
+      excludeTools: config.excludeTools,
     },
   };
 }
@@ -367,8 +367,8 @@ if (import.meta.vitest) {
     it("resolves the effective tool config", () => {
       const extensionConfig = {
         model: "custom/model",
-        extensionTools: ["read"],
-        builtinTools: ["ls"],
+        tools: ["read"],
+        excludeTools: ["ls"],
         promptFile: "custom.md",
         promptString: "inline",
       };
@@ -389,8 +389,8 @@ if (import.meta.vitest) {
         config: {
           systemPrompt: "resolved prompt",
           model: extensionConfig.model,
-          extensionTools: extensionConfig.extensionTools,
-          builtinTools: extensionConfig.builtinTools,
+          tools: extensionConfig.tools,
+          excludeTools: extensionConfig.excludeTools,
         },
       });
       expect(resolvePromptSpy).toHaveBeenCalledWith("inline", "custom.md");
@@ -406,7 +406,7 @@ if (import.meta.vitest) {
         cwd: process.cwd(),
         task: 'You must call look_at exactly once for "packages/extensions/look-at/index.ts" with the objective "Report what DEFAULT_SYSTEM_PROMPT says". Do not inspect the file another way.',
         model: E2E_MODEL,
-        extensionTools: ["look_at"],
+        tools: ["look_at"],
         session: { persist: false },
       });
 
@@ -468,8 +468,8 @@ if (import.meta.vitest) {
       expect(
         isLookAtExtConfig({
           model: "gpt-4",
-          extensionTools: ["read"],
-          builtinTools: ["ls"],
+          tools: ["read"],
+          excludeTools: ["ls"],
           promptFile: "",
           promptString: "",
         }),
@@ -480,8 +480,8 @@ if (import.meta.vitest) {
       expect(
         isLookAtExtConfig({
           model: "",
-          extensionTools: ["read"],
-          builtinTools: ["ls"],
+          tools: ["read"],
+          excludeTools: ["ls"],
           promptFile: "",
           promptString: "",
         }),
@@ -492,8 +492,8 @@ if (import.meta.vitest) {
       expect(
         isLookAtExtConfig({
           model: "gpt-4",
-          extensionTools: "not-an-array",
-          builtinTools: ["ls"],
+          tools: "not-an-array",
+          excludeTools: ["ls"],
           promptFile: "",
           promptString: "",
         }),
@@ -502,8 +502,8 @@ if (import.meta.vitest) {
       expect(
         isLookAtExtConfig({
           model: "gpt-4",
-          extensionTools: ["read"],
-          builtinTools: [123],
+          tools: ["read"],
+          excludeTools: [123],
           promptFile: "",
           promptString: "",
         }),
@@ -514,8 +514,8 @@ if (import.meta.vitest) {
       expect(
         isLookAtExtConfig({
           model: "gpt-4",
-          extensionTools: [],
-          builtinTools: [],
+          tools: [],
+          excludeTools: [],
           promptFile: "/some/path.md",
           promptString: "custom prompt",
         }),
@@ -525,8 +525,8 @@ if (import.meta.vitest) {
       expect(
         isLookAtExtConfig({
           model: "gpt-4",
-          extensionTools: [],
-          builtinTools: [],
+          tools: [],
+          excludeTools: [],
           promptFile: "",
           promptString: "",
         }),

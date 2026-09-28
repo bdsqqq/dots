@@ -47,8 +47,8 @@ const LIBRARIAN_DEFAULT_MODEL = "openai-codex/gpt-6-astra:low";
 
 type LibrarianExtConfig = {
   model: PiSpawnModel;
-  extensionTools: string[];
-  builtinTools: string[];
+  tools: string[];
+  excludeTools: string[];
   promptFile: string;
   promptString: string;
 };
@@ -61,7 +61,7 @@ type LibrarianExtensionDeps = {
 
 const CONFIG_DEFAULTS: LibrarianExtConfig = {
   model: LIBRARIAN_DEFAULT_MODEL,
-  extensionTools: [
+  tools: [
     "read_github",
     "search_github",
     "list_directory_github",
@@ -72,7 +72,7 @@ const CONFIG_DEFAULTS: LibrarianExtConfig = {
     "web_search",
     "read_web_page",
   ],
-  builtinTools: [],
+  excludeTools: [],
   promptFile: "agent.amp.librarian.md",
   promptString: "",
 };
@@ -98,8 +98,8 @@ function isLibrarianConfig(
 ): value is LibrarianExtConfig {
   return (
     isPiSpawnModelValue(value.model) &&
-    isStringArray(value.extensionTools) &&
-    isStringArray(value.builtinTools) &&
+    isStringArray(value.tools) &&
+    isStringArray(value.excludeTools) &&
     typeof value.promptFile === "string" &&
     typeof value.promptString === "string"
   );
@@ -112,8 +112,8 @@ const LIBRARIAN_CONFIG_SCHEMA: ExtensionConfigSchema<LibrarianExtConfig> = {
 export interface LibrarianConfig {
   systemPrompt?: string;
   model?: PiSpawnModel;
-  extensionTools?: string[];
-  builtinTools?: string[];
+  tools?: string[];
+  excludeTools?: string[];
 }
 
 export interface LibrarianParams {
@@ -188,8 +188,8 @@ export function createLibrarianTool(
         cwd: ctx.cwd,
         task: fullTask,
         model: config.model ?? CONFIG_DEFAULTS.model,
-        builtinTools: config.builtinTools ?? CONFIG_DEFAULTS.builtinTools,
-        extensionTools: config.extensionTools ?? CONFIG_DEFAULTS.extensionTools,
+        tools: config.tools ?? CONFIG_DEFAULTS.tools,
+        excludeTools: config.excludeTools ?? CONFIG_DEFAULTS.excludeTools,
         systemPromptBody: config.systemPrompt,
         signal,
         session: { persist: false, parentSession },
@@ -279,8 +279,8 @@ export function resolveLibrarianConfig(
         ? deps.resolvePrompt(config.promptString, config.promptFile)
         : undefined,
       model: config.model,
-      extensionTools: config.extensionTools,
-      builtinTools: config.builtinTools,
+      tools: config.tools,
+      excludeTools: config.excludeTools,
     },
   };
 }
@@ -335,17 +335,18 @@ if (import.meta.vitest) {
       expect(tools).toHaveLength(1);
       expect(tools[0]?.name).toBe("librarian");
       for (const name of ["web_search", "read_web_page"]) {
-        expect(CONFIG_DEFAULTS.extensionTools).toContain(name);
+        expect(CONFIG_DEFAULTS.tools).toContain(name);
         expect(tools[0]?.description).toContain(name);
       }
-      expect(CONFIG_DEFAULTS.builtinTools).toEqual([]);
+      expect(CONFIG_DEFAULTS.tools).not.toContain("bash");
+      expect(CONFIG_DEFAULTS.tools).not.toContain("read");
     });
 
     it("resolves the effective tool config", () => {
       const extensionConfig = {
         model: "custom/model",
-        extensionTools: ["read_github"],
-        builtinTools: [],
+        tools: ["read_github"],
+        excludeTools: [],
         promptFile: "custom.md",
         promptString: "inline",
       };
@@ -366,8 +367,8 @@ if (import.meta.vitest) {
         config: {
           systemPrompt: "resolved prompt",
           model: extensionConfig.model,
-          extensionTools: extensionConfig.extensionTools,
-          builtinTools: extensionConfig.builtinTools,
+          tools: extensionConfig.tools,
+          excludeTools: extensionConfig.excludeTools,
         },
       });
       expect(resolvePromptSpy).toHaveBeenCalledWith("inline", "custom.md");
@@ -422,8 +423,8 @@ if (import.meta.vitest) {
       expect(
         isLibrarianConfig({
           model: "openai-codex/gpt-5.6-sol:low",
-          extensionTools: ["read_github"],
-          builtinTools: [],
+          tools: ["read_github"],
+          excludeTools: [],
           promptFile: "prompt.md",
           promptString: "",
         }),
@@ -434,8 +435,8 @@ if (import.meta.vitest) {
       expect(
         isLibrarianConfig({
           model: LIBRARIAN_DEFAULT_MODEL,
-          extensionTools: ["read_github"],
-          builtinTools: [],
+          tools: ["read_github"],
+          excludeTools: [],
           promptFile: "prompt.md",
           promptString: "",
         }),
@@ -446,8 +447,8 @@ if (import.meta.vitest) {
       expect(
         isLibrarianConfig({
           model: "",
-          extensionTools: ["read_github"],
-          builtinTools: [],
+          tools: ["read_github"],
+          excludeTools: [],
           promptFile: "prompt.md",
           promptString: "",
         }),
@@ -458,44 +459,44 @@ if (import.meta.vitest) {
       expect(
         isLibrarianConfig({
           model: "   ",
-          extensionTools: ["read_github"],
-          builtinTools: [],
+          tools: ["read_github"],
+          excludeTools: [],
           promptFile: "prompt.md",
           promptString: "",
         }),
       ).toBe(false);
     });
 
-    it("rejects non-array extensionTools", () => {
+    it("rejects non-array tools", () => {
       expect(
         isLibrarianConfig({
           model: "openai-codex/gpt-5.6-sol:low",
-          extensionTools: "read_github",
-          builtinTools: [],
+          tools: "read_github",
+          excludeTools: [],
           promptFile: "prompt.md",
           promptString: "",
         }),
       ).toBe(false);
     });
 
-    it("rejects extensionTools array with non-strings", () => {
+    it("rejects tools array with non-strings", () => {
       expect(
         isLibrarianConfig({
           model: "openai-codex/gpt-5.6-sol:low",
-          extensionTools: ["read_github", 123],
-          builtinTools: [],
+          tools: ["read_github", 123],
+          excludeTools: [],
           promptFile: "prompt.md",
           promptString: "",
         }),
       ).toBe(false);
     });
 
-    it("rejects non-array builtinTools", () => {
+    it("rejects non-array excludeTools", () => {
       expect(
         isLibrarianConfig({
           model: "openai-codex/gpt-5.6-sol:low",
-          extensionTools: [],
-          builtinTools: "bash",
+          tools: [],
+          excludeTools: "bash",
           promptFile: "prompt.md",
           promptString: "",
         }),
@@ -506,8 +507,8 @@ if (import.meta.vitest) {
       expect(
         isLibrarianConfig({
           model: "openai-codex/gpt-5.6-sol:low",
-          extensionTools: [],
-          builtinTools: [],
+          tools: [],
+          excludeTools: [],
           promptFile: "",
           promptString: "",
         }),
@@ -518,8 +519,8 @@ if (import.meta.vitest) {
       expect(
         isLibrarianConfig({
           model: "openai-codex/gpt-5.6-sol:low",
-          extensionTools: [],
-          builtinTools: [],
+          tools: [],
+          excludeTools: [],
           promptFile: 123,
           promptString: "",
         }),
@@ -530,8 +531,8 @@ if (import.meta.vitest) {
       expect(
         isLibrarianConfig({
           model: "openai-codex/gpt-5.6-sol:low",
-          extensionTools: [],
-          builtinTools: [],
+          tools: [],
+          excludeTools: [],
           promptFile: "",
           promptString: false,
         }),
