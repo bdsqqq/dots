@@ -17,7 +17,6 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { spawnSync } from "node:child_process";
 import type {
   ExtensionAPI,
   ToolDefinition,
@@ -37,11 +36,7 @@ import {
   getToolCalls,
   getToolResults,
   getToolResultText,
-  createPiSpawn,
   piSpawn,
-  RemotePiCapacityProvider,
-  type PiCapacityCoordinator,
-  type PiSpawn,
   zeroUsage,
 } from "@bds_pi/pi-spawn";
 import {
@@ -58,17 +53,12 @@ import {
 type DelegateExtConfig = {
   tools: string[];
   excludeTools: string[];
-  capacity?: {
-    repositoryId: string;
-    executionProfileId: string;
-  };
 };
 
 type DelegateExtensionDeps = {
   createDelegateTool: typeof createDelegateTool;
   getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
   withPromptPatch: typeof withPromptPatch;
-  capacityPiSpawn?: PiSpawn;
 };
 
 const CONFIG_DEFAULTS: DelegateExtConfig = {
@@ -103,17 +93,7 @@ function isStringArray(value: unknown): value is string[] {
 function isDelegateConfig(
   value: Record<string, unknown>,
 ): value is DelegateExtConfig {
-  return (
-    isStringArray(value.tools) &&
-    isStringArray(value.excludeTools) &&
-    (value.capacity === undefined ||
-      (typeof value.capacity === "object" &&
-        value.capacity !== null &&
-        typeof (value.capacity as Record<string, unknown>).repositoryId ===
-          "string" &&
-        typeof (value.capacity as Record<string, unknown>)
-          .executionProfileId === "string"))
-  );
+  return isStringArray(value.tools) && isStringArray(value.excludeTools);
 }
 
 const DELEGATE_CONFIG_SCHEMA: ExtensionConfigSchema<DelegateExtConfig> = {
@@ -130,10 +110,6 @@ export interface DelegateParams {
 export interface DelegateConfig {
   tools?: string[];
   excludeTools?: string[];
-  capacity?: {
-    repositoryId: string;
-    executionProfileId: string;
-  };
 }
 
 function withRoutingMetadata(text: string, result: SingleResult): string {
@@ -142,9 +118,6 @@ function withRoutingMetadata(text: string, result: SingleResult): string {
   if (result.sessionId) lines.push(`sessionId: ${result.sessionId}`);
   if (result.sessionFile) lines.push(`sessionFile: ${result.sessionFile}`);
   if (result.leafId) lines.push(`leafId: ${result.leafId}`);
-  if (result.resultRef) lines.push(`resultRef: ${result.resultRef}`);
-  if (result.workspaceApply)
-    lines.push(`workspaceApply: ${result.workspaceApply.status}`);
   return lines.length > 0
     ? `${text}\n\n---\nrouting:\n${lines.join("\n")}`
     : text;
@@ -152,7 +125,6 @@ function withRoutingMetadata(text: string, result: SingleResult): string {
 
 export function createDelegateTool(
   config: DelegateConfig = {},
-  capacityPiSpawn?: PiSpawn,
 ): ToolDefinition<any> {
   return {
     name: "delegate",
@@ -206,31 +178,14 @@ export function createDelegateTool(
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const p = params as DelegateParams;
       let parentSession: string | undefined;
-      let parentSessionId: string | undefined;
       try {
         parentSession = ctx.sessionManager?.getSessionFile?.() ?? undefined;
-        parentSessionId = ctx.sessionManager?.getSessionId?.() ?? undefined;
       } catch {
         /* graceful */
       }
 
       const tools = config.tools ?? CONFIG_DEFAULTS.tools;
       const excludeTools = config.excludeTools ?? CONFIG_DEFAULTS.excludeTools;
-      if (config.capacity) {
-        if (!capacityPiSpawn) {
-          throw new Error(
-            "delegate capacity profile requires a capacity piSpawn dependency",
-          );
-        }
-        if (
-          tools.join("\0") !== CONFIG_DEFAULTS.tools.join("\0") ||
-          excludeTools.length > 0
-        ) {
-          throw new Error(
-            "delegate capacity profiles own tool configuration; remove tools and excludeTools overrides",
-          );
-        }
-      }
 
       const singleResult: SingleResult = {
         agent: "delegate",
@@ -240,25 +195,17 @@ export function createDelegateTool(
         usage: zeroUsage(),
       };
 
-      const result = await (config.capacity ? capacityPiSpawn! : piSpawn)({
+      const result = await piSpawn({
         cwd: ctx.cwd,
         task: p.prompt,
-        ...(config.capacity
-          ? {
-              capacity: {
-                repositoryId: config.capacity.repositoryId,
-                baseRevision: repositoryHead(ctx.cwd),
-                executionProfileId: config.capacity.executionProfileId,
-                ...(parentSessionId ? { parentSessionId } : {}),
-              },
-            }
-          : { tools, excludeTools }),
+        tools,
+        excludeTools,
         signal,
         session: {
           id: p.continueId,
           leafId: p.leafId,
           persist: true,
-          ...(config.capacity ? {} : { parentSession }),
+          parentSession,
         },
         owner: { toolCallId, toolName: "delegate" },
         onUpdate: (partial) => {
@@ -342,7 +289,6 @@ export function resolveDelegateConfig(
     config: {
       tools: config.tools,
       excludeTools: config.excludeTools,
-      ...(config.capacity ? { capacity: config.capacity } : {}),
     },
   };
 }
@@ -354,24 +300,10 @@ function createDelegateExtension(
     const { enabled, config } = resolveDelegateConfig(deps);
     if (!enabled) return;
 
-    const tool = deps.capacityPiSpawn
-      ? deps.createDelegateTool(config, deps.capacityPiSpawn)
-      : deps.createDelegateTool(config);
+    const tool = deps.createDelegateTool(config);
     pi.registerTool(deps.withPromptPatch(tool));
     registerSubAgentErrorNormalization(pi, "delegate");
   };
-}
-
-export function createCapacityDelegateExtension(
-  client: ConstructorParameters<typeof RemotePiCapacityProvider>[0],
-  coordinator: PiCapacityCoordinator,
-): (pi: ExtensionAPI) => void {
-  return createDelegateExtension({
-    ...DEFAULT_DEPS,
-    capacityPiSpawn: createPiSpawn(
-      new RemotePiCapacityProvider(client, coordinator),
-    ),
-  });
 }
 
 const delegateExtension: (pi: ExtensionAPI) => void = createDelegateExtension();
@@ -387,23 +319,6 @@ export {
   CONFIG_DEFAULTS,
   DELEGATE_CONFIG_SCHEMA,
 };
-
-function repositoryHead(cwd: string): string {
-  const result = spawnSync(
-    "git",
-    ["-C", cwd, "rev-parse", "--verify", "HEAD"],
-    {
-      encoding: "utf8",
-    },
-  );
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(
-      `delegate capacity requires a git worktree with HEAD: ${result.stderr.trim()}`,
-    );
-  }
-  return result.stdout.trim();
-}
 
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it, vi } = import.meta.vitest;
@@ -547,31 +462,6 @@ if (import.meta.vitest) {
       expect(createDelegateToolSpy).not.toHaveBeenCalled();
       expect(withPromptPatchSpy).not.toHaveBeenCalled();
       expect(harness.tools).toHaveLength(0);
-    });
-
-    it("rejects capacity tool overrides before invoking piSpawn", async () => {
-      const capacityPiSpawn = vi.fn();
-      const tool = createDelegateTool(
-        {
-          tools: ["read"],
-          capacity: {
-            repositoryId: "dots",
-            executionProfileId: "delegate",
-          },
-        },
-        capacityPiSpawn,
-      );
-
-      await expect(
-        (tool.execute as any)(
-          "delegate-call",
-          { prompt: "work", description: "work" },
-          new AbortController().signal,
-          undefined,
-          { cwd: "/tmp" },
-        ),
-      ).rejects.toThrow("delegate capacity profiles own tool configuration");
-      expect(capacityPiSpawn).not.toHaveBeenCalled();
     });
 
     it("falls back to defaults for invalid config and still registers", () => {
