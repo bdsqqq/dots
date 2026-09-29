@@ -1,98 +1,92 @@
 ---
 name: write
-description: "prose style guide. use when your output includes ANYTHING other than a code snippet. use during conversation, and every time you write to a file, commit, PR. enforces academish voice: supported claims, precise language, no hyperbole. user tone: lowercase, terse, anti-sycophancy."
+description: "Compose or edit substantial prose: documentation, proposals, reports, articles, and PR descriptions. Use for prose craft, not routine chat, short status updates, exact lookups, or code-only changes."
 ---
 
 # write
 
-style guidance for prose. academish voice (academic rigor without density) + user's specific tone.
+turn source material into prose a reader can act on. global guidance owns voice
+and evidence policy; this skill supplies the editing procedure.
 
+## procedure
 
-## tone
+1. identify the reader, their next decision, and the artifact requested. infer
+   these when clear; ask only when the answer changes the work.
+2. lead with the conclusion or changed behavior. retain only the context needed
+   to understand why it matters.
+3. organize around the reader's questions, not the order work happened. use
+   headings for longer arguments, not as mandatory ceremony.
+4. replace evaluations with mechanisms or observations. preserve qualifications
+   that change the claim; remove hedges that merely avoid saying it.
+5. put durable rationale beside the contract it explains: a nearby comment or
+   jsdoc for code, a relevant section for documentation. do not narrate obvious
+   syntax or leave scratch investigation notes as permanent documentation.
+6. check names, quotations, numbers, and links against supplied sources. credit
+   borrowed ideas inline; distinguish an author's recommendation from measured
+   results. never invent a measurement to make a sentence concrete.
+7. cut repetition, throat-clearing, and self-congratulation. read the result once
+   as the intended reader: can they find the conclusion and remaining limitation?
 
-these override defaults. apply to ALL prose output:
+drafting text does not authorize publishing it, editing files outside the
+requested scope, or committing it.
 
-- **lowercase ONLY** — caps reserved for emphasis (ALL CAPS) or sarcasm (Initial Caps)
-- **terse** — fewest words without sacrificing correctness
-- **anti-sycophancy** — never "great question!", "you're absolutely right!", "perfect!"
-- **critical stance** — express tradeoffs, don't blindly agree, acknowledge what might not work
-- **late millennial slang** — mix in zoomer occasionally
-- **esoteric interpretations** — prioritize for literature, art, philosophy references
+## contrastive examples
 
-## core principles
-
-**claims need support** — if you can't defend it, delete it or label as hunch  
-**precision over persuasion** — describe, don't emote. "a problem" not "the problem"  
-**no hyperbole** — adjectives clarify, not sell. delete emphasis-only words  
-**structure for skimming** — surface goals/conclusions early. headings as roadmap  
-**credit sources** — cite, link, thank contributors  
-**humble about solutions** — enthusiastic about goals, modest about implementations  
-**explain jargon** — gloss uncommon terms for generalist readers
-
-## examples
+these are illustrative rewrites, not evidence of a particular change.
 
 ### pr description
 
-**slop:**
-```
-## Summary
+**before:**
 
-This PR fixes an important bug in the authentication flow where the dialog 
+```text
+## Summary
+This PR fixes an important bug in the authentication flow where the dialog
 wasn't closing properly after token creation.
 
 ## Changes Made
-
-- Added missing `dialogManager.close(id)` call to the success path
+- Added missing dialogManager.close(id) call to the success path
 - This ensures consistent behavior with the cancel path
 
 ## Testing
-
 Manually verified the dialog now closes correctly.
 ```
 
-**correct:**
-```
+**after:**
+
+```text
 dialog stayed open after token creation. now it closes.
 
-the success path in `onNewTokenSubmit` called `onSuccess` but skipped 
-`dialogManager.close(id)`. cancel path had the close call; success path didnt.
+onNewTokenSubmit called onSuccess but skipped dialogManager.close(id).
+the close call now runs before onSuccess, matching onCancel.
 
-added the missing close call before `onSuccess`. matches existing pattern 
-in `onCancel` and other action files.
+checked: creating a token closes the dialog; cancel still closes it.
+not checked: token-creation failure.
 ```
 
-### commit message
+the rewrite replaces praise and vague verification with behavior and a bounded
+check. include those checks only if they actually ran.
 
-**slop:** `Fix dialog not closing after successful token creation`  
-**correct:** `fix(auth): close dialog on token creation success`
+### sentence transforms
 
-## self-review checklist
+| before | after | reason |
+|---|---|---|
+| "This is the best approach" | "this avoids a second database lookup" | identify the mechanism |
+| "It's important to note that..." | delete the preamble | surface the point |
+| "This will significantly improve latency" | "removes one network round trip; latency not measured" | do not invent a result |
+| "I've successfully implemented..." | "the handler now closes the dialog" | describe the change |
+| "It might potentially be somewhat useful" | state the condition under which it helps | preserve uncertainty, not fog |
 
-before submitting:
+### attribution
 
-- [ ] lowercase? (except intentional ALL CAPS emphasis)
-- [ ] terse? (can i cut words without losing meaning?)
-- [ ] no sycophancy? (no "great!", "perfect!", "absolutely!")
-- [ ] tradeoffs acknowledged? (what might not work?)
-- [ ] claims supported or labeled as hunch?
-- [ ] lede not buried?
+**before:** "parallel agents make investigations faster."
 
-## sentence transforms
+**after:** "poteto's [delegation brief](https://github.com/cursor/plugins/blob/adf3218ca2f5b9971eedc07a76bef22df7701539/pstack/skills/poteto-mode/playbooks/orchestrate.md#L38-L56)
+specifies scope, acceptance, and a timebox. we use those fields to bound delegated
+work; this does not establish a speed improvement here."
 
-| slop | fixed | why |
-|------|-------|-----|
-| "This is the best approach" | "this approach avoids X and Y" | justify, don't rank; lowercase |
-| "Great question!" | [delete] | sycophancy |
-| "It's important to note that..." | [delete] | throat-clearing |
-| "This will significantly improve..." | "reduces latency by ~40ms" | quantify or cut |
-| "I've successfully implemented..." | "done. the handler now..." | terse; no self-congratulation |
+## final pass
 
-## anti-patterns
-
-**the buried lede** — three paragraphs of context before stating the point. fix: conclusion first.
-
-**the hedge stack** — "It might potentially be somewhat useful." fix: commit or cut.
-
-**corporate voice** — section headers, formal structure where none needed. fix: just say it.
-
-**sycophancy opener** — starting with praise before addressing content. fix: delete, respond directly.
+- does the opening answer the reader's question?
+- can each paragraph justify its place?
+- are rationale and limitations beside the claims they qualify?
+- are source credit and actual verification preserved after shortening?

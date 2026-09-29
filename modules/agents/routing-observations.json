@@ -1,0 +1,24 @@
+{
+  "recordedDate": "2026-09-29",
+  "model": "openai-codex/gpt-6-astra",
+  "scope": "single-turn source-catalog selection; no skill bodies loaded or tools executed",
+  "sourceSkillHash": "64d326a25fc5d93608143bc4cc40afd29a00d477ee008df63d9f6aab9ebbd595",
+  "globalHash": "ea641fe6ff93f855f509cf68ae742aa01ca29b53846f8736fdecf7f2ec003be7",
+  "fixturesHash": "7f673bfdac553c71906cbd72b1f8a34dfc54104ee4b59af4718fa368142e0b5c",
+  "systemPromptHash": "9ac4dd94b76276d412c253e691fa435177c8c6eaff9545a5b1dbbff4517c88a6",
+  "pass": true,
+  "cases": [
+    { "id": "write-substantial", "observedSkills": ["write"], "otherTools": [], "pass": true },
+    { "id": "write-not-chat", "observedSkills": [], "otherTools": [], "pass": true },
+    { "id": "review-change", "observedSkills": ["review"], "otherTools": [], "pass": true },
+    { "id": "review-not-factual-investigation", "observedSkills": ["dig"], "otherTools": [], "pass": true },
+    { "id": "dig-uncertainty", "observedSkills": ["dig"], "otherTools": [], "pass": true },
+    { "id": "dig-not-known-lookup", "observedSkills": [], "otherTools": ["read"], "pass": true },
+    { "id": "remember-personal-authorized", "observedSkills": ["remember"], "otherTools": [], "pass": true },
+    { "id": "remember-not-project-fact", "observedSkills": [], "otherTools": [], "pass": true },
+    { "id": "designing-new-skill", "observedSkills": ["designing-agent-skills"], "otherTools": [], "pass": true },
+    { "id": "designing-revise-trigger", "observedSkills": ["designing-agent-skills"], "otherTools": [], "pass": true },
+    { "id": "designing-not-execution", "observedSkills": ["buying-stuff"], "otherTools": [], "pass": true },
+    { "id": "designing-not-one-off-plan", "observedSkills": [], "otherTools": [], "pass": true }
+  ]
+}

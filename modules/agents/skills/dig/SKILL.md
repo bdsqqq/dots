@@ -1,165 +1,98 @@
 ---
 name: dig
-description: systematic investigation and debugging methodology. hypothesis-driven analysis with verification agents. use for incident response, codebase archaeology, dependency mapping, root cause analysis, or any investigation requiring verified findings.
+description: "Investigate uncertain incidents, root causes, or architecture questions requiring multi-step tracing across evidence. Use when competing explanations or dependency boundaries matter, not for a known file/symbol lookup or a single factual query."
 ---
 
 # dig
 
-structured approach to investigations that produces verified, actionable findings.
+resolve a bounded question, not an entire codebase. investigation is read-only
+unless the user authorizes changes. a request for a path to a solution is not
+permission to implement it. no mandatory companion skill or delegation.
 
-**load first:** `review` — provides epistemic standards (trace or delete, label confidence, falsify don't confirm). dig assumes these are active.
+## start small
 
-## core principles
+1. name the symptom/question, affected users or boundary, and what answer would
+   let the user act. record material uncertainty and a stopping condition.
+2. pick the nearest evidence: an entry point, failing check, log event, or caller.
+   state one or two plausible explanations and what would disprove each.
+3. trace directly until the question is answered or a concrete gap requires
+   expansion. follow dependencies forward for mechanism, callers backward for
+   reach; do both only when needed.
+4. use safe existing probes or in-memory extraction where useful. writing a
+   script, changing a fixture, restarting a service, or running a stateful probe
+   requires the corresponding authorization. read-only intent alone does not
+   make a command read-only.
 
-1. **trust code over assumptions** — never assume intent. check git history.
-2. **scripts > docs** — extraction scales, documentation doesn't.
-3. **bidirectional analysis** — traverse dependencies forward AND reverse.
-4. **autonomous discovery** — use seeds and graph traversal, don't hardcode.
+check history when a behavior's origin or rationale matters, not on every lookup:
+`git blame`, `git log -p --follow -- <path>`, and targeted commit searches can
+explain changes, but historical intent does not prove current behavior.
 
-## investigation phases
+## expand only for independent breadth
 
-### phase 1: map
+delegate when distinct surfaces can be investigated independently or adversarial
+checking materially reduces risk. partition non-overlapping scopes; do not assign
+every agent the same broad question or create an agent for each claim.
 
-scope the problem. identify seeds (entry points) for traversal.
+a useful brief is small but evidence-bearing:
 
-```
-1. define the question precisely
-2. identify seed artifacts (files, functions, types, API endpoints)
-3. choose traversal strategy:
-   - reverse: seed → importers → consumers (finds affected scope)
-   - forward: seed → dependencies → leaves (finds implementation details)
-   - bidirectional: both (complete picture)
-4. extract, don't document — write scripts that produce structured output
-```
-
-when to check git:
-
-- `git blame <file>` — who wrote this line? when? why?
-- `git log -p --follow -- <file>` — full history of a file
-- `git log --all --oneline -- <path>` — find when something was introduced
-- `git log --grep="<term>"` — find commits mentioning a concept
-
-### phase 2: verify
-
-spawn verification agents to fact-check analysis claims; to avoid confirmation bias, use neutral claims, or invert your question: instead of asking what you believe, ask the opposite.
-
-```
-for each major claim:
-  1. spawn a verification agent with ONLY the claim + file paths
-  2. agent must independently confirm or refute
-  3. record: VERIFIED, REFUTED, or INCONCLUSIVE
+```text
+goal: determine whether retry scheduling can duplicate an accepted job
+scope: scheduler and its tests; read-only; exclude worker execution (owned elsewhere)
+starting evidence: scheduler.ts:80-110 and the supplied duplicate-job log
+acceptance: trace enqueue/ack ordering; return citations and conditions, not guesses
+verification: seek a guard or ordering guarantee that refutes duplication
+stop: answer found, scope/permission boundary, missing evidence, or budget reached
+budget: 10 minutes; at most two failed follow-up attempts before reporting
+return: conclusion, counterevidence, checks actually run, uncertainty, next decision
 ```
 
-verification agent prompt template:
+adapt the budget to the task before dispatch. delegates may request missing
+context, not silently widen scope. the primary investigator integrates results,
+resolves disagreement against source, and owns the final answer.
 
-```
-verify this claim: "<claim>"
-files to check: <file list>
-do not assume the claim is correct.
-check the actual code and report what you find.
-```
+## verify selectively and stop
 
-anti-patterns:
+verify consequential or disputed claims against code, logs, or safe observations.
+independent rechecking is useful when a wrong conclusion changes the next action;
+it is not a mandatory second pass over every statement.
 
-- trusting oracle/LLM statements without code verification
-- assuming wrapper names without grep confirmation
-- documenting before extracting
+- distinguish traced facts, hypotheses, and questions; retain source locations.
+- actively look for a guard, alternate path, or observation that contradicts the
+  explanation. agreement among agents does not replace that check.
+- when evidence conflicts, inspect the shared boundary rather than vote.
+- default to at most two failed follow-ups using the same approach, then change
+  the approach within scope or report the blocker. stop earlier on a permission
+  boundary, worsening evidence, or exhausted budget. do not reset the budget by
+  delegating; agree on a larger budget before exceeding it.
 
-### phase 3: synthesize
+stop when the bounded question is answered; do not turn diagnosis into an
+unauthorized repair, commit, publication, or external backlog update.
 
-structure findings for consumption.
+## return what enables a decision
 
-**tables** for enumeration:
-| location | code | effect |
-|----------|------|--------|
+lead with the answer and confidence, then the evidence chain and counterevidence.
+include unresolved questions, checks run/not run, and the next decision if blocked.
+size the output to the investigation; no required report skeleton or appendix.
 
-**trees** for relationships:
+an optional relationship sketch can make a boundary clearer than prose:
 
-```
-RootComponent
-├── ChildA → uses Feature
-└── ChildB
-    └── GrandchildC → also uses Feature
-```
-
-**appendices** for exhaustive lists (don't clutter main findings).
-
-## output structure
-
-```markdown
-# <investigation title>
-
-## summary
-
-one paragraph. what did we find?
-
-## context
-
-why are we investigating? link to trigger (slack, ticket, etc.)
-
-## findings
-
-### 1. <finding title>
-
-<evidence with file links>
-<code snippets>
-
-### 2. <finding title>
-
-...
-
-## open questions
-
-numbered list of things we couldn't verify
-
-## appendices
-
-- [detailed-list-a.md](./detailed-list-a.md)
-- [detailed-list-b.md](./detailed-list-b.md)
-
-## related threads
-
-table of source links with descriptions (URLs, tickets, prior write-ups)
+```text
+request → enqueue → ack
+             └── retry timer → enqueue again?
 ```
 
-## verification agent pattern
+label uncertain edges; use a table or mermaid diagram only when it helps explain
+the evidence, not to make a small lookup look like an investigation.
 
-when coordinating investigation:
+## sources and worked investigations
 
-```
-1. spawn analysis agents (stores, routes, components, etc.)
-   - each produces claims with file:line citations
+the bounded brief draws on [poteto's orchestration playbook](https://github.com/cursor/plugins/blob/adf3218ca2f5b9971eedc07a76bef22df7701539/pstack/skills/poteto-mode/playbooks/orchestrate.md#L38-L56).
+the distinction between investigation and implementation is illustrated by
+[theo's investigation prompt](https://www.youtube.com/watch?v=q1D90-uGvBg&t=394s).
+the two-attempt default is a local stopping rule, not a measured optimum from
+those sources.
 
-2. collect claims from all analysis agents
+- [multi-dataset assumption mapping](references/AXM-10608-investigation-report.md)
+- [rc-menu dependency discovery](references/2025-10-22T21-50-process-summary.md)
 
-3. spawn verification agents (1 per analysis agent)
-   - input: claims + file paths only
-   - output: VERIFIED/REFUTED/INCONCLUSIVE for each claim
-
-4. synthesizer combines verified claims into report
-```
-
-## autonomous discovery
-
-never hardcode component lists. instead:
-
-```bash
-# start from seeds
-SEEDS=$(grep -rl "import.*from.*deprecated-lib" --include="*.ts")
-
-# build import graph
-for seed in $SEEDS; do
-  # find importers (reverse)
-  grep -rl "import.*from.*$seed" --include="*.ts"
-
-  # find imports (forward)
-  grep "^import" "$seed" | extract_paths
-done
-```
-
-bidirectional traversal discovers components you didn't know existed.
-
-## references
-
-- [AXM-10608-investigation-report.md](references/AXM-10608-investigation-report.md) — multi-dataset assumption mapping
-- [2025-10-22T21-50-process-summary.md](references/2025-10-22T21-50-process-summary.md) — rc-menu dependency discovery evolution
+these are examples, not prerequisites or mandatory output formats.

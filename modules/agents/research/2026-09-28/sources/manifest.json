@@ -1,0 +1,835 @@
+[
+  {
+    "id": "e1snsuY4lTI",
+    "url": "https://www.youtube.com/watch?v=e1snsuY4lTI",
+    "selection_reason": "global/project instructions and skill authoring",
+    "title": "My AGENTS.md & SKILLS.md Breakdown (Don't copy them)",
+    "upload_date": "20260811",
+    "duration": 3075,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "I'm coding a LOT more and so it's time for a full walkthrough of my global AGENTS.md and CLAUDE.md rewrite, why my skill descriptions trigger keywords, and more!\n\nThank you WorkOS & Convex for sponsoring!\nWorkOS: https://soydev.link/workos\nConvex: https://soydev.link/convex\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#agents #coding #programming",
+    "chapters": [
+      {
+        "start_time": 0.0,
+        "title": "Introduction",
+        "end_time": 89.0
+      },
+      {
+        "start_time": 89.0,
+        "title": "WorkOS partnership",
+        "end_time": 174.0
+      },
+      {
+        "start_time": 174.0,
+        "title": "Fleet repository and setup",
+        "end_time": 340.0
+      },
+      {
+        "start_time": 340.0,
+        "title": "New global agent instructions",
+        "end_time": 494.0
+      },
+      {
+        "start_time": 494.0,
+        "title": "Agent communication rules",
+        "end_time": 535.0
+      },
+      {
+        "start_time": 535.0,
+        "title": "The importance of process",
+        "end_time": 606.0
+      },
+      {
+        "start_time": 606.0,
+        "title": "Babysitting and filing PRs",
+        "end_time": 856.0
+      },
+      {
+        "start_time": 856.0,
+        "title": "Refining PR descriptions",
+        "end_time": 980.0
+      },
+      {
+        "start_time": 980.0,
+        "title": "Analyzing model performance",
+        "end_time": 1029.0
+      },
+      {
+        "start_time": 1029.0,
+        "title": "Auditing agent behaviors",
+        "end_time": 1284.0
+      },
+      {
+        "start_time": 1284.0,
+        "title": "Defining glossary and project scope",
+        "end_time": 1361.0
+      },
+      {
+        "start_time": 1361.0,
+        "title": "Convex sponsorship",
+        "end_time": 1454.0
+      },
+      {
+        "start_time": 1454.0,
+        "title": "Advanced repository instructions",
+        "end_time": 1878.0
+      },
+      {
+        "start_time": 1878.0,
+        "title": "Multi-surface development",
+        "end_time": 2066.0
+      },
+      {
+        "start_time": 2066.0,
+        "title": "Real-world prompt examples",
+        "end_time": 2327.0
+      },
+      {
+        "start_time": 2327.0,
+        "title": "Command center skills",
+        "end_time": 2460.0
+      },
+      {
+        "start_time": 2460.0,
+        "title": "Universal file and HTML skills",
+        "end_time": 2755.0
+      },
+      {
+        "start_time": 2755.0,
+        "title": "Iterating on agent skills",
+        "end_time": 2838.0
+      },
+      {
+        "start_time": 2838.0,
+        "title": "Finalizing the configuration",
+        "end_time": 3075
+      }
+    ],
+    "timestamp": 1786430252,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=e1snsuY4lTI\n[youtube] e1snsuY4lTI: Downloading webpage\n[youtube] e1snsuY4lTI: Downloading android vr player API JSON\n[info] e1snsuY4lTI: Downloading subtitles: en-orig\n[info] e1snsuY4lTI: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/e1snsuY4lTI.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/e1snsuY4lTI.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "e1snsuY4lTI.en-orig.json3",
+    "raw_sha256": "61f7e3fd351661935c16f7e5302ba8feb6a3a33a661d68c4720e709f0ea153f4",
+    "event_count": 1582,
+    "last_event_start_seconds": 3073.88,
+    "word_count": 11201,
+    "retrieved_at": "2026-09-28T21:01:12.484695+00:00"
+  },
+  {
+    "id": "0oXOOlqVu5M",
+    "url": "https://www.youtube.com/watch?v=0oXOOlqVu5M",
+    "selection_reason": "hands-on evaluation of another author's skill workflow",
+    "title": "So I tried Matt's skills...",
+    "upload_date": "20260819",
+    "duration": 2301,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "Matt Pocock's AI skills list has racked up over 200,000 GitHub stars and the biggest wins came from somewhere unexpected\n\nThank you Depot for sponsoring! Check them out at: https://soydev.link/depot\n\nSources:\nhttps://github.com/mattpocock/skills\nhttps://github.com/cursor/plugins/tree/main/pstack/skills\nhttps://x.com/dillon_mulroy/status/2051717882518897082\nhttps://x.com/mattpocockuk/status/2047589158667895037\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#coding #skills #programming",
+    "chapters": null,
+    "timestamp": 1787106670,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=0oXOOlqVu5M\n[youtube] 0oXOOlqVu5M: Downloading webpage\n[youtube] 0oXOOlqVu5M: Downloading android vr player API JSON\n[info] 0oXOOlqVu5M: Downloading subtitles: en-orig\n[info] 0oXOOlqVu5M: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/0oXOOlqVu5M.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/0oXOOlqVu5M.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "0oXOOlqVu5M.en-orig.json3",
+    "raw_sha256": "ecfb0e5da80f3647542647ab38a446d2a8e2a584c730d55b2aa9495c193068c8",
+    "event_count": 1083,
+    "last_event_start_seconds": 2298.48,
+    "word_count": 7584,
+    "retrieved_at": "2026-09-28T21:01:16.421621+00:00"
+  },
+  {
+    "id": "Jf54k7tFeEc",
+    "url": "https://www.youtube.com/watch?v=Jf54k7tFeEc",
+    "selection_reason": "memory and context failure modes",
+    "title": "Turn off Claude Code's Memory",
+    "upload_date": "20260825",
+    "duration": 2368,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "Claude Code quietly saved 45 memories on my main dev machine, and when I audited them, 26 had never been read once, lets talk about it.\n\nThank you WorkOS for sponsoring the video!\nhttps://soydev.link/workos\n\nSources:\nReaction to: https://x.com/Voxyz_ai/status/2089729031033729036\nPoteto tweet: https://x.com/poteto/status/2089166694719922483\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#programming #coding #claude",
+    "chapters": [
+      {
+        "start_time": 0.0,
+        "title": "The problem with AI memory",
+        "end_time": 118.0
+      },
+      {
+        "start_time": 118.0,
+        "title": "Sponsor: WorkOS",
+        "end_time": 202.0
+      },
+      {
+        "start_time": 202.0,
+        "title": "Why coding needs no memory",
+        "end_time": 460.0
+      },
+      {
+        "start_time": 460.0,
+        "title": "Minimalist agent workflows",
+        "end_time": 646.0
+      },
+      {
+        "start_time": 646.0,
+        "title": "Analyzing Claude Code memory",
+        "end_time": 804.0
+      },
+      {
+        "start_time": 804.0,
+        "title": "The case against auto-memory",
+        "end_time": 1327.0
+      },
+      {
+        "start_time": 1327.0,
+        "title": "Architecting for agent success",
+        "end_time": 1452.0
+      },
+      {
+        "start_time": 1452.0,
+        "title": "Preventing regressions",
+        "end_time": 1576.0
+      },
+      {
+        "start_time": 1576.0,
+        "title": "Bandwidth and performance checks",
+        "end_time": 1877.0
+      },
+      {
+        "start_time": 1877.0,
+        "title": "Imposing values over discipline",
+        "end_time": 1955.0
+      },
+      {
+        "start_time": 1955.0,
+        "title": "Effective AGENTS.md files",
+        "end_time": 2368
+      }
+    ],
+    "timestamp": 1787648406,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=Jf54k7tFeEc\n[youtube] Jf54k7tFeEc: Downloading webpage\n[youtube] Jf54k7tFeEc: Downloading android vr player API JSON\n[info] Jf54k7tFeEc: Downloading subtitles: en-orig\n[info] Jf54k7tFeEc: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/Jf54k7tFeEc.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/Jf54k7tFeEc.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "Jf54k7tFeEc.en-orig.json3",
+    "raw_sha256": "ee35b4a7b224f7f701f3213876db1ad0ee9a1bb0beb75e37addc64f15407e47b",
+    "event_count": 1130,
+    "last_event_start_seconds": 2366.24,
+    "word_count": 8199,
+    "retrieved_at": "2026-09-28T21:01:20.169793+00:00"
+  },
+  {
+    "id": "q1D90-uGvBg",
+    "url": "https://www.youtube.com/watch?v=q1D90-uGvBg",
+    "selection_reason": "agent usage and delegation",
+    "title": "You're using AI agents wrong",
+    "upload_date": "20260909",
+    "duration": 2962,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "Here’s the AI workflow that helped me merge 50+ PRs on vacation.\n\nThank you Browserbase for sponsoring! Check them out at: https://soydev.link/browserbase\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#ai #coding #programming",
+    "chapters": [
+      {
+        "start_time": 0.0,
+        "title": "The state of my coding",
+        "end_time": 95.0
+      },
+      {
+        "start_time": 95.0,
+        "title": "Revealing my working process",
+        "end_time": 142.0
+      },
+      {
+        "start_time": 142.0,
+        "title": "Sponsor: Browserbase",
+        "end_time": 230.0
+      },
+      {
+        "start_time": 230.0,
+        "title": "High-velocity development tips",
+        "end_time": 395.0
+      },
+      {
+        "start_time": 395.0,
+        "title": "Executing a targeted code fix",
+        "end_time": 633.0
+      },
+      {
+        "start_time": 633.0,
+        "title": "Managing workflow motivation",
+        "end_time": 740.0
+      },
+      {
+        "start_time": 740.0,
+        "title": "Optimizing hardware and OS",
+        "end_time": 933.0
+      },
+      {
+        "start_time": 933.0,
+        "title": "Managing pull requests",
+        "end_time": 1106.0
+      },
+      {
+        "start_time": 1106.0,
+        "title": "Advanced thread management",
+        "end_time": 1334.0
+      },
+      {
+        "start_time": 1334.0,
+        "title": "Automating code review",
+        "end_time": 1814.0
+      },
+      {
+        "start_time": 1814.0,
+        "title": "Remote testing infrastructure",
+        "end_time": 2225.0
+      },
+      {
+        "start_time": 2225.0,
+        "title": "Derisking the merge button",
+        "end_time": 2682.0
+      },
+      {
+        "start_time": 2682.0,
+        "title": "Reflecting on workflow growth",
+        "end_time": 2962
+      }
+    ],
+    "timestamp": 1788915059,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=q1D90-uGvBg\n[youtube] q1D90-uGvBg: Downloading webpage\n[youtube] q1D90-uGvBg: Downloading android vr player API JSON\n[info] q1D90-uGvBg: Downloading subtitles: en-orig\n[info] q1D90-uGvBg: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/q1D90-uGvBg.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/q1D90-uGvBg.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "q1D90-uGvBg.en-orig.json3",
+    "raw_sha256": "a75212623babc1ce816e6d67bddc06e684cdc983ffcdd8b79a5555efcdb0364c",
+    "event_count": 1433,
+    "last_event_start_seconds": 2958.0,
+    "word_count": 10568,
+    "retrieved_at": "2026-09-28T21:01:25.520521+00:00"
+  },
+  {
+    "id": "5KvY8CnBB3w",
+    "url": "https://www.youtube.com/watch?v=5KvY8CnBB3w",
+    "selection_reason": "codebase understanding and investigation",
+    "title": "Stop Pretending You Understand Your Codebase",
+    "upload_date": "20260907",
+    "duration": 1716,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "Nobody understands all of the code in your codebase, the operating system you're running, or the platforms you use every day and everyone pretends otherwise.\n\nThank you Depot for sponsoring! Check them out at: https://soydev.link/depot\n\nSource:\nhttps://www.seangoedecke.com/in-defense-of-not-understanding-your-codebase/\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#programming #coding #development",
+    "chapters": [
+      {
+        "start_time": 0.0,
+        "title": "The myth of total understanding",
+        "end_time": 152.0
+      },
+      {
+        "start_time": 152.0,
+        "title": "Sponsor: Depot",
+        "end_time": 237.0
+      },
+      {
+        "start_time": 237.0,
+        "title": "Defining partial understanding",
+        "end_time": 335.0
+      },
+      {
+        "start_time": 335.0,
+        "title": "Programming as theory building",
+        "end_time": 570.0
+      },
+      {
+        "start_time": 570.0,
+        "title": "The reality of legacy systems",
+        "end_time": 757.0
+      },
+      {
+        "start_time": 757.0,
+        "title": "Working with incomplete theories",
+        "end_time": 946.0
+      },
+      {
+        "start_time": 946.0,
+        "title": "Efficiency and mental load",
+        "end_time": 1184.0
+      },
+      {
+        "start_time": 1184.0,
+        "title": "Trade-offs in software",
+        "end_time": 1292.0
+      },
+      {
+        "start_time": 1292.0,
+        "title": "Pure vs. impure engineering",
+        "end_time": 1577.0
+      },
+      {
+        "start_time": 1577.0,
+        "title": "The future of vibe coding",
+        "end_time": 1716
+      }
+    ],
+    "timestamp": 1788754475,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=5KvY8CnBB3w\n[youtube] 5KvY8CnBB3w: Downloading webpage\n[youtube] 5KvY8CnBB3w: Downloading android vr player API JSON\n[info] 5KvY8CnBB3w: Downloading subtitles: en-orig\n[info] 5KvY8CnBB3w: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/5KvY8CnBB3w.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/5KvY8CnBB3w.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "5KvY8CnBB3w.en-orig.json3",
+    "raw_sha256": "f74fc35d9e22ec91cadfc0d16163a6e95fa3d5eb2b2632b9642a43f4a9de17bd",
+    "event_count": 866,
+    "last_event_start_seconds": 1715.44,
+    "word_count": 5962,
+    "retrieved_at": "2026-09-28T21:01:29.742486+00:00"
+  },
+  {
+    "id": "NvVbCqDgfCs",
+    "url": "https://www.youtube.com/watch?v=NvVbCqDgfCs",
+    "selection_reason": "personal workflow and voice input",
+    "title": "How I Code Without Typing",
+    "upload_date": "20260916",
+    "duration": 2301,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "After my hand injury, I had to vibe code way more, and found that whisper flow was instrumental to working my way around my keyboard\n\nThank you WorkOS for sponsoring! https://soydev.link/workos\n\nMic Link:\nhttps://geni.us/NzGACcW\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#coding #programming #software",
+    "chapters": [
+      {
+        "start_time": 0.0,
+        "title": "Personal context and injury",
+        "end_time": 128.0
+      },
+      {
+        "start_time": 128.0,
+        "title": "Sponsor message",
+        "end_time": 229.0
+      },
+      {
+        "start_time": 229.0,
+        "title": "Adapting to one-handed work",
+        "end_time": 368.0
+      },
+      {
+        "start_time": 368.0,
+        "title": "Mobile and voice navigation",
+        "end_time": 521.0
+      },
+      {
+        "start_time": 521.0,
+        "title": "The impact of a podium mic",
+        "end_time": 733.0
+      },
+      {
+        "start_time": 733.0,
+        "title": "Navigating projects without terminals",
+        "end_time": 984.0
+      },
+      {
+        "start_time": 984.0,
+        "title": "Orchestrating agent workflows",
+        "end_time": 1184.0
+      },
+      {
+        "start_time": 1184.0,
+        "title": "Personal task automation",
+        "end_time": 1307.0
+      },
+      {
+        "start_time": 1307.0,
+        "title": "The mental shift in agent usage",
+        "end_time": 1628.0
+      },
+      {
+        "start_time": 1628.0,
+        "title": "Managing threads and workflows",
+        "end_time": 1921.0
+      },
+      {
+        "start_time": 1921.0,
+        "title": "GitHub management and final tips",
+        "end_time": 2301
+      }
+    ],
+    "timestamp": 1789517592,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=NvVbCqDgfCs\n[youtube] NvVbCqDgfCs: Downloading webpage\n[youtube] NvVbCqDgfCs: Downloading android vr player API JSON\n[info] NvVbCqDgfCs: Downloading subtitles: en-orig\n[info] NvVbCqDgfCs: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/NvVbCqDgfCs.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/NvVbCqDgfCs.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "NvVbCqDgfCs.en-orig.json3",
+    "raw_sha256": "cc4f263a57e21c060179a509ff55bbf5e3014b148a46855d8fa647cd1e93b2ac",
+    "event_count": 1082,
+    "last_event_start_seconds": 2298.72,
+    "word_count": 8097,
+    "retrieved_at": "2026-09-28T21:01:39.646712+00:00"
+  },
+  {
+    "id": "ejjBbaq9RmY",
+    "url": "https://www.youtube.com/watch?v=ejjBbaq9RmY",
+    "selection_reason": "recent model-specific operating advice",
+    "title": "Getting the most out of Opus 5.5",
+    "upload_date": "20260925",
+    "duration": 1721,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "Anthropic put out a blog post with some tips and tricks that they have for the Opus 5.5 release, so lets break them down\n\nThank you Browserbase for sponsoring! Check them out at: https://soydev.link/browserbase\n\nSources:\nhttps://claude.dev/blog/getting-the-most-out-of-opus-5-5/\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#ai #anthropic #coding",
+    "chapters": [
+      {
+        "start_time": 0.0,
+        "title": "Introduction to Opus 5.5",
+        "end_time": 55.0
+      },
+      {
+        "start_time": 55.0,
+        "title": "Browserbase integration",
+        "end_time": 148.0
+      },
+      {
+        "start_time": 148.0,
+        "title": "Optimizing Opus 5.5 prompts",
+        "end_time": 317.0
+      },
+      {
+        "start_time": 317.0,
+        "title": "Hands-on agent setup",
+        "end_time": 580.0
+      },
+      {
+        "start_time": 580.0,
+        "title": "Refining agent instructions",
+        "end_time": 720.0
+      },
+      {
+        "start_time": 720.0,
+        "title": "Reasoning and steering",
+        "end_time": 921.0
+      },
+      {
+        "start_time": 921.0,
+        "title": "Design and steering control",
+        "end_time": 1100.0
+      },
+      {
+        "start_time": 1100.0,
+        "title": "Claude Code best practices",
+        "end_time": 1269.0
+      },
+      {
+        "start_time": 1269.0,
+        "title": "Verifying and auditing results",
+        "end_time": 1435.0
+      },
+      {
+        "start_time": 1435.0,
+        "title": "Final takeaways and checklist",
+        "end_time": 1721
+      }
+    ],
+    "timestamp": 1790295111,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=ejjBbaq9RmY\n[youtube] ejjBbaq9RmY: Downloading webpage\n[youtube] ejjBbaq9RmY: Downloading android vr player API JSON\n[info] ejjBbaq9RmY: Downloading subtitles: en-orig\n[info] ejjBbaq9RmY: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/ejjBbaq9RmY.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/ejjBbaq9RmY.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "ejjBbaq9RmY.en-orig.json3",
+    "raw_sha256": "c6822881bbd30aea0f37ab486816b3d4e7dba6efbded3c5c0f62ebc1ec1eeefa",
+    "event_count": 865,
+    "last_event_start_seconds": 1719.16,
+    "word_count": 6293,
+    "retrieved_at": "2026-09-28T21:01:43.890062+00:00"
+  },
+  {
+    "id": "iBrAWpjXNxs",
+    "url": "https://www.youtube.com/watch?v=iBrAWpjXNxs",
+    "selection_reason": "model selection and quality/cost tradeoffs",
+    "title": "Please stop using stupid models",
+    "upload_date": "20260918",
+    "duration": 1629,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "The Best AI Models aren't actually better because they're smarter, they're better because they do the dumb things right more often. \n\nThank you to Greptile for Sponsoring: https://soydev.link/greptile\n\nSources:\nhttps://x.com/DavidKPiano/status/2097359998972019070\nhttps://x.com/zeeg/status/2098064539170623954\nhttps://x.com/thdxr/status/2098279329419415702\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#ai #models #coding #programming",
+    "chapters": null,
+    "timestamp": 1789693128,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=iBrAWpjXNxs\n[youtube] iBrAWpjXNxs: Downloading webpage\n[youtube] iBrAWpjXNxs: Downloading android vr player API JSON\n[info] iBrAWpjXNxs: Downloading subtitles: en-orig\n[info] iBrAWpjXNxs: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/iBrAWpjXNxs.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/iBrAWpjXNxs.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "iBrAWpjXNxs.en-orig.json3",
+    "raw_sha256": "0b1c686a85745fc98d442eddb428bcfc8213a97c009361607271a8ebc58342f9",
+    "event_count": 768,
+    "last_event_start_seconds": 1628.16,
+    "word_count": 5550,
+    "retrieved_at": "2026-09-28T21:01:49.184732+00:00"
+  },
+  {
+    "id": "0wemf5SZkW4",
+    "url": "https://www.youtube.com/watch?v=0wemf5SZkW4",
+    "selection_reason": "workflow advice, distinguish Theo from discussed sources",
+    "title": "Boris Is Right Again (I Hate It)",
+    "upload_date": "20260824",
+    "duration": 2028,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "Boris was ahead of us all again when he made Claude Code for frontier models and he might be ahead of us all again, lets get into it \n\nThank you Blacksmith for sponsoring! Check them out at: https://soydev.link/blacksmith\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#coding #programming #tech",
+    "chapters": null,
+    "timestamp": 1787567255,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=0wemf5SZkW4\n[youtube] 0wemf5SZkW4: Downloading webpage\n[youtube] 0wemf5SZkW4: Downloading android vr player API JSON\n[info] 0wemf5SZkW4: Downloading subtitles: en-orig\n[info] 0wemf5SZkW4: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/0wemf5SZkW4.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/0wemf5SZkW4.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "0wemf5SZkW4.en-orig.json3",
+    "raw_sha256": "9b50846d13c3c1110a8bd425a4d0a52c24becaf01ef810883d9cc4930ceca995",
+    "event_count": 1024,
+    "last_event_start_seconds": 2024.24,
+    "word_count": 7367,
+    "retrieved_at": "2026-09-28T21:01:53.386314+00:00"
+  },
+  {
+    "id": "xmGY276gEFY",
+    "url": "https://www.youtube.com/watch?v=xmGY276gEFY",
+    "selection_reason": "agent creator's workflow advice, distinguish attribution",
+    "title": "Claude Code's creator has some really good advice",
+    "upload_date": "20260721",
+    "duration": 1152,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "Claude Code's Co-Creator, Boris, just posted a HUGE breakdown on Twitter saying that the skills you spent years mastering when learning to code, lint rules, tests, editor and environment automation, all matter more now than ever in the next stage of Software Development and it's awesome\n\nThank you Blacksmith for sponsoring! Check them out at: https://soydev.link/blacksmith\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#coding #programming #ai",
+    "chapters": [
+      {
+        "start_time": 0.0,
+        "title": "The changing face of coding",
+        "end_time": 73.0
+      },
+      {
+        "start_time": 73.0,
+        "title": "Defining the core audience",
+        "end_time": 113.0
+      },
+      {
+        "start_time": 113.0,
+        "title": "Sponsor: Efficient CI",
+        "end_time": 195.0
+      },
+      {
+        "start_time": 195.0,
+        "title": "The power of automation",
+        "end_time": 353.0
+      },
+      {
+        "start_time": 353.0,
+        "title": "Building custom tooling",
+        "end_time": 481.0
+      },
+      {
+        "start_time": 481.0,
+        "title": "Efficiency through infrastructure",
+        "end_time": 567.0
+      },
+      {
+        "start_time": 567.0,
+        "title": "Encoding domain knowledge",
+        "end_time": 1019.0
+      },
+      {
+        "start_time": 1019.0,
+        "title": "Leveling up as an engineer",
+        "end_time": 1126.0
+      },
+      {
+        "start_time": 1126.0,
+        "title": "Embracing the shift",
+        "end_time": 1152
+      }
+    ],
+    "timestamp": 1784625050,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=xmGY276gEFY\n[youtube] xmGY276gEFY: Downloading webpage\n[youtube] xmGY276gEFY: Downloading android vr player API JSON\n[info] xmGY276gEFY: Downloading subtitles: en-orig\n[info] xmGY276gEFY: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/xmGY276gEFY.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/xmGY276gEFY.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "xmGY276gEFY.en-orig.json3",
+    "raw_sha256": "339cda0d49c1eabd53c1bdc376f8e1aa2730dca14e12a4cf1dc8f12145080504",
+    "event_count": 596,
+    "last_event_start_seconds": 1151.6,
+    "word_count": 4212,
+    "retrieved_at": "2026-09-28T21:01:57.291372+00:00"
+  },
+  {
+    "id": "434cG4g5KLE",
+    "url": "https://www.youtube.com/watch?v=434cG4g5KLE",
+    "selection_reason": "durable code and agent verification",
+    "title": "Write Code You Will Never Read Again",
+    "upload_date": "20260722",
+    "duration": 1451,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "I once generated 10,000 lines of JavaScript just to organize 100 files without reading any of it, and it worked perfectly. \n\nThank you WorkOS for sponsoring! Check them out at: https://soydev.link/workos\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#ai #coding #programming",
+    "chapters": null,
+    "timestamp": 1784727145,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=434cG4g5KLE\n[youtube] 434cG4g5KLE: Downloading webpage\n[youtube] 434cG4g5KLE: Downloading android vr player API JSON\n[info] 434cG4g5KLE: Downloading subtitles: en-orig\n[info] 434cG4g5KLE: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/434cG4g5KLE.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/434cG4g5KLE.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "434cG4g5KLE.en-orig.json3",
+    "raw_sha256": "2bd0ee8ef6485a0310b6d8a4f1162d8e79af598d89c8c9c103f24df9bfb68091",
+    "event_count": 704,
+    "last_event_start_seconds": 1450.16,
+    "word_count": 5046,
+    "retrieved_at": "2026-09-28T21:02:02.549455+00:00"
+  },
+  {
+    "id": "dLhcLqoff6k",
+    "url": "https://www.youtube.com/watch?v=dLhcLqoff6k",
+    "selection_reason": "human supervision and agent interface",
+    "title": "I'm done with terminals",
+    "upload_date": "20260817",
+    "duration": 1877,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "I've lived in terminals since I was 13, so this breaks my heart, but the Terminal experience isn't good for coding with agents so we need to find another solution \n\nThank you Blacksmith for sponsoring! Check them out at: https://soydev.link/blacksmith\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#programming #coding #software",
+    "chapters": [
+      {
+        "start_time": 0.0,
+        "title": "Farewell to the terminal",
+        "end_time": 84.0
+      },
+      {
+        "start_time": 84.0,
+        "title": "Sponsor: Blacksmith CI",
+        "end_time": 146.0
+      },
+      {
+        "start_time": 146.0,
+        "title": "The road to GUI development",
+        "end_time": 290.0
+      },
+      {
+        "start_time": 290.0,
+        "title": "Experiencing UI-based coding",
+        "end_time": 550.0
+      },
+      {
+        "start_time": 550.0,
+        "title": "Limitations of current tools",
+        "end_time": 821.0
+      },
+      {
+        "start_time": 821.0,
+        "title": "Requirements for the ideal tool",
+        "end_time": 1135.0
+      },
+      {
+        "start_time": 1135.0,
+        "title": "Building T3 Code",
+        "end_time": 1358.0
+      },
+      {
+        "start_time": 1358.0,
+        "title": "Remote control and mobility",
+        "end_time": 1620.0
+      },
+      {
+        "start_time": 1620.0,
+        "title": "The future of AI coding tools",
+        "end_time": 1819.0
+      },
+      {
+        "start_time": 1819.0,
+        "title": "Closing thoughts",
+        "end_time": 1877
+      }
+    ],
+    "timestamp": 1787004520,
+    "within_preferred_window": true,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=dLhcLqoff6k\n[youtube] dLhcLqoff6k: Downloading webpage\n[youtube] dLhcLqoff6k: Downloading android vr player API JSON\n[info] dLhcLqoff6k: Downloading subtitles: en-orig\n[info] dLhcLqoff6k: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/dLhcLqoff6k.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/dLhcLqoff6k.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "dLhcLqoff6k.en-orig.json3",
+    "raw_sha256": "c86d5b05eb341d178b7d3ec1e0e2072353d524318d7ee19022fcaec67583dbab",
+    "event_count": 893,
+    "last_event_start_seconds": 1874.48,
+    "word_count": 6663,
+    "retrieved_at": "2026-09-28T21:02:07.202823+00:00"
+  },
+  {
+    "id": "iJVJwmCKW9o",
+    "url": "https://www.youtube.com/watch?v=iJVJwmCKW9o",
+    "selection_reason": "loops and autonomous workflow boundaries",
+    "title": "I guess we're writing loops now?",
+    "upload_date": "20260618",
+    "duration": 1484,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "So I guess we’re writing loops now…\n\nThank you Magic Patterns for sponsoring! Check them out at: https://soydev.link/magicpatterns\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏\n\n#ai #programming #coding",
+    "chapters": null,
+    "timestamp": 1781810480,
+    "within_preferred_window": false,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=iJVJwmCKW9o\n[youtube] iJVJwmCKW9o: Downloading webpage\n[youtube] iJVJwmCKW9o: Downloading android vr player API JSON\n[info] iJVJwmCKW9o: Downloading subtitles: en-orig\n[info] iJVJwmCKW9o: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/iJVJwmCKW9o.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/iJVJwmCKW9o.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "iJVJwmCKW9o.en-orig.json3",
+    "raw_sha256": "5e19144654767222373637499d5ab3cdfeb38a0d546c4507fa573f588e2b04ef",
+    "event_count": 719,
+    "last_event_start_seconds": 1483.28,
+    "word_count": 5130,
+    "retrieved_at": "2026-09-28T21:02:11.446520+00:00"
+  },
+  {
+    "id": "xJaMTo2YgO8",
+    "url": "https://www.youtube.com/watch?v=xJaMTo2YgO8",
+    "selection_reason": "older workflow baseline, explicit recency exception",
+    "title": "How I code with AI changed a lot",
+    "upload_date": "20260527",
+    "duration": 2853,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "I made a video like this about 5 months ago, but my workflow has already entirely changed. The models, harnesses, and more have changed completely...\n\nThank you Clerk & DNSimple for sponsoring! \nClerk: https://soydev.link/clerk\nDNSimple: https://soydev.link/dnsimple\n\nSOURCE:\nhttps://gist.github.com/t3dotgg/cbe978269b4c7258c4d20164aece7087\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏",
+    "chapters": null,
+    "timestamp": 1779878181,
+    "within_preferred_window": false,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=xJaMTo2YgO8\n[youtube] xJaMTo2YgO8: Downloading webpage\n[youtube] xJaMTo2YgO8: Downloading android vr player API JSON\n[info] xJaMTo2YgO8: Downloading subtitles: en-orig\n[info] xJaMTo2YgO8: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/xJaMTo2YgO8.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/xJaMTo2YgO8.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "xJaMTo2YgO8.en-orig.json3",
+    "raw_sha256": "ade7ec65625a449f4b2f0636d10ad228e699d16001ea2989da6f7166fe472378",
+    "event_count": 1412,
+    "last_event_start_seconds": 2852.4,
+    "word_count": 10270,
+    "retrieved_at": "2026-09-28T21:02:25.667755+00:00"
+  },
+  {
+    "id": "S9EGx6ik-18",
+    "url": "https://www.youtube.com/watch?v=S9EGx6ik-18",
+    "selection_reason": "older artifact-format baseline, explicit recency exception",
+    "title": "Stop letting your agents write Markdown.",
+    "upload_date": "20260513",
+    "duration": 2165,
+    "channel_id": "UCbRP3c757lWg9M-U7TyEkXA",
+    "channel": "Theo - t3․gg",
+    "description": "We've all started using markdown a lot more lately, but what if instead we used HTML?\n\nThank you CopilotKit for sponsoring! Check them out at: https://soydev.link/copilotkit\n\nSOURCES\nhttps://x.com/trq212/status/2052811606032269638\nhttps://x.com/karpathy/status/2053872850101285137\n\nWant to sponsor a video? Learn more here: https://soydev.link/sponsor-me\n\nCheck out my Twitch, Twitter, Discord more at https://t3.gg\n\nS/O @Ph4seon3 for the awesome edit 🙏",
+    "chapters": null,
+    "timestamp": 1778654791,
+    "within_preferred_window": false,
+    "download_log": "[youtube] Extracting URL: https://www.youtube.com/watch?v=S9EGx6ik-18\n[youtube] S9EGx6ik-18: Downloading webpage\n[youtube] S9EGx6ik-18: Downloading android vr player API JSON\n[info] S9EGx6ik-18: Downloading subtitles: en-orig\n[info] S9EGx6ik-18: Downloading 1 format(s): 401+251\n[info] Writing video subtitles to: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/S9EGx6ik-18.en-orig.json3\n[download] Destination: /Users/bdsqqq/commonplace/01_files/nix/modules/agents/research/2026-09-28/sources/S9EGx6ik-18.en-orig.json3\n[download] Download completed\n",
+    "status": "downloaded",
+    "caption_kind": "youtube automatic",
+    "language": "en-orig",
+    "raw_file": "S9EGx6ik-18.en-orig.json3",
+    "raw_sha256": "9cf3fbed9d062f615210ce682750db9c7ee6e09e19a3d49d8ad151040cf5459c",
+    "event_count": 1074,
+    "last_event_start_seconds": 2162.16,
+    "word_count": 7667,
+    "retrieved_at": "2026-09-28T21:02:30.341234+00:00"
+  }
+]

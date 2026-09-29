@@ -1,80 +1,71 @@
 ---
 name: making-meaningful-contributions
-description: Reviews code changes and pull requests for proven correctness, honest abstractions, meaningful edge coverage, and reviewer-ready evidence. Use before submitting or reviewing implementation work.
+description: "Check implementation work for pre-submission readiness: scope, behavioral evidence, regression coverage, and a reviewer-ready handoff. Use when preparing to submit completed work, not for general code review or ongoing investigation."
 ---
 
-# meaningful contribution
+# making meaningful contributions
 
-Based on embarassing feedback on a bad PR for AXM-10598, and written from my beliefs; with only a little bit of copy pasting, because to be human is to copy from a shitload of places until it becomes your own.
+a readiness gate for work you intend to hand off. evaluating readiness is
+read-only; preparation, fixes, commits, pushes, and publication require their
+respective authorization. this skill does not grant it.
 
-## A contribution is not code, it's proven working code
+> "your job is to deliver code you have proven to work." —
+> [simon willison](https://simonwillison.net/2025/Dec/18/code-proven-to-work/)
 
-> "your job is to deliver code you have proven to work." — [simon willison](https://simonwillison.net/2025/Dec/18/code-proven-to-work/)
+apply that standard with bounded evidence: untested behavior is **unverified**,
+not necessarily broken. help reviewers understand what was demonstrated and what
+they would still be accepting on trust.
 
-agent-generated code is cheap. anyone can prompt an LLM to produce a thousand-line patch. that's not valuable. what's valuable is contributing code that demonstrably works, has been tested, and doesn't shift burden to reviewers.
+## readiness gate
 
-## what qualifies as meaningful
+1. **scope:** compare the final diff with the requested outcome. identify unrelated
+   changes, generated artifacts, and affected consumers. preserve others' work;
+   flag scope drift rather than discarding it.
+2. **behavior:** state the input, observable outcome, and failure boundary. select
+   checks by how the change is consumed, following project verification guidance.
+   distinguish parsing, typechecking, builds, runtime checks, and visual evidence.
+3. **regression evidence:** for a fix, prefer a focused test that fails without the
+   fix and passes with it. inspect whether its assertion actually detects the
+   reported defect. never revert someone else's working tree to demonstrate this;
+   use an authorized isolated fixture or report that sensitivity is unverified.
+4. **edges:** cover consequential invalid inputs, failures, lifecycle transitions,
+   or platforms implicated by the change. explain omitted coverage rather than
+   demand every conceivable test or a manual check for every patch.
+5. **review:** use the [review procedure](../review/SKILL.md) for evaluating defects
+   in the final revision. resolve findings only within authorized scope. when
+   evidence already applies to the unchanged revision, reuse it rather than
+   commission another review merely to satisfy ceremony.
+6. **handoff:** provide the changed behavior and rationale, relevant paths,
+   commands/results, remaining risks, and any decision needed. keep evidence tied
+   to the final artifact; rerun affected checks after further changes.
 
-### 1. proven correctness
+## readiness decision
 
-if you haven't tested it, it doesn't work.
-if it happens to work, that's luck.
+- **ready within stated scope:** relevant checks passed and no known blocking
+  findings remain. this is not a guarantee beyond the checked behavior.
+- **blocked:** a known defect, failed required check, or missing requirement needs
+  resolution before submission.
+- **needs acceptance of a gap:** tooling, platform, or evidence is unavailable.
+  state the missing command/observation and consequence; do not silently mark it
+  passed or assume the reviewer accepts the risk.
 
-to actually prove something works, we:
+stop at the assessment unless further action was requested. avoid repeated
+polishing loops once the acceptance evidence is sufficient.
 
-- you tested manually, and saw it work.
-- you wrote an automated test for what you did manually.
-- you saw this automated test fail when you reverted you change.
-- you tested the edges, you explicitly defined what happens outside the happy path.
+## contrastive examples
 
-### 2. self-consistent abstractions
+**weak handoff:** “implemented the cache fix; tests pass.”
 
-you created a mental model, great,
-does it make sense when you look closer?
-does it fit with the wider mental model?
+**bounded handoff:** “invalidation now waits for persistence. the delayed-write
+regression test failed on the old implementation and passes on this revision.
+typecheck passed. multi-process invalidation was not exercised.”
 
-naming something `VersionedStructuredRequestWithOptions` and then passing unversioned requests through it is confusing. names are contracts.
+use that wording only when those checks actually ran.
 
-i don't know how to prove that something makes sense, but a good start is:
+**contract mismatch:** naming a value `VersionedStructuredRequestWithOptions`
+while accepting unversioned requests hides a boundary from callers. either the
+name or the accepted contract needs clarification; a longer name alone does not
+make the contribution ready.
 
-- you can explain it in plain english; from start to finish, and each part in isolation.
-- you can explicitly articulate the expected inputs and outputs, and what happens if one of those is unexpected.
-
-## what doesn't qualify
-
-### slop indicators
-
-- PR descriptions that read like "summarize this for me" prompts
-- missing tests
-- contradictions in abstractions, both against themselves and against the wider context.
-- names that lie about what they contain, if you need a comment or "x but it's actually y or x+y", its lying.
-
-### the speed trap
-
-speed without quality is negative value. a sloppy PR costs more reviewer and maintenance time than it saves. the "i'll fix it later" debt compounds negativelly, the "i made it well" value compounds positivelly.
-
-> we lost track of the goal. we sacrificed quality in pursuit of speed, and for what?
-
-## the review standard
-
-ask yourself before submitting:
-
-1. have i seen this work? not "does the code look right"—have i actually run it?
-2. do the types tell the truth? or am i lying to the compiler and hoping reviewers don't notice?
-3. is the naming honest? would someone reading this in six months be confused?
-4. did i test the edges? what happens when usage deviates from the happy path? when it's the WORST path?
-5. would i be confident to walk colleagues through my changes?
-
-if the answer to any of these is "no" or "i'm not sure," the contribution isn't ready.
-
-## agent-assisted work requires more scrutiny, not less
-
-agents make it easy to produce large volumes of code quickly. this doesn't reduce your responsibility—it increases it. the code still has your name on it.
-
-one pass from an agent is rarely enough. read it over. improve it. run it. test it. do this multiple times if needed.
-
-## the accountability loop
-
-a computer can never be held accountable. that's your job as the human. almost anyone can generate a thousand-line patch. what's valuable is proving it works.
-
-next time you submit a PR, include the evidence.
+the gate exists to reduce evidence reconstruction for reviewers, not to turn
+submission into a claim of universal correctness.
