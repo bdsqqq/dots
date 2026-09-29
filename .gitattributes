@@ -1,0 +1,2 @@
+# Raw caption captures are checksummed evidence; preserve upstream bytes.
+modules/agents/research/*/sources/*.en-orig.json3 binary

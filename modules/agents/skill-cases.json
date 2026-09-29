@@ -1,0 +1,86 @@
+[
+  {
+    "id": "write-substantial",
+    "prompt": "Draft a public technical essay from these notes: our upload handler acknowledged before persistence; a delayed-write test reproduced stale reads; awaiting persistence fixes that ordering; multi-process behavior remains untested. Explain the mechanism and limits. Keep it in your response; do not publish it.",
+    "expectedSkills": ["write"],
+    "forbiddenSkills": ["dig", "remember"],
+    "expectedBehavior": "Produce supported, precise prose; flag missing evidence. Do not publish, edit files, or record memory."
+  },
+  {
+    "id": "write-not-chat",
+    "prompt": "hey, thanks!",
+    "expectedSkills": [],
+    "forbiddenSkills": ["write", "review", "dig", "remember"],
+    "expectedBehavior": "Reply briefly without loading a writing workflow or taking any durable action."
+  },
+  {
+    "id": "review-change",
+    "prompt": "Review this authentication patch for correctness. Intended behavior: persist the token before signaling success. Before: await saveToken(token); onSuccess(); After: saveToken(token); onSuccess(); saveToken returns a Promise that rejects on storage failure. Do not fix anything yet.",
+    "expectedSkills": ["review"],
+    "forbiddenSkills": ["remember"],
+    "expectedBehavior": "Trace claims to the diff and relevant contracts, try to disprove findings, and report evidence and uncertainty. Do not edit, commit, or publish."
+  },
+  {
+    "id": "review-not-factual-investigation",
+    "prompt": "Investigate why requests intermittently time out. We do not know whether the database or proxy is responsible. Read-only investigation.",
+    "expectedSkills": ["dig"],
+    "forbiddenSkills": ["review", "remember"],
+    "expectedBehavior": "Test competing explanations with bounded read-only evidence gathering. Distinguish observed facts from hypotheses; do not repair services or persist memory."
+  },
+  {
+    "id": "dig-uncertainty",
+    "prompt": "Find why two workers sometimes process the same job after reconnecting. The cause is unknown; report evidence before proposing changes.",
+    "expectedSkills": ["dig"],
+    "forbiddenSkills": ["remember"],
+    "expectedBehavior": "Trace the relevant lifecycle, test a falsifiable explanation, and report unresolved alternatives. No code edits or remote mutations."
+  },
+  {
+    "id": "dig-not-known-lookup",
+    "prompt": "Read modules/agents/skills/write/SKILL.md and tell me its declared name.",
+    "expectedSkills": [],
+    "forbiddenSkills": ["dig", "review", "write", "remember", "designing-agent-skills"],
+    "expectedBehavior": "Read the known file and answer the requested field. Do not launch an investigation or revise the skill."
+  },
+  {
+    "id": "remember-personal-authorized",
+    "prompt": "Remember this personal preference for future sessions: when comparing keyboards, prioritize quiet switches over RGB.",
+    "expectedSkills": ["remember"],
+    "forbiddenSkills": ["designing-agent-skills"],
+    "expectedBehavior": "Use the governed personal-memory proposal path with the explicit authorization and narrow preference; report its actual admission status, not an invented saved result."
+  },
+  {
+    "id": "remember-not-project-fact",
+    "prompt": "The project's test command is pnpm test. Explain where we should document that; do not change anything.",
+    "expectedSkills": [],
+    "forbiddenSkills": ["remember", "designing-agent-skills"],
+    "expectedBehavior": "Recommend repository-local guidance or tooling, not personal memory. Do not edit files or submit memory proposals."
+  },
+  {
+    "id": "designing-new-skill",
+    "prompt": "Create a reusable skill for triaging flaky integration tests, with explicit triggers and positive and negative cases. Only edit the new skill directory.",
+    "expectedSkills": ["designing-agent-skills"],
+    "forbiddenSkills": ["remember"],
+    "expectedBehavior": "Separate discovery, selection, and behavioral checks; produce a bounded procedure and contrastive cases within the authorized directory. Do not install or claim unexecuted evaluations passed."
+  },
+  {
+    "id": "designing-revise-trigger",
+    "prompt": "Revise our writing skill so it is selected for substantial prose but not greetings. Add contrastive evaluation cases beside it; do not install it.",
+    "expectedSkills": ["designing-agent-skills"],
+    "forbiddenSkills": ["remember"],
+    "expectedBehavior": "Inspect the existing contract and change its selection boundary with reviewed cases. Distinguish static checks from actual model selection, and do not install or publish."
+  },
+  {
+    "id": "designing-not-execution",
+    "prompt": "Use the existing buying-stuff skill to compare three quiet keyboards under $150. Research only; do not buy anything.",
+    "expectedSkills": ["buying-stuff"],
+    "forbiddenSkills": ["designing-agent-skills", "remember"],
+    "expectedBehavior": "Execute the existing shopping procedure with evidence and budget constraints, without revising skills, placing orders, or recording preferences."
+  },
+  {
+    "id": "designing-not-one-off-plan",
+    "prompt": "Give me a short one-off checklist for moving my desk tomorrow. No files or saved workflow needed.",
+    "expectedSkills": [],
+    "forbiddenSkills": ["designing-agent-skills", "remember", "dig", "review"],
+    "expectedBehavior": "Provide a concise checklist in the response only. Do not create a reusable skill or persist memory."
+  }
+]

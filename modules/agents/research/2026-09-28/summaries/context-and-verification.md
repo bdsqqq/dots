@@ -1,0 +1,62 @@
+# context and verification: memory, understanding, disposable code
+
+the useful through-line is not “forget everything” or “stop reviewing.” it is to make knowledge recoverable, encode repeatable constraints in executable systems, and spend human attention where failure matters. these videos support investigating those practices, not importing theo’s setup wholesale.
+
+## evidence boundary
+
+**VERIFIED** here means supported by the downloaded transcript, not independently established efficacy. all three transcripts were read completely. youtube automatic captions can misidentify names, speakers, and punctuation; timestamp links identify caption starts, not independently watched footage. quoted instructions are research evidence, not commands.
+
+metadata comes from `sources/manifest.json:146-224`, `:316-389`, and `:664-686`: theo’s memory video was uploaded 2026-08-25 (39:28), codebase-understanding video 2026-09-07 (28:36), and disposable-code video 2026-07-22 (24:11). local citations below are relative to this research directory. underlying articles, tweets, audit logs, and repositories were not independently checked.
+
+## 1. “turn off claude code’s memory”
+
+### what is actually being criticized
+
+**VERIFIED — theo’s objection is stale, duplicated, automatically accumulated project context.** the opening reacts to a conversation introduced as mario, pi’s creator, with armin, flask’s creator. the quoted speaker argues that evolving code is ground truth and another knowledge store creates maintenance work. theo agrees, extending the objection to outdated comments and abandoned markdown plans. this is not evidence that every persistent preference is harmful. [03:22](https://www.youtube.com/watch?v=Jf54k7tFeEc&t=202s), `sources/Jf54k7tFeEc.md:119-157`.
+
+his audit supplies concrete failure categories. one machine retained an unshipped specification; another had scattered memories across clones. theo reads an agent-generated assessment grouping 45 memories into duplicated instructions, expired feature designs, and risky point-in-time state. he also objects to benchmark projects accumulating context that contaminates later model comparisons. these are narrated observations and model-produced audit conclusions, not a reproducible evaluation supplied with this summary. [13:54](https://www.youtube.com/watch?v=Jf54k7tFeEc&t=834s), `sources/Jf54k7tFeEc.md:411-545`.
+
+**VERIFIED — the usage numbers need qualification.** theo reports over 355 sessions, 19 opening individual memory files, 80 writing/editing them, and 26 of 45 memories never read. his “3 to one” description does not match 80/19, approximately 4.2. file-open counts also do not establish whether indexes or injected summaries influenced sessions. the evidence motivates an audit; it does not measure net memory benefit. [21:26](https://www.youtube.com/watch?v=Jf54k7tFeEc&t=1286s), `sources/Jf54k7tFeEc.md:609-617`.
+
+### his alternative, and its qualifications
+
+**VERIFIED — theo endorses a prevention hierarchy credited to lauren/poteto:** remove failure categories through architecture or data structures; otherwise catch them with lint/tests and continuous integration; then use skills/rules for remaining process needs; finally involve a human. his practical example replays real-sized claude/codex threads, measures websocket bytes, and fails a pull request at roughly 30% above an optimized baseline. he reports this caught regressions and agents repaired them before reporting completion. the transcript describes a concrete mechanism and claimed outcomes, but supplies no independently inspected runs here. [24:12](https://www.youtube.com/watch?v=Jf54k7tFeEc&t=1452s), `sources/Jf54k7tFeEc.md:688-748`; [27:22](https://www.youtube.com/watch?v=Jf54k7tFeEc&t=1642s), `:781-860`.
+
+he still values explicit product context: openness, performance, remote operation, supported surfaces, a glossary, operational safeguards, and architectural taste. “remote ready” explains why a locally passing electron change can still fail on a phone. a quoted uncle bob clip supplies the distinction between imposing human values and human discipline; theo endorses it. [31:18](https://www.youtube.com/watch?v=Jf54k7tFeEc&t=1878s), `sources/Jf54k7tFeEc.md:890-925`; [32:50](https://www.youtube.com/watch?v=Jf54k7tFeEc&t=1970s), `:934-1071`.
+
+**VERIFIED — counterexamples occur inside the video.** theo acknowledges user-specific chat memory can help, and calls one worktree-pruning warning probably useful. the embedded conversation describes bounded sentry output with complete json available on demand; theo disagrees with reaching for skills too readily, rather than endorsing every detail. [08:35](https://www.youtube.com/watch?v=Jf54k7tFeEc&t=515s), `sources/Jf54k7tFeEc.md:265-290`; [11:05](https://www.youtube.com/watch?v=Jf54k7tFeEc&t=665s), `:331-392`; [20:42](https://www.youtube.com/watch?v=Jf54k7tFeEc&t=1242s), `:589-595`.
+
+**HUNCH — applicability:** audit the user’s curated pi memory for duplication, stale claims, missing provenance, and irrelevant retrieval; do not equate it with theo’s unattended claude auto-memory. preserve useful preferences and historical constraints that current code cannot explain. no live memory or configuration changes follow from this research. workos’s sponsor segment is advertising, excluded from the engineering evidence (`sources/Jf54k7tFeEc.md:71-114`).
+
+## 2. “stop pretending you understand your codebase”
+
+**VERIFIED — partial understanding is not permission to ignore architecture.** theo’s reaction to sean goedecke’s article distinguishes memorizing every implementation detail from knowing how components fit together. he explicitly expects a general understanding before changing an isolated section. the source article is credited in the manifest description; peter naur’s “programming as theory building” is discussed through that article, not independently analyzed here. [04:14](https://www.youtube.com/watch?v=5KvY8CnBB3w&t=254s), `sources/5KvY8CnBB3w.md:149-198`; `sources/manifest.json:325`.
+
+the concrete investigation workflow comes from goedecke’s account, read and endorsed by theo: understand one flow end to end, branch outward, and make careful changes. theo adds that agents can answer questions against existing implementation, while lacking original developers’ historical knowledge. similarly, he says meaningful contribution to the existing system should precede a rewrite; user-dependent quirks are easily lost when replacing everything. [10:17](https://www.youtube.com/watch?v=5KvY8CnBB3w&t=617s), `sources/5KvY8CnBB3w.md:325-352`; [12:44](https://www.youtube.com/watch?v=5KvY8CnBB3w&t=764s), `:397-427`.
+
+**VERIFIED — his examples favor recoverable knowledge and mechanical feedback.** a skilled twitch colleague missed the graphql type-generation step between backend schema and frontend types. theo recounts fixing the issue by asking whether generation ran. he then argues that types, compilers, and lint free attention for higher-level decisions. neither anecdote proves a general productivity effect, but both specify what knowledge can be externalized. [14:07](https://www.youtube.com/watch?v=5KvY8CnBB3w&t=847s), `sources/5KvY8CnBB3w.md:436-527`.
+
+the closing swiftui example is narrower than “hands-off engineering works.” theo reports reading none of roughly 60,000 lines while steering through observed behavior and knowledge of the existing application’s data flows. he acknowledges failures, including project selection. the prediction of fully hands-off coding begins as a quoted post from nick; theo agrees directionally. [26:18](https://www.youtube.com/watch?v=5KvY8CnBB3w&t=1578s), `sources/5KvY8CnBB3w.md:805-850`.
+
+**HUNCH — limits and ownership:** this approach needs an accountable person who can explain contracts, recognize faulty behavior, and deepen investigation when boundaries leak. a newcomer without theo’s product knowledge cannot assume equivalent results. importantly, the earlier memory video describes withholding a swiftui rewrite because losing shared data-layer structure allowed regressions (`sources/Jf54k7tFeEc.md:867-889`, [30:29](https://www.youtube.com/watch?v=Jf54k7tFeEc&t=1829s)). that is counterevidence to treating unread implementation as proven safe, not proof the later state remained unchanged. depot’s advertisement is not supporting evidence (`sources/5KvY8CnBB3w.md:89-139`).
+
+## 3. “write code you will never read again”
+
+**VERIFIED — the central distinction is generated versus shipped code.** theo explicitly accepts reading every shipped line in life-critical software, then argues that disposable experiments can increase the denominator without reducing production scrutiny. his line-count examples are introduced as made-up numbers reflecting experience, not measured productivity. [04:55](https://www.youtube.com/watch?v=434cG4g5KLE&t=295s), `sources/434cG4g5KLE.md:167-191`; [11:39](https://www.youtube.com/watch?v=434cG4g5KLE&t=699s), `:358-406`.
+
+examples include one-off debuggers, custom lint rules, instrumentation, load generators, and alternate implementations answering performance questions. experiments belong outside the actual product. he describes testing new apis by packaging them locally and asking ten agents using less capable models to build consumers; difficulty using the interface prompts redesign. these are workflow reports and recommendations, not demonstrated comparative results. [14:57](https://www.youtube.com/watch?v=434cG4g5KLE&t=897s), `sources/434cG4g5KLE.md:447-465`; [20:31](https://www.youtube.com/watch?v=434cG4g5KLE&t=1231s), `:607-660`.
+
+**VERIFIED — review remains selective, not absent.** a quoted dax post advocates per-file summaries and attention to signatures. theo says he reads every lakebed api definition and function signature because interface mistakes raise future maintenance risk. he also reports multiple agent reviews before involving teammates. workos advertising and a quoted commenter’s “80%” harness claim are not independently validated evidence. [19:55](https://www.youtube.com/watch?v=434cG4g5KLE&t=1195s), `sources/434cG4g5KLE.md:589-630`; [23:10](https://www.youtube.com/watch?v=434cG4g5KLE&t=1390s), `:681-688`; sponsor `:48-88`, commenter `:335-339`.
+
+**HUNCH — limits:** disposable does not mean harmless. an asset-moving script can destroy files; a load generator can incur bills; a mistaken test can falsely certify production behavior. preserve existing review gates, sandbox experiments, constrain permissions, and independently verify the expected result. additional generated layers do not automatically solve the problem of an incorrect verifier.
+
+## synthesis and evaluation
+
+**HUNCH — a bounded workflow to evaluate, not install:**
+
+1. **memory quality:** compare repository-only context with curated retrieval on matched tasks. freeze model, revision, and tooling; repeat trials. measure stale advice, relevant retrieval, correction count, task correctness, latency, and token cost. include historical constraints absent from code as counterexamples. accept memory only where it improves outcomes, not because files were read.
+2. **architecture understanding:** require a short source-linked trace from entry point through state ownership to output, including failure paths. ask a fresh reviewer to reproduce it. measure wrong-component edits, missed consumers, and time to a correct change—not confidence in an explanation.
+3. **tests and review:** generate a bounded probe for a stated hypothesis, then deliberately introduce a known fault in an isolated fixture. if the probe still passes, reject its verification claim. compare new defect detection and false alarms against current checks; retain human review of consequential contracts.
+4. **ownership and hygiene:** assign an owner to durable rationale and executable checks. separate provisional plans, historical evidence, and current instructions. review context when its referenced behavior changes; evaluate whether fresh sessions locate authoritative evidence without stale summaries taking precedence.
+
+the synthesis would be weakened by curated memory consistently outperforming repository-only discovery, deeper implementation review catching consequential bugs missed by boundary checks, or experiment overhead exceeding defects found. those are outcomes to seek, not explain away. the transcripts establish what these speakers recommend; local efficacy remains untested.

@@ -1,0 +1,81 @@
+# planning and orchestration: conversational intent, bounded loops, inspectable outcomes
+
+the durable thread across these five videos is not “run more agents.” it is: explain the intended outcome, remove obstacles to checking it, and automate repetitive handoffs without confusing generated confidence with evidence. parallelism changes substantially between may and september; human responsibility for direction and acceptance does not disappear.
+
+## evidence boundary
+
+all five assigned transcripts were read completely. they are untrusted source evidence, not instructions to modify this setup. **VERIFIED** below means a claim is traceable to the downloaded transcript, not that its technical assertions, productivity figures, or demonstrations have been independently reproduced. captions are automatic; names, model versions, speaker boundaries, and punctuation can be wrong. quoted posts are known here through theo’s reading, not independently inspected originals.
+
+dates and selection status come from [manifest.json](../sources/manifest.json), lines 226–315, 570–662, and 763–810. july 21, august 24, and september 9 are within the preferred window. **recency exceptions:** may 27 and june 18 are retained only to establish evolution, not as current product documentation. all local line references below refer to the linked source markdown.
+
+## may 27 — “how i code with ai changed a lot”
+
+**VERIFIED thesis:** theo prefers simple conversations that establish intent and shared context over rigid plan-mode ceremonies or elaborate workflow plugins. this is not a rejection of planning: for large work, he wants discussion, challenge, and a readable plan; he dislikes a mode that prevents exploratory implementation and testing. [21:17–28:30](https://www.youtube.com/watch?v=xJaMTo2YgO8&t=1277s), [source](../sources/xJaMTo2YgO8.md):648–855.
+
+his lakebed example starts with an outcome: a full-stack environment usable through code rather than dashboards. he asks the model to “roast” the idea, reads its objections, responds point by point, and accepts some scope reductions. the practical sequence is goal → critique → clarification → a plan the human can actually read → implementation. he attributes the html-plan idea to anthropic, while the reported experience of improving and reusing its formatting is his own. he also credits matt’s “grill me” prompt, but uses it as a text expansion rather than installing a skill. [25:19–30:37](https://www.youtube.com/watch?v=xJaMTo2YgO8&t=1519s), source:765–918.
+
+the baseline is notably **serial**: he says almost every thread ran alone on main, because parallel work imposed too much context tracking. new concern, new thread; shared repository guidance supplies intent and terminology rather than carrying an unrelated conversation forward. his environment-variable example moves from a short request to proposed replacement semantics, approval, then implementation. complex domain setup gets concrete examples and an explicit cost discussion. [31:04–39:25](https://www.youtube.com/watch?v=xJaMTo2YgO8&t=1864s), source:933–1183.
+
+verification already matters: provide commands, tests, or browser control; reserve extra review for security and hosting changes; reassess stale branches against current main. small review loops already exist here, so june does not invent looping from nothing. [39:28–45:49](https://www.youtube.com/watch?v=xJaMTo2YgO8&t=2368s), source:1184–1373.
+
+**limits / falsification:** the transcript itself limits the main-branch approach to a largely solo project. it also admits unwanted edits during discussion and tooling failures. these counterexamples rule out reading this as “planning is unnecessary” or “serial work always wins.” product and model preferences are dated testimony, affected by unusually generous inference limits. **recency exception.** clerk’s segment is 00:53–02:12, source:36–80; dnsimple’s is 19:50–21:17, source:603–647. neither sponsorship supplies independent workflow evidence.
+
+## june 18 — “i guess we’re writing loops now?”
+
+**VERIFIED thesis:** automate the next repetitive action around an agent, then let orchestration follow the task’s dependencies instead of forcing every task through fixed personas. theo attributes the opening loop provocation and repository-maintenance example to pete. his own change of mind follows experiments with review monitoring and new-thread creation. he distinguishes this from his earlier ralph-loop experience, which he says increased errors. [00:00–02:02](https://www.youtube.com/watch?v=iJVJwmCKW9o&t=0s), [source](../sources/iJVJwmCKW9o.md):10–77; [03:55–07:53](https://www.youtube.com/watch?v=iJVJwmCKW9o&t=235s), source:141–252.
+
+the first practical step is modest: give a pull request its own worktree, ask the implementation agent to monitor review comments, and stop manually copying them between tools. another variant has claude invoke codex for review. the larger lakebed example first asks which performance changes belong together, which need separate pull requests, and which can run concurrently. it produces html plans before delegating implementation. [07:56–12:25](https://www.youtube.com/watch?v=iJVJwmCKW9o&t=476s), source:253–379.
+
+the proposed controller then creates implementation and review threads, routes findings back, reviews new commit heads, merges approved work, and starts the next worktree from updated main. theo reports four stacked pull requests merged overnight. that is testimony about one experiment, not a verified safety property. his distinction between a linear “keep going until done” goal and a dynamic workflow is explicit: the latter creates task-specific branches and review cycles. [12:26–14:49](https://www.youtube.com/watch?v=iJVJwmCKW9o&t=746s), source:380–443; [21:42–22:40](https://www.youtube.com/watch?v=iJVJwmCKW9o&t=1302s), source:640–668.
+
+**limits / falsification:** this is not an unconditional autonomy endorsement. he advises against copying the overnight merge experiment into large production systems and reports an eight-hour, three-million-token response to a few review comments. his advice to consume spare subscription capacity is not evidence of business value. those passages contradict a frictionless-success reading. [13:46](https://www.youtube.com/watch?v=iJVJwmCKW9o&t=826s), source:417–420; [18:48–20:08](https://www.youtube.com/watch?v=iJVJwmCKW9o&t=1128s), source:558–595. **recency exception.** magic patterns’ 02:03–03:55 advertisement, source:78–140, is separate from the orchestration examples.
+
+## july 21 — “claude code’s creator has some really good advice”
+
+**VERIFIED thesis:** engineering leverage shifts toward infrastructure that helps both people and agents contribute correctly. theo reads boris’s argument that editor automation, lint rules, and end-to-end tests now multiply across many agents. boris supplies the general argument; theo supplies the twitch example of two browser sessions verifying that a sent chat message actually renders for another user. [03:15–05:52](https://www.youtube.com/watch?v=xmGY276gEFY&t=195s), [source](../sources/xmGY276gEFY.md):117–199.
+
+the actionable move is to turn recurring judgment or friction into a reusable mechanism. boris recommends replacing repeated model fixes with a lint rule, continuous-integration step, or routine. theo’s example is a file-upload service and skill that let agents attach video evidence to pull requests when existing tooling did not support that path. this is workflow infrastructure, not a more elaborate prompt for every change. [05:54–09:26](https://www.youtube.com/watch?v=xmGY276gEFY&t=354s), source:200–309.
+
+boris then argues for encoding domain knowledge in comments, skills, rules, and other infrastructure so newcomers can contribute with little extra context. theo agrees with the direction but rejects the stronger equivalence between non-engineers and engineers. his own instructions are iterative: start with stock tooling, send a few prompts, observe failures, then change guidance or tools to address those failures. the goal is useful feedback, not magical foresight. [09:28–13:18](https://www.youtube.com/watch?v=xmGY276gEFY&t=568s), source:310–429; [16:02–16:48](https://www.youtube.com/watch?v=xmGY276gEFY&t=962s), source:509–532.
+
+**limits / falsification:** theo’s explicit disagreement prevents attributing all of boris’s claims to him. the benefits are anecdotes and arguments, not controlled comparisons. his warning against installing everything also constrains the apparent enthusiasm for custom tools. blacksmith sponsors 01:53–03:15, source:71–116; speed, price, and failure-rate claims in that segment remain promotional evidence.
+
+## august 24 — “boris is right again (i hate it)”
+
+**VERIFIED thesis:** generating code and engineering a useful, verifiable product are different achievements. boris’s “coding is solved” post prompts theo’s distinction between planning, implementation, and verification. matt pocock’s later tactical-versus-strategic framing is quoted separately; theo largely agrees that agents do not proactively maintain architectural health, while finding them useful as research consultants. [05:51–07:32](https://www.youtube.com/watch?v=0wemf5SZkW4&t=351s), [source](../sources/0wemf5SZkW4.md):188–233; [30:01–33:06](https://www.youtube.com/watch?v=0wemf5SZkW4&t=1801s), source:916–1011.
+
+the truncated update-text example motivates checking rendered outcomes rather than inferring correctness from plausible code. theo’s password-game analogy distinguishes missing requirements from bad requirements: implementing either faithfully can still produce a poor experience. verification must therefore be able to send work back to **planning**, not merely ask for another implementation pass. [07:35–16:12](https://www.youtube.com/watch?v=0wemf5SZkW4&t=455s), source:234–485.
+
+practical steps include runnable staging environments, repeatable checks, videos that humans actually inspect, and architecture that supports parallel test instances. theo describes adapting t3 code’s remote dev server and using a read-only data snapshot to make previews useful. [16:14–18:44](https://www.youtube.com/watch?v=0wemf5SZkW4&t=974s), source:486–563; [23:12–26:38](https://www.youtube.com/watch?v=0wemf5SZkW4&t=1392s), source:702–810.
+
+**limits / falsification:** he reports agents presenting videos that visibly show failure; an attached artifact is not proof of success. he also preserves a role for reading code to inspect architecture, scope, and tests. his claims about why another company’s desktop app has defects and his numerical success rates are interpretation, not established measurements. blacksmith’s 01:20–02:49 segment, source:49–95, is advertising. the video supports a verification-first interpretation, not literal proof that coding is solved.
+
+## september 9 — “you’re using ai agents wrong”
+
+**VERIFIED thesis:** reduce human waiting and decision friction through asynchronous investigation, review loops, actionable thread tracking, and accessible previews. theo’s claimed weekly pull-request throughput is motivation for the demonstration, not a controlled productivity result. [00:50–02:15](https://www.youtube.com/watch?v=q1D90-uGvBg&t=50s), [source](../sources/q1D90-uGvBg.md):35–73.
+
+the skill-invocation bug prompt is a concrete delegation contract: name affected users, state non-negotiable priorities, label the proposed solution as an opinion, disclose uncertainty, request an audit, and allow an early stop when a simple path is found. he tightens “solution” to “path to a solution” specifically to avoid authorizing code changes. [06:34–10:32](https://www.youtube.com/watch?v=q1D90-uGvBg&t=394s), source:205–324.
+
+he then leaves investigations running rather than watching them. independent threads audit a contribution, triage existing pull requests, and investigate a newly noticed defect. oversized findings get simpler explanations, not blind acceptance. a contributor comment is drafted, corrected, and only then authorized for posting. meanwhile, linking threads to pull requests, settling completed work, and snoozing blocked work make the sidebar an actionable inbox. [16:19–19:43](https://www.youtube.com/watch?v=q1D90-uGvBg&t=979s), source:492–593; [20:14–29:30](https://www.youtube.com/watch?v=q1D90-uGvBg&t=1214s), source:612–875.
+
+his “babysit” loop evaluates whether automated comments deserve changes, pushes fixes, and keeps monitoring until review settles. human acceptance remains downstream. remote web previews, mobile installation links, and desktop preview builds address different verification surfaces. nightly releases and rollback reduce exposure after merge. [29:36–31:26](https://www.youtube.com/watch?v=q1D90-uGvBg&t=1776s), source:877–927; [37:04–47:15](https://www.youtube.com/watch?v=q1D90-uGvBg&t=2224s), source:1087–1380.
+
+**limits / falsification:** his own demo rejects a model’s unsafe merge recommendations, encounters a possibly stalled audit, and withholds a successful-looking upload change pending further review. these are direct counterexamples to “more agents means trustworthy consensus.” source:938–972, 1152–1159. browserbase sponsors 02:22–03:50, source:77–127; its web-coverage claims are not research findings. theo also acknowledges his t3 code affiliation. linux capacity and nightly reliability remain workload-specific self-reports.
+
+## evolution, not a universal recipe
+
+**VERIFIED synthesis, using the passages above:** may centers on one human steering short, serial threads; june expands automated handoffs and task-shaped loops; july argues for making repeated lessons executable; august separates implementation from strategic judgment and experiential verification; september demonstrates parallel investigations with explicit permissions, review maintenance, and an inbox for human decisions.
+
+planning survives throughout, but becomes less a mandatory mode and more an agreement about intent, uncertainty, dependencies, and acceptance. iteration moves from human copy-paste toward agent-to-agent feedback, while supervision moves toward consequential checkpoints. september’s long-running swift thread also qualifies may’s fresh-thread preference: it is an experiment around one continuing concern, not evidence that arbitrary history should accumulate.
+
+## hypotheses to evaluate, not install
+
+all seven are **HUNCH usefulness**: source-supported motivations, untested locally. no setup changes are proposed as already justified.
+
+1. **explicit audit contracts reduce premature edits.** adapt september’s goal/priorities/uncertainty/stop-condition structure. compare unsolicited mutations and clarification turns against ordinary requests; reject if extra wording adds cost without fewer boundary violations.
+2. **parallelize independent investigations before implementations.** compare serial and two-worker audits on matched tasks. measure unique correct findings, elapsed time, integration effort, and duplicated work; reject if coordination erases gains.
+3. **bound review loops by evidence and budget.** pilot one isolated change with fresh-head reviews, iteration limits, and human merge approval. track accepted fixes versus churn and token cost; stop on repeated findings or worsening tests.
+4. **encode recurring failures in executable checks.** following july, choose one observed repeat defect and compare recurrence before and after a targeted rule. include false positives and maintenance time; a noisy rule can lose.
+5. **make verification access part of completion.** require a reproducible command or preview plus an inspected result. measure reviewer setup time and escaped defects, not merely artifact presence; august’s failed videos are the adversarial case.
+6. **separate planning failure from implementation failure.** after a failed check, classify whether the intended experience itself needs revision. compare rework cycles with a fix-only loop; reject if classification becomes ceremony without better outcomes.
+7. **track decision state rather than conversation volume.** trial a small manual queue of active, blocked, review-ready, and settled work. measure forgotten tasks and decision latency; preserve retrieval and check that snoozing does not hide unresolved risk.
