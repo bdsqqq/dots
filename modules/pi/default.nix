@@ -43,6 +43,10 @@ in
 
         if [ -f "${repoPi}/package.json" ]; then
           export CI=true
+          # Activation does not inherit the shell's pnpm policy and store paths.
+          export XDG_CONFIG_HOME=${lib.escapeShellArg config.xdg.configHome}
+          export XDG_DATA_HOME=${lib.escapeShellArg config.xdg.dataHome}
+          export XDG_CACHE_HOME=${lib.escapeShellArg config.xdg.cacheHome}
           export PATH="${
             lib.makeBinPath (
               [
