@@ -12,8 +12,8 @@ let
 
       export PI_BIN="${toolsBin}/pi"
       export QMD_BIN="${toolsBin}/qmd"
-      export PI_MEMORY_MODEL="openai-codex/gpt-6-astra"
-      export PI_MEMORY_REASONING_LEVEL="low"
+      export PI_MEMORY_MODEL="openai-codex/gpt-6.1-sol"
+      export PI_MEMORY_REASONING_LEVEL="medium"
       export PI_MEMORY_CLEANUP_ENABLED=1
       export PI_MEMORY_SKILLS_ROOT="${repoRoot}/modules/agents/skills"
       export PI_MEMORY_GIT_REMOTE="git@github.com:bdsqqq/pi-memory.git"

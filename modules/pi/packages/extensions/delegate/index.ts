@@ -5,8 +5,8 @@
  * with a dedicated tool. the model calls
  * delegate(prompt: "...", description: "...") directly.
  *
- * the delegate sub-agent inherits the parent's default model (no --model
- * flag). it gets most tools: read/write, edit, grep, bash, finder,
+ * the delegate sub-agent defaults to gpt-6.1-sol medium.
+ * it gets most tools: read/write, edit, grep, bash, finder,
  * skill, format_file, web_search, read_web_page. the description is shown
  * to the user in the TUI; the prompt is the full instruction for the sub-agent.
  *
@@ -32,12 +32,14 @@ import {
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   getNestedMessages,
+  isPiSpawnModelValue,
   isPiSpawnFailure,
   getToolCalls,
   getToolResults,
   getToolResultText,
   piSpawn,
   zeroUsage,
+  type PiSpawnModel,
 } from "@bds_pi/pi-spawn";
 import {
   applySessionMeta,
@@ -51,6 +53,7 @@ import {
 } from "@bds_pi/sub-agent-render";
 
 type DelegateExtConfig = {
+  model: PiSpawnModel;
   tools: string[];
   excludeTools: string[];
 };
@@ -62,6 +65,7 @@ type DelegateExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: DelegateExtConfig = {
+  model: "openai-codex/gpt-6.1-sol:medium",
   excludeTools: [],
   tools: [
     "read",
@@ -93,7 +97,11 @@ function isStringArray(value: unknown): value is string[] {
 function isDelegateConfig(
   value: Record<string, unknown>,
 ): value is DelegateExtConfig {
-  return isStringArray(value.tools) && isStringArray(value.excludeTools);
+  return (
+    isPiSpawnModelValue(value.model) &&
+    isStringArray(value.tools) &&
+    isStringArray(value.excludeTools)
+  );
 }
 
 const DELEGATE_CONFIG_SCHEMA: ExtensionConfigSchema<DelegateExtConfig> = {
@@ -108,6 +116,7 @@ export interface DelegateParams {
 }
 
 export interface DelegateConfig {
+  model?: PiSpawnModel;
   tools?: string[];
   excludeTools?: string[];
 }
@@ -198,6 +207,7 @@ export function createDelegateTool(
       const result = await piSpawn({
         cwd: ctx.cwd,
         task: p.prompt,
+        model: config.model ?? CONFIG_DEFAULTS.model,
         tools,
         excludeTools,
         signal,
@@ -287,6 +297,7 @@ export function resolveDelegateConfig(
   return {
     enabled,
     config: {
+      model: config.model,
       tools: config.tools,
       excludeTools: config.excludeTools,
     },
@@ -351,6 +362,16 @@ if (import.meta.vitest) {
   });
 
   describe("delegate extension", () => {
+    it("validates model overrides without accepting empty or malformed values", () => {
+      expect(isDelegateConfig(CONFIG_DEFAULTS)).toBe(true);
+      expect(
+        isDelegateConfig({ ...CONFIG_DEFAULTS, model: "custom/model:high" }),
+      ).toBe(true);
+      for (const model of ["", "   ", null, 123, {}]) {
+        expect(isDelegateConfig({ ...CONFIG_DEFAULTS, model })).toBe(false);
+      }
+    });
+
     it("registers a tool documenting its default web capabilities", () => {
       const extension = createDelegateExtension({
         ...DEFAULT_DEPS,
@@ -374,6 +395,7 @@ if (import.meta.vitest) {
 
     it("resolves the effective tool config", () => {
       const config = {
+        model: "custom/model:high",
         tools: ["finder"],
         excludeTools: ["read"],
       };
@@ -426,6 +448,7 @@ if (import.meta.vitest) {
         { schema: DELEGATE_CONFIG_SCHEMA },
       );
       expect(createDelegateToolSpy).toHaveBeenCalledWith({
+        model: CONFIG_DEFAULTS.model,
         tools: CONFIG_DEFAULTS.tools,
         excludeTools: CONFIG_DEFAULTS.excludeTools,
       });
@@ -494,6 +517,7 @@ if (import.meta.vitest) {
         "[@bds_pi/config] invalid config for @bds_pi/delegate; falling back to defaults.",
       );
       expect(createDelegateToolSpy).toHaveBeenCalledWith({
+        model: CONFIG_DEFAULTS.model,
         tools: CONFIG_DEFAULTS.tools,
         excludeTools: CONFIG_DEFAULTS.excludeTools,
       });
