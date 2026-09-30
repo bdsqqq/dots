@@ -683,6 +683,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       signal: NodeJS.Signals | null;
       spawnError?: string;
       transportError?: string;
+      inputError?: string;
       rpcCompleted: boolean;
     }>((resolve) => {
       // RpcClient hardcodes `node <cliPath>` and does not detach children.
@@ -707,6 +708,12 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
       // Only the session-level boundary includes retries and queued work.
       let rpcCompleted = false;
+      let inputError: string | undefined;
+      const pendingInputs = new Set(["prompt", "follow_up"]);
+      const rejectInput = (message: string) => {
+        inputError ??= message;
+        terminate();
+      };
 
       // send initial prompt via RPC stdin, then immediately queue follow_up.
       // follow_up is queued (not delivered) until the agent is idle, so the
@@ -715,6 +722,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       // late follow_up arrives through the cross-process stdin/stdout round-trip.
       if (useRpc && proc.stdin) {
         const promptCmd = JSON.stringify({
+          id: "prompt",
           type: "prompt",
           message: `Delegated task: ${config.task}`,
         });
@@ -723,6 +731,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
         if (config.followUp) {
           const followUpCmd = JSON.stringify({
+            id: "follow_up",
             type: "follow_up",
             message: config.followUp,
           });
@@ -735,17 +744,47 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
       const processLine = (line: string) => {
         if (!line.trim()) return;
-        let event: { type?: string; message?: Message };
+        let event: {
+          type?: string;
+          message?: Message;
+          id?: string;
+          command?: string;
+          success?: boolean;
+          error?: string;
+          data?: { disposition?: string };
+        };
         try {
-          event = JSON.parse(line) as { type?: string; message?: Message };
+          event = JSON.parse(line);
         } catch {
           return;
         }
 
-        // skip RPC protocol responses (acks for prompt/follow_up/abort commands)
-        if (event.type === "response") return;
+        if (event.type === "response") {
+          if (useRpc && event.id && pendingInputs.has(event.id)) {
+            const disposition = event.data?.disposition;
+            if (
+              event.command !== event.id ||
+              event.success !== true ||
+              (event.id === "prompt"
+                ? disposition !== "started" && disposition !== "queued"
+                : disposition !== "queued")
+            ) {
+              // "handled" is valid RPC, but did not submit this delegated phase
+              // to the agent; it may never produce agent_settled.
+              rejectInput(
+                `pi RPC ${event.id} not accepted: ${event.error ?? disposition ?? "missing disposition"}`,
+              );
+            } else {
+              pendingInputs.delete(event.id);
+            }
+          }
+          return;
+        }
 
         if (useRpc && event.type === "agent_settled") {
+          if (pendingInputs.size > 0) {
+            rejectInput("pi RPC settled before input acceptance receipts");
+          }
           rpcCompleted = true;
           // Work is complete; the kill escalation timer bounds cleanup now.
           if (timeoutTimer) clearTimeout(timeoutTimer);
@@ -759,6 +798,10 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
           if (msg.role === "assistant") {
             result.usage.turns++;
+          }
+          // Native toolResult usage already includes executeTool descendants.
+          // Count only transcript results, never nested execution events/details.
+          if (msg.role === "assistant" || msg.role === "toolResult") {
             const { usage } = msg;
             if (usage) {
               result.usage.input += usage.input || 0;
@@ -785,8 +828,11 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
                   (usage.cost?.cacheWrite || 0),
                 total: (previousCost?.total ?? 0) + (usage.cost?.total || 0),
               };
-              result.usage.contextTokens = usage.totalTokens || 0;
+              if (msg.role === "assistant")
+                result.usage.contextTokens = usage.totalTokens || 0;
             }
+          }
+          if (msg.role === "assistant") {
             if (!result.model && msg.model) {
               result.model = `${msg.provider}/${msg.model}`;
             }
@@ -829,7 +875,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
         if (config.signal) config.signal.removeEventListener("abort", killProc);
         if (killTimer) clearTimeout(killTimer);
         if (timeoutTimer) clearTimeout(timeoutTimer);
-        resolve({ ...value, rpcCompleted, transportError });
+        resolve({ ...value, rpcCompleted, transportError, inputError });
       };
       const terminate = () => {
         if (killTimer) return;
@@ -892,6 +938,12 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       result.exitCode = 1;
       lifecycle.status = "failed";
       lifecycle.errorKind = "transport";
+    } else if (outcome.inputError) {
+      result.exitCode = 1;
+      result.stopReason = "error";
+      result.errorMessage = outcome.inputError;
+      lifecycle.status = "failed";
+      lifecycle.errorKind = "agent";
     }
     // Native RPC handles SIGTERM with exit 143; escalation may yield SIGKILL.
     // Normalize only our completed shutdown, never cancellation or other exits.
@@ -900,6 +952,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       !wasTimedOut &&
       !outcome.spawnError &&
       !outcome.transportError &&
+      !outcome.inputError &&
       useRpc &&
       outcome.rpcCompleted &&
       (outcome.code === 0 ||
@@ -917,6 +970,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       !wasTimedOut &&
       !outcome.spawnError &&
       !outcome.transportError &&
+      !outcome.inputError &&
       useRpc &&
       !outcome.rpcCompleted
     ) {
@@ -929,6 +983,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       !wasTimedOut &&
       !outcome.spawnError &&
       !outcome.transportError &&
+      !outcome.inputError &&
       (result.stopReason === "error" || result.stopReason === "aborted")
     ) {
       result.exitCode = result.exitCode || 1;
@@ -939,6 +994,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       !wasTimedOut &&
       !outcome.spawnError &&
       !outcome.transportError &&
+      !outcome.inputError &&
       outcome.signal
     ) {
       result.exitCode = 1;
@@ -950,6 +1006,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       !wasTimedOut &&
       !outcome.spawnError &&
       !outcome.transportError &&
+      !outcome.inputError &&
       outcome.code !== 0
     ) {
       result.errorMessage ??= `pi process exited with code ${outcome.code}`;
@@ -959,7 +1016,8 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       !wasAborted &&
       !wasTimedOut &&
       !outcome.spawnError &&
-      !outcome.transportError
+      !outcome.transportError &&
+      !outcome.inputError
     ) {
       lifecycle.status = "succeeded";
       lifecycle.errorKind = null;
@@ -1237,7 +1295,7 @@ if (import.meta.vitest) {
         usage: toToolUsage({ ...zeroUsage(), input: 2, output: 1 }),
       },
     });
-    const rpcFixture = (records: string[]) => {
+    const rpcFixture = (records: string[], receipts = true) => {
       const script = path.join(makeTmpDir(), "rpc-fixture.mjs");
       fs.writeFileSync(
         script,
@@ -1252,6 +1310,26 @@ if (import.meta.vitest) {
           if (started || lines.length < 3) return;
           started = true;
           process.stderr.write(lines.slice(0, 2).join("\\n") + "\\n");
+          ${
+            receipts
+              ? [
+                  emit({
+                    id: "follow_up",
+                    type: "response",
+                    command: "follow_up",
+                    success: true,
+                    data: { disposition: "queued" },
+                  }),
+                  emit({
+                    id: "prompt",
+                    type: "response",
+                    command: "prompt",
+                    success: true,
+                    data: { disposition: "started" },
+                  }),
+                ].join("\n")
+              : ""
+          }
           ${records.join("\n")}
           setInterval(() => {}, 1000);
         });
@@ -1294,8 +1372,8 @@ if (import.meta.vitest) {
           .split("\n")
           .map((line) => JSON.parse(line)),
       ).toEqual([
-        { type: "prompt", message: "Delegated task: explore" },
-        { type: "follow_up", message: "report" },
+        { id: "prompt", type: "prompt", message: "Delegated task: explore" },
+        { id: "follow_up", type: "follow_up", message: "report" },
       ]);
     });
 
@@ -1342,6 +1420,144 @@ if (import.meta.vitest) {
         "toolResult",
       ]);
       expect(result.usage.turns).toBe(2);
+    });
+
+    it.each([
+      { id: "prompt", success: false, error: "preflight rejected" },
+      { id: "follow_up", success: false, error: "queue rejected" },
+      { id: "prompt", success: true, data: { disposition: "handled" } },
+      { id: "follow_up", success: true, data: { disposition: "handled" } },
+      { id: "prompt", success: true },
+    ])(
+      "fails promptly for unaccepted input: $id $success $data",
+      async (receipt) => {
+        process.env.PI_BIN = rpcFixture(
+          [
+            emit({ type: "response", command: receipt.id, ...receipt }),
+            // Even buffered success events must not overwrite input failure.
+            emit(assistantEnd("stop")),
+            emit({ type: "agent_settled" }),
+          ],
+          false,
+        );
+        const result = await piSpawn({
+          cwd: makeTmpDir(),
+          task: "explore",
+          followUp: "report",
+          session: { persist: false },
+          timeoutMs: 2000,
+        });
+        expect(result.lifecycle).toMatchObject({
+          status: "failed",
+          errorKind: "agent",
+        });
+        expect(result.errorMessage).toContain(
+          `pi RPC ${receipt.id} not accepted`,
+        );
+        expect(result.exitCode).toBe(1);
+      },
+    );
+
+    it("does not accept settled without receipts", async () => {
+      process.env.PI_BIN = rpcFixture([emit({ type: "agent_settled" })], false);
+      const result = await piSpawn({
+        cwd: makeTmpDir(),
+        task: "explore",
+        followUp: "report",
+        session: { persist: false },
+        timeoutMs: 2000,
+      });
+      expect(result.lifecycle?.status).toBe("failed");
+      expect(result.errorMessage).toContain("input acceptance receipts");
+    });
+
+    it.each([
+      { followUp: "report", phase: "prompt", delay: 0 },
+      { followUp: "/fixture", phase: "follow_up", delay: 500 },
+    ])(
+      "rejects native $phase receipts without a model request",
+      async ({ followUp, phase, delay }) => {
+        const { getPackageDir } =
+          await import("@earendil-works/pi-coding-agent");
+        const cwd = makeTmpDir();
+        const extension = path.join(cwd, "input.ts");
+        fs.writeFileSync(
+          extension,
+          `
+        export default function(pi) {
+          pi.registerCommand("fixture", { description: "fixture", handler: async () => {} });
+          pi.on("input", async () => {
+            await new Promise(resolve => setTimeout(resolve, ${delay}));
+            return { action: "handled" };
+          });
+        }
+      `,
+        );
+        process.env.PI_BIN = makeFakePi(
+          `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(getPackageDir(), "dist/cli.js"))} --offline --no-extensions --no-skills --no-prompt-templates --no-context-files --no-themes --extension ${JSON.stringify(extension)} "$@"`,
+        );
+        const result = await piSpawn({
+          cwd,
+          task: "explore",
+          followUp,
+          session: { persist: false },
+          timeoutMs: 5000,
+          env: { PI_CODING_AGENT_DIR: cwd, PI_OFFLINE: "1" },
+        });
+        expect(result.lifecycle, result.stderr).toMatchObject({
+          status: "failed",
+          errorKind: "agent",
+        });
+        expect(result.errorMessage).toContain(`pi RPC ${phase} not accepted`);
+        expect(result.messages).toEqual([]);
+        expect(result.usage.turns).toBe(0);
+      },
+    );
+
+    it("counts rolled-up tool usage once without changing context or turns", async () => {
+      const usage = toToolUsage({
+        ...zeroUsage(),
+        input: 10,
+        output: 5,
+        cost: 2,
+      });
+      const message = {
+        role: "toolResult",
+        toolCallId: "outer",
+        toolName: "fixture",
+        content: [],
+        isError: false,
+        timestamp: 1,
+        usage,
+        details: { cost: 2, messages: [assistantEnd("stop").message] },
+      };
+      process.env.PI_BIN = rpcFixture([
+        emit(assistantEnd("stop")),
+        emit({
+          type: "tool_execution_end",
+          parentToolCallId: "outer",
+          toolCallId: "outer/1",
+          result: { usage },
+        }),
+        emit({ type: "message_end", message }),
+        emit({ type: "agent_settled" }),
+      ]);
+      const result = await piSpawn({
+        cwd: makeTmpDir(),
+        task: "explore",
+        followUp: "report",
+        session: { persist: false },
+        timeoutMs: 2000,
+      });
+      expect(result.lifecycle?.status).toBe("succeeded");
+      expect(result.usage).toMatchObject({
+        input: 12,
+        output: 6,
+        cost: 2,
+        contextTokens: 3,
+        turns: 1,
+      });
+      expect(result.messages).toHaveLength(2);
     });
 
     it.each(["error", "aborted"])(

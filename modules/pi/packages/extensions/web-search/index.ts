@@ -317,6 +317,8 @@ export function createWebSearchTool(
 ): ToolDefinition<typeof searchSchema> {
   return {
     name: "web_search",
+    // Nested calls have no transcript result to authorize a later cursor read.
+    exposure: "model-only",
     label: "Web Search",
     description:
       "Search the web for ranked URLs and source excerpts, not generated answers. " +
@@ -569,6 +571,11 @@ if (import.meta.vitest) {
         session_id: "server-session",
         cost: 0.005,
       });
+      expect(result.usage).toMatchObject({
+        totalTokens: 0,
+        cost: { total: 0.005 },
+      });
+      expect(createWebSearchTool().exposure).toBe("model-only");
     });
     it("exposes the complete retrieval controls without silently shrinking them", async () => {
       const fetch = network();
@@ -689,6 +696,7 @@ if (import.meta.vitest) {
       );
       const result = await run({ search_queries: ["query"] });
       expect(result.details).not.toHaveProperty("cost");
+      expect(result.usage).toBeUndefined();
       expect(result.content[0]).toMatchObject({
         text: expect.stringContaining("cost unknown"),
       });
@@ -711,6 +719,7 @@ if (import.meta.vitest) {
       const next = await run({ cursor });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(next.details).toMatchObject({ cost: 0, continuation: true });
+      expect(next.usage).toMatchObject({ totalTokens: 0, cost: { total: 0 } });
     });
     it("publishes huge multiline excerpts instead of exceeding the argument limit", async () => {
       const fetch = network([

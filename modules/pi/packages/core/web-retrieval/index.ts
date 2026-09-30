@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { Usage } from "@earendil-works/pi-ai";
 import {
   Type,
   type Static,
@@ -75,6 +76,7 @@ type ToolName = "web_search" | "read_web_page";
 interface Result {
   content: Array<{ type: "text"; text: string }>;
   details: Record<string, unknown>;
+  usage?: Usage;
 }
 interface Snapshot {
   id: string;
@@ -436,6 +438,28 @@ function snapshotStore(
     const footer = `\n\n[snapshot ${snapshot.id}; UTF-16 offsets ${offset}..${page.end}/${text.length}; expires ${new Date(snapshot.expiresAt).toISOString()} (24h retention).${nextCursor ? ` next cursor: ${nextCursor}.` : ""}${offset > 0 ? ` beginning cursor: ${snapshot.id}:0.` : ""}]`;
     return {
       content: [{ type: "text", text: page.text + footer }],
+      // Provider SKU usage stays in details. Only a finite priced total enters
+      // native accounting; retrieval consumes no model tokens. Cursor reads set cost=0.
+      ...(typeof details.cost === "number" &&
+      Number.isFinite(details.cost) &&
+      details.cost >= 0
+        ? {
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: details.cost,
+              },
+            },
+          }
+        : {}),
       details: {
         ...details,
         webSnapshot: snapshot,
@@ -647,6 +671,184 @@ if (import.meta.vitest) {
     message: { role, ...rest },
   });
   describe("web retrieval", () => {
+    it("accounts direct and nested native charges exactly once at the SDK boundary", async () => {
+      const { mkdtemp, rm } = await import("node:fs/promises");
+      const {
+        createAgentSession,
+        defineTool,
+        DefaultResourceLoader,
+        ModelRuntime,
+        SessionManager,
+        SettingsManager,
+      } = await import("@earendil-works/pi-coding-agent");
+      const {
+        fauxProvider,
+        fauxAssistantMessage,
+        fauxToolCall,
+        InMemoryCredentialStore,
+      } = await import("@earendil-works/pi-ai");
+      const root = await mkdtemp(join(tmpdir(), "pi-web-sdk-"));
+      const store = snapshotStore(join(root, "snapshots"));
+      const faux = fauxProvider();
+      const runtime = await ModelRuntime.create({
+        credentials: new InMemoryCredentialStore(),
+        modelsPath: null,
+        refreshOnCreate: false,
+      });
+      runtime.registerNativeProvider(faux.provider);
+      const settingsManager = SettingsManager.inMemory({
+        compaction: { enabled: false },
+        retry: { enabled: false },
+      });
+      const loader = new DefaultResourceLoader({
+        cwd: root,
+        agentDir: root,
+        settingsManager,
+        noExtensions: true,
+        noSkills: true,
+        noPromptTemplates: true,
+        noThemes: true,
+        noContextFiles: true,
+      });
+      await loader.reload();
+      const nestedErrors: boolean[] = [];
+      const { session } = await createAgentSession({
+        cwd: root,
+        agentDir: root,
+        modelRuntime: runtime,
+        model: faux.getModel(),
+        settingsManager,
+        resourceLoader: loader,
+        sessionManager: SessionManager.inMemory(),
+        noTools: "builtin",
+        customTools: [
+          defineTool({
+            // Callable fixture exercises native nesting, not production cursor exposure.
+            name: "web_search",
+            label: "retrieval",
+            description: "test retrieval",
+            parameters: Type.Object({
+              known: Type.Optional(Type.Boolean()),
+              cursor: Type.Optional(Type.String()),
+            }),
+            execute: async (_id, args, _signal, _update, ctx) =>
+              args.cursor
+                ? store.continue(args.cursor, ctx, "web_search")
+                : store.publish(
+                    "evidence",
+                    ctx,
+                    usageCost(
+                      [
+                        {
+                          name: args.known ? "sku_search" : "unknown_sku",
+                          count: 1,
+                        },
+                      ],
+                      NaN,
+                    ),
+                    "web_search",
+                  ),
+          }),
+          {
+            name: "middle",
+            label: "middle",
+            description: "test nesting",
+            parameters: Type.Object({}),
+            execute: async (_id, _args, _signal, _update, ctx) => {
+              const known = await ctx.executeTool("web_search", {
+                known: true,
+              });
+              const unknown = await ctx.executeTool("web_search", {
+                known: false,
+              });
+              nestedErrors.push(known.isError, unknown.isError);
+              expect(known.result.usage?.cost.total).toBe(0.005);
+              expect(unknown.result.usage).toBeUndefined();
+              return { content: [], details: {} }; // SDK owns descendants' usage.
+            },
+          },
+          {
+            name: "outer",
+            label: "outer",
+            description: "test nesting",
+            parameters: Type.Object({}),
+            execute: async (_id, _args, _signal, _update, ctx) => {
+              const middle = await ctx.executeTool("middle", {});
+              const known = await ctx.executeTool("web_search", {
+                known: true,
+              });
+              nestedErrors.push(middle.isError, known.isError);
+              return { content: [], details: {} };
+            },
+          },
+        ],
+      });
+      try {
+        await session.bindExtensions({ mode: "json" });
+        faux.setResponses([
+          fauxAssistantMessage(fauxToolCall("web_search", { known: true }), {
+            stopReason: "toolUse",
+          }),
+          fauxAssistantMessage("done"),
+        ]);
+        await session.prompt("direct");
+        expect(session.getSessionStats().cost).toBe(0.005);
+        const first = session.messages.find((m) => m.role === "toolResult");
+        expect(first?.role).toBe("toolResult");
+        if (first?.role !== "toolResult")
+          throw new Error("missing direct result");
+        if (!record(first.details)) throw new Error("missing snapshot details");
+        const snapshot = first.details.webSnapshot;
+        if (!snapshotValue(snapshot))
+          throw new Error("invalid snapshot details");
+        faux.setResponses([
+          fauxAssistantMessage(
+            fauxToolCall("web_search", { cursor: `${snapshot.id}:0` }),
+            { stopReason: "toolUse" },
+          ),
+          fauxAssistantMessage("done"),
+        ]);
+        await session.prompt("continue");
+        expect(session.getSessionStats().cost).toBe(0.005);
+        faux.setResponses([
+          fauxAssistantMessage(fauxToolCall("outer", {}), {
+            stopReason: "toolUse",
+          }),
+          fauxAssistantMessage("done"),
+        ]);
+        await session.prompt("nested");
+        const results = session.messages.filter((m) => m.role === "toolResult");
+        expect(results).toHaveLength(3); // Nested results never enter the transcript.
+        expect(results.map((m) => m.isError)).toEqual([false, false, false]);
+        expect(nestedErrors).toEqual([false, false, false, false]);
+        expect(results.map((m) => m.usage?.cost.total)).toEqual([
+          0.005, 0, 0.01,
+        ]);
+        expect(session.getSessionStats().cost).toBe(0.015);
+        expect(results.map((m) => m.usage?.totalTokens)).toEqual([0, 0, 0]);
+      } finally {
+        session.dispose();
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+    it("omits malformed native prices rather than reporting a fabricated zero", async () => {
+      const { mkdtemp, rm } = await import("node:fs/promises");
+      const root = await mkdtemp(join(tmpdir(), "pi-web-usage-"));
+      try {
+        const store = snapshotStore(root);
+        for (const cost of [undefined, "0.005", NaN, Infinity, -1, {}]) {
+          const result = await store.publish(
+            "evidence",
+            context(),
+            { cost },
+            "web_search",
+          );
+          expect(result).not.toHaveProperty("usage");
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
     it("defaults stale fallback only for an explicit age and preserves caller overrides", () => {
       expect(resolveFetchPolicy()).toBeUndefined();
       expect(resolveFetchPolicy({})).toEqual({});
@@ -843,6 +1045,8 @@ if (import.meta.vitest) {
             page.end - page.start,
           );
           expect(next.details.cost).toBe(0);
+          expect(next.usage?.cost.total).toBe(0);
+          expect(next.usage?.totalTokens).toBe(0);
           expect(next.details.sourceCost).toEqual({
             cost: 0.005,
             costEstimated: undefined,

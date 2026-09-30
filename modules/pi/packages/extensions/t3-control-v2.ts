@@ -6,7 +6,13 @@ import * as NodePath from "node:path";
 
 const PROTOCOL = "t3-control-v2";
 const LIFECYCLE_CUSTOM_TYPE = "t3.thread-lifecycle.v1";
-const SOCKET_PATH = NodePath.join(NodeOS.homedir(), ".pi", "agent", PROTOCOL, "supervisor.sock");
+const SOCKET_PATH = NodePath.join(
+  NodeOS.homedir(),
+  ".pi",
+  "agent",
+  PROTOCOL,
+  "supervisor.sock",
+);
 const RECONNECT_DELAYS_MS = [250, 500, 1_000, 2_000, 5_000] as const;
 
 export type BridgeCommand =
@@ -72,7 +78,11 @@ export function parseBridgeCommand(value: unknown): BridgeCommand | undefined {
   )
     return;
   if (value.command === "abort" || value.command === "shutdown") {
-    return { type: "command", commandId: value.commandId, command: value.command };
+    return {
+      type: "command",
+      commandId: value.commandId,
+      command: value.command,
+    };
   }
   if (
     value.command === "setLifecycle" &&
@@ -80,7 +90,8 @@ export function parseBridgeCommand(value: unknown): BridgeCommand | undefined {
     value.lifecycle.version === 1 &&
     typeof value.lifecycle.sessionId === "string" &&
     value.lifecycle.sessionId !== "" &&
-    (value.lifecycle.override === "settled" || value.lifecycle.override === "active") &&
+    (value.lifecycle.override === "settled" ||
+      value.lifecycle.override === "active") &&
     typeof value.lifecycle.operationId === "string" &&
     value.lifecycle.operationId !== ""
   ) {
@@ -97,7 +108,9 @@ export function parseBridgeCommand(value: unknown): BridgeCommand | undefined {
     };
   }
   if (
-    (value.command === "send" || value.command === "steer" || value.command === "followUp") &&
+    (value.command === "send" ||
+      value.command === "steer" ||
+      value.command === "followUp") &&
     typeof value.text === "string"
   ) {
     return {
@@ -130,7 +143,9 @@ export function messageText(value: unknown): string | undefined {
   if (typeof value.content === "string") return value.content;
   if (!Array.isArray(value.content)) return;
   const text = value.content.flatMap((part) =>
-    isRecord(part) && part.type === "text" && typeof part.text === "string" ? [part.text] : [],
+    isRecord(part) && part.type === "text" && typeof part.text === "string"
+      ? [part.text]
+      : [],
   );
   return text.length > 0 ? text.join("") : undefined;
 }
@@ -153,7 +168,10 @@ type ExtensionContext = {
 type ExtensionApi = {
   on(
     name: string,
-    handler: (event: Record<string, unknown>, ctx: ExtensionContext) => void | Promise<void>,
+    handler: (
+      event: Record<string, unknown>,
+      ctx: ExtensionContext,
+    ) => void | Promise<void>,
   ): void;
   sendUserMessage(
     text: string,
@@ -164,7 +182,10 @@ type ExtensionApi = {
 
 type WireMessage = Record<string, unknown>;
 
-export default function t3ControlExtension(pi: ExtensionApi): void {
+export default function t3ControlExtension(
+  pi: ExtensionApi,
+  createConnection: (path: string) => NodeNet.Socket = NodeNet.createConnection,
+): void {
   let active = false;
   let socket: NodeNet.Socket | undefined;
   let reconnectTimer: NodeJS.Timeout | undefined;
@@ -177,7 +198,8 @@ export default function t3ControlExtension(pi: ExtensionApi): void {
   const deduper = new CommandDeduper();
 
   const write = (message: WireMessage): void => {
-    if (socket?.readyState === "open") socket.write(`${JSON.stringify(message)}\n`);
+    if (socket?.readyState === "open")
+      socket.write(`${JSON.stringify(message)}\n`);
   };
 
   const receipt = (
@@ -200,13 +222,21 @@ export default function t3ControlExtension(pi: ExtensionApi): void {
       return;
     }
     const ctx = currentContext;
-    if (ctx === undefined) return;
+    if (ctx === undefined) {
+      receipt(command.commandId, "error", "no active pi session");
+      return;
+    }
     try {
       if (command.command === "send") {
-        pi.sendUserMessage(command.text);
+        // Native ExtensionAPI returns void, so submitted is not an acceptance
+        // acknowledgement. Await promise-returning adapters to catch rejection.
+        await pi.sendUserMessage(command.text);
         receipt(command.commandId, "submitted");
-      } else if (command.command === "steer" || command.command === "followUp") {
-        pi.sendUserMessage(command.text, { deliverAs: command.command });
+      } else if (
+        command.command === "steer" ||
+        command.command === "followUp"
+      ) {
+        await pi.sendUserMessage(command.text, { deliverAs: command.command });
         receipt(command.commandId, "submitted");
       } else if (command.command === "setLifecycle") {
         const error = lifecycleCommandError(
@@ -223,13 +253,20 @@ export default function t3ControlExtension(pi: ExtensionApi): void {
         receipt(command.commandId, "accepted");
       }
     } catch (error) {
-      receipt(command.commandId, "error", error instanceof Error ? error.message : String(error));
+      receipt(
+        command.commandId,
+        "error",
+        error instanceof Error ? error.message : String(error),
+      );
     }
   };
 
   const scheduleReconnect = (): void => {
     if (!active || reconnectTimer !== undefined) return;
-    const delay = RECONNECT_DELAYS_MS[Math.min(reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
+    const delay =
+      RECONNECT_DELAYS_MS[
+        Math.min(reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)
+      ];
     reconnectAttempt += 1;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = undefined;
@@ -240,7 +277,7 @@ export default function t3ControlExtension(pi: ExtensionApi): void {
 
   const connect = (): void => {
     if (!active || currentContext === undefined) return;
-    const candidate = NodeNet.createConnection(SOCKET_PATH);
+    const candidate = createConnection(SOCKET_PATH);
     socket = candidate;
     const decoder = new JsonLineDecoder();
     candidate.setEncoding("utf8");
@@ -297,12 +334,19 @@ export default function t3ControlExtension(pi: ExtensionApi): void {
   pi.on("agent_settled", (_event, ctx) => {
     pendingSteering = [];
     pendingFollowUp = [];
-    forward("queue_update", { steering: pendingSteering, followUp: pendingFollowUp });
-    forward("agent_settled", { idle: ctx.isIdle(), pending: ctx.hasPendingMessages() });
+    forward("queue_update", {
+      steering: pendingSteering,
+      followUp: pendingFollowUp,
+    });
+    forward("agent_settled", {
+      idle: ctx.isIdle(),
+      pending: ctx.hasPendingMessages(),
+    });
   });
   pi.on("message_start", (event) => {
     const message = isRecord(event.message) ? event.message : undefined;
-    const delivered = message?.role === "user" ? messageText(message) : undefined;
+    const delivered =
+      message?.role === "user" ? messageText(message) : undefined;
     if (delivered !== undefined) {
       const steeringIndex = pendingSteering.indexOf(delivered);
       const followUpIndex = pendingFollowUp.indexOf(delivered);
@@ -321,7 +365,10 @@ export default function t3ControlExtension(pi: ExtensionApi): void {
         reconciled = true;
       }
       if (reconciled)
-        forward("queue_update", { steering: pendingSteering, followUp: pendingFollowUp });
+        forward("queue_update", {
+          steering: pendingSteering,
+          followUp: pendingFollowUp,
+        });
       userMessageSeen = true;
     }
     forward("message_start", { message: event.message });
@@ -329,10 +376,13 @@ export default function t3ControlExtension(pi: ExtensionApi): void {
   pi.on("message_update", (event) =>
     forward("message_update", { update: event.assistantMessageEvent }),
   );
-  pi.on("message_end", (event) => forward("message_end", { message: event.message }));
+  pi.on("message_end", (event) =>
+    forward("message_end", { message: event.message }),
+  );
   pi.on("tool_execution_start", (event) =>
     forward("tool_execution_start", {
       toolCallId: event.toolCallId,
+      parentToolCallId: event.parentToolCallId,
       toolName: event.toolName,
       args: event.args,
     }),
@@ -340,6 +390,7 @@ export default function t3ControlExtension(pi: ExtensionApi): void {
   pi.on("tool_execution_update", (event) =>
     forward("tool_execution_update", {
       toolCallId: event.toolCallId,
+      parentToolCallId: event.parentToolCallId,
       toolName: event.toolName,
       partialResult: event.partialResult,
     }),
@@ -347,6 +398,7 @@ export default function t3ControlExtension(pi: ExtensionApi): void {
   pi.on("tool_execution_end", (event) =>
     forward("tool_execution_end", {
       toolCallId: event.toolCallId,
+      parentToolCallId: event.parentToolCallId,
       toolName: event.toolName,
       result: event.result,
       isError: event.isError,
@@ -375,5 +427,142 @@ export default function t3ControlExtension(pi: ExtensionApi): void {
     reconnectTimer = undefined;
     socket?.end();
     socket = undefined;
+  });
+}
+
+if (import.meta.vitest) {
+  const { describe, expect, it } = import.meta.vitest;
+  const { EventEmitter } = await import("node:events");
+
+  describe("t3 control input receipts", () => {
+    function harness(sendUserMessage: ExtensionApi["sendUserMessage"]) {
+      const handlers = new Map<string, Parameters<ExtensionApi["on"]>[1]>();
+      const messages: WireMessage[] = [];
+      const socket = Object.assign(new EventEmitter(), {
+        readyState: "open",
+        setEncoding() {},
+        write(line: string) {
+          messages.push(JSON.parse(line));
+        },
+        end() {},
+        destroy() {},
+      });
+      t3ControlExtension(
+        {
+          on: (name, handler) => {
+            handlers.set(name, handler);
+          },
+          sendUserMessage,
+          appendEntry() {},
+        },
+        () => socket as unknown as NodeNet.Socket,
+      );
+      const ctx: ExtensionContext = {
+        mode: "tui",
+        cwd: "/workspace",
+        sessionManager: {
+          getSessionId: () => "session",
+          getSessionFile: () => undefined,
+        },
+        isIdle: () => true,
+        hasPendingMessages: () => false,
+        abort() {},
+        shutdown() {},
+      };
+      handlers.get("session_start")!({}, ctx);
+      return {
+        messages,
+        handlers,
+        ctx,
+        send(command: string) {
+          socket.emit(
+            "data",
+            `${JSON.stringify({
+              type: "command",
+              commandId: "input-1",
+              command,
+              text: "work",
+            })}\n`,
+          );
+        },
+        stop() {
+          handlers.get("session_shutdown")!({}, ctx);
+        },
+      };
+    }
+
+    it.each(["send", "steer", "followUp"])(
+      "waits for adapter rejection before acknowledging %s",
+      async (command) => {
+        let reject!: (error: Error) => void;
+        const h = harness(
+          () =>
+            new Promise<void>((_resolve, fail) => {
+              reject = fail;
+            }),
+        );
+        try {
+          h.send(command);
+          expect(
+            h.messages.filter((message) => message.type === "receipt"),
+          ).toEqual([]);
+          reject(new Error("input rejected"));
+          await new Promise((resolve) => setImmediate(resolve));
+          expect(h.messages).toContainEqual({
+            type: "receipt",
+            protocol: PROTOCOL,
+            commandId: "input-1",
+            status: "error",
+            error: "input rejected",
+          });
+          expect(
+            h.messages.some((message) => message.status === "submitted"),
+          ).toBe(false);
+        } finally {
+          h.stop();
+        }
+      },
+    );
+
+    it("reports native void submissions without claiming acceptance and deduplicates", async () => {
+      const h = harness(() => {});
+      try {
+        h.send("send");
+        await new Promise((resolve) => setImmediate(resolve));
+        h.send("send");
+        expect(
+          h.messages
+            .filter((message) => message.type === "receipt")
+            .map((message) => message.status),
+        ).toEqual(["submitted", "duplicate"]);
+      } finally {
+        h.stop();
+      }
+    });
+
+    it("preserves nested tool parent ids without adding fields to top-level calls", () => {
+      const h = harness(() => {});
+      try {
+        for (const name of [
+          "tool_execution_start",
+          "tool_execution_update",
+          "tool_execution_end",
+        ]) {
+          h.handlers.get(name)!(
+            { toolCallId: "parent/1", parentToolCallId: "parent" },
+            h.ctx,
+          );
+          expect(h.messages.at(-1)?.data).toMatchObject({
+            parentToolCallId: "parent",
+          });
+          h.handlers.get(name)!({ toolCallId: "top-level" }, h.ctx);
+          expect(h.messages.at(-1)?.data).not.toHaveProperty(
+            "parentToolCallId",
+          );
+        }
+      } finally {
+        h.stop();
+      }
+    });
   });
 }
