@@ -1,13 +1,11 @@
 /**
  * system-prompt — injects an extended system prompt body into pi's agent prompt.
  *
- * pi's built-in system prompt only provides date + cwd. this extension appends
- * a configurable body with runtime-interpolated template vars: workspace root,
- * OS info, git remote, session ID, and directory listing.
+ * adds a configurable native section with runtime-interpolated template vars:
+ * workspace root, OS info, git remote, session ID, and directory listing.
  *
- * uses before_agent_start return value { systemPrompt } to modify the
- * system prompt per-turn. handlers chain — each receives the previous handler's
- * systemPrompt via event.systemPrompt.
+ * mutates before_agent_start.systemPromptOptions per-turn. handlers chain;
+ * an earlier full-prompt override needs an opaque append fallback.
  *
  * identity/harness decoupling: {identity} and {harness} are interpolated with
  * configurable values. {harness_docs_section} comes from inline defaults unless
@@ -17,7 +15,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+  BeforeAgentStartEvent,
+  BeforeAgentStartEventResult,
+  ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
 import {
   clearConfigCache,
@@ -129,9 +131,16 @@ function createSystemPromptExtension(
 
       if (!interpolated.trim()) return;
 
-      return {
-        systemPrompt: event.systemPrompt + "\n\n" + interpolated,
-      };
+      // Forced text hides structured sections. Preserve an earlier extension's
+      // exact override rather than clearing it or silently losing this body.
+      if (event.systemPromptOptions.forceSystemPrompt !== undefined) {
+        return { systemPrompt: event.systemPrompt + "\n\n" + interpolated };
+      }
+
+      // Keep arbitrary configured bodies intact: splitting on headings would
+      // reinterpret user templates. A named section leaves native addendum,
+      // tools, context, skills, and earlier extensions in their original order.
+      event.systemPromptOptions.sections.system_prompt_body = interpolated;
     });
   };
 }
@@ -180,6 +189,152 @@ if (import.meta.vitest) {
   });
 
   describe("system-prompt extension", () => {
+    it.each(["structured", "forced-before", "forced-after"] as const)(
+      "preserves native layering and chained handlers (%s)",
+      async (mode) => {
+        const { ExtensionRunner, createExtensionRuntime, SessionManager } =
+          await import("@earendil-works/pi-coding-agent");
+        const dir = fs.mkdtempSync(path.join(tmpdir, "pi-system-prompt-test-"));
+        setGlobalSettingsPath(
+          writeTmpJson(dir, "settings.json", {
+            "@bds_pi/system-prompt": {
+              promptString: "{identity}/{harness}/{sessionId}/{cwd}\n{custom}",
+              identity: "Axi",
+              harness: "custom-harness",
+            },
+            promptVariables: { custom: { literal: "configured variable" } },
+          }),
+        );
+        const harness = createMockExtensionApiHarness();
+        createSystemPromptExtension()(harness.pi);
+        const handler = harness.handlers.get("before_agent_start")!;
+        const manager = SessionManager.inMemory(dir);
+        const extensions: ConstructorParameters<typeof ExtensionRunner>[0] = [
+          {
+            path: "test",
+            resolvedPath: "test",
+            sourceInfo: {
+              path: "test",
+              source: "test",
+              scope: "user",
+              origin: "package",
+            },
+            handlers: new Map(),
+            tools: new Map(),
+            messageRenderers: new Map(),
+            flags: new Map(),
+            shortcuts: new Map(),
+            commands: new Map(),
+          },
+        ];
+        const observed: string[] = [];
+        extensions[0]!.handlers.set("before_agent_start", [
+          async (input) => {
+            const event = input as BeforeAgentStartEvent;
+            event.systemPromptOptions.sections.earlier = "earlier extension";
+            if (mode === "forced-before") {
+              return {
+                systemPrompt: event.systemPrompt + "\n\nopaque earlier",
+              };
+            }
+          },
+          async (event, ctx) =>
+            (await handler(event, ctx)) as
+              | BeforeAgentStartEventResult
+              | undefined,
+          async (input) => {
+            const event = input as BeforeAgentStartEvent;
+            observed.push(event.systemPrompt);
+            if (mode === "forced-after") {
+              return { systemPrompt: event.systemPrompt + "\n\nopaque later" };
+            }
+          },
+        ]);
+        const runner = new ExtensionRunner(
+          extensions,
+          createExtensionRuntime(),
+          dir,
+          manager,
+          {} as ConstructorParameters<typeof ExtensionRunner>[4],
+        );
+        const errors: unknown[] = [];
+        runner.onError((error) => errors.push(error));
+        const options = {
+          cwd: dir,
+          appendSystemPrompt: "user appended prompt",
+          contextFiles: [{ path: "/AGENTS.md", content: "project guidance" }],
+          selectedTools: ["read"],
+          toolSnippets: { read: "read files" },
+          sections: { existing: "existing section" },
+          skills: [
+            {
+              name: "test-skill",
+              description: "skill guidance",
+              filePath: "/skills/test/SKILL.md",
+              baseDir: "/skills/test",
+              sourceInfo: extensions[0]!.sourceInfo,
+              disableModelInvocation: false,
+            },
+          ],
+        };
+        const first = await runner.emitBeforeAgentStart(
+          "first",
+          undefined,
+          options,
+        );
+        expect(errors).toEqual([]);
+        const body = `Axi/custom-harness/${manager.getSessionId()}/${dir}\nconfigured variable`;
+        const rendered = observed[0]!;
+        for (const text of [
+          "read files",
+          "user appended prompt",
+          "project guidance",
+          "skill guidance",
+          "existing section",
+          "earlier extension",
+          body,
+        ]) {
+          expect(rendered).toContain(text);
+        }
+        expect(rendered.indexOf("user appended prompt")).toBeLessThan(
+          rendered.indexOf("project guidance"),
+        );
+        expect(rendered.indexOf("earlier extension")).toBeLessThan(
+          rendered.indexOf(body),
+        );
+        expect(rendered.indexOf("project guidance")).toBeLessThan(
+          rendered.indexOf("skill guidance"),
+        );
+        if (mode === "structured") {
+          expect(first.systemPromptOptions.forceSystemPrompt).toBeUndefined();
+          expect(first.systemPromptOptions.sections.system_prompt_body).toBe(
+            body,
+          );
+        } else {
+          expect(first.systemPromptOptions.forceSystemPrompt).toContain(
+            mode === "forced-before" ? "opaque earlier" : "opaque later",
+          );
+          expect(first.systemPromptOptions.forceSystemPrompt).toContain(body);
+        }
+        // Run options are rebuilt each turn; session changes must not reuse an
+        // interpolated body or accumulate another copy of the previous turn.
+        manager.newSession();
+        const second = await runner.emitBeforeAgentStart(
+          "second",
+          undefined,
+          options,
+        );
+        expect(errors).toEqual([]);
+        expect(observed[1]).toContain(manager.getSessionId());
+        expect(observed[1]).not.toContain(body);
+        expect(observed[1]!.split("configured variable")).toHaveLength(2);
+        expect(second.systemPromptOptions.appendSystemPrompt).toBe(
+          options.appendSystemPrompt,
+        );
+        expect(options.sections).toEqual({ existing: "existing section" });
+      },
+    );
+
     it("registers before_agent_start with default config when enabled", () => {
       setGlobalSettingsPath(
         path.join(tmpdir, `nonexistent-${Date.now()}.json`),
@@ -218,16 +373,19 @@ if (import.meta.vitest) {
 
       extension(harness.pi);
       const handler = harness.handlers.get("before_agent_start");
-      const result = (await handler?.(
-        { systemPrompt: "upstream prompt" },
+      const systemPromptOptions = { sections: {} as Record<string, string> };
+      const result = await handler?.(
+        { systemPrompt: "upstream prompt", systemPromptOptions },
         createMockContext(),
-      )) as { systemPrompt: string };
+      );
 
-      expect(result.systemPrompt).toContain("upstream prompt\n\nYou are Pi.");
-      expect(result.systemPrompt).toContain("Session ID: session-123");
-      expect(result.systemPrompt).not.toContain("# Tool usage");
-      expect(result.systemPrompt).not.toContain("<available_skills>");
-      expect(result.systemPrompt).not.toContain("What pi does NOT have");
+      const body = systemPromptOptions.sections.system_prompt_body;
+      expect(result).toBeUndefined();
+      expect(body).toContain("You are Pi.");
+      expect(body).toContain("Session ID: session-123");
+      expect(body).not.toContain("# Tool usage");
+      expect(body).not.toContain("<available_skills>");
+      expect(body).not.toContain("What pi does NOT have");
     });
 
     it("preserves explicit prompt and harness documentation overrides", async () => {
@@ -254,7 +412,10 @@ if (import.meta.vitest) {
       extension(harness.pi);
       const handler = harness.handlers.get("before_agent_start");
       const result = (await handler?.(
-        { systemPrompt: "upstream prompt" },
+        {
+          systemPrompt: "upstream prompt",
+          systemPromptOptions: { forceSystemPrompt: "upstream prompt" },
+        },
         createMockContext(),
       )) as { systemPrompt: string };
 
