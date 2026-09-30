@@ -44,9 +44,41 @@ layering and custom rendering. virtual routing and nested accounting merit
 evaluation after that compatibility work; they do not replace separate child
 conversations or durable messaging.
 
-no upgrade, activation or live-provider comparison was performed.
+## 0.99.1 upgrade follow-up
 
-## evidence
+the user subsequently authorized the upgrade. pi-ai, coding-agent and tui now
+use 0.99.1; frozen installation and the global CLI version check passed.
+existing provider, transcript/TUI and unbundled-CLI patches remain necessary
+and were ported rather than silently discarded.
+
+additional adoption:
+
+- child prompt/follow-up receipts must confirm accepted input; handled,
+  rejected, malformed or missing receipts cannot masquerade as successful work.
+- child totals include native tool-result usage once, without recursively
+  recounting nested events or transcript details.
+- the T3 bridge awaits promise-returning submission adapters and forwards nested
+  parent tool-call IDs. its submitted receipt is still not proof of acceptance:
+  the native extension send-user-message API does not return that disposition.
+- command ownership recognizes native built-in provenance.
+- known web charges contribute native zero-token usage; reading retained pages
+  costs zero. unknown prices remain unknown. web tools use model-only exposure:
+  nested results do not persist the transcript evidence their cursors require.
+
+codemode and virtual models remain opt-in. no measured routing benefit warrants
+replacing explicit task defaults, and bulk deferred/codemode exposure could
+weaken restricted child-tool boundaries. the configured custom theme remains;
+upstream's new system-theme default does not require a renderer rewrite.
+
+verification: frozen install, build typecheck, extension artifact build and
+328 targeted tests passed, including source/built Codex request schemas, native
+RPC rejection fixtures, nested accounting, host bridge and prompt layering.
+format checks passed. review found no actionable regressions.
+no activation, live-provider request or visual/browser inspection was performed.
+remaining peer warnings concern coverage/vitest and OpenAI/undici compatibility;
+the security overrides were retained rather than downgrading dependencies.
+
+## 0.87.1 adoption evidence
 
 typechecking and 109 targeted tests passed; two gated delegate tests skipped.
 tests exercise subprocess protocol fixtures, native tool selection, native

@@ -34,9 +34,9 @@ type PaletteState =
   | { kind: "arguments"; entry: ArgumentEntry; input: Input };
 type Command = ReturnType<ExtensionAPI["getCommands"]>[number];
 
-/** native interactive commands are absent from getCommands and cannot be dispatched
+/** native interactive handlers are absent from getCommands and cannot be dispatched
  * through prompt; keep their public-API adapters separate. runtime dispatches
- * extensions before expanding skills, then templates; hide shadowed names. */
+ * extensions (including builtin extensions) before skills, then templates. */
 function resolveInvocations(pi: ExtensionAPI): Command[] {
   const names = new Set<string>();
   const order = { extension: 0, skill: 1, prompt: 2 };
@@ -52,6 +52,7 @@ function resolveInvocations(pi: ExtensionAPI): Command[] {
 function isOwnCommand(command: Command, cwd: string): boolean {
   if (
     command.source !== "extension" ||
+    command.sourceInfo.source === "builtin" ||
     !/^palette(?::\d+)?$/.test(command.name)
   )
     return false;
@@ -162,7 +163,7 @@ export function paletteEntries(
         (command): ArgumentEntry => ({
           value: `command:${command.source}:${command.name}`,
           label: `/${command.name}`,
-          description: `${command.source === "prompt" ? "template prompt" : command.source === "skill" ? "skill prompt" : "extension"} · ${command.description ?? command.sourceInfo.source}`,
+          description: `${command.source === "prompt" ? "template prompt" : command.source === "skill" ? "skill prompt" : command.sourceInfo.source === "builtin" ? "builtin extension" : "extension"} · ${command.description ?? command.sourceInfo.source}`,
           warning:
             command.source === "extension"
               ? "extension: runs immediately; may change draft"
@@ -878,6 +879,42 @@ if (import.meta.vitest) {
       );
       expect(entries).toHaveLength(1);
       expect(entries[0]?.description).toContain("extension");
+    });
+
+    it("classifies builtin extensions by provenance without changing dispatch or drafts", async () => {
+      const h = harness();
+      const builtin = {
+        ...command("native-review"),
+        sourceInfo: {
+          path: "builtin:review",
+          source: "builtin",
+          scope: "temporary" as const,
+          origin: "top-level" as const,
+        },
+      };
+      h.inventory.commands = [
+        builtin,
+        command("mcp"),
+        command("native-review", "prompt"),
+      ];
+      const entries = paletteEntries(h.pi, h.ctx);
+      expect(
+        entries.find((entry) => entry.label === "/native-review")?.description,
+      ).toContain("builtin extension");
+      expect(
+        entries.find((entry) => entry.label === "/mcp")?.description,
+      ).not.toContain("builtin");
+      const pending = h.start();
+      h.type("/native-review");
+      h.key("\r");
+      expect(h.text()).toContain("runs immediately; may change draft");
+      h.key("\r");
+      await pending;
+      expect(h.api.sendUserMessage).toHaveBeenCalledExactlyOnceWith(
+        "/native-review",
+        { expandPromptTemplates: true, deliverAs: "followUp" },
+      );
+      h.assertNoEditorAccess();
     });
 
     it("prefers skill expansion over a template with the same skill: invocation", () => {

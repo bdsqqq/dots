@@ -448,6 +448,8 @@ export function createReadWebPageTool(
 ): ToolDefinition<typeof readWebPageSchema> {
   return {
     name: "read_web_page",
+    // Cursor authority requires a model-issued result in the current transcript.
+    exposure: "model-only",
     label: "Read Web Page",
     description:
       "Read evidence from public web URLs, without answering or hosted research. Outputs: " +
@@ -757,6 +759,7 @@ if (import.meta.vitest) {
   });
   describe("read_web_page evidence outputs", () => {
     it("derives schema choices from the implementation registry", () => {
+      expect(createReadWebPageTool().exposure).toBe("model-only");
       expect(
         (
           readWebPageSchema.properties.output.items as unknown as {
@@ -764,6 +767,33 @@ if (import.meta.vitest) {
           }
         ).enum,
       ).toEqual(Object.keys(outputRegistry));
+    });
+    it("reports priced Extract and free direct requests, but omits unknown totals", async () => {
+      const fetch = network({
+        results: [extracted],
+        errors: [],
+        usage: [{ name: "sku_extract_excerpts", count: 2 }],
+      });
+      expect((await run({ url })).usage).toMatchObject({
+        totalTokens: 0,
+        cost: { total: 0.002 },
+      });
+      expect((await run({ url, raw: true })).usage).toMatchObject({
+        totalTokens: 0,
+        cost: { total: 0 },
+      });
+      fetch.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            results: [extracted],
+            errors: [],
+            usage: [{ name: "unknown", count: 1 }],
+          }),
+        ),
+      );
+      const unknown = await run({ url });
+      expect(unknown.details).not.toHaveProperty("cost");
+      expect(unknown.usage).toBeUndefined();
     });
     for (let mask = 1; mask < 1 << outputNames.length; mask++) {
       const selected = outputNames.filter((_, i) => mask & (1 << i));
@@ -1140,6 +1170,10 @@ if (import.meta.vitest) {
           continuationContext,
         );
         expect((current.details as RecordValue).cost).toBe(0);
+        expect(current.usage).toMatchObject({
+          totalTokens: 0,
+          cost: { total: 0 },
+        });
       }
       expect(reconstructed.endsWith(source)).toBe(true);
       expect(fetch).toHaveBeenCalledTimes(1);
