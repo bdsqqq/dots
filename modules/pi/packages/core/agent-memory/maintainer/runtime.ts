@@ -1644,9 +1644,9 @@ export async function runMaintainer(
 ): Promise<MaintainerRunReport> {
   const clock = options.clock ?? (() => new Date());
   const model = options.model ?? {
-    model: process.env.PI_MEMORY_MODEL || "openai-codex/gpt-6-astra",
+    model: process.env.PI_MEMORY_MODEL || "openai-codex/gpt-6.1-sol",
     reasoning: (process.env.PI_MEMORY_REASONING_LEVEL ||
-      "low") as ModelConfig["reasoning"],
+      "medium") as ModelConfig["reasoning"],
   };
   const operation = createWideEvent({
     service: "pi-memory",

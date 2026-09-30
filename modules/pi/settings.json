@@ -10,8 +10,8 @@
     "enabled": true
   },
   "lastChangelogVersion": "0.87.1",
-  "defaultModel": "gpt-6-astra",
-  "defaultThinkingLevel": "low",
+  "defaultModel": "gpt-6.1-sol",
+  "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "steeringMode": "all",
   "followUpMode": "all",
