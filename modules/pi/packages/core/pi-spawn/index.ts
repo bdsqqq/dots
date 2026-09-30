@@ -260,7 +260,8 @@ export interface PiSpawnConfig {
    * uses pi's RPC mode instead of print mode. the follow-up is queued
    * eagerly at startup (not delivered until idle), so the agent loop's
    * getFollowUpMessages() finds it after exploration completes. the
-   * process is killed after the second end_turn.
+   * process is terminated after agent_settled, including automatic recovery
+   * and queued follow-up work.
    *
    * primary use case: code_review — agent explores the diff first,
    * then receives the report format instructions.
@@ -411,14 +412,15 @@ function readSessionHeaderId(filePath: string): string | undefined {
   }
 }
 
-async function findLocalSessionFileByExactId(
+function findLocalSessionFileByExactId(
   cwd: string,
   sessionId: string,
   sessionDir?: string,
-): Promise<string | undefined> {
+): string | undefined {
   if (!sessionId) return undefined;
-  const sessions = await SessionManager.list(cwd, sessionDir);
-  return sessions.find((session) => session.id === sessionId)?.path;
+  // Match native CLI resolution: exact header ID and cwd, without reading
+  // transcripts. Duplicate IDs use the first native discovery match, not recency.
+  return SessionManager.findById(cwd, sessionId, sessionDir);
 }
 
 function materializeSessionFile(sessionManager: SessionManager): void {
@@ -451,11 +453,7 @@ async function createLinkedSessionFile(
   parentSession: string | undefined,
 ): Promise<{ sessionId: string; sessionFile: string }> {
   if (sessionId) {
-    const existing = await findLocalSessionFileByExactId(
-      cwd,
-      sessionId,
-      sessionDir,
-    );
+    const existing = findLocalSessionFileByExactId(cwd, sessionId, sessionDir);
     if (existing) return { sessionId, sessionFile: existing };
   }
 
@@ -687,6 +685,8 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       transportError?: string;
       rpcCompleted: boolean;
     }>((resolve) => {
+      // RpcClient hardcodes `node <cliPath>` and does not detach children.
+      // Raw stdio preserves PI_BIN overrides and process-group cancellation.
       const proc = spawn(piBin, args, {
         cwd: config.cwd,
         detached: process.platform !== "win32",
@@ -705,10 +705,8 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
         terminate();
       });
 
-      // RPC state: track end_turns to know when to kill
-      let endTurnCount = 0;
+      // Only the session-level boundary includes retries and queued work.
       let rpcCompleted = false;
-      const expectedTurns = config.followUp ? 2 : 1;
 
       // send initial prompt via RPC stdin, then immediately queue follow_up.
       // follow_up is queued (not delivered) until the agent is idle, so the
@@ -746,6 +744,14 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
 
         // skip RPC protocol responses (acks for prompt/follow_up/abort commands)
         if (event.type === "response") return;
+
+        if (useRpc && event.type === "agent_settled") {
+          rpcCompleted = true;
+          // Work is complete; the kill escalation timer bounds cleanup now.
+          if (timeoutTimer) clearTimeout(timeoutTimer);
+          debug("agent_settled");
+          terminate();
+        }
 
         if (event.type === "message_end" && event.message) {
           const msg = event.message as Message;
@@ -785,37 +791,8 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
               result.model = `${msg.provider}/${msg.model}`;
             }
             if (msg.stopReason) result.stopReason = msg.stopReason;
-            if (msg.errorMessage) result.errorMessage = msg.errorMessage;
-
-            const { stopReason } = msg;
-            const isTurnEnd = stopReason === "stop";
-            debug("turn_end", {
-              stopReason,
-              isTurnEnd,
-              endTurnCount,
-              expectedTurns,
-            });
-
-            // RPC kill logic: terminate after expected number of end_turns.
-            // follow_up was already queued eagerly at startup, so we just
-            // count turns and kill when done.
-            if (useRpc && isTurnEnd) {
-              endTurnCount++;
-              if (endTurnCount >= expectedTurns) {
-                rpcCompleted = true;
-                debug("kill_after_turn", { endTurnCount });
-                terminate();
-              }
-            }
-
-            // RPC: if agent errors, terminate immediately
-            if (
-              useRpc &&
-              (stopReason === "error" || stopReason === "aborted")
-            ) {
-              debug("kill_after_error", { stopReason });
-              terminate();
-            }
+            // A retry may recover from an earlier assistant error.
+            result.errorMessage = msg.errorMessage;
           }
 
           if (config.onUpdate) config.onUpdate({ ...result });
@@ -848,10 +825,10 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       }) => {
         if (settled) return;
         settled = true;
+        if (buffer.trim()) processLine(buffer);
         if (config.signal) config.signal.removeEventListener("abort", killProc);
         if (killTimer) clearTimeout(killTimer);
         if (timeoutTimer) clearTimeout(timeoutTimer);
-        if (buffer.trim()) processLine(buffer);
         resolve({ ...value, rpcCompleted, transportError });
       };
       const terminate = () => {
@@ -916,11 +893,21 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       lifecycle.status = "failed";
       lifecycle.errorKind = "transport";
     }
-    // RPC processes are killed intentionally — don't treat SIGTERM exit as error
+    // Native RPC handles SIGTERM with exit 143; escalation may yield SIGKILL.
+    // Normalize only our completed shutdown, never cancellation or other exits.
     const expectedRpcTermination =
+      !wasAborted &&
+      !wasTimedOut &&
+      !outcome.spawnError &&
+      !outcome.transportError &&
       useRpc &&
       outcome.rpcCompleted &&
-      (result.stopReason === "end_turn" || result.stopReason === "stop");
+      (outcome.code === 0 ||
+        outcome.code === 143 ||
+        outcome.signal === "SIGTERM" ||
+        outcome.signal === "SIGKILL") &&
+      result.stopReason !== "error" &&
+      result.stopReason !== "aborted";
     if (expectedRpcTermination) {
       result.exitCode = 0;
       lifecycle.status = "succeeded";
@@ -934,8 +921,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       !outcome.rpcCompleted
     ) {
       result.exitCode = result.exitCode || 1;
-      result.errorMessage ??=
-        "pi RPC ended before all expected turns completed";
+      result.errorMessage ??= "pi RPC ended before agent_settled";
       lifecycle.status = "failed";
       lifecycle.errorKind = "agent";
     } else if (
@@ -945,6 +931,7 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
       !outcome.transportError &&
       (result.stopReason === "error" || result.stopReason === "aborted")
     ) {
+      result.exitCode = result.exitCode || 1;
       lifecycle.status = "failed";
       lifecycle.errorKind = "agent";
     } else if (
@@ -1173,6 +1160,58 @@ if (import.meta.vitest) {
       expect(exactRouting.meta?.sessionFile).toBe(existing.getSessionFile());
     });
 
+    it("filters exact header ids by cwd in a shared custom directory", async () => {
+      const cwd = makeTmpDir();
+      const otherCwd = makeTmpDir();
+      const sessionDir = path.join(cwd, "sessions");
+      const foreign = SessionManager.create(otherCwd, sessionDir, {
+        id: "shared-id",
+      });
+      materializeSessionFile(foreign);
+      const foreignPath = path.join(sessionDir, "foreign.jsonl");
+      fs.renameSync(foreign.getSessionFile()!, foreignPath);
+      const local = SessionManager.create(cwd, sessionDir, { id: "shared-id" });
+      materializeSessionFile(local);
+      // Discovery uses the header, not the filename or transcript validity.
+      const renamed = path.join(sessionDir, "not-the-session-id.jsonl");
+      fs.renameSync(local.getSessionFile()!, renamed);
+      fs.appendFileSync(renamed, "invalid transcript body\n");
+
+      const routing = await resolveSessionRouting(
+        cwd,
+        { id: "shared-id" },
+        { PI_CODING_AGENT_SESSION_DIR: sessionDir },
+      );
+      expect(routing.meta?.sessionFile).toBe(renamed);
+      expect(
+        findLocalSessionFileByExactId(otherCwd, "shared-id", sessionDir),
+      ).toBe(foreignPath);
+      expect(
+        findLocalSessionFileByExactId(cwd, "shared", sessionDir),
+      ).toBeUndefined();
+    });
+
+    it("uses the native first header match for duplicate exact ids", async () => {
+      const cwd = makeTmpDir();
+      const sessionDir = path.join(cwd, "sessions");
+      const original = SessionManager.create(cwd, sessionDir, {
+        id: "duplicate",
+      });
+      materializeSessionFile(original);
+      fs.copyFileSync(
+        original.getSessionFile()!,
+        path.join(sessionDir, "duplicate-copy.jsonl"),
+      );
+      const nativeMatch = SessionManager.findById(cwd, "duplicate", sessionDir);
+      expect(nativeMatch).toBeDefined();
+      const routing = await resolveSessionRouting(
+        cwd,
+        { id: "duplicate" },
+        { PI_CODING_AGENT_SESSION_DIR: sessionDir },
+      );
+      expect(routing.meta?.sessionFile).toBe(nativeMatch);
+    });
+
     it("keeps non-persistent sessions ephemeral", async () => {
       const routing = await resolveSessionRouting(
         makeTmpDir(),
@@ -1185,6 +1224,244 @@ if (import.meta.vitest) {
   });
 
   describe("piSpawn lifecycle", () => {
+    const emit = (event: unknown) =>
+      `process.stdout.write(${JSON.stringify(JSON.stringify(event) + "\n")});`;
+    const assistantEnd = (stopReason: string, errorMessage?: string) => ({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: stopReason }],
+        stopReason,
+        errorMessage,
+        timestamp: 0,
+        usage: toToolUsage({ ...zeroUsage(), input: 2, output: 1 }),
+      },
+    });
+    const rpcFixture = (records: string[]) => {
+      const script = path.join(makeTmpDir(), "rpc-fixture.mjs");
+      fs.writeFileSync(
+        script,
+        `
+        let buffer = "";
+        let started = false;
+        process.stdin.setEncoding("utf8");
+        process.stdin.on("data", async chunk => {
+          buffer += chunk;
+          const lines = buffer.split("\\n");
+          // Reading both commands first proves eager queueing.
+          if (started || lines.length < 3) return;
+          started = true;
+          process.stderr.write(lines.slice(0, 2).join("\\n") + "\\n");
+          ${records.join("\n")}
+          setInterval(() => {}, 1000);
+        });
+      `,
+      );
+      return makeFakePi(
+        `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)}`,
+      );
+    };
+
+    it("waits through retryable errors and clears recovered error state", async () => {
+      process.env.PI_BIN = rpcFixture([
+        emit(assistantEnd("error", "529 overloaded")),
+        emit({ type: "agent_end", messages: [], willRetry: true }),
+        emit({ type: "auto_retry_start", attempt: 1, delayMs: 50 }),
+        "await new Promise(resolve => setTimeout(resolve, 50));",
+        emit(assistantEnd("stop")),
+        emit({ type: "auto_retry_end", success: true, attempt: 1 }),
+        emit(assistantEnd("stop")),
+        // The old stop counter would kill before this settled boundary.
+        "await new Promise(resolve => setTimeout(resolve, 50));",
+        emit({ type: "agent_settled" }),
+      ]);
+      const result = await piSpawn({
+        cwd: makeTmpDir(),
+        task: "explore",
+        followUp: "report",
+        session: { persist: false },
+        timeoutMs: 2000,
+      });
+      expect(result.lifecycle?.status).toBe("succeeded");
+      expect(result.exitCode).toBe(0);
+      expect(result.stopReason).toBe("stop");
+      expect(result.errorMessage).toBeUndefined();
+      expect(result.usage).toMatchObject({ turns: 3, input: 6, output: 3 });
+      expect(result.messages).toHaveLength(3);
+      expect(
+        result.stderr
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line)),
+      ).toEqual([
+        { type: "prompt", message: "Delegated task: explore" },
+        { type: "follow_up", message: "report" },
+      ]);
+    });
+
+    it("keeps both queued phases alive until settled, not stop or agent_end", async () => {
+      process.env.PI_BIN = rpcFixture([
+        emit(assistantEnd("stop")),
+        emit({ type: "agent_end", messages: [], willRetry: false }),
+        "await new Promise(resolve => setTimeout(resolve, 50));",
+        emit({
+          type: "message_end",
+          message: {
+            role: "user",
+            content: "report",
+            timestamp: 1,
+          },
+        }),
+        emit(assistantEnd("stop")),
+        "await new Promise(resolve => setTimeout(resolve, 50));",
+        emit({
+          type: "message_end",
+          message: {
+            role: "toolResult",
+            toolCallId: "late",
+            toolName: "fixture",
+            content: [],
+            isError: false,
+            timestamp: 2,
+          },
+        }),
+        emit({ type: "agent_settled" }),
+      ]);
+      const result = await piSpawn({
+        cwd: makeTmpDir(),
+        task: "explore",
+        followUp: "report",
+        session: { persist: false },
+        timeoutMs: 2000,
+      });
+      expect(result.lifecycle?.status).toBe("succeeded");
+      expect(result.messages.map((message) => message.role)).toEqual([
+        "assistant",
+        "user",
+        "assistant",
+        "toolResult",
+      ]);
+      expect(result.usage.turns).toBe(2);
+    });
+
+    it.each(["error", "aborted"])(
+      "classifies settled assistant %s as agent failure",
+      async (stopReason) => {
+        process.env.PI_BIN = rpcFixture([
+          emit(assistantEnd(stopReason, "final failure")),
+          "await new Promise(resolve => setTimeout(resolve, 50));",
+          emit({
+            type: "message_end",
+            message: {
+              role: "user",
+              content: "settling",
+              timestamp: 1,
+            },
+          }),
+          emit({ type: "agent_settled" }),
+        ]);
+        const result = await piSpawn({
+          cwd: makeTmpDir(),
+          task: "explore",
+          followUp: "report",
+          session: { persist: false },
+          timeoutMs: 2000,
+        });
+        expect(result.lifecycle).toMatchObject({
+          status: "failed",
+          errorKind: "agent",
+        });
+        expect(result.stopReason).toBe(stopReason);
+        expect(result.errorMessage).toBe("final failure");
+        expect(result.messages).toHaveLength(2);
+        expect(result.exitCode).toBe(1);
+        expect(isPiSpawnFailure(result)).toBe(true);
+      },
+    );
+
+    it("times out RPC stops without a settled boundary", async () => {
+      process.env.PI_BIN = rpcFixture([
+        emit(assistantEnd("stop")),
+        emit(assistantEnd("stop")),
+      ]);
+      const result = await piSpawn({
+        cwd: makeTmpDir(),
+        task: "explore",
+        followUp: "report",
+        session: { persist: false },
+        timeoutMs: 200,
+      });
+      expect(result.messages).toHaveLength(2);
+      expect(result.lifecycle).toMatchObject({
+        status: "timed_out",
+        errorKind: "timeout",
+      });
+      expect(result.exitCode).toBe(1);
+    });
+
+    it("does not let a buffered settled boundary override cancellation", async () => {
+      const controller = new AbortController();
+      process.env.PI_BIN = rpcFixture([
+        emit(assistantEnd("stop")),
+        emit({ type: "agent_settled" }),
+      ]);
+      const result = await piSpawn({
+        cwd: makeTmpDir(),
+        task: "explore",
+        followUp: "report",
+        session: { persist: false },
+        timeoutMs: 2000,
+        signal: controller.signal,
+        onUpdate: () => controller.abort(),
+      });
+      expect(result.lifecycle).toMatchObject({
+        status: "cancelled",
+        errorKind: "cancelled",
+        cancellationRequestedAt: expect.any(String),
+      });
+      expect(result.exitCode).toBe(1);
+      expect(result.stopReason).toBe("aborted");
+    });
+
+    it("uses settled rather than a particular successful stop reason", async () => {
+      process.env.PI_BIN = rpcFixture([
+        emit(assistantEnd("length")),
+        emit({ type: "agent_settled" }),
+      ]);
+      const result = await piSpawn({
+        cwd: makeTmpDir(),
+        task: "explore",
+        followUp: "report",
+        session: { persist: false },
+        timeoutMs: 2000,
+      });
+      expect(result.lifecycle?.status).toBe("succeeded");
+      expect(result.stopReason).toBe("length");
+      expect(result.exitCode).toBe(0);
+    });
+
+    it("preserves unexpected shutdown failures after settled", async () => {
+      process.env.PI_BIN = rpcFixture([
+        'process.on("SIGTERM", () => process.exit(23));',
+        emit(assistantEnd("stop")),
+        emit({ type: "agent_settled" }),
+      ]);
+      const result = await piSpawn({
+        cwd: makeTmpDir(),
+        task: "explore",
+        followUp: "report",
+        session: { persist: false },
+        timeoutMs: 2000,
+      });
+      expect(result.exitCode).toBe(23);
+      expect(result.lifecycle).toMatchObject({
+        status: "failed",
+        errorKind: "exit",
+        exitCode: 23,
+        signal: null,
+      });
+    });
+
     it("records successful process lifecycle and inferred ownership", async () => {
       const cwd = makeTmpDir();
       const parentSession = path.join(cwd, "parent.jsonl");
