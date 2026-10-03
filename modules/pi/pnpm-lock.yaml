@@ -7,17 +7,17 @@ settings:
 catalogs:
   default:
     '@earendil-works/pi-ai':
-      specifier: 0.99.1
-      version: 0.99.1
+      specifier: 1.0.0
+      version: 1.0.0
     '@earendil-works/pi-coding-agent':
-      specifier: 0.99.1
-      version: 0.99.1
+      specifier: 1.0.0
+      version: 1.0.0
     '@earendil-works/pi-tui':
-      specifier: 0.99.1
-      version: 0.99.1
+      specifier: 1.0.0
+      version: 1.0.0
     typebox:
-      specifier: ^1.1.38
-      version: 1.1.38
+      specifier: ^1.3.34
+      version: 1.3.34
 
 overrides:
   brace-expansion@>=2.0.0 <2.1.4: 2.1.4
@@ -28,55 +28,49 @@ overrides:
   undici@>=8.0.0 <8.9.0: 8.9.0
 
 patchedDependencies:
-  '@earendil-works/pi-ai@0.99.1': 32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327
-  '@earendil-works/pi-coding-agent@0.99.1': ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a
-  '@earendil-works/pi-tui@0.99.1': bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303
-  '@letta-ai/trajectory@0.2.1': f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157
+  '@earendil-works/pi-ai@1.0.0': 32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327
+  '@earendil-works/pi-coding-agent@1.0.0': 99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2
+  '@earendil-works/pi-tui@1.0.0': bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303
+  '@letta-ai/trajectory@0.4.3': f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157
 
 importers:
 
   .:
     dependencies:
-      '@earendil-works/pi-ai':
-        specifier: 'catalog:'
-        version: 0.99.1(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       defuddle:
-        specifier: ^0.18.1
-        version: 0.18.1
+        specifier: ^0.19.4
+        version: 0.19.4
       diff:
-        specifier: ^8.0.0
-        version: 8.0.4
+        specifier: ^9.0.0
+        version: 9.0.0
       evlog:
-        specifier: ^2.22.4
-        version: 2.22.4(vite@7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
+        specifier: ^2.29.0
+        version: 2.29.0(vite@7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
-      jsdom:
-        specifier: ^29.1.1
-        version: 29.1.1
-      typebox:
-        specifier: 'catalog:'
-        version: 1.1.38
+      linkedom:
+        specifier: ^0.18.13
+        version: 0.18.13
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
     devDependencies:
-      '@types/jsdom':
-        specifier: ^28.0.1
-        version: 28.0.3
+      '@earendil-works/pi-ai':
+        specifier: 'catalog:'
+        version: 1.0.0(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-coding-agent':
+        specifier: 'catalog:'
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-tui':
+        specifier: 'catalog:'
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       '@types/node':
         specifier: ^24.0.0
         version: 24.12.4
       '@vitest/coverage-v8':
         specifier: ^3.0.0
-        version: 3.2.4(vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0))
+        version: 3.2.4(vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0))
       oxfmt:
         specifier: ^0.35.0
         version: 0.35.0
@@ -89,9 +83,12 @@ importers:
       tsdown:
         specifier: ^0.21.0
         version: 0.21.4(typescript@5.9.3)
+      typebox:
+        specifier: 'catalog:'
+        version: 1.3.34
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/agent-memory:
     dependencies:
@@ -102,28 +99,28 @@ importers:
         specifier: workspace:*
         version: link:../log
       '@letta-ai/trajectory':
-        specifier: 0.2.1
-        version: 0.2.1(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)
+        specifier: 0.4.3
+        version: 0.4.3(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/background-completion:
     dependencies:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
 
   packages/core/box-chrome:
     devDependencies:
       vitest:
         specifier: '*'
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/box-format:
     dependencies:
@@ -135,58 +132,58 @@ importers:
         version: link:../show
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/codex-patch:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/config:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/file-tracker:
     dependencies:
       diff:
-        specifier: ^8.0.0
-        version: 8.0.4
+        specifier: ^9.0.0
+        version: 9.0.0
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/fs:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/github-api:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/html-to-md:
     dependencies:
       defuddle:
-        specifier: ^0.18.1
-        version: 0.18.1
-      jsdom:
-        specifier: ^29.1.1
-        version: 29.1.1
+        specifier: ^0.19.4
+        version: 0.19.4
+      linkedom:
+        specifier: ^0.18.13
+        version: 0.18.13
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/interpolate:
     dependencies:
@@ -196,17 +193,17 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/log:
     dependencies:
       evlog:
-        specifier: ^2.22.4
-        version: 2.22.4(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
+        specifier: ^2.29.0
+        version: 2.29.0(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/mentions:
     dependencies:
@@ -216,19 +213,19 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/mutex:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/output-buffer:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/pi-spawn:
     dependencies:
@@ -240,24 +237,24 @@ importers:
         version: link:../interpolate
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/prompt-patch:
     dependencies:
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
 
   packages/core/sessions:
     dependencies:
@@ -269,11 +266,11 @@ importers:
     dependencies:
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/show-renderer:
     dependencies:
@@ -283,10 +280,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/sub-agent-render:
     dependencies:
@@ -302,16 +299,16 @@ importers:
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/tool-cost:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/tool-policy:
     dependencies:
@@ -321,26 +318,26 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/tui:
     devDependencies:
       vitest:
         specifier: '*'
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/core/web-retrieval:
     dependencies:
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/apply-patch:
     dependencies:
@@ -364,17 +361,17 @@ importers:
         version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/bash:
     dependencies:
@@ -404,23 +401,23 @@ importers:
         version: link:../../core/tui
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/cmux-notify:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/code-review:
     dependencies:
@@ -459,17 +456,17 @@ importers:
         version: link:../web-search
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/delegate:
     dependencies:
@@ -514,29 +511,29 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/editor:
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
 
   packages/extensions/finder:
     dependencies:
@@ -566,17 +563,17 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/format-file:
     dependencies:
@@ -600,17 +597,17 @@ importers:
         version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/git:
     dependencies:
@@ -620,10 +617,10 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/github:
     dependencies:
@@ -638,17 +635,17 @@ importers:
         version: link:../../core/prompt-patch
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/glob:
     dependencies:
@@ -666,17 +663,17 @@ importers:
         version: link:../../core/prompt-patch
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/grep:
     dependencies:
@@ -694,17 +691,17 @@ importers:
         version: link:../../core/prompt-patch
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/librarian:
     dependencies:
@@ -725,17 +722,17 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/look-at:
     dependencies:
@@ -759,17 +756,17 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/ls:
     dependencies:
@@ -790,17 +787,17 @@ importers:
         version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/oracle:
     dependencies:
@@ -833,17 +830,17 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/read:
     dependencies:
@@ -867,17 +864,17 @@ importers:
         version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/read-session:
     dependencies:
@@ -901,17 +898,17 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/read-web-page:
     dependencies:
@@ -932,17 +929,17 @@ importers:
         version: link:../../core/web-retrieval
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/search-sessions:
     dependencies:
@@ -960,17 +957,17 @@ importers:
         version: link:../../core/prompt-patch
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/session-name:
     dependencies:
@@ -985,11 +982,11 @@ importers:
         version: link:../../core/mentions
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/session-recap:
     dependencies:
@@ -1001,20 +998,20 @@ importers:
         version: link:../../core/config
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/session-settlement:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/skill:
     dependencies:
@@ -1026,17 +1023,17 @@ importers:
         version: link:../../core/prompt-patch
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/system-prompt:
     dependencies:
@@ -1055,7 +1052,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/undo-edit:
     dependencies:
@@ -1079,20 +1076,20 @@ importers:
         version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@bds_pi/apply-patch':
         specifier: workspace:*
         version: link:../apply-patch
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/web-search:
     dependencies:
@@ -1110,26 +1107,26 @@ importers:
         version: link:../../core/web-retrieval
       typebox:
         specifier: 'catalog:'
-        version: 1.1.38
+        version: 1.3.34
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       vitest:
         specifier: ^3.0.0
-        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+        version: 3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
 
   packages/extensions/zmx:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+        version: 1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
-        version: 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+        version: 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
 
 packages:
 
@@ -1146,20 +1143,13 @@ packages:
       zod:
         optional: true
 
-  '@asamuzakjp/css-color@5.1.11':
-    resolution: {integrity: sha512-KVw6qIiCTUQhByfTd78h2yD1/00waTmm9uy/R7Ck/ctUyAPj+AEDLkQIdJW0T8+qGgj3j5bpNKK7Q3G+LedJWg==}
-    engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+  '@asamuzakjp/css-color@7.1.2':
+    resolution: {integrity: sha512-99DHAnXDB5z6EEK+9GMpVI7Mw4oxj97dY5bpOzMnjADQWxI8rN6TvTduuFLUhUMlS7/CfVZ06tcZsus6cltnNw==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
-  '@asamuzakjp/dom-selector@7.1.1':
-    resolution: {integrity: sha512-67RZDnYRc8H/8MLDgQCDE//zoqVFwajkepHZgmXrbwybzXOEwOWGPYGmALYl9J2DOLfFPPs6kKCqmbzV895hTQ==}
-    engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
-
-  '@asamuzakjp/generational-cache@1.0.1':
-    resolution: {integrity: sha512-wajfB8KqzMCN2KGNFdLkReeHncd0AslUSrvHVvvYWuU8ghncRJoA50kT3zP9MVL0+9g4/67H+cdvBskj9THPzg==}
-    engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
-
-  '@asamuzakjp/nwsapi@2.3.9':
-    resolution: {integrity: sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==}
+  '@asamuzakjp/dom-selector@9.2.3':
+    resolution: {integrity: sha512-MDKmPBa6CfNN1zAJroTl7Uc+nBbcNtfE/F24iROfZAtcLffEeY3IbHR8XeHH5dJBspMYTpAsjEYmnp3tAmoVxw==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
   '@aws-sdk/client-bedrock-runtime@3.1127.0':
     resolution: {integrity: sha512-IDl/lrPb90aH+pZFHGNDmgH9nAUQj5PlZH1sJ3w7RikctyjHSnY3oNjZhrLoaBoQn/rNK0zsP6OHEqEhj2tdLA==}
@@ -1291,74 +1281,74 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
-  '@csstools/color-helpers@6.0.2':
-    resolution: {integrity: sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q==}
+  '@csstools/color-helpers@6.1.2':
+    resolution: {integrity: sha512-grhRy3OKmniaAEKXMjua5z/EODX0MSqBGjunw8+j/3HQjOnahs2AGhvEOIYVUWcU6ScApbhLhVrQTX8XqrMrow==}
     engines: {node: '>=20.19.0'}
 
-  '@csstools/css-calc@3.2.1':
-    resolution: {integrity: sha512-DtdHlgXh5ZkA43cwBcAm+huzgJiwx3ZTWVjBs94kwz2xKqSimDA3lBgCjphYgwgVUMWatSM0pDd8TILB1yrVVg==}
-    engines: {node: '>=20.19.0'}
-    peerDependencies:
-      '@csstools/css-parser-algorithms': ^4.0.0
-      '@csstools/css-tokenizer': ^4.0.0
-
-  '@csstools/css-color-parser@4.1.1':
-    resolution: {integrity: sha512-eZ5XOtyhK+mggRafYUWzA0tvaYOFgdY8AkgQiCJF9qNAePnUo/zmsqqYubBBb3sQ8uNUaSKTY9s9klfRaAXL0g==}
+  '@csstools/css-calc@3.4.2':
+    resolution: {integrity: sha512-tL6LRF844sHjAKO7jt2w+uHo8Tocqpb9+KPUvIQETpR4RU87IaUzDuOV0QyzuQ37jmzFgwPHLLtLu/PDuH5qgg==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
-      '@csstools/css-parser-algorithms': ^4.0.0
-      '@csstools/css-tokenizer': ^4.0.0
+      '@csstools/css-parser-algorithms': ^4.0.2
+      '@csstools/css-tokenizer': ^4.0.2
 
-  '@csstools/css-parser-algorithms@4.0.0':
-    resolution: {integrity: sha512-+B87qS7fIG3L5h3qwJ/IFbjoVoOe/bpOdh9hAjXbvx0o8ImEmUsGXN0inFOnk2ChCFgqkkGFQ+TpM5rbhkKe4w==}
+  '@csstools/css-color-parser@4.2.5':
+    resolution: {integrity: sha512-Qqbp5pjbMwoaErP2t5qne5QDVDr3G5243oNW8ev5zfyyoqbzrQKbYDpKP/cuo3xBkzwqZqpP/rChrJhBdyTX7g==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
-      '@csstools/css-tokenizer': ^4.0.0
+      '@csstools/css-parser-algorithms': ^4.0.2
+      '@csstools/css-tokenizer': ^4.0.2
 
-  '@csstools/css-syntax-patches-for-csstree@1.1.4':
-    resolution: {integrity: sha512-wgsqt92b7C7tQhIdPNxj0n9zuUbQlvAuI1exyzeNrOKOi62SD7ren8zqszmpVREjAOqg8cD2FqYhQfAuKjk4sw==}
+  '@csstools/css-parser-algorithms@4.0.2':
+    resolution: {integrity: sha512-40cSKyMvK+tq4qz6Awrlye2WGuOKt3FwPgtGg6KTfbHOWNw+Rk1rzbAtZnZ6IBhsY491HLRnDXwoyBAijmmILA==}
+    engines: {node: '>=20.19.0'}
+    peerDependencies:
+      '@csstools/css-tokenizer': ^4.0.2
+
+  '@csstools/css-syntax-patches-for-csstree@1.1.15':
+    resolution: {integrity: sha512-J0u7HkVl2nzSlhsiTOp4AmwcUQ3D+mGEEKfBy/7To5/y7F2OHwyLrXfrhR0SMgr4p5Lo+eaMVSeai24zUcBIxA==}
     peerDependencies:
       css-tree: ^3.2.1
     peerDependenciesMeta:
       css-tree:
         optional: true
 
-  '@csstools/css-tokenizer@4.0.0':
-    resolution: {integrity: sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==}
+  '@csstools/css-tokenizer@4.0.2':
+    resolution: {integrity: sha512-OoKoR0f76dCY666JlcbhmVTs2drYj1GUXZTYTcbUgJjh9Nv41aFfZ21bPQTERm5+L5cBDo466NltB2lplS5GBw==}
     engines: {node: '>=20.19.0'}
 
-  '@earendil-works/chord@0.99.1':
-    resolution: {integrity: sha512-4xyn0IBzJ+Xu/iOGi2hjXJGAR61QEhEWZsIqTDqr+GmItdquYwBO5jYFnqGiBaTqlY12/EpM7QHoEKSHbyvOug==}
+  '@earendil-works/chord@1.0.0':
+    resolution: {integrity: sha512-BIfWfrByM0pKq6tfKYXuwx0ed2CvaqIM3EDA7Dps+fP+d3CiPWdlHi1cDsJC05llqKJoRz5//G0hz0yQwwjISQ==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-agent-core@0.99.1':
-    resolution: {integrity: sha512-zywvWnj5FujeuFI/x/CJHwwxhcLIQgjqseTA+bQgX4O8gJTcgjRd/I8SZnQDqJvxC9QcV12ujiGLviv6EgwcCg==}
+  '@earendil-works/pi-agent-core@1.0.0':
+    resolution: {integrity: sha512-bHFONjtEBDqiV+g1DmmtkSlfAaqHELr+XO+6I5Nah4gswwZrLJO4yZB/JjsnlI4AKWTayBLfgS6DCbeBBz9e2Q==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-ai@0.99.1':
-    resolution: {integrity: sha512-4nV9JKc94iPX8bwdGPc2nTuVPKIPsffhnp3WoN9NYCNqbtoOF8LhYcIs/+Sn/alroqJK/5QRu6/Z6Ck+n0hyBA==}
-    engines: {node: '>=22.19.0'}
-    hasBin: true
-
-  '@earendil-works/pi-codemode@0.99.1':
-    resolution: {integrity: sha512-oh8TMsBI3SWTN3xTQtX8u5n+BKhnVXcFagroWumfn6/WWfBnDYL/LmeQtjLb83WRTb9rcu+ZdK8rFa4vggvCJg==}
-    engines: {node: '>=22.19.0'}
-
-  '@earendil-works/pi-coding-agent@0.99.1':
-    resolution: {integrity: sha512-cWUrTOqA5M73cOYMgsh9PlhDrsBhavd+n5kVY6F7BGbGl1RjqCteVCoeVMVqhngoGACVDyw1tbLjajL8l9jrHg==}
+  '@earendil-works/pi-ai@1.0.0':
+    resolution: {integrity: sha512-3/W1vdDaVtpeMd23ElvJC12HLA5yS/BGqqcXF+0SK082dN7cbgNcCwguTBRBC258Ke8SzSvUW1B75iAf8w8IxA==}
     engines: {node: '>=22.19.0'}
     hasBin: true
 
-  '@earendil-works/pi-mcp@0.99.1':
-    resolution: {integrity: sha512-YCFGPkmDzLwQuIzwfbP6Vuk/g/ukKpZhwTpbcfzomuI1Fkiu6hHRkOGwAqsO3G8cTkZWkM8vmOkFJjStQNC4qA==}
+  '@earendil-works/pi-codemode@1.0.0':
+    resolution: {integrity: sha512-LPpFI4+T9NzDnhBDs15izWAolaoM8xnwqdziRd6Zx8BQeoEPvzefD2vMMzSyF0rOtq34TfQqkZ0ki16f6cGdMg==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-telemetry@0.99.1':
-    resolution: {integrity: sha512-9PBPjGk+TXRtuMianpqBbHBpYpyKusESF6rwdmgD0WTZSTUQXhcKEO0hAINRLuSwy4V7yPvXV+EVV0ONY7mbpQ==}
+  '@earendil-works/pi-coding-agent@1.0.0':
+    resolution: {integrity: sha512-/FtbxoSQU/mEv1QnichJjRjqteqaIaMWxmhB4G367+MwZfX7/DI5B9YAg5lqbN7nztFskBEtUSZ+FlmMBECtMw==}
+    engines: {node: '>=22.19.0'}
+    hasBin: true
+
+  '@earendil-works/pi-mcp@1.0.0':
+    resolution: {integrity: sha512-rYra0aF5iPmJd+fsB+VBuqxWNABGJ3Iiyhg0CqIc/91ta2n7IvQmCp0Cac/YkUTNnvRsVZnjgAiBkRi6+ouWuw==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-tui@0.99.1':
-    resolution: {integrity: sha512-gZp0Guat96Fr1AuC/xqVz5B2lulZakp/PxD1lXx3lSgBdjiqmwYhJbcQ0HRrGAfy0WtMGn9b05RJr5qJf7oIuw==}
+  '@earendil-works/pi-telemetry@1.0.0':
+    resolution: {integrity: sha512-WjNBj5TYIiPZFQEz2WlULcDwPLaKwIlmsKjVeYM+LJSbnSp38kWsHUJysIDGnu23IcLbKoPtywsvYfUJCeZePA==}
+    engines: {node: '>=22.19.0'}
+
+  '@earendil-works/pi-tui@1.0.0':
+    resolution: {integrity: sha512-JsT7kXnpZA2YOtQu6RyriyxEO0eJIzPyfiH09bH+OLN5+s18HYkwaUD/tBkjhnSfMu6/50CQPRYJagzSP6HdPw==}
     engines: {node: '>=22.19.0'}
 
   '@emnapi/core@1.9.1':
@@ -1526,8 +1516,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@exodus/bytes@1.15.0':
-    resolution: {integrity: sha512-UY0nlA+feH81UGSHv92sLEPLCeZFjXOuHhrIo0HQydScuQc8s0A7kL/UdgwgDq8g8ilksmuoF35YVTNphV2aBQ==}
+  '@exodus/bytes@1.16.0':
+    resolution: {integrity: sha512-IcpW84uEn3N7ETtNZMlxKhfl6Pec8rUNGOTBtWbK1FKhJxIFAptZyVrvVRVBimAJxJCgc3PxepxkdWWG4DVzfA==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
     peerDependencies:
       '@noble/hashes': ^1.8.0 || ^2.0.0
@@ -1565,8 +1555,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@letta-ai/trajectory@0.2.1':
-    resolution: {integrity: sha512-0zHue8yPZAZwv5rnnnyo1cy9K5hcthJ0dEGRVjkihJ2zujKslQOKM1GcXJDZXVM3ME9txq7ZMSLLZYoLmzjnKA==}
+  '@letta-ai/trajectory@0.4.3':
+    resolution: {integrity: sha512-jTk2mOF23usegEAQag/NsgkRNjyRu/bGt9dG03VsSm7IA4R9GWn3cs8amc5Oibydt5vrUmPqlyJ60yOzBzBpzw==}
     engines: {node: '>=20'}
 
   '@mixmark-io/domino@2.2.0':
@@ -1991,141 +1981,141 @@ packages:
   '@rolldown/pluginutils@1.0.0-rc.9':
     resolution: {integrity: sha512-w6oiRWgEBl04QkFZgmW+jnU1EC9b57Oihi2ot3HNWIQRqgHp5PnYDia5iZ5FF7rpa4EQdiqMDXjlqKGXBhsoXw==}
 
-  '@rollup/rollup-android-arm-eabi@4.62.4':
-    resolution: {integrity: sha512-RrPokAb7dmbxFoeO3TloqHyOjgye8RkBhSqmp4aJMIex4c9r46ZstPnleDQOq1t46VOVjwIuwNogIqbodV1Vvg==}
+  '@rollup/rollup-android-arm-eabi@4.63.6':
+    resolution: {integrity: sha512-G6xF9OVRWsbHadMfoPNUDwW/Jt70QYG+ZDUvtYCFxjf3SPhqVAO0u9ShXZ7Cf5silVoRWyN4bDjCEKnJkXkw0w==}
     cpu: [arm]
     os: [android]
 
-  '@rollup/rollup-android-arm64@4.62.4':
-    resolution: {integrity: sha512-JKuJc+pnpks2pjy7L/N3v/cAkZxYlnmuZoD840ldbMI5KDbC4iO9NKwPKYdjYFCMAIIlBzYSFHxIJVYzRo2/8A==}
+  '@rollup/rollup-android-arm64@4.63.6':
+    resolution: {integrity: sha512-Us/kTH5e2anr1CQvO8MEq4eeCVcIXI3Ag7OFxDI30n2OW7Q7xWuxo8ItbYq28PG2Sm1NWmZzG9+SqVEaj25SFA==}
     cpu: [arm64]
     os: [android]
 
-  '@rollup/rollup-darwin-arm64@4.62.4':
-    resolution: {integrity: sha512-krw5uS2STmvJ02x0uTXHbqQNuz+9eZ1iw+qXk9dmW2gvV4jV7O2hEoOnuhFrpOPiel1mBFtqbxYZZtC46hXLOw==}
+  '@rollup/rollup-darwin-arm64@4.63.6':
+    resolution: {integrity: sha512-fwaSNrSHp9PJuEh4bKtd0mYC+G3FeVDjSTmsSiSlIYu7TFCpxrfB6lk7Ao8cIbswFyklPB1ZDUV8LkLBM15VWw==}
     cpu: [arm64]
     os: [darwin]
 
-  '@rollup/rollup-darwin-x64@4.62.4':
-    resolution: {integrity: sha512-wsTxtgApb4PrOsNJIm0FZ1h3WvCC+k9uxLJ4ad75hgoS4NiRes2SoJFlDAyMwiUY8IssDqGcHbXuN0sx1tfF1A==}
+  '@rollup/rollup-darwin-x64@4.63.6':
+    resolution: {integrity: sha512-QR2tx26gCeGh4eAGnUasfnJuRc+d7Vc0Jo1/fYtKGuiKqCuhbVpbNEvqgYGBwGDZGyS04jj+zdHi9W8uvb1Sdw==}
     cpu: [x64]
     os: [darwin]
 
-  '@rollup/rollup-freebsd-arm64@4.62.4':
-    resolution: {integrity: sha512-GUOnQlyZe3yAXhWOtOMsn5Qkrv5E5mZXa0thbARWi5Ei2szlVXJFQhddZ4HbAzh8q92w5twp+CQvs/eFanz9YQ==}
+  '@rollup/rollup-freebsd-arm64@4.63.6':
+    resolution: {integrity: sha512-7E1wRJEW8r7WlqmCy58ugndWHrzoEV/pRt2x0D9el7Inra62+Cw00lYW9XhW6iUCtFjhNw49McsSCIzJ/nG8uw==}
     cpu: [arm64]
     os: [freebsd]
 
-  '@rollup/rollup-freebsd-x64@4.62.4':
-    resolution: {integrity: sha512-/Y7f3QuxjzPKsjA/rfEDa3+0vXqyjmJ50Ln8dPpCmWkKTrUoWHG1cWhTqaAMLob2m2nESWuC7yGrREz019Ztqg==}
+  '@rollup/rollup-freebsd-x64@4.63.6':
+    resolution: {integrity: sha512-13KJeF+vDswMzEHmMIouCVcEQdov3CzAA3ZhM8QFmBJV/FZ/VMZI49UHDvPXTK+wokk86kYPmQ9Qb3xGGJbZoQ==}
     cpu: [x64]
     os: [freebsd]
 
-  '@rollup/rollup-linux-arm-gnueabihf@4.62.4':
-    resolution: {integrity: sha512-81wiiX3v7aqy+T+bT61TJ78yJjRquqFFTTbAPt08imfQQzkPIW8t6aJbkTagtCCrXMNc9D66+geqlK7ydLPNqA==}
+  '@rollup/rollup-linux-arm-gnueabihf@4.63.6':
+    resolution: {integrity: sha512-hV+W1r8HM84PER4If94QuzrrD0DNk4CxobNhVUiz9ZiiWHDzJss4Jra2AYGH1a7GOTzjS1sIyZ35yYEhw/aq+g==}
     cpu: [arm]
     os: [linux]
     libc: [glibc]
 
-  '@rollup/rollup-linux-arm-musleabihf@4.62.4':
-    resolution: {integrity: sha512-9kmDIvNZqdoHOBZgNtpTBeLWYO/LVipM3H/j62P8848/l/VPEQL6N3uxU9pvP1oZAsXyC2MEnFP3ovRjo7WYNQ==}
+  '@rollup/rollup-linux-arm-musleabihf@4.63.6':
+    resolution: {integrity: sha512-5dWs/GENZufRph8PEfl0TrNH/R3DHJA+VxF/dqlfV2oUZfxRtN3qmFXg2DZj8DYM8d+Vd3dgZtuVmoBE/nb2YQ==}
     cpu: [arm]
     os: [linux]
     libc: [musl]
 
-  '@rollup/rollup-linux-arm64-gnu@4.62.4':
-    resolution: {integrity: sha512-CcnXHWnXg69g+DX5VWL3FHts3qMRN2uVEHX+BZvGLdd07/gXkn3ePjYtO1LDJvxkGKVHMclKBRa1QUTH+6toYQ==}
+  '@rollup/rollup-linux-arm64-gnu@4.63.6':
+    resolution: {integrity: sha512-inQYLPVIUvYk+s7zpxQldqwrajUNs+t4TJjPGzsdPTvsT8gsQXVcW/sQFolHZ3YSWVk0nMMwU7TtRi0Ow+QMuw==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@rollup/rollup-linux-arm64-musl@4.62.4':
-    resolution: {integrity: sha512-iFOibiHnTRuhrWLlRsOQFdZJJIa7S8OwkneJr4ocALP16u5yk6lWLINFwhHaEqBFMsKDUZofLkGos7+CPzGB3g==}
+  '@rollup/rollup-linux-arm64-musl@4.63.6':
+    resolution: {integrity: sha512-sH+0MV1HmDC1q7+bQnlN9ywKBmHqkA2EdD/hHYrrz654ybc+vNC1FRNyzuYKicMQVtZZ4X2jz0osJYmsOtnj4g==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@rollup/rollup-linux-loong64-gnu@4.62.4':
-    resolution: {integrity: sha512-XnWYMI7euHlb5a871xPja+Gm7DRCFU+FGRrtS2sMq9N8FvqtpagUy6gD4YOemC5MRk9xbh8+jYMEJbigFQwsgA==}
+  '@rollup/rollup-linux-loong64-gnu@4.63.6':
+    resolution: {integrity: sha512-mCECvRr6HGekdBc6dvHzUWubqEti4JyOqlNePrOzl4Wimk26iW5Zy9rld2mQbC9id1NYjfF8nHLFq5fr3CuOKQ==}
     cpu: [loong64]
     os: [linux]
     libc: [glibc]
 
-  '@rollup/rollup-linux-loong64-musl@4.62.4':
-    resolution: {integrity: sha512-qGDAlO0U8xedCcsdRm9oaoQY8DAx/QT7uIxJWhCdx0ceIWX783UC9QSYkdpzAe29wNiVfp24+bZdQmn49o45SQ==}
+  '@rollup/rollup-linux-loong64-musl@4.63.6':
+    resolution: {integrity: sha512-bb9rdoCPwM4DEsbOP3CJgFnvhSJ3XKCUYyUhxnlSs/XGT0DknpOYgLCPbK8VUzwl+cZGzFQm0KbBYRaSGZC2YQ==}
     cpu: [loong64]
     os: [linux]
     libc: [musl]
 
-  '@rollup/rollup-linux-ppc64-gnu@4.62.4':
-    resolution: {integrity: sha512-ru4H6ezD7ysA5EiEK6qkkaEb4modH8CTej6kUy/gQi20u3kB3G7Zn8snXXkeJSCOFKG/rbPPtM/+9Wgas1961w==}
+  '@rollup/rollup-linux-ppc64-gnu@4.63.6':
+    resolution: {integrity: sha512-aIJRoGCHev45JSu7JMzVrMzu1NX3nQrXx1Vb/6y4AblxW7JpCMpk4e8C6lHzvSElxi3UEcMdFJldsuWQjV1ddA==}
     cpu: [ppc64]
     os: [linux]
     libc: [glibc]
 
-  '@rollup/rollup-linux-ppc64-musl@4.62.4':
-    resolution: {integrity: sha512-2W4MO5WQVJnbJaZdvDb9rhBDuFU1nKIepPFpJUBsTh2k1YY2g+ODViaWuyOAjQ5cOP7NvrvLzt3wvHOoiAvc7w==}
+  '@rollup/rollup-linux-ppc64-musl@4.63.6':
+    resolution: {integrity: sha512-LvjnulezHjiaM5Ga9MPCDLTVddjvcrJhZc6vEz9fxeFRGPJsPAX9HuTuPTUQ3l8d+nYpZB/xWzUpuKJlLQm3VQ==}
     cpu: [ppc64]
     os: [linux]
     libc: [musl]
 
-  '@rollup/rollup-linux-riscv64-gnu@4.62.4':
-    resolution: {integrity: sha512-+fxjfuoAmVMCYV5QyjoIpu0cp5DOiOTeqYFk1AVaxGr+/ravWLX89XfQmptsoWcaVy/TGf2hexzbUOrCQIL1CQ==}
+  '@rollup/rollup-linux-riscv64-gnu@4.63.6':
+    resolution: {integrity: sha512-YmhSBeYZwJ937s8tKpYAhms48N+tj7e+oFkbkVVxfMRdAiynK2AxqRapJXB4utyXxc/iYTkMfPRQ+7ZP0IO78w==}
     cpu: [riscv64]
     os: [linux]
     libc: [glibc]
 
-  '@rollup/rollup-linux-riscv64-musl@4.62.4':
-    resolution: {integrity: sha512-jTn8JfHGL4djjFxPuM06LmNUJDsst2jeVlsd9OmIH6zc5sC9K6rIuO4YajXatLUpBmBKl6b35ro1QZocLi+tcA==}
+  '@rollup/rollup-linux-riscv64-musl@4.63.6':
+    resolution: {integrity: sha512-9+YukhzqTvJvzfDXJJzkURK9TDY01nofNH3pyHGuucGC4xPvBVtIfCAqJjkjnmBEGJYNXB8sBc2EDt7xDgGenw==}
     cpu: [riscv64]
     os: [linux]
     libc: [musl]
 
-  '@rollup/rollup-linux-s390x-gnu@4.62.4':
-    resolution: {integrity: sha512-oCJCJL4pXsoDcP2QZ+JVlPTIRc6266zsIaeJJsWImmF7HO0W8nb6HuSgZlMWxJwaPf8ehbSw8yo0EUw925hKsA==}
+  '@rollup/rollup-linux-s390x-gnu@4.63.6':
+    resolution: {integrity: sha512-9G5AtEkpN/A89BILHHEL9aYRYTuFjwa8PUQqoEg8SDrwOZBKpwYqNlQCBNI5QPwGrf7qFlb6LNFilo8FCSA3Wg==}
     cpu: [s390x]
     os: [linux]
     libc: [glibc]
 
-  '@rollup/rollup-linux-x64-gnu@4.62.4':
-    resolution: {integrity: sha512-W69hukhZ3KKNRCaMIEzKvcFye42hh0FE1+YoYaf5+Ikacuftoco6yO/xouz0hc5d5W/s3yBro5jRiuEE/Q5vUw==}
+  '@rollup/rollup-linux-x64-gnu@4.63.6':
+    resolution: {integrity: sha512-Ezx2E5D6Siz805j41x91JiGbzuCm8i2U98U37SQ7ytY737+wsJq+P9nPL6UmqDww491zO7MTivYOTrtmTTeCSw==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@rollup/rollup-linux-x64-musl@4.62.4':
-    resolution: {integrity: sha512-qiXbGG2jkjXhzXpsFZSR2Xpb8DN/UaxYsbb/STbuR/6fpaDgRmmaq1B/LmtF2wQFOFOSsK2jdE0RZ3a0zHn4QA==}
+  '@rollup/rollup-linux-x64-musl@4.63.6':
+    resolution: {integrity: sha512-8EZ1Q3PB7yUjvR4MbFAnCBF1wF0XRe5QQqbtlJXP7ZX5C8iYlSQJugUhj9oS0gbUP4jp9qGhaIgFnV9Nvod86Q==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@rollup/rollup-openbsd-x64@4.62.4':
-    resolution: {integrity: sha512-nWeM//hxv8mIo6jD7Hu4o48DVmV9pbV6gsKaWU+4NFyqHoPKwrkRiZGLKUhOBk8qNmDmpwFtPKg80Bo/Tn4xiQ==}
+  '@rollup/rollup-openbsd-x64@4.63.6':
+    resolution: {integrity: sha512-3JI27TALItfZ/qaxXKdbRXfV6WepUoUa3IN07FE+1xxoRdl3JIyrp5PiDF0vOHsPgEiOFkF8s3B3BRymQkdwGA==}
     cpu: [x64]
     os: [openbsd]
 
-  '@rollup/rollup-openharmony-arm64@4.62.4':
-    resolution: {integrity: sha512-s62SQ/vgsRSvMwDkOEfTqfgASF0f26ZNaQuTA6Aok5lrikf89yI2W0gFHvZb2Jpgc6N8JnOKZgCK2iciO3CsxQ==}
+  '@rollup/rollup-openharmony-arm64@4.63.6':
+    resolution: {integrity: sha512-BNOGeNFNRZDT7Hfc7b9JbTZFXkpAXeXl/CZWtxdd5CNfBaor/0RkJjg+q+E2gwVIvGqqp/NclThKFGrhuScVhw==}
     cpu: [arm64]
     os: [openharmony]
 
-  '@rollup/rollup-win32-arm64-msvc@4.62.4':
-    resolution: {integrity: sha512-J6wGf8TVGbXJq+HH+ttTvrcfNKPbuZecV6KT1B8I18BC5IURUh5kl4Yl5OEP5eFIUoI5BWxCsyYMhFsDx8kekw==}
+  '@rollup/rollup-win32-arm64-msvc@4.63.6':
+    resolution: {integrity: sha512-D3eEyLSIim5WF5fHbwnx+ryk0delN7fJyBrDTO3wVCCNBZ/cA8aCGwLS3SiuK+vRI4E7dqikAlStGuR20dBMuw==}
     cpu: [arm64]
     os: [win32]
 
-  '@rollup/rollup-win32-ia32-msvc@4.62.4':
-    resolution: {integrity: sha512-zmfrQd/0wu6oJs8Vq8KwY/YtsKSsLtKe/HwAP4Wqy8LhWjeT55fHRAkOhYQ12wI3ayS4Tt12d5CDRD7N96SAYQ==}
+  '@rollup/rollup-win32-ia32-msvc@4.63.6':
+    resolution: {integrity: sha512-xwbs9g8zLbHzj1poG1uh27xtubsu27Gk2nuN6kvvGDybjiTfwMksQAnF+phlvI5oeXkJWWDc6kg1t3XpgUYvrg==}
     cpu: [ia32]
     os: [win32]
 
-  '@rollup/rollup-win32-x64-gnu@4.62.4':
-    resolution: {integrity: sha512-qPzHqdj9rfUD+w79dtE07zi/kFwKyCJqplp5K5ygeLTp7jLpAoc16OAH39HSmRC9UpozaecsleI8uAdEj6v2yw==}
+  '@rollup/rollup-win32-x64-gnu@4.63.6':
+    resolution: {integrity: sha512-Tr6rhRNnFthvXr45zWVZQ5P8jZ5UwZnXNc7Qnu80cP/VVYtSioOPmvv7wP6UMgRfkBCJr2Pm60ua0YBDSJjgnw==}
     cpu: [x64]
     os: [win32]
 
-  '@rollup/rollup-win32-x64-msvc@4.62.4':
-    resolution: {integrity: sha512-zD6NdeWEByGE9QF9vCrlJ5YQB4oq9q91kPZS37Jwj5hOkvR1lTBSpsKhKDw4IJtbQ35LsTS1HD9DZYGKIshU1Q==}
+  '@rollup/rollup-win32-x64-msvc@4.63.6':
+    resolution: {integrity: sha512-0RAxO1pS/6lY1mSoD2Apm+6aPyfUlm+OWKgncIdj/eVN9I+pDY3lKgD7xsUNFei1u7MZQETGOo6m8POXMDp53A==}
     cpu: [x64]
     os: [win32]
 
@@ -2134,6 +2124,10 @@ packages:
 
   '@smithy/core@3.35.0':
     resolution: {integrity: sha512-zRMhfkByhT2snNdr1si24vJitU6Cr9ix2MikUfWmkAgp4jrNP0GcKSP5YvwQ+TlI8AZXER5QOGJn3JsVtSD9/A==}
+    engines: {node: '>=18.0.0'}
+
+  '@smithy/core@3.35.1':
+    resolution: {integrity: sha512-i4YPS4B6ts7bjn7UwLnGjiZdprOvHvgGobFZsYK3GIY3E5hIqtj0rReU69BcTpGp+fvtraSNXeG1l+jtJvF55w==}
     engines: {node: '>=18.0.0'}
 
   '@smithy/credential-provider-imds@4.5.2':
@@ -2171,26 +2165,17 @@ packages:
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
-  '@types/jsdom@28.0.3':
-    resolution: {integrity: sha512-/HQ2uFoetFTXuye8vzIcHw2z6Fwi7Hi/qcgC+RoS9NCyewiqxhVGqlG+ViGB6lkax481R6dmhf1I7lIGlzJStQ==}
-
   '@types/jsesc@2.5.1':
     resolution: {integrity: sha512-9VN+6yxLOPLOav+7PwjZbxiID2bVaeq0ED4qSQmdQTdjnXJSaCVKTR58t15oqH1H5t8Ng2ZX1SabJVoN9Q34bw==}
 
   '@types/node@24.12.4':
     resolution: {integrity: sha512-GUUEShf+PBCGW2KaXwcIt3Yk+e3pkKwWKb9GSyM9WQVE+ep2jzmHdGsHzu4wgcZy5fN9FBdVzjpBQsYlpfpgLA==}
 
-  '@types/node@25.5.0':
-    resolution: {integrity: sha512-jp2P3tQMSxWugkCUKLRPVUpGaL5MVFwF8RDuSRztfwgN1wmqJeMSbKlnEtQqU8UrhTmzEmZdu2I6v2dpp7XIxw==}
-
   '@types/node@26.1.1':
     resolution: {integrity: sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==}
 
   '@types/retry@0.12.0':
     resolution: {integrity: sha512-wWKOClTTiizcZhXnPY4wikVAwmdYHp8q6DmC+EJUzAMsycb7HB32Kh9RN4+0gExjmPmZSAQjgURXIGATPegAvA==}
-
-  '@types/tough-cookie@4.0.5':
-    resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
 
   '@vitest/coverage-v8@3.2.4':
     resolution: {integrity: sha512-EyF9SXU6kS5Ku/U82E259WSnvg6c8KTjppUncuNdm5QHpe17mwREHnjDzozC8x9MZ0xfBUFSaLkRv4TMA75ALQ==}
@@ -2233,10 +2218,9 @@ packages:
   '@vitest/utils@3.2.6':
     resolution: {integrity: sha512-lI23nIs4bnT3T8NIoh+vFaz5s2/DdP0Jgt2jxwgWljvwn82cLJtyi/If+fjFyoLMGIOz0U/fKvWE0d4jsNQEfg==}
 
-  '@xmldom/xmldom@0.8.13':
-    resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
-    engines: {node: '>=10.0.0'}
-    deprecated: this version has critical issues, please update to the latest version
+  '@xmldom/xmldom@0.9.12':
+    resolution: {integrity: sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A==}
+    engines: {node: '>=14.6'}
 
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
@@ -2287,8 +2271,8 @@ packages:
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
-  bidi-js@1.0.3:
-    resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
+  bidi-js@1.1.0:
+    resolution: {integrity: sha512-fX1Onk0tdVPC7obPWB5EbJ1z7NVhLq4m2xZLq2YXBkxzMXIGRpNMU88n0EPgWseKl12J7zXs7qrDxPK4sRs2fg==}
 
   bignumber.js@9.3.1:
     resolution: {integrity: sha512-Ko0uX15oIUS7wJ3Rb30Fs6SkVbLmPBAKdlm7q9+ak9bbIeFf0MwuBsQV6z7+X768/cHsfg+WlysDWJcmthjsjQ==}
@@ -2296,8 +2280,9 @@ packages:
   birpc@4.0.0:
     resolution: {integrity: sha512-LShSxJP0KTmd101b6DRyGBj57LZxSDYWKitQNW/mi8GRMvZb078Uf9+pveax1DrVL89vm7mWe+TovdI/UDOuPw==}
 
-  boolbase@1.0.0:
-    resolution: {integrity: sha512-JZOSA7Mo9sNGB8+UjSgzdLtokWAky1zbztM3WRLCbZ70/3cTANmQmOdR7y2g+J0e2WXywy1yS468tY+IruqEww==}
+  boolbase@2.0.0:
+    resolution: {integrity: sha512-DkVaaQHymRhpYEYo9x1oo7Q7B0Y6KJUsjm3c9eTyFDby4MHLBTwZ6ZDWBel5zrYxj1WsZgC5oLpiz+93MluXeA==}
+    engines: {node: '>=20.19.0'}
 
   bowser@2.14.1:
     resolution: {integrity: sha512-tzPjzCxygAKWFOJP011oxFHs57HzIhOEracIgAePE4pqB3LikALKnSzUyU4MGs9/iCEUuHlAJTjTc5M+u7YEGg==}
@@ -2347,16 +2332,17 @@ packages:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
 
-  css-select@5.2.2:
-    resolution: {integrity: sha512-TizTzUddG/xYLA3NXodFM0fSbNizXjOKhqiQQwvhlspadZokn1KDy0NZFS0wuEubIYAV5/c1/lAr0TaaFXEXzw==}
+  css-select@7.0.0:
+    resolution: {integrity: sha512-snmjEVXy+1LnwXdxhYvTMj1d9tOh4HxkA1YmoayVBeeyR2C14Pum7fcxJIm4SswYspVy866eYNwlH6xC3/VH5g==}
+    engines: {node: '>=20.19.0'}
 
   css-tree@3.2.1:
     resolution: {integrity: sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0}
 
-  css-what@6.2.2:
-    resolution: {integrity: sha512-u/O3vwbptzhMs3L1fQE82ZSLHQQfto5gyZzwteVIEyeaY5Fc7R4dapF/BvRoSYFeqfBk4m0V1Vafq5Pjv25wvA==}
-    engines: {node: '>= 6'}
+  css-what@8.0.0:
+    resolution: {integrity: sha512-DH0Bqq3DNp5tdOReuNyAA+Ev4Y2GS5FMbZpeTLP6C4CDi0h5nL0BmUPChXw3o/qbHLDWHl49sbNqQVY7bMSDdw==}
+    engines: {node: '>=20.19.0'}
 
   cssom@0.5.0:
     resolution: {integrity: sha512-iKuQcq+NdHqlAcwUY0o/HL69XQrUaQdMjmStJ8JFmUaiiQErlhrmuigkg/CU4E2J0IyUKUrMAgl36TvN67MqTw==}
@@ -2388,26 +2374,46 @@ packages:
   defu@6.1.5:
     resolution: {integrity: sha512-pwdBJxJuJXmqrLO6s0VBmfbRz+G7FUzkjldAsdi9Yrv86mPyzq0ll1o8+8gB4Gsr6GJHbK1Lh3ngllgTInDCjA==}
 
-  defuddle@0.18.1:
-    resolution: {integrity: sha512-AvFPFOsoDjt5xUOA1QxzafSSzJ5dqEIC63yO72tHYtSjj1DYY/XM0XTPUCsHkm5A2f1X9ulBvoSVFJrd4s2ckA==}
+  defuddle@0.19.4:
+    resolution: {integrity: sha512-Jz98aWlyEeuWcg9u2AavCEKknviI9GijMkrGFPk0wi1Lkfr1DDDw6XM+ak44Ol8kBDmDJsvU9Su2eUY09Fvh3Q==}
     hasBin: true
 
   diff@8.0.4:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
 
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
+    engines: {node: '>=0.3.1'}
+
   dom-serializer@2.0.0:
     resolution: {integrity: sha512-wIkAryiqt/nV5EQKqQpo3SToSOV9J0DnbJqwK7Wv/Trc92zIAYZ4FlMu+JPFW1DfGFt81ZTCGgDEabffXeLyJg==}
 
+  dom-serializer@3.1.1:
+    resolution: {integrity: sha512-4MEa38/QexBob6gFNwu+EGdWvhJ1OKuNwdYY3Y3NyeWDQfnGeDYQUDfIRzWu5B5gsv03so2Uxd28YC6zrsx3Lw==}
+    engines: {node: '>=20.19.0'}
+
   domelementtype@2.3.0:
     resolution: {integrity: sha512-OLETBj6w0OsagBwdXnPdN0cnMfF9opN69co+7ZrbfPGrdpPVNBUj02spi6B1N7wChLQiPn4CSH/zJvXw56gmHw==}
+
+  domelementtype@3.0.0:
+    resolution: {integrity: sha512-umCQid3jKbDmVjx8jGaW7uUykm4DEUeyV21hPxNMo2nV955DhUThwqyOIDtreepP31hl84X7G5U9ZfsWvIB3Pg==}
+    engines: {node: '>=20.19.0'}
 
   domhandler@5.0.3:
     resolution: {integrity: sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w==}
     engines: {node: '>= 4'}
 
+  domhandler@6.0.1:
+    resolution: {integrity: sha512-gYzvtM72ZtxQO0T048kd6HWSbbGCNOUwcnfQ01cqIJ4X2IYKFFHZ5mKvrQETcFXxsRObZulDaKmy//R7TPtsBg==}
+    engines: {node: '>=20.19.0'}
+
   domutils@3.2.2:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
+
+  domutils@4.0.2:
+    resolution: {integrity: sha512-qI4JLRKnSzqFqr7hAlS5xQDusBCjKSEG4t4+7aNrIQMHBcsC2TGEhuyABJdYkgSewL57PNLYEiibY2iPKhKpaA==}
+    engines: {node: '>=20.19.0'}
 
   dts-resolver@2.1.3:
     resolution: {integrity: sha512-bihc7jPC90VrosXNzK0LTE2cuLP6jr0Ro8jk+kMugHReJVLIpHz/xadeq3MhuwyO4TD4OA3L1Q8pBBFRc08Tsw==}
@@ -2442,8 +2448,8 @@ packages:
     resolution: {integrity: sha512-TWrgLOFUQTH994YUyl1yT4uyavY5nNB5muff+RtWaqNVCAK408b5ZnnbNAUEWLTCpum9w6arT70i1XdQ4UeOPA==}
     engines: {node: '>=0.12'}
 
-  entities@8.0.0:
-    resolution: {integrity: sha512-zwfzJecQ/Uej6tusMqwAqU/6KL2XaB2VZ2Jg54Je6ahNBGNH6Ek6g3jjNCF0fG9EWQKGZNddNjU5F1ZQn/sBnA==}
+  entities@8.1.0:
+    resolution: {integrity: sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==}
     engines: {node: '>=20.19.0'}
 
   es-module-lexer@1.7.0:
@@ -2457,27 +2463,27 @@ packages:
   estree-walker@3.0.3:
     resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
 
-  evlog@2.22.4:
-    resolution: {integrity: sha512-u0hsh+FudUWkqqfrlWGI1CvSd2pz1iWkLWjawGcvbnLp9BHZqY1xS7BlRt21/Qq/rs60IODaei/Wbmry/q/zeg==}
+  evlog@2.29.0:
+    resolution: {integrity: sha512-1qk5W3lttyAUz326ptqRbasPyc19u/ECa8UULjtRihUUyKV8W2ihsr4kB2qkxfqaMY4dFNhH9iShrYy93jxt5A==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      '@nestjs/common': '>=11.1.28'
+      '@nestjs/common': '>=11.2.3'
       '@nuxt/kit': ^4.4.2
-      '@orpc/server': '>=1.14.8'
-      '@tanstack/start-client-core': ^1.170.14
+      '@orpc/server': '>=1.15.0'
+      '@tanstack/start-client-core': ^1.170.28
       ai: '>=6.0.168 <8.0.0'
-      elysia: '>=1.4.29'
-      eve: '>=0.24.3'
+      elysia: '>=1.4.30'
+      eve: '>=0.30.0'
       express: '>=5.2.1'
-      fastify: '>=5.10.0'
+      fastify: '>=5.12.3'
       h3: ^1.15.11
-      hono: '>=4.12.30'
-      next: '>=16.2.10'
+      hono: '>=4.13.7'
+      next: '>=16.3.4'
       nitro: ^3.0.260311-beta
       nitropack: ^2.13.4
       ofetch: ^1.5.1
-      react: '>=19.2.7'
-      react-router: '>=7.18.1'
+      react: '>=19.2.8'
+      react-router: '>=7.18.3'
       vite: ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       '@nestjs/common':
@@ -2602,9 +2608,9 @@ packages:
     resolution: {integrity: sha512-Hc+ghLoSt6QaYZUv0WBiIvmMDZuZZ7oaDvdH8MbfOO4lOsxdXLEvuC6ePoGs9H1X9oCLyq6+NVN0MKqD+ydxyg==}
     engines: {node: ^20.17.0 || >=22.9.0}
 
-  html-encoding-sniffer@6.0.0:
-    resolution: {integrity: sha512-CV9TW3Y3f8/wT0BRFc1/KAVQ3TUHiXmaAb6VW9vtiMFf7SLoMd1PdAc4W3KFOFETBJUb90KatHqlsZMWV+R9Gg==}
-    engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+  html-encoding-sniffer@7.0.0:
+    resolution: {integrity: sha512-UikN5yr7xsCDAq87Or5or0PAlD3HJJOKVzM05az588WnpDJ4Ux7a2A53Qi6gofGg2/EtvF/H4hCi/TXfCW4Y6w==}
+    engines: {node: ^22.13.0 || >=24.0.0}
 
   html-escaper@2.0.2:
     resolution: {integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==}
@@ -2674,11 +2680,11 @@ packages:
   js-tokens@9.0.1:
     resolution: {integrity: sha512-mxa9E9ITFOt0ban3j6L5MpjwegGz6lBQmM1IJkWeBZGcMxto50+eWdjC/52xDbS2vy0k7vIMK0Fe2wfL9OQSpQ==}
 
-  jsdom@29.1.1:
-    resolution: {integrity: sha512-ECi4Fi2f7BdJtUKTflYRTiaMxIB0O6zfR1fX0GXpUrf6flp8QIYn1UT20YQqdSOfk2dfkCwS8LAFoJDEppNK5Q==}
-    engines: {node: ^20.19.0 || ^22.13.0 || >=24.0.0}
+  jsdom@30.1.1:
+    resolution: {integrity: sha512-FahmoPK5vbPc+jxV1iErMHmAZypCZ942NHF4+qqaWAuvaKKTBZxawnmAtrbGWLU7MtlxfqIP0qw6aSI+aWGtLg==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
     peerDependencies:
-      canvas: ^3.0.0
+      canvas: ^3.2.3
     peerDependenciesMeta:
       canvas:
         optional: true
@@ -2701,8 +2707,8 @@ packages:
   jws@4.0.1:
     resolution: {integrity: sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==}
 
-  linkedom@0.18.12:
-    resolution: {integrity: sha512-jalJsOwIKuQJSeTvsgzPe9iJzyfVaEJiEXl+25EkKevsULHvMJzpNqwvj1jOESWdmgKDiXObyjOYwlUqG7wo1Q==}
+  linkedom@0.18.13:
+    resolution: {integrity: sha512-ES/o9qotMpzpN2MHs+Iq/JcVoOj8Fa5wiQYrTdFpvAnwXL0g66XHHUc9WUMk6nAlBtGsFQ24ne+SYnvnaQ2FSw==}
     engines: {node: '>=16'}
     peerDependencies:
       canvas: '>= 2'
@@ -2723,6 +2729,10 @@ packages:
     resolution: {integrity: sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==}
     engines: {node: 20 || >=22}
 
+  lru-cache@11.5.3:
+    resolution: {integrity: sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==}
+    engines: {node: 20 || >=22}
+
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
@@ -2738,8 +2748,8 @@ packages:
     engines: {node: '>= 20'}
     hasBin: true
 
-  mathml-to-latex@1.5.0:
-    resolution: {integrity: sha512-rrWn0eEvcEcdMM4xfHcSGIy+i01DX9byOdXTLWg+w1iJ6O6ohP5UXY1dVzNUZLhzfl3EGcRekWLhY7JT5Omaew==}
+  mathml-to-latex@1.8.0:
+    resolution: {integrity: sha512-gQ0uK3zqB8HwlfaXJkEL5rgaZNbKUiBMmBP/B/W+b+t6KcseLSuYb1b0BjLgS9ZiQa24ePkqTX8/6FaQuDL7wQ==}
 
   mdn-data@2.27.1:
     resolution: {integrity: sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==}
@@ -2763,8 +2773,8 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  nanoid@3.3.18:
-    resolution: {integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==}
+  nanoid@3.3.19:
+    resolution: {integrity: sha512-Y2tUNy4ouw6tq5oDSKeQYGOyhkUBhNOcGV/02KC+6kd9eDGqdZd++mjMiIDilrBYvjEnCYvVtsuHCuP+okSfug==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -2777,8 +2787,9 @@ packages:
     resolution: {integrity: sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
-  nth-check@2.1.1:
-    resolution: {integrity: sha512-lqjrjmaOoAnWfMmBPL+XNnynZh2+swxiX3WUE0s4yEHI6m+AwrK2UZOimIRl3X/4QctVqS8AiZjFqyOGrMXb/w==}
+  nth-check@3.0.1:
+    resolution: {integrity: sha512-GX0gsdbGVCgnRgbeGaubfjpBXyYRWOOCVeYh08bSQvDZqxz5ndXs1OTfAt/h36G1xvI94YIspsI0sVFqAV9+RQ==}
+    engines: {node: '>=20.19.0'}
 
   obug@2.1.1:
     resolution: {integrity: sha512-uTqF9MuPraAQ+IsnPf366RG4cP9RtUi7MLO1N3KEc+wb0a6yKpeL0lmk2IB1jY5KHPAlTc6T/JRdC/YqxHNwkQ==}
@@ -2865,8 +2876,12 @@ packages:
     resolution: {integrity: sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==}
     engines: {node: '>=12'}
 
-  postcss@8.5.26:
-    resolution: {integrity: sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==}
+  picomatch@4.0.7:
+    resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
+    engines: {node: '>=12'}
+
+  postcss@8.5.28:
+    resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
     engines: {node: ^10 || ^12 || >=14}
 
   proper-lockfile@4.1.2:
@@ -2934,8 +2949,8 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
-  rollup@4.62.4:
-    resolution: {integrity: sha512-RXOqwaPsBGjMNMa4sQjDjHieHEZDFoj/Rdr46l2MU5DfEs16wHJPC2RPTPHWhNl+M3aI472LLqFkFKut4SblOg==}
+  rollup@4.63.6:
+    resolution: {integrity: sha512-w4+GKyTBqshj84F1GF3s2zxAPFZPEmNkCbQtqilsYS7GsksmX6VoV7UggfZg8sUHCCOkBe7UtQp6fZwbH311FQ==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
     hasBin: true
 
@@ -2978,6 +2993,10 @@ packages:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
 
+  source-map-js@1.2.2:
+    resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
+    engines: {node: '>=0.10.0'}
+
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
 
@@ -3010,11 +3029,8 @@ packages:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
     engines: {node: '>=8'}
 
-  symbol-tree@3.2.4:
-    resolution: {integrity: sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==}
-
-  temml@0.13.3:
-    resolution: {integrity: sha512-GLNEdf5qBWux3adbOxFus4jlds8nCdEIkkKq99m/4GGTfqnsjlVlK/i371Ux7yYSg/WNmOyAkNT/GJlZoJ0v+w==}
+  temml@0.13.5:
+    resolution: {integrity: sha512-aPkDDgunanpLNL0ql32HbolqLep+w8DRcVXRql7rWrMt/PhczdLgL4UBYYVU3BYjCNjkGq4EqwIicu/zWr1iOg==}
     engines: {node: '>=18.13.0'}
 
   test-exclude@7.0.2:
@@ -3055,15 +3071,15 @@ packages:
     resolution: {integrity: sha512-azl+t0z7pw/z958Gy9svOTuzqIk6xq+NSheJzn5MMWtWTFywIacg2wUlzKFGtt3cthx0r2SxMK0yzJOR0IES7Q==}
     engines: {node: '>=14.0.0'}
 
-  tldts-core@7.0.30:
-    resolution: {integrity: sha512-uiHN8PIB1VmWyS98eZYja4xzlYqeFZVjb4OuYlJQnZAuJhMw4PbKQOKgHKhBdJR3FE/t5mUQ1Kd80++B+qhD1Q==}
+  tldts-core@7.4.16:
+    resolution: {integrity: sha512-MDolfaSJtlSK5Y0A1xl3277ekubZwobpBjugknDizI9O5Rm60a1m8k4ICK+MRsCDzPygT81mp3BBf5RKDlFRfA==}
 
-  tldts@7.0.30:
-    resolution: {integrity: sha512-ELrFxuqsDdHUwoh0XxDbxuLD3Wnz49Z57IFvTtvWy1hJdcMZjXLIuonjilCiWHlT2GbE4Wlv1wKVTzDFnXH1aw==}
+  tldts@7.4.16:
+    resolution: {integrity: sha512-QwBER5KMR86IIjpIiO7H/Z3IMJPsZ1A6RKPAqzTTgOyUQUSt9FdnKcqhTaJmkY6HVrgouZHZR0ncK5QxvmnQeg==}
     hasBin: true
 
-  tough-cookie@6.0.1:
-    resolution: {integrity: sha512-LktZQb3IeoUWB9lqR5EWTHgW/VTITCXg4D21M+lvybRVdylLrRMnqaIONLVb5mav8vM19m44HIcGq4qASeu2Qw==}
+  tough-cookie@6.0.2:
+    resolution: {integrity: sha512-exgYmnmL/sJpR3upZfXG5PoatXQii55xAiXGXzY+sROLZ/Y+SLcp9PgJNI9Vz37HpQ74WvDcLT8eqm+kV3FzrA==}
     engines: {node: '>=16'}
 
   tr46@6.0.0:
@@ -3112,11 +3128,11 @@ packages:
     resolution: {integrity: sha512-I8yFsfRzmzK0WV1pNNOA4A7y4RDfFxPRxb3t+e3ui14qSGOxGtiSP6GjeX+Y6CHb7HYaFj7ECUD7VE5kQMZWGQ==}
     engines: {node: '>=18', npm: '>=9'}
 
-  typebox@1.1.38:
-    resolution: {integrity: sha512-pZ0aQPmMmXoUvSbeuWf/Hzsc+avNw/Zd6VeE8CFgkVGWyuHPJvqeJJDeJqLve+K70LvjYIoleGcoJHPT17cWoA==}
-
   typebox@1.3.27:
     resolution: {integrity: sha512-zu+jc1pcy4UiNThxikUr36f0Rybk9PEeCg/NE6adeWr/SKsdNO4EzZHYRDlv2YCVAfj3Odq3dESSo/jNyoBXzA==}
+
+  typebox@1.3.34:
+    resolution: {integrity: sha512-wbnzrXXDW8xEFHDZZs2jo1MkhaYlKAY4FRhpBc1+2LF1fZVBGCXGdLEhA/Z/NBbgzJMFfeM8m7elKPa/+KxaUQ==}
 
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
@@ -3132,21 +3148,15 @@ packages:
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
-  undici-types@7.18.2:
-    resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
-
-  undici-types@7.25.0:
-    resolution: {integrity: sha512-AXNgS1Byr27fTI+2bsPEkV9CxkT8H6xNyRI68b3TatlZo3RkzlqQBLL+w7SmGPVpokjHbcuNVQUWE7FRTg+LRA==}
-
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
-  undici@7.29.0:
-    resolution: {integrity: sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==}
-    engines: {node: '>=20.18.1'}
-
   undici@8.10.2:
     resolution: {integrity: sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==}
+    engines: {node: '>=22.19.0'}
+
+  undici@8.11.2:
+    resolution: {integrity: sha512-u4UB2/IrKdU6lFxumHmmo1a3fCQO5tzQllRorfoRS63txhrB7xTpSn1PftwC4qEHkOaqP95fCWW4lJzwErwzhQ==}
     engines: {node: '>=22.19.0'}
 
   unrun@0.2.32:
@@ -3232,9 +3242,9 @@ packages:
       jsdom:
         optional: true
 
-  w3c-xmlserializer@5.0.0:
-    resolution: {integrity: sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==}
-    engines: {node: '>=18'}
+  w3c-xmlserializer@6.0.0:
+    resolution: {integrity: sha512-4Nsy8K5Tr6SPDH9jhKJOHf7ChDrc1zufZTVSF7x72hwuEXBqxqk9G6cK+K2NRUtB3iELRJqjXb4JPDMBjMTl2Q==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
   web-streams-polyfill@3.3.3:
     resolution: {integrity: sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw==}
@@ -3251,6 +3261,10 @@ packages:
   whatwg-url@16.0.1:
     resolution: {integrity: sha512-1to4zXBxmXHV3IiSSEInrreIlu02vUOvrhxJJH5vcxYTBDAx51cqZiKdyTxlecdKNSjj8EcxGBxNf6Vg+945gw==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+
+  whatwg-url@17.1.2:
+    resolution: {integrity: sha512-TEZA+Zqxin7Jjsm2cjRohCmen5awh+hT6Zi3VZdqZlNRk7zvOI/9WpBFg/DWlA56bWnzwm6DuB8NS0EsxQH9uQ==}
+    engines: {node: ^22.14.0 || >=24.0.0}
 
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
@@ -3311,25 +3325,22 @@ snapshots:
     optionalDependencies:
       zod: 4.4.3
 
-  '@asamuzakjp/css-color@5.1.11':
+  '@asamuzakjp/css-color@7.1.2':
     dependencies:
-      '@asamuzakjp/generational-cache': 1.0.1
-      '@csstools/css-calc': 3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-color-parser': 4.1.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-tokenizer': 4.0.0
+      '@csstools/css-calc': 3.4.2(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)
+      '@csstools/css-color-parser': 4.2.5(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)
+      '@csstools/css-parser-algorithms': 4.0.2(@csstools/css-tokenizer@4.0.2)
+      '@csstools/css-tokenizer': 4.0.2
+      lru-cache: 11.5.3
+    optional: true
 
-  '@asamuzakjp/dom-selector@7.1.1':
+  '@asamuzakjp/dom-selector@9.2.3':
     dependencies:
-      '@asamuzakjp/generational-cache': 1.0.1
-      '@asamuzakjp/nwsapi': 2.3.9
-      bidi-js: 1.0.3
+      bidi-js: 1.1.0
       css-tree: 3.2.1
       is-potential-custom-element-name: 1.0.1
-
-  '@asamuzakjp/generational-cache@1.0.1': {}
-
-  '@asamuzakjp/nwsapi@2.3.9': {}
+      lru-cache: 11.5.3
+    optional: true
 
   '@aws-sdk/client-bedrock-runtime@3.1127.0':
     dependencies:
@@ -3351,7 +3362,7 @@ snapshots:
       '@aws-sdk/types': 3.974.6
       '@aws-sdk/xml-builder': 3.972.41
       '@aws/lambda-invoke-store': 0.3.0
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/signature-v4': 5.7.3
       '@smithy/types': 4.19.0
       bowser: 2.14.1
@@ -3361,7 +3372,7 @@ snapshots:
     dependencies:
       '@aws-sdk/core': 3.978.1
       '@aws-sdk/types': 3.974.6
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
@@ -3369,7 +3380,7 @@ snapshots:
     dependencies:
       '@aws-sdk/core': 3.978.1
       '@aws-sdk/types': 3.974.6
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/fetch-http-handler': 5.8.0
       '@smithy/node-http-handler': 4.12.1
       '@smithy/types': 4.19.0
@@ -3386,7 +3397,7 @@ snapshots:
       '@aws-sdk/credential-provider-web-identity': 3.972.78
       '@aws-sdk/nested-clients': 3.997.46
       '@aws-sdk/types': 3.974.6
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/credential-provider-imds': 4.5.2
       '@smithy/types': 4.19.0
       tslib: 2.8.1
@@ -3396,7 +3407,7 @@ snapshots:
       '@aws-sdk/core': 3.978.1
       '@aws-sdk/nested-clients': 3.997.46
       '@aws-sdk/types': 3.974.6
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
@@ -3409,7 +3420,7 @@ snapshots:
       '@aws-sdk/credential-provider-sso': 3.973.16
       '@aws-sdk/credential-provider-web-identity': 3.972.78
       '@aws-sdk/types': 3.974.6
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/credential-provider-imds': 4.5.2
       '@smithy/types': 4.19.0
       tslib: 2.8.1
@@ -3418,7 +3429,7 @@ snapshots:
     dependencies:
       '@aws-sdk/core': 3.978.1
       '@aws-sdk/types': 3.974.6
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
@@ -3428,7 +3439,7 @@ snapshots:
       '@aws-sdk/nested-clients': 3.997.46
       '@aws-sdk/token-providers': 3.1138.0
       '@aws-sdk/types': 3.974.6
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
@@ -3437,7 +3448,7 @@ snapshots:
       '@aws-sdk/core': 3.978.1
       '@aws-sdk/nested-clients': 3.997.46
       '@aws-sdk/types': 3.974.6
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
@@ -3470,7 +3481,7 @@ snapshots:
       '@aws-sdk/core': 3.978.1
       '@aws-sdk/signature-v4-multi-region': 3.996.47
       '@aws-sdk/types': 3.974.6
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/fetch-http-handler': 5.8.0
       '@smithy/node-http-handler': 4.12.1
       '@smithy/types': 4.19.0
@@ -3497,7 +3508,7 @@ snapshots:
       '@aws-sdk/core': 3.978.1
       '@aws-sdk/nested-clients': 3.997.46
       '@aws-sdk/types': 3.974.6
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
@@ -3555,44 +3566,46 @@ snapshots:
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
+    optional: true
 
-  '@csstools/color-helpers@6.0.2': {}
+  '@csstools/color-helpers@6.1.2':
+    optional: true
 
-  '@csstools/css-calc@3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
+  '@csstools/css-calc@3.4.2(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)':
     dependencies:
-      '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-tokenizer': 4.0.0
+      '@csstools/css-parser-algorithms': 4.0.2(@csstools/css-tokenizer@4.0.2)
+      '@csstools/css-tokenizer': 4.0.2
+    optional: true
 
-  '@csstools/css-color-parser@4.1.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
+  '@csstools/css-color-parser@4.2.5(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)':
     dependencies:
-      '@csstools/color-helpers': 6.0.2
-      '@csstools/css-calc': 3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-tokenizer': 4.0.0
+      '@csstools/color-helpers': 6.1.2
+      '@csstools/css-calc': 3.4.2(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)
+      '@csstools/css-parser-algorithms': 4.0.2(@csstools/css-tokenizer@4.0.2)
+      '@csstools/css-tokenizer': 4.0.2
+    optional: true
 
-  '@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0)':
+  '@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2)':
     dependencies:
-      '@csstools/css-tokenizer': 4.0.0
+      '@csstools/css-tokenizer': 4.0.2
+    optional: true
 
-  '@csstools/css-syntax-patches-for-csstree@1.1.4(css-tree@3.2.1)':
+  '@csstools/css-syntax-patches-for-csstree@1.1.15(css-tree@3.2.1)':
     optionalDependencies:
       css-tree: 3.2.1
+    optional: true
 
-  '@csstools/css-tokenizer@4.0.0': {}
+  '@csstools/css-tokenizer@4.0.2':
+    optional: true
 
-  '@earendil-works/chord@0.99.1':
+  '@earendil-works/chord@1.0.0':
     dependencies:
       esbuild: 0.28.2
 
-  '@earendil-works/pi-agent-core@0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-agent-core@1.0.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
-      '@earendil-works/chord': 0.99.1
-      '@earendil-works/pi-ai': 0.99.1(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-telemetry': 0.99.1
-      diff: 8.0.4
-      ignore: 7.0.8
+      '@earendil-works/pi-ai': 1.0.0(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
       typebox: 1.3.27
-      yaml: 2.9.0
     transitivePeerDependencies:
       - '@aws-sdk/credential-provider-node'
       - '@modelcontextprotocol/sdk'
@@ -3606,11 +3619,11 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.99.1(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-ai@1.0.0(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.124.0(zod@4.4.3)
       '@aws-sdk/client-bedrock-runtime': 3.1127.0
-      '@earendil-works/pi-telemetry': 0.99.1
+      '@earendil-works/pi-telemetry': 1.0.0
       '@google/genai': 2.21.0
       '@smithy/node-http-handler': 4.12.1
       http-proxy-agent: 9.1.0
@@ -3631,18 +3644,18 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-codemode@0.99.1':
+  '@earendil-works/pi-codemode@1.0.0':
     dependencies:
       quickjs-wasi: 3.6.2
 
-  '@earendil-works/pi-coding-agent@0.99.1(patch_hash=ea1b9c2ba08ea17304e327e3fe294401f9aebe621373eeaefab63df3c41cb39a)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)':
+  '@earendil-works/pi-coding-agent@1.0.0(patch_hash=99b9e1d13ab31dd21d06d7fe0160c5465bef803455072ad055d1a4e6af42eed2)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)':
     dependencies:
-      '@earendil-works/chord': 0.99.1
-      '@earendil-works/pi-agent-core': 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-ai': 0.99.1(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-codemode': 0.99.1
-      '@earendil-works/pi-mcp': 0.99.1
-      '@earendil-works/pi-tui': 0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
+      '@earendil-works/chord': 1.0.0
+      '@earendil-works/pi-agent-core': 1.0.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-ai': 1.0.0(patch_hash=32c60e002b7fd58fc23861142a987c7e89cfa4d51df1ef32637a0b12897d6327)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)
+      '@earendil-works/pi-codemode': 1.0.0
+      '@earendil-works/pi-mcp': 1.0.0
+      '@earendil-works/pi-tui': 1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 6.0.0
       cross-spawn: 7.0.6
@@ -3671,13 +3684,13 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-mcp@0.99.1':
+  '@earendil-works/pi-mcp@1.0.0':
     dependencies:
       cross-spawn: 7.0.6
 
-  '@earendil-works/pi-telemetry@0.99.1': {}
+  '@earendil-works/pi-telemetry@1.0.0': {}
 
-  '@earendil-works/pi-tui@0.99.1(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)':
+  '@earendil-works/pi-tui@1.0.0(patch_hash=bc7967e8e5b69704260fedd222d12dfb65ddaa999239c1420e7227451e6f4303)':
     dependencies:
       get-east-asian-width: 1.6.0
       marked: 18.0.11
@@ -3776,7 +3789,8 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@exodus/bytes@1.15.0': {}
+  '@exodus/bytes@1.16.0':
+    optional: true
 
   '@google/genai@2.21.0':
     dependencies:
@@ -3814,7 +3828,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@letta-ai/trajectory@0.2.1(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)': {}
+  '@letta-ai/trajectory@0.4.3(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)': {}
 
   '@mixmark-io/domino@2.2.0':
     optional: true
@@ -4039,79 +4053,79 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.0-rc.9': {}
 
-  '@rollup/rollup-android-arm-eabi@4.62.4':
+  '@rollup/rollup-android-arm-eabi@4.63.6':
     optional: true
 
-  '@rollup/rollup-android-arm64@4.62.4':
+  '@rollup/rollup-android-arm64@4.63.6':
     optional: true
 
-  '@rollup/rollup-darwin-arm64@4.62.4':
+  '@rollup/rollup-darwin-arm64@4.63.6':
     optional: true
 
-  '@rollup/rollup-darwin-x64@4.62.4':
+  '@rollup/rollup-darwin-x64@4.63.6':
     optional: true
 
-  '@rollup/rollup-freebsd-arm64@4.62.4':
+  '@rollup/rollup-freebsd-arm64@4.63.6':
     optional: true
 
-  '@rollup/rollup-freebsd-x64@4.62.4':
+  '@rollup/rollup-freebsd-x64@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-arm-gnueabihf@4.62.4':
+  '@rollup/rollup-linux-arm-gnueabihf@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-arm-musleabihf@4.62.4':
+  '@rollup/rollup-linux-arm-musleabihf@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-arm64-gnu@4.62.4':
+  '@rollup/rollup-linux-arm64-gnu@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-arm64-musl@4.62.4':
+  '@rollup/rollup-linux-arm64-musl@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-loong64-gnu@4.62.4':
+  '@rollup/rollup-linux-loong64-gnu@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-loong64-musl@4.62.4':
+  '@rollup/rollup-linux-loong64-musl@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-ppc64-gnu@4.62.4':
+  '@rollup/rollup-linux-ppc64-gnu@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-ppc64-musl@4.62.4':
+  '@rollup/rollup-linux-ppc64-musl@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-riscv64-gnu@4.62.4':
+  '@rollup/rollup-linux-riscv64-gnu@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-riscv64-musl@4.62.4':
+  '@rollup/rollup-linux-riscv64-musl@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-s390x-gnu@4.62.4':
+  '@rollup/rollup-linux-s390x-gnu@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-x64-gnu@4.62.4':
+  '@rollup/rollup-linux-x64-gnu@4.63.6':
     optional: true
 
-  '@rollup/rollup-linux-x64-musl@4.62.4':
+  '@rollup/rollup-linux-x64-musl@4.63.6':
     optional: true
 
-  '@rollup/rollup-openbsd-x64@4.62.4':
+  '@rollup/rollup-openbsd-x64@4.63.6':
     optional: true
 
-  '@rollup/rollup-openharmony-arm64@4.62.4':
+  '@rollup/rollup-openharmony-arm64@4.63.6':
     optional: true
 
-  '@rollup/rollup-win32-arm64-msvc@4.62.4':
+  '@rollup/rollup-win32-arm64-msvc@4.63.6':
     optional: true
 
-  '@rollup/rollup-win32-ia32-msvc@4.62.4':
+  '@rollup/rollup-win32-ia32-msvc@4.63.6':
     optional: true
 
-  '@rollup/rollup-win32-x64-gnu@4.62.4':
+  '@rollup/rollup-win32-x64-gnu@4.63.6':
     optional: true
 
-  '@rollup/rollup-win32-x64-msvc@4.62.4':
+  '@rollup/rollup-win32-x64-msvc@4.63.6':
     optional: true
 
   '@silvia-odwyer/photon-node@0.3.4': {}
@@ -4121,15 +4135,20 @@ snapshots:
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
+  '@smithy/core@3.35.1':
+    dependencies:
+      '@smithy/types': 4.19.0
+      tslib: 2.8.1
+
   '@smithy/credential-provider-imds@4.5.2':
     dependencies:
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@smithy/fetch-http-handler@5.8.0':
     dependencies:
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
@@ -4141,7 +4160,7 @@ snapshots:
 
   '@smithy/signature-v4@5.7.3':
     dependencies:
-      '@smithy/core': 3.35.0
+      '@smithy/core': 3.35.1
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
@@ -4165,22 +4184,11 @@ snapshots:
 
   '@types/estree@1.0.9': {}
 
-  '@types/jsdom@28.0.3':
-    dependencies:
-      '@types/node': 25.5.0
-      '@types/tough-cookie': 4.0.5
-      parse5: 8.0.1
-      undici-types: 7.25.0
-
   '@types/jsesc@2.5.1': {}
 
   '@types/node@24.12.4':
     dependencies:
       undici-types: 7.16.0
-
-  '@types/node@25.5.0':
-    dependencies:
-      undici-types: 7.18.2
 
   '@types/node@26.1.1':
     dependencies:
@@ -4189,9 +4197,7 @@ snapshots:
 
   '@types/retry@0.12.0': {}
 
-  '@types/tough-cookie@4.0.5': {}
-
-  '@vitest/coverage-v8@3.2.4(vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0))':
+  '@vitest/coverage-v8@3.2.4(vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0))':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@bcoe/v8-coverage': 1.0.2
@@ -4206,7 +4212,7 @@ snapshots:
       std-env: 3.10.0
       test-exclude: 7.0.2
       tinyrainbow: 2.0.0
-      vitest: 3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0)
+      vitest: 3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -4256,8 +4262,7 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
-  '@xmldom/xmldom@0.8.13':
-    optional: true
+  '@xmldom/xmldom@0.9.12': {}
 
   agent-base@7.1.4: {}
 
@@ -4295,16 +4300,16 @@ snapshots:
 
   base64-js@1.5.1: {}
 
-  bidi-js@1.0.3:
+  bidi-js@1.1.0:
     dependencies:
       require-from-string: 2.0.2
+    optional: true
 
   bignumber.js@9.3.1: {}
 
   birpc@4.0.0: {}
 
-  boolbase@1.0.0:
-    optional: true
+  boolbase@2.0.0: {}
 
   bowser@2.14.1: {}
 
@@ -4348,25 +4353,23 @@ snapshots:
       shebang-command: 2.0.0
       which: 2.0.2
 
-  css-select@5.2.2:
+  css-select@7.0.0:
     dependencies:
-      boolbase: 1.0.0
-      css-what: 6.2.2
-      domhandler: 5.0.3
-      domutils: 3.2.2
-      nth-check: 2.1.1
-    optional: true
+      boolbase: 2.0.0
+      css-what: 8.0.0
+      domhandler: 6.0.1
+      domutils: 4.0.2
+      nth-check: 3.0.1
 
   css-tree@3.2.1:
     dependencies:
       mdn-data: 2.27.1
-      source-map-js: 1.2.1
-
-  css-what@6.2.2:
+      source-map-js: 1.2.2
     optional: true
 
-  cssom@0.5.0:
-    optional: true
+  css-what@8.0.0: {}
+
+  cssom@0.5.0: {}
 
   data-uri-to-buffer@4.0.1: {}
 
@@ -4376,51 +4379,69 @@ snapshots:
       whatwg-url: 16.0.1
     transitivePeerDependencies:
       - '@noble/hashes'
+    optional: true
 
   debug@4.4.3:
     dependencies:
       ms: 2.1.3
 
-  decimal.js@10.6.0: {}
+  decimal.js@10.6.0:
+    optional: true
 
   deep-eql@5.0.2: {}
 
   defu@6.1.5: {}
 
-  defuddle@0.18.1:
+  defuddle@0.19.4:
     dependencies:
       commander: 12.1.0
+      mathml-to-latex: 1.8.0
     optionalDependencies:
-      linkedom: 0.18.12
-      mathml-to-latex: 1.5.0
-      temml: 0.13.3
+      linkedom: 0.18.13
+      temml: 0.13.5
       turndown: 7.2.4
     transitivePeerDependencies:
       - canvas
 
   diff@8.0.4: {}
 
+  diff@9.0.0: {}
+
   dom-serializer@2.0.0:
     dependencies:
       domelementtype: 2.3.0
       domhandler: 5.0.3
       entities: 4.5.0
-    optional: true
 
-  domelementtype@2.3.0:
-    optional: true
+  dom-serializer@3.1.1:
+    dependencies:
+      domelementtype: 3.0.0
+      domhandler: 6.0.1
+      entities: 8.1.0
+
+  domelementtype@2.3.0: {}
+
+  domelementtype@3.0.0: {}
 
   domhandler@5.0.3:
     dependencies:
       domelementtype: 2.3.0
-    optional: true
+
+  domhandler@6.0.1:
+    dependencies:
+      domelementtype: 3.0.0
 
   domutils@3.2.2:
     dependencies:
       dom-serializer: 2.0.0
       domelementtype: 2.3.0
       domhandler: 5.0.3
-    optional: true
+
+  domutils@4.0.2:
+    dependencies:
+      dom-serializer: 3.1.1
+      domelementtype: 3.0.0
+      domhandler: 6.0.1
 
   dts-resolver@2.1.3: {}
 
@@ -4436,13 +4457,11 @@ snapshots:
 
   empathic@2.0.0: {}
 
-  entities@4.5.0:
-    optional: true
+  entities@4.5.0: {}
 
-  entities@7.0.1:
-    optional: true
+  entities@7.0.1: {}
 
-  entities@8.0.0: {}
+  entities@8.1.0: {}
 
   es-module-lexer@1.7.0: {}
 
@@ -4479,11 +4498,11 @@ snapshots:
     dependencies:
       '@types/estree': 1.0.9
 
-  evlog@2.22.4(vite@7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)):
+  evlog@2.29.0(vite@7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)):
     optionalDependencies:
       vite: 7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)
 
-  evlog@2.22.4(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)):
+  evlog@2.29.0(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)):
     optionalDependencies:
       vite: 7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
 
@@ -4497,9 +4516,9 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.4
 
-  fdir@6.5.0(picomatch@4.0.5):
+  fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
-      picomatch: 4.0.5
+      picomatch: 4.0.7
 
   fetch-blob@3.2.0:
     dependencies:
@@ -4576,16 +4595,16 @@ snapshots:
     dependencies:
       lru-cache: 11.5.2
 
-  html-encoding-sniffer@6.0.0:
+  html-encoding-sniffer@7.0.0:
     dependencies:
-      '@exodus/bytes': 1.15.0
+      '@exodus/bytes': 1.16.0
     transitivePeerDependencies:
       - '@noble/hashes'
+    optional: true
 
   html-escaper@2.0.2: {}
 
-  html-escaper@3.0.3:
-    optional: true
+  html-escaper@3.0.3: {}
 
   htmlparser2@10.1.0:
     dependencies:
@@ -4593,7 +4612,6 @@ snapshots:
       domhandler: 5.0.3
       domutils: 3.2.2
       entities: 7.0.1
-    optional: true
 
   http-proxy-agent@9.1.0:
     dependencies:
@@ -4626,7 +4644,8 @@ snapshots:
 
   is-fullwidth-code-point@3.0.0: {}
 
-  is-potential-custom-element-name@1.0.1: {}
+  is-potential-custom-element-name@1.0.1:
+    optional: true
 
   isexe@2.0.0: {}
 
@@ -4663,31 +4682,31 @@ snapshots:
 
   js-tokens@9.0.1: {}
 
-  jsdom@29.1.1:
+  jsdom@30.1.1:
     dependencies:
-      '@asamuzakjp/css-color': 5.1.11
-      '@asamuzakjp/dom-selector': 7.1.1
+      '@asamuzakjp/css-color': 7.1.2
+      '@asamuzakjp/dom-selector': 9.2.3
       '@bramus/specificity': 2.4.2
-      '@csstools/css-syntax-patches-for-csstree': 1.1.4(css-tree@3.2.1)
-      '@exodus/bytes': 1.15.0
+      '@csstools/css-syntax-patches-for-csstree': 1.1.15(css-tree@3.2.1)
+      '@exodus/bytes': 1.16.0
       css-tree: 3.2.1
       data-urls: 7.0.0
       decimal.js: 10.6.0
-      html-encoding-sniffer: 6.0.0
+      html-encoding-sniffer: 7.0.0
       is-potential-custom-element-name: 1.0.1
-      lru-cache: 11.5.2
+      lru-cache: 11.5.3
       parse5: 8.0.1
       saxes: 6.0.0
-      symbol-tree: 3.2.4
-      tough-cookie: 6.0.1
-      undici: 7.29.0
-      w3c-xmlserializer: 5.0.0
+      tough-cookie: 6.0.2
+      undici: 8.11.2
+      w3c-xmlserializer: 6.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
-      whatwg-url: 16.0.1
+      whatwg-url: 17.1.2
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - '@noble/hashes'
+    optional: true
 
   jsesc@3.1.0: {}
 
@@ -4711,14 +4730,13 @@ snapshots:
       jwa: 2.0.1
       safe-buffer: 5.2.1
 
-  linkedom@0.18.12:
+  linkedom@0.18.13:
     dependencies:
-      css-select: 5.2.2
+      css-select: 7.0.0
       cssom: 0.5.0
       html-escaper: 3.0.3
       htmlparser2: 10.1.0
       uhyphen: 0.2.0
-    optional: true
 
   long@5.3.2: {}
 
@@ -4727,6 +4745,9 @@ snapshots:
   lru-cache@10.4.3: {}
 
   lru-cache@11.5.2: {}
+
+  lru-cache@11.5.3:
+    optional: true
 
   magic-string@0.30.21:
     dependencies:
@@ -4744,12 +4765,12 @@ snapshots:
 
   marked@18.0.11: {}
 
-  mathml-to-latex@1.5.0:
+  mathml-to-latex@1.8.0:
     dependencies:
-      '@xmldom/xmldom': 0.8.13
-    optional: true
+      '@xmldom/xmldom': 0.9.12
 
-  mdn-data@2.27.1: {}
+  mdn-data@2.27.1:
+    optional: true
 
   minimatch@10.2.5:
     dependencies:
@@ -4767,7 +4788,7 @@ snapshots:
 
   ms@2.1.3: {}
 
-  nanoid@3.3.18: {}
+  nanoid@3.3.19: {}
 
   node-domexception@1.0.0: {}
 
@@ -4777,10 +4798,9 @@ snapshots:
       fetch-blob: 3.2.0
       formdata-polyfill: 4.0.10
 
-  nth-check@2.1.1:
+  nth-check@3.0.1:
     dependencies:
-      boolbase: 1.0.0
-    optional: true
+      boolbase: 2.0.0
 
   obug@2.1.1: {}
 
@@ -4857,7 +4877,8 @@ snapshots:
 
   parse5@8.0.1:
     dependencies:
-      entities: 8.0.0
+      entities: 8.1.0
+    optional: true
 
   partial-json@0.1.7: {}
 
@@ -4878,11 +4899,13 @@ snapshots:
 
   picomatch@4.0.5: {}
 
-  postcss@8.5.26:
+  picomatch@4.0.7: {}
+
+  postcss@8.5.28:
     dependencies:
-      nanoid: 3.3.18
+      nanoid: 3.3.19
       picocolors: 1.1.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   proper-lockfile@4.1.2:
     dependencies:
@@ -4906,13 +4929,15 @@ snapshots:
 
   proxy-agent-negotiate@1.1.0: {}
 
-  punycode@2.3.1: {}
+  punycode@2.3.1:
+    optional: true
 
   quansync@1.0.0: {}
 
   quickjs-wasi@3.6.2: {}
 
-  require-from-string@2.0.2: {}
+  require-from-string@2.0.2:
+    optional: true
 
   resolve-pkg-maps@1.0.0: {}
 
@@ -4958,36 +4983,36 @@ snapshots:
       '@rolldown/binding-win32-arm64-msvc': 1.0.0-rc.9
       '@rolldown/binding-win32-x64-msvc': 1.0.0-rc.9
 
-  rollup@4.62.4:
+  rollup@4.63.6:
     dependencies:
       '@types/estree': 1.0.9
     optionalDependencies:
       '@napi-rs/lzma-linux-x64-gnu': 1.5.1
-      '@rollup/rollup-android-arm-eabi': 4.62.4
-      '@rollup/rollup-android-arm64': 4.62.4
-      '@rollup/rollup-darwin-arm64': 4.62.4
-      '@rollup/rollup-darwin-x64': 4.62.4
-      '@rollup/rollup-freebsd-arm64': 4.62.4
-      '@rollup/rollup-freebsd-x64': 4.62.4
-      '@rollup/rollup-linux-arm-gnueabihf': 4.62.4
-      '@rollup/rollup-linux-arm-musleabihf': 4.62.4
-      '@rollup/rollup-linux-arm64-gnu': 4.62.4
-      '@rollup/rollup-linux-arm64-musl': 4.62.4
-      '@rollup/rollup-linux-loong64-gnu': 4.62.4
-      '@rollup/rollup-linux-loong64-musl': 4.62.4
-      '@rollup/rollup-linux-ppc64-gnu': 4.62.4
-      '@rollup/rollup-linux-ppc64-musl': 4.62.4
-      '@rollup/rollup-linux-riscv64-gnu': 4.62.4
-      '@rollup/rollup-linux-riscv64-musl': 4.62.4
-      '@rollup/rollup-linux-s390x-gnu': 4.62.4
-      '@rollup/rollup-linux-x64-gnu': 4.62.4
-      '@rollup/rollup-linux-x64-musl': 4.62.4
-      '@rollup/rollup-openbsd-x64': 4.62.4
-      '@rollup/rollup-openharmony-arm64': 4.62.4
-      '@rollup/rollup-win32-arm64-msvc': 4.62.4
-      '@rollup/rollup-win32-ia32-msvc': 4.62.4
-      '@rollup/rollup-win32-x64-gnu': 4.62.4
-      '@rollup/rollup-win32-x64-msvc': 4.62.4
+      '@rollup/rollup-android-arm-eabi': 4.63.6
+      '@rollup/rollup-android-arm64': 4.63.6
+      '@rollup/rollup-darwin-arm64': 4.63.6
+      '@rollup/rollup-darwin-x64': 4.63.6
+      '@rollup/rollup-freebsd-arm64': 4.63.6
+      '@rollup/rollup-freebsd-x64': 4.63.6
+      '@rollup/rollup-linux-arm-gnueabihf': 4.63.6
+      '@rollup/rollup-linux-arm-musleabihf': 4.63.6
+      '@rollup/rollup-linux-arm64-gnu': 4.63.6
+      '@rollup/rollup-linux-arm64-musl': 4.63.6
+      '@rollup/rollup-linux-loong64-gnu': 4.63.6
+      '@rollup/rollup-linux-loong64-musl': 4.63.6
+      '@rollup/rollup-linux-ppc64-gnu': 4.63.6
+      '@rollup/rollup-linux-ppc64-musl': 4.63.6
+      '@rollup/rollup-linux-riscv64-gnu': 4.63.6
+      '@rollup/rollup-linux-riscv64-musl': 4.63.6
+      '@rollup/rollup-linux-s390x-gnu': 4.63.6
+      '@rollup/rollup-linux-x64-gnu': 4.63.6
+      '@rollup/rollup-linux-x64-musl': 4.63.6
+      '@rollup/rollup-openbsd-x64': 4.63.6
+      '@rollup/rollup-openharmony-arm64': 4.63.6
+      '@rollup/rollup-win32-arm64-msvc': 4.63.6
+      '@rollup/rollup-win32-ia32-msvc': 4.63.6
+      '@rollup/rollup-win32-x64-gnu': 4.63.6
+      '@rollup/rollup-win32-x64-msvc': 4.63.6
       fsevents: 2.3.3
 
   safe-buffer@5.2.1: {}
@@ -4995,6 +5020,7 @@ snapshots:
   saxes@6.0.0:
     dependencies:
       xmlchars: 2.2.0
+    optional: true
 
   semver@7.7.4: {}
 
@@ -5013,6 +5039,8 @@ snapshots:
   signal-exit@4.1.0: {}
 
   source-map-js@1.2.1: {}
+
+  source-map-js@1.2.2: {}
 
   stackback@0.0.2: {}
 
@@ -5051,9 +5079,7 @@ snapshots:
     dependencies:
       has-flag: 4.0.0
 
-  symbol-tree@3.2.4: {}
-
-  temml@0.13.3:
+  temml@0.13.5:
     optional: true
 
   test-exclude@7.0.2:
@@ -5075,8 +5101,8 @@ snapshots:
 
   tinyglobby@0.2.17:
     dependencies:
-      fdir: 6.5.0(picomatch@4.0.5)
-      picomatch: 4.0.5
+      fdir: 6.5.0(picomatch@4.0.7)
+      picomatch: 4.0.7
 
   tinypool@1.1.1: {}
 
@@ -5086,19 +5112,23 @@ snapshots:
 
   tinyspy@4.0.4: {}
 
-  tldts-core@7.0.30: {}
+  tldts-core@7.4.16:
+    optional: true
 
-  tldts@7.0.30:
+  tldts@7.4.16:
     dependencies:
-      tldts-core: 7.0.30
+      tldts-core: 7.4.16
+    optional: true
 
-  tough-cookie@6.0.1:
+  tough-cookie@6.0.2:
     dependencies:
-      tldts: 7.0.30
+      tldts: 7.4.16
+    optional: true
 
   tr46@6.0.0:
     dependencies:
       punycode: 2.3.1
+    optional: true
 
   tree-kill@1.2.2: {}
 
@@ -5138,14 +5168,13 @@ snapshots:
       '@mixmark-io/domino': 2.2.0
     optional: true
 
-  typebox@1.1.38: {}
-
   typebox@1.3.27: {}
+
+  typebox@1.3.34: {}
 
   typescript@5.9.3: {}
 
-  uhyphen@0.2.0:
-    optional: true
+  uhyphen@0.2.0: {}
 
   unconfig-core@7.5.0:
     dependencies:
@@ -5154,16 +5183,13 @@ snapshots:
 
   undici-types@7.16.0: {}
 
-  undici-types@7.18.2: {}
-
-  undici-types@7.25.0: {}
-
   undici-types@8.3.0:
     optional: true
 
-  undici@7.29.0: {}
-
   undici@8.10.2: {}
+
+  undici@8.11.2:
+    optional: true
 
   unrun@0.2.32:
     dependencies:
@@ -5214,10 +5240,10 @@ snapshots:
   vite@7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0):
     dependencies:
       esbuild: 0.28.2
-      fdir: 6.5.0(picomatch@4.0.5)
-      picomatch: 4.0.5
-      postcss: 8.5.26
-      rollup: 4.62.4
+      fdir: 6.5.0(picomatch@4.0.7)
+      picomatch: 4.0.7
+      postcss: 8.5.28
+      rollup: 4.63.6
       tinyglobby: 0.2.17
     optionalDependencies:
       '@types/node': 24.12.4
@@ -5228,10 +5254,10 @@ snapshots:
   vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0):
     dependencies:
       esbuild: 0.28.2
-      fdir: 6.5.0(picomatch@4.0.5)
-      picomatch: 4.0.5
-      postcss: 8.5.26
-      rollup: 4.62.4
+      fdir: 6.5.0(picomatch@4.0.7)
+      picomatch: 4.0.7
+      postcss: 8.5.28
+      rollup: 4.63.6
       tinyglobby: 0.2.17
     optionalDependencies:
       '@types/node': 26.1.1
@@ -5239,7 +5265,7 @@ snapshots:
       jiti: 2.7.0
       yaml: 2.9.0
 
-  vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0):
+  vitest@3.2.6(@types/node@24.12.4)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.6
@@ -5266,7 +5292,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 24.12.4
-      jsdom: 29.1.1
+      jsdom: 30.1.1
     transitivePeerDependencies:
       - jiti
       - less
@@ -5281,7 +5307,7 @@ snapshots:
       - tsx
       - yaml
 
-  vitest@3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@29.1.1)(yaml@2.9.0):
+  vitest@3.2.6(@types/node@26.1.1)(jiti@2.7.0)(jsdom@30.1.1)(yaml@2.9.0):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.6
@@ -5308,7 +5334,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 26.1.1
-      jsdom: 29.1.1
+      jsdom: 30.1.1
     transitivePeerDependencies:
       - jiti
       - less
@@ -5323,23 +5349,36 @@ snapshots:
       - tsx
       - yaml
 
-  w3c-xmlserializer@5.0.0:
+  w3c-xmlserializer@6.0.0:
     dependencies:
       xml-name-validator: 5.0.0
+    optional: true
 
   web-streams-polyfill@3.3.3: {}
 
-  webidl-conversions@8.0.1: {}
+  webidl-conversions@8.0.1:
+    optional: true
 
-  whatwg-mimetype@5.0.0: {}
+  whatwg-mimetype@5.0.0:
+    optional: true
 
   whatwg-url@16.0.1:
     dependencies:
-      '@exodus/bytes': 1.15.0
+      '@exodus/bytes': 1.16.0
       tr46: 6.0.0
       webidl-conversions: 8.0.1
     transitivePeerDependencies:
       - '@noble/hashes'
+    optional: true
+
+  whatwg-url@17.1.2:
+    dependencies:
+      '@exodus/bytes': 1.16.0
+      tr46: 6.0.0
+      webidl-conversions: 8.0.1
+    transitivePeerDependencies:
+      - '@noble/hashes'
+    optional: true
 
   which@2.0.2:
     dependencies:
@@ -5364,9 +5403,11 @@ snapshots:
 
   ws@8.21.3: {}
 
-  xml-name-validator@5.0.0: {}
+  xml-name-validator@5.0.0:
+    optional: true
 
-  xmlchars@2.2.0: {}
+  xmlchars@2.2.0:
+    optional: true
 
   yaml@2.9.0: {}
 

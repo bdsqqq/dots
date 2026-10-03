@@ -41,21 +41,24 @@
     "check": "pnpm run format:check && pnpm run lint && pnpm run test"
   },
   "dependencies": {
-    "defuddle": "^0.18.1",
-    "diff": "^8.0.0",
-    "evlog": "^2.22.4",
+    "defuddle": "^0.19.4",
+    "diff": "^9.0.0",
+    "evlog": "^2.29.0",
     "jiti": "^2.7.0",
-    "jsdom": "^29.1.1",
+    "linkedom": "^0.18.13",
     "typescript": "^5.9.2"
   },
   "devDependencies": {
-    "@types/jsdom": "^28.0.1",
+    "@earendil-works/pi-ai": "catalog:",
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "@earendil-works/pi-tui": "catalog:",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "^3.0.0",
     "oxfmt": "^0.35.0",
     "oxlint": "^1.50.0",
     "oxlint-tsgolint": "^0.15.0",
     "tsdown": "^0.21.0",
+    "typebox": "catalog:",
     "vitest": "^3.0.0"
   },
   "peerDependencies": {

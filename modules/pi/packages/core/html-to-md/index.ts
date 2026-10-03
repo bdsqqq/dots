@@ -3,13 +3,8 @@
  * HTML or extraction fails, so callers can fall back to raw output.
  */
 
-import { createRequire } from "node:module";
 import { Defuddle } from "defuddle/node";
-import { JSDOM } from "jsdom";
-
-const { createMarkdownContent } = createRequire(import.meta.url)(
-  "defuddle/full",
-) as typeof import("defuddle/full");
+import { parseHTML } from "linkedom";
 
 export function isHtml(text: string): boolean {
   const trimmed = text.trimStart().slice(0, 200).toLowerCase();
@@ -27,30 +22,20 @@ function normalizeMarkdown(text: string): string {
     .trim();
 }
 
-function convertHtmlFragment(html: string, document: Document): string {
-  const globals = globalThis as typeof globalThis & { document?: Document };
-  const previousDocument = globals.document;
-  globals.document = document;
-  try {
-    return createMarkdownContent(html, "about:blank");
-  } finally {
-    globals.document = previousDocument;
-  }
-}
-
 export async function htmlToMarkdown(html: string): Promise<string | null> {
   if (!isHtml(html)) return null;
 
   try {
-    const dom = new JSDOM(html, { url: "about:blank" });
-    const document = dom.window.document;
-    const result = await Defuddle(document, "about:blank", { markdown: true });
-    const fallback = convertHtmlFragment(
-      document.body?.innerHTML || html,
-      document,
-    );
+    const { document } = parseHTML(html);
+    let result = await Defuddle(document, "about:blank", { markdown: true });
+    // Standardization can discard heading-only fragments even when they contain useful text.
+    if (!result.content)
+      result = await Defuddle(document, "about:blank", {
+        markdown: true,
+        standardize: false,
+      });
     const heading = result.title ? `# ${result.title}` : "";
-    const content = result.content || fallback;
+    const content = result.content;
     const withTitle =
       heading && !content.includes(result.title)
         ? `${heading}\n\n${content}`
