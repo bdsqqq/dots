@@ -21,6 +21,7 @@ import {
   assertHostedRoot,
   candidateIdentity,
   executableMode,
+  lookupGroup,
   permissionMode,
   precheckSnapshot,
   provisionAccount,
@@ -198,37 +199,98 @@ test("executable planning preserves safe owners/group write and immutable store 
     assert.throws(() => executableMode(stat), /unsafe/);
 });
 
-test("spawn identity probe explicitly drops uid/gid and rejects extra groups", () => {
+const kernelIdentity = {
+  uid: 62001,
+  euid: 62001,
+  gid: 62001,
+  egid: 62001,
+  groups: [62001],
+};
+test("kernel identity is exact while directory defaults remain separate facts", () => {
   const calls: { program: string; args: string[]; identity: unknown }[] = [];
-  verifyCandidateIdentity((program, args, _cwd, identity) => {
+  const facts = verifyCandidateIdentity((program, args, _cwd, identity) => {
     calls.push({ program, args, identity });
-    return { status: 0, stdout: "62001\n" };
+    return {
+      status: 0,
+      stdout:
+        program === process.execPath ? JSON.stringify(kernelIdentity) : "62001 12 61 701 100\n",
+    };
   });
-  assert.deepEqual(
-    calls,
-    ["-u", "-G"].map((flag) => ({
-      program: "/usr/bin/id",
-      args: [flag],
-      identity: { uid: 62001, gid: 62001 },
-    })),
-  );
-  for (const groups of ["62001 0\n", "0 62001\n", "62001 20\n", "62001 999\n", ""]) {
+  assert.deepEqual(facts, { ...kernelIdentity, directoryGroups: [62001, 12, 61, 701, 100] });
+  assert.equal(calls[0].program, process.execPath);
+  assert.equal(calls[0].args[0], "-e");
+  assert.match(calls[0].args[1], /process\.getgroups\(\)/);
+  assert.match(calls[0].args[1], /process\.geteuid\(\)/);
+  assert.deepEqual(calls[0].identity, { uid: 62001, gid: 62001 });
+  assert.deepEqual(calls[1], {
+    program: "/usr/bin/id",
+    args: ["-G", "ci-candidate"],
+    identity: undefined,
+  });
+  const gids = [...facts.groups, ...facts.directoryGroups];
+  assert.doesNotThrow(() => validateNixDaemonConfig(nixConfig(["root"]), gids));
+  assert.equal(ancestorMode({ uid: 511, gid: 100, mode: 0o555 }, gids), 0o555);
+  assert.equal(executableMode({ uid: 511, gid: 100, mode: 0o555 }, gids), 0o555);
+});
+
+test("kernel probe rejects extra groups including every hosted directory default", () => {
+  for (const groups of [
+    [62001, 0],
+    [0, 62001],
+    [62001, 20],
+    [62001, 12, 61, 701, 100],
+    [],
+    [62001, 62001],
+  ]) {
     assert.throws(
       () =>
-        verifyCandidateIdentity((_program, args) => ({
+        verifyCandidateIdentity(() => ({
           status: 0,
-          stdout: args[0] === "-u" ? "62001\n" : groups,
+          stdout: JSON.stringify({ ...kernelIdentity, groups }),
         })),
-      /only uid\/gid/,
+      /kernel identity/,
+    );
+  }
+  for (const field of ["uid", "euid", "gid", "egid"])
+    for (const value of [0, "62001", null])
+      assert.throws(
+        () =>
+          verifyCandidateIdentity(() => ({
+            status: 0,
+            stdout: JSON.stringify({ ...kernelIdentity, [field]: value }),
+          })),
+        /kernel identity/,
+      );
+  for (const stdout of ["", "not JSON", "null", "[]", "{}"])
+    assert.throws(() => verifyCandidateIdentity(() => ({ status: 0, stdout })), /identity/);
+  assert.throws(
+    () =>
+      verifyCandidateIdentity(() => ({
+        status: 1,
+        stdout: JSON.stringify(kernelIdentity),
+      })),
+    /kernel identity/,
+  );
+});
+
+test("directory group observation rejects malformed, missing-primary and failed lookups", () => {
+  for (const stdout of ["", "12 100", "62001 admin", "62001 -1", "62001 4294967296"]) {
+    assert.throws(
+      () =>
+        verifyCandidateIdentity((program) => ({
+          status: 0,
+          stdout: program === process.execPath ? JSON.stringify(kernelIdentity) : stdout,
+        })),
+      /directory groups/,
     );
   }
   assert.throws(
-    () => verifyCandidateIdentity(() => ({ status: 0, stdout: "0\n" })),
-    /only uid\/gid/,
-  );
-  assert.throws(
-    () => verifyCandidateIdentity(() => ({ status: 1, stdout: "62001\n" })),
-    /only uid\/gid/,
+    () =>
+      verifyCandidateIdentity((program) => ({
+        status: program === process.execPath ? 0 : 1,
+        stdout: JSON.stringify(kernelIdentity),
+      })),
+    /command failed/,
   );
 });
 
@@ -278,8 +340,13 @@ test("candidate cannot gain passwordless sudo or write controller files/evidence
 });
 
 test("nix daemon defaults trust root/admin but not the fresh candidate", () => {
-  assert.doesNotThrow(() => validateNixDaemonConfig(nixConfig()));
-  assert.doesNotThrow(() => validateNixDaemonConfig(nixConfig(["root", "@wheel", "0"])));
+  const groups = () => ({ gid: 80, members: ["runner"] });
+  assert.doesNotThrow(() =>
+    validateNixDaemonConfig(nixConfig(), [62001, 12, 61, 701, 100], groups),
+  );
+  assert.doesNotThrow(() =>
+    validateNixDaemonConfig(nixConfig(["root", "@wheel", "0"]), [62001], groups),
+  );
   assert.doesNotThrow(() => validateNixDaemonConfig(nixConfig([])));
 });
 
@@ -291,6 +358,126 @@ test("nix daemon trust rejects wildcards and unknown account patterns", () => {
 test("nix daemon trust rejects explicit candidate names, ids and primary groups", () => {
   for (const entry of ["ci-candidate", "62001", "@ci-candidate", "@62001", "062001", "@062001"])
     assert.throws(() => validateNixDaemonConfig(nixConfig(["root", entry])), /candidate must not/);
+});
+
+test("nix trusted aliases and explicit members cannot overlap directory defaults", () => {
+  const gids = [62001, 12, 61, 701, 100];
+  for (const gid of gids) {
+    assert.throws(
+      () => validateNixDaemonConfig(nixConfig(["@alias"]), gids, () => ({ gid, members: [] })),
+      /must not be trusted/,
+    );
+    assert.throws(
+      () => validateNixDaemonConfig(nixConfig([`@${gid}`]), gids),
+      /candidate|must not be trusted/,
+    );
+  }
+  assert.throws(
+    () =>
+      validateNixDaemonConfig(nixConfig(["@alias"]), gids, () => ({
+        gid: 80,
+        members: ["runner", "ci-candidate"],
+      })),
+    /must not be trusted/,
+  );
+  assert.throws(() => validateNixDaemonConfig(nixConfig(["@admin"]), gids), /lookup is required/);
+  assert.throws(
+    () => validateNixDaemonConfig(nixConfig(["@admin"]), gids, () => ({ gid: NaN, members: [] })),
+    /malformed/,
+  );
+  assert.throws(
+    () =>
+      validateNixDaemonConfig(nixConfig(["@admin"]), gids, () => ({
+        gid: 80,
+        members: ["bad member"],
+      })),
+    /malformed/,
+  );
+});
+
+test("group cache lookups resolve aliases and parse explicit members on both platforms", () => {
+  const calls: unknown[] = [];
+  for (const platform of ["linux", "darwin"] as const) {
+    const result = lookupGroup(platform, "alias", (program, args) => {
+      calls.push({ program, args });
+      return {
+        status: 0,
+        stdout:
+          platform === "linux"
+            ? "actual:x:100:runner,ci-candidate\n"
+            : "name: actual\npassword: *\ngid: 100\nusers: runner ci-candidate\n\n",
+      };
+    });
+    assert.deepEqual(result, { gid: 100, members: ["runner", "ci-candidate"] });
+    assert.deepEqual(
+      lookupGroup(platform, "empty", () => ({
+        status: 0,
+        stdout:
+          platform === "linux" ? "empty:x:80:\n" : "name: empty\npassword: *\ngid: 80\nusers:\n",
+      })),
+      { gid: 80, members: [] },
+    );
+  }
+  assert.deepEqual(calls, [
+    { program: "/usr/bin/getent", args: ["group", "alias"] },
+    { program: "/usr/bin/dscacheutil", args: ["-q", "group", "-a", "name", "alias"] },
+  ]);
+});
+
+test("group cache lookup uncertainty fails closed", () => {
+  for (const [platform, outputs] of [
+    [
+      "linux",
+      [
+        "",
+        "admin:x:80",
+        "admin:x:bad:runner",
+        "admin:x:80:runner\nother:x:80:",
+        "admin:x:4294967296:runner",
+        "admin:x:80:bad member",
+      ],
+    ],
+    [
+      "darwin",
+      [
+        "",
+        "name: admin\ngid: 80\n",
+        "name: admin\nusers:\n",
+        "name: admin\ngid: bad\nusers: runner",
+        "name: admin\ngid: 80\ngid: 100\nusers:",
+        "name: admin\ngid: 80\nusers:\nunknown: value",
+      ],
+    ],
+  ] as const) {
+    for (const stdout of outputs)
+      assert.throws(
+        () => lookupGroup(platform, "admin", () => ({ status: 0, stdout })),
+        /group database/,
+      );
+    assert.throws(
+      () => lookupGroup(platform, "admin", () => ({ status: 1, stdout: "" })),
+      /command failed/,
+    );
+  }
+  assert.throws(
+    () =>
+      lookupGroup("darwin", "*", () => {
+        throw new Error("must not execute");
+      }),
+    /invalid group lookup/,
+  );
+});
+
+test("observed directory gids reject writable ancestors and tools, not read-only runner homes", () => {
+  const gids = [62001, 12, 61, 701, 100];
+  for (const gid of gids) {
+    const stat = { uid: 511, gid, mode: 0o775 };
+    assert.throws(() => ancestorMode(stat, gids), /candidate-writable/);
+    assert.throws(() => executableMode(stat, gids), /unsafe/);
+    assert.deepEqual(stat, { uid: 511, gid, mode: 0o775 });
+    assert.equal(ancestorMode({ ...stat, mode: 0o555 }, gids), 0o555);
+    assert.equal(executableMode({ ...stat, mode: 0o555 }, gids), 0o555);
+  }
 });
 
 test("nix daemon security metadata fails closed on missing or malformed values", () => {
@@ -320,7 +507,7 @@ test("nix security probe uses the fixed absolute tool and mocked root config que
   const calls: unknown[] = [];
   verifyNixDaemon("/nix/store/fixture/bin/nix", (program, args, cwd, identity) => {
     calls.push({ program, args, cwd, identity });
-    return { status: 0, stdout: JSON.stringify(nixConfig()) };
+    return { status: 0, stdout: JSON.stringify(nixConfig(["root"])) };
   });
   assert.deepEqual(calls, [
     {
@@ -353,6 +540,50 @@ test("nix security probe uses the fixed absolute tool and mocked root config que
       })),
     /wildcard/,
   );
+});
+
+test("nix root probe resolves every trusted group before accepting config", () => {
+  for (const platform of ["linux", "darwin"] as const) {
+    const calls: string[] = [];
+    const command: ControllerCommand = (program, args) => {
+      calls.push(program);
+      if (program === "/fixed/nix")
+        return {
+          status: 0,
+          stdout: JSON.stringify(nixConfig(["root", "@admin", "@wheel"])),
+        };
+      const name = args.at(-1)!;
+      return {
+        status: 0,
+        stdout:
+          platform === "linux"
+            ? `${name}:x:80:runner\n`
+            : `name: ${name}\npassword: *\ngid: 80\nusers: runner\n`,
+      };
+    };
+    verifyNixDaemon("/fixed/nix", command, [62001, 12, 61, 701, 100], platform);
+    assert.deepEqual(calls, [
+      "/fixed/nix",
+      ...Array(2).fill(platform === "linux" ? "/usr/bin/getent" : "/usr/bin/dscacheutil"),
+    ]);
+    assert.throws(
+      () => verifyNixDaemon("/fixed/nix", command, [62001, 80], platform),
+      /must not be trusted/,
+    );
+    assert.throws(
+      () =>
+        verifyNixDaemon(
+          "/fixed/nix",
+          (program) =>
+            program === "/fixed/nix"
+              ? { status: 0, stdout: JSON.stringify(nixConfig()) }
+              : { status: 1, stdout: "" },
+          [62001],
+          platform,
+        ),
+      /command failed/,
+    );
+  }
 });
 
 test("permission planning strips setuid and writable trust while preserving executables", () => {

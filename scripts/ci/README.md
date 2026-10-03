@@ -20,7 +20,8 @@ flowchart LR
 manual dispatch, without path filters. workers use GitHub-hosted VMs—not
 production machines, personal homes, deployment credentials, or production Nix
 daemons. a root-owned controller creates a dedicated, non-admin candidate
-account; child commands run as that account, with no supplementary groups.
+account; child commands run as that account, with no supplementary process
+groups beyond its primary gid.
 trusted verifier files and evidence are not candidate-writable. a private Git
 snapshot—not the candidate's writable `.git` or home configuration—owns the
 post-run tracked-file audit.
@@ -31,6 +32,12 @@ configuration. the daemon check assumes the installer's fresh daemon uses that
 protected system configuration; it does not inspect a live daemon's internal
 settings. native provisioning and these cross-uid checks still need hosted
 execution before enabling branch enforcement.
+
+Darwin's `id -G` includes directory-service defaults, not just inherited process
+groups. a Node syscall probe checks the actual process credentials; directory
+memberships are checked separately against daemon trust and writable toolchain
+ancestors. additional directory memberships are not an exception to the process
+identity guard.
 
 commands receive an allowlisted environment and a temporary home. these
 measures are not a complete security sandbox; the disposable VM is the boundary
