@@ -1,5 +1,6 @@
 {
   "defaultProvider": "openai-codex",
+  "defaultTools": ["+codemode"],
   "skills": [
     "~/.config/agents/skills"
   ],

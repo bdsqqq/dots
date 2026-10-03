@@ -29,6 +29,7 @@ import {
   resolveMentionableSession,
   type MentionableSession,
 } from "@bds_pi/mentions";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 
 const MESSAGE_VERSION = 1;
 const MESSAGE_FILE = /^([0-9T:.Z_-]+)_([0-9a-f-]{36})\.json$/u;
@@ -574,8 +575,10 @@ export function createAgentMessageExtension(
 
     pi.on("session_shutdown", async () => stop());
     pi.registerTool(
-      createAgentMessageTool(config, deps.listMentionableSessions, () =>
-        pi.getSessionName(),
+      withPromptPatch(
+        createAgentMessageTool(config, deps.listMentionableSessions, () =>
+          pi.getSessionName(),
+        ),
       ),
     );
   };

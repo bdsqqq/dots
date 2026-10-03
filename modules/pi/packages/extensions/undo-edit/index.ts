@@ -1,18 +1,11 @@
 /**
- * undo_edit tool — reverts the last edit made to a file.
- *
- * uses lib/file-tracker's disk-based change records to find and
- * revert the most recent non-reverted change for a given file.
- *
- * branch awareness: scans the current session branch (via
- * sessionManager.getBranch()) to extract tool call IDs, then
- * only considers changes from those IDs. this prevents undoing
- * edits from a different conversation branch.
+ * undo_edit tool — reverts an explicitly identified file change.
  *
  * mutex-locked to prevent concurrent undo + edit on the same file.
  */
 
 import * as os from "node:os";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type {
   ExtensionAPI,
@@ -24,7 +17,7 @@ import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Type } from "typebox";
 import {
   canonicalFilePath,
-  findLatestChange,
+  loadChange,
   revertChange,
   simpleDiff,
 } from "@bds_pi/file-tracker";
@@ -45,53 +38,10 @@ const COLLAPSED_EXCERPTS: Excerpt[] = [
   { focus: "tail" as const, context: 5 },
 ];
 
-/**
- * extract tool call IDs from the current session branch.
- * session entries with type "message" and role "assistant" contain
- * tool_calls arrays. we collect all tool call IDs so findLatestChange
- * can filter to only branch-visible changes.
- *
- * falls back to empty array if getBranch() isn't available (e.g.,
- * running in a context where session tree access is restricted).
- */
-function getActiveToolCallIds(sessionManager: any): string[] {
-  try {
-    const branch = sessionManager.getBranch?.();
-    if (!Array.isArray(branch)) return [];
-
-    const ids: string[] = [];
-    for (const entry of branch) {
-      if (entry.type !== "message") continue;
-      const msg = entry.message;
-      if (msg?.role !== "assistant") continue;
-
-      // assistant messages store tool calls in content array
-      // or in a tool_calls field depending on provider format
-      if (Array.isArray(msg.tool_calls)) {
-        for (const tc of msg.tool_calls) {
-          if (tc.id) ids.push(tc.id);
-        }
-      }
-      // also check content array for tool_use blocks (anthropic format)
-      if (Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (
-            (block.type === "toolCall" || block.type === "tool_use") &&
-            block.id
-          ) {
-            ids.push(block.id);
-          }
-        }
-      }
-    }
-    return ids;
-  } catch {
-    return [];
-  }
-}
-
 interface UndoEditParams {
   path: string;
+  changeId: string;
+  sessionId?: string;
 }
 
 export function createUndoEditTool(): ToolDefinition<any> {
@@ -99,15 +49,21 @@ export function createUndoEditTool(): ToolDefinition<any> {
     name: "undo_edit",
     label: "Undo Edit",
     description:
-      "Undo the last edit made to a file.\n\n" +
-      "This command reverts the most recent edit made to the specified file.\n" +
-      "It will restore the file to its state before the last edit was made.\n\n" +
-      "Returns a diff showing the changes that were undone.",
+      "Undo an explicit changeId returned by apply_patch or format_file for the specified path. Refuses if the file differs from the recorded post-edit state. Returns the reverse diff.",
 
     parameters: Type.Object({
+      changeId: Type.String({
+        description: "Change ID returned by the edit tool.",
+      }),
+      sessionId: Type.Optional(
+        Type.String({
+          description:
+            "Origin sessionId returned by the edit tool. Omit only for changes created in the current session.",
+        }),
+      ),
       path: Type.String({
         description:
-          "The absolute path to the file whose last edit should be undone (must be absolute, not relative).",
+          "The path recorded for this change; must match the change ID's file.",
       }),
     }),
 
@@ -179,39 +135,25 @@ export function createUndoEditTool(): ToolDefinition<any> {
 
       return withFileMutationQueue(canonical, () =>
         withFileLock(canonical, async () => {
-          const sessionId = ctx.sessionManager.getSessionId();
-          const activeIds = getActiveToolCallIds(ctx.sessionManager);
-
-          if (activeIds.length === 0) {
+          const sessionId = p.sessionId ?? ctx.sessionManager.getSessionId();
+          const change = loadChange(sessionId, p.changeId);
+          if (
+            !change ||
+            canonicalFilePath(change.uri.replace(/^file:\/\//, "")) !==
+              canonical
+          ) {
             return {
               content: [
                 {
                   type: "text" as const,
-                  text: "no edits found to undo (no tool calls in current branch).",
+                  text: `change ID not found for ${path.basename(resolved)}.`,
                 },
               ],
               isError: true,
             } as any;
           }
 
-          const latest = findLatestChange(sessionId, canonical, activeIds);
-          if (!latest) {
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: `no edits found to undo for ${path.basename(resolved)}.`,
-                },
-              ],
-              isError: true,
-            } as any;
-          }
-
-          const reverted = revertChange(
-            sessionId,
-            latest.toolCallId,
-            latest.change.id,
-          );
+          const reverted = revertChange(sessionId, p.changeId);
           if (!reverted) {
             return {
               content: [
@@ -238,7 +180,12 @@ export function createUndoEditTool(): ToolDefinition<any> {
 
           return {
             content: [{ type: "text" as const, text: result }],
-            details: { header: resolved },
+            details: {
+              header: resolved,
+              changeId: reverted.id,
+              path: canonical,
+              reverted: true,
+            },
           } as any;
         }),
       );
@@ -258,6 +205,89 @@ if (import.meta.vitest) {
   });
 
   describe("undo-edit tool policy", () => {
+    it("undoes explicit nested-call changes without history and protects unrelated or diverged files", async () => {
+      const { createApplyPatchTool } = await import("@bds_pi/apply-patch");
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-explicit-undo-"));
+      const trackerGlobal = globalThis as typeof globalThis & {
+        __PI_FILE_CHANGES_DIR__?: string;
+      };
+      const previousDir = trackerGlobal.__PI_FILE_CHANGES_DIR__;
+      trackerGlobal.__PI_FILE_CHANGES_DIR__ = path.join(root, ".changes");
+      vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([]);
+      vi.spyOn(toolPolicy, "evaluateToolPolicy").mockReturnValue({
+        action: "allow",
+      });
+      const ctx = {
+        cwd: root,
+        sessionManager: { getSessionId: () => "session/nested" },
+      } as any;
+      const file = path.join(root, "edited.txt");
+      const unrelated = path.join(root, "unrelated.txt");
+      try {
+        fs.writeFileSync(file, "before\n");
+        fs.writeFileSync(unrelated, "unrelated\n");
+        const edited = await createApplyPatchTool().execute(
+          "outer/inner/0",
+          {
+            input:
+              "*** Begin Patch\n*** Update File: edited.txt\n@@\n-before\n+after\n*** End Patch",
+          },
+          undefined,
+          undefined,
+          ctx,
+        );
+        const changeId = (edited.details as { changes: { changeId: string }[] })
+          .changes[0]!.changeId;
+        expect(changeId).toMatch(/^[0-9a-f-]{36}$/);
+        const undo = createUndoEditTool();
+        const wrongPath = await undo.execute(
+          "outer/undo/0",
+          { path: unrelated, changeId },
+          undefined,
+          undefined,
+          ctx,
+        );
+        expect(wrongPath).toMatchObject({ isError: true });
+        expect(fs.readFileSync(file, "utf8")).toBe("after\n");
+        expect(fs.readFileSync(unrelated, "utf8")).toBe("unrelated\n");
+        fs.writeFileSync(file, "later\n");
+        await expect(
+          undo.execute(
+            "outer/undo/1",
+            { path: file, changeId },
+            undefined,
+            undefined,
+            ctx,
+          ),
+        ).rejects.toThrow("changed file");
+        expect(fs.readFileSync(file, "utf8")).toBe("later\n");
+        fs.writeFileSync(file, "after\n");
+        const restored = await undo.execute(
+          "outer/undo/2",
+          { path: file, changeId, sessionId: "session/nested" },
+          undefined,
+          undefined,
+          { cwd: root } as any,
+        );
+        expect(restored.details).toMatchObject({ changeId, reverted: true });
+        expect(fs.readFileSync(file, "utf8")).toBe("before\n");
+        expect(fs.readFileSync(unrelated, "utf8")).toBe("unrelated\n");
+        const repeated = await undo.execute(
+          "outer/undo/3",
+          { path: file, changeId },
+          undefined,
+          undefined,
+          ctx,
+        );
+        expect(repeated).toMatchObject({ isError: true });
+      } finally {
+        if (previousDir === undefined)
+          delete trackerGlobal.__PI_FILE_CHANGES_DIR__;
+        else trackerGlobal.__PI_FILE_CHANGES_DIR__ = previousDir;
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    });
+
     it("rejects disallowed paths before undo lookup", async () => {
       const tool = createUndoEditTool();
       const evaluateToolPolicySpy = vi

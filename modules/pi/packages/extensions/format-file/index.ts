@@ -253,14 +253,14 @@ export function createFormatFileTool(
                 text: `${path.basename(resolved)} is already formatted.`,
               },
             ],
-            details: { header: resolved },
+            details: { header: resolved, path: resolved, changeId: null },
           } as any;
         }
 
         // track for undo_edit
         const sessionId = ctx.sessionManager.getSessionId();
         const diff = simpleDiff(resolved, before, after);
-        saveChange(sessionId, toolCallId, {
+        const changeId = saveChange(sessionId, toolCallId, {
           uri: `file://${resolved}`,
           before,
           after,
@@ -276,7 +276,7 @@ export function createFormatFileTool(
               text: `formatted ${path.basename(resolved)} with ${formatter.name}.\n\n${diff}`,
             },
           ],
-          details: { header: resolved },
+          details: { header: resolved, path: resolved, sessionId, changeId },
         } as any;
       });
     },
@@ -421,6 +421,61 @@ if (import.meta.vitest) {
   });
 
   describe("format-file tool policy", () => {
+    it("returns an explicit undo handle for a nested formatter call", async () => {
+      const { createUndoEditTool } = await import("@bds_pi/undo-edit");
+      const root = fs.mkdtempSync(path.join(tmpdir, "pi-format-undo-"));
+      const trackerGlobal = globalThis as typeof globalThis & {
+        __PI_FILE_CHANGES_DIR__?: string;
+      };
+      const previousDir = trackerGlobal.__PI_FILE_CHANGES_DIR__;
+      const previousPath = process.env.PATH;
+      trackerGlobal.__PI_FILE_CHANGES_DIR__ = path.join(root, ".changes");
+      vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([]);
+      vi.spyOn(toolPolicy, "evaluateToolPolicy").mockReturnValue({
+        action: "allow",
+      });
+      const ctx = {
+        cwd: root,
+        sessionManager: { getSessionId: () => "format-session" },
+      } as any;
+      const file = path.join(root, "file.txt");
+      try {
+        // A real subprocess boundary, independent of installed formatter versions.
+        fs.writeFileSync(
+          path.join(root, "prettier"),
+          '#!/bin/sh\nprintf "formatted\\n" > "$4"\n',
+          { mode: 0o755 },
+        );
+        process.env.PATH = `${root}${path.delimiter}${previousPath ?? ""}`;
+        fs.writeFileSync(file, "before\n");
+        const formatted = await createFormatFileTool().execute(
+          "outer/format/0",
+          { path: file },
+          undefined,
+          undefined,
+          ctx,
+        );
+        const changeId = (formatted.details as { changeId: string }).changeId;
+        expect(changeId).toMatch(/^[0-9a-f-]{36}$/);
+        expect(fs.readFileSync(file, "utf8")).toBe("formatted\n");
+        await createUndoEditTool().execute(
+          "outer/undo/0",
+          { path: file, changeId },
+          undefined,
+          undefined,
+          ctx,
+        );
+        expect(fs.readFileSync(file, "utf8")).toBe("before\n");
+      } finally {
+        if (previousPath === undefined) delete process.env.PATH;
+        else process.env.PATH = previousPath;
+        if (previousDir === undefined)
+          delete trackerGlobal.__PI_FILE_CHANGES_DIR__;
+        else trackerGlobal.__PI_FILE_CHANGES_DIR__ = previousDir;
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    });
+
     it("rejects disallowed paths before filesystem checks", async () => {
       const tool = createFormatFileTool();
       const evaluateToolPolicySpy = vi

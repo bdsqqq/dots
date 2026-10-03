@@ -28,6 +28,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createWideEvent, flushLogs } from "@bds_pi/log";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   readMaintenanceDemand,
   requestMaintenance as publishMaintenanceDemand,
@@ -130,7 +131,8 @@ const artifactRoots = new WeakMap<CatalogEntry, string>();
 function loadCatalog(): Catalog {
   const generation = loadVerifiedQmdGeneration({ data: memoryData() });
   const catalog = scanCatalog(generation.root, "1970-01-01T00:00:00.000Z");
-  for (const entry of catalog.entries) artifactRoots.set(entry, generation.root);
+  for (const entry of catalog.entries)
+    artifactRoots.set(entry, generation.root);
   return catalog;
 }
 
@@ -140,7 +142,8 @@ function catalogSha256(catalog: Catalog): string {
 
 function currentArtifact(entry: CatalogEntry): string {
   const pinnedRoot = artifactRoots.get(entry);
-  if (!pinnedRoot) throw new Error("memory artifact has no verified generation");
+  if (!pinnedRoot)
+    throw new Error("memory artifact has no verified generation");
   const root = realpathSync(pinnedRoot);
   const target = resolve(root, entry.path);
   const rel = relative(root, target);
@@ -504,6 +507,18 @@ function assignmentRef(
     title: entry.title,
     description: entry.description,
   };
+}
+
+function retrievalCatalog(): { catalog: Catalog; refs: SnapshotRef[] } {
+  const catalog = loadCatalog();
+  const state = deriveTierState(memoryConfig(), catalog);
+  const refs = catalog.entries.flatMap((entry) => {
+    const assignment = state.get(tierTargetKey(ref(entry)));
+    return assignment && !assignment.quarantined
+      ? [assignmentRef(assignment, entry)]
+      : [];
+  });
+  return { catalog, refs };
 }
 
 async function loadPromptSnapshot(
@@ -1060,15 +1075,21 @@ function qmdCatalogEntry(
   )
     return undefined;
   try {
-    const target = realpathSync(resolve(memoryRoot(), entry.path));
     if (row.file.startsWith("qmd://agent-memories/")) {
       const indexedPath = decodeURIComponent(
         row.file.slice("qmd://agent-memories/".length),
       );
       const expected = entry.path.replace(/[^A-Za-z0-9.]+/g, "-");
       if (indexedPath !== expected) return undefined;
-    } else if (realpathSync(resolve(memoryRoot(), row.file)) !== target)
-      return undefined;
+    } else {
+      const root = artifactRoots.get(entry);
+      if (
+        !root ||
+        realpathSync(resolve(root, row.file)) !==
+          realpathSync(resolve(root, entry.path))
+      )
+        return undefined;
+    }
     currentArtifact(entry);
     return entry;
   } catch {
@@ -1340,7 +1361,8 @@ function buildTurnReceipt(options: {
           throw new Error("memory search is missing retrieval ordering");
         retrievals.push(details.retrieval);
       }
-      refs.forEach(validateObservedRef);
+      // Retrieval uses the current accepted generation, not the frozen prompt.
+      refs.forEach((memory) => validateMemoryRef(options.catalog, memory));
       addCounts(redactions, details.redactions);
       const kind = call.name === "memory_search" ? "searched" : "opened";
       refs.forEach((memory, index) =>
@@ -1664,202 +1686,218 @@ export function createAgentMemoryExtension(
       return appended;
     };
 
-    pi.registerTool({
-      name: "memory_search",
-      label: "Memory Search",
-      description:
-        "Search current durable agent memories. Returns only hash-bound current catalog references.",
-      parameters: Type.Object(
-        {
-          query: Type.String({ minLength: 1, maxLength: QUERY_MAX_CHARS }),
-          hierarchyPrefix: Type.Optional(
-            Type.String({ minLength: 1, maxLength: 128 }),
-          ),
-        },
-        { additionalProperties: false },
-      ),
-      async execute(toolCallId, params, signal, _onUpdate, ctx) {
-        const clean = redact(params.query.slice(0, QUERY_MAX_CHARS));
-        const observation = createWideEvent({
-          service: "pi-memory",
-          operation: "memory.retrieval",
-          correlation: {
-            sessionId: ctx?.sessionManager.getSessionId(),
-            toolCallId,
+    pi.registerTool(
+      withPromptPatch({
+        name: "memory_search",
+        label: "Memory Search",
+        description:
+          "Search current durable agent memories. Returns only hash-bound current catalog references.",
+        parameters: Type.Object(
+          {
+            query: Type.String({ minLength: 1, maxLength: QUERY_MAX_CHARS }),
+            hierarchyPrefix: Type.Optional(
+              Type.String({ minLength: 1, maxLength: 128 }),
+            ),
           },
-          fields: {
-            retrieval: {
-              kind: "search",
-              querySha256: sha256(clean.text),
-              queryChars: clean.text.length,
-              redactions: clean.counts,
+          { additionalProperties: false },
+        ),
+        async execute(
+          toolCallId,
+          params: { query: string; hierarchyPrefix?: string },
+          signal,
+          _onUpdate,
+          ctx,
+        ) {
+          const clean = redact(params.query.slice(0, QUERY_MAX_CHARS));
+          const observation = createWideEvent({
+            service: "pi-memory",
+            operation: "memory.retrieval",
+            correlation: {
+              sessionId: ctx?.sessionManager.getSessionId(),
+              toolCallId,
             },
-          },
-        });
-        try {
-          const snapshot = sessionPrompt;
-          if (!snapshot)
-            throw new Error("memory session snapshot is unavailable");
-          const result = await pi.exec(
-            process.env.QMD_BIN || "qmd",
-            [
-              "search",
-              "-c",
-              "agent-memories",
-              "--json",
-              "--full",
-              "--full-path",
-              clean.text,
-              "-n",
-              String(SEARCH_MAX_RESULTS),
-            ],
-            { cwd: memoryRoot(), signal, timeout: 15_000 },
-          );
-          if (result.code !== 0) throw new Error("memory search failed");
-          let rows: unknown;
-          try {
-            rows = JSON.parse(result.stdout);
-          } catch {
-            throw new Error("invalid memory search result");
-          }
-          if (!Array.isArray(rows))
-            throw new Error("invalid memory search result");
-          const hierarchy = params.hierarchyPrefix
-            ? normalizeTierHierarchy(params.hierarchyPrefix)
-            : snapshot.hierarchyContext;
-          const refs = rows.flatMap((row) => {
-            if (!object(row)) return [];
-            const memory = qmdSnapshotRef(snapshot, row);
-            if (
-              !memory ||
-              (params.hierarchyPrefix &&
-                memory.hierarchy !== hierarchy &&
-                !memory.hierarchy.startsWith(`${hierarchy}/`))
-            )
-              return [];
-            return [memory];
-          });
-          const shadow = [
-            ...new Map(refs.map((item) => [item.memoryId, item])).values(),
-          ];
-          const data = memoryData();
-          const root = memoryRoot();
-          const quality = deriveAdaptationQuality({
-            data,
-            root,
-            state: data,
-            skillsRoot: root,
-          });
-          const production = frozenCandidateOrder(shadow, quality, hierarchy);
-          const candidateKeys = shadow
-            .map(
-              (memory) =>
-                `${memory.memoryId}\0${memory.path}\0${memory.artifactSha256}`,
-            )
-            .sort();
-          const retrieval: RetrievalOrdering = {
-            toolCallId,
-            querySha256: sha256(clean.text),
-            candidateSetSha256: sha256(JSON.stringify(candidateKeys)),
-            production: production.map(plainRef),
-            shadow: shadow.map(plainRef),
-          };
-          observation.finish("success", {
-            retrieval: {
-              candidates: shadow.length,
-              returned: production.length,
-              candidateSetSha256: retrieval.candidateSetSha256,
-            },
-          });
-          return {
-            content: [
-              {
-                type: "text",
-                text: production.length
-                  ? production
-                      .map(
-                        (item, index) =>
-                          `${index + 1}. ${item.memoryId} | ${item.path} | sha256:${item.artifactSha256}`,
-                      )
-                      .join("\n")
-                  : "No current catalog memories matched.",
+            fields: {
+              retrieval: {
+                kind: "search",
+                querySha256: sha256(clean.text),
+                queryChars: clean.text.length,
+                redactions: clean.counts,
               },
-            ],
-            details: {
-              version: TOOL_DETAILS_VERSION,
-              refs: production.map(plainRef),
-              retrieval,
-            },
-          };
-        } catch (error) {
-          attachMemoryOperationError(observation, error);
-          observation.finish("failure");
-          throw error;
-        }
-      },
-    });
-
-    pi.registerTool({
-      name: "memory_open",
-      label: "Memory Open",
-      description:
-        "Open one current durable memory by exact memory ID after validating its catalog hash.",
-      parameters: Type.Object(
-        { memoryId: Type.String({ minLength: 1, maxLength: 256 }) },
-        { additionalProperties: false },
-      ),
-      async execute(toolCallId, params, _signal, _onUpdate, ctx) {
-        const observation = createWideEvent({
-          service: "pi-memory",
-          operation: "memory.retrieval",
-          correlation: {
-            sessionId: ctx?.sessionManager.getSessionId(),
-            toolCallId,
-          },
-          fields: {
-            retrieval: {
-              kind: "open",
-              requestedMemoryIdSha256: sha256(redact(params.memoryId).text),
-            },
-          },
-        });
-        try {
-          const snapshot = sessionPrompt;
-          if (!snapshot)
-            throw new Error("memory session snapshot is unavailable");
-          if (
-            snapshot.systemRefs.some(
-              (candidate) => candidate.memoryId === params.memoryId,
-            )
-          )
-            throw new Error("memory was already injected as a system memory");
-          const memory = snapshot.externalRefs.find(
-            (candidate) => candidate.memoryId === params.memoryId,
-          );
-          if (!memory) throw new Error("unknown memory ID in session snapshot");
-          const clean = redact(snapshotArtifact(memory).toString("utf8"));
-          observation.finish("success", {
-            retrieval: {
-              memoryId: memory.memoryId,
-              outputChars: clean.text.length,
-              redactions: clean.counts,
             },
           });
-          return {
-            content: [{ type: "text", text: clean.text }],
-            details: {
-              version: TOOL_DETAILS_VERSION,
-              refs: [plainRef(memory)],
-              redactions: clean.counts,
+          try {
+            const snapshot = retrievalCatalog();
+            const result = await pi.exec(
+              process.env.QMD_BIN || "qmd",
+              [
+                "search",
+                "-c",
+                "agent-memories",
+                "--json",
+                "--full",
+                "--full-path",
+                clean.text,
+                "-n",
+                String(SEARCH_MAX_RESULTS),
+              ],
+              { cwd: memoryRoot(), signal, timeout: 15_000 },
+            );
+            if (result.code !== 0) throw new Error("memory search failed");
+            let rows: unknown;
+            try {
+              rows = JSON.parse(result.stdout);
+            } catch {
+              throw new Error("invalid memory search result");
+            }
+            if (!Array.isArray(rows))
+              throw new Error("invalid memory search result");
+            const hierarchy = params.hierarchyPrefix
+              ? normalizeTierHierarchy(params.hierarchyPrefix)
+              : "workspace";
+            const refs = rows.flatMap((row) => {
+              if (!object(row)) return [];
+              const entry = qmdCatalogEntry(snapshot.catalog, row);
+              const memory =
+                entry &&
+                snapshot.refs.find(
+                  (candidate) =>
+                    candidate.memoryId === entry.memoryId &&
+                    candidate.artifactSha256 === entry.sha256,
+                );
+              if (
+                !memory ||
+                (params.hierarchyPrefix &&
+                  memory.hierarchy !== hierarchy &&
+                  !memory.hierarchy.startsWith(`${hierarchy}/`))
+              )
+                return [];
+              return [memory];
+            });
+            const shadow = [
+              ...new Map(refs.map((item) => [item.memoryId, item])).values(),
+            ];
+            const data = memoryData();
+            const root = memoryRoot();
+            const quality = deriveAdaptationQuality({
+              data,
+              root,
+              state: data,
+              skillsRoot: root,
+            });
+            const production = frozenCandidateOrder(shadow, quality, hierarchy);
+            const candidateKeys = shadow
+              .map(
+                (memory) =>
+                  `${memory.memoryId}\0${memory.path}\0${memory.artifactSha256}`,
+              )
+              .sort();
+            const retrieval: RetrievalOrdering = {
+              toolCallId,
+              querySha256: sha256(clean.text),
+              candidateSetSha256: sha256(JSON.stringify(candidateKeys)),
+              production: production.map(plainRef),
+              shadow: shadow.map(plainRef),
+            };
+            observation.finish("success", {
+              retrieval: {
+                candidates: shadow.length,
+                returned: production.length,
+                candidateSetSha256: retrieval.candidateSetSha256,
+              },
+            });
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: production.length
+                    ? production
+                        .map(
+                          (item, index) =>
+                            `${index + 1}. ${item.memoryId} | ${item.path} | sha256:${item.artifactSha256}`,
+                        )
+                        .join("\n")
+                    : "No current catalog memories matched.",
+                },
+              ],
+              details: {
+                version: TOOL_DETAILS_VERSION,
+                refs: production.map(plainRef),
+                retrieval,
+              },
+            };
+          } catch (error) {
+            attachMemoryOperationError(observation, error);
+            observation.finish("failure");
+            throw error;
+          }
+        },
+      }),
+    );
+
+    pi.registerTool(
+      withPromptPatch({
+        name: "memory_open",
+        label: "Memory Open",
+        description:
+          "Open one current durable memory by exact memory ID after validating its catalog hash.",
+        parameters: Type.Object(
+          { memoryId: Type.String({ minLength: 1, maxLength: 256 }) },
+          { additionalProperties: false },
+        ),
+        async execute(
+          toolCallId,
+          params: { memoryId: string },
+          _signal,
+          _onUpdate,
+          ctx,
+        ) {
+          const observation = createWideEvent({
+            service: "pi-memory",
+            operation: "memory.retrieval",
+            correlation: {
+              sessionId: ctx?.sessionManager.getSessionId(),
+              toolCallId,
             },
-          };
-        } catch (error) {
-          attachMemoryOperationError(observation, error);
-          observation.finish("failure");
-          throw error;
-        }
-      },
-    });
+            fields: {
+              retrieval: {
+                kind: "open",
+                requestedMemoryIdSha256: sha256(redact(params.memoryId).text),
+              },
+            },
+          });
+          try {
+            const snapshot = retrievalCatalog();
+            const memory = snapshot.refs.find(
+              (candidate) => candidate.memoryId === params.memoryId,
+            );
+            if (!memory)
+              throw new Error("unknown memory ID in current catalog");
+            const clean = redact(
+              currentArtifact(validateMemoryRef(snapshot.catalog, memory)),
+            );
+            observation.finish("success", {
+              retrieval: {
+                memoryId: memory.memoryId,
+                outputChars: clean.text.length,
+                redactions: clean.counts,
+              },
+            });
+            return {
+              content: [{ type: "text", text: clean.text }],
+              details: {
+                version: TOOL_DETAILS_VERSION,
+                refs: [plainRef(memory)],
+                redactions: clean.counts,
+              },
+            };
+          } catch (error) {
+            attachMemoryOperationError(observation, error);
+            observation.finish("failure");
+            throw error;
+          }
+        },
+      }),
+    );
 
     pi.on("tool_call", (event, ctx) => {
       if (event.toolName !== "read" && event.toolName !== "grep") return;
@@ -1892,13 +1930,7 @@ export function createAgentMemoryExtension(
       )
         return;
       if (!event.isError) {
-        const snapshot = sessionPrompt;
-        if (!snapshot)
-          throw new Error("memory session snapshot is unavailable");
-        const allowed = [
-          ...snapshot.systemRefs,
-          ...snapshot.externalPointerRefs,
-        ];
+        const { catalog, refs: allowed } = retrievalCatalog();
         const details = parseMemoryToolDetails(event.details);
         details.refs.forEach((memory) => {
           if (
@@ -1909,8 +1941,8 @@ export function createAgentMemoryExtension(
                 candidate.artifactSha256 === memory.artifactSha256,
             )
           )
-            throw new Error("memory tool result is outside session snapshot");
-          snapshotArtifact(memory);
+            throw new Error("memory tool result is outside current catalog");
+          validateMemoryRef(catalog, memory);
         });
       }
     });
@@ -2382,7 +2414,9 @@ if (import.meta.vitest) {
       );
       publishQmdSource({ data }, "b".repeat(40), {
         list: () => [],
-        read: () => { throw new Error("empty generation"); },
+        read: () => {
+          throw new Error("empty generation");
+        },
       });
       const resumed = await loadPromptSnapshot("session-1", "/workspace");
       expect(resumed.snapshotSha256).toBe(first.snapshotSha256);
@@ -2633,7 +2667,7 @@ if (import.meta.vitest) {
       });
     });
 
-    it("times out once and rejects late snapshots for prompts, tools, and receipts", async () => {
+    it("times out once without disabling current catalog retrieval", async () => {
       const setup = setupCatalog();
       const snapshot = preparedPrompt(setup);
       const branch: SessionEntry[] = [];
@@ -2676,12 +2710,12 @@ if (import.meta.vitest) {
       ).toEqual(first);
       await expect(
         h.tools.get("memory_open").execute("open", { memoryId: "mem_test" }),
-      ).rejects.toThrow("snapshot is unavailable");
+      ).resolves.toMatchObject({ details: { refs: [ref(setup.entry)] } });
       h.exec.mockResolvedValue({ code: 0, stdout: "[]" });
       await expect(
         h.tools.get("memory_search").execute("search", { query: "test" }),
-      ).rejects.toThrow("snapshot is unavailable");
-      expect(h.exec).not.toHaveBeenCalled();
+      ).resolves.toMatchObject({ details: { refs: [] } });
+      expect(h.exec).toHaveBeenCalledOnce();
       branch.push(user("u1"), assistant("a1"));
       h.handlers.get("agent_settled")!({}, h.ctx);
       expect(h.actions).toEqual([]);
@@ -2714,7 +2748,9 @@ if (import.meta.vitest) {
       await settlePromptPreparation();
       await expect(
         h.tools.get("memory_open").execute("open", { memoryId: "mem_test" }),
-      ).rejects.toThrow("snapshot is unavailable");
+      ).resolves.toMatchObject({
+        details: { refs: snapshot.externalRefs.map(plainRef) },
+      });
     });
 
     it("keeps the resumed selection when a superseded worker completes late", async () => {
@@ -3071,6 +3107,81 @@ if (import.meta.vitest) {
       expect(JSON.stringify(receipt)).not.toContain("raw output");
     });
 
+    it("retrieves without a prompt but does not mark nested results as model exposure", async () => {
+      const { catalog, entry } = setupCatalog();
+      const h = harness([]);
+      createAgentMemoryExtension()(h.pi);
+      h.exec.mockResolvedValue({
+        code: 0,
+        stdout: JSON.stringify([
+          {
+            file: `qmd://agent-memories/${entry.path.replace(/[^A-Za-z0-9.]+/g, "-")}`,
+            title: entry.path.slice(0, -3),
+            body: currentArtifact(entry),
+          },
+        ]),
+      });
+      const search = await h.tools
+        .get("memory_search")
+        .execute("nested-search", { query: "test" });
+      const opened = await h.tools
+        .get("memory_open")
+        .execute("nested-open", { memoryId: entry.memoryId });
+      expect(search.details.refs).toEqual([ref(entry)]);
+      expect(opened.content[0].text).toContain("test memory");
+      const receipt = buildTurnReceipt({
+        branch: [
+          user("u1"),
+          custom("i1", INJECTION_ENTRY_TYPE, {
+            version: 1,
+            userEntryId: "u1",
+            catalogSha256: catalogSha256(catalog),
+            refs: [],
+          }),
+          assistant("a1", [
+            { type: "toolCall", id: "code", name: "codemode", arguments: {} },
+          ]),
+          result("r-code", "code", "codemode", { results: [search, opened] }),
+          assistant("a2"),
+        ],
+        sessionId: "session-1",
+        workspace: "/workspace",
+        catalog,
+        now: () => "2026-01-01T00:00:04.000Z",
+      })!;
+      expect(receipt.exposures).toEqual([]);
+      expect(receipt.retrievals ?? []).toEqual([]);
+      expect(receipt.outcomes).toEqual([
+        expect.objectContaining({ toolName: "codemode", result: "success" }),
+      ]);
+    });
+
+    it("reloads accepted retrieval generations and fails closed when unavailable", async () => {
+      const setup = setupCatalog("first accepted body");
+      const h = harness([]);
+      createAgentMemoryExtension()(h.pi);
+      const first = await h.tools
+        .get("memory_open")
+        .execute("first", { memoryId: setup.entry.memoryId });
+      const updated = setupCatalog("second accepted body");
+      const second = await h.tools
+        .get("memory_open")
+        .execute("second", { memoryId: updated.entry.memoryId });
+      expect(first.content[0].text).toContain("first accepted body");
+      expect(second.content[0].text).toContain("second accepted body");
+      expect(second.details.refs).toEqual([ref(updated.entry)]);
+      rmSync(data, { recursive: true });
+      await expect(
+        h.tools
+          .get("memory_open")
+          .execute("missing", { memoryId: updated.entry.memoryId }),
+      ).rejects.toThrow();
+      await expect(
+        h.tools.get("memory_search").execute("missing", { query: "test" }),
+      ).rejects.toThrow();
+      expect(h.exec).not.toHaveBeenCalled();
+    });
+
     it("records only exact memory citations", () => {
       const { catalog, entry } = setupCatalog();
       const base = [
@@ -3108,7 +3219,7 @@ if (import.meta.vitest) {
       );
     });
 
-    it("excludes an exact injected system ref from open", async () => {
+    it("opens an exact injected system ref from the current catalog", async () => {
       const setup = setupCatalog();
       const h = harness([]);
       createAgentMemoryExtension({
@@ -3121,7 +3232,7 @@ if (import.meta.vitest) {
         h.tools.get("memory_open").execute("open", {
           memoryId: setup.entry.memoryId,
         }),
-      ).rejects.toThrow("already injected as a system memory");
+      ).resolves.toMatchObject({ details: { refs: [ref(setup.entry)] } });
     });
 
     it("maps qmd output only to hash-valid current catalog artifacts", async () => {
@@ -3584,7 +3695,13 @@ if (import.meta.vitest) {
     it.runIf(
       existsSync(
         join(HOME, "commonplace/01_files/_utilities/agent-memories"),
-      ) && existsSync(join(HOME, ".local/share/pi-memory/v3/projections/qmd-source/.verified-manifest.json")),
+      ) &&
+        existsSync(
+          join(
+            HOME,
+            ".local/share/pi-memory/v3/projections/qmd-source/.verified-manifest.json",
+          ),
+        ),
     )("maps a result from the real qmd index to its canonical artifact", () => {
       const temporaryRoot = root;
       const temporaryData = data;

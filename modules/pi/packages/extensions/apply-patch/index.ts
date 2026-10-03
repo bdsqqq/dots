@@ -18,6 +18,7 @@ import { resolveToAbsolute } from "@bds_pi/fs";
 import * as fileTracker from "@bds_pi/file-tracker";
 import { withFileLocks } from "@bds_pi/mutex";
 import * as toolPolicy from "@bds_pi/tool-policy";
+import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   boxRendererWindowed,
   renderLifecycleCall,
@@ -72,6 +73,8 @@ const mutationFs = {
 
 export interface ApplyPatchChange {
   path: string;
+  /** Explicit undo handle, present on committed changes. */
+  changeId?: string;
   kind: "added" | "modified" | "deleted";
   diff: string;
 }
@@ -82,6 +85,7 @@ interface PlannedChange extends ApplyPatchChange {
 }
 
 export interface ApplyPatchDetails {
+  sessionId?: string;
   changes: ApplyPatchChange[];
 }
 
@@ -488,8 +492,9 @@ export function createApplyPatchTool(): ToolDefinition<
             createdDirectories,
           );
           const sessionId = ctx.sessionManager.getSessionId();
+          let changeIds: string[];
           try {
-            fileTracker.saveChanges(
+            changeIds = fileTracker.saveChanges(
               sessionId,
               toolCallId,
               changes.map((change) => ({
@@ -521,11 +526,14 @@ export function createApplyPatchTool(): ToolDefinition<
           }
 
           const resultChanges = changes.map(
-            ({ before: _before, after: _after, ...change }) => change,
+            ({ before: _before, after: _after, ...change }, index) => ({
+              ...change,
+              changeId: changeIds[index]!,
+            }),
           );
           return {
             content: [{ type: "text", text: formatResult(resultChanges) }],
-            details: { changes: resultChanges },
+            details: { sessionId, changes: resultChanges },
           };
         }),
       );
@@ -584,7 +592,7 @@ export function createApplyPatchTool(): ToolDefinition<
 }
 
 export default function applyPatchExtension(pi: ExtensionAPI): void {
-  pi.registerTool(createApplyPatchTool());
+  pi.registerTool(withPromptPatch(createApplyPatchTool()));
   pi.on("session_start", () => {
     const active = pi
       .getActiveTools()

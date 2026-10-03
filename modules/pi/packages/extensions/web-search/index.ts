@@ -233,7 +233,7 @@ const searchSchema: TObject<{
       Type.String({
         minLength: 1,
         description:
-          "Continue an existing search snapshot in this session branch; no new API call. Exclusive with search fields. Expires after 24h.",
+          "Opaque bearer token for an existing search snapshot; no transcript or session requirement and no new API call. Exclusive with search fields. Expires after 24h.",
       }),
     ),
     max_length: Type.Optional(
@@ -317,8 +317,6 @@ export function createWebSearchTool(
 ): ToolDefinition<typeof searchSchema> {
   return {
     name: "web_search",
-    // Nested calls have no transcript result to authorize a later cursor read.
-    exposure: "model-only",
     label: "Web Search",
     description:
       "Search the web for ranked URLs and source excerpts, not generated answers. " +
@@ -575,7 +573,7 @@ if (import.meta.vitest) {
         totalTokens: 0,
         cost: { total: 0.005 },
       });
-      expect(createWebSearchTool().exposure).toBe("model-only");
+      expect(createWebSearchTool().exposure).not.toBe("model-only");
     });
     it("exposes the complete retrieval controls without silently shrinking them", async () => {
       const fetch = network();
@@ -743,6 +741,7 @@ if (import.meta.vitest) {
       });
       const cursor = (first.details as { webPage: { nextCursor: string } })
         .webPage.nextCursor;
+      entries.length = 0;
       const next = await run({ cursor });
       expect(next.content[0]).toMatchObject({
         text: expect.stringContaining("evidence\n"),

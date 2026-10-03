@@ -81,7 +81,6 @@ interface Result {
 interface Snapshot {
   id: string;
   toolName: ToolName;
-  originSession: string;
   expiresAt: number;
   length: number;
   sha256: string;
@@ -374,8 +373,6 @@ function snapshotValue(value: unknown): value is Snapshot {
     typeof value.id === "string" &&
     UUID.test(value.id) &&
     (value.toolName === "web_search" || value.toolName === "read_web_page") &&
-    typeof value.originSession === "string" &&
-    /^[a-f0-9]{64}$/.test(value.originSession) &&
     typeof value.expiresAt === "number" &&
     Number.isSafeInteger(value.expiresAt) &&
     typeof value.length === "number" &&
@@ -387,10 +384,9 @@ function snapshotValue(value: unknown): value is Snapshot {
 }
 
 /**
- * Disk is shared across module copies, authority is not: only current-ancestry tool results
- * grant access. Retention is 24h, lazily swept per session; 200 MiB/session rejects new
- * snapshots instead of evicting live evidence. Forked sessions must retrieve anew.
- * Session directories use a hash (SDK session IDs need not be filesystem-safe UUIDs).
+ * Opaque cursors are bearer capabilities, independent of transcript and session.
+ * Disk is shared across module copies. Retention is 24h, lazily swept; the 200 MiB
+ * per-user quota rejects new snapshots instead of evicting live evidence.
  * A crashed writer's lock fails closed; it is not stolen from a potentially live writer.
  */
 function snapshotStore(
@@ -411,8 +407,6 @@ function snapshotStore(
     length?: number,
   ) => Promise<Result>;
 } {
-  const directory = (ctx: RetrievalContext): string =>
-    join(root, digest(ctx.sessionManager.getSessionId()));
   async function privateDirectory(path: string): Promise<void> {
     await mkdir(path, { recursive: true, mode: 0o700 });
     const stat = await lstat(path);
@@ -476,23 +470,20 @@ function snapshotStore(
   return {
     async publish(text, ctx, details, toolName, page) {
       windowText(text, page?.start, page?.length);
-      const session = ctx.sessionManager.getSessionId();
       const snapshot: Snapshot = {
         id: randomUUID(),
         toolName,
-        originSession: digest(session),
         expiresAt: now() + TTL,
         length: text.length,
         sha256: digest(text),
       };
-      const serialized = JSON.stringify({ snapshot, text });
+      const serialized = JSON.stringify({ snapshot, text, details });
       if (Buffer.byteLength(serialized) > MAX_STORAGE)
         throw new Error(
-          "snapshot exceeds 200 MiB/session storage limit; no evidence truncated",
+          "snapshot exceeds 200 MiB/user storage limit; no evidence truncated",
         );
       await privateDirectory(root);
-      const dir = join(root, snapshot.originSession);
-      await privateDirectory(dir);
+      const dir = root;
       const lock = join(dir, ".write-lock");
       for (let attempt = 0; ; attempt++) {
         try {
@@ -525,7 +516,7 @@ function snapshotStore(
         }
         if (size + Buffer.byteLength(serialized) > MAX_STORAGE)
           throw new Error(
-            "snapshot storage full (200 MiB/session); live evidence was not evicted",
+            "snapshot storage full (200 MiB/user); live evidence was not evicted",
           );
         await writeFile(join(dir, `${snapshot.id}.json`), serialized, {
           flag: "wx",
@@ -534,10 +525,6 @@ function snapshotStore(
       } finally {
         await rmdir(lock);
       }
-      if (ctx.sessionManager.getSessionId() !== session)
-        throw new Error(
-          "session changed during snapshot publication; result not published",
-        );
       return render(text, snapshot, details, page?.start, page?.length);
     },
     async continue(cursor, ctx, toolName, length) {
@@ -545,42 +532,9 @@ function snapshotStore(
       if (!match || !UUID.test(match[1]!))
         throw new Error("invalid snapshot cursor");
       const id = match[1]!;
-      let authorized: Snapshot | undefined;
-      let sourceDetails: Record<string, unknown> = {};
-      for (const entry of ctx.sessionManager.getBranch()) {
-        if (
-          entry.type !== "message" ||
-          entry.message.role !== "toolResult" ||
-          entry.message.toolName !== toolName
-        )
-          continue;
-        const details: unknown = entry.message.details;
-        if (
-          record(details) &&
-          snapshotValue(details.webSnapshot) &&
-          details.webSnapshot.id === id &&
-          details.webSnapshot.toolName === toolName
-        ) {
-          authorized = details.webSnapshot;
-          sourceDetails = details;
-          break;
-        }
-      }
-      if (!authorized)
-        throw new Error(
-          "snapshot is not authorized in the current branch for this tool",
-        );
-      if (
-        authorized.originSession !== digest(ctx.sessionManager.getSessionId())
-      )
-        throw new Error(
-          "snapshot belongs to another session; forked-session continuation is not supported",
-        );
-      if (authorized.expiresAt <= now())
-        throw new Error("snapshot expired; continuation never refetches");
       let stored: unknown;
       try {
-        const path = join(directory(ctx), `${id}.json`);
+        const path = join(root, `${id}.json`);
         const stat = await lstat(path);
         if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_STORAGE)
           throw new Error("unsafe snapshot");
@@ -593,20 +547,20 @@ function snapshotStore(
       if (
         !record(stored) ||
         !snapshotValue(stored.snapshot) ||
+        !record(stored.details) ||
         typeof stored.text !== "string" ||
-        stored.snapshot.id !== authorized.id ||
-        stored.snapshot.originSession !== authorized.originSession ||
-        stored.snapshot.toolName !== authorized.toolName ||
-        stored.snapshot.expiresAt !== authorized.expiresAt ||
-        stored.snapshot.length !== authorized.length ||
-        stored.snapshot.sha256 !== authorized.sha256 ||
-        stored.text.length !== authorized.length ||
-        digest(stored.text) !== authorized.sha256
+        stored.snapshot.id !== id ||
+        stored.snapshot.toolName !== toolName ||
+        stored.text.length !== stored.snapshot.length ||
+        digest(stored.text) !== stored.snapshot.sha256
       )
         throw new Error("snapshot corrupt; continuation never refetches");
+      if (stored.snapshot.expiresAt <= now())
+        throw new Error("snapshot expired; continuation never refetches");
+      const sourceDetails = stored.details;
       return render(
         stored.text,
-        authorized,
+        stored.snapshot,
         {
           ...sourceDetails,
           sourceCost: sourceDetails.sourceCost ?? {
@@ -998,7 +952,7 @@ if (import.meta.vitest) {
       expect(windowText("a😀b", 1, 2).text).toBe("😀");
       expect(() => windowText("a", 2)).toThrow();
     });
-    it("continues across store copies using current-branch authority, without network", async () => {
+    it("continues across store copies without transcript or session authority", async () => {
       const { mkdtemp, rm, stat } = await import("node:fs/promises");
       const root = await mkdtemp(join(tmpdir(), "pi-web-test-"));
       let clock = Date.now();
@@ -1013,19 +967,9 @@ if (import.meta.vitest) {
           { cost: 0.005 },
           "web_search",
         );
-        entries.push(
-          message("result", "toolResult", {
-            toolName: "web_search",
-            details: result.details,
-          }),
-        );
         const descriptor = result.details.webSnapshot as Snapshot;
         expect(
-          (
-            await stat(
-              join(root, descriptor.originSession, `${descriptor.id}.json`),
-            )
-          ).mode & 0o777,
+          (await stat(join(root, `${descriptor.id}.json`))).mode & 0o777,
         ).toBe(0o600);
         let reconstructed = "";
         let cursor: string | undefined = `${descriptor.id}:0`;
@@ -1057,15 +1001,19 @@ if (import.meta.vitest) {
         }
         expect(reconstructed).toBe(text);
         const first = `${descriptor.id}:0`;
-        await expect(
-          store.continue(first, context(), "web_search"),
-        ).rejects.toThrow("authorized");
+        expect(
+          (await store.continue(first, context(), "web_search")).details.cost,
+        ).toBe(0);
         await expect(
           store.continue(first, ctx, "read_web_page"),
-        ).rejects.toThrow("authorized");
+        ).rejects.toThrow("corrupt");
+        expect(
+          (await store.continue(first, context([], "fork"), "web_search"))
+            .details.cost,
+        ).toBe(0);
         await expect(
-          store.continue(first, context(entries, "fork"), "web_search"),
-        ).rejects.toThrow("another session");
+          store.continue("invalid", context(), "web_search"),
+        ).rejects.toThrow("invalid snapshot cursor");
         await expect(
           store.continue(`${descriptor.id}:99999999`, ctx, "web_search"),
         ).rejects.toThrow("window");
@@ -1074,16 +1022,11 @@ if (import.meta.vitest) {
           "expired",
         );
         clock -= TTL;
-        await writeFile(
-          join(root, descriptor.originSession, `${descriptor.id}.json`),
-          "{}",
-        );
+        await writeFile(join(root, `${descriptor.id}.json`), "{}");
         await expect(store.continue(first, ctx, "web_search")).rejects.toThrow(
           "corrupt",
         );
-        await unlink(
-          join(root, descriptor.originSession, `${descriptor.id}.json`),
-        );
+        await unlink(join(root, `${descriptor.id}.json`));
         await expect(store.continue(first, ctx, "web_search")).rejects.toThrow(
           "missing",
         );
@@ -1104,7 +1047,7 @@ if (import.meta.vitest) {
         expect((results[0]!.details.webSnapshot as Snapshot).id).not.toBe(
           (results[1]!.details.webSnapshot as Snapshot).id,
         );
-        const dir = join(root, digest(ctx.sessionManager.getSessionId()));
+        const dir = root;
         const blocker = join(dir, `${randomUUID()}.json`);
         const file = await open(blocker, "wx", 0o600);
         try {

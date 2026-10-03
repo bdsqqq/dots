@@ -201,7 +201,7 @@ const readWebPageSchema: TObject<{
     cursor: Type.Optional(
       Type.String({
         description:
-          "Read an existing snapshot in this session branch, without fetching again. Exclusive with retrieval inputs; max_length allowed. 24h lifetime.",
+          "Opaque bearer token for an existing snapshot, without fetching again. No transcript or session requirement. Exclusive with retrieval inputs; max_length allowed. 24h lifetime.",
       }),
     ),
     start_index: Type.Optional(
@@ -448,8 +448,6 @@ export function createReadWebPageTool(
 ): ToolDefinition<typeof readWebPageSchema> {
   return {
     name: "read_web_page",
-    // Cursor authority requires a model-issued result in the current transcript.
-    exposure: "model-only",
     label: "Read Web Page",
     description:
       "Read evidence from public web URLs, without answering or hosted research. Outputs: " +
@@ -685,7 +683,7 @@ export default function readWebPageExtension(pi: ExtensionAPI): void {
   const { enabled } = getEnabledExtensionConfig("@bds_pi/read-web-page", {});
   if (!enabled) return;
   pi.registerTool(withPromptPatch(createReadWebPageTool()));
-  // throwing discards details, including continuation authority. the result hook marks
+  // throwing discards details, including continuation tokens. the result hook marks
   // failure after paginating diagnostics, so large error bodies remain recoverable.
   pi.on("tool_result", (event) => {
     if (
@@ -759,7 +757,7 @@ if (import.meta.vitest) {
   });
   describe("read_web_page evidence outputs", () => {
     it("derives schema choices from the implementation registry", () => {
-      expect(createReadWebPageTool().exposure).toBe("model-only");
+      expect(createReadWebPageTool().exposure).not.toBe("model-only");
       expect(
         (
           readWebPageSchema.properties.output.items as unknown as {
@@ -852,6 +850,7 @@ if (import.meta.vitest) {
       { url, start_index: Number.MAX_SAFE_INTEGER + 1 },
       { url, prompt: "answer for me" },
       { url, cursor: "cursor" },
+      { cursor: "invalid" },
       { cursor: "cursor", output: ["raw"] },
       { url, fetch_policy: { max_age_seconds: 599 } },
       { url, fetch_policy: { timeout_seconds: 0 } },
@@ -1057,16 +1056,7 @@ if (import.meta.vitest) {
         ...ctx,
         sessionManager: {
           ...ctx.sessionManager,
-          getBranch: () => [
-            {
-              type: "message",
-              message: {
-                role: "toolResult",
-                toolName: "read_web_page",
-                details: first.details,
-              },
-            },
-          ],
+          getBranch: () => [],
         },
       } as unknown as Context;
       const next = await createReadWebPageTool().execute(
@@ -1137,19 +1127,9 @@ if (import.meta.vitest) {
           new Response(source, { headers: { "content-type": "text/plain" } }),
         );
       const first = await run({ url, raw: true });
-      const entries = [
-        {
-          type: "message",
-          message: {
-            role: "toolResult",
-            toolName: "read_web_page",
-            details: first.details,
-          },
-        },
-      ];
       const continuationContext = {
         ...ctx,
-        sessionManager: { ...ctx.sessionManager, getBranch: () => entries },
+        sessionManager: { ...ctx.sessionManager, getBranch: () => [] },
       } as unknown as Context;
       let current = first;
       let reconstructed = "";
