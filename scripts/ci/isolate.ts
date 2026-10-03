@@ -175,19 +175,60 @@ export function provisionAccount(
   for (const spec of accountCommands(platform, home)) checked(command, spec.program, spec.args);
 }
 
-/** fail closed if spawn retained any privileged supplementary group. */
-export function verifyCandidateIdentity(command: ControllerCommand): void {
+export type IdentityFacts = {
+  uid: number;
+  euid: number;
+  gid: number;
+  egid: number;
+  groups: number[];
+  directoryGroups: number[];
+};
+const numericId = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 0xffffffff;
+
+/**
+ * apple shell_cmds/id.c queries directory defaults, not kernel credentials.
+ * node v24.18.0 src/node_credentials.cc uses getgroups; libuv unix/process.c
+ * drops groups before setgid/setuid (xnu bsd/kern/kern_prot.c).
+ */
+export function verifyCandidateIdentity(command: ControllerCommand): IdentityFacts {
   const { uid, gid } = candidateIdentity;
-  for (const [flag, expected] of [
-    ["-u", candidateIdentity.uid],
-    ["-G", candidateIdentity.gid],
-  ] as const) {
-    const reply = command("/usr/bin/id", [flag], undefined, { uid, gid });
-    if (reply.status !== 0 || reply.stdout.trim() !== String(expected))
-      throw new Error(
-        `candidate spawn identity must contain only uid/gid 62001: id ${flag} exited ${reply.status}, reported ${JSON.stringify(reply.stdout.trim())}`,
-      );
+  const probe = `console.log(JSON.stringify({
+    uid: process.getuid(), euid: process.geteuid(),
+    gid: process.getgid(), egid: process.getegid(), groups: process.getgroups()
+  }))`;
+  const reply = command(process.execPath, ["-e", probe], undefined, { uid, gid });
+  let value: unknown;
+  try {
+    value = JSON.parse(reply.stdout);
+  } catch {
+    throw new Error("invalid candidate process identity JSON");
   }
+  if (
+    reply.status !== 0 ||
+    typeof value !== "object" ||
+    value === null ||
+    !("uid" in value) ||
+    value.uid !== uid ||
+    !("euid" in value) ||
+    value.euid !== uid ||
+    !("gid" in value) ||
+    value.gid !== gid ||
+    !("egid" in value) ||
+    value.egid !== gid ||
+    !("groups" in value) ||
+    !Array.isArray(value.groups) ||
+    value.groups.length !== 1 ||
+    value.groups[0] !== gid
+  )
+    throw new Error("candidate kernel identity must contain only uid/gid 62001");
+  const directory = checked(command, "/usr/bin/id", ["-G", candidateIdentity.name]).trim();
+  if (!/^[0-9]+(?:\s+[0-9]+)*$/.test(directory))
+    throw new Error("invalid candidate directory groups");
+  const directoryGroups = directory.split(/\s+/).map(Number);
+  if (!directoryGroups.every(numericId) || !directoryGroups.includes(gid))
+    throw new Error("invalid candidate directory groups");
+  return { uid, euid: uid, gid, egid: gid, groups: [gid], directoryGroups };
 }
 
 /** effective denial matters more than group labels when an image's sudo policy changes. */
@@ -227,19 +268,66 @@ export function verifyCandidateBoundary(
   if (reply.status !== 0) throw new Error("candidate filesystem boundary probe failed");
 }
 
+export type GroupRecord = { gid: number; members: string[] };
+export type GroupLookup = (name: string) => GroupRecord;
+const accountPattern = /^(?:[A-Za-z_][A-Za-z0-9_.-]*|[0-9]+)$/;
+
+/** use the platform's getgrnam database, including aliases and directory-service cache. */
+export function lookupGroup(
+  platform: NodeJS.Platform,
+  name: string,
+  command: ControllerCommand,
+): GroupRecord {
+  if (!accountPattern.test(name)) throw new Error("invalid group lookup name");
+  let id: string;
+  let members: string[];
+  if (platform === "linux") {
+    const output = checked(command, "/usr/bin/getent", ["group", name]).trim();
+    const fields = output.split(":");
+    if (fields.length !== 4 || !accountPattern.test(fields[0]) || output.includes("\n"))
+      throw new Error("malformed group database result");
+    id = fields[2];
+    members = fields[3] === "" ? [] : fields[3].split(",");
+  } else if (platform === "darwin") {
+    const output = checked(command, "/usr/bin/dscacheutil", ["-q", "group", "-a", "name", name]);
+    const fields = new Map<string, string>();
+    for (const line of output.trim().split("\n")) {
+      const match = /^(name|password|gid|users):\s*(.*?)\s*$/.exec(line);
+      if (!match || fields.has(match[1])) throw new Error("malformed group database result");
+      fields.set(match[1], match[2]);
+    }
+    if (!accountPattern.test(fields.get("name") ?? "") || !fields.has("users"))
+      throw new Error("incomplete group database result");
+    id = fields.get("gid") ?? "";
+    const users = fields.get("users")!;
+    members = users === "" ? [] : users.split(/\s+/);
+  } else throw new Error("unsupported group database platform");
+  if (
+    !/^[0-9]+$/.test(id) ||
+    !numericId(Number(id)) ||
+    !members.every((member) => accountPattern.test(member))
+  )
+    throw new Error("malformed group database result");
+  return { gid: Number(id), members };
+}
+
 /**
- * a trusted daemon client can override builder isolation, bypassing the uid boundary.
- * this relies on the installer's fresh daemon using the same protected system config;
- * client config output is not an introspection of an already-running daemon's state.
+ * trust must exclude both kernel groups and directory defaults used by getgrouplist.
+ * assumes the installer's fresh daemon reads the same protected system config;
+ * client output does not introspect an already-running daemon's state.
  */
-export function validateNixDaemonConfig(config: unknown): void {
+export function validateNixDaemonConfig(
+  config: unknown,
+  candidateGids: readonly number[] = [candidateIdentity.gid],
+  groups?: GroupLookup,
+): void {
   const object = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
   if (!object(config) || !object(config["trusted-users"]) || !object(config["build-users-group"]))
     throw new Error("missing nix daemon security metadata");
   const trusted = config["trusted-users"].value;
   const builders = config["build-users-group"].value;
-  const account = /^(?:[A-Za-z_][A-Za-z0-9_.-]*|[0-9]+)$/;
+  const account = accountPattern;
   if (
     !Array.isArray(trusted) ||
     !trusted.every(
@@ -257,11 +345,31 @@ export function validateNixDaemonConfig(config: unknown): void {
       (/^[0-9]+$/.test(name) && Number(name) === candidateIdentity.uid)
     )
       throw new Error("candidate must not be a trusted nix daemon client");
+    if (entry.startsWith("@")) {
+      if (/^[0-9]+$/.test(name) && candidateGids.includes(Number(name)))
+        throw new Error("candidate directory group must not be trusted by nix");
+      if (!groups) throw new Error("nix trusted group lookup is required");
+      const group = groups(name);
+      if (
+        !group ||
+        !numericId(group.gid) ||
+        !Array.isArray(group.members) ||
+        !group.members.every((member) => typeof member === "string" && account.test(member))
+      )
+        throw new Error("malformed trusted group lookup");
+      if (candidateGids.includes(group.gid) || group.members.includes(candidateIdentity.name))
+        throw new Error("candidate directory group must not be trusted by nix");
+    }
   }
 }
 
 /** controllerCommand omits NIX_CONFIG and mutable user config; never query via candidate PATH. */
-export function verifyNixDaemon(nix: string, command: ControllerCommand): void {
+export function verifyNixDaemon(
+  nix: string,
+  command: ControllerCommand,
+  candidateGids: readonly number[] = [candidateIdentity.gid],
+  platform: NodeJS.Platform = process.platform,
+): void {
   if (!isAbsolute(nix)) throw new Error("nix security probe requires an absolute executable");
   const output = checked(command, nix, [
     "--extra-experimental-features",
@@ -275,7 +383,7 @@ export function verifyNixDaemon(nix: string, command: ControllerCommand): void {
   } catch {
     throw new Error("invalid nix daemon configuration JSON");
   }
-  validateNixDaemonConfig(config);
+  validateNixDaemonConfig(config, candidateGids, (name) => lookupGroup(platform, name, command));
 }
 
 export function within(root: string, path: string): boolean {
@@ -318,20 +426,23 @@ export function secureTree(
 type PermissionStat = { mode: number; uid: number; gid: number };
 
 /** sticky parents protect other owners' names; runner ownership/write access must survive. */
-export function ancestorMode(stat: PermissionStat): number {
-  if (
-    stat.uid === candidateIdentity.uid ||
-    (stat.gid === candidateIdentity.gid && stat.mode & 0o020)
-  )
+export function ancestorMode(
+  stat: PermissionStat,
+  candidateGids: readonly number[] = [candidateIdentity.gid],
+): number {
+  if (stat.uid === candidateIdentity.uid || (candidateGids.includes(stat.gid) && stat.mode & 0o020))
     throw new Error("candidate-writable controller ancestor");
   const mode = (stat.mode & 0o7777) | 0o005;
   return mode & 0o1000 ? mode : mode & ~0o002;
 }
 
-export function executableMode(stat: PermissionStat): number {
+export function executableMode(
+  stat: PermissionStat,
+  candidateGids: readonly number[] = [candidateIdentity.gid],
+): number {
   if (
     stat.uid === candidateIdentity.uid ||
-    (stat.gid === candidateIdentity.gid && stat.mode & 0o020) ||
+    (candidateGids.includes(stat.gid) && stat.mode & 0o020) ||
     stat.mode & 0o6000
   )
     throw new Error("unsafe toolchain executable");
@@ -339,17 +450,24 @@ export function executableMode(stat: PermissionStat): number {
 }
 
 /** protected names also need protected parents; chmod of a leaf does not prevent rename. */
-export function protectAncestors(path: string): void {
+export function protectAncestors(
+  path: string,
+  candidateGids: readonly number[] = [candidateIdentity.gid],
+): void {
   for (let cursor = path; ; cursor = dirname(cursor)) {
     const stat = lstatSync(cursor);
     if (!stat.isDirectory()) throw new Error(`unsafe controller ancestor: ${cursor}`);
-    const mode = ancestorMode(stat);
+    const mode = ancestorMode(stat, candidateGids);
     if ((stat.mode & 0o7777) !== mode) chmodSync(cursor, mode);
     if (dirname(cursor) === cursor) break;
   }
 }
 
-function accessibleToolchain(root: string, path: string): Record<string, string> {
+function accessibleToolchain(
+  root: string,
+  path: string,
+  candidateGids: readonly number[] = [candidateIdentity.gid],
+): Record<string, string> {
   const tools: Record<string, string> = {};
   const entries = path.split(":");
   for (const entry of entries) {
@@ -360,13 +478,13 @@ function accessibleToolchain(root: string, path: string): Record<string, string>
       while (!existsSync(parent)) parent = dirname(parent);
       const actualParent = realpathSync(parent);
       if (within(root, actualParent)) throw new Error("candidate-owned PATH ancestor");
-      protectAncestors(actualParent);
+      protectAncestors(actualParent, candidateGids);
       continue;
     }
     const actual = realpathSync(entry);
     if (within(root, actual)) throw new Error("candidate-owned PATH directory");
-    protectAncestors(realpathSync(dirname(entry)));
-    protectAncestors(actual);
+    protectAncestors(realpathSync(dirname(entry)), candidateGids);
+    protectAncestors(actual, candidateGids);
   }
   for (const name of ["node", "pnpm", "nix", "nix-instantiate", "git"]) {
     const tool =
@@ -378,9 +496,9 @@ function accessibleToolchain(root: string, path: string): Record<string, string>
     const stat = lstatSync(actual);
     if (within(root, actual) || stat.uid === candidateIdentity.uid || !stat.isFile())
       throw new Error(`candidate-owned toolchain executable: ${name}`);
-    protectAncestors(dirname(actual));
+    protectAncestors(dirname(actual), candidateGids);
     // Store executables may be immutable; already public, non-writable files need no edit.
-    const mode = executableMode(stat);
+    const mode = executableMode(stat, candidateGids);
     if ((stat.mode & 0o7777) !== mode) chmodSync(actual, mode);
     tools[name] = actual;
   }
@@ -497,10 +615,8 @@ export async function main(argv: string[]): Promise<void> {
   protectAncestors(dirname(trusted));
   protectAncestors(dirname(output));
   secureTree(trusted, "trusted", 0, 0);
-  const tools = accessibleToolchain(
-    root,
-    `${dirname(process.execPath)}:${process.env.PATH ?? "/usr/bin:/bin"}`,
-  );
+  const toolPath = `${dirname(process.execPath)}:${process.env.PATH ?? "/usr/bin:/bin"}`;
+  accessibleToolchain(root, toolPath);
   const temporary = realpathSync(tmpdir());
   protectAncestors(temporary);
   mkdirSync(output, { mode: 0o700 });
@@ -515,8 +631,12 @@ export async function main(argv: string[]): Promise<void> {
     secureTree(privateRoot, "private", 0, 0);
     precheckSnapshot(root, gitDir, plan.head, controllerCommand);
     provisionAccount(process.platform, home, controllerCommand);
-    verifyCandidateIdentity(controllerCommand);
-    verifyNixDaemon(tools.nix, controllerCommand);
+    const identity = verifyCandidateIdentity(controllerCommand);
+    const candidateGids = [...new Set([...identity.groups, ...identity.directoryGroups])];
+    for (const parent of [dirname(root), dirname(trusted), dirname(output), temporary])
+      protectAncestors(parent, candidateGids);
+    const tools = accessibleToolchain(root, toolPath, candidateGids);
+    verifyNixDaemon(tools.nix, controllerCommand, candidateGids);
     secureTree(root, "candidate", candidateIdentity.uid, candidateIdentity.gid);
     secureTree(home, "candidate", candidateIdentity.uid, candidateIdentity.gid);
     verifyCandidateBoundary(trusted, output, gitDir, controllerCommand);
