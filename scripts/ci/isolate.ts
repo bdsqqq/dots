@@ -184,7 +184,9 @@ export function verifyCandidateIdentity(command: ControllerCommand): void {
   ] as const) {
     const reply = command("/usr/bin/id", [flag], undefined, { uid, gid });
     if (reply.status !== 0 || reply.stdout.trim() !== String(expected))
-      throw new Error("candidate spawn identity must contain only uid/gid 62001");
+      throw new Error(
+        `candidate spawn identity must contain only uid/gid 62001: id ${flag} exited ${reply.status}, reported ${JSON.stringify(reply.stdout.trim())}`,
+      );
   }
 }
 
