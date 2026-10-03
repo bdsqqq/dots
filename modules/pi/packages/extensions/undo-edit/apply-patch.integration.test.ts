@@ -29,7 +29,7 @@ afterEach(() => {
 
 it("restores add, update, delete, and move from an apply_patch call", async () => {
   const sessionId = "session";
-  const toolCallId = "patch-call";
+  const toolCallId = "codemode/patch-call/0";
   const added = path.join(testRoot, "added.txt");
   const updated = path.join(testRoot, "updated.txt");
   const deleted = path.join(testRoot, "deleted.sh");
@@ -49,15 +49,6 @@ it("restores add, update, delete, and move from an apply_patch call", async () =
     cwd: testRoot,
     sessionManager: {
       getSessionId: () => sessionId,
-      getBranch: () => [
-        {
-          type: "message",
-          message: {
-            role: "assistant",
-            content: [{ type: "toolCall", id: toolCallId }],
-          },
-        },
-      ],
     },
   } as never;
   const patch = [
@@ -74,7 +65,7 @@ it("restores add, update, delete, and move from an apply_patch call", async () =
     "*** End Patch",
   ].join("\n");
 
-  await createApplyPatchTool().execute(
+  const edited = await createApplyPatchTool().execute(
     toolCallId,
     { input: patch },
     undefined,
@@ -87,7 +78,11 @@ it("restores add, update, delete, and move from an apply_patch call", async () =
   for (const file of [added, updated, deleted, moveDestination, moveSource]) {
     const result = await tool.execute(
       `undo-${path.basename(file)}`,
-      { path: file },
+      {
+        path: file,
+        changeId: edited.details.changes.find((change) => change.path === file)!
+          .changeId,
+      },
       undefined,
       undefined,
       context,

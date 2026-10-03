@@ -356,6 +356,9 @@ importers:
       '@bds_pi/mutex':
         specifier: workspace:*
         version: link:../../core/mutex
+      '@bds_pi/prompt-patch':
+        specifier: workspace:*
+        version: link:../../core/prompt-patch
       '@bds_pi/tool-policy':
         specifier: workspace:*
         version: link:../../core/tool-policy

@@ -1,18 +1,12 @@
 /**
  * file change tracker — persists before/after content to disk for undo_edit.
  *
- * each edit writes a JSON file to
- * ~/.pi/file-changes/{sessionId}/{toolCallId}.json containing
- * the full before/after content and a unified diff.
- *
- * branch awareness comes from the conversation tree, not from
- * this module. tool call IDs live in assistant messages — when
- * the user navigates branches, only tool calls on the active
- * branch are visible. the undo_edit tool filters by active
- * tool call IDs before consulting the disk.
+ * generated record IDs are explicit undo handles. tool call IDs are
+ * metadata only: nested codemode IDs can contain path separators.
  */
 
 import * as fs from "node:fs";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -28,6 +22,7 @@ const getFileChangesDir = () =>
 export interface FileChange {
   /** unique id for this change record */
   id: string;
+  toolCallId?: string;
   /** file:// URI of the changed file */
   uri: string;
   /** full content before the edit */
@@ -51,15 +46,15 @@ export interface FileChange {
 }
 
 function sessionDir(sessionId: string): string {
-  return path.join(getFileChangesDir(), sessionId);
+  return path.join(
+    getFileChangesDir(),
+    createHash("sha256").update(sessionId).digest("hex"),
+  );
 }
 
-function changePath(
-  sessionId: string,
-  toolCallId: string,
-  changeId: string,
-): string {
-  return path.join(sessionDir(sessionId), `${toolCallId}.${changeId}`);
+function changePath(sessionId: string, changeId: string): string {
+  if (!/^[a-zA-Z0-9-]+$/.test(changeId)) throw new Error("invalid change ID");
+  return path.join(sessionDir(sessionId), `${changeId}.json`);
 }
 
 export function canonicalFilePath(filePath: string): string {
@@ -102,7 +97,7 @@ function ensureDir(sessionId: string): void {
  *
  * one tool call can produce multiple changes (e.g., delegate sub-agent
  * creating several files). each gets a unique UUID, stored as
- * {toolCallId}.{uuid}.
+ * {uuid}.json; the tool call identifier is stored only as metadata.
  */
 export function saveChange(
   sessionId: string,
@@ -126,11 +121,12 @@ export function saveChanges(
   const records = changes.map((change) => {
     const id = crypto.randomUUID();
     return {
-      path: changePath(sessionId, toolCallId, id),
+      path: changePath(sessionId, id),
       record: {
         ...change,
         uri: canonicalFileUri(change.uri),
         id,
+        toolCallId,
         reverted: false,
       } satisfies FileChange,
     };
@@ -169,11 +165,10 @@ export function loadChanges(
   const dir = sessionDir(sessionId);
   if (!fs.existsSync(dir)) return [];
 
-  const prefix = `${toolCallId}.`;
   try {
     return fs
       .readdirSync(dir)
-      .filter((f) => f.startsWith(prefix))
+      .filter((f) => f.endsWith(".json"))
       .map((f) => {
         try {
           return JSON.parse(
@@ -183,9 +178,27 @@ export function loadChanges(
           return null;
         }
       })
-      .filter((c): c is FileChange => c !== null);
+      .filter(
+        (c): c is FileChange => c !== null && c.toolCallId === toolCallId,
+      );
   } catch {
     return [];
+  }
+}
+
+/** Lookup an explicit undo handle without consulting conversation history. */
+export function loadChange(
+  sessionId: string,
+  changeId: string,
+): FileChange | null {
+  if (!/^[0-9a-f-]{36}$/.test(changeId)) return null;
+  try {
+    const record = JSON.parse(
+      fs.readFileSync(changePath(sessionId, changeId), "utf-8"),
+    ) as FileChange;
+    return record.id === changeId ? record : null;
+  } catch {
+    return null;
   }
 }
 
@@ -195,18 +208,18 @@ export function loadChanges(
  */
 export function revertChange(
   sessionId: string,
-  toolCallId: string,
-  changeId: string,
+  toolCallIdOrChangeId: string,
+  explicitChangeId?: string,
 ): FileChange | null {
-  const p = changePath(sessionId, toolCallId, changeId);
-  if (!fs.existsSync(p)) return null;
-
-  let change: FileChange;
-  try {
-    change = JSON.parse(fs.readFileSync(p, "utf-8")) as FileChange;
-  } catch {
+  const changeId = explicitChangeId ?? toolCallIdOrChangeId;
+  const loaded = loadChange(sessionId, changeId);
+  if (
+    !loaded ||
+    (explicitChangeId && loaded.toolCallId !== toolCallIdOrChangeId)
+  )
     return null;
-  }
+  const p = changePath(sessionId, changeId);
+  const change = loaded;
   if (change.reverted) return null;
 
   const filePath = change.uri.replace(/^file:\/\//, "");
@@ -289,44 +302,6 @@ function restoreTrackedState(
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, "utf-8");
   if (mode !== undefined) fs.chmodSync(filePath, mode);
-}
-
-/**
- * find the most recent non-reverted change for a file path,
- * filtered to only the given tool call IDs (branch awareness).
- *
- * the caller gets activeToolCallIds by scanning the current
- * session branch for file-mutation tool calls such as apply_patch.
- */
-export function findLatestChange(
-  sessionId: string,
-  filePath: string,
-  activeToolCallIds: string[],
-): { toolCallId: string; change: FileChange } | null {
-  const uri = `file://${canonicalFilePath(filePath)}`;
-
-  // check in reverse order (most recent first)
-  for (let i = activeToolCallIds.length - 1; i >= 0; i--) {
-    const toolCallId = activeToolCallIds[i];
-    if (!toolCallId) continue;
-    const changes = loadChanges(sessionId, toolCallId);
-    // within a tool call, find the matching file (most recent by timestamp)
-    const match = changes
-      .filter((change) => {
-        if (change.reverted) return false;
-        try {
-          return canonicalFileUri(change.uri) === uri;
-        } catch {
-          return false;
-        }
-      })
-      .sort((a, b) => b.timestamp - a.timestamp)[0];
-    if (match) {
-      return { toolCallId, change: match };
-    }
-  }
-
-  return null;
 }
 
 /**
@@ -509,6 +484,28 @@ if (import.meta.vitest) {
   });
 
   describe("saveChange and loadChanges", () => {
+    it("uses generated record paths for nested IDs and scopes explicit lookup to a session", () => {
+      const nestedSession = "../../session/nested";
+      const nestedCall = "../../outer/inner/0";
+      const id = saveChange(nestedSession, nestedCall, {
+        uri: `file://${path.join(tmpDir, "nested.txt")}`,
+        before: "before",
+        after: "after",
+        diff: "",
+        isNewFile: false,
+        timestamp: Date.now(),
+      });
+      expect(fs.readdirSync(tmpDir)).toEqual([
+        path.basename(sessionDir(nestedSession)),
+      ]);
+      expect(fs.readdirSync(sessionDir(nestedSession))).toEqual([`${id}.json`]);
+      expect(loadChange(nestedSession, id)?.toolCallId).toBe(nestedCall);
+      expect(loadChanges(nestedSession, nestedCall)[0]?.id).toBe(id);
+      expect(loadChange(sessionId, id)).toBeNull();
+      expect(loadChange(nestedSession, `../${id}`)).toBeNull();
+      expect(revertChange(nestedSession, `../${id}`)).toBeNull();
+    });
+
     it("saves a change record to disk and loads it back", () => {
       const toolCallId = "tc-123";
       const filePath = path.join(tmpDir, "test-file.txt");
@@ -824,185 +821,6 @@ if (import.meta.vitest) {
       );
       expect(fs.readFileSync(filePath, "utf-8")).toBe("after");
       expect(loadChanges(sessionId, toolCallId)[0]?.reverted).toBe(false);
-    });
-  });
-
-  describe("findLatestChange", () => {
-    it("finds the most recent change for a file", () => {
-      const tc1 = "tc-first";
-      const tc2 = "tc-second";
-      const filePath = path.join(tmpDir, "chain.txt");
-
-      saveChange(sessionId, tc1, {
-        uri: `file://${filePath}`,
-        before: "v1",
-        after: "v2",
-        diff: "",
-        isNewFile: false,
-        timestamp: Date.now() - 2000,
-      });
-
-      saveChange(sessionId, tc2, {
-        uri: `file://${filePath}`,
-        before: "v2",
-        after: "v3",
-        diff: "",
-        isNewFile: false,
-        timestamp: Date.now() - 1000,
-      });
-
-      const result = findLatestChange(sessionId, filePath, [tc1, tc2]);
-
-      expect(result).not.toBeNull();
-      expect(result?.change.before).toBe("v2");
-      expect(result?.change.after).toBe("v3");
-      expect(result?.toolCallId).toBe(tc2);
-    });
-
-    it("matches equivalent paths through a symlinked parent", () => {
-      const toolCallId = "tc-path-alias";
-      const real = path.join(tmpDir, "real");
-      const alias = path.join(tmpDir, "alias");
-      fs.mkdirSync(real);
-      fs.symlinkSync(real, alias);
-      const realFile = path.join(real, "file.txt");
-      fs.writeFileSync(realFile, "after");
-      saveChange(sessionId, toolCallId, {
-        uri: `file://${realFile}`,
-        before: "before",
-        after: "after",
-        diff: "",
-        isNewFile: false,
-        timestamp: Date.now(),
-      });
-
-      expect(
-        findLatestChange(sessionId, path.join(alias, "file.txt"), [toolCallId])
-          ?.change.after,
-      ).toBe("after");
-    });
-
-    it("matches legacy records with non-canonical file URIs", () => {
-      const toolCallId = "tc-legacy-alias";
-      const real = path.join(tmpDir, "legacy-real");
-      const alias = path.join(tmpDir, "legacy-alias");
-      fs.mkdirSync(real);
-      fs.symlinkSync(real, alias);
-      const realFile = path.join(real, "file.txt");
-      fs.writeFileSync(realFile, "after");
-      ensureDir(sessionId);
-      const record: FileChange = {
-        id: "legacy",
-        uri: `file://${path.join(alias, "file.txt")}`,
-        before: "before",
-        after: "after",
-        diff: "",
-        isNewFile: false,
-        reverted: false,
-        timestamp: Date.now(),
-      };
-      fs.writeFileSync(
-        changePath(sessionId, toolCallId, record.id),
-        JSON.stringify(record),
-      );
-
-      expect(
-        findLatestChange(sessionId, realFile, [toolCallId])?.change.after,
-      ).toBe("after");
-    });
-
-    it("skips reverted changes", () => {
-      const tc1 = "tc-revert-skip";
-      const filePath = path.join(tmpDir, "skip-reverted.txt");
-
-      const changeId = saveChange(sessionId, tc1, {
-        uri: `file://${filePath}`,
-        before: "old",
-        after: "new",
-        diff: "",
-        isNewFile: false,
-        timestamp: Date.now(),
-      });
-
-      // mark as reverted by updating the file
-      const changes = loadChanges(sessionId, tc1);
-      const change = { ...changes[0], reverted: true };
-      const changeFilePath = path.join(tmpDir, sessionId, `${tc1}.${changeId}`);
-      fs.writeFileSync(
-        changeFilePath,
-        JSON.stringify(change, null, 2),
-        "utf-8",
-      );
-
-      const result = findLatestChange(sessionId, filePath, [tc1]);
-      expect(result).toBeNull();
-    });
-
-    it("respects branch order (activeToolCallIds order)", () => {
-      const tc1 = "tc-branch-1";
-      const tc2 = "tc-branch-2";
-      const filePath = path.join(tmpDir, "branch-order.txt");
-
-      saveChange(sessionId, tc1, {
-        uri: `file://${filePath}`,
-        before: "a",
-        after: "b",
-        diff: "",
-        isNewFile: false,
-        timestamp: Date.now() - 1000,
-      });
-
-      saveChange(sessionId, tc2, {
-        uri: `file://${filePath}`,
-        before: "c",
-        after: "d",
-        diff: "",
-        isNewFile: false,
-        timestamp: Date.now(),
-      });
-
-      const result1 = findLatestChange(sessionId, filePath, [tc1, tc2]);
-      expect(result1?.change.after).toBe("d");
-
-      const result2 = findLatestChange(sessionId, filePath, [tc1]);
-      expect(result2?.change.after).toBe("b");
-    });
-
-    it("returns null when file has no changes", () => {
-      const result = findLatestChange(sessionId, "/nonexistent/file.txt", [
-        "tc-x",
-      ]);
-      expect(result).toBeNull();
-    });
-
-    it("handles multiple changes to different files in same tool call", () => {
-      const tc = "tc-multi-file";
-      const file1 = path.join(tmpDir, "multi1.txt");
-      const file2 = path.join(tmpDir, "multi2.txt");
-
-      saveChange(sessionId, tc, {
-        uri: `file://${file1}`,
-        before: "",
-        after: "f1",
-        diff: "",
-        isNewFile: true,
-        timestamp: Date.now() - 1000,
-      });
-
-      saveChange(sessionId, tc, {
-        uri: `file://${file2}`,
-        before: "",
-        after: "f2",
-        diff: "",
-        isNewFile: true,
-        timestamp: Date.now(),
-      });
-
-      const result1 = findLatestChange(sessionId, file1, [tc]);
-      const result2 = findLatestChange(sessionId, file2, [tc]);
-
-      expect(result1?.change.after).toBe("f1");
-      expect(result2?.change.after).toBe("f2");
     });
   });
 }

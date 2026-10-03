@@ -1,18 +1,52 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type, type TSchema } from "typebox";
+
+/** Scripts receive the same content and metadata as direct callers, including images. */
+const resultSchema = Type.Object({
+  content: Type.Array(
+    Type.Union([
+      Type.Object({ type: Type.Literal("text"), text: Type.String() }),
+      Type.Object({
+        type: Type.Literal("image"),
+        data: Type.String(),
+        mimeType: Type.String(),
+      }),
+    ]),
+  ),
+  details: Type.Unknown(),
+});
 
 /**
  * derives promptSnippet and promptGuidelines from a tool's description
  * so tools don't need to define them manually. snippet = first paragraph,
  * guidelines = lines starting with "- ".
  */
-export function withPromptPatch(tool: ToolDefinition): ToolDefinition {
+export function withPromptPatch<T extends TSchema, D>(
+  tool: ToolDefinition<T, D>,
+): ToolDefinition<T, D> {
   const snippet = (tool.description?.split("\n\n")[0] ?? "").trim();
   const guidelines = (tool.description ?? "")
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.startsWith("- "));
 
-  const patched: ToolDefinition = { ...tool };
+  const patched: ToolDefinition<T, D> = { ...tool };
+  patched.exposure ??= "codemode";
+  if (!patched.outputSchema) {
+    patched.outputSchema = resultSchema;
+    patched.execute = async (...args) => {
+      const result = await tool.execute(...args);
+      return {
+        ...result,
+        structuredContent: JSON.parse(
+          JSON.stringify({
+            content: result.content,
+            details: result.details ?? null,
+          }),
+        ),
+      };
+    };
+  }
   if (!patched.promptSnippet) patched.promptSnippet = snippet;
   if (!patched.promptGuidelines && guidelines.length > 0) {
     patched.promptGuidelines = guidelines;
@@ -164,7 +198,7 @@ if (import.meta.vitest) {
         strict: "prefer",
       });
       expect(patched.parameters).toBe(tool.parameters);
-      expect(patched.execute).toBe(tool.execute);
+      expect(patched.exposure).toBe("codemode");
     });
 
     it("preserves an explicit constrained-sampling choice", () => {
@@ -364,6 +398,45 @@ if (import.meta.vitest) {
       const patched = withPromptPatch(tool);
       expect(patched.name).toBe("test_tool");
       expect(patched.label).toBe(tool.label);
+    });
+
+    it("preserves image blocks, metadata, errors and execute arguments for scripts", async () => {
+      const content = [
+        { type: "image" as const, data: "aGVsbG8=", mimeType: "image/png" },
+      ];
+      const details = { changeId: "explicit-id" };
+      const tool = makeTool({
+        async execute(id, args) {
+          expect(id).toBe("parent/1");
+          expect(args).toEqual({ value: 42 });
+          return { content, details, isError: true };
+        },
+      });
+      const result = await withPromptPatch(tool).execute(
+        "parent/1",
+        { value: 42 },
+        undefined,
+        undefined,
+        {} as any,
+      );
+      expect(result).toMatchObject({
+        content,
+        details,
+        isError: true,
+        structuredContent: { content, details },
+      });
+      expect(tool.outputSchema).toBeUndefined();
+    });
+
+    it("leaves explicit structured contracts and exposure choices intact", () => {
+      const tool = makeTool({
+        outputSchema: Type.Object({ value: Type.Number() }),
+        exposure: "direct",
+      });
+      const patched = withPromptPatch(tool);
+      expect(patched.outputSchema).toBe(tool.outputSchema);
+      expect(patched.execute).toBe(tool.execute);
+      expect(patched.exposure).toBe("direct");
     });
   });
 }
