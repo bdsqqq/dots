@@ -19,7 +19,7 @@
   "dependencies": {
     "@bds_pi/config": "workspace:*",
     "@bds_pi/log": "workspace:*",
-    "@letta-ai/trajectory": "0.2.1"
+    "@letta-ai/trajectory": "0.4.3"
   },
   "devDependencies": {
     "vitest": "^3.0.0"

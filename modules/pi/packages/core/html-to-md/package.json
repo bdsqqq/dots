@@ -5,8 +5,8 @@
   "main": "index.ts",
   "types": "index.ts",
   "dependencies": {
-    "defuddle": "^0.18.1",
-    "jsdom": "^29.1.1"
+    "defuddle": "^0.19.4",
+    "linkedom": "^0.18.13"
   },
   "devDependencies": {
     "vitest": "^3.0.0"
