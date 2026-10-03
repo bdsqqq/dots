@@ -427,33 +427,36 @@ describe("private memory history", () => {
     writeFileSync(join(cfg.root, "one.md"), "one\n");
     initHistory(cfg);
     const run = () =>
-      new Promise<{ code: number | null; stderr: string }>((resolveRun) => {
-        const child = spawn(
-          "bun",
-          [
-            "run",
-            join(process.cwd(), "packages/core/agent-memory/index.ts"),
-            "history",
-            "verify",
-          ],
-          {
-            cwd: process.cwd(),
-            env: {
-              ...process.env,
-              PI_MEMORY_DATA_DIR: cfg.data,
-              PI_MEMORY_ROOT: cfg.root,
-              PI_MEMORY_STATE_DIR: cfg.state,
+      new Promise<{ code: number | null; stderr: string }>(
+        (resolveRun, rejectRun) => {
+          const child = spawn(
+            "bun",
+            [
+              "run",
+              join(process.cwd(), "packages/core/agent-memory/index.ts"),
+              "history",
+              "verify",
+            ],
+            {
+              cwd: process.cwd(),
+              env: {
+                ...process.env,
+                PI_MEMORY_DATA_DIR: cfg.data,
+                PI_MEMORY_ROOT: cfg.root,
+                PI_MEMORY_STATE_DIR: cfg.state,
+              },
+              stdio: ["ignore", "ignore", "pipe"],
             },
-            stdio: ["ignore", "ignore", "pipe"],
-          },
-        );
-        let stderr = "";
-        child.stderr.setEncoding("utf8");
-        child.stderr.on("data", (chunk) => {
-          stderr += chunk;
-        });
-        child.on("close", (code) => resolveRun({ code, stderr }));
-      });
+          );
+          let stderr = "";
+          child.stderr.setEncoding("utf8");
+          child.stderr.on("data", (chunk) => {
+            stderr += chunk;
+          });
+          child.on("error", rejectRun);
+          child.on("close", (code) => resolveRun({ code, stderr }));
+        },
+      );
 
     const results = await Promise.all([run(), run()]);
 

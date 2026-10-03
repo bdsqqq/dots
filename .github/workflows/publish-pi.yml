@@ -40,6 +40,10 @@ jobs:
           cache: pnpm
           cache-dependency-path: modules/pi/pnpm-lock.yaml
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm run build
@@ -48,6 +52,7 @@ jobs:
         run: pnpm exec vitest run --exclude 'packages/extensions/github/**'
         env:
           GH_TOKEN: ${{ github.token }}
+          PI_TEST_BUILT_TOOLS: "1"
 
       - name: set epoch version
         id: version

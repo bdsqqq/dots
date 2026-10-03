@@ -1943,12 +1943,14 @@ if (import.meta.vitest) {
           await session.bindExtensions({ mode: "json" });
           const active = session.getActiveToolNames().sort();
           const registry = session.getAllTools().map(t => t.name).sort();
-          const advertised = session.agent.state.tools.map(t => t.name).sort();
+          const callable = session.getCallableToolNames().sort();
           const sources = Object.fromEntries(session.getAllTools().map(t => [t.name, t.sourceInfo]));
           // A native allowlist must survive refresh, not just session_start.
           registerLateTool();
           console.error(JSON.stringify({
-            active, registry, advertised, sources, afterRefresh: session.getActiveToolNames().sort(),
+            active, registry, callable, sources,
+            afterRefresh: session.getActiveToolNames().sort(),
+            callableAfterRefresh: session.getCallableToolNames().sort(),
           }));
         } finally { session.dispose(); }
       `,
@@ -1987,8 +1989,9 @@ if (import.meta.vitest) {
       });
       expect(result.active).toEqual([...delegateTools].sort());
       expect(result.registry).toEqual(result.active);
-      expect(result.advertised).toEqual(result.active);
+      expect(result.callable).toEqual(result.active);
       expect(result.afterRefresh).toEqual(result.active);
+      expect(result.callableAfterRefresh).toEqual(result.callable);
     });
 
     it.each([
@@ -2054,8 +2057,9 @@ if (import.meta.vitest) {
       const result = await probeTools(selection);
       expect(result.active).toEqual([...expected].sort());
       expect(result.registry).toEqual(result.active);
-      expect(result.advertised).toEqual(result.active);
+      expect(result.callable).toEqual(result.active);
       expect(result.afterRefresh).toEqual(result.active);
+      expect(result.callableAfterRefresh).toEqual(result.callable);
       if (expected.includes("read"))
         expect(JSON.stringify(result.sources.read)).toContain(
           "/extensions/read",
@@ -2074,26 +2078,32 @@ if (import.meta.vitest) {
       for (const name of excluded) {
         expect(result.registry).not.toContain(name);
         expect(result.active).not.toContain(name);
+        expect(result.callable).not.toContain(name);
         expect(result.afterRefresh).not.toContain(name);
+        expect(result.callableAfterRefresh).not.toContain(name);
       }
-      expect(result.active).toEqual(
+      expect(result.callable).toEqual(
         expect.arrayContaining(["read", "read_web_page"]),
       );
-      expect(result.advertised).toEqual(result.active);
+      expect(result.active).toEqual(["read"]);
       expect(result.afterRefresh).toEqual(result.active);
+      expect(result.callableAfterRefresh).toEqual(result.callable);
     });
 
-    it("leaves SDK defaults and unrestricted extensions alone when both lists are omitted", async () => {
+    it("keeps unrestricted extensions callable without advertising codemode tools", async () => {
       const result = await probeTools({});
-      expect(result.active).toEqual(
+      expect(result.callable).toEqual(
         expect.arrayContaining([...delegateTools, "read_github"]),
       );
       // apply-patch's startup handler disables native edit/write.
-      expect(result.active).not.toContain("edit");
-      expect(result.active).not.toContain("write");
-      expect(result.advertised).toEqual(result.active);
+      expect(result.callable).not.toContain("edit");
+      expect(result.callable).not.toContain("write");
+      expect(result.active).toEqual(["apply_patch", "bash", "read"]);
       expect(result.afterRefresh).toEqual(
         [...result.active, "late_tool"].sort(),
+      );
+      expect(result.callableAfterRefresh).toEqual(
+        [...result.callable, "late_tool"].sort(),
       );
     });
   });
