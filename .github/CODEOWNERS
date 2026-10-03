@@ -1,0 +1,12 @@
+# branch rules must separately require code-owner review; this file alone is not a gate.
+/.github/ @bdsqqq
+/scripts/ci/ @bdsqqq
+**/AGENTS.md @bdsqqq
+/config/global-agents.md @bdsqqq
+/modules/node-pnpm/config.yaml @bdsqqq
+/modules/node-pnpm/pnpm-workspace.yaml @bdsqqq
+/modules/pi/pnpm-workspace.yaml @bdsqqq
+/modules/pi/.npmrc @bdsqqq
+/modules/pi/vitest.config.ts @bdsqqq
+/modules/pi/tsconfig*.json @bdsqqq
+/modules/pi/tsdown.config.ts @bdsqqq
