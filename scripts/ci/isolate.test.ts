@@ -740,11 +740,13 @@ test("real git precheck detects drift even after candidate replaces .git", () =>
   try {
     const root = join(f.dir, "candidate");
     mkdirSync(root);
+    // Fresh hosted Darwin exhausted 15s before git init returned. Keep setup
+    // bounded without turning host startup latency into a drift-policy failure.
     const git = (args: string[]) =>
       execFileSync("/usr/bin/git", args, {
         cwd: root,
         encoding: "utf8",
-        timeout: 15_000,
+        timeout: 30_000,
         stdio: ["ignore", "pipe", "pipe"],
         env: {
           PATH: "/usr/bin:/bin",
