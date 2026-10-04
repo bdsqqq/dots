@@ -568,7 +568,7 @@ index f643819..d98aefa 100644
 -import { Box, Container, getCapabilities, Image, MouseRegion, Spacer, Text, } from "@earendil-works/pi-tui";
 +import { Box, Container, getCapabilities, Image, MarkerColumn, MouseRegion, Spacer, Text, } from "@earendil-works/pi-tui";
  import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
- import { convertToPng } from "../../../utils/image-convert.js";
+ import { ensurePngTranscoder } from "../../../utils/image-convert.js";
  import { theme } from "../theme/theme.js";
 @@ -93,7 +93,10 @@ export class ToolExecutionComponent extends Container {
      createResultFallback() {

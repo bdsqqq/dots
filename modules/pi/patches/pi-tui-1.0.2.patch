@@ -148,7 +148,7 @@ index 4a0657e..7491966 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -7,6 +7,7 @@ export { HStack } from "./components/h-stack.ts";
- export { Image, type ImageOptions, type ImageTheme } from "./components/image.ts";
+ export { Image, type ImageOptions, type ImageTheme, type ImageTranscoder, setImageTranscoder, } from "./components/image.ts";
  export { Input } from "./components/input.ts";
  export { Loader, type LoaderIndicatorOptions } from "./components/loader.ts";
 +export { MarkerColumn, type MarkerColumnOptions } from "./components/marker-column.ts";
@@ -160,7 +160,7 @@ index d3c8519..d0b713a 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -10,6 +10,7 @@ export { HStack } from "./components/h-stack.js";
- export { Image } from "./components/image.js";
+ export { Image, setImageTranscoder, } from "./components/image.js";
  export { Input } from "./components/input.js";
  export { Loader } from "./components/loader.js";
 +export { MarkerColumn } from "./components/marker-column.js";
