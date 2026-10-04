@@ -30,8 +30,9 @@ before candidate execution, the controller checks effective uid/groups, denied
 passwordless sudo, denied writes to verifier/evidence/metadata, and Nix trust
 configuration. the daemon check assumes the installer's fresh daemon uses that
 protected system configuration; it does not inspect a live daemon's internal
-settings. native provisioning and these cross-uid checks still need hosted
-execution before enabling branch enforcement.
+settings. hosted Linux and Darwin provisioning, cross-uid checks, frozen
+installation, and all selected verification passed on
+[2026-10-04](https://github.com/bdsqqq/dots/actions/runs/37219235452).
 
 Darwin's `id -G` includes directory-service defaults, not just inherited process
 groups. a Node syscall probe checks the actual process credentials; directory
@@ -115,22 +116,29 @@ installation, the repository owner can manually dispatch with `bootstrap: true`
 and an explicit full `base` SHA after reviewing the candidate. this selects
 candidate policy for that one run; it does not authorize automatic merging.
 
-## enabling the merge boundary
+## merge boundary
 
-adding a workflow does **not** protect a branch. after publishing and exercising
-the workflow, configure repository rules separately:
+adding a workflow does **not** protect a branch. `main` uses a separately
+configured branch-protection contract:
 
-1. require `merge-ready`, a current candidate, and no bypass for update/repair
-   identities.
-2. require owner review for `.github/**`, `scripts/ci/**`, verification guidance,
-   and dependency-age policy (`.github/CODEOWNERS` supplies these owners).
-   a candidate PR workflow can otherwise replace the
-   job itself; base-policy execution alone cannot prevent that.
-3. validate the exact required check context and bootstrap, fork-PR, merge-group,
-   failed-command, unavailable-worker, and stale-evidence behavior on GitHub.
-4. only then enable eligible auto-merge/promotion. bots, pull deployment,
-   backups, idle detection, and health/recovery are separate work.
+- require `merge-ready` from the GitHub Actions app, with the branch up to date.
+- require code-owner review where `.github/CODEOWNERS` matches, dismiss stale
+  approvals, and resolve review conversations. ordinary changes do not require
+  an additional blanket approval.
+- apply the rules to administrators; disallow force pushes and branch deletion.
 
+a candidate PR workflow can replace the job itself; owner review protects that
+authority boundary. authors cannot approve their own protected-file PRs, so an
+automated policy change needs a distinct author/reviewer, not repair-agent
+credentials with a bypass.
+
+the release-age policy remains mandatory. when it blocks a frozen installation,
+rerun after the reported cutoff; do not add exclusions or relax the gate merely
+to finish a run. failure, recovery, and required-check behavior need hosted PR
+acceptance alongside local negative tests.
+
+auto-merge/promotion, updater bots, pull deployment, backups, idle detection, and
+health/recovery are separate work; this gate does not install them.
 checks do not prove visual quality, prompt quality, Homebrew activation,
 credential login, state migration, or productivity. report those gaps rather
 than treating a successful build as runtime acceptance.
