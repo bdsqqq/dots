@@ -1,4 +1,5 @@
 # branch rules must separately require code-owner review; this file alone is not a gate.
+# acceptance fixture: this unmerged comment must require owner review.
 /.github/ @bdsqqq
 /scripts/ci/ @bdsqqq
 **/AGENTS.md @bdsqqq
