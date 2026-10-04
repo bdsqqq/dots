@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "@orpc/contract": "1.13.6",
-    "@orpc/server": "1.13.6",
+    "@orpc/server": "1.14.8",
     "arktype": "2.2.3",
     "proper-lockfile": "4.1.2"
   },
