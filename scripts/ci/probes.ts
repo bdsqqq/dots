@@ -413,6 +413,9 @@ function toolBinary(workspace: string, packageName: string, command: string) {
 
 export function tools(root = repository, runVersion: VersionProcess = spawnSync) {
   const workspace = join(root, "modules/node-pnpm");
+  const declared = json(join(workspace, "package.json")).dependencies;
+  assert.ok(object(declared), "global tools dependencies must be an object");
+  assert.equal(declared["@bdsqqq/pi-cli"], "workspace:*", "global Pi must be declared workspace:*");
   const wrapper = toolBinary(workspace, "@bdsqqq/pi-cli", "pi");
   assert.equal(
     realpathSync(wrapper.packageRoot),
@@ -456,15 +459,21 @@ export function tools(root = repository, runVersion: VersionProcess = spawnSync)
     ...[
       ["@openai/codex", "codex"],
       ["t3", "t3"],
-    ].map(([name, command]) => {
-      const tool = toolBinary(workspace, name, command);
-      return {
-        ...tool,
-        command,
-        version: tool.metadata.version,
-        authority: join(tool.packageRoot, "package.json"),
-      };
-    }),
+    ]
+      .filter(([name]) => Object.hasOwn(declared, name))
+      .map(([name, command]) => {
+        assert.ok(
+          typeof declared[name] === "string" && declared[name].trim().length > 0,
+          `invalid declared dependency: ${name}`,
+        );
+        const tool = toolBinary(workspace, name, command);
+        return {
+          ...tool,
+          command,
+          version: tool.metadata.version,
+          authority: join(tool.packageRoot, "package.json"),
+        };
+      }),
   ];
   const results = [];
   for (const candidate of candidates) {
@@ -522,7 +531,8 @@ export function tools(root = repository, runVersion: VersionProcess = spawnSync)
     status: "passed",
     tools: results,
     limitations: [
-      "only global Pi/Codex/T3 --version paths; not every global npm tool",
+      `only declared locked-workspace ${results.map((tool) => tool.command).join("/")} --version paths; not every global npm tool`,
+      "user-owned latest/preview profiles are not probed or certified by this check",
       "no authentication, model requests, server startup or live-service verification",
       "fresh HOME and allowlisted environment are not a sandbox; CI requires a disposable VM",
     ],
