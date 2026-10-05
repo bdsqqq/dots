@@ -4,6 +4,25 @@ multi-host Nix configuration for nix-darwin, NixOS, and Home Manager. hosts
 select capabilities explicitly; each capability keeps its
 system, user, package, scripts, tests, and assets together.
 
+## live, editable systems
+
+across every host and feature, the repo manages the live system without
+exclusively controlling it. programs read and write editable, tracked files:
+`pnpm add -g` updates the global manifest and installs locally; Pi can modify its
+own modules; Niri consumes live config edits.
+
+Nix supplies prerequisites, links, and services. native install/build/reload
+workflows remain available; rebuild/switch is required only where the change
+needs system activation.
+
+the goal is prompt, automatic convergence of published changes across hosts,
+with manual catch-up always available—not a claim of complete implementation.
+preserve unpublished edits rather than resetting them during updates.
+
+installation and runtime must use the same live source and manifest/lockfile.
+replacing live files with immutable snapshots or deployment-only copies requires
+explicit agreement.
+
 ## architecture
 
 ```mermaid
@@ -32,27 +51,27 @@ flowchart TD
 
 ### feature file contracts
 
-| file | contract |
-| --- | --- |
-| `default.nix` | system-level feature entry point; importing `modules/foo` selects it |
-| `home.nix` | direct Home Manager module, imported by the feature's system adapter |
-| `package.nix` | reusable package expression, imported directly rather than placed in a module `imports` list |
-| `lib.nix` | pure data or helpers without a NixOS option graph |
-| `service.nix` | explicit deployment integration when packaging and service policy are separate |
-| `tailnet-app.nix` | declarative tailnet and Cloudflare metadata discovered by the catalog |
-| `credential.nix` | the feature's stable credential owner; consumers import it and set its requirement flag |
-| `secrets.yaml` | canonical ciphertext adjacent to its `credential.nix` owner |
+| file              | contract                                                                                     |
+| ----------------- | -------------------------------------------------------------------------------------------- |
+| `default.nix`     | system-level feature entry point; importing `modules/foo` selects it                         |
+| `home.nix`        | direct Home Manager module, imported by the feature's system adapter                         |
+| `package.nix`     | reusable package expression, imported directly rather than placed in a module `imports` list |
+| `lib.nix`         | pure data or helpers without a NixOS option graph                                            |
+| `service.nix`     | explicit deployment integration when packaging and service policy are separate               |
+| `tailnet-app.nix` | declarative tailnet and Cloudflare metadata discovered by the catalog                        |
+| `credential.nix`  | the feature's stable credential owner; consumers import it and set its requirement flag      |
+| `secrets.yaml`    | canonical ciphertext adjacent to its `credential.nix` owner                                  |
 
 ## configurations
 
-| output | platform | role |
-| --- | --- | --- |
-| `mbp-m2` | aarch64-darwin | primary graphical workstation |
-| `mbp-m5` | aarch64-darwin | work-issued development workstation |
-| `mmn-m4` | aarch64-darwin | household storage and media service host |
-| `lgo-z2e` | x86_64-linux | Niri/Jovian graphical system |
-| `htz-relay` | x86_64-linux | storage, Syncthing, and application relay |
-| `gru-relay` | x86_64-linux | Tailscale exit node and ingress relay |
+| output      | platform       | role                                      |
+| ----------- | -------------- | ----------------------------------------- |
+| `mbp-m2`    | aarch64-darwin | primary graphical workstation             |
+| `mbp-m5`    | aarch64-darwin | work-issued development workstation       |
+| `mmn-m4`    | aarch64-darwin | household storage and media service host  |
+| `lgo-z2e`   | x86_64-linux   | Niri/Jovian graphical system              |
+| `htz-relay` | x86_64-linux   | storage, Syncthing, and application relay |
+| `gru-relay` | x86_64-linux   | Tailscale exit node and ingress relay     |
 
 ## common operations
 
@@ -74,6 +93,20 @@ sudo nixos-rebuild switch --flake .#lgo-z2e
 
 replace the host name with the target configuration. do not cross-build by
 default.
+
+## automatic updates
+
+all hosts import the hourly upgrade policy through `modules/nix`. Linux uses
+`system.autoUpgrade` without automatic reboots; Darwin uses a root launchd job.
+Darwin can opt into build-only with `system.autoUpgrade.operation = "build"`.
+these jobs consume the published GitHub flake, not an editable local checkout.
+they do not wait for idle or supply health-based rollback.
+
+system upgrade jobs alone do not synchronize live checkouts, install their
+dependencies, or reload programs.
+
+`flake.lock` and custom package pins still need repository updates. the
+flake-update workflow proposes those changes; host timers do not advance them.
 
 ## tailnet declarations
 

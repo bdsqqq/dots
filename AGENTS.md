@@ -1,3 +1,19 @@
+## live-system contract
+
+the repo manages every host and feature without exclusively controlling edits:
+
+- keep programs reading and writing editable tracked files. `pnpm add -g`,
+  Pi self-modification, and live Niri edits are intended workflows.
+- use Nix for prerequisites, wiring, and services—not as a mandatory step for
+  native edits. install/build/reload normally; activate the system when required.
+- propagate published changes promptly and automatically, with manual catch-up
+  always available. verify propagation, dependency installation, and reload/apply;
+  an upgrade timer alone does not prove convergence.
+- preserve unpublished edits and program-written config. replacing live paths
+  with immutable snapshots or deployment-only copies requires user agreement.
+- install and run from the same live source and manifest/lockfile. local edits
+  are intentional divergence; mismatched installation/runtime sources are not.
+
 ## verification
 
 verify each coherent change slice with the smallest executable checks that
