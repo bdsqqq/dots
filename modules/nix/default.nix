@@ -1,6 +1,8 @@
 { config, pkgs, lib, ... }:
 
 {
+  imports = [ ./auto-upgrade.nix ];
+
   # Common Nix settings
   nix = {
     package = pkgs.nixVersions.latest;
