@@ -555,6 +555,17 @@ function toolsFixture(root: string) {
   const workspace = "modules/node-pnpm";
   put(
     root,
+    `${workspace}/package.json`,
+    JSON.stringify({
+      dependencies: {
+        "@bdsqqq/pi-cli": "workspace:*",
+        "@openai/codex": "0.157.1",
+        t3: "0.0.33",
+      },
+    }),
+  );
+  put(
+    root,
     `${workspace}/pi-cli/package.json`,
     '{"name":"@bdsqqq/pi-cli","version":"0.0.0","bin":{"pi":"bin/pi"}}',
   );
@@ -603,6 +614,51 @@ function toolsFixture(root: string) {
 
 const fixtureVersion = (binary: string) =>
   binary.endsWith("/pi") ? "1.0.0" : binary.endsWith("/codex") ? "codex-cli 0.157.1" : "t3 0.0.33";
+
+test("tools does not select lingering undeclared Codex/T3 binaries", () =>
+  temporary((root) => {
+    toolsFixture(root);
+    put(
+      root,
+      "modules/node-pnpm/package.json",
+      JSON.stringify({
+        dependencies: { "@bdsqqq/pi-cli": "workspace:*" },
+      }),
+    );
+    // Even broken leftover metadata must not become a candidate authority.
+    put(root, "modules/node-pnpm/node_modules/t3/package.json", "{broken");
+    const called: string[] = [];
+    const result = tools(root, (binary) => {
+      called.push(binary);
+      return { status: 0, stdout: fixtureVersion(binary), stderr: "" };
+    });
+    assert.deepEqual(
+      result.tools.map((tool) => tool.command),
+      ["pi"],
+    );
+    assert.equal(called.length, 1);
+    assert.match(result.limitations[0], /only declared locked-workspace pi --version/);
+    assert.ok(result.limitations.some((text) => text.includes("not probed or certified")));
+  }));
+
+test("tools fails closed on malformed declared dependencies", () =>
+  temporary((root) => {
+    toolsFixture(root);
+    for (const dependencies of [
+      [],
+      { "@bdsqqq/pi-cli": "workspace:*", t3: null },
+      { "@bdsqqq/pi-cli": "latest" },
+    ]) {
+      put(root, "modules/node-pnpm/package.json", JSON.stringify({ dependencies }));
+      assert.throws(
+        () =>
+          tools(root, () => {
+            throw new Error("must not spawn");
+          }),
+        /dependencies must be an object|invalid declared dependency|must be declared/,
+      );
+    }
+  }));
 
 test("tools binds installed versions to real candidate bin paths with a fresh secret-free environment", () =>
   temporary((root) => {
