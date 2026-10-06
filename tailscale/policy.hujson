@@ -99,6 +99,12 @@
 			"dst": ["autogroup:self"],
 			"ip":  ["*"],
 		},
+		// The tagged mini needs explicit access to the mesh lab Serve ports.
+		{
+			"src": ["100.99.140.27"],
+			"dst": ["100.87.59.1", "100.67.59.10"],
+			"ip":  ["tcp:44379", "tcp:44380"],
+		},
 	],
 
 	"tests": [
@@ -125,6 +131,11 @@
 			"src":    "tag:cf-t3-ingress",
 			"accept": ["mbp-m2:8443"],
 			"deny":   ["svc:apps:443", "svc:fleet-mesh:443", "svc:files:443", "svc:html-stuff:443", "svc:hue:443", "svc:money:443", "svc:photos:443"],
+		},
+		{
+			"src":    "100.99.140.27",
+			"accept": ["mbp-m2:44379", "mbp-m2:44380", "100.67.59.10:44379", "100.67.59.10:44380"],
+			"deny":   ["mbp-m2:22", "mbp-m2:443", "100.67.59.10:22", "100.67.59.10:8385", "1.1.1.1:443"],
 		},
 	],
 
