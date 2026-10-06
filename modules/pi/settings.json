@@ -1,6 +1,8 @@
 {
   "defaultProvider": "openai-codex",
-  "defaultTools": ["+codemode"],
+  "defaultTools": [
+    "+codemode"
+  ],
   "skills": [
     "~/.config/agents/skills"
   ],
@@ -10,7 +12,7 @@
   "compaction": {
     "enabled": true
   },
-  "lastChangelogVersion": "0.99.1",
+  "lastChangelogVersion": "1.0.2",
   "defaultModel": "gpt-6.1-sol",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
