@@ -16,8 +16,8 @@ catalogs:
       specifier: 1.0.2
       version: 1.0.2
     typebox:
-      specifier: ^1.3.34
-      version: 1.3.34
+      specifier: ^1.3.36
+      version: 1.3.36
 
 overrides:
   brace-expansion@>=2.0.0 <2.1.4: 2.1.4
@@ -44,8 +44,8 @@ importers:
         specifier: ^9.0.0
         version: 9.0.0
       evlog:
-        specifier: ^2.29.0
-        version: 2.29.0(vite@7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
+        specifier: ^2.30.1
+        version: 2.30.1(vite@7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
@@ -79,7 +79,7 @@ importers:
         version: 0.21.4(typescript@5.9.3)
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
@@ -195,8 +195,8 @@ importers:
   packages/core/log:
     dependencies:
       evlog:
-        specifier: ^2.29.0
-        version: 2.29.0(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
+        specifier: ^2.30.1
+        version: 2.30.1(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
     devDependencies:
       vitest:
         specifier: ^3.0.0
@@ -247,7 +247,7 @@ importers:
     dependencies:
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -316,7 +316,7 @@ importers:
     dependencies:
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -350,7 +350,7 @@ importers:
         version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -390,7 +390,7 @@ importers:
         version: link:../../core/tui
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -421,7 +421,7 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -452,7 +452,7 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -492,7 +492,7 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -526,7 +526,7 @@ importers:
         version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -561,7 +561,7 @@ importers:
         version: link:../../core/prompt-patch
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -586,7 +586,7 @@ importers:
         version: link:../../core/prompt-patch
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -614,7 +614,7 @@ importers:
         version: link:../../core/prompt-patch
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -642,7 +642,7 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -670,7 +670,7 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -701,7 +701,7 @@ importers:
         version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -729,7 +729,7 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -763,7 +763,7 @@ importers:
         version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -797,7 +797,7 @@ importers:
         version: link:../../core/sub-agent-render
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -828,7 +828,7 @@ importers:
         version: link:../../core/web-retrieval
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -856,7 +856,7 @@ importers:
         version: link:../../core/prompt-patch
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -922,7 +922,7 @@ importers:
         version: link:../../core/prompt-patch
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -972,7 +972,7 @@ importers:
         version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@bds_pi/apply-patch':
         specifier: workspace:*
@@ -1003,7 +1003,7 @@ importers:
         version: link:../../core/web-retrieval
       typebox:
         specifier: 'catalog:'
-        version: 1.3.34
+        version: 1.3.36
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
@@ -2272,27 +2272,28 @@ packages:
   estree-walker@3.0.3:
     resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
 
-  evlog@2.29.0:
-    resolution: {integrity: sha512-1qk5W3lttyAUz326ptqRbasPyc19u/ECa8UULjtRihUUyKV8W2ihsr4kB2qkxfqaMY4dFNhH9iShrYy93jxt5A==}
+  evlog@2.30.1:
+    resolution: {integrity: sha512-LPVl9TlX/RBnQttBjuoXk5N5vc2UYYcvZwA9lIvJkuCwiyd2dBTan7FSBGBoJSSnSl8ukYNeKH4SMZl06LeK7g==}
     engines: {node: '>=18.0.0'}
+    hasBin: true
     peerDependencies:
-      '@nestjs/common': '>=11.2.3'
+      '@nestjs/common': '>=11.2.7'
       '@nuxt/kit': ^4.4.2
-      '@orpc/server': '>=1.15.0'
-      '@tanstack/start-client-core': ^1.170.28
+      '@orpc/server': '>=1.15.4'
+      '@tanstack/start-client-core': ^1.170.34
       ai: '>=6.0.168 <8.0.0'
       elysia: '>=1.4.30'
       eve: '>=0.30.0'
       express: '>=5.2.1'
-      fastify: '>=5.12.3'
+      fastify: '>=5.12.5'
       h3: ^1.15.11
-      hono: '>=4.13.7'
-      next: '>=16.3.4'
+      hono: '>=4.13.12'
+      next: '>=16.3.8'
       nitro: ^3.0.260311-beta
       nitropack: ^2.13.4
       ofetch: ^1.5.1
-      react: '>=19.2.8'
-      react-router: '>=7.18.3'
+      react: '>=19.3.0'
+      react-router: '>=7.18.4'
       vite: ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       '@nestjs/common':
@@ -2833,8 +2834,8 @@ packages:
   typebox@1.3.27:
     resolution: {integrity: sha512-zu+jc1pcy4UiNThxikUr36f0Rybk9PEeCg/NE6adeWr/SKsdNO4EzZHYRDlv2YCVAfj3Odq3dESSo/jNyoBXzA==}
 
-  typebox@1.3.34:
-    resolution: {integrity: sha512-wbnzrXXDW8xEFHDZZs2jo1MkhaYlKAY4FRhpBc1+2LF1fZVBGCXGdLEhA/Z/NBbgzJMFfeM8m7elKPa/+KxaUQ==}
+  typebox@1.3.36:
+    resolution: {integrity: sha512-bu2Ec2Ti9B4IFSFj1FcZbtLNB/W7igQwxocMGJLAG2NTv1nI+ImtIA34YgHW4CVyGVlJqNXR1GJyLmdWgV3DuA==}
 
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
@@ -4105,11 +4106,11 @@ snapshots:
     dependencies:
       '@types/estree': 1.0.9
 
-  evlog@2.29.0(vite@7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)):
+  evlog@2.30.1(vite@7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)):
     optionalDependencies:
       vite: 7.3.6(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)
 
-  evlog@2.29.0(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)):
+  evlog@2.30.1(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)):
     optionalDependencies:
       vite: 7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
 
@@ -4662,7 +4663,7 @@ snapshots:
 
   typebox@1.3.27: {}
 
-  typebox@1.3.34: {}
+  typebox@1.3.36: {}
 
   typescript@5.9.3: {}
 
