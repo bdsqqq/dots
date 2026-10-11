@@ -12,6 +12,7 @@
     "@earendil-works/pi-tui": "catalog:"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "catalog:",
     "@earendil-works/pi-tui": "catalog:",
     "vitest": "^5.0.3"
   }

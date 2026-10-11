@@ -544,6 +544,70 @@ export function renderCallLine(
 if (import.meta.vitest) {
   const { describe, it, expect, vi } = import.meta.vitest;
 
+  describe("patched native transcript frames", () => {
+    // Exercise installed SDK components: patch application alone cannot prove
+    // their marker, clipping, or padding-refresh contracts survived an upgrade.
+    it.each(["user", "assistant", "branch-summary", "compaction-summary"])(
+      "preserves %s markers across narrow widths and padding changes",
+      async (name) => {
+        const { getPackageDir } =
+          await import("@earendil-works/pi-coding-agent");
+        const { pathToFileURL } = await import("node:url");
+        const { visibleWidth: nativeWidth, stripTerminalSequences } =
+          await import("@earendil-works/pi-tui");
+        const load = (path: string) =>
+          import(pathToFileURL(`${getPackageDir()}/dist/${path}`).href);
+        const { initTheme } = await load("modes/interactive/theme/theme.js");
+        initTheme("dark", false);
+        const exports = await load(
+          `modes/interactive/components/${name}-message.js`,
+        );
+        const constructorName = {
+          user: "UserMessageComponent",
+          assistant: "AssistantMessageComponent",
+          "branch-summary": "BranchSummaryMessageComponent",
+          "compaction-summary": "CompactionSummaryMessageComponent",
+        }[name]!;
+        const message =
+          name === "user"
+            ? "response text"
+            : name === "assistant"
+              ? {
+                  role: "assistant",
+                  content: [{ type: "text", text: "response text" }],
+                  stopReason: "stop",
+                }
+              : { summary: "summary text", tokensBefore: 1000 };
+        const component = new exports[constructorName](message);
+        const rows = () =>
+          component
+            .render(80)
+            .map((line: string) => stripTerminalSequences(line));
+        expect(rows().some((line: string) => line.startsWith(" ●"))).toBe(true);
+        expect(rows().some((line: string) => line.includes("╰────"))).toBe(
+          name !== "user",
+        );
+        const before = rows();
+        component.setOutputPad(3);
+        expect(rows()).not.toEqual(before);
+        expect(rows().some((line: string) => line.startsWith("   ●"))).toBe(
+          true,
+        );
+        if (name.endsWith("summary")) {
+          component.setExpanded(true);
+          expect(rows().join("\n")).toContain("summary text");
+        }
+        for (const width of [0, 1, 2, 3, 8, 20]) {
+          expect(
+            component
+              .render(width)
+              .every((line: string) => nativeWidth(line) <= width),
+          ).toBe(true);
+        }
+      },
+    );
+  });
+
   describe("visibleWidth", () => {
     it("counts plain text characters", () => {
       expect(visibleWidth("hello")).toBe(5);

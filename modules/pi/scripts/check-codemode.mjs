@@ -413,11 +413,13 @@ try {
     JSON.parse(readFileSync(join(mailbox, queued[0]), "utf8")).content,
     "MESSAGE_FIXTURE",
   );
-  const cursorPart = result.content.find(
-    (p) => p.type === "text" && p.text.startsWith('{"cursor":'),
-  );
-  assert.ok(cursorPart, "missing continuation capability");
-  const cursor = JSON.parse(cursorPart.text).cursor;
+  // Native codemode batches text emissions; the cursor may share a block with
+  // inventory lines, headers, and image-file metadata.
+  const cursorLine = result.content
+    .flatMap((p) => (p.type === "text" ? p.text.split("\n") : []))
+    .find((line) => line.startsWith('{"cursor":'));
+  assert.ok(cursorLine, "missing continuation capability");
+  const cursor = JSON.parse(cursorLine).cursor;
   const networkBefore = readFileSync(env.PI_CODEMODE_NETWORK_LOG, "utf8");
   assert.ok(networkBefore.includes("https://api.parallel.ai/v1/search"));
   assert.ok(networkBefore.includes("https://codemode.example/fixture"));
