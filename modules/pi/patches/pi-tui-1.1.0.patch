@@ -1,6 +1,6 @@
 diff --git a/dist/components/marker-column.d.ts b/dist/components/marker-column.d.ts
 new file mode 100644
-index 0000000..58613b2
+index 00000000..58613b24
 --- /dev/null
 +++ b/dist/components/marker-column.d.ts
 @@ -0,0 +1,30 @@
@@ -36,7 +36,7 @@ index 0000000..58613b2
 +}
 diff --git a/dist/components/marker-column.js b/dist/components/marker-column.js
 new file mode 100644
-index 0000000..47ed612
+index 00000000..47ed6124
 --- /dev/null
 +++ b/dist/components/marker-column.js
 @@ -0,0 +1,103 @@
@@ -144,10 +144,10 @@ index 0000000..47ed612
 +}
 +//# sourceMappingURL=marker-column.js.map
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 4a0657e..7491966 100644
+index ae5f965d..d128a4bd 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -7,6 +7,7 @@ export { HStack } from "./components/h-stack.ts";
+@@ -8,6 +8,7 @@ export { HStack } from "./components/h-stack.ts";
  export { Image, type ImageOptions, type ImageTheme, type ImageTranscoder, setImageTranscoder, } from "./components/image.ts";
  export { Input } from "./components/input.ts";
  export { Loader, type LoaderIndicatorOptions } from "./components/loader.ts";
@@ -156,10 +156,10 @@ index 4a0657e..7491966 100644
  export { MouseRegion, type MouseRegionHandler } from "./components/mouse-region.ts";
  export { ScrollView, type ScrollViewOptions, type ScrollViewScrollbar, type ScrollViewScrollToOptions, } from "./components/scroll-view.ts";
 diff --git a/dist/index.js b/dist/index.js
-index d3c8519..d0b713a 100644
+index 0a16994d..1e8c09ee 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -10,6 +10,7 @@ export { HStack } from "./components/h-stack.js";
+@@ -12,6 +12,7 @@ export { HStack } from "./components/h-stack.js";
  export { Image, setImageTranscoder, } from "./components/image.js";
  export { Input } from "./components/input.js";
  export { Loader } from "./components/loader.js";

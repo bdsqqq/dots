@@ -1,5 +1,5 @@
 diff --git a/dist/api/constrained-sampling.js b/dist/api/constrained-sampling.js
-index ee45d3f..3c327aa 100644
+index 3ed26e11..77c3c92a 100644
 --- a/dist/api/constrained-sampling.js
 +++ b/dist/api/constrained-sampling.js
 @@ -12,6 +12,7 @@ const UNSUPPORTED_STRICT_SCHEMA_KEYS = [
@@ -10,7 +10,7 @@ index ee45d3f..3c327aa 100644
      "prefixItems",
      "not",
      "if",
-@@ -172,8 +173,10 @@ export function resolveJsonSchemaStrictSampling(tool, supportsStrictMode) {
+@@ -183,8 +184,10 @@ export function resolveJsonSchemaStrictSampling(tool, supportsStrictMode, isUnsu
          catch (error) {
              if (!(error instanceof UnsupportedStrictJsonSchemaError))
                  throw error;

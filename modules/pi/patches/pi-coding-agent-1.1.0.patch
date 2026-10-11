@@ -1,5 +1,5 @@
 diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
-index 417584f..b9c30af 100644
+index 417584fd..b9c30af4 100644
 --- a/dist/core/export-html/index.js
 +++ b/dist/core/export-html/index.js
 @@ -117,6 +117,8 @@ function generateHtml(sessionData, themeName) {
@@ -35,7 +35,7 @@ index 417584f..b9c30af 100644
                          resultHtmlExpanded: rendered.expanded,
                      };
 diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.js
-index 71f121a..19c44a1 100644
+index 71f121a6..19c44a10 100644
 --- a/dist/core/export-html/template.js
 +++ b/dist/core/export-html/template.js
 @@ -952,7 +952,7 @@
@@ -48,7 +48,7 @@ index 71f121a..19c44a1 100644
              const command = str(args.command);
              const cmdDisplay = command === null ? invalidArg : escapeHtml(command || '...');
 diff --git a/dist/core/export-html/tool-renderer.d.ts b/dist/core/export-html/tool-renderer.d.ts
-index f4ebbbf..261d2a3 100644
+index 8da1d1e0..27c67e20 100644
 --- a/dist/core/export-html/tool-renderer.d.ts
 +++ b/dist/core/export-html/tool-renderer.d.ts
 @@ -26,6 +26,7 @@ export interface ToolHtmlRenderer {
@@ -60,10 +60,10 @@ index f4ebbbf..261d2a3 100644
          expanded?: string;
      } | undefined;
 diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool-renderer.js
-index 9bd365b..095a5be 100644
+index 58644ed7..5426ccef 100644
 --- a/dist/core/export-html/tool-renderer.js
 +++ b/dist/core/export-html/tool-renderer.js
-@@ -85,6 +85,12 @@ export function createToolHtmlRenderer(deps) {
+@@ -87,6 +87,12 @@ export function createToolHtmlRenderer(deps) {
                      details,
                      isError,
                  };
@@ -76,7 +76,7 @@ index 9bd365b..095a5be 100644
                  // Render collapsed
                  const collapsedComponent = toolDef.renderResult(agentToolResult, { expanded: false, isPartial: false }, theme, createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), false, false, isError));
                  renderedResultComponents.set(toolCallId, collapsedComponent);
-@@ -94,6 +100,7 @@ export function createToolHtmlRenderer(deps) {
+@@ -96,6 +102,7 @@ export function createToolHtmlRenderer(deps) {
                  renderedResultComponents.set(toolCallId, expandedComponent);
                  const expanded = ansiLinesToHtml(trimRenderedResultLines(expandedComponent.render(width)));
                  return {
@@ -85,7 +85,7 @@ index 9bd365b..095a5be 100644
                      expanded,
                  };
 diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
-index ecc378b..508ae82 100644
+index ecc378b0..508ae828 100644
 --- a/dist/modes/interactive/components/assistant-message.d.ts
 +++ b/dist/modes/interactive/components/assistant-message.d.ts
 @@ -6,6 +6,7 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
@@ -108,7 +108,7 @@ index ecc378b..508ae82 100644
      setHideThinkingBlock(hide: boolean): void;
      setHiddenThinkingLabel(label: string): void;
 diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes/interactive/components/assistant-message.js
-index 6280084..a94783b 100644
+index 62800843..a94783b8 100644
 --- a/dist/modes/interactive/components/assistant-message.js
 +++ b/dist/modes/interactive/components/assistant-message.js
 @@ -1,4 +1,4 @@
@@ -264,10 +264,10 @@ index 6280084..a94783b 100644
  //# sourceMappingURL=assistant-message.js.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/branch-summary-message.d.ts b/dist/modes/interactive/components/branch-summary-message.d.ts
-index 6ad1710..8d4f97e 100644
+index 195850d2..fc74537c 100644
 --- a/dist/modes/interactive/components/branch-summary-message.d.ts
 +++ b/dist/modes/interactive/components/branch-summary-message.d.ts
-@@ -1,16 +1,19 @@
+@@ -1,17 +1,19 @@
 -import { Box, type MarkdownTheme } from "@earendil-works/pi-tui";
 +import { Container, type MarkdownTheme } from "@earendil-works/pi-tui";
  import type { BranchSummaryMessage } from "../../../core/messages.ts";
@@ -280,22 +280,22 @@ index 6ad1710..8d4f97e 100644
      private expanded;
      private message;
      private markdownTheme;
--    constructor(message: BranchSummaryMessage, markdownTheme?: MarkdownTheme);
 +    private outputPad;
-+    constructor(message: BranchSummaryMessage, markdownTheme?: MarkdownTheme, outputPad?: number);
+     constructor(message: BranchSummaryMessage, markdownTheme?: MarkdownTheme, outputPad?: number);
      setExpanded(expanded: boolean): void;
-+    setOutputPad(outputPad: number): void;
+     setOutputPad(outputPad: number): void;
      invalidate(): void;
      private updateDisplay;
 +    render(width: number): string[];
  }
- //# sourceMappingURL=branch-summary-message.d.ts.map
+-//# sourceMappingURL=branch-summary-message.d.ts.map
 \ No newline at end of file
++//# sourceMappingURL=branch-summary-message.d.ts.map
 diff --git a/dist/modes/interactive/components/branch-summary-message.js b/dist/modes/interactive/components/branch-summary-message.js
-index 8bca6de..2a52b59 100644
+index 95bcc771..2a52b59b 100644
 --- a/dist/modes/interactive/components/branch-summary-message.js
 +++ b/dist/modes/interactive/components/branch-summary-message.js
-@@ -1,23 +1,33 @@
+@@ -1,26 +1,33 @@
 -import { Box, Container, Markdown, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
 +import { Box, Container, MarkerColumn, Markdown, MouseRegion, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
  import { getMarkdownTheme, theme } from "../theme/theme.js";
@@ -309,10 +309,9 @@ index 8bca6de..2a52b59 100644
      expanded = false;
      message;
      markdownTheme;
--    constructor(message, markdownTheme = getMarkdownTheme()) {
--        super(1, 1, (t) => theme.bg("customMessageBg", t));
 +    outputPad;
-+    constructor(message, markdownTheme = getMarkdownTheme(), outputPad = 1) {
+     constructor(message, markdownTheme = getMarkdownTheme(), outputPad = 1) {
+-        super(outputPad, 1, (t) => theme.bg("customMessageBg", t));
 +        super();
          this.message = message;
          this.markdownTheme = markdownTheme;
@@ -326,8 +325,9 @@ index 8bca6de..2a52b59 100644
 +            this.expanded = expanded;
 +            this.updateDisplay();
 +        }
-+    }
-+    setOutputPad(outputPad) {
+     }
+     setOutputPad(outputPad) {
+-        this.setPaddingX(outputPad);
 +        if (this.outputPad !== outputPad) {
 +            this.outputPad = outputPad;
 +            this.updateDisplay();
@@ -335,7 +335,7 @@ index 8bca6de..2a52b59 100644
      }
      invalidate() {
          super.invalidate();
-@@ -25,7 +35,7 @@ export class BranchSummaryMessageComponent extends Box {
+@@ -28,7 +35,7 @@ export class BranchSummaryMessageComponent extends Box {
      }
      updateDisplay() {
          this.clear();
@@ -344,7 +344,7 @@ index 8bca6de..2a52b59 100644
          const label = theme.fg("customMessageLabel", `\x1b[1m[branch]\x1b[22m`);
          content.addChild(new Text(label, 0, 0));
          content.addChild(new Spacer(1));
-@@ -40,12 +50,23 @@ export class BranchSummaryMessageComponent extends Box {
+@@ -43,12 +50,23 @@ export class BranchSummaryMessageComponent extends Box {
                  theme.fg("dim", keyText("app.tools.expand")) +
                  theme.fg("customMessageText", " to expand)"), 0, 0));
          }
@@ -372,10 +372,10 @@ index 8bca6de..2a52b59 100644
 \ No newline at end of file
 +//# sourceMappingURL=branch-summary-message.js.map
 diff --git a/dist/modes/interactive/components/compaction-summary-message.d.ts b/dist/modes/interactive/components/compaction-summary-message.d.ts
-index 88bfa50..622301f 100644
+index 1e70d1d8..9cc200c2 100644
 --- a/dist/modes/interactive/components/compaction-summary-message.d.ts
 +++ b/dist/modes/interactive/components/compaction-summary-message.d.ts
-@@ -1,16 +1,19 @@
+@@ -1,17 +1,19 @@
 -import { Box, type MarkdownTheme } from "@earendil-works/pi-tui";
 +import { Container, type MarkdownTheme } from "@earendil-works/pi-tui";
  import type { CompactionSummaryMessage } from "../../../core/messages.ts";
@@ -388,22 +388,22 @@ index 88bfa50..622301f 100644
      private expanded;
      private message;
      private markdownTheme;
--    constructor(message: CompactionSummaryMessage, markdownTheme?: MarkdownTheme);
 +    private outputPad;
-+    constructor(message: CompactionSummaryMessage, markdownTheme?: MarkdownTheme, outputPad?: number);
+     constructor(message: CompactionSummaryMessage, markdownTheme?: MarkdownTheme, outputPad?: number);
      setExpanded(expanded: boolean): void;
-+    setOutputPad(outputPad: number): void;
+     setOutputPad(outputPad: number): void;
      invalidate(): void;
      private updateDisplay;
 +    render(width: number): string[];
  }
- //# sourceMappingURL=compaction-summary-message.d.ts.map
+-//# sourceMappingURL=compaction-summary-message.d.ts.map
 \ No newline at end of file
++//# sourceMappingURL=compaction-summary-message.d.ts.map
 diff --git a/dist/modes/interactive/components/compaction-summary-message.js b/dist/modes/interactive/components/compaction-summary-message.js
-index 8b8cc05..c5c2a37 100644
+index ade3b9ac..c5c2a374 100644
 --- a/dist/modes/interactive/components/compaction-summary-message.js
 +++ b/dist/modes/interactive/components/compaction-summary-message.js
-@@ -1,23 +1,33 @@
+@@ -1,26 +1,33 @@
 -import { Box, Container, Markdown, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
 +import { Box, Container, MarkerColumn, Markdown, MouseRegion, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
  import { getMarkdownTheme, theme } from "../theme/theme.js";
@@ -417,10 +417,9 @@ index 8b8cc05..c5c2a37 100644
      expanded = false;
      message;
      markdownTheme;
--    constructor(message, markdownTheme = getMarkdownTheme()) {
--        super(1, 1, (t) => theme.bg("customMessageBg", t));
 +    outputPad;
-+    constructor(message, markdownTheme = getMarkdownTheme(), outputPad = 1) {
+     constructor(message, markdownTheme = getMarkdownTheme(), outputPad = 1) {
+-        super(outputPad, 1, (t) => theme.bg("customMessageBg", t));
 +        super();
          this.message = message;
          this.markdownTheme = markdownTheme;
@@ -434,8 +433,9 @@ index 8b8cc05..c5c2a37 100644
 +            this.expanded = expanded;
 +            this.updateDisplay();
 +        }
-+    }
-+    setOutputPad(outputPad) {
+     }
+     setOutputPad(outputPad) {
+-        this.setPaddingX(outputPad);
 +        if (this.outputPad !== outputPad) {
 +            this.outputPad = outputPad;
 +            this.updateDisplay();
@@ -443,7 +443,7 @@ index 8b8cc05..c5c2a37 100644
      }
      invalidate() {
          super.invalidate();
-@@ -25,7 +35,7 @@ export class CompactionSummaryMessageComponent extends Box {
+@@ -28,7 +35,7 @@ export class CompactionSummaryMessageComponent extends Box {
      }
      updateDisplay() {
          this.clear();
@@ -452,7 +452,7 @@ index 8b8cc05..c5c2a37 100644
          const tokenStr = this.message.tokensBefore.toLocaleString();
          const label = theme.fg("customMessageLabel", `\x1b[1m[compaction]\x1b[22m`);
          content.addChild(new Text(label, 0, 0));
-@@ -41,12 +51,23 @@ export class CompactionSummaryMessageComponent extends Box {
+@@ -44,12 +51,23 @@ export class CompactionSummaryMessageComponent extends Box {
                  theme.fg("dim", keyText("app.tools.expand")) +
                  theme.fg("customMessageText", " to expand)"), 0, 0));
          }
@@ -480,7 +480,7 @@ index 8b8cc05..c5c2a37 100644
 \ No newline at end of file
 +//# sourceMappingURL=compaction-summary-message.js.map
 diff --git a/dist/modes/interactive/components/custom-message.d.ts b/dist/modes/interactive/components/custom-message.d.ts
-index 4f55bb8..c8abb34 100644
+index 4f55bb82..c8abb347 100644
 --- a/dist/modes/interactive/components/custom-message.d.ts
 +++ b/dist/modes/interactive/components/custom-message.d.ts
 @@ -18,5 +18,6 @@ export declare class CustomMessageComponent extends Container {
@@ -492,7 +492,7 @@ index 4f55bb8..c8abb34 100644
  //# sourceMappingURL=custom-message.d.ts.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/custom-message.js b/dist/modes/interactive/components/custom-message.js
-index 7c6fb37..2e723f3 100644
+index 211e4b82..66327549 100644
 --- a/dist/modes/interactive/components/custom-message.js
 +++ b/dist/modes/interactive/components/custom-message.js
 @@ -1,4 +1,4 @@
@@ -532,15 +532,17 @@ index 7c6fb37..2e723f3 100644
                      this.customComponent = component;
                      this.addChild(component);
                      return;
-@@ -62,7 +58,6 @@ export class CustomMessageComponent extends Container {
+@@ -62,9 +58,7 @@ export class CustomMessageComponent extends Container {
              }
          }
          // Default rendering uses our box
 -        this.addChild(this.box);
          this.box.clear();
+-        this.box.setPaddingX(this.outputPad);
          // Default rendering: label + content
          const label = theme.fg("customMessageLabel", `\x1b[1m[${this.message.customType}]\x1b[22m`);
-@@ -82,6 +77,18 @@ export class CustomMessageComponent extends Container {
+         this.box.addChild(new Text(label, 0, 0));
+@@ -83,6 +77,18 @@ export class CustomMessageComponent extends Container {
          this.box.addChild(new Markdown(text, 0, 0, this.markdownTheme, {
              color: (text) => theme.fg("customMessageText", text),
          }));
@@ -558,10 +560,11 @@ index 7c6fb37..2e723f3 100644
 +        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
      }
  }
- //# sourceMappingURL=custom-message.js.map
+-//# sourceMappingURL=custom-message.js.map
 \ No newline at end of file
++//# sourceMappingURL=custom-message.js.map
 diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
-index f643819..d98aefa 100644
+index d447db5a..1989b804 100644
 --- a/dist/modes/interactive/components/tool-execution.js
 +++ b/dist/modes/interactive/components/tool-execution.js
 @@ -1,4 +1,4 @@
@@ -570,7 +573,7 @@ index f643819..d98aefa 100644
  import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
  import { ensurePngTranscoder } from "../../../utils/image-convert.js";
  import { theme } from "../theme/theme.js";
-@@ -93,7 +93,10 @@ export class ToolExecutionComponent extends Container {
+@@ -98,7 +98,10 @@ export class ToolExecutionComponent extends Container {
      createResultFallback() {
          const output = this.getTextOutput();
          if (!output) {
@@ -582,7 +585,7 @@ index f643819..d98aefa 100644
          }
          const lines = output.split("\n");
          const displayLines = this.expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES);
-@@ -102,7 +105,10 @@ export class ToolExecutionComponent extends Container {
+@@ -107,7 +110,10 @@ export class ToolExecutionComponent extends Container {
          if (remaining > 0) {
              text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
          }
@@ -595,7 +598,7 @@ index f643819..d98aefa 100644
      createResultRegion(component) {
          return new MouseRegion(component, (event) => {
 diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/interactive/components/user-message.d.ts
-index 387f2a5..fceb086 100644
+index 387f2a52..fceb0867 100644
 --- a/dist/modes/interactive/components/user-message.d.ts
 +++ b/dist/modes/interactive/components/user-message.d.ts
 @@ -10,6 +10,7 @@ export declare class UserMessageComponent extends Container {
@@ -607,7 +610,7 @@ index 387f2a5..fceb086 100644
      render(width: number): string[];
  }
 diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/interactive/components/user-message.js
-index 2316e50..5dc34c3 100644
+index 2316e506..5dc34c38 100644
 --- a/dist/modes/interactive/components/user-message.js
 +++ b/dist/modes/interactive/components/user-message.js
 @@ -1,4 +1,4 @@
@@ -656,38 +659,8 @@ index 2316e50..5dc34c3 100644
 -//# sourceMappingURL=user-message.js.map
 \ No newline at end of file
 +//# sourceMappingURL=user-message.js.map
-diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
-index 3a9ad25..87e801c 100644
---- a/dist/modes/interactive/interactive-mode.js
-+++ b/dist/modes/interactive/interactive-mode.js
-@@ -3108,14 +3108,14 @@ export class InteractiveMode {
-             }
-             case "compactionSummary": {
-                 this.chatContainer.addChild(new Spacer(1));
--                const component = new CompactionSummaryMessageComponent(message, this.getMarkdownThemeWithSettings());
-+                const component = new CompactionSummaryMessageComponent(message, this.getMarkdownThemeWithSettings(), this.outputPad);
-                 component.setExpanded(this.toolOutputExpanded);
-                 this.chatContainer.addChild(component);
-                 break;
-             }
-             case "branchSummary": {
-                 this.chatContainer.addChild(new Spacer(1));
--                const component = new BranchSummaryMessageComponent(message, this.getMarkdownThemeWithSettings());
-+                const component = new BranchSummaryMessageComponent(message, this.getMarkdownThemeWithSettings(), this.outputPad);
-                 component.setExpanded(this.toolOutputExpanded);
-                 this.chatContainer.addChild(component);
-                 break;
-@@ -4138,6 +4138,8 @@ export class InteractiveMode {
-                     if (this.streamingComponent || this.session.isStreaming) {
-                         for (const child of this.chatContainer.children) {
-                             if (child instanceof AssistantMessageComponent ||
-+                                child instanceof BranchSummaryMessageComponent ||
-+                                child instanceof CompactionSummaryMessageComponent ||
-                                 child instanceof CustomMessageComponent ||
-                                 child instanceof UserMessageComponent) {
-                                 child.setOutputPad(padding);
 diff --git a/package.json b/package.json
-index 6a31043..b57633a 100644
+index cdb88d0c..c6fca425 100644
 --- a/package.json
 +++ b/package.json
 @@ -7,7 +7,7 @@
