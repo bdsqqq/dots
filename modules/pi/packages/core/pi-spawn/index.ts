@@ -1903,6 +1903,10 @@ if (import.meta.vitest) {
             : `packages/extensions/${name}/index.ts`,
         ),
       );
+      if (selection.tools?.includes("codemode"))
+        paths.push(
+          path.join(getPackageDir(), "dist/extensions/codemode/index.js"),
+        );
       fs.writeFileSync(
         probe,
         `
@@ -1913,17 +1917,30 @@ if (import.meta.vitest) {
         const parsed = parseArgs(process.argv.slice(2));
         const settingsManager = SettingsManager.inMemory();
         let registerLateTool;
+        let mcpExecutions = 0;
+        const mcpTool = (name) => ({
+          name, label: name, description: "offline MCP boundary fixture",
+          exposure: "codemode",
+          parameters: { type: "object", properties: {} },
+          execute: async () => {
+            mcpExecutions += 1;
+            return { content: [{ type: "text", text: "fixture executed" }], details: {} };
+          },
+        });
         const resourceLoader = new DefaultResourceLoader({
           cwd: process.cwd(), agentDir: process.cwd(), settingsManager,
           noExtensions: true, noSkills: true, noPromptTemplates: true,
           noThemes: true, noContextFiles: true,
           additionalExtensionPaths: ${JSON.stringify(paths)},
           extensionFactories: [(pi) => {
-            registerLateTool = () => pi.registerTool({
-              name: "late_tool", label: "late", description: "late test tool",
-              parameters: { type: "object", properties: {} },
-              execute: async () => ({ content: [], details: undefined }),
-            });
+            registerLateTool = () => {
+              pi.registerTool({
+                name: "late_tool", label: "late", description: "late test tool",
+                parameters: { type: "object", properties: {} },
+                execute: async () => ({ content: [], details: undefined }),
+              });
+              pi.registerTool(mcpTool("mcp__fixture__late"));
+            };
           }],
         });
         await resourceLoader.reload();
@@ -1935,6 +1952,7 @@ if (import.meta.vitest) {
         const { session } = await createAgentSession({
           cwd: process.cwd(), agentDir: process.cwd(), settingsManager, resourceLoader,
           modelRuntime, sessionManager: SessionManager.inMemory(),
+          customTools: [mcpTool("mcp__fixture__mutate")],
           tools: parsed.tools,
           noTools: parsed.noTools ? "all" : parsed.noBuiltinTools ? "builtin" : undefined,
           excludeTools: parsed.excludeTools,
@@ -1947,8 +1965,27 @@ if (import.meta.vitest) {
           const sources = Object.fromEntries(session.getAllTools().map(t => [t.name, t.sourceInfo]));
           // A native allowlist must survive refresh, not just session_start.
           registerLateTool();
+          const nested = [];
+          if (parsed.tools?.includes("codemode")) {
+            // Enter the same native runner as ctx.executeTool(), without a model
+            // request or an MCP server. The fixture callback is the only effect.
+            session.agent.state.messages.push({
+              role: "assistant", content: [{ type: "toolCall",
+                id: "registry-parent", name: "codemode", arguments: {} }],
+              provider: "fixture", model: "fixture", api: "openai-responses",
+              stopReason: "toolUse", timestamp: 0,
+              usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0,
+                totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0,
+                  cacheWrite: 0, total: 0 } },
+            });
+            for (const name of ["mcp__fixture__mutate", "mcp__fixture__late"]) {
+              const result = await session._executeNestedToolCall("registry-parent", name, {});
+              nested.push({ name, isError: result.isError });
+            }
+          }
           console.error(JSON.stringify({
-            active, registry, callable, sources,
+            active, registry, callable, sources, nested, mcpExecutions,
+            registryAfterRefresh: session.getAllTools().map(t => t.name).sort(),
             afterRefresh: session.getActiveToolNames().sort(),
             callableAfterRefresh: session.getCallableToolNames().sort(),
           }));
@@ -1993,6 +2030,57 @@ if (import.meta.vitest) {
       expect(result.afterRefresh).toEqual(result.active);
       expect(result.callableAfterRefresh).toEqual(result.callable);
     });
+
+    it.each([
+      { allowed: [], excluded: [], executed: [] },
+      {
+        allowed: ["mcp__fixture__mutate"],
+        excluded: [],
+        executed: ["mcp__fixture__mutate"],
+      },
+      {
+        allowed: ["mcp__fixture__*"],
+        excluded: [],
+        executed: ["mcp__fixture__mutate", "mcp__fixture__late"],
+      },
+      {
+        allowed: ["mcp__fixture__*"],
+        excluded: ["mcp__fixture__mutate"],
+        executed: ["mcp__fixture__late"],
+      },
+    ])(
+      "bounds nested MCP calls by explicit selection $allowed and exclusions $excluded",
+      async ({ allowed, excluded, executed }) => {
+        const result = await probeTools({
+          tools: ["read", "codemode", ...allowed],
+          excludeTools: excluded,
+        });
+        expect(result.active).toEqual(
+          expect.arrayContaining(["codemode", "read"]),
+        );
+        expect(
+          result.active.every((name: string) =>
+            ["codemode", "read", ...executed].includes(name),
+          ),
+        ).toBe(true);
+        expect(result.mcpExecutions).toBe(executed.length);
+        for (const call of result.nested) {
+          expect(call.isError).toBe(!executed.includes(call.name));
+          expect(result.callableAfterRefresh.includes(call.name)).toBe(
+            executed.includes(call.name),
+          );
+          expect(result.registryAfterRefresh.includes(call.name)).toBe(
+            executed.includes(call.name),
+          );
+        }
+        expect(result.callableAfterRefresh).toEqual(
+          ["read", ...executed].sort(),
+        );
+        expect(result.registryAfterRefresh).toEqual(
+          ["codemode", "read", ...executed].sort(),
+        );
+      },
+    );
 
     it.each([
       {
@@ -2087,7 +2175,11 @@ if (import.meta.vitest) {
       );
       expect(result.active).toEqual(["read"]);
       expect(result.afterRefresh).toEqual(result.active);
-      expect(result.callableAfterRefresh).toEqual(result.callable);
+      expect(result.callableAfterRefresh).toEqual(
+        [...result.callable, "mcp__fixture__late"].sort((a, b) =>
+          a.localeCompare(b),
+        ),
+      );
     });
 
     it("keeps unrestricted extensions callable without advertising codemode tools", async () => {
@@ -2103,7 +2195,7 @@ if (import.meta.vitest) {
         [...result.active, "late_tool"].sort(),
       );
       expect(result.callableAfterRefresh).toEqual(
-        [...result.callable, "late_tool"].sort(),
+        [...result.callable, "late_tool", "mcp__fixture__late"].sort(),
       );
     });
   });

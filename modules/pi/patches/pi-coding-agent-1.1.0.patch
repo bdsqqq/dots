@@ -1,3 +1,23 @@
+diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+--- a/dist/core/agent-session.js
++++ b/dist/core/agent-session.js
+@@ -1114,13 +1114,13 @@
+     /**
+-     * Whether `--tools` and `--exclude-tools` keep the tool registered. MCP tools stay registered
+-     * unless the allowlist filters them (see `_allowlistFiltersMcp`).
++     * Whether `--tools` and `--exclude-tools` keep the tool registered.
++     * Explicit child allowlists also bound MCP tools reachable through nested calls.
+      */
+     _isAllowedTool(name) {
+         if (this._excludedTools?.(name))
+             return false;
+         if (!this._allowedTools || this._allowedTools(name))
+             return true;
+-        return !this._allowlistFiltersMcp && isMcpToolName(name);
++        return false;
+     }
+     /**
+      * Whether the tool may be active, which declares it to the model. MCP tools the allowlist keeps
 diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
 index 417584fd..b9c30af4 100644
 --- a/dist/core/export-html/index.js
