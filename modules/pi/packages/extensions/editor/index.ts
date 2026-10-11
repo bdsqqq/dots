@@ -484,7 +484,6 @@ function editorExtension(pi: ExtensionAPI): void {
       editor?.setLabel("effort", event.level, "top", "right");
     }
   });
-
 }
 
 export default editorExtension;
@@ -724,11 +723,7 @@ if (import.meta.vitest) {
         },
       } as any;
 
-      updateStatsLabels(
-        editor,
-        { getThinkingLevel: () => effort } as any,
-        ctx,
-      );
+      updateStatsLabels(editor, { getThinkingLevel: () => effort } as any, ctx);
       const border = editor["buildBorderLine"](
         80,
         { left: "╭", right: "╮" },
@@ -744,11 +739,7 @@ if (import.meta.vitest) {
 
       percent = 71;
       effort = "medium";
-      updateStatsLabels(
-        editor,
-        { getThinkingLevel: () => effort } as any,
-        ctx,
-      );
+      updateStatsLabels(editor, { getThinkingLevel: () => effort } as any, ctx);
       const refreshed = editor["buildBorderLine"](
         80,
         { left: "╭", right: "╮" },

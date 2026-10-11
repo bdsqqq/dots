@@ -942,7 +942,7 @@ function semanticDiffs(
   const fields = output.split("\0").filter(Boolean);
   const result = new Map<string, Array<{ status: string; path: string }>>();
   let current: Array<{ status: string; path: string }> | undefined;
-  for (let index = 0; index < fields.length; ) {
+  for (let index = 0; index < fields.length;) {
     const field = fields[index]!;
     if (/^[0-9a-f]{40,64}$/.test(field)) {
       current = [];
@@ -1074,7 +1074,9 @@ export function verifyLegacyHistoryPrefix(
   try {
     const result = verifyCommittedSemanticHistory(isolated, revision(head));
     if (result.issues.length)
-      throw new Error(`invalid legacy canonical prefix: ${result.issues.join("; ")}`);
+      throw new Error(
+        `invalid legacy canonical prefix: ${result.issues.join("; ")}`,
+      );
   } finally {
     verificationRepositories.delete(isolated);
   }

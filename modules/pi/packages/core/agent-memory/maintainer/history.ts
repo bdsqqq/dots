@@ -726,7 +726,10 @@ export function verifyCanonicalCommit(
   return receipt;
 }
 
-const verifiedHistory = new Map<string, { verifiedV3: number; legacyUnverified: number }>();
+const verifiedHistory = new Map<
+  string,
+  { verifiedV3: number; legacyUnverified: number }
+>();
 
 export function auditCanonicalHistory(
   cfg: HistoryConfig,
@@ -750,7 +753,8 @@ export function auditCanonicalHistory(
         throw new Error("receiptless commit after v3 canonical history");
       legacyHead = commit;
       hasLegacyReceipt ||= text(cfg, ["show", "-s", "--format=%B", commit])
-        .split("\n").some((line) => line.startsWith(TRAILER));
+        .split("\n")
+        .some((line) => line.startsWith(TRAILER));
       legacyUnverified += 1;
       continue;
     }
@@ -1749,7 +1753,12 @@ if (import.meta.vitest) {
       expect(existsSync(join(fresh.root, ".pi-memory/evidence"))).toBe(true);
       const tree = text(fresh, ["rev-parse", `${acceptedHead}^{tree}`]).trim();
       const unreceipted = text(fresh, [
-        "commit-tree", tree, "-p", acceptedHead, "-m", "unadmitted change",
+        "commit-tree",
+        tree,
+        "-p",
+        acceptedHead,
+        "-m",
+        "unadmitted change",
       ]).trim();
       expect(() => auditCanonicalHistory(fresh, unreceipted)).toThrow(
         "receiptless commit after v3",
@@ -1768,39 +1777,70 @@ if (import.meta.vitest) {
         skillsRoot: join(base, "skills"),
       };
       mkdirSync(legacy.root, { recursive: true });
-      writeFileSync(join(legacy.root, "baseline_source__agent.md"), "# legacy\n");
+      writeFileSync(
+        join(legacy.root, "baseline_source__agent.md"),
+        "# legacy\n",
+      );
       const initialized = initHistory(legacy);
       expect(initialized.commit).toBeTruthy();
       const remote = join(base, "remote.git");
       command(["init", "--bare", "--initial-branch=main", remote]);
-      command(["--git-dir", initialized.gitDir, "push", remote, "HEAD:refs/heads/main"]);
+      command([
+        "--git-dir",
+        initialized.gitDir,
+        "push",
+        remote,
+        "HEAD:refs/heads/main",
+      ]);
       const fresh: HistoryConfig = {
-        data: join(base, "fresh-data"), state: join(base, "fresh-state"),
-        root: join(base, "fresh-root"), remote,
+        data: join(base, "fresh-data"),
+        state: join(base, "fresh-state"),
+        root: join(base, "fresh-root"),
+        remote,
       };
       const head = fetchCanonicalHead(fresh);
       expect(auditCanonicalHistory(fresh, head)).toEqual({
-        verifiedV3: 0, legacyUnverified: 1,
+        verifiedV3: 0,
+        legacyUnverified: 1,
       });
-      const forgedReceipt = Buffer.from(JSON.stringify({
-        version: 2, mutationId: "forged", kind: "review", reason: "test",
-        parentCommit: head, provenance: null,
-        changes: [{ path: "baseline_source__agent.md", afterSha256: "0".repeat(64), status: "active" }],
-      })).toString("base64url");
+      const forgedReceipt = Buffer.from(
+        JSON.stringify({
+          version: 2,
+          mutationId: "forged",
+          kind: "review",
+          reason: "test",
+          parentCommit: head,
+          provenance: null,
+          changes: [
+            {
+              path: "baseline_source__agent.md",
+              afterSha256: "0".repeat(64),
+              status: "active",
+            },
+          ],
+        }),
+      ).toString("base64url");
       const forged = text(fresh, [
-        "commit-tree", text(fresh, ["rev-parse", `${head}^{tree}`]).trim(),
-        "-p", head, "-m", `forged\n\n${TRAILER} ${forgedReceipt}\n`,
+        "commit-tree",
+        text(fresh, ["rev-parse", `${head}^{tree}`]).trim(),
+        "-p",
+        head,
+        "-m",
+        `forged\n\n${TRAILER} ${forgedReceipt}\n`,
       ]).trim();
       expect(() => auditCanonicalHistory(fresh, forged)).toThrow();
       const proposed = admitted(fresh, head, "new", "# new\n");
       const candidate = prepareCommit(fresh, {
-        head, decision: proposed.decision, changes: [proposed.change],
+        head,
+        decision: proposed.decision,
+        changes: [proposed.change],
       });
       const accepted = mergeCommit(fresh, candidate);
       expect(accepted.type).toBe("accepted");
       if (accepted.type !== "accepted") throw new Error("acceptance failed");
       expect(auditCanonicalHistory(fresh, accepted.canonicalHead)).toEqual({
-        verifiedV3: 1, legacyUnverified: 1,
+        verifiedV3: 1,
+        legacyUnverified: 1,
       });
     });
 

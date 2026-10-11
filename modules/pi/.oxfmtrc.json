@@ -4,5 +4,10 @@
   "singleQuote": false,
   "printWidth": 80,
   "sortPackageJson": true,
-  "ignorePatterns": ["**/node_modules/**", "**/dist/**", "settings.json"]
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/secrets.yaml",
+    "settings.json"
+  ]
 }

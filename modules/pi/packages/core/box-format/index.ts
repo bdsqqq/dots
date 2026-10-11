@@ -262,17 +262,13 @@ export function formatBoxesWindowed(
       // apply per-block excerpts
       const windowed =
         excerpts.length > 0
-          ? windowItems(
-              expanded,
-              excerpts,
-              (count): VisualBoxLine => ({
-                text: `· ··· ${count} more lines`,
-                gutter: "",
-                highlight: false,
-                isElision: true,
-                isGap: false,
-              }),
-            )
+          ? windowItems(expanded, excerpts, (count): VisualBoxLine => ({
+              text: `· ··· ${count} more lines`,
+              gutter: "",
+              highlight: false,
+              isElision: true,
+              isGap: false,
+            }))
           : { items: expanded, skippedRanges: [] as Array<[number, number]> };
 
       if (windowed.skippedRanges.length > 0) _anyBlockTruncated = true;

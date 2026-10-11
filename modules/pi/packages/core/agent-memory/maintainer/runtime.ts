@@ -962,8 +962,10 @@ export function reconcileProposal(
   if (found.index.admissionDecisionId?.startsWith("project:"))
     return {
       type: "project",
-      repositoryId: found.proposal.destination?.type === "project"
-        ? found.proposal.destination.repositoryId ?? "unresolved" : "legacy",
+      repositoryId:
+        found.proposal.destination?.type === "project"
+          ? (found.proposal.destination.repositoryId ?? "unresolved")
+          : "legacy",
       proposalId: found.index.admissionDecisionId.slice("project:".length),
     };
   let fetchedHead: string | undefined;
@@ -1044,7 +1046,9 @@ export function reconcileProposal(
       return {
         type: "closed",
         decisionId: "project-identity-unresolved",
-        reasons: ["project proposal retained; source repository identity unavailable"],
+        reasons: [
+          "project proposal retained; source repository identity unavailable",
+        ],
       };
     try {
       publishProjectProposal(cfg, routed);
@@ -1054,7 +1058,9 @@ export function reconcileProposal(
       return {
         type: "closed",
         decisionId: "project-proposal-invalid",
-        reasons: ["project proposal failed identity, size, or safety validation"],
+        reasons: [
+          "project proposal failed identity, size, or safety validation",
+        ],
       };
     }
     markIndexedProposal(cfg, proposalId, "reviewed", `project:${routed.id}`);
@@ -1227,7 +1233,11 @@ function proposalHandler(
       return { type: "succeed", outputs: [], retainUntil: terminal(now) };
     }
     const outcome = reconcileProposal(cfg, proposalId, actor, clock);
-    if (outcome.type === "accepted" || outcome.type === "reextracted" || outcome.type === "project")
+    if (
+      outcome.type === "accepted" ||
+      outcome.type === "reextracted" ||
+      outcome.type === "project"
+    )
       return { type: "succeed", outputs: [], retainUntil: terminal(now) };
     if (outcome.type === "retry")
       return {
@@ -1972,9 +1982,16 @@ if (import.meta.vitest) {
       expect(materializeCanonicalHead(cfg, head)).toBe(true);
       const workspace = join(cfg.base, "project");
       gitCommand(["init", workspace]);
-      gitCommand(["remote", "add", "origin", "https://example.com/team/project"], workspace);
-      const original = submitManualProposal(cfg, manualCreate("Project rule"))[0]!;
-      if (original.operation.type !== "create") throw new Error("expected create");
+      gitCommand(
+        ["remote", "add", "origin", "https://example.com/team/project"],
+        workspace,
+      );
+      const original = submitManualProposal(
+        cfg,
+        manualCreate("Project rule"),
+      )[0]!;
+      if (original.operation.type !== "create")
+        throw new Error("expected create");
       const { id: _id, ...identity } = original;
       const changed = {
         ...identity,
@@ -1986,11 +2003,17 @@ if (import.meta.vitest) {
       };
       const proposal = { ...changed, id: canonicalProposalId(changed) };
       saveIndexedProposal(cfg, proposal);
-      const result = reconcileProposal(cfg, proposal.id, "background-reflection");
+      const result = reconcileProposal(
+        cfg,
+        proposal.id,
+        "background-reflection",
+      );
       expect(result.type).toBe("project");
       expect(fetchCanonicalHead(cfg)).toBe(head);
       expect(scanCatalog(cfg.root).entries).toEqual([]);
-      expect(reconcileProposal(cfg, proposal.id, "background-reflection").type).toBe("project");
+      expect(
+        reconcileProposal(cfg, proposal.id, "background-reflection").type,
+      ).toBe("project");
       const other = { ...cfg, data: join(cfg.base, "other-host") };
       expect(listProjectProposals(other, workspace, true)).toHaveLength(1);
     });

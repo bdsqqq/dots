@@ -98,8 +98,11 @@ function publishQmdSourceLocked(
     };
     try {
       const previous = verifyQmdSource(cfg, head);
-      if (existsSync(root) && canonicalJson(previous.files as unknown as JsonValue) ===
-          canonicalJson(files as unknown as JsonValue)) {
+      if (
+        existsSync(root) &&
+        canonicalJson(previous.files as unknown as JsonValue) ===
+          canonicalJson(files as unknown as JsonValue)
+      ) {
         const report = v3Data(cfg, "projections/qmd-source-manifest.json");
         const content = `${JSON.stringify(previous, null, 2)}\n`;
         if (!existsSync(report) || readFileSync(report, "utf8") !== content)

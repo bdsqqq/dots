@@ -89,7 +89,9 @@ export type SkillDraftOperation = {
 export type Proposal = {
   version: 2;
   digestVersion?: 2;
-  destination?: { type: "personal" } | { type: "project"; repositoryId: string | null };
+  destination?:
+    | { type: "personal" }
+    | { type: "project"; repositoryId: string | null };
   id: string;
   lane: "memory" | "skill";
   status: "pending";
