@@ -4,9 +4,5 @@
   "main": "index.ts",
   "dependencies": {
     "@bds_pi/show": "workspace:*"
-  },
-  "devDependencies": {
-    "@earendil-works/pi-tui": "catalog:",
-    "vitest": "^3.0.0"
   }
 }

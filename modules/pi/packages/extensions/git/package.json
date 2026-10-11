@@ -8,8 +8,7 @@
     "@bds_pi/mentions": "workspace:*"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "catalog:",
-    "vitest": "^3.0.0"
+    "@earendil-works/pi-coding-agent": "catalog:"
   },
   "pi": {
     "extensions": [

@@ -6,7 +6,6 @@
   "types": "./index.ts",
   "dependencies": {
     "@bds_pi/config": "workspace:*",
-    "@bds_pi/github": "workspace:*",
     "@bds_pi/pi-spawn": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
     "@bds_pi/sub-agent-render": "workspace:*",
