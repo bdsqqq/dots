@@ -9,7 +9,6 @@
   "dependencies": {
     "@bds_pi/config": "workspace:*",
     "@bds_pi/interpolate": "workspace:*",
-    "@bds_pi/pi-memory": "workspace:*",
     "@bds_pi/pi-spawn": "workspace:*"
   },
   "devDependencies": {

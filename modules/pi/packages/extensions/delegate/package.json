@@ -8,18 +8,10 @@
     "test": "npx vitest run"
   },
   "dependencies": {
-    "@bds_pi/apply-patch": "workspace:*",
     "@bds_pi/bash": "workspace:*",
     "@bds_pi/config": "workspace:*",
-    "@bds_pi/finder": "workspace:*",
-    "@bds_pi/format-file": "workspace:*",
-    "@bds_pi/glob": "workspace:*",
-    "@bds_pi/grep": "workspace:*",
-    "@bds_pi/ls": "workspace:*",
     "@bds_pi/pi-spawn": "workspace:*",
     "@bds_pi/prompt-patch": "workspace:*",
-    "@bds_pi/read": "workspace:*",
-    "@bds_pi/skill": "workspace:*",
     "@bds_pi/sub-agent-render": "workspace:*",
     "typebox": "catalog:"
   },
