@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "rea": {
+      "type": "stdio",
+      "command": "rea",
+      "args": ["mcp"],
+      "exposure": "codemode"
+    }
+  }
+}

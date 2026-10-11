@@ -24,6 +24,12 @@ in
     {
       home.file.".pi/agent/settings.json".source =
         config.lib.file.mkOutOfStoreSymlink "${repoPi}/settings.json";
+      home.file.".pi/agent/mcp.json".source =
+        config.lib.file.mkOutOfStoreSymlink "${repoPi}/mcp.json";
+      # Keep the workflow and server on the same installed REA release.
+      home.file.".config/agents/skills/reverse-engineer-anything".source =
+        config.lib.file.mkOutOfStoreSymlink
+          "${commonplaceRoot}/01_files/nix/modules/node-pnpm/node_modules/rea-agents/skills/reverse-engineer-anything";
       home.file.".pi/agent/tool-policy.json".source =
         config.lib.file.mkOutOfStoreSymlink "${repoPi}/tool-policy.json";
       home.file.".pi/agent/keybindings.json".source =
