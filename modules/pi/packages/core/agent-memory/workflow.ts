@@ -548,7 +548,9 @@ export function parseStoredProposal(
           Object.keys(destination).sort().join(",") === "repositoryId,type" &&
           (destination.repositoryId === null ||
             (typeof destination.repositoryId === "string" &&
-              /^[a-z0-9.-]+\/[A-Za-z0-9._/-]+$/.test(destination.repositoryId))))
+              /^[a-z0-9.-]+\/[A-Za-z0-9._/-]+$/.test(
+                destination.repositoryId,
+              ))))
       )
     )
       throw new Error("invalid proposal destination");

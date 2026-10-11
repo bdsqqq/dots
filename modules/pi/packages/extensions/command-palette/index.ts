@@ -159,18 +159,16 @@ export function paletteEntries(
     },
     ...resolveInvocations(pi)
       .filter((command) => !isOwnCommand(command, ctx.cwd))
-      .map(
-        (command): ArgumentEntry => ({
-          value: `command:${command.source}:${command.name}`,
-          label: `/${command.name}`,
-          description: `${command.source === "prompt" ? "template prompt" : command.source === "skill" ? "skill prompt" : command.sourceInfo.source === "builtin" ? "builtin extension" : "extension"} · ${command.description ?? command.sourceInfo.source}`,
-          warning:
-            command.source === "extension"
-              ? "extension: runs immediately; may change draft"
-              : "prompt submission: follow-up while streaming",
-          submit: (args) => dispatchCommand(pi, command, args),
-        }),
-      ),
+      .map((command): ArgumentEntry => ({
+        value: `command:${command.source}:${command.name}`,
+        label: `/${command.name}`,
+        description: `${command.source === "prompt" ? "template prompt" : command.source === "skill" ? "skill prompt" : command.sourceInfo.source === "builtin" ? "builtin extension" : "extension"} · ${command.description ?? command.sourceInfo.source}`,
+        warning:
+          command.source === "extension"
+            ? "extension: runs immediately; may change draft"
+            : "prompt submission: follow-up while streaming",
+        submit: (args) => dispatchCommand(pi, command, args),
+      })),
   ];
 }
 

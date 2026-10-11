@@ -356,19 +356,23 @@ export function deriveTierState(
     ]),
   );
   if (!isHistoryInitialized(cfg)) return current;
-  const basis = verified ?? (() => {
-    const verification = verifyHistory(cfg);
-    if (!verification.ok || !verification.basis)
-      throw new Error(
-        `tier history verification failed: ${verification.issues.join(", ")}`,
-      );
-    return verification.basis;
-  })();
+  const basis =
+    verified ??
+    (() => {
+      const verification = verifyHistory(cfg);
+      if (!verification.ok || !verification.basis)
+        throw new Error(
+          `tier history verification failed: ${verification.issues.join(", ")}`,
+        );
+      return verification.basis;
+    })();
   if (headHistoryReceipt(cfg)?.commit !== basis.head)
     throw new Error("verified tier history snapshot is stale");
   const cacheKey = `${basis.repository}:${basis.policyVersion}:${basis.head}:${sha256(canonical(catalog.entries))}`;
   if (latestTierProjection?.key === cacheKey)
-    return new Map(latestTierProjection.entries.map(([key, value]) => [key, { ...value }]));
+    return new Map(
+      latestTierProjection.entries.map(([key, value]) => [key, { ...value }]),
+    );
   const replay = new Map<string, TierAssignment>();
   for (const entry of listHistoryByKind(
     cfg,
@@ -400,7 +404,9 @@ export function deriveTierState(
     key: cacheKey,
     entries: [...current].map(([key, value]) => [key, { ...value }]),
   };
-  return new Map(latestTierProjection.entries.map(([key, value]) => [key, { ...value }]));
+  return new Map(
+    latestTierProjection.entries.map(([key, value]) => [key, { ...value }]),
+  );
 }
 
 export const TIER_ELIGIBILITY_REASON_CODES = [

@@ -52,13 +52,13 @@
     "@earendil-works/pi-coding-agent": "catalog:",
     "@earendil-works/pi-tui": "catalog:",
     "@types/node": "^24.0.0",
-    "oxfmt": "^0.35.0",
-    "oxlint": "^1.50.0",
-    "oxlint-tsgolint": "^0.15.0",
-    "tsdown": "^0.21.0",
+    "oxfmt": "^0.72.0",
+    "oxlint": "^1.87.0",
+    "oxlint-tsgolint": "^7.0.2003",
+    "tsdown": "^0.23.0",
     "typebox": "catalog:",
-    "typescript": "^5.9.2",
-    "vitest": "^3.0.0"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "catalog:",
