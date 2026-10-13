@@ -28,7 +28,12 @@ in
     (lib.optionalAttrs isLinux {
       services.tailscale = {
         enable = true;
-        extraUpFlags = lib.mkDefault [ "--ssh" ];
+        # Tailscale SSH intercepts normal OpenSSH authentication, including stored
+        # authorized keys. Use Tailscale only as VPN transport for SSH access.
+        extraUpFlags = lib.mkDefault [ "--ssh=false" ];
+        # Set updates already enrolled hosts without reauthentication. Keep this
+        # at normal priority so host operator flags merge instead of replacing it.
+        extraSetFlags = [ "--ssh=false" ];
       };
     })
 
