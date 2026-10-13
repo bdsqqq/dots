@@ -137,7 +137,7 @@ in
     useRoutingFeatures = "server";
     extraSetFlags = [
       "--hostname=gru-relay"
-      "--ssh"
+      "--ssh=false"
       "--advertise-exit-node"
       "--accept-dns=false"
       "--shields-up=false"
@@ -145,7 +145,7 @@ in
     ];
     extraUpFlags = [
       "--hostname=gru-relay"
-      "--ssh"
+      "--ssh=false"
       "--advertise-tags=tag:ssh-accept"
       "--advertise-exit-node"
       "--accept-dns=false"

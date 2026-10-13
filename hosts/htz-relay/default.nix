@@ -164,7 +164,7 @@ in
     extraSetFlags = [ "--operator=bdsqqq" ];
     extraUpFlags = [
       "--operator=bdsqqq"
-      "--ssh"
+      "--ssh=false"
       "--accept-dns=false"
       "--shields-up=false"
       "--advertise-tags=tag:ssh-accept"
