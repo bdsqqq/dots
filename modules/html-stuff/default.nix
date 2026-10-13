@@ -40,6 +40,8 @@ in
             root
             "--port"
             "8766"
+            "--state-file"
+            "${root}/pi-setup-dossier.state.json"
           ];
           RunAtLoad = true;
           KeepAlive = true;

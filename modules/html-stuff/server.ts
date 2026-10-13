@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
-import { mkdir, open, readdir } from "node:fs/promises";
-import { basename, extname, join, resolve } from "node:path";
+import { mkdir, open, readdir, rename, rm } from "node:fs/promises";
+import { basename, extname, isAbsolute, join, resolve } from "node:path";
 
 const COMMON_HEADERS = {
   "Cache-Control": "no-store",
@@ -11,7 +11,7 @@ const COMMON_HEADERS = {
     "img-src data:",
     "font-src data:",
     "media-src data:",
-    "connect-src 'none'",
+    "connect-src 'self'",
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'none'",
@@ -29,7 +29,171 @@ function argument(name: string, fallback?: string): string {
 
 const root = resolve(argument("--directory"));
 const port = Number.parseInt(argument("--port", "8766"), 10);
+const stateFileArgument = Bun.argv.includes("--state-file")
+  ? argument("--state-file")
+  : undefined;
+if (stateFileArgument && (!isAbsolute(stateFileArgument) || extname(stateFileArgument).toLowerCase() === ".html")) {
+  throw new Error("--state-file must be an absolute non-HTML path");
+}
+const stateFile = stateFileArgument ? resolve(stateFileArgument) : undefined;
+const stateOrigin = Bun.argv.includes("--state-origin")
+  ? new URL(argument("--state-origin")).origin
+  : undefined;
+const STATE_ROUTE = "/api/pi-setup-dossier/state";
+const MAX_STATE_BYTES = 2 * 1024 * 1024;
+const MAX_REQUEST_BYTES = MAX_STATE_BYTES + 64;
 await mkdir(root, { recursive: true });
+
+interface DossierState {
+  version: 1;
+  revision: number;
+  fields: Record<string, boolean | string>;
+}
+
+const EMPTY_STATE: DossierState = { version: 1, revision: 0, fields: {} };
+const MISSING_ETAG = '"missing-v1"';
+let stateQueue: Promise<void> = Promise.resolve();
+
+function validState(value: unknown): value is DossierState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 1 ||
+    !Number.isSafeInteger(candidate.revision) ||
+    (candidate.revision as number) < 0 ||
+    !candidate.fields ||
+    typeof candidate.fields !== "object" ||
+    Array.isArray(candidate.fields)
+  ) return false;
+  const fields = candidate.fields as Record<string, unknown>;
+  const keys = Object.keys(fields);
+  if (keys.length > 4096) return false;
+  return keys.every((key) =>
+    /^(decision|requirement|test|note|source):[a-z0-9:._-]{1,120}$/.test(key) &&
+    (typeof fields[key] === "boolean" ||
+      (typeof fields[key] === "string" && fields[key].length <= 10_000))
+  );
+}
+
+function stateETag(bytes: Uint8Array): string {
+  return `"${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")}"`;
+}
+
+async function readState(): Promise<{ bytes: Uint8Array; etag: string; state: DossierState }> {
+  if (!stateFile) throw new Error("state disabled");
+  let handle;
+  try {
+    handle = await open(stateFile, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      const bytes = Buffer.from(JSON.stringify(EMPTY_STATE));
+      return { bytes, etag: MISSING_ETAG, state: EMPTY_STATE };
+    }
+    throw error;
+  }
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > MAX_STATE_BYTES) throw new Error("invalid state file");
+    const bytes = await handle.readFile();
+    if (bytes.byteLength > MAX_STATE_BYTES) throw new Error("invalid state file");
+    let parsed: unknown;
+    try { parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { throw new Error("invalid state file"); }
+    if (!validState(parsed)) throw new Error("invalid state file");
+    return { bytes, etag: stateETag(bytes), state: parsed };
+  } finally {
+    await handle.close();
+  }
+}
+
+function stateResponse(body: string, status: number, headers: HeadersInit = {}): Response {
+  return new Response(body, {
+    status,
+    headers: { ...COMMON_HEADERS, "Content-Type": "application/json; charset=utf-8", ...headers },
+  });
+}
+
+async function boundedBody(request: Request): Promise<Uint8Array | null> {
+  const declared = request.headers.get("content-length");
+  if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > MAX_REQUEST_BYTES)) return null;
+  if (!request.body) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > MAX_REQUEST_BYTES) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return bytes;
+}
+
+async function putState(request: Request): Promise<Response> {
+  if (!stateFile) return stateResponse('{"error":"not found"}', 404);
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!/^application\/json(?:\s*;|\s*$)/i.test(contentType)) return stateResponse('{"error":"content type required"}', 415);
+  const origin = request.headers.get("origin");
+  const allowedOrigin = stateOrigin ?? new URL(request.url).origin;
+  if (origin !== allowedOrigin) return stateResponse('{"error":"origin rejected"}', 403);
+  if (request.headers.get("x-dossier-client") !== "1") return stateResponse('{"error":"client header required"}', 400);
+  const ifMatch = request.headers.get("if-match");
+  if (!ifMatch) return stateResponse('{"error":"if-match required"}', 428);
+  const bytes = await boundedBody(request);
+  if (!bytes) return stateResponse('{"error":"request too large"}', 413);
+  if (bytes.byteLength > MAX_STATE_BYTES) return stateResponse('{"error":"state too large"}', 413);
+  let parsed: unknown;
+  try { parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); }
+  catch { return stateResponse('{"error":"invalid json"}', 400); }
+  if (!validState(parsed)) return stateResponse('{"error":"invalid state"}', 400);
+
+  let release!: () => void;
+  const previous = stateQueue;
+  stateQueue = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    let current: Awaited<ReturnType<typeof readState>>;
+    try { current = await readState(); }
+    catch { return stateResponse('{"error":"state unavailable"}', 500); }
+    if (ifMatch !== current.etag) return stateResponse('{"error":"state changed"}', 412, { ETag: current.etag });
+    if (parsed.revision !== current.state.revision + 1) return stateResponse('{"error":"revision mismatch"}', 409, { ETag: current.etag });
+    const output = Buffer.from(JSON.stringify(parsed));
+    if (output.byteLength > MAX_STATE_BYTES) return stateResponse('{"error":"state too large"}', 413);
+    // Recheck just before replace; external writers can still race this check.
+    let latest: Awaited<ReturnType<typeof readState>>;
+    try { latest = await readState(); }
+    catch { return stateResponse('{"error":"state unavailable"}', 500); }
+    if (latest.etag !== current.etag) return stateResponse('{"error":"state changed"}', 412, { ETag: latest.etag });
+    const temporary = join(resolve(stateFile, ".."), `.${basename(stateFile)}.${process.pid}.${crypto.randomUUID()}.tmp`);
+    let tempHandle;
+    try {
+      tempHandle = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+      await tempHandle.writeFile(output);
+      await tempHandle.sync();
+      await tempHandle.close();
+      tempHandle = undefined;
+      await rename(temporary, stateFile);
+    } catch {
+      if (tempHandle) await tempHandle.close().catch(() => {});
+      await rm(temporary, { force: true }).catch(() => {});
+      return stateResponse('{"error":"state write failed"}', 500);
+    }
+    const etag = stateETag(output);
+    return stateResponse(JSON.stringify(parsed), 200, { ETag: etag });
+  } finally {
+    release();
+  }
+}
 
 function escapeHtml(value: string): string {
   return value.replace(
@@ -318,8 +482,22 @@ function artifactName(pathname: string): string | null {
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
+  maxRequestBodySize: MAX_REQUEST_BYTES,
   async fetch(request) {
     const { pathname } = new URL(request.url);
+    if (pathname === STATE_ROUTE) {
+      if (!stateFile) return stateResponse('{"error":"not found"}', 404);
+      if (request.method === "GET" || request.method === "HEAD") {
+        try {
+          const current = await readState();
+          return stateResponse(request.method === "HEAD" ? "" : JSON.stringify(current.state), 200, { ETag: current.etag });
+        } catch {
+          return stateResponse('{"error":"state unavailable"}', 500);
+        }
+      }
+      if (request.method === "PUT") return putState(request);
+      return stateResponse('{"error":"method not allowed"}', 405, { Allow: "GET, HEAD, PUT" });
+    }
     if (pathname === "/" || pathname === "/index.html") {
       return response(request.method === "HEAD" ? null : await renderIndex());
     }
