@@ -98,7 +98,7 @@
           description = "HTML artifact browser";
           wantedBy = [ "multi-user.target" ];
           serviceConfig = {
-            ExecStart = "${htmlStuffServer}/bin/html-stuff-server --directory /srv/html-stuff --port 8766";
+            ExecStart = "${htmlStuffServer}/bin/html-stuff-server --directory /srv/html-stuff --port 8766 --state-file /srv/commonplace/01_files/html_stuff/pi-setup-dossier.state.json --state-origin http://htz-apps.tail1543a7.ts.net:8765";
             Restart = "always";
             RestartSec = "5s";
             User = "bdsqqq";
