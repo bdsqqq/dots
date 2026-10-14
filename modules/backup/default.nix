@@ -9,7 +9,7 @@ let
     (name: (value.${name} or null) != null)
     [ "disabled" "cron" "maxFrequencyDays" "maxFrequencyHours" ]) <= 1;
   # native schedules select one mode; null marks fields omitted from JSON.
-  scheduleType = lib.types.addCheck (lib.types.submodule {
+  scheduleType = lib.types.addCheck (lib.types.submodule ({ config, ... }: {
     options = {
       disabled = lib.mkOption {
         type = lib.types.nullOr (lib.types.enum [ true ]);
@@ -22,14 +22,18 @@ let
         description = "native cron expression in the daemon timezone; syntax checked by backrest during the package build";
       };
       maxFrequencyDays = lib.mkOption { type = lib.types.nullOr (lib.types.ints.between 1 2147483647); default = null; };
-      maxFrequencyHours = lib.mkOption { type = lib.types.nullOr (lib.types.ints.between 1 2147483647); default = null; };
+      maxFrequencyHours = lib.mkOption {
+        type = lib.types.nullOr (lib.types.ints.between 1 2147483647);
+        # another explicit mode replaces the interval, not the independent clock.
+        default = if config.cron != null || config.disabled != null || config.maxFrequencyDays != null then null else 24;
+      };
       clock = lib.mkOption {
         type = lib.types.enum [ "CLOCK_DEFAULT" "CLOCK_LOCAL" "CLOCK_UTC" "CLOCK_LAST_RUN_TIME" ];
-        default = "CLOCK_DEFAULT";
+        default = "CLOCK_LAST_RUN_TIME";
         description = "native scheduling anchor; LAST_RUN_TIME uses the last completed attempt, not the last successful snapshot";
       };
     };
-  }) exclusiveSchedule;
+  })) exclusiveSchedule;
   # recheck after module merging: separate contributions can each be valid
   # while jointly selecting conflicting oneof fields.
   mkSchedule = value:
@@ -192,8 +196,8 @@ in
           };
           schedule = lib.mkOption {
             type = scheduleType;
-            default = { maxFrequencyHours = 24; clock = "CLOCK_LAST_RUN_TIME"; };
-            description = "native backrest schedule; omitting a mode disables automatic runs";
+            default = { };
+            description = "native backrest schedule; partial overrides retain independent defaults";
           };
           retention = lib.mkOption {
             type = nativeSettings;

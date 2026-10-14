@@ -43,6 +43,10 @@ let
       manual = { paths = [ "/tmp/manual" ]; schedule.disabled = true; retention.policyKeepLastN = 10; };
       empty = { paths = "/tmp/empty"; schedule = { }; };
       utc = { paths = "/tmp/utc"; schedule = { cron = "0 22 * * *"; clock = "CLOCK_UTC"; }; };
+      clockOnly = { paths = "/tmp/clock"; schedule.clock = "CLOCK_UTC"; };
+      intervalOnly = { paths = "/tmp/interval"; schedule.maxFrequencyHours = 1; };
+      cronOnly = { paths = "/tmp/cron"; schedule.cron = "0 22 * * *"; };
+      daysOnly = { paths = "/tmp/days"; schedule.maxFrequencyDays = 7; };
     };
   });
   disabled = evaluate { };
@@ -69,6 +73,10 @@ let
     repositories.local = common.repositories.local // { autoInitialize = true; };
     plans.bad.paths = "/tmp/game";
   });
+  splitSchedule = evaluateWith (common // { plans.example.paths = "/tmp/source"; }) [
+    { my.backup.plans.example.schedule.clock = "CLOCK_UTC"; }
+    { my.backup.plans.example.schedule.maxFrequencyHours = 1; }
+  ];
   valid = cfg: builtins.all (item: item.assertion) cfg.assertions;
   plan = id: cfg: builtins.head (builtins.filter (item: item.id == id) cfg.my.backup.generated.plans);
   rejectsType = settings:
@@ -106,14 +114,19 @@ assert disabled.home-manager == { };
 assert (plan "documents" ordinary).paths == [ "/tmp/documents" ];
 assert (plan "documents" ordinary).repo == "local";
 assert (plan "documents" ordinary).schedule.maxFrequencyHours == 24;
+assert (plan "clockOnly" custom).schedule == { maxFrequencyHours = 24; clock = "CLOCK_UTC"; };
+assert (plan "intervalOnly" custom).schedule == { maxFrequencyHours = 1; clock = "CLOCK_LAST_RUN_TIME"; };
+assert (plan "cronOnly" custom).schedule == { cron = "0 22 * * *"; clock = "CLOCK_LAST_RUN_TIME"; };
+assert (plan "daysOnly" custom).schedule == { maxFrequencyDays = 7; clock = "CLOCK_LAST_RUN_TIME"; };
+assert (plan "example" splitSchedule).schedule == { maxFrequencyHours = 1; clock = "CLOCK_UTC"; };
 assert (plan "documents" ordinary).retention == { policyKeepAll = true; };
 assert (plan "hourly" custom).schedule.maxFrequencyHours == 1;
 assert (plan "daily" custom).schedule == { cron = "0 22 * * *"; clock = "CLOCK_LAST_RUN_TIME"; };
 assert (plan "daily" custom).repo == "remote";
 assert (plan "skip" custom).schedule == { cron = "5 0 * * *"; clock = "CLOCK_LOCAL"; };
 assert (plan "weekly" custom).schedule == { maxFrequencyDays = 7; clock = "CLOCK_LAST_RUN_TIME"; };
-assert (plan "manual" custom).schedule == { disabled = true; clock = "CLOCK_DEFAULT"; };
-assert (plan "empty" custom).schedule == { clock = "CLOCK_DEFAULT"; };
+assert (plan "manual" custom).schedule == { disabled = true; clock = "CLOCK_LAST_RUN_TIME"; };
+assert (plan "empty" custom).schedule == { maxFrequencyHours = 24; clock = "CLOCK_LAST_RUN_TIME"; };
 assert (plan "utc" custom).schedule == { cron = "0 22 * * *"; clock = "CLOCK_UTC"; };
 assert (plan "manual" custom).retention == { policyKeepLastN = 10; };
 assert (builtins.head (plan "hourly" custom).hooks).onError == "ON_ERROR_CANCEL";
