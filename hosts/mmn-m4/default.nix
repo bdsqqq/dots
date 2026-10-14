@@ -111,7 +111,6 @@ in
     ../../modules/direnv
     ../../modules/tmux
     ../../modules/darwin-transcription
-    ../../modules/amp
     ../../modules/agents
     ../../modules/node-pnpm
     ../../modules/1password

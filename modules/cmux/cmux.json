@@ -13,33 +13,16 @@
       "workspace": {
         "name": "mbp-m2",
         "layout": {
-          "direction": "horizontal",
-          "split": 0.5,
-          "children": [
-            {
-              "pane": {
-                "surfaces": [
-                  {
-                    "type": "terminal",
-                    "name": "btop",
-                    "command": "exec zmx attach cmux-btop btop",
-                    "focus": true
-                  }
-                ]
+          "pane": {
+            "surfaces": [
+              {
+                "type": "terminal",
+                "name": "btop",
+                "command": "exec zmx attach cmux-btop btop",
+                "focus": true
               }
-            },
-            {
-              "pane": {
-                "surfaces": [
-                  {
-                    "type": "terminal",
-                    "name": "amp",
-                    "command": "exec zmx attach cmux-amp amp --no-tui --remote-control"
-                  }
-                ]
-              }
-            }
-          ]
+            ]
+          }
         }
       }
     },
@@ -50,33 +33,16 @@
       "workspace": {
         "name": "lgo-z2e",
         "layout": {
-          "direction": "horizontal",
-          "split": 0.5,
-          "children": [
-            {
-              "pane": {
-                "surfaces": [
-                  {
-                    "type": "terminal",
-                    "name": "btop",
-                    "command": "exec ssh -t lgo-z2e \"zmx attach cmux-btop btop\"",
-                    "focus": true
-                  }
-                ]
+          "pane": {
+            "surfaces": [
+              {
+                "type": "terminal",
+                "name": "btop",
+                "command": "exec ssh -t lgo-z2e \"zmx attach cmux-btop btop\"",
+                "focus": true
               }
-            },
-            {
-              "pane": {
-                "surfaces": [
-                  {
-                    "type": "terminal",
-                    "name": "amp",
-                    "command": "exec ssh -t lgo-z2e \"zmx attach cmux-amp amp --no-tui --remote-control\""
-                  }
-                ]
-              }
-            }
-          ]
+            ]
+          }
         }
       }
     },
@@ -87,33 +53,16 @@
       "workspace": {
         "name": "htz-relay",
         "layout": {
-          "direction": "horizontal",
-          "split": 0.5,
-          "children": [
-            {
-              "pane": {
-                "surfaces": [
-                  {
-                    "type": "terminal",
-                    "name": "btop",
-                    "command": "exec ssh -t htz-relay \"zmx attach cmux-btop btop\"",
-                    "focus": true
-                  }
-                ]
+          "pane": {
+            "surfaces": [
+              {
+                "type": "terminal",
+                "name": "btop",
+                "command": "exec ssh -t htz-relay \"zmx attach cmux-btop btop\"",
+                "focus": true
               }
-            },
-            {
-              "pane": {
-                "surfaces": [
-                  {
-                    "type": "terminal",
-                    "name": "amp",
-                    "command": "exec ssh -t htz-relay \"zmx attach cmux-amp amp --no-tui --remote-control\""
-                  }
-                ]
-              }
-            }
-          ]
+            ]
+          }
         }
       }
     },
@@ -124,33 +73,16 @@
       "workspace": {
         "name": "gru-relay",
         "layout": {
-          "direction": "horizontal",
-          "split": 0.5,
-          "children": [
-            {
-              "pane": {
-                "surfaces": [
-                  {
-                    "type": "terminal",
-                    "name": "btop",
-                    "command": "exec ssh -t gru-relay \"zmx attach cmux-btop btop\"",
-                    "focus": true
-                  }
-                ]
+          "pane": {
+            "surfaces": [
+              {
+                "type": "terminal",
+                "name": "btop",
+                "command": "exec ssh -t gru-relay \"zmx attach cmux-btop btop\"",
+                "focus": true
               }
-            },
-            {
-              "pane": {
-                "surfaces": [
-                  {
-                    "type": "terminal",
-                    "name": "amp",
-                    "command": "exec ssh -t gru-relay \"zmx attach cmux-amp amp --no-tui --remote-control\""
-                  }
-                ]
-              }
-            }
-          ]
+            ]
+          }
         }
       }
     }
