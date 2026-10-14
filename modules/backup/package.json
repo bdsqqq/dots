@@ -1,0 +1,13 @@
+{
+  "name": "backup",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test_launcher.ts test_runtime.ts"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.4",
+    "typescript": "6.0.3"
+  }
+}
