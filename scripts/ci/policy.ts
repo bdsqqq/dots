@@ -674,7 +674,6 @@ export function createPlan(options: {
       const homeOnly = [
         "modules/pi/default.nix",
         "modules/agents/default.nix",
-        "modules/agents/skills.nix",
         "modules/node-pnpm/default.nix",
       ].includes(path);
       const integration =
@@ -695,16 +694,7 @@ export function createPlan(options: {
                 : "packaging has no isolated derivation mapping; assemble consumer closure"
           }`,
         );
-      if (path === "modules/agents/default.nix") {
-        agentChecks(reason);
-        add(
-          "agents:darwin-case-hook",
-          "aarch64-darwin",
-          "runtime",
-          [node(["--test", "modules/agents/test-skill-case-repair.test.ts"])],
-          reason,
-        );
-      }
+      if (path === "modules/agents/default.nix") agentChecks(reason);
     }
     if (
       /credential|secrets|\.sops\.yaml/.test(path) ||
@@ -829,7 +819,7 @@ export function createPlan(options: {
       if (/(^|\/)AGENTS\.md$/.test(path) || path === "config/global-agents.md") eligible = false;
       if (
         /\.(py|sh|js|mjs|ts)$/.test(path) &&
-        !/^modules\/agents\/(check-skills|evaluate-skill-routing|test-skill-case-repair)(\.test)?\.ts$/.test(
+        !/^modules\/agents\/(check-skills|evaluate-skill-routing)(\.test)?\.ts$/.test(
           path,
         )
       )

@@ -1,8 +1,9 @@
 # agent guidance maintenance
 
 `config/global-agents.md` is the canonical personal policy. `skills/` is the
-portable collection copied by home-manager and projected to remote agent
-repositories. keep installation code and test infrastructure outside `skills/`.
+portable collection, linked live into each agent's skills directory and
+projected to remote agent repositories. external skills are vendored here;
+skills that programs write show up as untracked files to commit or discard. keep installation code and test infrastructure outside `skills/`.
 
 ## verification
 
@@ -33,19 +34,6 @@ it records model-emitted choices without executing tools. selection success
 does not establish skill-body compliance or productivity. do not put expected
 answers in candidate prompts or relabel failures as passes.
 
-for the darwin case-normalization activation hook:
-
-```bash
-node --experimental-strip-types --test modules/agents/test-skill-case-repair.test.ts
-```
-
-this evaluates the real hook and runs it only against temporary homes. verify
-the affected host derivation and build its home-manager activation package per
-the repository's nix policy. do not activate the real home merely to test.
-
-git-backed flakes omit untracked new skills. before staging is authorized, a
-verification-only `extendModules` override of
-`home.file.".config/agents/skills".source` with `builtins.path` pointing to the
-local `skills/` directory can exercise the complete working-tree collection.
-inspect discovery/bytes in the resulting artifact; do not claim an ordinary
-git-backed build included an untracked skill.
+installed agents read the live checkout, so skill edits need no nix build.
+`default.nix` wiring changes still need host evaluation and a home-manager
+activation package build per the repository's nix policy.
