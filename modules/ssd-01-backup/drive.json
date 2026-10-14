@@ -1,0 +1,14 @@
+{
+  "volumeRoot": "/Volumes/ssd-01",
+  "volumeUuid": "967C80B3-674A-3C8C-A248-2E6B8230DFD7",
+  "paths": ["/Volumes/ssd-01/fenfe", "/Volumes/ssd-01/igor"],
+  "photoExportDb": "/Volumes/ssd-01/igor/photos-library-2/.osxphotos_export.db",
+  "canaryPath": "/Volumes/ssd-01/igor/.backup-restore-canary",
+  "repository": {
+    "id": "ssd-01-hetzner",
+    "uri": "sftp:u646875@u646875.your-storagebox.de:/home/restic/ssd-01",
+    "guid": "db9719f847da679dbbbdca1d9cbe716f1c462fa23966d5abdcf1cf0a04ad0993",
+    "sshTarget": "u646875@u646875.your-storagebox.de",
+    "sshPort": 23
+  }
+}
