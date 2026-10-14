@@ -32,5 +32,6 @@
   "theme": "unboxed-dark",
   "outputPad": 0,
   "showCacheMissNotices": true,
-  "tuiMode": "fullscreen"
+  "tuiMode": "fullscreen",
+  "fullscreenExitOutput": "resume-hint"
 }

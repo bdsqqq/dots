@@ -679,6 +679,27 @@ index 2316e506..5dc34c38 100644
 -//# sourceMappingURL=user-message.js.map
 \ No newline at end of file
 +//# sourceMappingURL=user-message.js.map
+diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
+--- a/dist/modes/interactive/interactive-mode.js
++++ b/dist/modes/interactive/interactive-mode.js
+@@ -3505,7 +3505,16 @@ export class InteractiveMode {
+         this.stop();
+         await this.runtimeHost.dispose();
+         const resumeCommand = formatResumeCommand(this.sessionManager);
+         if (resumeCommand) {
+-            process.stdout.write(`${chalk.dim("To resume this session:")} ${resumeCommand}\n`);
++            const cwd = this.sessionManager.getCwd();
++            const home = os.homedir();
++            const directory = cwd === home ? "~" : cwd.startsWith(`${home}${path.sep}`) ? `~${cwd.slice(home.length)}` : cwd;
++            const title = this.sessionManager.getSessionName() || "untitled session";
++            const width = process.stdout.columns || 80;
++            const banner = [`${APP_NAME} · ${title}`, `  ${directory}`].map((line) =>
++                TuiLayouts.truncateToWidth(TuiLayouts.stripTerminalSequences(line).replace(/[\x00-\x1f\x7f-\x9f]/g, " "), width)
++            ).join("\n");
++            // Keep the executable resume command separate from display-only metadata.
++            process.stdout.write(`\n${banner}\n\n${resumeCommand}\n`);
+         }
+         process.exit(0);
 diff --git a/package.json b/package.json
 index cdb88d0c..c6fca425 100644
 --- a/package.json
