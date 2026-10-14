@@ -40,6 +40,7 @@ let
       ${lib.escapeShellArg "RESTIC_PASSWORD_COMMAND=${passwordCommand}"} \
       ${lib.escapeShellArg "SSD_BACKUP_RESTIC=${pkgs.restic}/bin/restic"} \
       ${lib.escapeShellArg "SSD_BACKUP_SFTP_COMMAND=${sshCommand}"} \
+      SSD_BACKUP_POLICY_SHA256=${builtins.hashString "sha256" (builtins.readFile ./drive.json)} \
       ${pkgs.nodejs_24}/bin/node ${lib.escapeShellArg "${liveModule}/hooks.ts"} ${action} ${arguments}
   '';
 in

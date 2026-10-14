@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { ABSENT_EXIT, isAbsentCancellation, parseDrive, runHook, type Adapters } from "./hooks.ts";
+import { ABSENT_EXIT, assertPolicy, isAbsentCancellation, parseDrive, runHook, type Adapters } from "./hooks.ts";
 
-const drive = parseDrive(JSON.parse(readFileSync(new URL("./drive.json", import.meta.url), "utf8")));
+const driveContents = readFileSync(new URL("./drive.json", import.meta.url), "utf8");
+const drive = parseDrive(JSON.parse(driveContents));
+const policyHash = createHash("sha256").update(driveContents).digest("hex");
 const canary = readFileSync(new URL("./canary.txt", import.meta.url), "utf8");
 const runtime = { restic: "/mock/restic", sftpCommand: "mock-ssh -p 23" };
 const absentError = "snapshot start hook: hook command triggered by CONDITION_SNAPSHOT_START: task cancelled: exit status 75";
@@ -48,7 +52,8 @@ function fixture() {
     notify: result => { notifications.push(result); },
     diagnostic: message => { diagnostics.push(message); },
   };
-  const run = (action: string, argument = "") => runHook(action, argument, drive, canary, runtime, adapters);
+  const run = (action: string, argument = "", load = () => ({ drive, canary })) =>
+    runHook(action, argument, load, runtime, adapters);
   return { kinds, contents, notifications, diagnostics, calls, writes, removals, run,
     disk(info: unknown) { diskInfo = info; }, restore(mode: string) { restore = mode; },
     fail(executable: string) { failCommand = executable; } };
@@ -153,6 +158,7 @@ function moduleContract(module: string, mmn: string, mbp: string): void {
   assert.match(module, /ON_ERROR_FATAL[\s\S]*hook "prepare"/);
   assert.match(module, /CONDITION_SNAPSHOT_WARNING/);
   assert.match(module, /nodejs_24[\s\S]*liveModule.*hooks.ts/);
+  assert.match(module, /SSD_BACKUP_POLICY_SHA256=.*builtins.hashString "sha256" \(builtins.readFile \.\/drive.json\)/);
   assert.doesNotMatch(module, /writeShellScript|writeText|runCommand|\/Users\/|launchd|systemd/);
   assert.match(mmn, /my.backup.plans.terraria = \{[\s\S]*maxFrequencyHours = 1/);
   const terraria = mmn.slice(mmn.indexOf("my.backup.plans.terraria = {"), mmn.indexOf("environment.systemPackages"));
@@ -166,6 +172,7 @@ test("module and host imports contract; known regression fixtures are rejected",
   moduleContract(module, mmn, mbp);
   assert.throws(() => moduleContract(module, mmn, mbp.replace("../../modules/ssd-01-backup", "../../modules/backup")));
   assert.throws(() => moduleContract(module.replace("requirePaths = false", "requirePaths = true"), mmn, mbp));
+  assert.throws(() => moduleContract(module.replace("SSD_BACKUP_POLICY_SHA256=", "UNBOUND_POLICY="), mmn, mbp));
   assert.throws(() => moduleContract(module, mmn.replace("my.backup.plans.terraria = {", "my.backup.plans.terraria = { hooks = [ ssdGuard ];"), mbp));
 });
 
@@ -185,7 +192,62 @@ test("pinned Backrest cancellation/error/unchanged semantics are source traced",
 test("CLI help and empty-snapshot probe are safe without runtime credentials", () => {
   const entry = new URL("./hooks.ts", import.meta.url);
   for (const args of [["--help"], ["verify", ""]]) {
-    const result = spawnSync(process.execPath, [entry.pathname, ...args], { encoding: "utf8", env: { PATH: "" } });
+    const result = spawnSync(process.execPath, [entry.pathname, ...args], {
+      encoding: "utf8", env: { PATH: "", SSD_BACKUP_POLICY_SHA256: policyHash },
+    });
     assert.equal(result.status, 0, result.stderr);
+  }
+});
+
+test("active-plan fingerprint rejects changed live sources before any native drive action", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "ssd-policy-drift-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const entry = join(root, "hooks.ts");
+  copyFileSync(new URL("./hooks.ts", import.meta.url), entry);
+  writeFileSync(join(root, "canary.txt"), canary);
+  writeFileSync(join(root, "drive.json"), driveContents);
+  const alias = join(root, "linked-hooks.ts");
+  symlinkSync(entry, alias);
+  const invoke = (args: string[], digest: string | undefined, executable = entry) => spawnSync(process.execPath, [executable, ...args], {
+    encoding: "utf8", env: { PATH: "", ...(digest ? { SSD_BACKUP_POLICY_SHA256: digest } : {}) },
+  });
+  assert.equal(invoke(["verify", ""], policyHash).status, 0);
+  for (const executable of [entry, alias]) {
+    const missing = invoke(["presence"], undefined, executable);
+    assert.equal(missing.status, 1, "linked entrypoints must execute the guard too");
+    assert.match(missing.stderr, /SSD policy differs from the active plan/);
+  }
+
+  const changed = driveContents.replaceAll("/Volumes/ssd-01", "/Volumes/__ssd01_isolated_changed_policy");
+  assert.doesNotThrow(() => parseDrive(JSON.parse(changed)), "negative fixture must otherwise be valid");
+  writeFileSync(join(root, "drive.json"), changed);
+  // Verify failures notify intentionally; keep this real CLI fixture to start
+  // hooks, and cover end-hook notification with injected adapters below.
+  for (const args of [["presence"], ["prepare"]]) {
+    const result = invoke(args, policyHash);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /SSD policy differs from the active plan/);
+    assert.doesNotMatch(result.stderr, /diskutil|restore runtime wiring missing/);
+  }
+});
+
+test("bootstrap failures notify for verify; error reporting never loads policy", () => {
+  for (const load of [
+    () => { assertPolicy(driveContents, "0".repeat(64)); return { drive, canary }; },
+    () => { JSON.parse("{"); return { drive, canary }; },
+    () => { throw new Error("policy file missing"); },
+  ]) {
+    const verify = fixture();
+    assert.equal(verify.run("verify", "a".repeat(64), load), 1);
+    assert.deepEqual(verify.notifications, ["error"]);
+    assert.deepEqual(verify.calls, []);
+    assert.equal(verify.diagnostics.length, 1);
+
+    const error = fixture();
+    let loaded = false;
+    assert.equal(error.run("error", "policy bootstrap failed", () => { loaded = true; return load(); }), 0);
+    assert.equal(loaded, false);
+    assert.deepEqual(error.notifications, ["error"]);
+    assert.deepEqual(error.calls, []);
   }
 });

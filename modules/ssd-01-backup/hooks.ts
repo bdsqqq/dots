@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { lstatSync, readFileSync, writeFileSync, renameSync, mkdtempSync, rmSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { lstatSync, readFileSync, writeFileSync, renameSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -76,6 +76,14 @@ export interface Runtime {
 
 export const ABSENT_EXIT = 75;
 
+/** Reject live policy drift before a hook can validate different sources from
+ * the active Backrest plan. Hash the same bytes Nix read, not a JSON reencoding. */
+export function assertPolicy(contents: string, expected: string | undefined): void {
+  if (!expected || createHash("sha256").update(contents).digest("hex") !== expected) {
+    throw new Error("SSD policy differs from the active plan; activate the updated policy before retrying");
+  }
+}
+
 /** Backrest 1.13.0 calls NotifyError even after ON_ERROR_CANCEL.
  * Match the dedicated presence-hook cancellation, never later disk absence:
  * a drive disappearing during restic must still notify an actual backup error.
@@ -127,14 +135,20 @@ function verify(drive: Drive, canary: string, snapshot: string, runtime: Runtime
 }
 
 export function runHook(
-  action: string, argument: string, drive: Drive, canary: string, runtime: Runtime, adapters: Adapters,
+  action: string, argument: string, load: () => { drive: Drive; canary: string }, runtime: Runtime, adapters: Adapters,
 ): number {
   try {
+    // Reporting must survive missing/malformed policy. Defer every policy read
+    // into this boundary so verify bootstrap failures also notify exactly once.
+    if (action === "error") {
+      if (!isAbsentCancellation(argument)) adapters.notify("error");
+      return 0;
+    }
+    const { drive, canary } = load();
     switch (action) {
       case "presence": return adapters.kind(drive.volumeRoot) === null ? ABSENT_EXIT : 0;
       case "prepare": prepare(drive, canary, adapters); break;
       case "verify": verify(drive, canary, argument, runtime, adapters); break;
-      case "error": if (!isAbsentCancellation(argument)) adapters.notify("error"); break;
       default: throw new Error(`unknown hook action: ${action}`);
     }
     return 0;
@@ -186,21 +200,22 @@ function nativeAdapters(): Adapters {
   };
 }
 
-if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+if (process.argv[1] && pathToFileURL(realpathSync(resolve(process.argv[1]))).href === import.meta.url) {
   const action = process.argv[2] ?? "--help";
   if (action === "--help") {
     process.stdout.write("usage: hooks.ts presence | prepare | verify <snapshot-id> | error <backrest-error>\n");
   } else {
-    try {
-      const adjacent = dirname(fileURLToPath(import.meta.url));
-      const drive = parseDrive(JSON.parse(readFileSync(join(adjacent, "drive.json"), "utf8")));
-      process.exitCode = runHook(action, process.argv[3] ?? "", drive, readFileSync(join(adjacent, "canary.txt"), "utf8"), {
-        restic: process.env.SSD_BACKUP_RESTIC ?? "",
-        sftpCommand: process.env.SSD_BACKUP_SFTP_COMMAND ?? "",
-      }, nativeAdapters());
-    } catch (error) {
-      process.stderr.write(`${error instanceof Error ? error.message : "hook configuration failed"}\n`);
-      process.exitCode = 1;
-    }
+    const adjacent = dirname(fileURLToPath(import.meta.url));
+    process.exitCode = runHook(action, process.argv[3] ?? "", () => {
+      const contents = readFileSync(join(adjacent, "drive.json"), "utf8");
+      assertPolicy(contents, process.env.SSD_BACKUP_POLICY_SHA256);
+      return {
+        drive: parseDrive(JSON.parse(contents)),
+        canary: readFileSync(join(adjacent, "canary.txt"), "utf8"),
+      };
+    }, {
+      restic: process.env.SSD_BACKUP_RESTIC ?? "",
+      sftpCommand: process.env.SSD_BACKUP_SFTP_COMMAND ?? "",
+    }, nativeAdapters());
   }
 }
