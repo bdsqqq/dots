@@ -1,3 +1,4 @@
+# Retained encrypted credential; no host requests it after Amp retirement.
 { config, lib, ... }:
 let
   cfg = config.my.amp.credential;
@@ -12,6 +13,5 @@ in
       owner = "bdsqqq";
       mode = "0400";
     };
-    my.amp.apiKeyFile = config.sops.secrets.amp_api_key.path;
   };
 }
