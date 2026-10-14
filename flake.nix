@@ -344,7 +344,6 @@
                 "tailscale_auth_key"
               ];
               htz-xfs-lab = [
-                "amp_api_key"
                 "artificial_analysis_api_key"
                 "gh_token"
                 "hf_token"

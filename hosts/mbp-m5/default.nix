@@ -40,7 +40,6 @@ in
     (import ../../modules/zmx).module
     ../../modules/direnv
     ../../modules/tmux
-    ../../modules/amp
     ../../modules/agents
     ../../modules/node-pnpm
     ../../modules/mise
