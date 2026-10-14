@@ -254,7 +254,7 @@ in
               ../node-pnpm/pnpm-lock.yaml
             ];
 
-            environment.PATH = lib.mkForce "${config.users.users.bdsqqq.home}/.local/lib/amp-auth/bin:${config.users.users.bdsqqq.home}/.local/bin:${config.users.users.bdsqqq.home}/.amp/bin:${toolsBin}:${lib.makeBinPath [
+            environment.PATH = lib.mkForce "${config.users.users.bdsqqq.home}/.local/bin:${toolsBin}:${lib.makeBinPath [
               pkgs.cloudflared
               pkgs.coreutils
               pkgs.git

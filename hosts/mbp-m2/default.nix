@@ -27,6 +27,7 @@ in
     ../../modules/fonts
     ../../modules/nix/auto-upgrade.nix
     ../../modules/syncthing
+    ../../modules/terraria-sync
     ../../modules/audio
     ../../modules/bluetooth
     ../../modules/flatpak
@@ -49,7 +50,6 @@ in
     (import ../../modules/zmx).module
     ../../modules/direnv
     ../../modules/tmux
-    ../../modules/amp
     ../../modules/agents
     ../../modules/company-money
     ../../modules/node-pnpm
@@ -79,6 +79,10 @@ in
   ];
 
   my.cloudflare.credential.required = true;
+  my.terrariaSync = {
+    enable = true;
+    devices = [ "ipd" "mmn-m4" ];
+  };
 
   homebrew = {
     casks = [
