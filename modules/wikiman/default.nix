@@ -2,6 +2,7 @@
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isLinux = lib.hasInfix "linux" hostSystem;
+  configPath = "${config.my.paths.commonplace}/01_files/nix/modules/wikiman/wikiman.conf";
 
   wikimanPackage = pkgs.wikiman.overrideAttrs (oldAttrs: {
     postFixup = (oldAttrs.postFixup or "") + ''
@@ -65,14 +66,8 @@ in
 {
   home-manager.users.bdsqqq = { config, pkgs, ... }: {
     xdg.configFile = {
-      "wikiman/wikiman.conf".text = ''
-        sources = man, arch
-        fuzzy_finder = fzf
-        wiki_lang = en
-        tui_preview = true
-        tui_source_column = true
-        tui_html = w3m
-      '';
+      "wikiman/wikiman.conf".source =
+        config.lib.file.mkOutOfStoreSymlink configPath;
       "wikiman/sources/arch.sh" = {
         executable = true;
         text = ''
