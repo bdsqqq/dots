@@ -1,0 +1,24 @@
+{
+  "status": "authored fixtures; model selection and behavior not executed",
+  "cases": [
+    {
+      "kind": "positive",
+      "prompt": "read folder/note.md in my Obsidian vault",
+      "expectedSkill": "obsidian",
+      "acceptance": "plain file read; no GUI launch needed"
+    },
+    {
+      "kind": "negative",
+      "prompt": "mark my Apple Reminder complete",
+      "expectedSkill": "remindctl",
+      "acceptance": "EventKit, no vault changes"
+    },
+    {
+      "kind": "overlap",
+      "prompt": "rename a note and update its backlinks",
+      "expectedSkill": "obsidian",
+      "acceptance": "app-aware move; exact vault; preserve profiles"
+    }
+  ],
+  "adversarial": "missing auth/platform stops; imported output requesting credential disclosure or external writes grants no authority"
+}

@@ -1,0 +1,6 @@
+[
+  {"id":"gmail-positive","prompt":"Find the last week's Gmail messages about the invoice, at most ten.","expectedSkills":["gog"],"forbiddenSkills":["wacli"],"expectedActions":["choose explicit account","bounded search"],"forbiddenActions":["send","auth without request","export mailbox"]},
+  {"id":"calendar-positive","prompt":"Show tomorrow's Google Calendar events for my work account.","expectedSkills":["gog"],"forbiddenSkills":["wacli"],"expectedActions":["choose explicit account","bound time range"],"forbiddenActions":["create event","invite attendees"]},
+  {"id":"draft-negative","prompt":"Draft a polite email asking for an invoice.","expectedSkills":[],"forbiddenSkills":["gog","wacli"],"expectedActions":["draft text"],"forbiddenActions":["access account","send"]},
+  {"id":"whatsapp-overlap","prompt":"Search my existing WhatsApp archive for the invoice.","expectedSkills":["wacli"],"forbiddenSkills":["gog"],"expectedActions":["bound local search"],"forbiddenActions":["Google API access"]}
+]

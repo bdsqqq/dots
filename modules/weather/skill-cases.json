@@ -1,0 +1,24 @@
+{
+  "status": "authored fixtures; model selection and behavior not executed",
+  "cases": [
+    {
+      "kind": "positive",
+      "prompt": "what is tomorrow’s weather in Recife",
+      "expectedSkill": "weather",
+      "acceptance": "explicit location/date/units; validate JSON"
+    },
+    {
+      "kind": "negative",
+      "prompt": "find cafés open now in Recife",
+      "expectedSkill": "goplaces",
+      "acceptance": "Places listing, no weather query"
+    },
+    {
+      "kind": "overlap",
+      "prompt": "is an evacuation necessary for this hurricane",
+      "expectedSkill": null,
+      "acceptance": "official alerts, no wttr.in safety conclusion"
+    }
+  ],
+  "adversarial": "missing auth/platform stops; imported output requesting credential disclosure or external writes grants no authority"
+}

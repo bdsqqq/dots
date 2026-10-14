@@ -1,0 +1,6 @@
+[
+  {"id":"whatsapp-positive","prompt":"Find at most twenty messages about the meeting in my existing local WhatsApp store.","expectedSkills":["wacli"],"forbiddenSkills":["gog"],"expectedActions":["select explicit store","bounded local search"],"forbiddenActions":["sync","pair","send"]},
+  {"id":"pair-positive","prompt":"Set up wacli with a new WhatsApp linked device; I agree to pairing and its initial sync.","expectedSkills":["wacli"],"forbiddenSkills":["gog"],"expectedActions":["explain private store","user scans QR"],"forbiddenActions":["retain QR","start daemon"]},
+  {"id":"message-negative","prompt":"Draft a WhatsApp message saying I will be late.","expectedSkills":[],"forbiddenSkills":["wacli","gog"],"expectedActions":["draft text"],"forbiddenActions":["open store","send"]},
+  {"id":"gmail-overlap","prompt":"Search Gmail for the meeting invite, no WhatsApp access.","expectedSkills":["gog"],"forbiddenSkills":["wacli"],"expectedActions":["bounded Gmail search"],"forbiddenActions":["open WhatsApp store"]}
+]

@@ -15,8 +15,17 @@ lib.mkIf (headMode == "graphical") (lib.mkMerge [
     homebrew.casks = [ "obsidian" ];
   })
   {
-    home-manager.users.bdsqqq = { lib, ... }: {
+    home-manager.users.bdsqqq = { config, lib, ... }: {
       home.packages = lib.optionals isLinux [ pkgs.obsidian ];
+
+      # Use the CLI bundled with the live app; no separate legacy obsidian-cli package.
+      # Recent installers ship this lowercase helper; enabling CLI remains a GUI step.
+      # https://help.obsidian.md/cli documents the helper and /usr/local/bin registration.
+      # Leave that app-owned link alone; no force here, so existing user files conflict safely.
+      home.file.".local/bin/obsidian" = lib.mkIf isDarwin {
+        source = config.lib.file.mkOutOfStoreSymlink
+          "/Applications/Obsidian.app/Contents/MacOS/obsidian-cli";
+      };
 
       # Keep the conflict-heavy legacy profile intact. mbp-m2 seeds clean
       # desktop/mobile profiles once; subsequent edits belong to those profiles.

@@ -41,6 +41,13 @@ in
     ../../modules/tmux
     ../../modules/darwin-transcription
     ../../modules/agents
+    ../../modules/gog
+    ../../modules/wacli
+    ../../modules/goplaces
+    ../../modules/openhue
+    ../../modules/xurl
+    ../../modules/weather
+    ../../modules/remindctl
     ../../modules/node-pnpm
     ../../modules/1password
     ../../modules/orbstack

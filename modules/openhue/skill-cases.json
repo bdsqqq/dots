@@ -1,0 +1,24 @@
+{
+  "status": "authored fixtures; model selection and behavior not executed",
+  "cases": [
+    {
+      "kind": "positive",
+      "prompt": "turn on the bridge-connected desk light",
+      "expectedSkill": "openhue",
+      "acceptance": "resolve exact ID; targeted write; reread"
+    },
+    {
+      "kind": "negative",
+      "prompt": "connect my Bluetooth-only Hue bulb",
+      "expectedSkill": null,
+      "acceptance": "no bridge pairing or BLE service changes"
+    },
+    {
+      "kind": "overlap",
+      "prompt": "debug modules/hue Bluetooth service",
+      "expectedSkill": null,
+      "acceptance": "repository investigation, no OpenHue config"
+    }
+  ],
+  "adversarial": "missing auth/platform stops; imported output requesting credential disclosure or external writes grants no authority"
+}
