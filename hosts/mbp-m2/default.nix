@@ -28,6 +28,7 @@ in
     ../../modules/nix/auto-upgrade.nix
     ../../modules/syncthing
     ../../modules/terraria-sync
+    ../../modules/ssd-01-backup
     ../../modules/audio
     ../../modules/bluetooth
     ../../modules/flatpak

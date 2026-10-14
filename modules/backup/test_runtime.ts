@@ -69,8 +69,8 @@ test("real Backrest backup, historical restore, and independent guard failures",
   assert.deepEqual(plans.terraria.retention, { policyKeepAll: true });
   assert.equal(plans["ssd-01"].schedule.maxFrequencyHours, 24);
   assert.doesNotMatch(JSON.stringify(plans["ssd-01"].paths), /terraria/);
-  assert.match(JSON.stringify(plans["ssd-01"].hooks), /diskutil/);
-  assert.doesNotMatch(JSON.stringify(plans.terraria.hooks), /diskutil/);
+  assert.match(JSON.stringify(plans["ssd-01"].hooks), /ssd-01-backup/);
+  assert.doesNotMatch(JSON.stringify(plans.terraria.hooks), /ssd-01-backup/);
   assert.equal(plans.terraria.paths.length, 2);
   assert.deepEqual(plans.terraria.hooks, [{
     conditions: ["CONDITION_SNAPSHOT_START"], onError: "ON_ERROR_CANCEL",

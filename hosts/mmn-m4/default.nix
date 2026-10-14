@@ -7,77 +7,6 @@
 let
   syncthing = import ../../modules/syncthing/lib.nix { inherit lib; };
   home = "/Users/bdsqqq";
-  ssd = {
-    volumeRoot = "/Volumes/ssd-01";
-    volumeUuid = "967C80B3-674A-3C8C-A248-2E6B8230DFD7";
-    repository = {
-      id = "ssd-01-hetzner";
-      uri = "sftp:u646875@u646875.your-storagebox.de:/home/restic/ssd-01";
-      guid = "db9719f847da679dbbbdca1d9cbe716f1c462fa23966d5abdcf1cf0a04ad0993";
-      sshTarget = "u646875@u646875.your-storagebox.de";
-      sshPort = 23;
-    };
-  };
-  resticSecret = "${home}/commonplace/01_files/nix/restic/secrets.yaml";
-  sopsAgeKey = "${home}/.config/sops/age/keys.txt";
-  storageBoxKey = "${home}/.ssh/id_ed25519";
-  resticPasswordCommand = "${pkgs.coreutils}/bin/env SOPS_AGE_KEY_FILE=${sopsAgeKey} ${pkgs.sops}/bin/sops --decrypt --extract '[\"restic_ssd_01_password\"]' ${resticSecret}";
-  backupCanaryPath = "${ssd.volumeRoot}/igor/.backup-restore-canary";
-  backupCanary = pkgs.writeText "ssd-01-backup-restore-canary" ''
-    ssd-01 restore verification v1
-  '';
-
-  backupFailureNotification = ''
-    #!/bin/sh
-    /usr/bin/osascript -e 'display notification "Open Backrest for details." with title "ssd-01 backup needs attention" sound name "Basso"'
-  '';
-
-  backupSuccessNotification = ''
-    #!/bin/sh
-    /usr/bin/osascript -e 'display notification "The encrypted off-site snapshot completed." with title "ssd-01 backup complete"'
-  '';
-
-  ssdMountGuard = ''
-    #!/bin/sh
-    set -eu
-
-    actual_uuid="$(/usr/sbin/diskutil info -plist ${lib.escapeShellArg ssd.volumeRoot} | /usr/bin/plutil -extract VolumeUUID raw -o - -)"
-    if [ "$actual_uuid" = ${lib.escapeShellArg ssd.volumeUuid} ] \
-      && [ -d ${lib.escapeShellArg "${ssd.volumeRoot}/fenfe"} ] \
-      && [ -d ${lib.escapeShellArg "${ssd.volumeRoot}/igor"} ] \
-      && [ -f ${lib.escapeShellArg "${ssd.volumeRoot}/igor/photos-library-2/.osxphotos_export.db"} ]; then
-      /usr/bin/cmp -s ${backupCanary} ${lib.escapeShellArg backupCanaryPath} \
-        || /usr/bin/install -m 0444 ${backupCanary} ${lib.escapeShellArg backupCanaryPath}
-      exit 0
-    fi
-
-    ${backupFailureNotification}
-    exit 1
-  '';
-
-  restoreVerification = ''
-    #!/bin/sh
-    set -eu
-
-    restore_dir="$(/usr/bin/mktemp -d)"
-    trap '/bin/rm -rf "$restore_dir"' EXIT
-    snapshot={{ .ShellEscape .SnapshotId }}
-    export RESTIC_PASSWORD_COMMAND=${lib.escapeShellArg resticPasswordCommand}
-
-    if ${pkgs.restic}/bin/restic \
-      -r ${lib.escapeShellArg ssd.repository.uri} \
-      -o ${lib.escapeShellArg "sftp.command=${pkgs.openssh}/bin/ssh -p ${toString ssd.repository.sshPort} -o BatchMode=yes -o IdentitiesOnly=yes -i ${storageBoxKey} ${ssd.repository.sshTarget} -s sftp"} \
-      restore "$snapshot" \
-      --include ${lib.escapeShellArg backupCanaryPath} \
-      --target "$restore_dir" \
-      && /usr/bin/cmp -s ${backupCanary} "$restore_dir${backupCanaryPath}"; then
-      ${backupSuccessNotification}
-      exit 0
-    fi
-
-    ${backupFailureNotification}
-    exit 1
-  '';
 in
 {
   imports = [
@@ -120,7 +49,7 @@ in
     ../../modules/obsidian
     ../../modules/html-stuff
     ../../modules/media-feeds
-    ../../modules/backup
+    ../../modules/ssd-01-backup
     ../../modules/files-browser/service.nix
     ../../modules/photo-gallery/service.nix
     ../../modules/photo-intelligence/service.nix
@@ -173,57 +102,6 @@ in
     additionalBridges.wife = {
       name = "Desk Light Second Home";
       port = 51827;
-    };
-  };
-  my.backup = {
-    defaultRepository = lib.mkDefault ssd.repository.id;
-    repositories.${ssd.repository.id} = {
-      uri = ssd.repository.uri;
-      guid = ssd.repository.guid;
-      passwordCommand = resticPasswordCommand;
-      flags = [
-        "-o 'sftp.args=-p ${toString ssd.repository.sshPort} -oBatchMode=yes -oIdentitiesOnly=yes -i ${storageBoxKey}'"
-      ];
-      prunePolicy.schedule.disabled = true;
-      checkPolicy = {
-        schedule.maxFrequencyDays = 7;
-        readDataSubsetPercent = 5;
-      };
-      autoUnlock = true;
-      autoInitialize = false;
-    };
-    plans.ssd-01 = {
-      # this plan's mount guard owns source validation and its notification.
-      requirePaths = false;
-      repository = ssd.repository.id;
-      paths = [
-        "${ssd.volumeRoot}/fenfe"
-        "${ssd.volumeRoot}/igor"
-      ];
-      excludes = [ "._*" ];
-      schedule = { maxFrequencyHours = 24; clock = "CLOCK_LAST_RUN_TIME"; };
-      retention.policyKeepAll = true;
-      hooks = [
-        {
-          conditions = [ "CONDITION_SNAPSHOT_START" ];
-          onError = "ON_ERROR_CANCEL";
-          actionCommand.command = ssdMountGuard;
-        }
-        {
-          conditions = [ "CONDITION_SNAPSHOT_SUCCESS" ];
-          onError = "ON_ERROR_FATAL";
-          actionCommand.command = restoreVerification;
-        }
-        {
-          conditions = [ "CONDITION_SNAPSHOT_ERROR" ];
-          onError = "ON_ERROR_IGNORE";
-          actionCommand.command = backupFailureNotification;
-        }
-      ];
-      backupFlags = [
-        "--one-file-system"
-      ];
-      skipIfUnchanged = true;
     };
   };
   # keep the existing service id; one endpoint exposes every backrest plan.
