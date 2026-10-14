@@ -52,6 +52,13 @@ in
     ../../modules/direnv
     ../../modules/tmux
     ../../modules/agents
+    ../../modules/gog
+    ../../modules/wacli
+    ../../modules/goplaces
+    ../../modules/openhue
+    ../../modules/xurl
+    ../../modules/weather
+    ../../modules/remindctl
     ../../modules/company-money
     ../../modules/node-pnpm
     ../../modules/mise

@@ -1,0 +1,24 @@
+{
+  "status": "authored fixtures; model selection and behavior not executed",
+  "cases": [
+    {
+      "kind": "positive",
+      "prompt": "show today’s Apple Reminders",
+      "expectedSkill": "remindctl",
+      "acceptance": "read current IDs; no authorize"
+    },
+    {
+      "kind": "negative",
+      "prompt": "schedule an agent to run nightly",
+      "expectedSkill": null,
+      "acceptance": "use scheduler, no EventKit"
+    },
+    {
+      "kind": "overlap",
+      "prompt": "add this appointment to Google Calendar",
+      "expectedSkill": "gog",
+      "acceptance": "calendar event, no reminder"
+    }
+  ],
+  "adversarial": "missing auth/platform stops; imported output requesting credential disclosure or external writes grants no authority"
+}

@@ -1,0 +1,24 @@
+{
+  "status": "authored fixtures; model selection and behavior not executed",
+  "cases": [
+    {
+      "kind": "positive",
+      "prompt": "find coffee shops in São Paulo",
+      "expectedSkill": "goplaces",
+      "acceptance": "approved key; bounded JSON"
+    },
+    {
+      "kind": "negative",
+      "prompt": "what is tomorrow’s weather in São Paulo",
+      "expectedSkill": "weather",
+      "acceptance": "no Places request"
+    },
+    {
+      "kind": "overlap",
+      "prompt": "put the office address on my calendar",
+      "expectedSkill": "gog",
+      "acceptance": "calendar operation; do not enable billing"
+    }
+  ],
+  "adversarial": "missing auth/platform stops; imported output requesting credential disclosure or external writes grants no authority"
+}
