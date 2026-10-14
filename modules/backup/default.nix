@@ -96,11 +96,6 @@ let
     runtimeInputs = [ backrest pkgs.restic pkgs.openssh pkgs.sops pkgs.coreutils ];
     text = ''
       mkdir -p ${lib.escapeShellArg cfg.configDirectory} ${lib.escapeShellArg cfg.dataDirectory}
-      temporary="$(mktemp ${lib.escapeShellArg "${cfg.configDirectory}/.config.json.XXXXXX"})"
-      trap 'rm -f "$temporary"' EXIT
-      # nix owns config at startup; rename avoids exposing a partial copy.
-      install -m 0600 ${settings} "$temporary"
-      mv -f "$temporary" ${lib.escapeShellArg "${cfg.configDirectory}/config.json"}
       exec backrest \
         -bind-address ${lib.escapeShellArg cfg.bindAddress} \
         -config-file ${lib.escapeShellArg "${cfg.configDirectory}/config.json"} \
@@ -122,7 +117,7 @@ in
     configDirectory = lib.mkOption {
       type = absolutePath;
       default = "${cfg.homeDirectory}/.config/backrest";
-      description = "writable backrest configuration, replaced from nix on each startup";
+      description = "writable backrest configuration, replaced from nix on each home activation";
     };
     dataDirectory = lib.mkOption {
       type = absolutePath;
@@ -242,8 +237,89 @@ in
       message = "backup plan ${name}: needs nonempty paths and a declared repository";
     }) cfg.plans;
 
-    home-manager.users.bdsqqq = { config, ... }: {
+    home-manager.users.bdsqqq = { config, lib, ... }: {
       home.packages = [ server ];
+      # Home Manager clears PATH; expose only the native tools this hook needs.
+      home.extraActivationPath = lib.optionals isDarwin [
+        pkgs.gawk
+        (pkgs.runCommand "backup-darwin-activation-tools" { } ''
+          mkdir -p "$out/bin"
+          ln -s /bin/launchctl "$out/bin/launchctl"
+          ln -s /usr/bin/sw_vers "$out/bin/sw_vers"
+        '')
+      ];
+      # Stop before replacing policy: the running config manager can otherwise
+      # persist its cached UI edits over the freshly installed file. Do this even
+      # for an unchanged generation; policy ownership is an activation boundary.
+      home.activation.backupConfig = lib.hm.dag.entryBetween
+        [ "linkGeneration" "setupLaunchAgents" "reloadSystemd" ] [ "writeBoundary" ] ''
+        if [[ -v DRY_RUN ]]; then
+          echo "Would stop backrest and replace its configuration from nix"
+        else
+          (
+            set -eu
+            ${lib.optionalString isDarwin ''
+              # Check both domains so moving the agent between them cannot leave
+              # an old writer alive until Home Manager's later migration step.
+              for domain in gui user; do
+                service="$domain/$UID/"${lib.escapeShellArg config.launchd.agents.backup-health.config.Label}
+                if state="$(launchctl print "$service" 2>&1)"; then
+                  version="$(sw_vers --productVersion)"
+                  if [[ "''${version%%.*}" -ge 26 ]]; then
+                    launchctl bootout --wait "$service"
+                  else
+                    pid="$(printf '%s\n' "$state" | awk '/^[[:space:]]*pid = / { print $3 }')"
+                    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || {
+                      echo "Cannot confirm backrest shutdown on this macOS version" >&2
+                      exit 1
+                    }
+                    launchctl bootout "$service"
+                    for _ in $(seq 1 300); do
+                      if ! kill -0 "$pid" 2>/dev/null; then break; fi
+                      sleep 0.1
+                    done
+                    if kill -0 "$pid" 2>/dev/null; then
+                      echo "Backrest did not stop; configuration left unchanged" >&2
+                      exit 1
+                    fi
+                  fi
+                else
+                  case "$state" in
+                    *"Could not find service"*|*"Could not find domain"*) ;;
+                    *) printf '%s\n' "$state" >&2; exit 1 ;;
+                  esac
+                fi
+              done
+            ''}
+            ${lib.optionalString isLinux ''
+              export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+              systemctl=${lib.escapeShellArg config.systemd.user.systemctlPath}
+              "$systemctl" --user show-environment >/dev/null
+              if ! state="$("$systemctl" --user show backup-health.service --property=LoadState --value)"; then
+                [[ "$state" == "not-found" ]] || exit 1
+              fi
+              if [[ "$state" != "not-found" ]]; then
+                "$systemctl" --user stop backup-health.service
+              fi
+            ''}
+            mkdir -p ${lib.escapeShellArg cfg.configDirectory} ${lib.escapeShellArg cfg.dataDirectory}
+            temporary="$(mktemp ${lib.escapeShellArg "${cfg.configDirectory}/.config.json.XXXXXX"})"
+            trap 'rm -f "$temporary"' EXIT
+            # Rename keeps readers of the old inode from seeing a partial copy.
+            install -m 0600 ${settings} "$temporary"
+            mv -f "$temporary" ${lib.escapeShellArg "${cfg.configDirectory}/config.json"}
+          )
+        fi
+      '';
+      # Home Manager bootstraps an unloaded launch agent even when its plist is
+      # unchanged. systemd's change-based reload needs an explicit start instead.
+      home.activation.backupStart = lib.mkIf isLinux
+        (lib.hm.dag.entryAfter [ "backupConfig" "reloadSystemd" ] ''
+          if [[ ! -v DRY_RUN ]]; then
+            export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+            ${lib.escapeShellArg config.systemd.user.systemctlPath} --user start backup-health.service
+          fi
+        '');
       launchd.agents.backup-health = lib.mkIf isDarwin {
         enable = true;
         config = {
