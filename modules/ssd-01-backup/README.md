@@ -46,7 +46,14 @@ hooks execute the absolute live checkout path under
 by Nix. `hooks.ts`, `drive.json`, and `canary.txt` are read there, not copied into
 the store. editing hooks/canary takes effect on the next invocation. drive identity,
 repository, and source changes also need the ordinary Nix policy activation:
-Backrest's generated plan consumes `drive.json` at evaluation time.
+Backrest's generated plan consumes `drive.json` at evaluation time. each hook
+receives that file's evaluated SHA-256 fingerprint and refuses drive actions if
+the live bytes differ, rather than validating new paths for an old plan. this
+also makes formatting-only edits require policy activation. error notification
+does not load policy/canary files, so it remains available during drift or parse
+failures. verification bootstrap failures also notify before failing. the
+fingerprint binds configuration, not script
+authority; it does not sandbox editable code.
 
 the encrypted password stays in the existing checkout's `restic/secrets.yaml`
 under `restic_ssd_01_password`; SOPS uses the running user's
@@ -64,13 +71,14 @@ from the repository root, with existing TypeScript/Node tooling:
 node --test modules/ssd-01-backup/hooks.test.ts
 tsc --noEmit -p modules/ssd-01-backup/tsconfig.json --typeRoots modules/pi/node_modules/@types
 node modules/ssd-01-backup/hooks.ts --help
-node modules/ssd-01-backup/hooks.ts verify ''
 ```
 
 set `BACKREST_SOURCE` to the pinned Backrest 1.13.0 source directory to include
 the source-contract test; otherwise that check is explicitly skipped. adapters
-mock diskutil, restic, notifications, and all drive/restore writes. help and empty
-snapshot probes do not touch a drive, decrypt secrets, or contact a repository.
+mock diskutil, restic, notifications, and all drive/restore writes. help and the
+tests' policy-bound empty-snapshot probes do not touch a drive, decrypt secrets,
+or contact a repository. stale-policy fixtures reject changed live sources before
+native drive commands run.
 tests include known negative fixtures for path/identity validation, cancellation
 filtering, and host/module contracts. source tracing and mocked behavior do not
 prove daemon delivery, real backups, restore recovery, or physical sleep/wake
