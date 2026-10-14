@@ -1216,7 +1216,8 @@ export function mergeCommit(
 }
 
 if (import.meta.vitest) {
-  const { describe, expect, it } = import.meta.vitest;
+  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta
+    .vitest;
   const { initHistory } = await import("../history.js");
   const { tmpdir } = await import("node:os");
   const { evaluateAdmission } = await import("./admission.js");
@@ -1324,6 +1325,60 @@ if (import.meta.vitest) {
   }
 
   describe("v3 canonical history", () => {
+    beforeEach(() => {
+      // Keep admissions valid without freezing filesystem/lock timestamps.
+      vi.spyOn(Date, "now").mockReturnValue(
+        Date.parse("2026-09-03T12:00:00.000Z"),
+      );
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it.each([-1, 0, 1])(
+      "enforces admission expiry at deadline offset %d ms",
+      (offset) => {
+        const test = fixture();
+        const host = test.host("expiry");
+        const head = fetchCanonicalHead(host);
+        materializeCanonicalHead(host, head);
+        const proposal = admitted(host, head, "expiry", "# expiry\n");
+        const candidate = prepareCommit(host, {
+          head,
+          decision: proposal.decision,
+          changes: [proposal.change],
+        });
+        const push = vi.fn(nativeTransport.push);
+        vi.spyOn(Date, "now").mockReturnValue(
+          Date.parse(candidate.admissionExpiresAt) + offset,
+        );
+
+        const result = mergeCommit(host, candidate, { push });
+
+        if (offset < 0) {
+          expect(result).toMatchObject({
+            type: "accepted",
+            commit: candidate.candidateCommit,
+          });
+          expect(push).toHaveBeenCalledOnce();
+          expect(fetchCanonicalHead(host)).toBe(candidate.candidateCommit);
+          expect(
+            readFileSync(join(host.root, "expiry_source__agent.md"), "utf8"),
+          ).toBe("# expiry\n");
+        } else {
+          expect(result).toEqual({
+            type: "closed",
+            reason: "admission-expired",
+          });
+          expect(push).not.toHaveBeenCalled();
+          expect(fetchCanonicalHead(host)).toBe(head);
+          expect(verifyMaterializedTree(host, head, host.root)).toBe(true);
+          expect(loadCandidate(host, candidate.proposalId)).toEqual(candidate);
+        }
+      },
+    );
+
     it.each(["write", "delete"])(
       "rejects identical overlapping %s from a distinct mutation",
       (operation) => {
@@ -1526,7 +1581,7 @@ if (import.meta.vitest) {
       ).toBe(candidate.candidateCommit);
     });
 
-    it("recovers a lost push response by immutable mutation receipt", () => {
+    it("recovers a lost push response after admission expiry by immutable mutation receipt", () => {
       const test = fixture();
       const host = test.host("lost");
       const head = fetchCanonicalHead(host);
@@ -1560,6 +1615,9 @@ if (import.meta.vitest) {
         changes: [otherProposal.change],
       });
       expect(mergeCommit(other, otherCandidate).type).toBe("accepted");
+      vi.spyOn(Date, "now").mockReturnValue(
+        Date.parse(candidate.admissionExpiresAt) + 1,
+      );
       expect(mergeCommit(host, candidate)).toMatchObject({
         type: "accepted",
         commit: candidate.candidateCommit,
@@ -1730,7 +1788,7 @@ if (import.meta.vitest) {
       expect(cached.receipt.parentCommit).not.toBe(candidateB.parentCommit);
     });
 
-    it("audits claim-bearing evidence from a fresh clone without local artifacts", () => {
+    it("audits expired admission evidence from a fresh clone without local artifacts", () => {
       const test = fixture();
       const writer = test.host("audit-writer");
       const head = fetchCanonicalHead(writer);
@@ -1741,6 +1799,9 @@ if (import.meta.vitest) {
         changes: [proposal.change],
       });
       expect(mergeCommit(writer, candidate).type).toBe("accepted");
+      vi.spyOn(Date, "now").mockReturnValue(
+        Date.parse(candidate.admissionExpiresAt) + 1,
+      );
       rmSync(writer.data, { recursive: true, force: true });
 
       const fresh = test.host("fresh-clone");
