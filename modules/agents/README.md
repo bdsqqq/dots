@@ -25,18 +25,18 @@ or report a blocker instead of endlessly retrying the same strategy.
 
 ## source versus installed
 
-[`default.nix`](default.nix) copies the portable `skills/` collection into the
-store. [`skills.nix`](skills.nix) adds external skills. source edits do not
-immediately replace installed copies. global guidance is linked out of store,
-but a running session's already-loaded instructions need refresh.
+[`default.nix`](default.nix) links `~/.config/agents/skills`,
+`~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills` out of store to
+the live `skills/` checkout. source edits apply immediately; a running session's
+already-loaded skills and instructions need refresh.
 
-darwin's `ln -sf` can retain a legacy lowercase `skill.md` entry despite an
-uppercase target. native recursive discovery requires exact `SKILL.md` spelling.
-the activation hook repairs only the data-visualization symlink owned by the
-current generation, after linking. it preserves unrelated entries, refuses
-temporary collisions, and rolls back an ordinary second-move failure. an abrupt
-interruption can leave the preserved link at `.SKILL.md.home-manager-case`;
-inspect ownership before manually restoring it.
+external skills are vendored, not fetched: `linear` from `bdsqqq/lnr`,
+`hunk-review` from `modem-dev/hunk`, and `vercel-react-best-practices` /
+`web-design-guidelines` from `vercel-labs/agent-skills`. update them by copying
+upstream. skills that other programs install into an agent's skills directory
+land in this checkout as untracked files; commit or discard them.
+`reverse-engineer-anything` stays with its installed REA release through
+[`../pi/settings.json`](../pi/settings.json), not this collection.
 
 the [pi skill executor](../pi/packages/extensions/skill/index.ts) keeps caller
 arguments after the instruction block as a lossless JSON string. absence/blank
@@ -51,8 +51,7 @@ type stripping. all new maintenance scripts/tests are typescript.
 ```bash
 node --experimental-strip-types modules/agents/check-skills.ts
 node --experimental-strip-types --test modules/agents/check-skills.test.ts \
-  modules/agents/evaluate-skill-routing.test.ts \
-  modules/agents/test-skill-case-repair.test.ts
+  modules/agents/evaluate-skill-routing.test.ts
 (cd modules/pi && pnpm exec tsc -p ../agents/tsconfig.json)
 ```
 

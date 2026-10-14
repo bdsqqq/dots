@@ -226,7 +226,7 @@ test("flake inputs require full native affected hosts; significant Nix integrati
     f.close();
   }
 });
-test("home activation wiring uses actual affected homes and temporary Darwin hook test", () => {
+test("home activation wiring uses actual affected homes", () => {
   const f = fixture();
   try {
     for (const path of ["modules/pi/default.nix", "modules/agents/default.nix"]) {
@@ -235,10 +235,6 @@ test("home activation wiring uses actual affected homes and temporary Darwin hoo
       assert(!plan.checks.some((c) => c.phase === "host"));
       assert(commands(plan).some((c) => c.args.includes(`.#${homeTargets["mbp-m2"]}`)));
     }
-    const plan = f.plan([change("modules/agents/default.nix")]);
-    const hook = plan.checks.find((c) => c.id === "agents:darwin-case-hook")!;
-    assert.equal(hook.platform, "aarch64-darwin");
-    assert(hook.commands[0].args.includes("modules/agents/test-skill-case-repair.test.ts"));
   } finally {
     f.close();
   }

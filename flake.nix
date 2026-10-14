@@ -71,11 +71,6 @@
       flake = false;
     };
 
-    vercel-skills = {
-      url = "github:vercel-labs/agent-skills";
-      flake = false;
-    };
-
     agent-browser = {
       url = "github:vercel-labs/agent-browser";
       flake = false;
