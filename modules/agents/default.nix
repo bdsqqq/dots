@@ -69,6 +69,7 @@
       };
 
       ".agents/skills".source = skills;
+      ".claude/skills".source = skills;
       ".cursor/skills".source = skills;
       ".cursor/agents" = {
         source = agentPrompts;
