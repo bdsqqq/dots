@@ -25,10 +25,21 @@ or report a blocker instead of endlessly retrying the same strategy.
 
 ## source versus installed
 
+feature-owned skills keep their canonical `SKILL.md` beside their Nix declaration
+and native settings; see the [editable module pattern](../README.md).
+the portable collection keeps cross-cutting workflows and relative entrypoint
+links for `gog`, `wacli`, `goplaces`, `openhue`, `xurl`, `weather`, `remindctl`,
+and `obsidian`: `skills/<cli>/SKILL.md -> ../../../<cli>/SKILL.md`.
+
 [`default.nix`](default.nix) links `~/.config/agents/skills`,
 `~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills` out of store to
 the live `skills/` checkout. source edits apply immediately; a running session's
 already-loaded skills and instructions need refresh.
+
+the collection root owns these aliases; feature modules must not add nested
+`home.file` skill entries beneath them. hosts select packages through explicit
+feature imports. a discoverable skill does not establish binary installation,
+runtime availability, account access, or authorization to act.
 
 external skills are vendored, not fetched: `linear` from `bdsqqq/lnr`,
 `hunk-review` from `modem-dev/hunk`, and `vercel-react-best-practices` /
@@ -51,7 +62,7 @@ type stripping. all new maintenance scripts/tests are typescript.
 ```bash
 node --experimental-strip-types modules/agents/check-skills.ts
 node --experimental-strip-types --test modules/agents/check-skills.test.ts \
-  modules/agents/evaluate-skill-routing.test.ts
+  modules/agents/evaluate-skill-routing.test.ts modules/agents/cli-live-skills.test.ts
 (cd modules/pi && pnpm exec tsc -p ../agents/tsconfig.json)
 ```
 
@@ -84,7 +95,11 @@ missing input can legitimately require clarification. positive fixtures supply
 the material needed for their task. incomplete-input behavior belongs in a
 different case, not a falsely failing positive routing gate.
 
-## implementation verification — 2026-09-29
+## historical implementation verification — 2026-09-29
+
+these results describe that earlier artifact and fixture set, before the current
+live collection and colocated CLI entrypoint links. they are not verification
+of today's discovery layout or counts.
 
 **VERIFIED within this scope:**
 

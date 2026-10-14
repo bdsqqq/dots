@@ -62,6 +62,19 @@ flowchart TD
 | `credential.nix`  | the feature's stable credential owner; consumers import it and set its requirement flag      |
 | `secrets.yaml`    | canonical ciphertext adjacent to its `credential.nix` owner                                  |
 
+for all modules, keep `default.nix`, any needed native config, and useful local
+`SKILL.md` together. programs read and write the separate, editable native files
+through out-of-store links; Nix supplies prerequisites and wiring, not an
+immutable replacement for those files. see the [editable module pattern](modules/README.md)
+and [existing agent-surface/settings audit](modules/agent-surface-audit.md).
+the [tool setup guide](modules/agent-tool-setup.md) covers account consent,
+pairing, and credential provisioning.
+
+colocated CLI skills enter the portable `modules/agents/skills` collection through
+relative entrypoint symlinks. the agent module links that root to four local
+discovery aliases; hosts still select packages explicitly. discovery, installation,
+runtime access, and authentication need separate checks.
+
 ## configurations
 
 | output      | platform       | role                                      |

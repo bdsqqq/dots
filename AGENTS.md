@@ -14,6 +14,19 @@ the repo manages every host and feature without exclusively controlling edits:
 - install and run from the same live source and manifest/lockfile. local edits
   are intentional divergence; mismatched installation/runtime sources are not.
 
+### native files — every module
+
+keep non-Nix configuration in separate native files beside its module, linked
+out of store to the files programs actually read and write. this is not limited
+to CLIs. keep substantial script bodies, SQL, HTML, and styles in their native
+files too; Nix owns prerequisites and wiring. do not reset mutable settings on
+activation or silently substitute immutable generated copies. preserve private
+credential/state boundaries and verify native writes do not replace file links.
+private credentials and refreshed authorization state stay outside tracked
+settings; never reset them from an older declarative copy on activation.
+follow [the editable module pattern](modules/README.md); existing departures
+need scoped migration, not permission to repeat them.
+
 ## verification
 
 verify each coherent change slice with the smallest executable checks that
