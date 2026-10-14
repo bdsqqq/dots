@@ -213,6 +213,8 @@ rec {
     pi-sessions = "pi-sessions";
     helium-remotes = "helium-remotes";
     kindle = "kindle";
+    terraria-players = "terraria-players";
+    terraria-worlds = "terraria-worlds";
   };
 
   /*
