@@ -13,7 +13,7 @@ from the repository root:
 ```bash
 node --experimental-strip-types modules/agents/check-skills.ts
 node --experimental-strip-types --test modules/agents/check-skills.test.ts \
-  modules/agents/evaluate-skill-routing.test.ts modules/agents/cli-live-skills.test.ts
+  modules/agents/evaluate-skill-routing.test.ts
 (cd modules/pi && pnpm exec tsc -p ../agents/tsconfig.json)
 ```
 
