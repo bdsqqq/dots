@@ -4,5 +4,9 @@
 lib.optionalAttrs (lib.hasInfix "darwin" hostSystem) {
   # Upstream's signed native binary requires macOS 14+ and EventKit permission.
   homebrew.taps = [ "steipete/tap" ];
-  homebrew.brews = [ "remindctl" ];
+  homebrew.brews = [{
+    # Bundle cannot apply formula-scoped trust to an unqualified name.
+    name = "steipete/tap/remindctl";
+    trusted = true;
+  }];
 }

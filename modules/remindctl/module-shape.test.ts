@@ -8,7 +8,7 @@ import test from "node:test";
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(moduleDir, "../..");
 
-test("remindctl root shape excludes homebrew on Linux without requiring pkgs", () => {
+test("remindctl excludes homebrew on Linux and scopes Darwin trust to its formula", () => {
   const lock: unknown = JSON.parse(readFileSync(resolve(root, "flake.lock"), "utf8"));
   const record = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
@@ -32,12 +32,20 @@ test("remindctl root shape excludes homebrew on Linux without requiring pkgs", (
         config.my.paths.commonplace = "/tmp/fixture-vault";
         hostSystem = ${JSON.stringify(system)};
       };
-    in builtins.attrNames module`;
+    in {
+      keys = builtins.attrNames module;
+      homebrew = module.homebrew or null;
+    }`;
     const result = spawnSync("nix", ["eval", "--impure", "--json", "--expr", expression], {
       encoding: "utf8", timeout: 30000,
     });
     assert.equal(result.status, 0, result.stderr);
     const actual: unknown = JSON.parse(result.stdout);
-    assert.deepEqual(actual, expected);
+    assert.ok(record(actual));
+    assert.deepEqual(actual.keys, expected);
+    assert.deepEqual(actual.homebrew, system.endsWith("-darwin") ? {
+      taps: ["steipete/tap"],
+      brews: [{ name: "steipete/tap/remindctl", trusted: true }],
+    } : null);
   }
 });
