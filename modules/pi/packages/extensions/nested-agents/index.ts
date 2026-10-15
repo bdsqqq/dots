@@ -102,7 +102,7 @@ function resolveTargetDirectory(
 function contextFileInDirectory(
   root: string,
   directory: string,
-): string | undefined {
+): { path: string; canonical: string } | undefined {
   for (const name of CONTEXT_NAMES) {
     const candidate = path.join(directory, name);
     let metadata: fs.Stats;
@@ -112,21 +112,28 @@ function contextFileInDirectory(
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw error;
     }
-    if (metadata.isSymbolicLink())
+    let canonical: string;
+    try {
+      canonical = fs.realpathSync(candidate);
+    } catch {
       throw new NestedContextPolicyError(
-        `nested context file must not be a symbolic link: ${candidate}`,
+        `cannot resolve nested context file: ${candidate}`,
       );
-    const canonical = fs.realpathSync(candidate);
+    }
     if (!isWithin(root, canonical))
       throw new NestedContextPolicyError(
         `nested context file escapes the workspace: ${candidate}`,
       );
-    if (fs.statSync(canonical).isFile()) return canonical;
+    if (fs.statSync(canonical).isFile()) return { path: candidate, canonical };
+    if (metadata.isSymbolicLink())
+      throw new NestedContextPolicyError(
+        `nested context path is not a regular file: ${candidate}`,
+      );
   }
   return undefined;
 }
 
-function readBoundedContext(file: string): NestedContextFile {
+function readBoundedContext(file: string, contextPath: string): NestedContextFile {
   const descriptor = fs.openSync(
     file,
     fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
@@ -152,7 +159,7 @@ function readBoundedContext(file: string): NestedContextFile {
         `nested context file is not valid UTF-8: ${file}`,
       );
     }
-    return { path: file, content };
+    return { path: contextPath, content };
   } finally {
     fs.closeSync(descriptor);
   }
@@ -170,8 +177,13 @@ export function discoverNestedContext(
     let current = targetDirectory;
     while (current !== root && isWithin(root, current)) {
       const contextFile = contextFileInDirectory(root, current);
-      if (contextFile && !found.has(contextFile))
-        found.set(contextFile, readBoundedContext(contextFile));
+      // A shared target supplies bytes, not scope: its link's directory owns
+      // precedence and attribution. Open the resolved file with O_NOFOLLOW.
+      if (contextFile && !found.has(contextFile.path))
+        found.set(
+          contextFile.path,
+          readBoundedContext(contextFile.canonical, contextFile.path),
+        );
       const parent = path.dirname(current);
       if (parent === current) break;
       current = parent;
@@ -496,7 +508,38 @@ if (import.meta.vitest) {
       ).toEqual(["packages/AGENTS.md", "packages/app/AGENTS.md"]);
     });
 
-    it("fails closed for symbolic-link context files", () => {
+    it.each(["relative", "absolute", "chain"])(
+      "loads %s workspace-local context links at their applicable directory",
+      (kind) => {
+        const { root, file, nestedContext } = fixture();
+        const target = path.join(root, "config/deeper/rules.md");
+        mkdirSync(path.dirname(target), { recursive: true });
+        writeFileSync(target, "linked outer rule\n");
+        rmSync(nestedContext);
+        if (kind === "chain") {
+          symlinkSync("deeper/rules.md", path.join(root, "config/link.md"));
+          symlinkSync("../config/link.md", nestedContext);
+        } else {
+          symlinkSync(
+            kind === "absolute"
+              ? target
+              : path.relative(path.dirname(nestedContext), target),
+            nestedContext,
+          );
+        }
+        expect(
+          discoverNestedContext(root, [{ path: file, assumeFile: true }]),
+        ).toEqual([
+          { path: nestedContext, content: "linked outer rule\n" },
+          {
+            path: path.join(root, "packages/app/AGENTS.md"),
+            content: "app rule\n",
+          },
+        ]);
+      },
+    );
+
+    it("fails closed for dangling context links", () => {
       const { root, file } = fixture();
       const context = path.join(root, "packages/app/AGENTS.md");
       rmSync(context);
@@ -505,7 +548,67 @@ if (import.meta.vitest) {
         discoverNestedContext(root, [{ path: file, assumeFile: true }]).map(
           (item) => item.content.trim(),
         ),
-      ).toThrow("symbolic link");
+      ).toThrow("cannot resolve nested context file");
+    });
+
+    it.each(["outside", "cycle", "directory", "oversized", "invalid UTF-8"])(
+      "fails closed for %s context links",
+      (kind) => {
+        const { root, file } = fixture();
+        const context = path.join(root, "packages/app/AGENTS.md");
+        const target = path.join(root, "rules.md");
+        rmSync(context);
+        let expected: string;
+        if (kind === "outside") {
+          const outside = mkdtempSync(path.join(tmpdir(), "nested-context-outside-"));
+          roots.push(outside);
+          writeFileSync(path.join(outside, "rules.md"), "outside rule\n");
+          symlinkSync(path.join(outside, "rules.md"), context);
+          expected = "escapes the workspace";
+        } else if (kind === "cycle") {
+          symlinkSync("AGENTS.md", context);
+          expected = "cannot resolve nested context file";
+        } else if (kind === "directory") {
+          symlinkSync(root, context);
+          expected = "not a regular file";
+        } else {
+          writeFileSync(
+            target,
+            kind === "oversized"
+              ? "x".repeat(MAX_FILE_BYTES + 1)
+              : Buffer.from([0xff]),
+          );
+          symlinkSync(target, context);
+          expected = kind === "oversized" ? "exceeds" : "not valid UTF-8";
+        }
+        expect(() =>
+          discoverNestedContext(root, [{ path: file, assumeFile: true }]),
+        ).toThrow(expected);
+        const { handlers } = harness();
+        expect(
+          handlers.tool_call!(
+            { toolName: "format_file", input: { path: file } },
+            { cwd: root },
+          ),
+        ).toMatchObject({ block: true, reason: expect.stringContaining(expected) });
+      },
+    );
+
+    it("delivers linked instructions before allowing a mutation on the next turn", () => {
+      const { root, file, nestedContext } = fixture();
+      const target = path.join(root, "rules.md");
+      writeFileSync(target, "linked rule\n");
+      rmSync(nestedContext);
+      symlinkSync("../rules.md", nestedContext);
+      const { handlers } = harness();
+      const event = { toolName: "format_file", input: { path: file } };
+      expect(handlers.tool_call!(event, { cwd: root })).toMatchObject({
+        block: true,
+        reason: expect.stringContaining("linked rule"),
+      });
+      expect(handlers.tool_call!(event, { cwd: root })).toMatchObject({ block: true });
+      handlers.turn_start!();
+      expect(handlers.tool_call!(event, { cwd: root })).toBeUndefined();
     });
 
     it("rejects targets that escape through a symlink", () => {
