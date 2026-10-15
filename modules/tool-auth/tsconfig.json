@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": [
+    "./*.ts",
+    "../gog/auth*.ts",
+    "../goplaces/auth*.ts",
+    "../wacli/ready*.ts",
+    "../wacli/nix-contract.test.ts",
+    "../xurl/ready*.ts",
+    "../openhue/ready*.ts",
+    "../remindctl/ready*.ts"
+  ]
+}
