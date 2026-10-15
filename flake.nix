@@ -345,6 +345,8 @@
               htz-xfs-lab = [
                 "artificial_analysis_api_key"
                 "gh_token"
+                "gog_keyring_password"
+                "gog_oauth_client"
                 "hf_token"
                 "parallel_api_key"
                 "tailscale_auth_key"
