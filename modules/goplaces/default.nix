@@ -1,14 +1,25 @@
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 let
-  apiKeyFile = config.my.goplaces.apiKeyFile;
+  cfg = config.my.goplaces;
+  apiKeyFile = if cfg.apiKeyFile != null then cfg.apiKeyFile
+    else if cfg.enable && builtins.hasAttr "google_places_api_key" config.sops.secrets then config.sops.secrets.google_places_api_key.path
+    else null;
+  live = "${config.my.paths.commonplace}/01_files/nix/modules/goplaces/auth.ts";
 in
 {
+  imports = [ ./credential.nix ];
+  options.my.goplaces.enable = lib.mkEnableOption "authenticated Places integration (false installs only the package)";
   options.my.goplaces.apiKeyFile = lib.mkOption {
     type = lib.types.nullOr lib.types.str;
     default = null;
     description = "runtime-only Google Places API key file; may point to an existing SOPS secret";
   };
 
+  config.my.goplaces.credential.required = lib.mkIf (cfg.enable && cfg.apiKeyFile == null) true;
+  config.assertions = [{
+    assertion = cfg.apiKeyFile == null || (lib.hasPrefix "/" cfg.apiKeyFile && !lib.hasPrefix "/nix/store/" cfg.apiKeyFile && cfg.apiKeyFile != "/");
+    message = "my.goplaces.apiKeyFile must be a private absolute runtime file path outside the Nix store.";
+  }];
   config.home-manager.users.bdsqqq = { pkgs, ... }:
     let
       # The pinned nixpkgs lacks goplaces; use hashed upstream releases, not a global install.
@@ -54,17 +65,16 @@ in
           platforms = builtins.attrNames assets;
         };
       };
+      auth = pkgs.writeShellScriptBin "goplaces-auth" ''
+        export TOOL_AUTH_PLACES_ENABLED=${if cfg.enable then "1" else "0"}
+        export TOOL_AUTH_PLACES_KEY_FILE=${lib.escapeShellArg (if apiKeyFile == null then "" else apiKeyFile)}
+        export TOOL_AUTH_PLACES_BINARY=${package}/bin/goplaces
+        exec ${pkgs.nodejs}/bin/node ${lib.escapeShellArg live} "$@"
+      '';
       executable = if apiKeyFile == null then package else pkgs.writeShellScriptBin "goplaces" ''
-        # Read only at runtime: never put the key in the Nix store or shell profile.
-        GOOGLE_PLACES_API_KEY="$(${pkgs.coreutils}/bin/cat -- ${lib.escapeShellArg apiKeyFile})" || exit 1
-        export GOOGLE_PLACES_API_KEY
-        if [ -z "$GOOGLE_PLACES_API_KEY" ]; then
-          echo "Google Places API key file is empty" >&2
-          exit 1
-        fi
-        exec ${package}/bin/goplaces "$@"
+        exec ${auth}/bin/goplaces-auth run "$@"
       '';
     in {
-      home.packages = [ executable ];
+      home.packages = [ executable auth ];
     };
 }

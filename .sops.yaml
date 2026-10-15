@@ -43,6 +43,12 @@ creation_rules:
       - age:
           - *user_bdsqqq
           - *host_htz_xfs_lab
+  # Only the personal owner and the selected Google runner can decrypt this.
+  - path_regex: ^modules/gog/secrets\.yaml$
+    key_groups:
+      - age:
+          - *user_bdsqqq
+          - *host_htz_xfs_lab
   - path_regex: ^modules/(motion-plus|mymind|cloudflare)/secrets\.yaml$
     key_groups:
       - age:

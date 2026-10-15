@@ -254,7 +254,9 @@ in
               ../node-pnpm/pnpm-lock.yaml
             ];
 
-            environment.PATH = lib.mkForce "${config.users.users.bdsqqq.home}/.local/bin:${toolsBin}:${lib.makeBinPath [
+            # Installed native tool wrappers must also be visible to the daemon,
+            # not only to interactive login shells.
+            environment.PATH = lib.mkForce "${config.users.users.bdsqqq.home}/.local/bin:${toolsBin}:${config.home-manager.users.bdsqqq.home.profileDirectory}/bin:${lib.makeBinPath [
               pkgs.cloudflared
               pkgs.coreutils
               pkgs.git

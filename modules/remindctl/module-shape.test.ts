@@ -23,7 +23,7 @@ test("remindctl excludes homebrew on Linux and scopes Darwin trust to its formul
   }).join(" ");
   for (const [system, expected] of [
     ["aarch64-linux", []],
-    ["aarch64-darwin", ["homebrew"]],
+    ["aarch64-darwin", ["config", "options"]],
   ] satisfies [string, string[]][]) {
     const expression = `let
       source = builtins.fetchTree { ${tree} };
@@ -34,7 +34,7 @@ test("remindctl excludes homebrew on Linux and scopes Darwin trust to its formul
       };
     in {
       keys = builtins.attrNames module;
-      homebrew = module.homebrew or null;
+      homebrew = module.config.homebrew or null;
     }`;
     const result = spawnSync("nix", ["eval", "--impure", "--json", "--expr", expression], {
       encoding: "utf8", timeout: 30000,
