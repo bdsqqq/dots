@@ -13,7 +13,7 @@
     "openportal": "^0.1.32",
     "parallel-web-cli": "^0.2.0",
     "rea-agents": "6.1.0",
-    "t3": "0.0.33",
+    "t3": "0.0.46-nightly.20261011.2967",
     "turbo": "^2.10.0",
     "typescript": "^6.0.3",
     "vercel": "^54.18.3"
