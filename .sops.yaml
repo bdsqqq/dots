@@ -43,6 +43,11 @@ creation_rules:
       - age:
           - *user_bdsqqq
           - *host_htz_xfs_lab
+  # Enroll only the selected runner later; do not grant the fleet Google access.
+  - path_regex: ^modules/gog/secrets\.yaml$
+    key_groups:
+      - age:
+          - *user_bdsqqq
   - path_regex: ^modules/(motion-plus|mymind|cloudflare)/secrets\.yaml$
     key_groups:
       - age:
