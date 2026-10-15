@@ -45,7 +45,15 @@ def check_module_credentials(root: Path) -> None:
             fail(f"{secret_file.relative_to(root)} has no adjacent credential.nix")
 
         declaration = credential_file.read_text()
-        if "sopsFile = ./secrets.yaml;" not in declaration:
+        normalized = " ".join(declaration.split())
+        adjacent_source = (
+            "sopsFile = ./secrets.yaml;" in normalized
+            or (
+                "then ./secrets.yaml else null;" in normalized
+                and "inherit (cfg) sopsFile;" in normalized
+            )
+        )
+        if not adjacent_source:
             fail(f"{credential_file.relative_to(root)} does not own its adjacent secrets.yaml")
 
         for key in encrypted_keys(secret_file):

@@ -56,7 +56,8 @@ in
     ../../modules/obsidian
     ../../modules/html-stuff
     ../../modules/media-feeds
-    ../../modules/ssd-01-backup
+    ../../modules/backup/ssd-01
+    ../../modules/backup/terraria
     ../../modules/files-browser/service.nix
     ../../modules/photo-gallery/service.nix
     ../../modules/photo-intelligence/service.nix
@@ -130,14 +131,7 @@ in
     devices = [ "mbp-m2" "ipd" ];
   };
 
-  my.backup.plans.terraria = {
-    paths = [
-      "${config.my.terrariaSync.saveRoot}/Players"
-      "${config.my.terrariaSync.saveRoot}/Worlds"
-    ];
-    schedule = { maxFrequencyHours = 1; clock = "CLOCK_LAST_RUN_TIME"; };
-    excludes = [ ".stfolder" ".stversions" ];
-  };
+  my.backup.terraria.saveRoot = config.my.terrariaSync.saveRoot;
 
   environment.systemPackages = [ pkgs.git ];
 

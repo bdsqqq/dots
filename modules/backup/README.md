@@ -5,6 +5,18 @@ volume needs evidence that the intended volume is mounted; another source
 should not inherit that requirement merely because it uses the same storage.
 put failure conditions with the data they protect.
 
+## explicit feature imports
+
+importing `modules/backup` provides the engine, not every backup policy.
+[ssd-01](ssd-01/README.md) is selected on both Macs;
+[terraria](terraria/README.md) is selected only on the mini. its host wires
+the existing synced save root into `my.backup.terraria.saveRoot`.
+
+both policies use `ssd-01/repository.nix`: one destination identity, static
+password owner, and SSH transport, without importing the SSD plan. the encrypted
+password lives beside that owner; mutable SSH keys and trusted hosts remain
+host-owned. repository selection must not imply removable-drive presence.
+
 ## policy and history have different lifecycles
 
 configuration expresses what should run. operation history records what

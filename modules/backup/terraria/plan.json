@@ -1,0 +1,14 @@
+{
+  "directories": [
+    "Players",
+    "Worlds"
+  ],
+  "schedule": {
+    "maxFrequencyHours": 1,
+    "clock": "CLOCK_LAST_RUN_TIME"
+  },
+  "excludes": [
+    ".stfolder",
+    ".stversions"
+  ]
+}

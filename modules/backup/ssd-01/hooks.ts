@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, readFileSync, writeFileSync, renameSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { constants, closeSync, fstatSync, openSync, lstatSync, readFileSync, writeFileSync, renameSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -61,17 +61,80 @@ export function parseDrive(value: unknown): Drive {
 type Kind = "directory" | "file" | "symlink" | "other" | null;
 export interface Adapters {
   kind(path: string): Kind;
+  readableFile(path: string): boolean;
   read(path: string): string;
   writeCanary(path: string, contents: string): void;
   temporaryDirectory(): string;
   removeDirectory(path: string): void;
-  command(executable: string, args: string[], input?: string): string;
+  command(executable: string, args: string[], input?: string, options?: CommandOptions): string;
   notify(result: "success" | "error"): void;
   diagnostic(message: string): void;
 }
 export interface Runtime {
   restic: string;
   sftpCommand: string;
+  passwordFile: string;
+  sshKeyPath: string;
+  knownHostsPath: string;
+  timeout: string;
+}
+
+export interface CommandOptions { passwordFile?: string; timeoutMs?: number }
+export const READINESS_TIMEOUT_MS = 30_000;
+
+/** Open credentials without reading their contents. SOPS runtime links are
+ * intentional; fstat validates the opened target rather than rejecting links. */
+export function readableFile(path: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
+    const stat = fstatSync(fd);
+    return stat.isFile() && stat.size > 0;
+  } catch { return false; }
+  finally { if (fd !== undefined) closeSync(fd); }
+}
+
+/** Child output can contain credential values, even on parse/spawn failures.
+ * Keep all diagnostics structural and never interpolate output or argv. */
+export function nativeCommand(executable: string, args: string[], input?: string, options?: CommandOptions): string {
+  const env = { ...process.env };
+  if (options?.passwordFile) {
+    delete env.RESTIC_PASSWORD;
+    delete env.RESTIC_PASSWORD_COMMAND;
+    env.RESTIC_PASSWORD_FILE = options.passwordFile;
+  }
+  const result = spawnSync(executable, args, {
+    input, env, encoding: "utf8", maxBuffer: 4 * 1024 * 1024,
+    timeout: options?.timeoutMs, killSignal: "SIGKILL",
+  });
+  if (result.error || result.status !== 0) throw new Error("backup command failed or timed out; child output withheld");
+  return result.stdout;
+}
+
+/** Runtime-only, read-only admission. timeout kills the entire process group
+ * (including SSH); spawnSync's deadline is an independent local backstop. */
+export function readiness(drive: Drive, runtime: Runtime, adapters: Adapters): void {
+  for (const [name, path] of [
+    ["password", runtime.passwordFile], ["SSH identity", runtime.sshKeyPath], ["known hosts", runtime.knownHostsPath],
+  ]) {
+    if (!path || !path.startsWith("/") || path.startsWith("/nix/store/") || !adapters.readableFile(path)) {
+      throw new Error(`backup ${name} file unavailable or empty`);
+    }
+  }
+  if (!runtime.restic.startsWith("/") || !runtime.timeout.startsWith("/") || !runtime.sftpCommand) {
+    throw new Error("backup readiness runtime wiring missing");
+  }
+  let config: unknown;
+  try {
+    config = JSON.parse(adapters.command(runtime.timeout, [
+      "--signal=KILL", `${READINESS_TIMEOUT_MS / 1000}s`, runtime.restic,
+      "-r", drive.repository.uri, "--password-file", runtime.passwordFile,
+      "-o", `sftp.command=${runtime.sftpCommand}`, "--no-lock", "cat", "config",
+    ], undefined, { passwordFile: runtime.passwordFile, timeoutMs: READINESS_TIMEOUT_MS + 2000 }));
+  } catch { throw new Error("backup authentication or repository readiness failed; child output withheld"); }
+  if (!object(config) || config.id !== drive.repository.guid) {
+    throw new Error("backup repository GUID does not match the expected repository");
+  }
 }
 
 export const ABSENT_EXIT = 75;
@@ -94,7 +157,7 @@ export function isAbsentCancellation(error: string): boolean {
     && error.endsWith(`exit status ${ABSENT_EXIT}`);
 }
 
-function prepare(drive: Drive, canary: string, adapters: Adapters): void {
+function prepare(drive: Drive, canary: string, runtime: Runtime, adapters: Adapters): void {
   if (adapters.kind(drive.volumeRoot) !== "directory") throw new Error("SSD mount path is not a directory");
   const plist = adapters.command("/usr/sbin/diskutil", ["info", "-plist", drive.volumeRoot]);
   const info: unknown = JSON.parse(adapters.command("/usr/bin/plutil", ["-convert", "json", "-o", "-", "-"], plist));
@@ -109,6 +172,7 @@ function prepare(drive: Drive, canary: string, adapters: Adapters): void {
   }
   const kind = adapters.kind(drive.canaryPath);
   if (kind !== null && kind !== "file") throw new Error("restore canary is not a regular file");
+  readiness(drive, runtime, adapters);
   if (kind === null || adapters.read(drive.canaryPath) !== canary) adapters.writeCanary(drive.canaryPath, canary);
 }
 
@@ -123,7 +187,7 @@ function verify(drive: Drive, canary: string, snapshot: string, runtime: Runtime
     adapters.command(runtime.restic, [
       "-r", drive.repository.uri, "-o", `sftp.command=${runtime.sftpCommand}`,
       "restore", snapshot, "--include", drive.canaryPath, "--target", target,
-    ]);
+    ], undefined, { passwordFile: runtime.passwordFile });
     const restored = join(target, drive.canaryPath);
     if (adapters.kind(restored) !== "file" || adapters.read(restored) !== canary) {
       throw new Error("restored canary does not match");
@@ -147,7 +211,7 @@ export function runHook(
     const { drive, canary } = load();
     switch (action) {
       case "presence": return adapters.kind(drive.volumeRoot) === null ? ABSENT_EXIT : 0;
-      case "prepare": prepare(drive, canary, adapters); break;
+      case "prepare": prepare(drive, canary, runtime, adapters); break;
       case "verify": verify(drive, canary, argument, runtime, adapters); break;
       default: throw new Error(`unknown hook action: ${action}`);
     }
@@ -164,13 +228,9 @@ export function runHook(
 }
 
 function nativeAdapters(): Adapters {
-  const command: Adapters["command"] = (executable, args, input) => {
-    const result = spawnSync(executable, args, { input, encoding: "utf8", maxBuffer: 4 * 1024 * 1024 });
-    if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error(`${executable} failed (${result.status ?? result.signal}): ${result.stderr}`);
-    return result.stdout;
-  };
+  const command = nativeCommand;
   return {
+    readableFile,
     kind(path) {
       try {
         const stat = lstatSync(path);
@@ -216,6 +276,10 @@ if (process.argv[1] && pathToFileURL(realpathSync(resolve(process.argv[1]))).hre
     }, {
       restic: process.env.SSD_BACKUP_RESTIC ?? "",
       sftpCommand: process.env.SSD_BACKUP_SFTP_COMMAND ?? "",
+      passwordFile: process.env.RESTIC_PASSWORD_FILE ?? "",
+      sshKeyPath: process.env.SSD_BACKUP_SSH_KEY ?? "",
+      knownHostsPath: process.env.SSD_BACKUP_KNOWN_HOSTS ?? "",
+      timeout: process.env.SSD_BACKUP_TIMEOUT ?? "",
     }, nativeAdapters());
   }
 }
