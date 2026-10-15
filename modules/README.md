@@ -22,7 +22,7 @@ when a skill is useful, expose it through the local shared discovery path
 `~/.config/agents/skills/<feature>/SKILL.md`. keep the canonical file beside
 the module; `modules/agents/skills/<feature>/SKILL.md` is a relative symlink
 to `../../../<feature>/SKILL.md`. the agent module links the collection root
-to all four [agent discovery aliases](agents/README.md#source-versus-installed).
+to the [agent discovery aliases](agents/README.md#source-versus-installed).
 do not add descendant `home.file` entries beneath those linked roots.
 discovery does not install a package: hosts still import feature modules explicitly.
 

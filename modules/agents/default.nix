@@ -17,8 +17,6 @@
       # untracked repo files to commit or discard.
       skills = config.lib.file.mkOutOfStoreSymlink
         "${config.home.homeDirectory}/commonplace/01_files/nix/modules/agents/skills";
-      agentPrompts = config.lib.file.mkOutOfStoreSymlink
-        "${config.home.homeDirectory}/commonplace/01_files/nix/modules/agents/agents";
       bdsPiConfig = config.lib.file.mkOutOfStoreSymlink
         "${config.home.homeDirectory}/commonplace/01_files/nix/modules/agents/bds-pi.json";
 
@@ -28,7 +26,6 @@
       ".claude/CLAUDE.md".source = agentsMd;
       ".pi/agent/AGENTS.md".source = agentsMd;
       ".pi/agent/bds-pi.json".source = bdsPiConfig;
-      ".cursor/rules/AGENTS.md".source = agentsMd;
       ".codex/AGENTS.md" = {
         source = agentsMd;
         force = true;
@@ -36,11 +33,6 @@
 
       ".agents/skills".source = skills;
       ".claude/skills".source = skills;
-      ".cursor/skills".source = skills;
-      ".cursor/agents" = {
-        source = agentPrompts;
-        recursive = true;
-      };
     };
   };
 }
