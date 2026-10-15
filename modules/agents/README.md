@@ -32,7 +32,7 @@ links for `gog`, `wacli`, `goplaces`, `openhue`, `xurl`, `weather`, `remindctl`,
 and `obsidian`: `skills/<cli>/SKILL.md -> ../../../<cli>/SKILL.md`.
 
 [`default.nix`](default.nix) links `~/.config/agents/skills`,
-`~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills` out of store to
+`~/.agents/skills`, and `~/.claude/skills` out of store to
 the live `skills/` checkout. source edits apply immediately; a running session's
 already-loaded skills and instructions need refresh.
 
