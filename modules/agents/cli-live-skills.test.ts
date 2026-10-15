@@ -12,7 +12,7 @@ const { checkSkills }: Checker = require("./check-skills.ts");
 
 const modulesRoot = resolve(__dirname, "..");
 const names = ["gog", "wacli", "goplaces", "openhue", "xurl", "weather", "remindctl", "obsidian"];
-const aliases = [".config/agents/skills", ".agents/skills", ".claude/skills", ".cursor/skills"];
+const aliases = [".config/agents/skills", ".agents/skills", ".claude/skills"];
 
 function temporary(t: TestContext): string {
   const path = mkdtempSync(join(tmpdir(), "cli-live-skills-"));
@@ -50,6 +50,7 @@ function assertSharedRootOwnership(modules: string): void {
     // Covers both home.file."target" and quoted keys inside a home.file block.
     for (const match of source.matchAll(/"([^"\n]+)"\s*(?=\.|=)/g)) {
       const target = match[1];
+      assert.ok(!target.startsWith(".cursor/"), `${path}: retired Cursor target: ${target}`);
       for (const alias of aliases) {
         assert.ok(!target.startsWith(`${alias}/`), `${path}: root/descendant home.file overlap: ${target}`);
         if (target === alias) assert.equal(directory.name, "agents", `${path}: duplicate shared root owner`);
@@ -79,6 +80,10 @@ test("isolated known-bad leaf declarations fail the ownership guard for every al
   }
   writeFileSync(path, good.replace(/}\s*$/, '  home.file.".agents/skills".source = ./skills;\n}\n'));
   assert.throws(() => assertSharedRootOwnership(modules), /duplicate shared root owner/);
+  for (const target of [".cursor/skills", ".cursor/agents", ".cursor/rules/AGENTS.md"]) {
+    writeFileSync(path, good.replace(/}\s*$/, `  home.file."${target}".source = ./unused;\n}\n`));
+    assert.throws(() => assertSharedRootOwnership(modules), /retired Cursor target/);
+  }
 });
 
 test("SDK discovers file entry links through all installed aliases and sees ordinary program writes", async (t) => {
