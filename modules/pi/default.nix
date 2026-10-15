@@ -8,7 +8,7 @@ let
   repoPi = "${commonplaceRoot}/01_files/nix/modules/pi";
   # repo path for mkOutOfStoreSymlink — edits take effect immediately without rebuild
   repoExtensions = "${repoPi}/packages/extensions";
-  repoAgentPrompts = "${commonplaceRoot}/01_files/nix/modules/agents/agents";
+  repoAgentPrompts = "${commonplaceRoot}/01_files/nix/modules/agents/prompts";
   parallelApiKeyPath = config.sops.secrets.parallel_api_key.path;
 in
 {

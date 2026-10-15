@@ -35,7 +35,11 @@ lib.optionalAttrs (lib.hasInfix "darwin" hostSystem) (
       ];
       # Signed native binary requires macOS 14+ and process-specific EventKit permission.
       homebrew.taps = [ "steipete/tap" ];
-      homebrew.brews = [ "remindctl" ];
+      homebrew.brews = [{
+        # Bundle cannot apply formula-scoped trust to an unqualified name.
+        name = "steipete/tap/remindctl";
+        trusted = true;
+      }];
       home-manager.users.bdsqqq = { pkgs, ... }: {
         home.packages = [
           (pkgs.writeShellScriptBin "remindctl-ready" ''

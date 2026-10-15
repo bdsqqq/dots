@@ -71,7 +71,7 @@ the [tool setup guide](modules/agent-tool-setup.md) covers account consent,
 pairing, and credential provisioning.
 
 colocated CLI skills enter the portable `modules/agents/skills` collection through
-relative entrypoint symlinks. the agent module links that root to four local
+relative entrypoint symlinks. the agent module links that root to local
 discovery aliases; hosts still select packages explicitly. discovery, installation,
 runtime access, and authentication need separate checks.
 

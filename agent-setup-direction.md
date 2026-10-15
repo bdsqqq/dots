@@ -79,7 +79,7 @@ state outside tracked settings and preserve refreshed state.
 
 the eight selected CLI skills stay beside their modules, with relative
 `SKILL.md` links in `modules/agents/skills/<cli>/`. the agent module links that
-shared collection to the four local discovery aliases. host imports select
+shared collection to the supported local discovery aliases. host imports select
 packages separately; shared discovery proves neither installation nor account
 access. REA remains Pi-native through its installed release's skills path.
 
