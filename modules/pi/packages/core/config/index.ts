@@ -278,7 +278,8 @@ export function resolveConfigDir(): string {
 }
 
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, test, vi } = import.meta.vitest;
+  const { afterEach, beforeEach, describe, expect, test, vi } = import.meta
+    .vitest;
   const tmpdir = os.tmpdir();
 
   function writeTmpJson(dir: string, filename: string, data: unknown): string {
@@ -288,26 +289,32 @@ if (import.meta.vitest) {
     return filePath;
   }
 
-  const originalPiBdsConfigPath = process.env.PI_BDS_CONFIG_PATH;
-  const originalPiBdsOverridesPath = process.env.PI_BDS_CONFIG_OVERRIDES_PATH;
+  beforeEach(() => {
+    // Restoring after a test alone still lets ambient paths redirect its I/O.
+    vi.stubEnv("PI_BDS_CONFIG_PATH", undefined);
+    vi.stubEnv("PI_BDS_CONFIG_OVERRIDES_PATH", undefined);
+  });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     clearConfigCache();
     _globalSettingsPath = null;
-    if (originalPiBdsConfigPath === undefined) {
-      delete process.env.PI_BDS_CONFIG_PATH;
-    } else {
-      process.env.PI_BDS_CONFIG_PATH = originalPiBdsConfigPath;
-    }
-    if (originalPiBdsOverridesPath === undefined) {
-      delete process.env.PI_BDS_CONFIG_OVERRIDES_PATH;
-    } else {
-      process.env.PI_BDS_CONFIG_OVERRIDES_PATH = originalPiBdsOverridesPath;
-    }
   });
 
   describe("getExtensionConfig", () => {
+    test("uses PI_BDS_CONFIG_PATH when no in-process path is set", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-env-"));
+      const settingsPath = writeTmpJson(dir, "settings.json", {
+        "@bds_pi/test": { foo: "from-env" },
+      });
+      vi.stubEnv("PI_BDS_CONFIG_PATH", settingsPath);
+
+      expect(getExtensionConfig("@bds_pi/test", { foo: "default" })).toEqual({
+        foo: "from-env",
+      });
+    });
+
     test("returns defaults when no settings file exists", () => {
       setGlobalSettingsPath(
         path.join(tmpdir, `nonexistent-${Date.now()}.json`),
@@ -470,6 +477,37 @@ if (import.meta.vitest) {
           nested: { keep: false },
         }),
       ).toEqual({ enabled: false, nested: { keep: true } });
+    });
+
+    test("explicit overrides replace the inferred sibling for reads and writes", () => {
+      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-overrides-"));
+      const base = { "@bds_pi/test": { foo: "base", keep: true } };
+      const sibling = { "@bds_pi/test": { foo: "sibling", unselected: true } };
+      const settingsPath = writeTmpJson(dir, "settings.json", base);
+      const siblingPath = writeTmpJson(dir, "settings.local.json", sibling);
+      const overridesPath = writeTmpJson(dir, "explicit.json", {
+        "@bds_pi/test": { foo: "explicit" },
+        "@bds_pi/other": { keep: true },
+      });
+      setGlobalSettingsPath(settingsPath);
+      vi.stubEnv("PI_BDS_CONFIG_OVERRIDES_PATH", overridesPath);
+
+      expect(resolveGlobalOverridesPath()).toBe(overridesPath);
+      expect(
+        getExtensionConfig("@bds_pi/test", { foo: "default", keep: false }),
+      ).toEqual({ foo: "explicit", keep: true });
+
+      updateGlobalExtensionConfig("@bds_pi/test", { foo: "updated" });
+
+      expect(JSON.parse(fs.readFileSync(overridesPath, "utf8"))).toEqual({
+        "@bds_pi/test": { foo: "updated" },
+        "@bds_pi/other": { keep: true },
+      });
+      expect(JSON.parse(fs.readFileSync(siblingPath, "utf8"))).toEqual(sibling);
+      expect(JSON.parse(fs.readFileSync(settingsPath, "utf8"))).toEqual(base);
+      expect(
+        getExtensionConfig("@bds_pi/test", { foo: "default", keep: false }),
+      ).toEqual({ foo: "updated", keep: true });
     });
 
     test("project-local config is ignored when allowProjectConfig is false", () => {
