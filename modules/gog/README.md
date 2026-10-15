@@ -75,8 +75,8 @@ step 1, not a new OAuth app. inspect `gog auth add --help` after CLI upgrades.
 there are two different things to preserve:
 
 - **static prerequisites:** SOPS owns the desktop client JSON and file-keyring
-  password. `secrets.yaml` is encrypted only to the personal age recipient
-  until a runner is explicitly enrolled in `.sops.yaml`. do not rotate the
+  password. `secrets.yaml` is encrypted only to the personal owner and
+  `htz-xfs-lab`, the selected runner. do not rotate the
   keyring password underneath an existing encrypted keyring.
 - **native mutable authorization:** `gog` owns refresh tokens and its encrypted
   keyring on the runner. keep the configured user's home on persistent disk;
