@@ -32,6 +32,30 @@ authorize Google/WhatsApp/X on the host that will run unattended work.
 Reminders and Obsidian remain Mac/app capabilities. OpenHue needs LAN access to
 a physical bridge; it is not the existing BLE service.
 
+## require auth, not just a package
+
+fleet imports remain package-only until an execution host and account are chosen.
+enabling an integration adds evaluation-time requirements for its identity and
+credential source; missing declarations fail evaluation instead of looking ready.
+static credentials use selective SOPS owners. existing paired sessions can be
+declared as native state, not copied into SOPS or replaced during activation.
+
+runtime checks are separate: declared files do not prove decryption, consent,
+remote acceptance, or OS permission. the readiness commands below fail closed,
+bound subprocess duration, and suppress private responses. they are explicit
+operator probes, not activation hooks or background network tests:
+
+- `gog-auth ready`: selected client/account, granted Gmail/Calendar scopes, and
+  bounded service reads.
+- `goplaces-auth ready QUERY`: one bounded Places search; potentially billable.
+- `wacli-ready`, `xurl-ready`, `openhue-ready`, `remindctl-ready`: selected native
+  integration checks. `--local` reports local state only, never authenticated
+  online readiness.
+
+no real account probes were performed while implementing these checks.
+account choices, grants, and missing credential values still need the owner;
+the module supplies the plumbing, not an invented grant.
+
 ## Google: Gmail and Calendar
 
 1. inspect the previous Google authorization before replacing it. an existing
@@ -59,16 +83,23 @@ client name such as `work` when appropriate, and always select both client and
 account for operational commands. start read-only; broader scopes are a separate
 decision, not a fix for failed writes.
 
+with the managed integration, set `my.gog.enable = true`, its explicit `account`
+and named `client`, then provide `my.gog.credential.sopsFile`. the owner defaults
+to adjacent `modules/gog/secrets.yaml` when that real encrypted file exists.
+it declares `gog_oauth_client` (the downloaded desktop-client JSON as a string),
+plus `gog_keyring_password` when using the file backend. no placeholder file is
+installed. run `gog-auth bootstrap-client` deliberately: it leaves an existing
+named client and refreshed tokens alone. then complete the native consent flow.
+
 on a headless host, add `--manual` to the same `auth add` command. open the
 printed URL in your browser and paste the resulting redirect URL into the
 private terminal prompt. that URL contains an authorization code: do not put it
 in chat, logs, or screenshots.
 
 for unattended Linux use, configure the file backend with
-`gog auth keyring file` and supply `GOG_KEYRING_PASSWORD` privately. persist that
-password through SOPS and load its runtime file into the chosen process
-environment. this owner/host wiring is still to be added; the CLI installation
-does not currently provision it. macOS can use its native Keychain, but verify
+`gog auth keyring file`. the enabled module requires the SOPS keyring password
+and supplies `GOG_KEYRING_PASSWORD` to the selected process at runtime, not through
+a shell profile. macOS can use its native Keychain, but verify
 that the actual execution process can unlock/read it without prompting.
 
 test small reads in that same environment:
@@ -122,10 +153,12 @@ in an approved Google Cloud project:
 1. enable **Places API (New)** and billing.
 2. create an API key with API restrictions for the required service and suitable
    server-side application restrictions. set quotas/budget alerts.
-3. provide the key privately through SOPS. the existing module can consume it via
-   `my.goplaces.apiKeyFile = config.sops.secrets.google_places_api_key.path`
-   once that owner declares `google_places_api_key`. an owning credential
-   declaration and encrypted value are still needed.
+3. enable `my.goplaces.enable` and provide its owning encrypted
+   `my.goplaces.credential.sopsFile` with `google_places_api_key`. it defaults to
+   adjacent `modules/goplaces/secrets.yaml` when present. alternatively declare
+   `my.goplaces.apiKeyFile` for an intentionally externally provisioned private
+   runtime file. a missing source fails evaluation; an absent/empty/public runtime
+   file fails the check. no real encrypted value has been added here.
 
 this is API-key access, not the Gmail OAuth grant. do not expose the key in a
 tracked config, shell history, or Nix string. after provisioning:
@@ -240,3 +273,11 @@ something you need to design manually.
 commands above were checked against help for the packaged versions where
 available. authentication, pairing, consent, and private API reads have not been
 executed here. use the colocated skills for operation-specific boundaries.
+
+the shared auth typecheck deliberately includes these native consumers, not
+unrelated Pi SDK declarations:
+
+```sh
+modules/pi/node_modules/.bin/tsc --noEmit -p modules/tool-auth/tsconfig.json \
+  --typeRoots modules/pi/node_modules/@types
+```

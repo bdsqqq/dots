@@ -23,7 +23,7 @@ test("remindctl root shape excludes homebrew on Linux without requiring pkgs", (
   }).join(" ");
   for (const [system, expected] of [
     ["aarch64-linux", []],
-    ["aarch64-darwin", ["homebrew"]],
+    ["aarch64-darwin", ["config", "options"]],
   ] satisfies [string, string[]][]) {
     const expression = `let
       source = builtins.fetchTree { ${tree} };
