@@ -39,6 +39,70 @@ refresh tokens or starts consent. existing credentials needing deliberate
 rotation require the native private setup flow. the integration wrapper pins
 the configured account/client and loads the SOPS password process-locally.
 
+## headless setup and recovery over SSH
+
+use the same runner, Unix user, and configured client for both steps. the runner
+never needs a browser, desktop session, public callback endpoint, or SSH port
+forward. after the enabled host config is shipped to main and activated:
+
+```sh
+gog-auth bootstrap-client
+gog auth add EMAIL --services gmail,calendar --readonly --force-consent --remote --step 1 --timeout 15m
+```
+
+open the printed Google URL in a browser on any device and select the declared
+account. after approval, the browser's loopback redirect may fail to connect:
+that is expected for this flow. copy the **entire resulting redirect URL** from
+the address bar and finish in the SSH terminal:
+
+```bash
+set +x
+read -r -s -p 'Paste the complete redirect URL: ' redirect_url
+printf '\n'
+gog auth add EMAIL --services gmail,calendar --readonly --force-consent --remote --step 2 --auth-url "$redirect_url"
+unset redirect_url
+gog-auth ready
+```
+
+do not paste that URL into chat, tickets, or shell command history: it contains
+a short-lived authorization code. `read -s` keeps the pasted value out of the
+terminal display/history, but the native CLI receives it briefly as an argument;
+use the runner's private Unix account. an expired pending flow needs a new
+step 1, not a new OAuth app. inspect `gog auth add --help` after CLI upgrades.
+
+## what survives updates and reboots
+
+there are two different things to preserve:
+
+- **static prerequisites:** SOPS owns the desktop client JSON and file-keyring
+  password. `secrets.yaml` is encrypted only to the personal age recipient
+  until a runner is explicitly enrolled in `.sops.yaml`. do not rotate the
+  keyring password underneath an existing encrypted keyring.
+- **native mutable authorization:** `gog` owns refresh tokens and its encrypted
+  keyring on the runner. keep the configured user's home on persistent disk;
+  for containers, mount that home (or all selected XDG config/data/state/cache
+  directories) on persistent storage. `gog config path` reports the actual
+  config location. pending remote-consent state must also survive between the
+  two SSH commands.
+
+keep private directories owner-only and exclude them from Git, the Nix store,
+and deployment cleanup. back up native auth state privately, together with the
+ability to recover its keyring password. restoring an old token snapshot on each
+activation can undo native refreshes; bootstrap/activation must not do that.
+macOS Keychain authorization stays on that Mac unless deliberately migrated:
+shipping the static SOPS client does not transfer an account grant to Linux.
+
+normal calls refresh short-lived access tokens automatically. browser consent
+is for first authorization or recovery after Google invalidates the grant,
+not routine deployments. the external OAuth project's **In production** status
+avoids the testing-mode seven-day refresh-token limit, not every possible
+revocation. see [Google's expiration rules](https://developers.google.com/identity/protocols/oauth2#expiration).
+
+after deployment, test `gog-auth ready` from the actual job user/environment.
+the scheduler must surface a failed readiness check as an actionable auth
+failure, rather than retry consent or silently broadening scopes. this module
+does not install a schedule, notification destination, or remote runner.
+
 readiness checks native credential client ID, resolved client/account/backend,
 and stored OAuth services/scopes, then invokes `gmail search newer_than:1d
 --max 1` and/or `calendar calendars --max 1` with `--json --no-input`. each
@@ -66,3 +130,12 @@ verify flags again after a version change.
 local verification: `node --test modules/gog/auth.test.ts
 modules/goplaces/auth.test.ts`. `auth-eval.nix` is an isolated module assertion
 fixture, not an encrypted secret or evidence of decryption/authentication.
+
+```sh
+GOG_TEST_BINARY="$(command -v gog)" node --test modules/gog/headless.test.ts
+```
+
+the native headless fixture uses synthetic credentials and a temporary home:
+it checks offline/read-only scopes, persisted private PKCE state across CLI
+processes, and rejection of a wrong callback without consuming that state.
+it neither authorizes an account nor exercises the real code exchange.
