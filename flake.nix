@@ -235,9 +235,11 @@
             {
               nativeBuildInputs = [
                 (pkgs.python3.withPackages (python: [ python.pyyaml ]))
+                pkgs.nodejs_24
               ];
             } ''
             python ${./scripts/check-credential-ownership.py} --root ${self}
+            node --test ${./scripts}/check-credential-ownership.test.ts
             touch "$out"
           '';
 
@@ -266,6 +268,7 @@
                 "gh_token"
                 "hf_token"
                 "parallel_api_key"
+                "restic_ssd_01_password"
                 "syncthing_gui_password"
               ];
               mbp-m5 = [
@@ -299,6 +302,7 @@
                 "fleet-mesh/virtual-esp32-identity"
                 "gh_token"
                 "hf_token"
+                "restic_ssd_01_password"
                 "syncthing_gui_password"
               ];
               lgo-z2e = [

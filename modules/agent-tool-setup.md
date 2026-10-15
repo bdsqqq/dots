@@ -224,6 +224,14 @@ bootstrap/transfer, not troubleshooting. importing an old copy on every
 activation can undo renewal. WhatsApp device state is not interchangeable with
 an OAuth refresh token.
 
+the SSD module now imports and requires `modules/backup/ssd-01/credential.nix`, consuming the
+existing encrypted repository password through its SOPS runtime file. it does
+not distribute SSH private identities: `my.ssd01Backup.sshKeyPath` and
+`knownHostsPath` explicitly select existing host identity/trust. before canary
+writes, the drive hook checks those files and authenticates a bounded, no-lock
+repository-config read against the expected GUID. an absent drive still cancels
+quietly. network/auth failures stop that backup, not system activation.
+
 you choose accounts, approve scopes, scan the QR, press the bridge button, and
 grant OS/app access. credential ownership, scoped recipients, runtime-file
 adaptation, service wiring, and restart checks are implementation work—not

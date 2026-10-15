@@ -1,10 +1,12 @@
 # ssd-01 backup
 
-`mmn-m4` and `mbp-m2` import this drive-specific policy; `../backup` owns
+`mmn-m4` and `mbp-m2` import this drive-specific policy; [the parent](../README.md) owns
 the Backrest daemon, configuration replacement, and scheduling. the existing
 repository identity, all-snapshot retention, weekly 5% repository check,
 unchanged-file skipping, and `--one-file-system` are preserved. mmn's hourly
-terraria plan inherits this repository without any SSD gate.
+terraria plan explicitly selects the same repository without any SSD gate.
+`repository.nix` owns that shared destination and credential dependency;
+importing it alone does not enable the SSD plan.
 
 ## each host has its own clock
 
@@ -13,7 +15,11 @@ completed attempt, including cancelled and failed attempts. history is local
 to each host/instance, not a shared global clock. moving or reconnecting the
 drive does not trigger a run or merge histories. the machine with the drive
 backs it up when its own schedule asks; the other cancels quietly. a manual
-Backrest run remains available. no coordinator, extra timer, or shared state
+Backrest run remains available: select the `ssd-01` plan in the local Backrest
+UI and start a backup. the old standalone initial-upload script is retired;
+manual runs now use the same policy, credentials, and restore hooks as scheduled
+runs, rather than a second decryption/upload implementation.
+no coordinator, extra timer, or shared state
 database is introduced.
 
 ## hooks and safety
@@ -42,7 +48,7 @@ lock a removable volume against unplugging; later backup errors still notify.
 ## live files and credentials
 
 hooks execute the absolute live checkout path under
-`my.paths.commonplace/01_files/nix/modules/ssd-01-backup`, using Node 24 supplied
+`my.paths.commonplace/01_files/nix/modules/backup/ssd-01`, using Node 24 supplied
 by Nix. `hooks.ts`, `drive.json`, and `canary.txt` are read there, not copied into
 the store. editing hooks/canary takes effect on the next invocation. drive identity,
 repository, and source changes also need the ordinary Nix policy activation:
@@ -55,22 +61,34 @@ failures. verification bootstrap failures also notify before failing. the
 fingerprint binds configuration, not script
 authority; it does not sandbox editable code.
 
-the encrypted password stays in the existing checkout's `restic/secrets.yaml`
-under `restic_ssd_01_password`; SOPS uses the running user's
-`.config/sops/age/keys.txt`. SSH uses that user's `.ssh/id_ed25519`, port 23,
-batch mode, and identities-only. this module does not provision or decrypt keys
-during activation. each host must already have decrypt access, SSH authorization,
-known-host trust, and macOS access/notification permissions. these are unverified
-runtime prerequisites, not newly declared SOPS ownership.
+the encrypted password stays in `modules/backup/ssd-01/secrets.yaml`, with its adjacent
+`credential.nix` as owner. importing this module requires that owner: SOPS
+provisions a user-readable `0400` runtime file and Backrest consumes
+`RESTIC_PASSWORD_FILE`. missing decryption capability is an actual provisioning
+failure, not an undocumented path assumption.
+
+SSH identity/trust remain host-owned: `my.ssd01Backup.sshKeyPath` and
+`knownHostsPath` default to the user's `.ssh/id_ed25519` and `.ssh/known_hosts`.
+the module never generates, distributes, overwrites, or enrolls them. SSH uses
+port 23, batch mode, identities-only, no identity agent, strict host-key checking,
+and bounded connection attempts.
+
+after drive validation, before canary writes, readiness checks nonempty readable
+credential files and runs a bounded `restic --no-lock cat config`, checking the
+repository GUID. failure stops the backup without leaking child output. the
+timeout also terminates the SSH process group. an absent drive still cancels
+before any credential/network check; notification hooks need no credentials.
+no network probe runs during activation. real decryption, SSH authorization,
+macOS permissions, and physical-drive recovery remain unverified.
 
 ## isolated checks
 
 from the repository root, with existing TypeScript/Node tooling:
 
 ```sh
-node --test modules/ssd-01-backup/hooks.test.ts
-tsc --noEmit -p modules/ssd-01-backup/tsconfig.json --typeRoots modules/pi/node_modules/@types
-node modules/ssd-01-backup/hooks.ts --help
+node --test modules/backup/ssd-01/hooks.test.ts
+tsc --noEmit -p modules/backup/ssd-01/tsconfig.json --typeRoots modules/pi/node_modules/@types
+node modules/backup/ssd-01/hooks.ts --help
 ```
 
 set `BACKREST_SOURCE` to the pinned Backrest 1.13.0 source directory to include
@@ -83,3 +101,9 @@ tests include known negative fixtures for path/identity validation, cancellation
 filtering, and host/module contracts. source tracing and mocked behavior do not
 prove daemon delivery, real backups, restore recovery, or physical sleep/wake
 behavior. evaluate both Darwin host system derivations before integration.
+
+set `SSD_TEST_RESTIC` to a built restic binary and `SSD_TEST_TIMEOUT` to GNU
+timeout for the local password-file integration and process-group deadline
+fixtures. they create only temporary local repositories/processes: correct
+credentials succeed, wrong passwords/GUIDs fail, and no SSH/remote repository
+is contacted. missing binaries explicitly skip these optional fixtures.
