@@ -13,7 +13,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
 import { sha256 } from "./catalog.js";
 import { describe, expect, it, vi } from "vitest";
@@ -426,48 +427,78 @@ describe("private memory history", () => {
     mkdirSync(cfg.root, { recursive: true });
     writeFileSync(join(cfg.root, "one.md"), "one\n");
     initHistory(cfg);
+    const home = join(dirname(cfg.data), "home");
+    mkdirSync(home, { recursive: true });
+    const jitiRegister = join(
+      dirname(createRequire(import.meta.url).resolve("jiti/package.json")),
+      "lib/jiti-register.mjs",
+    );
+    // The shared event sink is in-process only. Do not inherit a canonical
+    // remote, user config, or log/session paths into this legacy CLI fixture.
+    const env = {
+      PATH: process.env.PATH,
+      HOME: home,
+      XDG_CONFIG_HOME: join(home, ".config"),
+      XDG_DATA_HOME: join(home, ".local/share"),
+      XDG_STATE_HOME: join(home, ".local/state"),
+      XDG_CACHE_HOME: join(home, ".cache"),
+      PI_CODING_AGENT_DIR: join(home, ".pi/agent"),
+      BDS_PI_LOG_DIR: join(home, "logs"),
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      PI_MEMORY_DATA_DIR: cfg.data,
+      PI_MEMORY_ROOT: cfg.root,
+      PI_MEMORY_STATE_DIR: cfg.state,
+      PI_MEMORY_SKILLS_ROOT: cfg.skillsRoot,
+    };
     const run = () =>
-      new Promise<{ code: number | null; stderr: string }>(
+      new Promise<{ code: number | null; stdout: string; stderr: string }>(
         (resolveRun, rejectRun) => {
           const child = spawn(
-            "bun",
+            process.execPath,
             [
-              "run",
-              join(process.cwd(), "packages/core/agent-memory/index.ts"),
+              "--import",
+              jitiRegister,
+              realpathSync(
+                join(process.cwd(), "packages/core/agent-memory/index.ts"),
+              ),
               "history",
               "verify",
             ],
             {
               cwd: process.cwd(),
-              env: {
-                ...process.env,
-                PI_MEMORY_DATA_DIR: cfg.data,
-                PI_MEMORY_ROOT: cfg.root,
-                PI_MEMORY_STATE_DIR: cfg.state,
-              },
-              stdio: ["ignore", "ignore", "pipe"],
+              env,
+              stdio: ["ignore", "pipe", "pipe"],
             },
           );
           let stderr = "";
+          let stdout = "";
+          child.stdout.setEncoding("utf8");
+          child.stdout.on("data", (chunk) => {
+            stdout += chunk;
+          });
           child.stderr.setEncoding("utf8");
           child.stderr.on("data", (chunk) => {
             stderr += chunk;
           });
           child.on("error", rejectRun);
-          child.on("close", (code) => resolveRun({ code, stderr }));
+          child.on("close", (code) => resolveRun({ code, stdout, stderr }));
         },
       );
 
     const results = await Promise.all([run(), run()]);
 
-    expect(results).toEqual([
-      { code: 0, stderr: "" },
-      { code: 0, stderr: "" },
-    ]);
     const checkpoint = JSON.parse(
       readFileSync(join(cfg.data, "v2/history-verification.json"), "utf8"),
     );
     expect(checkpoint).toMatchObject({ version: 2 });
+    for (const result of results) {
+      expect(result).toMatchObject({ code: 0, stderr: "" });
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: true,
+        basis: { repository: checkpoint.repository },
+      });
+    }
     expect(verifyHistory(cfg)).toMatchObject({
       ok: true,
       basis: { repository: checkpoint.repository },

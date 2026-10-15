@@ -6,7 +6,7 @@ let
   toolsBin = "${repoRoot}/modules/node-pnpm/node_modules/.bin";
   agentMemory = pkgs.writeShellApplication {
     name = "pi-memory";
-    runtimeInputs = [ pkgs.bun pkgs.coreutils pkgs.git pkgs.nodejs ];
+    runtimeInputs = [ pkgs.coreutils pkgs.git pkgs.nodejs ];
     text = ''
       set -euo pipefail
 
@@ -17,7 +17,12 @@ let
       export PI_MEMORY_CLEANUP_ENABLED=1
       export PI_MEMORY_SKILLS_ROOT="${repoRoot}/modules/agents/skills"
       export PI_MEMORY_GIT_REMOTE="git@github.com:bdsqqq/pi-memory.git"
-      exec bun run "${repoRoot}/modules/pi/packages/core/agent-memory/index.ts" "$@"
+      # Resolve from the live installation, not the store or the caller's cwd.
+      jiti_register="$(cd "${repoRoot}/modules/pi" && node --input-type=module \
+        --eval 'console.log(import.meta.resolve("jiti/register"))')"
+      # Node resolves module symlinks; keep argv[1] aligned with the CLI main guard.
+      source="$(realpath "${repoRoot}/modules/pi/packages/core/agent-memory/index.ts")"
+      exec node --import "$jiti_register" "$source" "$@"
     '';
   };
 in
