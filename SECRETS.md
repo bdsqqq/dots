@@ -177,6 +177,13 @@ it configures age key lookup and does not own credentials.
 `modules/backup/ssd-01/credential.nix` owns the shared repository password, and only backup consumers
 require it. the ownership check includes this existing domain.
 
+new integration owners may default to an adjacent encrypted file only when it
+exists; absent credentials are not replaced with fake encrypted placeholders.
+enabling the integration must then require an explicit valid source. provisioning
+assertions do not prove a remote grant: use its bounded readiness command from
+the actual execution context. mutable refresh tokens and paired-device databases
+stay native-owned; activation must not restore an older copy over them.
+
 ## automation credentials
 
 automation age keys must be path-scoped in `.sops.yaml`. Cloudflare Actions

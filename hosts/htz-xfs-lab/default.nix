@@ -97,6 +97,14 @@ in
   my.primaryUser = "bdsqqq";
   my.paths.commonplace = "/home/bdsqqq/commonplace";
 
+  my.gog = {
+    enable = true;
+    account = "igorbedesqui@gmail.com";
+    client = "amp-gcloud-cli";
+    services = [ "gmail" "calendar" ];
+    keyringBackend = "file";
+  };
+
   sops = {
     age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
     secrets.tailscale_auth_key = {
