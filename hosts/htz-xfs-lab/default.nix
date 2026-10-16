@@ -96,6 +96,7 @@ in
 
   my.primaryUser = "bdsqqq";
   my.paths.commonplace = "/home/bdsqqq/commonplace";
+  my.t3Code.nativeService.enable = true;
 
   my.gog = {
     enable = true;
