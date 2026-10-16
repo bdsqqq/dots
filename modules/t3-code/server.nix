@@ -7,6 +7,7 @@
 let
   isDarwin = lib.hasSuffix "-darwin" hostSystem;
   isLinux = lib.hasSuffix "-linux" hostSystem;
+  nativeService = config.my.t3Code.nativeService.enable;
   toolsDir = "${config.my.paths.commonplace}/01_files/nix/modules/node-pnpm";
   toolsBin = "${toolsDir}/node_modules/.bin";
   developmentServer = "${config.users.users.bdsqqq.home}/.local/share/t3-pi/dist/bin.mjs";
@@ -207,6 +208,9 @@ let
   };
 in
 {
+  options.my.t3Code.nativeService.enable =
+    lib.mkEnableOption "T3-owned user service and runtime updates (Linux)";
+
   imports = [
     ../artificial-analysis/credential.nix
     ../github/credential.nix
@@ -235,12 +239,42 @@ in
             adoptExisting = true;
           };
 
-          environment.systemPackages = [
+          environment.systemPackages = lib.optionals (!nativeService) [
             t3Fork
             t3PiDeploy
           ];
 
-          systemd.services.t3-code = {
+          # The native launcher selects updated runtimes. Do not put a second,
+          # version-pinned server on its port or replace its writable unit.
+          users.users.bdsqqq.linger = lib.mkIf nativeService true;
+          sops.templates.t3-code-environment = lib.mkIf nativeService {
+            owner = "bdsqqq";
+            mode = "0400";
+            content = ''
+              GH_TOKEN="${config.sops.placeholder.gh_token}"
+              HF_TOKEN="${config.sops.placeholder.hf_token}"
+              PARALLEL_API_KEY="${config.sops.placeholder.parallel_api_key}"
+              artificial_analysis_api_key="${config.sops.placeholder.artificial_analysis_api_key}"
+            '';
+          };
+          home-manager.users.bdsqqq.home.file =
+            lib.mkIf nativeService {
+              ".config/systemd/user/t3code.service.d/nix.conf".text = ''
+                [Service]
+                Environment=T3CODE_HOST=127.0.0.1
+                Environment=T3CODE_PORT=3773
+                Environment="PATH=${config.users.users.bdsqqq.home}/.local/bin:${toolsBin}:${config.home-manager.users.bdsqqq.home.profileDirectory}/bin:${lib.makeBinPath [
+                  pkgs.cloudflared
+                  pkgs.coreutils
+                  pkgs.git
+                  pkgs.gnused
+                  pkgs.nodejs
+                ]}"
+                EnvironmentFile=${config.sops.templates.t3-code-environment.path}
+              '';
+            };
+
+          systemd.services.t3-code = lib.mkIf (!nativeService) {
             description = "T3 Code server";
             wantedBy = [ "multi-user.target" ];
             wants = [ "tailscaled.service" ];
