@@ -17,6 +17,7 @@ import type {
   ListSessionsInput,
   LoadedSession,
   NativeSessionRootOptions,
+  NativeSessionSelection,
   ReadSessionInput,
   SessionHistory,
   SessionIdentity,
@@ -30,13 +31,15 @@ export type * from "./contracts";
  * so use native env/settings precedence. the SDK discards --session-dir for
  * --no-session; an extension cannot recover that flag from its context.
  */
-export function resolveNativeSessionRoot(
+export function resolveNativeSessionSelection(
   opts: NativeSessionRootOptions = {},
-): string {
+): NativeSessionSelection {
   const defaultRoot = resolve(getAgentDir(), "sessions");
   const dir = opts.sessionManager?.getSessionDir();
   if (dir)
-    return resolve(dirname(dir)) === defaultRoot ? defaultRoot : resolve(dir);
+    return resolve(dirname(dir)) === defaultRoot
+      ? { root: defaultRoot, kind: "grouped" }
+      : { root: resolve(dir), kind: "flat" };
   const cwd = opts.cwd ?? process.cwd();
   let sessionDir = process.env.PI_CODING_AGENT_SESSION_DIR;
   if (!sessionDir) {
@@ -60,8 +63,18 @@ export function resolveNativeSessionRoot(
   if (sessionDir !== undefined && typeof sessionDir !== "string")
     throw new Error("native sessionDir must be a string");
   return sessionDir
-    ? resolve(cwd, sessionDir.replace(/^~(?=$|\/)/, homedir()))
-    : defaultRoot;
+    ? {
+        root: resolve(cwd, sessionDir.replace(/^~(?=$|\/)/, homedir())),
+        kind: "flat",
+      }
+    : { root: defaultRoot, kind: "grouped" };
+}
+
+/** root-only consumers do not need the SDK's grouped/flat discovery distinction. */
+export function resolveNativeSessionRoot(
+  opts: NativeSessionRootOptions = {},
+): string {
+  return resolveNativeSessionSelection(opts).root;
 }
 
 class ParseError extends Error {

@@ -14,6 +14,12 @@ export interface NativeSessionRootOptions {
   settings?: Readonly<{ sessionDir?: string }>;
 }
 
+/** grouped roots contain workspace directories; flat roots contain session files. */
+export interface NativeSessionSelection {
+  root: string;
+  kind: "grouped" | "flat";
+}
+
 export interface SessionIdentity {
   sessionId: string;
   workspace: string;
