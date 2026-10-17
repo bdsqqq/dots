@@ -25,7 +25,6 @@ import type {
   Usage,
 } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { resolveGlobalSettingsPath } from "@bds_pi/config";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
 
 // --- types ---
@@ -247,13 +246,6 @@ export interface PiSpawnConfig {
   onUpdate?: (result: PiSpawnResult) => void;
   session?: PiSpawnSession;
   repo?: string;
-  /**
-   * override the global bds config path for the child process.
-   *
-   * when omitted, piSpawn propagates the parent's resolved global config path
-   * via PI_BDS_CONFIG_PATH so sub-agents inherit extension gating.
-   */
-  configPath?: string;
   /**
    * inject a follow-up user message after the agent's first turn.
    *
@@ -541,7 +533,6 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
   const useRpc = !!config.followUp;
   const spawnEnv: Record<string, string | undefined> = {
     ...process.env,
-    PI_BDS_CONFIG_PATH: config.configPath ?? resolveGlobalSettingsPath(),
     ...config.env,
   };
 
@@ -1605,7 +1596,8 @@ if (import.meta.vitest) {
         task: "explore",
         followUp: "report",
         session: { persist: false },
-        timeoutMs: 200,
+        // Exercise missing settlement after fixture startup, not startup speed.
+        timeoutMs: 2000,
       });
       expect(result.messages).toHaveLength(2);
       expect(result.lifecycle).toMatchObject({
@@ -1857,11 +1849,6 @@ if (import.meta.vitest) {
     const extensionNames = [
       "read",
       "bash",
-      "glob",
-      "grep",
-      "ls",
-      "apply-patch",
-      "format-file",
       "skill",
       "finder",
       "web-search",
@@ -1870,12 +1857,9 @@ if (import.meta.vitest) {
     ];
     const delegateTools = [
       "read",
-      "grep",
-      "find",
-      "ls",
       "bash",
-      "apply_patch",
-      "format_file",
+      "edit",
+      "write",
       "skill",
       "finder",
       "web_search",
@@ -1889,10 +1873,15 @@ if (import.meta.vitest) {
      */
     const probeTools = async (
       selection: Pick<PiSpawnConfig, "tools" | "excludeTools" | "followUp">,
+      settings: Record<string, unknown> = {},
     ) => {
       const { getPackageDir } = await import("@earendil-works/pi-coding-agent");
       const { fileURLToPath, pathToFileURL } = await import("node:url");
       const cwd = makeTmpDir();
+      fs.writeFileSync(
+        path.join(cwd, "settings.json"),
+        JSON.stringify(settings),
+      );
       const probe = path.join(cwd, "probe.mjs");
       const root = fileURLToPath(new URL("../../../", import.meta.url));
       const paths = extensionNames.map((name) =>
@@ -1966,6 +1955,7 @@ if (import.meta.vitest) {
           // A native allowlist must survive refresh, not just session_start.
           registerLateTool();
           const nested = [];
+          let nativeBash;
           if (parsed.tools?.includes("codemode")) {
             // Enter the same native runner as ctx.executeTool(), without a model
             // request or an MCP server. The fixture callback is the only effect.
@@ -1982,9 +1972,14 @@ if (import.meta.vitest) {
               const result = await session._executeNestedToolCall("registry-parent", name, {});
               nested.push({ name, isError: result.isError });
             }
+            if (${JSON.stringify("@bds_pi/bash" in settings)}) {
+              nativeBash = await session._executeNestedToolCall(
+                "registry-parent", "bash", { command: "printf native-config-ok" },
+              );
+            }
           }
           console.error(JSON.stringify({
-            active, registry, callable, sources, nested, mcpExecutions,
+            active, registry, callable, sources, nested, mcpExecutions, nativeBash,
             registryAfterRefresh: session.getAllTools().map(t => t.name).sort(),
             afterRefresh: session.getActiveToolNames().sort(),
             callableAfterRefresh: session.getCallableToolNames().sort(),
@@ -2011,7 +2006,7 @@ if (import.meta.vitest) {
         ...selection,
         env: {
           PI_OFFLINE: "1",
-          PI_BDS_CONFIG_PATH: path.join(cwd, "settings.json"),
+          PI_CODING_AGENT_DIR: cwd,
         },
       });
       // RPC deliberately exits before any model turn; only startup is probed.
@@ -2019,6 +2014,18 @@ if (import.meta.vitest) {
       expect(result.exitCode, result.stderr).toBe(selection.followUp ? 1 : 0);
       return JSON.parse(result.stderr.trim().split("\n").at(-1)!);
     };
+
+    it("inherits native settings and executes builtin bash when the extension is disabled", async () => {
+      const result = await probeTools(
+        { tools: ["bash", "codemode"] },
+        { "@bds_pi/bash": { enabled: false } },
+      );
+      expect(result.nativeBash.isError).not.toBe(true);
+      expect(result.nativeBash.result.content).toContainEqual({
+        type: "text",
+        text: "native-config-ok",
+      });
+    });
 
     it("admits delegate web and mutation tools without unrelated tools", async () => {
       const result = await probeTools({
@@ -2106,7 +2113,7 @@ if (import.meta.vitest) {
         expected: [],
       },
       {
-        name: "read-session disables everything",
+        name: "empty allowlist disables everything",
         selection: { tools: [] },
         expected: [],
       },
@@ -2123,9 +2130,9 @@ if (import.meta.vitest) {
       {
         name: "native registry deduplicates repeated tool names",
         selection: {
-          tools: ["find", "find", "apply_patch"],
+          tools: ["edit", "edit", "write"],
         },
-        expected: ["find", "apply_patch"],
+        expected: ["edit", "write"],
       },
       {
         name: "unknown-only explicit selection does not restore defaults",
@@ -2155,13 +2162,7 @@ if (import.meta.vitest) {
     });
 
     it("excludes builtin, extension, and late-registered tools without an allowlist", async () => {
-      const excluded = [
-        "bash",
-        "write",
-        "web_search",
-        "apply_patch",
-        "late_tool",
-      ];
+      const excluded = ["bash", "write", "web_search", "edit", "late_tool"];
       const result = await probeTools({ excludeTools: excluded });
       for (const name of excluded) {
         expect(result.registry).not.toContain(name);
@@ -2187,10 +2188,9 @@ if (import.meta.vitest) {
       expect(result.callable).toEqual(
         expect.arrayContaining([...delegateTools, "read_github"]),
       );
-      // apply-patch's startup handler disables native edit/write.
-      expect(result.callable).not.toContain("edit");
-      expect(result.callable).not.toContain("write");
-      expect(result.active).toEqual(["apply_patch", "bash", "read"]);
+      expect(result.callable).toContain("edit");
+      expect(result.callable).toContain("write");
+      expect(result.active).toEqual(["bash", "edit", "read", "write"]);
       expect(result.afterRefresh).toEqual(
         [...result.active, "late_tool"].sort(),
       );
