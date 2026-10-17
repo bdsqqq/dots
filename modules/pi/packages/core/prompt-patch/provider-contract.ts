@@ -165,7 +165,7 @@ if (import.meta.vitest) {
         strict: true,
       });
       for (const name of ["edit", "write"]) {
-        const wire = payload?.tools.find(tool => tool.name === name);
+        const wire = payload?.tools.find((tool) => tool.name === name);
         expect(wire).toMatchObject({
           type: "function",
           parameters: { type: "object" },
@@ -191,7 +191,9 @@ if (import.meta.vitest) {
           expect(properties?.content).toMatchObject({ type: "string" });
         }
       }
-      expect(payload?.tools.some(tool => tool.name === "apply_patch")).toBe(false);
+      expect(payload?.tools.some((tool) => tool.name === "apply_patch")).toBe(
+        false,
+      );
       expect(network).not.toHaveBeenCalled();
     } finally {
       network.mockRestore();

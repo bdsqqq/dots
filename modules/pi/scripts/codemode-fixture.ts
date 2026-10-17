@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
-import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
+import type {
+  AssistantMessage,
+  ToolResultMessage,
+} from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { fixtureFetch } from "./codemode-boundaries.mjs";
 
@@ -26,13 +29,18 @@ export default function fixture(pi: ExtensionAPI) {
       );
     }
     for (const name of plan.native) {
-      const tool = tools.find(t => t.name === name);
+      const tool = tools.find((t) => t.name === name);
       assert.ok(tool, `native tool missing: ${name}`);
-      assert.ok(!JSON.stringify(tool.sourceInfo).includes(plan.extensionRoot),
-        `${name} unexpectedly supplied by an extension`);
+      assert.ok(
+        !JSON.stringify(tool.sourceInfo).includes(plan.extensionRoot),
+        `${name} unexpectedly supplied by an extension`,
+      );
     }
     for (const name of plan.retired)
-      assert.ok(!names.some(t => t.name === name), `retired extension tool: ${name}`);
+      assert.ok(
+        !names.some((t) => t.name === name),
+        `retired extension tool: ${name}`,
+      );
     writeFileSync(plan.inventory, JSON.stringify(tools));
   });
   pi.registerProvider("codemode-fixture", {
@@ -64,7 +72,8 @@ export default function fixture(pi: ExtensionAPI) {
           const first = turn++ === 0;
           if (!first) {
             const result = context.messages.findLast(
-              (m): m is ToolResultMessage => m.role === "toolResult" && m.toolName === "codemode",
+              (m): m is ToolResultMessage =>
+                m.role === "toolResult" && m.toolName === "codemode",
             );
             assert.ok(result && !result.isError, JSON.stringify(result));
             assert.ok(
@@ -109,10 +118,19 @@ export default function fixture(pi: ExtensionAPI) {
             },
           };
           stream.push({ type: "start", partial: message });
-          stream.push({ type: "done", reason: first ? "toolUse" : "stop", message });
+          stream.push({
+            type: "done",
+            reason: first ? "toolUse" : "stop",
+            message,
+          });
           stream.end();
         } catch (error) {
-           writeFileSync(plan.failure, error instanceof Error ? error.stack ?? error.message : String(error));
+          writeFileSync(
+            plan.failure,
+            error instanceof Error
+              ? (error.stack ?? error.message)
+              : String(error),
+          );
           stream.push({
             type: "error",
             reason: "error",

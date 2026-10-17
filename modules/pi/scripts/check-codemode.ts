@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 assert.equal(
   process.argv
@@ -44,15 +45,24 @@ const expected = [
   "oracle",
   "read",
   "read_github",
-  "read_session",
+  "history_list",
+  "history_read",
   "read_web_page",
   "search_github",
-  "search_sessions",
   "skill",
   "web_search",
 ].sort();
 const native = ["edit", "write"];
-const retired = ["apply_patch", "format_file", "undo_edit", "find", "grep", "ls"];
+const retired = [
+  "apply_patch",
+  "format_file",
+  "undo_edit",
+  "find",
+  "grep",
+  "ls",
+  "read_session",
+  "search_sessions",
+];
 const temporary = mkdtempSync(join(realpathSync(tmpdir()), "pi-codemode-cli-"));
 const put = (path: string, value: string | Buffer) => {
   mkdirSync(dirname(path), { recursive: true });
@@ -66,38 +76,38 @@ const executable = (name: string, source: string) => {
   return path;
 };
 try {
-  const sessions = join(temporary, "sessions");
+  const agentDir = join(temporary, ".pi", "agent");
+  const sessions = join(agentDir, "sessions", "--fixture--");
   const targetId = "11111111-1111-4111-8111-111111111111";
-  const targetSession = join(sessions, `2026-01-01_${targetId}.jsonl`);
+  const history = SessionManager.create(temporary, sessions, { id: targetId });
+  const rootEntry = history.appendMessage({
+    role: "user",
+    content: "SESSION_FIXTURE",
+    timestamp: Date.now(),
+  });
+  const abandonedLeaf = history.appendMessage({
+    role: "user",
+    content: "ABANDONED_BRANCH_FIXTURE",
+    timestamp: Date.now(),
+  });
+  history.branch(rootEntry);
+  const selectedLeaf = history.appendMessage({
+    role: "user",
+    content: "SELECTED_BRANCH_FIXTURE",
+    timestamp: Date.now(),
+  });
+  const targetSession = history.getSessionFile()!;
+  const targetMetadata = (await SessionManager.list(temporary, sessions)).find(
+    (s) => s.id === targetId,
+  )!;
+  assert.ok(targetMetadata, "SDK did not persist fixture history");
   put(
-    targetSession,
-    [
-      {
-        type: "session",
-        version: 3,
-        id: targetId,
-        timestamp: new Date().toISOString(),
-        cwd: temporary,
-      },
-      {
-        type: "message",
-        id: "user1",
-        parentId: null,
-        timestamp: new Date().toISOString(),
-        message: {
-          role: "user",
-          content: [{ type: "text", text: "SESSION_FIXTURE" }],
-          timestamp: Date.now(),
-        },
-      },
-    ]
-      .map((x) => JSON.stringify(x))
-      .join("\n") + "\n",
+    join(temporary, "fixture.txt"),
+    "UNRELATED_USER_TEXT\nLOCAL_FIXTURE\nKEEP_TRAILING_TEXT\n",
   );
-  put(join(temporary, "fixture.txt"), "UNRELATED_USER_TEXT\nLOCAL_FIXTURE\nKEEP_TRAILING_TEXT\n");
   put(join(temporary, "format.json"), '{"fixture":true}');
   put(
-    join(temporary, "agent", "skills", "fixture", "SKILL.md"),
+    join(agentDir, "skills", "fixture", "SKILL.md"),
     "---\nname: fixture\ndescription: offline integration fixture\n---\nSKILL_FIXTURE\n",
   );
   // Tiny valid PNG: exercise real read's image result and codemode's image forwarding.
@@ -112,10 +122,13 @@ try {
   json(join(temporary, "package.json"), {
     scripts: { format: "node format.mjs" },
   });
-  put(join(temporary, "format.mjs"), `
+  put(
+    join(temporary, "format.mjs"),
+    `
     import {readFileSync,writeFileSync} from 'node:fs';
     writeFileSync('format.json', JSON.stringify(JSON.parse(readFileSync('format.json','utf8')),null,2)+'\\n');
-  `);
+  `,
+  );
   executable(
     "gh",
     `
@@ -150,9 +163,9 @@ try {
   const memoryData = join(temporary, "memory-data");
   mkdirSync(memoryRoot);
   // Real verified projection publisher writes an isolated generation; no real memory is touched.
-  const { publishQmdSource } = await createJiti(import.meta.url).import<typeof import("../packages/core/agent-memory/maintainer/projection.ts")>(
-    join(root, "packages/core/agent-memory/maintainer/projection.ts"),
-  );
+  const { publishQmdSource } = await createJiti(import.meta.url).import<
+    typeof import("../packages/core/agent-memory/maintainer/projection.ts")
+  >(join(root, "packages/core/agent-memory/maintainer/projection.ts"));
   const memory = Buffer.from(
     '---\nmemory_version: 2\nmemory_id: "mem_fixture"\ntitle: "fixture"\ndescription: "offline memory"\nkind: "fact"\nscope: "global"\ntriggers: ["fixture"]\nkeywords: []\nstatus: "active"\nupdated: "2026-01-01"\n---\n\nMEMORY_FIXTURE\n',
   );
@@ -187,18 +200,9 @@ try {
   settings["@bds_pi/agent-message"] = {
     enabled: true,
     queueDir: join(temporary, "mailbox"),
-    sessionsDirs: [sessions],
   };
-  settings["@bds_pi/read-session"] = {
-    enabled: true,
-    sessionsDirs: [sessions],
-  };
-  settings["@bds_pi/search-sessions"] = {
-    enabled: true,
-    sessionsDirs: [sessions],
-  };
-  json(join(temporary, "bds.json"), settings);
-  json(join(temporary, "agent/settings.json"), {
+  json(join(agentDir, "settings.json"), {
+    ...settings,
     retry: { enabled: false },
     compaction: { enabled: false },
     defaultTools: ["codemode", "edit", "write"],
@@ -220,16 +224,10 @@ try {
     ["bash", { cmd: "printf BASH_FIXTURE", cwd: temporary }, "BASH_FIXTURE"],
     ["bash", { cmd: "npm run format", cwd: temporary }, ""],
     ["skill", { name: "fixture" }, "SKILL_FIXTURE"],
-    ["search_sessions", { all_workspaces: true }, targetId],
     [
       "agent_message",
       { sessionId: targetId, message: "MESSAGE_FIXTURE" },
       "queued agent message",
-    ],
-    [
-      "read_session",
-      { session_id: targetId, goal: "summarize fixture" },
-      "SUBAGENT_FIXTURE",
     ],
     ["finder", { query: "find fixture" }, "SUBAGENT_FIXTURE"],
     ["oracle", { task: "explain fixture" }, "SUBAGENT_FIXTURE"],
@@ -305,6 +303,24 @@ try {
       try { await call(name,args,needle); } catch(error) { failures.push(name+': '+String(error)); }
     }
     check(!failures.length,JSON.stringify(failures));
+    const listed=await tools.history_list({});
+    check(listed.ok,'history_list lost structured output '+JSON.stringify(listed));
+    const fixture=listed.value.find(s=>s.sessionId===${JSON.stringify(targetId)});
+    check(fixture && fixture.workspace===${JSON.stringify(temporary)} && fixture.sessionFile===${JSON.stringify(targetSession)},'history_list lost session identity');
+    check(fixture.firstMessage===${JSON.stringify(targetMetadata.firstMessage)},'history_list disagrees with native SDK metadata');
+    const request={workspace:${JSON.stringify(temporary)},sessionId:${JSON.stringify(targetId)}};
+    const selected=await tools.history_read({...request,entryId:${JSON.stringify(selectedLeaf)}});
+    check(selected.ok && selected.value.selection==='entry' && selected.value.leafId===${JSON.stringify(selectedLeaf)},'history_read lost selected leaf');
+    check(selected.value.sessionFile===fixture.sessionFile && selected.value.workspace===fixture.workspace,'history adapters disagree on identity');
+    check(JSON.stringify(selected.value.entries)===${JSON.stringify(JSON.stringify(history.getBranch(selectedLeaf)))},'selected history differs from actual SDK branch');
+    const abandoned=await tools.history_read({...request,entryId:${JSON.stringify(abandonedLeaf)}});
+    check(abandoned.ok && JSON.stringify(abandoned.value.entries)===${JSON.stringify(JSON.stringify(history.getBranch(abandonedLeaf)))},'explicit abandoned branch differs from native SDK');
+    const persisted=await tools.history_read(request);
+    check(persisted.ok && persisted.value.selection==='persisted-last-entry' && persisted.value.leafId===selected.value.leafId,'implicit history did not select last persisted entry');
+    const missing=await tools.history_read({...request,sessionId:'absent'});
+    check(missing.ok===false && missing.error.code==='not_found','history lookup error lost structure '+JSON.stringify(missing));
+    const wrong=await tools.history_read({...request,workspace:${JSON.stringify(join(temporary, "other"))}});
+    check(wrong.ok===false && wrong.error.code==='not_found','workspace-scoped history lookup lost error structure '+JSON.stringify(wrong));
     const path=${JSON.stringify(join(temporary, "fixture.txt"))};
     const edited=await tools.edit({path,edits:[{oldText:'LOCAL_FIXTURE',newText:'EDIT_FIXTURE'}]});
     check(typeof edited==='string','native edit lost text result');
@@ -331,7 +347,7 @@ try {
     check(page.details.webPage.nextCursor,'missing web cursor');
     text({cursor:page.details.webPage.nextCursor});
     const picture=await tools.read({path:${JSON.stringify(join(temporary, "image.png"))}});
-    check(picture.content.some(p=>p.type==='image' && p.mimeType==='image/png' && p.data===${JSON.stringify(readFileSync(join(temporary,"image.png")).toString("base64"))}),'read dropped or corrupted image bytes');
+    check(picture.content.some(p=>p.type==='image' && p.mimeType==='image/png' && p.data===${JSON.stringify(readFileSync(join(temporary, "image.png")).toString("base64"))}),'read dropped or corrupted image bytes');
     for(const part of picture.content) if(part.type==='image') image(part);
     text('CODEMODE_VERIFIED');
   `;
@@ -353,9 +369,7 @@ try {
     ...process.env,
     HOME: temporary,
     TMPDIR: temporary,
-    PI_CODING_AGENT_DIR: join(temporary, "agent"),
-    PI_BDS_CONFIG_PATH: join(temporary, "bds.json"),
-    PI_BDS_CONFIG_OVERRIDES_PATH: join(temporary, "none.json"),
+    PI_CODING_AGENT_DIR: agentDir,
     PI_BIN: child,
     PI_MEMORY_ROOT: memoryRoot,
     PI_MEMORY_DATA_DIR: memoryData,
@@ -417,7 +431,7 @@ try {
   );
   const result = JSON.parse(readFileSync(plan.result, "utf8"));
   assert.ok(
-    result.content.some((p: {type: string}) => p.type === "image"),
+    result.content.some((p: { type: string }) => p.type === "image"),
     "codemode did not forward image to provider",
   );
   assert.equal(
@@ -439,7 +453,9 @@ try {
   // Native codemode batches text emissions; the cursor may share a block with
   // inventory lines, headers, and image-file metadata.
   const cursorLine = result.content
-    .flatMap((p: {type: string; text: string}) => (p.type === "text" ? p.text.split("\n") : []))
+    .flatMap((p: { type: string; text: string }) =>
+      p.type === "text" ? p.text.split("\n") : [],
+    )
     .find((line: string) => line.startsWith('{"cursor":'));
   assert.ok(cursorLine, "missing continuation capability");
   const cursor = JSON.parse(cursorLine).cursor;
@@ -485,10 +501,11 @@ try {
         evidence: [
           `real CLI + built-in codemode + ${built ? "built" : "source"} extension registrations`,
           "structured content/details",
-           "native edit/write preserve unrelated text and reject nonmatching edits",
-           "project formatting script through bash; shell rg and listing",
+          "native edit/write preserve unrelated text and reject nonmatching edits",
+          "project formatting script through bash; shell rg and listing",
           "image forwarded into provider context",
           "isolated mailbox enqueue",
+          "native SDK history metadata and explicit branches through codemode, without model extraction",
           "cursor continuation in fresh CLI process with no originating transcript or fetch",
         ],
         limitations: [
