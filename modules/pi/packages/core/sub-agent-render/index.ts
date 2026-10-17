@@ -265,6 +265,7 @@ function toolArgSummary(
     }
     case "edit":
       return shortenPath((args.file_path || args.path || "...") as string);
+    // Retired tools still appear in recorded child transcripts.
     case "apply_patch": {
       const input = typeof args.input === "string" ? args.input : "";
       const paths = input.split("\n").flatMap((line) => {
