@@ -9,7 +9,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { parseCodexPatch } from "@bds_pi/codex-patch";
 import { resolveToAbsolute } from "@bds_pi/fs";
 
 const CONTEXT_NAMES = [
@@ -20,14 +19,10 @@ const CONTEXT_NAMES = [
 ] as const;
 const MAX_FILE_BYTES = 32 * 1024;
 const MAX_EVENT_BYTES = 128 * 1024;
-const MUTATION_TOOLS = new Set([
-  "apply_patch",
-  "edit",
-  "write",
-  "format_file",
-  "undo_edit",
-]);
-const OBSERVATION_TOOLS = new Set(["read", "grep", "find", "ls", "look_at"]);
+const MUTATION_TOOLS = new Set(["edit", "write"]);
+// Shell discovery is intentionally not parsed: known native edits still gate
+// before mutation, while read/look_at deliver instructions on observation.
+const OBSERVATION_TOOLS = new Set(["read", "look_at"]);
 
 type TargetPath = {
   path: string;
@@ -203,18 +198,6 @@ function formatContext(files: NestedContextFile[]): string {
     .join("\n\n");
 }
 
-function textContent(
-  content: Array<{ type: string; text?: string }> | undefined,
-): string {
-  return (content ?? [])
-    .filter(
-      (item): item is { type: string; text: string } =>
-        item.type === "text" && typeof item.text === "string",
-    )
-    .map((item) => item.text)
-    .join("\n");
-}
-
 function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
@@ -224,85 +207,23 @@ function stringArray(value: unknown): string[] {
 function observationTargets(event: {
   toolName: string;
   input: Record<string, unknown>;
-  content?: Array<{ type: string; text?: string }>;
-  details?: unknown;
 }): TargetPath[] {
   const targets: TargetPath[] = [];
   const add = (value: unknown, assumeFile: boolean): void => {
     if (typeof value === "string" && value.trim())
       targets.push({ path: value, assumeFile });
   };
-  if (event.toolName === "read" || event.toolName === "ls")
-    add(event.input.path, false);
+  if (event.toolName === "read") add(event.input.path, false);
   if (event.toolName === "look_at") {
     add(event.input.path, true);
     stringArray(event.input.referenceFiles).forEach((file) => add(file, true));
   }
-  if (event.toolName === "grep") {
-    add(event.input.path, false);
-    const details = event.details as
-      | { fileGroups?: Array<{ path?: unknown }>; searchPath?: unknown }
-      | undefined;
-    const searchPathIsFile =
-      typeof details?.searchPath === "string" &&
-      fs.existsSync(details.searchPath) &&
-      fs.statSync(details.searchPath).isFile();
-    details?.fileGroups?.forEach((group) => {
-      if (typeof group.path !== "string" || searchPathIsFile) return;
-      add(
-        typeof details.searchPath === "string"
-          ? path.resolve(details.searchPath, group.path)
-          : group.path,
-        true,
-      );
-    });
-    if (!details?.fileGroups?.length && !searchPathIsFile)
-      for (const line of textContent(event.content).split("\n")) {
-        const match = /^(.+?)(?::|-)\d+(?::|-)/.exec(line);
-        if (!match?.[1]) continue;
-        add(
-          typeof event.input.path === "string"
-            ? path.join(event.input.path, match[1])
-            : match[1],
-          true,
-        );
-      }
-  }
-  if (event.toolName === "find")
-    for (const line of textContent(event.content).split("\n")) {
-      const candidate = line.trim();
-      if (
-        candidate &&
-        !candidate.startsWith("(") &&
-        !candidate.startsWith("...")
-      )
-        add(
-          typeof event.input.path === "string"
-            ? path.join(event.input.path, candidate)
-            : candidate,
-          true,
-        );
-    }
   return targets;
 }
 
 function mutationTargets(event: {
-  toolName: string;
   input: Record<string, unknown>;
 }): TargetPath[] {
-  if (event.toolName === "apply_patch") {
-    if (typeof event.input.input !== "string") return [];
-    try {
-      return parseCodexPatch(event.input.input).flatMap((operation) => [
-        { path: operation.path, assumeFile: true },
-        ...(operation.type === "update" && operation.movePath
-          ? [{ path: operation.movePath, assumeFile: true }]
-          : []),
-      ]);
-    } catch {
-      return [];
-    }
-  }
   return typeof event.input.path === "string"
     ? [{ path: event.input.path, assumeFile: true }]
     : [];
@@ -368,7 +289,6 @@ export function createNestedAgentsExtension(): (pi: ExtensionAPI) => void {
     pi.on("tool_call", (event, ctx) => {
       if (disabled() || !MUTATION_TOOLS.has(event.toolName)) return;
       const targets = mutationTargets({
-        toolName: event.toolName,
         input: event.input as Record<string, unknown>,
       });
       if (
@@ -416,8 +336,6 @@ export function createNestedAgentsExtension(): (pi: ExtensionAPI) => void {
           observationTargets({
             toolName: event.toolName,
             input: event.input as Record<string, unknown>,
-            content: event.content,
-            details: event.details,
           }),
         );
       } catch (error) {
@@ -587,7 +505,7 @@ if (import.meta.vitest) {
         const { handlers } = harness();
         expect(
           handlers.tool_call!(
-            { toolName: "format_file", input: { path: file } },
+            { toolName: "edit", input: { path: file } },
             { cwd: root },
           ),
         ).toMatchObject({ block: true, reason: expect.stringContaining(expected) });
@@ -601,7 +519,7 @@ if (import.meta.vitest) {
       rmSync(nestedContext);
       symlinkSync("../rules.md", nestedContext);
       const { handlers } = harness();
-      const event = { toolName: "format_file", input: { path: file } };
+      const event = { toolName: "edit", input: { path: file } };
       expect(handlers.tool_call!(event, { cwd: root })).toMatchObject({
         block: true,
         reason: expect.stringContaining("linked rule"),
@@ -644,76 +562,6 @@ if (import.meta.vitest) {
       expect(handlers.tool_result!(event, { cwd: root })).toBeUndefined();
     });
 
-    it("uses structured grep result paths to discover deeper context", () => {
-      const { root, file } = fixture();
-      const { handlers } = harness();
-      const result = handlers.tool_result!(
-        {
-          toolName: "grep",
-          input: { pattern: "export", path: "packages" },
-          content: [{ type: "text", text: `${file}:1:export {};` }],
-          details: {
-            searchPath: path.join(root, "packages"),
-            fileGroups: [{ path: "app/src/index.ts" }],
-          },
-          isError: false,
-        },
-        { cwd: root },
-      );
-      expect(result.content.at(-1).text).toContain("app rule");
-    });
-
-    it("uses relative find results to discover deeper context", () => {
-      const { root } = fixture();
-      const { handlers } = harness();
-      const result = handlers.tool_result!(
-        {
-          toolName: "find",
-          input: { filePattern: "**/*.ts" },
-          content: [{ type: "text", text: "packages/app/src/index.ts" }],
-          details: {},
-          isError: false,
-        },
-        { cwd: root },
-      );
-      expect(result.content.at(-1).text).toContain("app rule");
-    });
-
-    it("falls back to built-in grep text paths", () => {
-      const { root } = fixture();
-      const { handlers } = harness();
-      const result = handlers.tool_result!(
-        {
-          toolName: "grep",
-          input: { pattern: "export", path: "packages" },
-          content: [{ type: "text", text: "app/src/index.ts:1:export {};" }],
-          details: {},
-          isError: false,
-        },
-        { cwd: root },
-      );
-      expect(result.content.at(-1).text).toContain("app rule");
-    });
-
-    it("handles grep searches rooted at one file", () => {
-      const { root, file } = fixture();
-      const { handlers } = harness();
-      const result = handlers.tool_result!(
-        {
-          toolName: "grep",
-          input: { pattern: "export", path: file },
-          content: [{ type: "text", text: "index.ts:1:export {};" }],
-          details: {
-            searchPath: file,
-            fileGroups: [{ path: "index.ts" }],
-          },
-          isError: false,
-        },
-        { cwd: root },
-      );
-      expect(result.content.at(-1).text).toContain("app rule");
-    });
-
     it("keeps a mutation blocked until the turn after read context is delivered", () => {
       const { root, file } = fixture();
       const { handlers } = harness();
@@ -732,14 +580,14 @@ if (import.meta.vitest) {
       ).toBeDefined();
       expect(
         handlers.tool_call!(
-          { toolName: "format_file", input: { path: file } },
+          { toolName: "edit", input: { path: file } },
           { cwd: root },
         ),
       ).toMatchObject({ block: true });
       handlers.turn_start!();
       expect(
         handlers.tool_call!(
-          { toolName: "format_file", input: { path: file } },
+          { toolName: "edit", input: { path: file } },
           { cwd: root },
         ),
       ).toBeUndefined();
@@ -749,9 +597,10 @@ if (import.meta.vitest) {
       const { root, file } = fixture();
       const { handlers } = harness();
       const event = {
-        toolName: "apply_patch",
+        toolName: "edit",
         input: {
-          input: `*** Begin Patch\n*** Update File: ${file}\n@@\n-export {};\n+export const value = 1;\n*** End Patch\n`,
+          path: file,
+          edits: [{ oldText: "export {};", newText: "export const value = 1;" }],
         },
       };
       handlers.turn_start!();
@@ -762,7 +611,7 @@ if (import.meta.vitest) {
       expect(
         handlers.tool_call!(
           {
-            toolName: "format_file",
+            toolName: "write",
             input: { path: path.join(root, "README.md") },
           },
           { cwd: root },
@@ -813,7 +662,7 @@ if (import.meta.vitest) {
       const { handlers } = harness();
       expect(
         handlers.tool_call!(
-          { toolName: "format_file", input: { path: file } },
+          { toolName: "edit", input: { path: file } },
           { cwd: root },
         ),
       ).toMatchObject({
