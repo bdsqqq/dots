@@ -10,6 +10,7 @@ import {
   rmSync,
   existsSync,
   readdirSync,
+  realpathSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve, join } from "node:path";
@@ -21,28 +22,23 @@ assert.equal(
     .slice(2)
     .every((arg) => arg === "--negative" || arg === "--built"),
   true,
-  "offline only; flags: --built, --negative (deliberately drop one call and fail)",
+  "offline only; flags: --built, --negative (deliberately clobber unrelated text)",
 );
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const built = process.argv.includes("--built");
 const expected = [
   "agent_message",
-  "apply_patch",
   "bash",
   "code_review",
   "commit_search",
   "delegate",
   "diff",
-  "find",
   "finder",
-  "format_file",
   "glob_github",
-  "grep",
   "librarian",
   "list_directory_github",
   "list_repositories",
   "look_at",
-  "ls",
   "memory_open",
   "memory_search",
   "oracle",
@@ -53,17 +49,17 @@ const expected = [
   "search_github",
   "search_sessions",
   "skill",
-  "undo_edit",
   "web_search",
 ].sort();
-assert.equal(expected.length, 29);
-const temporary = mkdtempSync(join(tmpdir(), "pi-codemode-cli-"));
-const put = (path, value) => {
+const native = ["edit", "write"];
+const retired = ["apply_patch", "format_file", "undo_edit", "find", "grep", "ls"];
+const temporary = mkdtempSync(join(realpathSync(tmpdir()), "pi-codemode-cli-"));
+const put = (path: string, value: string | Buffer) => {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, value);
 };
-const json = (path, value) => put(path, JSON.stringify(value));
-const executable = (name, source) => {
+const json = (path: string, value: unknown) => put(path, JSON.stringify(value));
+const executable = (name: string, source: string) => {
   const path = join(temporary, "bin", name);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `#!${process.execPath}\n${source}`, { mode: 0o700 });
@@ -98,7 +94,7 @@ try {
       .map((x) => JSON.stringify(x))
       .join("\n") + "\n",
   );
-  put(join(temporary, "fixture.txt"), "LOCAL_FIXTURE\n");
+  put(join(temporary, "fixture.txt"), "UNRELATED_USER_TEXT\nLOCAL_FIXTURE\nKEEP_TRAILING_TEXT\n");
   put(join(temporary, "format.json"), '{"fixture":true}');
   put(
     join(temporary, "agent", "skills", "fixture", "SKILL.md"),
@@ -112,10 +108,14 @@ try {
       "base64",
     ),
   );
-  executable(
-    "prettier",
-    `import {writeFileSync} from 'node:fs'; writeFileSync(process.argv.at(-1), '{ "fixture": true }\\n');`,
-  );
+  // The project owns the formatter command, not a generic tool or fake formatter.
+  json(join(temporary, "package.json"), {
+    scripts: { format: "node format.mjs" },
+  });
+  put(join(temporary, "format.mjs"), `
+    import {readFileSync,writeFileSync} from 'node:fs';
+    writeFileSync('format.json', JSON.stringify(JSON.parse(readFileSync('format.json','utf8')),null,2)+'\\n');
+  `);
   executable(
     "gh",
     `
@@ -150,7 +150,7 @@ try {
   const memoryData = join(temporary, "memory-data");
   mkdirSync(memoryRoot);
   // Real verified projection publisher writes an isolated generation; no real memory is touched.
-  const { publishQmdSource } = await createJiti(import.meta.url).import(
+  const { publishQmdSource } = await createJiti(import.meta.url).import<typeof import("../packages/core/agent-memory/maintainer/projection.ts")>(
     join(root, "packages/core/agent-memory/maintainer/projection.ts"),
   );
   const memory = Buffer.from(
@@ -168,9 +168,9 @@ try {
     },
   ];
   executable("qmd", `console.log(${JSON.stringify(JSON.stringify(rows))});`);
-  const settings = {};
+  const settings: Record<string, unknown> = {};
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  const extensionPaths = manifest.pi.extensions.map((p) =>
+  const extensionPaths = manifest.pi.extensions.map((p: string) =>
     join(
       root,
       built
@@ -201,20 +201,24 @@ try {
   json(join(temporary, "agent/settings.json"), {
     retry: { enabled: false },
     compaction: { enabled: false },
-    defaultTools: ["codemode"],
+    defaultTools: ["codemode", "edit", "write"],
     codemode: { mode: "only" },
   });
   const calls = [
     ["read", { path: join(temporary, "fixture.txt") }, "LOCAL_FIXTURE"],
-    ["ls", { path: temporary }, "fixture.txt"],
-    ["find", { filePattern: "**/fixture.txt" }, "fixture.txt"],
     [
-      "grep",
-      { pattern: "LOCAL_FIXTURE", path: join(temporary, "fixture.txt") },
+      "bash",
+      { cmd: 'rg --files --glob "*.txt"', cwd: temporary },
+      "fixture.txt",
+    ],
+    ["bash", { cmd: "ls", cwd: temporary }, "image.png"],
+    [
+      "bash",
+      { cmd: 'rg "LOCAL_FIXTURE" "fixture.txt"', cwd: temporary },
       "LOCAL_FIXTURE",
     ],
     ["bash", { cmd: "printf BASH_FIXTURE", cwd: temporary }, "BASH_FIXTURE"],
-    ["format_file", { path: join(temporary, "format.json") }, ""],
+    ["bash", { cmd: "npm run format", cwd: temporary }, ""],
     ["skill", { name: "fixture" }, "SKILL_FIXTURE"],
     ["search_sessions", { all_workspaces: true }, targetId],
     [
@@ -288,35 +292,53 @@ try {
       "SEARCH_FIXTURE",
     ],
   ];
-  if (process.argv.includes("--negative")) calls.pop();
   const code = `// @options: {"timeout_ms": 120000, "max_output_tokens": 12000}
-    const expected=${JSON.stringify(expected)}; const passed=[];
     function check(value,message) { if(!value) throw new Error(message); }
     async function call(name,args,needle) {
       const r=await tools[name](args);
       check(r && Array.isArray(r.content) && 'details' in r, name+' lost structured result');
       check(r.content.some(p=>p.type==='text' && p.text.includes(needle)), name+' missing expected output '+JSON.stringify(r));
-      passed.push(name); text({name,status:'verified'}); return r;
+      text({name,status:'verified'}); return r;
     }
     const failures=[];
     for(const [name,args,needle] of ${JSON.stringify(calls)}) {
       try { await call(name,args,needle); } catch(error) { failures.push(name+': '+String(error)); }
     }
     check(!failures.length,JSON.stringify(failures));
-    const edited=await call('apply_patch',{input:${JSON.stringify(`*** Begin Patch\n*** Update File: ${join(temporary, "fixture.txt")}\n@@\n-LOCAL_FIXTURE\n+EDIT_FIXTURE\n*** End Patch`)}},'');
-    check(edited.details.sessionId && edited.details.changes[0].changeId,'missing undo handles');
-    await call('undo_edit',{path:${JSON.stringify(join(temporary, "fixture.txt"))},changeId:edited.details.changes[0].changeId,sessionId:edited.details.sessionId},'');
+    const path=${JSON.stringify(join(temporary, "fixture.txt"))};
+    const edited=await tools.edit({path,edits:[{oldText:'LOCAL_FIXTURE',newText:'EDIT_FIXTURE'}]});
+    check(typeof edited==='string','native edit lost text result');
+    const after=await call('read',{path},'UNRELATED_USER_TEXT\\n');
+    check(after.content.some(p=>p.type==='text' && p.text.includes('EDIT_FIXTURE')),'edit did not reach file');
+    let editError;
+    try { await tools.edit({path,edits:[{oldText:'DOES_NOT_EXIST',newText:'CORRUPTED'}]}); } catch(error) {editError=String(error);}
+    check(editError && /not find|not found|match/i.test(editError),'nonmatching edit did not preserve error');
+    let shellError;
+    try { await tools.bash({cmd:'printf SHELL_ERROR_FIXTURE; exit 23',cwd:${JSON.stringify(temporary)}}); }
+    catch(error) {shellError=String(error);}
+    check(shellError && shellError.includes('SHELL_ERROR_FIXTURE') && shellError.includes('23'),'bash failure lost output or exit status');
+    const written=await tools.write({path:${JSON.stringify(join(temporary, "created.txt"))},content:'WRITE_FIXTURE\\n'});
+    check(typeof written==='string','native write lost text result');
+    await call('read',{path:${JSON.stringify(join(temporary, "created.txt"))}},'WRITE_FIXTURE');
+    ${process.argv.includes("--negative") ? "await tools.write({path,content:'EDIT_FIXTURE\\n'});" : ""}
+    for(const name of ${JSON.stringify(retired)}) {
+      check(!ALL_TOOLS.some(t=>t.name===name),name+' remains discoverable');
+      let rejected=false;
+      try { await tools[name]({}); } catch { rejected=true; }
+      check(rejected,name+' remains callable');
+    }
     const page=await call('read_web_page',{url:'https://codemode.example/fixture',output:['raw'],max_length:512},'WEB_FIXTURE');
     check(page.details.webPage.nextCursor,'missing web cursor');
     text({cursor:page.details.webPage.nextCursor});
     const picture=await tools.read({path:${JSON.stringify(join(temporary, "image.png"))}});
-    check(picture.content.some(p=>p.type==='image'),'read dropped image');
+    check(picture.content.some(p=>p.type==='image' && p.mimeType==='image/png' && p.data===${JSON.stringify(readFileSync(join(temporary,"image.png")).toString("base64"))}),'read dropped or corrupted image bytes');
     for(const part of picture.content) if(part.type==='image') image(part);
-    check(JSON.stringify([...new Set(passed)].sort())===JSON.stringify(expected),'tools dropped from execution inventory');
     text('CODEMODE_VERIFIED');
   `;
   const plan = {
     expected,
+    native,
+    retired,
     extensionRoot: join(
       root,
       built ? "dist/extensions" : "packages/extensions",
@@ -357,9 +379,9 @@ try {
     "--no-themes",
     "-e",
     "builtin:codemode",
-    ...extensionPaths.flatMap((p) => ["-e", p]),
+    ...extensionPaths.flatMap((p: string) => ["-e", p]),
     "-e",
-    join(root, "scripts/codemode-fixture.mjs"),
+    join(root, "scripts/codemode-fixture.ts"),
     "--provider",
     "codemode-fixture",
     "--model",
@@ -395,16 +417,17 @@ try {
   );
   const result = JSON.parse(readFileSync(plan.result, "utf8"));
   assert.ok(
-    result.content.some((p) => p.type === "image"),
+    result.content.some((p: {type: string}) => p.type === "image"),
     "codemode did not forward image to provider",
   );
   assert.equal(
     readFileSync(join(temporary, "fixture.txt"), "utf8"),
-    "LOCAL_FIXTURE\n",
+    "UNRELATED_USER_TEXT\nEDIT_FIXTURE\nKEEP_TRAILING_TEXT\n",
+    "native editing clobbered unrelated text or a failed edit changed the file",
   );
   assert.equal(
     readFileSync(join(temporary, "format.json"), "utf8"),
-    '{ "fixture": true }\n',
+    '{\n  "fixture": true\n}\n',
   );
   const mailbox = join(temporary, "mailbox", targetId);
   const queued = readdirSync(mailbox).filter((p) => p.endsWith(".json"));
@@ -416,8 +439,8 @@ try {
   // Native codemode batches text emissions; the cursor may share a block with
   // inventory lines, headers, and image-file metadata.
   const cursorLine = result.content
-    .flatMap((p) => (p.type === "text" ? p.text.split("\n") : []))
-    .find((line) => line.startsWith('{"cursor":'));
+    .flatMap((p: {type: string; text: string}) => (p.type === "text" ? p.text.split("\n") : []))
+    .find((line: string) => line.startsWith('{"cursor":'));
   assert.ok(cursorLine, "missing continuation capability");
   const cursor = JSON.parse(cursorLine).cursor;
   const networkBefore = readFileSync(env.PI_CODEMODE_NETWORK_LOG, "utf8");
@@ -459,11 +482,11 @@ try {
         status: "passed",
         cli: join(root, "node_modules/.bin/pi"),
         tools: expected,
-        count: expected.length,
         evidence: [
           `real CLI + built-in codemode + ${built ? "built" : "source"} extension registrations`,
           "structured content/details",
-          "edit -> explicit-handle undo",
+           "native edit/write preserve unrelated text and reject nonmatching edits",
+           "project formatting script through bash; shell rg and listing",
           "image forwarded into provider context",
           "isolated mailbox enqueue",
           "cursor continuation in fresh CLI process with no originating transcript or fetch",

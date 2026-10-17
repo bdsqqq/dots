@@ -53,7 +53,7 @@ export async function loadProviderContractTools(
       tools.set(definition.name, definition);
     }
   }
-  for (const required of ["read_web_page", "web_search", "apply_patch"])
+  for (const required of ["read_web_page", "web_search", "edit", "write"])
     if (!tools.has(required)) throw new Error(`missing tool: ${required}`);
   return [...tools.values()];
 }
@@ -114,7 +114,16 @@ if (import.meta.vitest) {
       .mockRejectedValue(new Error("network forbidden"));
     let payload:
       | {
-          tools: Array<{ name: string; strict?: boolean | null; type: string }>;
+          tools: Array<{
+            name: string;
+            strict?: boolean | null;
+            type: string;
+            parameters?: {
+              type: string;
+              required: string[];
+              properties: Record<string, unknown>;
+            };
+          }>;
         }
       | undefined;
     try {
@@ -155,11 +164,34 @@ if (import.meta.vitest) {
       ).toMatchObject({
         strict: true,
       });
-      expect(
-        payload?.tools.find((tool) => tool.name === "apply_patch"),
-      ).toMatchObject({
-        type: "custom",
-      });
+      for (const name of ["edit", "write"]) {
+        const wire = payload?.tools.find(tool => tool.name === name);
+        expect(wire).toMatchObject({
+          type: "function",
+          parameters: { type: "object" },
+        });
+        expect(wire?.parameters?.required).toContain("path");
+        const properties = wire?.parameters?.properties;
+        expect(properties?.path).toMatchObject({ type: "string" });
+        if (name === "edit") {
+          expect(wire?.parameters?.required).toContain("edits");
+          expect(properties?.edits).toMatchObject({
+            type: "array",
+            items: {
+              type: "object",
+              required: ["oldText", "newText"],
+              properties: {
+                oldText: { type: "string" },
+                newText: { type: "string" },
+              },
+            },
+          });
+        } else {
+          expect(wire?.parameters?.required).toContain("content");
+          expect(properties?.content).toMatchObject({ type: "string" });
+        }
+      }
+      expect(payload?.tools.some(tool => tool.name === "apply_patch")).toBe(false);
       expect(network).not.toHaveBeenCalled();
     } finally {
       network.mockRestore();

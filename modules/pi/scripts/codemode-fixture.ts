@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { fixtureFetch } from "./codemode-boundaries.mjs";
 
 // A deterministic LLM boundary, not a replacement for any extension tool.
-export default function fixture(pi) {
-  const plan = JSON.parse(readFileSync(process.env.PI_CODEMODE_PLAN, "utf8"));
+export default function fixture(pi: ExtensionAPI) {
+  const plan = JSON.parse(readFileSync(process.env.PI_CODEMODE_PLAN!, "utf8"));
   pi.on("tool_call", () => {
     globalThis.fetch = fixtureFetch;
   });
@@ -16,7 +18,6 @@ export default function fixture(pi) {
       JSON.stringify(t.sourceInfo).includes(plan.extensionRoot),
     );
     assert.deepEqual(names.map((t) => t.name).sort(), plan.expected);
-    assert.equal(names.length, 29);
     for (const tool of names) {
       assert.equal(tool.exposure, "codemode", tool.name);
       assert.ok(
@@ -24,6 +25,14 @@ export default function fixture(pi) {
         `${tool.name} did not load from the worktree: ${JSON.stringify(tool.sourceInfo)}`,
       );
     }
+    for (const name of plan.native) {
+      const tool = tools.find(t => t.name === name);
+      assert.ok(tool, `native tool missing: ${name}`);
+      assert.ok(!JSON.stringify(tool.sourceInfo).includes(plan.extensionRoot),
+        `${name} unexpectedly supplied by an extension`);
+    }
+    for (const name of plan.retired)
+      assert.ok(!names.some(t => t.name === name), `retired extension tool: ${name}`);
     writeFileSync(plan.inventory, JSON.stringify(tools));
   });
   pi.registerProvider("codemode-fixture", {
@@ -55,7 +64,7 @@ export default function fixture(pi) {
           const first = turn++ === 0;
           if (!first) {
             const result = context.messages.findLast(
-              (m) => m.role === "toolResult" && m.toolName === "codemode",
+              (m): m is ToolResultMessage => m.role === "toolResult" && m.toolName === "codemode",
             );
             assert.ok(result && !result.isError, JSON.stringify(result));
             assert.ok(
@@ -67,7 +76,7 @@ export default function fixture(pi) {
             );
             writeFileSync(plan.result, JSON.stringify(result));
           }
-          const message = {
+          const message: AssistantMessage = {
             role: "assistant",
             api: model.api,
             provider: model.provider,
@@ -100,10 +109,10 @@ export default function fixture(pi) {
             },
           };
           stream.push({ type: "start", partial: message });
-          stream.push({ type: "done", reason: message.stopReason, message });
+          stream.push({ type: "done", reason: first ? "toolUse" : "stop", message });
           stream.end();
         } catch (error) {
-          writeFileSync(plan.failure, String(error.stack));
+           writeFileSync(plan.failure, error instanceof Error ? error.stack ?? error.message : String(error));
           stream.push({
             type: "error",
             reason: "error",
