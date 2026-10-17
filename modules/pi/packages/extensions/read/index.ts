@@ -209,7 +209,7 @@ export function createReadTool(limits: ReadLimits): ToolDefinition<any> {
       "Read a file or list a directory from the file system. If the path is a directory, it returns a list of entries. If the file or directory doesn't exist, an error is returned.\n\n" +
       `- The path parameter MUST be an absolute path.\n` +
       `- By default, this tool returns the first ${limits.maxLines} lines. To read more, call it multiple times with different read_ranges.\n` +
-      "- Use the Grep tool to find specific content in large files or files with long lines.\n" +
+      "- Use bash with rg to find specific content in large files or files with long lines.\n" +
       "- If you are unsure of the correct file path, use the glob tool to look up filenames by glob pattern.\n" +
       '- The contents are returned with each line prefixed by its line number. For example, if a file has contents "abc\\n", you will receive "1: abc\\n". For directories, entries are returned one per line (without line numbers) with a trailing "/" for subdirectories.\n' +
       "- This tool can read images (such as PNG, JPEG, and GIF files) and present them to the model visually.\n" +

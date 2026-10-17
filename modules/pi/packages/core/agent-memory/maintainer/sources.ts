@@ -1382,7 +1382,10 @@ if (import.meta.vitest) {
   const { withMemoryWideEventFactory } = await import("../observability.js");
 
   function fixture() {
-    const base = mkdtempSync(join(tmpdir(), "pi-memory-source-v3-"));
+    // macOS's /var temp alias must not trip the deliberate no-symlink policy.
+    const base = realpathSync(
+      mkdtempSync(join(tmpdir(), "pi-memory-source-v3-")),
+    );
     const root = join(base, "sessions");
     const cfg = { data: join(base, "data") };
     const policy: SourcePolicy = {

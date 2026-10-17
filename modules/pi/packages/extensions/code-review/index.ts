@@ -65,7 +65,7 @@ type CodeReviewExtensionDeps = {
 const CONFIG_DEFAULTS: CodeReviewExtConfig = {
   model: CODE_REVIEW_DEFAULT_MODEL,
   excludeTools: [],
-  tools: ["read", "grep", "find", "ls", "bash", "web_search", "read_web_page"],
+  tools: ["read", "bash", "web_search", "read_web_page"],
   promptFile: "",
   promptString: "",
   reportPromptFile: "",

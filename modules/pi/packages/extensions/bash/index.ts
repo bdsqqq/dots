@@ -643,7 +643,7 @@ export function createBashTool(
       "- Environment variables and `cd` do not persist between commands; use the `cwd` parameter instead\n" +
       "- Commands run in the workspace root by default; only use `cwd` when you need a different directory\n" +
       '- ALWAYS quote file paths: `cat "path with spaces/file.txt"`\n' +
-      "- Use the Grep tool instead of grep, the Read tool instead of cat\n" +
+      "- Use rg for text search and the read tool for images or bounded file content\n" +
       "- Only run `git commit` and `git push` if explicitly instructed by the user.",
 
     parameters: Type.Object({

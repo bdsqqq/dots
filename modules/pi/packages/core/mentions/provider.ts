@@ -47,7 +47,7 @@ export class MentionAutocompleteProvider implements AutocompleteProvider {
     if (prefix.kind) {
       if (prefix.kind !== this.source.kind) return base;
       return {
-        items: this.getValueSuggestions(prefix.valueQuery),
+        items: await this.getValueSuggestions(prefix.valueQuery),
         prefix: prefix.raw,
       };
     }
@@ -116,11 +116,12 @@ export class MentionAutocompleteProvider implements AutocompleteProvider {
     ];
   }
 
-  private getValueSuggestions(query: string): AutocompleteItem[] {
+  private async getValueSuggestions(
+    query: string,
+  ): Promise<AutocompleteItem[]> {
     if (!(this.source.isEnabled?.(this.context) ?? true)) return [];
 
-    return this.source
-      .getSuggestions(query, this.context)
+    return (await this.source.getSuggestions(query, this.context))
       .slice(0, this.maxItems)
       .map((item) => this.trackItem(item));
   }

@@ -95,6 +95,9 @@ importers:
       '@bds_pi/log':
         specifier: workspace:*
         version: link:../log
+      '@bds_pi/sessions':
+        specifier: workspace:*
+        version: link:../sessions
       '@letta-ai/trajectory':
         specifier: 0.4.3
         version: 0.4.3(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)
@@ -138,23 +141,7 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
 
-  packages/core/codex-patch:
-    devDependencies:
-      vitest:
-        specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
-
   packages/core/config:
-    devDependencies:
-      vitest:
-        specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
-
-  packages/core/file-tracker:
-    dependencies:
-      diff:
-        specifier: ^9.0.0
-        version: 9.0.0
     devDependencies:
       vitest:
         specifier: ^5.0.3
@@ -229,9 +216,6 @@ importers:
 
   packages/core/pi-spawn:
     dependencies:
-      '@bds_pi/config':
-        specifier: workspace:*
-        version: link:../config
       '@bds_pi/interpolate':
         specifier: workspace:*
         version: link:../interpolate
@@ -256,11 +240,7 @@ importers:
         specifier: 'catalog:'
         version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
 
-  packages/core/sessions:
-    dependencies:
-      '@bds_pi/box-format':
-        specifier: workspace:*
-        version: link:../box-format
+  packages/core/sessions: {}
 
   packages/core/show:
     dependencies:
@@ -328,43 +308,6 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
 
-  packages/extensions/apply-patch:
-    dependencies:
-      '@bds_pi/box-format':
-        specifier: workspace:*
-        version: link:../../core/box-format
-      '@bds_pi/codex-patch':
-        specifier: workspace:*
-        version: link:../../core/codex-patch
-      '@bds_pi/file-tracker':
-        specifier: workspace:*
-        version: link:../../core/file-tracker
-      '@bds_pi/fs':
-        specifier: workspace:*
-        version: link:../../core/fs
-      '@bds_pi/mutex':
-        specifier: workspace:*
-        version: link:../../core/mutex
-      '@bds_pi/prompt-patch':
-        specifier: workspace:*
-        version: link:../../core/prompt-patch
-      '@bds_pi/tool-policy':
-        specifier: workspace:*
-        version: link:../../core/tool-policy
-      typebox:
-        specifier: 'catalog:'
-        version: 1.3.36
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=9b74b9491b09e4ce83aff0d4d6ef24cf7be314be8b9a2748c5254f80eb37250e)
-      vitest:
-        specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
-
   packages/extensions/bash:
     dependencies:
       '@bds_pi/box-format':
@@ -401,12 +344,6 @@ importers:
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
-
-  packages/extensions/cmux-notify:
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
 
   packages/extensions/code-review:
     dependencies:
@@ -507,40 +444,6 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
 
-  packages/extensions/format-file:
-    dependencies:
-      '@bds_pi/box-format':
-        specifier: workspace:*
-        version: link:../../core/box-format
-      '@bds_pi/file-tracker':
-        specifier: workspace:*
-        version: link:../../core/file-tracker
-      '@bds_pi/fs':
-        specifier: workspace:*
-        version: link:../../core/fs
-      '@bds_pi/mutex':
-        specifier: workspace:*
-        version: link:../../core/mutex
-      '@bds_pi/prompt-patch':
-        specifier: workspace:*
-        version: link:../../core/prompt-patch
-      '@bds_pi/tool-policy':
-        specifier: workspace:*
-        version: link:../../core/tool-policy
-      typebox:
-        specifier: 'catalog:'
-        version: 1.3.36
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=9b74b9491b09e4ce83aff0d4d6ef24cf7be314be8b9a2748c5254f80eb37250e)
-      vitest:
-        specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
-
   packages/extensions/git:
     dependencies:
       '@bds_pi/mentions':
@@ -572,62 +475,6 @@ importers:
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.1.0(patch_hash=9b74b9491b09e4ce83aff0d4d6ef24cf7be314be8b9a2748c5254f80eb37250e)
-
-  packages/extensions/glob:
-    dependencies:
-      '@bds_pi/box-format':
-        specifier: workspace:*
-        version: link:../../core/box-format
-      '@bds_pi/config':
-        specifier: workspace:*
-        version: link:../../core/config
-      '@bds_pi/output-buffer':
-        specifier: workspace:*
-        version: link:../../core/output-buffer
-      '@bds_pi/prompt-patch':
-        specifier: workspace:*
-        version: link:../../core/prompt-patch
-      typebox:
-        specifier: 'catalog:'
-        version: 1.3.36
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=9b74b9491b09e4ce83aff0d4d6ef24cf7be314be8b9a2748c5254f80eb37250e)
-      vitest:
-        specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
-
-  packages/extensions/grep:
-    dependencies:
-      '@bds_pi/box-format':
-        specifier: workspace:*
-        version: link:../../core/box-format
-      '@bds_pi/config':
-        specifier: workspace:*
-        version: link:../../core/config
-      '@bds_pi/output-buffer':
-        specifier: workspace:*
-        version: link:../../core/output-buffer
-      '@bds_pi/prompt-patch':
-        specifier: workspace:*
-        version: link:../../core/prompt-patch
-      typebox:
-        specifier: 'catalog:'
-        version: 1.3.36
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=9b74b9491b09e4ce83aff0d4d6ef24cf7be314be8b9a2748c5254f80eb37250e)
-      vitest:
-        specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/extensions/librarian:
     dependencies:
@@ -671,37 +518,6 @@ importers:
       '@bds_pi/sub-agent-render':
         specifier: workspace:*
         version: link:../../core/sub-agent-render
-      typebox:
-        specifier: 'catalog:'
-        version: 1.3.36
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=9b74b9491b09e4ce83aff0d4d6ef24cf7be314be8b9a2748c5254f80eb37250e)
-      vitest:
-        specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
-
-  packages/extensions/ls:
-    dependencies:
-      '@bds_pi/box-format':
-        specifier: workspace:*
-        version: link:../../core/box-format
-      '@bds_pi/fs':
-        specifier: workspace:*
-        version: link:../../core/fs
-      '@bds_pi/prompt-patch':
-        specifier: workspace:*
-        version: link:../../core/prompt-patch
-      '@bds_pi/read':
-        specifier: workspace:*
-        version: link:../read
-      '@bds_pi/tool-policy':
-        specifier: workspace:*
-        version: link:../../core/tool-policy
       typebox:
         specifier: 'catalog:'
         version: 1.3.36
@@ -778,40 +594,6 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
 
-  packages/extensions/read-session:
-    dependencies:
-      '@bds_pi/config':
-        specifier: workspace:*
-        version: link:../../core/config
-      '@bds_pi/fs':
-        specifier: workspace:*
-        version: link:../../core/fs
-      '@bds_pi/output-buffer':
-        specifier: workspace:*
-        version: link:../../core/output-buffer
-      '@bds_pi/pi-spawn':
-        specifier: workspace:*
-        version: link:../../core/pi-spawn
-      '@bds_pi/prompt-patch':
-        specifier: workspace:*
-        version: link:../../core/prompt-patch
-      '@bds_pi/sub-agent-render':
-        specifier: workspace:*
-        version: link:../../core/sub-agent-render
-      typebox:
-        specifier: 'catalog:'
-        version: 1.3.36
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=9b74b9491b09e4ce83aff0d4d6ef24cf7be314be8b9a2748c5254f80eb37250e)
-      vitest:
-        specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
-
   packages/extensions/read-web-page:
     dependencies:
       '@bds_pi/box-format':
@@ -843,33 +625,17 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
 
-  packages/extensions/search-sessions:
+  packages/extensions/session-history:
     dependencies:
-      '@bds_pi/box-format':
-        specifier: workspace:*
-        version: link:../../core/box-format
-      '@bds_pi/config':
-        specifier: workspace:*
-        version: link:../../core/config
       '@bds_pi/mentions':
         specifier: workspace:*
         version: link:../../core/mentions
-      '@bds_pi/prompt-patch':
+      '@bds_pi/sessions':
         specifier: workspace:*
-        version: link:../../core/prompt-patch
+        version: link:../../core/sessions
       typebox:
         specifier: 'catalog:'
         version: 1.3.36
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=9b74b9491b09e4ce83aff0d4d6ef24cf7be314be8b9a2748c5254f80eb37250e)
-      vitest:
-        specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/extensions/session-name:
     dependencies:
@@ -952,43 +718,6 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
         version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
-
-  packages/extensions/undo-edit:
-    dependencies:
-      '@bds_pi/box-format':
-        specifier: workspace:*
-        version: link:../../core/box-format
-      '@bds_pi/file-tracker':
-        specifier: workspace:*
-        version: link:../../core/file-tracker
-      '@bds_pi/fs':
-        specifier: workspace:*
-        version: link:../../core/fs
-      '@bds_pi/mutex':
-        specifier: workspace:*
-        version: link:../../core/mutex
-      '@bds_pi/prompt-patch':
-        specifier: workspace:*
-        version: link:../../core/prompt-patch
-      '@bds_pi/tool-policy':
-        specifier: workspace:*
-        version: link:../../core/tool-policy
-      typebox:
-        specifier: 'catalog:'
-        version: 1.3.36
-    devDependencies:
-      '@bds_pi/apply-patch':
-        specifier: workspace:*
-        version: link:../apply-patch
-      '@earendil-works/pi-coding-agent':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
-      '@earendil-works/pi-tui':
-        specifier: 'catalog:'
-        version: 1.1.0(patch_hash=9b74b9491b09e4ce83aff0d4d6ef24cf7be314be8b9a2748c5254f80eb37250e)
-      vitest:
-        specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/extensions/web-search:
     dependencies:

@@ -6,8 +6,8 @@
  * delegate(prompt: "...", description: "...") directly.
  *
  * the delegate sub-agent defaults to gpt-6.1-sol medium.
- * it gets most tools: read/write, edit, grep, bash, finder,
- * skill, format_file, web_search, read_web_page. the description is shown
+ * it gets read, native edit/write, bash, finder,
+ * skill, web_search, read_web_page. the description is shown
  * to the user in the TUI; the prompt is the full instruction for the sub-agent.
  *
  * no custom system prompt — the sub-agent uses pi's default prompt.
@@ -31,7 +31,6 @@ import {
 } from "@bds_pi/config";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
-  getNestedMessages,
   isPiSpawnModelValue,
   isPiSpawnFailure,
   getToolCalls,
@@ -69,12 +68,9 @@ const CONFIG_DEFAULTS: DelegateExtConfig = {
   excludeTools: [],
   tools: [
     "read",
-    "grep",
-    "find",
-    "ls",
     "bash",
-    "apply_patch",
-    "format_file",
+    "edit",
+    "write",
     "skill",
     "finder",
     "web_search",
@@ -140,7 +136,7 @@ export function createDelegateTool(
     label: "Delegate",
     description:
       "Delegate a task (a sub-task of the user's overall task) using a sub-agent that has access to " +
-      "the following tools by default: read, grep, find, ls, bash, apply_patch, format_file, skill, finder, web_search, read_web_page.\n\n" +
+      "the following tools by default: read, bash, edit, write, skill, finder, web_search, read_web_page. Use project commands for formatting and shell binaries for discovery.\n\n" +
       "When to use the delegate tool:\n" +
       "- When you need to perform complex multi-step tasks\n" +
       "- When you need to run an operation that will produce a lot of output (tokens) " +
@@ -150,7 +146,7 @@ export function createDelegateTool(
       '- When the user asks you to launch an "agent" or "subagent"\n\n' +
       "When NOT to use the delegate tool:\n" +
       "- When you are performing a single logical task\n" +
-      "- When you're reading a single file (use Read), performing a text search (use Grep), " +
+      "- When you're reading a single file (use read), performing a text search (use bash with rg), " +
       "editing a single file (use Edit)\n" +
       "- When you're not sure what changes you want to make\n\n" +
       "How to use the delegate tool:\n" +
@@ -553,50 +549,5 @@ if (import.meta.vitest) {
         fs.rmSync(testFile, { force: true });
       }
     }, 120_000);
-
-    it("eval: child sessions respect PI_BDS_CONFIG_PATH gating for builtin-shadowed tools", async () => {
-      const sandboxDir = fs.mkdtempSync(
-        path.join(tmpdir, "pi-delegate-config-gating-"),
-      );
-      const childConfigPath = path.join(sandboxDir, "bds-pi.json");
-      fs.writeFileSync(
-        childConfigPath,
-        JSON.stringify({ "@bds_pi/bash": { enabled: false } }),
-        "utf-8",
-      );
-
-      try {
-        const result = await piSpawn({
-          cwd: sandboxDir,
-          task: [
-            "You must call delegate exactly once.",
-            "Ask the child to inspect its bash schema, report builtin-bash if it requires command,",
-            "then run `printf fallback-ok` and return the command output.",
-          ].join(" "),
-          model: E2E_MODEL,
-          tools: ["delegate"],
-          configPath: childConfigPath,
-          session: { persist: false },
-        });
-
-        const delegateResult = getToolResults(result.messages, "delegate").at(
-          -1,
-        );
-        expect(delegateResult?.isError).toBe(false);
-        expect(getToolResultText(delegateResult)).toContain("builtin-bash");
-        expect(getToolResultText(delegateResult)).toContain("fallback-ok");
-
-        const childMessages = getNestedMessages(delegateResult);
-        expect(
-          getToolCalls(childMessages).find((call) => call.name === "bash")
-            ?.arguments,
-        ).toMatchObject({ command: "printf fallback-ok" });
-        expect(
-          getToolResultText(getToolResults(childMessages, "bash").at(-1)),
-        ).toContain("fallback-ok");
-      } finally {
-        fs.rmSync(sandboxDir, { recursive: true, force: true });
-      }
-    }, 180_000);
   });
 }

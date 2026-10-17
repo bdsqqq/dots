@@ -9,7 +9,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { parseCodexPatch } from "@bds_pi/codex-patch";
+import type { JsonObject } from "@earendil-works/pi-ai";
 import { resolveToAbsolute } from "@bds_pi/fs";
 
 const CONTEXT_NAMES = [
@@ -20,14 +20,10 @@ const CONTEXT_NAMES = [
 ] as const;
 const MAX_FILE_BYTES = 32 * 1024;
 const MAX_EVENT_BYTES = 128 * 1024;
-const MUTATION_TOOLS = new Set([
-  "apply_patch",
-  "edit",
-  "write",
-  "format_file",
-  "undo_edit",
-]);
-const OBSERVATION_TOOLS = new Set(["read", "grep", "find", "ls", "look_at"]);
+const MUTATION_TOOLS = new Set(["edit", "write"]);
+// Shell discovery is intentionally not parsed: known native edits still gate
+// before mutation, while read/look_at deliver instructions on observation.
+const OBSERVATION_TOOLS = new Set(["read", "look_at"]);
 
 type TargetPath = {
   path: string;
@@ -133,7 +129,10 @@ function contextFileInDirectory(
   return undefined;
 }
 
-function readBoundedContext(file: string, contextPath: string): NestedContextFile {
+function readBoundedContext(
+  file: string,
+  contextPath: string,
+): NestedContextFile {
   const descriptor = fs.openSync(
     file,
     fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
@@ -203,18 +202,6 @@ function formatContext(files: NestedContextFile[]): string {
     .join("\n\n");
 }
 
-function textContent(
-  content: Array<{ type: string; text?: string }> | undefined,
-): string {
-  return (content ?? [])
-    .filter(
-      (item): item is { type: string; text: string } =>
-        item.type === "text" && typeof item.text === "string",
-    )
-    .map((item) => item.text)
-    .join("\n");
-}
-
 function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
@@ -224,85 +211,23 @@ function stringArray(value: unknown): string[] {
 function observationTargets(event: {
   toolName: string;
   input: Record<string, unknown>;
-  content?: Array<{ type: string; text?: string }>;
-  details?: unknown;
 }): TargetPath[] {
   const targets: TargetPath[] = [];
   const add = (value: unknown, assumeFile: boolean): void => {
     if (typeof value === "string" && value.trim())
       targets.push({ path: value, assumeFile });
   };
-  if (event.toolName === "read" || event.toolName === "ls")
-    add(event.input.path, false);
+  if (event.toolName === "read") add(event.input.path, false);
   if (event.toolName === "look_at") {
     add(event.input.path, true);
     stringArray(event.input.referenceFiles).forEach((file) => add(file, true));
   }
-  if (event.toolName === "grep") {
-    add(event.input.path, false);
-    const details = event.details as
-      | { fileGroups?: Array<{ path?: unknown }>; searchPath?: unknown }
-      | undefined;
-    const searchPathIsFile =
-      typeof details?.searchPath === "string" &&
-      fs.existsSync(details.searchPath) &&
-      fs.statSync(details.searchPath).isFile();
-    details?.fileGroups?.forEach((group) => {
-      if (typeof group.path !== "string" || searchPathIsFile) return;
-      add(
-        typeof details.searchPath === "string"
-          ? path.resolve(details.searchPath, group.path)
-          : group.path,
-        true,
-      );
-    });
-    if (!details?.fileGroups?.length && !searchPathIsFile)
-      for (const line of textContent(event.content).split("\n")) {
-        const match = /^(.+?)(?::|-)\d+(?::|-)/.exec(line);
-        if (!match?.[1]) continue;
-        add(
-          typeof event.input.path === "string"
-            ? path.join(event.input.path, match[1])
-            : match[1],
-          true,
-        );
-      }
-  }
-  if (event.toolName === "find")
-    for (const line of textContent(event.content).split("\n")) {
-      const candidate = line.trim();
-      if (
-        candidate &&
-        !candidate.startsWith("(") &&
-        !candidate.startsWith("...")
-      )
-        add(
-          typeof event.input.path === "string"
-            ? path.join(event.input.path, candidate)
-            : candidate,
-          true,
-        );
-    }
   return targets;
 }
 
 function mutationTargets(event: {
-  toolName: string;
   input: Record<string, unknown>;
 }): TargetPath[] {
-  if (event.toolName === "apply_patch") {
-    if (typeof event.input.input !== "string") return [];
-    try {
-      return parseCodexPatch(event.input.input).flatMap((operation) => [
-        { path: operation.path, assumeFile: true },
-        ...(operation.type === "update" && operation.movePath
-          ? [{ path: operation.movePath, assumeFile: true }]
-          : []),
-      ]);
-    } catch {
-      return [];
-    }
-  }
   return typeof event.input.path === "string"
     ? [{ path: event.input.path, assumeFile: true }]
     : [];
@@ -368,7 +293,6 @@ export function createNestedAgentsExtension(): (pi: ExtensionAPI) => void {
     pi.on("tool_call", (event, ctx) => {
       if (disabled() || !MUTATION_TOOLS.has(event.toolName)) return;
       const targets = mutationTargets({
-        toolName: event.toolName,
         input: event.input as Record<string, unknown>,
       });
       if (
@@ -416,8 +340,6 @@ export function createNestedAgentsExtension(): (pi: ExtensionAPI) => void {
           observationTargets({
             toolName: event.toolName,
             input: event.input as Record<string, unknown>,
-            content: event.content,
-            details: event.details,
           }),
         );
       } catch (error) {
@@ -455,6 +377,21 @@ if (import.meta.vitest) {
   const { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } =
     await import("node:fs");
   const { tmpdir } = await import("node:os");
+  const {
+    createAgentSession,
+    createCodemodeExtension,
+    DefaultResourceLoader,
+    ModelRuntime,
+    SessionManager,
+    SettingsManager,
+  } = await import("@earendil-works/pi-coding-agent");
+  const {
+    fauxProvider,
+    fauxAssistantMessage,
+    fauxToolCall,
+    InMemoryCredentialStore,
+  } = await import("@earendil-works/pi-ai");
+  const { Type } = await import("typebox");
 
   const roots: string[] = [];
   afterEach(() => {
@@ -497,6 +434,280 @@ if (import.meta.vitest) {
     } as any);
     return { handlers, extension };
   }
+
+  async function sdkFixture(root: string) {
+    const faux = fauxProvider();
+    const runtime = await ModelRuntime.create({
+      credentials: new InMemoryCredentialStore(),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    runtime.registerNativeProvider(faux.provider);
+    const settingsManager = SettingsManager.inMemory({
+      compaction: { enabled: false },
+      retry: { enabled: false },
+    });
+    const loader = new DefaultResourceLoader({
+      cwd: root,
+      agentDir: root,
+      settingsManager,
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      extensionFactories: [
+        createNestedAgentsExtension(),
+        createCodemodeExtension({ models: false }),
+        (pi) => {
+          pi.registerTool({
+            name: "nested_edit",
+            label: "nested edit fixture",
+            description: "exercise shared native dispatch",
+            parameters: Type.Object({
+              tool: Type.String(),
+              input: Type.Unknown(),
+            }),
+            async execute(_id, args, _signal, _update, ctx) {
+              const outcome = await ctx.executeTool(args.tool, args.input);
+              if (outcome.isError)
+                throw new Error(
+                  outcome.result.content
+                    .filter((item) => item.type === "text")
+                    .map((item) => item.text)
+                    .join("\n"),
+                );
+              return outcome.result;
+            },
+          });
+        },
+      ],
+    });
+    await loader.reload();
+    const { session } = await createAgentSession({
+      cwd: root,
+      agentDir: root,
+      modelRuntime: runtime,
+      model: faux.getModel(),
+      settingsManager,
+      resourceLoader: loader,
+      sessionManager: SessionManager.inMemory(root),
+      tools: ["edit", "write", "nested_edit", "codemode", "bash"],
+    });
+    await session.bindExtensions({ mode: "json" });
+    async function call(tool: string, input: JsonObject, via = "direct") {
+      const name =
+        via === "direct" ? tool : via === "nested" ? "nested_edit" : "codemode";
+      const args =
+        via === "direct"
+          ? input
+          : via === "nested"
+            ? { tool, input }
+            : { code: `text(await tools.${tool}(${JSON.stringify(input)}));` };
+      faux.setResponses([
+        fauxAssistantMessage(fauxToolCall(name, args), {
+          stopReason: "toolUse",
+        }),
+        fauxAssistantMessage("done"),
+      ]);
+      await session.prompt("execute the fixture call");
+      const result = [...session.messages]
+        .reverse()
+        .find((m) => m.role === "toolResult");
+      if (!result || result.role !== "toolResult")
+        throw new Error("fixture did not produce a tool result");
+      return {
+        isError: result.isError,
+        text: result.content
+          .filter((item) => item.type === "text")
+          .map((item) => item.text)
+          .join("\n"),
+      };
+    }
+    return { session, call, faux };
+  }
+
+  describe("native editing through shared SDK dispatch", () => {
+    it.each(["direct", "codemode"])(
+      "%s keeps sibling mutations blocked in the instruction-delivery turn",
+      async (via) => {
+        const { root, file } = fixture();
+        const sibling = path.join(root, "sibling.txt");
+        const { session, faux } = await sdkFixture(root);
+        const edit = {
+          path: file,
+          edits: [{ oldText: "export {};", newText: "export const x = 1;" }],
+        };
+        const write = { path: sibling, content: "must wait\n" };
+        const calls =
+          via === "direct"
+            ? [fauxToolCall("edit", edit), fauxToolCall("write", write)]
+            : [
+                fauxToolCall("codemode", {
+                  code: `const results = await Promise.allSettled([
+                tools.edit(${JSON.stringify(edit)}),
+                tools.write(${JSON.stringify(write)})
+              ]);
+              text(results.map(result => result.status === "rejected"
+                ? result.reason.message : result.value));`,
+                }),
+              ];
+        faux.setResponses([
+          fauxAssistantMessage(calls, { stopReason: "toolUse" }),
+          fauxAssistantMessage("done"),
+        ]);
+        try {
+          await session.prompt("execute both fixture mutations");
+          const delivered = session.messages
+            .filter((m) => m.role === "toolResult")
+            .flatMap((m) => m.content)
+            .filter((item) => item.type === "text")
+            .map((item) => item.text)
+            .join("\n");
+          expect(delivered).toContain("package rule");
+          expect(delivered).toContain("another mutation");
+          expect(fs.readFileSync(file, "utf8")).toBe("export {};\n");
+          expect(fs.existsSync(sibling)).toBe(false);
+        } finally {
+          session.dispose();
+        }
+      },
+    );
+
+    it.each(["direct", "nested", "codemode"])(
+      "%s pauses native edit/write before instructions and preserves unrelated user content on retry",
+      async (via) => {
+        // Separate sessions prove that neither native tool relies on the other
+        // having discovered instructions first.
+        for (const tool of ["edit", "write"]) {
+          const { root, file } = fixture();
+          const created = path.join(root, "packages/app/new/deep/file.txt");
+          const original = "header\nexport {};\nuser footer\n";
+          writeFileSync(file, original);
+          const { session, call } = await sdkFixture(root);
+          const args: JsonObject =
+            tool === "edit"
+              ? {
+                  path: file,
+                  edits: [
+                    {
+                      oldText: "export {};",
+                      newText: "export const value = 1;",
+                    },
+                  ],
+                }
+              : { path: created, content: "new file\n" };
+          try {
+            const first = await call(tool, args, via);
+            expect(first.isError).toBe(true);
+            expect(first.text).toContain("Mutation paused");
+            expect(first.text).toContain("package rule");
+            expect(first.text).toContain("app rule");
+            expect(fs.readFileSync(file, "utf8")).toBe(original);
+            expect(fs.existsSync(created)).toBe(false);
+
+            // Simulate another writer between instruction delivery and retry.
+            fs.appendFileSync(file, "unpublished user addition\n");
+            const second = await call(tool, args, via);
+            expect(second.isError).toBe(false);
+            expect(fs.readFileSync(file, "utf8")).toBe(
+              (tool === "edit"
+                ? original.replace("export {};", "export const value = 1;")
+                : original) + "unpublished user addition\n",
+            );
+            if (tool === "write")
+              expect(fs.readFileSync(created, "utf8")).toBe("new file\n");
+          } finally {
+            session.dispose();
+          }
+        }
+      },
+    );
+
+    it.each(["direct", "codemode"])(
+      "%s rejects malformed, nonmatching, ambiguous and overlapping native edits without partial writes",
+      async (via) => {
+        const { root } = fixture();
+        const file = path.join(root, "native.txt");
+        const original =
+          "unique first\nrepeated\nmiddle\nrepeated\nunique last\n";
+        writeFileSync(file, original);
+        const { session, call } = await sdkFixture(root);
+        try {
+          for (const edits of [
+            [],
+            [{ newText: "missing oldText" }],
+            [{ oldText: "absent token", newText: "wrong" }],
+            [{ oldText: "repeated", newText: "ambiguous" }],
+            [
+              { oldText: "unique first\nrepeated", newText: "outer" },
+              { oldText: "unique first", newText: "inner" },
+            ],
+            [
+              { oldText: "unique first", newText: "must not partially write" },
+              { oldText: "absent token", newText: "wrong" },
+            ],
+          ]) {
+            const result = await call("edit", { path: file, edits }, via);
+            expect(result.isError).toBe(true);
+            expect(result.text).not.toContain("Mutation paused");
+            expect(fs.readFileSync(file, "utf8")).toBe(original);
+          }
+          expect(
+            (
+              await call(
+                "edit",
+                {
+                  path: file,
+                  edits: [
+                    { oldText: "unique first", newText: "changed first" },
+                    { oldText: "unique last", newText: "changed last" },
+                  ],
+                },
+                via,
+              )
+            ).isError,
+          ).toBe(false);
+          expect(fs.readFileSync(file, "utf8")).toBe(
+            "changed first\nrepeated\nmiddle\nrepeated\nchanged last\n",
+          );
+        } finally {
+          session.dispose();
+        }
+      },
+    );
+
+    it("runs real shell search/listing and still gates a subsequent native edit", async () => {
+      const { root, file } = fixture();
+      const spaced = path.join(root, "packages/app/src/file with spaces.ts");
+      writeFileSync(spaced, "unique search needle\n");
+      const { session, call } = await sdkFixture(root);
+      try {
+        const search = await call("bash", {
+          command: 'rg -n --glob "*.ts" "unique search needle" "packages"',
+        });
+        expect(search.isError).toBe(false);
+        expect(search.text).toContain(
+          "packages/app/src/file with spaces.ts:1:unique search needle",
+        );
+        const listing = await call("bash", {
+          command: 'rg --files "packages" && ls -1 "packages/app/src"',
+        });
+        expect(listing.isError).toBe(false);
+        expect(listing.text).toContain("packages/app/src/index.ts");
+        expect(listing.text).toContain("file with spaces.ts");
+        const result = await call("edit", {
+          path: file,
+          edits: [{ oldText: "export {};", newText: "export const x = 1;" }],
+        });
+        expect(result.isError).toBe(true);
+        expect(result.text).toContain("app rule");
+        expect(fs.readFileSync(file, "utf8")).toBe("export {};\n");
+      } finally {
+        session.dispose();
+      }
+    });
+  });
 
   describe("nested AGENTS.md context", () => {
     it("discovers descendant instructions outermost first and excludes cwd", () => {
@@ -560,7 +771,9 @@ if (import.meta.vitest) {
         rmSync(context);
         let expected: string;
         if (kind === "outside") {
-          const outside = mkdtempSync(path.join(tmpdir(), "nested-context-outside-"));
+          const outside = mkdtempSync(
+            path.join(tmpdir(), "nested-context-outside-"),
+          );
           roots.push(outside);
           writeFileSync(path.join(outside, "rules.md"), "outside rule\n");
           symlinkSync(path.join(outside, "rules.md"), context);
@@ -587,10 +800,13 @@ if (import.meta.vitest) {
         const { handlers } = harness();
         expect(
           handlers.tool_call!(
-            { toolName: "format_file", input: { path: file } },
+            { toolName: "edit", input: { path: file } },
             { cwd: root },
           ),
-        ).toMatchObject({ block: true, reason: expect.stringContaining(expected) });
+        ).toMatchObject({
+          block: true,
+          reason: expect.stringContaining(expected),
+        });
       },
     );
 
@@ -601,12 +817,14 @@ if (import.meta.vitest) {
       rmSync(nestedContext);
       symlinkSync("../rules.md", nestedContext);
       const { handlers } = harness();
-      const event = { toolName: "format_file", input: { path: file } };
+      const event = { toolName: "edit", input: { path: file } };
       expect(handlers.tool_call!(event, { cwd: root })).toMatchObject({
         block: true,
         reason: expect.stringContaining("linked rule"),
       });
-      expect(handlers.tool_call!(event, { cwd: root })).toMatchObject({ block: true });
+      expect(handlers.tool_call!(event, { cwd: root })).toMatchObject({
+        block: true,
+      });
       handlers.turn_start!();
       expect(handlers.tool_call!(event, { cwd: root })).toBeUndefined();
     });
@@ -644,76 +862,6 @@ if (import.meta.vitest) {
       expect(handlers.tool_result!(event, { cwd: root })).toBeUndefined();
     });
 
-    it("uses structured grep result paths to discover deeper context", () => {
-      const { root, file } = fixture();
-      const { handlers } = harness();
-      const result = handlers.tool_result!(
-        {
-          toolName: "grep",
-          input: { pattern: "export", path: "packages" },
-          content: [{ type: "text", text: `${file}:1:export {};` }],
-          details: {
-            searchPath: path.join(root, "packages"),
-            fileGroups: [{ path: "app/src/index.ts" }],
-          },
-          isError: false,
-        },
-        { cwd: root },
-      );
-      expect(result.content.at(-1).text).toContain("app rule");
-    });
-
-    it("uses relative find results to discover deeper context", () => {
-      const { root } = fixture();
-      const { handlers } = harness();
-      const result = handlers.tool_result!(
-        {
-          toolName: "find",
-          input: { filePattern: "**/*.ts" },
-          content: [{ type: "text", text: "packages/app/src/index.ts" }],
-          details: {},
-          isError: false,
-        },
-        { cwd: root },
-      );
-      expect(result.content.at(-1).text).toContain("app rule");
-    });
-
-    it("falls back to built-in grep text paths", () => {
-      const { root } = fixture();
-      const { handlers } = harness();
-      const result = handlers.tool_result!(
-        {
-          toolName: "grep",
-          input: { pattern: "export", path: "packages" },
-          content: [{ type: "text", text: "app/src/index.ts:1:export {};" }],
-          details: {},
-          isError: false,
-        },
-        { cwd: root },
-      );
-      expect(result.content.at(-1).text).toContain("app rule");
-    });
-
-    it("handles grep searches rooted at one file", () => {
-      const { root, file } = fixture();
-      const { handlers } = harness();
-      const result = handlers.tool_result!(
-        {
-          toolName: "grep",
-          input: { pattern: "export", path: file },
-          content: [{ type: "text", text: "index.ts:1:export {};" }],
-          details: {
-            searchPath: file,
-            fileGroups: [{ path: "index.ts" }],
-          },
-          isError: false,
-        },
-        { cwd: root },
-      );
-      expect(result.content.at(-1).text).toContain("app rule");
-    });
-
     it("keeps a mutation blocked until the turn after read context is delivered", () => {
       const { root, file } = fixture();
       const { handlers } = harness();
@@ -732,14 +880,14 @@ if (import.meta.vitest) {
       ).toBeDefined();
       expect(
         handlers.tool_call!(
-          { toolName: "format_file", input: { path: file } },
+          { toolName: "edit", input: { path: file } },
           { cwd: root },
         ),
       ).toMatchObject({ block: true });
       handlers.turn_start!();
       expect(
         handlers.tool_call!(
-          { toolName: "format_file", input: { path: file } },
+          { toolName: "edit", input: { path: file } },
           { cwd: root },
         ),
       ).toBeUndefined();
@@ -749,9 +897,12 @@ if (import.meta.vitest) {
       const { root, file } = fixture();
       const { handlers } = harness();
       const event = {
-        toolName: "apply_patch",
+        toolName: "edit",
         input: {
-          input: `*** Begin Patch\n*** Update File: ${file}\n@@\n-export {};\n+export const value = 1;\n*** End Patch\n`,
+          path: file,
+          edits: [
+            { oldText: "export {};", newText: "export const value = 1;" },
+          ],
         },
       };
       handlers.turn_start!();
@@ -762,7 +913,7 @@ if (import.meta.vitest) {
       expect(
         handlers.tool_call!(
           {
-            toolName: "format_file",
+            toolName: "write",
             input: { path: path.join(root, "README.md") },
           },
           { cwd: root },
@@ -813,7 +964,7 @@ if (import.meta.vitest) {
       const { handlers } = harness();
       expect(
         handlers.tool_call!(
-          { toolName: "format_file", input: { path: file } },
+          { toolName: "edit", input: { path: file } },
           { cwd: root },
         ),
       ).toMatchObject({

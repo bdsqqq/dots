@@ -35,7 +35,7 @@ import {
 } from "./history.js";
 
 function config(): MemoryConfig {
-  const base = mkdtempSync(join(tmpdir(), "memory-history-"));
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "memory-history-")));
   return {
     state: join(base, "state"),
     data: join(base, "data"),
@@ -487,14 +487,17 @@ describe("private memory history", () => {
       );
 
     const results = await Promise.all([run(), run()]);
+    const verified = results.map((result) => {
+      expect(result).toMatchObject({ code: 0, stderr: "" });
+      return JSON.parse(result.stdout);
+    });
 
     const checkpoint = JSON.parse(
       readFileSync(join(cfg.data, "v2/history-verification.json"), "utf8"),
     );
     expect(checkpoint).toMatchObject({ version: 2 });
-    for (const result of results) {
-      expect(result).toMatchObject({ code: 0, stderr: "" });
-      expect(JSON.parse(result.stdout)).toMatchObject({
+    for (const result of verified) {
+      expect(result).toMatchObject({
         ok: true,
         basis: { repository: checkpoint.repository },
       });
