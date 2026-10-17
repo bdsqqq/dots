@@ -9,6 +9,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { JsonObject } from "@earendil-works/pi-ai";
 import { resolveToAbsolute } from "@bds_pi/fs";
 
 const CONTEXT_NAMES = [
@@ -128,7 +129,10 @@ function contextFileInDirectory(
   return undefined;
 }
 
-function readBoundedContext(file: string, contextPath: string): NestedContextFile {
+function readBoundedContext(
+  file: string,
+  contextPath: string,
+): NestedContextFile {
   const descriptor = fs.openSync(
     file,
     fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
@@ -373,6 +377,21 @@ if (import.meta.vitest) {
   const { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } =
     await import("node:fs");
   const { tmpdir } = await import("node:os");
+  const {
+    createAgentSession,
+    createCodemodeExtension,
+    DefaultResourceLoader,
+    ModelRuntime,
+    SessionManager,
+    SettingsManager,
+  } = await import("@earendil-works/pi-coding-agent");
+  const {
+    fauxProvider,
+    fauxAssistantMessage,
+    fauxToolCall,
+    InMemoryCredentialStore,
+  } = await import("@earendil-works/pi-ai");
+  const { Type } = await import("typebox");
 
   const roots: string[] = [];
   afterEach(() => {
@@ -415,6 +434,280 @@ if (import.meta.vitest) {
     } as any);
     return { handlers, extension };
   }
+
+  async function sdkFixture(root: string) {
+    const faux = fauxProvider();
+    const runtime = await ModelRuntime.create({
+      credentials: new InMemoryCredentialStore(),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    runtime.registerNativeProvider(faux.provider);
+    const settingsManager = SettingsManager.inMemory({
+      compaction: { enabled: false },
+      retry: { enabled: false },
+    });
+    const loader = new DefaultResourceLoader({
+      cwd: root,
+      agentDir: root,
+      settingsManager,
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      extensionFactories: [
+        createNestedAgentsExtension(),
+        createCodemodeExtension({ models: false }),
+        (pi) => {
+          pi.registerTool({
+            name: "nested_edit",
+            label: "nested edit fixture",
+            description: "exercise shared native dispatch",
+            parameters: Type.Object({
+              tool: Type.String(),
+              input: Type.Unknown(),
+            }),
+            async execute(_id, args, _signal, _update, ctx) {
+              const outcome = await ctx.executeTool(args.tool, args.input);
+              if (outcome.isError)
+                throw new Error(
+                  outcome.result.content
+                    .filter((item) => item.type === "text")
+                    .map((item) => item.text)
+                    .join("\n"),
+                );
+              return outcome.result;
+            },
+          });
+        },
+      ],
+    });
+    await loader.reload();
+    const { session } = await createAgentSession({
+      cwd: root,
+      agentDir: root,
+      modelRuntime: runtime,
+      model: faux.getModel(),
+      settingsManager,
+      resourceLoader: loader,
+      sessionManager: SessionManager.inMemory(root),
+      tools: ["edit", "write", "nested_edit", "codemode", "bash"],
+    });
+    await session.bindExtensions({ mode: "json" });
+    async function call(tool: string, input: JsonObject, via = "direct") {
+      const name =
+        via === "direct" ? tool : via === "nested" ? "nested_edit" : "codemode";
+      const args =
+        via === "direct"
+          ? input
+          : via === "nested"
+            ? { tool, input }
+            : { code: `text(await tools.${tool}(${JSON.stringify(input)}));` };
+      faux.setResponses([
+        fauxAssistantMessage(fauxToolCall(name, args), {
+          stopReason: "toolUse",
+        }),
+        fauxAssistantMessage("done"),
+      ]);
+      await session.prompt("execute the fixture call");
+      const result = [...session.messages]
+        .reverse()
+        .find((m) => m.role === "toolResult");
+      if (!result || result.role !== "toolResult")
+        throw new Error("fixture did not produce a tool result");
+      return {
+        isError: result.isError,
+        text: result.content
+          .filter((item) => item.type === "text")
+          .map((item) => item.text)
+          .join("\n"),
+      };
+    }
+    return { session, call, faux };
+  }
+
+  describe("native editing through shared SDK dispatch", () => {
+    it.each(["direct", "codemode"])(
+      "%s keeps sibling mutations blocked in the instruction-delivery turn",
+      async (via) => {
+        const { root, file } = fixture();
+        const sibling = path.join(root, "sibling.txt");
+        const { session, faux } = await sdkFixture(root);
+        const edit = {
+          path: file,
+          edits: [{ oldText: "export {};", newText: "export const x = 1;" }],
+        };
+        const write = { path: sibling, content: "must wait\n" };
+        const calls =
+          via === "direct"
+            ? [fauxToolCall("edit", edit), fauxToolCall("write", write)]
+            : [
+                fauxToolCall("codemode", {
+                  code: `const results = await Promise.allSettled([
+                tools.edit(${JSON.stringify(edit)}),
+                tools.write(${JSON.stringify(write)})
+              ]);
+              text(results.map(result => result.status === "rejected"
+                ? result.reason.message : result.value));`,
+                }),
+              ];
+        faux.setResponses([
+          fauxAssistantMessage(calls, { stopReason: "toolUse" }),
+          fauxAssistantMessage("done"),
+        ]);
+        try {
+          await session.prompt("execute both fixture mutations");
+          const delivered = session.messages
+            .filter((m) => m.role === "toolResult")
+            .flatMap((m) => m.content)
+            .filter((item) => item.type === "text")
+            .map((item) => item.text)
+            .join("\n");
+          expect(delivered).toContain("package rule");
+          expect(delivered).toContain("another mutation");
+          expect(fs.readFileSync(file, "utf8")).toBe("export {};\n");
+          expect(fs.existsSync(sibling)).toBe(false);
+        } finally {
+          session.dispose();
+        }
+      },
+    );
+
+    it.each(["direct", "nested", "codemode"])(
+      "%s pauses native edit/write before instructions and preserves unrelated user content on retry",
+      async (via) => {
+        // Separate sessions prove that neither native tool relies on the other
+        // having discovered instructions first.
+        for (const tool of ["edit", "write"]) {
+          const { root, file } = fixture();
+          const created = path.join(root, "packages/app/new/deep/file.txt");
+          const original = "header\nexport {};\nuser footer\n";
+          writeFileSync(file, original);
+          const { session, call } = await sdkFixture(root);
+          const args: JsonObject =
+            tool === "edit"
+              ? {
+                  path: file,
+                  edits: [
+                    {
+                      oldText: "export {};",
+                      newText: "export const value = 1;",
+                    },
+                  ],
+                }
+              : { path: created, content: "new file\n" };
+          try {
+            const first = await call(tool, args, via);
+            expect(first.isError).toBe(true);
+            expect(first.text).toContain("Mutation paused");
+            expect(first.text).toContain("package rule");
+            expect(first.text).toContain("app rule");
+            expect(fs.readFileSync(file, "utf8")).toBe(original);
+            expect(fs.existsSync(created)).toBe(false);
+
+            // Simulate another writer between instruction delivery and retry.
+            fs.appendFileSync(file, "unpublished user addition\n");
+            const second = await call(tool, args, via);
+            expect(second.isError).toBe(false);
+            expect(fs.readFileSync(file, "utf8")).toBe(
+              (tool === "edit"
+                ? original.replace("export {};", "export const value = 1;")
+                : original) + "unpublished user addition\n",
+            );
+            if (tool === "write")
+              expect(fs.readFileSync(created, "utf8")).toBe("new file\n");
+          } finally {
+            session.dispose();
+          }
+        }
+      },
+    );
+
+    it.each(["direct", "codemode"])(
+      "%s rejects malformed, nonmatching, ambiguous and overlapping native edits without partial writes",
+      async (via) => {
+        const { root } = fixture();
+        const file = path.join(root, "native.txt");
+        const original =
+          "unique first\nrepeated\nmiddle\nrepeated\nunique last\n";
+        writeFileSync(file, original);
+        const { session, call } = await sdkFixture(root);
+        try {
+          for (const edits of [
+            [],
+            [{ newText: "missing oldText" }],
+            [{ oldText: "absent token", newText: "wrong" }],
+            [{ oldText: "repeated", newText: "ambiguous" }],
+            [
+              { oldText: "unique first\nrepeated", newText: "outer" },
+              { oldText: "unique first", newText: "inner" },
+            ],
+            [
+              { oldText: "unique first", newText: "must not partially write" },
+              { oldText: "absent token", newText: "wrong" },
+            ],
+          ]) {
+            const result = await call("edit", { path: file, edits }, via);
+            expect(result.isError).toBe(true);
+            expect(result.text).not.toContain("Mutation paused");
+            expect(fs.readFileSync(file, "utf8")).toBe(original);
+          }
+          expect(
+            (
+              await call(
+                "edit",
+                {
+                  path: file,
+                  edits: [
+                    { oldText: "unique first", newText: "changed first" },
+                    { oldText: "unique last", newText: "changed last" },
+                  ],
+                },
+                via,
+              )
+            ).isError,
+          ).toBe(false);
+          expect(fs.readFileSync(file, "utf8")).toBe(
+            "changed first\nrepeated\nmiddle\nrepeated\nchanged last\n",
+          );
+        } finally {
+          session.dispose();
+        }
+      },
+    );
+
+    it("runs real shell search/listing and still gates a subsequent native edit", async () => {
+      const { root, file } = fixture();
+      const spaced = path.join(root, "packages/app/src/file with spaces.ts");
+      writeFileSync(spaced, "unique search needle\n");
+      const { session, call } = await sdkFixture(root);
+      try {
+        const search = await call("bash", {
+          command: 'rg -n --glob "*.ts" "unique search needle" "packages"',
+        });
+        expect(search.isError).toBe(false);
+        expect(search.text).toContain(
+          "packages/app/src/file with spaces.ts:1:unique search needle",
+        );
+        const listing = await call("bash", {
+          command: 'rg --files "packages" && ls -1 "packages/app/src"',
+        });
+        expect(listing.isError).toBe(false);
+        expect(listing.text).toContain("packages/app/src/index.ts");
+        expect(listing.text).toContain("file with spaces.ts");
+        const result = await call("edit", {
+          path: file,
+          edits: [{ oldText: "export {};", newText: "export const x = 1;" }],
+        });
+        expect(result.isError).toBe(true);
+        expect(result.text).toContain("app rule");
+        expect(fs.readFileSync(file, "utf8")).toBe("export {};\n");
+      } finally {
+        session.dispose();
+      }
+    });
+  });
 
   describe("nested AGENTS.md context", () => {
     it("discovers descendant instructions outermost first and excludes cwd", () => {
@@ -478,7 +771,9 @@ if (import.meta.vitest) {
         rmSync(context);
         let expected: string;
         if (kind === "outside") {
-          const outside = mkdtempSync(path.join(tmpdir(), "nested-context-outside-"));
+          const outside = mkdtempSync(
+            path.join(tmpdir(), "nested-context-outside-"),
+          );
           roots.push(outside);
           writeFileSync(path.join(outside, "rules.md"), "outside rule\n");
           symlinkSync(path.join(outside, "rules.md"), context);
@@ -508,7 +803,10 @@ if (import.meta.vitest) {
             { toolName: "edit", input: { path: file } },
             { cwd: root },
           ),
-        ).toMatchObject({ block: true, reason: expect.stringContaining(expected) });
+        ).toMatchObject({
+          block: true,
+          reason: expect.stringContaining(expected),
+        });
       },
     );
 
@@ -524,7 +822,9 @@ if (import.meta.vitest) {
         block: true,
         reason: expect.stringContaining("linked rule"),
       });
-      expect(handlers.tool_call!(event, { cwd: root })).toMatchObject({ block: true });
+      expect(handlers.tool_call!(event, { cwd: root })).toMatchObject({
+        block: true,
+      });
       handlers.turn_start!();
       expect(handlers.tool_call!(event, { cwd: root })).toBeUndefined();
     });
@@ -600,7 +900,9 @@ if (import.meta.vitest) {
         toolName: "edit",
         input: {
           path: file,
-          edits: [{ oldText: "export {};", newText: "export const value = 1;" }],
+          edits: [
+            { oldText: "export {};", newText: "export const value = 1;" },
+          ],
         },
       };
       handlers.turn_start!();
