@@ -49,7 +49,7 @@ the proposed replacement is native pi edit/write tools or standard patch
 tooling, followed by project-specific checks, diff inspection, and ordinary
 repairs. basic behavior already supplied by a tool, such as refusing a
 nonmatching edit, is different from maintaining our own transaction subsystem.
-the exact editing interface remains to be selected.
+this project selects native pi edit/write, not another custom patch tool.
 
 preserving unrelated user edits remains a working constraint. it does not
 require a custom undo ledger or blanket permission to discard a working tree.
@@ -173,12 +173,12 @@ integration files and final verification; agents commit only their owned slice.
 | issue | outcome / owner | depends on | status |
 |---|---|---|---|
 | P0 | agree contracts, scope and evidence / parent | — | done |
-| P1 | native editing + shell discovery; retire redundant tools / tools agent | P0 | ready |
-| P2 | shared SDK session handlers + thin codemode adapter / sessions agent | P0 | ready |
-| P3 | native configuration; remove bds-pi roots/wiring / config agent | P0; integrate after P2 | ready |
-| P4 | assess automatic memory need without deleting data / memory reviewer | P0 | ready |
-| P5 | integrate consumers, exports, manifests, lockfile and guidance / parent | P1, P2, P3; P4 verdict | waiting |
-| P6 | adversarial craft review, behavioral checks, incremental main landing / parent | P5 | waiting |
+| P1 | native editing + shell discovery; retire redundant tools / tools agent | P0 | done |
+| P2 | shared SDK session handlers + thin codemode adapter / sessions agent | P0 | done |
+| P3 | native configuration; remove bds-pi roots/wiring / config agent | P0; integrate after P2 | done |
+| P4 | assess automatic memory need without deleting data / memory reviewer | P0 | done; product choice open |
+| P5 | integrate consumers, exports, manifests, lockfile and guidance / parent | P1, P2, P3; P4 verdict | done |
+| P6 | adversarial craft review, behavioral checks, incremental main landing / parent | P5 | done |
 
 ### issue acceptance
 
@@ -221,3 +221,49 @@ commit incrementally with evidence; report commit IDs, checks and gaps.
 no overlapping shared-file edits, force pushes, broad staging or silent scope
 expansion. two failed attempts on an approach require changing it or reporting
 the blocker. implementation agents do not push/merge unless explicitly assigned.
+
+### completion evidence — 2026-10-17
+
+runtime verification below covers `6cd085b5`; subsequent changes only document
+the result. the packaged manifest now has 25 entries, down from 33. native
+edit/write remain available beside codemode; retained transcript rendering does
+not register retired tools.
+
+- `pnpm exec vitest run --maxWorkers=2`: **80 files, 1108 passed, 5 skipped**.
+  real fixtures cover edit preservation/barriers, SDK branches and identity,
+  grouped/flat roots, legacy reads, settings and mailbox provenance.
+- frozen install, `tsc -p tsconfig.build.json --noEmit`, and `pnpm run build`
+  passed. source/built manifests agree. install still reports dependency
+  deprecation/peer warnings; no warning-free release is claimed.
+- `node scripts/check-codemode.ts`, with and without `--built`, passed through
+  the actual CLI. both `--negative` variants detected unrelated-text clobber.
+  external network/model replies are fixtures, not live-service evidence.
+- `PI_TEST_BUILT_TOOLS=1 pnpm exec vitest run --maxWorkers=2
+  packages/core/prompt-patch packages/core/pi-spawn/index.ts`: **73 passed**,
+  including provider wire parity and native child-tool execution.
+- agent guidance checks/typecheck passed: **32 tests**, no errors, eight
+  supporting archival-link warnings. no model routing evaluation was run.
+- `nix eval --raw --no-write-lock-file
+  .#darwinConfigurations.mbp-m2.system.drvPath` passed; the affected
+  `darwinConfigurations.mbp-m2.config.home-manager.users.bdsqqq.home.activationPackage`
+  was built with `nix build --no-link --no-write-lock-file`.
+  no full host build, Linux runtime check, activation or live-session reload.
+
+adversarial review exposed ephemeral-root loss, prefix-identity replacement,
+legacy v1 rejection and grouped-versus-flat discovery confusion. repairs include
+regression checks; actual CLI verification caught the grouped discovery mistake
+that path-only checks missed. standalone memory CLI execution also caught a
+missing workspace dependency, now declared. baseline fixture fixes canonicalize
+macOS temp paths and allow process startup/durable-write latency without changing
+runtime policies or timeouts.
+
+see the [history contract and SDK limitations](packages/core/sessions/README.md)
+and [native settings import procedure](packages/core/config/MIGRATION.md).
+Mac and lab had no mutable `bds-pi.local.json`; no settings import, session
+relocation or auth change was needed. local SSH signature verification remains
+unavailable without `allowedSignersFile`; signatures are embedded.
+
+the [memory assessment](packages/core/agent-memory/simplification-assessment.md)
+recommends explicit guidance plus deliberate search as a hypothesis, not a proven
+usefulness result. automatic capture/injection, governed data and services remain
+unchanged pending the user's decision. pi durable remains a separate project.
