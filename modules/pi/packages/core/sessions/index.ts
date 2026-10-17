@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   SessionManager,
+  parseSessionEntries,
   type FileEntry,
   type SessionHeader,
   type SessionInfo,
@@ -38,7 +39,7 @@ async function load(path: string, signal?: AbortSignal): Promise<FileEntry[]> {
   return text.split(/\r?\n/).flatMap((line, i) => {
     if (!line.trim()) return [];
     try {
-      const entry: FileEntry = JSON.parse(line);
+      const [entry] = parseSessionEntries(line);
       if (!entry || typeof entry !== "object" || typeof entry.type !== "string")
         throw new Error("expected a session entry");
       if (
