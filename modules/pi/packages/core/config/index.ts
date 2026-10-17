@@ -1,101 +1,75 @@
-/**
- * shared config reader for pi extensions.
- *
- * reads per-extension configuration from pi's settings.json files,
- * keyed by extension namespace (e.g. `"@bds_pi/librarian"`).
- *
- * merge order: defaults → global (setGlobalSettingsPath() |
- * PI_BDS_CONFIG_PATH | ~/.pi/agent/bds-pi.json) → mutable global overrides
- * (~/.pi/agent/bds-pi.local.json) → project-local (.pi/settings.json).
- * project-local is opt-in via `allowProjectConfig` to prevent malicious repo
- * overrides.
- */
-
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
-let _globalSettingsPath: string | null = null;
+let globalSettingsPath: string | undefined;
 
+/** explicit file injection for embedded callers and fixtures. */
 export function setGlobalSettingsPath(p: string): void {
-  _globalSettingsPath = p;
+  globalSettingsPath = p;
 }
 
-const _cache = new Map<string, unknown>();
-
-export function clearConfigCache(): void {
-  _cache.clear();
-}
+/** retained for callers compiled against the old API; reads are now fresh. */
+export function clearConfigCache(): void {}
 
 export function resolveGlobalSettingsPath(): string {
-  return (
-    _globalSettingsPath ??
-    process.env.PI_BDS_CONFIG_PATH ??
-    path.join(os.homedir(), ".pi", "agent", "bds-pi.json")
-  );
+  return globalSettingsPath ?? path.join(getAgentDir(), "settings.json");
 }
 
-export function resolveGlobalOverridesPath(): string {
-  if (process.env.PI_BDS_CONFIG_OVERRIDES_PATH)
-    return process.env.PI_BDS_CONFIG_OVERRIDES_PATH;
-  const globalPath = resolveGlobalSettingsPath();
-  const extension = path.extname(globalPath);
-  return extension
-    ? `${globalPath.slice(0, -extension.length)}.local${extension}`
-    : `${globalPath}.local`;
+export function resolveConfigDir(): string {
+  return path.dirname(resolveGlobalSettingsPath());
 }
 
-function readJsonFile(filePath: string): Record<string, unknown> | null {
-  if (_cache.has(filePath)) {
-    return _cache.get(filePath) as Record<string, unknown> | null;
-  }
-
-  try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    _cache.set(filePath, parsed);
-    return parsed;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.error(`[@bds_pi/config] failed to read ${filePath}:`, err);
-    }
-    _cache.set(filePath, null);
-    return null;
-  }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function deepMerge<T>(base: T, override: Record<string, unknown>): T {
-  const result = { ...(base as Record<string, unknown>) };
-  for (const key of Object.keys(override)) {
-    const baseVal = result[key];
-    const overVal = override[key];
-    if (isPlainObject(baseVal) && isPlainObject(overVal)) {
-      result[key] = deepMerge(baseVal, overVal);
-    } else {
-      result[key] = overVal;
-    }
+function readSettings(file: string): Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(
+      fs.readFileSync(file, "utf8").replace(/^\uFEFF/, ""),
+    );
+    if (!isObject(value))
+      throw new Error(`settings must be a json object: ${file}`);
+    return value;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw error;
   }
-  return result as T;
+}
+
+function merge(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
+  const result = structuredClone(base);
+  for (const [key, value] of Object.entries(override)) {
+    if (value === undefined) continue;
+    // defineProperty also treats a JSON "__proto__" key as data, not authority.
+    Object.defineProperty(result, key, {
+      value:
+        isObject(result[key]) && isObject(value)
+          ? merge(result[key], value)
+          : structuredClone(value),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
+  return result;
 }
 
 export interface GetExtensionConfigOpts {
   cwd?: string;
+  /** caller grants project settings authority; never inferred from cwd alone. */
   allowProjectConfig?: boolean;
+  /** already resolved settings, e.g. a native SettingsManager snapshot. no I/O. */
+  settings?: Readonly<object>;
 }
 
 export interface ExtensionConfigSchema<T extends Record<string, unknown>> {
-  /**
-   * validates merged config before it is returned.
-   * `getEnabledExtensionConfig()` strips the reserved `enabled` flag first.
-   * return false to fall back to defaults.
-   */
+  /** invalid configuration is diagnosed and falls back to isolated defaults. */
   validate?: (value: Record<string, unknown>) => value is T;
-  /** normalize a validated config before it is returned. */
   normalize?: (value: T) => T;
 }
 
@@ -110,70 +84,46 @@ export interface EnabledExtensionConfig<T extends Record<string, unknown>> {
   config: T;
 }
 
-type RawExtensionConfig = Record<string, unknown> & {
-  enabled?: unknown;
-};
-
-function stripEnabledFlag(
-  value: Record<string, unknown>,
-): Record<string, unknown> {
-  const { enabled: _enabled, ...rest } = value as RawExtensionConfig;
-  return rest;
-}
-
-function applyExtensionSchema<T extends Record<string, unknown>>(
-  namespace: string,
-  candidate: Record<string, unknown>,
-  defaults: T,
-  schema?: ExtensionConfigSchema<T>,
-): T {
-  if (schema?.validate && !schema.validate(candidate)) {
-    console.error(
-      `[@bds_pi/config] invalid config for ${namespace}; falling back to defaults.`,
-    );
-    return schema.normalize ? schema.normalize(defaults) : defaults;
-  }
-
-  const config = candidate as T;
-  return schema?.normalize ? schema.normalize(config) : config;
-}
-
 export function getExtensionConfig<T extends Record<string, unknown>>(
   namespace: string,
   defaults: T,
   opts?: GetExtensionConfigOpts,
 ): T {
-  let merged = { ...defaults };
+  const layers =
+    opts?.settings !== undefined
+      ? [opts.settings]
+      : [
+          readSettings(resolveGlobalSettingsPath()),
+          ...(opts?.allowProjectConfig && opts.cwd
+            ? [readSettings(path.join(opts.cwd, ".pi/settings.json"))]
+            : []),
+        ];
+  let config = structuredClone(defaults);
+  for (const settings of layers) {
+    if (!isObject(settings)) throw new Error("settings must be a json object");
+    const value = settings[namespace];
+    if (value === undefined) continue;
+    if (!isObject(value))
+      throw new Error(`extension settings must be an object: ${namespace}`);
+    config = merge(config, value) as T;
+  }
+  return config;
+}
 
-  const globalPath = resolveGlobalSettingsPath();
-  const globalSettings = readJsonFile(globalPath);
-  if (globalSettings && isPlainObject(globalSettings[namespace])) {
-    merged = deepMerge(
-      merged,
-      globalSettings[namespace] as Record<string, unknown>,
+function applySchema<T extends Record<string, unknown>>(
+  namespace: string,
+  config: Record<string, unknown>,
+  defaults: T,
+  schema?: ExtensionConfigSchema<T>,
+): T {
+  if (schema?.validate && !schema.validate(config)) {
+    console.error(
+      `[@bds_pi/config] invalid config for ${namespace}; falling back to defaults.`,
     );
+    const fallback = structuredClone(defaults);
+    return schema.normalize ? schema.normalize(fallback) : fallback;
   }
-
-  const globalOverrides = readJsonFile(resolveGlobalOverridesPath());
-  if (globalOverrides && isPlainObject(globalOverrides[namespace])) {
-    merged = deepMerge(
-      merged,
-      globalOverrides[namespace] as Record<string, unknown>,
-    );
-  }
-
-  if (opts?.allowProjectConfig && opts.cwd) {
-    const projectPath = path.join(opts.cwd, ".pi", "settings.json");
-    const projectSettings = readJsonFile(projectPath);
-    if (projectSettings && isPlainObject(projectSettings[namespace])) {
-      merged = deepMerge(
-        merged,
-        projectSettings[namespace] as Record<string, unknown>,
-      );
-    }
-  }
-
-  return merged;
+  return schema?.normalize ? schema.normalize(config as T) : (config as T);
 }
 
 export function getExtensionConfigWithSchema<T extends Record<string, unknown>>(
@@ -181,8 +131,12 @@ export function getExtensionConfigWithSchema<T extends Record<string, unknown>>(
   defaults: T,
   opts?: GetExtensionConfigWithSchemaOpts<T>,
 ): T {
-  const merged = getExtensionConfig(namespace, defaults, opts);
-  return applyExtensionSchema(namespace, merged, defaults, opts?.schema);
+  return applySchema(
+    namespace,
+    getExtensionConfig(namespace, defaults, opts),
+    defaults,
+    opts?.schema,
+  );
 }
 
 export function getEnabledExtensionConfig<T extends Record<string, unknown>>(
@@ -190,546 +144,251 @@ export function getEnabledExtensionConfig<T extends Record<string, unknown>>(
   defaults: T,
   opts?: GetExtensionConfigWithSchemaOpts<T>,
 ): EnabledExtensionConfig<T> {
-  const merged = getExtensionConfig(
-    namespace,
-    defaults,
-    opts,
-  ) as RawExtensionConfig;
-  const enabled = typeof merged.enabled === "boolean" ? merged.enabled : true;
-  const config = applyExtensionSchema(
-    namespace,
-    stripEnabledFlag(merged),
-    defaults,
-    opts?.schema,
-  );
-
-  return { enabled, config };
+  const { enabled, ...config } = getExtensionConfig(namespace, defaults, opts);
+  return {
+    enabled: typeof enabled === "boolean" ? enabled : true,
+    config: applySchema(namespace, config, defaults, opts?.schema),
+  };
 }
 
 /**
- * persist a namespaced mutable override without replacing sibling config.
- *
- * the base config may be declarative or symlinked into the nix store. commands
- * therefore write a sibling local override instead of replacing that source.
+ * native SettingsManager has no public arbitrary-key setter. write through the
+ * live path, like its native storage, rather than renaming over an editable
+ * tracked symlink. callers must serialize writes with other settings editors.
  */
+function writeSettings(file: string, settings: Record<string, unknown>): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`, {
+    mode: 0o600,
+  });
+}
+
 export function updateGlobalExtensionConfig(
   namespace: string,
   patch: Record<string, unknown>,
 ): void {
-  const filePath = resolveGlobalOverridesPath();
-  let settings: Record<string, unknown> = {};
-  try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    if (!isPlainObject(parsed))
-      throw new Error(
-        `global extension config must be a json object: ${filePath}`,
-      );
-    settings = parsed;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  const file = resolveGlobalSettingsPath();
+  const settings = readSettings(file);
+  const current = settings[namespace];
+  if (current !== undefined && !isObject(current)) {
+    throw new Error(`extension settings must be an object: ${namespace}`);
   }
-
-  const current = isPlainObject(settings[namespace])
-    ? (settings[namespace] as Record<string, unknown>)
-    : {};
-  const next = {
-    ...settings,
-    [namespace]: deepMerge(current, patch),
-  };
-  const directory = path.dirname(filePath);
-  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const temporary = `${filePath}.${randomUUID()}.tmp`;
-  let descriptor: number | undefined;
-  try {
-    descriptor = fs.openSync(temporary, "wx", 0o600);
-    fs.writeFileSync(descriptor, `${JSON.stringify(next, null, 2)}\n`);
-    fs.fsyncSync(descriptor);
-    fs.closeSync(descriptor);
-    descriptor = undefined;
-    fs.renameSync(temporary, filePath);
-    fs.chmodSync(filePath, 0o600);
-    const directoryDescriptor = fs.openSync(directory, "r");
-    try {
-      fs.fsyncSync(directoryDescriptor);
-    } finally {
-      fs.closeSync(directoryDescriptor);
-    }
-  } catch (error) {
-    if (descriptor !== undefined) fs.closeSync(descriptor);
-    try {
-      fs.unlinkSync(temporary);
-    } catch {}
-    throw error;
-  }
-  _cache.set(filePath, next);
+  writeSettings(
+    file,
+    merge(settings, { [namespace]: merge(current ?? {}, patch) }),
+  );
 }
 
-/** read a top-level (non-namespaced) key from the global settings file. */
 export function getGlobalConfig<T>(key: string): T | undefined {
-  const globalPath = resolveGlobalSettingsPath();
-  const settings = readJsonFile(globalPath);
-  if (!settings || !(key in settings)) return undefined;
-  return settings[key] as T;
+  return readSettings(resolveGlobalSettingsPath())[key] as T | undefined;
 }
 
-/** directory containing the global settings file (e.g. ~/.pi/agent/). */
-export function resolveConfigDir(): string {
-  return path.dirname(resolveGlobalSettingsPath());
+/**
+ * explicit one-time import, oldest legacy layer first. native settings win
+ * conflicts; unknown legacy options and source files survive. never auto-run.
+ */
+export function migrateLegacySettings(
+  legacyFiles: readonly string[],
+  target: string = resolveGlobalSettingsPath(),
+): void {
+  let legacy: Record<string, unknown> = {};
+  for (const file of legacyFiles) {
+    // Unlike ordinary discovery, an explicitly requested import must exist.
+    fs.accessSync(file, fs.constants.R_OK);
+    legacy = merge(legacy, readSettings(file));
+  }
+  writeSettings(target, merge(legacy, readSettings(target)));
 }
 
 if (import.meta.vitest) {
-  const { afterEach, beforeEach, describe, expect, test, vi } = import.meta
-    .vitest;
-  const tmpdir = os.tmpdir();
-
-  function writeTmpJson(dir: string, filename: string, data: unknown): string {
-    const filePath = path.join(dir, filename);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(data));
-    return filePath;
-  }
-
+  const { beforeEach, afterEach, expect, test, vi } = import.meta.vitest;
+  const { tmpdir } = await import("node:os");
+  const { SettingsManager } = await import("@earendil-works/pi-coding-agent");
+  let dir: string;
+  const ns = "@bds_pi/test";
+  const write = (file: string, data: unknown) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data));
+    return file;
+  };
   beforeEach(() => {
-    // Restoring after a test alone still lets ambient paths redirect its I/O.
-    vi.stubEnv("PI_BDS_CONFIG_PATH", undefined);
-    vi.stubEnv("PI_BDS_CONFIG_OVERRIDES_PATH", undefined);
+    dir = fs.mkdtempSync(path.join(tmpdir(), "pi-native-settings-"));
+    vi.stubEnv("PI_CODING_AGENT_DIR", path.join(dir, "agent"));
+    globalSettingsPath = undefined;
   });
-
   afterEach(() => {
-    vi.restoreAllMocks();
+    globalSettingsPath = undefined;
     vi.unstubAllEnvs();
-    clearConfigCache();
-    _globalSettingsPath = null;
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  describe("getExtensionConfig", () => {
-    test("uses PI_BDS_CONFIG_PATH when no in-process path is set", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-env-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/test": { foo: "from-env" },
-      });
-      vi.stubEnv("PI_BDS_CONFIG_PATH", settingsPath);
-
-      expect(getExtensionConfig("@bds_pi/test", { foo: "default" })).toEqual({
-        foo: "from-env",
-      });
+  test("native global/project precedence agrees with SettingsManager; project authority is opt-in", () => {
+    write(resolveGlobalSettingsPath(), {
+      [ns]: { nested: { a: 1, b: 2 }, enabled: true },
     });
-
-    test("returns defaults when no settings file exists", () => {
-      setGlobalSettingsPath(
-        path.join(tmpdir, `nonexistent-${Date.now()}.json`),
-      );
-      const result = getExtensionConfig("@bds_pi/test", { foo: "bar", n: 1 });
-      expect(result).toEqual({ foo: "bar", n: 1 });
+    write(path.join(dir, ".pi/settings.json"), {
+      [ns]: { nested: { b: 0 }, enabled: false, items: [] },
     });
-
-    test("reads namespaced config from global settings", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/test": { foo: "overridden" },
-      });
-      setGlobalSettingsPath(settingsPath);
-
-      const result = getExtensionConfig("@bds_pi/test", {
-        foo: "default",
-        extra: true,
-      });
-      expect(result).toEqual({ foo: "overridden", extra: true });
+    const defaults = { nested: { a: 0, b: 0 }, items: [1] };
+    expect(getExtensionConfig(ns, defaults, { cwd: dir })).toEqual({
+      ...defaults,
+      nested: { a: 1, b: 2 },
+      enabled: true,
     });
-
-    test("prefers the in-process override over PI_BDS_CONFIG_PATH", () => {
-      const envDir = fs.mkdtempSync(path.join(tmpdir, "pi-config-env-"));
-      const envSettingsPath = writeTmpJson(envDir, "env-settings.json", {
-        "@bds_pi/test": { foo: "from-env" },
-      });
-      const manualDir = fs.mkdtempSync(path.join(tmpdir, "pi-config-manual-"));
-      const manualSettingsPath = writeTmpJson(
-        manualDir,
-        "manual-settings.json",
-        {
-          "@bds_pi/test": { foo: "from-setter" },
-        },
-      );
-      process.env.PI_BDS_CONFIG_PATH = envSettingsPath;
-      setGlobalSettingsPath(manualSettingsPath);
-
-      const result = getExtensionConfig("@bds_pi/test", { foo: "default" });
-      expect(result).toEqual({ foo: "from-setter" });
-    });
-
-    test("deep merges nested objects", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/test": { nested: { b: 2, c: 3 } },
-      });
-      setGlobalSettingsPath(settingsPath);
-
-      const result = getExtensionConfig("@bds_pi/test", {
-        nested: { a: 1, b: 0 },
-      });
-      expect(result).toEqual({ nested: { a: 1, b: 2, c: 3 } });
-    });
-
-    test("arrays replace rather than merge", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/test": { items: [3, 4] },
-      });
-      setGlobalSettingsPath(settingsPath);
-
-      const result = getExtensionConfig("@bds_pi/test", { items: [1, 2] });
-      expect(result).toEqual({ items: [3, 4] });
-    });
-
-    test("caches reads — second call does not re-read file", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/test": { v: 1 },
-      });
-      setGlobalSettingsPath(settingsPath);
-
-      getExtensionConfig("@bds_pi/test", { v: 0 });
-      fs.writeFileSync(
-        settingsPath,
-        JSON.stringify({ "@bds_pi/test": { v: 999 } }),
-      );
-      const result = getExtensionConfig("@bds_pi/test", { v: 0 });
-      expect(result).toEqual({ v: 1 });
-    });
-
-    test("clearConfigCache resets cached reads", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/test": { v: 1 },
-      });
-      setGlobalSettingsPath(settingsPath);
-
-      getExtensionConfig("@bds_pi/test", { v: 0 });
-      fs.writeFileSync(
-        settingsPath,
-        JSON.stringify({ "@bds_pi/test": { v: 999 } }),
-      );
-      clearConfigCache();
-      const result = getExtensionConfig("@bds_pi/test", { v: 0 });
-      expect(result).toEqual({ v: 999 });
-    });
-
-    test("handles malformed JSON gracefully", () => {
-      const errorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => undefined);
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = path.join(dir, "settings.json");
-      fs.writeFileSync(settingsPath, "NOT VALID JSON {{{");
-      setGlobalSettingsPath(settingsPath);
-
-      const result = getExtensionConfig("@bds_pi/test", { ok: true });
-      expect(result).toEqual({ ok: true });
-      expect(errorSpy).toHaveBeenCalled();
-    });
-
-    test("returns defaults when namespace key is missing", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/other": { x: 1 },
-      });
-      setGlobalSettingsPath(settingsPath);
-
-      const result = getExtensionConfig("@bds_pi/test", { y: 2 });
-      expect(result).toEqual({ y: 2 });
-    });
-
-    test("project-local config merges on top of global", () => {
-      const globalDir = fs.mkdtempSync(path.join(tmpdir, "pi-config-global-"));
-      const globalPath = writeTmpJson(globalDir, "settings.json", {
-        "@bds_pi/test": { a: "global", b: "global" },
-      });
-      setGlobalSettingsPath(globalPath);
-
-      const projectDir = fs.mkdtempSync(
-        path.join(tmpdir, "pi-config-project-"),
-      );
-      writeTmpJson(projectDir, ".pi/settings.json", {
-        "@bds_pi/test": { b: "project", c: "project" },
-      });
-
-      const result = getExtensionConfig(
-        "@bds_pi/test",
-        { a: "default", b: "default", c: "default" },
-        { cwd: projectDir, allowProjectConfig: true },
-      );
-      expect(result).toEqual({ a: "global", b: "project", c: "project" });
-    });
-
-    test("mutable global overrides merge on top of base config", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-global-"));
-      const globalPath = writeTmpJson(dir, "bds-pi.json", {
-        "@bds_pi/test": { enabled: true, nested: { keep: true } },
-      });
-      writeTmpJson(dir, "bds-pi.local.json", {
-        "@bds_pi/test": { enabled: false },
-      });
-      setGlobalSettingsPath(globalPath);
-
-      expect(
-        getExtensionConfig("@bds_pi/test", {
-          enabled: true,
-          nested: { keep: false },
-        }),
-      ).toEqual({ enabled: false, nested: { keep: true } });
-    });
-
-    test("explicit overrides replace the inferred sibling for reads and writes", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-overrides-"));
-      const base = { "@bds_pi/test": { foo: "base", keep: true } };
-      const sibling = { "@bds_pi/test": { foo: "sibling", unselected: true } };
-      const settingsPath = writeTmpJson(dir, "settings.json", base);
-      const siblingPath = writeTmpJson(dir, "settings.local.json", sibling);
-      const overridesPath = writeTmpJson(dir, "explicit.json", {
-        "@bds_pi/test": { foo: "explicit" },
-        "@bds_pi/other": { keep: true },
-      });
-      setGlobalSettingsPath(settingsPath);
-      vi.stubEnv("PI_BDS_CONFIG_OVERRIDES_PATH", overridesPath);
-
-      expect(resolveGlobalOverridesPath()).toBe(overridesPath);
-      expect(
-        getExtensionConfig("@bds_pi/test", { foo: "default", keep: false }),
-      ).toEqual({ foo: "explicit", keep: true });
-
-      updateGlobalExtensionConfig("@bds_pi/test", { foo: "updated" });
-
-      expect(JSON.parse(fs.readFileSync(overridesPath, "utf8"))).toEqual({
-        "@bds_pi/test": { foo: "updated" },
-        "@bds_pi/other": { keep: true },
-      });
-      expect(JSON.parse(fs.readFileSync(siblingPath, "utf8"))).toEqual(sibling);
-      expect(JSON.parse(fs.readFileSync(settingsPath, "utf8"))).toEqual(base);
-      expect(
-        getExtensionConfig("@bds_pi/test", { foo: "default", keep: false }),
-      ).toEqual({ foo: "updated", keep: true });
-    });
-
-    test("project-local config is ignored when allowProjectConfig is false", () => {
-      const globalDir = fs.mkdtempSync(path.join(tmpdir, "pi-config-global-"));
-      const globalPath = writeTmpJson(globalDir, "settings.json", {
-        "@bds_pi/test": { a: "global" },
-      });
-      setGlobalSettingsPath(globalPath);
-
-      const projectDir = fs.mkdtempSync(
-        path.join(tmpdir, "pi-config-project-"),
-      );
-      writeTmpJson(projectDir, ".pi/settings.json", {
-        "@bds_pi/test": { a: "project" },
-      });
-
-      const result = getExtensionConfig(
-        "@bds_pi/test",
-        { a: "default" },
-        { cwd: projectDir },
-      );
-      expect(result).toEqual({ a: "global" });
+    const manager = SettingsManager.create(dir, path.join(dir, "agent"));
+    const native = manager.getSettings();
+    expect(
+      getExtensionConfig(ns, {}, { cwd: dir, allowProjectConfig: true }),
+    ).toEqual(getExtensionConfig(ns, {}, { settings: native }));
+    expect(
+      getEnabledExtensionConfig(ns, defaults, {
+        cwd: dir,
+        allowProjectConfig: true,
+      }),
+    ).toEqual({
+      enabled: false,
+      config: { nested: { a: 1, b: 0 }, items: [] },
     });
   });
 
-  describe("getExtensionConfigWithSchema", () => {
-    test("applies validation and normalization to merged config", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/test": { foo: "overridden", count: 2 },
-      });
-      setGlobalSettingsPath(settingsPath);
+  test("caller-owned snapshots and defaults remain isolated and cause no file read", () => {
+    fs.mkdirSync(resolveGlobalSettingsPath(), { recursive: true }); // reading this would throw
+    const settings = { [ns]: { nested: { text: "" }, enabled: false } };
+    const defaults = { nested: { text: "default", items: [1] } };
+    const config = getExtensionConfig(ns, defaults, {
+      settings,
+      cwd: dir,
+      allowProjectConfig: true,
+    });
+    expect(config.nested.text).toBe("");
+    config.nested.items.push(2);
+    config.nested.text = "changed";
+    expect(defaults.nested.items).toEqual([1]);
+    expect(settings[ns].nested.text).toBe("");
+    expect(getExtensionConfig(ns, defaults, { settings: {} })).toEqual(
+      defaults,
+    );
+  });
 
-      const result = getExtensionConfigWithSchema(
-        "@bds_pi/test",
-        { foo: "default", count: 0 },
+  test("writes through a tracked-style symlink, preserves siblings, reloads manual/native edits", async () => {
+    const source = write(path.join(dir, "tracked.json"), {
+      theme: "dark",
+      [ns]: { nested: { keep: true } },
+      other: { unknown: 1 },
+    });
+    fs.mkdirSync(path.dirname(resolveGlobalSettingsPath()), {
+      recursive: true,
+    });
+    fs.symlinkSync(source, resolveGlobalSettingsPath());
+    updateGlobalExtensionConfig(ns, { enabled: false, items: [] });
+    expect(fs.lstatSync(resolveGlobalSettingsPath()).isSymbolicLink()).toBe(
+      true,
+    );
+    expect(readSettings(source)).toEqual({
+      theme: "dark",
+      [ns]: { nested: { keep: true }, enabled: false, items: [] },
+      other: { unknown: 1 },
+    });
+    const manager = SettingsManager.create(dir, path.join(dir, "agent"), {
+      projectTrusted: false,
+    });
+    manager.setTheme("light");
+    await manager.flush();
+    expect(manager.drainErrors()).toEqual([]);
+    expect(getGlobalConfig("theme")).toBe("light");
+    expect(getExtensionConfig(ns, {})).toEqual({
+      nested: { keep: true },
+      enabled: false,
+      items: [],
+    });
+    write(source, { [ns]: { enabled: true } });
+    expect(getEnabledExtensionConfig(ns, {}).enabled).toBe(true);
+  });
+
+  test("legacy import preserves unknown options, local false/empty, native conflicts and sources", () => {
+    const base = write(path.join(dir, "bds-pi.json"), {
+      [ns]: { enabled: true, items: [1], nested: { a: 1 } },
+    });
+    const local = write(path.join(dir, "bds-pi.local.json"), {
+      [ns]: { enabled: false, items: [], nested: { b: 2 } },
+      unknown: { future: "" },
+    });
+    const original = fs.readFileSync(local, "utf8");
+    write(resolveGlobalSettingsPath(), {
+      theme: "dark",
+      [ns]: { nested: { a: 9 } },
+    });
+    migrateLegacySettings([base, local]);
+    expect(readSettings(resolveGlobalSettingsPath())).toEqual({
+      theme: "dark",
+      [ns]: { enabled: false, items: [], nested: { a: 9, b: 2 } },
+      unknown: { future: "" },
+    });
+    expect(fs.readFileSync(local, "utf8")).toBe(original);
+    const imported = fs.readFileSync(resolveGlobalSettingsPath(), "utf8");
+    migrateLegacySettings([base, local]);
+    expect(fs.readFileSync(resolveGlobalSettingsPath(), "utf8")).toBe(imported);
+  });
+
+  test("legacy files and branded environment variables are not runtime fallbacks", () => {
+    const legacy = write(path.join(dir, "bds-pi.local.json"), {
+      [ns]: { enabled: false },
+    });
+    vi.stubEnv("PI_BDS_CONFIG_PATH", legacy);
+    vi.stubEnv("PI_BDS_CONFIG_OVERRIDES_PATH", legacy);
+    expect(getEnabledExtensionConfig(ns, {})).toEqual({
+      enabled: true,
+      config: {},
+    });
+  });
+
+  test.skipIf(process.getuid?.() === 0)(
+    "write permission errors propagate without reporting success",
+    () => {
+      const file = write(resolveGlobalSettingsPath(), {
+        [ns]: { enabled: true },
+      });
+      fs.chmodSync(file, 0o444);
+      try {
+        expect(() =>
+          updateGlobalExtensionConfig(ns, { enabled: false }),
+        ).toThrow();
+        expect(readSettings(file)).toEqual({ [ns]: { enabled: true } });
+      } finally {
+        fs.chmodSync(file, 0o600);
+      }
+    },
+  );
+
+  test("I/O and migration failures propagate; schema fallback remains compatible", () => {
+    const file = resolveGlobalSettingsPath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, "{broken");
+    expect(() => getExtensionConfig(ns, {})).toThrow();
+    expect(() => updateGlobalExtensionConfig(ns, {})).toThrow();
+    expect(fs.readFileSync(file, "utf8")).toBe("{broken");
+    write(file, { [ns]: { count: "bad" } });
+    expect(
+      getExtensionConfigWithSchema(
+        ns,
+        { count: 0 },
         {
           schema: {
-            validate: (
-              value,
-            ): value is {
-              foo: string;
-              count: number;
-            } =>
-              typeof value.foo === "string" && typeof value.count === "number",
-            normalize: (value) => ({
-              ...value,
-              foo: value.foo.trim().toUpperCase(),
-            }),
+            validate: (value): value is { count: number } =>
+              typeof value.count === "number",
           },
         },
-      );
-
-      expect(result).toEqual({ foo: "OVERRIDDEN", count: 2 });
-    });
-
-    test("falls back to defaults when validation fails", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/test": { foo: 123 },
-      });
-      setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => undefined);
-
-      const result = getExtensionConfigWithSchema(
-        "@bds_pi/test",
-        { foo: "default" },
-        {
-          schema: {
-            validate: (value): value is { foo: string } =>
-              typeof value.foo === "string",
-          },
-        },
-      );
-
-      expect(result).toEqual({ foo: "default" });
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[@bds_pi/config] invalid config for @bds_pi/test; falling back to defaults.",
-      );
-    });
-  });
-
-  describe("getEnabledExtensionConfig", () => {
-    test("defaults enabled to true and strips the reserved flag from config", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/test": { foo: "overridden" },
-      });
-      setGlobalSettingsPath(settingsPath);
-
-      const result = getEnabledExtensionConfig("@bds_pi/test", {
-        foo: "default",
-      });
-
-      expect(result).toEqual({ enabled: true, config: { foo: "overridden" } });
-    });
-
-    test("returns explicit enabled flag and validates remaining config", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/test": { enabled: false, foo: " override ", count: 2 },
-      });
-      setGlobalSettingsPath(settingsPath);
-
-      const result = getEnabledExtensionConfig(
-        "@bds_pi/test",
-        { foo: "default", count: 0 },
-        {
-          schema: {
-            validate: (
-              value,
-            ): value is {
-              foo: string;
-              count: number;
-            } =>
-              typeof value.foo === "string" && typeof value.count === "number",
-            normalize: (value) => ({ ...value, foo: value.foo.trim() }),
-          },
-        },
-      );
-
-      expect(result).toEqual({
-        enabled: false,
-        config: { foo: "override", count: 2 },
-      });
-    });
-
-    test("ignores non-boolean enabled values", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/test": { enabled: "nope", foo: "overridden" },
-      });
-      setGlobalSettingsPath(settingsPath);
-
-      const result = getEnabledExtensionConfig("@bds_pi/test", {
-        foo: "default",
-      });
-
-      expect(result).toEqual({ enabled: true, config: { foo: "overridden" } });
-    });
-  });
-
-  describe("updateGlobalExtensionConfig", () => {
-    test("persists a namespace patch without clobbering sibling settings", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-update-"));
-      const sourcePath = writeTmpJson(dir, "declarative.json", {
-        "@bds_pi/other": { keep: true },
-        "@bds_pi/test": { enabled: true, model: { id: "keep" } },
-      });
-      const settingsPath = path.join(dir, "bds-pi.json");
-      fs.symlinkSync(sourcePath, settingsPath);
-      const overridesPath = writeTmpJson(dir, "bds-pi.local.json", {
-        "@bds_pi/local-other": { keep: true },
-      });
-      setGlobalSettingsPath(settingsPath);
-
-      updateGlobalExtensionConfig("@bds_pi/test", { enabled: false });
-
-      expect(JSON.parse(fs.readFileSync(overridesPath, "utf8"))).toEqual({
-        "@bds_pi/local-other": { keep: true },
-        "@bds_pi/test": { enabled: false },
-      });
-      expect(JSON.parse(fs.readFileSync(settingsPath, "utf8"))).toEqual({
-        "@bds_pi/other": { keep: true },
-        "@bds_pi/test": { enabled: true, model: { id: "keep" } },
-      });
-      expect(fs.lstatSync(settingsPath).isSymbolicLink()).toBe(true);
-      expect(fs.statSync(overridesPath).mode & 0o777).toBe(0o600);
-      expect(
-        getEnabledExtensionConfig("@bds_pi/test", {
-          model: { id: "default" },
-        }),
-      ).toEqual({ enabled: false, config: { model: { id: "keep" } } });
-    });
-
-    test("refuses to overwrite malformed config", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-update-"));
-      const settingsPath = writeTmpJson(dir, "bds-pi.json", {});
-      const overridesPath = path.join(dir, "bds-pi.local.json");
-      fs.writeFileSync(overridesPath, "{broken");
-      setGlobalSettingsPath(settingsPath);
-
-      expect(() =>
-        updateGlobalExtensionConfig("@bds_pi/test", { enabled: false }),
-      ).toThrow();
-      expect(fs.readFileSync(overridesPath, "utf8")).toBe("{broken");
-    });
-  });
-
-  describe("getGlobalConfig", () => {
-    test("returns undefined when no settings file exists", () => {
-      setGlobalSettingsPath(
-        path.join(tmpdir, `nonexistent-${Date.now()}.json`),
-      );
-      expect(getGlobalConfig("missing")).toBeUndefined();
-    });
-
-    test("reads top-level key from global settings", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        promptVariables: { foo: { literal: "bar" } },
-      });
-      setGlobalSettingsPath(settingsPath);
-      expect(getGlobalConfig("promptVariables")).toEqual({
-        foo: { literal: "bar" },
-      });
-    });
-
-    test("returns undefined for missing key", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-config-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", { other: 1 });
-      setGlobalSettingsPath(settingsPath);
-      expect(getGlobalConfig("promptVariables")).toBeUndefined();
-    });
-  });
-
-  describe("resolveConfigDir", () => {
-    test("returns dirname of global settings path", () => {
-      setGlobalSettingsPath("/fake/dir/settings.json");
-      expect(resolveConfigDir()).toBe("/fake/dir");
-    });
+      ),
+    ).toEqual({ count: 0 });
+    const before = fs.readFileSync(file, "utf8");
+    expect(() => migrateLegacySettings([path.join(dir, "absent")])).toThrow();
+    const malformed = path.join(dir, "bad-import");
+    fs.writeFileSync(malformed, "[");
+    expect(() => migrateLegacySettings([malformed])).toThrow();
+    expect(fs.readFileSync(file, "utf8")).toBe(before);
+    fs.unlinkSync(file);
+    fs.mkdirSync(file);
+    expect(() => getExtensionConfig(ns, {})).toThrow();
+    expect(() => updateGlobalExtensionConfig(ns, {})).toThrow();
   });
 }
