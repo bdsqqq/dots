@@ -224,7 +224,8 @@ if (import.meta.vitest) {
         }),
       ).toBe(true);
       expect(maintenanceWakePending(root)).toBe(false);
-    });
+      // A thousand durable writes test generations, not filesystem latency.
+    }, 60_000);
 
     it("keeps wake truthful across a suspended slice", () => {
       const root = cfg();
