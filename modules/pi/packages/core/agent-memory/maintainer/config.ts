@@ -1,6 +1,9 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
+import {
+  resolveNativeSessionRoot,
+  type NativeSessionRootOptions,
+} from "@bds_pi/sessions";
 import type { MemoryConfig } from "../catalog.js";
 import type { HistoryConfig } from "./history.js";
 
@@ -13,13 +16,10 @@ const HOME = homedir();
 const envPath = (name: string, fallback: string): string =>
   resolve((process.env[name] || fallback).replace(/^~(?=$|\/)/, HOME));
 
-export interface MaintainerSessionOptions {
-  /** launching working directory, also the base for relative sessionDir. */
-  cwd?: string;
-  allowProjectConfig?: boolean;
-  /** caller-resolved native settings; providing even {} avoids another read. */
-  settings?: Readonly<{ sessionDir?: string }>;
-}
+export type MaintainerSessionOptions = Omit<
+  NativeSessionRootOptions,
+  "sessionManager"
+>;
 
 /**
  * matches CLI storage selection, not SessionManager's cwd grouping parameter:
@@ -30,32 +30,7 @@ export interface MaintainerSessionOptions {
 export function resolveMaintainerSessionRoot(
   opts: MaintainerSessionOptions = {},
 ): string {
-  const cwd = opts.cwd ?? process.cwd();
-  let sessionDir = process.env.PI_CODING_AGENT_SESSION_DIR;
-  if (!sessionDir) {
-    let settings = opts.settings;
-    if (settings === undefined) {
-      const manager = SettingsManager.create(cwd, getAgentDir(), {
-        projectTrusted: opts.allowProjectConfig === true,
-      });
-      const errors = manager.drainErrors();
-      if (errors.length)
-        throw new AggregateError(
-          errors.map(({ error }) => error),
-          "failed to load native pi settings",
-        );
-      settings = opts.allowProjectConfig
-        ? manager.getSettings()
-        : manager.getGlobalSettings();
-    }
-    sessionDir = settings.sessionDir;
-  }
-  if (sessionDir !== undefined && typeof sessionDir !== "string") {
-    throw new Error("native sessionDir must be a string");
-  }
-  return sessionDir
-    ? resolve(cwd, sessionDir.replace(/^~(?=$|\/)/, HOME))
-    : resolve(getAgentDir(), "sessions");
+  return resolveNativeSessionRoot(opts);
 }
 
 export function maintainerConfig(

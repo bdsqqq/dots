@@ -3,7 +3,16 @@ import type {
   SessionEntry,
   SessionHeader,
   SessionInfo,
+  SessionManager,
 } from "@earendil-works/pi-coding-agent";
+
+export interface NativeSessionRootOptions {
+  cwd?: string;
+  sessionManager?: Pick<SessionManager, "getSessionDir">;
+  allowProjectConfig?: boolean;
+  /** supplying even {} avoids reading settings again. */
+  settings?: Readonly<{ sessionDir?: string }>;
+}
 
 export interface SessionIdentity {
   sessionId: string;
