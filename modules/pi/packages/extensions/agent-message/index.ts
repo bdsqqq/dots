@@ -13,10 +13,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
-import type {
-  ExtensionAPI,
-  ToolDefinition,
+import {
+  getAgentDir,
+  type ExtensionToolContext,
+  type ExtensionAPI,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { resolveNativeSessionRoot } from "@bds_pi/sessions";
 import { type Static, type TObject, type TString, Type } from "typebox";
 import {
   clearConfigCache,
@@ -71,8 +74,8 @@ type AgentMessageExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: AgentMessageConfig = {
-  queueDir: path.join(os.homedir(), ".pi", "agent", "agent-messages"),
-  sessionsDirs: [path.join(os.homedir(), ".pi", "agent", "sessions")],
+  queueDir: path.join(getAgentDir(), "agent-messages"),
+  sessionsDirs: [],
 };
 
 const DEFAULT_DEPS: AgentMessageExtensionDeps = {
@@ -91,7 +94,6 @@ function isAgentMessageConfig(
   return (
     nonEmptyString(value.queueDir) &&
     Array.isArray(value.sessionsDirs) &&
-    value.sessionsDirs.length > 0 &&
     value.sessionsDirs.every(nonEmptyString)
   );
 }
@@ -362,7 +364,7 @@ const AGENT_MESSAGE_PARAMETERS: TObject<{
 }> = Type.Object({
   sessionId: Type.String({
     description:
-      "Target pi session id or an unambiguous id prefix. Use search_sessions to find it.",
+      "Target pi session id or an unambiguous id prefix. Use history_list to find it.",
   }),
   message: Type.String({
     minLength: 1,
@@ -382,7 +384,7 @@ export function createAgentMessageTool(
     name: "agent_message",
     label: "Agent Message",
     description:
-      "Send a durable message to another pi agent session. The message is queued while the target is inactive or busy, then delivered with explicit source-session provenance. Use search_sessions first when the target session id is unknown.",
+      "Send a durable message to another pi agent session. The message is queued while the target is inactive or busy, then delivered with explicit source-session provenance. Use history_list first when the target session id is unknown.",
     promptSnippet:
       "Queue a provenance-marked message for another pi agent session",
     parameters: AGENT_MESSAGE_PARAMETERS,
@@ -390,7 +392,17 @@ export function createAgentMessageTool(
       const input: AgentMessageParams = params;
       const target = resolveTargetSession(
         input.sessionId,
-        config,
+        config.sessionsDirs.length
+          ? config
+          : {
+              ...config,
+              sessionsDirs: [
+                resolveNativeSessionRoot({
+                  cwd: ctx.cwd,
+                  sessionManager: ctx.sessionManager,
+                }),
+              ],
+            },
         listSessions,
       );
       const sourceSessionId = ctx.sessionManager.getSessionId();
@@ -621,6 +633,7 @@ if (import.meta.vitest) {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     clearConfigCache();
     setGlobalSettingsPath(
       path.join(os.tmpdir(), `missing-agent-message-${randomUUID()}.json`),
@@ -630,6 +643,62 @@ if (import.meta.vitest) {
   });
 
   describe("agent-message", () => {
+    it.each(["grouped", "flat", "ephemeral", "explicit"] as const)(
+      "queues to a real SDK target through the %s history root",
+      async (mode) => {
+        const { SessionManager } =
+          await import("@earendil-works/pi-coding-agent");
+        const root = tempDir("native-root");
+        const workspace = path.join(root, "workspace");
+        vi.stubEnv("PI_CODING_AGENT_DIR", path.join(root, "agent"));
+        vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", undefined);
+        const custom = path.join(root, "archive");
+        const target = SessionManager.create(
+          workspace,
+          mode === "grouped" ? undefined : custom,
+        );
+        target.appendMessage({
+          role: "user",
+          content: "target work",
+          timestamp: 1,
+        });
+        if (mode === "ephemeral")
+          vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", custom);
+        const source =
+          mode === "ephemeral"
+            ? SessionManager.inMemory(workspace)
+            : SessionManager.create(
+                workspace,
+                mode === "flat" ? custom : undefined,
+              );
+        const queueDir = path.join(root, "queue");
+        await createAgentMessageTool({
+          queueDir,
+          sessionsDirs: mode === "explicit" ? [custom] : [],
+        }).execute(
+          "native-root",
+          { sessionId: target.getSessionId(), message: "review this work" },
+          AbortSignal.timeout(10_000),
+          undefined,
+          {
+            cwd: workspace,
+            sessionManager: source,
+          } as unknown as ExtensionToolContext,
+        );
+        const mailbox = mailboxPath(queueDir, target.getSessionId());
+        const files = fs.readdirSync(mailbox);
+        expect(files).toHaveLength(1);
+        const queued = JSON.parse(
+          fs.readFileSync(path.join(mailbox, files[0]!), "utf8"),
+        );
+        expect(queued).toMatchObject({
+          provenance: { sessionId: source.getSessionId(), workspace },
+          target: { sessionId: target.getSessionId() },
+          content: "review this work",
+        });
+      },
+    );
+
     it("resolves exact ids ahead of ambiguous prefixes", () => {
       const alpha = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
       const alphabet = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab";
