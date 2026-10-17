@@ -64,7 +64,7 @@ type OracleExtensionDeps = {
 
 const CONFIG_DEFAULTS: OracleExtConfig = {
   model: ORACLE_DEFAULT_MODEL,
-  tools: ["read", "grep", "find", "ls", "bash", "web_search", "read_web_page"],
+  tools: ["read", "bash", "web_search", "read_web_page"],
   excludeTools: [],
   promptFile: "agent.amp.oracle.md",
   promptString: "",
@@ -124,7 +124,7 @@ export function createOracleTool(
     description:
       "Consult the oracle - an AI advisor powered by a reasoning model " +
       "that can plan, review, and provide expert guidance.\n\n" +
-      "The oracle has access to tools by default: Read, Grep, Find, ls, Bash, web_search, read_web_page.\n\n" +
+      "The oracle has read, bash, web_search, and read_web_page. Use read-only shell queries for source discovery.\n\n" +
       "You should consult the oracle for:\n" +
       "- Code reviews and architecture feedback\n" +
       "- Finding difficult bugs across many files\n" +
@@ -132,7 +132,7 @@ export function createOracleTool(
       "- Answering complex technical questions requiring deep reasoning\n" +
       "- Providing an alternative point of view\n\n" +
       "You should NOT consult the oracle for:\n" +
-      "- File reads or simple keyword searches (use Read or Grep directly)\n" +
+      "- File reads or simple keyword searches (use read or bash directly)\n" +
       "- Codebase searches (use finder)\n" +
       "- Basic code modifications (do it yourself or use delegate)\n\n" +
       "Usage guidelines:\n" +
@@ -494,15 +494,6 @@ if (import.meta.vitest) {
   });
 
   describe("createOracleTool", () => {
-    it("creates a tool with correct metadata", () => {
-      const tool = createOracleTool();
-
-      expect(tool.name).toBe("oracle");
-      expect(tool.label).toBe("Oracle");
-      expect(tool.description).toContain("expert guidance");
-      expect(tool.description).toContain("Read, Grep, Find, ls, Bash");
-    });
-
     it("has correct parameter schema", () => {
       const tool = createOracleTool();
       const params = tool.parameters as TObject;

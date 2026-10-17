@@ -65,7 +65,7 @@ type FinderExtensionDeps = {
 
 const CONFIG_DEFAULTS: FinderExtConfig = {
   model: FINDER_DEFAULT_MODEL,
-  tools: ["read", "grep", "find", "ls"],
+  tools: ["read", "bash"],
   excludeTools: [],
   promptFile: "agent.amp.finder.md",
   promptString: "",
