@@ -61,7 +61,7 @@ type LookAtExtensionDeps = {
 
 const CONFIG_DEFAULTS: LookAtExtConfig = {
   model: LOOK_AT_DEFAULT_MODEL,
-  tools: ["read", "ls"],
+  tools: ["read"],
   excludeTools: [],
   promptFile: "",
   promptString: "",

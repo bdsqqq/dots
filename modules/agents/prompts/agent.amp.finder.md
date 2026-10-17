@@ -14,6 +14,7 @@ Workspace roots: {roots}
 
 ## Execution Strategy
 - Search through the codebase with the tools that are available to you.
+- Use read-only shell queries such as `rg` for discovery; do not modify files.
 - Your goal is to return a list of relevant filenames with ranges. Your goal is NOT to explore the complete codebase to construct an essay of an answer.
 - Parallelize independent searches when that reduces latency. do not manufacture redundant calls to meet a quota.
 - Return as soon as the evidence satisfies the query. continue only when completeness is requested or a material ambiguity remains.
