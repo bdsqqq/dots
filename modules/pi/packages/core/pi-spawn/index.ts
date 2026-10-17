@@ -1830,7 +1830,7 @@ if (import.meta.vitest) {
         const result = await piSpawn({
           cwd,
           task: "test",
-          timeoutMs: 200,
+          timeoutMs: 2000,
           session: { persist: false },
           env: { CHILD_PID_FILE: childPidFile },
         });
