@@ -1,22 +1,25 @@
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import {
-  getAgentDir,
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type, type TSchema } from "typebox";
-import { listSessions, readSession } from "@bds_pi/sessions";
+import {
+  listSessions,
+  readSession,
+  resolveNativeSessionRoot,
+} from "@bds_pi/sessions";
 import { MentionAutocompleteProvider, parseMentions } from "@bds_pi/mentions";
 
-/** use the running manager's directory so CLI/env/settings precedence stays native. */
+/** persistent managers carry storage selection; ephemeral ones need native fallback. */
 export function historySessionDir(
-  ctx: Pick<ExtensionContext, "sessionManager">,
-): string | undefined {
-  const dir = ctx.sessionManager.getSessionDir();
-  return !dir ||
-    resolve(dirname(dir)) === resolve(join(getAgentDir(), "sessions"))
-    ? undefined
-    : dir;
+  ctx: Pick<ExtensionContext, "sessionManager"> &
+    Partial<Pick<ExtensionContext, "cwd">>,
+): string {
+  return resolveNativeSessionRoot({
+    cwd: ctx.cwd,
+    sessionManager: ctx.sessionManager,
+  });
 }
 
 // SDK entries can contain arbitrary extension data; preserve it as JSON rather
@@ -234,7 +237,92 @@ export default function sessionHistory(pi: ExtensionAPI): void {
 }
 
 if (import.meta.vitest) {
-  const { it, expect } = import.meta.vitest;
+  const { it, expect, vi } = import.meta.vitest;
+  it("finds native history for ephemeral managers from settings/env without overriding persistent context", async () => {
+    const fs = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { SessionManager, getAgentDir } =
+      await import("@earendil-works/pi-coding-agent");
+    const root = await fs.realpath(
+      await fs.mkdtemp(join(tmpdir(), "pi-history-root-")),
+    );
+    const dir = join(root, "history");
+    const cwd = join(root, "workspace");
+    const manager = SessionManager.create(cwd, dir, {
+      id: "custom-root-history",
+    });
+    manager.appendMessage({
+      role: "user",
+      content: "custom root question",
+      timestamp: 1,
+    });
+    const ephemeral = SessionManager.inMemory(cwd);
+    try {
+      vi.stubEnv("PI_CODING_AGENT_DIR", join(root, "agent"));
+      vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", undefined);
+      await fs.mkdir(getAgentDir(), { recursive: true });
+      await fs.writeFile(
+        join(getAgentDir(), "settings.json"),
+        JSON.stringify({ sessionDir: dir }),
+      );
+      await fs.mkdir(join(cwd, ".pi"), { recursive: true });
+      await fs.writeFile(
+        join(cwd, ".pi/settings.json"),
+        JSON.stringify({ sessionDir: join(root, "untrusted-project-root") }),
+      );
+      const ctx = { cwd, sessionManager: ephemeral };
+      expect(
+        await listSessions({ sessionDir: historySessionDir(ctx) }),
+      ).toMatchObject({
+        ok: true,
+        value: [
+          {
+            sessionId: "custom-root-history",
+            firstMessage: "custom root question",
+          },
+        ],
+      });
+      expect(
+        resolveNativeSessionRoot({
+          cwd,
+          sessionManager: ephemeral,
+          allowProjectConfig: true,
+        }),
+      ).toBe(join(root, "untrusted-project-root"));
+      vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", dir);
+      await fs.writeFile(join(getAgentDir(), "settings.json"), "{broken");
+      expect(
+        await listSessions({ sessionDir: historySessionDir(ctx) }),
+      ).toMatchObject({
+        ok: true,
+        value: [{ sessionId: "custom-root-history" }],
+      });
+      vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", join(root, "wrong"));
+      expect(historySessionDir({ cwd, sessionManager: manager })).toBe(dir);
+      expect(
+        resolveNativeSessionRoot({
+          cwd,
+          sessionManager: ephemeral,
+          settings: {},
+        }),
+      ).toBe(join(root, "wrong"));
+      vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", undefined);
+      expect(
+        resolveNativeSessionRoot({
+          cwd,
+          sessionManager: ephemeral,
+          settings: {},
+        }),
+      ).toBe(join(getAgentDir(), "sessions"));
+      const native = SessionManager.create(cwd);
+      expect(historySessionDir({ cwd, sessionManager: native })).toBe(
+        join(getAgentDir(), "sessions"),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
   it("dispatches real codemode calls through the SDK to the same history outcomes", async () => {
     const fs = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");

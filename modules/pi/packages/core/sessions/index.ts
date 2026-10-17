@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import {
+  getAgentDir,
   SessionManager,
+  SettingsManager,
   parseSessionEntries,
   type FileEntry,
   type SessionHeader,
@@ -13,6 +16,7 @@ import type {
   HistoryResult,
   ListSessionsInput,
   LoadedSession,
+  NativeSessionRootOptions,
   ReadSessionInput,
   SessionHistory,
   SessionIdentity,
@@ -20,6 +24,45 @@ import type {
 } from "./contracts";
 
 export type * from "./contracts";
+
+/**
+ * preserve the running manager's selection; ephemeral managers have no directory,
+ * so use native env/settings precedence. the SDK discards --session-dir for
+ * --no-session; an extension cannot recover that flag from its context.
+ */
+export function resolveNativeSessionRoot(
+  opts: NativeSessionRootOptions = {},
+): string {
+  const defaultRoot = resolve(getAgentDir(), "sessions");
+  const dir = opts.sessionManager?.getSessionDir();
+  if (dir)
+    return resolve(dirname(dir)) === defaultRoot ? defaultRoot : resolve(dir);
+  const cwd = opts.cwd ?? process.cwd();
+  let sessionDir = process.env.PI_CODING_AGENT_SESSION_DIR;
+  if (!sessionDir) {
+    let settings = opts.settings;
+    if (settings === undefined) {
+      const manager = SettingsManager.create(cwd, getAgentDir(), {
+        projectTrusted: opts.allowProjectConfig === true,
+      });
+      const errors = manager.drainErrors();
+      if (errors.length)
+        throw new AggregateError(
+          errors.map(({ error }) => error),
+          "failed to load native pi settings",
+        );
+      settings = opts.allowProjectConfig
+        ? manager.getSettings()
+        : manager.getGlobalSettings();
+    }
+    sessionDir = settings.sessionDir;
+  }
+  if (sessionDir !== undefined && typeof sessionDir !== "string")
+    throw new Error("native sessionDir must be a string");
+  return sessionDir
+    ? resolve(cwd, sessionDir.replace(/^~(?=$|\/)/, homedir()))
+    : defaultRoot;
+}
 
 class ParseError extends Error {
   constructor(
