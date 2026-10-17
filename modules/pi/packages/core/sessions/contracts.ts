@@ -17,6 +17,7 @@ export interface SessionIdentity {
 export interface SessionSummary extends SessionIdentity {
   name: string | null;
   firstMessage: string;
+  created: string;
   modified: string;
 }
 

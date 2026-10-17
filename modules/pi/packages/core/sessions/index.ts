@@ -1,881 +1,552 @@
-/**
- * search_sessions tool — find session branches by keyword, file, or date.
- *
- * a session is a tree of entries (messages, tool calls, branches).
- * the searchable unit is a BRANCH — a root-to-leaf path through the tree.
- * each branch has its own files-touched set, message chain, and timestamp range.
- *
- * pipeline: glob session files → optional rg keyword pre-filter → parse JSONL →
- * enumerate branches → filter by params → return sorted results.
- */
-
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { execSync } from "node:child_process";
-import type {
-  ExtensionAPI,
-  ToolDefinition,
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import {
+  SessionManager,
+  type FileEntry,
+  type SessionHeader,
+  type SessionInfo,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
-import { withPromptPatch } from "@bds_pi/prompt-patch";
-import {
-  createReadSessionTool,
-  findSessionFile,
-  renderSessionTree,
-  type ReadSessionConfig,
-} from "@bds_pi/read-session";
-export { createReadSessionTool, findSessionFile } from "@bds_pi/read-session";
-import {
-  clearConfigCache,
-  getEnabledExtensionConfig,
-  setGlobalSettingsPath,
-  type ExtensionConfigSchema,
-} from "@bds_pi/config";
-import {
-  DEFAULT_MENTION_SESSIONS_DIR,
-  getSessionMentionsIndex,
-  MentionAutocompleteProvider,
-  parseMentions,
-  resolveMentionableSession,
-  toResolvedSessionMention,
-  type MentionSource,
-  type MentionSourceContext,
-  type MentionableSession,
-} from "@bds_pi/mentions";
-import {
-  renderLifecycleCall,
-  type BoxSection,
-  type Excerpt,
-  boxRendererWindowed,
-  framedTextRenderer,
-} from "@bds_pi/box-format";
-import { Type } from "typebox";
-import {
-  enumerateBranches,
-  listSessionFiles,
-  parseSessionFile,
-  type BranchResult,
-} from "@bds_pi/mentions";
+import type {
+  HistoryDependencies,
+  HistoryError,
+  HistoryResult,
+  ListSessionsInput,
+  LoadedSession,
+  ReadSessionInput,
+  SessionHistory,
+  SessionIdentity,
+  SessionSummary,
+} from "./contracts";
 
-export type SearchSessionBranchesQuery = SearchSessionsParams;
-export type SearchSessionsConfig = SearchSessionsExtConfig;
-export type SessionsExtensionDeps = SearchSessionsExtensionDeps;
-export type SessionSummary = MentionableSession;
-export type AutocompleteItem = {
-  value: string;
-  label: string;
-  description?: string;
-};
-export type RenderedSessionMarkdown = {
-  markdown: string;
-  sessionName: string;
-  sessionId: string;
-};
-export type { ReadSessionConfig } from "@bds_pi/read-session";
+export type * from "./contracts";
 
-type SearchSessionsExtConfig = {
-  maxResults: number;
-  sessionsDir: string;
-  rgTimeoutMs: number;
-};
-
-type SearchSessionsExtensionDeps = {
-  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
-  withPromptPatch: typeof withPromptPatch;
-};
-
-const CONFIG_DEFAULTS: SearchSessionsExtConfig = {
-  maxResults: 50,
-  sessionsDir: path.join(os.homedir(), ".pi", "agent", "sessions"),
-  rgTimeoutMs: 10000,
-};
-
-function isSearchSessionsConfig(
-  value: Record<string, unknown>,
-): value is SearchSessionsExtConfig {
-  return (
-    typeof value.maxResults === "number" &&
-    Number.isInteger(value.maxResults) &&
-    value.maxResults >= 1 &&
-    typeof value.sessionsDir === "string" &&
-    value.sessionsDir.trim().length > 0 &&
-    typeof value.rgTimeoutMs === "number" &&
-    Number.isInteger(value.rgTimeoutMs) &&
-    value.rgTimeoutMs >= 1
-  );
-}
-
-const SEARCH_SESSIONS_CONFIG_SCHEMA: ExtensionConfigSchema<SearchSessionsExtConfig> =
-  {
-    validate: isSearchSessionsConfig,
-  };
-
-const DEFAULT_EXTENSION_DEPS: SearchSessionsExtensionDeps = {
-  getEnabledExtensionConfig,
-  withPromptPatch,
-};
-
-function getSessions(context: MentionSourceContext) {
-  return (
-    context.sessions ??
-    getSessionMentionsIndex(context.sessionsDir ?? DEFAULT_MENTION_SESSIONS_DIR)
-  );
-}
-
-function createSessionMentionSource(): MentionSource {
-  return {
-    kind: "session",
-    description: "previous pi session",
-    getSuggestions(query, context) {
-      return getSessions(context)
-        .filter(
-          (session) =>
-            query.length === 0 ||
-            session.sessionId.toLowerCase().startsWith(query.toLowerCase()),
-        )
-        .slice(0, 8)
-        .map((session) => ({
-          value: `@session/${session.sessionId}`,
-          label: `@session/${session.sessionId}`,
-          description:
-            session.sessionName ||
-            session.firstUserMessage ||
-            session.workspace,
-        }));
-    },
-    resolve(token, context) {
-      const result = resolveMentionableSession(
-        getSessions(context),
-        token.value,
-      );
-
-      if (result.status === "resolved") {
-        return {
-          token,
-          status: "resolved",
-          kind: "session",
-          session: toResolvedSessionMention(result.session),
-        };
-      }
-
-      return {
-        token,
-        status: "unresolved",
-        reason:
-          result.status === "ambiguous"
-            ? "session_prefix_ambiguous"
-            : "session_not_found",
-      };
-    },
-  };
-}
-
-/** per-block excerpts for collapsed display — first 5 visual lines */
-const COLLAPSED_EXCERPTS: Excerpt[] = [{ focus: "head" as const, context: 5 }];
-
-// --- search filtering ---
-
-function matchesKeyword(branch: BranchResult, keyword: string): boolean {
-  const lower = keyword.toLowerCase();
-  if (branch.sessionName.toLowerCase().includes(lower)) return true;
-  if (branch.searchableText.toLowerCase().includes(lower)) return true;
-  return false;
-}
-
-function matchesFile(branch: BranchResult, fileQuery: string): boolean {
-  const lower = fileQuery.toLowerCase();
-  return branch.filesTouched.some((f) => f.toLowerCase().includes(lower));
-}
-
-function parseDate(dateStr: string): Date | null {
-  // support ISO dates and relative (7d, 2w)
-  const relMatch = dateStr.match(/^(\d+)([dw])$/);
-  if (relMatch && relMatch[1] && relMatch[2]) {
-    const n = parseInt(relMatch[1], 10);
-    const unit = relMatch[2];
-    const now = new Date();
-    if (unit === "d") now.setDate(now.getDate() - n);
-    else if (unit === "w") now.setDate(now.getDate() - n * 7);
-    return now;
-  }
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-function matchesDateRange(
-  branch: BranchResult,
-  after?: string,
-  before?: string,
-): boolean {
-  const branchEnd = new Date(branch.timestampEnd);
-  const branchStart = new Date(branch.timestampStart);
-
-  if (after) {
-    const afterDate = parseDate(after);
-    if (afterDate && branchEnd < afterDate) return false;
-  }
-  if (before) {
-    const beforeDate = parseDate(before);
-    if (beforeDate && branchStart > beforeDate) return false;
-  }
-  return true;
-}
-
-// --- rg pre-filter ---
-
-function rgFilterFiles(
-  keyword: string,
-  sessionsDir: string,
-  timeoutMs: number,
-): Set<string> | null {
-  try {
-    const result = execSync(
-      `rg -l -i ${JSON.stringify(keyword)} ${JSON.stringify(sessionsDir)}`,
-      { stdio: ["ignore", "pipe", "ignore"], timeout: timeoutMs },
-    )
-      .toString()
-      .trim();
-    if (!result) return new Set();
-    return new Set(result.split("\n").filter(Boolean));
-  } catch {
-    // rg not found or no matches — fall back to no filtering
-    return null;
+class ParseError extends Error {
+  constructor(
+    readonly path: string,
+    message: string,
+  ) {
+    super(message);
   }
 }
 
-// --- format results ---
-
-function formatBranchResults(branches: BranchResult[]): {
-  text: string;
-  headerLineIndices: number[];
-} {
-  if (branches.length === 0)
-    return { text: "(no matching sessions found)", headerLineIndices: [] };
-
-  const lines: string[] = [];
-  const headerLineIndices: number[] = [];
-
-  lines.push(
-    `found ${branches.length} matching branch${branches.length !== 1 ? "es" : ""}:`,
-  );
-  lines.push("");
-
-  for (let i = 0; i < branches.length; i++) {
-    const b = branches[i];
-    if (!b) continue;
-    const dateStr = new Date(b.timestampEnd).toLocaleDateString("en-US", {
-      weekday: "short",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-    const timeStr = new Date(b.timestampEnd).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
-    headerLineIndices.push(lines.length);
-    lines.push(`### ${i + 1}. ${b.sessionName || "(unnamed)"}`);
-    lines.push(`session: ${b.sessionId} / branch: ${b.leafId}`);
-    if (b.parentSessionPath) {
-      // extract session id from path (filename without extension)
-      const parentId =
-        b.parentSessionPath
-          .split("/")
-          .pop()
-          ?.replace(/\.jsonl$/, "")
-          ?.split("_")[1] || b.parentSessionPath;
-      lines.push(`forked from: ${parentId}`);
+/**
+ * SDK open/load can repair newlines and migrate files, and skips malformed JSON.
+ * parse once, then give an in-memory SDK manager the entries instead.
+ */
+async function load(path: string, signal?: AbortSignal): Promise<FileEntry[]> {
+  const text = await readFile(path, { encoding: "utf8", signal });
+  return text.split(/\r?\n/).flatMap((line, i) => {
+    if (!line.trim()) return [];
+    try {
+      const entry: FileEntry = JSON.parse(line);
+      if (!entry || typeof entry !== "object" || typeof entry.type !== "string")
+        throw new Error("expected a session entry");
+      if (
+        entry.type !== "session" &&
+        (typeof entry.id !== "string" ||
+          !(entry.parentId === null || typeof entry.parentId === "string"))
+      )
+        throw new Error("expected entry id and parentId");
+      return [entry];
+    } catch (error) {
+      throw new ParseError(path, `line ${i + 1}: ${message(error)}`);
     }
-    lines.push(`${dateStr} ${timeStr} — ${b.messageCount} messages`);
-    if (b.models.length > 0) lines.push(`models: ${b.models.join(", ")}`);
-    if (b.filesTouched.length > 0) {
-      const shown = b.filesTouched.slice(0, 10);
-      lines.push(
-        `files: ${shown.join(", ")}${b.filesTouched.length > 10 ? ` (+${b.filesTouched.length - 10} more)` : ""}`,
-      );
-    }
-    if (b.firstUserMessage) {
-      const preview =
-        b.firstUserMessage.length > 150
-          ? `${b.firstUserMessage.slice(0, 150)}...`
-          : b.firstUserMessage;
-      lines.push(`> ${preview}`);
-    }
-
-    if (i < branches.length - 1) lines.push("");
-  }
-
-  return { text: lines.join("\n"), headerLineIndices };
-}
-
-/** convert branch results to BoxSections for box-format rendering */
-function branchesToSections(branches: BranchResult[]): BoxSection[] {
-  return branches.map((b, i) => {
-    const dateStr = new Date(b.timestampEnd).toLocaleDateString("en-US", {
-      weekday: "short",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-    const timeStr = new Date(b.timestampEnd).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
-    const lines: { text: string; highlight?: boolean }[] = [];
-    lines.push({
-      text: `session: ${b.sessionId} / branch: ${b.leafId}`,
-      highlight: true,
-    });
-    if (b.parentSessionPath) {
-      const parentId =
-        b.parentSessionPath
-          .split("/")
-          .pop()
-          ?.replace(/\.jsonl$/, "")
-          ?.split("_")[1] || b.parentSessionPath;
-      lines.push({ text: `forked from: ${parentId}`, highlight: true });
-    }
-    lines.push({
-      text: `${dateStr} ${timeStr} — ${b.messageCount} messages`,
-      highlight: true,
-    });
-    if (b.models.length > 0)
-      lines.push({ text: `models: ${b.models.join(", ")}`, highlight: true });
-    if (b.filesTouched.length > 0) {
-      const shown = b.filesTouched.slice(0, 10);
-      lines.push({
-        text: `files: ${shown.join(", ")}${b.filesTouched.length > 10 ? ` (+${b.filesTouched.length - 10} more)` : ""}`,
-        highlight: true,
-      });
-    }
-    if (b.firstUserMessage) {
-      const preview =
-        b.firstUserMessage.length > 150
-          ? `${b.firstUserMessage.slice(0, 150)}...`
-          : b.firstUserMessage;
-      lines.push({ text: `> ${preview}`, highlight: false });
-    }
-
-    return {
-      header: b.sessionName || `session ${i + 1}`,
-      blocks: [{ lines }],
-    };
   });
 }
 
-// --- tool ---
+export const nativeHistoryDependencies: HistoryDependencies = {
+  discover: (sessionDir, signal) =>
+    sessionDir === undefined
+      ? SessionManager.listAll(undefined, signal)
+      : SessionManager.listAll(sessionDir, undefined, signal),
+  load,
+};
 
-export interface SearchSessionsParams {
-  keyword?: string;
-  file?: string;
-  after?: string;
-  before?: string;
-  workspace?: string;
-  all_workspaces?: boolean;
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
-export function searchSessionBranches(
-  query: SearchSessionBranchesQuery,
-  opts: { sessionsDir?: string; rgTimeoutMs?: number } = {},
-): BranchResult[] {
-  const config = {
-    ...CONFIG_DEFAULTS,
-    sessionsDir: opts.sessionsDir ?? CONFIG_DEFAULTS.sessionsDir,
-    rgTimeoutMs: opts.rgTimeoutMs ?? CONFIG_DEFAULTS.rgTimeoutMs,
-  };
-  if (!fs.existsSync(config.sessionsDir)) return [];
-
-  let sessionFiles = listSessionFiles(config.sessionsDir);
-  if (query.keyword) {
-    const matches = rgFilterFiles(
-      query.keyword,
-      config.sessionsDir,
-      config.rgTimeoutMs,
-    );
-    if (matches !== null)
-      sessionFiles = sessionFiles.filter((f) => matches.has(f));
-  }
-
-  const branches: BranchResult[] = [];
-  for (const file of sessionFiles) {
-    const { header, entries, sessionName } = parseSessionFile(file);
-    if (!header) continue;
-    const workspaceFilter = query.all_workspaces ? undefined : query.workspace;
-    if (
-      workspaceFilter &&
-      !header.cwd.toLowerCase().includes(workspaceFilter.toLowerCase())
-    ) {
-      continue;
-    }
-    branches.push(...enumerateBranches(header, entries, sessionName, file));
-  }
-
-  return branches
-    .filter((branch) => !query.keyword || matchesKeyword(branch, query.keyword))
-    .filter((branch) => !query.file || matchesFile(branch, query.file))
-    .filter((branch) => matchesDateRange(branch, query.after, query.before))
-    .sort(
-      (a, b) =>
-        new Date(b.timestampEnd).getTime() - new Date(a.timestampEnd).getTime(),
-    );
+function failure(
+  error: unknown,
+  signal?: AbortSignal,
+  path?: string,
+): HistoryError {
+  if (signal?.aborted)
+    return { code: "aborted", message: message(signal.reason) };
+  if (error instanceof ParseError)
+    return { code: "parse", path: error.path, message: error.message };
+  return { code: "io", message: message(error), ...(path ? { path } : {}) };
 }
 
-export function getSessionAutocompleteItems(
-  prefix: string,
-  opts: { sessionsDir?: string; limit?: number } = {},
-): AutocompleteItem[] {
-  return getSessionMentionsIndex(
-    opts.sessionsDir ?? DEFAULT_MENTION_SESSIONS_DIR,
-  )
-    .filter((session) =>
-      session.sessionId.toLowerCase().startsWith(prefix.toLowerCase()),
-    )
-    .slice(0, opts.limit ?? 8)
-    .map((session) => ({
-      value: `@session/${session.sessionId}`,
-      label: `@session/${session.sessionId}`,
-      description:
-        session.sessionName || session.firstUserMessage || session.workspace,
-    }));
-}
-
-export function renderSessionMarkdown(
-  filePath: string,
-  opts: { targetLeafId?: string; maxChars?: number } = {},
-): RenderedSessionMarkdown {
-  return renderSessionTree(
-    filePath,
-    opts.targetLeafId,
-    opts.maxChars ?? 120_000,
-  );
-}
-
-export function createSearchSessionsTool(
-  config: SearchSessionsExtConfig = CONFIG_DEFAULTS,
-): ToolDefinition<any> {
+function identity(
+  header: SessionHeader,
+  sessionFile: string | null,
+): SessionIdentity {
   return {
-    name: "search_sessions",
-    label: "Search Sessions",
-    description:
-      "Search pi session history by keyword, file path, or date range.\n\n" +
-      "Sessions are trees with branches. Each branch (root-to-leaf path) is a " +
-      "separate search result with its own files-touched set and message chain.\n\n" +
-      "Scoped to current workspace by default. Use `all_workspaces: true` to search everywhere.\n\n" +
-      "Use `read_session` to extract detailed content from a specific session.\n\n" +
-      "WHEN TO USE:\n" +
-      '- "Find the session where I worked on X"\n' +
-      '- "What session touched this file?"\n' +
-      '- "Show recent sessions"\n' +
-      "- Looking up prior context from past conversations\n\n" +
-      "WHEN NOT TO USE:\n" +
-      "- Current session context (already available)\n" +
-      "- Git history (use git log)",
-
-    parameters: Type.Object({
-      keyword: Type.Optional(
-        Type.String({
-          description:
-            "Text to search for in session names, user messages, and assistant responses.",
-        }),
-      ),
-      file: Type.Optional(
-        Type.String({
-          description:
-            "File path (partial match) to find sessions that touched this file.",
-        }),
-      ),
-      after: Type.Optional(
-        Type.String({
-          description:
-            "Only return sessions after this date. ISO date (2026-02-20) or relative (7d, 2w).",
-        }),
-      ),
-      before: Type.Optional(
-        Type.String({
-          description:
-            "Only return sessions before this date. ISO date or relative.",
-        }),
-      ),
-      workspace: Type.Optional(
-        Type.String({
-          description:
-            "Filter by workspace path (partial match against session cwd). Defaults to current workspace.",
-        }),
-      ),
-      all_workspaces: Type.Optional(
-        Type.Boolean({
-          description:
-            "Search across all workspaces instead of just the current one.",
-        }),
-      ),
-    }),
-
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const p = params as SearchSessionsParams;
-      if (!fs.existsSync(config.sessionsDir)) {
-        return {
-          content: [
-            { type: "text" as const, text: "(no sessions directory found)" },
-          ],
-        } as any;
-      }
-
-      // 1. glob all session files
-      let sessionFiles: string[] = [];
-      try {
-        sessionFiles = listSessionFiles(config.sessionsDir);
-      } catch {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "(could not read sessions directory)",
-            },
-          ],
-          isError: true,
-        } as any;
-      }
-
-      if (sessionFiles.length === 0) {
-        return {
-          content: [{ type: "text" as const, text: "(no sessions found)" }],
-        } as any;
-      }
-
-      // 2. rg pre-filter if keyword set
-      if (p.keyword) {
-        const matches = rgFilterFiles(
-          p.keyword,
-          config.sessionsDir,
-          config.rgTimeoutMs,
-        );
-        if (matches !== null) {
-          sessionFiles = sessionFiles.filter((f) => matches.has(f));
-        }
-      }
-
-      // 3. filename-based date pre-filter (timestamps are in filenames)
-      if (p.after || p.before) {
-        sessionFiles = sessionFiles.filter((f) => {
-          const basename = path.basename(f);
-          // format: 2026-02-20T14-50-17-926Z_uuid.jsonl
-          const tsMatch = basename.match(/^(\d{4}-\d{2}-\d{2})T/);
-          if (!tsMatch || !tsMatch[1]) return true; // keep if can't parse
-          const fileDate = new Date(tsMatch[1]);
-
-          if (p.after) {
-            const afterDate = parseDate(p.after);
-            if (afterDate && fileDate < afterDate) return false;
-          }
-          if (p.before) {
-            const beforeDate = parseDate(p.before);
-            if (beforeDate && fileDate > beforeDate) return false;
-          }
-          return true;
-        });
-      }
-
-      // 4. parse and enumerate branches
-      const allBranches: BranchResult[] = [];
-
-      // workspace filter: default to current cwd unless all_workspaces is set
-      const workspaceFilter = p.all_workspaces
-        ? undefined
-        : p.workspace || ctx.cwd;
-
-      for (const file of sessionFiles) {
-        const { header, entries, sessionName } = parseSessionFile(file);
-        if (!header) continue;
-
-        // workspace filter
-        if (
-          workspaceFilter &&
-          !header.cwd.toLowerCase().includes(workspaceFilter.toLowerCase())
-        ) {
-          continue;
-        }
-
-        const branches = enumerateBranches(header, entries, sessionName, file);
-        allBranches.push(...branches);
-      }
-
-      // 5. filter branches
-      let filtered = allBranches;
-
-      if (p.keyword) {
-        filtered = filtered.filter((b) => matchesKeyword(b, p.keyword!));
-      }
-      if (p.file) {
-        filtered = filtered.filter((b) => matchesFile(b, p.file!));
-      }
-      if (p.after || p.before) {
-        filtered = filtered.filter((b) =>
-          matchesDateRange(b, p.after, p.before),
-        );
-      }
-
-      // 6. sort by most recent leaf timestamp
-      filtered.sort(
-        (a, b) =>
-          new Date(b.timestampEnd).getTime() -
-          new Date(a.timestampEnd).getTime(),
-      );
-
-      // 7. format with head+tail truncation
-      const shown =
-        filtered.length > config.maxResults
-          ? [
-              ...filtered.slice(0, Math.floor(config.maxResults / 2)),
-              ...filtered.slice(-Math.floor(config.maxResults / 2)),
-            ]
-          : filtered;
-      const truncated =
-        filtered.length > config.maxResults
-          ? filtered.length - shown.length
-          : 0;
-
-      const { text: output } = formatBranchResults(shown);
-      const resultSections = branchesToSections(shown);
-
-      return {
-        content: [{ type: "text" as const, text: output }],
-        details: { resultSections, truncated },
-      } as any;
-    },
-
-    renderCall(args: any, theme: any, context: any) {
-      const parts: string[] = [];
-      if (args.keyword) parts.push(args.keyword);
-      if (args.file) parts.push(`file:${args.file}`);
-      if (args.after) parts.push(`after:${args.after}`);
-      if (args.before) parts.push(`before:${args.before}`);
-      if (args.workspace) parts.push(`ws:${args.workspace}`);
-      const preview = parts.join(" ") || "...";
-      return renderLifecycleCall(
-        new Text(
-          theme.fg("toolTitle", theme.bold("search_sessions ")) +
-            theme.fg("dim", preview),
-          0,
-          0,
-        ),
-        theme,
-        context,
-      );
-    },
-
-    renderResult(
-      result: any,
-      { expanded }: { expanded: boolean },
-      _theme: any,
-    ) {
-      const sections: BoxSection[] | undefined = result.details?.resultSections;
-      if (!sections?.length)
-        return framedTextRenderer(
-          result.content?.[0]?.text ?? "(no output)",
-          expanded,
-        );
-
-      const truncated: number = result.details?.truncated ?? 0;
-      const notices =
-        truncated > 0 ? [`${truncated} sessions omitted`] : undefined;
-
-      return boxRendererWindowed(
-        () => sections,
-        {
-          collapsed: { maxSections: 3, excerpts: COLLAPSED_EXCERPTS },
-          expanded: {},
-        },
-        notices,
-        expanded,
-      );
-    },
+    sessionId: header.id,
+    workspace: header.cwd,
+    sessionFile,
+    sessionDir: sessionFile ? dirname(sessionFile) : null,
+    parentSessionFile: header.parentSession ?? null,
   };
 }
 
-export function createSessionsExtension(
-  deps: SearchSessionsExtensionDeps = DEFAULT_EXTENSION_DEPS,
-): (pi: ExtensionAPI) => void {
-  return function sessionsExtension(pi: ExtensionAPI): void {
-    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
-      "@bds_pi/sessions",
-      CONFIG_DEFAULTS,
-      { schema: SEARCH_SESSIONS_CONFIG_SCHEMA },
-    );
-    if (!enabled) return;
+function summary(info: SessionInfo): SessionSummary {
+  return {
+    sessionId: info.id,
+    workspace: info.cwd,
+    sessionFile: info.path,
+    sessionDir: dirname(info.path),
+    parentSessionFile: info.parentSessionPath ?? null,
+    name: info.name ?? null,
+    firstMessage: info.firstMessage,
+    created: info.created.toISOString(),
+    modified: info.modified.toISOString(),
+  };
+}
 
-    const source = createSessionMentionSource();
-
-    pi.on("session_start", async (_event, ctx) => {
-      if (!ctx.hasUI) return;
-      ctx.ui.addAutocompleteProvider(
-        (baseProvider) =>
-          new MentionAutocompleteProvider({
-            baseProvider,
-            source,
-            context: { cwd: ctx.cwd, sessionsDir: cfg.sessionsDir },
-          }),
-      );
-    });
-
-    pi.on("before_agent_start", async (event) => {
-      if (
-        !parseMentions(event.prompt).some(
-          (mention) => mention.kind === "session",
+export async function listSessions(
+  input: ListSessionsInput = {},
+  deps: HistoryDependencies = nativeHistoryDependencies,
+  signal?: AbortSignal,
+): Promise<HistoryResult<SessionSummary[]>> {
+  try {
+    signal?.throwIfAborted();
+    const sessions =
+      input.sessions ?? (await deps.discover(input.sessionDir, signal));
+    signal?.throwIfAborted();
+    return {
+      ok: true,
+      value: sessions
+        .filter(
+          (s) =>
+            !input.workspace || resolve(s.cwd) === resolve(input.workspace),
         )
-      ) {
-        return;
-      }
-
-      return {
-        systemPrompt:
-          event.systemPrompt +
-          "\n\nWhen the user includes `@session/<id-or-prefix>`, treat it as a pointer to a prior Pi session. Resolve it with the `read_session` tool before relying on its contents.",
-      };
-    });
-
-    pi.registerTool(deps.withPromptPatch(createSearchSessionsTool(cfg)));
-    pi.registerTool(
-      deps.withPromptPatch(
-        createReadSessionTool({
-          sessionsDir: cfg.sessionsDir,
-          maxChars: 120_000,
-        }),
-      ),
-    );
-  };
+        .map(summary)
+        .sort(
+          (a, b) =>
+            b.modified.localeCompare(a.modified) ||
+            a.sessionId.localeCompare(b.sessionId) ||
+            (a.sessionFile ?? "").localeCompare(b.sessionFile ?? ""),
+        ),
+    };
+  } catch (error) {
+    return { ok: false, error: failure(error, signal, input.sessionDir) };
+  }
 }
 
-const sessionsExtension: (pi: ExtensionAPI) => void = createSessionsExtension();
-
-export default sessionsExtension;
+export async function readSession(
+  input: ReadSessionInput,
+  deps: HistoryDependencies = nativeHistoryDependencies,
+  signal?: AbortSignal,
+): Promise<HistoryResult<SessionHistory>> {
+  let path: string | undefined;
+  try {
+    signal?.throwIfAborted();
+    let loaded: LoadedSession;
+    if (input.source.kind === "loaded") {
+      loaded = input.source.session;
+    } else {
+      if (input.source.kind === "id") {
+        const result = await listSessions(
+          {
+            workspace: input.workspace,
+            sessionDir: input.source.sessionDir,
+          },
+          deps,
+          signal,
+        );
+        if (!result.ok) return result;
+        const id = input.source.sessionId;
+        const exact = result.value.filter((s) => s.sessionId === id);
+        const matches = exact.length
+          ? exact
+          : result.value.filter(
+              (s) => id.length > 0 && s.sessionId.startsWith(id),
+            );
+        if (!matches.length)
+          return {
+            ok: false,
+            error: { code: "not_found", message: `session not found: ${id}` },
+          };
+        if (matches.length > 1)
+          return {
+            ok: false,
+            error: {
+              code: "ambiguous",
+              message: `ambiguous session: ${id}`,
+              candidates: matches,
+            },
+          };
+        path = matches[0]?.sessionFile ?? undefined;
+      } else {
+        path = input.source.path;
+      }
+      if (!path) throw new Error("session has no file");
+      const [header, ...entries] = await deps.load(path, signal);
+      if (
+        !header ||
+        header.type !== "session" ||
+        typeof header.id !== "string" ||
+        typeof header.cwd !== "string" ||
+        entries.some((entry) => entry.type === "session")
+      )
+        throw new ParseError(
+          path,
+          "expected one session header followed by entries",
+        );
+      // narrowing the header out of FileEntry[] preserves the SDK's entry types.
+      loaded = {
+        header,
+        entries: entries.filter((entry) => entry.type !== "session"),
+        sessionFile: path,
+      };
+    }
+    signal?.throwIfAborted();
+    if (resolve(loaded.header.cwd) !== resolve(input.workspace))
+      return {
+        ok: false,
+        error: {
+          code: "workspace_mismatch",
+          message: "session belongs to another workspace",
+        },
+      };
+    if (
+      input.source.kind === "id" &&
+      !loaded.header.id.startsWith(input.source.sessionId)
+    )
+      return {
+        ok: false,
+        error: {
+          code: "not_found",
+          message: "session identity changed during discovery",
+        },
+      };
+    const ids = new Set<string>();
+    for (const entry of loaded.entries) {
+      if (
+        ids.has(entry.id) ||
+        (entry.parentId !== null && !ids.has(entry.parentId))
+      )
+        throw new ParseError(
+          loaded.sessionFile ?? "<supplied>",
+          "duplicate id or broken parent chain",
+        );
+      ids.add(entry.id);
+    }
+    const leafId =
+      input.branch.kind === "entry"
+        ? input.branch.entryId
+        : input.branch.kind === "current"
+          ? input.branch.leafId
+          : (loaded.entries.at(-1)?.id ?? null);
+    if (leafId !== null && !ids.has(leafId))
+      return {
+        ok: false,
+        error: {
+          code: "branch_not_found",
+          message: `entry not found: ${leafId}`,
+        },
+      };
+    const manager = SessionManager.inMemory(
+      loaded.header.cwd,
+      undefined,
+      structuredClone([loaded.header, ...loaded.entries]),
+    );
+    const entries = leafId === null ? [] : manager.getBranch(leafId);
+    return {
+      ok: true,
+      value: {
+        ...identity(loaded.header, loaded.sessionFile),
+        selection: input.branch.kind,
+        leafId,
+        rootEntryId: entries[0]?.id ?? null,
+        entries,
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: failure(error, signal, path) };
+  }
+}
 
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
-  const tmpdir = os.tmpdir();
-
-  function writeTmpJson(dir: string, filename: string, data: unknown): string {
-    const filePath = path.join(dir, filename);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(data));
-    return filePath;
-  }
-
-  function createMockExtensionApiHarness() {
-    const tools: unknown[] = [];
-    const handlers: Record<string, unknown[]> = {};
-
-    const pi = {
-      registerTool(tool: unknown) {
-        tools.push(tool);
-      },
-      on(event: string, handler: unknown) {
-        handlers[event] = [...(handlers[event] ?? []), handler];
-      },
-    } as unknown as ExtensionAPI;
-
-    return { pi, tools, handlers };
-  }
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    clearConfigCache();
-    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+  const { it, expect, afterEach } = import.meta.vitest;
+  const fs = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const roots: string[] = [];
+  afterEach(async () => {
+    for (const root of roots.splice(0))
+      await fs.rm(root, { recursive: true, force: true });
   });
-
-  describe("search-sessions extension", () => {
-    it("registers autocomplete, prompt guidance, and tool with default config when enabled", () => {
-      const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(
-          _namespace: string,
-          defaults: T,
-        ) => ({
-          enabled: true,
-          config: defaults,
-        }),
-      );
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createSessionsExtension({
-        getEnabledExtensionConfig:
-          getEnabledExtensionConfigSpy as typeof DEFAULT_EXTENSION_DEPS.getEnabledExtensionConfig,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_EXTENSION_DEPS.withPromptPatch,
-      });
-      const harness = createMockExtensionApiHarness();
-
-      extension(harness.pi);
-
-      expect(harness.handlers.session_start).toHaveLength(1);
-      expect(harness.handlers.before_agent_start).toHaveLength(1);
-      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
-        "@bds_pi/sessions",
-        CONFIG_DEFAULTS,
-        { schema: SEARCH_SESSIONS_CONFIG_SCHEMA },
-      );
-      expect(withPromptPatchSpy).toHaveBeenCalledTimes(2);
-      expect(harness.tools).toHaveLength(2);
+  async function fixture() {
+    const root = await fs.realpath(
+      await fs.mkdtemp(join(tmpdir(), "pi-history-")),
+    );
+    roots.push(root);
+    const workspace = join(root, "workspace");
+    const other = join(root, "workspace-other");
+    const dir = join(root, "sessions");
+    const manager = SessionManager.create(workspace, dir, {
+      id: "shared-alpha",
     });
-
-    it("registers neither autocomplete nor tool when disabled", () => {
-      const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(
-          _namespace: string,
-          defaults: T,
-        ) => ({
-          enabled: false,
-          config: defaults,
-        }),
-      );
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createSessionsExtension({
-        getEnabledExtensionConfig:
-          getEnabledExtensionConfigSpy as typeof DEFAULT_EXTENSION_DEPS.getEnabledExtensionConfig,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_EXTENSION_DEPS.withPromptPatch,
-      });
-      const harness = createMockExtensionApiHarness();
-
-      extension(harness.pi);
-
-      expect(harness.handlers.session_start).toBeUndefined();
-      expect(harness.handlers.before_agent_start).toBeUndefined();
-      expect(withPromptPatchSpy).not.toHaveBeenCalled();
-      expect(harness.tools).toHaveLength(0);
+    const first = manager.appendMessage({
+      role: "user",
+      content: "common",
+      timestamp: 1,
     });
-
-    it("falls back to defaults when schema validation fails and still registers", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-search-sessions-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/sessions": {
-          maxResults: 0,
-          sessionsDir: "",
-          rgTimeoutMs: "fast",
+    const left = manager.appendMessage({
+      role: "user",
+      content: "left only",
+      timestamp: 2,
+    });
+    manager.branch(first);
+    const right = manager.appendMessage({
+      role: "user",
+      content: "right only",
+      timestamp: 3,
+    });
+    manager.branch(left); // navigation does not persist; disk still ends on right.
+    const foreign = SessionManager.create(other, dir, { id: "shared-beta" });
+    foreign.appendMessage({
+      role: "user",
+      content: "foreign secret",
+      timestamp: 4,
+    });
+    const path = manager.getSessionFile()!;
+    const header = manager.getHeader()!;
+    return {
+      root,
+      workspace,
+      other,
+      dir,
+      manager,
+      first,
+      left,
+      right,
+      path,
+      header,
+    };
+  }
+  it("discovers exact workspaces, orders deterministically, and rejects ambiguous prefixes", async () => {
+    const f = await fixture();
+    const all = await listSessions({ sessionDir: f.dir });
+    expect(all.ok && all.value.map((s) => s.sessionId)).toEqual([
+      "shared-beta",
+      "shared-alpha",
+    ]);
+    const scoped = await listSessions({
+      workspace: f.workspace,
+      sessionDir: f.dir,
+    });
+    expect(scoped.ok && scoped.value.map((s) => s.sessionId)).toEqual([
+      "shared-alpha",
+    ]);
+    const tied = await SessionManager.listAll(f.dir);
+    tied.forEach((s) => {
+      s.modified = new Date(0);
+    });
+    expect(await listSessions({ sessions: tied })).toEqual(
+      await listSessions({ sessions: [...tied].reverse() }),
+    );
+    // duplicate IDs in separate physical files must not select arbitrarily.
+    await fs.copyFile(f.path, join(f.dir, "duplicate.jsonl"));
+    const ambiguous = await readSession({
+      workspace: f.workspace,
+      source: { kind: "id", sessionId: "shared", sessionDir: f.dir },
+      branch: { kind: "persisted-last-entry" },
+    });
+    expect(ambiguous).toMatchObject({
+      ok: false,
+      error: { code: "ambiguous" },
+    });
+    expect(
+      await readSession({
+        workspace: f.workspace,
+        source: { kind: "id", sessionId: "missing", sessionDir: f.dir },
+        branch: { kind: "persisted-last-entry" },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "not_found" } });
+    expect(
+      await readSession({
+        workspace: f.workspace,
+        source: { kind: "id", sessionId: "shared-beta", sessionDir: f.dir },
+        branch: { kind: "persisted-last-entry" },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "not_found" } });
+  });
+  it("keeps branches, forks, persisted selection and live selection distinct", async () => {
+    const f = await fixture();
+    const source = { kind: "file" as const, path: f.path };
+    const [left, right, persisted] = await Promise.all([
+      readSession({
+        workspace: f.workspace,
+        source,
+        branch: { kind: "entry", entryId: f.left },
+      }),
+      readSession({
+        workspace: f.workspace,
+        source,
+        branch: { kind: "entry", entryId: f.right },
+      }),
+      readSession({
+        workspace: f.workspace,
+        source,
+        branch: { kind: "persisted-last-entry" },
+      }),
+    ]);
+    expect(left.ok && left.value.entries.map((e) => e.id)).toEqual([
+      f.first,
+      f.left,
+    ]);
+    expect(right.ok && right.value.entries.map((e) => e.id)).toEqual([
+      f.first,
+      f.right,
+    ]);
+    expect(persisted.ok && persisted.value.leafId).toBe(f.right);
+    expect(f.manager.getLeafId()).toBe(f.left);
+    const fork = SessionManager.forkFrom(f.path, f.other, f.dir, {
+      id: "fork-session",
+    });
+    const forked = await readSession({
+      workspace: f.other,
+      source: { kind: "file", path: fork.getSessionFile()! },
+      branch: { kind: "entry", entryId: f.left },
+    });
+    expect(forked).toMatchObject({
+      ok: true,
+      value: {
+        sessionId: "fork-session",
+        parentSessionFile: f.path,
+        rootEntryId: f.first,
+        leafId: f.left,
+      },
+    });
+    expect(
+      await readSession({
+        workspace: f.other,
+        source,
+        branch: { kind: "entry", entryId: f.left },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "workspace_mismatch" } });
+    expect(
+      await readSession({
+        workspace: f.workspace,
+        source,
+        branch: { kind: "entry", entryId: "absent" },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "branch_not_found" } });
+  });
+  it("uses supplied entries/list without a second read, including empty snapshots", async () => {
+    const f = await fixture();
+    const sessions = await SessionManager.listAll(f.dir);
+    expect(await listSessions({ sessions: [], sessionDir: f.dir })).toEqual({
+      ok: true,
+      value: [],
+    });
+    const loaded: LoadedSession = {
+      header: f.header,
+      entries: f.manager.getEntries(),
+      sessionFile: f.path,
+    };
+    await fs.rm(f.dir, { recursive: true });
+    const result = await readSession({
+      workspace: f.workspace,
+      source: { kind: "loaded", session: loaded },
+      branch: { kind: "current", leafId: f.manager.getLeafId() },
+    });
+    expect(result.ok && result.value.entries.map((e) => e.id)).toEqual([
+      f.first,
+      f.left,
+    ]);
+    expect(await listSessions({ sessions, sessionDir: f.dir })).toMatchObject({
+      ok: true,
+      value: [{ sessionId: "shared-beta" }, { sessionId: "shared-alpha" }],
+    });
+    expect(await listSessions({ sessions: [], sessionDir: f.dir })).toEqual({
+      ok: true,
+      value: [],
+    });
+    expect(
+      await readSession({
+        workspace: f.workspace,
+        source: { kind: "loaded", session: { ...loaded, entries: [] } },
+        branch: { kind: "current", leafId: null },
+      }),
+    ).toMatchObject({
+      ok: true,
+      value: { entries: [], leafId: null, rootEntryId: null },
+    });
+    expect(
+      await readSession({
+        workspace: f.workspace,
+        source: { kind: "file", path: f.path },
+        branch: { kind: "persisted-last-entry" },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "io" } });
+  });
+  it("reports real parse/I/O failures without repairing files and preserves cancellation", async () => {
+    const f = await fixture();
+    const read = () =>
+      readSession({
+        workspace: f.workspace,
+        source: { kind: "file", path: f.path },
+        branch: { kind: "persisted-last-entry" },
+      });
+    const text = await fs.readFile(f.path, "utf8");
+    await fs.writeFile(f.path, text.trimEnd());
+    expect((await read()).ok).toBe(true);
+    expect(await fs.readFile(f.path, "utf8")).toBe(text.trimEnd());
+    await fs.appendFile(f.path, "\n{broken");
+    expect(await read()).toMatchObject({
+      ok: false,
+      error: { code: "parse", path: f.path },
+    });
+    expect(
+      await readSession({
+        workspace: f.workspace,
+        source: { kind: "file", path: f.dir },
+        branch: { kind: "persisted-last-entry" },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "io" } });
+    await fs.writeFile(f.path, "");
+    expect(await read()).toMatchObject({ ok: false, error: { code: "parse" } });
+    const signal = AbortSignal.abort("cancelled");
+    expect(await listSessions({}, undefined, signal)).toMatchObject({
+      ok: false,
+      error: { code: "aborted" },
+    });
+    expect(
+      await readSession(
+        {
+          workspace: f.workspace,
+          source: { kind: "file", path: f.path },
+          branch: { kind: "persisted-last-entry" },
         },
-      });
-      setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => undefined);
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createSessionsExtension({
-        ...DEFAULT_EXTENSION_DEPS,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_EXTENSION_DEPS.withPromptPatch,
-      });
-      const harness = createMockExtensionApiHarness();
-
-      extension(harness.pi);
-
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[@bds_pi/config] invalid config for @bds_pi/sessions; falling back to defaults.",
+        undefined,
+        signal,
+      ),
+    ).toMatchObject({ ok: false, error: { code: "aborted" } });
+  });
+  it("discovers the native grouped root across workspaces without custom config", async () => {
+    const f = await fixture();
+    const original = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = join(f.root, "agent");
+    try {
+      for (const cwd of [f.workspace, f.other]) {
+        SessionManager.create(cwd).appendMessage({
+          role: "user",
+          content: cwd,
+          timestamp: 1,
+        });
+      }
+      const result = await listSessions();
+      expect(result.ok && result.value.map((s) => s.workspace).sort()).toEqual(
+        [f.workspace, f.other].sort(),
       );
-      expect(harness.handlers.session_start).toHaveLength(1);
-      expect(withPromptPatchSpy).toHaveBeenCalledTimes(2);
-      expect(harness.tools).toHaveLength(2);
-      expect(harness.tools[0]).toMatchObject({ name: "search_sessions" });
-      expect(harness.tools[1]).toMatchObject({ name: "read_session" });
-    });
+    } finally {
+      if (original === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = original;
+    }
   });
 }
