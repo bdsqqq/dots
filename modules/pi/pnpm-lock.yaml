@@ -213,9 +213,6 @@ importers:
 
   packages/core/pi-spawn:
     dependencies:
-      '@bds_pi/config':
-        specifier: workspace:*
-        version: link:../config
       '@bds_pi/interpolate':
         specifier: workspace:*
         version: link:../interpolate

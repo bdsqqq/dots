@@ -31,7 +31,6 @@ import {
 } from "@bds_pi/config";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
-  getNestedMessages,
   isPiSpawnModelValue,
   isPiSpawnFailure,
   getToolCalls,
@@ -550,50 +549,5 @@ if (import.meta.vitest) {
         fs.rmSync(testFile, { force: true });
       }
     }, 120_000);
-
-    it("eval: child sessions respect PI_BDS_CONFIG_PATH gating for builtin-shadowed tools", async () => {
-      const sandboxDir = fs.mkdtempSync(
-        path.join(tmpdir, "pi-delegate-config-gating-"),
-      );
-      const childConfigPath = path.join(sandboxDir, "bds-pi.json");
-      fs.writeFileSync(
-        childConfigPath,
-        JSON.stringify({ "@bds_pi/bash": { enabled: false } }),
-        "utf-8",
-      );
-
-      try {
-        const result = await piSpawn({
-          cwd: sandboxDir,
-          task: [
-            "You must call delegate exactly once.",
-            "Ask the child to inspect its bash schema, report builtin-bash if it requires command,",
-            "then run `printf fallback-ok` and return the command output.",
-          ].join(" "),
-          model: E2E_MODEL,
-          tools: ["delegate"],
-          configPath: childConfigPath,
-          session: { persist: false },
-        });
-
-        const delegateResult = getToolResults(result.messages, "delegate").at(
-          -1,
-        );
-        expect(delegateResult?.isError).toBe(false);
-        expect(getToolResultText(delegateResult)).toContain("builtin-bash");
-        expect(getToolResultText(delegateResult)).toContain("fallback-ok");
-
-        const childMessages = getNestedMessages(delegateResult);
-        expect(
-          getToolCalls(childMessages).find((call) => call.name === "bash")
-            ?.arguments,
-        ).toMatchObject({ command: "printf fallback-ok" });
-        expect(
-          getToolResultText(getToolResults(childMessages, "bash").at(-1)),
-        ).toContain("fallback-ok");
-      } finally {
-        fs.rmSync(sandboxDir, { recursive: true, force: true });
-      }
-    }, 180_000);
   });
 }
