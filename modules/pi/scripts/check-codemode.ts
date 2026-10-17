@@ -329,10 +329,9 @@ try {
     let editError;
     try { await tools.edit({path,edits:[{oldText:'DOES_NOT_EXIST',newText:'CORRUPTED'}]}); } catch(error) {editError=String(error);}
     check(editError && /not find|not found|match/i.test(editError),'nonmatching edit did not preserve error');
-    let shellError;
-    try { await tools.bash({cmd:'printf SHELL_ERROR_FIXTURE; exit 23',cwd:${JSON.stringify(temporary)}}); }
-    catch(error) {shellError=String(error);}
-    check(shellError && shellError.includes('SHELL_ERROR_FIXTURE') && shellError.includes('23'),'bash failure lost output or exit status');
+    const shellFailure=await tools.bash({cmd:'printf SHELL_ERROR_FIXTURE; exit 23',cwd:${JSON.stringify(temporary)}});
+    check(shellFailure.details?.process?.exitCode===23 && shellFailure.details.process.errorKind==='nonzero_exit','bash failure lost structured process status '+JSON.stringify(shellFailure));
+    check(shellFailure.content.some(p=>p.type==='text' && p.text.includes('SHELL_ERROR_FIXTURE')),'bash failure lost output');
     const written=await tools.write({path:${JSON.stringify(join(temporary, "created.txt"))},content:'WRITE_FIXTURE\\n'});
     check(typeof written==='string','native write lost text result');
     await call('read',{path:${JSON.stringify(join(temporary, "created.txt"))}},'WRITE_FIXTURE');
