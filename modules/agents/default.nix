@@ -17,15 +17,12 @@
       # untracked repo files to commit or discard.
       skills = config.lib.file.mkOutOfStoreSymlink
         "${config.home.homeDirectory}/commonplace/01_files/nix/modules/agents/skills";
-      bdsPiConfig = config.lib.file.mkOutOfStoreSymlink
-        "${config.home.homeDirectory}/commonplace/01_files/nix/modules/agents/bds-pi.json";
 
     in {
       ".config/agents/skills".source = skills;
 
       ".claude/CLAUDE.md".source = agentsMd;
       ".pi/agent/AGENTS.md".source = agentsMd;
-      ".pi/agent/bds-pi.json".source = bdsPiConfig;
       ".codex/AGENTS.md" = {
         source = agentsMd;
         force = true;
