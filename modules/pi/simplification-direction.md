@@ -1,8 +1,8 @@
 # pi simplification direction
 
 recorded 2026-10-17 from the user's feedback after the extension inventory.
-this records direction, not completed implementation or authorization to remove
-the features below.
+implementation is now authorized through the project below; open product
+decisions and live-data/activation boundaries remain explicit.
 
 ## simplify before considering a durable port
 
@@ -69,6 +69,31 @@ keep session and branch identity explicit when an operation depends on them.
 do not create another session/history database. deliberate transcript access
 is not permission to use raw sessions as a fallback personal-memory source.
 
+### use native session storage instead of bds-pi configuration
+
+prefer one native pi session root per host, retaining its workspace
+subdirectories. use the SDK's `SessionManager.listAll()` for unified discovery,
+not a copying service, another session database, or a symlink forest.
+
+the 2026-10-17 check found this T3 conversation already under
+`~/.pi/agent/sessions/`. the additional `~/.t3/userdata/providers/pi` directory
+configured in `modules/agents/bds-pi.json` was absent on both Mac and lab.
+that extra path is stale, not evidence of additional history coverage.
+
+check the remaining consumers, remove redundant `sessionsDirs` overrides, and
+retire the `bds-pi.json` file and Nix symlink. migrate any surviving custom
+options before removing their reader; do not preserve a separate branded
+configuration layer just to list session roots.
+
+use pi's native `sessionDir` setting only if another location is genuinely
+needed. current observations do not justify moving existing session files or
+changing their identities. verify each writer's path selection before any
+future relocation.
+
+cross-host discovery is separate from local storage. prefer a read-only search
+view over Mac and lab sessions rather than bidirectionally synchronizing active
+session files.
+
 ### remove the cmux-specific integration
 
 the user no longer uses cmux. `cmux-notify` no longer has a useful integration
@@ -115,3 +140,84 @@ the intended T3 experience.
 durability does not make arbitrary shell commands, file writes, model calls, or
 external requests safe to repeat. this does not justify rebuilding the custom
 transaction machinery the user just questioned.
+
+## implementation contract
+
+the user's words govern the architecture:
+
+> "contracts first, with handlers implementing a contract, and those being exposed through our extensions for different interfaces."
+
+> "our handlers should follow suit, letting us consume the same logic in however shape we want, granted we bring an adapter that implements the contract."
+
+handlers own behavior and explicit dependencies; adapters own interface-specific
+input, presentation and lifecycle. reuse pi's existing SDK contracts before
+inventing ours. support direct SDK/headless use and thin extension/codemode
+adapters from the same logic; do not build every possible interface in advance.
+supplied data must not trigger another read. preserve explicit session/branch
+identity, cancellation, errors and authority across interfaces.
+
+> "tests to prove behavior invariants, NOT testing our own mocks, or contracts the typesystem itself provides."
+
+use real temporary files and SDK sessions to prove outcomes, direct/adapted
+parity, isolation and failure behavior. mock only external boundaries when
+needed. no callback-spy, registration-count or redundant type-shape tests as
+acceptance evidence. tests must fail for the behavioral regression they guard.
+
+## project: a smaller pi surface
+
+> "the plain text bit describes intent and general goals, the project bean count provides ordering and a way for you to effectively delegate."
+
+the table is the shared queue, not another tracker. parent owns its status,
+integration files and final verification; agents commit only their owned slice.
+
+| issue | outcome / owner | depends on | status |
+|---|---|---|---|
+| P0 | agree contracts, scope and evidence / parent | — | done |
+| P1 | native editing + shell discovery; retire redundant tools / tools agent | P0 | ready |
+| P2 | shared SDK session handlers + thin codemode adapter / sessions agent | P0 | ready |
+| P3 | native configuration; remove bds-pi roots/wiring / config agent | P0; integrate after P2 | ready |
+| P4 | assess automatic memory need without deleting data / memory reviewer | P0 | ready |
+| P5 | integrate consumers, exports, manifests, lockfile and guidance / parent | P1, P2, P3; P4 verdict | waiting |
+| P6 | adversarial craft review, behavioral checks, incremental main landing / parent | P5 | waiting |
+
+### issue acceptance
+
+- **P1:** remove custom `format_file`, `undo_edit`, `apply_patch`, `find`,
+  `grep`, `ls`, and cmux integration. native edit/write handle edits; project
+  scripts handle formatting; bash runs search/listing binaries. remove unused
+  transaction/undo machinery, not unrelated utility code. preserve binary/image
+  reading for now. prove native edits preserve unrelated contents, nested
+  instructions still gate known edits (including nested dispatch), and shell
+  discovery works on real fixtures. no claim of parsing arbitrary bash safely.
+- **P2:** replace model-spawning session readers/search wrappers and duplicated
+  session implementation with SDK-backed list/read capabilities. direct callers
+  and codemode share handlers; use real branched sessions to prove identity,
+  ordering, selected-branch reads, ambiguity/errors and supplied-data behavior.
+  indexed retrieval stays with existing qmd; deliberate text search can use rg.
+- **P3:** remove the tracked bds-pi root list and Nix link, migrate surviving
+  custom settings to native pi settings without discarding mutable overrides.
+  prove default/custom native session roots and configuration precedence against
+  real fixtures. do not move live sessions or change their IDs.
+- **P4:** give a source-backed keep/reduce/retire recommendation for automatic
+  memory integration. "rethink whether we need it" is not permission to delete
+  memories or stop governed services; record unresolved product choice honestly.
+- **P5:** no active references to retired tools; discovery/build outputs agree.
+  update child allowlists and prompts, not only registrations. no generic
+  replacement framework or mandatory durable migration.
+- **P6:** run affected SDK/type/tests and build; evaluate affected Nix hosts and
+  build changed activation artifacts where applicable. review behavior, not just
+  green tests. land small signed commits/PRs; preserve unpublished work and native
+  mutable configuration. no activation, service interruption or live-data
+  migration merely for verification.
+
+### agent working agreement
+
+read this file and applicable `AGENTS.md` before implementation. load
+`designing-progressive-apis`, `shaping-and-shipping-software`,
+`desloping-code-changes`, `document`, `write`, and `git`; use
+`composing-data-driven-ui` for the supplied-data/adapter ownership pattern
+(apply the principle, not React scaffolding). load other skills only as relevant.
+commit incrementally with evidence; report commit IDs, checks and gaps.
+no overlapping shared-file edits, force pushes, broad staging or silent scope
+expansion. two failed attempts on an approach require changing it or reporting
+the blocker. implementation agents do not push/merge unless explicitly assigned.
