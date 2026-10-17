@@ -79,23 +79,46 @@ class ParseError extends Error {
  */
 async function load(path: string, signal?: AbortSignal): Promise<FileEntry[]> {
   const text = await readFile(path, { encoding: "utf8", signal });
-  return text.split(/\r?\n/).flatMap((line, i) => {
+  const parsed = text.split(/\r?\n/).flatMap((line, i) => {
     if (!line.trim()) return [];
     try {
       const [entry] = parseSessionEntries(line);
       if (!entry || typeof entry !== "object" || typeof entry.type !== "string")
         throw new Error("expected a session entry");
+      return [entry];
+    } catch (error) {
+      throw new ParseError(path, `line ${i + 1}: ${message(error)}`);
+    }
+  });
+  const [header, ...entries] = parsed;
+  if (
+    !header ||
+    header.type !== "session" ||
+    typeof header.id !== "string" ||
+    typeof header.cwd !== "string" ||
+    entries.some((entry) => entry.type === "session")
+  )
+    throw new ParseError(
+      path,
+      "expected one session header followed by entries",
+    );
+  try {
+    // the native manager migrates v1 linear entries before indexing them.
+    // inMemory never rewrites the original file, including on migration.
+    const manager = SessionManager.inMemory(header.cwd, undefined, parsed);
+    const migrated = [manager.getHeader()!, ...manager.getEntries()];
+    for (const entry of migrated) {
       if (
         entry.type !== "session" &&
         (typeof entry.id !== "string" ||
           !(entry.parentId === null || typeof entry.parentId === "string"))
       )
         throw new Error("expected entry id and parentId");
-      return [entry];
-    } catch (error) {
-      throw new ParseError(path, `line ${i + 1}: ${message(error)}`);
     }
-  });
+    return migrated;
+  } catch (error) {
+    throw new ParseError(path, message(error));
+  }
 }
 
 export const nativeHistoryDependencies: HistoryDependencies = {
@@ -185,6 +208,7 @@ export async function readSession(
   signal?: AbortSignal,
 ): Promise<HistoryResult<SessionHistory>> {
   let path: string | undefined;
+  let selectedId: string | undefined;
   try {
     signal?.throwIfAborted();
     let loaded: LoadedSession;
@@ -222,6 +246,7 @@ export async function readSession(
               candidates: matches,
             },
           };
+        selectedId = matches[0]!.sessionId;
         path = matches[0]?.sessionFile ?? undefined;
       } else {
         path = input.source.path;
@@ -255,10 +280,7 @@ export async function readSession(
           message: "session belongs to another workspace",
         },
       };
-    if (
-      input.source.kind === "id" &&
-      !loaded.header.id.startsWith(input.source.sessionId)
-    )
+    if (selectedId !== undefined && loaded.header.id !== selectedId)
       return {
         ok: false,
         error: {
@@ -480,6 +502,91 @@ if (import.meta.vitest) {
         branch: { kind: "entry", entryId: "absent" },
       }),
     ).toMatchObject({ ok: false, error: { code: "branch_not_found" } });
+  });
+  it.each(["shared", "shared-alpha"])(
+    "pins discovered full identity when reading %s across file replacement",
+    async (requestedId) => {
+      const f = await fixture();
+      const replacement = SessionManager.inMemory(f.workspace, {
+        id: "shared-alphabet",
+      });
+      replacement.appendMessage({
+        role: "user",
+        content: "replacement secret",
+        timestamp: 5,
+      });
+      const deps: HistoryDependencies = {
+        discover: nativeHistoryDependencies.discover,
+        async load(path, signal) {
+          // replace only at the I/O boundary, after real SDK discovery.
+          await fs.writeFile(
+            path,
+            [replacement.getHeader(), ...replacement.getEntries()]
+              .map((e) => JSON.stringify(e))
+              .join("\n"),
+          );
+          return nativeHistoryDependencies.load(path, signal);
+        },
+      };
+      const result = await readSession(
+        {
+          workspace: f.workspace,
+          source: { kind: "id", sessionId: requestedId, sessionDir: f.dir },
+          branch: { kind: "persisted-last-entry" },
+        },
+        deps,
+      );
+      expect(result).toMatchObject({ ok: false, error: { code: "not_found" } });
+      expect(JSON.stringify(result)).not.toContain("replacement secret");
+    },
+  );
+  it("migrates legacy linear history in memory without changing source bytes", async () => {
+    const f = await fixture();
+    const legacy = [
+      { ...f.header, version: 1 },
+      {
+        type: "message",
+        timestamp: "2024-01-01T00:00:00.000Z",
+        message: { role: "user", content: "legacy question", timestamp: 1 },
+      },
+      {
+        type: "message",
+        timestamp: "2024-01-01T00:00:01.000Z",
+        message: {
+          role: "hookMessage",
+          customType: "legacy",
+          content: "legacy answer",
+          display: true,
+          timestamp: 2,
+        },
+      },
+    ]
+      .map((e) => JSON.stringify(e))
+      .join("\r\n");
+    await fs.writeFile(f.path, legacy);
+    const result = await readSession({
+      workspace: f.workspace,
+      source: { kind: "file", path: f.path },
+      branch: { kind: "persisted-last-entry" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.entries).toMatchObject([
+      { parentId: null, message: { role: "user", content: "legacy question" } },
+      { message: { role: "custom", content: "legacy answer" } },
+    ]);
+    expect(result.value.entries[1]?.parentId).toBe(result.value.entries[0]?.id);
+    expect(result.value.leafId).toBe(result.value.entries[1]?.id);
+    expect(await fs.readFile(f.path, "utf8")).toBe(legacy);
+    // modern files must not get legacy repair semantics.
+    await fs.writeFile(f.path, legacy.replace('"version":1', '"version":3'));
+    expect(
+      await readSession({
+        workspace: f.workspace,
+        source: { kind: "file", path: f.path },
+        branch: { kind: "persisted-last-entry" },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "parse" } });
   });
   it("uses supplied entries/list without a second read, including empty snapshots", async () => {
     const f = await fixture();
