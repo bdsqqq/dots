@@ -95,6 +95,9 @@ importers:
       '@bds_pi/log':
         specifier: workspace:*
         version: link:../log
+      '@bds_pi/sessions':
+        specifier: workspace:*
+        version: link:../sessions
       '@letta-ai/trajectory':
         specifier: 0.4.3
         version: 0.4.3(patch_hash=f5fd4e435f765735a174f3a3fdab7f6d108090fc3a0d4b66bc3f49d5ca668157)
