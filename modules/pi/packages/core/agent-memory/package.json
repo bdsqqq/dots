@@ -19,6 +19,7 @@
   "dependencies": {
     "@bds_pi/config": "workspace:*",
     "@bds_pi/log": "workspace:*",
+    "@bds_pi/sessions": "workspace:*",
     "@letta-ai/trajectory": "0.4.3"
   },
   "devDependencies": {

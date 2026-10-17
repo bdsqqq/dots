@@ -31,7 +31,7 @@ export interface MentionSource {
   getSuggestions(
     query: string,
     context: MentionSourceContext,
-  ): AutocompleteItem[];
+  ): AutocompleteItem[] | Promise<AutocompleteItem[]>;
   resolve(
     token: MentionToken,
     context: MentionSourceContext,
