@@ -8,18 +8,20 @@ import {
   listSessions,
   readSession,
   resolveNativeSessionRoot,
+  resolveNativeSessionSelection,
 } from "@bds_pi/sessions";
 import { MentionAutocompleteProvider, parseMentions } from "@bds_pi/mentions";
 
-/** persistent managers carry storage selection; ephemeral ones need native fallback. */
+/** SDK listAll(undefined) discovers grouped workspaces; a string means flat. */
 export function historySessionDir(
   ctx: Pick<ExtensionContext, "sessionManager"> &
     Partial<Pick<ExtensionContext, "cwd">>,
-): string {
-  return resolveNativeSessionRoot({
+): string | undefined {
+  const selection = resolveNativeSessionSelection({
     cwd: ctx.cwd,
     sessionManager: ctx.sessionManager,
   });
+  return selection.kind === "flat" ? selection.root : undefined;
 }
 
 // SDK entries can contain arbitrary extension data; preserve it as JSON rather
@@ -314,10 +316,68 @@ if (import.meta.vitest) {
           settings: {},
         }),
       ).toBe(join(getAgentDir(), "sessions"));
+      // supplied snapshots must not reread the malformed settings file.
+      expect(
+        resolveNativeSessionSelection({
+          cwd,
+          sessionManager: ephemeral,
+          settings: {},
+        }),
+      ).toEqual({ root: join(getAgentDir(), "sessions"), kind: "grouped" });
+      expect(
+        resolveNativeSessionSelection({
+          cwd,
+          sessionManager: ephemeral,
+          settings: { sessionDir: join(getAgentDir(), "sessions") },
+        }),
+      ).toEqual({ root: join(getAgentDir(), "sessions"), kind: "flat" });
+      await fs.writeFile(join(getAgentDir(), "settings.json"), "{}");
       const native = SessionManager.create(cwd);
-      expect(historySessionDir({ cwd, sessionManager: native })).toBe(
-        join(getAgentDir(), "sessions"),
+      native.appendMessage({
+        role: "user",
+        content: "grouped question",
+        timestamp: 2,
+      });
+      for (const sessionManager of [native, ephemeral]) {
+        expect(
+          await listSessions({
+            sessionDir: historySessionDir({ cwd, sessionManager }),
+          }),
+        ).toMatchObject({
+          ok: true,
+          value: [{ sessionId: native.getSessionId() }],
+        });
+      }
+      // the same root path can be explicitly selected as a FLAT directory.
+      const flatRoot = join(getAgentDir(), "sessions");
+      const flat = SessionManager.create(cwd, flatRoot, { id: "flat-at-root" });
+      flat.appendMessage({
+        role: "user",
+        content: "flat question",
+        timestamp: 3,
+      });
+      vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", flatRoot);
+      for (const sessionManager of [flat, ephemeral]) {
+        expect(
+          await listSessions({
+            sessionDir: historySessionDir({ cwd, sessionManager }),
+          }),
+        ).toMatchObject({
+          ok: true,
+          value: [{ sessionId: "flat-at-root" }],
+        });
+      }
+      vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", undefined);
+      await fs.writeFile(
+        join(getAgentDir(), "settings.json"),
+        JSON.stringify({ sessionDir: flatRoot }),
       );
+      expect(
+        await listSessions({ sessionDir: historySessionDir(ctx) }),
+      ).toMatchObject({
+        ok: true,
+        value: [{ sessionId: "flat-at-root" }],
+      });
     } finally {
       vi.unstubAllEnvs();
       await fs.rm(root, { recursive: true, force: true });

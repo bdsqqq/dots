@@ -3,7 +3,11 @@
 `listSessions({ workspace? , sessionDir? , sessions? })` discovers native pi
 sessions. omit `sessionDir` for SDK `listAll()` discovery across workspace
 directories; pass a native custom session directory for flat-directory discovery.
-the extension uses `resolveNativeSessionRoot({ cwd, sessionManager })`:
+the extension uses `resolveNativeSessionSelection({ cwd, sessionManager })`,
+which returns `{ root, kind: "grouped" | "flat" }`. grouped discovery passes
+`undefined` to the SDK; flat discovery passes the root string. an explicit
+custom directory equal to the default root is still flat, not grouped.
+`resolveNativeSessionRoot` is the root-only helper for other consumers.
 the running manager's directory wins; an ephemeral
 manager falls back to the native environment/settings root. supplying `settings`,
 including `{}`, prevents a second settings read. without `allowProjectConfig`,
