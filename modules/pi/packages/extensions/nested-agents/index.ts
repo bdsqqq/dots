@@ -686,14 +686,14 @@ if (import.meta.vitest) {
         const search = await call("bash", {
           command: 'rg -n --glob "*.ts" "unique search needle" "packages"',
         });
-        expect(search.isError).toBe(false);
+        expect(search.isError, search.text).toBe(false);
         expect(search.text).toContain(
           "packages/app/src/file with spaces.ts:1:unique search needle",
         );
         const listing = await call("bash", {
           command: 'rg --files "packages" && ls -1 "packages/app/src"',
         });
-        expect(listing.isError).toBe(false);
+        expect(listing.isError, listing.text).toBe(false);
         expect(listing.text).toContain("packages/app/src/index.ts");
         expect(listing.text).toContain("file with spaces.ts");
         const result = await call("edit", {
