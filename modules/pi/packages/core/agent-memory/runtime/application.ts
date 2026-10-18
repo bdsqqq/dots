@@ -498,20 +498,39 @@ if (import.meta.vitest) {
       expect((await app.maintain(signal())).reconciliation.idle?.reason).toBe(
         "empty",
       );
-      const manager = SessionManager.inMemory(f.dir);
-      manager.appendMessage({
-        role: "user",
-        content: "i like the quiet room because i sleep better",
-        timestamp: Date.parse(now),
-      });
-      await catchUpNativeSources({
-        store: app.store,
-        root: "/unused",
-        checkpoint: join(f.dir, "provided.json"),
-        scope: app.scope,
-        signal: signal(),
-        snapshots: [nativeSourceSnapshot(manager)],
-      });
+      const { spawnSync } = await import("node:child_process");
+      const producer = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          `
+        import { SessionManager } from "@earendil-works/pi-coding-agent";
+        import { mkdirSync, writeFileSync } from "node:fs";
+        const manager = SessionManager.inMemory(${JSON.stringify(f.dir)});
+        manager.appendMessage({ role: "user", content: "i like the quiet room because i sleep better", timestamp: Date.now() });
+        mkdirSync(${JSON.stringify(f.configuration.sessionRoot)}, {recursive:true});
+        writeFileSync(${JSON.stringify(join(f.configuration.sessionRoot, "exited.jsonl"))}, [manager.getHeader(), ...manager.getEntries()].map(e=>JSON.stringify(e)).join("\\n") + "\\n");
+      `,
+        ],
+        {
+          encoding: "utf8",
+          timeout: 10_000,
+          env: {
+            ...process.env,
+            PI_CODING_AGENT_DIR: join(f.dir, "agent"),
+            PI_OFFLINE: "1",
+          },
+        },
+      );
+      expect(producer.status, producer.stderr).toBe(0);
+      const original = readFileSync(
+        join(f.configuration.sessionRoot, "exited.jsonl"),
+      );
+      expect((await app.catchUp(signal())).windows).toBe(1);
+      expect(
+        readFileSync(join(f.configuration.sessionRoot, "exited.jsonl")),
+      ).toEqual(original);
       const windows = (await app.store.forPeer("audit").scan(null, 10)).flatMap(
         (c) => c.windows,
       );
