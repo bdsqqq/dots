@@ -31,6 +31,7 @@ export type MemoryScope =
   | { readonly kind: "project"; readonly repositoryId: string };
 
 export interface SourceRef {
+  /** producer-stable identity; file paths and observed project context are not new support. */
   readonly sourceId: SourceId;
   readonly producer: string;
   readonly origin:
@@ -408,6 +409,12 @@ export interface NativeInbox {
   >;
 }
 
+export interface SuppressionClosure {
+  /** retained historical identity/lineage, without note content or suppression reasons. */
+  readonly noteIds: readonly NoteId[];
+  readonly evidence: readonly EvidenceRef[];
+}
+
 export interface MemoryStore {
   /**
    * journal + markdown recovery is durable here; no git/remote/index wait.
@@ -424,6 +431,11 @@ export interface MemoryStore {
     ids: readonly NoteId[],
   ): Promise<readonly NoteRevision[]>;
   readSuppressions(scope: MemoryScope): Promise<readonly Suppression[]>;
+  /** supplied restrictions join retained rules; they cannot replace durable denials. */
+  readSuppressionClosure(
+    scope: MemoryScope,
+    restrictions?: readonly Suppression[],
+  ): Promise<SuppressionClosure>;
   /** current heads/suppression are checked again for cache hits and dispatch. */
   checkDelivery(
     delivery: RecallDelivery,

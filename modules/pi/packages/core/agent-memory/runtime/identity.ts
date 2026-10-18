@@ -3,6 +3,7 @@ import type {
   NoteRevision,
   RevisionId,
   SourceHash,
+  SourceRef,
   SourceWindow,
   WindowId,
 } from "./contracts.js";
@@ -58,6 +59,17 @@ export function revisionId(
   input: Omit<NoteRevision, "revisionId">,
 ): RevisionId {
   return sha256(canonicalJSON(input)) as RevisionId;
+}
+/** locators/context and window hashes may change without creating independent evidence. */
+export function sameProducerSource(a: SourceRef, b: SourceRef): boolean {
+  return (
+    a.sourceId === b.sourceId &&
+    a.producer === b.producer &&
+    (a.origin.kind === "file"
+      ? b.origin.kind === "file"
+      : b.origin.kind === "session" &&
+        a.origin.sessionId === b.origin.sessionId)
+  );
 }
 export function sameValue(a: unknown, b: unknown): boolean {
   return canonicalJSON(a) === canonicalJSON(b);

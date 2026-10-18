@@ -19,6 +19,7 @@ import {
   canonicalJSON,
   hashSourceWindow,
   revisionId,
+  sameProducerSource,
   sameValue,
   sha256,
 } from "./identity.js";
@@ -115,8 +116,7 @@ function iso(n: number): C.Timestamp {
 }
 function matchesEvidence(a: C.EvidenceRef, b: C.EvidenceRef): boolean {
   return (
-    a.sourceHash === b.sourceHash &&
-    sameValue(a.source, b.source) &&
+    sameProducerSource(a.source, b.source) &&
     a.spans.some((x) =>
       b.spans.some(
         (y) =>
@@ -127,32 +127,107 @@ function matchesEvidence(a: C.EvidenceRef, b: C.EvidenceRef): boolean {
     )
   );
 }
-function suppressionsFor(
-  view: View,
-  note: C.NoteRevision,
-  seen = new Set<C.RevisionId>(),
-): C.Suppression[] {
-  if (seen.has(note.revisionId)) return [];
-  seen.add(note.revisionId);
-  const direct = view.suppressions.filter(
-    (s) =>
-      scopeEqual(s.scope, note.scope) &&
-      (s.target.kind === "note"
-        ? s.target.noteId === note.noteId
-        : note.claims.some((c) =>
-            c.evidence.some(
-              (e) =>
-                s.target.kind === "evidence" &&
-                matchesEvidence(s.target.evidence, e),
-            ),
-          )),
-  );
-  for (const claim of note.claims)
-    for (const ref of claim.derivedFrom) {
-      const ancestor = view.revisions.get(ref.revisionId);
-      if (ancestor) direct.push(...suppressionsFor(view, ancestor, seen));
+interface SuppressionIndex {
+  byRevision: Map<C.RevisionId, C.Suppression[]>;
+  evidence: {
+    scope: C.MemoryScope;
+    evidence: C.EvidenceRef;
+    rule: C.Suppression;
+  }[];
+}
+const suppressionIndexes = new WeakMap<
+  View,
+  { revisions: number; rules: number; index: SuppressionIndex }
+>();
+/** one retained-history closure governs admission, recall and pre-provider filtering. */
+function suppressionIndex(view: View): SuppressionIndex {
+  const cached = suppressionIndexes.get(view);
+  if (
+    cached?.revisions === view.revisions.size &&
+    cached.rules === view.suppressions.length
+  )
+    return cached.index;
+  const byRevision = new Map<C.RevisionId, C.Suppression[]>();
+  const byNote = new Map<C.NoteId, Map<C.SuppressionId, C.Suppression>>();
+  const evidence = new Map<string, SuppressionIndex["evidence"][number]>();
+  const addEvidence = (
+    scope: C.MemoryScope,
+    ref: C.EvidenceRef,
+    rule: C.Suppression,
+  ): void => {
+    evidence.set(canonicalJSON({ scope, ref, rule: rule.suppressionId }), {
+      scope,
+      evidence: ref,
+      rule,
+    });
+  };
+  for (const rule of view.suppressions)
+    if (rule.target.kind === "evidence")
+      addEvidence(rule.scope, rule.target.evidence, rule);
+  let changed = view.suppressions.length > 0;
+  while (changed) {
+    changed = false;
+    for (const note of view.revisions.values()) {
+      const reasons = new Map<C.SuppressionId, C.Suppression>(
+        byNote.get(note.noteId),
+      );
+      for (const rule of view.suppressions)
+        if (
+          scopeEqual(rule.scope, note.scope) &&
+          rule.target.kind === "note" &&
+          rule.target.noteId === note.noteId
+        )
+          reasons.set(rule.suppressionId, rule);
+      const ancestors = [
+        ...(note.ancestry.kind === "known" ? note.ancestry.parents : []),
+        ...note.claims.flatMap((c) =>
+          c.derivedFrom.map((ref) => ref.revisionId),
+        ),
+      ];
+      for (const id of ancestors)
+        for (const rule of byRevision.get(id) ?? [])
+          reasons.set(rule.suppressionId, rule);
+      for (const denied of evidence.values()) {
+        const window = view.windows.get(denied.evidence.windowId);
+        const relevant =
+          scopeEqual(denied.scope, note.scope) ||
+          (denied.scope.kind === "personal" &&
+            note.scope.kind === "project" &&
+            window &&
+            scopeEqual(window.scope, denied.scope) &&
+            permitsSourceScope(window, note.scope));
+        if (
+          relevant &&
+          note.claims.some((c) =>
+            c.evidence.some((ref) => matchesEvidence(ref, denied.evidence)),
+          )
+        )
+          reasons.set(denied.rule.suppressionId, denied.rule);
+      }
+      if (
+        !reasons.size ||
+        reasons.size === byRevision.get(note.revisionId)?.length
+      )
+        continue;
+      byRevision.set(note.revisionId, [...reasons.values()]);
+      byNote.set(note.noteId, reasons);
+      for (const claim of note.claims)
+        for (const ref of claim.evidence)
+          for (const rule of reasons.values())
+            addEvidence(note.scope, ref, rule);
+      changed = true;
     }
-  return [...new Map(direct.map((s) => [s.suppressionId, s])).values()];
+  }
+  const index = { byRevision, evidence: [...evidence.values()] };
+  suppressionIndexes.set(view, {
+    revisions: view.revisions.size,
+    rules: view.suppressions.length,
+    index,
+  });
+  return index;
+}
+function suppressionsFor(view: View, note: C.NoteRevision): C.Suppression[] {
+  return suppressionIndex(view).byRevision.get(note.revisionId) ?? [];
 }
 
 /** retry contention asynchronously; never stretch the event-loop blocking timeout. */
@@ -741,6 +816,47 @@ export class FileMemoryStore implements C.MemoryStore {
     return this.refreshed((v) =>
       v.suppressions.filter((s) => scopeEqual(s.scope, scope)),
     );
+  }
+  async readSuppressionClosure(
+    scope: C.MemoryScope,
+    restrictions: readonly C.Suppression[] = [],
+  ): Promise<C.SuppressionClosure> {
+    return this.refreshed((retained) => {
+      for (const rule of restrictions) {
+        const existing = retained.suppressions.find(
+          (candidate) => candidate.suppressionId === rule.suppressionId,
+        );
+        if (existing && !sameValue(existing, rule))
+          throw new IntegrityError("suppression collision");
+      }
+      const view = restrictions.length
+        ? this.preview(retained, [], [], restrictions)
+        : retained;
+      const index = suppressionIndex(view);
+      const noteIds = new Set(
+        view.suppressions.flatMap((rule) =>
+          scopeEqual(rule.scope, scope) && rule.target.kind === "note"
+            ? [rule.target.noteId]
+            : [],
+        ),
+      );
+      for (const note of view.revisions.values())
+        if (
+          scopeEqual(note.scope, scope) &&
+          index.byRevision.has(note.revisionId)
+        )
+          noteIds.add(note.noteId);
+      return {
+        noteIds: [...noteIds].sort(),
+        evidence: [
+          ...new Map(
+            index.evidence
+              .filter((item) => scopeEqual(item.scope, scope))
+              .map((item) => [canonicalJSON(item.evidence), item.evidence]),
+          ).values(),
+        ],
+      };
+    });
   }
   async plan(input: C.PlanInput): Promise<C.BacklogPlan> {
     return this.refreshed((view) => {
