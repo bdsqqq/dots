@@ -1882,8 +1882,8 @@ exit 1
       const path = join(broken, name);
       const original = await fs.readFile(path, "utf8");
       const bounded = original.replace(
-        'request.kind === "check" ? 250 : void 0',
-        'request.kind === "check" ? 250 : 5000',
+        /(request\.kind === "check"(?:\s*&&\s*request\.purpose !== "inbox")?\s*\?\s*250\s*:\s*)void 0/,
+        (_match, prefix: string) => `${prefix}5000`,
       );
       if (bounded !== original) {
         changed = true;
