@@ -172,6 +172,41 @@ export async function runSessionMemoryWorker(): Promise<void> {
         kind: "project-context",
         project: observeNativeProject(request.cwd),
       };
+    // A cold eligibility request owns the same short budget during opening as
+    // during authentication. Never cache its expiring signal on the worker store.
+    if (request.kind === "check") {
+      const checkOptions = {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(150)]),
+        contentionTimeoutMs: 150,
+      };
+      const ephemeral = !openedStore;
+      const store =
+        openedStore ?? (await FileMemoryStore.open(data.store, checkOptions));
+      try {
+        return await Promise.all(
+          request.deliveries.map(async (delivery) => {
+            const original = await store.readDelivery(
+              delivery.deliveryId,
+              checkOptions,
+            );
+            if (!original || !sameValue(original, delivery))
+              return { kind: "discard", reason: "obsolete" } as const;
+            // Transport ACK is not eligibility: accepted payloads must still
+            // recheck current heads/suppression without minting a dispatch receipt.
+            return store.checkDelivery(
+              {
+                ...original,
+                deliveryId: `${original.deliveryId}:context` as C.DeliveryId,
+              },
+              now(),
+              checkOptions,
+            );
+          }),
+        );
+      } finally {
+        if (ephemeral) store.close();
+      }
+    }
     const store = (openedStore ??= await FileMemoryStore.open(data.store, {
       signal,
     }));
@@ -203,34 +238,6 @@ export async function runSessionMemoryWorker(): Promise<void> {
           });
         }
         return null;
-      }
-      // transport ACK is not eligibility: persisted context must still recheck
-      // heads/suppression, using a check-only id that has no dispatch receipt.
-      case "check": {
-        // One shared deadline includes authentication and eligibility, not 150ms
-        // per delivery. The parent still owns its unchanged 250ms request budget.
-        const checkOptions = {
-          signal: AbortSignal.any([signal, AbortSignal.timeout(150)]),
-          contentionTimeoutMs: 150,
-        };
-        return Promise.all(
-          request.deliveries.map(async (delivery) => {
-            const original = await store.readDelivery(
-              delivery.deliveryId,
-              checkOptions,
-            );
-            if (!original || !sameValue(original, delivery))
-              return { kind: "discard", reason: "obsolete" } as const;
-            return store.checkDelivery(
-              {
-                ...original,
-                deliveryId: `${original.deliveryId}:context` as C.DeliveryId,
-              },
-              now(),
-              checkOptions,
-            );
-          }),
-        );
       }
       case "ack":
         for (const d of request.deliveries) {
