@@ -490,11 +490,11 @@ async function reconcileWithBudget(
   change = { ...change, lease, now: clock() };
   let result: C.CommitResult;
   try {
-    result = await deps.store.commit(change);
+    result = await deps.store.commit(change, { signal: owner.signal });
   } catch {
     // a throw after publication is ambiguous; exact replay discovers durable acceptance.
     try {
-      result = await deps.store.commit(change);
+      result = await deps.store.commit(change, { signal: owner.signal });
     } catch {
       return persistRetry(
         "acceptance failed; retry with fresh lease and corpus",
@@ -622,9 +622,13 @@ export async function runReconciliation(
       ).toISOString();
       const plan = await deps.store.plan({ ...input, now });
       if (plan.kind === "idle") return { results, idle: plan };
+      // planning may prepare retained history before returning ownership.
+      const acquiredAt = new Date(
+        Date.parse(input.now) + Math.floor(elapsed()),
+      ).toISOString();
       const owner = new ReconciliationLease(
         plan.batch.lease,
-        now,
+        acquiredAt,
         deps.store,
         signal,
         input.policy.leaseMs,
@@ -661,7 +665,7 @@ export async function runReconciliation(
               batch: plan.batch,
               notes: allNotes,
               suppressions,
-              now,
+              now: acquiredAt,
               commitId: `reconcile:${plan.batch.lease.leaseId}` as C.CommitId,
             },
             { ...deps, signal },
@@ -771,7 +775,9 @@ if (import.meta.vitest) {
       importance,
     };
   }
-  function fixture() {
+  function fixture(
+    publicationBoundary?: import("./store.js").FileMemoryStoreConfig["publicationBoundary"],
+  ) {
     const dir = mkdtempSync(join(tmpdir(), "memory-reconcile-"));
     const config = {
       root: join(dir, "notes"),
@@ -779,6 +785,7 @@ if (import.meta.vitest) {
       state: join(dir, "state"),
       replicaId: "fixture" as C.ReplicaId,
       owner: "fixture",
+      publicationBoundary,
     };
     return { dir, config, store: new FileMemoryStore(config) };
   }
@@ -1271,6 +1278,125 @@ if (import.meta.vitest) {
       release();
       await running?.catch(() => {});
       vi.useRealTimers();
+      f.store.close();
+    }
+  });
+  it("cancellation fences pending acceptance and preserves edits published before interruption", async () => {
+    const { DatabaseSync } = await import("node:sqlite");
+    for (const phase of [
+      "prepared",
+      "contended",
+      "published",
+      "ambiguous",
+    ] as const) {
+      const controller = new AbortController();
+      let armed = false,
+        held = false,
+        entered!: () => void;
+      const prepared = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      let lock: InstanceType<typeof DatabaseSync>;
+      const f = fixture((boundary) => {
+        if (
+          !armed ||
+          boundary !==
+            (phase === "published" || phase === "ambiguous"
+              ? "manifest"
+              : "prepared")
+        )
+          return;
+        armed = false;
+        if (phase !== "contended") {
+          controller.abort(new Error(`fixture shutdown at ${phase}`));
+          if (phase === "ambiguous")
+            throw new Error("fixture receipt interrupted after publication");
+        } else {
+          lock.exec("BEGIN IMMEDIATE");
+          held = true;
+          entered();
+        }
+      });
+      lock = new DatabaseSync(join(f.config.state, "coordination.sqlite"));
+      let running: Promise<C.CommitResult> | undefined;
+      try {
+        await seed(f.store, [
+          window("pending-edit", "fixture changed preference", "correction"),
+        ]);
+        const input = await leased(f.store, now);
+        running = reconcile(input, {
+          store: f.store,
+          signal: controller.signal,
+          model: {
+            reconcile: async (i) => {
+              const result = adaptConsolidationProposal(proposal(i), i);
+              armed = true;
+              return result;
+            },
+          },
+        });
+        if (phase === "contended") {
+          await prepared;
+          controller.abort(new Error("fixture shutdown during writer wait"));
+          lock.exec("COMMIT");
+          held = false;
+        }
+        if (phase === "ambiguous") await expect(running).rejects.toThrow();
+        else expect((await running).kind).toBe("locally-committed");
+        if (phase === "published" || phase === "ambiguous") {
+          expect(await f.store.listNotes(scope)).toHaveLength(1);
+          expect(await f.store.plan(planInput(now))).toMatchObject({
+            kind: "idle",
+            reason: "empty",
+          });
+          continue;
+        }
+        expect(await f.store.listNotes(scope)).toEqual([]);
+        expect(await f.store.plan(planInput(now))).toMatchObject({
+          kind: "idle",
+          reason: "backoff",
+        });
+        const recovered = await f.store.plan(
+          planInput("2026-01-01T00:00:31.000Z"),
+        );
+        if (recovered.kind !== "eligible")
+          throw new Error("cancelled preparation lost pending source");
+        expect(recovered.batch.windows[0].attempts).toBe(1);
+      } finally {
+        armed = false;
+        if (held) lock.exec("ROLLBACK");
+        controller.abort();
+        await running?.catch(() => {});
+        lock.close();
+        f.store.close();
+      }
+    }
+  });
+  it("runner accepts with a fresh clock after real planning preparation", async () => {
+    let armed = false;
+    const wall = vi.spyOn(Date, "now");
+    const f = fixture((boundary) => {
+      if (armed && boundary === "prepared") {
+        armed = false;
+        wall.mockReturnValue(Date.now() + 20_000);
+      }
+    });
+    try {
+      await seed(f.store, [window("slow-plan", "fixture", "correction")]);
+      armed = true;
+      const result = await runReconciliation(
+        { ...planInput(), maxBatches: 1 },
+        { store: f.store, model, signal: signal() },
+      );
+      expect(result.results[0]?.kind).toBe("locally-committed");
+      const outcomes = (await f.store.forPeer("audit").scan(null, 100)).flatMap(
+        (c) => c.outcomes,
+      );
+      expect(Date.parse(outcomes[0]!.recordedAt)).toBeGreaterThanOrEqual(
+        Date.parse(now) + 20_000,
+      );
+    } finally {
+      wall.mockRestore();
       f.store.close();
     }
   });
