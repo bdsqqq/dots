@@ -43,6 +43,10 @@ from local configuration, never received JSON.
 all adapters call `runtimeStoreConfiguration`: notes at `<root>/runtime`, durable
 objects at `<data>/runtime`, coordination/progress at `<state>/runtime`, and
 hostname replica identity. these runtime children coexist with legacy data.
+the extension snapshots finalized turns, but publishes their capture after the run
+settles or shuts down so writes do not consume provider-time eligibility budgets.
+persistent sessions also have independent disk catch-up; a hard-killed, unfinished
+in-memory run can lose its unpublished snapshots.
 source discovery follows native session-root settings/environment selection.
 live capture selects its native through-entry; disk sweeps visit every leaf in
 that authorized session root. both preserve session/entry IDs, roles and authored
@@ -64,7 +68,11 @@ do not age new pending work. appends resume retained spans; the native snapshot
 loader still reads a whole session before bounded windows are selected.
 pending-age/threshold/recovery and durable no-change/backoff prevent empty thinking runs. replication
 has its own durable bounded retry state; a failed peer does not revoke local
-acceptance. the CLI aborts at 150 seconds and terminates at 155 seconds.
+acceptance. incremental disclosure proofs bind exact payloads, local policy and a
+retained-history continuity epoch. append/restart preserve that epoch; removed or
+replaced history invalidates cached descendants. lost proofs rebuild bounded causal
+prefixes with backoff, rather than imposing a lifetime history ceiling. the CLI
+aborts at 150 seconds and terminates at 155 seconds.
 
 `maintain` and `replicate` are manual catch-up commands too. process tests prove
 fixture propagation; deployment, service activation and real fleet convergence
