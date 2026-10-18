@@ -3,20 +3,21 @@ let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isLinux = lib.hasInfix "linux" hostSystem;
   repoRoot = "${config.my.paths.commonplace}/01_files/nix";
+  peers = builtins.filter (host: host != config.networking.hostName) [ "mbp-m2" "lgo-z2e" "htz-xfs-lab" ];
   toolsBin = "${repoRoot}/modules/node-pnpm/node_modules/.bin";
   agentMemory = pkgs.writeShellApplication {
     name = "pi-memory";
-    runtimeInputs = [ pkgs.coreutils pkgs.git pkgs.nodejs ];
+    runtimeInputs = [ pkgs.coreutils pkgs.git pkgs.nodejs pkgs.python3 pkgs.openssh ];
     text = ''
       set -euo pipefail
 
       export PI_BIN="${toolsBin}/pi"
       export QMD_BIN="${toolsBin}/qmd"
-      export PI_MEMORY_MODEL="openai-codex/gpt-6.1-sol"
-      export PI_MEMORY_REASONING_LEVEL="medium"
-      export PI_MEMORY_CLEANUP_ENABLED=1
-      export PI_MEMORY_SKILLS_ROOT="${repoRoot}/modules/agents/skills"
-      export PI_MEMORY_GIT_REMOTE="git@github.com:bdsqqq/pi-memory.git"
+      # defaults lose to editable native namespace settings and explicit overrides.
+      if [[ -z "''${PI_MEMORY_DEFAULT_PEERS+x}" ]]; then
+        export PI_MEMORY_DEFAULT_PEERS=${lib.escapeShellArg (builtins.toJSON peers)}
+      fi
+      export PI_MEMORY_LEGACY_GIT_REMOTE="''${PI_MEMORY_LEGACY_GIT_REMOTE:-git@github.com:bdsqqq/pi-memory.git}"
       # Resolve from the live installation, not the store or the caller's cwd.
       jiti_register="$(cd "${repoRoot}/modules/pi" && node --input-type=module \
         --eval 'console.log(import.meta.resolve("jiti/register"))')"
@@ -35,12 +36,7 @@ in
       config = {
         ProgramArguments = [ "${agentMemory}/bin/pi-memory" "maintain" ];
         RunAtLoad = true;
-        StartInterval = 3600;
-        KeepAlive = {
-          PathState = {
-            "${config.home.homeDirectory}/.local/state/pi-memory/v3/demand/wake" = true;
-          };
-        };
+        StartInterval = 60;
         ProcessType = "Background";
         ThrottleInterval = 60;
         StandardOutPath = "${config.home.homeDirectory}/Library/Logs/pi-memory.log";
@@ -49,9 +45,10 @@ in
     };
 
     systemd.user.services.pi-memory = lib.mkIf isLinux {
-      Unit.Description = "Project pi sessions and maintain agent memory candidates";
+      Unit.Description = "Capture native pi sessions, reconcile eligible backlog and replicate memory";
       Service = {
         Type = "oneshot";
+        TimeoutStartSec = 180;
         ExecStart = "${agentMemory}/bin/pi-memory maintain";
       };
     };
@@ -59,17 +56,12 @@ in
     systemd.user.timers.pi-memory = lib.mkIf isLinux {
       Unit.Description = "Periodic pi session and agent memory maintenance";
       Timer = {
-        OnBootSec = "5m";
-        OnUnitActiveSec = "1h";
+        OnBootSec = "1m";
+        OnUnitActiveSec = "1m";
         Persistent = true;
       };
       Install.WantedBy = [ "timers.target" ];
     };
 
-    systemd.user.paths.pi-memory = lib.mkIf isLinux {
-      Unit.Description = "Run agent memory maintenance when durable demand arrives";
-      Path.PathExists = "${config.home.homeDirectory}/.local/state/pi-memory/v3/demand/wake";
-      Install.WantedBy = [ "default.target" ];
-    };
   };
 }
