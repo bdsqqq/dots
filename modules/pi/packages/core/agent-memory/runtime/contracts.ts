@@ -484,7 +484,7 @@ export interface ReplicaTransport {
 export interface ReplicaStore {
   /** trusted local epoch: stable across append/restart, changes after retained payload removal/replacement. */
   continuityToken(): Promise<string>;
-  /** authoritative owners of external revision/window references, even when declared parents omit them. */
+  /** owners of external revision/window references; retained choices stay stable within an epoch, regardless of later duplicates. */
   dependencyCommits(
     change: ReplicaChange,
     incoming?: readonly ReplicaChange[],
