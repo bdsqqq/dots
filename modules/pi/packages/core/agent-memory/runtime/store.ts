@@ -4288,6 +4288,9 @@ fcntl.fcntl(3,51)
           db.prepare("UPDATE repository_epoch SET token=? WHERE id=1").run(
             "registry-only-epoch",
           );
+          db.prepare(
+            "UPDATE repository_payload SET payload_hash=? WHERE commit_id=?",
+          ).run("registry-only-replacement", seed.commitId);
           db.exec("COMMIT");
         } catch (error) {
           if (!isStoreBusy(error)) throw error;
@@ -4298,8 +4301,23 @@ fcntl.fcntl(3,51)
         writeFileSync(release, "release");
         const result = await done;
         expect(result.status, result.stderr.slice(-2000)).toBe(0);
-        if (operation !== "old-writer")
-          expect(JSON.parse(result.stdout)).toBe("registry-only-epoch");
+        if (operation !== "old-writer") {
+          expect(JSON.parse(result.stdout)).not.toBe("registry-only-epoch");
+          const verified = new DatabaseSync(
+            join(f.config.state, "coordination.sqlite"),
+          );
+          try {
+            expect(
+              verified
+                .prepare(
+                  "SELECT payload_hash FROM repository_payload WHERE commit_id=?",
+                )
+                .get(seed.commitId)?.payload_hash,
+            ).toBe(sha256(canonicalJSON(seed)));
+          } finally {
+            verified.close();
+          }
+        }
       } finally {
         if (release) writeFileSync(release, "release");
         await done;
