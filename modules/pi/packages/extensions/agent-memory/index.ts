@@ -82,7 +82,6 @@ export function createAgentMemoryExtension(
     let readySinceRequest = false;
     const queued = new Set<string>();
     const captures = new Set<Promise<unknown>>();
-    let captureTail: Promise<unknown> = Promise.resolve();
     const checks = new Set<Promise<unknown>>();
     let captureReady:
       | { promise: Promise<void>; resolve: () => void }
@@ -432,11 +431,7 @@ export function createAgentMemoryExtension(
       };
       // Capture each finalized turn, but publish after the run settles: durable
       // filesystem flushes must not consume the next request's eligibility budget.
-      const ready = Promise.all([projectReady, captureReady?.promise]);
-      // Settlement releases a burst of snapshots; submit one at a time so the
-      // bounded worker queue/deadlines cannot discard earlier finalized turns.
-      const capture = captureTail
-        .then(() => ready)
+      const capture = Promise.all([projectReady, captureReady?.promise])
         .then(([observed]) =>
           request({
             kind: "capture",
@@ -447,7 +442,6 @@ export function createAgentMemoryExtension(
           }),
         )
         .catch(error);
-      captureTail = capture;
       captures.add(capture);
       void capture.finally(() => captures.delete(capture));
     });
