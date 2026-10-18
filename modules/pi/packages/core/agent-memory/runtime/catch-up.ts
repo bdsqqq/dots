@@ -14,6 +14,8 @@ import {
 } from "./project-context.js";
 
 interface Progress {
+  /** Durable acceptance, unlike this replaceable operational cursor. */
+  acceptedCommit?: C.CommitId;
   fingerprint: string;
   entryCount: number;
   prefixHash: string;
@@ -105,6 +107,18 @@ export async function catchUpNativeSources(input: {
     });
     let progress = state.files[key];
     if (
+      progress &&
+      Object.values(progress.branches ?? {}).some(
+        (branch) => branch.last || branch.after,
+      ) &&
+      (!progress.acceptedCommit ||
+        !(await input.store.hasAcceptedCommit(progress.acceptedCommit)))
+    ) {
+      // A newer checkpoint can survive an older data restore at the SAME paths.
+      // The latest accepted capture causally includes earlier local acceptance.
+      progress = undefined;
+    }
+    if (
       progress?.fingerprint === fingerprint &&
       (input.throughEntryId
         ? progress.branches[input.throughEntryId]?.complete
@@ -132,16 +146,19 @@ export async function catchUpNativeSources(input: {
     progress.entryCount = snapshot.entries.length;
     progress.prefixHash = prefixHash(snapshot.entries.length);
     const parents = new Set(snapshot.entries.map((e) => e.parentId));
+    const allLeaves = snapshot.entries.filter((e) => !parents.has(e.id));
     const leaves = input.throughEntryId
       ? snapshot.entries.filter((e) => e.id === input.throughEntryId)
-      : snapshot.entries.filter((e) => !parents.has(e.id));
+      : allLeaves;
     if (input.throughEntryId && !leaves.length)
       throw new Error("selected native entry is unavailable");
     const entries = new Map(snapshot.entries.map((e) => [e.id, e]));
     const leaf = leaves.find((e) => !progress.branches[e.id]?.complete);
     if (!leaf) {
-      progress.complete = true;
-      return true;
+      progress.complete = allLeaves.every(
+        (e) => progress.branches[e.id]?.complete,
+      );
+      return input.throughEntryId ? true : progress.complete;
     }
     let branch = progress.branches[leaf.id];
     if (!branch) {
@@ -202,15 +219,16 @@ export async function catchUpNativeSources(input: {
       );
       if (outcome.kind !== "locally-committed" && outcome.kind !== "unchanged")
         throw new Error(`capture ${outcome.kind}: ${outcome.reason}`);
+      progress.acceptedCommit = pending.commitId;
       result.windows += windows.length;
       delete branch.pending;
     }
     branch.last = windows.at(-1)?.excerpts.at(-1)?.span ?? branch.last;
     branch.after = page.next;
     branch.complete = page.complete;
-    progress.complete = snapshot.entries
-      .filter((e) => !parents.has(e.id))
-      .every((e) => progress.branches[e.id]?.complete);
+    progress.complete = allLeaves.every(
+      (e) => progress.branches[e.id]?.complete,
+    );
     if (input.throughEntryId) return branch.complete;
     return progress.complete;
   };
@@ -449,6 +467,82 @@ if (import.meta.vitest) {
       } finally {
         diskStore.close();
       }
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("replays partial cursors and completed disk fingerprints after same-path data loss with retained checkpoints", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "native-restore-"));
+    const configuration = {
+      root: join(dir, "notes"),
+      data: join(dir, "data"),
+      state: join(dir, "state"),
+      owner: "fixture",
+      replicaId: "fixture" as C.ReplicaId,
+    };
+    const manager = SessionManager.inMemory(dir);
+    const body = "early dated judgment 🌿 ".repeat(1200);
+    manager.appendMessage({ role: "user", content: body, timestamp: 1 });
+    const snapshot = nativeSourceSnapshot(manager);
+    const root = join(dir, "sessions");
+    mkdirSync(root);
+    writeFileSync(
+      join(root, "native.jsonl"),
+      [snapshot.header, ...snapshot.entries]
+        .map((e) => JSON.stringify(e))
+        .join("\n") + "\n",
+    );
+    const sourceBytes = readFileSync(join(root, "native.jsonl"));
+    const scope: C.MemoryScope = { kind: "personal", ownerId: "fixture" };
+    const input = {
+      root,
+      checkpoint: join(configuration.state, "progress.json"),
+      scope,
+      project: null,
+      signal: new AbortController().signal,
+      maxWindows: 1,
+    };
+    let store = new FileMemoryStore(configuration);
+    const reopenWithoutData = (suffix: string): void => {
+      store.close();
+      renameSync(configuration.root, `${configuration.root}-${suffix}`);
+      renameSync(configuration.data, `${configuration.data}-${suffix}`);
+      store = new FileMemoryStore(configuration);
+    };
+    const finish = async (): Promise<void> => {
+      let bounded = true;
+      for (let n = 0; bounded && n < 64; n++)
+        bounded = (await catchUpNativeSources({ ...input, store })).bounded;
+      expect(bounded).toBe(false);
+      const windows = (await store.forPeer("audit").scan(null, 100)).flatMap(
+        (c) => c.windows,
+      );
+      expect(
+        windows
+          .flatMap((w) => w.excerpts)
+          .map((e) => e.text)
+          .join(""),
+      ).toBe(body);
+    };
+    try {
+      expect((await catchUpNativeSources({ ...input, store })).bounded).toBe(
+        true,
+      );
+      reopenWithoutData("partial");
+      await finish();
+      const checkpoint = JSON.parse(readFileSync(input.checkpoint, "utf8"));
+      const progress = Object.values(checkpoint.files)[0] as Progress;
+      expect(await store.hasAcceptedCommit(progress.acceptedCommit!)).toBe(
+        true,
+      );
+      reopenWithoutData("complete");
+      expect(await store.hasAcceptedCommit(progress.acceptedCommit!)).toBe(
+        false,
+      );
+      await finish();
+      expect((await catchUpNativeSources({ ...input, store })).windows).toBe(0);
+      expect(readFileSync(join(root, "native.jsonl"))).toEqual(sourceBytes);
     } finally {
       store.close();
       rmSync(dir, { recursive: true, force: true });
