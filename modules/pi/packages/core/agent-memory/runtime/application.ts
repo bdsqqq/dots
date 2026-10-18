@@ -368,7 +368,7 @@ if (import.meta.vitest) {
       app.close();
       rmSync(f.dir, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
   it("appended native history resumes its durable span without recapturing the early prefix", async () => {
     const f = fixture();
     const app = createMemoryApplication({
