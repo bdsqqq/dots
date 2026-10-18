@@ -75,7 +75,17 @@ export function processReplicaTransport(
           if (failure) reject(failure);
           else if (code !== 0)
             reject(new Error(`replica process exited ${code}`));
-          else resolve(Buffer.concat(chunks).toString("utf8"));
+          else {
+            try {
+              resolve(
+                new TextDecoder("utf-8", { fatal: true }).decode(
+                  Buffer.concat(chunks),
+                ),
+              );
+            } catch (error) {
+              reject(error);
+            }
+          }
         });
         child.stdin.end(request);
       });
@@ -140,7 +150,10 @@ export async function serveReplicaExchange(
       signal.throwIfAborted();
     }
     const request = parseExchangeRequest(
-      parseReplicaJSON(Buffer.concat(chunks).toString("utf8"), limits),
+      parseReplicaJSON(
+        new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)),
+        limits,
+      ),
       limits,
     );
     const response = JSON.stringify(
@@ -589,6 +602,28 @@ if (import.meta.vitest) {
     await expect(
       invalid.exchange({ outgoing: [], cursor: null }, signal()),
     ).rejects.toThrow();
+    const invalidResponse = JSON.stringify({
+      incoming: [],
+      acknowledged: ["INVALID_UTF8"],
+      cursor: JSON.stringify({
+        version: 1,
+        after: null,
+        received: null,
+        attempts: 0,
+        retryAt: 0,
+      }),
+    });
+    const [prefix, suffix] = invalidResponse.split("INVALID_UTF8");
+    const invalidUtf8 = processReplicaTransport({
+      executable: process.execPath,
+      args: [
+        "-e",
+        `process.stdout.write(Buffer.concat([Buffer.from(${JSON.stringify(prefix)}),Buffer.from([255]),Buffer.from(${JSON.stringify(suffix)})]))`,
+      ],
+    });
+    await expect(
+      invalidUtf8.exchange({ outgoing: [], cursor: null }, signal()),
+    ).rejects.toThrow(/encoded data/);
     const oversized = processReplicaTransport(
       {
         executable: process.execPath,
