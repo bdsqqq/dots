@@ -166,7 +166,11 @@ export function createAgentMemoryExtension(
           continue;
         }
         if (queued.has(d.deliveryId)) break;
-        const checks = await request({ kind: "check", deliveries: [d] }, 250);
+        const checks = await request({
+          kind: "check",
+          deliveries: [d],
+          purpose: "inbox",
+        });
         if (
           !Array.isArray(checks) ||
           checks[0]?.kind !== "eligible" ||
@@ -985,7 +989,22 @@ exit 1
         },
       ]);
       await f.session.prompt("zephyr");
-      expect(contexts).toHaveLength(2);
+      expect(
+        contexts,
+        JSON.stringify({
+          errors: f.errors.map(String),
+          enqueued: f.enqueued.length,
+          failures: f.manager
+            .getEntries()
+            .flatMap((entry) =>
+              entry.type === "message" &&
+              entry.message.role === "assistant" &&
+              entry.message.errorMessage
+                ? [entry.message.errorMessage]
+                : [],
+            ),
+        }),
+      ).toHaveLength(2);
       expect(contexts[1]).toContain("violet lamp");
       expect(contexts[1]).toContain("quiet-room.md");
       expect(f.session.getActiveToolNames()).not.toContain("memory_search");

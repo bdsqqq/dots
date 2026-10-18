@@ -353,6 +353,8 @@ export class FileMemoryStore implements C.MemoryStore {
   private readonly db: DatabaseSync;
   private watcher: FSWatcher | null = null;
   private readonly confirmed = new Map<string, string>();
+  private retainedView: { view: View; files: Map<string, string> } | null =
+    null;
   private preparingFiles: Map<string, string> | null = null;
   private preparationGuard: (() => void) | null = null;
   private finalizations: (() => void)[] | null = null;
@@ -813,6 +815,29 @@ export class FileMemoryStore implements C.MemoryStore {
     return JSON.parse(bytes);
   }
   private recover(confirm = true): View {
+    // Inbox validation warms this private snapshot before foreground context needs it.
+    // Every physical identity is still checked; this never certifies durability or
+    // bypasses the later WAL fence / editable-file scan. Clone both ways so SDK
+    // consumers cannot mutate cached authority through returned revision objects.
+    if (!confirm && this.preparingFiles && this.retainedView) {
+      const cached = this.retainedView;
+      let unchanged = true;
+      try {
+        for (const [path, identity] of cached.files)
+          if (physicalIdentity(path) !== identity) {
+            unchanged = false;
+            break;
+          }
+      } catch {
+        unchanged = false;
+      }
+      if (unchanged) {
+        for (const [path, identity] of cached.files)
+          this.preparingFiles.set(path, identity);
+        return structuredClone(cached.view);
+      }
+      this.retainedView = null;
+    }
     const view: View = {
       accepted: new Map(),
       revisions: new Map(),
@@ -850,7 +875,13 @@ export class FileMemoryStore implements C.MemoryStore {
         }
       }
     }
-    return this.deriveView(view, confirm);
+    const derived = this.deriveView(view, confirm);
+    if (this.preparingFiles)
+      this.retainedView = {
+        view: structuredClone(derived),
+        files: new Map(this.preparingFiles),
+      };
+    return derived;
   }
   private readAccepted(): Accepted[] {
     const retained: Accepted[] = [];
@@ -5189,6 +5220,28 @@ fcntl.fcntl(3,51)
         f.store.close();
         rmSync(f.dir, { recursive: true });
       }
+    }
+  });
+  it("warm read snapshots isolate caller mutation and reject changed physical history", async () => {
+    const f = fixture();
+    try {
+      const n = note("read-cache");
+      await f.store.commit(change("read-cache", [n]));
+      await f.store.listNotes(scope);
+      const returned = await f.store.listNotes(scope);
+      Reflect.set(returned[0]!, "links", ["forged-link" as C.NoteId]);
+      expect((await f.store.listNotes(scope))[0]!.links).toEqual(n.links);
+      const path = join(f.config.data, "commits", sha256("read-cache"));
+      const manifest = JSON.parse(readFileSync(path, "utf8"));
+      writeFileSync(
+        path,
+        JSON.stringify({ ...manifest, hash: "0".repeat(64) }),
+      );
+      await expect(f.store.listNotes(scope)).rejects.toThrow(
+        "manifest hash mismatch",
+      );
+    } finally {
+      f.store.close();
     }
   });
   it("accepts the supplied snapshot even if its caller mutates the request during coordination contention", async () => {

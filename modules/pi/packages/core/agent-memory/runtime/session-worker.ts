@@ -44,7 +44,12 @@ export type SessionWorkerRequest =
   | { kind: "project-context"; cwd: string }
   | { kind: "recall"; intent: C.RecallIntent }
   | { kind: "recover"; target: C.RecallTarget; intent: C.RecallIntent }
-  | { kind: "check"; deliveries: readonly C.RecallDelivery[] }
+  | {
+      kind: "check";
+      deliveries: readonly C.RecallDelivery[];
+      /** inbox validation is background work; native context remains fail-closed and short. */
+      purpose?: "context" | "inbox";
+    }
   | { kind: "ack"; deliveries: readonly C.RecallDelivery[] }
   | {
       kind: "capture";
@@ -124,7 +129,9 @@ export class SessionMemoryWorker {
           project: Promise<NativeProjectContext | null>;
         }),
     timeoutMs: number | undefined = this.options.timeoutMs ??
-      (request.kind === "check" ? 250 : undefined),
+      (request.kind === "check" && request.purpose !== "inbox"
+        ? 250
+        : undefined),
   ): Promise<SessionWorkerResult> {
     if (this.closed) return Promise.reject(new Error("memory worker closed"));
     if (request.kind !== "capture" && this.pending.size >= 32)
@@ -203,6 +210,17 @@ export async function runSessionMemoryWorker(): Promise<void> {
     : new LinkedSearchIndex();
   const signal = new AbortController().signal;
   const now = (): string => new Date().toISOString();
+  const backgroundStore = (): Promise<FileMemoryStore> =>
+    openedStore
+      ? Promise.resolve(openedStore)
+      : (openingStore ??= FileMemoryStore.open(data.store, { signal })
+          .then((store) => {
+            openedStore = store;
+            return store;
+          })
+          .finally(() => {
+            openingStore = undefined;
+          }));
   const execute = async (
     request: SessionWorkerRequest,
   ): Promise<SessionWorkerResult> => {
@@ -214,13 +232,18 @@ export async function runSessionMemoryWorker(): Promise<void> {
     // A cold eligibility request owns the same short budget during opening as
     // during authentication. Never cache its expiring signal on the worker store.
     if (request.kind === "check") {
-      const checkOptions = {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(150)]),
-        contentionTimeoutMs: 150,
-      };
-      const ephemeral = !openedStore;
-      const store =
-        openedStore ?? (await FileMemoryStore.open(data.store, checkOptions));
+      const foreground = request.purpose !== "inbox";
+      const checkOptions = foreground
+        ? {
+            signal: AbortSignal.any([signal, AbortSignal.timeout(150)]),
+            contentionTimeoutMs: 150,
+          }
+        : { signal };
+      const ephemeral = foreground && !openedStore;
+      const store = foreground
+        ? (openedStore ??
+          (await FileMemoryStore.open(data.store, checkOptions)))
+        : await backgroundStore();
       try {
         return await Promise.all(
           request.deliveries.map(async (delivery) => {
@@ -246,16 +269,7 @@ export async function runSessionMemoryWorker(): Promise<void> {
         if (ephemeral) store.close();
       }
     }
-    const store =
-      openedStore ??
-      (await (openingStore ??= FileMemoryStore.open(data.store, { signal })
-        .then((store) => {
-          openedStore = store;
-          return store;
-        })
-        .finally(() => {
-          openingStore = undefined;
-        })));
+    const store = await backgroundStore();
     switch (request.kind) {
       case "recall":
         return sharedRecallHandler(request.intent, {
