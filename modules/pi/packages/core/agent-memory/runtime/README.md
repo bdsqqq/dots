@@ -11,17 +11,20 @@ compatibility entrypoint, not the production contention-safe opener.
 
 ```ts
 import { openMemoryApplication } from "@bdsqqq/pi/core/agent-memory";
-const signal = AbortSignal.timeout(150_000);
-const app = await openMemoryApplication({}, signal);
-try {
-  await app.maintain(signal);
-} finally {
-  app.close();
+async function reconcilePending(signal: AbortSignal) {
+  const app = await openMemoryApplication({}, signal);
+  try {
+    return await app.reconcile(signal);
+  } finally {
+    app.close();
+  }
 }
 ```
 
-supply `configuration`, `model`, `index` or `transport` only when the caller owns
-that boundary. supplied snapshots in `catchUpNativeSources` bypass source reads.
+opening cancellation covers acquisition, not the successful store's later
+operations. per-operation signals fence cancellation while durable shutdown retry
+can still finalize. supply `configuration`, `model`, `index` or `transport` only
+when the caller owns that boundary. supplied snapshots in `catchUpNativeSources` bypass source reads.
 SDK capture/recall/dispatch and the JSON adapter use the shared handlers, rather
 than separate policies. the SDK also exports `capture`, `runReconciliation`,
 `reconcile`, `nativeConsolidationModel`, `sharedRecallHandler`,
@@ -61,22 +64,30 @@ workspaces remain personal, and today's HEAD is never claimed as an old event's 
 
 Nix supplies Node, Python 3 (Darwin `F_FULLFSYNC`), SSH and compatibility Git.
 its launcher resolves dependencies and source from the same editable live tree.
-launchd/systemd run bounded `maintain` processes every minute, independently of
-interactive sessions. each pass captures bounded source pages, reconciles at
-most one eligible batch across owned personal/project backlogs, then retries
-configured peers. disabled automatic maintenance does not export existing memory.
+launchd/systemd supervise separate `catch-up`, `reconcile` and `replicate` jobs
+every minute. the wake interval does not kill running work. capture and sync
+continue while consolidation waits on a model, independently of interactive
+sessions. `maintain` composes these same handlers concurrently, awaits all owned
+phases before close, and reports aggregate failure rather than hiding it.
+disabled automatic maintenance does not export existing memory.
 directory/span cursors and append-prefix fingerprints survive process exit, but
 retained acceptance receipts—not progress files—establish coverage after a restore.
 replayable capture intents retain the first acceptance clock, so old source dates
 do not age new pending work. appends resume retained spans; the native snapshot
 loader still reads a whole session before bounded windows are selected.
-pending-age/threshold/recovery and durable no-change/backoff prevent empty thinking runs. replication
-has its own durable bounded retry state; a failed peer does not revoke local
+pending-age/threshold/recovery and durable no-change/backoff prevent empty
+thinking runs. reconciliation renews logical ownership across long model work
+without holding a SQLite transaction; lost/reclaimed owners cannot accept late
+output. caller budgets remain explicit; there is no default whole-job/model kill.
+retry outcomes stay host-local and are deliberately absent from replica scans.
+replication has its own bounded retry state; a failed peer does not revoke local
 acceptance. incremental disclosure proofs bind exact payloads, local policy and a
 retained-history continuity epoch. append/restart preserve that epoch; removed or
 replaced history invalidates cached descendants. lost proofs rebuild bounded causal
-prefixes with backoff, rather than imposing a lifetime history ceiling. the CLI
-aborts at 150 seconds and terminates at 155 seconds.
+prefixes with backoff, rather than imposing a lifetime history ceiling. transport
+liveness limits belong to each exchange, not the background job. configured peer
+attempts progress independently; safe diagnostics identify known failure boundaries
+without echoing peer-controlled stderr or private note/provider data.
 
 `maintain` and `replicate` are manual catch-up commands too. process tests prove
 fixture propagation; deployment, service activation and real fleet convergence
@@ -92,7 +103,8 @@ also exposes the `pi-memory` executable.
 | --- | --- | --- |
 | `status` | none | local notes/suppressions, paths and configured peers |
 | `catch-up` | none | bounded native-source capture and progress |
-| `maintain` | none | capture, eligible reconciliation and replication outcomes |
+| `reconcile` | none | eligible backlog, renewable ownership and durable outcomes |
+| `maintain` | none | concurrent capture/reconciliation/replication; waits for all phases, reports failure |
 | `replicate` | none | bounded per-peer synchronization/backoff/errors |
 | `capture` | `{ "windows": [...] }` | shared capture receipt for validated source windows |
 | `recall` | `{ "intent": {...} }` | shared queued/empty/discarded outcome |
