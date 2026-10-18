@@ -5,6 +5,7 @@ export type * from "./runtime/contracts.js";
 export * from "./runtime/config.js";
 export * from "./runtime/application.js";
 export * from "./runtime/pi-source.js";
+export * from "./runtime/project-context.js";
 export * from "./runtime/catch-up.js";
 export * from "./runtime/legacy-import.js";
 export * from "./runtime/peer-auth.js";

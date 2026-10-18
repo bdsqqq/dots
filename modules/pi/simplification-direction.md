@@ -1,8 +1,9 @@
 # pi simplification direction
 
 recorded 2026-10-17 from the user's feedback after the extension inventory.
-implementation is now authorized through the project below; open product
-decisions and live-data/activation boundaries remain explicit.
+the P0–P6 project below is historical. the user's subsequent automatic-memory
+choice and implementation contract live in [pi memory simplification](memory-simplification.md).
+live-data and activation boundaries remain explicit.
 
 ## simplify before considering a durable port
 
@@ -264,6 +265,7 @@ relocation or auth change was needed. local SSH signature verification remains
 unavailable without `allowedSignersFile`; signatures are embedded.
 
 the [memory assessment](packages/core/agent-memory/simplification-assessment.md)
-recommends explicit guidance plus deliberate search as a hypothesis, not a proven
-usefulness result. automatic capture/injection, governed data and services remain
-unchanged pending the user's decision. pi durable remains a separate project.
+recommended deliberate search as a hypothesis, not a measured usefulness result.
+the user subsequently chose automatic Pi-owned capture, asynchronous recall and
+independent backlog reconciliation; [the follow-up plan](memory-simplification.md)
+supersedes that memory recommendation. pi durable remains a separate project.
