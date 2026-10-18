@@ -10,9 +10,10 @@ import type { LoadedSession } from "../../sessions/contracts.js";
 import type * as C from "./contracts.js";
 import { FileMemoryStore, type FileMemoryStoreConfig } from "./store.js";
 import { LinkedSearchIndex } from "./index.js";
-import { sharedRecallHandler, sharedDispatchHandler } from "./recall.js";
+import { sharedRecallHandler } from "./recall.js";
+import { capture } from "./capture.js";
 import { nativeSourceProducer } from "./pi-source.js";
-import { canonicalJSON, sha256 } from "./identity.js";
+import { canonicalJSON, sha256, sameValue } from "./identity.js";
 import type { MemoryConfiguration } from "./config.js";
 
 export interface SessionWorkerOptions {
@@ -169,29 +170,22 @@ export async function runSessionMemoryWorker(): Promise<void> {
         });
       case "recover": {
         for (let n = 0; n < 32; n++) {
-          let found: C.RecallDelivery | null = null;
-          const outcome = await sharedDispatchHandler(
-            { target: request.target, now },
-            {
-              store,
-              inbox: {
-                async enqueue(delivery, check) {
-                  const result: C.DeliveryEligibility =
-                    delivery.intent.entryId !== request.intent.entryId ||
-                    delivery.intent.intentId !== request.intent.intentId
-                      ? { kind: "discard", reason: "obsolete" }
-                      : await check();
-                  if (result.kind === "eligible") {
-                    found = delivery;
-                    return { kind: "queued" };
-                  }
-                  return result;
-                },
-              },
-            },
-          );
-          if (found) return found;
-          if (outcome.kind !== "discarded") return null;
+          const delivery = await store.nextDelivery(request.target);
+          if (!delivery) return null;
+          const eligibility: C.DeliveryEligibility =
+            delivery.intent.intentId !== request.intent.intentId ||
+            delivery.intent.entryId !== request.intent.entryId ||
+            delivery.intent.query !== request.intent.query ||
+            !sameValue(delivery.intent.target, request.intent.target)
+              ? { kind: "discard", reason: "obsolete" }
+              : await store.checkDelivery(delivery, now());
+          // returning to the parent is a peek, not native persistence.
+          if (eligibility.kind === "eligible") return delivery;
+          await store.recordDispatch(delivery.deliveryId, {
+            kind: "discarded",
+            deliveryId: delivery.deliveryId,
+            reason: eligibility.reason,
+          });
         }
         return null;
       }
@@ -199,22 +193,29 @@ export async function runSessionMemoryWorker(): Promise<void> {
       // heads/suppression, using a check-only id that has no dispatch receipt.
       case "check":
         return Promise.all(
-          request.deliveries.map((delivery) =>
-            store.checkDelivery(
+          request.deliveries.map(async (delivery) => {
+            const original = await store.readDelivery(delivery.deliveryId);
+            if (!original || !sameValue(original, delivery))
+              return { kind: "discard", reason: "obsolete" } as const;
+            return store.checkDelivery(
               {
-                ...delivery,
-                deliveryId: `${delivery.deliveryId}:context` as C.DeliveryId,
+                ...original,
+                deliveryId: `${original.deliveryId}:context` as C.DeliveryId,
               },
               now(),
-            ),
-          ),
+            );
+          }),
         );
       case "ack":
-        for (const d of request.deliveries)
+        for (const d of request.deliveries) {
+          const original = await store.readDelivery(d.deliveryId);
+          if (!original || !sameValue(original, d))
+            throw new Error("untrusted memory receipt");
           await store.recordDispatch(d.deliveryId, {
             kind: "queued",
             deliveryId: d.deliveryId,
           });
+        }
         return null;
       case "capture": {
         const sessionId = request.snapshot.header.id as C.SessionId;
@@ -232,7 +233,6 @@ export async function runSessionMemoryWorker(): Promise<void> {
           },
         };
         let after: C.SourceSpan | null = null;
-        // temporary M2 bridge: acceptance only, no duplicate capture/model policy.
         // stable authored clocks make a replay payload identical across retries.
         for (let page = 0; page < 64; page++) {
           const result = await producer.read(
@@ -251,19 +251,22 @@ export async function runSessionMemoryWorker(): Promise<void> {
             capturedAt: original.excerpts[0].occurredAt,
           }));
           if (windows.length) {
-            const receipt = await store.commit({
-              commitId: sha256(
-                canonicalJSON({ capture: windows.map((w) => w.windowId) }),
-              ) as C.CommitId,
-              now: windows[0]!.capturedAt,
-              windows,
-              edits: [],
-              suppressions: [],
-              outcomes: [],
-              lease: null,
-            });
-            if (receipt.kind !== "locally-committed")
-              throw new Error(`capture ${receipt.kind}`);
+            const receipt = await capture(
+              {
+                source: { kind: "provided", windows },
+                scope: request.scope,
+                commitId: sha256(
+                  canonicalJSON({ capture: windows.map((w) => w.windowId) }),
+                ) as C.CommitId,
+                now: windows[0]!.capturedAt,
+              },
+              { store },
+            );
+            if (
+              receipt.kind !== "locally-committed" &&
+              receipt.kind !== "unchanged"
+            )
+              throw new Error(`capture ${receipt.kind}: ${receipt.reason}`);
           }
           if (result.complete) return "captured";
           after = result.next;
