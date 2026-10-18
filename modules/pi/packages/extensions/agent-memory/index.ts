@@ -766,7 +766,12 @@ if (import.meta.vitest) {
               },
             ],
           });
-          return fauxAssistantMessage("first");
+          return fauxAssistantMessage(
+            fauxToolCall("codemode", {
+              code: 'text("ordinary continuation");',
+            }),
+            { stopReason: "toolUse" },
+          );
         },
         (ctx) => {
           contexts.push(JSON.stringify(ctx));
@@ -775,7 +780,8 @@ if (import.meta.vitest) {
       ]);
       await f.session.prompt("zephyr");
       expect(f.errors.map(String)).toEqual([]);
-      expect(contexts).toHaveLength(1);
+      expect(contexts).toHaveLength(2);
+      expect(contexts[1]).toContain("ordinary continuation");
       expect(contexts.join("")).not.toContain("violet lamp");
       // without the context gate, the persisted native inbox still contains this body.
       expect(
