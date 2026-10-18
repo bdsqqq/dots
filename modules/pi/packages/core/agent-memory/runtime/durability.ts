@@ -91,12 +91,17 @@ export function confirmDurable(path: string): void {
   cleanupDurableStages(path);
 }
 /** exclusive publication keeps an existing immutable value intact on collision. */
-function createImmutable(path: string, bytes: string | Buffer): void {
+function createImmutable(
+  path: string,
+  bytes: string | Buffer,
+  beforeLink?: () => void,
+): void {
   durableDirectory(dirname(path));
   const prefix = `.pi-memory-stage-${basename(path)}-`;
   if (existsSync(path)) {
     if (!readFileSync(path).equals(Buffer.from(bytes)))
       throw new IntegrityError(`immutable collision: ${path}`);
+    beforeLink?.();
   } else {
     const temporary = join(dirname(path), `${prefix}${randomUUID()}`);
     const fd = openSync(temporary, "wx", 0o600);
@@ -106,6 +111,7 @@ function createImmutable(path: string, bytes: string | Buffer): void {
     } finally {
       closeSync(fd);
     }
+    beforeLink?.();
     try {
       linkSync(temporary, path);
     } catch (e) {
@@ -124,8 +130,12 @@ export function prepareDurableCreate(
   confirmDurability(path);
   return physicalIdentity(path) === identity ? identity : null;
 }
-export function durableCreate(path: string, bytes: string | Buffer): void {
-  createImmutable(path, bytes);
+export function durableCreate(
+  path: string,
+  bytes: string | Buffer,
+  beforeLink?: () => void,
+): void {
+  createImmutable(path, bytes, beforeLink);
   confirmDurable(path);
 }
 
