@@ -82,6 +82,7 @@ export function createAgentMemoryExtension(
     let readySinceRequest = false;
     const queued = new Set<string>();
     const captures = new Set<Promise<unknown>>();
+    let captureTail: Promise<unknown> = Promise.resolve();
     const checks = new Set<Promise<unknown>>();
     let captureReady:
       | { promise: Promise<void>; resolve: () => void }
@@ -431,7 +432,11 @@ export function createAgentMemoryExtension(
       };
       // Capture each finalized turn, but publish after the run settles: durable
       // filesystem flushes must not consume the next request's eligibility budget.
-      const capture = Promise.all([projectReady, captureReady?.promise])
+      const ready = Promise.all([projectReady, captureReady?.promise]);
+      // Settlement releases a burst of snapshots; submit one at a time so the
+      // bounded worker queue/deadlines cannot discard earlier finalized turns.
+      const capture = captureTail
+        .then(() => ready)
         .then(([observed]) =>
           request({
             kind: "capture",
@@ -442,6 +447,7 @@ export function createAgentMemoryExtension(
           }),
         )
         .catch(error);
+      captureTail = capture;
       captures.add(capture);
       void capture.finally(() => captures.delete(capture));
     });
@@ -1377,6 +1383,59 @@ exit 1
     ).rejects.toThrow("violet lamp");
   });
 
+  it("settlement preserves every finalized source in a run longer than the worker queue", async () => {
+    const turns = 40;
+    const f = await fixture();
+    try {
+      const path = join(f.dir, "source-loop.txt");
+      await fs.writeFile(path, "ordinary tool result");
+      f.faux.setResponses(
+        Array.from({ length: turns }, (_, index) => () => {
+          const message = fauxAssistantMessage(
+            `retained source episode ${index}`,
+          );
+          return index === turns - 1
+            ? message
+            : {
+                ...message,
+                content: [
+                  ...message.content,
+                  {
+                    type: "toolCall" as const,
+                    id: `read-${index}`,
+                    name: "read",
+                    arguments: { path },
+                  },
+                ],
+                stopReason: "toolUse" as const,
+              };
+        }),
+      );
+      await f.session.prompt("tangerine quasar flux");
+      expect(
+        f.session.messages.filter((message) => message.role === "assistant"),
+      ).toHaveLength(turns);
+      await f.session.extensionRunner.emit({
+        type: "session_shutdown",
+        reason: "reload",
+      });
+      const windows = (
+        await f.store.forPeer("source-audit").scan(null, 100)
+      ).flatMap((change) => change.windows);
+      const texts = new Set(
+        windows.flatMap((window) =>
+          window.excerpts.map((excerpt) => excerpt.text),
+        ),
+      );
+      for (let index = 0; index < turns; index++)
+        expect(
+          texts.has(`retained source episode ${index}`),
+          `missing finalized source ${index}`,
+        ).toBe(true);
+    } finally {
+      await f.close();
+    }
+  }, 60_000);
   it("the built native adapter finds its actual worker after bundler splitting and consumes the shared recall implementation", async () => {
     const built = (await import(
       pathToFileURL(join(artifact, "dist/extensions/agent-memory.js")).href
