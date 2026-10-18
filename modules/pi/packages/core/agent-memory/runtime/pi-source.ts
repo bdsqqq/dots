@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
   parseSessionEntries,
@@ -18,56 +17,14 @@ import { redact } from "../evidence.js";
 import type {
   EntryId,
   SourceExcerpt,
-  SourceHash,
   SourcePage,
   SourceProducer,
   SourceReadRequest,
   SourceSpan,
   SourceWindow,
-  WindowId,
 } from "./contracts.js";
 
-/** sorted object keys, ordered arrays, no whitespace; JSON values only. */
-export function canonicalJSON(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    const json = JSON.stringify(value);
-    if (json === undefined) throw new Error("expected a JSON value");
-    return json;
-  }
-  if (Array.isArray(value)) return `[${value.map(canonicalJSON).join(",")}]`;
-  return `{${Object.entries(value)
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([k, v]) => `${JSON.stringify(k)}:${canonicalJSON(v)}`)
-    .join(",")}}`;
-}
-
-function digest(value: unknown): string {
-  return createHash("sha256")
-    .update(canonicalJSON(value), "utf8")
-    .digest("hex");
-}
-
-/** capture time and importance are scheduling metadata, not evidence identity. */
-export function hashSourceWindow(
-  window: Pick<SourceWindow, "source" | "scope" | "excerpts">,
-): SourceHash {
-  return digest({
-    source: window.source,
-    scope: window.scope,
-    excerpts: window.excerpts,
-  }) as SourceHash;
-}
-
-export function windowId(
-  window: Pick<SourceWindow, "source" | "sourceHash" | "excerpts">,
-): WindowId {
-  return digest({
-    source: window.source,
-    spans: window.excerpts.map((e) => e.span),
-    sourceHash: window.sourceHash,
-  }) as WindowId;
-}
+import { canonicalJSON, hashSourceWindow, windowId } from "./identity.js";
 
 export interface NativeSourcePolicy {
   /** explicit caller authorization, not permission inferred from a tool's output. */
@@ -317,7 +274,7 @@ export function buildNativeSourcePage(
       windows.push({
         ...base,
         sourceHash,
-        windowId: windowId({ ...base, sourceHash }),
+        windowId: windowId(base),
         capturedAt,
         importance: "ordinary",
       });
