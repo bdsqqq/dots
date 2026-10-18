@@ -336,16 +336,35 @@ export class FileMemoryStore implements C.MemoryStore {
   private activeAccepted: Map<C.CommitId, Accepted> | null = null;
   private readonly invalidEditable = new Map<string, string>();
   private closed = false;
-  /** production opener; failed attempts close their connection before yielding. */
+  /**
+   * signal owns acquisition/initialization only; finalization may outlive it.
+   * pass an explicit method signal to cancel an operation after opening.
+   * failed attempts close their connection before yielding.
+   */
   static async open(
     config: FileMemoryStoreConfig,
     options: FileMemoryStoreOptions = {},
   ): Promise<FileMemoryStore> {
-    return contend(() => new FileMemoryStore(config, options), options, 5000);
+    return contend(
+      () => {
+        const store = new FileMemoryStore(config, options);
+        try {
+          options.signal?.throwIfAborted();
+          const { signal: _acquisitionSignal, ...defaults } = options;
+          store.options = defaults;
+          return store;
+        } catch (error) {
+          store.close();
+          throw error;
+        }
+      },
+      options,
+      5000,
+    );
   }
   constructor(
     config: FileMemoryStoreConfig,
-    private readonly options: FileMemoryStoreOptions = {},
+    private options: FileMemoryStoreOptions = {},
   ) {
     contentionBudget(options, 5000);
     options.signal?.throwIfAborted();
@@ -4080,6 +4099,62 @@ fcntl.fcntl(3,51)
       rmSync(f.dir, { recursive: true });
     }
   }, 20000);
+  it("scopes a successful opener's signal to initialization and retains explicit operation cancellation", async () => {
+    const f = fixture(),
+      acquisition = new AbortController();
+    try {
+      f.store.close();
+      f.store = await FileMemoryStore.open(f.config, {
+        signal: acquisition.signal,
+        contentionTimeoutMs: 0,
+      });
+      acquisition.abort(new Error("native shutdown"));
+      expect(
+        await f.store.commit(change("finalization", [note("finalized")])),
+      ).toMatchObject({ kind: "locally-committed" });
+      await expect(
+        f.store.commit(change("cancelled-operation", [note("cancelled")]), {
+          signal: acquisition.signal,
+        }),
+      ).rejects.toBe(acquisition.signal.reason);
+      const held = await holdWriter(f.config);
+      try {
+        await expect(
+          f.store.commit(change("retained-zero-budget")),
+        ).rejects.toBeInstanceOf(StoreContentionError);
+      } finally {
+        await held.release();
+      }
+      f.store.close();
+      const reopened = child(
+        f.config,
+        `const store=await FileMemoryStore.open(config);try{console.log(JSON.stringify({accepted:await store.hasAcceptedCommit('finalization'),cancelled:await store.hasAcceptedCommit('cancelled-operation'),notes:(await store.listNotes(${JSON.stringify(scope)})).map(n=>n.noteId)}));}finally{store.close();}`,
+      );
+      expect(reopened.status, String(reopened.stderr)).toBe(0);
+      expect(JSON.parse(String(reopened.stdout))).toEqual({
+        accepted: true,
+        cancelled: false,
+        notes: ["finalized"],
+      });
+      const init = new AbortController(),
+        reason = new Error("initialization cancelled");
+      await expect(
+        FileMemoryStore.open(
+          {
+            ...f.config,
+            publicationBoundary: (b) => {
+              if (b === "prepared") init.abort(reason);
+            },
+          },
+          { signal: init.signal },
+        ),
+      ).rejects.toBe(reason);
+      f.store = await FileMemoryStore.open(f.config);
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
   it("bounds contention, cancels opening and methods, and closes failed open connections", async () => {
     const f = fixture();
     const held = await holdWriter(f.config);
