@@ -491,14 +491,18 @@ async function reconcileWithBudget(
   let result: C.CommitResult;
   try {
     result = await deps.store.commit(change, { signal: owner.signal });
-  } catch {
+  } catch (acceptanceError) {
     // a throw after publication is ambiguous; exact replay discovers durable acceptance.
     try {
       result = await deps.store.commit(change, { signal: owner.signal });
     } catch {
-      return persistRetry(
+      const retry = await persistRetry(
         "acceptance failed; retry with fresh lease and corpus",
       );
+      // Publication can consume the lease before its durability finalizer throws.
+      // Failed cleanup cannot turn that unknown receipt into a nonacceptance claim.
+      if (retry.kind === "lease-lost") throw acceptanceError;
+      return retry;
     }
   }
   if (
@@ -1341,7 +1345,10 @@ if (import.meta.vitest) {
           lock.exec("COMMIT");
           held = false;
         }
-        if (phase === "ambiguous") await expect(running).rejects.toThrow();
+        if (phase === "ambiguous")
+          await expect(running).rejects.toThrow(
+            "fixture receipt interrupted after publication",
+          );
         else expect((await running).kind).toBe("locally-committed");
         if (phase === "published" || phase === "ambiguous") {
           expect(await f.store.listNotes(scope)).toHaveLength(1);
