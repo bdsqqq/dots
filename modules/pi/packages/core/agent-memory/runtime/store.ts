@@ -2194,8 +2194,22 @@ export class FileMemoryStore implements C.MemoryStore {
           },
         ).then(() => this.refreshed(() => undefined, true, options));
       },
-      acknowledge: async (commits, cursor) =>
-        this.transaction((v) => {
+      acknowledge: async (commits, cursor) => {
+        const writeCursor = () => {
+          this.db
+            .prepare(
+              "INSERT INTO peer_cursor VALUES (?,?) ON CONFLICT(peer) DO UPDATE SET cursor=excluded.cursor",
+            )
+            .run(peer, cursor);
+        };
+        // Backoff and proof-warming checkpoints accept no knowledge. Their
+        // persistence must not require a full physical history confirmation or
+        // mask an unavailable peer with an unrelated preparation conflict.
+        if (!commits.length) {
+          await contend(() => this.coordinateSync(writeCursor), options, 5000);
+          return;
+        }
+        await this.transaction((v) => {
           for (const id of commits) {
             if (!v.accepted.has(id))
               throw new Error("acknowledgment of unknown commit");
@@ -2203,12 +2217,9 @@ export class FileMemoryStore implements C.MemoryStore {
               .prepare("INSERT OR IGNORE INTO peer_ack VALUES (?,?)")
               .run(peer, id);
           }
-          this.db
-            .prepare(
-              "INSERT INTO peer_cursor VALUES (?,?) ON CONFLICT(peer) DO UPDATE SET cursor=excluded.cursor",
-            )
-            .run(peer, cursor);
-        }, options),
+          writeCursor();
+        }, options);
+      },
     };
   }
   private placements(): Placement[] {
@@ -5224,6 +5235,25 @@ fcntl.fcntl(3,51)
         f.store.close();
         rmSync(f.dir, { recursive: true });
       }
+    }
+  });
+  it("cursor-only backoff persists without knowledge I/O but cannot certify a data ACK", async () => {
+    const f = fixture();
+    try {
+      await f.store.commit(change("cursor-seed", [note("cursor-seed")]));
+      renameSync(
+        join(f.config.data, "objects"),
+        join(f.config.data, "objects-offline"),
+      );
+      const peer = f.store.forPeer("offline-peer", { contentionTimeoutMs: 0 });
+      await peer.acknowledge([], "bounded backoff checkpoint");
+      expect(await peer.readCursor()).toBe("bounded backoff checkpoint");
+      await expect(
+        peer.acknowledge(["cursor-seed" as C.CommitId], "false data ACK"),
+      ).rejects.toThrow();
+      expect(await peer.readCursor()).toBe("bounded backoff checkpoint");
+    } finally {
+      f.store.close();
     }
   });
   it("warm read snapshots isolate caller mutation and reject changed physical history", async () => {
