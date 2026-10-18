@@ -11,6 +11,9 @@
     "url": "git+https://github.com/bdsqqq/dots.git",
     "directory": "modules/pi"
   },
+  "bin": {
+    "pi-memory": "./dist/core/agent-memory.js"
+  },
   "files": [
     "dist"
   ],
