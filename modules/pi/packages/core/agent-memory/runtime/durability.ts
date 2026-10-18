@@ -4,10 +4,12 @@ import {
   existsSync,
   fsyncSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
   readdirSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -16,6 +18,18 @@ import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
 export class IntegrityError extends Error {}
+/** logical content hashes cannot certify a restored or replaced physical file. */
+export function physicalIdentity(path: string): string {
+  const link = lstatSync(path, { bigint: true });
+  const identity = (s: typeof link): string =>
+    [s.dev, s.ino, s.mode, s.nlink, s.size, s.mtimeNs, s.ctimeNs].join(":");
+  return (
+    identity(link) +
+    (link.isSymbolicLink()
+      ? `>${identity(statSync(path, { bigint: true }))}`
+      : "")
+  );
+}
 /** darwin's fsync alone does not force a drive-cache barrier. fail closed. */
 export function flushFile(fd: number): void {
   fsyncSync(fd);
@@ -77,7 +91,7 @@ export function confirmDurable(path: string): void {
   cleanupDurableStages(path);
 }
 /** exclusive publication keeps an existing immutable value intact on collision. */
-export function durableCreate(path: string, bytes: string | Buffer): void {
+function createImmutable(path: string, bytes: string | Buffer): void {
   durableDirectory(dirname(path));
   const prefix = `.pi-memory-stage-${basename(path)}-`;
   if (existsSync(path)) {
@@ -99,6 +113,19 @@ export function durableCreate(path: string, bytes: string | Buffer): void {
         throw e;
     }
   }
+}
+/** unreferenced objects grant no acceptance; cleanup waits for serialized admission. */
+export function prepareDurableCreate(
+  path: string,
+  bytes: string | Buffer,
+): string | null {
+  createImmutable(path, bytes);
+  const identity = physicalIdentity(path);
+  confirmDurability(path);
+  return physicalIdentity(path) === identity ? identity : null;
+}
+export function durableCreate(path: string, bytes: string | Buffer): void {
+  createImmutable(path, bytes);
   confirmDurable(path);
 }
 
@@ -122,6 +149,30 @@ if (import.meta.vitest) {
       expect(existsSync(matching)).toBe(false);
       expect(readFileSync(path, "utf8")).toBe("accepted bytes");
       expect(readFileSync(different, "utf8")).toBe("different bytes");
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+  it("prepares an immutable object without cleaning its stage or replacing conflicting bytes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "memory-object-prepare-"));
+    try {
+      const path = join(dir, "object");
+      expect(prepareDurableCreate(path, "prepared bytes")).toBe(
+        physicalIdentity(path),
+      );
+      const stages = readdirSync(dir).filter((name) =>
+        name.startsWith(".pi-memory-stage-object-"),
+      );
+      expect(stages).toHaveLength(1);
+      expect(readFileSync(join(dir, stages[0]!), "utf8")).toBe(
+        "prepared bytes",
+      );
+      expect(() => prepareDurableCreate(path, "different bytes")).toThrow(
+        "immutable collision",
+      );
+      expect(readFileSync(path, "utf8")).toBe("prepared bytes");
+      cleanupDurableStages(path);
+      expect(readdirSync(dir)).toEqual(["object"]);
     } finally {
       rmSync(dir, { recursive: true });
     }

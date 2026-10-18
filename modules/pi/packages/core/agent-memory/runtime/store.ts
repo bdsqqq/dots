@@ -7,7 +7,6 @@ import {
   renameSync,
   linkSync,
   lstatSync,
-  statSync,
   openSync,
   closeSync,
   watch,
@@ -29,6 +28,8 @@ import {
   durableCreate,
   confirmDurability,
   cleanupDurableStages,
+  prepareDurableCreate,
+  physicalIdentity,
   durableDirectory,
   flushDirectory,
   flushFile,
@@ -83,17 +84,6 @@ class SnapshotChanged extends LockUnavailable {
   constructor() {
     super(new Error("retained-history snapshot changed"));
   }
-}
-function physicalIdentity(path: string): string {
-  const link = lstatSync(path, { bigint: true });
-  const identity = (s: typeof link): string =>
-    [s.dev, s.ino, s.mode, s.nlink, s.size, s.mtimeNs, s.ctimeNs].join(":");
-  return (
-    identity(link) +
-    (link.isSymbolicLink()
-      ? `>${identity(statSync(path, { bigint: true }))}`
-      : "")
-  );
 }
 function contentionBudget(
   options: FileMemoryStoreOptions,
@@ -170,6 +160,11 @@ interface Placement {
   stash: string;
   snapshot: string | null;
   basis: string | null;
+}
+interface PreparedObject {
+  value: unknown;
+  bytes: string;
+  hash: string;
 }
 function json(path: string): unknown {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -334,6 +329,7 @@ export class FileMemoryStore implements C.MemoryStore {
   private readonly confirmed = new Map<string, string>();
   private preparingFiles: Map<string, string> | null = null;
   private activeAccepted: Map<C.CommitId, Accepted> | null = null;
+  private activeObjects: ReadonlyMap<unknown, string> | null = null;
   private readonly invalidEditable = new Map<string, string>();
   private closed = false;
   /**
@@ -486,8 +482,20 @@ export class FileMemoryStore implements C.MemoryStore {
   ): Promise<T> {
     return contend(() => this.transactionSync(run), options, 5000);
   }
-  private transactionSync<T>(run: (view: View) => T, write = true): T {
+  private transactionSync<T>(
+    run: (view: View) => T,
+    write = true,
+    objects: readonly PreparedObject[] = [],
+  ): T {
     if (this.closed) throw new Error("memory store is closed");
+    const prepared = new Map<string, string>();
+    for (const object of objects) {
+      const path = join(this.objects, object.hash);
+      const identity = prepareDurableCreate(path, object.bytes);
+      if (identity === null) throw new SnapshotChanged();
+      prepared.set(path, identity);
+      this.confirmed.set(path, identity);
+    }
     const generation = this.publicationGeneration();
     const files = new Map<string, string>();
     const cleanup = new Set<string>();
@@ -502,6 +510,9 @@ export class FileMemoryStore implements C.MemoryStore {
             if (match) cleanup.add(join(dir, match[1]!));
           }
       }
+      for (const [path, identity] of prepared) {
+        if (this.observe(path) !== identity) throw new SnapshotChanged();
+      }
       // Immutable bytes and physical durability are prepared without reserving
       // the database writer. The acceptance check below fences this exact read.
       view = this.recover(write);
@@ -512,6 +523,9 @@ export class FileMemoryStore implements C.MemoryStore {
     return this.coordinateSync(() => {
       this.validatePreparation(generation, files);
       this.activeAccepted = new Map(view.accepted);
+      this.activeObjects = new Map(
+        objects.map((object) => [object.value, object.hash]),
+      );
       try {
         if (write) {
           for (const path of cleanup)
@@ -521,6 +535,7 @@ export class FileMemoryStore implements C.MemoryStore {
         return run(view);
       } finally {
         this.activeAccepted = null;
+        this.activeObjects = null;
       }
     }, write);
   }
@@ -625,25 +640,38 @@ export class FileMemoryStore implements C.MemoryStore {
     run: (view: View) => T,
     write = true,
     options = this.options,
+    objects: readonly PreparedObject[] = [],
   ): Promise<T> {
-    return contend(() => this.refreshedSync(run, write), options, 5000);
+    return contend(
+      () => this.refreshedSync(run, write, objects),
+      options,
+      5000,
+    );
   }
-  private refreshedSync<T>(run: (view: View) => T, write: boolean): T {
+  private refreshedSync<T>(
+    run: (view: View) => T,
+    write: boolean,
+    objects: readonly PreparedObject[] = [],
+  ): T {
     if (!write) {
       const repair = Symbol();
       const previousProblems = new Map(this.invalidEditable);
       let result: T | typeof repair = repair;
       let entered = false;
       try {
-        result = this.transactionSync((view) => {
-          // Atomic immutable manifests form a readable prefix during WAL writes.
-          // Dry runs never import an in-flight placement: changes are rechecked
-          // under IMMEDIATE before any filesystem mutation.
-          if (this.scan(view, false) || this.materialize(view, false))
-            return repair;
-          entered = true;
-          return run(view);
-        }, false);
+        result = this.transactionSync(
+          (view) => {
+            // Atomic immutable manifests form a readable prefix during WAL writes.
+            // Dry runs never import an in-flight placement: changes are rechecked
+            // under IMMEDIATE before any filesystem mutation.
+            if (this.scan(view, false) || this.materialize(view, false))
+              return repair;
+            entered = true;
+            return run(view);
+          },
+          false,
+          objects,
+        );
       } catch (error) {
         // A concurrent placement can rename between traversal and read. Only
         // preflight failures fall back; rerun validation while serialized.
@@ -657,14 +685,20 @@ export class FileMemoryStore implements C.MemoryStore {
       }
       if (result !== repair) return result;
     }
-    return this.transactionSync((view) => {
-      this.scan(view);
-      const fresh = this.recover();
-      this.materialize(fresh);
-      return run(this.recover());
-    });
+    return this.transactionSync(
+      (view) => {
+        this.scan(view);
+        const fresh = this.recover();
+        this.materialize(fresh);
+        return run(this.recover());
+      },
+      true,
+      objects,
+    );
   }
   private put(value: unknown): string {
+    const prepared = this.activeObjects?.get(value);
+    if (prepared !== undefined) return prepared;
     const bytes = canonicalJSON(value);
     const hash = sha256(bytes);
     durableCreate(join(this.objects, hash), bytes);
@@ -930,7 +964,17 @@ export class FileMemoryStore implements C.MemoryStore {
     value: C.LocalChangeSet,
     options: FileMemoryStoreOptions = this.options,
   ): Promise<C.CommitResult> {
-    const change = parseChange(value);
+    // Preparation must own its bytes across asynchronous contention. A caller
+    // mutating its request cannot change which payload a prepared hash names.
+    const change = parseChange(structuredClone(value));
+    const objects = [
+      ...change.edits.map((edit) => edit.revision),
+      ...change.windows,
+      change,
+    ].map((value) => {
+      const bytes = canonicalJSON(value);
+      return { value, bytes, hash: sha256(bytes) };
+    });
     return this.refreshed(
       (view) => {
         const previous = view.accepted.get(change.commitId);
@@ -1106,6 +1150,7 @@ export class FileMemoryStore implements C.MemoryStore {
       },
       true,
       options,
+      objects,
     );
   }
   private preview(
@@ -3608,7 +3653,7 @@ if (import.meta.vitest) {
     }
   }, 30000);
   it.runIf(process.platform === "darwin")(
-    "reconfirms a physically replaced same-byte object before replay ACK, with a path-only cache negative control",
+    "reconfirms physically replaced same-byte history before commit ACK, with a path-only cache negative control",
     async () => {
       for (const physical of [true, false]) {
         const f = fixture();
@@ -3632,18 +3677,20 @@ if (import.meta.vitest) {
               ),
             );
           }
+          const c = change("replacement-replay", [note("replacement")]);
+          const targetHash = sha256(canonicalJSON(c.edits[0]!.revision));
           const helper = join(f.dir, "python3");
           writeFileSync(
             helper,
             `#!/usr/bin/python3
 import os,fcntl
-if os.environ.get('PI_MEMORY_FIXTURE_FAIL_BARRIER') == '1':
+p=fcntl.fcntl(3,50,b'\\0'*1024).split(b'\\0')[0].decode()
+if os.environ.get('PI_MEMORY_FIXTURE_FAIL_BARRIER') == '1' and os.path.basename(p) == ${JSON.stringify(targetHash)}:
  fcntl.fcntl(3,2147483646)
 fcntl.fcntl(3,51)
 `,
           );
           chmodSync(helper, 0o700);
-          const c = change("replacement-replay", [note("replacement")]);
           const result = spawnSync(
             process.execPath,
             [
@@ -3657,7 +3704,7 @@ fcntl.fcntl(3,51)
           const path=config.data+'/objects/'+${JSON.stringify(sha256(canonicalJSON(c.edits[0]!.revision)))};
           writeFileSync(path+'.replacement',readFileSync(path));renameSync(path+'.replacement',path);
           process.env.PI_MEMORY_FIXTURE_FAIL_BARRIER='1';let failed=false;
-          try{await store.commit(c);}catch(error){failed=String(error).includes('F_FULLFSYNC');}
+          try{await store.commit(${JSON.stringify(change("post-replacement"))});}catch(error){failed=String(error).includes('F_FULLFSYNC');}
           store.close();assert.equal(failed,true,'same-byte replacement inherited old physical ACK');
         `,
             ],
@@ -4099,6 +4146,45 @@ fcntl.fcntl(3,51)
       rmSync(f.dir, { recursive: true });
     }
   }, 20000);
+  it("accepts the supplied snapshot even if its caller mutates the request during coordination contention", async () => {
+    const f = fixture();
+    let held: Awaited<ReturnType<typeof holdWriter>> | undefined;
+    try {
+      const n = note("owned-snapshot"),
+        request = change("owned-snapshot", [n], [window("owned-snapshot")]);
+      held = await holdWriter(f.config);
+      const committing = f.store.commit(request, { contentionTimeoutMs: 2000 });
+      Reflect.set(request, "commitId", "caller-retargeted");
+      Reflect.set(
+        n,
+        "markdown",
+        n.markdown + "\ncaller changed after submission",
+      );
+      await held.release();
+      held = undefined;
+      expect(await committing).toMatchObject({
+        kind: "locally-committed",
+        commitId: "owned-snapshot",
+      });
+      const accepted = (await f.store.forPeer("fixture").scan(null, 10))[0]!;
+      expect(accepted.commitId).toBe("owned-snapshot");
+      expect(accepted.revisions[0]!.markdown).not.toContain(
+        "caller changed after submission",
+      );
+      f.store.close();
+      f.store = await FileMemoryStore.open(f.config);
+      expect(
+        await f.store.hasAcceptedCommit("owned-snapshot" as C.CommitId),
+      ).toBe(true);
+      expect(
+        await f.store.hasAcceptedCommit("caller-retargeted" as C.CommitId),
+      ).toBe(false);
+    } finally {
+      await held?.release();
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
   it("scopes a successful opener's signal to initialization and retains explicit operation cancellation", async () => {
     const f = fixture(),
       acquisition = new AbortController();
