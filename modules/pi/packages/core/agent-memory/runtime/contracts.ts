@@ -430,6 +430,8 @@ export interface MemoryStore {
     now: Timestamp,
   ): Promise<DeliveryEligibility>;
   queueDelivery(delivery: RecallDelivery): Promise<"queued" | "duplicate">;
+  /** original accepted payload, including after ACK; native receipts are not authority. */
+  readDelivery(deliveryId: DeliveryId): Promise<RecallDelivery | null>;
   nextDelivery(target: RecallTarget): Promise<RecallDelivery | null>;
   recordDispatch(
     deliveryId: DeliveryId,

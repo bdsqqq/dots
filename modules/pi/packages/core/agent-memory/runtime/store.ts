@@ -931,6 +931,14 @@ export class FileMemoryStore implements C.MemoryStore {
       return "queued";
     });
   }
+  async readDelivery(id: C.DeliveryId): Promise<C.RecallDelivery | null> {
+    const path = join(this.outbox, sha256(id));
+    if (!existsSync(path)) return null;
+    const delivery = parseDelivery(this.localValue(path));
+    if (delivery.deliveryId !== id)
+      throw new IntegrityError("outbox identity mismatch");
+    return delivery;
+  }
   async nextDelivery(target: C.RecallTarget): Promise<C.RecallDelivery | null> {
     return this.refreshed(() => {
       for (const file of readdirSync(this.outbox)
@@ -2150,6 +2158,8 @@ if (import.meta.vitest) {
       f.store.close();
       f.store = new FileMemoryStore(f.config);
       expect(await f.store.queueDelivery(d)).toBe("duplicate");
+      expect(await f.store.readDelivery(d.deliveryId)).toEqual(d);
+      expect(await f.store.readDelivery("unknown" as C.DeliveryId)).toBeNull();
       expect(await f.store.nextDelivery(d.intent.target)).toEqual(d);
       await f.store.commit({
         ...change("suppress"),
