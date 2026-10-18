@@ -453,19 +453,28 @@ export function nativeConsolidationModel(
         noTools: "all",
         tools: [],
       });
+      let rejectAbort!: (reason: unknown) => void;
+      const interrupted = new Promise<never>((_, reject) => {
+        rejectAbort = reject;
+      });
       const abort = () => {
-        void session.abort();
+        // provider cancellation may settle later; session resources still belong to this call.
+        void session.abort().catch(() => {});
+        rejectAbort(signal.reason ?? new Error("memory model interrupted"));
       };
       signal.addEventListener("abort", abort, { once: true });
       try {
         signal.throwIfAborted();
-        await session.prompt(
-          JSON.stringify({
-            schema: consolidationProposalSchema,
-            sourceAndCorpus: input,
-          }),
-          { expandPromptTemplates: false },
-        );
+        await Promise.race([
+          session.prompt(
+            JSON.stringify({
+              schema: consolidationProposalSchema,
+              sourceAndCorpus: input,
+            }),
+            { expandPromptTemplates: false },
+          ),
+          interrupted,
+        ]);
         signal.throwIfAborted();
         const last = session.messages.at(-1);
         if (!last || last.role !== "assistant" || last.stopReason !== "stop")
@@ -873,6 +882,103 @@ if (import.meta.vitest) {
       });
       expect(existsSync(join(f.dir, ".pi", "sessions"))).toBe(false);
     } finally {
+      f.store.close();
+    }
+  });
+  it("native SDK cancellation releases the caller before a stalled provider returns", async () => {
+    const f = fixture();
+    let entered!: () => void, release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const controller = new AbortController();
+    const runtime = await ModelRuntime.create({
+      credentials: new InMemoryCredentialStore(),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    const faux = fauxProvider();
+    runtime.registerNativeProvider({
+      ...faux.provider,
+      auth: {
+        apiKey: {
+          name: "fixture",
+          check: async () => ({ type: "api_key" as const }),
+          resolve: async () => ({ auth: { apiKey: "fixture-only" } }),
+        },
+      },
+    });
+    const selected = faux.getModel();
+    await runtime.setRuntimeApiKey(selected.provider, "fixture-only");
+    faux.setResponses([
+      async () => {
+        entered();
+        await gate;
+        return fauxAssistantMessage("late fixture output");
+      },
+    ]);
+    const native = nativeConsolidationModel({
+      cwd: f.dir,
+      modelRuntime: runtime,
+      settingsManager: SettingsManager.inMemory({
+        defaultProvider: selected.provider,
+        defaultModel: selected.id,
+        retry: { enabled: false },
+        compaction: { enabled: false },
+      }),
+    });
+    let running: Promise<C.ConsolidationResult> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await capture(
+        {
+          source: { kind: "provided", windows: [f.window] },
+          scope,
+          now,
+          commitId: "capture" as C.CommitId,
+        },
+        { store: f.store },
+      );
+      const plan = await f.store.plan({
+        jobId: "job" as C.JobId,
+        owner: "fixture",
+        scope,
+        now,
+        policy: {
+          minWindows: 1,
+          maxPendingAgeMs: 0,
+          maxBatchWindows: 10,
+          maxBatchBytes: 100_000,
+          leaseMs: 60_000,
+        },
+      });
+      if (plan.kind !== "eligible")
+        throw new Error("fixture backlog not eligible");
+      running = native.reconcile(
+        { batch: plan.batch, notes: [], suppressions: [] },
+        controller.signal,
+      );
+      await started;
+      controller.abort(new Error("fixture shutdown"));
+      await expect(
+        Promise.race([
+          running,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error("native model did not cancel")),
+              1000,
+            );
+          }),
+        ]),
+      ).rejects.toThrow("fixture shutdown");
+    } finally {
+      clearTimeout(timer);
+      controller.abort();
+      release();
+      await running?.catch(() => {});
       f.store.close();
     }
   });
