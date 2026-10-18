@@ -34,7 +34,15 @@ export interface SourceRef {
   readonly sourceId: SourceId;
   readonly producer: string;
   readonly origin:
-    | { readonly kind: "session"; readonly sessionId: SessionId }
+    | {
+        readonly kind: "session";
+        readonly sessionId: SessionId;
+        /** producer-observed context, not authority supplied by a model. */
+        readonly project?: {
+          readonly repositoryId: string;
+          readonly revision?: string;
+        };
+      }
     | { readonly kind: "file"; readonly path: string };
 }
 
