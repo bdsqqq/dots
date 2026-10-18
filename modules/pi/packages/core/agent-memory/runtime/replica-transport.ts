@@ -83,10 +83,13 @@ export function processReplicaTransport(
           killTimer = setTimeout(() => child.kill("SIGKILL"), 250);
         };
         const abort = (): void => stop(new Error("replica process aborted"));
-        const timeout = setTimeout(
-          () => stop(new Error("replica process timeout")),
-          limits.timeoutMs,
-        );
+        const timeout =
+          limits.timeoutMs === undefined
+            ? undefined
+            : setTimeout(
+                () => stop(new Error("replica process timeout")),
+                limits.timeoutMs,
+              );
         signal.addEventListener("abort", abort, { once: true });
         // abort can race child creation and listener installation.
         if (signal.aborted) abort();
@@ -161,7 +164,12 @@ export function sshReplicaTransport(
         "-o",
         "StrictHostKeyChecking=yes",
         "-o",
-        `ConnectTimeout=${Math.max(1, Math.ceil(limits.timeoutMs / 1000))}`,
+        // connection/SSH responsiveness are independent of receiver preparation.
+        "ConnectTimeout=10",
+        "-o",
+        "ServerAliveInterval=15",
+        "-o",
+        "ServerAliveCountMax=3",
         "--",
         destination,
         "pi-memory",
@@ -178,10 +186,10 @@ export async function serveReplicaExchange(
   deps: ExchangeDependencies,
 ): Promise<void> {
   const limits = deps.limits ?? REPLICA_LIMITS;
-  const signal = AbortSignal.any([
-    deps.signal,
-    AbortSignal.timeout(limits.timeoutMs),
-  ]);
+  const signal =
+    limits.timeoutMs === undefined
+      ? deps.signal
+      : AbortSignal.any([deps.signal, AbortSignal.timeout(limits.timeoutMs)]);
   const chunks: Buffer[] = [];
   let bytes = 0;
   const stop = (): void => {
@@ -219,7 +227,7 @@ export async function serveReplicaExchange(
 }
 
 if (import.meta.vitest) {
-  const { test, expect, beforeEach, afterEach } = import.meta.vitest;
+  const { test, expect, beforeEach, afterEach, vi } = import.meta.vitest;
   const fs = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { join, dirname } = await import("node:path");
@@ -342,6 +350,251 @@ if (import.meta.vitest) {
       limits,
     });
   }
+  test("default process synchronization survives the former lifetime while a real receiver waits", async () => {
+    const a = store("long-client");
+    await commit(a, "long-note", [note("long-note")]);
+    const release = join(dir, "release");
+    const ready = join(dir, "ready");
+    const child = `import fs from 'node:fs';
+      fs.writeFileSync(${JSON.stringify(ready)}, String(process.pid));
+      while(!fs.existsSync(${JSON.stringify(release)})) await new Promise(r=>setTimeout(r,5));
+      ${fs.readFileSync(helper("long-receiver"), "utf8")}`;
+    const { setTimeout: delay } = await import("node:timers/promises");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // AbortSignal's native clock is separate from global timers.
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new Error("fixture deadline")), ms);
+      return controller.signal;
+    });
+    const cancel = new AbortController();
+    let settled = false;
+    const pending = synchronizeReplica({
+      store: a,
+      peerId: "long-receiver",
+      policy,
+      signal: cancel.signal,
+      transport: processReplicaTransport({
+        executable: process.execPath,
+        args: ["--input-type=module", "-e", child],
+      }),
+    }).finally(() => {
+      settled = true;
+    });
+    // Attach rejection handling before advancing the external clock.
+    void pending.catch(() => {});
+    try {
+      for (let i = 0; !fs.existsSync(ready) && i < 1000; i++) await delay(5);
+      expect(fs.existsSync(ready)).toBe(true);
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(settled).toBe(false);
+      fs.writeFileSync(release, "go");
+      vi.useRealTimers();
+      expect((await pending).kind).toBe("complete");
+      const receiver = store("long-receiver");
+      expect((await receiver.listNotes(scope)).map((n) => n.noteId)).toEqual([
+        "long-note",
+      ]);
+    } finally {
+      cancel.abort();
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      await pending.catch(() => {});
+    }
+  }, 30_000);
+
+  test("native stdio and exchange survive virtual preparation time; explicit budgets still abort", async () => {
+    const { PassThrough } = await import("node:stream");
+    const a = store("native-long");
+    await commit(a, "native-note", [note("native-note")]);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new Error("fixture deadline")), ms);
+      return controller.signal;
+    });
+    try {
+      for (const budget of [undefined, 100]) {
+        const input = new PassThrough(),
+          output = new PassThrough();
+        let bytes = "";
+        output.on("data", (chunk) => {
+          bytes += chunk;
+        });
+        const pending = serveReplicaExchange(input, output, {
+          store: a,
+          peerId: "native-peer",
+          policy,
+          signal: signal(),
+          limits: {
+            ...REPLICA_LIMITS,
+            ...(budget === undefined ? {} : { timeoutMs: budget }),
+          },
+        });
+        void pending.catch(() => {});
+        await vi.advanceTimersByTimeAsync(31_000);
+        if (budget !== undefined) {
+          await expect(pending).rejects.toThrow("aborted");
+          expect(bytes).toBe("");
+          continue;
+        }
+        input.end(JSON.stringify({ outgoing: [], cursor: null }));
+        await pending;
+        expect(
+          JSON.parse(bytes).incoming.map((c: Change) => c.commitId),
+        ).toEqual(["native-note"]);
+      }
+      for (const budget of [undefined, 100]) {
+        const pending = exchangeReplica(
+          { outgoing: [], cursor: null },
+          {
+            store: a,
+            peerId: "native-direct",
+            policy,
+            signal: signal(),
+            limits: {
+              ...REPLICA_LIMITS,
+              ...(budget === undefined ? {} : { timeoutMs: budget }),
+            },
+          },
+        );
+        void pending.catch(() => {});
+        // readCursor yields on the real store before authorization and acceptance.
+        vi.advanceTimersByTime(31_000);
+        if (budget === undefined)
+          expect((await pending).incoming.map((c) => c.commitId)).toEqual([
+            "native-note",
+          ]);
+        else await expect(pending).rejects.toThrow("fixture deadline");
+      }
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
+  });
+
+  test.each(["deadline", "cancel", "sync-budget"] as const)(
+    "explicit %s reaps a child that ignores SIGTERM",
+    async (mode) => {
+      const { setTimeout: delay } = await import("node:timers/promises");
+      const ready = join(dir, "ignores-term");
+      const cancel = new AbortController();
+      const channel = processReplicaTransport(
+        {
+          executable: process.execPath,
+          args: [
+            "-e",
+            `const fs=require('node:fs');process.on('SIGTERM',()=>{});fs.writeFileSync(${JSON.stringify(ready)},String(process.pid));setInterval(()=>{},1000)`,
+          ],
+        },
+        {
+          ...REPLICA_LIMITS,
+          ...(mode === "deadline" ? { timeoutMs: 100 } : {}),
+        },
+      );
+      const pending =
+        mode === "sync-budget"
+          ? synchronizeReplica({
+              store: store("deadline-client"),
+              peerId: "deadline-peer",
+              policy,
+              signal: cancel.signal,
+              transport: channel,
+              limits: { ...REPLICA_LIMITS, timeoutMs: 100 },
+            })
+          : channel.exchange({ outgoing: [], cursor: null }, cancel.signal);
+      void pending.catch(() => {});
+      try {
+        for (let i = 0; !fs.existsSync(ready) && i < 1000; i++) await delay(5);
+        expect(fs.existsSync(ready)).toBe(true);
+        const pid = Number(fs.readFileSync(ready, "utf8"));
+        if (mode === "cancel") cancel.abort();
+        await expect(pending).rejects.toThrow(
+          mode === "deadline" ? "timeout" : "aborted",
+        );
+        expect(() => process.kill(pid, 0)).toThrow();
+      } finally {
+        cancel.abort();
+        await pending.catch(() => {});
+      }
+    },
+  );
+
+  test("offline SSH handshake is bounded while an independent process peer retains progress", async () => {
+    const { createServer } = await import("node:net");
+    const sockets = new Set<import("node:net").Socket>();
+    const server = createServer((socket) => {
+      sockets.add(socket);
+      socket.on("close", () => sockets.delete(socket));
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("fixture TCP address missing");
+    const bin = join(dir, "bin");
+    fs.mkdirSync(bin);
+    const sshConfig = join(dir, "ssh-config");
+    fs.writeFileSync(
+      sshConfig,
+      `Host fixture-offline
+ HostName 127.0.0.1
+ Port ${address.port}
+ IdentityAgent none
+ IdentitiesOnly yes
+ UserKnownHostsFile /dev/null
+ GlobalKnownHostsFile /dev/null
+`,
+    );
+    // Only the network/process boundary is substituted; OpenSSH enforces the policy.
+    fs.writeFileSync(
+      join(bin, "ssh"),
+      `#!/bin/sh
+exec /usr/bin/ssh -F '${sshConfig}' "$@"
+`,
+      { mode: 0o700 },
+    );
+    const a = store("ssh-client");
+    await commit(a, "healthy-note", [note("healthy-note")]);
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${bin}:${originalPath}`;
+    try {
+      const offline = synchronizeReplica({
+        store: a,
+        peerId: "offline",
+        policy,
+        signal: signal(),
+        transport: sshReplicaTransport("fixture-offline", ["fixture-offline"]),
+      });
+      const outcomes = await Promise.allSettled([offline, sync(a, "healthy")]);
+      expect(outcomes[0].status).toBe("rejected");
+      if (outcomes[0].status === "rejected")
+        expect(String(outcomes[0].reason)).toMatch(/replica process exited/);
+      expect(outcomes[1].status).toBe("fulfilled");
+      expect(
+        (await store("healthy").listNotes(scope)).map((n) => n.noteId),
+      ).toEqual(["healthy-note"]);
+      expect(
+        (
+          await synchronizeReplica({
+            store: a,
+            peerId: "offline",
+            policy,
+            signal: signal(),
+            transport: sshReplicaTransport("fixture-offline", [
+              "fixture-offline",
+            ]),
+          })
+        ).kind,
+      ).toBe("backoff");
+    } finally {
+      process.env.PATH = originalPath;
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 20_000);
+
   test("an explicit same-owner vault grant includes projects without accepting another owner's evidence", async () => {
     const a = store("a");
     const project = {
