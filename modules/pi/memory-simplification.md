@@ -138,7 +138,7 @@ compatibility boundary: preserve project-proposal transport and explicit histori
 
 ## final verification / handoff
 
-code revision: `0d296178`; darwin arm64, Node `24.18.0`. documentation-only closeout follows that tested code. the work is committed locally, not published or activated.
+code revision: `0d296178`; darwin arm64, Node `24.18.0`. documentation-only closeout follows that tested code. this is the pre-deployment verification snapshot; the deployment record below supersedes its publication/activation state.
 
 from `modules/pi`, all passed:
 
@@ -163,3 +163,13 @@ nix build --no-link --no-write-lock-file '.#darwinConfigurations.mbp-m2.config.h
 the generated launch agent was inspected: store-readiness shell wrapper, native `maintain`, RunAtLoad and 60-second cadence; its live-source loader and lower-priority roster defaults match the module. this is an **artifact build**, not activation or a full host build.
 
 limits: no push/publication, service activation, installed-skill edit, private-data migration, production provider request or live SSH/DNS/fleet probe. Linux evaluation/build/runtime and physical-power-loss behavior remain unverified; native-only checks avoid pretending cross-platform execution. semantic recall reports unavailable and uses lexical/alias/link association; ordinary qmd remains legacy. native session snapshots are loaded before bounded windows are selected. unfinished, hard-killed in-memory runs can lose unpublished captures; persistent sessions have independent catch-up. suppression is not retroactive conversation/history/backup erasure. real deployment and any explicit legacy import require their own authorization and verification.
+
+## deployment — 2026-10-18
+
+user authorized merge, push/publication and local activation. `c87ec481` merged the signed implementation history into `main` without squashing; `50c0e38e` fixed default peer selection to use Darwin's short hostname rather than `mbp-m2.local`. both are pushed. [publication CI](https://github.com/bdsqqq/dots/actions/runs/39135594580) built and passed **93 files / 1186 tests, 6 skipped** on Linux with built-tool checks, then published `@bdsqqq/pi@0.0.1792333611-gc87ec48`; npm's `gitHead` matches `c87ec481`.
+
+on mbp-m2, the actual Pi launcher and extension paths resolve to the live `main` checkout, not the T3 server artifact under `~/.local/share/t3-pi`. frozen dependency installation, typecheck, build and source/built CLI checks passed there. the full Darwin host closure for `50c0e38e` built. existing Pi sessions still need reload/restart to consume changed extensions and guidance.
+
+applied only the generated Home Manager memory LaunchAgent in the user GUI domain: stopped the legacy job, preserved its old plist, installed the exact generated replacement and bootstrapped it. the service runs native `maintain` every 60 seconds; the first native cycle exited 0 and reported `locally-committed`, with the native store subsequently reporting four notes. corrected defaults contain only `lgo-z2e` and `htz-xfs-lab`. the generated service closure is pinned at `~/.local/state/pi-memory/service-generation` until full activation. no explicit legacy/private-data import ran; automatic native capture/consolidation is now operating normally.
+
+**remaining boundaries:** full nix-darwin/profile activation failed because `sudo -n` requires a password. finish in a user terminal with `cd ~/commonplace/01_files/nix && sudo darwin-rebuild switch --flake .#mbp-m2 --no-write-lock-file`; then check the profile's `pi-memory` wrapper and service again. the first live replication attempts reported remote process/timeout errors; local operation is proven, fleet convergence is NOT. no remote-host activation was performed. physical-power-loss and semantic-quality limits above still apply.
