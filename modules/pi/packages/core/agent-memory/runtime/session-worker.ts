@@ -118,12 +118,16 @@ export class SessionMemoryWorker {
     this.worker.unref();
   }
   request(
-    request: SessionWorkerRequest,
+    request:
+      | SessionWorkerRequest
+      | (Omit<Extract<SessionWorkerRequest, { kind: "capture" }>, "project"> & {
+          project: Promise<NativeProjectContext | null>;
+        }),
     timeoutMs: number | undefined = this.options.timeoutMs ??
       (request.kind === "check" ? 250 : undefined),
   ): Promise<SessionWorkerResult> {
     if (this.closed) return Promise.reject(new Error("memory worker closed"));
-    if (this.pending.size >= 32)
+    if (request.kind !== "capture" && this.pending.size >= 32)
       return Promise.reject(new Error("memory worker queue full"));
     const id = ++this.sequence;
     return new Promise((resolve, reject) => {
@@ -144,7 +148,22 @@ export class SessionMemoryWorker {
         capture: request.kind === "capture",
       });
       this.updateReference();
-      this.worker.postMessage({ id, request });
+      const submit = async (): Promise<void> => {
+        // caller-owned discovery/settlement stays local; capture owns liveness
+        // before dependencies resolve, and only plain data crosses the worker port.
+        const ready =
+          request.kind === "capture"
+            ? { ...request, project: await request.project }
+            : request;
+        if (this.pending.has(id))
+          this.worker.postMessage({ id, request: ready });
+      };
+      void submit().catch((error: Error) => {
+        if (!this.pending.delete(id)) return;
+        clearTimeout(timer);
+        this.updateReference();
+        reject(error);
+      });
     });
   }
   private updateReference(): void {
