@@ -442,6 +442,13 @@ export class FileMemoryStore implements C.MemoryStore {
     return contend(() => this.transactionSync(run), options, 5000);
   }
   private transactionSync<T>(run: (view: View) => T, write = true): T {
+    return this.coordinateSync(() => {
+      const view = this.recover(write);
+      if (write) this.synchronizeContinuity(view);
+      return run(view);
+    }, write);
+  }
+  private coordinateSync<T>(run: () => T, write = true): T {
     if (this.closed) throw new Error("memory store is closed");
     try {
       this.db.exec(write ? "BEGIN IMMEDIATE" : "BEGIN");
@@ -450,9 +457,7 @@ export class FileMemoryStore implements C.MemoryStore {
       throw error;
     }
     try {
-      const view = this.recover(write);
-      if (write) this.synchronizeContinuity(view);
-      const result = run(view);
+      const result = run();
       this.db.exec("COMMIT");
       return result;
     } catch (error) {
@@ -1229,6 +1234,44 @@ export class FileMemoryStore implements C.MemoryStore {
       },
       true,
       options,
+    );
+  }
+  async renewLease(
+    input: C.RenewLeaseInput,
+    options: FileMemoryStoreOptions = this.options,
+  ): Promise<C.RenewLeaseResult> {
+    const lease = parseLease(input.lease);
+    const now = millis(input.now);
+    if (!Number.isSafeInteger(input.leaseMs) || input.leaseMs <= 0)
+      throw new Error("invalid lease duration");
+    const expiresAt = iso(
+      Math.max(millis(lease.expiresAt), now + input.leaseMs),
+    );
+    // Renewal must remain available while retained-history preparation stalls.
+    // Exact payload comparison also fences an older heartbeat of this token.
+    return contend(
+      () =>
+        this.coordinateSync(() => {
+          const rows = this.db
+            .prepare("SELECT payload FROM leases WHERE token=?")
+            .all(lease.leaseId);
+          if (
+            millis(lease.expiresAt) <= now ||
+            !rows.length ||
+            rows.some(
+              (row) =>
+                !sameValue(parseLease(JSON.parse(string(row.payload))), lease),
+            )
+          )
+            return { kind: "lease-lost" } as const;
+          const renewed = { ...lease, expiresAt };
+          this.db
+            .prepare("UPDATE leases SET payload=? WHERE token=?")
+            .run(canonicalJSON(renewed), lease.leaseId);
+          return { kind: "renewed", lease: renewed } as const;
+        }),
+      options,
+      5000,
     );
   }
   async checkDelivery(
@@ -2654,6 +2697,86 @@ if (import.meta.vitest) {
           ],
         }),
       ).toMatchObject({ kind: "lease-lost" });
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("renews current ownership without accepting evidence and fences stale, expired and reclaimed tokens", async () => {
+    const f = fixture();
+    try {
+      const windows = [window(), window("renew-b")];
+      await f.store.commit(change("renew-capture", [], windows));
+      const plan = await f.store.plan({
+        jobId: "renew" as C.JobId,
+        owner: "one",
+        scope,
+        now,
+        policy,
+      });
+      if (plan.kind !== "eligible") throw new Error("expected batch");
+      const tick = "2026-01-01T00:00:05.000Z";
+      const renewed = await f.store.renewLease({
+        lease: plan.batch.lease,
+        now: tick,
+        leaseMs: 20000,
+      });
+      expect(renewed).toEqual({
+        kind: "renewed",
+        lease: { ...plan.batch.lease, expiresAt: "2026-01-01T00:00:25.000Z" },
+      });
+      expect(
+        await f.store.renewLease({
+          lease: plan.batch.lease,
+          now: tick,
+          leaseMs: 20000,
+        }),
+      ).toEqual({ kind: "lease-lost" });
+      expect(
+        await f.store.plan({
+          jobId: "other" as C.JobId,
+          owner: "two",
+          scope,
+          now: "2026-01-01T00:00:15.000Z",
+          policy,
+        }),
+      ).toMatchObject({ kind: "idle", reason: "leased" });
+      if (renewed.kind !== "renewed") throw new Error("renewal failed");
+      expect(
+        await f.store.renewLease({
+          lease: renewed.lease,
+          now: renewed.lease.expiresAt,
+          leaseMs: 20000,
+        }),
+      ).toEqual({ kind: "lease-lost" });
+      const reclaimed = await f.store.plan({
+        jobId: "other" as C.JobId,
+        owner: "two",
+        scope,
+        now: later,
+        policy,
+      });
+      expect(reclaimed.kind).toBe("eligible");
+      expect(
+        await f.store.renewLease({
+          lease: renewed.lease,
+          now: later,
+          leaseMs: 20000,
+        }),
+      ).toEqual({ kind: "lease-lost" });
+      expect(
+        await f.store.commit({
+          ...change("late-renew-output"),
+          now: later,
+          lease: renewed.lease,
+          outcomes: windows.map((w) => ({
+            windowId: w.windowId,
+            sourceHash: w.sourceHash,
+            recordedAt: later,
+            decision: { kind: "no-change" as const, reason: "late" },
+          })),
+        }),
+      ).toEqual({ kind: "lease-lost" });
     } finally {
       f.store.close();
       rmSync(f.dir, { recursive: true });
