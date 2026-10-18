@@ -209,9 +209,18 @@ async function page(
 ): Promise<readonly C.ReplicaChange[]> {
   const candidates = await store.scan(after, limits.maxChanges);
   const result: C.ReplicaChange[] = [];
+  // leave space for two bounded ids in the cursor and the opposite page's ACKs.
+  const pageLimits = {
+    ...limits,
+    maxBytes: Math.max(1, limits.maxBytes - 4096 - limits.maxChanges * 516),
+    maxObjects: Math.max(1, limits.maxObjects - 2),
+  };
   for (const c of candidates) {
     try {
-      parseExchangeRequest({ outgoing: [...result, c], cursor: null }, limits);
+      parseExchangeRequest(
+        { outgoing: [...result, c], cursor: null },
+        pageLimits,
+      );
     } catch (error) {
       if (!result.length) throw error;
       break;
