@@ -48,14 +48,24 @@ const requestSchema = Type.Union([
     paths: Type.Array(id, { minItems: 1, maxItems: 128 }),
   }),
 ]);
-export async function readBoundedJSON(stream: Readable): Promise<unknown> {
+export async function readBoundedJSON(
+  stream: Readable,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const chunks: Buffer[] = [];
   let length = 0;
-  for await (const chunk of stream) {
-    const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    if ((length += b.length) > 1024 * 1024)
-      throw new Error("memory JSON byte limit");
-    chunks.push(b);
+  const abort = () => stream.destroy(new Error("memory input interrupted"));
+  signal?.throwIfAborted();
+  signal?.addEventListener("abort", abort, { once: true });
+  try {
+    for await (const chunk of stream) {
+      const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if ((length += b.length) > 1024 * 1024)
+        throw new Error("memory JSON byte limit");
+      chunks.push(b);
+    }
+  } finally {
+    signal?.removeEventListener("abort", abort);
   }
   return JSON.parse(
     new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)),
@@ -161,12 +171,6 @@ export async function memoryCLI(
   const abort = () => controller.abort(new Error("memory CLI interrupted"));
   process.once("SIGTERM", abort);
   process.once("SIGINT", abort);
-  const timer = setTimeout(abort, 150_000);
-  const deadline = setTimeout(() => {
-    console.error("memory process deadline");
-    process.exit(1);
-  }, 155_000);
-  deadline.unref();
   let app: MemoryApplication | undefined;
   try {
     app = await openMemoryApplication({}, controller.signal);
@@ -190,7 +194,9 @@ export async function memoryCLI(
       "suppress",
       "import-legacy",
     ].includes(command);
-    const raw = needsData ? await readBoundedJSON(process.stdin) : {};
+    const raw = needsData
+      ? await readBoundedJSON(process.stdin, controller.signal)
+      : {};
     const value =
       command === "json"
         ? raw
@@ -202,8 +208,6 @@ export async function memoryCLI(
     );
   } finally {
     app?.close();
-    clearTimeout(timer);
-    clearTimeout(deadline);
     process.removeListener("SIGTERM", abort);
     process.removeListener("SIGINT", abort);
   }
@@ -229,6 +233,73 @@ if (import.meta.vitest) {
   const { SessionMemoryWorker, runtimeStoreConfiguration } =
     await import("./session-worker.js");
   const { memoryConfiguration } = await import("./config.js");
+  it("real CLI survives former whole-job deadlines and interrupts an open input pipe", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "memory-cli-lifetime-"));
+    const harness = join(dir, "clock.mjs");
+    writeFileSync(harness, `
+      const loaded = await import(${JSON.stringify(new URL("./cli.ts", import.meta.url).href)});
+      const { memoryCLI } = loaded.default ?? loaded;
+      const nativeTimeout = globalThis.setTimeout;
+      const deadlines = [];
+      globalThis.setTimeout = (callback, delay, ...args) => {
+        if (delay >= 60000) {
+          deadlines.push(() => callback(...args));
+          return { unref() {} };
+        }
+        return nativeTimeout(callback, delay, ...args);
+      };
+      process.on("message", () => {
+        for (const callback of deadlines.splice(0)) callback();
+        process.send("advanced");
+      });
+      process.send("ready");
+      try { await memoryCLI(["capture"]); }
+      catch (error) { console.error(String(error)); process.exitCode = 1; }
+      process.disconnect();
+    `);
+    const env = {
+      ...process.env,
+      PI_CODING_AGENT_DIR: join(dir, "agent"),
+      PI_CODING_AGENT_SESSION_DIR: join(dir, "sessions"),
+      PI_MEMORY_ROOT: join(dir, "notes"),
+      PI_MEMORY_DATA_DIR: join(dir, "data"),
+      PI_MEMORY_STATE_DIR: join(dir, "state"),
+      PI_MEMORY_OWNER: "fixture",
+      PI_MEMORY_PEERS: "[]",
+      PI_OFFLINE: "1",
+    };
+    try {
+      for (const interrupt of [false, true]) {
+        const child = spawn(process.execPath, ["--import", "jiti/register", harness], {
+          env,
+          stdio: ["pipe", "pipe", "pipe", "ipc"],
+        });
+        let output = "", errors = "";
+        child.stdout!.on("data", (b) => { output += b; });
+        child.stderr!.on("data", (b) => { errors += b; });
+        const exited = new Promise<number | null>((resolve) => child.once("exit", resolve));
+        try {
+          await new Promise<void>((resolve, reject) => {
+            child.once("error", reject);
+            child.once("message", () => resolve());
+            child.once("exit", () => reject(new Error(errors || "CLI exited before ready")));
+          });
+          const advanced = new Promise<void>((resolve) => child.once("message", () => resolve()));
+          child.send("advance beyond former deadlines");
+          await advanced;
+          if (interrupt) child.kill("SIGTERM");
+          else child.stdin!.end(JSON.stringify({ windows: [] }));
+          expect(await exited, errors).toBe(interrupt ? 1 : 0);
+          if (interrupt) expect(errors).toMatch(/interrupt/);
+          else expect(JSON.parse(output).kind).toBe("unchanged");
+        } finally {
+          if (child.exitCode === null) child.kill("SIGKILL");
+        }
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
   it("real source and built CLI share native settings, JSON rejection, independent maintenance and fail-closed exchange", async () => {
     const dir = mkdtempSync(join(tmpdir(), "memory-cli-"));
     try {
