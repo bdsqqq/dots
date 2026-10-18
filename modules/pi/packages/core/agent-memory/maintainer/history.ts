@@ -999,6 +999,16 @@ export type MaterializationCrashPoint =
   | "after-installed"
   | "after-checkout-state";
 
+function hasNativeRuntime(root: string): boolean {
+  try {
+    lstatSync(join(root, "runtime"));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 function recoverMaterialization(cfg: HistoryConfig): void {
   const path = v3State(cfg, "checkout/materializing.json");
   if (!existsSync(path)) return;
@@ -1015,6 +1025,10 @@ function recoverMaterialization(cfg: HistoryConfig): void {
     !value.backup.startsWith(join(rootParent, ".pi-memory-checkout-backup-"))
   )
     throw new Error("invalid materialization journal");
+  if ([cfg.root, value.staging, value.backup].some(hasNativeRuntime))
+    throw new Error(
+      "legacy recovery would replace native runtime; preserve the journal directories for explicit recovery",
+    );
   if (
     existsSync(cfg.root) &&
     verifyMaterializedTree(cfg, value.head, cfg.root)
@@ -1040,6 +1054,8 @@ function materializeCanonicalHeadImpl(
   fault?: (point: MaterializationCrashPoint) => void,
 ): boolean {
   validateTree(cfg, head);
+  // the retained legacy publisher may update Git, but never replace live native Markdown.
+  if (hasNativeRuntime(cfg.root)) return false;
   mkdirSync(dirname(cfg.root), { recursive: true, mode: 0o700 });
   const staging = mkdtempSync(join(dirname(cfg.root), ".pi-memory-checkout-"));
   const backup = join(
@@ -1050,6 +1066,10 @@ function materializeCanonicalHeadImpl(
     copyCanonicalTree(cfg, head, staging);
     try {
       withDirectoryLock(v3State(cfg, "checkout/lock"), () => {
+        if (hasNativeRuntime(cfg.root))
+          throw new Error(
+            "native runtime initialized during legacy materialization",
+          );
         recoverMaterialization(cfg);
         const journalPath = v3State(cfg, "checkout/materializing.json");
         const persistJournal = (phase: MaterializationJournal["phase"]): void =>
@@ -1062,6 +1082,10 @@ function materializeCanonicalHeadImpl(
         if (existsSync(cfg.root)) {
           if (lstatSync(cfg.root).isSymbolicLink())
             throw new Error("canonical root cannot be a symlink");
+          if (hasNativeRuntime(cfg.root))
+            throw new Error(
+              "native runtime initialized during legacy materialization",
+            );
           chmodSync(cfg.root, 0o700);
           renameSync(cfg.root, backup);
           persistJournal("prior-moved");
@@ -1084,6 +1108,10 @@ function materializeCanonicalHeadImpl(
         return false;
       throw error;
     }
+    if (hasNativeRuntime(backup))
+      throw new Error(
+        "concurrent native runtime preserved in legacy backup; explicit recovery required",
+      );
     rmSync(backup, { recursive: true, force: true });
     return true;
   } finally {
@@ -1660,6 +1688,40 @@ if (import.meta.vitest) {
       ).toBe("# lost\n");
     });
 
+    it("legacy materialization preserves an enrolled native runtime and interrupted native backup", () => {
+      const test = fixture();
+      const host = test.host("native-coexistence");
+      const head = fetchCanonicalHead(host);
+      materializeCanonicalHead(host, head);
+      const live = join(host.root, "runtime", "unpublished.md");
+      mkdirSync(dirname(live), { recursive: true });
+      writeFileSync(live, "native editable bytes\n");
+      expect(materializeCanonicalHead(host, head)).toBe(false);
+      expect(readFileSync(live, "utf8")).toBe("native editable bytes\n");
+      const interrupted = test.host("native-interrupted");
+      const interruptedHead = fetchCanonicalHead(interrupted);
+      materializeCanonicalHead(interrupted, interruptedHead);
+      let preserved = "";
+      expect(() =>
+        materializeCanonicalHead(interrupted, interruptedHead, (point) => {
+          if (point !== "after-prior-moved") return;
+          const journal = JSON.parse(
+            readFileSync(
+              v3State(interrupted, "checkout/materializing.json"),
+              "utf8",
+            ),
+          ) as MaterializationJournal;
+          preserved = join(journal.backup, "runtime", "late-edit.md");
+          mkdirSync(dirname(preserved), { recursive: true });
+          writeFileSync(preserved, "late native bytes\n");
+          throw new Error("fixture interruption");
+        }),
+      ).toThrow("fixture interruption");
+      expect(() =>
+        materializeCanonicalHead(interrupted, interruptedHead),
+      ).toThrow("legacy recovery would replace native runtime");
+      expect(readFileSync(preserved, "utf8")).toBe("late native bytes\n");
+    });
     it("keeps the last checkout usable during a remote outage", () => {
       const test = fixture();
       const host = test.host("offline");
