@@ -55,7 +55,9 @@ jobs:
       - run: pnpm run build
 
       - name: test
-        run: pnpm exec vitest run --exclude 'packages/extensions/github/**'
+        # Memory tests already spawn real concurrent subprocesses; bound outer
+        # workers to the same budget as local verification on the shared runner.
+        run: pnpm exec vitest run --maxWorkers=2 --exclude 'packages/extensions/github/**'
         env:
           GH_TOKEN: ${{ github.token }}
           PI_TEST_BUILT_TOOLS: "1"
