@@ -117,6 +117,8 @@ export class MemoryApplication {
     );
   }
   async catchUp(signal: AbortSignal): Promise<CatchUpResult> {
+    if (!this.configuration.enabled)
+      return { files: 0, windows: 0, bounded: false, errors: [] };
     return catchUpNativeSources({
       store: this.store,
       root: this.configuration.sessionRoot,
@@ -166,63 +168,92 @@ export class MemoryApplication {
   async replicate(
     signal: AbortSignal,
   ): Promise<MaintenanceResult["replication"]> {
-    const results: {
-      peer: string;
-      result?: SynchronizeResult;
-      error?: string;
-    }[] = [];
-    for (const peer of this.configuration.peers) {
+    if (!this.configuration.enabled) return [];
+    return Promise.all(
+      this.configuration.peers.map(async (peer) => {
+        try {
+          signal.throwIfAborted();
+          return {
+            peer,
+            result: await synchronizeReplica({
+              store: this.store,
+              peerId: peer,
+              policy: this.policy(),
+              signal,
+              transport:
+                this.options.transport?.(peer) ??
+                sshReplicaTransport(peer, this.configuration.peers),
+            }),
+          };
+        } catch (error) {
+          return { peer, error: String(error) };
+        }
+      }),
+    );
+  }
+  async reconcile(signal: AbortSignal): Promise<ReconciliationRunResult> {
+    if (!this.configuration.enabled) return { results: [], idle: null };
+    const scopes = await this.store.pendingScopes();
+    const results: C.CommitResult[] = [];
+    let idle: ReconciliationRunResult["idle"] = null;
+    for (const scope of scopes.length ? scopes : [this.scope]) {
       signal.throwIfAborted();
-      try {
-        results.push({
-          peer,
-          result: await synchronizeReplica({
-            store: this.store,
-            peerId: peer,
-            policy: this.policy(),
-            signal,
-            transport:
-              this.options.transport?.(peer) ??
-              sshReplicaTransport(peer, this.configuration.peers),
-          }),
-        });
-      } catch (error) {
-        results.push({ peer, error: String(error) });
-      }
+      const run = await runReconciliation(
+        {
+          jobId: randomUUID() as C.JobId,
+          owner: this.configuration.ownerId,
+          scope,
+          now: this.now(),
+          policy: this.configuration.backlog,
+        },
+        { store: this.store, model: this.model, signal },
+      );
+      results.push(...run.results);
+      idle = run.idle;
     }
-    return results;
+    return { results, idle };
   }
   async maintain(signal: AbortSignal): Promise<MaintenanceResult> {
-    const captured = this.configuration.enabled
-      ? await this.catchUp(signal)
-      : null;
-    let reconciliation: ReconciliationRunResult = { results: [], idle: null };
-    if (this.configuration.enabled) {
-      const scopes = await this.store.pendingScopes();
-      // oldest pending scope first; backoff/threshold in one cannot stall another.
-      // one accepted/retried batch remains the global per-pass thinking budget.
-      for (const scope of scopes.length ? scopes : [this.scope]) {
-        signal.throwIfAborted();
-        reconciliation = await runReconciliation(
-          {
-            jobId: randomUUID() as C.JobId,
-            owner: this.configuration.ownerId,
-            scope,
-            now: this.now(),
-            policy: this.configuration.backlog,
-            maxBatches: 1,
-            maxRunMs: 90_000,
-          },
-          { store: this.store, model: this.model, signal },
-        );
-        if (reconciliation.results.length) break;
-      }
-    }
-    // disabled automatic maintenance must not keep exporting existing knowledge.
-    const replication = this.configuration.enabled
-      ? await this.replicate(signal)
-      : [];
-    return { capture: captured, reconciliation, replication };
+    if (!this.configuration.enabled)
+      return {
+        capture: null,
+        reconciliation: { results: [], idle: null },
+        replication: [],
+      };
+    // all owned phases settle before a CLI caller can close their shared store.
+    const [capture, reconciliation, replication] = await Promise.allSettled([
+      this.catchUp(signal),
+      this.reconcile(signal),
+      this.replicate(signal),
+    ]);
+    const errors: Error[] = [];
+    for (const [name, phase] of [
+      ["capture", capture],
+      ["reconciliation", reconciliation],
+      ["replication", replication],
+    ] as const)
+      if (phase.status === "rejected")
+        errors.push(new Error(`${name} failed`, { cause: phase.reason }));
+    if (capture.status === "fulfilled")
+      for (const error of capture.value.errors)
+        errors.push(new Error(`capture: ${error}`));
+    if (replication.status === "fulfilled")
+      for (const peer of replication.value)
+        if (peer.error)
+          errors.push(new Error(`replication ${peer.peer}: ${peer.error}`));
+    if (errors.length)
+      throw new AggregateError(errors, errors.map((e) => e.message).join("; "));
+    if (
+      capture.status !== "fulfilled" ||
+      reconciliation.status !== "fulfilled" ||
+      replication.status !== "fulfilled"
+    )
+      throw new Error("maintenance phase unavailable");
+    return {
+      capture: capture.value,
+      reconciliation: reconciliation.value,
+      replication: replication.value,
+    };
   }
   close(): void {
     this.store.close();
@@ -254,7 +285,7 @@ export async function openMemoryApplication(
 }
 
 if (import.meta.vitest) {
-  const { it, expect } = import.meta.vitest;
+  const { it, expect, vi } = import.meta.vitest;
   const { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } =
     await import("node:fs");
   const { tmpdir } = await import("node:os");
@@ -293,8 +324,14 @@ if (import.meta.vitest) {
     };
     return { dir, configuration, model };
   }
-  it("production capture progresses while another application's consolidation model is pending", async () => {
-    const f = fixture();
+  it("capture and real replica exchange progress past former deadlines while consolidation is pending", async () => {
+    const f = fixture(),
+      remote = fixture();
+    const peer = await openMemoryApplication({
+      configuration: remote.configuration,
+      model: remote.model,
+    });
+    const { exchangeReplica } = await import("./replica.js");
     const { adaptConsolidationProposal } = await import("./model.js");
     let entered!: () => void, release!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -306,7 +343,16 @@ if (import.meta.vitest) {
     const controller = new AbortController();
     const app = await openMemoryApplication(
       {
-        configuration: f.configuration,
+        configuration: { ...f.configuration, peers: ["fixture-peer"] },
+        transport: () => ({
+          exchange: (input, signal) =>
+            exchangeReplica(input, {
+              store: peer.store,
+              peerId: "fixture-source",
+              policy: peer.policy(),
+              signal,
+            }),
+        }),
         model: {
           reconcile: async (input) => {
             entered();
@@ -366,6 +412,9 @@ if (import.meta.vitest) {
     try {
       const first = await source("i keep my grandfather's green kettle");
       expect((await app.capture(first)).kind).toBe("locally-committed");
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "performance"],
+      });
       maintenance = app.maintain(controller.signal);
       await Promise.race([
         started,
@@ -377,6 +426,7 @@ if (import.meta.vitest) {
         { configuration: f.configuration, model: f.model },
         controller.signal,
       );
+      await vi.advanceTimersByTimeAsync(200_000);
       const second = await source(
         "i prefer repairing the handle rather than replacing the kettle",
       );
@@ -385,6 +435,15 @@ if (import.meta.vitest) {
         await other.store.forPeer("audit").scan(null, 100)
       ).flatMap((c) => c.windows.map((w) => w.windowId));
       expect(retained).toEqual(
+        expect.arrayContaining([...first, ...second].map((w) => w.windowId)),
+      );
+      expect((await app.replicate(controller.signal))[0]?.result?.kind).toBe(
+        "complete",
+      );
+      const replicated = (
+        await peer.store.forPeer("audit").scan(null, 100)
+      ).flatMap((c) => c.windows.map((w) => w.windowId));
+      expect(replicated).toEqual(
         expect.arrayContaining([...first, ...second].map((w) => w.windowId)),
       );
       release();
@@ -397,10 +456,91 @@ if (import.meta.vitest) {
       await maintenance?.catch(() => {});
       other?.close();
       app.close();
+      peer.close();
+      vi.useRealTimers();
+      rmSync(remote.dir, { recursive: true, force: true });
       rmSync(f.dir, { recursive: true, force: true });
     }
   }, 20_000);
 
+  it("a failed phase waits for owned reconciliation and JSON reports the failed peer", async () => {
+    const f = fixture();
+    let entered!: () => void, release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const app = await openMemoryApplication({
+      configuration: { ...f.configuration, peers: ["fixture-down"] },
+      transport: () => {
+        throw new Error("fixture transport unavailable");
+      },
+      model: {
+        reconcile: async (input) => {
+          entered();
+          await gate;
+          const outcomes = input.batch.windows.map((p) => ({
+            windowId: p.window.windowId,
+            decision: {
+              kind: "no-change" as const,
+              reason: "fixture retained",
+            },
+          }));
+          return { edits: [], outcomes: [outcomes[0]!, ...outcomes.slice(1)] };
+        },
+      },
+    });
+    let running: Promise<unknown> | undefined;
+    try {
+      const manager = SessionManager.inMemory(f.dir);
+      manager.appendMessage({
+        role: "user",
+        content: "meaningful fixture experience",
+        timestamp: Date.now(),
+      });
+      mkdirSync(f.configuration.sessionRoot, { recursive: true });
+      writeFileSync(
+        join(f.configuration.sessionRoot, "fixture.jsonl"),
+        [manager.getHeader(), ...manager.getEntries()]
+          .map((e) => JSON.stringify(e))
+          .join("\n") + "\n",
+      );
+      await app.catchUp(signal());
+      let settled = false;
+      running = app.maintain(signal()).then(
+        (value) => {
+          settled = true;
+          return value;
+        },
+        (error) => {
+          settled = true;
+          return error;
+        },
+      );
+      await started;
+      await new Promise(setImmediate);
+      expect(settled).toBe(false);
+      release();
+      const failure = await running;
+      expect(failure).toBeInstanceOf(AggregateError);
+      expect(String(failure)).toContain("replication fixture-down");
+      expect(
+        (await app.store.forPeer("audit").scan(null, 100))
+          .flatMap((c) => c.outcomes)
+          .some((o) => o.decision.kind === "no-change"),
+      ).toBe(true);
+      await expect(
+        handleMemoryJSON({ command: "replicate" }, app, signal()),
+      ).rejects.toThrow("fixture-down");
+    } finally {
+      release();
+      await running;
+      app.close();
+      rmSync(f.dir, { recursive: true, force: true });
+    }
+  });
   it("finished native session catches up after exit; restart resumes early UTF-8 spans and provided snapshots never reread", async () => {
     const f = fixture();
     const manager = SessionManager.inMemory(f.dir);
@@ -688,6 +828,90 @@ if (import.meta.vitest) {
     } finally {
       app.close();
       rmSync(f.dir, { recursive: true, force: true });
+    }
+  });
+  it("a healthy peer durably receives knowledge while another transport remains stalled", async () => {
+    const f = fixture(),
+      remote = fixture();
+    const peer = await openMemoryApplication({
+      configuration: remote.configuration,
+      model: remote.model,
+    });
+    const { exchangeReplica } = await import("./replica.js");
+    let release!: () => void, received!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const durable = new Promise<void>((resolve) => {
+      received = resolve;
+    });
+    const app = await openMemoryApplication({
+      configuration: {
+        ...f.configuration,
+        peers: ["fixture-stalled", "fixture-healthy"],
+      },
+      model: f.model,
+      transport: (name) =>
+        name === "fixture-stalled"
+          ? {
+              exchange: async () => {
+                await gate;
+                throw new Error("fixture transport unavailable");
+              },
+            }
+          : {
+              exchange: async (input, signal) => {
+                const result = await exchangeReplica(input, {
+                  store: peer.store,
+                  peerId: "fixture-source",
+                  policy: peer.policy(),
+                  signal,
+                });
+                if (
+                  (await peer.store.listNotes(peer.scope)).some((n) =>
+                    n.markdown.includes("my green kettle travels with me"),
+                  )
+                )
+                  received();
+                return result;
+              },
+            },
+    });
+    let running: Promise<MaintenanceResult["replication"]> | undefined;
+    try {
+      const path = join(f.dir, "offline.md");
+      writeFileSync(path, "my green kettle travels with me");
+      await importLegacyMarkdown({
+        paths: [path],
+        store: app.store,
+        scope: app.scope,
+        archive: join(f.dir, "archive"),
+      });
+      let settled = false;
+      running = app.replicate(signal()).then((result) => {
+        settled = true;
+        return result;
+      });
+      await durable;
+      expect((await peer.store.listNotes(peer.scope))[0]?.markdown).toContain(
+        "my green kettle travels with me",
+      );
+      expect(settled).toBe(false);
+      release();
+      expect(await running).toMatchObject([
+        {
+          peer: "fixture-stalled",
+          error: expect.stringContaining("fixture transport unavailable"),
+        },
+        { peer: "fixture-healthy", result: { kind: "complete" } },
+      ]);
+    } finally {
+      release();
+      await running;
+      app.close();
+      peer.close();
+      rmSync(f.dir, { recursive: true, force: true });
+      rmSync(remote.dir, { recursive: true, force: true });
     }
   });
   it("application replication converges offline local imports through the same exchange handler", async () => {

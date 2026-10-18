@@ -37,6 +37,7 @@ const requestSchema = Type.Union([
   obj({ command: Type.Literal("maintain") }),
   obj({ command: Type.Literal("catch-up") }),
   obj({ command: Type.Literal("replicate") }),
+  obj({ command: Type.Literal("reconcile") }),
   obj({
     command: Type.Literal("capture"),
     windows: Type.Array(Type.Unknown(), { maxItems: 128 }),
@@ -87,10 +88,29 @@ export async function handleMemoryJSON(
       return app.status();
     case "maintain":
       return app.maintain(signal);
-    case "catch-up":
-      return app.catchUp(signal);
-    case "replicate":
-      return app.replicate(signal);
+    case "catch-up": {
+      const result = await app.catchUp(signal);
+      if (result.errors.length)
+        throw new AggregateError(
+          result.errors,
+          `capture failed: ${result.errors.join("; ")}`,
+        );
+      return result;
+    }
+    case "replicate": {
+      const result = await app.replicate(signal);
+      const errors = result
+        .filter((peer) => peer.error)
+        .map((peer) => `${peer.peer}: ${peer.error}`);
+      if (errors.length)
+        throw new AggregateError(
+          errors,
+          `replication failed: ${errors.join("; ")}`,
+        );
+      return result;
+    }
+    case "reconcile":
+      return app.reconcile(signal);
     case "capture":
       return app.capture(request.windows.map(parseWindow));
     case "recall": {
@@ -161,7 +181,7 @@ export async function memoryCLI(
   }
   if (command === "--help" || command === "help" || !command) {
     console.log(
-      "pi-memory status|maintain|catch-up|replicate|capture|recall|suppress|import-legacy|json|exchange\nJSON data commands read one bounded object from stdin; json also requires command.\nlegacy <command> preserves colliding historical maintain/status/health.\nlegacy: project-proposals/project-resolve/propose/proposals/show/review/history/catalog/migrate/request/rollback",
+      "pi-memory status|maintain|catch-up|reconcile|replicate|capture|recall|suppress|import-legacy|json|exchange\nJSON data commands read one bounded object from stdin; json also requires command.\nlegacy <command> preserves colliding historical maintain/status/health.\nlegacy: project-proposals/project-resolve/propose/proposals/show/review/history/catalog/migrate/request/rollback",
     );
     return;
   }
@@ -203,9 +223,9 @@ export async function memoryCLI(
         : raw !== null && typeof raw === "object" && !Array.isArray(raw)
           ? { ...raw, command }
           : raw;
-    console.log(
-      JSON.stringify(await handleMemoryJSON(value, app, controller.signal)),
-    );
+    const result = await handleMemoryJSON(value, app, controller.signal);
+    controller.signal.throwIfAborted();
+    console.log(JSON.stringify(result));
   } finally {
     app?.close();
     process.removeListener("SIGTERM", abort);
@@ -236,7 +256,9 @@ if (import.meta.vitest) {
   it("real CLI survives former whole-job deadlines and interrupts an open input pipe", async () => {
     const dir = mkdtempSync(join(tmpdir(), "memory-cli-lifetime-"));
     const harness = join(dir, "clock.mjs");
-    writeFileSync(harness, `
+    writeFileSync(
+      harness,
+      `
       const loaded = await import(${JSON.stringify(new URL("./cli.ts", import.meta.url).href)});
       const { memoryCLI } = loaded.default ?? loaded;
       const nativeTimeout = globalThis.setTimeout;
@@ -256,7 +278,8 @@ if (import.meta.vitest) {
       try { await memoryCLI(["capture"]); }
       catch (error) { console.error(String(error)); process.exitCode = 1; }
       process.disconnect();
-    `);
+    `,
+    );
     const env = {
       ...process.env,
       PI_CODING_AGENT_DIR: join(dir, "agent"),
@@ -270,21 +293,39 @@ if (import.meta.vitest) {
     };
     try {
       for (const interrupt of [false, true]) {
-        const child = spawn(process.execPath, ["--import", "jiti/register", harness], {
-          env,
-          stdio: ["pipe", "pipe", "pipe", "ipc"],
+        const child = spawn(
+          process.execPath,
+          ["--import", "jiti/register", harness],
+          {
+            env,
+            stdio: ["pipe", "pipe", "pipe", "ipc"],
+          },
+        );
+        let output = "",
+          errors = "";
+        child.stdout!.on("data", (b) => {
+          output += b;
         });
-        let output = "", errors = "";
-        child.stdout!.on("data", (b) => { output += b; });
-        child.stderr!.on("data", (b) => { errors += b; });
-        const exited = new Promise<number | null>((resolve) => child.once("exit", resolve));
+        child.stderr!.on("data", (b) => {
+          errors += b;
+        });
+        const exited = new Promise<number | null>((resolve) =>
+          child.once("exit", resolve),
+        );
         try {
           await new Promise<void>((resolve, reject) => {
             child.once("error", reject);
             child.once("message", () => resolve());
-            child.once("exit", () => reject(new Error(errors || "CLI exited before ready")));
+            child.once("exit", () =>
+              reject(new Error(errors || "CLI exited before ready")),
+            );
           });
-          const advanced = new Promise<void>((resolve) => child.once("message", () => resolve()));
+          const advanced = new Promise<void>((resolve, reject) => {
+            child.once("message", () => resolve());
+            child.once("exit", () =>
+              reject(new Error(errors || "CLI exited at a former deadline")),
+            );
+          });
           child.send("advance beyond former deadlines");
           await advanced;
           if (interrupt) child.kill("SIGTERM");
@@ -300,6 +341,252 @@ if (import.meta.vitest) {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 30_000);
+  it("native reconciliation CLI survives long provider work while separate capture/sync progress; shutdown durably retries", async () => {
+    const { SessionManager } = await import("@earendil-works/pi-coding-agent");
+    const { openMemoryApplication } = await import("./application.js");
+    const { exchangeReplica } = await import("./replica.js");
+    const { pathToFileURL } = await import("node:url");
+    for (const interrupt of [false, true]) {
+      const dir = mkdtempSync(join(tmpdir(), "memory-native-jobs-"));
+      const configuration = memoryConfiguration({
+        cwd: dir,
+        home: dir,
+        environment: {},
+        settings: {
+          sessionDir: join(dir, "sessions"),
+          "@bds_pi/agent-memory": {
+            root: "notes",
+            data: "data",
+            state: "state",
+            ownerId: "fixture",
+            backlog: { minWindows: 1, leaseMs: 60_000 },
+          },
+        },
+      });
+      const agent = join(dir, "agent");
+      mkdirSync(agent);
+      writeFileSync(
+        join(agent, "settings.json"),
+        JSON.stringify({
+          sessionDir: configuration.sessionRoot,
+          "@bds_pi/agent-memory": {
+            backlog: { minWindows: 1, leaseMs: 60_000 },
+          },
+          compaction: { enabled: false },
+          retry: { enabled: false },
+        }),
+      );
+      const env = {
+        ...process.env,
+        PI_CODING_AGENT_DIR: agent,
+        PI_CODING_AGENT_SESSION_DIR: configuration.sessionRoot,
+        PI_MEMORY_ROOT: configuration.root,
+        PI_MEMORY_DATA_DIR: configuration.data,
+        PI_MEMORY_STATE_DIR: configuration.state,
+        PI_MEMORY_OWNER: "fixture",
+        PI_MEMORY_PEERS: "[]",
+        PI_MEMORY_MODEL: "fixture-only/no-live-model",
+        PI_OFFLINE: "1",
+      };
+      const entry = resolve("packages/core/agent-memory/index.ts");
+      const run = (command: string) =>
+        spawnSync(
+          process.execPath,
+          ["--import", "jiti/register", entry, command],
+          { env, encoding: "utf8", timeout: 15_000 },
+        );
+      const source = (name: string) => {
+        const manager = SessionManager.inMemory(dir);
+        manager.appendMessage({
+          role: "user",
+          content: name,
+          timestamp: Date.now(),
+        });
+        mkdirSync(configuration.sessionRoot, { recursive: true });
+        writeFileSync(
+          join(configuration.sessionRoot, `${name}.jsonl`),
+          [manager.getHeader(), ...manager.getEntries()]
+            .map((e) => JSON.stringify(e))
+            .join("\n") + "\n",
+        );
+      };
+      const harness = join(dir, "provider.mjs");
+      writeFileSync(
+        harness,
+        `
+        const { ModelRuntime } = await import(${JSON.stringify(import.meta.resolve("@earendil-works/pi-coding-agent"))});
+        const { fauxProvider, fauxAssistantMessage, InMemoryCredentialStore } = await import(${JSON.stringify(import.meta.resolve("@earendil-works/pi-ai"))});
+        const loaded = await import(${JSON.stringify(pathToFileURL(entry).href)});
+        const { memoryCLI } = loaded.default ?? loaded;
+        const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false });
+        const faux = fauxProvider();
+        runtime.registerNativeProvider({ ...faux.provider, auth: { apiKey: {
+          name: "fixture", check: async () => ({ type: "api_key" }), resolve: async () => ({ auth: { apiKey: "fixture" } }),
+        } } });
+        const selected = faux.getModel();
+        await runtime.setRuntimeApiKey(selected.provider, "fixture");
+        ModelRuntime.create = async () => runtime;
+        process.env.PI_MEMORY_MODEL = selected.provider + "/" + selected.id;
+        let release; const gate = new Promise((resolve) => { release = resolve; });
+        const respond = async (context) => {
+          process.send({ kind: "model-started" });
+          await gate;
+          const last = context.messages.at(-1);
+          const text = typeof last.content === "string" ? last.content : last.content.filter((p) => p.type === "text").map((p) => p.text).join("");
+          const input = JSON.parse(text).sourceAndCorpus;
+          return fauxAssistantMessage(JSON.stringify({ notes: [], outcomes: input.batch.windows.map((p) => ({
+            windowId: p.window.windowId, decision: { kind: "no-change", reason: "fixture retained" },
+          })) }));
+        };
+        faux.setResponses([respond, respond]);
+        let clock = 0;
+        Object.defineProperty(performance, "now", { configurable: true, value: () => clock });
+        const nativeTimeout = setTimeout, nativeClear = clearTimeout;
+        const timers = new Map();
+        globalThis.setTimeout = (callback, delay, ...args) => {
+          if (delay < 10000) return nativeTimeout(callback, delay, ...args);
+          const timer = { at: clock + delay, callback: () => callback(...args), unref() {} };
+          timers.set(timer, timer); return timer;
+        };
+        globalThis.clearTimeout = (timer) => { if (!timers.delete(timer)) nativeClear(timer); };
+        process.on("message", async (message) => {
+          if (message === "release") { release(); return; }
+          const until = clock + message.advance;
+          for (;;) {
+            const next = [...timers.values()].filter((t) => t.at <= until).sort((a,b) => a.at-b.at)[0];
+            if (!next) break;
+            clock = next.at; timers.delete(next); next.callback();
+            await new Promise(setImmediate); await new Promise(setImmediate);
+          }
+          clock = until; process.send({ kind: "advanced" });
+        });
+        try { await memoryCLI(["reconcile"]); }
+        catch (error) { console.error(String(error)); process.exitCode = 1; }
+        process.disconnect();
+      `,
+      );
+      let app: MemoryApplication | undefined,
+        peer: MemoryApplication | undefined;
+      let child: ReturnType<typeof spawn> | undefined;
+      try {
+        source("first experience");
+        const initial = run("catch-up");
+        expect(initial.status, initial.stderr).toBe(0);
+        child = spawn(
+          process.execPath,
+          ["--import", "jiti/register", harness],
+          { env, stdio: ["pipe", "pipe", "pipe", "ipc"] },
+        );
+        let output = "",
+          errors = "";
+        child.stdout!.on("data", (b) => {
+          output += b;
+        });
+        child.stderr!.on("data", (b) => {
+          errors += b;
+        });
+        const exited = new Promise<number | null>((resolve) =>
+          child!.once("exit", resolve),
+        );
+        const message = (kind: string) =>
+          new Promise<void>((resolve, reject) => {
+            const received = (m: unknown) => {
+              if ((m as { kind: string }).kind === kind) {
+                child!.off("message", received);
+                resolve();
+              }
+            };
+            child!.on("message", received);
+            child!.once("exit", () =>
+              reject(new Error(errors || "provider CLI exited early")),
+            );
+          });
+        await message("model-started");
+        const advanced = message("advanced");
+        child.send({ advance: 200_000 });
+        await advanced;
+        source("later experience");
+        const captured = run("catch-up");
+        expect(captured.status, captured.stderr).toBe(0);
+        expect(JSON.parse(captured.stdout).windows).toBeGreaterThan(0);
+        peer = await openMemoryApplication({
+          configuration: {
+            ...configuration,
+            root: join(dir, "remote-notes"),
+            data: join(dir, "remote-data"),
+            state: join(dir, "remote-state"),
+          },
+        });
+        app = await openMemoryApplication({
+          configuration: { ...configuration, peers: ["fixture-peer"] },
+          transport: () => ({
+            exchange: (input, signal) =>
+              exchangeReplica(input, {
+                store: peer!.store,
+                peerId: "fixture-source",
+                policy: peer!.policy(),
+                signal,
+              }),
+          }),
+        });
+        expect(
+          (await app.replicate(new AbortController().signal))[0]?.result?.kind,
+        ).toBe("complete");
+        expect(
+          (await peer.store.forPeer("audit").scan(null, 100)).flatMap(
+            (c) => c.windows,
+          ),
+        ).toHaveLength(2);
+        if (interrupt) child.kill("SIGTERM");
+        else child.send("release");
+        expect(await exited, errors).toBe(interrupt ? 1 : 0);
+        const journal = await app.store.forPeer("audit").scan(null, 100);
+        if (!interrupt) {
+          expect(
+            journal
+              .flatMap((c) => c.outcomes)
+              .some((o) => o.decision.kind === "no-change"),
+          ).toBe(true);
+          expect(JSON.parse(output).results[0].kind).toBe("locally-committed");
+        }
+        if (interrupt)
+          writeFileSync(
+            join(agent, "settings.json"),
+            JSON.stringify({
+              sessionDir: configuration.sessionRoot,
+              "@bds_pi/agent-memory": {
+                backlog: { minWindows: 4, leaseMs: 60_000 },
+              },
+            }),
+          );
+        const restarted = run("reconcile");
+        expect(restarted.status, restarted.stderr).toBe(0);
+        expect(JSON.parse(restarted.stdout).results).toEqual([]);
+        if (interrupt) {
+          const recovered = await app.store.plan({
+            jobId: "audit-after-restart" as C.JobId,
+            owner: "fixture",
+            scope: app.scope,
+            now: new Date(Date.now() + 10 * 60_000).toISOString(),
+            policy: configuration.backlog,
+          });
+          if (recovered.kind !== "eligible")
+            throw new Error(`retry not recoverable: ${recovered.reason}`);
+          expect(recovered.batch.windows).toHaveLength(2);
+          expect(
+            recovered.batch.windows.find(
+              (p) => p.window.excerpts[0].text === "first experience",
+            )?.attempts,
+          ).toBe(1);
+        }
+      } finally {
+        if (child?.exitCode === null) child.kill("SIGKILL");
+        app?.close();
+        peer?.close();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  }, 60_000);
   it("real source and built CLI share native settings, JSON rejection, independent maintenance and fail-closed exchange", async () => {
     const dir = mkdtempSync(join(tmpdir(), "memory-cli-"));
     try {
