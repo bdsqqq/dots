@@ -484,6 +484,11 @@ export interface ReplicaTransport {
 export interface ReplicaStore {
   /** trusted local epoch: stable across append/restart, changes after retained payload removal/replacement. */
   continuityToken(): Promise<string>;
+  /** authoritative owners of external revision/window references, even when declared parents omit them. */
+  dependencyCommits(
+    change: ReplicaChange,
+    incoming?: readonly ReplicaChange[],
+  ): Promise<readonly CommitId[]>;
   /** ACK-independent causal scan; an unknown checkpoint restarts from the beginning. */
   scan(
     after: CommitId | null,
