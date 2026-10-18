@@ -55,7 +55,16 @@ export interface FileMemoryStoreConfig {
   readonly owner: string;
   /** fixture instrumentation at actual durable publication boundaries. */
   readonly publicationBoundary?: (
-    boundary: "objects" | "manifest" | "stash" | "prepared" | "confirming",
+    boundary:
+      | "objects"
+      | "manifest"
+      | "manifest-linked"
+      | "stash"
+      | "prepared"
+      | "confirming"
+      | "placement-prepared"
+      | "placed"
+      | "placement-durable",
     commitId: string,
   ) => void;
 }
@@ -85,6 +94,8 @@ class SnapshotChanged extends LockUnavailable {
   }
 }
 class LeaseLostBeforePublication extends Error {}
+class EditableRepair extends Error {}
+class RefreshApplied extends Error {}
 function contentionBudget(
   options: FileMemoryStoreOptions,
   fallback: number,
@@ -160,6 +171,9 @@ interface Placement {
   stash: string;
   snapshot: string | null;
   basis: string | null;
+}
+interface PreparedPublication extends Accepted {
+  stage: string;
 }
 interface PreparedObject {
   value: unknown;
@@ -339,9 +353,8 @@ export class FileMemoryStore implements C.MemoryStore {
   private watcher: FSWatcher | null = null;
   private readonly confirmed = new Map<string, string>();
   private preparingFiles: Map<string, string> | null = null;
-  private activeAccepted: Map<C.CommitId, Accepted> | null = null;
-  private activeView: View | null = null;
-  private activeObjects: ReadonlyMap<unknown, string> | null = null;
+  private preparationGuard: (() => void) | null = null;
+  private finalizations: (() => void)[] | null = null;
   private readonly invalidEditable = new Map<string, string>();
   private closed = false;
   /**
@@ -477,6 +490,29 @@ export class FileMemoryStore implements C.MemoryStore {
       canonicalJSON({ value, hash: sha256(canonicalJSON(value)) }),
     );
   }
+  private prepareLocalPublication(path: string, value: unknown): () => void {
+    const bytes = canonicalJSON({ value, hash: sha256(canonicalJSON(value)) });
+    const existing = existsSync(path);
+    if (existing && readFileSync(path, "utf8") !== bytes)
+      throw new IntegrityError("immutable local ledger collision");
+    const stage = join(dirname(path), `.prepared-${sha256(bytes)}`);
+    durableCreate(stage, bytes);
+    this.observe(stage);
+    if (existing) this.observe(path);
+    return () => {
+      if (!existing) {
+        linkSync(stage, path);
+        this.db
+          .prepare(
+            "INSERT INTO publication_generation(id,generation) VALUES(1,1) ON CONFLICT(id) DO UPDATE SET generation=generation+1",
+          )
+          .run();
+      }
+      if (!this.finalizations)
+        throw new IntegrityError("missing ledger finalization owner");
+      this.finalizations.push(() => confirmDurability(path));
+    };
+  }
   private dispatched(id: C.DeliveryId): boolean {
     const path = join(this.receipts, sha256(id));
     if (!existsSync(path)) return false;
@@ -498,6 +534,8 @@ export class FileMemoryStore implements C.MemoryStore {
     run: (view: View) => T,
     write = true,
     objects: readonly PreparedObject[] = [],
+    refresh = false,
+    prepare?: (view: View) => (view: View) => T,
   ): T {
     if (this.closed) throw new Error("memory store is closed");
     const prepared = new Map<string, string>();
@@ -510,48 +548,58 @@ export class FileMemoryStore implements C.MemoryStore {
     }
     const generation = this.publicationGeneration();
     const files = new Map<string, string>();
-    const cleanup = new Set<string>();
     this.preparingFiles = files;
     let view: View;
     try {
-      for (const dir of [this.objects, this.commits]) {
-        this.observe(dir);
-        if (write)
+      if (write)
+        for (const dir of [this.objects, this.commits])
           for (const file of readdirSync(dir)) {
             const match = /^\.pi-memory-stage-([a-f0-9]{64})-/.exec(file);
-            if (match) cleanup.add(join(dir, match[1]!));
+            if (
+              match &&
+              !prepared.has(join(dir, match[1]!)) &&
+              existsSync(join(dir, match[1]!))
+            )
+              cleanupDurableStages(join(dir, match[1]!));
           }
-      }
+      this.observe(this.commits);
       for (const [path, identity] of prepared) {
         if (this.observe(path) !== identity) throw new SnapshotChanged();
       }
       // Immutable bytes and physical durability are prepared without reserving
       // the database writer. The acceptance check below fences this exact read.
       view = this.recover(write);
+      this.preparationGuard = () => {
+        this.validatePreparation(generation, files);
+      };
+      if (refresh) {
+        if (this.scan(view, write) || this.materialize(view, write)) {
+          if (!write) throw new EditableRepair();
+          throw new RefreshApplied();
+        }
+      }
+      if (prepare) run = prepare(view);
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT")
+        throw new SnapshotChanged();
+      throw error;
     } finally {
+      this.preparationGuard = null;
       this.preparingFiles = null;
     }
     this.config.publicationBoundary?.("prepared", String(generation));
-    return this.coordinateSync(() => {
-      this.validatePreparation(generation, files);
-      this.activeAccepted = new Map(view.accepted);
-      this.activeView = view;
-      this.activeObjects = new Map(
-        objects.map((object) => [object.value, object.hash]),
-      );
-      try {
-        if (write) {
-          for (const path of cleanup)
-            if (files.has(path)) cleanupDurableStages(path);
-          this.synchronizeContinuity(view);
-        }
+    const finalizations: (() => void)[] = [];
+    this.finalizations = finalizations;
+    try {
+      return this.coordinateSync(() => {
+        this.validatePreparation(generation, files);
+        if (write) this.synchronizeContinuity(view);
         return run(view);
-      } finally {
-        this.activeAccepted = null;
-        this.activeView = null;
-        this.activeObjects = null;
-      }
-    }, write);
+      }, write);
+    } finally {
+      this.finalizations = null;
+      for (const finish of finalizations) finish();
+    }
   }
   private publicationGeneration(): number {
     const row = this.db
@@ -573,6 +621,8 @@ export class FileMemoryStore implements C.MemoryStore {
   ): void {
     if (generation !== this.publicationGeneration())
       throw new SnapshotChanged();
+    // These metadata comparisons fence replaced physical files and editable
+    // inodes. Content traversal, hashing and durability barriers already finished.
     for (const [path, identity] of files) {
       try {
         if (physicalIdentity(path) === identity) continue;
@@ -588,6 +638,11 @@ export class FileMemoryStore implements C.MemoryStore {
       }
       throw new SnapshotChanged();
     }
+  }
+  private requirePreparation(): void {
+    if (!this.preparationGuard)
+      throw new IntegrityError("missing preparation fence");
+    this.preparationGuard();
   }
   private confirmPhysical(path: string): void {
     const identity = this.observe(path);
@@ -655,9 +710,10 @@ export class FileMemoryStore implements C.MemoryStore {
     write = true,
     options = this.options,
     objects: readonly PreparedObject[] = [],
+    prepare?: (view: View) => (view: View) => T,
   ): Promise<T> {
     return contend(
-      () => this.refreshedSync(run, write, objects),
+      () => this.refreshedSync(run, write, objects, prepare),
       options,
       5000,
     );
@@ -666,56 +722,38 @@ export class FileMemoryStore implements C.MemoryStore {
     run: (view: View) => T,
     write: boolean,
     objects: readonly PreparedObject[] = [],
+    prepare?: (view: View) => (view: View) => T,
   ): T {
-    if (!write) {
-      const repair = Symbol();
-      const previousProblems = new Map(this.invalidEditable);
-      let result: T | typeof repair = repair;
-      let entered = false;
+    // Editable traversal, revision derivation and placement preparation reserve
+    // no writer. Every effect rechecks this exact snapshot before acceptance.
+    const previousProblems = new Map(this.invalidEditable);
+    for (;;) {
       try {
-        result = this.transactionSync(
-          (view) => {
-            // Atomic immutable manifests form a readable prefix during WAL writes.
-            // Dry runs never import an in-flight placement: changes are rechecked
-            // under IMMEDIATE before any filesystem mutation.
-            if (this.scan(view, false) || this.materialize(view, false))
-              return repair;
-            entered = true;
-            return run(view);
-          },
-          false,
-          objects,
-        );
+        return this.transactionSync(run, write, objects, true, prepare);
       } catch (error) {
-        // A concurrent placement can rename between traversal and read. Only
-        // preflight failures fall back; rerun validation while serialized.
-        if (entered || error instanceof LockUnavailable) throw error;
-      } finally {
-        if (result === repair) {
-          this.invalidEditable.clear();
-          for (const [path, reason] of previousProblems)
-            this.invalidEditable.set(path, reason);
+        if (error instanceof RefreshApplied) {
+          write = true;
+          continue;
         }
+        this.invalidEditable.clear();
+        for (const [path, reason] of previousProblems)
+          this.invalidEditable.set(path, reason);
+        if (error instanceof EditableRepair) {
+          write = true;
+          continue;
+        }
+        throw error;
       }
-      if (result !== repair) return result;
     }
-    return this.transactionSync(
-      (view) => {
-        this.scan(view);
-        const fresh = this.recover();
-        this.materialize(fresh);
-        return run(this.recover());
-      },
-      true,
-      objects,
-    );
   }
   private put(value: unknown): string {
-    const prepared = this.activeObjects?.get(value);
-    if (prepared !== undefined) return prepared;
     const bytes = canonicalJSON(value);
     const hash = sha256(bytes);
-    durableCreate(join(this.objects, hash), bytes);
+    const path = join(this.objects, hash);
+    const identity = prepareDurableCreate(path, bytes);
+    if (identity === null) throw new SnapshotChanged();
+    this.confirmed.set(path, identity);
+    this.observe(path);
     return hash;
   }
   private get(hash: string): unknown {
@@ -731,7 +769,6 @@ export class FileMemoryStore implements C.MemoryStore {
     return JSON.parse(bytes);
   }
   private recover(confirm = true): View {
-    if (this.activeView) return this.activeView;
     const view: View = {
       accepted: new Map(),
       revisions: new Map(),
@@ -742,9 +779,7 @@ export class FileMemoryStore implements C.MemoryStore {
       suppressions: [],
     };
     const suppressionIds = new Map<string, string>();
-    const retained = this.activeAccepted
-      ? [...this.activeAccepted.values()]
-      : this.readAccepted();
+    const retained = this.readAccepted();
     for (const accepted of retained) {
       const { replica } = accepted;
       view.accepted.set(replica.commitId, accepted);
@@ -771,9 +806,7 @@ export class FileMemoryStore implements C.MemoryStore {
         }
       }
     }
-    const derived = this.deriveView(view, confirm);
-    if (this.activeAccepted) this.activeView = derived;
-    return derived;
+    return this.deriveView(view, confirm);
   }
   private readAccepted(): Accepted[] {
     const retained: Accepted[] = [];
@@ -864,7 +897,7 @@ export class FileMemoryStore implements C.MemoryStore {
           view.retry.set(o.windowId, o);
         }
     }
-    if (confirm && !this.activeAccepted)
+    if (confirm)
       for (const a of causal) {
         for (const dependency of a.manifest.dependencies)
           this.confirmPhysical(join(this.objects, dependency));
@@ -942,11 +975,10 @@ export class FileMemoryStore implements C.MemoryStore {
   private verifyDependencies(dependencies: readonly string[]): void {
     dependencies.forEach((hash) => this.get(hash));
   }
-  private publish(
+  private preparePublication(
     replica: C.ReplicaChange,
     local: C.LocalChangeSet | null,
-    beforePublication?: () => void,
-  ): void {
+  ): PreparedPublication {
     const dependencies = [...replica.revisions, ...replica.windows].map((x) =>
       this.put(x),
     );
@@ -954,8 +986,6 @@ export class FileMemoryStore implements C.MemoryStore {
     dependencies.push(replicaHash);
     const localHash = local ? this.put(local) : null;
     if (localHash) dependencies.push(localHash);
-    dependencies.forEach((hash) => this.get(hash));
-    flushDirectory(this.objects);
     this.config.publicationBoundary?.("objects", replica.commitId);
     this.verifyDependencies(dependencies);
     const payload = {
@@ -968,16 +998,51 @@ export class FileMemoryStore implements C.MemoryStore {
       ...payload,
       hash: sha256(canonicalJSON(payload)),
     };
+    // The prepared inode is durable before its name can grant acceptance.
+    const stage = join(this.journals, `.manifest-${manifest.hash}`);
+    durableCreate(stage, canonicalJSON(manifest));
+    this.observe(stage);
+    for (const hash of dependencies) this.observe(join(this.objects, hash));
+    return { manifest, replica, local, stage };
+  }
+  private acceptPublication(
+    prepared: PreparedPublication,
+    beforePublication?: () => void,
+  ): void {
+    const { replica, manifest } = prepared;
     const path = join(this.commits, sha256(replica.commitId));
-    durableCreate(path, canonicalJSON(manifest), beforePublication);
-    this.activeAccepted?.set(replica.commitId, { manifest, replica, local });
-    this.activeView = null;
+    beforePublication?.();
+    linkSync(prepared.stage, path);
+    this.config.publicationBoundary?.("manifest-linked", replica.commitId);
     this.db
       .prepare(
         "INSERT INTO publication_generation(id,generation) VALUES(1,1) ON CONFLICT(id) DO UPDATE SET generation=generation+1",
       )
       .run();
-    this.config.publicationBoundary?.("manifest", replica.commitId);
+    const finish = () => {
+      confirmDurability(path);
+      this.confirmed.set(path, physicalIdentity(path));
+      this.config.publicationBoundary?.("manifest", replica.commitId);
+    };
+    if (this.finalizations) this.finalizations.push(finish);
+    else throw new IntegrityError("publication requires a finalization owner");
+  }
+  private publish(
+    replica: C.ReplicaChange,
+    local: C.LocalChangeSet | null,
+  ): void {
+    const prepared = this.preparePublication(replica, local);
+    const finalizations: (() => void)[] = [];
+    this.finalizations = finalizations;
+    try {
+      this.coordinateSync(() => {
+        this.requirePreparation();
+        this.acceptPublication(prepared);
+      });
+    } finally {
+      this.finalizations = null;
+      for (const finish of finalizations) finish();
+    }
   }
   async commit(
     value: C.LocalChangeSet,
@@ -996,205 +1061,244 @@ export class FileMemoryStore implements C.MemoryStore {
       const bytes = canonicalJSON(value);
       return { value, bytes, hash: sha256(bytes) };
     });
-    return this.refreshed(
-      (view) => {
-        const previous = view.accepted.get(change.commitId);
-        if (previous)
-          return previous.local && sameValue(previous.local, change)
-            ? {
-                kind: "locally-committed",
-                commitId: change.commitId,
-                replay: true,
-              }
-            : { kind: "identity-conflict", commitId: change.commitId };
-        options.signal?.throwIfAborted();
-        const now = millis(change.now) + elapsed(clock);
-        if (change.lease) {
-          const rows = this.db
-            .prepare("SELECT window,payload FROM leases WHERE token=?")
-            .all(change.lease.leaseId);
-          if (
-            !rows.length ||
-            millis(change.lease.expiresAt) <= now ||
-            rows.some(
-              (r) =>
-                !sameValue(
-                  parseLease(JSON.parse(string(r.payload))),
-                  change.lease,
-                ),
-            )
-          )
-            return { kind: "lease-lost" };
-          if (
-            !headsEqual(
-              rows.map((r) => string(r.window)),
-              change.outcomes.map((o) => o.windowId),
-            )
-          )
-            throw new Error("every leased window needs exactly one outcome");
-          const leasedScope = view.windows.get(
-            string(rows[0]!.window) as C.WindowId,
-          )?.scope;
-          if (
-            !leasedScope ||
-            rows.some(
-              (r) =>
-                !scopeEqual(
-                  view.windows.get(string(r.window) as C.WindowId)!.scope,
-                  leasedScope,
-                ),
-            ) ||
-            change.edits.some(
-              (edit) =>
-                !scopeEqual(edit.revision.scope, leasedScope) &&
-                !edit.revision.claims.some((claim) =>
-                  claim.evidence.some(
-                    (evidence) =>
-                      rows.some(
-                        (row) => string(row.window) === evidence.windowId,
-                      ) &&
-                      this.permitsEvidenceScope(
-                        view.windows.get(evidence.windowId)!,
-                        edit.revision.scope,
-                      ),
-                  ),
-                ),
-            ) ||
-            change.suppressions.some((s) => !scopeEqual(s.scope, leasedScope))
-          )
-            throw new Error("lease scope mismatch");
-        } else if (change.outcomes.length)
-          throw new Error("outcomes require a fenced lease");
-        if (
-          new Set(change.edits.map((e) => e.revision.noteId)).size !==
-          change.edits.length
-        )
-          throw new Error("one edit per note per batch");
-        if (
-          new Set(change.outcomes.map((o) => o.windowId)).size !==
-          change.outcomes.length
-        )
-          throw new Error("duplicate window outcome");
-        const suppressionIds = new Map(
-          view.suppressions.map((s) => [s.suppressionId, s]),
-        );
-        for (const s of change.suppressions) {
-          const old = suppressionIds.get(s.suppressionId);
-          if (old && !sameValue(old, s))
-            throw new IntegrityError("suppression collision");
-          suppressionIds.set(s.suppressionId, s);
-        }
-        const next = this.preview(
-          view,
-          change.windows,
-          change.edits.map((e) => e.revision),
-          change.suppressions,
-        );
-        for (const s of change.suppressions)
-          if (s.target.kind === "evidence")
-            this.validateEvidenceRef(next, s.scope, s.target.evidence);
-        for (const e of change.edits) {
-          this.safePath(e.revision.path);
-          const current = view.heads.get(e.revision.noteId) ?? [];
-          if (
-            !headsEqual(
-              e.expectedHeads,
-              current.map((n) => n.revisionId),
-            )
-          )
-            return { kind: "conflict", current };
-          if (current.some((r) => !scopeEqual(r.scope, e.revision.scope)))
-            throw new Error("note scope cannot change");
-          if (
-            e.revision.ancestry.kind === "known" &&
-            !headsEqual(e.revision.ancestry.parents, e.expectedHeads)
-          )
-            throw new Error("edit ancestry must name expected heads");
-          this.validateEvidence(next, e.revision);
-          const suppressed = suppressionsFor(next, e.revision);
-          if (suppressed.length && e.revision.exposure.kind !== "deleted")
-            return {
-              kind: "suppressed",
-              suppressions: [suppressed[0]!, ...suppressed.slice(1)],
-            };
-        }
-        for (const o of change.outcomes) {
-          this.validateOutcome(next, o);
-          if (view.terminal.has(o.windowId))
-            throw new Error("window already consumed");
-          if (o.decision.kind === "changed")
-            for (const ref of o.decision.notes) {
-              const r = next.revisions.get(ref.revisionId)!;
-              if (
-                !this.permitsEvidenceScope(
-                  next.windows.get(o.windowId)!,
-                  r.scope,
-                )
-              )
-                throw new Error("outcome scope mismatch");
-              const suppressed = suppressionsFor(next, r);
-              if (suppressed.length)
-                return {
-                  kind: "suppressed",
-                  suppressions: [suppressed[0]!, ...suppressed.slice(1)],
-                };
-            }
-        }
-        const newWindows = [
-          ...new Map(
-            change.windows
-              .filter((w) => !view.windows.has(w.windowId))
-              .map((w) => [w.windowId, w]),
-          ).values(),
-        ];
-        const replica: C.ReplicaChange = {
-          commitId: change.commitId,
-          replicaId: this.config.replicaId,
-          parents: this.commitHeads(view),
-          revisions: change.edits.map((e) => e.revision),
-          windows: newWindows,
-          suppressions: change.suppressions,
-          outcomes: change.outcomes.flatMap((o) =>
-            o.decision.kind === "retry" ? [] : [{ ...o, decision: o.decision }],
-          ),
-        };
-        options.signal?.throwIfAborted();
-        // Validation above may itself be substantial for a retained batch.
-        if (
-          change.lease &&
-          millis(change.lease.expiresAt) <= millis(change.now) + elapsed(clock)
-        )
-          return { kind: "lease-lost" };
-        try {
-          this.publish(replica, change, () => {
-            options.signal?.throwIfAborted();
-            if (
-              change.lease &&
-              millis(change.lease.expiresAt) <=
-                millis(change.now) + elapsed(clock)
-            )
-              throw new LeaseLostBeforePublication();
-          });
-        } catch (error) {
-          if (error instanceof LeaseLostBeforePublication)
-            return { kind: "lease-lost" };
-          throw error;
-        }
-        if (change.lease)
-          this.db
-            .prepare("DELETE FROM leases WHERE token=?")
-            .run(change.lease.leaseId);
-        this.materialize(this.recover());
-        return {
-          kind: "locally-committed",
-          commitId: change.commitId,
-          replay: false,
-        };
+    return this.refreshed<C.CommitResult>(
+      () => {
+        throw new Error("missing prepared acceptance");
       },
       true,
       options,
       objects,
-    );
+      (view) => {
+        const prepare = ():
+          | C.CommitResult
+          | { kind: "prepared"; publication: PreparedPublication } => {
+          const previous = view.accepted.get(change.commitId);
+          if (previous)
+            return previous.local && sameValue(previous.local, change)
+              ? {
+                  kind: "locally-committed",
+                  commitId: change.commitId,
+                  replay: true,
+                }
+              : { kind: "identity-conflict", commitId: change.commitId };
+          options.signal?.throwIfAborted();
+          const now = millis(change.now) + elapsed(clock);
+          if (change.lease) {
+            const rows = this.db
+              .prepare("SELECT window,payload FROM leases WHERE token=?")
+              .all(change.lease.leaseId);
+            if (
+              !rows.length ||
+              millis(change.lease.expiresAt) <= now ||
+              rows.some(
+                (r) =>
+                  !sameValue(
+                    parseLease(JSON.parse(string(r.payload))),
+                    change.lease,
+                  ),
+              )
+            )
+              return { kind: "lease-lost" };
+            if (
+              !headsEqual(
+                rows.map((r) => string(r.window)),
+                change.outcomes.map((o) => o.windowId),
+              )
+            )
+              throw new Error("every leased window needs exactly one outcome");
+            const leasedScope = view.windows.get(
+              string(rows[0]!.window) as C.WindowId,
+            )?.scope;
+            if (
+              !leasedScope ||
+              rows.some(
+                (r) =>
+                  !scopeEqual(
+                    view.windows.get(string(r.window) as C.WindowId)!.scope,
+                    leasedScope,
+                  ),
+              ) ||
+              change.edits.some(
+                (edit) =>
+                  !scopeEqual(edit.revision.scope, leasedScope) &&
+                  !edit.revision.claims.some((claim) =>
+                    claim.evidence.some(
+                      (evidence) =>
+                        rows.some(
+                          (row) => string(row.window) === evidence.windowId,
+                        ) &&
+                        this.permitsEvidenceScope(
+                          view.windows.get(evidence.windowId)!,
+                          edit.revision.scope,
+                        ),
+                    ),
+                  ),
+              ) ||
+              change.suppressions.some((s) => !scopeEqual(s.scope, leasedScope))
+            )
+              throw new Error("lease scope mismatch");
+          } else if (change.outcomes.length)
+            throw new Error("outcomes require a fenced lease");
+          if (
+            new Set(change.edits.map((e) => e.revision.noteId)).size !==
+            change.edits.length
+          )
+            throw new Error("one edit per note per batch");
+          if (
+            new Set(change.outcomes.map((o) => o.windowId)).size !==
+            change.outcomes.length
+          )
+            throw new Error("duplicate window outcome");
+          const suppressionIds = new Map(
+            view.suppressions.map((s) => [s.suppressionId, s]),
+          );
+          for (const s of change.suppressions) {
+            const old = suppressionIds.get(s.suppressionId);
+            if (old && !sameValue(old, s))
+              throw new IntegrityError("suppression collision");
+            suppressionIds.set(s.suppressionId, s);
+          }
+          const next = this.preview(
+            view,
+            change.windows,
+            change.edits.map((e) => e.revision),
+            change.suppressions,
+          );
+          for (const s of change.suppressions)
+            if (s.target.kind === "evidence")
+              this.validateEvidenceRef(next, s.scope, s.target.evidence);
+          for (const e of change.edits) {
+            this.safePath(e.revision.path);
+            const current = view.heads.get(e.revision.noteId) ?? [];
+            if (
+              !headsEqual(
+                e.expectedHeads,
+                current.map((n) => n.revisionId),
+              )
+            )
+              return { kind: "conflict", current };
+            if (current.some((r) => !scopeEqual(r.scope, e.revision.scope)))
+              throw new Error("note scope cannot change");
+            if (
+              e.revision.ancestry.kind === "known" &&
+              !headsEqual(e.revision.ancestry.parents, e.expectedHeads)
+            )
+              throw new Error("edit ancestry must name expected heads");
+            this.validateEvidence(next, e.revision);
+            const suppressed = suppressionsFor(next, e.revision);
+            if (suppressed.length && e.revision.exposure.kind !== "deleted")
+              return {
+                kind: "suppressed",
+                suppressions: [suppressed[0]!, ...suppressed.slice(1)],
+              };
+          }
+          for (const o of change.outcomes) {
+            this.validateOutcome(next, o);
+            if (view.terminal.has(o.windowId))
+              throw new Error("window already consumed");
+            if (o.decision.kind === "changed")
+              for (const ref of o.decision.notes) {
+                const r = next.revisions.get(ref.revisionId)!;
+                if (
+                  !this.permitsEvidenceScope(
+                    next.windows.get(o.windowId)!,
+                    r.scope,
+                  )
+                )
+                  throw new Error("outcome scope mismatch");
+                const suppressed = suppressionsFor(next, r);
+                if (suppressed.length)
+                  return {
+                    kind: "suppressed",
+                    suppressions: [suppressed[0]!, ...suppressed.slice(1)],
+                  };
+              }
+          }
+          const newWindows = [
+            ...new Map(
+              change.windows
+                .filter((w) => !view.windows.has(w.windowId))
+                .map((w) => [w.windowId, w]),
+            ).values(),
+          ];
+          const replica: C.ReplicaChange = {
+            commitId: change.commitId,
+            replicaId: this.config.replicaId,
+            parents: this.commitHeads(view),
+            revisions: change.edits.map((e) => e.revision),
+            windows: newWindows,
+            suppressions: change.suppressions,
+            outcomes: change.outcomes.flatMap((o) =>
+              o.decision.kind === "retry"
+                ? []
+                : [{ ...o, decision: o.decision }],
+            ),
+          };
+          options.signal?.throwIfAborted();
+          // Validation above may itself be substantial for a retained batch.
+          if (
+            change.lease &&
+            millis(change.lease.expiresAt) <=
+              millis(change.now) + elapsed(clock)
+          )
+            return { kind: "lease-lost" };
+          return {
+            kind: "prepared",
+            publication: this.preparePublication(replica, change),
+          };
+        };
+        const result = prepare();
+        return () => {
+          if (result.kind !== "prepared") return result;
+          // Renewal/reclaim can occur during file preparation. Recheck the exact
+          // lease payload at acceptance, as well as elapsed expiry/cancellation.
+          const checkLease = () => {
+            options.signal?.throwIfAborted();
+            if (change.lease) {
+              const rows = this.db
+                .prepare("SELECT payload FROM leases WHERE token=?")
+                .all(change.lease.leaseId);
+              if (
+                !rows.length ||
+                rows.some(
+                  (row) =>
+                    !sameValue(
+                      parseLease(JSON.parse(string(row.payload))),
+                      change.lease,
+                    ),
+                ) ||
+                millis(change.lease.expiresAt) <=
+                  millis(change.now) + elapsed(clock)
+              )
+                throw new LeaseLostBeforePublication();
+            }
+          };
+          try {
+            this.acceptPublication(result.publication, checkLease);
+          } catch (error) {
+            if (error instanceof LeaseLostBeforePublication)
+              return { kind: "lease-lost" };
+            throw error;
+          }
+          if (change.lease)
+            this.db
+              .prepare("DELETE FROM leases WHERE token=?")
+              .run(change.lease.leaseId);
+          return {
+            kind: "locally-committed",
+            commitId: change.commitId,
+            replay: false,
+          };
+        };
+      },
+    ).then(async (result) => {
+      if (result.kind === "locally-committed")
+        await this.refreshed(() => undefined, true, {
+          ...options,
+          signal: undefined,
+        });
+      return result;
+    });
   }
   private preview(
     view: View,
@@ -1343,7 +1447,13 @@ export class FileMemoryStore implements C.MemoryStore {
     input: C.PlanInput,
     options: FileMemoryStoreOptions = this.options,
   ): Promise<C.BacklogPlan> {
-    return this.refreshed(
+    return this.refreshed<C.BacklogPlan>(
+      () => {
+        throw new Error("missing prepared backlog");
+      },
+      true,
+      options,
+      [],
       (view) => {
         const now = millis(input.now);
         const p = input.policy;
@@ -1385,83 +1495,89 @@ export class FileMemoryStore implements C.MemoryStore {
               a.pendingSince.localeCompare(b.pendingSince) ||
               a.window.windowId.localeCompare(b.window.windowId),
           );
-        if (!pending.length)
-          return { kind: "idle", reason: "empty", nextCheckAt: null };
-        this.db
-          .prepare(
-            "DELETE FROM leases WHERE json_extract(payload,'$.expiresAt')<=?",
-          )
-          .run(input.now);
-        const free = pending.filter(
-          (w) =>
-            !this.db
-              .prepare("SELECT 1 FROM leases WHERE window=?")
-              .get(w.window.windowId),
+        const sizes = new Map(
+          pending.map((item) => [
+            item.window.windowId,
+            Buffer.byteLength(canonicalJSON(item.window)),
+          ]),
         );
-        if (!free.length)
-          return {
-            kind: "idle",
-            reason: "leased",
-            nextCheckAt: iso(now + p.leaseMs),
-          };
-        const ready = free.filter((w) => millis(w.notBefore) <= now);
-        if (!ready.length)
-          return {
-            kind: "idle",
-            reason: "backoff",
-            nextCheckAt: free.map((w) => w.notBefore).sort()[0]!,
-          };
-        const reason = ready.some((w) => w.attempts > 0)
-          ? "recovery"
-          : ready.some((w) => w.window.importance === "correction")
-            ? "correction"
-            : now - millis(ready[0]!.pendingSince) >= p.maxPendingAgeMs
-              ? "age"
-              : ready.length >= p.minWindows
-                ? "threshold"
-                : null;
-        if (!reason)
-          return {
-            kind: "idle",
-            reason: "below-threshold",
-            nextCheckAt: iso(
-              millis(ready[0]!.pendingSince) + p.maxPendingAgeMs,
-            ),
-          };
-        const selected: C.PendingWindow[] = [];
-        let bytes = 0;
-        for (const w of ready) {
-          const size = Buffer.byteLength(canonicalJSON(w.window));
-          if (
-            bytes + size > p.maxBatchBytes ||
-            selected.length >= p.maxBatchWindows
-          )
-            break;
-          selected.push(w);
-          bytes += size;
-        }
-        if (!selected.length)
-          throw new Error(
-            "pending window exceeds maxBatchBytes; increase policy or split producer windows",
-          );
-        const lease: C.LocalLease = {
-          leaseId: randomUUID() as C.LeaseId,
-          jobId: input.jobId,
-          owner: input.owner,
-          expiresAt: iso(now + p.leaseMs),
-        };
-        for (const w of selected)
+        return () => {
+          if (!pending.length)
+            return { kind: "idle", reason: "empty", nextCheckAt: null };
           this.db
-            .prepare("INSERT INTO leases VALUES (?,?,?)")
-            .run(w.window.windowId, lease.leaseId, canonicalJSON(lease));
-        return {
-          kind: "eligible",
-          reason,
-          batch: { lease, windows: [selected[0]!, ...selected.slice(1)] },
+            .prepare(
+              "DELETE FROM leases WHERE json_extract(payload,'$.expiresAt')<=?",
+            )
+            .run(input.now);
+          const free = pending.filter(
+            (w) =>
+              !this.db
+                .prepare("SELECT 1 FROM leases WHERE window=?")
+                .get(w.window.windowId),
+          );
+          if (!free.length)
+            return {
+              kind: "idle",
+              reason: "leased",
+              nextCheckAt: iso(now + p.leaseMs),
+            };
+          const ready = free.filter((w) => millis(w.notBefore) <= now);
+          if (!ready.length)
+            return {
+              kind: "idle",
+              reason: "backoff",
+              nextCheckAt: free.map((w) => w.notBefore).sort()[0]!,
+            };
+          const reason = ready.some((w) => w.attempts > 0)
+            ? "recovery"
+            : ready.some((w) => w.window.importance === "correction")
+              ? "correction"
+              : now - millis(ready[0]!.pendingSince) >= p.maxPendingAgeMs
+                ? "age"
+                : ready.length >= p.minWindows
+                  ? "threshold"
+                  : null;
+          if (!reason)
+            return {
+              kind: "idle",
+              reason: "below-threshold",
+              nextCheckAt: iso(
+                millis(ready[0]!.pendingSince) + p.maxPendingAgeMs,
+              ),
+            };
+          const selected: C.PendingWindow[] = [];
+          let bytes = 0;
+          for (const w of ready) {
+            const size = sizes.get(w.window.windowId)!;
+            if (
+              bytes + size > p.maxBatchBytes ||
+              selected.length >= p.maxBatchWindows
+            )
+              break;
+            selected.push(w);
+            bytes += size;
+          }
+          if (!selected.length)
+            throw new Error(
+              "pending window exceeds maxBatchBytes; increase policy or split producer windows",
+            );
+          const lease: C.LocalLease = {
+            leaseId: randomUUID() as C.LeaseId,
+            jobId: input.jobId,
+            owner: input.owner,
+            expiresAt: iso(now + p.leaseMs),
+          };
+          for (const w of selected)
+            this.db
+              .prepare("INSERT INTO leases VALUES (?,?,?)")
+              .run(w.window.windowId, lease.leaseId, canonicalJSON(lease));
+          return {
+            kind: "eligible",
+            reason,
+            batch: { lease, windows: [selected[0]!, ...selected.slice(1)] },
+          };
         };
       },
-      true,
-      options,
     );
   }
   async renewLease(
@@ -1569,23 +1685,31 @@ export class FileMemoryStore implements C.MemoryStore {
     input: C.RecallDelivery,
     options: FileMemoryStoreOptions = this.options,
   ): Promise<"queued" | "duplicate"> {
-    const d = parseDelivery(input);
-    return this.refreshed(
+    const d = parseDelivery(structuredClone(input));
+    return this.refreshed<"queued" | "duplicate">(
+      () => {
+        throw new Error("missing prepared delivery");
+      },
+      true,
+      options,
+      [],
       (view) => {
         const path = join(this.outbox, sha256(d.deliveryId));
         if (existsSync(path)) {
+          this.observe(path);
           if (!sameValue(this.localValue(path), d))
             throw new IntegrityError("delivery identity collision");
-          return "duplicate";
+          return () => "duplicate";
         }
         const eligibility = this.eligibility(view, d, new Date().toISOString());
         if (eligibility.kind === "discard")
           throw new Error(`delivery rejected: ${eligibility.reason}`);
-        this.localCreate(path, d);
-        return "queued";
+        const accept = this.prepareLocalPublication(path, d);
+        return () => {
+          accept();
+          return "queued";
+        };
       },
-      true,
-      options,
     );
   }
   async readDelivery(
@@ -1635,15 +1759,31 @@ export class FileMemoryStore implements C.MemoryStore {
     outcome: C.DispatchOutcome,
     options: FileMemoryStoreOptions = this.options,
   ): Promise<void> {
-    return this.transaction(() => {
-      if (outcome.kind === "empty") return;
-      if (
-        outcome.deliveryId !== id ||
-        !existsSync(join(this.outbox, sha256(id)))
-      )
-        throw new Error("unknown delivery");
-      this.localCreate(join(this.receipts, sha256(id)), outcome);
-    }, options);
+    const owned = structuredClone(outcome);
+    return contend(
+      () =>
+        this.transactionSync<void>(
+          () => {
+            throw new Error("missing prepared dispatch");
+          },
+          true,
+          [],
+          false,
+          () => {
+            if (owned.kind === "empty") return () => undefined;
+            const path = join(this.outbox, sha256(id));
+            if (owned.deliveryId !== id || !existsSync(path))
+              throw new Error("unknown delivery");
+            this.observe(path);
+            return this.prepareLocalPublication(
+              join(this.receipts, sha256(id)),
+              owned,
+            );
+          },
+        ),
+      options,
+      5000,
+    );
   }
   private dependenciesReady(
     c: C.ReplicaChange,
@@ -1731,96 +1871,112 @@ export class FileMemoryStore implements C.MemoryStore {
         });
       },
       dependencyCommits: async (input, incoming = []) =>
-        write((view) => {
-          if (incoming.length > 4096)
-            throw new Error("replica dependency lookup exceeds 4096 commits");
-          const target = parseReplicaChange(input);
-          const candidates = new Map(
-            [...view.accepted].map(([id, accepted]) => [id, accepted.replica]),
-          );
-          for (const value of [...incoming, target]) {
-            const change = parseReplicaChange(value);
-            const retained = candidates.get(change.commitId);
-            if (retained && !sameValue(retained, change))
-              throw new IntegrityError("replica identity collision");
-            candidates.set(change.commitId, change);
-          }
-          const revisions = new Set<C.RevisionId>([
-            ...target.revisions.flatMap((revision) => [
-              ...(revision.ancestry.kind === "known"
-                ? revision.ancestry.parents
-                : []),
-              ...revision.claims.flatMap((claim) =>
-                claim.derivedFrom.map((ref) => ref.revisionId),
+        this.refreshed<C.CommitId[]>(
+          () => {
+            throw new Error("missing prepared dependencies");
+          },
+          true,
+          options,
+          [],
+          (view) => {
+            if (incoming.length > 4096)
+              throw new Error("replica dependency lookup exceeds 4096 commits");
+            const target = parseReplicaChange(input);
+            const candidates = new Map(
+              [...view.accepted].map(([id, accepted]) => [
+                id,
+                accepted.replica,
+              ]),
+            );
+            for (const value of [...incoming, target]) {
+              const change = parseReplicaChange(value);
+              const retained = candidates.get(change.commitId);
+              if (retained && !sameValue(retained, change))
+                throw new IntegrityError("replica identity collision");
+              candidates.set(change.commitId, change);
+            }
+            const revisions = new Set<C.RevisionId>([
+              ...target.revisions.flatMap((revision) => [
+                ...(revision.ancestry.kind === "known"
+                  ? revision.ancestry.parents
+                  : []),
+                ...revision.claims.flatMap((claim) =>
+                  claim.derivedFrom.map((ref) => ref.revisionId),
+                ),
+              ]),
+              ...target.outcomes.flatMap((outcome) =>
+                outcome.decision.kind === "changed"
+                  ? outcome.decision.notes.map((ref) => ref.revisionId)
+                  : [],
               ),
-            ]),
-            ...target.outcomes.flatMap((outcome) =>
-              outcome.decision.kind === "changed"
-                ? outcome.decision.notes.map((ref) => ref.revisionId)
-                : [],
-            ),
-          ]);
-          const windows = new Set<C.WindowId>([
-            ...target.revisions.flatMap((revision) =>
-              revision.claims.flatMap((claim) =>
-                claim.evidence.map((ref) => ref.windowId),
+            ]);
+            const windows = new Set<C.WindowId>([
+              ...target.revisions.flatMap((revision) =>
+                revision.claims.flatMap((claim) =>
+                  claim.evidence.map((ref) => ref.windowId),
+                ),
               ),
-            ),
-            ...target.suppressions.flatMap((rule) =>
-              rule.target.kind === "evidence"
-                ? [rule.target.evidence.windowId]
-                : [],
-            ),
-            ...target.outcomes.map((outcome) => outcome.windowId),
-          ]);
-          for (const revision of target.revisions)
-            revisions.delete(revision.revisionId);
-          for (const window of target.windows) windows.delete(window.windowId);
-          // A later duplicate must not retroactively change a cached dependency.
-          // The epoch resets these ordinals whenever retained history changes.
-          this.synchronizeContinuity(view, true);
-          const ordinals = new Map(
-            this.db
-              .prepare(
-                "SELECT commit_id,rowid AS ordinal FROM repository_payload",
-              )
-              .all()
-              .map((row) => [string(row.commit_id), Number(row.ordinal)]),
-          );
-          const ordered = [...candidates.values()].sort(
-            (a, b) =>
-              (ordinals.get(a.commitId) ?? Number.MAX_SAFE_INTEGER) -
-                (ordinals.get(b.commitId) ?? Number.MAX_SAFE_INTEGER) ||
-              a.commitId.localeCompare(b.commitId),
-          );
-          const owners = new Set<C.CommitId>();
-          const foundRevisions = new Set<C.RevisionId>(),
-            foundWindows = new Set<C.WindowId>();
-          for (const candidate of ordered) {
-            for (const revision of candidate.revisions)
-              if (
-                revisions.has(revision.revisionId) &&
-                !foundRevisions.has(revision.revisionId)
-              ) {
-                owners.add(candidate.commitId);
-                foundRevisions.add(revision.revisionId);
-              }
-            for (const window of candidate.windows)
-              if (
-                windows.has(window.windowId) &&
-                !foundWindows.has(window.windowId)
-              ) {
-                owners.add(candidate.commitId);
-                foundWindows.add(window.windowId);
-              }
-          }
-          if (
-            foundRevisions.size !== revisions.size ||
-            foundWindows.size !== windows.size
-          )
-            throw new IntegrityError("missing replica evidence dependency");
-          return [...owners].sort();
-        }),
+              ...target.suppressions.flatMap((rule) =>
+                rule.target.kind === "evidence"
+                  ? [rule.target.evidence.windowId]
+                  : [],
+              ),
+              ...target.outcomes.map((outcome) => outcome.windowId),
+            ]);
+            for (const revision of target.revisions)
+              revisions.delete(revision.revisionId);
+            for (const window of target.windows)
+              windows.delete(window.windowId);
+            // A later duplicate must not retroactively change a cached dependency.
+            // The epoch resets these ordinals whenever retained history changes.
+            this.coordinateSync(() => {
+              this.requirePreparation();
+              this.synchronizeContinuity(view, true);
+            });
+            const ordinals = new Map(
+              this.db
+                .prepare(
+                  "SELECT commit_id,rowid AS ordinal FROM repository_payload",
+                )
+                .all()
+                .map((row) => [string(row.commit_id), Number(row.ordinal)]),
+            );
+            const ordered = [...candidates.values()].sort(
+              (a, b) =>
+                (ordinals.get(a.commitId) ?? Number.MAX_SAFE_INTEGER) -
+                  (ordinals.get(b.commitId) ?? Number.MAX_SAFE_INTEGER) ||
+                a.commitId.localeCompare(b.commitId),
+            );
+            const owners = new Set<C.CommitId>();
+            const foundRevisions = new Set<C.RevisionId>(),
+              foundWindows = new Set<C.WindowId>();
+            for (const candidate of ordered) {
+              for (const revision of candidate.revisions)
+                if (
+                  revisions.has(revision.revisionId) &&
+                  !foundRevisions.has(revision.revisionId)
+                ) {
+                  owners.add(candidate.commitId);
+                  foundRevisions.add(revision.revisionId);
+                }
+              for (const window of candidate.windows)
+                if (
+                  windows.has(window.windowId) &&
+                  !foundWindows.has(window.windowId)
+                ) {
+                  owners.add(candidate.commitId);
+                  foundWindows.add(window.windowId);
+                }
+            }
+            if (
+              foundRevisions.size !== revisions.size ||
+              foundWindows.size !== windows.size
+            )
+              throw new IntegrityError("missing replica evidence dependency");
+            const result = [...owners].sort();
+            return () => result;
+          },
+        ),
       readChanges: async (ids) => {
         if (ids.length === 0) return [];
         if (ids.length > 4096)
@@ -1863,73 +2019,89 @@ export class FileMemoryStore implements C.MemoryStore {
           options,
           5000,
         ),
-      integrate: async (incoming) =>
-        write((view) => {
-          const changes = incoming.map(parseReplicaChange);
-          const next = this.preview(
-            view,
-            changes.flatMap((c) => c.windows),
-            changes.flatMap((c) => c.revisions),
-            changes.flatMap((c) => c.suppressions),
-          );
-          const available = new Set([
-            ...view.accepted.keys(),
-            ...changes.map((c) => c.commitId),
-          ]);
-          const suppressions = new Map(
-            view.suppressions.map((s) => [s.suppressionId, s]),
-          );
-          const identities = new Map<C.CommitId, C.ReplicaChange>();
-          for (const c of changes) {
-            const old = identities.get(c.commitId);
-            if (old && !sameValue(old, c))
-              throw new IntegrityError("duplicate incoming identity collision");
-            identities.set(c.commitId, c);
-            for (const s of c.suppressions) {
-              if (s.target.kind === "evidence")
-                this.validateEvidenceRef(next, s.scope, s.target.evidence);
-              const previous = suppressions.get(s.suppressionId);
-              if (previous && !sameValue(previous, s))
-                throw new IntegrityError("incoming suppression collision");
-              suppressions.set(s.suppressionId, s);
-            }
-          }
-          for (const c of changes) {
-            const old = view.accepted.get(c.commitId);
-            if (old && !sameValue(old.replica, c))
-              throw new IntegrityError("replica commit identity collision");
-            for (const p of c.parents)
-              if (!available.has(p))
-                throw new IntegrityError("missing incoming parent");
-            for (const r of c.revisions) {
-              this.safePath(r.path);
-              this.validateEvidence(next, r);
-              if (r.ancestry.kind === "known")
-                for (const p of r.ancestry.parents)
-                  if (next.revisions.get(p)?.noteId !== r.noteId)
-                    throw new IntegrityError("missing incoming ancestry");
-            }
-            for (const o of c.outcomes) this.validateOutcome(next, o);
-          }
-          const pending = [...identities.values()].filter(
-            (c) => !view.accepted.has(c.commitId),
-          );
-          const done = new Set(view.accepted.keys());
-          const revisions = new Set(view.revisions.keys()),
-            windows = new Set(view.windows.keys());
-          while (pending.length) {
-            const index = pending.findIndex((c) =>
-              this.dependenciesReady(c, done, revisions, windows),
+      integrate: async (incoming) => {
+        const changes = structuredClone(incoming).map(parseReplicaChange);
+        return this.refreshed<void>(
+          () => {
+            throw new Error("missing prepared integration");
+          },
+          true,
+          options,
+          [],
+          (view) => {
+            const publications: PreparedPublication[] = [];
+            const next = this.preview(
+              view,
+              changes.flatMap((c) => c.windows),
+              changes.flatMap((c) => c.revisions),
+              changes.flatMap((c) => c.suppressions),
             );
-            if (index < 0) throw new IntegrityError("cyclic incoming ancestry");
-            const c = pending.splice(index, 1)[0]!;
-            this.publish(c, null);
-            done.add(c.commitId);
-            c.revisions.forEach((r) => revisions.add(r.revisionId));
-            c.windows.forEach((w) => windows.add(w.windowId));
-          }
-          this.materialize(this.recover());
-        }),
+            const available = new Set([
+              ...view.accepted.keys(),
+              ...changes.map((c) => c.commitId),
+            ]);
+            const suppressions = new Map(
+              view.suppressions.map((s) => [s.suppressionId, s]),
+            );
+            const identities = new Map<C.CommitId, C.ReplicaChange>();
+            for (const c of changes) {
+              const old = identities.get(c.commitId);
+              if (old && !sameValue(old, c))
+                throw new IntegrityError(
+                  "duplicate incoming identity collision",
+                );
+              identities.set(c.commitId, c);
+              for (const s of c.suppressions) {
+                if (s.target.kind === "evidence")
+                  this.validateEvidenceRef(next, s.scope, s.target.evidence);
+                const previous = suppressions.get(s.suppressionId);
+                if (previous && !sameValue(previous, s))
+                  throw new IntegrityError("incoming suppression collision");
+                suppressions.set(s.suppressionId, s);
+              }
+            }
+            for (const c of changes) {
+              const old = view.accepted.get(c.commitId);
+              if (old && !sameValue(old.replica, c))
+                throw new IntegrityError("replica commit identity collision");
+              for (const p of c.parents)
+                if (!available.has(p))
+                  throw new IntegrityError("missing incoming parent");
+              for (const r of c.revisions) {
+                this.safePath(r.path);
+                this.validateEvidence(next, r);
+                if (r.ancestry.kind === "known")
+                  for (const p of r.ancestry.parents)
+                    if (next.revisions.get(p)?.noteId !== r.noteId)
+                      throw new IntegrityError("missing incoming ancestry");
+              }
+              for (const o of c.outcomes) this.validateOutcome(next, o);
+            }
+            const pending = [...identities.values()].filter(
+              (c) => !view.accepted.has(c.commitId),
+            );
+            const done = new Set(view.accepted.keys());
+            const revisions = new Set(view.revisions.keys()),
+              windows = new Set(view.windows.keys());
+            while (pending.length) {
+              const index = pending.findIndex((c) =>
+                this.dependenciesReady(c, done, revisions, windows),
+              );
+              if (index < 0)
+                throw new IntegrityError("cyclic incoming ancestry");
+              const c = pending.splice(index, 1)[0]!;
+              publications.push(this.preparePublication(c, null));
+              done.add(c.commitId);
+              c.revisions.forEach((r) => revisions.add(r.revisionId));
+              c.windows.forEach((w) => windows.add(w.windowId));
+            }
+            return () => {
+              for (const publication of publications)
+                this.acceptPublication(publication);
+            };
+          },
+        ).then(() => this.refreshed(() => undefined, true, options));
+      },
       acknowledge: async (commits, cursor) =>
         this.transaction((v) => {
           for (const id of commits) {
@@ -1949,7 +2121,7 @@ export class FileMemoryStore implements C.MemoryStore {
   }
   private placements(): Placement[] {
     return readdirSync(this.journals)
-      .filter((f) => f.endsWith(".intent"))
+      .filter((f) => !f.startsWith(".") && f.endsWith(".intent"))
       .map((file) => {
         const p = record(this.localValue(join(this.journals, file)));
         const token = file.slice(0, -".intent".length);
@@ -2017,6 +2189,7 @@ export class FileMemoryStore implements C.MemoryStore {
     const placements = this.placements();
     const files: { path: string; logical: string; bytes: string }[] = [];
     const walk = (dir: string): void => {
+      if (!dir.startsWith(this.recovery)) this.observe(dir);
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const full = join(dir, entry.name);
         if (entry.isSymbolicLink())
@@ -2034,6 +2207,7 @@ export class FileMemoryStore implements C.MemoryStore {
               p.candidate === full || p.stash === full || p.snapshot === full,
           );
           if (full.startsWith(`${this.recovery}/`) && !placement) continue;
+          this.observe(full);
           files.push({
             path: full,
             logical: placement?.path ?? relative(this.config.root, full),
@@ -2167,12 +2341,8 @@ export class FileMemoryStore implements C.MemoryStore {
     return edits.length > 0;
   }
   private materialize(view: View, apply = true): boolean {
-    for (const p of this.placements())
-      if (!this.invalidEditable.has(p.path) && !this.placementDone(p)) {
-        if (!apply) return true;
-        this.finishPlacement(p);
-      }
     const placements = this.placements();
+    const desired = new Map<string, C.NoteRevision>();
     const pathOwners = new Map<string, Set<C.NoteId>>();
     for (const heads of view.heads.values())
       for (const r of heads) {
@@ -2192,74 +2362,115 @@ export class FileMemoryStore implements C.MemoryStore {
             : stem;
           path = `${descriptive}${heads.length > 1 ? `~${r.revisionId.slice(0, 12)}` : ""}${suffix}.md`;
         }
-        const target = this.safePath(path);
-        if (existsSync(target) && lstatSync(target).isSymbolicLink())
-          throw new IntegrityError("symlinked editable file");
-        if (
-          placements.some(
-            (p) =>
-              p.path === path &&
-              p.revisionId === r.revisionId &&
-              this.placementDone(p),
-          )
-        )
-          continue;
-        if (!apply) return true;
-        const token = randomUUID();
-        const candidate = join(this.recovery, `${token}.candidate.md`);
-        const stash = join(this.recovery, `${token}.stash.md`);
-        if (r.exposure.kind !== "deleted") durableCreate(candidate, r.markdown);
-        const captured = existsSync(target) ? readFileSync(target) : null;
-        const snapshot =
-          captured === null ? null : join(this.recovery, `${token}.basis.md`);
-        if (snapshot && captured) durableCreate(snapshot, captured);
-        const p: Placement = {
-          path,
-          revisionId: r.revisionId,
-          candidate,
-          stash,
-          snapshot,
-          basis: captured === null ? null : sha256(captured),
-        };
-        this.localCreate(join(this.journals, `${token}.intent`), p);
-        this.finishPlacement(p);
+        desired.set(path, r);
       }
+    for (const p of placements) {
+      if (this.invalidEditable.has(p.path) || this.placementDone(p)) continue;
+      if (!apply) return true;
+      // An obsolete intent can retain recovery bytes, but may never move the
+      // current target. In particular a delayed P1 cannot stash P2's newer B.
+      if (desired.get(p.path)?.revisionId !== p.revisionId) {
+        this.localCreate(`${p.candidate}.done`, {
+          path: p.path,
+          revisionId: p.revisionId,
+        });
+        continue;
+      }
+      this.finishPlacement(p);
+      return true;
+    }
+    for (const [path, r] of desired) {
+      const target = this.safePath(path);
+      if (existsSync(target) && lstatSync(target).isSymbolicLink())
+        throw new IntegrityError("symlinked editable file");
+      if (
+        placements.some(
+          (p) =>
+            p.path === path &&
+            p.revisionId === r.revisionId &&
+            this.placementDone(p),
+        )
+      )
+        continue;
+      if (!apply) return true;
+      const token = randomUUID();
+      const candidate = join(this.recovery, `${token}.candidate.md`);
+      const stash = join(this.recovery, `${token}.stash.md`);
+      if (r.exposure.kind !== "deleted") durableCreate(candidate, r.markdown);
+      const captured = existsSync(target) ? readFileSync(target) : null;
+      const snapshot =
+        captured === null ? null : join(this.recovery, `${token}.basis.md`);
+      if (snapshot && captured) durableCreate(snapshot, captured);
+      const p: Placement = {
+        path,
+        revisionId: r.revisionId,
+        candidate,
+        stash,
+        snapshot,
+        basis: captured === null ? null : sha256(captured),
+      };
+      const stage = join(this.journals, `.${token}.intent`);
+      this.localCreate(stage, p);
+      durableDirectory(dirname(target));
+      this.config.publicationBoundary?.("placement-prepared", p.revisionId);
+      this.finishPlacement(p, () =>
+        linkSync(stage, join(this.journals, `${token}.intent`)),
+      );
+      return true;
+    }
     return false;
   }
-  private finishPlacement(p: Placement): void {
+  private finishPlacement(p: Placement, acceptIntent?: () => void): void {
     const target = this.safePath(p.path);
     durableDirectory(dirname(target));
-    if (!existsSync(p.stash) && existsSync(target)) {
-      renameSync(target, p.stash);
-      flushDirectory(dirname(target));
-      flushDirectory(this.recovery);
-      this.config.publicationBoundary?.("stash", p.revisionId);
+    this.coordinateSync(() => {
+      this.requirePreparation();
+      acceptIntent?.();
+      if (!existsSync(p.stash) && existsSync(target)) {
+        renameSync(target, p.stash);
+        this.config.publicationBoundary?.("stash", p.revisionId);
+      }
+      if (existsSync(p.candidate)) {
+        try {
+          linkSync(p.candidate, target);
+        } catch (error) {
+          if (!existsSync(target)) throw error;
+        }
+      }
+      this.db
+        .prepare(
+          "INSERT INTO publication_generation(id,generation) VALUES(1,1) ON CONFLICT(id) DO UPDATE SET generation=generation+1",
+        )
+        .run();
+    });
+    this.config.publicationBoundary?.("placed", p.revisionId);
+    // No target mutation follows this point. A newer placement may finish while
+    // these barriers wait; completing this old receipt cannot replace its bytes.
+    flushDirectory(this.journals);
+    flushDirectory(dirname(target));
+    flushDirectory(this.recovery);
+    if (existsSync(p.stash)) {
       const fd = openSync(p.stash, "r");
       try {
         flushFile(fd);
       } finally {
         closeSync(fd);
       }
-      durableCreate(
-        `${p.candidate}.captured`,
-        canonicalJSON({
-          hash: sha256(readFileSync(p.stash)),
-          basisMatched: p.basis === sha256(readFileSync(p.stash)),
-        }),
-      );
-    }
-    if (existsSync(p.candidate)) {
-      try {
-        linkSync(p.candidate, target);
-      } catch (e) {
-        if (!existsSync(target)) throw e;
-      }
-      flushDirectory(dirname(target));
+      const bytes = readFileSync(p.stash);
+      if (!existsSync(`${p.candidate}.captured`))
+        durableCreate(
+          `${p.candidate}.captured`,
+          canonicalJSON({
+            hash: sha256(bytes),
+            basisMatched: p.basis === sha256(bytes),
+          }),
+        );
     }
     this.localCreate(`${p.candidate}.done`, {
       path: p.path,
       revisionId: p.revisionId,
     });
+    this.config.publicationBoundary?.("placement-durable", p.revisionId);
   }
 }
 
@@ -3186,7 +3397,14 @@ if (import.meta.vitest) {
       rmSync(f.dir, { recursive: true });
     }
   });
-  for (const boundary of ["objects", "manifest"] as const)
+  for (const boundary of [
+    "objects",
+    "manifest-linked",
+    "manifest",
+    "placement-prepared",
+    "placed",
+    "placement-durable",
+  ] as const)
     it(`SIGKILL at ${boundary} recovers whole batches in a fresh process`, async () => {
       const f = fixture();
       try {
@@ -3207,14 +3425,14 @@ if (import.meta.vitest) {
         );
         expect(reopened.status, String(reopened.stderr)).toBe(0);
         expect(JSON.parse(String(reopened.stdout).trim())).toEqual(
-          boundary === "manifest"
+          boundary !== "objects"
             ? { notes: 2, plan: "eligible", count: 2 }
             : { notes: 0, plan: "idle", count: 0 },
         );
         f.store = new FileMemoryStore(f.config);
         expect(await f.store.commit(c)).toMatchObject({
           kind: "locally-committed",
-          replay: boundary === "manifest",
+          replay: boundary !== "objects",
         });
       } finally {
         try {
@@ -3602,6 +3820,54 @@ if (import.meta.vitest) {
       rmSync(f.dir, { recursive: true });
     }
   }, 60000);
+  it("refuses a prepared multi-note batch after a concurrent edit without accepting its unrelated edit", async () => {
+    const f = fixture();
+    let stalled: ReturnType<typeof gatedProcess> | undefined;
+    try {
+      const a = note("batch-a"),
+        b = note("batch-b");
+      await f.store.commit(change("seed", [a, b]));
+      const nextA = note("batch-a", "stale program A", [a.revisionId]);
+      const nextB = note("batch-b", "unrelated program B", [b.revisionId]);
+      const batch = change("stale-whole-batch", [nextA, nextB]);
+      stalled = gatedProcess(
+        f.config,
+        `console.log(JSON.stringify(await store.commit(${JSON.stringify(batch)})));`,
+        "prepared",
+      );
+      await stalled.ready();
+      const editable = a.markdown + "\nunpublished concurrent user particulars";
+      writeFileSync(join(f.config.root, a.path), editable);
+      await f.store.commit(
+        change("independent-capture", [], [window("batch-capture")]),
+      );
+      stalled.release();
+      const result = await stalled.done;
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout.trim())).toMatchObject({
+        kind: "conflict",
+      });
+      expect(await f.store.hasAcceptedCommit(batch.commitId)).toBe(false);
+      expect(readFileSync(join(f.config.root, b.path), "utf8")).toBe(
+        b.markdown,
+      );
+      const notes = await f.store.listNotes(scope);
+      expect(
+        notes.some(
+          (n) =>
+            n.noteId === a.noteId &&
+            n.ancestry.kind === "unknown-base" &&
+            n.markdown.includes("unpublished concurrent user particulars"),
+        ),
+      ).toBe(true);
+      expect(notes.some((n) => n.revisionId === nextB.revisionId)).toBe(false);
+    } finally {
+      stalled?.release();
+      await stalled?.done;
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  }, 30000);
   it("detects a writer-held recovery regression in an isolated source copy", async () => {
     const f = fixture();
     let stalled: ReturnType<typeof gatedProcess> | undefined;
@@ -3669,7 +3935,7 @@ if (import.meta.vitest) {
           );
           writeFileSync(
             source,
-            original.replace(
+            original.replaceAll(
               "this.validatePreparation(generation, files);",
               "/* isolated negative control: stale snapshot accepted */",
             ),
@@ -3876,6 +4142,209 @@ fcntl.fcntl(3,51)
       }
     },
     20000,
+  );
+  async function placementBarrierProbe(
+    phase: string,
+    guarded = true,
+  ): Promise<void> {
+    const f = fixture(),
+      ready = join(f.dir, "placement-barrier-ready"),
+      release = join(f.dir, "placement-barrier-release");
+    let done:
+      | Promise<{ status: number | null; stdout: string; stderr: string }>
+      | undefined;
+    let fd: number | undefined;
+    try {
+      const initial = note("placement", "original inode bytes");
+      await f.store.commit(change("seed", [initial], [window()]));
+      const plan = await f.store.plan({
+        jobId: "lease" as C.JobId,
+        owner: "fixture",
+        scope,
+        now,
+        policy: { ...policy, minWindows: 1 },
+      });
+      if (plan.kind !== "eligible") throw Error("expected lease");
+      const a = note("placement", "prepared A", [initial.revisionId]);
+      let b = note("placement", "newer B", [
+        phase === "envelope" ? initial.revisionId : a.revisionId,
+      ]);
+      const helper = join(f.dir, "python3");
+      writeFileSync(
+        helper,
+        `#!/usr/bin/python3
+import os,time,fcntl
+p=fcntl.fcntl(3,50,b'\\0'*1024).split(b'\\0')[0].decode()
+n=os.path.basename(p)
+phase=${JSON.stringify(phase)}
+match=(phase=='manifest' and n==${JSON.stringify(sha256("old-A"))}) or (phase=='envelope' and n.startswith('.manifest-')) or (phase=='candidate' and n.endswith('.candidate.md')) or (phase=='basis' and n.endswith('.basis.md')) or (phase=='intent' and n.endswith('.intent')) or (phase=='stash' and n.endswith('.stash.md')) or (phase=='completion' and n.endswith('.candidate.md.done'))
+if os.environ.get('PI_MEMORY_PLACEMENT_GATE')=='1' and match and not os.path.exists(${JSON.stringify(release)}):
+ open(${JSON.stringify(ready)},'w').write(p)
+ while not os.path.exists(${JSON.stringify(release)}): time.sleep(.01)
+fcntl.fcntl(3,51)
+`,
+      );
+      chmodSync(helper, 0o700);
+      let source = sourcePath;
+      if (!guarded) {
+        const isolated = join(f.dir, "runtime");
+        cpSync(dirname(sourcePath), isolated, { recursive: true });
+        symlinkSync(
+          join(process.cwd(), "node_modules"),
+          join(f.dir, "node_modules"),
+        );
+        source = join(isolated, "store.ts");
+        const original = readFileSync(source, "utf8");
+        const at = original.indexOf("  private finishPlacement(");
+        const tail = original.slice(at);
+        expect(tail).toContain("this.requirePreparation();");
+        writeFileSync(
+          source,
+          original.slice(0, at) +
+            tail.replace(
+              "this.requirePreparation();",
+              "/* isolated negative control: placement fence disabled */",
+            ),
+        );
+      }
+      if (phase === "stash")
+        fd = openSync(join(f.config.root, initial.path), "a");
+      const proc = spawn(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `
+        import {createJiti} from 'jiti';
+        const jiti=createJiti(process.cwd()+'/package.json',{moduleCache:false,fsCache:false});
+        const {FileMemoryStore}=await jiti.import(${JSON.stringify(source)});
+        const store=await FileMemoryStore.open(${JSON.stringify(f.config)});
+        process.env.PI_MEMORY_PLACEMENT_GATE='1';
+        try{console.log(JSON.stringify(await store.commit(${JSON.stringify(change("old-A", [a]))})));}finally{store.close();}
+      `,
+        ],
+        {
+          cwd: process.cwd(),
+          env: { ...process.env, PATH: f.dir + ":" + process.env.PATH },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      let stdout = "",
+        stderr = "",
+        ended = false;
+      proc.stdout.on("data", (c) => {
+        stdout += c;
+      });
+      proc.stderr.on("data", (c) => {
+        stderr += c;
+      });
+      done = new Promise((resolve) =>
+        proc.on("close", (status) => {
+          ended = true;
+          resolve({ status, stdout, stderr });
+        }),
+      );
+      const deadline = performance.now() + 8000;
+      while (!existsSync(ready)) {
+        if (ended || performance.now() > deadline)
+          throw Error(`native ${phase} barrier unavailable: ${stderr}`);
+        await delay(10);
+      }
+      // The real native writer and renewable evidence lease remain available
+      // while a separate process is inside F_FULLFSYNC preparation/finalization.
+      const probe = child(
+        f.config,
+        `const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync(config.state+'/coordination.sqlite');db.exec('PRAGMA busy_timeout=0;BEGIN IMMEDIATE;COMMIT');db.close();`,
+      );
+      expect(probe.status, String(probe.stderr)).toBe(0);
+      expect(
+        await f.store.renewLease({
+          lease: plan.batch.lease,
+          now: "2026-01-01T00:00:02.000Z",
+          leaseMs: 30000,
+        }),
+      ).toMatchObject({ kind: "renewed" });
+      if (fd !== undefined) {
+        writeSync(fd, "\nunpublished inode particulars");
+        const current = (await f.store.listNotes(scope)).filter(
+          (n) => n.noteId === initial.noteId,
+        );
+        expect(
+          current.some(
+            (n) =>
+              n.ancestry.kind === "unknown-base" &&
+              n.markdown.includes("unpublished inode particulars"),
+          ),
+        ).toBe(true);
+        b = note(
+          "placement",
+          "newer B",
+          current.map((n) => n.revisionId),
+        );
+      }
+      expect(
+        await f.store.commit(
+          change("new-B", [b], [window("concurrent-capture")]),
+        ),
+      ).toMatchObject({ kind: "locally-committed" });
+      expect(readFileSync(join(f.config.root, b.path), "utf8")).toBe(
+        b.markdown,
+      );
+      writeFileSync(release, "release");
+      const result = await done;
+      expect(result.status, result.stderr).toBe(0);
+      const finalBytes = readFileSync(join(f.config.root, b.path), "utf8");
+      expect(finalBytes, "delayed old placement replaced newer B").toBe(
+        b.markdown,
+      );
+      if (fd !== undefined) {
+        expect(
+          readdirSync(join(f.config.root, ".pi-memory-recovery"))
+            .filter((n) => n.endsWith(".stash.md"))
+            .some((n) =>
+              readFileSync(
+                join(f.config.root, ".pi-memory-recovery", n),
+                "utf8",
+              ).includes("unpublished inode particulars"),
+            ),
+        ).toBe(true);
+      }
+      const receipt = JSON.parse(result.stdout.trim());
+      expect(receipt.kind).toBe(
+        phase === "envelope" ? "conflict" : "locally-committed",
+      );
+    } finally {
+      writeFileSync(release, "release");
+      await done;
+      if (fd !== undefined) closeSync(fd);
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  }
+  for (const phase of [
+    "envelope",
+    "manifest",
+    "candidate",
+    "basis",
+    "intent",
+    "stash",
+    "completion",
+  ])
+    it.runIf(process.platform === "darwin")(
+      `keeps capture and renewal independent of native ${phase} barriers without replacing newer placement`,
+      async () => {
+        await placementBarrierProbe(phase);
+      },
+      45000,
+    );
+  it.runIf(process.platform === "darwin")(
+    "detects stale placement replacement with its fence disabled in isolated real files",
+    async () => {
+      await expect(placementBarrierProbe("candidate", false)).rejects.toThrow(
+        "delayed old placement replaced newer B",
+      );
+    },
+    45000,
   );
   it("keeps publication generation distinct from append-stable replica continuity and lease renewal", async () => {
     const f = fixture();
@@ -4559,10 +5028,19 @@ fcntl.fcntl(3,51)
       expect(positive.status, String(positive.stderr)).toBe(0);
       writeFileSync(
         copy,
-        original.replace(
-          "this.verifyDependencies(dependencies);",
-          "/* isolated negative control: verification removed */",
-        ),
+        original
+          .replace(
+            "this.verifyDependencies(dependencies);",
+            "/* isolated negative control: verification removed */",
+          )
+          .replace(
+            "for (const hash of dependencies) this.observe(join(this.objects, hash));",
+            "",
+          )
+          .replaceAll(
+            "this.validatePreparation(generation, files);",
+            "/* isolated negative control: physical fence removed */",
+          ),
       );
       const negative = run();
       expect(negative.status).not.toBe(0);
