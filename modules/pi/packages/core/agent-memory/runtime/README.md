@@ -1,16 +1,20 @@
 # native pi memory runtime
 
-`createMemoryApplication()` composes native configuration, durable Markdown,
+`openMemoryApplication()` composes native configuration, durable Markdown,
 source capture, recall, reconciliation and SSH replication. importing the SDK
-starts nothing. create/close the application in a worker or standalone process:
-the file store uses synchronous SQLite/filesystem operations. interactive Pi
-uses `SessionMemoryWorker`, never this store on its inference event loop.
+starts nothing. production opening and store operations yield and retry bounded
+SQLite contention instead of blocking inference or requiring caller retry loops.
+filesystem work remains synchronous: create/close the application in a worker or
+standalone process. interactive Pi uses `SessionMemoryWorker`, never this store
+on its inference event loop. synchronous `createMemoryApplication()` remains a
+compatibility entrypoint, not the production contention-safe opener.
 
 ```ts
-import { createMemoryApplication } from "@bdsqqq/pi/core/agent-memory";
-const app = createMemoryApplication();
+import { openMemoryApplication } from "@bdsqqq/pi/core/agent-memory";
+const signal = AbortSignal.timeout(150_000);
+const app = await openMemoryApplication({}, signal);
 try {
-  await app.maintain(AbortSignal.timeout(120_000));
+  await app.maintain(signal);
 } finally {
   app.close();
 }
