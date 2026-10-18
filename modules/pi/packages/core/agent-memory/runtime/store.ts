@@ -272,7 +272,9 @@ export class FileMemoryStore implements C.MemoryStore {
         .exec(`PRAGMA busy_timeout=250; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
       CREATE TABLE IF NOT EXISTS leases (window TEXT PRIMARY KEY, token TEXT NOT NULL, payload TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS peer_ack (peer TEXT NOT NULL, commit_id TEXT NOT NULL, PRIMARY KEY(peer,commit_id));
-      CREATE TABLE IF NOT EXISTS peer_cursor (peer TEXT PRIMARY KEY, cursor TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS peer_cursor (peer TEXT PRIMARY KEY, cursor TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS repository_epoch (id INTEGER PRIMARY KEY CHECK(id=1), token TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS repository_payload (commit_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL);`);
       this.transaction((view) => {
         this.scan(view);
         this.materialize(this.recover());
@@ -343,13 +345,50 @@ export class FileMemoryStore implements C.MemoryStore {
   private transaction<T>(run: (view: View) => T): T {
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      const result = run(this.recover());
+      const view = this.recover();
+      this.synchronizeContinuity(view);
+      const result = run(view);
       this.db.exec("COMMIT");
       return result;
     } catch (error) {
       this.db.exec("ROLLBACK");
       throw error;
     }
+  }
+  /** operational proofs never certify a different or rolled-back immutable history. */
+  private synchronizeContinuity(view: View, initialize = false): string | null {
+    const row = this.db
+      .prepare("SELECT token FROM repository_epoch WHERE id=1")
+      .get();
+    if (!row && !initialize) return null;
+    let token = row ? string(row.token) : randomUUID();
+    const retained = this.db
+      .prepare("SELECT commit_id,payload_hash FROM repository_payload")
+      .all();
+    const changed = retained.some(
+      (item) =>
+        view.accepted.get(string(item.commit_id) as C.CommitId)?.manifest
+          .replica !== string(item.payload_hash),
+    );
+    if (changed) {
+      token = randomUUID();
+      this.db.exec("DELETE FROM repository_payload");
+    }
+    if (!row || changed)
+      this.db
+        .prepare(
+          "INSERT OR REPLACE INTO repository_epoch(id,token) VALUES(1,?)",
+        )
+        .run(token);
+    const known = changed
+      ? new Set<string>()
+      : new Set(retained.map((item) => string(item.commit_id)));
+    const insert = this.db.prepare(
+      "INSERT INTO repository_payload(commit_id,payload_hash) VALUES(?,?)",
+    );
+    for (const [id, accepted] of view.accepted)
+      if (!known.has(id)) insert.run(id, accepted.manifest.replica);
+    return token;
   }
   private refreshed<T>(run: (view: View) => T): T {
     return this.transaction((view) => {
@@ -1176,6 +1215,12 @@ export class FileMemoryStore implements C.MemoryStore {
   forPeer(peer: string): C.ReplicaStore {
     if (!peer) throw new Error("peer required");
     return {
+      continuityToken: async () =>
+        this.refreshed((view) => {
+          const token = this.synchronizeContinuity(view, true);
+          if (!token) throw new IntegrityError("missing repository continuity");
+          return token;
+        }),
       scan: async (after, limit) => {
         if (!Number.isSafeInteger(limit) || limit < 1 || limit > 4096)
           throw new Error("replica scan limit must be 1..4096");
@@ -1892,6 +1937,52 @@ if (import.meta.vitest) {
     } finally {
       store?.close();
       rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("repository continuity survives append/restart but changes after same-path rollback or payload replacement", async () => {
+    const f = fixture(),
+      replacement = fixture();
+    try {
+      await f.store.commit(change("a"));
+      const token = await f.store.forPeer("proof").continuityToken();
+      f.store.close();
+      const backup = join(f.dir, "data-before-append");
+      cpSync(f.config.data, backup, { recursive: true });
+      f.store = new FileMemoryStore(f.config);
+      await f.store.commit(change("b"));
+      expect(await f.store.forPeer("proof").continuityToken()).toBe(token);
+      f.store.close();
+      f.store = new FileMemoryStore(f.config);
+      expect(await f.store.forPeer("proof").continuityToken()).toBe(token);
+      f.store.close();
+      rmSync(f.config.data, { recursive: true });
+      cpSync(backup, f.config.data, { recursive: true });
+      f.store = new FileMemoryStore(f.config);
+      const rolledBack = await f.store.forPeer("proof").continuityToken();
+      expect(rolledBack).not.toBe(token);
+      await f.store.commit(change("c"));
+      expect(await f.store.forPeer("proof").continuityToken()).toBe(rolledBack);
+      await replacement.store.commit(change("a", [note("replacement")]));
+      await replacement.store.commit(change("c"));
+      replacement.store.close();
+      f.store.close();
+      rmSync(f.config.data, { recursive: true });
+      cpSync(replacement.config.data, f.config.data, { recursive: true });
+      f.store = new FileMemoryStore(f.config);
+      const changed = await f.store.forPeer("proof").continuityToken();
+      expect(changed).not.toBe(rolledBack);
+      f.store.close();
+      f.store = new FileMemoryStore(f.config);
+      expect(await f.store.forPeer("proof").continuityToken()).toBe(changed);
+    } finally {
+      try {
+        f.store.close();
+      } catch {}
+      try {
+        replacement.store.close();
+      } catch {}
+      rmSync(f.dir, { recursive: true, force: true });
+      rmSync(replacement.dir, { recursive: true, force: true });
     }
   });
   it("scans ACK-independent causal pages and reads exact dependency ids", async () => {
