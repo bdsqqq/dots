@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { resolve } from "node:path";
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 export type * from "./runtime/contracts.js";
 export * from "./runtime/config.js";
@@ -24,10 +24,15 @@ export {
   type FileMemoryStoreConfig,
 } from "./runtime/store.js";
 export { handleMemoryJSON, memoryCLI } from "./runtime/cli.js";
-if (
-  process.argv[1] &&
-  pathToFileURL(resolve(process.argv[1])).href === import.meta.url
-) {
+// package managers launch the bin through a symlink; compare its actual module.
+let executableURL = "";
+try {
+  if (process.argv[1])
+    executableURL = pathToFileURL(realpathSync(process.argv[1])).href;
+} catch {
+  /* stdin/embedded hosts may have no filesystem entrypoint. */
+}
+if (executableURL === import.meta.url) {
   process.umask(0o077);
   const { memoryCLI } = await import("./runtime/cli.js");
   await memoryCLI().catch((error) => {
