@@ -427,6 +427,11 @@ if (import.meta.vitest) {
     // restore the closed snapshot at its configured paths; preserve the newer tree too.
     fs.renameSync(join(dir, "b"), join(dir, "newer-b"));
     fs.cpSync(join(dir, "old-backup"), join(dir, "b"), { recursive: true });
+    // newer operational metadata must not certify knowledge lost in the restore.
+    fs.renameSync(join(dir, "b", "state"), join(dir, "older-state"));
+    fs.cpSync(join(dir, "newer-b", "state"), join(dir, "b", "state"), {
+      recursive: true,
+    });
     const restored = new FileMemoryStore(config("b"));
     expect((await restored.listNotes(scope)).map((n) => n.noteId)).toEqual([
       "one",
@@ -643,6 +648,57 @@ if (import.meta.vitest) {
         },
       ),
     ).rejects.toThrow("owner denied");
+  });
+
+  test("retained local proofs cannot hide an ancestor replaced beneath an unchanged descendant", async () => {
+    const a = store("a");
+    await commit(a, "parent", [note("parent")]);
+    await commit(a, "child", [note("child")]);
+    await exchangeReplica(
+      { outgoing: [], cursor: null },
+      {
+        store: a,
+        peerId: "warm",
+        policy,
+        signal: signal(),
+      },
+    );
+    const original = await a.forPeer("inspect").scan(null, 100);
+    const replacement = store("replacement");
+    const { revisionId: _id, ...foreign } = {
+      ...note("foreign"),
+      scope: { kind: "personal" as const, ownerId: "someone-else" },
+    };
+    await replacement.forPeer("restore").integrate([
+      {
+        ...original[0]!,
+        revisions: [{ ...foreign, revisionId: revisionId(foreign) }],
+      },
+    ]);
+    await replacement.forPeer("restore").integrate([original[1]!]);
+    for (const s of [a, replacement]) {
+      s.close();
+      open.splice(open.indexOf(s), 1);
+    }
+    fs.cpSync(config("a").state, config("replacement").state, {
+      recursive: true,
+    });
+    const restored = store("replacement");
+    await expect(
+      exchangeReplica(
+        {
+          outgoing: [],
+          cursor: JSON.stringify({
+            version: 1,
+            after: "parent",
+            received: null,
+            attempts: 0,
+            retryAt: 0,
+          }),
+        },
+        { store: restored, peerId: "warm", policy, signal: signal() },
+      ),
+    ).rejects.toThrow("scope denied");
   });
 
   test("actual process invalid/oversized stdin and stdout, timeout and cancellation fail closed", async () => {

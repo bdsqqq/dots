@@ -256,7 +256,16 @@ export async function exchangeReplica(
   signal.throwIfAborted();
   await store.integrate(request.outgoing);
   // durable integration precedes the receiver-owned checkpoint, including replays.
-  const received = request.outgoing.at(-1)?.commitId ?? old.received;
+  let received = request.outgoing.at(-1)?.commitId ?? old.received;
+  if (received !== null && request.outgoing.length === 0) {
+    try {
+      await store.readChanges([received]);
+    } catch {
+      // operational metadata may be newer than restored knowledge. an absent
+      // checkpoint must request replay, even when the sender retains old ACKs.
+      received = null;
+    }
+  }
   await store.acknowledge([], JSON.stringify({ ...old, received }));
   const incoming = await page(store, cursor(request.cursor).after, limits);
   await authorizeClosure(incoming, store, deps.policy, limits, signal);
