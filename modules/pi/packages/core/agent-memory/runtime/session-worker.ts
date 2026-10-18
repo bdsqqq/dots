@@ -176,6 +176,7 @@ export async function runSessionMemoryWorker(): Promise<void> {
     indexOptions?: unknown;
   };
   let openedStore: FileMemoryStore | undefined;
+  let openingStore: Promise<FileMemoryStore> | undefined;
   const index: C.SearchIndex = data.indexModule
     ? await (
         await import(data.indexModule)
@@ -226,9 +227,16 @@ export async function runSessionMemoryWorker(): Promise<void> {
         if (ephemeral) store.close();
       }
     }
-    const store = (openedStore ??= await FileMemoryStore.open(data.store, {
-      signal,
-    }));
+    const store =
+      openedStore ??
+      (await (openingStore ??= FileMemoryStore.open(data.store, { signal })
+        .then((store) => {
+          openedStore = store;
+          return store;
+        })
+        .finally(() => {
+          openingStore = undefined;
+        })));
     switch (request.kind) {
       case "recall":
         return sharedRecallHandler(request.intent, {
@@ -298,7 +306,12 @@ export async function runSessionMemoryWorker(): Promise<void> {
             throughEntryId: request.through,
             project,
           });
+          if (result.errors.length)
+            throw new Error(
+              `capture failed: ${result.errors.map((error) => error.reason).join("; ")}`,
+            );
           if (!result.bounded) return "captured";
+          if (!result.windows) throw new Error("capture made no progress");
         }
       }
     }
