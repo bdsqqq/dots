@@ -9,7 +9,8 @@ export interface ReplicaLimits {
   /** per authorization; a failed cold proof may rebuild one additional bounded prefix. */
   readonly maxClosureChanges: number;
   readonly maxClosureBytes: number;
-  readonly timeoutMs: number;
+  /** optional caller budget; background replication has no implicit lifetime. */
+  readonly timeoutMs?: number;
   readonly maxRounds: number;
 }
 export const REPLICA_LIMITS: ReplicaLimits = {
@@ -18,7 +19,6 @@ export const REPLICA_LIMITS: ReplicaLimits = {
   maxObjects: 4096,
   maxClosureChanges: 4096,
   maxClosureBytes: 16 * 1024 * 1024,
-  timeoutMs: 30_000,
   maxRounds: 32,
 };
 /** configured authority belongs to the authenticated adapter, never the request. */
@@ -390,10 +390,10 @@ export async function exchangeReplica(
   deps: ExchangeDependencies,
 ): Promise<ExchangeResponse> {
   const limits = deps.limits ?? REPLICA_LIMITS;
-  const signal = AbortSignal.any([
-    deps.signal,
-    AbortSignal.timeout(limits.timeoutMs),
-  ]);
+  const signal =
+    limits.timeoutMs === undefined
+      ? deps.signal
+      : AbortSignal.any([deps.signal, AbortSignal.timeout(limits.timeoutMs)]);
   const request = parseExchangeRequest(input, limits);
   const store = deps.store.forPeer(`replica-server:${deps.peerId}`);
   const old = cursor(await store.readCursor());
@@ -458,10 +458,10 @@ export async function synchronizeReplica(
 ): Promise<SynchronizeResult> {
   const limits = deps.limits ?? REPLICA_LIMITS;
   const now = deps.now ?? Date.now;
-  const signal = AbortSignal.any([
-    deps.signal,
-    AbortSignal.timeout(limits.timeoutMs),
-  ]);
+  const signal =
+    limits.timeoutMs === undefined
+      ? deps.signal
+      : AbortSignal.any([deps.signal, AbortSignal.timeout(limits.timeoutMs)]);
   const store = deps.store.forPeer(`replica-client:${deps.peerId}`);
   let state = cursor(await store.readCursor());
   if (state.retryAt > now()) return { kind: "backoff", sent: 0, received: 0 };
