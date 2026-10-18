@@ -464,6 +464,13 @@ export interface ReplicaTransport {
 }
 
 export interface ReplicaStore {
+  /** ACK-independent causal scan; an unknown checkpoint restarts from the beginning. */
+  scan(
+    after: CommitId | null,
+    limit: number,
+  ): Promise<readonly ReplicaChange[]>;
+  /** exact ordered lookup for disclosure/dependency closure; empty stays empty. */
+  readChanges(ids: readonly CommitId[]): Promise<readonly ReplicaChange[]>;
   pending(limit: number): Promise<readonly ReplicaChange[]>;
   readCursor(): Promise<string | null>;
   /** idempotent durable integration retains unknown ancestry and competing heads. */
