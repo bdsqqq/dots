@@ -340,6 +340,7 @@ export class FileMemoryStore implements C.MemoryStore {
   private readonly confirmed = new Map<string, string>();
   private preparingFiles: Map<string, string> | null = null;
   private activeAccepted: Map<C.CommitId, Accepted> | null = null;
+  private activeView: View | null = null;
   private activeObjects: ReadonlyMap<unknown, string> | null = null;
   private readonly invalidEditable = new Map<string, string>();
   private closed = false;
@@ -534,6 +535,7 @@ export class FileMemoryStore implements C.MemoryStore {
     return this.coordinateSync(() => {
       this.validatePreparation(generation, files);
       this.activeAccepted = new Map(view.accepted);
+      this.activeView = view;
       this.activeObjects = new Map(
         objects.map((object) => [object.value, object.hash]),
       );
@@ -546,6 +548,7 @@ export class FileMemoryStore implements C.MemoryStore {
         return run(view);
       } finally {
         this.activeAccepted = null;
+        this.activeView = null;
         this.activeObjects = null;
       }
     }, write);
@@ -728,6 +731,7 @@ export class FileMemoryStore implements C.MemoryStore {
     return JSON.parse(bytes);
   }
   private recover(confirm = true): View {
+    if (this.activeView) return this.activeView;
     const view: View = {
       accepted: new Map(),
       revisions: new Map(),
@@ -767,7 +771,9 @@ export class FileMemoryStore implements C.MemoryStore {
         }
       }
     }
-    return this.deriveView(view, confirm);
+    const derived = this.deriveView(view, confirm);
+    if (this.activeAccepted) this.activeView = derived;
+    return derived;
   }
   private readAccepted(): Accepted[] {
     const retained: Accepted[] = [];
@@ -965,6 +971,7 @@ export class FileMemoryStore implements C.MemoryStore {
     const path = join(this.commits, sha256(replica.commitId));
     durableCreate(path, canonicalJSON(manifest), beforePublication);
     this.activeAccepted?.set(replica.commitId, { manifest, replica, local });
+    this.activeView = null;
     this.db
       .prepare(
         "INSERT INTO publication_generation(id,generation) VALUES(1,1) ON CONFLICT(id) DO UPDATE SET generation=generation+1",
