@@ -127,6 +127,17 @@ export function memoryConfiguration(
       choose(name, configured, fallback).replace(/^~(?=$|\/)/, home),
     );
   let peers: unknown = value.peers ?? [];
+  if (
+    value.peers === undefined &&
+    env.PI_MEMORY_PEERS === undefined &&
+    env.PI_MEMORY_DEFAULT_PEERS !== undefined
+  ) {
+    try {
+      peers = JSON.parse(env.PI_MEMORY_DEFAULT_PEERS);
+    } catch {
+      throw new Error("invalid PI_MEMORY_DEFAULT_PEERS");
+    }
+  }
   if (env.PI_MEMORY_PEERS !== undefined) {
     try {
       peers = JSON.parse(env.PI_MEMORY_PEERS);
@@ -261,5 +272,32 @@ if (import.meta.vitest) {
       expect(() =>
         memoryConfiguration({ settings: {}, environment }),
       ).toThrow();
+  });
+  test("supervisor peer defaults lose to native settings and explicit overrides", () => {
+    const base = { home: dir, cwd: dir };
+    expect(
+      memoryConfiguration({
+        ...base,
+        settings: {},
+        environment: { PI_MEMORY_DEFAULT_PEERS: '["fallback"]' },
+      }).peers,
+    ).toEqual(["fallback"]);
+    expect(
+      memoryConfiguration({
+        ...base,
+        settings: { "@bds_pi/agent-memory": { peers: [] } },
+        environment: { PI_MEMORY_DEFAULT_PEERS: '["fallback"]' },
+      }).peers,
+    ).toEqual([]);
+    expect(
+      memoryConfiguration({
+        ...base,
+        settings: {},
+        environment: {
+          PI_MEMORY_DEFAULT_PEERS: "invalid",
+          PI_MEMORY_PEERS: '["explicit"]',
+        },
+      }).peers,
+    ).toEqual(["explicit"]);
   });
 }
