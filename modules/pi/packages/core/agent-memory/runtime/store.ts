@@ -14,6 +14,7 @@ import {
 import { dirname, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import type * as C from "./contracts.js";
+import { permitsSourceScope } from "./scope.js";
 import {
   canonicalJSON,
   hashSourceWindow,
@@ -465,14 +466,7 @@ export class FileMemoryStore implements C.MemoryStore {
     window: C.SourceWindow,
     target: C.MemoryScope,
   ): boolean {
-    return (
-      scopeEqual(window.scope, target) ||
-      (window.scope.kind === "personal" &&
-        window.scope.ownerId === this.config.owner &&
-        target.kind === "project" &&
-        window.source.origin.kind === "session" &&
-        window.source.origin.project?.repositoryId === target.repositoryId)
-    );
+    return permitsSourceScope(window, target, this.config.owner);
   }
   private validateEvidenceRef(
     view: View,
@@ -579,7 +573,20 @@ export class FileMemoryStore implements C.MemoryStore {
               ),
           ) ||
           change.edits.some(
-            (e) => !scopeEqual(e.revision.scope, leasedScope),
+            (edit) =>
+              !scopeEqual(edit.revision.scope, leasedScope) &&
+              !edit.revision.claims.some((claim) =>
+                claim.evidence.some(
+                  (evidence) =>
+                    rows.some(
+                      (row) => string(row.window) === evidence.windowId,
+                    ) &&
+                    this.permitsEvidenceScope(
+                      view.windows.get(evidence.windowId)!,
+                      edit.revision.scope,
+                    ),
+                ),
+              ),
           ) ||
           change.suppressions.some((s) => !scopeEqual(s.scope, leasedScope))
         )
@@ -646,7 +653,9 @@ export class FileMemoryStore implements C.MemoryStore {
         if (o.decision.kind === "changed")
           for (const ref of o.decision.notes) {
             const r = next.revisions.get(ref.revisionId)!;
-            if (!scopeEqual(r.scope, next.windows.get(o.windowId)!.scope))
+            if (
+              !this.permitsEvidenceScope(next.windows.get(o.windowId)!, r.scope)
+            )
               throw new Error("outcome scope mismatch");
             const suppressed = suppressionsFor(next, r);
             if (suppressed.length)
@@ -738,7 +747,9 @@ export class FileMemoryStore implements C.MemoryStore {
       const now = millis(input.now);
       const p = input.policy;
       if (
-        p.minWindows < 1 ||
+        !Object.values(p).every(Number.isSafeInteger) ||
+        p.minWindows < 0 ||
+        p.maxPendingAgeMs < 0 ||
         p.maxBatchWindows < 1 ||
         p.maxBatchBytes < 1 ||
         p.leaseMs <= 0
