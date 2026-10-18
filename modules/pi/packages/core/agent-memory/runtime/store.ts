@@ -7,6 +7,7 @@ import {
   renameSync,
   linkSync,
   lstatSync,
+  statSync,
   openSync,
   closeSync,
   watch,
@@ -26,7 +27,8 @@ import {
 } from "./identity.js";
 import {
   durableCreate,
-  confirmDurable,
+  confirmDurability,
+  cleanupDurableStages,
   durableDirectory,
   flushDirectory,
   flushFile,
@@ -52,7 +54,7 @@ export interface FileMemoryStoreConfig {
   readonly owner: string;
   /** fixture instrumentation at actual durable publication boundaries. */
   readonly publicationBoundary?: (
-    boundary: "objects" | "manifest" | "stash",
+    boundary: "objects" | "manifest" | "stash" | "prepared" | "confirming",
     commitId: string,
   ) => void;
 }
@@ -76,6 +78,23 @@ class LockUnavailable extends Error {
     super("database is locked", { cause });
   }
 }
+/** only raised before a transaction callback; no admitted effects are replayed. */
+class SnapshotChanged extends LockUnavailable {
+  constructor() {
+    super(new Error("retained-history snapshot changed"));
+  }
+}
+function physicalIdentity(path: string): string {
+  const link = lstatSync(path, { bigint: true });
+  const identity = (s: typeof link): string =>
+    [s.dev, s.ino, s.mode, s.nlink, s.size, s.mtimeNs, s.ctimeNs].join(":");
+  return (
+    identity(link) +
+    (link.isSymbolicLink()
+      ? `>${identity(statSync(path, { bigint: true }))}`
+      : "")
+  );
+}
 function contentionBudget(
   options: FileMemoryStoreOptions,
   fallback: number,
@@ -90,14 +109,18 @@ async function contend<T>(
   options: FileMemoryStoreOptions,
   fallback: number,
 ): Promise<T> {
-  const deadline = performance.now() + contentionBudget(options, fallback);
+  let deadline = performance.now() + contentionBudget(options, fallback);
   let attempt = 0;
   for (;;) {
     options.signal?.throwIfAborted();
+    const started = performance.now();
     try {
       return run();
     } catch (error) {
       if (!(error instanceof LockUnavailable)) throw error;
+      // Retained preparation can be arbitrarily large; only time waiting for
+      // coordination consumes this acquisition budget, never accepted evidence.
+      deadline += performance.now() - started;
       const remaining = deadline - performance.now();
       if (remaining <= 0) throw new StoreContentionError();
       // Jitter keeps native worker cohorts from repeatedly waking together.
@@ -308,7 +331,9 @@ export class FileMemoryStore implements C.MemoryStore {
   readonly config: FileMemoryStoreConfig;
   private readonly db: DatabaseSync;
   private watcher: FSWatcher | null = null;
-  private readonly confirmed = new Set<string>();
+  private readonly confirmed = new Map<string, string>();
+  private preparingFiles: Map<string, string> | null = null;
+  private activeAccepted: Map<C.CommitId, Accepted> | null = null;
   private readonly invalidEditable = new Map<string, string>();
   private closed = false;
   /** production opener; failed attempts close their connection before yielding. */
@@ -363,6 +388,7 @@ export class FileMemoryStore implements C.MemoryStore {
       CREATE TABLE IF NOT EXISTS peer_ack (peer TEXT NOT NULL, commit_id TEXT NOT NULL, PRIMARY KEY(peer,commit_id));
       CREATE TABLE IF NOT EXISTS peer_cursor (peer TEXT PRIMARY KEY, cursor TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS repository_epoch (id INTEGER PRIMARY KEY CHECK(id=1), token TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS publication_generation (id INTEGER PRIMARY KEY CHECK(id=1), generation INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS repository_payload (commit_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL);`);
       } catch (error) {
         if (isStoreBusy(error)) throw new LockUnavailable(error);
@@ -442,11 +468,86 @@ export class FileMemoryStore implements C.MemoryStore {
     return contend(() => this.transactionSync(run), options, 5000);
   }
   private transactionSync<T>(run: (view: View) => T, write = true): T {
+    if (this.closed) throw new Error("memory store is closed");
+    const generation = this.publicationGeneration();
+    const files = new Map<string, string>();
+    const cleanup = new Set<string>();
+    this.preparingFiles = files;
+    let view: View;
+    try {
+      for (const dir of [this.objects, this.commits]) {
+        this.observe(dir);
+        if (write)
+          for (const file of readdirSync(dir)) {
+            const match = /^\.pi-memory-stage-([a-f0-9]{64})-/.exec(file);
+            if (match) cleanup.add(join(dir, match[1]!));
+          }
+      }
+      // Immutable bytes and physical durability are prepared without reserving
+      // the database writer. The acceptance check below fences this exact read.
+      view = this.recover(write);
+    } finally {
+      this.preparingFiles = null;
+    }
+    this.config.publicationBoundary?.("prepared", String(generation));
     return this.coordinateSync(() => {
-      const view = this.recover(write);
-      if (write) this.synchronizeContinuity(view);
-      return run(view);
+      this.validatePreparation(generation, files);
+      this.activeAccepted = new Map(view.accepted);
+      try {
+        if (write) {
+          for (const path of cleanup)
+            if (files.has(path)) cleanupDurableStages(path);
+          this.synchronizeContinuity(view);
+        }
+        return run(view);
+      } finally {
+        this.activeAccepted = null;
+      }
     }, write);
+  }
+  private publicationGeneration(): number {
+    const row = this.db
+      .prepare("SELECT generation FROM publication_generation WHERE id=1")
+      .get();
+    return row ? Number(row.generation) : 0;
+  }
+  private observe(path: string): string {
+    const identity = physicalIdentity(path);
+    const previous = this.preparingFiles?.get(path);
+    if (previous !== undefined && previous !== identity)
+      throw new SnapshotChanged();
+    this.preparingFiles?.set(path, identity);
+    return identity;
+  }
+  private validatePreparation(
+    generation: number,
+    files: ReadonlyMap<string, string>,
+  ): void {
+    if (generation !== this.publicationGeneration())
+      throw new SnapshotChanged();
+    for (const [path, identity] of files) {
+      try {
+        if (physicalIdentity(path) === identity) continue;
+      } catch (error) {
+        if (
+          !(
+            error instanceof Error &&
+            "code" in error &&
+            error.code === "ENOENT"
+          )
+        )
+          throw error;
+      }
+      throw new SnapshotChanged();
+    }
+  }
+  private confirmPhysical(path: string): void {
+    const identity = this.observe(path);
+    if (this.confirmed.get(path) === identity) return;
+    this.config.publicationBoundary?.("confirming", path);
+    confirmDurability(path);
+    if (this.observe(path) !== identity) throw new SnapshotChanged();
+    this.confirmed.set(path, identity);
   }
   private coordinateSync<T>(run: () => T, write = true): T {
     if (this.closed) throw new Error("memory store is closed");
@@ -556,6 +657,7 @@ export class FileMemoryStore implements C.MemoryStore {
     const path = join(this.objects, hash);
     if (!existsSync(path))
       throw new IntegrityError(`missing dependency ${hash}`);
+    this.observe(path);
     const bytes = readFileSync(path, "utf8");
     if (sha256(bytes) !== hash)
       throw new IntegrityError(`corrupt dependency ${hash}`);
@@ -572,10 +674,45 @@ export class FileMemoryStore implements C.MemoryStore {
       suppressions: [],
     };
     const suppressionIds = new Map<string, string>();
+    const retained = this.activeAccepted
+      ? [...this.activeAccepted.values()]
+      : this.readAccepted();
+    for (const accepted of retained) {
+      const { replica } = accepted;
+      view.accepted.set(replica.commitId, accepted);
+      for (const r of replica.revisions) {
+        const old = view.revisions.get(r.revisionId);
+        if (old && !sameValue(old, r))
+          throw new IntegrityError("revision collision");
+        view.revisions.set(r.revisionId, r);
+      }
+      for (const w of replica.windows) {
+        const old = view.windows.get(w.windowId);
+        if (old && hashSourceWindow(old) !== hashSourceWindow(w))
+          throw new IntegrityError("window collision");
+        if (!old || w.capturedAt < old.capturedAt)
+          view.windows.set(w.windowId, w);
+      }
+      for (const s of replica.suppressions) {
+        const old = suppressionIds.get(s.suppressionId);
+        if (old && old !== canonicalJSON(s))
+          throw new IntegrityError("suppression collision");
+        if (!old) {
+          suppressionIds.set(s.suppressionId, canonicalJSON(s));
+          view.suppressions.push(s);
+        }
+      }
+    }
+    return this.deriveView(view, confirm);
+  }
+  private readAccepted(): Accepted[] {
+    const retained: Accepted[] = [];
     for (const file of readdirSync(this.commits).filter(
       (f) => !f.startsWith("."),
     )) {
-      const m = record(json(join(this.commits, file)));
+      const path = join(this.commits, file);
+      this.observe(path);
+      const m = record(json(path));
       if (m.version !== 1) throw new IntegrityError("unsupported manifest");
       const manifest: Manifest = {
         version: 1,
@@ -616,31 +753,11 @@ export class FileMemoryStore implements C.MemoryStore {
         throw new IntegrityError("local manifest disagreement");
       if (local && local.commitId !== replica.commitId)
         throw new IntegrityError("local identity mismatch");
-      const accepted = { manifest, replica, local };
-      view.accepted.set(replica.commitId, accepted);
-      for (const r of replica.revisions) {
-        const old = view.revisions.get(r.revisionId);
-        if (old && !sameValue(old, r))
-          throw new IntegrityError("revision collision");
-        view.revisions.set(r.revisionId, r);
-      }
-      for (const w of replica.windows) {
-        const old = view.windows.get(w.windowId);
-        if (old && hashSourceWindow(old) !== hashSourceWindow(w))
-          throw new IntegrityError("window collision");
-        if (!old || w.capturedAt < old.capturedAt)
-          view.windows.set(w.windowId, w);
-      }
-      for (const s of replica.suppressions) {
-        const old = suppressionIds.get(s.suppressionId);
-        if (old && old !== canonicalJSON(s))
-          throw new IntegrityError("suppression collision");
-        if (!old) {
-          suppressionIds.set(s.suppressionId, canonicalJSON(s));
-          view.suppressions.push(s);
-        }
-      }
+      retained.push({ manifest, replica, local });
     }
+    return retained;
+  }
+  private deriveView(view: View, confirm: boolean): View {
     const causal = this.orderedChanges(view).map((c) =>
       view.accepted.get(c.commitId)!,
     );
@@ -677,14 +794,11 @@ export class FileMemoryStore implements C.MemoryStore {
           view.retry.set(o.windowId, o);
         }
     }
-    for (const a of causal)
-      if (confirm && !this.confirmed.has(a.manifest.hash)) {
-        // Reads validate bytes without acknowledging durable acceptance. Only
-        // writers confirm barriers and clean staging files under serialization.
+    if (confirm && !this.activeAccepted)
+      for (const a of causal) {
         for (const dependency of a.manifest.dependencies)
-          confirmDurable(join(this.objects, dependency));
-        confirmDurable(join(this.commits, sha256(a.replica.commitId)));
-        this.confirmed.add(a.manifest.hash);
+          this.confirmPhysical(join(this.objects, dependency));
+        this.confirmPhysical(join(this.commits, sha256(a.replica.commitId)));
       }
     const retired = new Set<C.RevisionId>();
     for (const r of view.revisions.values())
@@ -779,11 +893,18 @@ export class FileMemoryStore implements C.MemoryStore {
       replica: replicaHash,
       local: localHash,
     };
-    durableCreate(
-      join(this.commits, sha256(replica.commitId)),
-      canonicalJSON({ ...payload, hash: sha256(canonicalJSON(payload)) }),
-    );
-    this.confirmed.add(sha256(canonicalJSON(payload)));
+    const manifest: Manifest = {
+      ...payload,
+      hash: sha256(canonicalJSON(payload)),
+    };
+    const path = join(this.commits, sha256(replica.commitId));
+    durableCreate(path, canonicalJSON(manifest));
+    this.activeAccepted?.set(replica.commitId, { manifest, replica, local });
+    this.db
+      .prepare(
+        "INSERT INTO publication_generation(id,generation) VALUES(1,1) ON CONFLICT(id) DO UPDATE SET generation=generation+1",
+      )
+      .run();
     this.config.publicationBoundary?.("manifest", replica.commitId);
   }
   async commit(
@@ -3162,6 +3283,516 @@ if (import.meta.vitest) {
       },
     };
   }
+  /** Valid retained fixtures have payloads, ancestry and editable notes, not empty manifests. */
+  function retainedPayloads(f: ReturnType<typeof fixture>, count = 96): void {
+    for (let i = 0; i < count; i++) {
+      const original = window(`retained-${i}`);
+      const text =
+        `retained producer experience ${i}: ` +
+        "meaningful detail αβγ\n".repeat(3000);
+      const payload: Pick<C.SourceWindow, "source" | "scope" | "excerpts"> = {
+        source: original.source,
+        scope,
+        excerpts: [
+          {
+            ...original.excerpts[0]!,
+            text,
+            span: {
+              ...original.excerpts[0]!.span,
+              end: Buffer.byteLength(text),
+            },
+          },
+        ],
+      };
+      const w: C.SourceWindow = {
+        ...payload,
+        sourceHash: hashSourceWindow(payload),
+        windowId: windowId(payload),
+        capturedAt: now,
+        importance: "ordinary",
+      };
+      const replica: C.ReplicaChange = {
+        commitId: `retained-${i}` as C.CommitId,
+        replicaId: f.config.replicaId,
+        parents: [
+          i ? (`retained-${i - 1}` as C.CommitId) : ("seed" as C.CommitId),
+        ],
+        revisions: [],
+        windows: [w],
+        suppressions: [],
+        outcomes: [],
+      };
+      const dependencies: string[] = [];
+      for (const object of [
+        ...replica.revisions,
+        ...replica.windows,
+        replica,
+      ]) {
+        const bytes = canonicalJSON(object),
+          hash = sha256(bytes);
+        writeFileSync(join(f.config.data, "objects", hash), bytes);
+        dependencies.push(hash);
+      }
+      const manifest = {
+        version: 1,
+        dependencies: dependencies.sort(),
+        replica: sha256(canonicalJSON(replica)),
+        local: null,
+      };
+      writeFileSync(
+        join(f.config.data, "commits", sha256(replica.commitId)),
+        canonicalJSON({ ...manifest, hash: sha256(canonicalJSON(manifest)) }),
+      );
+    }
+  }
+  function gatedProcess(
+    config: FileMemoryStoreConfig,
+    code: string,
+    gate: "prepared" | "confirming",
+    source = sourcePath,
+  ) {
+    const dir = dirname(config.root),
+      ready = join(dir, "preparation-ready"),
+      release = join(dir, "preparation-release");
+    const proc = spawn(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `
+      import {createJiti} from 'jiti'; import {writeFileSync,existsSync} from 'node:fs';
+      const jiti=createJiti(process.cwd()+'/package.json',{moduleCache:false,fsCache:false});
+      const {FileMemoryStore}=await jiti.import(${JSON.stringify(source)});
+      const config=${JSON.stringify(config)}; let armed=false,stalled=false;
+      const store=await FileMemoryStore.open({...config,publicationBoundary:(b)=>{
+        if(armed&&!stalled&&b===${JSON.stringify(gate)}){
+          stalled=true;writeFileSync(${JSON.stringify(ready)},'ready');
+          const wait=new Int32Array(new SharedArrayBuffer(4));
+          const deadline=Date.now()+45000;
+          while(!existsSync(${JSON.stringify(release)})){
+            if(Date.now()>deadline)throw Error('fixture gate not released');
+            Atomics.wait(wait,0,0,10);
+          }
+        }
+      }}); armed=true; try{${code}}finally{store.close();}
+    `,
+      ],
+      { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let stdout = "",
+      stderr = "",
+      ended = false;
+    proc.stdout.on("data", (c) => {
+      stdout += c;
+    });
+    proc.stderr.on("data", (c) => {
+      stderr += c;
+    });
+    const done = new Promise<{
+      status: number | null;
+      stdout: string;
+      stderr: string;
+    }>((resolve) =>
+      proc.on("close", (status) => {
+        ended = true;
+        resolve({ status, stdout, stderr });
+      }),
+    );
+    return {
+      async ready() {
+        const deadline = performance.now() + 30000;
+        while (!existsSync(ready)) {
+          if (ended || performance.now() > deadline)
+            throw Error(`preparation gate unavailable: ${stderr}`);
+          await delay(10);
+        }
+      },
+      release() {
+        writeFileSync(release, "release");
+      },
+      done,
+    };
+  }
+  it("keeps another process capturing, reading and importing edits while representative cold durability preparation stalls", async () => {
+    const f = fixture();
+    let stalled: ReturnType<typeof gatedProcess> | undefined;
+    try {
+      const n = note("editable", "retained editable particulars\n".repeat(600));
+      await f.store.commit(change("seed", [n]));
+      retainedPayloads(f);
+      const stale = change(
+        "stale-preparation",
+        [
+          note("editable", "stale agent", [n.revisionId]),
+          note("partial-must-not-appear"),
+        ],
+        [window("partial-window")],
+      );
+      stalled = gatedProcess(
+        f.config,
+        `console.log(JSON.stringify(await store.commit(${JSON.stringify(stale)})));`,
+        "confirming",
+      );
+      await stalled.ready();
+      // This process does not retry: preparatory barriers must reserve no writer.
+      const probe = child(
+        f.config,
+        `const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync(config.state+'/coordination.sqlite');db.exec('PRAGMA busy_timeout=0;BEGIN IMMEDIATE;COMMIT');db.close();`,
+      );
+      expect(probe.status, String(probe.stderr)).toBe(0);
+      writeFileSync(
+        join(f.config.root, n.path),
+        n.markdown + "\nconcurrent external particulars",
+      );
+      const other = child(
+        f.config,
+        `const store=await FileMemoryStore.open(config);try{const receipt=await store.commit(${JSON.stringify(change("concurrent-capture", [], [window("concurrent-window")]))});const notes=await store.listNotes(${JSON.stringify(scope)});console.log(JSON.stringify({receipt,edited:notes.some(n=>n.markdown.includes('concurrent external particulars')&&n.ancestry.kind==='unknown-base')}));}finally{store.close();}`,
+      );
+      expect(other.status, String(other.stderr)).toBe(0);
+      expect(JSON.parse(String(other.stdout))).toMatchObject({
+        receipt: { kind: "locally-committed" },
+        edited: true,
+      });
+      expect(
+        existsSync(join(f.config.data, "commits", sha256(stale.commitId))),
+      ).toBe(false);
+      stalled.release();
+      const result = await stalled.done;
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ kind: "conflict" });
+      expect(await f.store.hasAcceptedCommit(stale.commitId)).toBe(false);
+      expect(
+        (await f.store.listNotes(scope)).some(
+          (n) => n.noteId === "partial-must-not-appear",
+        ),
+      ).toBe(false);
+      const all = await f.store.forPeer("fixture").scan(null, 256);
+      expect(
+        all
+          .flatMap((c) => c.windows)
+          .some((w) => w.windowId === stale.windows[0]!.windowId),
+      ).toBe(false);
+      expect(all.flatMap((c) => c.windows)).toHaveLength(97);
+    } finally {
+      stalled?.release();
+      await stalled?.done;
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  }, 60000);
+  it("detects a writer-held recovery regression in an isolated source copy", async () => {
+    const f = fixture();
+    let stalled: ReturnType<typeof gatedProcess> | undefined;
+    try {
+      await f.store.commit(change("seed", [note("seed")]));
+      f.store.close();
+      const isolated = join(f.dir, "runtime");
+      cpSync(dirname(sourcePath), isolated, { recursive: true });
+      symlinkSync(
+        join(process.cwd(), "node_modules"),
+        join(f.dir, "node_modules"),
+      );
+      const copy = join(isolated, "store.ts"),
+        original = readFileSync(copy, "utf8");
+      expect(original).toContain("view = this.recover(write);");
+      writeFileSync(
+        copy,
+        original.replace(
+          "view = this.recover(write);",
+          "view = this.coordinateSync(() => this.recover(write), write);",
+        ),
+      );
+      stalled = gatedProcess(
+        f.config,
+        `await store.commit(${JSON.stringify(change("negative-recovery"))});`,
+        "confirming",
+        copy,
+      );
+      await stalled.ready();
+      const probe = child(
+        f.config,
+        `const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync(config.state+'/coordination.sqlite');db.exec('PRAGMA busy_timeout=0;BEGIN IMMEDIATE;COMMIT');db.close();`,
+      );
+      expect(probe.status).not.toBe(0);
+      expect(String(probe.stderr)).toContain("database is locked");
+      stalled.release();
+      const result = await stalled.done;
+      expect(result.status, result.stderr).toBe(0);
+    } finally {
+      stalled?.release();
+      await stalled?.done;
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  }, 30000);
+  it("refuses newly suppressed prepared acceptance, and its isolated negative control admits it", async () => {
+    for (const fenced of [true, false]) {
+      const f = fixture();
+      let stalled: ReturnType<typeof gatedProcess> | undefined;
+      try {
+        const n = note("stale-candidate");
+        await f.store.commit(change("seed", [note("seed")]));
+        let source = sourcePath;
+        if (!fenced) {
+          const isolated = join(f.dir, "runtime");
+          cpSync(dirname(sourcePath), isolated, { recursive: true });
+          symlinkSync(
+            join(process.cwd(), "node_modules"),
+            join(f.dir, "node_modules"),
+          );
+          source = join(isolated, "store.ts");
+          const original = readFileSync(source, "utf8");
+          expect(original).toContain(
+            "this.validatePreparation(generation, files);",
+          );
+          writeFileSync(
+            source,
+            original.replace(
+              "this.validatePreparation(generation, files);",
+              "/* isolated negative control: stale snapshot accepted */",
+            ),
+          );
+        }
+        stalled = gatedProcess(
+          f.config,
+          `console.log(JSON.stringify(await store.commit(${JSON.stringify(change("stale-candidate", [n], [window("stale-window")]))})));`,
+          "prepared",
+          source,
+        );
+        await stalled.ready();
+        expect(
+          await f.store.commit({
+            ...change("competing"),
+            suppressions: [
+              {
+                suppressionId: "during-preparation" as C.SuppressionId,
+                scope,
+                target: { kind: "note", noteId: n.noteId },
+                createdAt: now,
+                reason: "concurrent denial",
+              },
+            ],
+          }),
+        ).toMatchObject({ kind: "locally-committed" });
+        stalled.release();
+        const result = await stalled.done;
+        expect(result.status, result.stderr).toBe(0);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          kind: fenced ? "suppressed" : "locally-committed",
+        });
+      } finally {
+        stalled?.release();
+        await stalled?.done;
+        f.store.close();
+        rmSync(f.dir, { recursive: true });
+      }
+    }
+  }, 30000);
+  it.runIf(process.platform === "darwin")(
+    "reconfirms a physically replaced same-byte object before replay ACK, with a path-only cache negative control",
+    async () => {
+      for (const physical of [true, false]) {
+        const f = fixture();
+        try {
+          f.store.close();
+          const isolated = join(f.dir, "runtime");
+          cpSync(dirname(sourcePath), isolated, { recursive: true });
+          symlinkSync(
+            join(process.cwd(), "node_modules"),
+            join(f.dir, "node_modules"),
+          );
+          const copy = join(isolated, "store.ts"),
+            original = readFileSync(copy, "utf8");
+          if (!physical) {
+            expect(original).toContain("this.confirmed.get(path) === identity");
+            writeFileSync(
+              copy,
+              original.replace(
+                "this.confirmed.get(path) === identity",
+                "this.confirmed.has(path)",
+              ),
+            );
+          }
+          const helper = join(f.dir, "python3");
+          writeFileSync(
+            helper,
+            `#!/usr/bin/python3
+import os,fcntl
+if os.environ.get('PI_MEMORY_FIXTURE_FAIL_BARRIER') == '1':
+ fcntl.fcntl(3,2147483646)
+fcntl.fcntl(3,51)
+`,
+          );
+          chmodSync(helper, 0o700);
+          const c = change("replacement-replay", [note("replacement")]);
+          const result = spawnSync(
+            process.execPath,
+            [
+              "--input-type=module",
+              "-e",
+              `
+          import assert from 'node:assert/strict';import {createJiti} from 'jiti';import {readFileSync,writeFileSync,renameSync} from 'node:fs';
+          const jiti=createJiti(process.cwd()+'/package.json',{moduleCache:false,fsCache:false});const {FileMemoryStore}=await jiti.import(${JSON.stringify(copy)});
+          const config=${JSON.stringify(f.config)},c=${JSON.stringify(c)};const store=await FileMemoryStore.open(config);
+          await store.commit(c);await store.commit(c);
+          const path=config.data+'/objects/'+${JSON.stringify(sha256(canonicalJSON(c.edits[0]!.revision)))};
+          writeFileSync(path+'.replacement',readFileSync(path));renameSync(path+'.replacement',path);
+          process.env.PI_MEMORY_FIXTURE_FAIL_BARRIER='1';let failed=false;
+          try{await store.commit(c);}catch(error){failed=String(error).includes('F_FULLFSYNC');}
+          store.close();assert.equal(failed,true,'same-byte replacement inherited old physical ACK');
+        `,
+            ],
+            {
+              cwd: process.cwd(),
+              env: { ...process.env, PATH: f.dir + ":" + process.env.PATH },
+              encoding: "utf8",
+              timeout: 15000,
+            },
+          );
+          if (physical) expect(result.status, String(result.stderr)).toBe(0);
+          else {
+            expect(result.status).not.toBe(0);
+            expect(String(result.stderr)).toContain(
+              "same-byte replacement inherited old physical ACK",
+            );
+          }
+        } finally {
+          f.store.close();
+          rmSync(f.dir, { recursive: true });
+        }
+      }
+    },
+    30000,
+  );
+  it.runIf(process.platform === "darwin")(
+    "keeps the writer and renewal available during a stalled external F_FULLFSYNC",
+    async () => {
+      const f = fixture(),
+        ready = join(f.dir, "native-barrier-ready"),
+        release = join(f.dir, "native-barrier-release");
+      let done: Promise<{ status: number | null; stderr: string }> | undefined;
+      try {
+        await f.store.commit(
+          change("seed", [note("native-barrier")], [window()]),
+        );
+        const plan = await f.store.plan({
+          jobId: "barrier" as C.JobId,
+          owner: "fixture",
+          scope,
+          now,
+          policy: { ...policy, minWindows: 1 },
+        });
+        if (plan.kind !== "eligible") throw Error("expected lease");
+        const helper = join(f.dir, "python3");
+        writeFileSync(
+          helper,
+          `#!/usr/bin/python3
+import os,time,fcntl
+if os.environ.get('PI_MEMORY_FIXTURE_STALL_BARRIER') == '1' and not os.path.exists(${JSON.stringify(release)}):
+ open(${JSON.stringify(ready)},'w').write('native F_FULLFSYNC waiting')
+ while not os.path.exists(${JSON.stringify(release)}): time.sleep(.01)
+fcntl.fcntl(3,51)
+`,
+        );
+        chmodSync(helper, 0o700);
+        const proc = spawn(
+          process.execPath,
+          [
+            "--input-type=module",
+            "-e",
+            `${childPrelude}const store=await FileMemoryStore.open(${JSON.stringify(f.config)});try{await store.commit(${JSON.stringify(change("after-native-barrier"))});}finally{store.close();}`,
+          ],
+          {
+            cwd: process.cwd(),
+            env: {
+              ...process.env,
+              PATH: f.dir + ":" + process.env.PATH,
+              PI_MEMORY_FIXTURE_STALL_BARRIER: "1",
+            },
+            stdio: ["ignore", "ignore", "pipe"],
+          },
+        );
+        let stderr = "",
+          ended = false;
+        proc.stderr!.on("data", (c) => {
+          stderr += c;
+        });
+        done = new Promise((resolve) =>
+          proc.on("close", (status) => {
+            ended = true;
+            resolve({ status, stderr });
+          }),
+        );
+        const deadline = performance.now() + 8000;
+        while (!existsSync(ready)) {
+          if (ended || performance.now() > deadline)
+            throw Error(`native barrier unavailable: ${stderr}`);
+          await delay(10);
+        }
+        const held = await holdWriter(f.config);
+        await held.release();
+        expect(
+          await f.store.renewLease({
+            lease: plan.batch.lease,
+            now: "2026-01-01T00:00:05.000Z",
+            leaseMs: 20000,
+          }),
+        ).toMatchObject({ kind: "renewed" });
+        writeFileSync(release, "release");
+        const result = await done;
+        expect(result.status, result.stderr).toBe(0);
+        expect(
+          await f.store.hasAcceptedCommit("after-native-barrier" as C.CommitId),
+        ).toBe(true);
+      } finally {
+        writeFileSync(release, "release");
+        await done;
+        f.store.close();
+        rmSync(f.dir, { recursive: true });
+      }
+    },
+    20000,
+  );
+  it("keeps publication generation distinct from append-stable replica continuity and lease renewal", async () => {
+    const f = fixture();
+    const db = new DatabaseSync(join(f.config.state, "coordination.sqlite"));
+    const generation = () =>
+      Number(
+        db
+          .prepare("SELECT generation FROM publication_generation WHERE id=1")
+          .get()?.generation ?? 0,
+      );
+    try {
+      await f.store.commit(change("seed", [], [window()]));
+      const peer = f.store.forPeer("fixture"),
+        epoch = await peer.continuityToken(),
+        before = generation();
+      const plan = await f.store.plan({
+        jobId: "generation" as C.JobId,
+        owner: "fixture",
+        scope,
+        now,
+        policy: { ...policy, minWindows: 1 },
+      });
+      if (plan.kind !== "eligible") throw Error("expected lease");
+      expect(
+        await f.store.renewLease({
+          lease: plan.batch.lease,
+          now,
+          leaseMs: 20000,
+        }),
+      ).toMatchObject({ kind: "renewed" });
+      expect(generation()).toBe(before);
+      expect(await peer.continuityToken()).toBe(epoch);
+      await f.store.commit(change("append", [], [window("appended")]));
+      expect(generation()).toBe(before + 1);
+      expect(await peer.continuityToken()).toBe(epoch);
+    } finally {
+      db.close();
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
   it("opens asynchronously across a >250ms native writer lock (sync opener is the negative control)", async () => {
     const f = fixture();
     const n = note("opening");

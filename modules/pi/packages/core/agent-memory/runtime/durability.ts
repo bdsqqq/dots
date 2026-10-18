@@ -49,24 +49,32 @@ export function durableDirectory(path: string): void {
   }
   flushDirectory(parent);
 }
-/** retries must establish the barrier even if a failed attempt left a final path. */
-export function confirmDurable(path: string): void {
+/** safe during concurrent preparation: establish barriers without removing stages. */
+export function confirmDurability(path: string): void {
   const fd = openSync(path, "r");
   try {
     fsyncSync(fd);
     flushDirectory(dirname(path));
     flushFile(fd);
-    const prefix = `.pi-memory-stage-${basename(path)}-`;
-    const bytes = readFileSync(path);
-    for (const file of readdirSync(dirname(path))) {
-      if (!file.startsWith(prefix)) continue;
-      const stage = join(dirname(path), file);
-      if (readFileSync(stage).equals(bytes)) unlinkSync(stage);
-    }
-    flushDirectory(dirname(path));
   } finally {
     closeSync(fd);
   }
+}
+/** stage cleanup remains in the caller's serialized publication boundary. */
+export function cleanupDurableStages(path: string): void {
+  const prefix = `.pi-memory-stage-${basename(path)}-`;
+  const bytes = readFileSync(path);
+  for (const file of readdirSync(dirname(path))) {
+    if (!file.startsWith(prefix)) continue;
+    const stage = join(dirname(path), file);
+    if (readFileSync(stage).equals(bytes)) unlinkSync(stage);
+  }
+  flushDirectory(dirname(path));
+}
+/** retries must establish the barrier even if a failed attempt left a final path. */
+export function confirmDurable(path: string): void {
+  confirmDurability(path);
+  cleanupDurableStages(path);
 }
 /** exclusive publication keeps an existing immutable value intact on collision. */
 export function durableCreate(path: string, bytes: string | Buffer): void {
@@ -92,4 +100,30 @@ export function durableCreate(path: string, bytes: string | Buffer): void {
     }
   }
   confirmDurable(path);
+}
+
+if (import.meta.vitest) {
+  const { it, expect } = import.meta.vitest;
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  it("prepares physical durability without removing staging files; explicit serialized cleanup removes only matching bytes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "memory-barrier-"));
+    try {
+      const path = join(dir, "immutable"),
+        matching = join(dir, ".pi-memory-stage-immutable-matching"),
+        different = join(dir, ".pi-memory-stage-immutable-different");
+      writeFileSync(path, "accepted bytes");
+      linkSync(path, matching);
+      writeFileSync(different, "different bytes");
+      confirmDurability(path);
+      expect(readFileSync(matching, "utf8")).toBe("accepted bytes");
+      expect(readFileSync(different, "utf8")).toBe("different bytes");
+      cleanupDurableStages(path);
+      expect(existsSync(matching)).toBe(false);
+      expect(readFileSync(path, "utf8")).toBe("accepted bytes");
+      expect(readFileSync(different, "utf8")).toBe("different bytes");
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
 }
