@@ -1233,6 +1233,74 @@ export class FileMemoryStore implements C.MemoryStore {
           return changes.slice(start, start + limit);
         });
       },
+      dependencyCommits: async (input, incoming = []) =>
+        this.refreshed((view) => {
+          if (incoming.length > 4096)
+            throw new Error("replica dependency lookup exceeds 4096 commits");
+          const target = parseReplicaChange(input);
+          const candidates = new Map(
+            [...view.accepted].map(([id, accepted]) => [id, accepted.replica]),
+          );
+          for (const value of [...incoming, target]) {
+            const change = parseReplicaChange(value);
+            const retained = candidates.get(change.commitId);
+            if (retained && !sameValue(retained, change))
+              throw new IntegrityError("replica identity collision");
+            candidates.set(change.commitId, change);
+          }
+          const revisions = new Set<C.RevisionId>([
+            ...target.revisions.flatMap((revision) => [
+              ...(revision.ancestry.kind === "known"
+                ? revision.ancestry.parents
+                : []),
+              ...revision.claims.flatMap((claim) =>
+                claim.derivedFrom.map((ref) => ref.revisionId),
+              ),
+            ]),
+            ...target.outcomes.flatMap((outcome) =>
+              outcome.decision.kind === "changed"
+                ? outcome.decision.notes.map((ref) => ref.revisionId)
+                : [],
+            ),
+          ]);
+          const windows = new Set<C.WindowId>([
+            ...target.revisions.flatMap((revision) =>
+              revision.claims.flatMap((claim) =>
+                claim.evidence.map((ref) => ref.windowId),
+              ),
+            ),
+            ...target.suppressions.flatMap((rule) =>
+              rule.target.kind === "evidence"
+                ? [rule.target.evidence.windowId]
+                : [],
+            ),
+            ...target.outcomes.map((outcome) => outcome.windowId),
+          ]);
+          for (const revision of target.revisions)
+            revisions.delete(revision.revisionId);
+          for (const window of target.windows) windows.delete(window.windowId);
+          const owners = new Set<C.CommitId>();
+          const foundRevisions = new Set<C.RevisionId>(),
+            foundWindows = new Set<C.WindowId>();
+          for (const candidate of candidates.values()) {
+            for (const revision of candidate.revisions)
+              if (revisions.has(revision.revisionId)) {
+                owners.add(candidate.commitId);
+                foundRevisions.add(revision.revisionId);
+              }
+            for (const window of candidate.windows)
+              if (windows.has(window.windowId)) {
+                owners.add(candidate.commitId);
+                foundWindows.add(window.windowId);
+              }
+          }
+          if (
+            foundRevisions.size !== revisions.size ||
+            foundWindows.size !== windows.size
+          )
+            throw new IntegrityError("missing replica evidence dependency");
+          return [...owners].sort();
+        }),
       readChanges: async (ids) => {
         if (ids.length === 0) return [];
         if (ids.length > 4096)
@@ -1983,6 +2051,58 @@ if (import.meta.vitest) {
       } catch {}
       rmSync(f.dir, { recursive: true, force: true });
       rmSync(replacement.dir, { recursive: true, force: true });
+    }
+  });
+  it("resolves evidence owners independently of declared commit parents", async () => {
+    const f = fixture(),
+      receiver = fixture();
+    try {
+      const w = window();
+      await f.store.commit(change("source-owner", [], [w]));
+      const original = (
+        await f.store
+          .forPeer("inspect")
+          .readChanges(["source-owner" as C.CommitId])
+      )[0]!;
+      const target: C.ReplicaChange = {
+        ...original,
+        commitId: "untrusted" as C.CommitId,
+        parents: [],
+        windows: [],
+        suppressions: [
+          {
+            suppressionId: "evidence-rule" as C.SuppressionId,
+            scope,
+            createdAt: now,
+            reason: "fixture",
+            target: {
+              kind: "evidence",
+              evidence: {
+                source: w.source,
+                windowId: w.windowId,
+                sourceHash: w.sourceHash,
+                spans: [w.excerpts[0].span],
+              },
+            },
+          },
+        ],
+      };
+      expect(
+        await f.store.forPeer("inspect").dependencyCommits(target),
+      ).toEqual([original.commitId]);
+      expect(
+        await receiver.store
+          .forPeer("inspect")
+          .dependencyCommits(target, [original]),
+      ).toEqual([original.commitId]);
+      await expect(
+        receiver.store.forPeer("inspect").dependencyCommits(target),
+      ).rejects.toThrow("missing replica evidence dependency");
+    } finally {
+      f.store.close();
+      receiver.store.close();
+      rmSync(f.dir, { recursive: true, force: true });
+      rmSync(receiver.dir, { recursive: true, force: true });
     }
   });
   it("scans ACK-independent causal pages and reads exact dependency ids", async () => {
