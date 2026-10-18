@@ -1279,17 +1279,40 @@ export class FileMemoryStore implements C.MemoryStore {
           for (const revision of target.revisions)
             revisions.delete(revision.revisionId);
           for (const window of target.windows) windows.delete(window.windowId);
+          // A later duplicate must not retroactively change a cached dependency.
+          // The epoch resets these ordinals whenever retained history changes.
+          this.synchronizeContinuity(view, true);
+          const ordinals = new Map(
+            this.db
+              .prepare(
+                "SELECT commit_id,rowid AS ordinal FROM repository_payload",
+              )
+              .all()
+              .map((row) => [string(row.commit_id), Number(row.ordinal)]),
+          );
+          const ordered = [...candidates.values()].sort(
+            (a, b) =>
+              (ordinals.get(a.commitId) ?? Number.MAX_SAFE_INTEGER) -
+                (ordinals.get(b.commitId) ?? Number.MAX_SAFE_INTEGER) ||
+              a.commitId.localeCompare(b.commitId),
+          );
           const owners = new Set<C.CommitId>();
           const foundRevisions = new Set<C.RevisionId>(),
             foundWindows = new Set<C.WindowId>();
-          for (const candidate of candidates.values()) {
+          for (const candidate of ordered) {
             for (const revision of candidate.revisions)
-              if (revisions.has(revision.revisionId)) {
+              if (
+                revisions.has(revision.revisionId) &&
+                !foundRevisions.has(revision.revisionId)
+              ) {
                 owners.add(candidate.commitId);
                 foundRevisions.add(revision.revisionId);
               }
             for (const window of candidate.windows)
-              if (windows.has(window.windowId)) {
+              if (
+                windows.has(window.windowId) &&
+                !foundWindows.has(window.windowId)
+              ) {
                 owners.add(candidate.commitId);
                 foundWindows.add(window.windowId);
               }
@@ -2098,6 +2121,21 @@ if (import.meta.vitest) {
       await expect(
         receiver.store.forPeer("inspect").dependencyCommits(target),
       ).rejects.toThrow("missing replica evidence dependency");
+      const token = await f.store.forPeer("inspect").continuityToken();
+      await f.store
+        .forPeer("duplicate")
+        .integrate([
+          {
+            ...original,
+            commitId: "later-owner" as C.CommitId,
+            parents: [original.commitId],
+            revisions: [note("later")],
+          },
+        ]);
+      expect(await f.store.forPeer("inspect").continuityToken()).toBe(token);
+      expect(
+        await f.store.forPeer("inspect").dependencyCommits(target),
+      ).toEqual([original.commitId]);
     } finally {
       f.store.close();
       receiver.store.close();
