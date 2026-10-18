@@ -270,6 +270,44 @@ if (import.meta.vitest) {
     open.push(s);
     return s;
   }
+  test("empty checkpoint requests reach the network without certifying unavailable history", async () => {
+    const local = store("empty-handshake");
+    await commit(local, "seed", [note("seed")]);
+    fs.renameSync(
+      join(config("empty-handshake").data, "objects"),
+      join(config("empty-handshake").data, "objects-offline"),
+    );
+    await expect(
+      synchronizeReplica({
+        store: local,
+        peerId: "unavailable-peer",
+        policy,
+        signal: signal(),
+        transport: {
+          exchange: async () => {
+            throw new Error("fixture network unavailable");
+          },
+        },
+      }),
+    ).rejects.toThrow("fixture network unavailable");
+    const saved = await local
+      .forPeer("replica-client:unavailable-peer")
+      .readCursor();
+    expect(JSON.parse(saved!).attempts).toBe(1);
+    await expect(
+      synchronizeReplica({
+        store: local,
+        peerId: "wrong-owner",
+        policy: { ...policy, peerOwnerId: "different-owner" },
+        signal: signal(),
+        transport: {
+          exchange: async () => {
+            throw new Error("owner check bypassed");
+          },
+        },
+      }),
+    ).rejects.toThrow("replica owner denied");
+  });
   function note(
     id: string,
     body = `# ${id}\n\nfixture`,
