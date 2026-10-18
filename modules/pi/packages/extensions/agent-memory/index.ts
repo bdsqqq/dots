@@ -9,6 +9,7 @@ import {
   memoryConfiguration,
   type MemoryConfiguration,
 } from "../../core/agent-memory/runtime/config.js";
+import type { NativeProjectContext } from "../../core/agent-memory/runtime/project-context.js";
 import { nativeSourceSnapshot } from "../../core/agent-memory/runtime/pi-source.js";
 import {
   canonicalJSON,
@@ -26,8 +27,8 @@ const MEMORY_AVAILABLE = "[memory context available]";
 export interface NativeMemoryOptions {
   readonly configuration?: MemoryConfiguration;
   readonly worker?: Omit<SessionWorkerOptions, "store">;
-  /** exact repository identity is producer-owned; absence never blocks personal capture. */
-  readonly project?: { readonly repositoryId: string };
+  /** Supplied producer metadata bypasses discovery; null disables it. */
+  readonly project?: NativeProjectContext | null;
   readonly onError?: (error: unknown) => void;
 }
 function details(value: unknown): C.RecallDelivery | null {
@@ -65,10 +66,13 @@ export function createAgentMemoryExtension(
 ): (pi: ExtensionAPI) => void {
   return (pi) => {
     let config: MemoryConfiguration;
+    let project = options.project;
+    let projectReady: Promise<NativeProjectContext | null>;
     let worker: SessionMemoryWorker | undefined;
     let captureWorker: SessionMemoryWorker | undefined;
     let closed = true;
     let generation = 0;
+    let sessionEpoch = 0;
     let sessionId: C.SessionId;
     let intents: C.RecallIntent[] = [];
     let pendingPrompt: string | null = null;
@@ -78,6 +82,7 @@ export function createAgentMemoryExtension(
     let readySinceRequest = false;
     const queued = new Set<string>();
     const captures = new Set<Promise<unknown>>();
+    const checks = new Set<Promise<unknown>>();
     const error = (e: unknown): void => {
       if (!closed) options.onError?.(e);
     };
@@ -90,15 +95,23 @@ export function createAgentMemoryExtension(
       input: Parameters<SessionMemoryWorker["request"]>[0],
       timeout?: number,
     ): ReturnType<SessionMemoryWorker["request"]> => {
+      if (input.kind === "capture") {
+        // Let the next native context submit its bounded eligibility check first.
+        // Background writes yield to validation; inference never awaits capture.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        await Promise.allSettled([...checks]);
+      }
       const current =
-        input.kind === "capture"
+        input.kind === "capture" || input.kind === "project-context"
           ? (captureWorker ??= new SessionMemoryWorker({
               ...options.worker,
               store: runtimeStoreConfiguration(config),
             }))
           : getWorker();
+      const pending = current.request(input, timeout);
+      if (input.kind === "check") checks.add(pending);
       try {
-        return await current.request(input, timeout);
+        return await pending;
       } catch (e) {
         if (input.kind !== "check") {
           current.close();
@@ -106,6 +119,8 @@ export function createAgentMemoryExtension(
           if (captureWorker === current) captureWorker = undefined;
         }
         throw e;
+      } finally {
+        checks.delete(pending);
       }
     };
     const live = (d: C.RecallDelivery, ctx: ExtensionContext): boolean =>
@@ -196,11 +211,11 @@ export function createAgentMemoryExtension(
       pendingPrompt = null;
       const scopes: C.MemoryScope[] = [
         { kind: "personal", ownerId: config.ownerId },
-        ...(options.project
+        ...(project
           ? [
               {
                 kind: "project" as const,
-                repositoryId: options.project.repositoryId,
+                repositoryId: project.repositoryId,
               },
             ]
           : []),
@@ -231,14 +246,21 @@ export function createAgentMemoryExtension(
           maxNotes: 4,
         };
       });
+      for (const intent of intents) startRecall(ctx, intent);
+    };
+    const startRecall = (
+      ctx: ExtensionContext,
+      intent: C.RecallIntent,
+    ): void => {
       const token = generation;
-      for (const intent of intents)
-        void (async () => {
-          await recover(ctx, intent, token);
-          if (closed || generation !== token) return;
-          await request({ kind: "recall", intent });
-          await recover(ctx, intent, token);
-        })().catch(error);
+      void (async () => {
+        await recover(ctx, intent, token);
+        if (closed || generation !== token) return;
+        await request({ kind: "recall", intent });
+        await recover(ctx, intent, token);
+      })().catch((e) => {
+        if (!closed && generation === token) error(e);
+      });
     };
     pi.on("session_start", (_event, ctx) => {
       worker?.close();
@@ -259,6 +281,54 @@ export function createAgentMemoryExtension(
         closed = true;
         return;
       }
+      project = options.project;
+      const epoch = ++sessionEpoch;
+      // Discovery is a separate worker request. Personal recall and inference can
+      // proceed while the producer observes the native workspace.
+      projectReady =
+        options.project !== undefined
+          ? Promise.resolve(options.project)
+          : request({ kind: "project-context", cwd: ctx.cwd })
+              .then((result) => {
+                if (
+                  !result ||
+                  typeof result !== "object" ||
+                  !("project" in result)
+                )
+                  throw new Error("invalid project observation");
+                return result.project;
+              })
+              .catch((e) => {
+                if (epoch === sessionEpoch) error(e);
+                return null;
+              });
+      void projectReady.then((observed) => {
+        if (closed || epoch !== sessionEpoch) return;
+        project = observed;
+        const personal = intents.find(
+          (i) => i.target.scope.kind === "personal",
+        );
+        if (
+          !observed ||
+          !personal ||
+          Date.parse(personal.expiresAt) <= Date.now() ||
+          intents.some((i) => i.target.scope.kind === "project")
+        )
+          return;
+        const target: C.RecallTarget = {
+          ...personal.target,
+          scope: { kind: "project", repositoryId: observed.repositoryId },
+        };
+        const intent: C.RecallIntent = {
+          ...personal,
+          target,
+          intentId: sha256(
+            canonicalJSON({ target, entryId: personal.entryId }),
+          ) as C.IntentId,
+        };
+        intents.push(intent);
+        startRecall(ctx, intent);
+      });
       bindIntent(ctx);
     });
     pi.on("before_agent_start", (event, ctx) => {
@@ -338,13 +408,22 @@ export function createAgentMemoryExtension(
     pi.on("turn_end", (event, ctx) => {
       if (closed) return;
       const through = event.toolResultEntryIds.at(-1) ?? event.messageEntryId;
-      const capture = request({
-        kind: "capture",
-        snapshot: nativeSourceSnapshot(ctx.sessionManager),
-        through: through as C.EntryId,
-        scope: { kind: "personal", ownerId: config.ownerId },
-        ...(options.project ? { project: options.project } : {}),
-      }).catch(error);
+      const snapshot = nativeSourceSnapshot(ctx.sessionManager);
+      const scope: C.MemoryScope = {
+        kind: "personal",
+        ownerId: config.ownerId,
+      };
+      const capture = projectReady
+        .then((observed) =>
+          request({
+            kind: "capture",
+            snapshot,
+            through: through as C.EntryId,
+            scope,
+            project: observed,
+          }),
+        )
+        .catch(error);
       captures.add(capture);
       void capture.finally(() => captures.delete(capture));
     });
@@ -477,6 +556,7 @@ if (import.meta.vitest) {
     persistent = false,
     defaultWorker = false,
     project?: { repositoryId: string },
+    nativeDefault = false,
   ) {
     const dir = restore?.dir ?? (await fs.mkdtemp(join(artifact, "session-")));
     const config: MemoryConfiguration = restore?.config ?? {
@@ -490,6 +570,18 @@ if (import.meta.vitest) {
       sessionRoot: join(dir, "sessions"),
       backlog: DEFAULT_BACKLOG_POLICY,
     };
+    if (nativeDefault) {
+      const { execFileSync } = await import("node:child_process");
+      execFileSync("git", ["init", dir]);
+      execFileSync("git", [
+        "-C",
+        dir,
+        "remote",
+        "add",
+        "origin",
+        "git@example.com:team/native.git",
+      ]);
+    }
     const storeConfig = runtimeStoreConfiguration(config);
     const store = new FileMemoryStore(storeConfig);
     const note = createNoteRevision({
@@ -526,6 +618,15 @@ if (import.meta.vitest) {
     const faux = fauxProvider();
     runtime.registerNativeProvider(faux.provider);
     const settings = SettingsManager.inMemory({
+      ...{
+        "@bds_pi/agent-memory": {
+          enabled: true,
+          root: config.root,
+          data: config.data,
+          state: config.state,
+          ownerId: config.ownerId,
+        },
+      },
       defaultTools: ["read", "codemode"],
       compaction: { enabled: false, keepRecentTokens: 0 },
       retry: { enabled: false },
@@ -538,6 +639,23 @@ if (import.meta.vitest) {
           })
         : SessionManager.inMemory(dir, { id: "native-fixture" });
     const errors: unknown[] = [];
+    const enqueued: C.RecallDelivery[] = [];
+    const observeInbox =
+      (extension: (pi: ExtensionAPI) => void) =>
+      (pi: ExtensionAPI): void =>
+        extension(
+          new Proxy(pi, {
+            get(target, key) {
+              if (key === "sendMessage")
+                return (...args: Parameters<ExtensionAPI["sendMessage"]>) => {
+                  const delivery = details(args[0].details);
+                  if (delivery) enqueued.push(delivery);
+                  return target.sendMessage(...args);
+                };
+              return Reflect.get(target, key);
+            },
+          }),
+        );
     const loader = new DefaultResourceLoader({
       cwd: dir,
       agentDir: dir,
@@ -548,22 +666,35 @@ if (import.meta.vitest) {
       noThemes: true,
       noContextFiles: true,
       extensionFactories: [
-        factory({
-          configuration: config,
-          ...(project ? { project } : {}),
-          worker: {
-            ...(defaultWorker
-              ? {}
-              : {
-                  entry: pathToFileURL(
-                    join(artifact, "dist/core/agent-memory-session-worker.js"),
-                  ),
-                }),
-            indexModule: pathToFileURL(indexModule).href,
-            indexOptions: gate,
-          },
-          onError: (e) => errors.push(e),
-        }),
+        observeInbox(
+          nativeDefault
+            ? (
+                await import(
+                  pathToFileURL(
+                    join(artifact, "dist/extensions/agent-memory.js"),
+                  ).href
+                )
+              ).default
+            : factory({
+                configuration: config,
+                ...(project ? { project } : {}),
+                worker: {
+                  ...(defaultWorker
+                    ? {}
+                    : {
+                        entry: pathToFileURL(
+                          join(
+                            artifact,
+                            "dist/core/agent-memory-session-worker.js",
+                          ),
+                        ),
+                      }),
+                  indexModule: pathToFileURL(indexModule).href,
+                  indexOptions: gate,
+                },
+                onError: (e) => errors.push(e),
+              }),
+        ),
         createCodemodeExtension({ models: false }),
       ],
     });
@@ -577,8 +708,35 @@ if (import.meta.vitest) {
       model: faux.getModel(),
       sessionManager: manager,
     });
-    await session.bindExtensions({});
+    const gitStarted = join(dir, "git-started");
+    const gitRelease = join(dir, "git-release");
+    const oldPath = process.env.PATH;
+    if (nativeDefault) {
+      const bin = join(dir, "git-bin");
+      await fs.mkdir(bin);
+      await fs.writeFile(
+        join(bin, "git"),
+        `#!/bin/sh
+: > '${gitStarted}'
+for i in $(/usr/bin/seq 1 250); do
+  [ -f '${gitRelease}' ] && exec /usr/bin/git "$@"
+  /bin/sleep 0.02
+done
+exit 1
+`,
+        { mode: 0o755 },
+      );
+      process.env.PATH = `${bin}:${oldPath}`;
+    }
+    try {
+      await session.bindExtensions({});
+    } finally {
+      if (oldPath === undefined) delete process.env.PATH;
+      else process.env.PATH = oldPath;
+    }
     return {
+      gitStarted,
+      gitRelease,
       dir,
       config,
       store,
@@ -587,6 +745,7 @@ if (import.meta.vitest) {
       session,
       faux,
       errors,
+      enqueued,
       async close() {
         await session.abort();
         await session.extensionRunner.emit({
@@ -769,7 +928,7 @@ if (import.meta.vitest) {
                 scope: { kind: "personal", ownerId: "fixture" },
               })),
           );
-          await new Promise((r) => setTimeout(r, 100));
+          await wait(() => f.enqueued.length === 1);
           await f.store.commit({
             commitId: "deny" as C.CommitId,
             now: new Date().toISOString(),
@@ -918,8 +1077,19 @@ if (import.meta.vitest) {
         through,
         scope: { kind: "personal" as const, ownerId: "fixture" },
       };
+      for (const entry of input.snapshot.entries)
+        entry.timestamp = "2000-01-01T00:00:00.000Z";
       expect(await worker.request(input)).toBe("captured");
       expect(await worker.request(input)).toBe("captured");
+      expect(
+        await f.store.plan({
+          jobId: "fresh-capture" as C.JobId,
+          owner: "fixture",
+          scope: input.scope,
+          now: new Date().toISOString(),
+          policy: { ...DEFAULT_BACKLOG_POLICY, minWindows: 100 },
+        }),
+      ).toMatchObject({ kind: "idle", reason: "below-threshold" });
       const plan = await f.store.plan({
         jobId: "early-capture" as C.JobId,
         owner: "fixture",
@@ -1288,112 +1458,142 @@ if (import.meta.vitest) {
       await f.close();
     }
   });
-  it("personal and exact-project recall are independent scopes while capture remains one personal source pass", async () => {
-    const project = { repositoryId: "fixture-repository" };
-    const f = await fixture(
-      undefined,
-      createAgentMemoryExtension,
-      undefined,
-      false,
-      false,
-      project,
-    );
-    try {
-      const note = createNoteRevision({
-        noteId: "project-note" as C.NoteId,
-        ancestry: { kind: "known", parents: [] },
-        scope: { kind: "project", repositoryId: project.repositoryId },
-        path: "project-note.md",
-        body: "zephyr used an sqlite queue in revision one",
-        links: [],
-        claims: [],
-        exposure: { kind: "active" },
-        authoredAt: "2025-01-01T00:00:00.000Z",
-      });
-      await f.store.commit({
-        commitId: "project" as C.CommitId,
-        now: new Date().toISOString(),
-        windows: [],
-        edits: [{ revision: note, expectedHeads: [] }],
-        suppressions: [],
-        outcomes: [],
-        lease: null,
-      });
-      const contexts: string[] = [];
-      f.faux.setResponses([
-        async (ctx) => {
-          contexts.push(JSON.stringify(ctx));
-          await wait(async () => {
-            const personal = await f.store.nextDelivery({
-              consumerId: "pi-native-memory",
-              sessionId: f.manager.getSessionId() as C.SessionId,
-              scope: { kind: "personal", ownerId: "fixture" },
+  it.each([false, true])(
+    "personal and exact-project recall share one personal capture pass (native default: %s)",
+    async (nativeDefault) => {
+      const project = {
+        repositoryId: nativeDefault
+          ? "example.com/team/native"
+          : "fixture-repository",
+      };
+      const trace = join(artifact, "supplied-project-git.trace");
+      const oldTrace = process.env.GIT_TRACE;
+      if (!nativeDefault) process.env.GIT_TRACE = trace;
+      const f = await fixture(
+        undefined,
+        createAgentMemoryExtension,
+        undefined,
+        false,
+        false,
+        nativeDefault ? undefined : project,
+        nativeDefault,
+      );
+      try {
+        const note = createNoteRevision({
+          noteId: "project-note" as C.NoteId,
+          ancestry: { kind: "known", parents: [] },
+          scope: { kind: "project", repositoryId: project.repositoryId },
+          path: "project-note.md",
+          body: "zephyr used an sqlite queue in revision one",
+          links: [],
+          claims: [],
+          exposure: { kind: "active" },
+          authoredAt: "2025-01-01T00:00:00.000Z",
+        });
+        await f.store.commit({
+          commitId: "project" as C.CommitId,
+          now: new Date().toISOString(),
+          windows: [],
+          edits: [{ revision: note, expectedHeads: [] }],
+          suppressions: [],
+          outcomes: [],
+          lease: null,
+        });
+        const contexts: string[] = [];
+        f.faux.setResponses([
+          async (ctx) => {
+            contexts.push(JSON.stringify(ctx));
+            if (nativeDefault) {
+              await wait(async () =>
+                fs.access(f.gitStarted).then(
+                  () => true,
+                  () => false,
+                ),
+              );
+              // This provider callback runs while worker-side Git is blocked.
+              await expect(fs.access(f.gitRelease)).rejects.toThrow();
+              await fs.writeFile(f.gitRelease, "release discovery");
+            }
+            await wait(async () => {
+              const personal = await f.store.nextDelivery({
+                consumerId: "pi-native-memory",
+                sessionId: f.manager.getSessionId() as C.SessionId,
+                scope: { kind: "personal", ownerId: "fixture" },
+              });
+              const narrow = await f.store.nextDelivery({
+                consumerId: "pi-native-memory",
+                sessionId: f.manager.getSessionId() as C.SessionId,
+                scope: note.scope,
+              });
+              return (
+                !!personal &&
+                !!narrow &&
+                personal.intent.entryId ===
+                  latestUser(f.manager.getBranch())?.id &&
+                narrow.intent.entryId === latestUser(f.manager.getBranch())?.id
+              );
             });
-            const narrow = await f.store.nextDelivery({
-              consumerId: "pi-native-memory",
-              sessionId: f.manager.getSessionId() as C.SessionId,
-              scope: note.scope,
-            });
-            return (
-              !!personal &&
-              !!narrow &&
-              personal.intent.entryId ===
-                latestUser(f.manager.getBranch())?.id &&
-              narrow.intent.entryId === latestUser(f.manager.getBranch())?.id
-            );
-          });
-          await new Promise((r) => setTimeout(r, 100));
-          return fauxAssistantMessage("first");
-        },
-        (ctx) => {
-          contexts.push(JSON.stringify(ctx));
-          return fauxAssistantMessage("second");
-        },
-      ]);
-      await f.session.prompt("zephyr");
-      expect(f.errors.map(String)).toEqual([]);
-      expect(
-        f.session.messages
-          .filter((m) => m.role === "assistant")
-          .map((m) => m.errorMessage),
-      ).toEqual(expect.not.arrayContaining([expect.any(String)]));
-      expect(contexts[1]).toContain("violet lamp");
-      expect(contexts[1]).toContain("sqlite queue");
-      expect(contexts[1]).toContain("project historical fact");
-      await f.session.extensionRunner.emit({
-        type: "session_shutdown",
-        reason: "reload",
-      });
-      const plan = await f.store.plan({
-        jobId: "scope-probe" as C.JobId,
-        owner: "fixture",
-        scope: { kind: "personal", ownerId: "fixture" },
-        now: new Date().toISOString(),
-        policy: { ...DEFAULT_BACKLOG_POLICY, minWindows: 1 },
-      });
-      if (plan.kind !== "eligible") throw new Error("missing personal capture");
-      expect(
-        new Set(plan.batch.windows.map((w) => w.window.windowId)).size,
-      ).toBe(plan.batch.windows.length);
-      expect(
-        plan.batch.windows.every(
-          (w) =>
-            w.window.source.origin.kind === "session" &&
-            w.window.source.origin.project?.repositoryId ===
-              project.repositoryId,
-        ),
-      ).toBe(true);
-      expect(
-        await f.store.plan({
-          jobId: "no-duplicate" as C.JobId,
+            await wait(() => f.enqueued.length === 2);
+            return fauxAssistantMessage("first");
+          },
+          (ctx) => {
+            contexts.push(JSON.stringify(ctx));
+            return fauxAssistantMessage("second");
+          },
+        ]);
+        await f.session.prompt("zephyr");
+        expect(f.errors.map(String)).toEqual([]);
+        expect(
+          f.session.messages
+            .filter((m) => m.role === "assistant")
+            .map((m) => m.errorMessage),
+        ).toEqual(expect.not.arrayContaining([expect.any(String)]));
+        expect(contexts[1]).toContain("violet lamp");
+        expect(contexts[1]).toContain("sqlite queue");
+        expect(contexts[1]).toContain("project historical fact");
+        const [personalIntent, projectIntent] = f.enqueued.map((d) => d.intent);
+        expect(projectIntent!.entryId).toBe(personalIntent!.entryId);
+        expect(projectIntent!.query).toBe(personalIntent!.query);
+        expect(projectIntent!.expiresAt).toBe(personalIntent!.expiresAt);
+        await f.session.extensionRunner.emit({
+          type: "session_shutdown",
+          reason: "reload",
+        });
+        const plan = await f.store.plan({
+          jobId: "scope-probe" as C.JobId,
           owner: "fixture",
-          scope: note.scope,
+          scope: { kind: "personal", ownerId: "fixture" },
           now: new Date().toISOString(),
           policy: { ...DEFAULT_BACKLOG_POLICY, minWindows: 1 },
-        }),
-      ).toMatchObject({ kind: "idle", reason: "empty" });
-    } finally {
-      await f.close();
-    }
-  });
+        });
+        if (plan.kind !== "eligible")
+          throw new Error("missing personal capture");
+        expect(
+          new Set(plan.batch.windows.map((w) => w.window.windowId)).size,
+        ).toBe(plan.batch.windows.length);
+        expect(
+          plan.batch.windows.every(
+            (w) =>
+              w.window.source.origin.kind === "session" &&
+              w.window.source.origin.project?.repositoryId ===
+                project.repositoryId,
+          ),
+        ).toBe(true);
+        if (!nativeDefault) await expect(fs.access(trace)).rejects.toThrow();
+        expect(
+          await f.store.plan({
+            jobId: "no-duplicate" as C.JobId,
+            owner: "fixture",
+            scope: note.scope,
+            now: new Date().toISOString(),
+            policy: { ...DEFAULT_BACKLOG_POLICY, minWindows: 1 },
+          }),
+        ).toMatchObject({ kind: "idle", reason: "empty" });
+      } finally {
+        await f.close();
+        if (oldTrace === undefined) delete process.env.GIT_TRACE;
+        else process.env.GIT_TRACE = oldTrace;
+      }
+    },
+  );
 }
