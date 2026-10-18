@@ -177,7 +177,8 @@ interface PayloadProof {
 }
 interface DisclosureProofs {
   readonly store: C.ReplicaStore;
-  readonly token: string;
+  /** empty payloads disclose nothing and need no repository proof epoch. */
+  readonly token: string | null;
   readonly proofs: readonly PayloadProof[];
 }
 async function continuityFence(
@@ -185,6 +186,7 @@ async function continuityFence(
   signal: AbortSignal,
 ): Promise<void> {
   signal.throwIfAborted();
+  if (authorization.token === null) return;
   if ((await authorization.store.continuityToken()) !== authorization.token)
     throw new Error("replica repository continuity changed; retry");
   signal.throwIfAborted();
@@ -227,6 +229,10 @@ async function authorizeClosure(
   };
   if (!policy.ownerId || policy.peerOwnerId !== policy.ownerId)
     throw new Error("replica owner denied");
+  signal.throwIfAborted();
+  // The initial checkpoint request and empty replies carry no knowledge. Do not
+  // make network liveness wait on cold physical confirmation of retained data.
+  if (!batch.length) return { store, token: null, proofs: [] };
   const token = await store.continuityToken();
   // v2 certified declared parents only; it cannot authorize evidence owners.
   const namespace = `replica-proof:v3:${sha256(canonicalJSON({ policy, token }))}`;

@@ -2112,6 +2112,8 @@ export class FileMemoryStore implements C.MemoryStore {
           5000,
         ),
       integrate: async (incoming) => {
+        options.signal?.throwIfAborted();
+        if (!incoming.length) return;
         const changes = structuredClone(incoming).map(parseReplicaChange);
         return this.refreshed<void>(
           () => {
@@ -5246,6 +5248,7 @@ fcntl.fcntl(3,51)
         join(f.config.data, "objects-offline"),
       );
       const peer = f.store.forPeer("offline-peer", { contentionTimeoutMs: 0 });
+      await peer.integrate([]);
       await peer.acknowledge([], "bounded backoff checkpoint");
       expect(await peer.readCursor()).toBe("bounded backoff checkpoint");
       await expect(
