@@ -1140,6 +1140,15 @@ exit 1
           if (isStoreBusy(e)) return false;
           throw e;
         }
+      }).catch(async (cause) => {
+        throw new Error(
+          `capture did not become eligible: ${JSON.stringify({
+            plan: captured,
+            scopes: await f.store.pendingScopes(),
+            errors: f.errors.map(String),
+          })}`,
+          { cause },
+        );
       });
       if (captured?.kind !== "eligible") throw new Error("no captured source");
       const excerpts = captured.batch.windows.flatMap((w) => w.window.excerpts);
@@ -1466,7 +1475,9 @@ exit 1
       worker.close();
       await f.close();
     }
-  }, 300_000);
+    // Native inode barriers took 277s alone and exceeded 300s under suite load.
+    // This is a fixture watchdog, never a production capture limit.
+  }, 600_000);
   it("cold eligibility acquisition is bounded and its aborted store options cannot poison later recall", async () => {
     const f = await retainedFixture();
     await f.session.extensionRunner.emit({

@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
 export class IntegrityError extends Error {}
+class DurabilityIdentityError extends IntegrityError {}
 function statIdentity(s: import("node:fs").BigIntStats): string {
   return [s.dev, s.ino, s.mode, s.nlink, s.size, s.mtimeNs, s.ctimeNs].join(
     ":",
@@ -74,7 +75,7 @@ export function confirmDurability(path: string): string {
     const identity = physicalIdentity(path);
     const opened = statIdentity(fstatSync(fd, { bigint: true }));
     if (statIdentity(statSync(path, { bigint: true })) !== opened)
-      throw new IntegrityError(`durability identity changed: ${path}`);
+      throw new DurabilityIdentityError(`durability identity changed: ${path}`);
     fsyncSync(fd);
     flushDirectory(dirname(path));
     flushFile(fd);
@@ -83,14 +84,17 @@ export function confirmDurability(path: string): string {
       statIdentity(statSync(path, { bigint: true })) !== opened ||
       physicalIdentity(path) !== identity
     )
-      throw new IntegrityError(`durability identity changed: ${path}`);
+      throw new DurabilityIdentityError(`durability identity changed: ${path}`);
     return identity;
   } catch (error) {
     // publication may already be visible; this must never request callback replay.
     if (error instanceof Error && "code" in error && error.code === "ENOENT")
-      throw new IntegrityError(`durability identity changed: ${path}`, {
-        cause: error,
-      });
+      throw new DurabilityIdentityError(
+        `durability identity changed: ${path}`,
+        {
+          cause: error,
+        },
+      );
     throw error;
   } finally {
     closeSync(fd);
@@ -159,7 +163,14 @@ export function prepareDurableCreate(
 ): string | null {
   createImmutable(path, bytes);
   const identity = physicalIdentity(path);
-  confirmDurability(path);
+  try {
+    confirmDurability(path);
+  } catch (error) {
+    // A competing preparer's published-stage cleanup can change inode metadata.
+    // This object grants no acceptance yet; reprepare instead of dropping capture.
+    if (error instanceof DurabilityIdentityError) return null;
+    throw error;
+  }
   return physicalIdentity(path) === identity ? identity : null;
 }
 export function durableCreate(
