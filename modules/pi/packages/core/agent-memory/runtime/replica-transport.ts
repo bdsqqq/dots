@@ -568,6 +568,79 @@ if (import.meta.vitest) {
     throw new Error("cold proofs did not rebuild");
   });
 
+  test.each(["stock", "scaled"] as const)(
+    "cold byte repair progresses across reopen with %s limits and default page count",
+    async (size) => {
+      let a = store("a");
+      const count = size === "stock" ? 20 : 6;
+      const body = "x".repeat(size === "stock" ? 900_000 : 300);
+      const changes: Change[] = Array.from({ length: count }, (_, i) => ({
+        commitId: `c${i}` as Change["commitId"],
+        replicaId: "a" as Change["replicaId"],
+        parents: i ? [`c${i - 1}` as Change["commitId"]] : [],
+        revisions: [note(`n${i}`, body)],
+        windows: [],
+        suppressions: [],
+        outcomes: [],
+      }));
+      await a.forPeer("restore").integrate(changes);
+      const history = await a.forPeer("inspect").scan(null, 100);
+      const largest = Math.max(
+        ...history.map((change) => Buffer.byteLength(JSON.stringify(change))),
+      );
+      const limits =
+        size === "stock"
+          ? REPLICA_LIMITS
+          : { ...REPLICA_LIMITS, maxClosureBytes: largest * 2 + 10 };
+      expect(Buffer.byteLength(JSON.stringify(history))).toBeGreaterThan(
+        limits.maxClosureBytes,
+      );
+      const deep = JSON.stringify({
+        version: 1,
+        after: `c${count - 2}`,
+        received: null,
+        attempts: 0,
+        retryAt: 0,
+      });
+      let failures = 0;
+      for (
+        let attempt = 0;
+        attempt < (size === "stock" ? 4 : count + 1);
+        attempt++
+      ) {
+        try {
+          const response = await exchangeReplica(
+            { outgoing: [], cursor: deep },
+            { store: a, peerId: "cold", policy, signal: signal(), limits },
+          );
+          expect(response.incoming.map((c) => c.commitId)).toEqual([
+            `c${count - 1}`,
+          ]);
+          expect(failures).toBeGreaterThan(0);
+          // A warmed direct page may exceed the ancestry budget; wire bounds still apply.
+          const complete = await exchangeReplica(
+            { outgoing: [], cursor: null },
+            { store: a, peerId: "cold", policy, signal: signal(), limits },
+          );
+          expect(complete.incoming.map((c) => c.commitId)).toEqual(
+            history
+              .slice(0, size === "stock" ? 1 : count)
+              .map((c) => c.commitId),
+          );
+          return;
+        } catch (error) {
+          expect(String(error)).toContain("replica closure byte limit");
+          failures++;
+        }
+        a.close();
+        open.splice(open.indexOf(a), 1);
+        a = store("a");
+      }
+      throw new Error("cold byte proofs did not rebuild");
+    },
+    90_000,
+  );
+
   test("actual repository replacement during proof reads or writes cannot authorize under a new epoch", async () => {
     for (const phase of ["read", "write"] as const) {
       const id = `source-${phase}`;
@@ -702,7 +775,7 @@ if (import.meta.vitest) {
     ).rejects.toThrow("closure limit");
     await expect(
       exchangeReplica(
-        { outgoing: [], cursor: null },
+        { outgoing: [], cursor: skipped },
         {
           store: a,
           peerId: "bytes",
