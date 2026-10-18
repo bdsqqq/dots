@@ -308,6 +308,16 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.1.1)(jsdom@30.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
 
+  packages/extensions/agent-memory:
+    dependencies:
+      '@bds_pi/pi-memory':
+        specifier: workspace:*
+        version: link:../../core/agent-memory
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: 'catalog:'
+        version: 1.1.0(patch_hash=c9ed2152c4cce3d3fff5876c25c549d98e33a98555402be19cc2cc14691f5763)(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.4.3)
+
   packages/extensions/bash:
     dependencies:
       '@bds_pi/box-format':
