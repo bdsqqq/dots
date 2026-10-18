@@ -858,6 +858,36 @@ export class FileMemoryStore implements C.MemoryStore {
       };
     });
   }
+  async hasAcceptedCommit(id: C.CommitId): Promise<boolean> {
+    return this.refreshed((view) => view.accepted.has(id));
+  }
+  async pendingScopes(): Promise<readonly C.MemoryScope[]> {
+    return this.refreshed((view) => {
+      const scopes = new Map<
+        string,
+        { scope: C.MemoryScope; oldest: string }
+      >();
+      for (const window of view.windows.values()) {
+        if (
+          view.terminal.has(window.windowId) ||
+          (window.scope.kind === "personal" &&
+            window.scope.ownerId !== this.config.owner)
+        )
+          continue;
+        const key = canonicalJSON(window.scope);
+        const prior = scopes.get(key);
+        if (!prior || prior.oldest > window.capturedAt)
+          scopes.set(key, { scope: window.scope, oldest: window.capturedAt });
+      }
+      return [...scopes.values()]
+        .sort(
+          (a, b) =>
+            a.oldest.localeCompare(b.oldest) ||
+            canonicalJSON(a.scope).localeCompare(canonicalJSON(b.scope)),
+        )
+        .map((item) => item.scope);
+    });
+  }
   async plan(input: C.PlanInput): Promise<C.BacklogPlan> {
     return this.refreshed((view) => {
       const now = millis(input.now);

@@ -422,6 +422,10 @@ export interface MemoryStore {
    * identical ids/payloads replay; a reused id with different content conflicts.
    */
   commit(change: LocalChangeSet): Promise<CommitResult>;
+  /** operational checkpoints cannot establish acceptance after a data restore. */
+  hasAcceptedCommit(commitId: CommitId): Promise<boolean>;
+  /** owner-authorized pending scopes, oldest first; no model or lease acquisition. */
+  pendingScopes(): Promise<readonly MemoryScope[]>;
   /** cheap atomic selection/lease; idle plans must not call a model. */
   plan(input: PlanInput): Promise<BacklogPlan>;
   /** includes competing heads; callers must not choose an arbitrary winner. */
