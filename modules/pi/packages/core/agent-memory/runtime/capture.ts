@@ -393,4 +393,42 @@ if (import.meta.vitest) {
       f.store.close();
     }
   });
+  it("short producer pages paginate to the caller's total window cap", async () => {
+    const f = fixture();
+    try {
+      const paged: C.SourceProducer = {
+        read: (request, abort) =>
+          f.producer.read({ ...request, maxWindows: 1 }, abort),
+      };
+      const expected = await f.producer.read(f.request, signal());
+      const result = await capture(
+        {
+          source: { kind: "read", request: f.request },
+          scope,
+          now,
+          commitId: "short-pages" as C.CommitId,
+        },
+        { store: f.store, producer: paged, signal: signal() },
+      );
+      expect(result).toMatchObject({
+        kind: "locally-committed",
+        windows: expected.windows.map((w) => w.windowId),
+        continuation: expected.next,
+      });
+      const plan = await f.store.plan({
+        jobId: "job" as C.JobId,
+        owner: "fixture",
+        scope,
+        now,
+        policy,
+      });
+      if (plan.kind !== "eligible")
+        throw new Error("short pages lost source windows");
+      expect(plan.batch.windows.map((p) => p.window.windowId).sort()).toEqual(
+        expected.windows.map((w) => w.windowId).sort(),
+      );
+    } finally {
+      f.store.close();
+    }
+  });
 }

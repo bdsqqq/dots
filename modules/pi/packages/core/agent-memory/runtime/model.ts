@@ -11,7 +11,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type * as C from "./contracts.js";
 import { createNoteRevision } from "./markdown.js";
-import { sameValue } from "./identity.js";
+import { canonicalJSON, sameValue } from "./identity.js";
 
 const text = Type.String({ minLength: 1, maxLength: 32_768 });
 const id = Type.String({ minLength: 1, maxLength: 512 });
@@ -231,13 +231,16 @@ export function adaptConsolidationProposal(
         (r, i, all) =>
           all.findIndex((x) => x.revisionId === r.revisionId) === i,
       );
+      const uniqueEvidence = [
+        ...new Map(evidence.map((e) => [canonicalJSON(e), e])).values(),
+      ];
       return {
         kind: claim.kind,
         markdownSpan: {
           start: Buffer.byteLength(body.slice(0, start)),
           end: Buffer.byteLength(body.slice(0, start + claim.text.length)),
         },
-        evidence: [evidence[0]!, ...evidence.slice(1)],
+        evidence: [uniqueEvidence[0]!, ...uniqueEvidence.slice(1)],
         derivedFrom,
       };
     });
