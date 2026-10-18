@@ -64,8 +64,11 @@ workspaces remain personal, and today's HEAD is never claimed as an old event's 
 
 Nix supplies Node, Python 3 (Darwin `F_FULLFSYNC`), SSH and compatibility Git.
 its launcher resolves dependencies and source from the same editable live tree.
-launchd/systemd supervise separate `catch-up`, `reconcile` and `replicate` jobs
-every minute. the wake interval does not kill running work. capture and sync
+owner devices supervise separate `catch-up`, `reconcile` and `replicate` jobs
+every minute through launchd/systemd. `htz-xfs-lab` runs capture/reconciliation
+and serves authenticated inbound exchange: its existing tailnet policy forbids
+initiating owner-device SSH, and owner-initiated exchange transfers both ways.
+the wake interval does not kill running work. capture and sync
 continue while consolidation waits on a model, independently of interactive
 sessions. `maintain` composes these same handlers concurrently, awaits all owned
 phases before close, and reports aggregate failure rather than hiding it.
