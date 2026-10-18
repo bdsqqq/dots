@@ -90,17 +90,37 @@ export type NativeSourceInput =
       readonly rootOptions?: NativeSessionRootOptions;
     };
 
-/** snapshotting never requires a file, including SDK --no-session managers. */
+/**
+ * snapshotting never requires a file, including SDK --no-session managers.
+ * SDK migration loses the original version: callers who loaded v1 must retain
+ * that provenance and request ordinal locators, not treat minted ids as native.
+ */
 export function nativeSourceSnapshot(
   manager: Pick<SessionManager, "getHeader" | "getEntries" | "getSessionFile">,
+  options: { readonly legacyV1?: boolean } = {},
 ): LoadedSession {
   const header = manager.getHeader();
   if (!header) throw new Error("native session has no header");
-  return structuredClone({
+  const snapshot = structuredClone({
     header,
     entries: manager.getEntries(),
     sessionFile: manager.getSessionFile() ?? null,
   });
+  if (options.legacyV1) assignLegacyLocators(snapshot.entries);
+  return snapshot;
+}
+
+function assignLegacyLocators(entries: SessionEntry[]): void {
+  const ids = new Map(
+    entries.map((entry, i) => [entry.id, `legacy-v1:record:${i + 1}`]),
+  );
+  for (const entry of entries) {
+    entry.id = ids.get(entry.id)!;
+    entry.parentId = entry.parentId === null ? null : ids.get(entry.parentId)!;
+    if (entry.type === "compaction")
+      entry.firstKeptEntryId =
+        ids.get(entry.firstKeptEntryId) ?? entry.firstKeptEntryId;
+  }
 }
 
 /**
@@ -129,20 +149,7 @@ export function normalizeNativeSourceEntries(
   );
   const header = manager.getHeader()!;
   const entries = manager.getEntries();
-  if (legacy) {
-    const ids = new Map(
-      entries.map((entry, i) => [entry.id, `legacy-v1:record:${i + 1}`]),
-    );
-    for (const entry of entries) {
-      const oldId = entry.id;
-      entry.id = ids.get(oldId)!;
-      entry.parentId =
-        entry.parentId === null ? null : ids.get(entry.parentId)!;
-      if (entry.type === "compaction")
-        entry.firstKeptEntryId =
-          ids.get(entry.firstKeptEntryId) ?? entry.firstKeptEntryId;
-    }
-  }
+  if (legacy) assignLegacyLocators(entries);
   return { header, entries, sessionFile: null };
 }
 
@@ -155,7 +162,6 @@ export async function loadNativeSourceSnapshot(
   const raw = text.split(/\r?\n/).flatMap((line, i) => {
     if (!line.trim()) return [];
     // SDK parsing skips malformed lines; fail closed rather than accept a gap.
-    JSON.parse(line);
     const entries = parseSessionEntries(line);
     if (entries.length !== 1 || typeof entries[0]?.type !== "string")
       throw new Error(`invalid native session record at line ${i + 1}`);
@@ -702,6 +708,268 @@ if (import.meta.vitest) {
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
+    });
+
+    it("adapts v1 idless records to stable locators without rewriting or trusting SDK-generated ids", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "pi-native-legacy-"));
+      try {
+        const path = join(dir, "legacy.jsonl");
+        const records = [
+          {
+            type: "session",
+            version: 1,
+            id: "legacy-fixture",
+            cwd: dir,
+            timestamp: now,
+          },
+          {
+            type: "message",
+            timestamp: now,
+            message: {
+              role: "user",
+              content: "original early reason",
+              timestamp: Date.parse(now),
+            },
+          },
+          {
+            type: "message",
+            timestamp: now,
+            message: {
+              role: "hookMessage",
+              customType: "agent-memory",
+              content: "derived old memory echo",
+              timestamp: Date.parse(now),
+            },
+          },
+          {
+            type: "compaction",
+            timestamp: now,
+            summary: "derived summary",
+            firstKeptEntryIndex: 1,
+            tokensBefore: 200,
+          },
+          {
+            type: "message",
+            timestamp: now,
+            message: {
+              role: "user",
+              content: "later correction",
+              timestamp: Date.parse(now),
+            },
+          },
+        ];
+        const bytes = Buffer.from(
+          records.map((r) => JSON.stringify(r)).join("\r\n"),
+        );
+        await writeFile(path, bytes);
+        const a = await loadNativeSourceSnapshot(path);
+        const b = await loadNativeSourceSnapshot(path);
+        expect(a).toEqual(b);
+        expect(a.entries.map((e) => e.id)).toEqual(
+          [1, 2, 3, 4].map((n) => `legacy-v1:record:${n}`),
+        );
+        expect(
+          a.entries[1]!.type === "message" && a.entries[1]!.message.role,
+        ).toBe("custom");
+        const compaction = a.entries[2]!;
+        expect(
+          compaction.type === "compaction" && compaction.firstKeptEntryId,
+        ).toBe("legacy-v1:record:1");
+        const req = request(a);
+        const disk = nativeSourceProducer(
+          { kind: "disk", workspace: dir, source: { kind: "file", path } },
+          { capturedAt: now },
+        );
+        const provided = nativeSourceProducer(
+          { kind: "provided", snapshot: a },
+          { capturedAt: now },
+        );
+        expect(await collect(disk, req)).toEqual(await collect(provided, req));
+        expect(
+          (await collect(disk, req)).flatMap((w) =>
+            w.excerpts.map((e) => e.text),
+          ),
+        ).toEqual(["original early reason", "later correction"]);
+        expect(await readBytes(path)).toEqual(bytes);
+        // Native SDK migration really does allocate ids; producer locators must
+        // remain stable despite two independent migrations of identical bytes.
+        const first = SessionManager.inMemory(
+          dir,
+          undefined,
+          parseSessionEntries(bytes.toString()),
+        );
+        const second = SessionManager.inMemory(
+          dir,
+          undefined,
+          parseSessionEntries(bytes.toString()),
+        );
+        expect(first.getEntries()[0]!.id).not.toBe(second.getEntries()[0]!.id);
+        expect(a.entries[0]!.id).not.toBe(first.getEntries()[0]!.id);
+        const liveLegacy = nativeSourceSnapshot(first, { legacyV1: true });
+        expect(
+          await collect(
+            nativeSourceProducer(
+              { kind: "provided", snapshot: liveLegacy },
+              { capturedAt: now },
+            ),
+            req,
+          ),
+        ).toEqual(await collect(disk, req));
+        expect(first.getEntries()[0]!.id).not.toBe("legacy-v1:record:1");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("redacts complete parts before splitting and requires caller authorization for tool observations", async () => {
+      const manager = SessionManager.inMemory("/fixture", {
+        id: "privacy-fixture",
+      });
+      manager.appendMessage({
+        role: "user",
+        content:
+          "please remember password=fixture-private-value and my quiet room",
+        timestamp: Date.parse(now),
+      });
+      manager.appendMessage({
+        role: "toolResult",
+        toolCallId: "read-private-config",
+        toolName: "read",
+        content: [
+          {
+            type: "text",
+            text: "program-written config is not automatically authorized",
+          },
+        ],
+        isError: false,
+        timestamp: Date.parse(now),
+      });
+      const snapshot = nativeSourceSnapshot(manager);
+      const req = { ...request(snapshot, undefined, 4), maxWindows: 1000 };
+      const windows = await collect(
+        nativeSourceProducer(
+          { kind: "provided", snapshot },
+          { capturedAt: now },
+        ),
+        req,
+      );
+      const text = windows
+        .flatMap((w) => w.excerpts.map((e) => e.text))
+        .join("");
+      expect(text).not.toContain("fixture-private-value");
+      expect(text).toContain("[REDACTED:secret-field]");
+      expect(text).not.toContain("program-written");
+      expect(windows.every((w) => w.excerpts[0].producerRole === "user")).toBe(
+        true,
+      );
+      const authorized = await collect(
+        nativeSourceProducer(
+          { kind: "provided", snapshot },
+          {
+            capturedAt: now,
+            authorizeTool: (_entry, tool) =>
+              tool.callId === "read-private-config",
+            sanitize: (text) =>
+              text.replace("quiet room", "[private preference]"),
+          },
+        ),
+        req,
+      );
+      expect(
+        authorized.some((w) => w.excerpts[0].producerRole === "toolResult"),
+      ).toBe(true);
+      expect(
+        authorized
+          .filter((w) => w.excerpts[0].producerRole === "user")
+          .map((w) => w.excerpts[0].text)
+          .join(""),
+      ).toContain("[private preference]");
+    });
+
+    it("binds source, scope, ordered spans, role and authored time, but not capture metadata", async () => {
+      const manager = SessionManager.inMemory("/fixture", {
+        id: "hash-fixture",
+      });
+      manager.appendMessage({
+        role: "user",
+        content: "🌿é🌱abc",
+        timestamp: Date.parse(now),
+      });
+      const snapshot = nativeSourceSnapshot(manager);
+      const req = request(snapshot, undefined, 4);
+      const windows = await collect(
+        nativeSourceProducer(
+          { kind: "provided", snapshot },
+          { capturedAt: now },
+        ),
+        req,
+      );
+      verifyCoverage(windows, [
+        { entryId: snapshot.entries[0]!.id, role: "user", text: "🌿é🌱abc" },
+      ]);
+      expect(windows.map((w) => w.excerpts[0].text).join("")).not.toContain(
+        "�",
+      );
+      const window = windows[0]!;
+      expect(
+        hashSourceWindow({
+          ...window,
+          capturedAt: "later",
+          importance: "correction",
+        } as SourceWindow),
+      ).toBe(window.sourceHash);
+      expect(
+        hashSourceWindow({
+          ...window,
+          scope: { kind: "project", repositoryId: "other" },
+        }),
+      ).not.toBe(window.sourceHash);
+      expect(
+        hashSourceWindow({
+          ...window,
+          source: { ...window.source, producer: "other" },
+        }),
+      ).not.toBe(window.sourceHash);
+      for (const change of [
+        { producerRole: "assistant" },
+        { occurredAt: "2020-01-01T00:00:00.000Z" },
+        { text: "different" },
+        { span: { ...window.excerpts[0].span, start: 1 } },
+      ])
+        expect(
+          hashSourceWindow({
+            ...window,
+            excerpts: [{ ...window.excerpts[0], ...change }],
+          }),
+        ).not.toBe(window.sourceHash);
+      expect(
+        hashSourceWindow({
+          ...window,
+          excerpts: [windows[0]!.excerpts[0], windows[1]!.excerpts[0]],
+        }),
+      ).not.toBe(
+        hashSourceWindow({
+          ...window,
+          excerpts: [windows[1]!.excerpts[0], windows[0]!.excerpts[0]],
+        }),
+      );
+      const stopped = new AbortController();
+      stopped.abort(new Error("fixture stop"));
+      await expect(
+        nativeSourceProducer(
+          { kind: "provided", snapshot },
+          { capturedAt: now },
+        ).read(req, stopped.signal),
+      ).rejects.toThrow("fixture stop");
+      await expect(
+        nativeSourceProducer(
+          { kind: "provided", snapshot },
+          { capturedAt: now },
+        ).read({ ...req, throughEntryId: "absent" as EntryId }, abort()),
+      ).rejects.toThrow("branch_not_found");
+      expect(() =>
+        buildNativeSourcePage({ ...req, maxWindows: 0 }, snapshot.entries, now),
+      ).toThrow("limits");
     });
 
     it("uses no-session snapshots without file authority; missing/empty/corrupt disk inputs fail", async () => {
