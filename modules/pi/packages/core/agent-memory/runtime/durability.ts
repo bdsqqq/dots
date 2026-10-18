@@ -3,6 +3,7 @@ import {
   constants,
   existsSync,
   fsyncSync,
+  fstatSync,
   linkSync,
   lstatSync,
   mkdirSync,
@@ -18,15 +19,18 @@ import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
 export class IntegrityError extends Error {}
+function statIdentity(s: import("node:fs").BigIntStats): string {
+  return [s.dev, s.ino, s.mode, s.nlink, s.size, s.mtimeNs, s.ctimeNs].join(
+    ":",
+  );
+}
 /** logical content hashes cannot certify a restored or replaced physical file. */
 export function physicalIdentity(path: string): string {
   const link = lstatSync(path, { bigint: true });
-  const identity = (s: typeof link): string =>
-    [s.dev, s.ino, s.mode, s.nlink, s.size, s.mtimeNs, s.ctimeNs].join(":");
   return (
-    identity(link) +
+    statIdentity(link) +
     (link.isSymbolicLink()
-      ? `>${identity(statSync(path, { bigint: true }))}`
+      ? `>${statIdentity(statSync(path, { bigint: true }))}`
       : "")
   );
 }
@@ -63,13 +67,31 @@ export function durableDirectory(path: string): void {
   }
   flushDirectory(parent);
 }
-/** safe during concurrent preparation: establish barriers without removing stages. */
-export function confirmDurability(path: string): void {
+/** a pathname replacement cannot inherit the barrier of an unlinked descriptor. */
+export function confirmDurability(path: string): string {
   const fd = openSync(path, "r");
   try {
+    const identity = physicalIdentity(path);
+    const opened = statIdentity(fstatSync(fd, { bigint: true }));
+    if (statIdentity(statSync(path, { bigint: true })) !== opened)
+      throw new IntegrityError(`durability identity changed: ${path}`);
     fsyncSync(fd);
     flushDirectory(dirname(path));
     flushFile(fd);
+    if (
+      statIdentity(fstatSync(fd, { bigint: true })) !== opened ||
+      statIdentity(statSync(path, { bigint: true })) !== opened ||
+      physicalIdentity(path) !== identity
+    )
+      throw new IntegrityError(`durability identity changed: ${path}`);
+    return identity;
+  } catch (error) {
+    // publication may already be visible; this must never request callback replay.
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      throw new IntegrityError(`durability identity changed: ${path}`, {
+        cause: error,
+      });
+    throw error;
   } finally {
     closeSync(fd);
   }
@@ -130,7 +152,7 @@ function createImmutable(
     }
   }
 }
-/** unreferenced objects grant no acceptance; cleanup waits for serialized admission. */
+/** unreferenced objects grant no acceptance; concurrent cleanup removes published hardlinks only. */
 export function prepareDurableCreate(
   path: string,
   bytes: string | Buffer,

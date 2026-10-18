@@ -590,15 +590,19 @@ export class FileMemoryStore implements C.MemoryStore {
     }
     this.config.publicationBoundary?.("prepared", String(generation));
     const finalizations: (() => void)[] = [];
+    let continuity: () => string | null = () => null;
     this.finalizations = finalizations;
     try {
       return this.coordinateSync(
         () => {
-          if (write) this.synchronizeContinuity(view);
+          if (write) continuity();
           return run(view);
         },
         write,
-        () => this.validatePreparation(generation, files),
+        () => {
+          this.validatePreparation(generation, files);
+          if (write) continuity = this.prepareContinuity(view);
+        },
       );
     } finally {
       this.finalizations = null;
@@ -692,11 +696,14 @@ export class FileMemoryStore implements C.MemoryStore {
     }
   }
   /** operational proofs never certify a different or rolled-back immutable history. */
-  private synchronizeContinuity(view: View, initialize = false): string | null {
+  private prepareContinuity(
+    view: View,
+    initialize = false,
+  ): () => string | null {
     const row = this.db
       .prepare("SELECT token FROM repository_epoch WHERE id=1")
       .get();
-    if (!row && !initialize) return null;
+    if (!row && !initialize) return () => null;
     let token = row ? string(row.token) : randomUUID();
     const retained = this.db
       .prepare("SELECT commit_id,payload_hash FROM repository_payload")
@@ -706,26 +713,42 @@ export class FileMemoryStore implements C.MemoryStore {
         view.accepted.get(string(item.commit_id) as C.CommitId)?.manifest
           .replica !== string(item.payload_hash),
     );
-    if (changed) {
-      token = randomUUID();
-      this.db.exec("DELETE FROM repository_payload");
-    }
-    if (!row || changed)
-      this.db
-        .prepare(
-          "INSERT OR REPLACE INTO repository_epoch(id,token) VALUES(1,?)",
-        )
-        .run(token);
+    if (changed) token = randomUUID();
     const known = changed
       ? new Set<string>()
       : new Set(retained.map((item) => string(item.commit_id)));
-    const insert = this.db.prepare(
-      "INSERT INTO repository_payload(commit_id,payload_hash) VALUES(?,?)",
-    );
-    for (const [id, accepted] of view.accepted)
-      if (!known.has(id)) insert.run(id, accepted.manifest.replica);
-    return token;
+    const additions = [...view.accepted]
+      .filter(([id]) => !known.has(id))
+      .map(([id, accepted]) => [id, accepted.manifest.replica] as const);
+    // the caller upgrades this exact WAL snapshot; registry-only writes also
+    // invalidate it, even when publication_generation did not change.
+    return () => {
+      if (changed) this.db.exec("DELETE FROM repository_payload");
+      if (!row || changed)
+        this.db
+          .prepare(
+            "INSERT OR REPLACE INTO repository_epoch(id,token) VALUES(1,?)",
+          )
+          .run(token);
+      const insert = this.db.prepare(
+        "INSERT INTO repository_payload(commit_id,payload_hash) VALUES(?,?)",
+      );
+      for (const [id, hash] of additions) insert.run(id, hash);
+      return token;
+    };
   }
+  private synchronizeContinuity(view: View, initialize = false): string | null {
+    let apply: () => string | null = () => null;
+    return this.coordinateSync(
+      () => apply(),
+      true,
+      () => {
+        this.requirePreparation();
+        apply = this.prepareContinuity(view, initialize);
+      },
+    );
+  }
+
   private refreshed<T>(
     run: (view: View) => T,
     write = true,
@@ -1030,7 +1053,7 @@ export class FileMemoryStore implements C.MemoryStore {
     prepared: PreparedPublication,
     beforePublication?: () => void,
   ): void {
-    const { replica, manifest } = prepared;
+    const { replica } = prepared;
     const path = join(this.commits, sha256(replica.commitId));
     beforePublication?.();
     linkSync(prepared.stage, path);
@@ -1041,8 +1064,7 @@ export class FileMemoryStore implements C.MemoryStore {
       )
       .run();
     const finish = () => {
-      confirmDurability(path);
-      this.confirmed.set(path, physicalIdentity(path));
+      this.confirmed.set(path, confirmDurability(path));
       this.config.publicationBoundary?.("manifest", replica.commitId);
     };
     if (this.finalizations) this.finalizations.push(finish);
@@ -1720,7 +1742,7 @@ export class FileMemoryStore implements C.MemoryStore {
       (view) => {
         const path = join(this.outbox, sha256(d.deliveryId));
         if (existsSync(path)) {
-          this.observe(path);
+          this.confirmPhysical(path);
           if (!sameValue(this.localValue(path), d))
             throw new IntegrityError("delivery identity collision");
           return () => "duplicate";
@@ -1873,15 +1895,29 @@ export class FileMemoryStore implements C.MemoryStore {
     if (!peer) throw new Error("peer required");
     const read = <T>(run: (view: View) => T) =>
       this.refreshed(run, false, options);
-    const write = <T>(run: (view: View) => T) =>
-      this.refreshed(run, true, options);
     return {
       continuityToken: async () =>
-        write((view) => {
-          const token = this.synchronizeContinuity(view, true);
-          if (!token) throw new IntegrityError("missing repository continuity");
-          return token;
-        }),
+        this.refreshed(
+          () => {
+            throw new IntegrityError("missing prepared continuity");
+          },
+          true,
+          options,
+          [],
+          (view) => {
+            const token = this.synchronizeContinuity(view, true);
+            if (!token)
+              throw new IntegrityError("missing repository continuity");
+            return () => {
+              const row = this.db
+                .prepare("SELECT token FROM repository_epoch WHERE id=1")
+                .get();
+              if (!row)
+                throw new IntegrityError("missing repository continuity");
+              return string(row.token);
+            };
+          },
+        ),
       scan: async (after, limit) => {
         if (!Number.isSafeInteger(limit) || limit < 1 || limit > 4096)
           throw new Error("replica scan limit must be 1..4096");
@@ -1953,13 +1989,7 @@ export class FileMemoryStore implements C.MemoryStore {
               windows.delete(window.windowId);
             // A later duplicate must not retroactively change a cached dependency.
             // The epoch resets these ordinals whenever retained history changes.
-            this.coordinateSync(
-              () => {
-                this.synchronizeContinuity(view, true);
-              },
-              true,
-              () => this.requirePreparation(),
-            );
+            this.synchronizeContinuity(view, true);
             const ordinals = new Map(
               this.db
                 .prepare(
@@ -4156,6 +4186,279 @@ fcntl.fcntl(3,51)
       }
     },
     30000,
+  );
+  it("prepares continuity deltas under a WAL reader and fences registry-only writes, with a writer-held negative control", async () => {
+    for (const operation of [
+      "commit",
+      "token",
+      "dependencies",
+      "old-writer",
+    ] as const) {
+      const f = fixture();
+      let release: string | undefined;
+      let done:
+        | Promise<{ status: number | null; stdout: string; stderr: string }>
+        | undefined;
+      try {
+        await f.store.commit(change("continuity-seed"));
+        await f.store.forPeer("test").continuityToken();
+        const seed = (await f.store.forPeer("test").scan(null, 1))[0]!;
+        f.store.close();
+        const isolated = join(f.dir, "runtime");
+        cpSync(dirname(sourcePath), isolated, { recursive: true });
+        symlinkSync(
+          join(process.cwd(), "node_modules"),
+          join(f.dir, "node_modules"),
+        );
+        const copy = join(isolated, "store.ts");
+        let source = readFileSync(copy, "utf8");
+        const ready = join(f.dir, "continuity-ready");
+        release = join(f.dir, "continuity-release");
+        const marker = "    const changed = retained.some(";
+        expect(source).toContain(marker);
+        source = source.replace(
+          marker,
+          `
+          if (process.env.R5_CONTINUITY_GATE === '1' && !existsSync(${JSON.stringify(release)})) {
+            const fs = process.getBuiltinModule('node:fs'); fs.writeFileSync(${JSON.stringify(ready)},'ready');
+            const wait = new Int32Array(new SharedArrayBuffer(4)); const deadline = Date.now()+20000;
+            while (!existsSync(${JSON.stringify(release)})) { if(Date.now()>deadline)throw Error('continuity gate expired');Atomics.wait(wait,0,0,10); }
+          }
+        ` + marker,
+        );
+        if (operation === "old-writer") {
+          source = source.replace(
+            "if (write) continuity();",
+            "if (write) { continuity = this.prepareContinuity(view); continuity(); }",
+          );
+          source = source.replace(
+            "if (write) continuity = this.prepareContinuity(view);",
+            "",
+          );
+        }
+        writeFileSync(copy, source);
+        const op =
+          operation === "token"
+            ? "await store.forPeer('test').continuityToken()"
+            : operation === "dependencies"
+              ? `await store.forPeer('test').dependencyCommits(${JSON.stringify(seed)})`
+              : `await store.commit(${JSON.stringify(change("continuity-append"))})`;
+        const proc = spawn(
+          process.execPath,
+          [
+            "--input-type=module",
+            "-e",
+            `
+          import {createJiti} from 'jiti';const jiti=createJiti(process.cwd()+'/package.json',{moduleCache:false,fsCache:false});
+          const {FileMemoryStore}=await jiti.import(${JSON.stringify(copy)});
+          const store=await FileMemoryStore.open(${JSON.stringify(f.config)});process.env.R5_CONTINUITY_GATE='1';
+          try {${op};console.log(JSON.stringify(await store.forPeer('test').continuityToken()));} finally {store.close();}
+        `,
+          ],
+          { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] },
+        );
+        let stdout = "",
+          stderr = "",
+          ended = false;
+        proc.stdout.on("data", (c) => {
+          stdout += c;
+        });
+        proc.stderr.on("data", (c) => {
+          stderr += c;
+        });
+        done = new Promise((resolve) =>
+          proc.on("close", (status) => {
+            ended = true;
+            resolve({ status, stdout, stderr });
+          }),
+        );
+        const deadline = performance.now() + 15000;
+        while (!existsSync(ready)) {
+          if (ended || performance.now() > deadline)
+            throw Error(`continuity gate unavailable: ${stderr.slice(-2000)}`);
+          await delay(10);
+        }
+        const db = new DatabaseSync(
+          join(f.config.state, "coordination.sqlite"),
+        );
+        let acquired = false;
+        try {
+          db.exec("PRAGMA busy_timeout=0; BEGIN IMMEDIATE");
+          acquired = true;
+          db.prepare("UPDATE repository_epoch SET token=? WHERE id=1").run(
+            "registry-only-epoch",
+          );
+          db.exec("COMMIT");
+        } catch (error) {
+          if (!isStoreBusy(error)) throw error;
+        } finally {
+          db.close();
+        }
+        expect(acquired).toBe(operation !== "old-writer");
+        writeFileSync(release, "release");
+        const result = await done;
+        expect(result.status, result.stderr.slice(-2000)).toBe(0);
+        if (operation !== "old-writer")
+          expect(JSON.parse(result.stdout)).toBe("registry-only-epoch");
+      } finally {
+        if (release) writeFileSync(release, "release");
+        await done;
+        f.store.close();
+        rmSync(f.dir, { recursive: true });
+      }
+    }
+  }, 60000);
+  it.runIf(process.platform === "darwin")(
+    "refuses replacement-inode ACKs during actual barriers and durably recovers exact local, peer and outbox replay",
+    async () => {
+      for (const mode of ["local", "peer", "outbox", "old-helper"] as const) {
+        const f = fixture();
+        let release: string | undefined;
+        let done:
+          | Promise<{ status: number | null; stdout: string; stderr: string }>
+          | undefined;
+        try {
+          const n = note("barrier-replacement");
+          if (mode === "outbox") await f.store.commit(change("seed", [n]));
+          f.store.close();
+          const isolated = join(f.dir, "runtime");
+          cpSync(dirname(sourcePath), isolated, { recursive: true });
+          symlinkSync(
+            join(process.cwd(), "node_modules"),
+            join(f.dir, "node_modules"),
+          );
+          if (mode === "old-helper") {
+            const p = join(isolated, "durability.ts");
+            const source = readFileSync(p, "utf8");
+            const start = source.indexOf("export function confirmDurability(");
+            const end = source.indexOf("/** only published hardlinks", start);
+            expect(start).toBeGreaterThan(0);
+            writeFileSync(
+              p,
+              source.slice(0, start) +
+                `export function confirmDurability(path: string): string {
+              const fd = openSync(path, "r");
+              try { fsyncSync(fd); flushDirectory(dirname(path)); flushFile(fd); return physicalIdentity(path); }
+              finally { closeSync(fd); }
+            }\n` +
+                source.slice(end),
+            );
+          }
+          const c = change("barrier-replacement", [n]);
+          const replica: C.ReplicaChange = {
+            commitId: c.commitId,
+            replicaId: "remote" as C.ReplicaId,
+            parents: [],
+            revisions: [n],
+            windows: [],
+            suppressions: [],
+            outcomes: [],
+          };
+          const path = join(
+            f.config.data,
+            mode === "outbox" ? "local-outbox" : "commits",
+            sha256(mode === "outbox" ? delivery(n).deliveryId : c.commitId),
+          );
+          const ready = join(f.dir, "barrier-ready"),
+            log = join(f.dir, "barriers");
+          release = join(f.dir, "barrier-release");
+          writeFileSync(
+            join(f.dir, "python3"),
+            `#!/usr/bin/python3
+import os,time,fcntl,json
+p=fcntl.fcntl(3,50,b'\\0'*1024).split(b'\\0')[0].decode()
+if p.endswith(${JSON.stringify("/" + (mode === "outbox" ? "local-outbox" : "commits") + "/" + sha256(mode === "outbox" ? delivery(n).deliveryId : c.commitId))}):
+ with open(${JSON.stringify(log)},'a') as f: f.write(json.dumps({'ino':os.fstat(3).st_ino})+'\\n')
+ if not os.path.exists(${JSON.stringify(release)}):
+  open(${JSON.stringify(ready)},'w').write('ready')
+  while not os.path.exists(${JSON.stringify(release)}): time.sleep(.01)
+fcntl.fcntl(3,51)
+`,
+          );
+          chmodSync(join(f.dir, "python3"), 0o700);
+          const operation =
+            mode === "peer"
+              ? `store.forPeer('remote').integrate(${JSON.stringify([replica])})`
+              : mode === "outbox"
+                ? `store.queueDelivery(${JSON.stringify(delivery(n))})`
+                : `store.commit(${JSON.stringify(c)})`;
+          const proc = spawn(
+            process.execPath,
+            [
+              "--input-type=module",
+              "-e",
+              `
+            import {createJiti} from 'jiti';
+            const jiti=createJiti(process.cwd()+'/package.json',{moduleCache:false,fsCache:false});
+            const {FileMemoryStore}=await jiti.import(${JSON.stringify(join(isolated, "store.ts"))});
+            const store=await FileMemoryStore.open(${JSON.stringify(f.config)});
+            try {
+              let failed=false;
+              try { await ${operation}; } catch(error) { if (!String(error).includes('durability identity changed')) throw error; failed=true; }
+              const replay=await ${operation};
+              console.log(JSON.stringify({failed,replay}));
+            } finally {store.close();}
+          `,
+            ],
+            {
+              cwd: process.cwd(),
+              env: { ...process.env, PATH: f.dir + ":" + process.env.PATH },
+              stdio: ["ignore", "pipe", "pipe"],
+            },
+          );
+          let stdout = "",
+            stderr = "",
+            ended = false;
+          proc.stdout.on("data", (c) => {
+            stdout += c;
+          });
+          proc.stderr.on("data", (c) => {
+            stderr += c;
+          });
+          done = new Promise((resolve) =>
+            proc.on("close", (status) => {
+              ended = true;
+              resolve({ status, stdout, stderr });
+            }),
+          );
+          const deadline = performance.now() + 20000;
+          while (!existsSync(ready)) {
+            if (ended || performance.now() > deadline)
+              throw Error(`barrier gate unavailable: ${stderr.slice(-2000)}`);
+            await delay(10);
+          }
+          const before = lstatSync(path).ino;
+          writeFileSync(path + ".replacement", readFileSync(path));
+          renameSync(path + ".replacement", path);
+          const replacement = lstatSync(path).ino;
+          expect(replacement).not.toBe(before);
+          writeFileSync(release, "release");
+          const result = await done;
+          expect(result.status, result.stderr.slice(-2000)).toBe(0);
+          const outcome = JSON.parse(result.stdout);
+          expect(outcome.failed).toBe(mode !== "old-helper");
+          const barriers = readFileSync(log, "utf8")
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+          expect(barriers[0].ino).toBe(before);
+          if (mode !== "old-helper")
+            expect(barriers.some((b) => b.ino === replacement)).toBe(true);
+          if (mode === "local")
+            expect(outcome.replay).toMatchObject({
+              kind: "locally-committed",
+              replay: true,
+            });
+          if (mode === "outbox") expect(outcome.replay).toBe("duplicate");
+        } finally {
+          if (release) writeFileSync(release, "release");
+          await done;
+          f.store.close();
+          rmSync(f.dir, { recursive: true });
+        }
+      }
+    },
+    60000,
   );
   it.runIf(process.platform === "darwin")(
     "keeps the writer and renewal available during a stalled external F_FULLFSYNC",
