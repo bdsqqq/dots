@@ -22,7 +22,9 @@ export {
 export { LinkedSearchIndex } from "./runtime/index.js";
 export {
   FileMemoryStore,
+  StoreContentionError,
   type FileMemoryStoreConfig,
+  type FileMemoryStoreOptions,
 } from "./runtime/store.js";
 export { handleMemoryJSON, memoryCLI } from "./runtime/cli.js";
 // package managers launch the bin through a symlink; compare its actual module.

@@ -37,8 +37,9 @@ export interface MaintenanceResult {
   }[];
 }
 /**
- * explicit creation opens the synchronous filesystem store. call from a worker or
- * standalone process, never the primary inference event loop. importing is inert.
+ * use openMemoryApplication in production so lock contention yields instead of
+ * failing at construction. filesystem work still belongs in a worker or standalone
+ * process, never the primary inference event loop. importing is inert.
  * supplied configuration/model/index own their data and bypass native discovery.
  */
 export class MemoryApplication {
@@ -47,11 +48,14 @@ export class MemoryApplication {
   readonly index: C.SearchIndex;
   private readonly model: C.ConsolidationModel;
   private readonly now: () => string;
-  constructor(private readonly options: MemoryApplicationOptions = {}) {
+  constructor(
+    private readonly options: MemoryApplicationOptions = {},
+    openedStore?: FileMemoryStore,
+  ) {
     this.configuration = options.configuration ?? memoryConfiguration();
-    this.store = new FileMemoryStore(
-      runtimeStoreConfiguration(this.configuration),
-    );
+    this.store =
+      openedStore ??
+      new FileMemoryStore(runtimeStoreConfiguration(this.configuration));
     this.index = options.index ?? new LinkedSearchIndex();
     this.model =
       options.model ??
@@ -230,6 +234,25 @@ export function createMemoryApplication(
   return new MemoryApplication(options);
 }
 
+/** Production opening yields during contention; provider work never owns a transaction. */
+export async function openMemoryApplication(
+  options: MemoryApplicationOptions = {},
+  signal?: AbortSignal,
+): Promise<MemoryApplication> {
+  const configuration = options.configuration ?? memoryConfiguration();
+  const store = await FileMemoryStore.open(
+    runtimeStoreConfiguration(configuration),
+    { signal },
+  );
+  try {
+    signal?.throwIfAborted();
+    return new MemoryApplication({ ...options, configuration }, store);
+  } catch (error) {
+    store.close();
+    throw error;
+  }
+}
+
 if (import.meta.vitest) {
   const { it, expect } = import.meta.vitest;
   const { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } =
@@ -270,6 +293,114 @@ if (import.meta.vitest) {
     };
     return { dir, configuration, model };
   }
+  it("production capture progresses while another application's consolidation model is pending", async () => {
+    const f = fixture();
+    const { adaptConsolidationProposal } = await import("./model.js");
+    let entered!: () => void, release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const controller = new AbortController();
+    const app = await openMemoryApplication(
+      {
+        configuration: f.configuration,
+        model: {
+          reconcile: async (input) => {
+            entered();
+            await gate;
+            return adaptConsolidationProposal(
+              {
+                notes: [],
+                outcomes: input.batch.windows.map((p) => ({
+                  windowId: p.window.windowId,
+                  decision: {
+                    kind: "no-change",
+                    reason: "fixture observation retained",
+                  },
+                })),
+              },
+              input,
+            );
+          },
+        },
+      },
+      controller.signal,
+    );
+    let other: MemoryApplication | undefined;
+    let maintenance: Promise<MaintenanceResult> | undefined;
+    const source = async (text: string) => {
+      const manager = SessionManager.inMemory(f.dir);
+      const entry = manager.appendMessage({
+        role: "user",
+        content: text,
+        timestamp: Date.now(),
+      });
+      const snapshot = nativeSourceSnapshot(manager);
+      return (
+        await nativeSourceProducer(
+          { kind: "provided", snapshot },
+          { capturedAt: new Date().toISOString() },
+        ).read(
+          {
+            source: {
+              sourceId: snapshot.header.id as C.SourceId,
+              producer: "pi-native",
+              origin: {
+                kind: "session",
+                sessionId: snapshot.header.id as C.SessionId,
+              },
+            },
+            scope: app.scope,
+            throughEntryId: entry as C.EntryId,
+            after: null,
+            maxWindows: 1,
+            maxWindowBytes: 8192,
+          },
+          controller.signal,
+        )
+      ).windows;
+    };
+    try {
+      const first = await source("i keep my grandfather's green kettle");
+      expect((await app.capture(first)).kind).toBe("locally-committed");
+      maintenance = app.maintain(controller.signal);
+      await Promise.race([
+        started,
+        maintenance.then(() => {
+          throw new Error("maintenance did not reach the model");
+        }),
+      ]);
+      other = await openMemoryApplication(
+        { configuration: f.configuration, model: f.model },
+        controller.signal,
+      );
+      const second = await source(
+        "i prefer repairing the handle rather than replacing the kettle",
+      );
+      expect((await other.capture(second)).kind).toBe("locally-committed");
+      const retained = (
+        await other.store.forPeer("audit").scan(null, 100)
+      ).flatMap((c) => c.windows.map((w) => w.windowId));
+      expect(retained).toEqual(
+        expect.arrayContaining([...first, ...second].map((w) => w.windowId)),
+      );
+      release();
+      expect((await maintenance).reconciliation.results[0]?.kind).toBe(
+        "locally-committed",
+      );
+    } finally {
+      release();
+      controller.abort();
+      await maintenance?.catch(() => {});
+      other?.close();
+      app.close();
+      rmSync(f.dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
   it("finished native session catches up after exit; restart resumes early UTF-8 spans and provided snapshots never reread", async () => {
     const f = fixture();
     const manager = SessionManager.inMemory(f.dir);
