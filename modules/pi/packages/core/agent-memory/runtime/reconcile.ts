@@ -82,8 +82,30 @@ function validateResult(
       throw new Error("model cannot mint authored clock");
     if (!heads.length && !note.path.endsWith(`--${note.noteId}.md`))
       throw new Error("new note path requires permanent id suffix");
-    if (!note.claims.length || note.exposure.kind !== "active")
-      throw new Error("consolidation must produce attributed active knowledge");
+    if (!note.claims.length || note.exposure.kind === "deleted")
+      throw new Error(
+        "consolidation must retain attributed knowledge; deletion is forbidden",
+      );
+    if (note.exposure.kind === "superseded")
+      for (const id of note.exposure.by) {
+        const proposed = change.edits.find(
+          (e) => e.revision.noteId === id,
+        )?.revision;
+        const targets = proposed
+          ? [proposed]
+          : input.notes.filter((n) => n.noteId === id);
+        if (
+          id === note.noteId ||
+          !targets.length ||
+          targets.some(
+            (n) =>
+              !sameValue(n.scope, note.scope) || n.exposure.kind !== "active",
+          )
+        )
+          throw new Error(
+            "supersession requires another active same-scope note",
+          );
+      }
     const headerBytes = Buffer.byteLength(
       note.markdown.slice(0, note.markdown.indexOf("\n") + 1),
     );
@@ -144,8 +166,9 @@ function validateResult(
           !excerpts.some(
             (e) =>
               e.text.includes(quote) &&
-              (claim.kind !== "producer-statement" ||
-                e.producerRole === "user"),
+              (claim.kind === "producer-statement"
+                ? e.producerRole === "user"
+                : e.producerRole === "toolResult"),
           )
         )
           throw new Error("unsupported producer attribution");
@@ -199,6 +222,121 @@ function validateResult(
   return change;
 }
 
+/** whole windows retain their producer hash; withholding is not a rewritten source. */
+function providerSnapshot(input: C.ConsolidationInput): {
+  notes: readonly C.NoteRevision[];
+  eligible: readonly C.PendingWindow[];
+  excluded: readonly C.PendingWindow[];
+  complete: boolean;
+} {
+  const { notes, suppressions } = input;
+  const overlaps = (e: C.EvidenceRef, w: C.SourceWindow): boolean =>
+    sameValue(e.source, w.source) &&
+    e.spans.some((a) =>
+      w.excerpts.some(
+        ({ span: b }) =>
+          a.entryId === b.entryId &&
+          a.partId === b.partId &&
+          a.start < b.end &&
+          b.start < a.end,
+      ),
+    );
+  const evidence = suppressions.flatMap((s) =>
+    s.target.kind === "evidence" ? [s.target.evidence] : [],
+  );
+  const deniedIds = new Set(
+    suppressions.flatMap((s) =>
+      s.target.kind === "note" ? [s.target.noteId] : [],
+    ),
+  );
+  if (suppressions.length) {
+    // heads cannot establish historical suppression closure. do not guess from text,
+    // or fabricate recall deliveries to use their eligibility check as a lineage port.
+    if (
+      notes.some((n) =>
+        n.claims.some((c) =>
+          c.derivedFrom.some(
+            (r) =>
+              !notes.some(
+                (basis) =>
+                  basis.revisionId === r.revisionId &&
+                  basis.noteId === r.noteId,
+              ),
+          ),
+        ),
+      ) ||
+      [...deniedIds].some((id) => {
+        const heads = notes.filter((n) => n.noteId === id);
+        return (
+          !heads.length ||
+          heads.some(
+            (n) => n.ancestry.kind !== "known" || n.ancestry.parents.length > 0,
+          )
+        );
+      })
+    ) {
+      const excluded = input.batch.windows.filter((p) =>
+        evidence.some((e) => overlaps(e, p.window)),
+      );
+      return {
+        notes: [],
+        eligible: input.batch.windows.filter((p) => !excluded.includes(p)),
+        excluded,
+        complete: false,
+      };
+    }
+  }
+  const deniedRevisions = new Set<C.RevisionId>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const n of notes) {
+      if (deniedRevisions.has(n.revisionId)) continue;
+      if (
+        deniedIds.has(n.noteId) ||
+        n.claims.some(
+          (c) =>
+            c.derivedFrom.some(
+              (r) =>
+                deniedIds.has(r.noteId) || deniedRevisions.has(r.revisionId),
+            ) ||
+            c.evidence.some((e) =>
+              evidence.some(
+                (denied) =>
+                  sameValue(e.source, denied.source) &&
+                  e.spans.some((a) =>
+                    denied.spans.some(
+                      (b) =>
+                        a.entryId === b.entryId &&
+                        a.partId === b.partId &&
+                        a.start < b.end &&
+                        b.start < a.end,
+                    ),
+                  ),
+              ),
+            ),
+        )
+      ) {
+        deniedIds.add(n.noteId);
+        deniedRevisions.add(n.revisionId);
+        evidence.push(...n.claims.flatMap((c) => c.evidence));
+        changed = true;
+      }
+    }
+  }
+  const excluded = input.batch.windows.filter((p) =>
+    evidence.some((e) => overlaps(e, p.window)),
+  );
+  return {
+    notes: notes.filter(
+      (n) => !deniedIds.has(n.noteId) && n.exposure.kind !== "deleted",
+    ),
+    eligible: input.batch.windows.filter((p) => !excluded.includes(p)),
+    excluded,
+    complete: true,
+  };
+}
+
 async function boundedModel(
   input: C.ConsolidationInput,
   model: C.ConsolidationModel,
@@ -232,7 +370,11 @@ async function boundedModel(
 }
 
 /** failed inference is a durable retry decision, never terminal coverage. */
-export const reconcile: C.ReconcileHandler = async (input, deps) => {
+async function reconcileWithBudget(
+  input: Parameters<C.ReconcileHandler>[0],
+  deps: Parameters<C.ReconcileHandler>[1],
+  maxCorpusBytes = 256 * 1024,
+): Promise<C.CommitResult> {
   parseLease(input.batch.lease);
   if (
     !input.batch.windows.length ||
@@ -250,6 +392,7 @@ export const reconcile: C.ReconcileHandler = async (input, deps) => {
     new Date(
       Date.parse(input.now) + Math.floor(performance.now() - started),
     ).toISOString();
+  let skipped: { windowId: C.WindowId; decision: C.WindowDecision }[] = [];
   const persistRetry = async (reason: string): Promise<C.CommitResult> => {
     const now = clock();
     return deps.store.commit({
@@ -264,7 +407,12 @@ export const reconcile: C.ReconcileHandler = async (input, deps) => {
         windowId: p.window.windowId,
         sourceHash: p.window.sourceHash,
         recordedAt: now,
-        decision: { kind: "retry", reason, retryAt: retryAt(now, p.attempts) },
+        decision: skipped.find((o) => o.windowId === p.window.windowId)
+          ?.decision ?? {
+          kind: "retry",
+          reason,
+          retryAt: retryAt(now, p.attempts),
+        },
       })),
     });
   };
@@ -277,53 +425,69 @@ export const reconcile: C.ReconcileHandler = async (input, deps) => {
         Date.parse(input.batch.lease.expiresAt) - Date.parse(input.now) - 100,
       ),
     );
-    const excluded = input.batch.windows.filter((p) =>
-      input.suppressions.some(
-        (s) =>
-          s.target.kind === "evidence" &&
-          s.target.evidence.windowId === p.window.windowId &&
-          s.target.evidence.sourceHash === p.window.sourceHash &&
-          sameValue(s.target.evidence.source, p.window.source),
-      ),
-    );
-    const eligible = input.batch.windows.filter((p) => !excluded.includes(p));
-    const skipped = excluded.map((p) => ({
+    const filtered = providerSnapshot(input);
+    skipped = filtered.excluded.map((p) => ({
       windowId: p.window.windowId,
-      decision: {
-        kind: "ineligible" as const,
-        reason: "source evidence suppressed",
-      },
+      decision: { kind: "ineligible", reason: "source evidence suppressed" },
     }));
-    const result: C.ConsolidationResult = eligible.length
-      ? await boundedModel(
-          {
-            ...input,
-            batch: {
-              ...input.batch,
-              windows: [eligible[0]!, ...eligible.slice(1)],
-            },
-          },
-          deps.model,
-          deps.signal,
-          timeout,
-        )
-      : { edits: [], outcomes: [skipped[0]!, ...skipped.slice(1)] };
-    const combined = eligible.length
-      ? {
-          edits: result.edits,
-          outcomes: [
-            result.outcomes[0]!,
-            ...result.outcomes.slice(1),
-            ...skipped,
-          ] as C.ConsolidationResult["outcomes"],
-        }
-      : result;
-    change = validateResult(combined, input, clock(), input.commitId);
-  } catch {
+    const first = filtered.eligible[0];
+    if (first) {
+      if (!filtered.complete)
+        throw new Error(
+          "suppression history unavailable: store lineage closure required",
+        );
+      const batch: C.LeasedBatch = {
+        lease: input.batch.lease,
+        windows: [first, ...filtered.eligible.slice(1)],
+      };
+      const snapshot: C.ConsolidationInput = {
+        batch,
+        notes: boundedCorpus(filtered.notes, batch, maxCorpusBytes),
+        // reasons may themselves contain forgotten values. admission still uses
+        // the store's original suppression rules at the atomic acceptance boundary.
+        suppressions: [],
+      };
+      const result = await boundedModel(
+        snapshot,
+        deps.model,
+        deps.signal,
+        timeout,
+      );
+      change = validateResult(result, snapshot, clock(), input.commitId);
+    } else {
+      change = {
+        commitId: input.commitId,
+        now: clock(),
+        windows: [],
+        edits: [],
+        suppressions: [],
+        lease: input.batch.lease,
+        outcomes: [],
+      };
+    }
+    const windows = new Map(
+      input.batch.windows.map((p) => [p.window.windowId, p.window]),
+    );
+    change = parseChange({
+      ...change,
+      outcomes: [
+        ...change.outcomes,
+        ...skipped.map((o) => ({
+          ...o,
+          sourceHash: windows.get(o.windowId)!.sourceHash,
+          recordedAt: change.now,
+        })),
+      ],
+    });
+  } catch (error) {
     return persistRetry(
       deps.signal.aborted
         ? "model aborted"
-        : "model failed, timed out or returned invalid output",
+        : error instanceof Error &&
+            error.message ===
+              "suppression history unavailable: store lineage closure required"
+          ? "suppression history unavailable; store lineage closure required"
+          : "model failed, timed out or returned invalid output",
     );
   }
   let result: C.CommitResult;
@@ -353,7 +517,9 @@ export const reconcile: C.ReconcileHandler = async (input, deps) => {
     );
   }
   return result;
-};
+}
+
+export const reconcile: C.ReconcileHandler = reconcileWithBudget;
 
 export interface ReconciliationRunInput extends C.PlanInput {
   readonly maxBatches?: number;
@@ -470,17 +636,17 @@ export async function runReconciliation(
             [...scopes.values()].map((s) => deps.store.readSuppressions(s)),
           )
         ).flat();
-        const notes = boundedCorpus(allNotes, plan.batch, maxCorpusBytes);
         results.push(
-          await reconcile(
+          await reconcileWithBudget(
             {
               batch: plan.batch,
-              notes,
+              notes: allNotes,
               suppressions,
               now,
               commitId: `reconcile:${plan.batch.lease.leaseId}` as C.CommitId,
             },
             { ...deps, signal },
+            maxCorpusBytes,
           ),
         );
       } catch (error) {
@@ -1371,6 +1537,374 @@ if (import.meta.vitest) {
       expect(
         await f.store.plan({ ...planInput(later), policy: p }),
       ).toMatchObject({ kind: "idle", reason: "backoff" });
+    } finally {
+      f.store.close();
+    }
+  });
+  it.each(["assistant", "user", "toolResult"])(
+    "independently supplied observation result preserves producer role %s",
+    async (role) => {
+      const f = fixture();
+      try {
+        await seed(f.store, [
+          window("role", "reported fixture fact", "correction", role),
+        ]);
+        const input = await leased(f.store);
+        const impersonating: C.ConsolidationModel = {
+          reconcile: async (i) => {
+            // bypass the proposal's role check to exercise typed-result validation independently.
+            const forgedInput: C.ConsolidationInput = {
+              ...i,
+              batch: {
+                ...i.batch,
+                windows: [
+                  {
+                    ...i.batch.windows[0],
+                    window: {
+                      ...i.batch.windows[0].window,
+                      excerpts: [
+                        {
+                          ...i.batch.windows[0].window.excerpts[0],
+                          producerRole: "toolResult",
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            };
+            const p = proposal(forgedInput);
+            p.notes[0]!.claims[0]!.kind = "observation";
+            return adaptConsolidationProposal(p, forgedInput);
+          },
+        };
+        expect(
+          await reconcile(input, {
+            store: f.store,
+            model: impersonating,
+            signal: signal(),
+          }),
+        ).toMatchObject({ kind: "locally-committed" });
+        const notes = await f.store.listNotes(scope);
+        if (role === "toolResult") {
+          expect(notes[0]!.claims[0]!.kind).toBe("observation");
+          expect(await f.store.plan(planInput(later))).toMatchObject({
+            reason: "empty",
+          });
+        } else {
+          expect(notes).toEqual([]);
+          expect(await f.store.plan(planInput(later))).toMatchObject({
+            reason: "backoff",
+          });
+        }
+      } finally {
+        f.store.close();
+      }
+    },
+  );
+  it("retains dated demotion and both supersession reference modes after reopening; retired notes stay out of recall", async () => {
+    const f = fixture();
+    try {
+      await seed(f.store, [window()]);
+      await runReconciliation(planInput(later), {
+        store: f.store,
+        model,
+        signal: signal(),
+      });
+      const original = (await f.store.listNotes(scope))[0]!;
+      await seed(
+        f.store,
+        [window("demote", "quiet room is now historical", "correction")],
+        "demotion-capture",
+      );
+      const demoting: C.ConsolidationModel = {
+        reconcile: async (i) => {
+          const p = proposal(i, original.noteId);
+          return adaptConsolidationProposal(
+            {
+              ...p,
+              notes: [
+                {
+                  ...p.notes[0],
+                  exposure: { kind: "demoted", reason: "dated experience" },
+                },
+              ],
+            },
+            i,
+          );
+        },
+      };
+      expect(
+        (
+          await runReconciliation(planInput(later), {
+            store: f.store,
+            model: demoting,
+            signal: signal(),
+          })
+        ).results[0],
+      ).toMatchObject({ kind: "locally-committed" });
+      f.store.close();
+      f.store = new FileMemoryStore(f.config);
+      const demoted = (await f.store.listNotes(scope))[0]!;
+      expect(demoted.exposure).toEqual({
+        kind: "demoted",
+        reason: "dated experience",
+      });
+      expect(demoted.ancestry).toEqual({
+        kind: "known",
+        parents: [original.revisionId],
+      });
+      const { sharedRecallHandler } = await import("./recall.js");
+      const { LinkedSearchIndex } = await import("./index.js");
+      const intent: C.RecallIntent = {
+        intentId: "lifecycle" as C.IntentId,
+        entryId: "recall" as C.EntryId,
+        target: {
+          consumerId: "fixture",
+          sessionId: "native" as C.SessionId,
+          scope,
+        },
+        query: "quiet room",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        maxChars: 10000,
+        maxNotes: 10,
+      };
+      const recall = () =>
+        sharedRecallHandler(intent, {
+          store: f.store,
+          index: new LinkedSearchIndex(),
+          now: () => later,
+          signal: signal(),
+        });
+      expect(await recall()).toEqual({ kind: "empty" });
+      for (const mode of ["local", "existing"] as const) {
+        await seed(
+          f.store,
+          [window(mode, "quiet room replacement " + mode, "correction")],
+          mode + "-capture",
+        );
+        const before = (await f.store.listNotes(scope)).find(
+          (n) => n.noteId === original.noteId,
+        )!;
+        const superseding: C.ConsolidationModel = {
+          reconcile: async (i) => {
+            const p = proposal(i, original.noteId);
+            const current = i.notes.find((n) => n.noteId !== original.noteId);
+            const replacement = {
+              ...p.notes[0]!,
+              key: "replacement",
+              noteId: null,
+              claims: p.notes[0]!.claims.map((c) => ({
+                ...c,
+                derivedFrom: [],
+              })),
+            };
+            return adaptConsolidationProposal(
+              {
+                ...p,
+                notes: [
+                  {
+                    ...p.notes[0],
+                    exposure: {
+                      kind: "superseded",
+                      by: [mode === "local" ? "replacement" : current!.noteId],
+                    },
+                  },
+                  ...(mode === "local" ? [replacement] : []),
+                ],
+                outcomes: [
+                  {
+                    windowId: i.batch.windows[0].window.windowId,
+                    decision: {
+                      kind: "changed",
+                      noteKeys:
+                        mode === "local"
+                          ? ["episode", "replacement"]
+                          : ["episode"],
+                    },
+                  },
+                ],
+              },
+              i,
+            );
+          },
+        };
+        expect(
+          (
+            await runReconciliation(planInput(later), {
+              store: f.store,
+              model: superseding,
+              signal: signal(),
+            })
+          ).results[0],
+        ).toMatchObject({ kind: "locally-committed" });
+        f.store.close();
+        f.store = new FileMemoryStore(f.config);
+        const notes = await f.store.listNotes(scope);
+        const old = notes.find((n) => n.noteId === original.noteId)!;
+        const replacement = notes.find((n) => n.noteId !== original.noteId)!;
+        expect(old.exposure).toEqual({
+          kind: "superseded",
+          by: [replacement.noteId],
+        });
+        expect(old.ancestry).toEqual({
+          kind: "known",
+          parents: [before.revisionId],
+        });
+        expect(old.claims[0]!.derivedFrom).toContainEqual({
+          noteId: before.noteId,
+          revisionId: before.revisionId,
+        });
+      }
+      expect(await recall()).toMatchObject({ kind: "queued" });
+      const delivery = await f.store.nextDelivery(intent.target);
+      expect(delivery!.context.notes.map((n) => n.noteId)).not.toContain(
+        original.noteId,
+      );
+      const history = await f.store.forPeer("history").scan(null, 100);
+      expect(
+        history.flatMap((c) => c.revisions).map((n) => n.revisionId),
+      ).toContain(original.revisionId);
+    } finally {
+      f.store.close();
+    }
+  });
+  it("unknown historical suppression closure fails closed with durable backoff and no model work", async () => {
+    const f = fixture();
+    try {
+      await seed(f.store, [window()]);
+      await runReconciliation(planInput(later), {
+        store: f.store,
+        model,
+        signal: signal(),
+      });
+      const old = (await f.store.listNotes(scope))[0]!;
+      await seed(
+        f.store,
+        [window("revise", "quiet room revised", "correction")],
+        "revise-capture",
+      );
+      await runReconciliation(planInput(later), {
+        store: f.store,
+        signal: signal(),
+        model: {
+          reconcile: async (i) =>
+            adaptConsolidationProposal(proposal(i, old.noteId), i),
+        },
+      });
+      await f.store.commit({
+        commitId: "suppress-history" as C.CommitId,
+        now,
+        windows: [],
+        edits: [],
+        outcomes: [],
+        lease: null,
+        suppressions: [
+          {
+            suppressionId: "history" as C.SuppressionId,
+            scope,
+            target: { kind: "note", noteId: old.noteId },
+            reason: "private marker",
+            createdAt: now,
+          },
+        ],
+      });
+      await seed(
+        f.store,
+        [window("fresh", "independent fresh statement", "correction")],
+        "fresh-capture",
+      );
+      let calls = 0;
+      await runReconciliation(planInput(later), {
+        store: f.store,
+        signal: signal(),
+        model: {
+          reconcile: async () => {
+            calls++;
+            throw new Error("must not run");
+          },
+        },
+      });
+      expect(calls).toBe(0);
+      f.store.close();
+      f.store = new FileMemoryStore(f.config);
+      expect(await f.store.plan(planInput(later))).toMatchObject({
+        kind: "idle",
+        reason: "backoff",
+      });
+    } finally {
+      f.store.close();
+    }
+  });
+  it("mixed suppression and provider failure preserve terminal withholding and retry only eligible coverage", async () => {
+    const f = fixture();
+    try {
+      const hidden = window("hidden", "private fixture", "correction");
+      const fresh = window("fresh", "independent fixture", "correction");
+      await seed(f.store, [hidden, fresh]);
+      await f.store.commit({
+        commitId: "mixed-suppression" as C.CommitId,
+        now,
+        windows: [],
+        edits: [],
+        outcomes: [],
+        lease: null,
+        suppressions: [
+          {
+            suppressionId: "mixed" as C.SuppressionId,
+            scope,
+            createdAt: now,
+            reason: "private reason",
+            target: {
+              kind: "evidence",
+              evidence: {
+                windowId: hidden.windowId,
+                source: hidden.source,
+                sourceHash: hidden.sourceHash,
+                spans: [hidden.excerpts[0].span],
+              },
+            },
+          },
+        ],
+      });
+      let calls = 0;
+      const failing: C.ConsolidationModel = {
+        reconcile: async (i) => {
+          calls++;
+          expect(i.batch.windows.map((p) => p.window.windowId)).toEqual([
+            fresh.windowId,
+          ]);
+          expect(i.suppressions).toEqual([]);
+          throw new Error("fixture provider failure");
+        },
+      };
+      expect(
+        (
+          await runReconciliation(planInput(later), {
+            store: f.store,
+            model: failing,
+            signal: signal(),
+          })
+        ).results[0],
+      ).toMatchObject({ kind: "locally-committed" });
+      expect(calls).toBe(1);
+      f.store.close();
+      f.store = new FileMemoryStore(f.config);
+      const history = await f.store.forPeer("audit").scan(null, 100);
+      expect(
+        history
+          .flatMap((c) => c.outcomes)
+          .find((o) => o.windowId === hidden.windowId)?.decision.kind,
+      ).toBe("ineligible");
+      expect(await f.store.plan(planInput(later))).toMatchObject({
+        kind: "idle",
+        reason: "backoff",
+      });
+      const next = await f.store.plan(planInput("2026-01-01T00:02:31.000Z"));
+      if (next.kind !== "eligible") throw new Error("eligible coverage lost");
+      expect(next.batch.windows.map((p) => p.window.windowId)).toEqual([
+        fresh.windowId,
+      ]);
     } finally {
       f.store.close();
     }
