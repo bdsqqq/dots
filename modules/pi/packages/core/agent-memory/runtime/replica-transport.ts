@@ -18,6 +18,41 @@ export interface ReplicaProcess {
   readonly cwd?: string;
   readonly environment?: NodeJS.ProcessEnv;
 }
+/** Never echo peer-controlled stderr: it can contain private note/provider data. */
+function replicaExitDiagnostic(stderr: string): string | null {
+  const lines = stderr.split(/\r?\n/).map((line) => line.trim());
+  if (lines.includes("PI_MEMORY_GIT_REMOTE is required"))
+    return "legacy remote CLI; native exchange is not installed";
+  if (lines.includes("exchange requires an authenticated SSH connection"))
+    return "remote SSH account binding unavailable";
+  if (lines.includes("unknown or ambiguous SSH memory peer"))
+    return "remote configured-peer binding rejected";
+  if (
+    lines.includes("database is locked") ||
+    lines.includes("memory store contention deadline exceeded")
+  )
+    return "remote storage contention";
+  if (
+    lines.some((line) =>
+      /^ssh: connect to host .+ port \d+: (?:Operation timed out|Connection timed out|Connection refused|No route to host)$/.test(
+        line,
+      ),
+    )
+  )
+    return "SSH connection unavailable";
+  if (lines.includes("Host key verification failed."))
+    return "SSH host verification failed";
+  if (
+    lines.some((line) =>
+      /^(?:sh|bash|zsh):.*(?:pi-memory: (?:command )?not found|command not found: pi-memory)$/.test(
+        line,
+      ),
+    )
+  )
+    return "remote pi-memory command unavailable";
+  return null;
+}
+
 /** one child per exchange; no producer daemon, shell or persistent listener. */
 export function processReplicaTransport(
   command: ReplicaProcess,
@@ -35,6 +70,8 @@ export function processReplicaTransport(
           env: command.environment,
         });
         const chunks: Buffer[] = [];
+        const diagnostics: Buffer[] = [];
+        let diagnosticBytes = 0;
         let bytes = 0,
           stderrBytes = 0,
           failure: Error | undefined;
@@ -61,6 +98,11 @@ export function processReplicaTransport(
         });
         child.stderr.on("data", (chunk: Buffer) => {
           stderrBytes += chunk.length;
+          if (diagnosticBytes < 4096) {
+            const prefix = chunk.subarray(0, 4096 - diagnosticBytes);
+            diagnostics.push(prefix);
+            diagnosticBytes += prefix.length;
+          }
           if (stderrBytes > limits.maxBytes)
             stop(new Error("replica stderr byte limit"));
         });
@@ -73,9 +115,16 @@ export function processReplicaTransport(
           clearTimeout(killTimer);
           signal.removeEventListener("abort", abort);
           if (failure) reject(failure);
-          else if (code !== 0)
-            reject(new Error(`replica process exited ${code}`));
-          else {
+          else if (code !== 0) {
+            const diagnostic = replicaExitDiagnostic(
+              Buffer.concat(diagnostics).toString("utf8"),
+            );
+            reject(
+              new Error(
+                `replica process exited ${code}${diagnostic ? `: ${diagnostic}` : ""}`,
+              ),
+            );
+          } else {
             try {
               resolve(
                 new TextDecoder("utf-8", { fatal: true }).decode(
@@ -1198,6 +1247,42 @@ if (import.meta.vitest) {
         { store: restored, peerId: "warm", policy, signal: signal() },
       ),
     ).rejects.toThrow("scope denied");
+  });
+
+  test("process failure reports safe boundary hints without echoing peer stderr", async () => {
+    const privateText = "PRIVATE_FIXTURE_NOTE_DO_NOT_ECHO";
+    for (const [stderr, hint] of [
+      ["PI_MEMORY_GIT_REMOTE is required", "legacy remote CLI"],
+      [
+        "unknown or ambiguous SSH memory peer",
+        "configured-peer binding rejected",
+      ],
+      [
+        "memory store contention deadline exceeded",
+        "remote storage contention",
+      ],
+      [
+        "ssh: connect to host fixture-peer port 22: Operation timed out",
+        "SSH connection unavailable",
+      ],
+      ["unrecognized remote failure", "replica process exited 1"],
+    ]) {
+      const transport = processReplicaTransport({
+        executable: process.execPath,
+        args: [
+          "-e",
+          `process.stderr.end(${JSON.stringify(stderr + "\n" + privateText)},()=>process.exit(1))`,
+        ],
+      });
+      const error = await transport
+        .exchange({ outgoing: [], cursor: null }, signal())
+        .catch((error) => error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toContain(hint);
+      expect(error.message).not.toContain(privateText);
+      expect(error.message).not.toContain("fixture-peer");
+      expect(error.message).not.toContain("unrecognized remote failure");
+    }
   });
 
   test("actual process invalid/oversized stdin and stdout, timeout and cancellation fail closed", async () => {
