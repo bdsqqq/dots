@@ -6,9 +6,13 @@ let
   # Darwin's hostName can include .local; the roster uses short SSH host names.
   localHost = if isDarwin then config.networking.localHostName else config.networking.hostName;
   peers = builtins.filter (host: host != localHost) [ "mbp-m2" "lgo-z2e" "htz-xfs-lab" ];
+  # The service-host ACL in tailscale/policy.hujson does not grant outbound SSH
+  # to owner devices. Owner-initiated exchange is bidirectional; keep this host's
+  # roster for inbound authentication without scheduling forbidden connections.
   jobs = {
     pi-memory = "reconcile";
     pi-memory-capture = "catch-up";
+  } // lib.optionalAttrs (localHost != "htz-xfs-lab") {
     pi-memory-replicate = "replicate";
   };
   toolsBin = "${repoRoot}/modules/node-pnpm/node_modules/.bin";
