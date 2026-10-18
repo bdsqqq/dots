@@ -1154,17 +1154,28 @@ export class FileMemoryStore implements C.MemoryStore {
           basis: p.basis === null ? null : string(p.basis),
         };
         this.safePath(placement.path);
+        // old absolute prefixes are provenance, never read/write authority on restore.
+        // Only a UUID-named artifact under one recovery directory may be rebound.
+        const previous = dirname(placement.candidate);
         if (
           !/^[a-f0-9-]{36}$/.test(token) ||
-          placement.candidate !==
-            join(this.recovery, `${token}.candidate.md`) ||
-          placement.stash !== join(this.recovery, `${token}.stash.md`) ||
+          !previous.endsWith("/.pi-memory-recovery") ||
+          placement.candidate !== join(previous, `${token}.candidate.md`) ||
+          placement.stash !== join(previous, `${token}.stash.md`) ||
           (placement.snapshot !== null &&
-            placement.snapshot !== join(this.recovery, `${token}.basis.md`)) ||
+            placement.snapshot !== join(previous, `${token}.basis.md`)) ||
           (placement.basis !== null && !/^[a-f0-9]{64}$/.test(placement.basis))
         )
           throw new IntegrityError("invalid materialization journal");
-        return placement;
+        return {
+          ...placement,
+          candidate: join(this.recovery, `${token}.candidate.md`),
+          stash: join(this.recovery, `${token}.stash.md`),
+          snapshot:
+            placement.snapshot === null
+              ? null
+              : join(this.recovery, `${token}.basis.md`),
+        };
       });
   }
   private placementDone(p: Placement): boolean {
@@ -1803,6 +1814,57 @@ if (import.meta.vitest) {
       restored?.close();
       rmSync(sender.dir, { recursive: true });
       rmSync(receiver.dir, { recursive: true });
+    }
+  });
+  it("restores a closed snapshot at different paths without following old materialization locations", async () => {
+    const original = fixture();
+    const destination = fixture("restored-host");
+    let restored: FileMemoryStore | null = null;
+    let originalOpen = true;
+    let destinationOpen = true;
+    try {
+      const remembered = note("portable", "portable experience");
+      await original.store.commit(
+        change("portable-commit", [remembered], [window()]),
+      );
+      original.store.close();
+      originalOpen = false;
+      destination.store.close();
+      destinationOpen = false;
+      for (const name of ["root", "data", "state"] as const) {
+        rmSync(destination.config[name], { recursive: true });
+        cpSync(original.config[name], destination.config[name], {
+          recursive: true,
+        });
+      }
+      const sourceBytes = readFileSync(
+        join(original.config.root, remembered.path),
+        "utf8",
+      );
+      restored = new FileMemoryStore(destination.config);
+      expect((await restored.listNotes(scope)).map((n) => n.noteId)).toEqual([
+        remembered.noteId,
+      ]);
+      expect(
+        readFileSync(join(destination.config.root, remembered.path), "utf8"),
+      ).toBe(remembered.markdown);
+      const another = note("fresh", "new host can keep learning");
+      expect(
+        await restored.commit(change("fresh-host-commit", [another])),
+      ).toMatchObject({ kind: "locally-committed" });
+      expect(
+        readFileSync(join(original.config.root, remembered.path), "utf8"),
+      ).toBe(sourceBytes);
+      expect(existsSync(join(original.config.root, another.path))).toBe(false);
+      const page = await restored.forPeer("other").scan(null, 20);
+      expect(page.map((c) => c.commitId)).toContain("portable-commit");
+      expect(page.map((c) => c.commitId)).toContain("fresh-host-commit");
+    } finally {
+      if (originalOpen) original.store.close();
+      if (destinationOpen) destination.store.close();
+      restored?.close();
+      rmSync(original.dir, { recursive: true });
+      rmSync(destination.dir, { recursive: true });
     }
   });
   it("accepts a multi-note batch, replays exactly, and rejects identity reuse", async () => {
