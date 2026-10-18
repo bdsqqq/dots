@@ -77,7 +77,7 @@ export function sessionWorkerEntry(moduleURL: string = import.meta.url): URL {
   return url;
 }
 
-/** hard termination bounds synchronous store work as well as asynchronous retrieval. */
+/** foreground deadlines and explicit close can terminate synchronous worker I/O. */
 export class SessionMemoryWorker {
   private readonly worker: Worker;
   private readonly pending = new Map<
@@ -85,7 +85,8 @@ export class SessionMemoryWorker {
     {
       resolve: (value: SessionWorkerResult) => void;
       reject: (error: Error) => void;
-      timer: ReturnType<typeof setTimeout>;
+      timer?: ReturnType<typeof setTimeout>;
+      capture: boolean;
     }
   >();
   private sequence = 0;
@@ -107,6 +108,7 @@ export class SessionMemoryWorker {
         if (!pending) return;
         clearTimeout(pending.timer);
         this.pending.delete(reply.id);
+        this.updateReference();
         if (reply.error) pending.reject(new Error(reply.error));
         else pending.resolve(reply.value ?? null);
       },
@@ -117,23 +119,39 @@ export class SessionMemoryWorker {
   }
   request(
     request: SessionWorkerRequest,
-    timeoutMs: number = this.options.timeoutMs ??
-      (request.kind === "capture" ? 30_000 : 5000),
+    timeoutMs: number | undefined = this.options.timeoutMs ??
+      (request.kind === "check" ? 250 : undefined),
   ): Promise<SessionWorkerResult> {
     if (this.closed) return Promise.reject(new Error("memory worker closed"));
     if (this.pending.size >= 32)
       return Promise.reject(new Error("memory worker queue full"));
     const id = ++this.sequence;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`memory worker ${request.kind} deadline`));
-        if (request.kind !== "check") this.close();
-      }, timeoutMs);
-      timer.unref();
-      this.pending.set(id, { resolve, reject, timer });
+      const timer =
+        timeoutMs === undefined
+          ? undefined
+          : setTimeout(() => {
+              this.pending.delete(id);
+              this.updateReference();
+              reject(new Error(`memory worker ${request.kind} deadline`));
+              if (request.kind !== "check") this.close();
+            }, timeoutMs);
+      timer?.unref();
+      this.pending.set(id, {
+        resolve,
+        reject,
+        timer,
+        capture: request.kind === "capture",
+      });
+      this.updateReference();
       this.worker.postMessage({ id, request });
     });
+  }
+  private updateReference(): void {
+    // A pending promise cannot keep Node alive after CLI stdin closes. Finalized
+    // ephemeral snapshots have no disk catch-up, so their capture owns liveness.
+    if ([...this.pending.values()].some((p) => p.capture)) this.worker.ref();
+    else this.worker.unref();
   }
   private fail(error: Error): void {
     this.closed = true;
@@ -142,6 +160,7 @@ export class SessionMemoryWorker {
       p.reject(error);
     }
     this.pending.clear();
+    this.updateReference();
   }
   close(): void {
     if (this.closed) return;
@@ -267,7 +286,8 @@ export async function runSessionMemoryWorker(): Promise<void> {
             }),
           )}.json`,
         );
-        for (let page = 0; page < 64; page++) {
+        for (;;) {
+          signal.throwIfAborted();
           const result = await catchUpNativeSources({
             store,
             root: "",
@@ -280,9 +300,6 @@ export async function runSessionMemoryWorker(): Promise<void> {
           });
           if (!result.bounded) return "captured";
         }
-        throw new Error(
-          "capture page budget exceeded; independent catch-up required",
-        );
       }
     }
   };
