@@ -6,13 +6,17 @@ import {
 } from "node:worker_threads";
 import { hostname } from "node:os";
 import { join } from "node:path";
+import { mkdirSync } from "node:fs";
 import type { LoadedSession } from "../../sessions/contracts.js";
 import type * as C from "./contracts.js";
 import { FileMemoryStore, type FileMemoryStoreConfig } from "./store.js";
 import { LinkedSearchIndex } from "./index.js";
 import { sharedRecallHandler } from "./recall.js";
-import { capture } from "./capture.js";
-import { nativeSourceProducer } from "./pi-source.js";
+import { catchUpNativeSources } from "./catch-up.js";
+import {
+  observeNativeProject,
+  type NativeProjectContext,
+} from "./project-context.js";
 import { canonicalJSON, sha256, sameValue } from "./identity.js";
 import type { MemoryConfiguration } from "./config.js";
 
@@ -37,6 +41,7 @@ export function runtimeStoreConfiguration(
   };
 }
 export type SessionWorkerRequest =
+  | { kind: "project-context"; cwd: string }
   | { kind: "recall"; intent: C.RecallIntent }
   | { kind: "recover"; target: C.RecallTarget; intent: C.RecallIntent }
   | { kind: "check"; deliveries: readonly C.RecallDelivery[] }
@@ -46,14 +51,15 @@ export type SessionWorkerRequest =
       snapshot: LoadedSession;
       through: C.EntryId;
       scope: C.MemoryScope;
-      project?: { repositoryId: string };
+      project?: NativeProjectContext | null;
     };
 export type SessionWorkerResult =
   | C.RecallOutcome
   | C.RecallDelivery
   | null
   | readonly C.DeliveryEligibility[]
-  | "captured";
+  | "captured"
+  | { kind: "project-context"; project: NativeProjectContext | null };
 
 /** distribution-root resolution survives the bundler moving this class into a shared chunk. */
 export function sessionWorkerEntry(moduleURL: string = import.meta.url): URL {
@@ -111,7 +117,8 @@ export class SessionMemoryWorker {
   }
   request(
     request: SessionWorkerRequest,
-    timeoutMs: number = this.options.timeoutMs ?? 5000,
+    timeoutMs: number = this.options.timeoutMs ??
+      (request.kind === "capture" ? 30_000 : 5000),
   ): Promise<SessionWorkerResult> {
     if (this.closed) return Promise.reject(new Error("memory worker closed"));
     if (this.pending.size >= 32)
@@ -120,7 +127,7 @@ export class SessionMemoryWorker {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error("memory worker deadline"));
+        reject(new Error(`memory worker ${request.kind} deadline`));
         if (request.kind !== "check") this.close();
       }, timeoutMs);
       timer.unref();
@@ -149,7 +156,7 @@ export async function runSessionMemoryWorker(): Promise<void> {
     indexModule?: string;
     indexOptions?: unknown;
   };
-  const store = new FileMemoryStore(data.store);
+  let openedStore: FileMemoryStore | undefined;
   const index: C.SearchIndex = data.indexModule
     ? await (
         await import(data.indexModule)
@@ -160,6 +167,12 @@ export async function runSessionMemoryWorker(): Promise<void> {
   const execute = async (
     request: SessionWorkerRequest,
   ): Promise<SessionWorkerResult> => {
+    if (request.kind === "project-context")
+      return {
+        kind: "project-context",
+        project: observeNativeProject(request.cwd),
+      };
+    const store = (openedStore ??= new FileMemoryStore(data.store));
     switch (request.kind) {
       case "recall":
         return sharedRecallHandler(request.intent, {
@@ -218,58 +231,34 @@ export async function runSessionMemoryWorker(): Promise<void> {
         }
         return null;
       case "capture": {
-        const sessionId = request.snapshot.header.id as C.SessionId;
-        const producer = nativeSourceProducer(
-          { kind: "provided", snapshot: request.snapshot },
-          { capturedAt: now() },
+        const project = observeNativeProject(
+          request.snapshot.header.cwd,
+          request.project,
         );
-        const source: C.SourceRef = {
-          sourceId: sessionId as unknown as C.SourceId,
-          producer: "pi-native",
-          origin: {
-            kind: "session",
-            sessionId,
-            ...(request.project ? { project: request.project } : {}),
-          },
-        };
-        let after: C.SourceSpan | null = null;
-        // stable authored clocks make a replay payload identical across retries.
-        for (let page = 0; page < 64; page++) {
-          const result = await producer.read(
-            {
-              source,
+        const directory = join(data.store.state, "capture-progress");
+        mkdirSync(directory, { recursive: true });
+        const checkpoint = join(
+          directory,
+          `${sha256(
+            canonicalJSON({
+              source: request.snapshot.header.id,
               scope: request.scope,
-              throughEntryId: request.through,
-              after,
-              maxWindowBytes: 8192,
-              maxWindows: 32,
-            },
+              project,
+            }),
+          )}.json`,
+        );
+        for (let page = 0; page < 64; page++) {
+          const result = await catchUpNativeSources({
+            store,
+            root: "",
+            checkpoint,
+            scope: request.scope,
             signal,
-          );
-          const windows = result.windows.map((original) => ({
-            ...original,
-            capturedAt: original.excerpts[0].occurredAt,
-          }));
-          if (windows.length) {
-            const receipt = await capture(
-              {
-                source: { kind: "provided", windows },
-                scope: request.scope,
-                commitId: sha256(
-                  canonicalJSON({ capture: windows.map((w) => w.windowId) }),
-                ) as C.CommitId,
-                now: windows[0]!.capturedAt,
-              },
-              { store },
-            );
-            if (
-              receipt.kind !== "locally-committed" &&
-              receipt.kind !== "unchanged"
-            )
-              throw new Error(`capture ${receipt.kind}: ${receipt.reason}`);
-          }
-          if (result.complete) return "captured";
-          after = result.next;
+            snapshots: [request.snapshot],
+            throughEntryId: request.through,
+            project,
+          });
+          if (!result.bounded) return "captured";
         }
         throw new Error(
           "capture page budget exceeded; independent catch-up required",
@@ -277,15 +266,23 @@ export async function runSessionMemoryWorker(): Promise<void> {
       }
     }
   };
+  let captureTail: Promise<unknown> = Promise.resolve();
   parentPort!.on(
     "message",
     ({ id, request }: { id: number; request: SessionWorkerRequest }) => {
-      void execute(request).then(
+      // Native turn completions may overlap; one source checkpoint has one writer.
+      const task =
+        request.kind === "capture"
+          ? (captureTail = captureTail
+              .catch(() => undefined)
+              .then(() => execute(request)))
+          : execute(request);
+      void task.then(
         (value) => parentPort!.postMessage({ id, value }),
         (error) => parentPort!.postMessage({ id, error: String(error) }),
       );
     },
   );
-  parentPort!.on("close", () => store.close());
+  parentPort!.on("close", () => openedStore?.close());
 }
 if (!isMainThread && workerData?.memoryWorker) await runSessionMemoryWorker();
