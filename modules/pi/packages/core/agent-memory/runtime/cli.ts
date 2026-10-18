@@ -4,7 +4,7 @@ import { Type, type TSchema } from "typebox";
 import { Check } from "typebox/value";
 import type * as C from "./contracts.js";
 import {
-  createMemoryApplication,
+  openMemoryApplication,
   type MemoryApplication,
 } from "./application.js";
 import { parseWindow, parseChange } from "./wire.js";
@@ -169,7 +169,7 @@ export async function memoryCLI(
   deadline.unref();
   let app: MemoryApplication | undefined;
   try {
-    app = createMemoryApplication();
+    app = await openMemoryApplication({}, controller.signal);
     if (command === "exchange") {
       const peerId = await authenticateInboundPeer({
         connection: process.env.SSH_CONNECTION,
@@ -211,7 +211,9 @@ export async function memoryCLI(
 
 if (import.meta.vitest) {
   const { it, expect } = import.meta.vitest;
-  const { spawnSync } = await import("node:child_process");
+  const { spawnSync, spawn } = await import("node:child_process");
+  const { DatabaseSync } = await import("node:sqlite");
+  const { EventEmitter } = await import("node:events");
   const {
     mkdtempSync,
     mkdirSync,
@@ -413,4 +415,101 @@ if (import.meta.vitest) {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it.each(["status", "maintain"])(
+    "production %s imports an editable note despite an existing writer without caller retries",
+    async (command) => {
+      const dir = mkdtempSync(join(tmpdir(), "memory-cli-contention-"));
+      const agent = join(dir, "agent");
+      mkdirSync(agent);
+      writeFileSync(join(agent, "settings.json"), "{}");
+      const env = {
+        ...process.env,
+        PI_CODING_AGENT_DIR: agent,
+        PI_CODING_AGENT_SESSION_DIR: join(dir, "sessions"),
+        PI_MEMORY_ROOT: join(dir, "notes"),
+        PI_MEMORY_DATA_DIR: join(dir, "data"),
+        PI_MEMORY_STATE_DIR: join(dir, "state"),
+        PI_MEMORY_OWNER: "fixture",
+        PI_MEMORY_PEERS: "[]",
+        PI_OFFLINE: "1",
+      };
+      const configuration = memoryConfiguration({
+        settings: {},
+        environment: env,
+      });
+      const seed = await openMemoryApplication({ configuration });
+      const database = join(seed.store.config.state, "coordination.sqlite");
+      const editable = join(seed.store.config.root, "manual.md");
+      seed.close();
+      const { createNoteRevision } = await import("./markdown.js");
+      writeFileSync(
+        editable,
+        createNoteRevision({
+          noteId: "manual" as C.NoteId,
+          ancestry: { kind: "known", parents: [] },
+          scope: { kind: "personal", ownerId: "fixture" },
+          path: "manual.md",
+          body: "a fixture note edited outside the application",
+          authoredAt: new Date().toISOString(),
+          claims: [],
+          links: [],
+          exposure: { kind: "active" },
+        }).markdown,
+      );
+      const lock = new DatabaseSync(database);
+      let child: ReturnType<typeof spawn> | undefined;
+      let released = false;
+      try {
+        lock.exec("BEGIN IMMEDIATE");
+        // Imports finish before ready, so the measured hold covers real production
+        // opening/operations rather than Jiti or module startup time.
+        const script = `import {createJiti} from 'jiti';
+        const jiti=createJiti(process.cwd()+'/package.json',{moduleCache:false,fsCache:false});
+        const {memoryCLI}=await jiti.import(${JSON.stringify(resolve("packages/core/agent-memory/runtime/cli.ts"))});
+        process.send('ready');
+        try { await memoryCLI([${JSON.stringify(command)}]); }
+        catch(error) { console.error(error.message); process.exitCode=1; }
+        finally { process.disconnect(); }`;
+        child = spawn(
+          process.execPath,
+          ["--input-type=module", "--eval", script],
+          {
+            env,
+            stdio: ["ignore", "pipe", "pipe", "ipc"],
+          },
+        );
+        let stdout = "",
+          stderr = "";
+        child.stdout!.on("data", (value) => {
+          stdout += value;
+        });
+        child.stderr!.on("data", (value) => {
+          stderr += value;
+        });
+        const closed = EventEmitter.once(child, "close");
+        await Promise.race([
+          EventEmitter.once(child, "message"),
+          closed.then(() => {
+            throw new Error(`CLI exited before readiness: ${stderr}`);
+          }),
+        ]);
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        lock.exec("COMMIT");
+        released = true;
+        const [code] = await closed;
+        expect(code, stderr).toBe(0);
+        const result = JSON.parse(stdout);
+        if (command === "status")
+          expect(result).toMatchObject({ enabled: true, notes: 1 });
+        else expect(result.reconciliation.idle.reason).toBe("empty");
+      } finally {
+        if (!released) lock.exec("ROLLBACK");
+        lock.close();
+        if (child && child.exitCode === null) child.kill("SIGKILL");
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
 }
