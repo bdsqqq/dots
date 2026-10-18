@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   existsSync,
   readdirSync,
@@ -54,6 +55,69 @@ export interface FileMemoryStoreConfig {
     boundary: "objects" | "manifest" | "stash",
     commitId: string,
   ) => void;
+}
+/** contention budgets exclude synchronous filesystem work already admitted. */
+export interface FileMemoryStoreOptions {
+  readonly signal?: AbortSignal;
+  /** default 5000ms per call; zero attempts once without waiting. */
+  readonly contentionTimeoutMs?: number;
+}
+export class StoreContentionError extends Error {
+  readonly code = "MEMORY_STORE_CONTENTION_TIMEOUT";
+  constructor() {
+    super("memory store contention deadline exceeded");
+    this.name = "StoreContentionError";
+  }
+}
+/** only acquisition failures may replay; callbacks and COMMIT must never replay. */
+class LockUnavailable extends Error {
+  readonly errcode = 5;
+  constructor(cause: unknown) {
+    super("database is locked", { cause });
+  }
+}
+function contentionBudget(
+  options: FileMemoryStoreOptions,
+  fallback: number,
+): number {
+  const budget = options.contentionTimeoutMs ?? fallback;
+  if (!Number.isFinite(budget) || budget < 0)
+    throw new Error("contentionTimeoutMs must be finite and nonnegative");
+  return budget;
+}
+async function contend<T>(
+  run: () => T,
+  options: FileMemoryStoreOptions,
+  fallback: number,
+): Promise<T> {
+  const deadline = performance.now() + contentionBudget(options, fallback);
+  let attempt = 0;
+  for (;;) {
+    options.signal?.throwIfAborted();
+    try {
+      return run();
+    } catch (error) {
+      if (!(error instanceof LockUnavailable)) throw error;
+      const remaining = deadline - performance.now();
+      if (remaining <= 0) throw new StoreContentionError();
+      // Jitter keeps native worker cohorts from repeatedly waking together.
+      try {
+        await delay(
+          Math.min(
+            remaining,
+            10 + Math.random() * Math.min(90, 10 * 2 ** Math.min(attempt++, 4)),
+          ),
+          undefined,
+          { signal: options.signal },
+        );
+      } catch (error) {
+        options.signal?.throwIfAborted();
+        throw error;
+      }
+      options.signal?.throwIfAborted();
+      if (performance.now() >= deadline) throw new StoreContentionError();
+    }
+  }
 }
 interface Manifest {
   version: 1;
@@ -232,7 +296,11 @@ function suppressionsFor(view: View, note: C.NoteRevision): C.Suppression[] {
 
 /** retry contention asynchronously; never stretch the event-loop blocking timeout. */
 export function isStoreBusy(error: unknown): boolean {
-  return error instanceof Error && "errcode" in error && error.errcode === 5;
+  return (
+    error instanceof Error &&
+    "errcode" in error &&
+    (Number(error.errcode) & 0xff) === 5
+  );
 }
 
 /** local filesystems only. close all instances before rebuilding coordination state. */
@@ -242,7 +310,20 @@ export class FileMemoryStore implements C.MemoryStore {
   private watcher: FSWatcher | null = null;
   private readonly confirmed = new Set<string>();
   private readonly invalidEditable = new Map<string, string>();
-  constructor(config: FileMemoryStoreConfig) {
+  private closed = false;
+  /** production opener; failed attempts close their connection before yielding. */
+  static async open(
+    config: FileMemoryStoreConfig,
+    options: FileMemoryStoreOptions = {},
+  ): Promise<FileMemoryStore> {
+    return contend(() => new FileMemoryStore(config, options), options, 5000);
+  }
+  constructor(
+    config: FileMemoryStoreConfig,
+    private readonly options: FileMemoryStoreOptions = {},
+  ) {
+    contentionBudget(options, 5000);
+    options.signal?.throwIfAborted();
     this.config = {
       ...config,
       root: resolve(config.root),
@@ -266,25 +347,36 @@ export class FileMemoryStore implements C.MemoryStore {
       this.receipts,
     ])
       durableDirectory(dir);
-    this.db = new DatabaseSync(join(this.config.state, "coordination.sqlite"));
     try {
-      this.db
-        .exec(`PRAGMA busy_timeout=250; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
+      this.db = new DatabaseSync(
+        join(this.config.state, "coordination.sqlite"),
+      );
+    } catch (error) {
+      if (isStoreBusy(error)) throw new LockUnavailable(error);
+      throw error;
+    }
+    try {
+      try {
+        this.db
+          .exec(`PRAGMA busy_timeout=0; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
       CREATE TABLE IF NOT EXISTS leases (window TEXT PRIMARY KEY, token TEXT NOT NULL, payload TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS peer_ack (peer TEXT NOT NULL, commit_id TEXT NOT NULL, PRIMARY KEY(peer,commit_id));
       CREATE TABLE IF NOT EXISTS peer_cursor (peer TEXT PRIMARY KEY, cursor TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS repository_epoch (id INTEGER PRIMARY KEY CHECK(id=1), token TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS repository_payload (commit_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL);`);
-      this.transaction((view) => {
-        this.scan(view);
-        this.materialize(this.recover());
-      });
+      } catch (error) {
+        if (isStoreBusy(error)) throw new LockUnavailable(error);
+        throw error;
+      }
+      this.refreshedSync(() => undefined, false);
     } catch (error) {
       this.db.close();
       throw error;
     }
   }
   close(): void {
+    if (this.closed) return;
+    this.closed = true;
     this.watcher?.close();
     this.db.close();
   }
@@ -297,6 +389,7 @@ export class FileMemoryStore implements C.MemoryStore {
   }
   /** hints reduce latency; operations still rescan after missing every event. */
   watch(onHint: () => void): void {
+    if (this.closed) throw new Error("memory store is closed");
     this.watcher?.close();
     this.watcher = watch(this.config.root, { recursive: true }, () => onHint());
   }
@@ -342,16 +435,29 @@ export class FileMemoryStore implements C.MemoryStore {
       throw new IntegrityError("invalid dispatch receipt");
     return true;
   }
-  private transaction<T>(run: (view: View) => T): T {
-    this.db.exec("BEGIN IMMEDIATE");
+  private transaction<T>(
+    run: (view: View) => T,
+    options = this.options,
+  ): Promise<T> {
+    return contend(() => this.transactionSync(run), options, 5000);
+  }
+  private transactionSync<T>(run: (view: View) => T, write = true): T {
+    if (this.closed) throw new Error("memory store is closed");
     try {
-      const view = this.recover();
-      this.synchronizeContinuity(view);
+      this.db.exec(write ? "BEGIN IMMEDIATE" : "BEGIN");
+    } catch (error) {
+      if (isStoreBusy(error)) throw new LockUnavailable(error);
+      throw error;
+    }
+    try {
+      const view = this.recover(write);
+      if (write) this.synchronizeContinuity(view);
       const result = run(view);
       this.db.exec("COMMIT");
       return result;
     } catch (error) {
       this.db.exec("ROLLBACK");
+      if (!write && isStoreBusy(error)) throw new LockUnavailable(error);
       throw error;
     }
   }
@@ -390,8 +496,43 @@ export class FileMemoryStore implements C.MemoryStore {
       if (!known.has(id)) insert.run(id, accepted.manifest.replica);
     return token;
   }
-  private refreshed<T>(run: (view: View) => T): T {
-    return this.transaction((view) => {
+  private refreshed<T>(
+    run: (view: View) => T,
+    write = true,
+    options = this.options,
+  ): Promise<T> {
+    return contend(() => this.refreshedSync(run, write), options, 5000);
+  }
+  private refreshedSync<T>(run: (view: View) => T, write: boolean): T {
+    if (!write) {
+      const repair = Symbol();
+      const previousProblems = new Map(this.invalidEditable);
+      let result: T | typeof repair = repair;
+      let entered = false;
+      try {
+        result = this.transactionSync((view) => {
+          // Atomic immutable manifests form a readable prefix during WAL writes.
+          // Dry runs never import an in-flight placement: changes are rechecked
+          // under IMMEDIATE before any filesystem mutation.
+          if (this.scan(view, false) || this.materialize(view, false))
+            return repair;
+          entered = true;
+          return run(view);
+        }, false);
+      } catch (error) {
+        // A concurrent placement can rename between traversal and read. Only
+        // preflight failures fall back; rerun validation while serialized.
+        if (entered || error instanceof LockUnavailable) throw error;
+      } finally {
+        if (result === repair) {
+          this.invalidEditable.clear();
+          for (const [path, reason] of previousProblems)
+            this.invalidEditable.set(path, reason);
+        }
+      }
+      if (result !== repair) return result;
+    }
+    return this.transactionSync((view) => {
       this.scan(view);
       const fresh = this.recover();
       this.materialize(fresh);
@@ -415,7 +556,7 @@ export class FileMemoryStore implements C.MemoryStore {
       throw new IntegrityError(`corrupt dependency ${hash}`);
     return JSON.parse(bytes);
   }
-  private recover(): View {
+  private recover(confirm = true): View {
     const view: View = {
       accepted: new Map(),
       revisions: new Map(),
@@ -532,7 +673,9 @@ export class FileMemoryStore implements C.MemoryStore {
         }
     }
     for (const a of causal)
-      if (!this.confirmed.has(a.manifest.hash)) {
+      if (confirm && !this.confirmed.has(a.manifest.hash)) {
+        // Reads validate bytes without acknowledging durable acceptance. Only
+        // writers confirm barriers and clean staging files under serialization.
         for (const dependency of a.manifest.dependencies)
           confirmDurable(join(this.objects, dependency));
         confirmDurable(join(this.commits, sha256(a.replica.commitId)));
@@ -638,177 +781,187 @@ export class FileMemoryStore implements C.MemoryStore {
     this.confirmed.add(sha256(canonicalJSON(payload)));
     this.config.publicationBoundary?.("manifest", replica.commitId);
   }
-  async commit(value: C.LocalChangeSet): Promise<C.CommitResult> {
+  async commit(
+    value: C.LocalChangeSet,
+    options: FileMemoryStoreOptions = this.options,
+  ): Promise<C.CommitResult> {
     const change = parseChange(value);
-    return this.refreshed((view) => {
-      const previous = view.accepted.get(change.commitId);
-      if (previous)
-        return previous.local && sameValue(previous.local, change)
-          ? {
-              kind: "locally-committed",
-              commitId: change.commitId,
-              replay: true,
-            }
-          : { kind: "identity-conflict", commitId: change.commitId };
-      const now = millis(change.now);
-      if (change.lease) {
-        const rows = this.db
-          .prepare("SELECT window,payload FROM leases WHERE token=?")
-          .all(change.lease.leaseId);
-        if (
-          !rows.length ||
-          millis(change.lease.expiresAt) <= now ||
-          rows.some(
-            (r) =>
-              !sameValue(
-                parseLease(JSON.parse(string(r.payload))),
-                change.lease,
-              ),
-          )
-        )
-          return { kind: "lease-lost" };
-        if (
-          !headsEqual(
-            rows.map((r) => string(r.window)),
-            change.outcomes.map((o) => o.windowId),
-          )
-        )
-          throw new Error("every leased window needs exactly one outcome");
-        const leasedScope = view.windows.get(
-          string(rows[0]!.window) as C.WindowId,
-        )?.scope;
-        if (
-          !leasedScope ||
-          rows.some(
-            (r) =>
-              !scopeEqual(
-                view.windows.get(string(r.window) as C.WindowId)!.scope,
-                leasedScope,
-              ),
-          ) ||
-          change.edits.some(
-            (edit) =>
-              !scopeEqual(edit.revision.scope, leasedScope) &&
-              !edit.revision.claims.some((claim) =>
-                claim.evidence.some(
-                  (evidence) =>
-                    rows.some(
-                      (row) => string(row.window) === evidence.windowId,
-                    ) &&
-                    this.permitsEvidenceScope(
-                      view.windows.get(evidence.windowId)!,
-                      edit.revision.scope,
-                    ),
+    return this.refreshed(
+      (view) => {
+        const previous = view.accepted.get(change.commitId);
+        if (previous)
+          return previous.local && sameValue(previous.local, change)
+            ? {
+                kind: "locally-committed",
+                commitId: change.commitId,
+                replay: true,
+              }
+            : { kind: "identity-conflict", commitId: change.commitId };
+        const now = millis(change.now);
+        if (change.lease) {
+          const rows = this.db
+            .prepare("SELECT window,payload FROM leases WHERE token=?")
+            .all(change.lease.leaseId);
+          if (
+            !rows.length ||
+            millis(change.lease.expiresAt) <= now ||
+            rows.some(
+              (r) =>
+                !sameValue(
+                  parseLease(JSON.parse(string(r.payload))),
+                  change.lease,
                 ),
-              ),
-          ) ||
-          change.suppressions.some((s) => !scopeEqual(s.scope, leasedScope))
-        )
-          throw new Error("lease scope mismatch");
-      } else if (change.outcomes.length)
-        throw new Error("outcomes require a fenced lease");
-      if (
-        new Set(change.edits.map((e) => e.revision.noteId)).size !==
-        change.edits.length
-      )
-        throw new Error("one edit per note per batch");
-      if (
-        new Set(change.outcomes.map((o) => o.windowId)).size !==
-        change.outcomes.length
-      )
-        throw new Error("duplicate window outcome");
-      const suppressionIds = new Map(
-        view.suppressions.map((s) => [s.suppressionId, s]),
-      );
-      for (const s of change.suppressions) {
-        const old = suppressionIds.get(s.suppressionId);
-        if (old && !sameValue(old, s))
-          throw new IntegrityError("suppression collision");
-        suppressionIds.set(s.suppressionId, s);
-      }
-      const next = this.preview(
-        view,
-        change.windows,
-        change.edits.map((e) => e.revision),
-        change.suppressions,
-      );
-      for (const s of change.suppressions)
-        if (s.target.kind === "evidence")
-          this.validateEvidenceRef(next, s.scope, s.target.evidence);
-      for (const e of change.edits) {
-        this.safePath(e.revision.path);
-        const current = view.heads.get(e.revision.noteId) ?? [];
-        if (
-          !headsEqual(
-            e.expectedHeads,
-            current.map((n) => n.revisionId),
-          )
-        )
-          return { kind: "conflict", current };
-        if (current.some((r) => !scopeEqual(r.scope, e.revision.scope)))
-          throw new Error("note scope cannot change");
-        if (
-          e.revision.ancestry.kind === "known" &&
-          !headsEqual(e.revision.ancestry.parents, e.expectedHeads)
-        )
-          throw new Error("edit ancestry must name expected heads");
-        this.validateEvidence(next, e.revision);
-        const suppressed = suppressionsFor(next, e.revision);
-        if (suppressed.length && e.revision.exposure.kind !== "deleted")
-          return {
-            kind: "suppressed",
-            suppressions: [suppressed[0]!, ...suppressed.slice(1)],
-          };
-      }
-      for (const o of change.outcomes) {
-        this.validateOutcome(next, o);
-        if (view.terminal.has(o.windowId))
-          throw new Error("window already consumed");
-        if (o.decision.kind === "changed")
-          for (const ref of o.decision.notes) {
-            const r = next.revisions.get(ref.revisionId)!;
-            if (
-              !this.permitsEvidenceScope(next.windows.get(o.windowId)!, r.scope)
             )
-              throw new Error("outcome scope mismatch");
-            const suppressed = suppressionsFor(next, r);
-            if (suppressed.length)
-              return {
-                kind: "suppressed",
-                suppressions: [suppressed[0]!, ...suppressed.slice(1)],
-              };
-          }
-      }
-      const newWindows = [
-        ...new Map(
-          change.windows
-            .filter((w) => !view.windows.has(w.windowId))
-            .map((w) => [w.windowId, w]),
-        ).values(),
-      ];
-      const replica: C.ReplicaChange = {
-        commitId: change.commitId,
-        replicaId: this.config.replicaId,
-        parents: this.commitHeads(view),
-        revisions: change.edits.map((e) => e.revision),
-        windows: newWindows,
-        suppressions: change.suppressions,
-        outcomes: change.outcomes.flatMap((o) =>
-          o.decision.kind === "retry" ? [] : [{ ...o, decision: o.decision }],
-        ),
-      };
-      this.publish(replica, change);
-      if (change.lease)
-        this.db
-          .prepare("DELETE FROM leases WHERE token=?")
-          .run(change.lease.leaseId);
-      this.materialize(this.recover());
-      return {
-        kind: "locally-committed",
-        commitId: change.commitId,
-        replay: false,
-      };
-    });
+          )
+            return { kind: "lease-lost" };
+          if (
+            !headsEqual(
+              rows.map((r) => string(r.window)),
+              change.outcomes.map((o) => o.windowId),
+            )
+          )
+            throw new Error("every leased window needs exactly one outcome");
+          const leasedScope = view.windows.get(
+            string(rows[0]!.window) as C.WindowId,
+          )?.scope;
+          if (
+            !leasedScope ||
+            rows.some(
+              (r) =>
+                !scopeEqual(
+                  view.windows.get(string(r.window) as C.WindowId)!.scope,
+                  leasedScope,
+                ),
+            ) ||
+            change.edits.some(
+              (edit) =>
+                !scopeEqual(edit.revision.scope, leasedScope) &&
+                !edit.revision.claims.some((claim) =>
+                  claim.evidence.some(
+                    (evidence) =>
+                      rows.some(
+                        (row) => string(row.window) === evidence.windowId,
+                      ) &&
+                      this.permitsEvidenceScope(
+                        view.windows.get(evidence.windowId)!,
+                        edit.revision.scope,
+                      ),
+                  ),
+                ),
+            ) ||
+            change.suppressions.some((s) => !scopeEqual(s.scope, leasedScope))
+          )
+            throw new Error("lease scope mismatch");
+        } else if (change.outcomes.length)
+          throw new Error("outcomes require a fenced lease");
+        if (
+          new Set(change.edits.map((e) => e.revision.noteId)).size !==
+          change.edits.length
+        )
+          throw new Error("one edit per note per batch");
+        if (
+          new Set(change.outcomes.map((o) => o.windowId)).size !==
+          change.outcomes.length
+        )
+          throw new Error("duplicate window outcome");
+        const suppressionIds = new Map(
+          view.suppressions.map((s) => [s.suppressionId, s]),
+        );
+        for (const s of change.suppressions) {
+          const old = suppressionIds.get(s.suppressionId);
+          if (old && !sameValue(old, s))
+            throw new IntegrityError("suppression collision");
+          suppressionIds.set(s.suppressionId, s);
+        }
+        const next = this.preview(
+          view,
+          change.windows,
+          change.edits.map((e) => e.revision),
+          change.suppressions,
+        );
+        for (const s of change.suppressions)
+          if (s.target.kind === "evidence")
+            this.validateEvidenceRef(next, s.scope, s.target.evidence);
+        for (const e of change.edits) {
+          this.safePath(e.revision.path);
+          const current = view.heads.get(e.revision.noteId) ?? [];
+          if (
+            !headsEqual(
+              e.expectedHeads,
+              current.map((n) => n.revisionId),
+            )
+          )
+            return { kind: "conflict", current };
+          if (current.some((r) => !scopeEqual(r.scope, e.revision.scope)))
+            throw new Error("note scope cannot change");
+          if (
+            e.revision.ancestry.kind === "known" &&
+            !headsEqual(e.revision.ancestry.parents, e.expectedHeads)
+          )
+            throw new Error("edit ancestry must name expected heads");
+          this.validateEvidence(next, e.revision);
+          const suppressed = suppressionsFor(next, e.revision);
+          if (suppressed.length && e.revision.exposure.kind !== "deleted")
+            return {
+              kind: "suppressed",
+              suppressions: [suppressed[0]!, ...suppressed.slice(1)],
+            };
+        }
+        for (const o of change.outcomes) {
+          this.validateOutcome(next, o);
+          if (view.terminal.has(o.windowId))
+            throw new Error("window already consumed");
+          if (o.decision.kind === "changed")
+            for (const ref of o.decision.notes) {
+              const r = next.revisions.get(ref.revisionId)!;
+              if (
+                !this.permitsEvidenceScope(
+                  next.windows.get(o.windowId)!,
+                  r.scope,
+                )
+              )
+                throw new Error("outcome scope mismatch");
+              const suppressed = suppressionsFor(next, r);
+              if (suppressed.length)
+                return {
+                  kind: "suppressed",
+                  suppressions: [suppressed[0]!, ...suppressed.slice(1)],
+                };
+            }
+        }
+        const newWindows = [
+          ...new Map(
+            change.windows
+              .filter((w) => !view.windows.has(w.windowId))
+              .map((w) => [w.windowId, w]),
+          ).values(),
+        ];
+        const replica: C.ReplicaChange = {
+          commitId: change.commitId,
+          replicaId: this.config.replicaId,
+          parents: this.commitHeads(view),
+          revisions: change.edits.map((e) => e.revision),
+          windows: newWindows,
+          suppressions: change.suppressions,
+          outcomes: change.outcomes.flatMap((o) =>
+            o.decision.kind === "retry" ? [] : [{ ...o, decision: o.decision }],
+          ),
+        };
+        this.publish(replica, change);
+        if (change.lease)
+          this.db
+            .prepare("DELETE FROM leases WHERE token=?")
+            .run(change.lease.leaseId);
+        this.materialize(this.recover());
+        return {
+          kind: "locally-committed",
+          commitId: change.commitId,
+          replay: false,
+        };
+      },
+      true,
+      options,
+    );
   }
   private preview(
     view: View,
@@ -832,222 +985,261 @@ export class FileMemoryStore implements C.MemoryStore {
     );
     return [...view.accepted.keys()].filter((id) => !parents.has(id)).sort();
   }
-  async listNotes(scope: C.MemoryScope): Promise<readonly C.NoteRevision[]> {
-    return this.refreshed((v) =>
-      [...v.heads.values()]
-        .flat()
-        .filter(
-          (r) =>
-            scopeEqual(r.scope, scope) && !this.invalidEditable.has(r.path),
-        ),
+  async listNotes(
+    scope: C.MemoryScope,
+    options: FileMemoryStoreOptions = this.options,
+  ): Promise<readonly C.NoteRevision[]> {
+    return this.refreshed(
+      (v) =>
+        [...v.heads.values()]
+          .flat()
+          .filter(
+            (r) =>
+              scopeEqual(r.scope, scope) && !this.invalidEditable.has(r.path),
+          ),
+      false,
+      options,
     );
   }
   async readNotes(
     scope: C.MemoryScope,
     ids: readonly C.NoteId[],
+    options: FileMemoryStoreOptions = this.options,
   ): Promise<readonly C.NoteRevision[]> {
     const wanted = new Set(ids);
-    return (await this.listNotes(scope)).filter((n) => wanted.has(n.noteId));
+    return (await this.listNotes(scope, options)).filter((n) =>
+      wanted.has(n.noteId),
+    );
   }
   async readSuppressions(
     scope: C.MemoryScope,
+    options: FileMemoryStoreOptions = this.options,
   ): Promise<readonly C.Suppression[]> {
-    return this.refreshed((v) =>
-      v.suppressions.filter((s) => scopeEqual(s.scope, scope)),
+    return this.refreshed(
+      (v) => v.suppressions.filter((s) => scopeEqual(s.scope, scope)),
+      false,
+      options,
     );
   }
   async readSuppressionClosure(
     scope: C.MemoryScope,
     restrictions: readonly C.Suppression[] = [],
+    options: FileMemoryStoreOptions = this.options,
   ): Promise<C.SuppressionClosure> {
-    return this.refreshed((retained) => {
-      for (const rule of restrictions) {
-        const existing = retained.suppressions.find(
-          (candidate) => candidate.suppressionId === rule.suppressionId,
+    return this.refreshed(
+      (retained) => {
+        for (const rule of restrictions) {
+          const existing = retained.suppressions.find(
+            (candidate) => candidate.suppressionId === rule.suppressionId,
+          );
+          if (existing && !sameValue(existing, rule))
+            throw new IntegrityError("suppression collision");
+        }
+        const view = restrictions.length
+          ? this.preview(retained, [], [], restrictions)
+          : retained;
+        const index = suppressionIndex(view);
+        const noteIds = new Set(
+          view.suppressions.flatMap((rule) =>
+            scopeEqual(rule.scope, scope) && rule.target.kind === "note"
+              ? [rule.target.noteId]
+              : [],
+          ),
         );
-        if (existing && !sameValue(existing, rule))
-          throw new IntegrityError("suppression collision");
-      }
-      const view = restrictions.length
-        ? this.preview(retained, [], [], restrictions)
-        : retained;
-      const index = suppressionIndex(view);
-      const noteIds = new Set(
-        view.suppressions.flatMap((rule) =>
-          scopeEqual(rule.scope, scope) && rule.target.kind === "note"
-            ? [rule.target.noteId]
-            : [],
-        ),
-      );
-      for (const note of view.revisions.values())
-        if (
-          scopeEqual(note.scope, scope) &&
-          index.byRevision.has(note.revisionId)
-        )
-          noteIds.add(note.noteId);
-      return {
-        noteIds: [...noteIds].sort(),
-        evidence: [
-          ...new Map(
-            index.evidence
-              .filter((item) => scopeEqual(item.scope, scope))
-              .map((item) => [canonicalJSON(item.evidence), item.evidence]),
-          ).values(),
-        ],
-      };
-    });
-  }
-  async hasAcceptedCommit(id: C.CommitId): Promise<boolean> {
-    return this.refreshed((view) => view.accepted.has(id));
-  }
-  async pendingScopes(): Promise<readonly C.MemoryScope[]> {
-    return this.refreshed((view) => {
-      const scopes = new Map<
-        string,
-        { scope: C.MemoryScope; oldest: string }
-      >();
-      for (const window of view.windows.values()) {
-        if (
-          view.terminal.has(window.windowId) ||
-          (window.scope.kind === "personal" &&
-            window.scope.ownerId !== this.config.owner)
-        )
-          continue;
-        const key = canonicalJSON(window.scope);
-        const prior = scopes.get(key);
-        if (!prior || prior.oldest > window.capturedAt)
-          scopes.set(key, { scope: window.scope, oldest: window.capturedAt });
-      }
-      return [...scopes.values()]
-        .sort(
-          (a, b) =>
-            a.oldest.localeCompare(b.oldest) ||
-            canonicalJSON(a.scope).localeCompare(canonicalJSON(b.scope)),
-        )
-        .map((item) => item.scope);
-    });
-  }
-  async plan(input: C.PlanInput): Promise<C.BacklogPlan> {
-    return this.refreshed((view) => {
-      const now = millis(input.now);
-      const p = input.policy;
-      if (
-        !Object.values(p).every(Number.isSafeInteger) ||
-        p.minWindows < 0 ||
-        p.maxPendingAgeMs < 0 ||
-        p.maxBatchWindows < 1 ||
-        p.maxBatchBytes < 1 ||
-        p.leaseMs <= 0
-      )
-        throw new Error("invalid backlog policy");
-      const pending: C.PendingWindow[] = [...view.windows.values()]
-        .filter(
-          (w) =>
-            scopeEqual(w.scope, input.scope) && !view.terminal.has(w.windowId),
-        )
-        .map((window) => {
-          const retry = view.retry.get(window.windowId);
-          const attempts = [...view.accepted.values()].filter((a) =>
-            a.local?.outcomes.some(
-              (o) =>
-                o.windowId === window.windowId && o.decision.kind === "retry",
-            ),
-          ).length;
-          return {
-            window,
-            pendingSince: window.capturedAt,
-            attempts,
-            notBefore:
-              retry?.decision.kind === "retry"
-                ? retry.decision.retryAt
-                : window.capturedAt,
-          };
-        })
-        .sort(
-          (a, b) =>
-            a.pendingSince.localeCompare(b.pendingSince) ||
-            a.window.windowId.localeCompare(b.window.windowId),
-        );
-      if (!pending.length)
-        return { kind: "idle", reason: "empty", nextCheckAt: null };
-      this.db
-        .prepare(
-          "DELETE FROM leases WHERE json_extract(payload,'$.expiresAt')<=?",
-        )
-        .run(input.now);
-      const free = pending.filter(
-        (w) =>
-          !this.db
-            .prepare("SELECT 1 FROM leases WHERE window=?")
-            .get(w.window.windowId),
-      );
-      if (!free.length)
+        for (const note of view.revisions.values())
+          if (
+            scopeEqual(note.scope, scope) &&
+            index.byRevision.has(note.revisionId)
+          )
+            noteIds.add(note.noteId);
         return {
-          kind: "idle",
-          reason: "leased",
-          nextCheckAt: iso(now + p.leaseMs),
+          noteIds: [...noteIds].sort(),
+          evidence: [
+            ...new Map(
+              index.evidence
+                .filter((item) => scopeEqual(item.scope, scope))
+                .map((item) => [canonicalJSON(item.evidence), item.evidence]),
+            ).values(),
+          ],
         };
-      const ready = free.filter((w) => millis(w.notBefore) <= now);
-      if (!ready.length)
-        return {
-          kind: "idle",
-          reason: "backoff",
-          nextCheckAt: free.map((w) => w.notBefore).sort()[0]!,
-        };
-      const reason = ready.some((w) => w.attempts > 0)
-        ? "recovery"
-        : ready.some((w) => w.window.importance === "correction")
-          ? "correction"
-          : now - millis(ready[0]!.pendingSince) >= p.maxPendingAgeMs
-            ? "age"
-            : ready.length >= p.minWindows
-              ? "threshold"
-              : null;
-      if (!reason)
-        return {
-          kind: "idle",
-          reason: "below-threshold",
-          nextCheckAt: iso(millis(ready[0]!.pendingSince) + p.maxPendingAgeMs),
-        };
-      const selected: C.PendingWindow[] = [];
-      let bytes = 0;
-      for (const w of ready) {
-        const size = Buffer.byteLength(canonicalJSON(w.window));
+      },
+      false,
+      options,
+    );
+  }
+  async hasAcceptedCommit(
+    id: C.CommitId,
+    options: FileMemoryStoreOptions = this.options,
+  ): Promise<boolean> {
+    return this.refreshed((view) => view.accepted.has(id), false, options);
+  }
+  async pendingScopes(
+    options: FileMemoryStoreOptions = this.options,
+  ): Promise<readonly C.MemoryScope[]> {
+    return this.refreshed(
+      (view) => {
+        const scopes = new Map<
+          string,
+          { scope: C.MemoryScope; oldest: string }
+        >();
+        for (const window of view.windows.values()) {
+          if (
+            view.terminal.has(window.windowId) ||
+            (window.scope.kind === "personal" &&
+              window.scope.ownerId !== this.config.owner)
+          )
+            continue;
+          const key = canonicalJSON(window.scope);
+          const prior = scopes.get(key);
+          if (!prior || prior.oldest > window.capturedAt)
+            scopes.set(key, { scope: window.scope, oldest: window.capturedAt });
+        }
+        return [...scopes.values()]
+          .sort(
+            (a, b) =>
+              a.oldest.localeCompare(b.oldest) ||
+              canonicalJSON(a.scope).localeCompare(canonicalJSON(b.scope)),
+          )
+          .map((item) => item.scope);
+      },
+      false,
+      options,
+    );
+  }
+  async plan(
+    input: C.PlanInput,
+    options: FileMemoryStoreOptions = this.options,
+  ): Promise<C.BacklogPlan> {
+    return this.refreshed(
+      (view) => {
+        const now = millis(input.now);
+        const p = input.policy;
         if (
-          bytes + size > p.maxBatchBytes ||
-          selected.length >= p.maxBatchWindows
+          !Object.values(p).every(Number.isSafeInteger) ||
+          p.minWindows < 0 ||
+          p.maxPendingAgeMs < 0 ||
+          p.maxBatchWindows < 1 ||
+          p.maxBatchBytes < 1 ||
+          p.leaseMs <= 0
         )
-          break;
-        selected.push(w);
-        bytes += size;
-      }
-      if (!selected.length)
-        throw new Error(
-          "pending window exceeds maxBatchBytes; increase policy or split producer windows",
-        );
-      const lease: C.LocalLease = {
-        leaseId: randomUUID() as C.LeaseId,
-        jobId: input.jobId,
-        owner: input.owner,
-        expiresAt: iso(now + p.leaseMs),
-      };
-      for (const w of selected)
+          throw new Error("invalid backlog policy");
+        const pending: C.PendingWindow[] = [...view.windows.values()]
+          .filter(
+            (w) =>
+              scopeEqual(w.scope, input.scope) &&
+              !view.terminal.has(w.windowId),
+          )
+          .map((window) => {
+            const retry = view.retry.get(window.windowId);
+            const attempts = [...view.accepted.values()].filter((a) =>
+              a.local?.outcomes.some(
+                (o) =>
+                  o.windowId === window.windowId && o.decision.kind === "retry",
+              ),
+            ).length;
+            return {
+              window,
+              pendingSince: window.capturedAt,
+              attempts,
+              notBefore:
+                retry?.decision.kind === "retry"
+                  ? retry.decision.retryAt
+                  : window.capturedAt,
+            };
+          })
+          .sort(
+            (a, b) =>
+              a.pendingSince.localeCompare(b.pendingSince) ||
+              a.window.windowId.localeCompare(b.window.windowId),
+          );
+        if (!pending.length)
+          return { kind: "idle", reason: "empty", nextCheckAt: null };
         this.db
-          .prepare("INSERT INTO leases VALUES (?,?,?)")
-          .run(w.window.windowId, lease.leaseId, canonicalJSON(lease));
-      return {
-        kind: "eligible",
-        reason,
-        batch: { lease, windows: [selected[0]!, ...selected.slice(1)] },
-      };
-    });
+          .prepare(
+            "DELETE FROM leases WHERE json_extract(payload,'$.expiresAt')<=?",
+          )
+          .run(input.now);
+        const free = pending.filter(
+          (w) =>
+            !this.db
+              .prepare("SELECT 1 FROM leases WHERE window=?")
+              .get(w.window.windowId),
+        );
+        if (!free.length)
+          return {
+            kind: "idle",
+            reason: "leased",
+            nextCheckAt: iso(now + p.leaseMs),
+          };
+        const ready = free.filter((w) => millis(w.notBefore) <= now);
+        if (!ready.length)
+          return {
+            kind: "idle",
+            reason: "backoff",
+            nextCheckAt: free.map((w) => w.notBefore).sort()[0]!,
+          };
+        const reason = ready.some((w) => w.attempts > 0)
+          ? "recovery"
+          : ready.some((w) => w.window.importance === "correction")
+            ? "correction"
+            : now - millis(ready[0]!.pendingSince) >= p.maxPendingAgeMs
+              ? "age"
+              : ready.length >= p.minWindows
+                ? "threshold"
+                : null;
+        if (!reason)
+          return {
+            kind: "idle",
+            reason: "below-threshold",
+            nextCheckAt: iso(
+              millis(ready[0]!.pendingSince) + p.maxPendingAgeMs,
+            ),
+          };
+        const selected: C.PendingWindow[] = [];
+        let bytes = 0;
+        for (const w of ready) {
+          const size = Buffer.byteLength(canonicalJSON(w.window));
+          if (
+            bytes + size > p.maxBatchBytes ||
+            selected.length >= p.maxBatchWindows
+          )
+            break;
+          selected.push(w);
+          bytes += size;
+        }
+        if (!selected.length)
+          throw new Error(
+            "pending window exceeds maxBatchBytes; increase policy or split producer windows",
+          );
+        const lease: C.LocalLease = {
+          leaseId: randomUUID() as C.LeaseId,
+          jobId: input.jobId,
+          owner: input.owner,
+          expiresAt: iso(now + p.leaseMs),
+        };
+        for (const w of selected)
+          this.db
+            .prepare("INSERT INTO leases VALUES (?,?,?)")
+            .run(w.window.windowId, lease.leaseId, canonicalJSON(lease));
+        return {
+          kind: "eligible",
+          reason,
+          batch: { lease, windows: [selected[0]!, ...selected.slice(1)] },
+        };
+      },
+      true,
+      options,
+    );
   }
   async checkDelivery(
     delivery: C.RecallDelivery,
     now: C.Timestamp,
+    options: FileMemoryStoreOptions = this.options,
   ): Promise<C.DeliveryEligibility> {
-    return this.refreshed((v) =>
-      this.eligibility(v, parseDelivery(delivery), now),
+    return this.refreshed(
+      (v) => this.eligibility(v, parseDelivery(delivery), now),
+      false,
+      options,
     );
   }
   private eligibility(
@@ -1100,52 +1292,75 @@ export class FileMemoryStore implements C.MemoryStore {
   }
   async queueDelivery(
     input: C.RecallDelivery,
+    options: FileMemoryStoreOptions = this.options,
   ): Promise<"queued" | "duplicate"> {
     const d = parseDelivery(input);
-    return this.refreshed((view) => {
-      const path = join(this.outbox, sha256(d.deliveryId));
-      if (existsSync(path)) {
-        if (!sameValue(this.localValue(path), d))
-          throw new IntegrityError("delivery identity collision");
-        return "duplicate";
-      }
-      const eligibility = this.eligibility(view, d, new Date().toISOString());
-      if (eligibility.kind === "discard")
-        throw new Error(`delivery rejected: ${eligibility.reason}`);
-      this.localCreate(path, d);
-      return "queued";
-    });
+    return this.refreshed(
+      (view) => {
+        const path = join(this.outbox, sha256(d.deliveryId));
+        if (existsSync(path)) {
+          if (!sameValue(this.localValue(path), d))
+            throw new IntegrityError("delivery identity collision");
+          return "duplicate";
+        }
+        const eligibility = this.eligibility(view, d, new Date().toISOString());
+        if (eligibility.kind === "discard")
+          throw new Error(`delivery rejected: ${eligibility.reason}`);
+        this.localCreate(path, d);
+        return "queued";
+      },
+      true,
+      options,
+    );
   }
-  async readDelivery(id: C.DeliveryId): Promise<C.RecallDelivery | null> {
-    const path = join(this.outbox, sha256(id));
-    if (!existsSync(path)) return null;
-    const delivery = parseDelivery(this.localValue(path));
-    if (delivery.deliveryId !== id)
-      throw new IntegrityError("outbox identity mismatch");
-    return delivery;
-  }
-  async nextDelivery(target: C.RecallTarget): Promise<C.RecallDelivery | null> {
-    return this.refreshed(() => {
-      for (const file of readdirSync(this.outbox)
-        .filter((f) => !f.startsWith("."))
-        .sort()) {
-        const d = parseDelivery(this.localValue(join(this.outbox, file)));
-        if (sha256(d.deliveryId) !== file)
+  async readDelivery(
+    id: C.DeliveryId,
+    options: FileMemoryStoreOptions = this.options,
+  ): Promise<C.RecallDelivery | null> {
+    return contend(
+      () => {
+        if (this.closed) throw new Error("memory store is closed");
+        const path = join(this.outbox, sha256(id));
+        if (!existsSync(path)) return null;
+        const delivery = parseDelivery(this.localValue(path));
+        if (delivery.deliveryId !== id)
           throw new IntegrityError("outbox identity mismatch");
-        if (
-          sameValue(target, d.intent.target) &&
-          !this.dispatched(d.deliveryId)
-        )
-          return d;
-      }
-      return null;
-    });
+        return delivery;
+      },
+      options,
+      5000,
+    );
+  }
+  async nextDelivery(
+    target: C.RecallTarget,
+    options: FileMemoryStoreOptions = this.options,
+  ): Promise<C.RecallDelivery | null> {
+    return this.refreshed(
+      () => {
+        for (const file of readdirSync(this.outbox)
+          .filter((f) => !f.startsWith("."))
+          .sort()) {
+          const d = parseDelivery(this.localValue(join(this.outbox, file)));
+          if (sha256(d.deliveryId) !== file)
+            throw new IntegrityError("outbox identity mismatch");
+          if (
+            sameValue(target, d.intent.target) &&
+            !this.dispatched(d.deliveryId)
+          )
+            return d;
+        }
+        return null;
+      },
+      false,
+      options,
+    );
   }
   async recordDispatch(
     id: C.DeliveryId,
     outcome: C.DispatchOutcome,
+    options: FileMemoryStoreOptions = this.options,
   ): Promise<void> {
-    this.transaction(() => {
+    return this.transaction(() => {
       if (outcome.kind === "empty") return;
       if (
         outcome.deliveryId !== id ||
@@ -1153,7 +1368,7 @@ export class FileMemoryStore implements C.MemoryStore {
       )
         throw new Error("unknown delivery");
       this.localCreate(join(this.receipts, sha256(id)), outcome);
-    });
+    }, options);
   }
   private dependenciesReady(
     c: C.ReplicaChange,
@@ -1212,11 +1427,18 @@ export class FileMemoryStore implements C.MemoryStore {
     return ordered;
   }
   /** adapters close over one authenticated configured peer; acknowledgments never leak. */
-  forPeer(peer: string): C.ReplicaStore {
+  forPeer(
+    peer: string,
+    options: FileMemoryStoreOptions = this.options,
+  ): C.ReplicaStore {
     if (!peer) throw new Error("peer required");
+    const read = <T>(run: (view: View) => T) =>
+      this.refreshed(run, false, options);
+    const write = <T>(run: (view: View) => T) =>
+      this.refreshed(run, true, options);
     return {
       continuityToken: async () =>
-        this.refreshed((view) => {
+        write((view) => {
           const token = this.synchronizeContinuity(view, true);
           if (!token) throw new IntegrityError("missing repository continuity");
           return token;
@@ -1224,7 +1446,7 @@ export class FileMemoryStore implements C.MemoryStore {
       scan: async (after, limit) => {
         if (!Number.isSafeInteger(limit) || limit < 1 || limit > 4096)
           throw new Error("replica scan limit must be 1..4096");
-        return this.refreshed((view) => {
+        return read((view) => {
           const changes = this.orderedChanges(view);
           const start =
             after === null
@@ -1234,7 +1456,7 @@ export class FileMemoryStore implements C.MemoryStore {
         });
       },
       dependencyCommits: async (input, incoming = []) =>
-        this.refreshed((view) => {
+        write((view) => {
           if (incoming.length > 4096)
             throw new Error("replica dependency lookup exceeds 4096 commits");
           const target = parseReplicaChange(input);
@@ -1328,7 +1550,7 @@ export class FileMemoryStore implements C.MemoryStore {
         if (ids.length === 0) return [];
         if (ids.length > 4096)
           throw new Error("replica lookup exceeds 4096 commits");
-        return this.refreshed((view) =>
+        return read((view) =>
           ids.map((id) => {
             const change = view.accepted.get(id)?.replica;
             if (!change) throw new IntegrityError("missing replica commit");
@@ -1337,7 +1559,7 @@ export class FileMemoryStore implements C.MemoryStore {
         );
       },
       pending: async (limit) =>
-        this.refreshed((v) =>
+        read((v) =>
           this.orderedChanges(v)
             .filter(
               (c) =>
@@ -1350,14 +1572,24 @@ export class FileMemoryStore implements C.MemoryStore {
             .slice(0, Math.max(0, limit)),
         ),
       readCursor: async () =>
-        this.transaction(() => {
-          const row = this.db
-            .prepare("SELECT cursor FROM peer_cursor WHERE peer=?")
-            .get(peer);
-          return row ? string(row.cursor) : null;
-        }),
+        contend(
+          () => {
+            if (this.closed) throw new Error("memory store is closed");
+            try {
+              const row = this.db
+                .prepare("SELECT cursor FROM peer_cursor WHERE peer=?")
+                .get(peer);
+              return row ? string(row.cursor) : null;
+            } catch (error) {
+              if (isStoreBusy(error)) throw new LockUnavailable(error);
+              throw error;
+            }
+          },
+          options,
+          5000,
+        ),
       integrate: async (incoming) =>
-        this.refreshed((view) => {
+        write((view) => {
           const changes = incoming.map(parseReplicaChange);
           const next = this.preview(
             view,
@@ -1437,7 +1669,7 @@ export class FileMemoryStore implements C.MemoryStore {
               "INSERT INTO peer_cursor VALUES (?,?) ON CONFLICT(peer) DO UPDATE SET cursor=excluded.cursor",
             )
             .run(peer, cursor);
-        }),
+        }, options),
     };
   }
   private placements(): Placement[] {
@@ -1505,7 +1737,7 @@ export class FileMemoryStore implements C.MemoryStore {
     }
     return full;
   }
-  private scan(view: View): void {
+  private scan(view: View, apply = true): boolean {
     this.invalidEditable.clear();
     const placements = this.placements();
     const files: { path: string; logical: string; bytes: string }[] = [];
@@ -1644,7 +1876,7 @@ export class FileMemoryStore implements C.MemoryStore {
       };
       edits.push({ ...envelope, revisionId: revisionId(envelope) });
     }
-    if (edits.length)
+    if (edits.length && apply)
       this.publish(
         {
           commitId: `external-${sha256(canonicalJSON(edits))}` as C.CommitId,
@@ -1657,11 +1889,14 @@ export class FileMemoryStore implements C.MemoryStore {
         },
         null,
       );
+    return edits.length > 0;
   }
-  private materialize(view: View): void {
+  private materialize(view: View, apply = true): boolean {
     for (const p of this.placements())
-      if (!this.invalidEditable.has(p.path) && !this.placementDone(p))
+      if (!this.invalidEditable.has(p.path) && !this.placementDone(p)) {
+        if (!apply) return true;
         this.finishPlacement(p);
+      }
     const placements = this.placements();
     const pathOwners = new Map<string, Set<C.NoteId>>();
     for (const heads of view.heads.values())
@@ -1694,6 +1929,7 @@ export class FileMemoryStore implements C.MemoryStore {
           )
         )
           continue;
+        if (!apply) return true;
         const token = randomUUID();
         const candidate = join(this.recovery, `${token}.candidate.md`);
         const stash = join(this.recovery, `${token}.stash.md`);
@@ -1713,6 +1949,7 @@ export class FileMemoryStore implements C.MemoryStore {
         this.localCreate(join(this.journals, `${token}.intent`), p);
         this.finishPlacement(p);
       }
+    return false;
   }
   private finishPlacement(p: Placement): void {
     const target = this.safePath(p.path);
@@ -2122,16 +2359,14 @@ if (import.meta.vitest) {
         receiver.store.forPeer("inspect").dependencyCommits(target),
       ).rejects.toThrow("missing replica evidence dependency");
       const token = await f.store.forPeer("inspect").continuityToken();
-      await f.store
-        .forPeer("duplicate")
-        .integrate([
-          {
-            ...original,
-            commitId: "later-owner" as C.CommitId,
-            parents: [original.commitId],
-            revisions: [note("later")],
-          },
-        ]);
+      await f.store.forPeer("duplicate").integrate([
+        {
+          ...original,
+          commitId: "later-owner" as C.CommitId,
+          parents: [original.commitId],
+          revisions: [note("later")],
+        },
+      ]);
       expect(await f.store.forPeer("inspect").continuityToken()).toBe(token);
       expect(
         await f.store.forPeer("inspect").dependencyCommits(target),
@@ -2764,6 +2999,389 @@ if (import.meta.vitest) {
       rmSync(f.dir, { recursive: true });
     }
   });
+  /** A separate native connection owns the lock; tests never retry SQLITE_BUSY. */
+  async function holdWriter(
+    config: FileMemoryStoreConfig,
+  ): Promise<{ release(): Promise<void> }> {
+    const proc = spawn(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `
+      import { DatabaseSync } from 'node:sqlite';
+      const db = new DatabaseSync(${JSON.stringify(join(config.state, "coordination.sqlite"))});
+      db.exec('PRAGMA busy_timeout=0; BEGIN IMMEDIATE');
+      process.on('message', () => { db.exec('COMMIT'); db.close(); process.disconnect(); });
+      process.send('locked');
+    `,
+      ],
+      { stdio: ["ignore", "ignore", "pipe", "ipc"] },
+    );
+    let stderr = "";
+    proc.stderr!.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    const exited = new Promise<number | null>((resolve) =>
+      proc.on("exit", resolve),
+    );
+    await new Promise<void>((resolve, reject) => {
+      proc.once("message", () => resolve());
+      proc.once("error", reject);
+      proc.once("exit", (code) =>
+        reject(new Error(`lock holder exited ${code}: ${stderr}`)),
+      );
+    });
+    return {
+      release: async () => {
+        if (proc.connected) proc.send("release");
+        expect(await exited, stderr).toBe(0);
+      },
+    };
+  }
+  it("opens asynchronously across a >250ms native writer lock (sync opener is the negative control)", async () => {
+    const f = fixture();
+    const n = note("opening");
+    await f.store.commit(change("seed-open", [n]));
+    writeFileSync(
+      join(f.config.root, n.path),
+      n.markdown.replace("original", "pending native edit"),
+    );
+    const held = await holdWriter(f.config);
+    let opened: FileMemoryStore | undefined;
+    let release: ReturnType<typeof setTimeout> | undefined;
+    try {
+      expect(() => new FileMemoryStore(f.config)).toThrow("database is locked");
+      let timerRan = false;
+      const tick = setTimeout(() => {
+        timerRan = true;
+      }, 20);
+      const released = new Promise<void>((resolve) => {
+        release = setTimeout(() => {
+          void held.release().then(resolve);
+        }, 700);
+      });
+      opened = await FileMemoryStore.open(f.config, {
+        contentionTimeoutMs: 2000,
+      });
+      await released;
+      clearTimeout(tick);
+      expect(timerRan).toBe(true);
+      expect(
+        await opened.commit(change("opened", [note("opened")])),
+      ).toMatchObject({ kind: "locally-committed" });
+      expect(
+        (await opened.listNotes(scope)).some((n) =>
+          n.markdown.includes("pending native edit"),
+        ),
+      ).toBe(true);
+    } finally {
+      clearTimeout(release);
+      await held.release();
+      opened?.close();
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  }, 10000);
+  it("retries production capture, editable import and fenced commit without locking the model phase", async () => {
+    const f = fixture();
+    let held: Awaited<ReturnType<typeof holdWriter>> | undefined;
+    try {
+      const n = note("a");
+      await f.store.commit(change("seed", [n]));
+      held = await holdWriter(f.config);
+      // Unchanged views and authenticated outbox reads need no writer reservation.
+      expect(
+        await f.store.listNotes(scope, { contentionTimeoutMs: 0 }),
+      ).toEqual([n]);
+      expect(
+        await f.store.forPeer("test", { contentionTimeoutMs: 0 }).readCursor(),
+      ).toBeNull();
+      const capture = f.store.commit(
+        change("capture-contention", [], [window()]),
+        { contentionTimeoutMs: 2000 },
+      );
+      await delay(700);
+      await held.release();
+      held = undefined;
+      expect(await capture).toMatchObject({ kind: "locally-committed" });
+      held = await holdWriter(f.config);
+      writeFileSync(
+        join(f.config.root, n.path),
+        n.markdown.replace("original", "native edit"),
+      );
+      const reading = f.store.listNotes(scope, { contentionTimeoutMs: 2000 });
+      await delay(700);
+      await held.release();
+      held = undefined;
+      const imported = (await reading).find((n) =>
+        n.markdown.includes("native edit"),
+      )!;
+      expect(imported.markdown).toContain("native edit");
+      expect(imported.ancestry.kind).toBe("unknown-base");
+      const plan = await f.store.plan({
+        jobId: "model" as C.JobId,
+        owner: "model",
+        scope,
+        now,
+        policy: { ...policy, minWindows: 1 },
+      });
+      if (plan.kind !== "eligible") throw new Error("expected lease");
+      // A real second process acquires IMMEDIATE while the caller does model work.
+      held = await holdWriter(f.config);
+      const commit = f.store.commit(
+        {
+          ...change("consolidated", [note("result")]),
+          lease: plan.batch.lease,
+          outcomes: plan.batch.windows.map(({ window: w }) => ({
+            windowId: w.windowId,
+            sourceHash: w.sourceHash,
+            recordedAt: now,
+            decision: { kind: "no-change", reason: "fixture" },
+          })),
+        },
+        { contentionTimeoutMs: 2000 },
+      );
+      await delay(700);
+      await held.release();
+      held = undefined;
+      expect(await commit).toMatchObject({ kind: "locally-committed" });
+      expect(await f.store.pendingScopes()).toEqual([]);
+      expect(
+        [
+          ...new Set((await f.store.listNotes(scope)).map((n) => n.noteId)),
+        ].sort(),
+      ).toEqual(["a", "result"]);
+    } finally {
+      await held?.release();
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  }, 15000);
+  it("opens fresh retained-history readers while another process owns the writer lock, without durability acknowledgment", async () => {
+    const f = fixture();
+    let held: Awaited<ReturnType<typeof holdWriter>> | undefined;
+    try {
+      for (let i = 0; i < 6; i++)
+        await f.store.commit(
+          change(
+            `history-${i}`,
+            [note(`history-${i}`)],
+            [window(`history-${i}`)],
+          ),
+        );
+      // Include 109 retained manifests without paying 109 seed acknowledgments.
+      // These valid fixture appends deliberately have no durability acknowledgment;
+      // readers may inspect them, but a subsequent writer must confirm them.
+      for (let i = 6; i < 109; i++) {
+        const replica: C.ReplicaChange = {
+          commitId: `history-${i}` as C.CommitId,
+          replicaId: f.config.replicaId,
+          parents: [`history-${i - 1}` as C.CommitId],
+          revisions: [],
+          windows: [],
+          suppressions: [],
+          outcomes: [],
+        };
+        const bytes = canonicalJSON(replica),
+          hash = sha256(bytes);
+        writeFileSync(join(f.config.data, "objects", hash), bytes);
+        const payload = {
+          version: 1,
+          dependencies: [hash],
+          replica: hash,
+          local: null,
+        };
+        writeFileSync(
+          join(f.config.data, "commits", sha256(replica.commitId)),
+          canonicalJSON({ ...payload, hash: sha256(canonicalJSON(payload)) }),
+        );
+      }
+      held = await holdWriter(f.config);
+      // Any accidental Darwin confirmation would execute this real failing helper.
+      const helpers = join(f.dir, "helpers");
+      durableDirectory(helpers);
+      writeFileSync(join(helpers, "python3"), "#!/bin/sh\nexit 93\n");
+      chmodSync(join(helpers, "python3"), 0o700);
+      const run = () =>
+        new Promise<{ status: number | null; stdout: string; stderr: string }>(
+          (resolve) => {
+            const proc = spawn(
+              process.execPath,
+              [
+                "--input-type=module",
+                "-e",
+                `${childPrelude}
+          const store=await FileMemoryStore.open(${JSON.stringify(f.config)},{contentionTimeoutMs:0});
+          try {console.log(JSON.stringify({notes:(await store.listNotes(${JSON.stringify(scope)})).length,commits:(await store.forPeer('reader').scan(null,256)).length}));} finally {store.close();}
+        `,
+              ],
+              {
+                cwd: process.cwd(),
+                env: { ...process.env, PATH: helpers + ":" + process.env.PATH },
+                stdio: ["ignore", "pipe", "pipe"],
+              },
+            );
+            let stdout = "",
+              stderr = "";
+            proc.stdout.on("data", (c) => {
+              stdout += c;
+            });
+            proc.stderr.on("data", (c) => {
+              stderr += c;
+            });
+            proc.on("close", (status) => resolve({ status, stdout, stderr }));
+          },
+        );
+      for (const result of await Promise.all([run(), run(), run()])) {
+        expect(result.status, result.stderr).toBe(0);
+        expect(JSON.parse(result.stdout)).toEqual({ notes: 6, commits: 109 });
+      }
+    } finally {
+      await held?.release();
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  }, 20000);
+  it("discards preflight diagnostics when import cannot obtain a writer reservation", async () => {
+    const f = fixture();
+    let held: Awaited<ReturnType<typeof holdWriter>> | undefined;
+    try {
+      const n = note("diagnostic");
+      await f.store.commit(change("seed", [n]));
+      const path = join(f.config.root, n.path);
+      writeFileSync(path, "<!-- pi-memory {broken-json} -->\nkeep");
+      await f.store.listNotes(scope);
+      const before = f.store.editableProblems();
+      expect(before).toHaveLength(1);
+      held = await holdWriter(f.config);
+      writeFileSync(path, n.markdown.replace("original", "changed"));
+      await expect(
+        f.store.listNotes(scope, { contentionTimeoutMs: 20 }),
+      ).rejects.toBeInstanceOf(StoreContentionError);
+      expect(f.store.editableProblems()).toEqual(before);
+    } finally {
+      await held?.release();
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("detects missing production retries in a disposable source negative control", async () => {
+    const f = fixture();
+    try {
+      f.store.close();
+      const isolated = join(f.dir, "runtime");
+      cpSync(dirname(sourcePath), isolated, { recursive: true });
+      symlinkSync(
+        join(process.cwd(), "node_modules"),
+        join(f.dir, "node_modules"),
+      );
+      const copy = join(isolated, "store.ts"),
+        original = readFileSync(copy, "utf8");
+      const run = () =>
+        spawnSync(
+          process.execPath,
+          [
+            "--input-type=module",
+            "-e",
+            `
+        import {DatabaseSync} from 'node:sqlite'; import {createJiti} from 'jiti';
+        const jiti=createJiti(process.cwd()+'/package.json',{moduleCache:false,fsCache:false});
+        const {FileMemoryStore}=await jiti.import(${JSON.stringify(copy)});
+        const lock=new DatabaseSync(${JSON.stringify(join(f.config.state, "coordination.sqlite"))});
+        lock.exec('BEGIN IMMEDIATE'); let locked=true;
+        const release=()=>{if(locked){locked=false;lock.exec('COMMIT');lock.close();}};
+        const timer=setTimeout(release,350);
+        let store;try{store=await FileMemoryStore.open(${JSON.stringify(f.config)},{contentionTimeoutMs:1200});}
+        catch(error){console.error(JSON.stringify({message:error.message,errcode:error.errcode}));process.exitCode=1;}
+        finally{clearTimeout(timer);release();store?.close();}
+      `,
+          ],
+          { cwd: process.cwd(), encoding: "utf8", timeout: 10000 },
+        );
+      writeFileSync(
+        join(f.config.root, "positive.md"),
+        note("positive").markdown,
+      );
+      const positive = run();
+      expect(positive.status, String(positive.stderr)).toBe(0);
+      const needle = "if (!(error instanceof LockUnavailable)) throw error;";
+      expect(original).toContain(needle);
+      writeFileSync(
+        copy,
+        original.replace(
+          needle,
+          "throw error; /* isolated negative control: retries removed */",
+        ),
+      );
+      writeFileSync(
+        join(f.config.root, "negative.md"),
+        note("negative").markdown,
+      );
+      const negative = run();
+      expect(negative.status).not.toBe(0);
+      expect(String(negative.stderr)).toContain("database is locked");
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  }, 20000);
+  it("bounds contention, cancels opening and methods, and closes failed open connections", async () => {
+    const f = fixture();
+    const held = await holdWriter(f.config);
+    writeFileSync(join(f.config.root, "pending.md"), note("pending").markdown);
+    const { vi } = await import("vitest");
+    const closed = vi.spyOn(DatabaseSync.prototype, "close");
+    try {
+      await expect(
+        FileMemoryStore.open(f.config, { contentionTimeoutMs: 30 }),
+      ).rejects.toMatchObject({ code: "MEMORY_STORE_CONTENTION_TIMEOUT" });
+      expect(closed.mock.calls.length).toBeGreaterThan(0);
+      // Every failed constructor connection really is closed, not just scheduled.
+      for (const db of closed.mock.contexts)
+        expect(() => (db as DatabaseSync).prepare("SELECT 1")).toThrow();
+      const abort = new AbortController();
+      const reason = new Error("fixture cancellation");
+      const opening = FileMemoryStore.open(f.config, { signal: abort.signal });
+      const writing = f.store.commit(change("cancelled", [note("cancelled")]), {
+        signal: abort.signal,
+      });
+      const cancelled = Promise.all([
+        expect(opening).rejects.toBe(reason),
+        expect(writing).rejects.toBe(reason),
+      ]);
+      setTimeout(() => abort.abort(reason), 20);
+      await cancelled;
+      await expect(
+        f.store.readDelivery("absent" as C.DeliveryId, {
+          signal: abort.signal,
+        }),
+      ).rejects.toBe(reason);
+      await expect(
+        f.store.commit(change("budget", [note("budget")]), {
+          contentionTimeoutMs: 30,
+        }),
+      ).rejects.toBeInstanceOf(StoreContentionError);
+      await expect(
+        f.store.forPeer("test", { contentionTimeoutMs: 30 }).continuityToken(),
+      ).rejects.toBeInstanceOf(StoreContentionError);
+      const waiting = f.store.commit(change("closed", [note("closed")]), {
+        contentionTimeoutMs: 1000,
+      });
+      f.store.close();
+      await expect(waiting).rejects.toThrow("memory store is closed");
+      await held.release();
+      unlinkSync(join(f.config.root, "pending.md"));
+      f.store = await FileMemoryStore.open(f.config);
+      expect(await f.store.listNotes(scope)).toEqual([]);
+      expect(await f.store.forPeer("test").scan(null, 10)).toEqual([]);
+    } finally {
+      closed.mockRestore();
+      await held.release();
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  }, 10000);
   it("serializes independent writers and leases one pending window only once", async () => {
     const f = fixture();
     try {
@@ -2773,7 +3391,7 @@ if (import.meta.vitest) {
         id: string,
       ): Promise<{ status: number | null; stdout: string; stderr: string }> =>
         new Promise((resolve) => {
-          const script = `${childPrelude} let done=false; for(let attempt=0;attempt<2&&!done;attempt++){let store;try{store=new FileMemoryStore(${JSON.stringify(f.config)});await store.commit(${JSON.stringify(change(id, [note(id)]))});console.log(JSON.stringify(await store.plan(${JSON.stringify({ jobId: id, owner: id, scope, now: later, policy })})));done=true;}catch(error){if(!isStoreBusy(error)||attempt===1){console.error(JSON.stringify({message:error.message,errcode:error.errcode}));process.exitCode=1;break;}await new Promise(resolve=>setTimeout(resolve,750));}finally{store?.close();}}`;
+          const script = `${childPrelude} const store=await FileMemoryStore.open(${JSON.stringify(f.config)}); try { await store.commit(${JSON.stringify(change(id, [note(id)]))});console.log(JSON.stringify(await store.plan(${JSON.stringify({ jobId: id, owner: id, scope, now: later, policy })}))); } finally {store.close();}`;
           const process = spawn(
             globalThis.process.execPath,
             ["--input-type=module", "-e", script],
