@@ -482,6 +482,8 @@ export interface ReplicaTransport {
 }
 
 export interface ReplicaStore {
+  /** trusted local epoch: stable across append/restart, changes after retained payload removal/replacement. */
+  continuityToken(): Promise<string>;
   /** ACK-independent causal scan; an unknown checkpoint restarts from the beginning. */
   scan(
     after: CommitId | null,
