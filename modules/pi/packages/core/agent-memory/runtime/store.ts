@@ -977,6 +977,7 @@ export class FileMemoryStore implements C.MemoryStore {
     options: FileMemoryStoreOptions = this.options,
   ): Promise<C.CommitResult> {
     const clock = operationClock();
+    options = { ...this.options, ...options };
     // Preparation must own its bytes across asynchronous contention. A caller
     // mutating its request cannot change which payload a prepared hash names.
     const change = parseChange(structuredClone(value));
@@ -4347,9 +4348,20 @@ fcntl.fcntl(3,51)
       ).rejects.toBe(acquisition.signal.reason);
       const held = await holdWriter(f.config);
       try {
-        await expect(
-          f.store.commit(change("retained-zero-budget")),
-        ).rejects.toBeInstanceOf(StoreContentionError);
+        const cancellation = new AbortController(),
+          timer = setTimeout(
+            () => cancellation.abort(new Error("budget was replaced")),
+            150,
+          );
+        try {
+          await expect(
+            f.store.commit(change("retained-zero-budget"), {
+              signal: cancellation.signal,
+            }),
+          ).rejects.toBeInstanceOf(StoreContentionError);
+        } finally {
+          clearTimeout(timer);
+        }
       } finally {
         await held.release();
       }
