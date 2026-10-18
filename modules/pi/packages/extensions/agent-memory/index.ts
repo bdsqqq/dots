@@ -3,24 +3,24 @@ import type {
   ExtensionContext,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import type * as C from "../../core/agent-memory/runtime/contracts.js";
-import { parseDelivery } from "../../core/agent-memory/runtime/wire.js";
+import type * as C from "@bds_pi/pi-memory/runtime/contracts";
+import { parseDelivery } from "@bds_pi/pi-memory/runtime/wire";
 import {
   memoryConfiguration,
   type MemoryConfiguration,
-} from "../../core/agent-memory/runtime/config.js";
-import type { NativeProjectContext } from "../../core/agent-memory/runtime/project-context.js";
-import { nativeSourceSnapshot } from "../../core/agent-memory/runtime/pi-source.js";
+} from "@bds_pi/pi-memory/runtime/config";
+import type { NativeProjectContext } from "@bds_pi/pi-memory/runtime/project-context";
+import { nativeSourceSnapshot } from "@bds_pi/pi-memory/runtime/pi-source";
 import {
   canonicalJSON,
   sha256,
   sameValue,
-} from "../../core/agent-memory/runtime/identity.js";
+} from "@bds_pi/pi-memory/runtime/identity";
 import {
   runtimeStoreConfiguration,
   SessionMemoryWorker,
   type SessionWorkerOptions,
-} from "../../core/agent-memory/runtime/session-worker.js";
+} from "@bds_pi/pi-memory/runtime/session-worker";
 
 export const MEMORY_MESSAGE_TYPE: string = "pi-memory-recall";
 const MEMORY_AVAILABLE = "[memory context available]";
@@ -553,6 +553,30 @@ if (import.meta.vitest) {
   }, 30_000);
   afterAll(async () => {
     if (artifact) await fs.rm(artifact, { recursive: true, force: true });
+  });
+  it("loads the live source through the agent extensions directory symlink", async () => {
+    const agentDir = join(artifact, "symlink-agent");
+    await fs.mkdir(agentDir);
+    await fs.symlink(
+      resolve("packages/extensions"),
+      join(agentDir, "extensions"),
+    );
+    const loader = new DefaultResourceLoader({
+      cwd: process.cwd(),
+      agentDir,
+      settingsManager: SettingsManager.inMemory({}),
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      additionalExtensionPaths: [
+        join(agentDir, "extensions/agent-memory/index.ts"),
+      ],
+    });
+    await loader.reload();
+    expect(loader.getExtensions().errors).toEqual([]);
+    expect(loader.getExtensions().extensions).toHaveLength(1);
   });
   const wait = async (
     predicate: () => boolean | Promise<boolean>,
