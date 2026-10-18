@@ -93,7 +93,6 @@ export class SessionMemoryWorker {
       },
       resourceLimits: { maxOldGenerationSizeMb: 128 },
     });
-    this.worker.unref();
     this.worker.on(
       "message",
       (reply: { id: number; value?: SessionWorkerResult; error?: string }) => {
@@ -107,6 +106,7 @@ export class SessionMemoryWorker {
     );
     this.worker.on("error", (error) => this.fail(error));
     this.worker.on("exit", () => this.fail(new Error("memory worker closed")));
+    this.worker.unref();
   }
   request(
     request: SessionWorkerRequest,
