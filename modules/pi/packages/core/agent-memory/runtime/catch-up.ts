@@ -14,7 +14,12 @@ interface Progress {
   prefixHash: string;
   branches: Record<
     string,
-    { after: C.SourceSpan | null; last: C.SourceSpan | null; complete: boolean }
+    {
+      after: C.SourceSpan | null;
+      last: C.SourceSpan | null;
+      complete: boolean;
+      pending?: { hash: string; commitId: C.CommitId; now: string };
+    }
   >;
   complete: boolean;
 }
@@ -146,25 +151,39 @@ export async function catchUpNativeSources(input: {
       },
       input.signal,
     );
-    const windows = page.windows.map((w) => ({
-      ...w,
-      capturedAt: w.excerpts[0].occurredAt,
-    }));
+    const windows = page.windows;
     if (windows.length) {
+      const hash = sha256(canonicalJSON(windows.map((w) => w.windowId)));
+      if (branch.pending?.hash !== hash) {
+        branch.pending = {
+          hash,
+          commitId: randomUUID() as C.CommitId,
+          now: new Date().toISOString(),
+        };
+        // persist the first acceptance clock before publishing. replay needs the
+        // identical payload, while pending age must not inherit source age.
+        save(input.checkpoint, state);
+      }
+      const pending = branch.pending;
       const outcome = await capture(
         {
-          source: { kind: "provided", windows },
+          source: {
+            kind: "provided",
+            windows: windows.map((w) => ({
+              ...w,
+              capturedAt: pending.now,
+            })),
+          },
           scope: input.scope,
-          commitId: sha256(
-            canonicalJSON({ capture: windows.map((w) => w.windowId) }),
-          ) as C.CommitId,
-          now: windows[0]!.capturedAt,
+          commitId: pending.commitId,
+          now: pending.now,
         },
         { store: input.store },
       );
       if (outcome.kind !== "locally-committed" && outcome.kind !== "unchanged")
         throw new Error(`capture ${outcome.kind}: ${outcome.reason}`);
       result.windows += windows.length;
+      delete branch.pending;
     }
     branch.last = windows.at(-1)?.excerpts.at(-1)?.span ?? branch.last;
     branch.after = page.next;

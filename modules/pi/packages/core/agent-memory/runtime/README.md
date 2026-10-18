@@ -52,8 +52,9 @@ its launcher resolves dependencies and source from the same editable live tree.
 launchd/systemd run bounded `maintain` processes every minute, independently of
 interactive sessions. each pass captures bounded source pages, reconciles at
 most one eligible batch, then retries configured peers. directory/span cursors
-and append-prefix fingerprints survive process exit. unchanged files need only
-metadata checks; appends resume retained spans. pending-age/threshold/recovery
+and append-prefix fingerprints survive process exit. replayable capture intents
+retain the first acceptance clock, so old source dates do not age new pending
+work. unchanged files need only metadata checks; appends resume retained spans. pending-age/threshold/recovery
 planning and durable no-change/backoff prevent empty thinking runs. replication
 has its own durable bounded retry state; a failed peer does not revoke local
 acceptance. the CLI aborts at 150 seconds and terminates at 155 seconds.
