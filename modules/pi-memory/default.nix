@@ -6,6 +6,11 @@ let
   # Darwin's hostName can include .local; the roster uses short SSH host names.
   localHost = if isDarwin then config.networking.localHostName else config.networking.hostName;
   peers = builtins.filter (host: host != localHost) [ "mbp-m2" "lgo-z2e" "htz-xfs-lab" ];
+  jobs = {
+    pi-memory = "reconcile";
+    pi-memory-capture = "catch-up";
+    pi-memory-replicate = "replicate";
+  };
   toolsBin = "${repoRoot}/modules/node-pnpm/node_modules/.bin";
   agentMemory = pkgs.writeShellApplication {
     name = "pi-memory";
@@ -33,37 +38,37 @@ in
   home-manager.users.bdsqqq = { config, ... }: {
     home.packages = [ agentMemory ];
 
-    launchd.agents.pi-memory = lib.mkIf isDarwin {
+    # native supervisors prevent overlap within a job, without coupling their lifetimes.
+    launchd.agents = lib.mkIf isDarwin (lib.mapAttrs (name: command: {
       enable = true;
       config = {
-        ProgramArguments = [ "${agentMemory}/bin/pi-memory" "maintain" ];
+        ProgramArguments = [ "${agentMemory}/bin/pi-memory" command ];
         RunAtLoad = true;
         StartInterval = 60;
         ProcessType = "Background";
         ThrottleInterval = 60;
-        StandardOutPath = "${config.home.homeDirectory}/Library/Logs/pi-memory.log";
-        StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/pi-memory.log";
+        StandardOutPath = "${config.home.homeDirectory}/Library/Logs/${name}.log";
+        StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/${name}.log";
       };
-    };
+    }) jobs);
 
-    systemd.user.services.pi-memory = lib.mkIf isLinux {
-      Unit.Description = "Capture native pi sessions, reconcile eligible backlog and replicate memory";
+    systemd.user.services = lib.mkIf isLinux (lib.mapAttrs (_: command: {
+      Unit.Description = "Pi memory ${command}";
       Service = {
         Type = "oneshot";
-        TimeoutStartSec = 180;
-        ExecStart = "${agentMemory}/bin/pi-memory maintain";
+        TimeoutStartSec = "infinity";
+        ExecStart = "${agentMemory}/bin/pi-memory ${command}";
       };
-    };
+    }) jobs);
 
-    systemd.user.timers.pi-memory = lib.mkIf isLinux {
-      Unit.Description = "Periodic pi session and agent memory maintenance";
+    systemd.user.timers = lib.mkIf isLinux (lib.mapAttrs (_: command: {
+      Unit.Description = "Periodic pi memory ${command}";
       Timer = {
         OnBootSec = "1m";
         OnUnitActiveSec = "1m";
         Persistent = true;
       };
       Install.WantedBy = [ "timers.target" ];
-    };
-
+    }) jobs);
   };
 }
