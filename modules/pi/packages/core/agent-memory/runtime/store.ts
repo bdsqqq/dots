@@ -165,6 +165,7 @@ export class FileMemoryStore implements C.MemoryStore {
   private readonly db: DatabaseSync;
   private watcher: FSWatcher | null = null;
   private readonly confirmed = new Set<string>();
+  private readonly invalidEditable = new Map<string, string>();
   constructor(config: FileMemoryStoreConfig) {
     this.config = {
       ...config,
@@ -208,6 +209,13 @@ export class FileMemoryStore implements C.MemoryStore {
   close(): void {
     this.watcher?.close();
     this.db.close();
+  }
+  /** unavailable files stay untouched; distinguish degradation from an empty vault. */
+  editableProblems(): readonly { path: string; reason: string }[] {
+    return [...this.invalidEditable].map(([path, reason]) => ({
+      path,
+      reason,
+    }));
   }
   /** hints reduce latency; operations still rescan after missing every event. */
   watch(onHint: () => void): void {
@@ -703,7 +711,12 @@ export class FileMemoryStore implements C.MemoryStore {
   }
   async listNotes(scope: C.MemoryScope): Promise<readonly C.NoteRevision[]> {
     return this.refreshed((v) =>
-      [...v.heads.values()].flat().filter((r) => scopeEqual(r.scope, scope)),
+      [...v.heads.values()]
+        .flat()
+        .filter(
+          (r) =>
+            scopeEqual(r.scope, scope) && !this.invalidEditable.has(r.path),
+        ),
     );
   }
   async readNotes(
@@ -866,7 +879,8 @@ export class FileMemoryStore implements C.MemoryStore {
         !r ||
         heads.length !== 1 ||
         heads[0]!.revisionId !== ref.revisionId ||
-        r.exposure.kind !== "active"
+        r.exposure.kind !== "active" ||
+        this.invalidEditable.has(r.path)
       )
         return discard("obsolete");
     }
@@ -997,6 +1011,30 @@ export class FileMemoryStore implements C.MemoryStore {
   forPeer(peer: string): C.ReplicaStore {
     if (!peer) throw new Error("peer required");
     return {
+      scan: async (after, limit) => {
+        if (!Number.isSafeInteger(limit) || limit < 1 || limit > 4096)
+          throw new Error("replica scan limit must be 1..4096");
+        return this.refreshed((view) => {
+          const changes = this.orderedChanges(view);
+          const start =
+            after === null
+              ? 0
+              : changes.findIndex((c) => c.commitId === after) + 1;
+          return changes.slice(start, start + limit);
+        });
+      },
+      readChanges: async (ids) => {
+        if (ids.length === 0) return [];
+        if (ids.length > 4096)
+          throw new Error("replica lookup exceeds 4096 commits");
+        return this.refreshed((view) =>
+          ids.map((id) => {
+            const change = view.accepted.get(id)?.replica;
+            if (!change) throw new IntegrityError("missing replica commit");
+            return change;
+          }),
+        );
+      },
       pending: async (limit) =>
         this.refreshed((v) =>
           this.orderedChanges(v)
@@ -1156,6 +1194,7 @@ export class FileMemoryStore implements C.MemoryStore {
     return full;
   }
   private scan(view: View): void {
+    this.invalidEditable.clear();
     const placements = this.placements();
     const files: { path: string; logical: string; bytes: string }[] = [];
     const walk = (dir: string): void => {
@@ -1186,9 +1225,29 @@ export class FileMemoryStore implements C.MemoryStore {
     };
     // an exception aborts the scan, so partial traversal never implies deletion.
     walk(this.config.root);
+    const parsed = new Map<string, ReturnType<typeof readMarkdownRevision>>();
+    for (const file of files) {
+      try {
+        parsed.set(
+          file.path,
+          readMarkdownRevision(file.bytes, file.logical, false),
+        );
+      } catch {
+        this.invalidEditable.set(file.logical, "invalid editable metadata");
+      }
+    }
     const edits: C.NoteRevision[] = [];
     for (const file of files) {
-      const marker = markdownIdentity(file.bytes);
+      if (!parsed.has(file.path)) continue;
+      const embedded = parsed.get(file.path) ?? null;
+      const marker = embedded && {
+        noteId: embedded.noteId,
+        base:
+          embedded.ancestry.kind === "known" &&
+          embedded.ancestry.parents.length === 1
+            ? embedded.ancestry.parents[0]!
+            : null,
+      };
       const known = [...view.revisions.values()].find(
         (r) =>
           r.markdown === file.bytes &&
@@ -1204,7 +1263,6 @@ export class FileMemoryStore implements C.MemoryStore {
       );
       if (known) continue;
       const history = placements.filter((p) => p.path === file.logical);
-      const embedded = readMarkdownRevision(file.bytes, file.logical, false);
       const basis = marker
         ? ([...view.revisions.values()].find(
             (r) => r.noteId === marker.noteId && r.revisionId === marker.base,
@@ -1233,7 +1291,7 @@ export class FileMemoryStore implements C.MemoryStore {
         files.filter(
           (f) =>
             !f.path.startsWith(`${this.recovery}/`) &&
-            markdownIdentity(f.bytes)?.noteId === basis.noteId,
+            parsed.get(f.path)?.noteId === basis.noteId,
         ).length === 1;
       const r = reviseMarkdown(
         identical ?? embedded ?? basis,
@@ -1259,8 +1317,7 @@ export class FileMemoryStore implements C.MemoryStore {
         files.some(
           (f) =>
             !f.path.startsWith(`${this.recovery}/`) &&
-            (markdownIdentity(f.bytes)?.noteId === noteId ||
-              f.logical === head.path),
+            (parsed.get(f.path)?.noteId === noteId || f.logical === head.path),
         )
       )
         continue;
@@ -1291,7 +1348,8 @@ export class FileMemoryStore implements C.MemoryStore {
   }
   private materialize(view: View): void {
     for (const p of this.placements())
-      if (!this.placementDone(p)) this.finishPlacement(p);
+      if (!this.invalidEditable.has(p.path) && !this.placementDone(p))
+        this.finishPlacement(p);
     const placements = this.placements();
     const pathOwners = new Map<string, Set<C.NoteId>>();
     for (const heads of view.heads.values())
@@ -1302,6 +1360,7 @@ export class FileMemoryStore implements C.MemoryStore {
       }
     for (const heads of view.heads.values())
       for (const r of heads) {
+        if (this.invalidEditable.has(r.path)) continue;
         let path = r.path;
         if (heads.length > 1 || pathOwners.get(r.path)!.size > 1) {
           const suffix = `-${encodeURIComponent(r.noteId)}`;
@@ -1619,6 +1678,131 @@ if (import.meta.vitest) {
     } finally {
       f.store.close();
       rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("isolates malformed editable metadata without replacing it or stopping unrelated work", async () => {
+    const f = fixture();
+    const broken = note("broken");
+    const healthy = note("healthy");
+    let store: FileMemoryStore | null = f.store;
+    try {
+      await store.commit(change("initial", [broken, healthy]));
+      const invalid = "<!-- pi-memory {broken-json} -->\nmy edit must survive";
+      writeFileSync(join(f.config.root, broken.path), invalid);
+      store.close();
+      store = null;
+      store = new FileMemoryStore(f.config);
+      expect((await store.listNotes(scope)).map((n) => n.noteId)).toEqual([
+        healthy.noteId,
+      ]);
+      expect(store.editableProblems()).toEqual([
+        { path: broken.path, reason: "invalid editable metadata" },
+      ]);
+      expect(
+        await store.commit(change("unrelated-capture", [], [window()])),
+      ).toMatchObject({ kind: "locally-committed" });
+      expect(await store.checkDelivery(delivery(broken), now)).toMatchObject({
+        kind: "discard",
+        reason: "obsolete",
+      });
+      expect(readFileSync(join(f.config.root, broken.path), "utf8")).toBe(
+        invalid,
+      );
+      writeFileSync(join(f.config.root, broken.path), broken.markdown);
+      expect(
+        (await store.listNotes(scope)).map((n) => n.noteId).sort(),
+      ).toEqual([broken.noteId, healthy.noteId].sort());
+      expect(store.editableProblems()).toEqual([]);
+    } finally {
+      store?.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("scans ACK-independent causal pages and reads exact dependency ids", async () => {
+    const f = fixture();
+    try {
+      await f.store.commit(change("first", [note("first")]));
+      await f.store.commit(change("second", [note("second")]));
+      const peer = f.store.forPeer("remote");
+      const all = await peer.scan(null, 100);
+      await peer.acknowledge(
+        all.map((c) => c.commitId),
+        "already-acked",
+      );
+      expect(await peer.pending(100)).toEqual([]);
+      expect(await peer.scan(null, 1)).toEqual(all.slice(0, 1));
+      expect(await peer.scan(all[0]!.commitId, 1)).toEqual(all.slice(1));
+      expect(await peer.scan(all[1]!.commitId, 1)).toEqual([]);
+      expect(await peer.scan("unknown-checkpoint" as C.CommitId, 1)).toEqual(
+        all.slice(0, 1),
+      );
+      expect(await peer.readChanges([])).toEqual([]);
+      expect(
+        await peer.readChanges([all[1]!.commitId, all[0]!.commitId]),
+      ).toEqual([all[1], all[0]]);
+      await expect(
+        peer.readChanges([all[0]!.commitId, "missing" as C.CommitId]),
+      ).rejects.toThrow("missing replica commit");
+      await expect(peer.scan(null, 0)).rejects.toThrow("scan limit");
+      await expect(peer.scan(null, 4097)).rejects.toThrow("scan limit");
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("a restored receiver drives replay beyond its own checkpoint despite stale sender ACKs", async () => {
+    const sender = fixture("sender");
+    const receiver = fixture("receiver");
+    let restored: FileMemoryStore | null = receiver.store;
+    try {
+      await sender.store.commit(change("before-backup", [note("before")]));
+      const outgoing = sender.store.forPeer("receiver");
+      const first = (await outgoing.scan(null, 1))[0]!;
+      await restored.forPeer("sender").integrate([first]);
+      await restored.forPeer("sender").acknowledge([], first.commitId);
+      restored.close();
+      restored = null;
+      const backup = join(receiver.dir, "backup");
+      for (const [name, path] of Object.entries({
+        notes: receiver.config.root,
+        data: receiver.config.data,
+        state: receiver.config.state,
+      }))
+        cpSync(path, join(backup, name), { recursive: true });
+      restored = new FileMemoryStore(receiver.config);
+      await sender.store.commit(change("after-backup", [note("after")]));
+      const second = (await outgoing.scan(first.commitId, 1))[0]!;
+      await restored.forPeer("sender").integrate([second]);
+      await restored.forPeer("sender").acknowledge([], second.commitId);
+      await outgoing.acknowledge(
+        [first.commitId, second.commitId],
+        second.commitId,
+      );
+      expect(await outgoing.pending(10)).toEqual([]);
+      restored.close();
+      restored = null;
+      for (const [name, path] of Object.entries({
+        notes: receiver.config.root,
+        data: receiver.config.data,
+        state: receiver.config.state,
+      })) {
+        rmSync(path, { recursive: true });
+        cpSync(join(backup, name), path, { recursive: true });
+      }
+      restored = new FileMemoryStore(receiver.config);
+      const checkpoint = await restored.forPeer("sender").readCursor();
+      expect(checkpoint).toBe(first.commitId);
+      const repair = await outgoing.scan(checkpoint as C.CommitId, 1);
+      expect(repair.map((c) => c.commitId)).toEqual([second.commitId]);
+      await restored.forPeer("sender").integrate(repair);
+      expect(
+        (await restored.listNotes(scope)).map((n) => n.noteId).sort(),
+      ).toEqual(["after", "before"]);
+    } finally {
+      sender.store.close();
+      restored?.close();
+      rmSync(sender.dir, { recursive: true });
+      rmSync(receiver.dir, { recursive: true });
     }
   });
   it("accepts a multi-note batch, replays exactly, and rejects identity reuse", async () => {
