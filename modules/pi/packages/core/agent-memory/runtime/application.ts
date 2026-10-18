@@ -192,22 +192,32 @@ export class MemoryApplication {
     const captured = this.configuration.enabled
       ? await this.catchUp(signal)
       : null;
-    const reconciliation = this.configuration.enabled
-      ? await runReconciliation(
+    let reconciliation: ReconciliationRunResult = { results: [], idle: null };
+    if (this.configuration.enabled) {
+      const scopes = await this.store.pendingScopes();
+      // oldest pending scope first; backoff/threshold in one cannot stall another.
+      // one accepted/retried batch remains the global per-pass thinking budget.
+      for (const scope of scopes.length ? scopes : [this.scope]) {
+        signal.throwIfAborted();
+        reconciliation = await runReconciliation(
           {
             jobId: randomUUID() as C.JobId,
             owner: this.configuration.ownerId,
-            scope: this.scope,
+            scope,
             now: this.now(),
             policy: this.configuration.backlog,
             maxBatches: 1,
             maxRunMs: 90_000,
           },
           { store: this.store, model: this.model, signal },
-        )
-      : { results: [], idle: null };
-    // transport failure/backoff does not undo local acceptance or stop the next peer.
-    const replication = await this.replicate(signal);
+        );
+        if (reconciliation.results.length) break;
+      }
+    }
+    // disabled automatic maintenance must not keep exporting existing knowledge.
+    const replication = this.configuration.enabled
+      ? await this.replicate(signal)
+      : [];
     return { capture: captured, reconciliation, replication };
   }
   close(): void {
@@ -229,7 +239,8 @@ if (import.meta.vitest) {
     await import("@earendil-works/pi-coding-agent");
   const { InMemoryCredentialStore, fauxProvider, fauxAssistantMessage } =
     await import("@earendil-works/pi-ai");
-  const { nativeSourceSnapshot } = await import("./pi-source.js");
+  const { nativeSourceSnapshot, nativeSourceProducer } =
+    await import("./pi-source.js");
   const { importLegacyMarkdown } = await import("./legacy-import.js");
   const { handleMemoryJSON } = await import("./cli.js");
   const { authenticateInboundPeer } = await import("./peer-auth.js");
@@ -369,6 +380,140 @@ if (import.meta.vitest) {
       rmSync(f.dir, { recursive: true, force: true });
     }
   }, 30_000);
+  it("maintenance drains JSON-accepted restricted project experience and retains coverage after reopen", async () => {
+    const f = fixture();
+    const project: C.MemoryScope = {
+      kind: "project",
+      repositoryId: "fixture-project",
+    };
+    const { adaptConsolidationProposal } = await import("./model.js");
+    const model: C.ConsolidationModel = {
+      reconcile: async (input) => {
+        const window = input.batch.windows[0].window;
+        const text = window.excerpts[0].text;
+        return adaptConsolidationProposal(
+          {
+            notes: [
+              {
+                key: "decision",
+                noteId: null,
+                title: "offline project decision",
+                body: text,
+                scope: project,
+                links: [],
+                claims: [
+                  {
+                    kind: "producer-statement",
+                    text,
+                    evidence: [
+                      { windowId: window.windowId, excerptIndexes: [0] },
+                    ],
+                    derivedFrom: [],
+                  },
+                ],
+              },
+            ],
+            outcomes: input.batch.windows.map((p) => ({
+              windowId: p.window.windowId,
+              decision: { kind: "changed", noteKeys: ["decision"] },
+            })),
+          },
+          input,
+        );
+      },
+    };
+    let app = createMemoryApplication({
+      configuration: f.configuration,
+      model,
+    });
+    try {
+      const manager = SessionManager.inMemory(f.dir);
+      const entry = manager.appendMessage({
+        role: "user",
+        content: "i chose offline reconciliation for this project",
+        timestamp: Date.now(),
+      });
+      const snapshot = nativeSourceSnapshot(manager);
+      const page = await nativeSourceProducer(
+        { kind: "provided", snapshot },
+        { capturedAt: new Date().toISOString() },
+      ).read(
+        {
+          source: {
+            sourceId: snapshot.header.id as C.SourceId,
+            producer: "pi-native",
+            origin: {
+              kind: "session",
+              sessionId: snapshot.header.id as C.SessionId,
+            },
+          },
+          scope: project,
+          throughEntryId: entry as C.EntryId,
+          after: null,
+          maxWindows: 1,
+          maxWindowBytes: 8192,
+        },
+        signal(),
+      );
+      expect(
+        await handleMemoryJSON(
+          { command: "capture", windows: page.windows },
+          app,
+          signal(),
+        ),
+      ).toMatchObject({ kind: "locally-committed" });
+      const accepted = (await app.store.forPeer("audit").scan(null, 1))[0]!;
+      expect(await app.store.hasAcceptedCommit(accepted.commitId)).toBe(true);
+      expect(await app.store.hasAcceptedCommit("absent" as C.CommitId)).toBe(
+        false,
+      );
+      expect(await app.store.pendingScopes()).toEqual([project]);
+      expect(
+        (await app.maintain(signal())).reconciliation.results[0],
+      ).toMatchObject({ kind: "locally-committed" });
+      app.close();
+      app = createMemoryApplication({
+        configuration: f.configuration,
+        model: f.model,
+      });
+      expect(await app.store.pendingScopes()).toEqual([]);
+      const notes = await app.store.listNotes(project);
+      expect(notes).toHaveLength(1);
+      expect(notes[0]!.markdown).toContain(
+        "i chose offline reconciliation for this project",
+      );
+      expect((await app.maintain(signal())).reconciliation.idle?.reason).toBe(
+        "empty",
+      );
+    } finally {
+      app.close();
+      rmSync(f.dir, { recursive: true, force: true });
+    }
+  });
+  it("disabled automatic maintenance neither thinks nor exports existing knowledge", async () => {
+    const f = fixture();
+    const app = createMemoryApplication({
+      configuration: {
+        ...f.configuration,
+        enabled: false,
+        peers: ["unreachable-fixture"],
+      },
+      model: f.model,
+      transport: () => {
+        throw new Error("automatic transport must remain paused");
+      },
+    });
+    try {
+      expect(await app.maintain(signal())).toEqual({
+        capture: null,
+        reconciliation: { results: [], idle: null },
+        replication: [],
+      });
+    } finally {
+      app.close();
+      rmSync(f.dir, { recursive: true, force: true });
+    }
+  });
   it("appended native history resumes its durable span without recapturing the early prefix", async () => {
     const f = fixture();
     const app = createMemoryApplication({
