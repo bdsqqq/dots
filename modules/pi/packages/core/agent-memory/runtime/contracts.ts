@@ -242,6 +242,15 @@ export interface LeasedBatch {
   readonly windows: NonEmpty<PendingWindow>;
 }
 
+export interface RenewLeaseInput {
+  readonly lease: LocalLease;
+  readonly now: Timestamp;
+  readonly leaseMs: number;
+}
+export type RenewLeaseResult =
+  | { readonly kind: "renewed"; readonly lease: LocalLease }
+  | { readonly kind: "lease-lost" };
+
 export type BacklogPlan =
   | {
       readonly kind: "idle";
@@ -428,6 +437,8 @@ export interface MemoryStore {
   pendingScopes(): Promise<readonly MemoryScope[]>;
   /** cheap atomic selection/lease; idle plans must not call a model. */
   plan(input: PlanInput): Promise<BacklogPlan>;
+  /** renew ownership only; expired/replaced tokens cannot accept late output. */
+  renewLease(input: RenewLeaseInput): Promise<RenewLeaseResult>;
   /** includes competing heads; callers must not choose an arbitrary winner. */
   listNotes(scope: MemoryScope): Promise<readonly NoteRevision[]>;
   readNotes(
