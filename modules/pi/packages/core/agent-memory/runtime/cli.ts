@@ -221,6 +221,8 @@ if (import.meta.vitest) {
     existsSync,
     rmSync,
     symlinkSync,
+    readdirSync,
+    unlinkSync,
   } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { resolve } = await import("node:path");
@@ -415,6 +417,117 @@ if (import.meta.vitest) {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it("cold eligibility bounds opening and does not poison subsequent worker operations", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "memory-cold-check-"));
+    const configuration = memoryConfiguration({
+      settings: {
+        "@bds_pi/agent-memory": {
+          root: join(dir, "notes"),
+          data: join(dir, "data"),
+          state: join(dir, "state"),
+          ownerId: "fixture",
+          peers: [],
+        },
+      },
+      environment: {},
+      cwd: dir,
+      home: dir,
+    });
+    const seed = await openMemoryApplication({ configuration });
+    const store = seed.store.config;
+    seed.close();
+    const { createNoteRevision } = await import("./markdown.js");
+    const editable = join(store.root, "manual.md");
+    writeFileSync(
+      editable,
+      createNoteRevision({
+        noteId: "manual" as C.NoteId,
+        ancestry: { kind: "known", parents: [] },
+        scope: { kind: "personal", ownerId: "fixture" },
+        path: "manual.md",
+        body: "fixture only",
+        authoredAt: new Date().toISOString(),
+        claims: [],
+        links: [],
+        exposure: { kind: "active" },
+      }).markdown,
+    );
+    const worker = new SessionMemoryWorker({
+      store,
+      entry: new URL(
+        `file://${resolve("dist/core/agent-memory-session-worker.js")}`,
+      ),
+    });
+    const lock = new DatabaseSync(join(store.state, "coordination.sqlite"));
+    const target: C.RecallTarget = {
+      consumerId: "fixture",
+      sessionId: "fixture" as C.SessionId,
+      scope: { kind: "personal", ownerId: "fixture" },
+    };
+    const intent: C.RecallIntent = {
+      target,
+      intentId: "fixture" as C.IntentId,
+      entryId: "fixture" as C.EntryId,
+      query: "fixture",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      maxChars: 1000,
+      maxNotes: 1,
+    };
+    const delivery: C.RecallDelivery = {
+      deliveryId: "unknown" as C.DeliveryId,
+      intent,
+      context: {
+        text: "untrusted fixture",
+        notes: [
+          {
+            noteId: "unknown" as C.NoteId,
+            revisionId: "unknown" as C.RevisionId,
+          },
+        ],
+        evidence: [],
+      },
+    };
+    let held = false;
+    try {
+      // Load the worker/module graph without opening its store, so startup time
+      // cannot hide an over-budget database acquisition.
+      await worker.request({ kind: "project-context", cwd: dir });
+      lock.exec("BEGIN IMMEDIATE");
+      held = true;
+      const checked = worker
+        .request({ kind: "check", deliveries: [delivery] }, 5000)
+        .then(
+          (value) => ({ value }),
+          (error) => ({ error: String(error) }),
+        );
+      const result = await Promise.race([
+        checked,
+        new Promise((resolve) =>
+          setTimeout(() => resolve({ overran: true }), 600),
+        ),
+      ]);
+      expect(result).toMatchObject({
+        error: expect.stringMatching(/timeout|deadline/i),
+      });
+      expect(readdirSync(join(store.data, "commits"))).toEqual([]);
+      lock.exec("COMMIT");
+      held = false;
+      unlinkSync(editable);
+      expect(
+        await worker.request({ kind: "check", deliveries: [delivery] }),
+      ).toEqual([{ kind: "discard", reason: "obsolete" }]);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(await worker.request({ kind: "recover", target, intent })).toBe(
+        null,
+      );
+    } finally {
+      if (held) lock.exec("ROLLBACK");
+      lock.close();
+      worker.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
 
   it.each(["status", "maintain"])(
     "production %s imports an editable note despite an existing writer without caller retries",
