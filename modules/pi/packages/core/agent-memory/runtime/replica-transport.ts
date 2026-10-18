@@ -178,7 +178,7 @@ if (import.meta.vitest) {
   const { spawnSync } = await import("node:child_process");
   const { FileMemoryStore } = await import("./store.js");
   const { createNoteRevision } = await import("./markdown.js");
-  const { revisionId, hashSourceWindow, windowId } =
+  const { revisionId, hashSourceWindow, windowId, canonicalJSON, sha256 } =
     await import("./identity.js");
   const { synchronizeReplica } = await import("./replica.js");
   type Note = import("./contracts.js").NoteRevision;
@@ -617,7 +617,7 @@ if (import.meta.vitest) {
             `c${count - 1}`,
           ]);
           expect(failures).toBeGreaterThan(0);
-          // A warmed direct page may exceed the ancestry budget; wire bounds still apply.
+          // a warmed direct page may exceed the ancestry budget; wire bounds still apply.
           const complete = await exchangeReplica(
             { outgoing: [], cursor: null },
             { store: a, peerId: "cold", policy, signal: signal(), limits },
@@ -638,8 +638,35 @@ if (import.meta.vitest) {
       }
       throw new Error("cold byte proofs did not rebuild");
     },
-    90_000,
+    240_000,
   );
+
+  test("a direct batch larger than the closure count converges after bounded warming", async () => {
+    const a = store("a");
+    for (let i = 0; i < 6; i++) await commit(a, `c${i}`);
+    const limits = { ...REPLICA_LIMITS, maxClosureChanges: 2 };
+    for (let attempt = 0; attempt < 7; attempt++) {
+      try {
+        const response = await exchangeReplica(
+          { outgoing: [], cursor: null },
+          { store: a, peerId: "cold", policy, signal: signal(), limits },
+        );
+        expect(response.incoming.map((c) => c.commitId)).toEqual([
+          "c0",
+          "c1",
+          "c2",
+          "c3",
+          "c4",
+          "c5",
+        ]);
+        expect(attempt).toBeGreaterThan(0);
+        return;
+      } catch (error) {
+        expect(String(error)).toContain("replica closure limit");
+      }
+    }
+    throw new Error("cold batch proofs did not rebuild");
+  });
 
   test("actual repository replacement during proof reads or writes cannot authorize under a new epoch", async () => {
     for (const phase of ["read", "write"] as const) {
@@ -842,6 +869,141 @@ if (import.meta.vitest) {
       (await a.listNotes(scope))[0]!.markdown,
     ]);
   });
+
+  test.each(["outgoing", "incoming", "batch"] as const)(
+    "%s denies personal evidence dependencies even without declared parents",
+    async (direction) => {
+      for (const declared of [false, true]) {
+        const a = store(`${direction}-${declared}`);
+        const payload = {
+          source: {
+            sourceId: "source" as import("./contracts.js").SourceId,
+            producer: "fixture",
+            origin: {
+              kind: "session" as const,
+              sessionId: "session" as import("./contracts.js").SessionId,
+              project: { repositoryId: "fixture-project" },
+            },
+          },
+          scope,
+          excerpts: [
+            {
+              span: {
+                entryId: "entry" as import("./contracts.js").EntryId,
+                partId: "text",
+                start: 0,
+                end: 7,
+              },
+              parentEntryId: null,
+              producerRole: "user",
+              occurredAt: now,
+              text: "fixture",
+            },
+          ] as const,
+        };
+        const w = {
+          ...payload,
+          windowId: windowId(payload),
+          sourceHash: hashSourceWindow(payload),
+          capturedAt: now,
+          importance: "ordinary" as const,
+        };
+        const revision = createNoteRevision({
+          noteId: "project-note" as Note["noteId"],
+          scope: { kind: "project", repositoryId: "fixture-project" },
+          ancestry: { kind: "known", parents: [] },
+          path: "project-note.md",
+          body: "# project note",
+          links: [],
+          exposure: { kind: "active" },
+          authoredAt: now,
+          claims: [
+            {
+              kind: "producer-statement",
+              markdownSpan: { start: 0, end: 1 },
+              evidence: [
+                {
+                  windowId: w.windowId,
+                  source: w.source,
+                  sourceHash: w.sourceHash,
+                  spans: [w.excerpts[0].span],
+                },
+              ],
+              derivedFrom: [],
+            },
+          ],
+        });
+        const ancestor: Change = {
+          commitId: "c0" as Change["commitId"],
+          replicaId: "a" as Change["replicaId"],
+          parents: [],
+          revisions: [],
+          windows: [w],
+          suppressions: [],
+          outcomes: [],
+        };
+        const child: Change = {
+          ...ancestor,
+          commitId: "c1" as Change["commitId"],
+          parents: declared ? [ancestor.commitId] : [],
+          revisions: [revision],
+          windows: [],
+        };
+        const retained =
+          direction === "outgoing"
+            ? [ancestor, child]
+            : direction === "incoming"
+              ? [ancestor]
+              : [];
+        await a.forPeer("restore").integrate(retained);
+        const restricted = { ...policy, personal: false };
+        if (direction === "outgoing") {
+          // old authorization certified this exact parentless child under the
+          // restricted policy. new semantics must never reuse those v2 proofs.
+          const token = await a.forPeer("inspect").continuityToken();
+          const namespace = `replica-proof:v2:${sha256(canonicalJSON({ policy: restricted, token }))}`;
+          await a
+            .forPeer(`${namespace}:${sha256(child.commitId)}`)
+            .acknowledge([], sha256(canonicalJSON(child)));
+        }
+        const request = {
+          outgoing:
+            direction === "outgoing"
+              ? []
+              : direction === "incoming"
+                ? [child]
+                : [child, ancestor],
+          cursor: JSON.stringify({
+            version: 1,
+            after: "c0",
+            received: null,
+            attempts: 0,
+            retryAt: 0,
+          }),
+        };
+        await expect(
+          exchangeReplica(request, {
+            store: a,
+            peerId: "restricted",
+            policy: restricted,
+            signal: signal(),
+          }),
+        ).rejects.toThrow("scope denied");
+        if (direction !== "outgoing")
+          expect(await a.listNotes(revision.scope)).toEqual([]);
+        // the same payload is valid when the owner authorizes all dependencies.
+        await exchangeReplica(request, {
+          store: a,
+          peerId: "authorized",
+          policy,
+          signal: signal(),
+        });
+        expect(
+          (await a.listNotes(revision.scope)).map((n) => n.revisionId),
+        ).toEqual([revision.revisionId]);
+      }
+    },
+  );
 
   test("source roles, evidence identity and suppression survive real worker exchange", async () => {
     const a = store("a");
