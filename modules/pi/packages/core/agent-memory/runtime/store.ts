@@ -62,6 +62,7 @@ export interface FileMemoryStoreConfig {
       | "stash"
       | "prepared"
       | "confirming"
+      | "fencing"
       | "placement-prepared"
       | "placed"
       | "placement-durable",
@@ -591,11 +592,14 @@ export class FileMemoryStore implements C.MemoryStore {
     const finalizations: (() => void)[] = [];
     this.finalizations = finalizations;
     try {
-      return this.coordinateSync(() => {
-        this.validatePreparation(generation, files);
-        if (write) this.synchronizeContinuity(view);
-        return run(view);
-      }, write);
+      return this.coordinateSync(
+        () => {
+          if (write) this.synchronizeContinuity(view);
+          return run(view);
+        },
+        write,
+        () => this.validatePreparation(generation, files),
+      );
     } finally {
       this.finalizations = null;
       for (const finish of finalizations) finish();
@@ -621,8 +625,9 @@ export class FileMemoryStore implements C.MemoryStore {
   ): void {
     if (generation !== this.publicationGeneration())
       throw new SnapshotChanged();
+    this.config.publicationBoundary?.("fencing", String(generation));
     // These metadata comparisons fence replaced physical files and editable
-    // inodes. Content traversal, hashing and durability barriers already finished.
+    // inodes under a WAL reader, before acquiring the writer reservation.
     for (const [path, identity] of files) {
       try {
         if (physicalIdentity(path) === identity) continue;
@@ -652,21 +657,37 @@ export class FileMemoryStore implements C.MemoryStore {
     if (this.observe(path) !== identity) throw new SnapshotChanged();
     this.confirmed.set(path, identity);
   }
-  private coordinateSync<T>(run: () => T, write = true): T {
+  private coordinateSync<T>(
+    run: () => T,
+    write = true,
+    validate?: () => void,
+  ): T {
     if (this.closed) throw new Error("memory store is closed");
     try {
-      this.db.exec(write ? "BEGIN IMMEDIATE" : "BEGIN");
+      this.db.exec(validate ? "BEGIN" : write ? "BEGIN IMMEDIATE" : "BEGIN");
     } catch (error) {
       if (isStoreBusy(error)) throw new LockUnavailable(error);
       throw error;
     }
+    let entered = false;
     try {
+      // WAL readers do not reserve a writer. Pin the generation while checking
+      // physical metadata, then upgrade this SAME snapshot before any effects.
+      // A concurrent capture/renewal makes the upgrade fail with BUSY_SNAPSHOT;
+      // only this pre-callback acquisition may replay preparation.
+      validate?.();
+      if (validate && write)
+        this.db.exec(
+          "UPDATE publication_generation SET generation=generation WHERE id=1",
+        );
+      entered = true;
       const result = run();
       this.db.exec("COMMIT");
       return result;
     } catch (error) {
       this.db.exec("ROLLBACK");
-      if (!write && isStoreBusy(error)) throw new LockUnavailable(error);
+      if ((!entered || !write) && isStoreBusy(error))
+        throw new LockUnavailable(error);
       throw error;
     }
   }
@@ -1035,10 +1056,13 @@ export class FileMemoryStore implements C.MemoryStore {
     const finalizations: (() => void)[] = [];
     this.finalizations = finalizations;
     try {
-      this.coordinateSync(() => {
-        this.requirePreparation();
-        this.acceptPublication(prepared);
-      });
+      this.coordinateSync(
+        () => {
+          this.acceptPublication(prepared);
+        },
+        true,
+        () => this.requirePreparation(),
+      );
     } finally {
       this.finalizations = null;
       for (const finish of finalizations) finish();
@@ -1929,10 +1953,13 @@ export class FileMemoryStore implements C.MemoryStore {
               windows.delete(window.windowId);
             // A later duplicate must not retroactively change a cached dependency.
             // The epoch resets these ordinals whenever retained history changes.
-            this.coordinateSync(() => {
-              this.requirePreparation();
-              this.synchronizeContinuity(view, true);
-            });
+            this.coordinateSync(
+              () => {
+                this.synchronizeContinuity(view, true);
+              },
+              true,
+              () => this.requirePreparation(),
+            );
             const ordinals = new Map(
               this.db
                 .prepare(
@@ -2423,26 +2450,29 @@ export class FileMemoryStore implements C.MemoryStore {
   private finishPlacement(p: Placement, acceptIntent?: () => void): void {
     const target = this.safePath(p.path);
     durableDirectory(dirname(target));
-    this.coordinateSync(() => {
-      this.requirePreparation();
-      acceptIntent?.();
-      if (!existsSync(p.stash) && existsSync(target)) {
-        renameSync(target, p.stash);
-        this.config.publicationBoundary?.("stash", p.revisionId);
-      }
-      if (existsSync(p.candidate)) {
-        try {
-          linkSync(p.candidate, target);
-        } catch (error) {
-          if (!existsSync(target)) throw error;
+    this.coordinateSync(
+      () => {
+        acceptIntent?.();
+        if (!existsSync(p.stash) && existsSync(target)) {
+          renameSync(target, p.stash);
+          this.config.publicationBoundary?.("stash", p.revisionId);
         }
-      }
-      this.db
-        .prepare(
-          "INSERT INTO publication_generation(id,generation) VALUES(1,1) ON CONFLICT(id) DO UPDATE SET generation=generation+1",
-        )
-        .run();
-    });
+        if (existsSync(p.candidate)) {
+          try {
+            linkSync(p.candidate, target);
+          } catch (error) {
+            if (!existsSync(target)) throw error;
+          }
+        }
+        this.db
+          .prepare(
+            "INSERT INTO publication_generation(id,generation) VALUES(1,1) ON CONFLICT(id) DO UPDATE SET generation=generation+1",
+          )
+          .run();
+      },
+      true,
+      () => this.requirePreparation(),
+    );
     this.config.publicationBoundary?.("placed", p.revisionId);
     // No target mutation follows this point. A newer placement may finish while
     // these barriers wait; completing this old receipt cannot replace its bytes.
@@ -3688,7 +3718,7 @@ if (import.meta.vitest) {
   function gatedProcess(
     config: FileMemoryStoreConfig,
     code: string,
-    gate: "prepared" | "confirming",
+    gate: "prepared" | "confirming" | "fencing",
     source = sourcePath,
   ) {
     const dir = dirname(config.root),
@@ -3868,6 +3898,79 @@ if (import.meta.vitest) {
       rmSync(f.dir, { recursive: true });
     }
   }, 30000);
+  it("fences physical metadata under a WAL reader and detects a writer-held validation negative control", async () => {
+    for (const reader of [true, false]) {
+      const f = fixture();
+      let stalled: ReturnType<typeof gatedProcess> | undefined;
+      try {
+        await f.store.commit(change("seed", [note("metadata")], [window()]));
+        const plan = await f.store.plan({
+          jobId: "metadata" as C.JobId,
+          owner: "fixture",
+          scope,
+          now,
+          policy: { ...policy, minWindows: 1 },
+        });
+        if (plan.kind !== "eligible") throw Error("expected lease");
+        let source = sourcePath;
+        if (!reader) {
+          const isolated = join(f.dir, "runtime");
+          cpSync(dirname(sourcePath), isolated, { recursive: true });
+          symlinkSync(
+            join(process.cwd(), "node_modules"),
+            join(f.dir, "node_modules"),
+          );
+          source = join(isolated, "store.ts");
+          const original = readFileSync(source, "utf8");
+          const expression =
+            'validate ? "BEGIN" : write ? "BEGIN IMMEDIATE" : "BEGIN"';
+          expect(original).toContain(expression);
+          writeFileSync(
+            source,
+            original.replace(expression, 'write ? "BEGIN IMMEDIATE" : "BEGIN"'),
+          );
+        }
+        stalled = gatedProcess(
+          f.config,
+          `console.log(JSON.stringify(await store.commit(${JSON.stringify(change("after-metadata-fence"))})));`,
+          "fencing",
+          source,
+        );
+        await stalled.ready();
+        const probe = child(
+          f.config,
+          `const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync(config.state+'/coordination.sqlite');db.exec('PRAGMA busy_timeout=0;BEGIN IMMEDIATE;COMMIT');db.close();`,
+        );
+        if (reader) {
+          expect(probe.status, String(probe.stderr)).toBe(0);
+          // This changes only the SQLite snapshot, not any physical history.
+          // Acceptance must upgrade/retry rather than publish from the old read.
+          expect(
+            await f.store.renewLease({
+              lease: plan.batch.lease,
+              now: "2026-01-01T00:00:02.000Z",
+              leaseMs: 30000,
+            }),
+          ).toMatchObject({ kind: "renewed" });
+        } else {
+          expect(probe.status).not.toBe(0);
+          expect(String(probe.stderr)).toContain("database is locked");
+        }
+        stalled.release();
+        const result = await stalled.done;
+        expect(result.status, result.stderr).toBe(0);
+        expect(JSON.parse(result.stdout.trim())).toMatchObject({
+          kind: "locally-committed",
+          replay: false,
+        });
+      } finally {
+        stalled?.release();
+        await stalled?.done;
+        f.store.close();
+        rmSync(f.dir, { recursive: true });
+      }
+    }
+  }, 45000);
   it("detects a writer-held recovery regression in an isolated source copy", async () => {
     const f = fixture();
     let stalled: ReturnType<typeof gatedProcess> | undefined;
@@ -3936,8 +4039,8 @@ if (import.meta.vitest) {
           writeFileSync(
             source,
             original.replaceAll(
-              "this.validatePreparation(generation, files);",
-              "/* isolated negative control: stale snapshot accepted */",
+              "this.validatePreparation(generation, files)",
+              "undefined /* isolated negative control: stale snapshot accepted */",
             ),
           );
         }
@@ -4196,15 +4299,17 @@ fcntl.fcntl(3,51)
         source = join(isolated, "store.ts");
         const original = readFileSync(source, "utf8");
         const at = original.indexOf("  private finishPlacement(");
-        const tail = original.slice(at);
-        expect(tail).toContain("this.requirePreparation();");
+        const end = original.indexOf("\n}\n\nif (import.meta.vitest)", at);
+        const tail = original.slice(at, end);
+        expect(tail).toContain("this.requirePreparation()");
         writeFileSync(
           source,
           original.slice(0, at) +
             tail.replace(
-              "this.requirePreparation();",
-              "/* isolated negative control: placement fence disabled */",
-            ),
+              "this.requirePreparation()",
+              "undefined /* isolated negative control: placement fence disabled */",
+            ) +
+            original.slice(end),
         );
       }
       if (phase === "stash")
@@ -5038,8 +5143,8 @@ fcntl.fcntl(3,51)
             "",
           )
           .replaceAll(
-            "this.validatePreparation(generation, files);",
-            "/* isolated negative control: physical fence removed */",
+            "this.validatePreparation(generation, files)",
+            "undefined /* isolated negative control: physical fence removed */",
           ),
       );
       const negative = run();
