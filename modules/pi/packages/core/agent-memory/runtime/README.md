@@ -28,8 +28,10 @@ helpers, configuration, replica ports, contracts and worker configuration.
 
 editable native `settings.json` owns `@bds_pi/agent-memory`: `enabled`, `root`,
 `data`, `state`, `ownerId`, `model`, `peers` and `backlog`. unrelated settings,
-credentials and session selection are untouched. omitted model/auth use Pi's
-native runtime; this module does not select a T3 provider or require T3.
+credentials and session selection are untouched. use absolute namespace paths for
+one shared interactive/background instance: relative paths resolve from the caller's
+working directory. omitted model/auth use Pi's native runtime; this module does
+not select a T3 provider or require T3.
 
 `PI_MEMORY_ROOT`, `PI_MEMORY_DATA_DIR`, `PI_MEMORY_STATE_DIR`, `PI_MEMORY_OWNER`,
 `PI_MEMORY_MODEL` and JSON `PI_MEMORY_PEERS` override native namespace values.
@@ -42,20 +44,25 @@ all adapters call `runtimeStoreConfiguration`: notes at `<root>/runtime`, durabl
 objects at `<data>/runtime`, coordination/progress at `<state>/runtime`, and
 hostname replica identity. these runtime children coexist with legacy data.
 source discovery follows native session-root settings/environment selection.
-catch-up reads raw selected native branches, preserving session/entry IDs,
-producer roles and authored times; compaction/custom summaries are not new
-experience. project identity remains optional producer-supplied context, as in
-the extension; catch-up does not invent a repository identity from a directory.
+live capture selects its native through-entry; disk sweeps visit every leaf in
+that authorized session root. both preserve session/entry IDs, roles and authored
+times; compaction/custom summaries are not independent experience. default project
+observation runs off the inference loop using the workspace's local Git remote.
+supplied project context bypasses discovery; explicit null disables it. unavailable
+workspaces remain personal, and today's HEAD is never claimed as an old event's revision.
 
 Nix supplies Node, Python 3 (Darwin `F_FULLFSYNC`), SSH and compatibility Git.
 its launcher resolves dependencies and source from the same editable live tree.
 launchd/systemd run bounded `maintain` processes every minute, independently of
 interactive sessions. each pass captures bounded source pages, reconciles at
-most one eligible batch, then retries configured peers. directory/span cursors
-and append-prefix fingerprints survive process exit. replayable capture intents
-retain the first acceptance clock, so old source dates do not age new pending
-work. unchanged files need only metadata checks; appends resume retained spans. pending-age/threshold/recovery
-planning and durable no-change/backoff prevent empty thinking runs. replication
+most one eligible batch across owned personal/project backlogs, then retries
+configured peers. disabled automatic maintenance does not export existing memory.
+directory/span cursors and append-prefix fingerprints survive process exit, but
+retained acceptance receipts—not progress files—establish coverage after a restore.
+replayable capture intents retain the first acceptance clock, so old source dates
+do not age new pending work. appends resume retained spans; the native snapshot
+loader still reads a whole session before bounded windows are selected.
+pending-age/threshold/recovery and durable no-change/backoff prevent empty thinking runs. replication
 has its own durable bounded retry state; a failed peer does not revoke local
 acceptance. the CLI aborts at 150 seconds and terminates at 155 seconds.
 
@@ -108,7 +115,11 @@ uses its existing Git/configuration boundary; the Nix wrapper supplies its remot
 only through `PI_MEMORY_LEGACY_GIT_REMOTE`, mapped when a legacy command runs.
 legacy `request` records legacy demand; run `legacy maintain` to process it.
 the default supervisor processes native runtime work only. installed skills and
-the old engine remain intact until their consumers migrate.
+the old engine remain intact until their consumers migrate. legacy Git publication
+is separate from checkout materialization: the latter stays degraded when the
+reserved `<root>/runtime` path is enrolled, rather than swapping away live notes.
+interrupted legacy backups containing native data refuse cleanup and require
+explicit recovery. no automatic relocation or private-data migration occurs.
 
 `import-legacy` is separate from historical `migrate`. it requires an explicit
 1..128-file list, limits each file to 128 KiB, archives exact original bytes,

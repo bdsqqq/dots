@@ -21,9 +21,11 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 assert.equal(
   process.argv
     .slice(2)
-    .every((arg) => arg === "--negative" || arg === "--built"),
+    .every((arg) =>
+      ["--negative", "--negative-recall", "--built"].includes(arg),
+    ),
   true,
-  "offline only; flags: --built, --negative (deliberately clobber unrelated text)",
+  "offline only; flags: --built, --negative (clobber text), --negative-recall (disable automatic recall)",
 );
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const built = process.argv.includes("--built");
@@ -40,8 +42,6 @@ const expected = [
   "list_directory_github",
   "list_repositories",
   "look_at",
-  "memory_open",
-  "memory_search",
   "oracle",
   "read",
   "read_github",
@@ -62,6 +62,8 @@ const retired = [
   "ls",
   "read_session",
   "search_sessions",
+  "memory_open",
+  "memory_search",
 ];
 const temporary = mkdtempSync(join(realpathSync(tmpdir()), "pi-codemode-cli-"));
 const put = (path: string, value: string | Buffer) => {
@@ -162,25 +164,53 @@ try {
   const memoryRoot = join(temporary, "memory");
   const memoryData = join(temporary, "memory-data");
   mkdirSync(memoryRoot);
-  // Real verified projection publisher writes an isolated generation; no real memory is touched.
-  const { publishQmdSource } = await createJiti(import.meta.url).import<
-    typeof import("../packages/core/agent-memory/maintainer/projection.ts")
-  >(join(root, "packages/core/agent-memory/maintainer/projection.ts"));
-  const memory = Buffer.from(
-    '---\nmemory_version: 2\nmemory_id: "mem_fixture"\ntitle: "fixture"\ndescription: "offline memory"\nkind: "fact"\nscope: "global"\ntriggers: ["fixture"]\nkeywords: []\nstatus: "active"\nupdated: "2026-01-01"\n---\n\nMEMORY_FIXTURE\n',
-  );
-  publishQmdSource({ data: memoryData }, "a".repeat(40), {
-    list: () => ["2026-01-01-fixture-source__agent.md"],
-    read: () => memory,
+  // Real editable Markdown and durable acceptance, not a fake search reply.
+  const jiti = createJiti(import.meta.url);
+  const { FileMemoryStore } = await jiti.import<
+    typeof import("../packages/core/agent-memory/runtime/store.ts")
+  >(join(root, "packages/core/agent-memory/runtime/store.ts"));
+  const { createNoteRevision } = await jiti.import<
+    typeof import("../packages/core/agent-memory/runtime/markdown.ts")
+  >(join(root, "packages/core/agent-memory/runtime/markdown.ts"));
+  const note = createNoteRevision({
+    noteId:
+      "mem_fixture" as import("../packages/core/agent-memory/runtime/contracts.ts").NoteId,
+    scope: { kind: "personal", ownerId: "fixture" },
+    ancestry: { kind: "known", parents: [] },
+    path: "offline-verification--mem_fixture.md",
+    body: "# offline verification\n\nMEMORY_FIXTURE\n",
+    claims: [],
+    links: [],
+    exposure: { kind: "active" },
+    authoredAt: new Date().toISOString(),
   });
-  const rows = [
-    {
-      file: "qmd://agent-memories/2026-01-01-fixture-source-agent.md",
-      title: "2026-01-01-fixture-source__agent",
-      body: memory.toString("utf8"),
-    },
-  ];
-  executable("qmd", `console.log(${JSON.stringify(JSON.stringify(rows))});`);
+  const memoryStore = new FileMemoryStore({
+    root: join(memoryRoot, "runtime"),
+    data: join(memoryData, "runtime"),
+    state: join(temporary, "memory-state/runtime"),
+    owner: "fixture",
+    replicaId:
+      "fixture" as import("../packages/core/agent-memory/runtime/contracts.ts").ReplicaId,
+  });
+  try {
+    assert.equal(
+      (
+        await memoryStore.commit({
+          commitId:
+            "fixture-memory" as import("../packages/core/agent-memory/runtime/contracts.ts").CommitId,
+          now: note.authoredAt,
+          windows: [],
+          edits: [{ revision: note, expectedHeads: [] }],
+          suppressions: [],
+          outcomes: [],
+          lease: null,
+        })
+      ).kind,
+      "locally-committed",
+    );
+  } finally {
+    memoryStore.close();
+  }
   const settings: Record<string, unknown> = {};
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const extensionPaths = manifest.pi.extensions.map((p: string) =>
@@ -197,6 +227,9 @@ try {
     settings[`@bds_pi/${path.split("/").at(-1).replace(/\.js$/, "")}`] = {
       enabled: true,
     };
+  settings["@bds_pi/agent-memory"] = {
+    enabled: !process.argv.includes("--negative-recall"),
+  };
   settings["@bds_pi/agent-message"] = {
     enabled: true,
     queueDir: join(temporary, "mailbox"),
@@ -247,8 +280,6 @@ try {
       "SUBAGENT_FIXTURE",
     ],
     ["code_review", { diff_description: "fixture diff" }, "SUBAGENT_FIXTURE"],
-    ["memory_search", { query: "fixture" }, "mem_fixture"],
-    ["memory_open", { memoryId: "mem_fixture" }, "MEMORY_FIXTURE"],
     [
       "read_github",
       { repository: "https://github.com/fixture/repo", path: "fixture.txt" },
@@ -361,6 +392,7 @@ try {
     inventory: join(temporary, "inventory.json"),
     result: join(temporary, "result.json"),
     failure: join(temporary, "failure.txt"),
+    memoryObserved: join(temporary, "memory-observed"),
     code,
   };
   json(join(temporary, "plan.json"), plan);
@@ -373,8 +405,7 @@ try {
     PI_MEMORY_ROOT: memoryRoot,
     PI_MEMORY_DATA_DIR: memoryData,
     PI_MEMORY_STATE_DIR: join(temporary, "memory-state"),
-    QMD_BIN: join(temporary, "bin/qmd"),
-    PI_AGENT_MEMORY_PROMPT_WORKER: "0",
+    PI_MEMORY_OWNER: "fixture",
     BDS_PI_LOG_DIR: join(temporary, "logs"),
     PARALLEL_API_KEY: "fixture",
     PI_CODEMODE_PLAN: join(temporary, "plan.json"),
@@ -427,6 +458,10 @@ try {
   assert.ok(
     existsSync(plan.result),
     `codemode did not complete\n${run.stderr}\n${run.stdout}`,
+  );
+  assert.ok(
+    existsSync(plan.memoryObserved),
+    "automatic memory body never reached the actual provider context",
   );
   const result = JSON.parse(readFileSync(plan.result, "utf8"));
   assert.ok(
@@ -504,6 +539,7 @@ try {
           "project formatting script through bash; shell rg and listing",
           "image forwarded into provider context",
           "isolated mailbox enqueue",
+          "automatic editable-memory recall in provider context, without specialized memory tools",
           "native SDK history metadata and explicit branches through codemode, without model extraction",
           "cursor continuation in fresh CLI process with no originating transcript or fetch",
         ],
