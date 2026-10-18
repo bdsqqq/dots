@@ -10,7 +10,7 @@ user direction, verbatim:
 >
 > “they’d task a sub-agent to do it not because there’s a tool telling them to, or specifically for memory, but because that’s what they’d do anyways when searching repos or a codebase.”
 >
-> “our memory maintainer and such would be some separate process or routine, colocated in our codebase, but independent of a given agent session surviving.”
+> “our memory maintainer and such would be some separate process or routine, colocated in our codebase, but independent of  a given agent session surviving.”
 >
 > “that would only run given enough new stuff to reconcile”
 >
@@ -76,7 +76,7 @@ primary owns ordering, contract integration, plan status and final verification.
 
 | issue | outcome / owned slice | depends on | acceptance | state |
 |---|---|---|---|---|
-| M0 | inspect consumers; freeze typed contracts, migration boundary and smallest replication/store choice | — | source-derived consumer map; no unresolved owner; decisions recorded here and in contracts | active — primary + bounded audits |
+| M0 | inspect consumers; freeze typed contracts, migration boundary and smallest replication/store choice | — | source-derived consumer map; no unresolved owner; decisions recorded here and in contracts | complete — `c41db7cc`; primary boundary corrections below |
 | M1 | durable Markdown store, source windows, revisions, journal/outbox and external edits | M0 | real temporary files/process restart; interrupted multi-note commit; early entry beyond old 16/64 KiB limits; stale/unknown-base edits preserved | pending |
 | M2 | cheap planner and bounded automatic consolidation | M0, M1 | empty/below-threshold/backoff = zero model work; aged singleton and correction run; durable no-change; replay/crash-after-acceptance loses no coverage | pending |
 | M3 | shared asynchronous recall and thin native extension/inbox adapter | M0, M1 | real SDK session proceeds while retrieval waits; relevant text arrives without search/remember calls; obsolete/suppressed/wrong-scope deliveries never enter inbox; duplicate retry harmless | pending |
@@ -101,4 +101,14 @@ parallelism: M2/M3/M4 may proceed independently only after M1's accepted contrac
 
 baseline: `b934666d`, clean worktree. `pi-memory project-proposals --sync` returned no proposals. verified in source: the extension freezes session prompts and uses keyword search; source projection can retain 64 KiB while evidence admission allows 16 KiB. current CLI and Nix supervisor require Git-remote/canonical machinery. these are implementation observations, not measured live failure rates. see [prior assessment](packages/core/agent-memory/simplification-assessment.md); its earlier manual-memory recommendation is superseded by the intent above.
 
-replication component and local persistence implementation remain M0 decisions, not default adoption of an alpha library. tests must establish the application's guarantees; upstream marketing, rename-only writes and clean-close recovery tests do not prove power-loss durability.
+M0 decision: native immutable, SHA256-addressed changesets and exact Markdown/evidence objects; revision envelopes include ancestry, not only content. no homemade character CRDT or alpha replication library. replicas converge on causal heads and preserved alternatives; ordinary safe merges or semantic reconciliation create a new revision naming all resolved heads. deletions are tombstone revisions; suppression is separate and deny-wins while active.
+
+SQLite coordinates short local transactions/leases only; Markdown and immutable history remain recoverable without operational metadata. reuse file/directory fsync mechanisms, not the existing stale-directory-lock recovery. external editors do not honor application locks: capture current bytes before replacement, preserve unknown-base/late edits, and never silently overwrite an occupied path. a version-preserving materialization/recovery protocol is M1 acceptance, not permission to treat files as a disposable export.
+
+replica transport: bounded immutable exchanges, scoped to explicitly configured authenticated peers; use existing SSH for deployed peers and real local-process/filesystem transports for fixtures. no new public listener or enrollment. received dependencies validate before local publication. host-local leases/outbox targets/indexes never replicate. no Git operation or network acknowledgment gates local acceptance.
+
+source contracts distinguish native sessions from file producers; file edits must not fabricate native session/entry identity. store reads expose all competing heads; no empty-id-list-as-fetch-all convention. deletions are typed, not overloaded demotion strings. native inbox acknowledgment is not durable delivery: retain an outbox and deduplicate from persisted custom-message ids; filter queued/persisted memory again in the SDK context event before provider consumption.
+
+baseline verification: pi build typecheck and existing memory/extension vitest: 30 files / 306 tests passed. contracts also received a targeted compiler configuration because unimported runtime files are outside the normal build include. tests must establish application behavior; upstream marketing, rename-only writes and clean-close recovery do not prove power-loss durability. Darwin needs an explicit stronger flush barrier for stronger guarantees; physical-power-loss testing remains distinct from process-kill recovery.
+
+compatibility boundary: preserve project-proposal transport and explicit historical/manual interfaces until their callers are migrated. retire default personal-memory Git acceptance and frozen exposure machinery, not historical data. local runtime configuration must not require the legacy remote.

@@ -9,7 +9,8 @@ type NonEmpty<T> = readonly [T, ...T[]];
 
 export type SourceId = Identity<"source">;
 export type SessionId = Identity<"native-session">;
-export type EntryId = Identity<"native-entry">;
+/** producer identity: native ids stay verbatim; file producers use their own ids. */
+export type EntryId = Identity<"producer-entry">;
 export type WindowId = Identity<"window">;
 export type NoteId = Identity<"note">;
 /** hash of canonical revision content/ancestry, excluding its own id. */
@@ -32,7 +33,9 @@ export type MemoryScope =
 export interface SourceRef {
   readonly sourceId: SourceId;
   readonly producer: string;
-  readonly sessionId: SessionId;
+  readonly origin:
+    | { readonly kind: "session"; readonly sessionId: SessionId }
+    | { readonly kind: "file"; readonly path: string };
 }
 
 /** offsets are half-open utf-8 bytes in a producer's identified text part. */
@@ -96,7 +99,8 @@ export type RevisionAncestry =
 export type NoteExposure =
   | { readonly kind: "active" }
   | { readonly kind: "demoted"; readonly reason: string }
-  | { readonly kind: "superseded"; readonly by: NonEmpty<NoteId> };
+  | { readonly kind: "superseded"; readonly by: NonEmpty<NoteId> }
+  | { readonly kind: "deleted"; readonly reason: string };
 
 export interface NoteRevision extends NoteRef {
   readonly ancestry: RevisionAncestry;
@@ -405,6 +409,8 @@ export interface MemoryStore {
   commit(change: LocalChangeSet): Promise<CommitResult>;
   /** cheap atomic selection/lease; idle plans must not call a model. */
   plan(input: PlanInput): Promise<BacklogPlan>;
+  /** includes competing heads; callers must not choose an arbitrary winner. */
+  listNotes(scope: MemoryScope): Promise<readonly NoteRevision[]>;
   readNotes(
     scope: MemoryScope,
     ids: readonly NoteId[],
