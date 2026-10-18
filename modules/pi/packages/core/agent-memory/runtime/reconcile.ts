@@ -262,35 +262,98 @@ function providerSnapshot(
   };
 }
 
-async function boundedModel(
+/** wall elapsed includes suspend; monotonic elapsed prevents a backwards clock extending ownership. */
+function elapsedClock(): () => number {
+  const wall = Date.now(),
+    monotonic = performance.now();
+  return () => Math.max(0, Date.now() - wall, performance.now() - monotonic);
+}
+
+/** the logical lease survives provider latency, but never a lost owner or shutdown. */
+class ReconciliationLease {
+  private lease: C.LocalLease;
+  private readonly controller = new AbortController();
+  readonly signal: AbortSignal;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private renewal: Promise<void> = Promise.resolve();
+  private stopped = false;
+  private lost = false;
+  private readonly elapsed = elapsedClock();
+  constructor(
+    lease: C.LocalLease,
+    private readonly at: C.Timestamp,
+    private readonly store: C.MemoryStore,
+    signal: AbortSignal,
+    private readonly leaseMs = Date.parse(lease.expiresAt) - Date.parse(at),
+  ) {
+    this.lease = lease;
+    this.signal = AbortSignal.any([signal, this.controller.signal]);
+    this.schedule();
+  }
+  now(): C.Timestamp {
+    return new Date(
+      Date.parse(this.at) + Math.floor(this.elapsed()),
+    ).toISOString();
+  }
+  private schedule(): void {
+    if (this.stopped || this.lost || this.signal.aborted) return;
+    this.timer = setTimeout(
+      () => {
+        this.renewal = this.renew().finally(() => this.schedule());
+      },
+      Math.max(1, Math.floor(this.leaseMs / 3)),
+    );
+  }
+  private async renew(): Promise<void> {
+    try {
+      const result = await this.store.renewLease({
+        lease: this.lease,
+        now: this.now(),
+        leaseMs: this.leaseMs,
+      });
+      if (result.kind === "renewed") {
+        this.lease = result.lease;
+        return;
+      }
+    } catch {
+      // uncertain ownership cannot authorize acceptance; expiry preserves recovery.
+    }
+    this.lost = true;
+    this.controller.abort(new Error("reconciliation lease lost"));
+  }
+  async finish(): Promise<C.LocalLease | null> {
+    this.stopped = true;
+    clearTimeout(this.timer);
+    await this.renewal;
+    return this.lost ||
+      Date.parse(this.lease.expiresAt) <= Date.parse(this.now())
+      ? null
+      : this.lease;
+  }
+}
+
+async function cancellableModel(
   input: C.ConsolidationInput,
   model: C.ConsolidationModel,
   signal: AbortSignal,
-  milliseconds: number,
 ): Promise<C.ConsolidationResult> {
-  const controller = new AbortController();
-  const combined = AbortSignal.any([signal, controller.signal]);
-  let timer: ReturnType<typeof setTimeout> | undefined;
   let onAbort: (() => void) | undefined;
   try {
-    return await Promise.race([
+    const result = await Promise.race([
       Promise.resolve().then(() => {
-        combined.throwIfAborted();
-        return model.reconcile(input, combined);
+        signal.throwIfAborted();
+        return model.reconcile(input, signal);
       }),
       new Promise<never>((_, reject) => {
-        onAbort = () => reject(new Error("model aborted"));
-        combined.addEventListener("abort", onAbort, { once: true });
-        timer = setTimeout(() => {
-          controller.abort();
-          reject(new Error("model timeout"));
-        }, milliseconds);
-        if (combined.aborted) onAbort();
+        onAbort = () => reject(signal.reason ?? new Error("model aborted"));
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
       }),
     ]);
+    signal.throwIfAborted();
+    return result;
   } finally {
-    clearTimeout(timer);
-    if (onAbort) combined.removeEventListener("abort", onAbort);
+    if (onAbort) signal.removeEventListener("abort", onAbort);
   }
 }
 
@@ -298,7 +361,8 @@ async function boundedModel(
 async function reconcileWithBudget(
   input: Parameters<C.ReconcileHandler>[0],
   deps: Parameters<C.ReconcileHandler>[1],
-  maxCorpusBytes = 256 * 1024,
+  maxCorpusBytes: number,
+  owner: ReconciliationLease,
 ): Promise<C.CommitResult> {
   parseLease(input.batch.lease);
   if (
@@ -312,13 +376,11 @@ async function reconcileWithBudget(
     if (!sameValue(pending.window.scope, scope))
       throw new Error("batch contains mixed capture scopes");
   }
-  const started = performance.now();
-  const clock = (): C.Timestamp =>
-    new Date(
-      Date.parse(input.now) + Math.floor(performance.now() - started),
-    ).toISOString();
+  const clock = () => owner.now();
   let skipped: { windowId: C.WindowId; decision: C.WindowDecision }[] = [];
   const persistRetry = async (reason: string): Promise<C.CommitResult> => {
+    const lease = await owner.finish();
+    if (!lease) return { kind: "lease-lost" };
     const now = clock();
     return deps.store.commit({
       commitId:
@@ -327,7 +389,7 @@ async function reconcileWithBudget(
       windows: [],
       edits: [],
       suppressions: [],
-      lease: input.batch.lease,
+      lease,
       outcomes: input.batch.windows.map((p) => ({
         windowId: p.window.windowId,
         sourceHash: p.window.sourceHash,
@@ -343,13 +405,6 @@ async function reconcileWithBudget(
   };
   let change: C.LocalChangeSet;
   try {
-    const timeout = Math.max(
-      1,
-      Math.min(
-        120_000,
-        Date.parse(input.batch.lease.expiresAt) - Date.parse(input.now) - 100,
-      ),
-    );
     const scopes = new Map<string, C.MemoryScope>();
     for (const scope of [
       ...input.notes.map((note) => note.scope),
@@ -395,12 +450,7 @@ async function reconcileWithBudget(
         // the store's original suppression rules at the atomic acceptance boundary.
         suppressions: [],
       };
-      const result = await boundedModel(
-        snapshot,
-        deps.model,
-        deps.signal,
-        timeout,
-      );
+      const result = await cancellableModel(snapshot, deps.model, owner.signal);
       change = validateResult(result, snapshot, clock(), input.commitId);
     } else {
       change = {
@@ -434,6 +484,10 @@ async function reconcileWithBudget(
         : "model failed, timed out or returned invalid output",
     );
   }
+  const lease = await owner.finish();
+  if (!lease) return { kind: "lease-lost" };
+  if (deps.signal.aborted) return persistRetry("model aborted");
+  change = { ...change, lease, now: clock() };
   let result: C.CommitResult;
   try {
     result = await deps.store.commit(change);
@@ -463,7 +517,19 @@ async function reconcileWithBudget(
   return result;
 }
 
-export const reconcile: C.ReconcileHandler = reconcileWithBudget;
+export const reconcile: C.ReconcileHandler = async (input, deps) => {
+  const owner = new ReconciliationLease(
+    input.batch.lease,
+    input.now,
+    deps.store,
+    deps.signal,
+  );
+  try {
+    return await reconcileWithBudget(input, deps, 256 * 1024, owner);
+  } finally {
+    await owner.finish();
+  }
+};
 
 export interface ReconciliationRunInput extends C.PlanInput {
   readonly maxBatches?: number;
@@ -514,7 +580,7 @@ function boundedCorpus(
   return selected;
 }
 
-/** the store already owns planning; this runner adds bounded corpus and model work. */
+/** drain eligible backlog; only explicit caller budgets bound a job lifetime. */
 export async function runReconciliation(
   input: ReconciliationRunInput,
   deps: {
@@ -523,37 +589,46 @@ export async function runReconciliation(
     readonly signal: AbortSignal;
   },
 ): Promise<ReconciliationRunResult> {
-  const maxBatches = input.maxBatches ?? 1;
-  const maxRunMs = input.maxRunMs ?? 120_000;
+  const maxBatches = input.maxBatches ?? Infinity;
+  const maxRunMs = input.maxRunMs ?? Infinity;
   const maxCorpusBytes = input.maxCorpusBytes ?? 256 * 1024;
   if (
-    !Number.isSafeInteger(maxBatches) ||
-    maxBatches < 1 ||
-    maxBatches > 32 ||
-    !Number.isFinite(maxRunMs) ||
-    maxRunMs < 1 ||
+    (input.maxBatches !== undefined &&
+      (!Number.isSafeInteger(maxBatches) ||
+        maxBatches < 1 ||
+        maxBatches > 32)) ||
+    (input.maxRunMs !== undefined &&
+      (!Number.isFinite(maxRunMs) || maxRunMs < 1)) ||
     !Number.isSafeInteger(maxCorpusBytes) ||
     maxCorpusBytes < 1
   )
     throw new Error("invalid reconciliation run budget");
-  const started = performance.now();
+  const elapsed = elapsedClock();
   const controller = new AbortController();
   const signal = AbortSignal.any([deps.signal, controller.signal]);
-  const timer = setTimeout(() => controller.abort(), maxRunMs);
+  const timer =
+    input.maxRunMs === undefined
+      ? undefined
+      : setTimeout(() => controller.abort(), maxRunMs);
   const results: C.CommitResult[] = [];
   try {
     for (
       let i = 0;
-      i < maxBatches &&
-      performance.now() - started < maxRunMs &&
-      !signal.aborted;
+      i < maxBatches && elapsed() < maxRunMs && !signal.aborted;
       i++
     ) {
       const now = new Date(
-        Date.parse(input.now) + Math.floor(performance.now() - started),
+        Date.parse(input.now) + Math.floor(elapsed()),
       ).toISOString();
       const plan = await deps.store.plan({ ...input, now });
       if (plan.kind === "idle") return { results, idle: plan };
+      const owner = new ReconciliationLease(
+        plan.batch.lease,
+        now,
+        deps.store,
+        signal,
+        input.policy.leaseMs,
+      );
       const scopes = new Map<string, C.MemoryScope>([
         [canonicalJSON(input.scope), input.scope],
       ]);
@@ -591,31 +666,40 @@ export async function runReconciliation(
             },
             { ...deps, signal },
             maxCorpusBytes,
+            owner,
           ),
         );
       } catch (error) {
         // a failed store read has no safe snapshot. release via retry; do not strand a lease.
+        const lease = await owner.finish();
+        if (!lease) {
+          results.push({ kind: "lease-lost" });
+          continue;
+        }
+        const failedAt = owner.now();
         const retry = await deps.store.commit({
           commitId:
             `reconcile:${plan.batch.lease.leaseId}:load-retry` as C.CommitId,
-          now,
+          now: failedAt,
           windows: [],
           edits: [],
           suppressions: [],
-          lease: plan.batch.lease,
+          lease,
           outcomes: plan.batch.windows.map((p) => ({
             windowId: p.window.windowId,
             sourceHash: p.window.sourceHash,
-            recordedAt: now,
+            recordedAt: failedAt,
             decision: {
               kind: "retry",
               reason: "corpus or acceptance unavailable",
-              retryAt: retryAt(now, p.attempts),
+              retryAt: retryAt(failedAt, p.attempts),
             },
           })),
         });
         results.push(retry);
         if (retry.kind !== "locally-committed") throw error;
+      } finally {
+        await owner.finish();
       }
     }
     return { results, idle: null };
@@ -625,7 +709,7 @@ export async function runReconciliation(
 }
 
 if (import.meta.vitest) {
-  const { it, expect } = import.meta.vitest;
+  const { it, expect, vi } = import.meta.vitest;
   const { mkdtempSync, readFileSync, writeFileSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
@@ -1031,12 +1115,11 @@ if (import.meta.vitest) {
       f.store.close();
     }
   });
-  it("timeout and aborted/invalid output release leases into durable retry", async () => {
+  it("explicit run timeout and aborted/invalid output release leases into durable retry", async () => {
     for (const kind of ["timeout", "aborted", "invalid"] as const) {
       const f = fixture();
       try {
         await seed(f.store, [window("failure", "fixture", "correction")]);
-        const input = await leased(f.store, now);
         const controller = new AbortController();
         const failure: C.ConsolidationModel =
           kind === "invalid"
@@ -1051,42 +1134,144 @@ if (import.meta.vitest) {
         if (kind === "aborted") controller.abort();
         const result =
           kind === "timeout"
-            ? await runReconciliation(
-                { ...planInput(), maxRunMs: 10 },
-                { store: f.store, model: failure, signal: signal() },
-              )
-            : null;
-        if (kind === "timeout") {
-          // the first lease belongs to this direct call; use a short remaining lease.
-          const short = { ...input, now: "2026-01-01T00:00:59.899Z" };
-          expect(
-            (
-              await reconcile(short, {
-                store: f.store,
-                model: failure,
-                signal: signal(),
-              })
-            ).kind,
-          ).toBe("locally-committed");
-          expect(result?.results).toEqual([]);
-        } else
-          expect(
-            (
-              await reconcile(input, {
+            ? (
+                await runReconciliation(
+                  { ...planInput(), maxRunMs: 10 },
+                  {
+                    store: f.store,
+                    model: failure,
+                    signal: controller.signal,
+                  },
+                )
+              ).results[0]
+            : await reconcile(await leased(f.store, now), {
                 store: f.store,
                 model: failure,
                 signal: controller.signal,
-              })
-            ).kind,
-          ).toBe("locally-committed");
-        expect(
-          await f.store.plan(
-            planInput(kind === "timeout" ? "2026-01-01T00:00:59.900Z" : now),
-          ),
-        ).toMatchObject({ kind: "idle", reason: "backoff" });
+              });
+        expect(result?.kind).toBe("locally-committed");
+        expect(await f.store.plan(planInput(now))).toMatchObject({
+          kind: "idle",
+          reason: "backoff",
+        });
       } finally {
         f.store.close();
       }
+    }
+  });
+  it("renewable ownership outlives former minute and 150-second boundaries without blocking capture", async () => {
+    const f = fixture();
+    let release!: () => void, entered!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let running: Promise<C.CommitResult> | undefined;
+    const controller = new AbortController();
+    try {
+      await seed(f.store, [window("long", "fixture", "correction")]);
+      const input = await leased(f.store, now);
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "performance"],
+      });
+      running = reconcile(input, {
+        store: f.store,
+        signal: controller.signal,
+        model: {
+          reconcile: async (i) => {
+            entered();
+            await gate;
+            return model.reconcile(i, controller.signal);
+          },
+        },
+      });
+      await started;
+      for (let elapsed = 20_000; elapsed <= 200_000; elapsed += 20_000) {
+        await vi.advanceTimersByTimeAsync(20_000);
+        const current = new Date(Date.parse(now) + elapsed).toISOString();
+        expect(
+          await f.store.plan({
+            ...planInput(current),
+            jobId: "contender" as C.JobId,
+          }),
+        ).toMatchObject({ kind: "idle", reason: "leased" });
+      }
+      await seed(
+        f.store,
+        [window("independent", "new captured experience")],
+        "concurrent-capture",
+      );
+      expect(
+        (await f.store.forPeer("audit").scan(null, 100)).flatMap(
+          (c) => c.windows,
+        ),
+      ).toHaveLength(2);
+      release();
+      expect((await running).kind).toBe("locally-committed");
+      expect(await f.store.listNotes(scope)).toHaveLength(1);
+    } finally {
+      controller.abort();
+      release();
+      await running?.catch(() => {});
+      vi.useRealTimers();
+      f.store.close();
+    }
+  });
+  it("expired/reclaimed ownership cancels a provider ignoring abort and fences its late output", async () => {
+    const f = fixture();
+    let release!: () => void, entered!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let running: Promise<C.CommitResult> | undefined;
+    try {
+      await seed(f.store, [window("reclaimed", "fixture", "correction")]);
+      const input = await leased(f.store, now);
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "performance"],
+      });
+      running = reconcile(input, {
+        store: f.store,
+        signal: signal(),
+        model: {
+          reconcile: async (i) => {
+            entered();
+            await gate;
+            return model.reconcile(i, signal());
+          },
+        },
+      });
+      await started;
+      // advancing only the external clock simulates a suspended owner missing heartbeats.
+      const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 70_000);
+      const reclaimed = await f.store.plan({
+        ...planInput("2026-01-01T00:01:10.000Z"),
+        jobId: "replacement" as C.JobId,
+      });
+      expect(reclaimed.kind).toBe("eligible");
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(await running).toEqual({ kind: "lease-lost" });
+      release();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(await f.store.listNotes(scope)).toEqual([]);
+      expect(
+        await f.store.plan({
+          ...planInput("2026-01-01T00:01:11.000Z"),
+          jobId: "observer" as C.JobId,
+        }),
+      ).toMatchObject({ kind: "idle", reason: "leased" });
+      clock.mockRestore();
+    } finally {
+      release();
+      await running?.catch(() => {});
+      vi.useRealTimers();
+      f.store.close();
     }
   });
   it("skipped outcome and illegal scope negative controls retain all coverage for retry", async () => {
