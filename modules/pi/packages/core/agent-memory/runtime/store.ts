@@ -819,7 +819,7 @@ export class FileMemoryStore implements C.MemoryStore {
     // Every physical identity is still checked; this never certifies durability or
     // bypasses the later WAL fence / editable-file scan. Clone both ways so SDK
     // consumers cannot mutate cached authority through returned revision objects.
-    if (!confirm && this.preparingFiles && this.retainedView) {
+    if (this.preparingFiles && this.retainedView) {
       const cached = this.retainedView;
       let unchanged = true;
       try {
@@ -832,8 +832,12 @@ export class FileMemoryStore implements C.MemoryStore {
         unchanged = false;
       }
       if (unchanged) {
-        for (const [path, identity] of cached.files)
+        for (const [path, identity] of cached.files) {
           this.preparingFiles.set(path, identity);
+          // Reusing validated bytes never substitutes for a physical ACK. Cold
+          // write callers still establish every file barrier before admission.
+          if (confirm && path !== this.commits) this.confirmPhysical(path);
+        }
         return structuredClone(cached.view);
       }
       this.retainedView = null;
