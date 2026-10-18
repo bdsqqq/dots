@@ -83,6 +83,9 @@ export function createAgentMemoryExtension(
     const queued = new Set<string>();
     const captures = new Set<Promise<unknown>>();
     const checks = new Set<Promise<unknown>>();
+    let captureReady:
+      | { promise: Promise<void>; resolve: () => void }
+      | undefined;
     const error = (e: unknown): void => {
       if (!closed) options.onError?.(e);
     };
@@ -405,6 +408,19 @@ export function createAgentMemoryExtension(
         void request({ kind: "ack", deliveries: accepted }).catch(error);
       return { messages };
     });
+    pi.on("agent_start", () => {
+      if (!captureReady) {
+        let release!: () => void;
+        const promise = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        captureReady = { promise, resolve: release };
+      }
+    });
+    pi.on("agent_settled", () => {
+      captureReady?.resolve();
+      captureReady = undefined;
+    });
     pi.on("turn_end", (event, ctx) => {
       if (closed) return;
       const through = event.toolResultEntryIds.at(-1) ?? event.messageEntryId;
@@ -413,8 +429,10 @@ export function createAgentMemoryExtension(
         kind: "personal",
         ownerId: config.ownerId,
       };
-      const capture = projectReady
-        .then((observed) =>
+      // Capture each finalized turn, but publish after the run settles: durable
+      // filesystem flushes must not consume the next request's eligibility budget.
+      const capture = Promise.all([projectReady, captureReady?.promise])
+        .then(([observed]) =>
           request({
             kind: "capture",
             snapshot,
@@ -458,17 +476,18 @@ export function createAgentMemoryExtension(
     });
     pi.on("session_shutdown", async () => {
       closed = true;
+      captureReady?.resolve();
+      captureReady = undefined;
       generation++;
       intents = [];
       queued.clear();
       worker?.close();
       worker = undefined;
-      const closingCapture = captureWorker;
-      captureWorker = undefined;
       // shutdown may drain already-submitted capture, bounded by worker deadlines.
       // primary inference never waits for these durable acknowledgments.
       await Promise.allSettled([...captures]);
-      closingCapture?.close();
+      captureWorker?.close();
+      captureWorker = undefined;
     });
   };
 }
@@ -640,6 +659,12 @@ if (import.meta.vitest) {
         : SessionManager.inMemory(dir, { id: "native-fixture" });
     const errors: unknown[] = [];
     const enqueued: C.RecallDelivery[] = [];
+    const contextChecks: {
+      started: number;
+      duration?: number;
+      before: unknown;
+      after?: unknown;
+    }[] = [];
     const observeInbox =
       (extension: (pi: ExtensionAPI) => void) =>
       (pi: ExtensionAPI): void =>
@@ -666,6 +691,14 @@ if (import.meta.vitest) {
       noThemes: true,
       noContextFiles: true,
       extensionFactories: [
+        (pi) => {
+          pi.on("context", (event) => {
+            contextChecks.push({
+              started: performance.now(),
+              before: event.messages,
+            });
+          });
+        },
         observeInbox(
           nativeDefault
             ? (
@@ -695,6 +728,13 @@ if (import.meta.vitest) {
                 onError: (e) => errors.push(e),
               }),
         ),
+        (pi) => {
+          pi.on("context", (event) => {
+            const check = contextChecks.at(-1)!;
+            check.duration = performance.now() - check.started;
+            check.after = event.messages;
+          });
+        },
         createCodemodeExtension({ models: false }),
       ],
     });
@@ -746,6 +786,7 @@ exit 1
       faux,
       errors,
       enqueued,
+      contextChecks,
       async close() {
         await session.abort();
         await session.extensionRunner.emit({
@@ -1536,8 +1577,16 @@ exit 1
             await wait(() => f.enqueued.length === 2);
             return fauxAssistantMessage("first");
           },
-          (ctx) => {
+          async (ctx) => {
             contexts.push(JSON.stringify(ctx));
+            await expect(
+              fs.access(
+                join(
+                  runtimeStoreConfiguration(f.config).state,
+                  "capture-progress",
+                ),
+              ),
+            ).rejects.toThrow();
             return fauxAssistantMessage("second");
           },
         ]);
@@ -1548,7 +1597,10 @@ exit 1
             .filter((m) => m.role === "assistant")
             .map((m) => m.errorMessage),
         ).toEqual(expect.not.arrayContaining([expect.any(String)]));
-        expect(contexts[1]).toContain("violet lamp");
+        expect(contexts).toHaveLength(2);
+        expect(contexts[1], JSON.stringify(f.contextChecks)).toContain(
+          "violet lamp",
+        );
         expect(contexts[1]).toContain("sqlite queue");
         expect(contexts[1]).toContain("project historical fact");
         const [personalIntent, projectIntent] = f.enqueued.map((d) => d.intent);
