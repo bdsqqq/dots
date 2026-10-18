@@ -212,8 +212,14 @@ export async function memoryCLI(
 if (import.meta.vitest) {
   const { it, expect } = import.meta.vitest;
   const { spawnSync } = await import("node:child_process");
-  const { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } =
-    await import("node:fs");
+  const {
+    mkdtempSync,
+    mkdirSync,
+    writeFileSync,
+    existsSync,
+    rmSync,
+    symlinkSync,
+  } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { resolve } = await import("node:path");
   const { SessionMemoryWorker, runtimeStoreConfiguration } =
@@ -250,6 +256,15 @@ if (import.meta.vitest) {
       };
       const built = resolve("dist/core/agent-memory.js");
       expect(existsSync(built)).toBe(true);
+      const executable = join(dir, "pi-memory");
+      symlinkSync(built, executable);
+      const help = spawnSync(executable, ["--help"], {
+        env,
+        encoding: "utf8",
+        timeout: 15_000,
+      });
+      expect(help.status, help.stderr).toBe(0);
+      expect(help.stdout).toContain("pi-memory");
       writeFileSync(join(agent, "settings.json"), "{invalid native settings");
       for (const source of [true, false]) {
         const file = source
@@ -277,6 +292,7 @@ if (import.meta.vitest) {
           resolve("packages/core/agent-memory/index.ts"),
         ],
         [built],
+        [executable],
       ]) {
         const run = (command: string, input = "") =>
           spawnSync(process.execPath, [...entry, command], {
