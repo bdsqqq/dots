@@ -98,12 +98,6 @@ export function createAgentMemoryExtension(
       input: Parameters<SessionMemoryWorker["request"]>[0],
       timeout?: number,
     ): ReturnType<SessionMemoryWorker["request"]> => {
-      if (input.kind === "capture") {
-        // Let the next native context submit its bounded eligibility check first.
-        // Background writes yield to validation; inference never awaits capture.
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        await Promise.allSettled([...checks]);
-      }
       const current =
         input.kind === "capture" || input.kind === "project-context"
           ? (captureWorker ??= new SessionMemoryWorker({
@@ -431,17 +425,21 @@ export function createAgentMemoryExtension(
       };
       // Capture each finalized turn, but publish after the run settles: durable
       // filesystem flushes must not consume the next request's eligibility budget.
-      const capture = Promise.all([projectReady, captureReady?.promise])
-        .then(([observed]) =>
-          request({
-            kind: "capture",
-            snapshot,
-            through: through as C.EntryId,
-            scope,
-            project: observed,
-          }),
-        )
-        .catch(error);
+      const ready = Promise.all([projectReady, captureReady?.promise]).then(
+        async ([observed]) => {
+          // let the next native context submit its bounded eligibility check first.
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          await Promise.allSettled([...checks]);
+          return observed;
+        },
+      );
+      const capture = request({
+        kind: "capture",
+        snapshot,
+        through: through as C.EntryId,
+        scope,
+        project: ready,
+      }).catch(error);
       captures.add(capture);
       void capture.finally(() => captures.delete(capture));
     });
@@ -1647,6 +1645,198 @@ exit 1
           expect(stderr).toMatch(/unsettled top-level await/i);
           expect(stdout).not.toContain("durable shutdown completed");
         }
+      } finally {
+        await f.close();
+      }
+    }
+  }, 60_000);
+  it("default discovery owns capture liveness through native EOF without stalling inference; submitted-only references lose it", async () => {
+    const { spawn } = await import("node:child_process");
+    const broken = join(artifact, "submitted-only-dist");
+    await fs.cp(join(artifact, "dist"), broken, { recursive: true });
+    let changed = false;
+    for (const name of await fs.readdir(broken)) {
+      if (!name.endsWith(".js")) continue;
+      const path = join(broken, name);
+      const original = await fs.readFile(path, "utf8");
+      const reverted = original
+        .replace(/this\.updateReference\(\);(\s+const submit =)/, "$1")
+        .replace(
+          /this\.worker\.postMessage\(\{ id, request: ready \}\);/,
+          "{ this.worker.postMessage({ id, request: ready }); this.updateReference(); }",
+        );
+      if (reverted !== original) {
+        changed = true;
+        await fs.writeFile(path, reverted);
+      }
+    }
+    expect(changed).toBe(true);
+    for (const [distribution, supplied, shouldDrain] of [
+      [join(artifact, "dist"), undefined, true],
+      [broken, undefined, false],
+      [join(artifact, "dist"), null, true],
+      [
+        join(artifact, "dist"),
+        { repositoryId: "caller.example/team/owned" },
+        true,
+      ],
+    ] as const) {
+      const f = await fixture();
+      const bin = join(f.dir, "bin");
+      const started = join(f.dir, "git-started");
+      const done = join(f.dir, "git-done");
+      await fs.mkdir(bin);
+      await fs.writeFile(
+        join(bin, "git"),
+        `#!/bin/sh
+        touch '${started}'
+        /bin/sleep 1
+        touch '${done}'
+        printf 'git@example.com:team/discovered.git\\n'
+      `,
+        { mode: 0o755 },
+      );
+      const script = join(f.dir, "discovery-shutdown.mjs");
+      await fs.writeFile(
+        script,
+        `
+        import { existsSync } from 'node:fs';
+        import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
+        import { InMemoryCredentialStore, fauxProvider, fauxAssistantMessage } from '@earendil-works/pi-ai';
+        import { createAgentMemoryExtension } from ${JSON.stringify(pathToFileURL(join(distribution, "extensions/agent-memory.js")).href)};
+        const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), refreshOnCreate: false, modelsPath: null });
+        const faux = fauxProvider(); runtime.registerNativeProvider(faux.provider);
+        faux.setResponses([async () => {
+          if (${supplied === undefined}) {
+            while (!existsSync(${JSON.stringify(started)})) await new Promise(r => setTimeout(r, 5));
+            if (existsSync(${JSON.stringify(done)})) throw new Error('inference waited for discovery');
+          }
+          console.log('inference progressed');
+          return fauxAssistantMessage('late finalized particular 🌿');
+        }]);
+        const cwd = ${JSON.stringify(f.dir)};
+        const settings = SettingsManager.inMemory({defaultTools: [], compaction:{enabled:false}, retry:{enabled:false}});
+        const manager = SessionManager.inMemory(cwd);
+        manager.appendMessage({role:'user', content:'early particular 🌿', timestamp:1});
+        const loader = new DefaultResourceLoader({cwd, agentDir:cwd, settingsManager:settings,
+          noExtensions:true,noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,
+          extensionFactories:[createAgentMemoryExtension({configuration:${JSON.stringify(f.config)},
+            ${supplied === undefined ? "" : `project:${JSON.stringify(supplied)},`}
+            worker:{entry:new URL(${JSON.stringify(pathToFileURL(join(distribution, "core/agent-memory-session-worker.js")).href)})}})]});
+        await loader.reload();
+        const {session}=await createAgentSession({cwd,agentDir:cwd,resourceLoader:loader,settingsManager:settings,modelRuntime:runtime,model:faux.getModel(),sessionManager:manager});
+        await session.bindExtensions({});
+        await session.prompt('finish');
+        for await (const chunk of process.stdin) {}
+        console.log('shutdown requested');
+        await session.extensionRunner.emit({type:'session_shutdown',reason:'quit'});
+        session.dispose();
+        console.log('shutdown drained');
+      `,
+      );
+      try {
+        const child = spawn(process.execPath, [script], {
+          stdio: ["pipe", "pipe", "pipe"],
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+        });
+        let stdout = "",
+          stderr = "";
+        child.stdout.on("data", (chunk) => {
+          stdout += chunk;
+        });
+        child.stderr.on("data", (chunk) => {
+          stderr += chunk;
+        });
+        const result = new Promise<number | null>((resolve, reject) => {
+          child.once("error", reject);
+          child.once("close", resolve);
+        });
+        child.stdin.end();
+        const code = await result;
+        expect(stdout).toContain("inference progressed");
+        expect(stdout).toContain("shutdown requested");
+        const windows = (
+          await f.store.forPeer("discovery-audit").scan(null, 100)
+        ).flatMap((c) => c.windows);
+        if (shouldDrain) {
+          expect(code, stderr).toBe(0);
+          expect(stdout).toContain("shutdown drained");
+          const excerpts = windows.flatMap((w) => w.excerpts);
+          expect(excerpts.some((e) => e.text === "early particular 🌿")).toBe(
+            true,
+          );
+          expect(
+            excerpts.some((e) => e.text === "late finalized particular 🌿"),
+          ).toBe(true);
+          const expected =
+            supplied === undefined
+              ? { repositoryId: "example.com/team/discovered" }
+              : supplied;
+          expect(windows.length).toBeGreaterThan(0);
+          for (const window of windows) {
+            expect(window.source.origin.kind).toBe("session");
+            if (window.source.origin.kind === "session")
+              expect(window.source.origin.project ?? null).toEqual(expected);
+          }
+        } else {
+          expect(code, stderr).toBe(13);
+          expect(stderr).toMatch(/unsettled top-level await/i);
+          expect(stdout).not.toContain("shutdown drained");
+          expect(windows).toEqual([]);
+        }
+        if (supplied !== undefined)
+          expect(await fs.stat(started).catch(() => null)).toBeNull();
+      } finally {
+        await f.close();
+      }
+    }
+  }, 60_000);
+  it("capture releases process liveness after success, dependency rejection, and explicit close before dependency resolution", async () => {
+    const { spawn } = await import("node:child_process");
+    for (const mode of ["success", "reject", "close"] as const) {
+      const f = await fixture();
+      const through = f.manager.appendMessage({
+        role: "user",
+        content: "owned lifetime",
+        timestamp: 1,
+      });
+      const script = join(f.dir, "capture-lifetime.mjs");
+      await fs.writeFile(
+        script,
+        `
+        import { SessionMemoryWorker } from ${JSON.stringify(pathToFileURL(join(artifact, "dist/core/agent-memory-session-worker.js")).href)};
+        const worker = new SessionMemoryWorker({store:${JSON.stringify(runtimeStoreConfiguration(f.config))}});
+        const mode = ${JSON.stringify(mode)};
+        const project = mode === 'close' ? new Promise(() => {}) : mode === 'reject' ? Promise.reject(new Error('discovery rejected')) : Promise.resolve(null);
+        const capture = worker.request({kind:'capture',snapshot:${JSON.stringify(nativeSourceSnapshot(f.manager))},through:${JSON.stringify(through)},scope:{kind:'personal',ownerId:'fixture'},project});
+        if (mode === 'close') worker.close();
+        try {
+          const result = await capture;
+          if (mode !== 'success' || result !== 'captured') throw new Error('unexpected capture success');
+        } catch (error) {
+          if (mode === 'success' || !String(error).includes(mode === 'close' ? 'memory worker closed' : 'discovery rejected')) throw error;
+        }
+        console.log('lifetime released');
+      `,
+      );
+      try {
+        const child = spawn(process.execPath, [script], {
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let stdout = "",
+          stderr = "";
+        child.stdout.on("data", (chunk) => {
+          stdout += chunk;
+        });
+        child.stderr.on("data", (chunk) => {
+          stderr += chunk;
+        });
+        const code = await new Promise<number | null>((resolve, reject) => {
+          child.once("error", reject);
+          child.once("close", resolve);
+        });
+        expect(code, stderr).toBe(0);
+        expect(stdout).toContain("lifetime released");
       } finally {
         await f.close();
       }
