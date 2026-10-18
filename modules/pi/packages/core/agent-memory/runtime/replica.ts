@@ -228,7 +228,8 @@ async function authorizeClosure(
   if (!policy.ownerId || policy.peerOwnerId !== policy.ownerId)
     throw new Error("replica owner denied");
   const token = await store.continuityToken();
-  const namespace = `replica-proof:v2:${sha256(canonicalJSON({ policy, token }))}`;
+  // v2 certified declared parents only; it cannot authorize evidence owners.
+  const namespace = `replica-proof:v3:${sha256(canonicalJSON({ policy, token }))}`;
   const available = new Map<C.CommitId, C.ReplicaChange>();
   for (const c of batch) {
     const previous = available.get(c.commitId);
@@ -294,7 +295,13 @@ async function authorizeClosure(
       }
       active.add(id);
       pending.push({ id, proof: { store: proofStore, digest } });
-      pending.push(...c.parents.map((parent) => ({ id: parent })));
+      // declared parents are not authoritative for external evidence/lineage:
+      // retained history and this bounded batch resolve the owning commits.
+      const dependencies = new Set([
+        ...c.parents,
+        ...(await store.dependencyCommits(c, batch)),
+      ]);
+      pending.push(...[...dependencies].map((parent) => ({ id: parent })));
     }
   } catch (error) {
     if (
