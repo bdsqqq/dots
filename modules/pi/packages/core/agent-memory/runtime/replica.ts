@@ -204,7 +204,8 @@ async function saveProofs(
 /**
  * proofs certify exact retained payloads and ancestry under one local policy and
  * repository epoch. wire cursors/ACKs never enter this namespace. every boundary
- * is parsed and scope-checked on a hit; epoch changes invalidate descendants too,
+ * payload is parsed and scope-checked on a hit; metadata-only ancestry can stop
+ * without rereading its body. epoch changes invalidate descendants too,
  * including unchanged descendants above a replaced forbidden ancestor.
  */
 async function authorizeClosure(
@@ -242,6 +243,7 @@ async function authorizeClosure(
   const active = new Set<C.CommitId>();
   const proofs: PayloadProof[] = [];
   let bytes = 0;
+  let uncached = 0;
   try {
     while (pending.length) {
       signal.throwIfAborted();
@@ -254,14 +256,22 @@ async function authorizeClosure(
       }
       if (seen.has(id)) continue;
       if (active.has(id)) throw new Error("cyclic replica dependency");
-      if (seen.size + active.size >= limits.maxClosureChanges)
+      const proofStore = repository.forPeer(`${namespace}:${sha256(id)}`);
+      const verified = await proofStore.readCursor();
+      // only trusted local metadata may skip ancestry bodies. direct payloads
+      // still cross the wire boundary and must match their certified digest.
+      if (verified !== null && !available.has(id)) {
+        seen.add(id);
+        continue;
+      }
+      if (verified === null && ++uncached > limits.maxClosureChanges)
         throw new Error("replica closure limit");
       const c = available.get(id) ?? (await store.readChanges([id]))[0];
       if (!c || c.commitId !== id)
         throw new Error("missing replica dependency");
       parseReplicaChange(c);
       const payload = canonicalJSON(c);
-      bytes += Buffer.byteLength(payload);
+      if (verified === null) bytes += Buffer.byteLength(payload);
       if (bytes > limits.maxClosureBytes)
         throw new Error("replica closure byte limit");
       if (
@@ -270,9 +280,7 @@ async function authorizeClosure(
         )
       )
         throw new Error("replica scope denied");
-      const proofStore = repository.forPeer(`${namespace}:${sha256(id)}`);
       const digest = sha256(payload);
-      const verified = await proofStore.readCursor();
       if (verified !== null && verified !== digest)
         throw new Error("replica proof payload mismatch");
       if (verified === digest || (retained && available.has(id))) {
@@ -301,10 +309,9 @@ async function authorizeClosure(
       await continuityFence(authorization, signal);
       const progress = repository.forPeer(`${namespace}:repair`);
       const after = cursor(await progress.readCursor()).after;
-      const prefix = await store.scan(
-        after,
-        Math.min(limits.maxChanges, Math.max(1, limits.maxClosureChanges - 1)),
-      );
+      // one causal commit also bounds cold repair when bodies, not count, fill
+      // the closure budget. cached predecessors no longer consume that budget.
+      const prefix = await store.scan(after, 1);
       if (prefix.length) {
         const rebuilt = await authorizeClosure(
           prefix,
