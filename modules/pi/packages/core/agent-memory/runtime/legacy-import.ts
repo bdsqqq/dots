@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync, existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import type * as C from "./contracts.js";
 import {
@@ -44,6 +44,20 @@ export async function importLegacyMarkdown(input: {
       throw new Error("legacy file requires explicit redaction before import");
     const authoredAt = statSync(path).mtime.toISOString();
     durableCreate(join(input.archive, `${sha256(bytes)}.md`), bytes);
+    const clockFile = join(input.archive, `${sha256(bytes)}.capture.json`);
+    if (!existsSync(clockFile))
+      durableCreate(
+        clockFile,
+        JSON.stringify({ capturedAt: new Date().toISOString() }),
+      );
+    const { capturedAt } = JSON.parse(readFileSync(clockFile, "utf8"));
+    if (
+      typeof capturedAt !== "string" ||
+      !Number.isFinite(Date.parse(capturedAt)) ||
+      new Date(capturedAt).toISOString() !== capturedAt
+    )
+      throw new Error("invalid legacy capture clock");
+
     const source: C.SourceRef = {
       sourceId: `legacy:${sha256(path)}` as C.SourceId,
       producer: "legacy-markdown",
@@ -75,7 +89,7 @@ export async function importLegacyMarkdown(input: {
         ...base,
         sourceHash: hashSourceWindow(base),
         windowId: windowId(base),
-        capturedAt: authoredAt,
+        capturedAt,
         importance: "ordinary",
       });
       start = end;

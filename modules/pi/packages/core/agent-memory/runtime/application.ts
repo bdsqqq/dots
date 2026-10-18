@@ -510,7 +510,7 @@ if (import.meta.vitest) {
         const manager = SessionManager.inMemory(${JSON.stringify(f.dir)});
         manager.appendMessage({ role: "user", content: "i like the quiet room because i sleep better", timestamp: Date.now() });
         mkdirSync(${JSON.stringify(f.configuration.sessionRoot)}, {recursive:true});
-        writeFileSync(${JSON.stringify(join(f.configuration.sessionRoot, "exited.jsonl"))}, [manager.getHeader(), ...manager.getEntries()].map(e=>JSON.stringify(e)).join("\\n") + "\\n");
+        writeFileSync(${JSON.stringify(join(f.configuration.sessionRoot, "exited.jsonl"))}, [manager.getHeader(), ...manager.getEntries().map(e => ({...e, timestamp: "2020-01-01T00:00:00.000Z"}))].map(e=>JSON.stringify(e)).join("\\n") + "\\n");
       `,
         ],
         {
