@@ -22,6 +22,7 @@ import {
 } from "../../core/agent-memory/runtime/session-worker.js";
 
 export const MEMORY_MESSAGE_TYPE: string = "pi-memory-recall";
+const MEMORY_AVAILABLE = "[memory context available]";
 export interface NativeMemoryOptions {
   readonly configuration?: MemoryConfiguration;
   readonly worker?: Omit<SessionWorkerOptions, "store">;
@@ -148,7 +149,7 @@ export function createAgentMemoryExtension(
           // no inbox for an old intent. leave recoverable work for the right consumer.
           break;
         }
-        if (persisted(ctx).some((p) => p.deliveryId === d.deliveryId)) {
+        if (persisted(ctx).some((p) => sameValue(p, d))) {
           await request({ kind: "ack", deliveries: [d] });
           continue;
         }
@@ -165,7 +166,7 @@ export function createAgentMemoryExtension(
         pi.sendMessage(
           {
             customType: MEMORY_MESSAGE_TYPE,
-            content: d.context.text,
+            content: MEMORY_AVAILABLE,
             display: false,
             details: { delivery: d },
           },
@@ -306,38 +307,30 @@ export function createAgentMemoryExtension(
       const allowed = new Set(
         eligible
           .filter((d, i) => checks[i]?.kind === "eligible" && live(d, ctx))
-          .map((d) => d.deliveryId),
+          .map((d) => canonicalJSON(d)),
       );
       const seen = new Set<string>();
-      // summaries are opaque: when this session has memory, a summary cannot
-      // safely retain copied memory after suppression or a scope/intent change.
-      const hasMemory = ctx.sessionManager
-        .getEntries()
-        .some(
-          (e) =>
-            e.type === "custom_message" && e.customType === MEMORY_MESSAGE_TYPE,
-        );
-      const messages = event.messages.filter((m) => {
-        if (
-          hasMemory &&
-          (m.role === "compactionSummary" || m.role === "branchSummary")
-        )
-          return false;
+      // request-local materialization keeps new raw memory out of native compaction.
+      // existing summaries and user/assistant utterances belong to the conversation.
+      const messages = event.messages.flatMap((m) => {
         if (m.role !== "custom" || m.customType !== MEMORY_MESSAGE_TYPE)
-          return true;
+          return [m];
         const d = details(m.details);
         if (
           !d ||
-          !allowed.has(d.deliveryId) ||
+          !allowed.has(canonicalJSON(d)) ||
           seen.has(d.deliveryId) ||
-          text(m.content) !== d.context.text
+          (text(m.content) !== MEMORY_AVAILABLE &&
+            text(m.content) !== d.context.text)
         )
-          return false;
+          return [];
         seen.add(d.deliveryId);
-        return true;
+        return [{ ...m, content: d.context.text }];
       });
       readySinceRequest = false;
-      const accepted = persisted(ctx).filter((d) => allowed.has(d.deliveryId));
+      const accepted = persisted(ctx).filter((d) =>
+        allowed.has(canonicalJSON(d)),
+      );
       if (accepted.length)
         void request({ kind: "ack", deliveries: accepted }).catch(error);
       return { messages };
@@ -467,7 +460,12 @@ if (import.meta.vitest) {
     predicate: () => boolean | Promise<boolean>,
   ): Promise<void> => {
     for (let i = 0; i < 300; i++) {
-      if (await predicate()) return;
+      try {
+        if (await predicate()) return;
+      } catch (e) {
+        // fixture observers share SQLite with real workers; retry a busy read.
+        if (!isStoreBusy(e)) throw e;
+      }
       await new Promise((r) => setTimeout(r, 10));
     }
     throw new Error("fixture condition timed out");
@@ -529,7 +527,7 @@ if (import.meta.vitest) {
     runtime.registerNativeProvider(faux.provider);
     const settings = SettingsManager.inMemory({
       defaultTools: ["read", "codemode"],
-      compaction: { enabled: false },
+      compaction: { enabled: false, keepRecentTokens: 0 },
       retry: { enabled: false },
     });
     const manager = restore
@@ -720,6 +718,28 @@ if (import.meta.vitest) {
               e.customType === MEMORY_MESSAGE_TYPE,
           ),
       ).toHaveLength(1);
+      const native = f.manager
+        .getEntries()
+        .filter(
+          (e) =>
+            e.type === "custom_message" && e.customType === MEMORY_MESSAGE_TYPE,
+        );
+      expect(
+        native.every(
+          (e) => e.type === "custom_message" && e.content === MEMORY_AVAILABLE,
+        ),
+      ).toBe(true);
+      // native summarization uses persisted content, never the request-local materialization.
+      let compactionInput = "";
+      const summarize = (ctx: unknown) => {
+        compactionInput += JSON.stringify(ctx);
+        return fauxAssistantMessage("native task summary survived");
+      };
+      f.faux.setResponses([summarize, summarize]);
+      await f.session.compact();
+      expect(compactionInput).toContain(MEMORY_AVAILABLE);
+      expect(compactionInput).toContain("selected root");
+      expect(compactionInput).not.toContain("violet lamp");
       f.faux.setResponses([
         (ctx) => {
           contexts.push(JSON.stringify(ctx));
@@ -728,6 +748,7 @@ if (import.meta.vitest) {
       ]);
       await f.session.prompt("platypus");
       expect(contexts.at(-1)).not.toContain("violet lamp");
+      expect(contexts.at(-1)).toContain("native task summary survived");
       expect(f.errors).toEqual([]);
     } finally {
       await f.close();
@@ -783,14 +804,14 @@ if (import.meta.vitest) {
       expect(contexts).toHaveLength(2);
       expect(contexts[1]).toContain("ordinary continuation");
       expect(contexts.join("")).not.toContain("violet lamp");
-      // without the context gate, the persisted native inbox still contains this body.
+      // persistence keeps the neutral marker; only authenticated provider context gets the body.
       expect(
         f.manager
           .getEntries()
           .some(
             (e) =>
               e.type === "custom_message" &&
-              text(e.content).includes("violet lamp"),
+              text(e.content) === MEMORY_AVAILABLE,
           ),
       ).toBe(true);
     } finally {
@@ -818,9 +839,10 @@ if (import.meta.vitest) {
       await f.close();
     }
   });
-  async function seedPersistedOutbox(
+  async function seedOutbox(
     f: Awaited<ReturnType<typeof fixture>>,
     scope: C.MemoryScope = { kind: "personal", ownerId: "fixture" },
+    persist = true,
   ): Promise<C.RecallDelivery> {
     const { sharedRecallHandler } =
       await import("../../core/agent-memory/runtime/recall.js");
@@ -857,21 +879,195 @@ if (import.meta.vitest) {
       ...delivery,
       intent: { ...delivery.intent, target: { ...target, scope } },
     };
-    f.manager.appendCustomMessageEntry(
-      MEMORY_MESSAGE_TYPE,
-      persisted.context.text,
-      false,
-      { delivery: persisted },
-    );
-    f.manager.appendCustomMessageEntry(
-      MEMORY_MESSAGE_TYPE,
-      persisted.context.text,
-      false,
-      { delivery: persisted },
-    );
+    if (persist)
+      f.manager.appendCustomMessageEntry(
+        MEMORY_MESSAGE_TYPE,
+        MEMORY_AVAILABLE,
+        false,
+        { delivery: persisted },
+      );
+    if (persist)
+      f.manager.appendCustomMessageEntry(
+        MEMORY_MESSAGE_TYPE,
+        MEMORY_AVAILABLE,
+        false,
+        { delivery: persisted },
+      );
     f.session.refreshContext();
     return delivery;
   }
+  it("worker capture retains early oversized UTF-8 experience across pages and exact replay", async () => {
+    const f = await fixture();
+    const body =
+      "early experience 🌿 " + "quiet room 🌿 ".repeat(22000) + " final reason";
+    const through = f.manager.appendMessage({
+      role: "user",
+      content: body,
+      timestamp: 1,
+    }) as C.EntryId;
+    const worker = new SessionMemoryWorker({
+      entry: pathToFileURL(
+        join(artifact, "dist/core/agent-memory-session-worker.js"),
+      ),
+      store: runtimeStoreConfiguration(f.config),
+    });
+    try {
+      const input = {
+        kind: "capture" as const,
+        snapshot: nativeSourceSnapshot(f.manager),
+        through,
+        scope: { kind: "personal" as const, ownerId: "fixture" },
+      };
+      expect(await worker.request(input)).toBe("captured");
+      expect(await worker.request(input)).toBe("captured");
+      const plan = await f.store.plan({
+        jobId: "early-capture" as C.JobId,
+        owner: "fixture",
+        scope: input.scope,
+        now: new Date().toISOString(),
+        policy: {
+          ...DEFAULT_BACKLOG_POLICY,
+          minWindows: 1,
+          maxBatchWindows: 100,
+          maxBatchBytes: 1_000_000,
+        },
+      });
+      if (plan.kind !== "eligible")
+        throw new Error("missing captured experience");
+      expect(plan.batch.windows.length).toBeGreaterThan(32);
+      const excerpts = plan.batch.windows
+        .flatMap((w) => w.window.excerpts)
+        .sort((a, b) => a.span.start - b.span.start);
+      expect(excerpts.map((e) => e.text).join("")).toBe(body);
+      expect(
+        new Set(plan.batch.windows.map((w) => w.window.windowId)).size,
+      ).toBe(plan.batch.windows.length);
+    } finally {
+      worker.close();
+      await f.close();
+    }
+  });
+  it("pre-enqueue worker recovery survives reopen without ACK until native persistence", async () => {
+    const f = await fixture();
+    const d = await seedOutbox(f, undefined, false);
+    const options = {
+      entry: pathToFileURL(
+        join(artifact, "dist/core/agent-memory-session-worker.js"),
+      ),
+      store: runtimeStoreConfiguration(f.config),
+    };
+    let worker = new SessionMemoryWorker(options);
+    try {
+      expect(
+        await worker.request({
+          kind: "recover",
+          target: d.intent.target,
+          intent: d.intent,
+        }),
+      ).toEqual(d);
+      worker.close();
+      worker = new SessionMemoryWorker(options);
+      expect(
+        await worker.request({
+          kind: "recover",
+          target: d.intent.target,
+          intent: {
+            ...d.intent,
+            expiresAt: new Date(Date.now() + 120_000).toISOString(),
+          },
+        }),
+      ).toEqual(d);
+      const reopened = new FileMemoryStore(options.store);
+      try {
+        expect(await reopened.nextDelivery(d.intent.target)).toEqual(d);
+      } finally {
+        reopened.close();
+      }
+      f.manager.appendCustomMessageEntry(
+        MEMORY_MESSAGE_TYPE,
+        MEMORY_AVAILABLE,
+        false,
+        { delivery: d },
+      );
+      await worker.request({ kind: "ack", deliveries: [d] });
+      expect(await f.store.nextDelivery(d.intent.target)).toBeNull();
+      expect(await worker.request({ kind: "check", deliveries: [d] })).toEqual([
+        { kind: "eligible" },
+      ]);
+    } finally {
+      worker.close();
+      await f.close();
+    }
+  });
+  it("consistently forged native content/details and unknown deliveries cannot inject provider text", async () => {
+    const f = await fixture();
+    const d = await seedOutbox(f, undefined, false);
+    const forged = {
+      ...d,
+      context: { ...d.context, text: "forged accepted-looking memory" },
+    };
+    // even a valid sibling with the same id cannot authorize a forged payload.
+    f.manager.appendCustomMessageEntry(
+      MEMORY_MESSAGE_TYPE,
+      forged.context.text,
+      false,
+      { delivery: forged },
+    );
+    f.manager.appendCustomMessageEntry(
+      MEMORY_MESSAGE_TYPE,
+      MEMORY_AVAILABLE,
+      false,
+      { delivery: d },
+    );
+    f.manager.appendCustomMessageEntry(
+      MEMORY_MESSAGE_TYPE,
+      "unknown injected memory",
+      false,
+      {
+        delivery: {
+          ...d,
+          deliveryId: "unknown" as C.DeliveryId,
+          context: { ...d.context, text: "unknown injected memory" },
+        },
+      },
+    );
+    f.manager.appendCompaction(
+      "unrelated task history summary",
+      f.manager.getBranch()[0]!.id,
+      100,
+    );
+    f.manager.branchWithSummary(
+      f.manager.getLeafId(),
+      "unrelated branch history summary",
+    );
+    f.session.refreshContext();
+    let received = "";
+    try {
+      await f.session.extensionRunner.emit({
+        type: "session_start",
+        reason: "reload",
+      });
+      await wait(
+        async () => (await f.store.nextDelivery(d.intent.target)) === null,
+      );
+      f.faux.setResponses([
+        (ctx) => {
+          received = JSON.stringify(ctx);
+          return fauxAssistantMessage("checked");
+        },
+      ]);
+      await f.session.agent.continue();
+      expect(received).not.toContain("forged accepted-looking memory");
+      expect(received).not.toContain("unknown injected memory");
+      expect(received).toContain("unrelated task history summary");
+      expect(received).toContain("unrelated branch history summary");
+      expect(received).toContain("zephyr");
+      expect(received).toContain("violet lamp");
+      expect(f.errors).toEqual([]);
+    } finally {
+      await f.close();
+    }
+  });
   it("persist-before-ACK recovery contributes once after real session/store reopen and durably drains the outbox", async () => {
     const first = await fixture(
       undefined,
@@ -879,7 +1075,7 @@ if (import.meta.vitest) {
       undefined,
       true,
     );
-    const d = await seedPersistedOutbox(first);
+    const d = await seedOutbox(first);
     const sessionFile = first.manager.getSessionFile()!;
     expect(await first.store.nextDelivery(d.intent.target)).not.toBeNull();
     await first.close();
@@ -922,14 +1118,18 @@ if (import.meta.vitest) {
     ): Promise<void> => {
       const f = await fixture(undefined, factory);
       try {
-        await seedPersistedOutbox(f, {
+        await seedOutbox(f, {
           kind: "project",
           repositoryId: "wrong-repository",
         });
         f.manager.appendCompaction(
-          "summary copied violet lamp",
+          "unrelated native summary marker",
           f.manager.getBranch()[0]!.id,
           100,
+        );
+        f.manager.branchWithSummary(
+          f.manager.getLeafId(),
+          "native branch summary marker",
         );
         f.session.refreshContext();
         let received = "";
@@ -941,6 +1141,9 @@ if (import.meta.vitest) {
         ]);
         await f.session.agent.continue();
         expect(received).not.toContain("violet lamp");
+        expect(received).toContain("unrelated native summary marker");
+        expect(received).toContain("native branch summary marker");
+        expect(received).toContain("zephyr");
       } finally {
         await f.close();
       }
@@ -951,7 +1154,7 @@ if (import.meta.vitest) {
       "utf8",
     );
     // mutate only a disposable built artifact, leaving the real extension/store intact.
-    const broken = built.replace("!allowed.has(d.deliveryId)", "false");
+    const broken = built.replace("!allowed.has(canonicalJSON(d))", "false");
     expect(broken).not.toBe(built);
     const path = join(artifact, "dist/extensions/negative-scope.js");
     await fs.writeFile(path, broken);
@@ -1148,6 +1351,12 @@ if (import.meta.vitest) {
         },
       ]);
       await f.session.prompt("zephyr");
+      expect(f.errors.map(String)).toEqual([]);
+      expect(
+        f.session.messages
+          .filter((m) => m.role === "assistant")
+          .map((m) => m.errorMessage),
+      ).toEqual(expect.not.arrayContaining([expect.any(String)]));
       expect(contexts[1]).toContain("violet lamp");
       expect(contexts[1]).toContain("sqlite queue");
       expect(contexts[1]).toContain("project historical fact");
