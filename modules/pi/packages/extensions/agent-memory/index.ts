@@ -483,8 +483,8 @@ export function createAgentMemoryExtension(
       queued.clear();
       worker?.close();
       worker = undefined;
-      // shutdown may drain already-submitted capture, bounded by worker deadlines.
-      // primary inference never waits for these durable acknowledgments.
+      // ephemeral snapshots have no independent disk catch-up. graceful shutdown
+      // drains them; explicit worker close/caller deadlines can still cancel I/O.
       await Promise.allSettled([...captures]);
       captureWorker?.close();
       captureWorker = undefined;
@@ -496,7 +496,7 @@ export default function agentMemoryExtension(pi: ExtensionAPI): void {
 }
 
 if (import.meta.vitest) {
-  const { beforeAll, afterAll, it, expect } = import.meta.vitest;
+  const { beforeAll, afterAll, it, expect, vi } = import.meta.vitest;
   const fs = await import("node:fs/promises");
   const { join, resolve } = await import("node:path");
   const { pathToFileURL } = await import("node:url");
@@ -505,6 +505,8 @@ if (import.meta.vitest) {
     await import("../../core/agent-memory/runtime/store.js");
   const { createNoteRevision } =
     await import("../../core/agent-memory/runtime/markdown.js");
+  const { catchUpNativeSources } =
+    await import("../../core/agent-memory/runtime/catch-up.js");
   const { DEFAULT_BACKLOG_POLICY } =
     await import("../../core/agent-memory/runtime/config.js");
   const {
@@ -580,8 +582,10 @@ if (import.meta.vitest) {
   });
   const wait = async (
     predicate: () => boolean | Promise<boolean>,
+    timeoutMs = 3000,
   ): Promise<void> => {
-    for (let i = 0; i < 300; i++) {
+    const deadline = performance.now() + timeoutMs;
+    while (performance.now() < deadline) {
       try {
         if (await predicate()) return;
       } catch (e) {
@@ -600,6 +604,7 @@ if (import.meta.vitest) {
     defaultWorker = false,
     project?: { repositoryId: string },
     nativeDefault = false,
+    retainedHistory = false,
   ) {
     const dir = restore?.dir ?? (await fs.mkdtemp(join(artifact, "session-")));
     const config: MemoryConfiguration = restore?.config ?? {
@@ -648,6 +653,7 @@ if (import.meta.vitest) {
         outcomes: [],
         lease: null,
       });
+    if (retainedHistory) await retainHistory({ dir, store });
     const indexModule = join(dir, "retrieval.mjs");
     await fs.writeFile(
       indexModule,
@@ -822,15 +828,110 @@ exit 1
       },
     };
   }
+  async function retainHistory(f: {
+    dir: string;
+    store: InstanceType<typeof FileMemoryStore>;
+  }) {
+    const manager = SessionManager.inMemory(f.dir);
+    for (let i = 0; i < 40; i++)
+      manager.appendMessage({
+        role: "user",
+        content: `experience ${i}: ` + "a particular reason 🌿 ".repeat(400),
+        timestamp: i + 1,
+      });
+    const input = {
+      store: f.store,
+      root: "/provided-history-must-not-refetch",
+      checkpoint: join(f.dir, "retained-history.json"),
+      scope: { kind: "personal" as const, ownerId: "fixture" },
+      snapshots: [nativeSourceSnapshot(manager)],
+      project: null,
+      signal: new AbortController().signal,
+    };
+    while ((await catchUpNativeSources(input)).bounded) {}
+    for (let i = 0; i < 12; i++) {
+      const revision = createNoteRevision({
+        noteId: `retained-${i}` as C.NoteId,
+        ancestry: { kind: "known", parents: [] },
+        scope: input.scope,
+        path: `retained-${i}.md`,
+        body:
+          `dated observation ${i}: ` +
+          "a specific judgment and reason. ".repeat(80),
+        links: [],
+        claims: [],
+        exposure: { kind: "active" },
+        authoredAt: "2026-01-02T00:00:00.000Z",
+      });
+      await f.store.commit({
+        commitId: `retained-${i}` as C.CommitId,
+        now: new Date().toISOString(),
+        windows: [],
+        edits: [{ revision, expectedHeads: [] }],
+        suppressions: [],
+        outcomes: [],
+        lease: null,
+      });
+    }
+  }
+  async function retainedFixture(gate?: SharedArrayBuffer) {
+    return fixture(
+      gate,
+      createAgentMemoryExtension,
+      undefined,
+      false,
+      false,
+      undefined,
+      false,
+      true,
+    );
+  }
+  /** a real second process controls SQLite contention without replacing store code. */
+  async function holdWriter(f: Awaited<ReturnType<typeof fixture>>) {
+    const { spawn } = await import("node:child_process");
+    const child = spawn(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `
+      import { DatabaseSync } from 'node:sqlite';
+      const db = new DatabaseSync(${JSON.stringify(join(runtimeStoreConfiguration(f.config).state, "coordination.sqlite"))});
+      db.exec('PRAGMA busy_timeout=0; BEGIN IMMEDIATE');
+      process.on('message', () => { db.exec('COMMIT'); db.close(); process.disconnect(); });
+      process.send('locked');
+    `,
+      ],
+      { stdio: ["ignore", "ignore", "pipe", "ipc"] },
+    );
+    let stderr = "";
+    child.stderr!.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    const exit = new Promise<number | null>((resolve) =>
+      child.once("exit", resolve),
+    );
+    await new Promise<void>((resolve, reject) => {
+      child.once("message", () => resolve());
+      child.once("error", reject);
+      child.once("exit", (code) =>
+        reject(new Error(`writer exited ${code}: ${stderr}`)),
+      );
+    });
+    return async () => {
+      if (child.connected) child.send("release");
+      expect(await exit, stderr).toBe(0);
+    };
+  }
   it("the real SDK completes primary inference while synchronous retrieval is blocked on another thread", async () => {
     const gate = new SharedArrayBuffer(8);
     const a = new Int32Array(gate);
-    const f = await fixture(gate);
+    const f = await retainedFixture(gate);
     try {
       const contexts: string[] = [];
       f.faux.setResponses([
         async (ctx) => {
-          await wait(() => Atomics.load(a, 1) === 1);
+          await wait(() => Atomics.load(a, 1) === 1, 20_000);
           contexts.push(JSON.stringify(ctx));
           return fauxAssistantMessage("primary finished");
         },
@@ -847,6 +948,141 @@ exit 1
     } finally {
       Atomics.store(a, 0, 1);
       Atomics.notify(a, 0);
+      await f.close();
+    }
+  }, 60_000);
+  it("a cold native request proceeds while storage acquisition is held, then receives useful retained memory", async () => {
+    const f = await retainedFixture();
+    const edited = join(
+      runtimeStoreConfiguration(f.config).root,
+      "retained-0.md",
+    );
+    await fs.writeFile(
+      edited,
+      (await fs.readFile(edited, "utf8")).replace(
+        "dated observation",
+        "pending native edit",
+      ),
+    );
+    const release = await holdWriter(f);
+    const contexts: string[] = [];
+    let released = false;
+    try {
+      f.faux.setResponses([
+        async (ctx) => {
+          contexts.push(JSON.stringify(ctx));
+          expect(contexts[0]).not.toContain("violet lamp");
+          // This callback is the first native provider request, while SQLite is held.
+          expect(released).toBe(false);
+          await release();
+          released = true;
+          await wait(() => f.enqueued.length === 1, 20_000);
+          return fauxAssistantMessage(
+            "primary proceeded while storage was held",
+          );
+        },
+        (ctx) => {
+          contexts.push(JSON.stringify(ctx));
+          return fauxAssistantMessage("retained memory arrived automatically");
+        },
+      ]);
+      await f.session.prompt("zephyr");
+      expect(contexts).toHaveLength(2);
+      expect(contexts[1]).toContain("violet lamp");
+      expect(contexts[1]).toContain("quiet-room.md");
+      expect(f.session.getActiveToolNames()).not.toContain("memory_search");
+      expect(f.errors.map(String)).toEqual([]);
+    } finally {
+      if (!released) await release();
+      await f.close();
+    }
+  }, 60_000);
+  it("the first native provider request proceeds while a real reconciliation lease waits on its model", async () => {
+    const { runReconciliation } =
+      await import("../../core/agent-memory/runtime/reconcile.js");
+    const f = await fixture();
+    const source = SessionManager.inMemory(f.dir);
+    source.appendMessage({
+      role: "user",
+      content: "a particular personal experience and its reason 🌿",
+      timestamp: 1,
+    });
+    let entered!: () => void, release!: () => void;
+    const modelStarted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const modelRelease = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let modelCompleted = false;
+    let background: ReturnType<typeof runReconciliation> | undefined;
+    try {
+      await catchUpNativeSources({
+        store: f.store,
+        root: "/provided-model-history",
+        checkpoint: join(f.dir, "model-source.json"),
+        scope: { kind: "personal", ownerId: "fixture" },
+        project: null,
+        snapshots: [nativeSourceSnapshot(source)],
+        signal: new AbortController().signal,
+      });
+      background = runReconciliation(
+        {
+          jobId: "stalled-model" as C.JobId,
+          owner: "fixture",
+          scope: { kind: "personal", ownerId: "fixture" },
+          now: new Date().toISOString(),
+          policy: { ...DEFAULT_BACKLOG_POLICY, minWindows: 1 },
+        },
+        {
+          store: f.store,
+          signal: new AbortController().signal,
+          model: {
+            async reconcile(input) {
+              entered();
+              await modelRelease;
+              modelCompleted = true;
+              const outcome = (pending: C.PendingWindow) => ({
+                windowId: pending.window.windowId,
+                decision: {
+                  kind: "no-change" as const,
+                  reason: "fixture retained experience already understood",
+                },
+              });
+              return {
+                edits: [],
+                outcomes: [
+                  outcome(input.batch.windows[0]),
+                  ...input.batch.windows.slice(1).map(outcome),
+                ],
+              };
+            },
+          },
+        },
+      );
+      await modelStarted;
+      const contexts: string[] = [];
+      f.faux.setResponses([
+        (ctx) => {
+          contexts.push(JSON.stringify(ctx));
+          expect(modelCompleted).toBe(false);
+          release();
+          return fauxAssistantMessage(
+            "primary inference proceeded while consolidation waited",
+          );
+        },
+      ]);
+      await f.session.prompt("unrelated platypus");
+      expect(contexts).toHaveLength(1);
+      expect((await background).results).toMatchObject([
+        { kind: "locally-committed" },
+      ]);
+      expect(f.session.getLastAssistantText()).toBe(
+        "primary inference proceeded while consolidation waited",
+      );
+    } finally {
+      release();
+      await background;
       await f.close();
     }
   });
@@ -1182,6 +1418,564 @@ exit 1
       await f.close();
     }
   });
+  it("live capture retains every UTF-8 entry beyond sixty-four pages without refetching its supplied snapshot", async () => {
+    const f = await fixture();
+    const manager = SessionManager.inMemory(
+      "/supplied-workspace-is-unavailable",
+    );
+    const expected = new Map<string, string>();
+    for (let i = 0; i < 2050; i++) {
+      const body = `particular experience ${i}: ` + "a reason 🌿 ".repeat(6);
+      expected.set(
+        manager.appendMessage({
+          role: "user",
+          content: body,
+          timestamp: i + 1,
+        }),
+        body,
+      );
+    }
+    const worker = new SessionMemoryWorker({
+      entry: pathToFileURL(
+        join(artifact, "dist/core/agent-memory-session-worker.js"),
+      ),
+      store: runtimeStoreConfiguration(f.config),
+    });
+    try {
+      const snapshot = nativeSourceSnapshot(manager);
+      snapshot.sessionFile = "/supplied-session-must-not-be-read.jsonl";
+      expect(
+        await worker.request({
+          kind: "capture",
+          snapshot,
+          through: snapshot.entries.at(-1)!.id as C.EntryId,
+          scope: { kind: "personal", ownerId: "fixture" },
+          project: null,
+        }),
+      ).toBe("captured");
+      const windows = (await f.store.forPeer("audit").scan(null, 100)).flatMap(
+        (change) => change.windows,
+      );
+      const retained = new Map(
+        windows.flatMap((window) =>
+          window.excerpts.map(
+            (excerpt) => [excerpt.span.entryId, excerpt.text] as const,
+          ),
+        ),
+      );
+      expect(retained).toEqual(expected);
+    } finally {
+      worker.close();
+      await f.close();
+    }
+  }, 300_000);
+  it("cold eligibility acquisition is bounded and its aborted store options cannot poison later recall", async () => {
+    const f = await retainedFixture();
+    await f.session.extensionRunner.emit({
+      type: "session_shutdown",
+      reason: "reload",
+    });
+    const delivery = await seedOutbox(f, undefined, false);
+    const worker = new SessionMemoryWorker({
+      entry: pathToFileURL(
+        join(artifact, "dist/core/agent-memory-session-worker.js"),
+      ),
+      store: runtimeStoreConfiguration(f.config),
+    });
+    // Load the worker graph without acquiring the store before the timed request.
+    await worker.request({ kind: "project-context", cwd: f.dir });
+    const edited = join(
+      runtimeStoreConfiguration(f.config).root,
+      "retained-0.md",
+    );
+    await fs.writeFile(
+      edited,
+      (await fs.readFile(edited, "utf8")).replace(
+        "dated observation",
+        "pending native edit",
+      ),
+    );
+    const release = await holdWriter(f);
+    try {
+      const started = performance.now();
+      await expect(
+        worker.request({ kind: "check", deliveries: [delivery] }, 250),
+      ).rejects.toThrow();
+      expect(performance.now() - started).toBeLessThan(450);
+      const capture = new SessionMemoryWorker({
+        entry: pathToFileURL(
+          join(artifact, "dist/core/agent-memory-session-worker.js"),
+        ),
+        store: runtimeStoreConfiguration(f.config),
+      });
+      try {
+        const snapshot = nativeSourceSnapshot(f.manager);
+        await expect(
+          capture.request(
+            {
+              kind: "capture",
+              snapshot,
+              through: snapshot.entries.at(-1)!.id as C.EntryId,
+              scope: delivery.intent.target.scope,
+              project: null,
+            },
+            25,
+          ),
+        ).rejects.toThrow("capture deadline");
+        await expect(
+          capture.request({ kind: "check", deliveries: [] }),
+        ).rejects.toThrow("closed");
+      } finally {
+        capture.close();
+      }
+    } finally {
+      await release();
+    }
+    try {
+      // Past the cold request's own signal expiry, the worker must still acquire normally.
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      const intent = {
+        ...delivery.intent,
+        intentId: "post-cold-check" as C.IntentId,
+      };
+      expect(await worker.request({ kind: "recall", intent })).toMatchObject({
+        kind: "queued",
+      });
+      expect(await f.store.nextDelivery(intent.target)).not.toBeNull();
+    } finally {
+      worker.close();
+      await f.close();
+    }
+  }, 60_000);
+  it("a real SDK child drains ephemeral capture after stdin EOF; removing capture liveness makes that verifier fail", async () => {
+    const { spawn } = await import("node:child_process");
+    const broken = join(artifact, "unreferenced-dist");
+    await fs.cp(join(artifact, "dist"), broken, { recursive: true });
+    let changed = false;
+    for (const name of await fs.readdir(broken)) {
+      if (!name.endsWith(".js")) continue;
+      const path = join(broken, name);
+      const original = await fs.readFile(path, "utf8");
+      const unreferenced = original.replaceAll(
+        "this.worker.ref();",
+        "this.worker.unref();",
+      );
+      if (unreferenced !== original) {
+        changed = true;
+        await fs.writeFile(path, unreferenced);
+      }
+    }
+    expect(changed).toBe(true);
+    for (const [distribution, shouldDrain] of [
+      [join(artifact, "dist"), true],
+      [broken, false],
+    ] as const) {
+      const f = await fixture();
+      const script = join(f.dir, "shutdown.mjs");
+      const body =
+        "early ephemeral judgment 🌿 ".repeat(1000) + "late particular reason";
+      await fs.writeFile(
+        script,
+        `
+        import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
+        import { InMemoryCredentialStore, fauxProvider, fauxAssistantMessage } from '@earendil-works/pi-ai';
+        import { createAgentMemoryExtension } from ${JSON.stringify(pathToFileURL(join(distribution, "extensions/agent-memory.js")).href)};
+        const cwd = ${JSON.stringify(f.dir)};
+        const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), refreshOnCreate: false, modelsPath: null });
+        const faux = fauxProvider(); runtime.registerNativeProvider(faux.provider);
+        faux.setResponses([() => fauxAssistantMessage('finalized before stdin EOF')]);
+        const settings = SettingsManager.inMemory({ defaultTools: [], compaction: { enabled: false }, retry: { enabled: false } });
+        const manager = SessionManager.inMemory(cwd);
+        manager.appendMessage({ role: 'user', content: ${JSON.stringify(body)}, timestamp: 1 });
+        const loader = new DefaultResourceLoader({ cwd, agentDir: cwd, settingsManager: settings,
+          noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
+          extensionFactories: [createAgentMemoryExtension({ configuration: ${JSON.stringify(f.config)}, project: null,
+            worker: { entry: new URL(${JSON.stringify(pathToFileURL(join(distribution, "core/agent-memory-session-worker.js")).href)}) } })] });
+        await loader.reload();
+        const { session } = await createAgentSession({ cwd, agentDir: cwd, resourceLoader: loader,
+          settingsManager: settings, modelRuntime: runtime, model: faux.getModel(), sessionManager: manager });
+        await session.bindExtensions({});
+        await session.prompt('finish the ephemeral run');
+        for await (const chunk of process.stdin) {}
+        await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
+        session.dispose();
+        console.log('durable shutdown completed');
+      `,
+      );
+      try {
+        const child = spawn(process.execPath, [script], {
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        let stdout = "",
+          stderr = "";
+        child.stdout.on("data", (chunk) => {
+          stdout += chunk;
+        });
+        child.stderr.on("data", (chunk) => {
+          stderr += chunk;
+        });
+        const result = new Promise<number | null>((resolve, reject) => {
+          child.once("error", reject);
+          child.once("close", resolve);
+        });
+        child.stdin.end();
+        const code = await result;
+        if (shouldDrain) {
+          expect(code, stderr).toBe(0);
+          expect(stdout).toContain("durable shutdown completed");
+          const windows = (
+            await f.store.forPeer("audit").scan(null, 100)
+          ).flatMap((change) => change.windows);
+          const excerpts = windows.flatMap((window) => window.excerpts);
+          const early = excerpts.filter(
+            (excerpt) =>
+              excerpt.occurredAt && excerpt.text.includes("ephemeral judgment"),
+          );
+          expect(
+            early
+              .sort((a, b) => a.span.start - b.span.start)
+              .map((excerpt) => excerpt.text)
+              .join(""),
+          ).toBe(body);
+          expect(
+            excerpts.some(
+              (excerpt) => excerpt.text === "finalized before stdin EOF",
+            ),
+          ).toBe(true);
+        } else {
+          expect(code).not.toBe(0);
+          expect(stderr).toMatch(/unsettled top-level await/i);
+          expect(stdout).not.toContain("durable shutdown completed");
+        }
+      } finally {
+        await f.close();
+      }
+    }
+  }, 60_000);
+  it("async recall survives the former deadline; restoring that deadline in an isolated copy fails the same progress check", async () => {
+    const { setTimeout: pause } = await import("node:timers/promises");
+    const broken = join(artifact, "deadline-dist");
+    await fs.cp(join(artifact, "dist"), broken, { recursive: true });
+    let changed = false;
+    for (const name of await fs.readdir(broken)) {
+      if (!name.endsWith(".js")) continue;
+      const path = join(broken, name);
+      const original = await fs.readFile(path, "utf8");
+      const bounded = original.replace(
+        'request.kind === "check" ? 250 : void 0',
+        'request.kind === "check" ? 250 : 5000',
+      );
+      if (bounded !== original) {
+        changed = true;
+        await fs.writeFile(path, bounded);
+      }
+    }
+    expect(changed).toBe(true);
+    const control = (await import(
+      pathToFileURL(join(broken, "core/agent-memory-session-worker.js")).href
+    )) as typeof import("../../core/agent-memory/runtime/session-worker.js");
+    for (const [WorkerClass, distribution, survives] of [
+      [SessionMemoryWorker, join(artifact, "dist"), true],
+      [control.SessionMemoryWorker, broken, false],
+    ] as const) {
+      const f = await fixture();
+      await f.session.extensionRunner.emit({
+        type: "session_shutdown",
+        reason: "reload",
+      });
+      const delivery = await seedOutbox(f, undefined, false);
+      const gate = new SharedArrayBuffer(8);
+      const a = new Int32Array(gate);
+      const worker = new WorkerClass({
+        entry: pathToFileURL(
+          join(distribution, "core/agent-memory-session-worker.js"),
+        ),
+        store: runtimeStoreConfiguration(f.config),
+        indexModule: pathToFileURL(join(f.dir, "retrieval.mjs")).href,
+        indexOptions: gate,
+      });
+      try {
+        await worker.request({ kind: "project-context", cwd: f.dir });
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        let settled = false;
+        const pending = worker
+          .request({ kind: "recall", intent: delivery.intent })
+          .then(
+            (value) => {
+              settled = true;
+              return { value };
+            },
+            (error) => {
+              settled = true;
+              return { error: String(error) };
+            },
+          );
+        // Real worker/storage/retrieval progress; only its caller's clock advances.
+        const deadline = performance.now() + 3000;
+        while (Atomics.load(a, 1) !== 1 && performance.now() < deadline)
+          await pause(10);
+        expect(Atomics.load(a, 1)).toBe(1);
+        await vi.advanceTimersByTimeAsync(5001);
+        expect(settled).toBe(!survives);
+        Atomics.store(a, 0, 1);
+        Atomics.notify(a, 0);
+        vi.useRealTimers();
+        const outcome = await pending;
+        if (survives)
+          expect(outcome).toMatchObject({ value: { kind: "queued" } });
+        else
+          expect(outcome).toEqual({
+            error: "Error: memory worker recall deadline",
+          });
+      } finally {
+        vi.useRealTimers();
+        Atomics.store(a, 0, 1);
+        Atomics.notify(a, 0);
+        worker.close();
+        await f.close();
+      }
+    }
+  });
+  it("concurrent cold requests share one native SQLite handle; disabling pending acquisition exposes the leaked handle", async () => {
+    const { spawn, execFileSync } = await import("node:child_process");
+    const broken = join(artifact, "duplicate-open-dist");
+    await fs.cp(join(artifact, "dist"), broken, { recursive: true });
+    let changed = false;
+    for (const name of await fs.readdir(broken)) {
+      if (!name.endsWith(".js")) continue;
+      const path = join(broken, name);
+      const original = await fs.readFile(path, "utf8");
+      const duplicate = original.replace("openingStore ??=", "openingStore =");
+      if (duplicate !== original) {
+        changed = true;
+        await fs.writeFile(path, duplicate);
+      }
+    }
+    expect(changed).toBe(true);
+    for (const [distribution, expectedHandles] of [
+      [join(artifact, "dist"), 1],
+      [broken, 2],
+    ] as const) {
+      const f = await fixture();
+      await f.session.extensionRunner.emit({
+        type: "session_shutdown",
+        reason: "reload",
+      });
+      await fs.writeFile(
+        join(runtimeStoreConfiguration(f.config).root, f.note.path),
+        f.note.markdown.replace("violet lamp", "unpublished program edit"),
+      );
+      const release = await holdWriter(f);
+      let released = false;
+      const script = join(f.dir, "concurrent-open.mjs");
+      await fs.writeFile(
+        script,
+        `
+        import { SessionMemoryWorker } from ${JSON.stringify(pathToFileURL(join(distribution, "core/agent-memory-session-worker.js")).href)};
+        const worker = new SessionMemoryWorker({ store: ${JSON.stringify(runtimeStoreConfiguration(f.config))},
+          entry: new URL(${JSON.stringify(pathToFileURL(join(distribution, "core/agent-memory-session-worker.js")).href)}) });
+        process.on('message', async command => {
+          if (command === 'close') { worker.close(); process.disconnect(); return; }
+          try {
+            const pending = [worker.request({ kind: 'ack', deliveries: [] }), worker.request({ kind: 'ack', deliveries: [] })];
+            await worker.request({ kind: 'project-context', cwd: ${JSON.stringify(f.dir)} });
+            process.send('opening'); await Promise.all(pending); process.send('opened');
+          } catch (error) { process.send({ error: String(error) }); }
+        });
+        await worker.request({ kind: 'project-context', cwd: ${JSON.stringify(f.dir)} });
+        process.send('ready');
+      `,
+      );
+      const child = spawn(process.execPath, [script], {
+        stdio: ["ignore", "ignore", "pipe", "ipc"],
+      });
+      let stderr = "";
+      child.stderr!.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      const messages: unknown[] = [];
+      child.on("message", (message) => messages.push(message));
+      const exited = new Promise<number | null>((resolve) =>
+        child.once("close", resolve),
+      );
+      try {
+        await wait(() => messages.includes("ready"));
+        child.send("open");
+        await wait(() => messages.includes("opening"));
+        // The later store-free reply proves both earlier requests reached their
+        // pending opener, without guessing how long native preparation takes.
+        await release();
+        released = true;
+        await wait(() => messages.includes("opened"));
+        const db = await fs.realpath(
+          join(
+            runtimeStoreConfiguration(f.config).state,
+            "coordination.sqlite",
+          ),
+        );
+        const files =
+          process.platform === "linux"
+            ? await Promise.all(
+                (await fs.readdir(`/proc/${child.pid}/fd`)).map((name) =>
+                  fs.readlink(`/proc/${child.pid}/fd/${name}`).catch(() => ""),
+                ),
+              )
+            : execFileSync(
+                "/usr/sbin/lsof",
+                ["-a", "-p", String(child.pid), "-Fn"],
+                { encoding: "utf8" },
+              )
+                .split("\n")
+                .filter((line) => line.startsWith("n"))
+                .map((line) => line.slice(1));
+        expect(
+          files.filter((path) => path === db),
+          stderr,
+        ).toHaveLength(expectedHandles);
+        child.send("close");
+        expect(await exited, stderr).toBe(0);
+      } finally {
+        if (!released) await release();
+        if (child.connected) child.send("close");
+        await exited;
+        await f.close();
+      }
+    }
+  });
+  it("live and disk capture preserve early and concurrently appended late UTF-8 spans across worker/store reopen", async () => {
+    const { spawn } = await import("node:child_process");
+    const f = await fixture();
+    const manager = SessionManager.inMemory(f.dir);
+    const expected = new Map<string, string>();
+    const append = (label: string, repeats: number) => {
+      const body = `${label}: ` + "particular choice 🌿 ".repeat(repeats);
+      expected.set(
+        manager.appendMessage({
+          role: "user",
+          content: body,
+          timestamp: expected.size + 1,
+        }),
+        body,
+      );
+    };
+    append("early oversized experience", 4000);
+    append("early second opinion", 10);
+    const early = nativeSourceSnapshot(manager);
+    const root = join(f.dir, "disk-sources");
+    await fs.mkdir(root);
+    const path = join(root, "native.jsonl");
+    await fs.writeFile(
+      path,
+      [early.header, ...early.entries]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+    append("late reason", 2000);
+    append("late correction", 10);
+    const late = nativeSourceSnapshot(manager);
+    const appended =
+      late.entries
+        .slice(early.entries.length)
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n";
+    const options = {
+      entry: pathToFileURL(
+        join(artifact, "dist/core/agent-memory-session-worker.js"),
+      ),
+      store: runtimeStoreConfiguration(f.config),
+    };
+    let worker = new SessionMemoryWorker(options);
+    let store = f.store;
+    const scope = { kind: "personal" as const, ownerId: "fixture" };
+    const input = {
+      root,
+      checkpoint: join(f.dir, "disk-progress.json"),
+      scope,
+      project: null,
+      signal: new AbortController().signal,
+      maxWindows: 1,
+    };
+    try {
+      const live = worker.request({
+        kind: "capture",
+        snapshot: early,
+        through: early.entries.at(-1)!.id as C.EntryId,
+        scope,
+        project: null,
+      });
+      const writer = spawn(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `
+        import { appendFileSync } from 'node:fs';
+        appendFileSync(${JSON.stringify(path)}, ${JSON.stringify(appended)});
+      `,
+        ],
+        { stdio: ["ignore", "ignore", "pipe"] },
+      );
+      let stderr = "";
+      writer.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      const written = new Promise<number | null>((resolve, reject) => {
+        writer.once("error", reject);
+        writer.once("close", resolve);
+      });
+      const disk = await catchUpNativeSources({ ...input, store });
+      expect(disk.errors).toEqual([]);
+      expect(disk.bounded).toBe(true);
+      expect(await written, stderr).toBe(0);
+      expect(await live).toBe("captured");
+      worker.close();
+      store.close();
+      store = await FileMemoryStore.open(options.store);
+      worker = new SessionMemoryWorker(options);
+      expect(
+        await worker.request({
+          kind: "capture",
+          snapshot: late,
+          through: late.entries.at(-1)!.id as C.EntryId,
+          scope,
+          project: null,
+        }),
+      ).toBe("captured");
+      while ((await catchUpNativeSources({ ...input, store })).bounded) {}
+      const windows = (await store.forPeer("audit").scan(null, 100)).flatMap(
+        (change) => change.windows,
+      );
+      const byWindow = new Map(
+        windows.map((window) => [window.windowId, window]),
+      );
+      for (const [entryId, body] of expected) {
+        const excerpts = [...byWindow.values()]
+          .flatMap((window) => window.excerpts)
+          .filter((excerpt) => excerpt.span.entryId === entryId)
+          .sort((a, b) => a.span.start - b.span.start);
+        expect(excerpts.map((excerpt) => excerpt.text).join(""), entryId).toBe(
+          body,
+        );
+        let end = 0;
+        for (const excerpt of excerpts) {
+          expect(excerpt.span.start).toBe(end);
+          expect(excerpt.span.end - excerpt.span.start).toBe(
+            Buffer.byteLength(excerpt.text),
+          );
+          end = excerpt.span.end;
+        }
+      }
+      expect(await fs.readFile(path, "utf8")).toBe(
+        [late.header, ...late.entries]
+          .map((entry) => JSON.stringify(entry))
+          .join("\n") + "\n",
+      );
+    } finally {
+      worker.close();
+      store.close();
+      await f.close();
+    }
+  }, 60_000);
   it("pre-enqueue worker recovery survives reopen without ACK until native persistence", async () => {
     const f = await fixture();
     const d = await seedOutbox(f, undefined, false);
