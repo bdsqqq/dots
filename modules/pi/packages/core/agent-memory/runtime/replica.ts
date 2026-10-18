@@ -1,10 +1,12 @@
 import type * as C from "./contracts.js";
 import { parseReplicaChange } from "./wire.js";
+import { canonicalJSON, sha256 } from "./identity.js";
 
 export interface ReplicaLimits {
   readonly maxChanges: number;
   readonly maxBytes: number;
   readonly maxObjects: number;
+  /** per authorization; a failed cold proof may rebuild one additional bounded prefix. */
   readonly maxClosureChanges: number;
   readonly maxClosureBytes: number;
   readonly timeoutMs: number;
@@ -169,41 +171,170 @@ function allowed(scope: C.MemoryScope, policy: ReplicaPolicy): boolean {
         (Array.isArray(policy.projects) &&
           policy.projects.includes(scope.repositoryId));
 }
-/** parent traversal prevents an allowed note from laundering a forbidden evidence commit. */
+interface PayloadProof {
+  readonly store: C.ReplicaStore;
+  readonly digest: string;
+}
+interface DisclosureProofs {
+  readonly store: C.ReplicaStore;
+  readonly token: string;
+  readonly proofs: readonly PayloadProof[];
+}
+async function continuityFence(
+  authorization: DisclosureProofs,
+  signal: AbortSignal,
+): Promise<void> {
+  signal.throwIfAborted();
+  if ((await authorization.store.continuityToken()) !== authorization.token)
+    throw new Error("replica repository continuity changed; retry");
+  signal.throwIfAborted();
+}
+async function saveProofs(
+  authorization: DisclosureProofs,
+  signal: AbortSignal,
+): Promise<void> {
+  await continuityFence(authorization, signal);
+  for (const proof of authorization.proofs) {
+    signal.throwIfAborted();
+    await proof.store.acknowledge([], proof.digest);
+  }
+  // changes during persistence leave only proofs in an obsolete namespace.
+  await continuityFence(authorization, signal);
+}
+/**
+ * proofs certify exact retained payloads and ancestry under one local policy and
+ * repository epoch. wire cursors/ACKs never enter this namespace. every boundary
+ * is parsed and scope-checked on a hit; epoch changes invalidate descendants too,
+ * including unchanged descendants above a replaced forbidden ancestor.
+ */
 async function authorizeClosure(
   batch: readonly C.ReplicaChange[],
   store: C.ReplicaStore,
-  policy: ReplicaPolicy,
+  repository: ReplicaRepository,
+  configuredPolicy: ReplicaPolicy,
   limits: ReplicaLimits,
   signal: AbortSignal,
-): Promise<void> {
+  retained = false,
+  repair = true,
+): Promise<DisclosureProofs> {
+  const policy: ReplicaPolicy = {
+    ...configuredPolicy,
+    projects:
+      configuredPolicy.projects === "all-owned"
+        ? "all-owned"
+        : [...new Set(configuredPolicy.projects)].sort(),
+  };
   if (!policy.ownerId || policy.peerOwnerId !== policy.ownerId)
     throw new Error("replica owner denied");
-  const available = new Map(batch.map((c) => [c.commitId, c]));
-  const pending = batch.map((c) => c.commitId);
-  const seen = new Set<C.CommitId>();
-  let bytes = 0;
-  while (pending.length) {
-    signal.throwIfAborted();
-    const id = pending.pop()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    if (seen.size > limits.maxClosureChanges)
-      throw new Error("replica closure limit");
-    const c = available.get(id) ?? (await store.readChanges([id]))[0];
-    if (!c || c.commitId !== id) throw new Error("missing replica dependency");
-    parseReplicaChange(c);
-    bytes += Buffer.byteLength(JSON.stringify(c));
-    if (bytes > limits.maxClosureBytes)
-      throw new Error("replica closure byte limit");
-    if (
-      [...c.windows, ...c.revisions, ...c.suppressions].some(
-        (x) => !allowed(x.scope, policy),
-      )
-    )
-      throw new Error("replica scope denied");
-    pending.push(...c.parents);
+  const token = await store.continuityToken();
+  const namespace = `replica-proof:v2:${sha256(canonicalJSON({ policy, token }))}`;
+  const available = new Map<C.CommitId, C.ReplicaChange>();
+  for (const c of batch) {
+    const previous = available.get(c.commitId);
+    if (previous && canonicalJSON(previous) !== canonicalJSON(c))
+      throw new Error("replica commit identity collision");
+    available.set(c.commitId, c);
   }
+  const pending: { id: C.CommitId; proof?: PayloadProof }[] = [
+    ...available.keys(),
+  ].map((id) => ({ id }));
+  const seen = new Set<C.CommitId>();
+  const active = new Set<C.CommitId>();
+  const proofs: PayloadProof[] = [];
+  let bytes = 0;
+  try {
+    while (pending.length) {
+      signal.throwIfAborted();
+      const { id, proof } = pending.pop()!;
+      if (proof) {
+        active.delete(id);
+        seen.add(id);
+        proofs.push(proof);
+        continue;
+      }
+      if (seen.has(id)) continue;
+      if (active.has(id)) throw new Error("cyclic replica dependency");
+      if (seen.size + active.size >= limits.maxClosureChanges)
+        throw new Error("replica closure limit");
+      const c = available.get(id) ?? (await store.readChanges([id]))[0];
+      if (!c || c.commitId !== id)
+        throw new Error("missing replica dependency");
+      parseReplicaChange(c);
+      const payload = canonicalJSON(c);
+      bytes += Buffer.byteLength(payload);
+      if (bytes > limits.maxClosureBytes)
+        throw new Error("replica closure byte limit");
+      if (
+        [...c.windows, ...c.revisions, ...c.suppressions].some(
+          (x) => !allowed(x.scope, policy),
+        )
+      )
+        throw new Error("replica scope denied");
+      const proofStore = repository.forPeer(`${namespace}:${sha256(id)}`);
+      const digest = sha256(payload);
+      const verified = await proofStore.readCursor();
+      if (verified !== null && verified !== digest)
+        throw new Error("replica proof payload mismatch");
+      if (verified === digest || (retained && available.has(id))) {
+        const current = (await store.readChanges([id]))[0];
+        if (!current || sha256(canonicalJSON(current)) !== digest)
+          throw new Error("replica retained payload mismatch");
+      }
+      if (verified === digest) {
+        seen.add(id);
+        continue;
+      }
+      active.add(id);
+      pending.push({ id, proof: { store: proofStore, digest } });
+      pending.push(...c.parents.map((parent) => ({ id: parent })));
+    }
+  } catch (error) {
+    if (
+      repair &&
+      error instanceof Error &&
+      /^replica closure (limit|byte limit)$/.test(error.message)
+    ) {
+      // metadata loss can leave a deep receiver checkpoint but no ancestry proofs.
+      // rebuild a causal prefix per failed attempt, never widen disclosure or the
+      // per-closure budget. at most one extra bounded validation runs per attempt.
+      const authorization = { store, token, proofs: [] };
+      await continuityFence(authorization, signal);
+      const progress = repository.forPeer(`${namespace}:repair`);
+      const after = cursor(await progress.readCursor()).after;
+      const prefix = await store.scan(
+        after,
+        Math.min(limits.maxChanges, Math.max(1, limits.maxClosureChanges - 1)),
+      );
+      if (prefix.length) {
+        const rebuilt = await authorizeClosure(
+          prefix,
+          store,
+          repository,
+          policy,
+          limits,
+          signal,
+          true,
+          false,
+        );
+        if (rebuilt.token !== token)
+          throw new Error("replica repository continuity changed; retry");
+        await saveProofs(rebuilt, signal);
+      }
+      // revisit branches inserted before the saved scan position after a sweep.
+      await progress.acknowledge(
+        [],
+        JSON.stringify({
+          ...initial(),
+          after: prefix.at(-1)?.commitId ?? null,
+        }),
+      );
+      await continuityFence(authorization, signal);
+    }
+    throw error;
+  }
+  const authorization = { store, token, proofs };
+  await continuityFence(authorization, signal);
+  return authorization;
 }
 async function page(
   store: C.ReplicaStore,
@@ -252,9 +383,17 @@ export async function exchangeReplica(
   const request = parseExchangeRequest(input, limits);
   const store = deps.store.forPeer(`replica-server:${deps.peerId}`);
   const old = cursor(await store.readCursor());
-  await authorizeClosure(request.outgoing, store, deps.policy, limits, signal);
+  const receivedProofs = await authorizeClosure(
+    request.outgoing,
+    store,
+    deps.store,
+    deps.policy,
+    limits,
+    signal,
+  );
   signal.throwIfAborted();
   await store.integrate(request.outgoing);
+  await saveProofs(receivedProofs, signal);
   // durable integration precedes the receiver-owned checkpoint, including replays.
   let received = request.outgoing.at(-1)?.commitId ?? old.received;
   if (received !== null && request.outgoing.length === 0) {
@@ -268,7 +407,16 @@ export async function exchangeReplica(
   }
   await store.acknowledge([], JSON.stringify({ ...old, received }));
   const incoming = await page(store, cursor(request.cursor).after, limits);
-  await authorizeClosure(incoming, store, deps.policy, limits, signal);
+  const outgoingProofs = await authorizeClosure(
+    incoming,
+    store,
+    deps.store,
+    deps.policy,
+    limits,
+    signal,
+    true,
+  );
+  await saveProofs(outgoingProofs, signal);
   const response: ExchangeResponse = {
     incoming,
     acknowledged: request.outgoing.map((c) => c.commitId),
@@ -278,7 +426,9 @@ export async function exchangeReplica(
       after: incoming.at(-1)?.commitId ?? cursor(request.cursor).after,
     }),
   };
-  return parseExchangeResponse(response, limits);
+  const validated = parseExchangeResponse(response, limits);
+  await continuityFence(outgoingProofs, signal);
+  return validated;
 }
 export interface SynchronizeResult {
   readonly kind: "complete" | "bounded" | "backoff";
@@ -310,7 +460,18 @@ export async function synchronizeReplica(
       // cached receipt may describe data absent from an older restored snapshot.
       const outgoing =
         round === 0 ? [] : await page(store, state.received, limits);
-      await authorizeClosure(outgoing, store, deps.policy, limits, signal);
+      await saveProofs(
+        await authorizeClosure(
+          outgoing,
+          store,
+          deps.store,
+          deps.policy,
+          limits,
+          signal,
+          true,
+        ),
+        signal,
+      );
       const response = parseExchangeResponse(
         await deps.transport.exchange(
           { outgoing, cursor: JSON.stringify(state) },
@@ -323,15 +484,17 @@ export async function synchronizeReplica(
         response.acknowledged.some((id, i) => id !== outgoing[i]?.commitId)
       )
         throw new Error("invalid peer acknowledgment");
-      await authorizeClosure(
+      const receivedProofs = await authorizeClosure(
         response.incoming,
         store,
+        deps.store,
         deps.policy,
         limits,
         signal,
       );
       signal.throwIfAborted();
       await store.integrate(response.incoming);
+      await saveProofs(receivedProofs, signal);
       const remote = cursor(response.cursor);
       state = { ...remote, attempts: 0, retryAt: 0 };
       await store.acknowledge(response.acknowledged, JSON.stringify(state));

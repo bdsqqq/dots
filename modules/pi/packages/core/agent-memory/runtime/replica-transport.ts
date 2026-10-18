@@ -265,11 +265,18 @@ if (import.meta.vitest) {
     );
     return file;
   }
-  function transport(id: string): ReplicaTransport {
+  function transport(
+    id: string,
+    limits: ReplicaLimits = REPLICA_LIMITS,
+  ): ReplicaTransport {
     // node resolves jiti from this existing package; the helper is trusted fixture configuration.
     return processReplicaTransport({
       executable: process.execPath,
-      args: ["--input-type=module", "-e", fs.readFileSync(helper(id), "utf8")],
+      args: [
+        "--input-type=module",
+        "-e",
+        fs.readFileSync(helper(id, { limits }), "utf8"),
+      ],
     });
   }
   async function sync(
@@ -282,7 +289,7 @@ if (import.meta.vitest) {
       peerId: id,
       policy,
       signal: signal(),
-      transport: transport(id),
+      transport: transport(id, limits),
       limits,
     });
   }
@@ -449,6 +456,263 @@ if (import.meta.vitest) {
     const fresh = store("fresh");
     expect((await fresh.listNotes(scope)).length).toBe(2);
   }, 60_000);
+
+  test("history beyond the closure budget advances across process restarts, fresh peers and restored data", async () => {
+    const a = store("a");
+    const limits = {
+      ...REPLICA_LIMITS,
+      maxChanges: 1,
+      maxClosureChanges: 2,
+      maxRounds: 3,
+    };
+    await commit(a, "c0", [note("n0")]);
+    await sync(a, "b", limits);
+    fs.cpSync(join(dir, "b"), join(dir, "old-b"), { recursive: true });
+    for (let i = 1; i < 6; i++) await commit(a, `c${i}`, [note(`n${i}`)]);
+    async function converge(id: string): Promise<void> {
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const result = await sync(a, id, limits);
+        if (result.kind === "complete") return;
+        expect(result.kind).toBe("bounded");
+      }
+      throw new Error("bounded invocations did not converge");
+    }
+    await converge("b");
+    expect(await a.forPeer("replica-client:b").pending(100)).toEqual([]);
+    fs.renameSync(join(dir, "b"), join(dir, "newer-b"));
+    fs.cpSync(join(dir, "old-b"), join(dir, "b"), { recursive: true });
+    fs.renameSync(config("b").state, join(dir, "old-b-state"));
+    fs.cpSync(join(dir, "newer-b", "state"), config("b").state, {
+      recursive: true,
+    });
+    await converge("b");
+    await converge("fresh");
+    for (const id of ["b", "fresh"]) {
+      const receiver = store(id);
+      expect(
+        (await receiver.forPeer("audit").scan(null, 100)).map(
+          (c) => c.commitId,
+        ),
+      ).toEqual(["c0", "c1", "c2", "c3", "c4", "c5"]);
+    }
+  }, 90_000);
+
+  test("policy tightening and reused ids cannot reuse broader or different-payload proofs", async () => {
+    const a = store("a");
+    await commit(a, "parent", [note("parent")]);
+    await commit(a, "child", [note("child")]);
+    await exchangeReplica(
+      { outgoing: [], cursor: null },
+      { store: a, peerId: "warm", policy, signal: signal() },
+    );
+    await expect(
+      exchangeReplica(
+        { outgoing: [], cursor: null },
+        {
+          store: a,
+          peerId: "warm",
+          policy: { ...policy, personal: false },
+          signal: signal(),
+        },
+      ),
+    ).rejects.toThrow("scope denied");
+    const original = (await a.forPeer("audit").scan(null, 1))[0]!;
+    const different = { ...original, revisions: [note("different")] };
+    await expect(
+      exchangeReplica(
+        { outgoing: [different], cursor: null },
+        {
+          store: a,
+          peerId: "warm",
+          policy,
+          signal: signal(),
+        },
+      ),
+    ).rejects.toThrow(/payload mismatch|identity collision/);
+  });
+
+  test("lost local proof metadata rebuilds bounded prefixes behind a deep peer cursor", async () => {
+    let a = store("a");
+    for (let i = 0; i < 6; i++) await commit(a, `c${i}`);
+    await exchangeReplica(
+      { outgoing: [], cursor: null },
+      { store: a, peerId: "warm", policy, signal: signal() },
+    );
+    a.close();
+    open.splice(open.indexOf(a), 1);
+    fs.renameSync(config("a").state, join(dir, "saved-proof-state"));
+    a = store("a");
+    const limits = { ...REPLICA_LIMITS, maxChanges: 1, maxClosureChanges: 2 };
+    const deep = JSON.stringify({
+      version: 1,
+      after: "c4",
+      received: null,
+      attempts: 0,
+      retryAt: 0,
+    });
+    let failures = 0;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        const response = await exchangeReplica(
+          { outgoing: [], cursor: deep },
+          { store: a, peerId: "warm", policy, signal: signal(), limits },
+        );
+        expect(response.incoming.map((c) => c.commitId)).toEqual(["c5"]);
+        expect(failures).toBeGreaterThan(0);
+        return;
+      } catch (error) {
+        expect(String(error)).toContain("replica closure limit");
+        failures++;
+      }
+    }
+    throw new Error("cold proofs did not rebuild");
+  });
+
+  test("actual repository replacement during proof reads or writes cannot authorize under a new epoch", async () => {
+    for (const phase of ["read", "write"] as const) {
+      const id = `source-${phase}`;
+      const a = store(id);
+      await commit(a, "parent");
+      await commit(a, "child");
+      await exchangeReplica(
+        { outgoing: [], cursor: null },
+        { store: a, peerId: "warm", policy, signal: signal() },
+      );
+      if (phase === "write") await commit(a, "new-child");
+      const original = await a.forPeer("audit").scan(null, 100);
+      const replacement = store(`replacement-${phase}`);
+      const { revisionId: _id, ...foreign } = {
+        ...note("foreign"),
+        scope: { kind: "personal" as const, ownerId: "someone-else" },
+      };
+      await replacement.forPeer("restore").integrate([
+        {
+          ...original[0]!,
+          revisions: [{ ...foreign, revisionId: revisionId(foreign) }],
+        },
+        ...original.slice(1),
+      ]);
+      let changed = false;
+      function replace(): void {
+        changed = true;
+        fs.renameSync(config(id).data, join(dir, `old-data-${phase}`));
+        fs.cpSync(config(`replacement-${phase}`).data, config(id).data, {
+          recursive: true,
+        });
+      }
+      const repository = {
+        forPeer(peer: string) {
+          const port = a.forPeer(peer);
+          if (!peer.startsWith("replica-proof:")) return port;
+          return {
+            ...port,
+            async readCursor() {
+              const saved = await port.readCursor();
+              if (phase === "read" && !changed) replace();
+              return saved;
+            },
+            async acknowledge(
+              commits: Parameters<typeof port.acknowledge>[0],
+              cursor: string,
+            ) {
+              await port.acknowledge(commits, cursor);
+              if (phase === "write" && !changed) replace();
+            },
+          };
+        },
+      };
+      const skipped = JSON.stringify({
+        version: 1,
+        after: phase === "read" ? "parent" : "child",
+        received: null,
+        attempts: 0,
+        retryAt: 0,
+      });
+      await expect(
+        exchangeReplica(
+          { outgoing: [], cursor: skipped },
+          { store: repository, peerId: "warm", policy, signal: signal() },
+        ),
+      ).rejects.toThrow("continuity changed");
+      expect(changed).toBe(true);
+      await expect(
+        exchangeReplica(
+          { outgoing: [], cursor: skipped },
+          { store: a, peerId: "warm", policy, signal: signal() },
+        ),
+      ).rejects.toThrow("scope denied");
+    }
+  });
+
+  test("failed durable integration cannot publish incoming proofs", async () => {
+    const source = store("source"),
+      receiver = store("receiver");
+    await commit(source, "incoming", [note("incoming")]);
+    const incoming = await source.forPeer("audit").scan(null, 100);
+    let proofWrites = 0;
+    const repository = {
+      forPeer(peer: string) {
+        const port = receiver.forPeer(peer);
+        return {
+          ...port,
+          async integrate() {
+            throw new Error("fixture durable integration failure");
+          },
+          async acknowledge(
+            commits: Parameters<typeof port.acknowledge>[0],
+            cursor: string,
+          ) {
+            if (peer.startsWith("replica-proof:")) proofWrites++;
+            await port.acknowledge(commits, cursor);
+          },
+        };
+      },
+    };
+    await expect(
+      exchangeReplica(
+        { outgoing: incoming, cursor: null },
+        { store: repository, peerId: "source", policy, signal: signal() },
+      ),
+    ).rejects.toThrow("durable integration failure");
+    expect(proofWrites).toBe(0);
+    expect(await receiver.listNotes(scope)).toEqual([]);
+  });
+
+  test("uncached count and byte limits still refuse disclosure", async () => {
+    const a = store("a");
+    for (let i = 0; i < 3; i++) await commit(a, `c${i}`, [note(`n${i}`)]);
+    const skipped = JSON.stringify({
+      version: 1,
+      after: "c1",
+      received: null,
+      attempts: 0,
+      retryAt: 0,
+    });
+    await expect(
+      exchangeReplica(
+        { outgoing: [], cursor: skipped },
+        {
+          store: a,
+          peerId: "cold",
+          policy,
+          signal: signal(),
+          limits: { ...REPLICA_LIMITS, maxChanges: 1, maxClosureChanges: 2 },
+        },
+      ),
+    ).rejects.toThrow("closure limit");
+    await expect(
+      exchangeReplica(
+        { outgoing: [], cursor: null },
+        {
+          store: a,
+          peerId: "bytes",
+          policy,
+          signal: signal(),
+          limits: { ...REPLICA_LIMITS, maxChanges: 1, maxClosureBytes: 1 },
+        },
+      ),
+    ).rejects.toThrow("closure byte limit");
+  });
 
   test("bounded interruption resumes durable cursors; unavailable peer never gates local acceptance", async () => {
     const a = store("a");
