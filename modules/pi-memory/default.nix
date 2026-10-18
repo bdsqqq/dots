@@ -3,7 +3,9 @@ let
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isLinux = lib.hasInfix "linux" hostSystem;
   repoRoot = "${config.my.paths.commonplace}/01_files/nix";
-  peers = builtins.filter (host: host != config.networking.hostName) [ "mbp-m2" "lgo-z2e" "htz-xfs-lab" ];
+  # Darwin's hostName can include .local; the roster uses short SSH host names.
+  localHost = if isDarwin then config.networking.localHostName else config.networking.hostName;
+  peers = builtins.filter (host: host != localHost) [ "mbp-m2" "lgo-z2e" "htz-xfs-lab" ];
   toolsBin = "${repoRoot}/modules/node-pnpm/node_modules/.bin";
   agentMemory = pkgs.writeShellApplication {
     name = "pi-memory";
