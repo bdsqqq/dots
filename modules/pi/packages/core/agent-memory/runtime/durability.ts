@@ -56,6 +56,14 @@ export function confirmDurable(path: string): void {
     fsyncSync(fd);
     flushDirectory(dirname(path));
     flushFile(fd);
+    const prefix = `.pi-memory-stage-${basename(path)}-`;
+    const bytes = readFileSync(path);
+    for (const file of readdirSync(dirname(path))) {
+      if (!file.startsWith(prefix)) continue;
+      const stage = join(dirname(path), file);
+      if (readFileSync(stage).equals(bytes)) unlinkSync(stage);
+    }
+    flushDirectory(dirname(path));
   } finally {
     closeSync(fd);
   }
@@ -64,12 +72,11 @@ export function confirmDurable(path: string): void {
 export function durableCreate(path: string, bytes: string | Buffer): void {
   durableDirectory(dirname(path));
   const prefix = `.pi-memory-stage-${basename(path)}-`;
-  let temporary: string | null = null;
   if (existsSync(path)) {
     if (!readFileSync(path).equals(Buffer.from(bytes)))
       throw new IntegrityError(`immutable collision: ${path}`);
   } else {
-    temporary = join(dirname(path), `${prefix}${randomUUID()}`);
+    const temporary = join(dirname(path), `${prefix}${randomUUID()}`);
     const fd = openSync(temporary, "wx", 0o600);
     try {
       writeFileSync(fd, bytes);
@@ -85,13 +92,4 @@ export function durableCreate(path: string, bytes: string | Buffer): void {
     }
   }
   confirmDurable(path);
-  // only owned staging names are disposable, after the final value is durable.
-  // recovery snapshots and stashed user inodes never pass through this cleanup.
-  for (const file of readdirSync(dirname(path))) {
-    if (!file.startsWith(prefix)) continue;
-    const stage = join(dirname(path), file);
-    if (stage === temporary || readFileSync(stage).equals(Buffer.from(bytes)))
-      unlinkSync(stage);
-  }
-  flushDirectory(dirname(path));
 }

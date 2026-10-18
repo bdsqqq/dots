@@ -121,8 +121,7 @@ function matchesEvidence(a: C.EvidenceRef, b: C.EvidenceRef): boolean {
         (y) =>
           x.entryId === y.entryId &&
           x.partId === y.partId &&
-          x.start < y.end &&
-          y.start < x.end,
+          (sameValue(x, y) || (x.start < y.end && y.start < x.end)),
       ),
     )
   );
@@ -396,6 +395,9 @@ export class FileMemoryStore implements C.MemoryStore {
           }
         this.validateEvidence(view, r);
       }
+      for (const s of a.replica.suppressions)
+        if (s.target.kind === "evidence")
+          this.validateEvidenceRef(view, s.scope, s.target.evidence);
       for (const o of a.replica.outcomes) {
         this.validateOutcome(view, o);
         view.terminal.add(o.windowId);
@@ -585,6 +587,7 @@ export class FileMemoryStore implements C.MemoryStore {
         if (s.target.kind === "evidence")
           this.validateEvidenceRef(next, s.scope, s.target.evidence);
       for (const e of change.edits) {
+        this.safePath(e.revision.path);
         const current = view.heads.get(e.revision.noteId) ?? [];
         if (
           !headsEqual(
@@ -914,20 +917,59 @@ export class FileMemoryStore implements C.MemoryStore {
       this.localCreate(join(this.receipts, sha256(id)), outcome);
     });
   }
+  private dependenciesReady(
+    c: C.ReplicaChange,
+    commits: ReadonlySet<C.CommitId>,
+    revisions: ReadonlySet<C.RevisionId>,
+    windows: ReadonlySet<C.WindowId>,
+  ): boolean {
+    const rs = new Set([...revisions, ...c.revisions.map((r) => r.revisionId)]),
+      ws = new Set([...windows, ...c.windows.map((w) => w.windowId)]);
+    return (
+      c.parents.every((p) => commits.has(p)) &&
+      c.revisions.every(
+        (r) =>
+          (r.ancestry.kind !== "known" ||
+            r.ancestry.parents.every((p) => rs.has(p))) &&
+          r.claims.every(
+            (claim) =>
+              claim.evidence.every((e) => ws.has(e.windowId)) &&
+              claim.derivedFrom.every((ref) => rs.has(ref.revisionId)),
+          ),
+      ) &&
+      c.suppressions.every(
+        (s) =>
+          s.target.kind !== "evidence" || ws.has(s.target.evidence.windowId),
+      ) &&
+      c.outcomes.every(
+        (o) =>
+          ws.has(o.windowId) &&
+          (o.decision.kind !== "changed" ||
+            o.decision.notes.every((ref) => rs.has(ref.revisionId))),
+      )
+    );
+  }
   private orderedChanges(view: View): C.ReplicaChange[] {
     const waiting = [...view.accepted.values()]
       .map((a) => a.replica)
       .sort((a, b) => a.commitId.localeCompare(b.commitId));
     const ordered: C.ReplicaChange[] = [];
-    const done = new Set<C.CommitId>();
+    const done = new Set<C.CommitId>(),
+      revisions = new Set<C.RevisionId>(),
+      windows = new Set<C.WindowId>();
     while (waiting.length) {
       const index = waiting.findIndex((c) =>
-        c.parents.every((p) => done.has(p)),
+        this.dependenciesReady(c, done, revisions, windows),
       );
-      if (index < 0) throw new IntegrityError("cyclic commit ancestry");
+      if (index < 0)
+        throw new IntegrityError(
+          "missing/cyclic published commit dependencies",
+        );
       const c = waiting.splice(index, 1)[0]!;
       ordered.push(c);
       done.add(c.commitId);
+      c.revisions.forEach((r) => revisions.add(r.revisionId));
+      c.windows.forEach((w) => windows.add(w.windowId));
     }
     return ordered;
   }
@@ -994,6 +1036,7 @@ export class FileMemoryStore implements C.MemoryStore {
               if (!available.has(p))
                 throw new IntegrityError("missing incoming parent");
             for (const r of c.revisions) {
+              this.safePath(r.path);
               this.validateEvidence(next, r);
               if (r.ancestry.kind === "known")
                 for (const p of r.ancestry.parents)
@@ -1009,34 +1052,9 @@ export class FileMemoryStore implements C.MemoryStore {
           const revisions = new Set(view.revisions.keys()),
             windows = new Set(view.windows.keys());
           while (pending.length) {
-            const index = pending.findIndex((c) => {
-              const rs = new Set([
-                  ...revisions,
-                  ...c.revisions.map((r) => r.revisionId),
-                ]),
-                ws = new Set([...windows, ...c.windows.map((w) => w.windowId)]);
-              return (
-                c.parents.every((p) => done.has(p)) &&
-                c.revisions.every(
-                  (r) =>
-                    (r.ancestry.kind !== "known" ||
-                      r.ancestry.parents.every((p) => rs.has(p))) &&
-                    r.claims.every(
-                      (claim) =>
-                        claim.evidence.every((e) => ws.has(e.windowId)) &&
-                        claim.derivedFrom.every((ref) =>
-                          rs.has(ref.revisionId),
-                        ),
-                    ),
-                ) &&
-                c.outcomes.every(
-                  (o) =>
-                    ws.has(o.windowId) &&
-                    (o.decision.kind !== "changed" ||
-                      o.decision.notes.every((ref) => rs.has(ref.revisionId))),
-                )
-              );
-            });
+            const index = pending.findIndex((c) =>
+              this.dependenciesReady(c, done, revisions, windows),
+            );
             if (index < 0) throw new IntegrityError("cyclic incoming ancestry");
             const c = pending.splice(index, 1)[0]!;
             this.publish(c, null);
@@ -1067,8 +1085,9 @@ export class FileMemoryStore implements C.MemoryStore {
     return readdirSync(this.journals)
       .filter((f) => f.endsWith(".intent"))
       .map((file) => {
-        const p = record(json(join(this.journals, file)));
-        return {
+        const p = record(this.localValue(join(this.journals, file)));
+        const token = file.slice(0, -".intent".length);
+        const placement: Placement = {
           path: string(p.path),
           revisionId: string(p.revisionId) as C.RevisionId,
           candidate: string(p.candidate),
@@ -1076,7 +1095,27 @@ export class FileMemoryStore implements C.MemoryStore {
           snapshot: p.snapshot === null ? null : string(p.snapshot),
           basis: p.basis === null ? null : string(p.basis),
         };
+        this.safePath(placement.path);
+        if (
+          !/^[a-f0-9-]{36}$/.test(token) ||
+          placement.candidate !==
+            join(this.recovery, `${token}.candidate.md`) ||
+          placement.stash !== join(this.recovery, `${token}.stash.md`) ||
+          (placement.snapshot !== null &&
+            placement.snapshot !== join(this.recovery, `${token}.basis.md`)) ||
+          (placement.basis !== null && !/^[a-f0-9]{64}$/.test(placement.basis))
+        )
+          throw new IntegrityError("invalid materialization journal");
+        return placement;
       });
+  }
+  private placementDone(p: Placement): boolean {
+    const path = `${p.candidate}.done`;
+    if (!existsSync(path)) return false;
+    const done = record(this.localValue(path));
+    if (done.path !== p.path || done.revisionId !== p.revisionId)
+      throw new IntegrityError("invalid materialization completion");
+    return true;
   }
   private safePath(path: string): string {
     const full = resolve(this.config.root, path);
@@ -1193,8 +1232,7 @@ export class FileMemoryStore implements C.MemoryStore {
       if (heads.length !== 1 || heads[0]!.exposure.kind === "deleted") continue;
       const head = heads[0]!;
       const done = placements.some(
-        (p) =>
-          p.revisionId === head.revisionId && existsSync(`${p.candidate}.done`),
+        (p) => p.revisionId === head.revisionId && this.placementDone(p),
       );
       if (
         !done ||
@@ -1233,14 +1271,26 @@ export class FileMemoryStore implements C.MemoryStore {
   }
   private materialize(view: View): void {
     for (const p of this.placements())
-      if (!existsSync(`${p.candidate}.done`)) this.finishPlacement(p);
+      if (!this.placementDone(p)) this.finishPlacement(p);
     const placements = this.placements();
+    const pathOwners = new Map<string, Set<C.NoteId>>();
     for (const heads of view.heads.values())
       for (const r of heads) {
-        const path =
-          heads.length > 1
-            ? r.path.replace(/\.md$/, `~${r.revisionId.slice(0, 12)}.md`)
-            : r.path;
+        const owners = pathOwners.get(r.path) ?? new Set<C.NoteId>();
+        owners.add(r.noteId);
+        pathOwners.set(r.path, owners);
+      }
+    for (const heads of view.heads.values())
+      for (const r of heads) {
+        let path = r.path;
+        if (heads.length > 1 || pathOwners.get(r.path)!.size > 1) {
+          const suffix = `-${encodeURIComponent(r.noteId)}`;
+          const stem = r.path.slice(0, -3);
+          const descriptive = stem.endsWith(suffix)
+            ? stem.slice(0, -suffix.length)
+            : stem;
+          path = `${descriptive}${heads.length > 1 ? `~${r.revisionId.slice(0, 12)}` : ""}${suffix}.md`;
+        }
         const target = this.safePath(path);
         if (existsSync(target) && lstatSync(target).isSymbolicLink())
           throw new IntegrityError("symlinked editable file");
@@ -1249,7 +1299,7 @@ export class FileMemoryStore implements C.MemoryStore {
             (p) =>
               p.path === path &&
               p.revisionId === r.revisionId &&
-              existsSync(`${p.candidate}.done`),
+              this.placementDone(p),
           )
         )
           continue;
@@ -1269,7 +1319,7 @@ export class FileMemoryStore implements C.MemoryStore {
           snapshot,
           basis: captured === null ? null : sha256(captured),
         };
-        durableCreate(join(this.journals, `${token}.intent`), canonicalJSON(p));
+        this.localCreate(join(this.journals, `${token}.intent`), p);
         this.finishPlacement(p);
       }
   }
@@ -1303,10 +1353,10 @@ export class FileMemoryStore implements C.MemoryStore {
       }
       flushDirectory(dirname(target));
     }
-    durableCreate(
-      `${p.candidate}.done`,
-      canonicalJSON({ path: p.path, revisionId: p.revisionId }),
-    );
+    this.localCreate(`${p.candidate}.done`, {
+      path: p.path,
+      revisionId: p.revisionId,
+    });
   }
 }
 
@@ -1327,7 +1377,8 @@ if (import.meta.vitest) {
   const { tmpdir } = await import("node:os");
   const { spawnSync, spawn } = await import("node:child_process");
   const { fileURLToPath } = await import("node:url");
-  const { createNoteRevision } = await import("./markdown.js");
+  const { createNoteRevision, readMarkdownRevision } =
+    await import("./markdown.js");
   const { hashSourceWindow, windowId } = await import("./identity.js");
   const scope: C.MemoryScope = { kind: "personal", ownerId: "fixture-owner" };
   const now = "2026-01-01T00:00:00.000Z";
@@ -1339,7 +1390,7 @@ if (import.meta.vitest) {
     maxBatchBytes: 100000,
     leaseMs: 10000,
   };
-  function fixture(): {
+  function fixture(replicaId = "replica-a"): {
     dir: string;
     config: FileMemoryStoreConfig;
     store: FileMemoryStore;
@@ -1349,7 +1400,7 @@ if (import.meta.vitest) {
       root: join(dir, "notes"),
       data: join(dir, "data"),
       state: join(dir, "state"),
-      replicaId: "replica-a" as C.ReplicaId,
+      replicaId: replicaId as C.ReplicaId,
       owner: "fixture-owner",
     };
     return { dir, config, store: new FileMemoryStore(config) };
@@ -1654,7 +1705,11 @@ if (import.meta.vitest) {
       await store.commit(
         change("edit", [note("a", "program", [a.revisionId])]),
       );
+      writeSync(fd!, "\nwritten after acceptance");
       const heads = await store.listNotes(scope);
+      expect(
+        heads.some((n) => n.markdown.includes("written after acceptance")),
+      ).toBe(true);
       expect(heads.some((n) => n.markdown.includes("late inode"))).toBe(true);
       expect(heads.some((n) => n.markdown.includes("competing path"))).toBe(
         true,
@@ -1670,7 +1725,7 @@ if (import.meta.vitest) {
   });
   it("round-trips peer changes, preserves concurrent delete/edit and scopes acknowledgments", async () => {
     const a = fixture(),
-      b = fixture();
+      b = fixture("replica-b");
     try {
       const n = note("a");
       await a.store.commit(change("base", [n]));
@@ -1967,10 +2022,11 @@ if (import.meta.vitest) {
         });
       const results = await Promise.all([run("writer-one"), run("writer-two")]);
       for (const r of results) expect(r.status, r.stderr).toBe(0);
-      expect(results.map((r) => JSON.parse(r.stdout).kind).sort()).toEqual([
-        "eligible",
-        "idle",
-      ]);
+      expect(
+        results
+          .map((r) => JSON.parse(r.stdout).kind)
+          .sort((a, b) => a.localeCompare(b)),
+      ).toEqual(["eligible", "idle"]);
       f.store = new FileMemoryStore(f.config);
       expect(await f.store.listNotes(scope)).toHaveLength(2);
     } finally {
@@ -2054,60 +2110,301 @@ if (import.meta.vitest) {
       rmSync(f.dir, { recursive: true });
     }
   }, 30000);
-  it.runIf(process.platform === "darwin")(
-    "retries a real external full-flush failure without acknowledging an unflushed manifest",
-    async () => {
-      const f = fixture();
-      const oldPath = process.env.PATH;
-      try {
-        f.store.close();
-        const helper = join(f.dir, "python3"),
-          failed = join(f.dir, "failed"),
-          completed = join(f.dir, "completed");
-        writeFileSync(
-          helper,
-          `#!/usr/bin/python3
+  for (const failure of ["object", "manifest"] as const)
+    it.runIf(process.platform === "darwin")(
+      `retries a real external ${failure} full-flush failure before acknowledgment`,
+      async () => {
+        const f = fixture();
+        const oldPath = process.env.PATH;
+        try {
+          f.store.close();
+          const target = join(
+            f.config.data,
+            failure === "object" ? "objects" : "commits",
+            failure === "object"
+              ? sha256(canonicalJSON(note("a")))
+              : sha256("flush-retry"),
+          );
+          const helper = join(f.dir, "python3"),
+            failed = join(f.dir, "failed"),
+            completed = join(f.dir, "completed");
+          writeFileSync(
+            helper,
+            `#!/usr/bin/python3
 import os,sys,fcntl
 p=fcntl.fcntl(3,50,b'\\0'*1024).split(b'\\0')[0].decode()
-if '/commits/' in p and not os.path.basename(p).startswith('.') and not os.path.exists(${JSON.stringify(failed)}):
+if os.path.basename(p) == os.path.basename(${JSON.stringify(target)}) and not os.path.exists(${JSON.stringify(failed)}):
  open(${JSON.stringify(failed)},'w').write(p)
  fcntl.fcntl(3,2147483646)
 fcntl.fcntl(3,51)
-if '/commits/' in p and not os.path.basename(p).startswith('.'):
+if os.path.basename(p) == os.path.basename(${JSON.stringify(target)}):
  open(${JSON.stringify(completed)},'w').write(p)
 `,
-        );
-        chmodSync(helper, 0o700);
-        process.env.PATH = `${f.dir}:${oldPath}`;
-        f.store = new FileMemoryStore(f.config);
-        const c = change("flush-retry", [note("a")]);
-        await expect(f.store.commit(c)).rejects.toThrow("F_FULLFSYNC");
-        expect(
-          existsSync(join(f.config.data, "commits", sha256("flush-retry"))),
-        ).toBe(true);
-        expect(existsSync(completed)).toBe(false);
-        f.store.close();
-        f.store = new FileMemoryStore(f.config);
-        expect(await f.store.commit(c)).toMatchObject({
-          kind: "locally-committed",
-          replay: true,
-        });
-        expect(readFileSync(completed, "utf8")).toContain(
-          sha256("flush-retry"),
-        );
-        expect(
-          readdirSync(join(f.config.data, "objects")).some((p) =>
-            p.startsWith(".pi-memory-stage-"),
-          ),
-        ).toBe(false);
-      } finally {
-        process.env.PATH = oldPath;
-        try {
+          );
+          chmodSync(helper, 0o700);
+          process.env.PATH = `${f.dir}:${oldPath}`;
+          f.store = new FileMemoryStore(f.config);
+          const c = change("flush-retry", [note("a")]);
+          await expect(f.store.commit(c)).rejects.toThrow("F_FULLFSYNC");
+          expect(
+            existsSync(join(f.config.data, "commits", sha256("flush-retry"))),
+          ).toBe(failure === "manifest");
+          expect(existsSync(target)).toBe(true);
+          expect(existsSync(completed)).toBe(false);
           f.store.close();
-        } catch {}
-        rmSync(f.dir, { recursive: true });
-      }
-    },
-    30000,
-  );
+          f.store = new FileMemoryStore(f.config);
+          expect(await f.store.commit(c)).toMatchObject({
+            kind: "locally-committed",
+            replay: failure === "manifest",
+          });
+          expect(readFileSync(completed, "utf8").split("/").pop()).toBe(
+            target.split("/").pop(),
+          );
+          expect(
+            readdirSync(join(f.config.data, "objects")).some((p) =>
+              p.startsWith(".pi-memory-stage-"),
+            ),
+          ).toBe(false);
+        } finally {
+          process.env.PATH = oldPath;
+          try {
+            f.store.close();
+          } catch {}
+          rmSync(f.dir, { recursive: true });
+        }
+      },
+      30000,
+    );
+  it("binds evidence roles/spans and rejects suppressed evidence or derived relearning", async () => {
+    const f = fixture();
+    try {
+      const a = window(),
+        b = window("other-entry");
+      const evidence: C.EvidenceRef = {
+        windowId: a.windowId,
+        source: a.source,
+        sourceHash: a.sourceHash,
+        spans: [a.excerpts[0].span],
+      };
+      const otherEvidence: C.EvidenceRef = {
+        windowId: b.windowId,
+        source: b.source,
+        sourceHash: b.sourceHash,
+        spans: [b.excerpts[0].span],
+      };
+      const original = note("a");
+      const { markdown: _md, revisionId: _id, ...metadata } = original;
+      const attributed = createNoteRevision({
+        ...metadata,
+        body: "an attributed observation",
+        claims: [
+          {
+            kind: "producer-statement",
+            markdownSpan: { start: 0, end: 1 },
+            evidence: [evidence],
+            derivedFrom: [],
+          },
+        ],
+      });
+      expect(readMarkdownRevision(attributed.markdown)).toEqual(attributed);
+      await f.store.commit(change("attributed", [attributed], [a, b]));
+      const tampered: C.SourceWindow = {
+        ...a,
+        excerpts: [{ ...a.excerpts[0], producerRole: "assistant" }],
+      };
+      await expect(
+        f.store.commit(change("tampered", [], [tampered])),
+      ).rejects.toThrow("hash mismatch");
+      await f.store.commit({
+        ...change("suppress-evidence"),
+        suppressions: [
+          {
+            suppressionId: "suppressed-evidence" as C.SuppressionId,
+            scope,
+            target: { kind: "evidence", evidence },
+            reason: "fixture",
+            createdAt: now,
+          },
+        ],
+      });
+      const candidate = createNoteRevision({
+        ...metadata,
+        noteId: "different-note" as C.NoteId,
+        path: "topic-different-note.md",
+        body: "relearn",
+        claims: attributed.claims,
+      });
+      expect(
+        await f.store.commit(change("relearn-evidence", [candidate])),
+      ).toMatchObject({ kind: "suppressed" });
+      const derived = createNoteRevision({
+        ...metadata,
+        noteId: "derived-note" as C.NoteId,
+        path: "topic-derived-note.md",
+        body: "derived",
+        claims: [
+          {
+            kind: "model-inference",
+            markdownSpan: { start: 0, end: 1 },
+            evidence: [otherEvidence],
+            derivedFrom: [
+              { noteId: attributed.noteId, revisionId: attributed.revisionId },
+            ],
+          },
+        ],
+      });
+      expect(
+        await f.store.commit(change("relearn-lineage", [derived])),
+      ).toMatchObject({ kind: "suppressed" });
+      expect(
+        await f.store.checkDelivery(
+          {
+            ...delivery(attributed),
+            context: { ...delivery(attributed).context, evidence: [evidence] },
+          },
+          now,
+        ),
+      ).toMatchObject({ kind: "discard", reason: "suppressed" });
+      expect(
+        (await f.store.forPeer("fixture-peer").pending(1))[0]!.windows[0],
+      ).toEqual(a);
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("recovers a SIGKILL between stashing an editable inode and exclusive publication", async () => {
+    const f = fixture();
+    try {
+      const n = note("a");
+      await f.store.commit(change("seed", [n]));
+      f.store.close();
+      const edit = note("a", "program update", [n.revisionId]);
+      const killed = child(
+        f.config,
+        `const store=new FileMemoryStore({...config,publicationBoundary:b=>{if(b==='stash')process.kill(process.pid,'SIGKILL')}}); await store.commit(${JSON.stringify(change("edit", [edit]))});`,
+      );
+      expect(killed.signal, String(killed.stderr)).toBe("SIGKILL");
+      const reopened = child(
+        f.config,
+        `const store=new FileMemoryStore(config); const notes=await store.listNotes(${JSON.stringify(scope)}); console.log(JSON.stringify(notes.map(n=>({body:n.markdown,exposure:n.exposure.kind}))));store.close();`,
+      );
+      expect(reopened.status, String(reopened.stderr)).toBe(0);
+      expect(JSON.parse(String(reopened.stdout))).toEqual([
+        { body: edit.markdown, exposure: "active" },
+      ]);
+      const recovery = join(f.config.root, ".pi-memory-recovery");
+      expect(
+        readdirSync(recovery)
+          .filter((p) => p.endsWith(".stash.md"))
+          .some((p) => readFileSync(join(recovery, p), "utf8") === n.markdown),
+      ).toBe(true);
+      f.store = new FileMemoryStore(f.config);
+    } finally {
+      try {
+        f.store.close();
+      } catch {}
+      rmSync(f.dir, { recursive: true });
+    }
+  }, 30000);
+  it("detects changed immutable bytes and rejects unsafe edits before publication", async () => {
+    const f = fixture();
+    try {
+      const n = note("a");
+      const { revisionId: _id, ...metadata } = n;
+      const unsafe = { ...metadata, path: ".pi-memory-recovery/invalid-a.md" };
+      await expect(
+        f.store.commit(
+          change("unsafe", [{ ...unsafe, revisionId: revisionId(unsafe) }]),
+        ),
+      ).rejects.toThrow("unsafe editable path");
+      expect(
+        readdirSync(join(f.config.data, "commits")).filter(
+          (f) => !f.startsWith("."),
+        ),
+      ).toHaveLength(0);
+      await f.store.commit(change("seed", [n]));
+      f.store.close();
+      const manifest = record(
+        json(join(f.config.data, "commits", sha256("seed"))),
+      );
+      const path = join(f.config.data, "objects", string(manifest.replica));
+      writeFileSync(path, readFileSync(path, "utf8") + " ");
+      expect(() => new FileMemoryStore(f.config)).toThrow("corrupt dependency");
+    } finally {
+      try {
+        f.store.close();
+      } catch {}
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("keeps distinct notes editable when replicas choose the same descriptive path", async () => {
+    const f = fixture();
+    try {
+      const first = note("a"),
+        second = note("b");
+      const { revisionId: _first, markdown: _one, ...a } = first;
+      const { revisionId: _second, markdown: _two, ...b } = second;
+      const one = createNoteRevision({
+        ...a,
+        path: "shared.md",
+        body: "first",
+      });
+      const two = createNoteRevision({
+        ...b,
+        path: "shared.md",
+        body: "second",
+      });
+      await f.store.commit(change("same-path", [one, two]));
+      const texts = readdirSync(f.config.root)
+        .filter((p) => p.endsWith(".md"))
+        .map((p) => readFileSync(join(f.config.root, p), "utf8"));
+      expect(texts).toContain(one.markdown);
+      expect(texts).toContain(two.markdown);
+      expect(await f.store.listNotes(scope)).toHaveLength(2);
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("checks delivery expiry, scope and current causal heads", async () => {
+    const f = fixture();
+    try {
+      const n = note("a");
+      await f.store.commit(change("seed", [n]));
+      const d = delivery(n);
+      expect(await f.store.checkDelivery(d, now)).toEqual({ kind: "eligible" });
+      expect(
+        await f.store.checkDelivery(
+          { ...d, intent: { ...d.intent, expiresAt: now } },
+          now,
+        ),
+      ).toEqual({ kind: "discard", reason: "expired" });
+      expect(
+        await f.store.checkDelivery(
+          {
+            ...d,
+            intent: {
+              ...d.intent,
+              target: {
+                ...d.intent.target,
+                scope: { kind: "project", repositoryId: "other" },
+              },
+            },
+          },
+          now,
+        ),
+      ).toEqual({ kind: "discard", reason: "wrong-scope" });
+      await f.store.commit(
+        change("edit", [note("a", "updated", [n.revisionId])]),
+      );
+      expect(await f.store.checkDelivery(d, now)).toEqual({
+        kind: "discard",
+        reason: "obsolete",
+      });
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
 }
