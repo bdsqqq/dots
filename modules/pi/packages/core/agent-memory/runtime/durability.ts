@@ -74,14 +74,24 @@ export function confirmDurability(path: string): void {
     closeSync(fd);
   }
 }
-/** stage cleanup remains in the caller's serialized publication boundary. */
+/** only published hardlinks can be removed while another preparer owns a stage. */
 export function cleanupDurableStages(path: string): void {
   const prefix = `.pi-memory-stage-${basename(path)}-`;
   const bytes = readFileSync(path);
   for (const file of readdirSync(dirname(path))) {
     if (!file.startsWith(prefix)) continue;
     const stage = join(dirname(path), file);
-    if (readFileSync(stage).equals(bytes)) unlinkSync(stage);
+    try {
+      const staged = lstatSync(stage);
+      if (staged.nlink > 1 && readFileSync(stage).equals(bytes))
+        unlinkSync(stage);
+    } catch (error) {
+      // Another preparer may have removed this published hardlink already.
+      if (
+        !(error instanceof Error && "code" in error && error.code === "ENOENT")
+      )
+        throw error;
+    }
   }
   flushDirectory(dirname(path));
 }
@@ -148,15 +158,18 @@ if (import.meta.vitest) {
     try {
       const path = join(dir, "immutable"),
         matching = join(dir, ".pi-memory-stage-immutable-matching"),
-        different = join(dir, ".pi-memory-stage-immutable-different");
+        different = join(dir, ".pi-memory-stage-immutable-different"),
+        unpublished = join(dir, ".pi-memory-stage-immutable-unpublished");
       writeFileSync(path, "accepted bytes");
       linkSync(path, matching);
       writeFileSync(different, "different bytes");
+      writeFileSync(unpublished, "accepted bytes");
       confirmDurability(path);
       expect(readFileSync(matching, "utf8")).toBe("accepted bytes");
       expect(readFileSync(different, "utf8")).toBe("different bytes");
       cleanupDurableStages(path);
       expect(existsSync(matching)).toBe(false);
+      expect(readFileSync(unpublished, "utf8")).toBe("accepted bytes");
       expect(readFileSync(path, "utf8")).toBe("accepted bytes");
       expect(readFileSync(different, "utf8")).toBe("different bytes");
     } finally {
