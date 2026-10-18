@@ -82,5 +82,33 @@
     "expectedSkills": [],
     "forbiddenSkills": ["designing-agent-skills", "remember", "dig", "review"],
     "expectedBehavior": "Provide a concise checklist in the response only. Do not create a reusable skill or persist memory."
+  },
+  {
+    "id": "animated-bottom-up-intuition",
+    "prompt": "Explain how binary search works hyper intuitively, bottoms up, with the most simple step by step animations so I really understand concretely.",
+    "expectedSkills": ["explaining-with-animations"],
+    "forbiddenSkills": ["designing-agent-skills", "remember"],
+    "expectedBehavior": "Use one tiny sorted list and a fixed target; show the inspected midpoint and the eliminated interval at each reader-paced step. Explain why the interval can be discarded before naming the abstraction. Keep logical states deterministic with previous, next, replay and reset; inspect them and reduced-motion behavior. Do not substitute a vocabulary lecture or decorative motion for the mechanism."
+  },
+  {
+    "id": "animated-html-overlap",
+    "prompt": "Make an interactive HTML explanation of a cache miss. Start with one request and an empty cache, then let me step through exactly where the value comes from and what gets copied.",
+    "expectedSkills": ["explaining-with-animations", "html-thingy"],
+    "forbiddenSkills": ["remember"],
+    "expectedBehavior": "Combine the teaching sequence with the self-contained HTML workflow. Label it a toy model unless actual source establishes its behavior. Keep request, stored value and returned copy distinct; show empty, miss, fetch, cache fill and response without inventing a universal ordering. Inspect navigation/reset and deliver the artifact without external publication."
+  },
+  {
+    "id": "animated-not-short-definition",
+    "prompt": "What does FIFO stand for? One sentence, no visuals.",
+    "expectedSkills": [],
+    "forbiddenSkills": ["explaining-with-animations", "html-thingy", "designing-agent-skills"],
+    "expectedBehavior": "Answer briefly in text. Do not build a walkthrough or create files."
+  },
+  {
+    "id": "animated-not-ui-motion-polish",
+    "prompt": "Polish this button's hover and press animation so the interaction feels snappy. Keep the existing component API.",
+    "expectedSkills": ["emil-design-eng"],
+    "forbiddenSkills": ["explaining-with-animations", "html-thingy"],
+    "expectedBehavior": "Use the UI motion workflow, not an educational animation or explanatory page. Preserve the component's API."
   }
 ]
