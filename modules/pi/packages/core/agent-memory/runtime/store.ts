@@ -60,8 +60,7 @@ export interface FileMemoryStoreConfig {
   ) => void;
 }
 /** contention budgets exclude synchronous filesystem work already admitted. */
-export interface FileMemoryStoreOptions {
-  readonly signal?: AbortSignal;
+export interface FileMemoryStoreOptions extends C.StoreOperationOptions {
   /** default 5000ms per call; zero attempts once without waiting. */
   readonly contentionTimeoutMs?: number;
 }
@@ -85,6 +84,7 @@ class SnapshotChanged extends LockUnavailable {
     super(new Error("retained-history snapshot changed"));
   }
 }
+class LeaseLostBeforePublication extends Error {}
 function contentionBudget(
   options: FileMemoryStoreOptions,
   fallback: number,
@@ -195,6 +195,17 @@ function millis(time: string): number {
 }
 function iso(n: number): C.Timestamp {
   return new Date(n).toISOString();
+}
+function operationClock(): { wall: number; monotonic: number } {
+  return { wall: Date.now(), monotonic: performance.now() };
+}
+/** caller clocks remain authoritative; elapsed acceptance time cannot run backward. */
+function elapsed(clock: ReturnType<typeof operationClock>): number {
+  return Math.max(
+    0,
+    Date.now() - clock.wall,
+    performance.now() - clock.monotonic,
+  );
 }
 function matchesEvidence(a: C.EvidenceRef, b: C.EvidenceRef): boolean {
   return (
@@ -928,6 +939,7 @@ export class FileMemoryStore implements C.MemoryStore {
   private publish(
     replica: C.ReplicaChange,
     local: C.LocalChangeSet | null,
+    beforePublication?: () => void,
   ): void {
     const dependencies = [...replica.revisions, ...replica.windows].map((x) =>
       this.put(x),
@@ -951,7 +963,7 @@ export class FileMemoryStore implements C.MemoryStore {
       hash: sha256(canonicalJSON(payload)),
     };
     const path = join(this.commits, sha256(replica.commitId));
-    durableCreate(path, canonicalJSON(manifest));
+    durableCreate(path, canonicalJSON(manifest), beforePublication);
     this.activeAccepted?.set(replica.commitId, { manifest, replica, local });
     this.db
       .prepare(
@@ -964,6 +976,7 @@ export class FileMemoryStore implements C.MemoryStore {
     value: C.LocalChangeSet,
     options: FileMemoryStoreOptions = this.options,
   ): Promise<C.CommitResult> {
+    const clock = operationClock();
     // Preparation must own its bytes across asynchronous contention. A caller
     // mutating its request cannot change which payload a prepared hash names.
     const change = parseChange(structuredClone(value));
@@ -986,7 +999,8 @@ export class FileMemoryStore implements C.MemoryStore {
                 replay: true,
               }
             : { kind: "identity-conflict", commitId: change.commitId };
-        const now = millis(change.now);
+        options.signal?.throwIfAborted();
+        const now = millis(change.now) + elapsed(clock);
         if (change.lease) {
           const rows = this.db
             .prepare("SELECT window,payload FROM leases WHERE token=?")
@@ -1136,7 +1150,28 @@ export class FileMemoryStore implements C.MemoryStore {
             o.decision.kind === "retry" ? [] : [{ ...o, decision: o.decision }],
           ),
         };
-        this.publish(replica, change);
+        options.signal?.throwIfAborted();
+        // Validation above may itself be substantial for a retained batch.
+        if (
+          change.lease &&
+          millis(change.lease.expiresAt) <= millis(change.now) + elapsed(clock)
+        )
+          return { kind: "lease-lost" };
+        try {
+          this.publish(replica, change, () => {
+            options.signal?.throwIfAborted();
+            if (
+              change.lease &&
+              millis(change.lease.expiresAt) <=
+                millis(change.now) + elapsed(clock)
+            )
+              throw new LeaseLostBeforePublication();
+          });
+        } catch (error) {
+          if (error instanceof LeaseLostBeforePublication)
+            return { kind: "lease-lost" };
+          throw error;
+        }
         if (change.lease)
           this.db
             .prepare("DELETE FROM leases WHERE token=?")
@@ -1425,18 +1460,19 @@ export class FileMemoryStore implements C.MemoryStore {
     input: C.RenewLeaseInput,
     options: FileMemoryStoreOptions = this.options,
   ): Promise<C.RenewLeaseResult> {
-    const lease = parseLease(input.lease);
-    const now = millis(input.now);
-    if (!Number.isSafeInteger(input.leaseMs) || input.leaseMs <= 0)
+    const clock = operationClock();
+    const lease = parseLease(structuredClone(input.lease));
+    const suppliedNow = millis(input.now),
+      leaseMs = input.leaseMs;
+    if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0)
       throw new Error("invalid lease duration");
-    const expiresAt = iso(
-      Math.max(millis(lease.expiresAt), now + input.leaseMs),
-    );
     // Renewal must remain available while retained-history preparation stalls.
     // Exact payload comparison also fences an older heartbeat of this token.
     return contend(
       () =>
         this.coordinateSync(() => {
+          options.signal?.throwIfAborted();
+          const now = suppliedNow + elapsed(clock);
           const rows = this.db
             .prepare("SELECT payload FROM leases WHERE token=?")
             .all(lease.leaseId);
@@ -1449,7 +1485,10 @@ export class FileMemoryStore implements C.MemoryStore {
             )
           )
             return { kind: "lease-lost" } as const;
-          const renewed = { ...lease, expiresAt };
+          const renewed = {
+            ...lease,
+            expiresAt: iso(Math.max(millis(lease.expiresAt), now + leaseMs)),
+          };
           this.db
             .prepare("UPDATE leases SET payload=? WHERE token=?")
             .run(canonicalJSON(renewed), lease.leaseId);
@@ -2906,10 +2945,21 @@ if (import.meta.vitest) {
         now: tick,
         leaseMs: 20000,
       });
-      expect(renewed).toEqual({
+      expect(renewed).toMatchObject({
         kind: "renewed",
-        lease: { ...plan.batch.lease, expiresAt: "2026-01-01T00:00:25.000Z" },
+        lease: {
+          leaseId: plan.batch.lease.leaseId,
+          jobId: plan.batch.lease.jobId,
+          owner: plan.batch.lease.owner,
+        },
       });
+      if (renewed.kind !== "renewed") throw Error("expected renewal");
+      expect(millis(renewed.lease.expiresAt)).toBeGreaterThanOrEqual(
+        millis("2026-01-01T00:00:25.000Z"),
+      );
+      expect(millis(renewed.lease.expiresAt)).toBeLessThan(
+        millis("2026-01-01T00:00:26.000Z"),
+      );
       expect(
         await f.store.renewLease({
           lease: plan.batch.lease,
@@ -4146,6 +4196,98 @@ fcntl.fcntl(3,51)
       rmSync(f.dir, { recursive: true });
     }
   }, 20000);
+  it("fences elapsed lease expiry during writer contention without a reclaimer or changing receipt identity", async () => {
+    for (const operation of ["commit", "renew"] as const) {
+      const f = fixture();
+      let held: Awaited<ReturnType<typeof holdWriter>> | undefined;
+      try {
+        const w = window();
+        await f.store.commit(change("expiry-capture", [], [w]));
+        const plan = await f.store.plan({
+          jobId: "expiry" as C.JobId,
+          owner: "worker",
+          scope,
+          now,
+          policy: { ...policy, minWindows: 1, leaseMs: 100 },
+        });
+        if (plan.kind !== "eligible") throw Error("expected lease");
+        held = await holdWriter(f.config);
+        const pending =
+          operation === "renew"
+            ? f.store.renewLease({
+                lease: plan.batch.lease,
+                now,
+                leaseMs: 10000,
+              })
+            : f.store.commit({
+                ...change("elapsed-provider", [note("elapsed-provider")]),
+                lease: plan.batch.lease,
+                outcomes: [
+                  {
+                    windowId: w.windowId,
+                    sourceHash: w.sourceHash,
+                    recordedAt: now,
+                    decision: { kind: "no-change", reason: "fixture" },
+                  },
+                ],
+              });
+        await delay(180);
+        await held.release();
+        held = undefined;
+        expect(await pending).toEqual({ kind: "lease-lost" });
+        expect(
+          await f.store.hasAcceptedCommit("elapsed-provider" as C.CommitId),
+        ).toBe(false);
+      } finally {
+        await held?.release();
+        f.store.close();
+        rmSync(f.dir, { recursive: true });
+      }
+    }
+  });
+  it("fences cancellation after real preparation and immediately before manifest publication, without undoing accepted receipts", async () => {
+    for (const boundary of ["prepared", "objects", "manifest"] as const) {
+      const f = fixture(),
+        controller = new AbortController(),
+        reason = new Error("provider owner cancelled");
+      let armed = false;
+      try {
+        f.store.close();
+        f.store = await FileMemoryStore.open({
+          ...f.config,
+          publicationBoundary: (b) => {
+            if (armed && b === boundary) controller.abort(reason);
+          },
+        });
+        armed = true;
+        const c = change(`cancel-${boundary}`, [note(`cancel-${boundary}`)]);
+        if (boundary === "manifest")
+          expect(
+            await f.store.commit(c, { signal: controller.signal }),
+          ).toMatchObject({ kind: "locally-committed", replay: false });
+        else
+          await expect(
+            f.store.commit(c, { signal: controller.signal }),
+          ).rejects.toBe(reason);
+        armed = false;
+        expect(await f.store.hasAcceptedCommit(c.commitId)).toBe(
+          boundary === "manifest",
+        );
+        if (boundary === "manifest")
+          expect(await f.store.commit(c)).toMatchObject({
+            kind: "locally-committed",
+            replay: true,
+          });
+        else
+          expect(
+            await f.store.commit(change(`cleanup-${boundary}`)),
+          ).toMatchObject({ kind: "locally-committed" });
+      } finally {
+        f.store.close();
+        rmSync(f.dir, { recursive: true });
+      }
+    }
+  });
   it("accepts the supplied snapshot even if its caller mutates the request during coordination contention", async () => {
     const f = fixture();
     let held: Awaited<ReturnType<typeof holdWriter>> | undefined;

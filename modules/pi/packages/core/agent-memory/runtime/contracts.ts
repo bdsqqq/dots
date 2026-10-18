@@ -424,13 +424,20 @@ export interface SuppressionClosure {
   readonly evidence: readonly EvidenceRef[];
 }
 
+export interface StoreOperationOptions {
+  readonly signal?: AbortSignal;
+}
+
 export interface MemoryStore {
   /**
    * journal + markdown recovery is durable here; no git/remote/index wait.
    * validates evidence/suppression, lease and heads atomically with all outcomes.
    * identical ids/payloads replay; a reused id with different content conflicts.
    */
-  commit(change: LocalChangeSet): Promise<CommitResult>;
+  commit(
+    change: LocalChangeSet,
+    options?: StoreOperationOptions,
+  ): Promise<CommitResult>;
   /** operational checkpoints cannot establish acceptance after a data restore. */
   hasAcceptedCommit(commitId: CommitId): Promise<boolean>;
   /** owner-authorized pending scopes, oldest first; no model or lease acquisition. */
