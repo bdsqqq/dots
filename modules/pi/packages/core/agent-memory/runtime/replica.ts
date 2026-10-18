@@ -23,7 +23,8 @@ export const REPLICA_LIMITS: ReplicaLimits = {
 export interface ReplicaPolicy {
   readonly ownerId: string;
   readonly peerOwnerId: string;
-  readonly projects: readonly string[];
+  /** all-owned is an explicit trusted-adapter grant, never a wire field. */
+  readonly projects: readonly string[] | "all-owned";
   readonly personal: boolean;
 }
 export interface ReplicaRepository {
@@ -164,7 +165,9 @@ export function parseExchangeResponse(
 function allowed(scope: C.MemoryScope, policy: ReplicaPolicy): boolean {
   return scope.kind === "personal"
     ? policy.personal && scope.ownerId === policy.ownerId
-    : policy.projects.includes(scope.repositoryId);
+    : policy.projects === "all-owned" ||
+        (Array.isArray(policy.projects) &&
+          policy.projects.includes(scope.repositoryId));
 }
 /** parent traversal prevents an allowed note from laundering a forbidden evidence commit. */
 async function authorizeClosure(

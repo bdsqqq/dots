@@ -286,6 +286,74 @@ if (import.meta.vitest) {
       limits,
     });
   }
+  test("an explicit same-owner vault grant includes projects without accepting another owner's evidence", async () => {
+    const a = store("a");
+    const project = {
+      kind: "project" as const,
+      repositoryId: "new-owned-project",
+    };
+    const decision = createNoteRevision({
+      noteId: "project-decision" as Note["noteId"],
+      scope: project,
+      ancestry: { kind: "known", parents: [] },
+      path: "decision--project-decision.md",
+      body: "dated project judgment",
+      claims: [],
+      links: [],
+      exposure: { kind: "active" },
+      authoredAt: now,
+    });
+    await commit(a, "owned-project", [decision]);
+    const trusted = { ...policy, projects: "all-owned" as const };
+    const channel = processReplicaTransport({
+      executable: process.execPath,
+      args: [
+        "--input-type=module",
+        "-e",
+        fs.readFileSync(helper("b", { policy: trusted }), "utf8"),
+      ],
+    });
+    expect(
+      (
+        await synchronizeReplica({
+          store: a,
+          peerId: "b",
+          policy: trusted,
+          signal: signal(),
+          transport: channel,
+        })
+      ).kind,
+    ).toBe("complete");
+    const b = store("b");
+    expect((await b.listNotes(project)).map((n) => n.noteId)).toEqual([
+      decision.noteId,
+    ]);
+    b.close();
+    open.splice(open.indexOf(b), 1);
+    const foreign = createNoteRevision({
+      noteId: "foreign" as Note["noteId"],
+      scope: { kind: "personal", ownerId: "someone-else" },
+      ancestry: { kind: "known", parents: [] },
+      path: "foreign--foreign.md",
+      body: "not part of this owner grant",
+      claims: [],
+      links: [],
+      exposure: { kind: "active" },
+      authoredAt: now,
+    });
+    await commit(a, "foreign-owner", [foreign]);
+    await expect(
+      synchronizeReplica({
+        store: a,
+        peerId: "b",
+        policy: trusted,
+        signal: signal(),
+        transport: channel,
+      }),
+    ).rejects.toThrow("replica scope denied");
+    const restored = store("b");
+    expect(await restored.listNotes(foreign.scope)).toEqual([]);
+  });
   test("three real stores and worker exchanges retain offline alternatives, rename/edit and delete/edit", async () => {
     const a = store("a");
     const base = note("shared", "# shared\n\nfirst\nlast");
