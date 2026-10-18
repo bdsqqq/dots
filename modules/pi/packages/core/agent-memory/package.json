@@ -14,7 +14,8 @@
     "./receipt": "./receipt.ts",
     "./tiering": "./tiering.ts",
     "./observability": "./observability.ts",
-    "./projection": "./maintainer/projection.ts"
+    "./projection": "./maintainer/projection.ts",
+    "./runtime/*": "./runtime/*.ts"
   },
   "dependencies": {
     "@bds_pi/config": "workspace:*",
