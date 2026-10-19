@@ -107,4 +107,5 @@ pack-toolbox/temp
 */assets/minecraft/textures
 **/*.mcmeta
 
+**/skills/synced
 **/.claude/.cc-writes
