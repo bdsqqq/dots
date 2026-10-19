@@ -14,6 +14,9 @@ import {
 } from "./project-context.js";
 
 interface Progress {
+  /** Replaceable source metadata: identity changes or project changes force a reread. */
+  path?: string;
+  cwd?: string;
   /** Durable acceptance, unlike this replaceable operational cursor. */
   acceptedCommit?: C.CommitId;
   fingerprint: string;
@@ -94,10 +97,62 @@ export async function catchUpNativeSources(input: {
     bounded: false,
     errors: [],
   };
+  const indexed = new Map(
+    Object.entries(state.files).flatMap(([key, progress]) =>
+      progress.path && progress.cwd
+        ? [[progress.path, { key, progress }] as const]
+        : [],
+    ),
+  );
+  // Receipt existence is checked against one physically validated view per
+  // discovery pass, not by rescanning retained knowledge for every source file.
+  const receiptIds = [
+    ...new Set(
+      Object.values(state.files).flatMap((p) =>
+        p.acceptedCommit ? [p.acceptedCommit] : [],
+      ),
+    ),
+  ];
+  const receiptStates = input.store.hasAcceptedCommits
+    ? await input.store.hasAcceptedCommits(receiptIds)
+    : undefined;
+  const receipts = receiptStates
+    ? new Map(receiptIds.map((id, i) => [id, receiptStates[i] === true]))
+    : null;
+  const retained = async (progress: Progress): Promise<boolean> => {
+    const covered = Object.values(progress.branches ?? {}).some(
+      (branch) => branch.last || branch.after,
+    );
+    return (
+      !covered ||
+      (!!progress.acceptedCommit &&
+        (receipts?.has(progress.acceptedCommit)
+          ? receipts.get(progress.acceptedCommit) === true
+          : await input.store.hasAcceptedCommit(progress.acceptedCommit)))
+    );
+  };
   const consume = async (
     fingerprint: string,
     load: () => Promise<LoadedSession>,
+    path?: string,
   ): Promise<boolean> => {
+    const cached = path ? indexed.get(path) : undefined;
+    if (
+      cached?.progress.complete &&
+      cached.progress.cwd &&
+      cached.progress.fingerprint === fingerprint &&
+      !input.throughEntryId
+    ) {
+      const previous = JSON.parse(cached.key) as { source: string };
+      const key = canonicalJSON({
+        source: previous.source,
+        scope: input.scope,
+        project: observeNativeProject(cached.progress.cwd, input.project),
+      });
+      // A fingerprint is only a read cache. Retained acceptance still fences a
+      // newer cursor surviving an older store restore at the same paths.
+      if (key === cached.key && (await retained(cached.progress))) return true;
+    }
     const snapshot = await load();
     const project = observeNativeProject(snapshot.header.cwd, input.project);
     const key = canonicalJSON({
@@ -106,17 +161,15 @@ export async function catchUpNativeSources(input: {
       project,
     });
     let progress = state.files[key];
-    if (
-      progress &&
-      Object.values(progress.branches ?? {}).some(
-        (branch) => branch.last || branch.after,
-      ) &&
-      (!progress.acceptedCommit ||
-        !(await input.store.hasAcceptedCommit(progress.acceptedCommit)))
-    ) {
+    if (progress && !(await retained(progress))) {
       // A newer checkpoint can survive an older data restore at the SAME paths.
       // The latest accepted capture causally includes earlier local acceptance.
       progress = undefined;
+    }
+    if (progress && path) {
+      progress.path = path;
+      progress.cwd = snapshot.header.cwd;
+      indexed.set(path, { key, progress });
     }
     if (
       progress?.fingerprint === fingerprint &&
@@ -142,6 +195,11 @@ export async function catchUpNativeSources(input: {
         branches: {},
         complete: false,
       };
+    if (path) {
+      progress.path = path;
+      progress.cwd = snapshot.header.cwd;
+      indexed.set(path, { key, progress });
+    }
     progress.fingerprint = fingerprint;
     progress.entryCount = snapshot.entries.length;
     progress.prefixHash = prefixHash(snapshot.entries.length);
@@ -281,12 +339,14 @@ export async function catchUpNativeSources(input: {
       else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
         const full = join(input.root, path);
         const stat = statSync(full, { bigint: true });
-        const fingerprint = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}`;
+        const fingerprint = `${stat.dev}:${stat.ino}:${stat.mode}:${stat.nlink}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
         result.files++;
         try {
           if (
-            !(await consume(fingerprint, () =>
-              loadNativeSourceSnapshot(full, input.signal),
+            !(await consume(
+              fingerprint,
+              () => loadNativeSourceSnapshot(full, input.signal),
+              full,
             ))
           ) {
             blocked = true;
@@ -309,7 +369,7 @@ export async function catchUpNativeSources(input: {
 }
 
 if (import.meta.vitest) {
-  const { it, expect } = import.meta.vitest;
+  const { it, expect, vi } = import.meta.vitest;
   const { mkdtempSync, mkdirSync, writeFileSync, rmSync } =
     await import("node:fs");
   const { tmpdir } = await import("node:os");
@@ -318,6 +378,88 @@ if (import.meta.vitest) {
   const { nativeSourceSnapshot } = await import("./pi-source.js");
   const { FileMemoryStore } = await import("./store.js");
   const { DEFAULT_BACKLOG_POLICY } = await import("./config.js");
+  it("completed disk sources skip payload loading but revalidate retained acceptance after restore", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "catchup-read-cache-"));
+    const config = {
+      root: join(dir, "notes"),
+      data: join(dir, "data"),
+      state: join(dir, "state"),
+      owner: "fixture",
+      replicaId: "fixture" as C.ReplicaId,
+    };
+    const scope: C.MemoryScope = { kind: "personal", ownerId: "fixture" };
+    const root = join(dir, "sessions");
+    mkdirSync(root);
+    const manager = SessionManager.inMemory(dir);
+    manager.appendMessage({
+      role: "user",
+      content: "my durable native experience",
+      timestamp: 1,
+    });
+    const snapshot = nativeSourceSnapshot(manager);
+    const path = join(root, "source.jsonl");
+    writeFileSync(
+      path,
+      [snapshot.header, ...snapshot.entries]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const { cpSync, renameSync, utimesSync } = await import("node:fs");
+    let store = new FileMemoryStore(config);
+    store.close();
+    cpSync(config.data, join(dir, "old-data"), { recursive: true });
+    cpSync(config.state, join(dir, "old-state"), { recursive: true });
+    store = new FileMemoryStore(config);
+    const fs = (await import("node:fs/promises")).default;
+    const { syncBuiltinESMExports } = await import("node:module");
+    const original = fs.readFile;
+    let reads = 0;
+    const spy = vi.spyOn(fs, "readFile").mockImplementation(((
+      ...args: Parameters<typeof original>
+    ) => {
+      if (String(args[0]) === path) reads++;
+      return original(...args);
+    }) as typeof original);
+    syncBuiltinESMExports();
+    const run = () =>
+      catchUpNativeSources({
+        store,
+        root,
+        checkpoint: join(dir, "progress.json"),
+        scope,
+        project: null,
+        signal: new AbortController().signal,
+      });
+    try {
+      expect((await run()).windows).toBeGreaterThan(0);
+      expect(reads).toBeGreaterThan(0);
+      reads = 0;
+      expect((await run()).windows).toBe(0);
+      expect(reads).toBe(0);
+      const before = statSync(path);
+      const bytes = readFileSync(path);
+      writeFileSync(path, bytes);
+      utimesSync(path, before.atime, before.mtime);
+      reads = 0;
+      expect((await run()).windows).toBe(0);
+      expect(reads).toBeGreaterThan(0);
+      reads = 0;
+      store.close();
+      renameSync(config.data, join(dir, "newer-data"));
+      renameSync(config.state, join(dir, "newer-state"));
+      cpSync(join(dir, "old-data"), config.data, { recursive: true });
+      cpSync(join(dir, "old-state"), config.state, { recursive: true });
+      store = new FileMemoryStore(config);
+      expect((await run()).windows).toBeGreaterThan(0);
+      expect(reads).toBeGreaterThan(0);
+    } finally {
+      spy.mockRestore();
+      syncBuiltinESMExports();
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("live selected capture reopens pending acceptance clocks, retains early UTF-8, and agrees with disk project identity", async () => {
     const dir = mkdtempSync(join(tmpdir(), "native-clock-"));
     const workspace = join(dir, "repo");
