@@ -88,7 +88,6 @@ in
     ../../modules/go
     ../../modules/fairy-name
     ../../modules/pi
-    ../../modules/pi-memory
     ../../modules/t3-code/server.nix
   ];
 

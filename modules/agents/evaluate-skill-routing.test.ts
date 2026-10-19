@@ -4,9 +4,9 @@ import { score } from "./evaluate-skill-routing.ts";
 
 const fixture = {
   id: "isolated", prompt: "Draft an essay.",
-  expectedSkills: ["write"], forbiddenSkills: ["remember"],
+  expectedSkills: ["write"], forbiddenSkills: ["review"],
 };
-const catalog = new Set(["write", "remember", "document"]);
+const catalog = new Set(["write", "review", "document"]);
 const call = (name: unknown, tool = "skill") => ({
   type: "toolCall", name: tool, arguments: { name },
 });
@@ -29,7 +29,7 @@ test("clarification text is preserved without passing required selection", () =>
 });
 test("forbidden selection fails even with expected selection", () => {
   assert.equal(score(fixture, {
-    content: [call("write"), call("remember")], stopReason: "toolUse",
+    content: [call("write"), call("review")], stopReason: "toolUse",
   }, catalog).pass, false);
 });
 test("valid extra selection is reported without failing", () => {

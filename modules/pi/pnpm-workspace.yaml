@@ -7,7 +7,6 @@ patchedDependencies:
   # The unbundled CLI must consume our SDK/provider patches, like the global bridge.
   "@earendil-works/pi-coding-agent@1.1.0": patches/pi-coding-agent-1.1.0.patch
   "@earendil-works/pi-tui@1.1.0": patches/pi-tui-1.1.0.patch
-  "@letta-ai/trajectory@0.4.3": patches/letta-ai-trajectory-0.4.3.patch
 
 catalog:
   "@earendil-works/pi-ai": 1.1.0

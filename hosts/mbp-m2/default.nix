@@ -70,7 +70,6 @@ in
     ../../modules/go
     ../../modules/fairy-name
     ../../modules/pi
-    ../../modules/pi-memory
     ../../modules/e-ink-glass
     ../../modules/ghostty
     ../../modules/open-display

@@ -100,15 +100,11 @@ session files.
 the user no longer uses cmux. `cmux-notify` no longer has a useful integration
 target and is a retirement candidate, not something to port to another backend.
 
-### reconsider whether agent memory is needed
+### retire automatic memory
 
-`agent-memory` belongs in the "rethink whether we need it" bucket. do not assume
-that automatic injection, exposure receipts, background maintenance, or a
-replacement memory system must survive.
-
-an alternative to evaluate is explicit guidance plus searchable notes.
-this is not yet a decision to disable the memory extension, delete memories,
-stop its services, or replace its governance pipeline.
+the user chose to remove automatic memory on 2026-10-19. remove the extension,
+CLI, background services and supporting machinery without a replacement system.
+existing notes, stored data and history are preserved.
 
 ## implementation questions, not settled requirements
 
@@ -171,15 +167,15 @@ acceptance evidence. tests must fail for the behavioral regression they guard.
 the table is the shared queue, not another tracker. parent owns its status,
 integration files and final verification; agents commit only their owned slice.
 
-| issue | outcome / owner | depends on | status |
-|---|---|---|---|
-| P0 | agree contracts, scope and evidence / parent | — | done |
-| P1 | native editing + shell discovery; retire redundant tools / tools agent | P0 | done |
-| P2 | shared SDK session handlers + thin codemode adapter / sessions agent | P0 | done |
-| P3 | native configuration; remove bds-pi roots/wiring / config agent | P0; integrate after P2 | done |
-| P4 | assess automatic memory need without deleting data / memory reviewer | P0 | done; product choice open |
-| P5 | integrate consumers, exports, manifests, lockfile and guidance / parent | P1, P2, P3; P4 verdict | done |
-| P6 | adversarial craft review, behavioral checks, incremental main landing / parent | P5 | done |
+| issue | outcome / owner                                                                | depends on             | status                    |
+| ----- | ------------------------------------------------------------------------------ | ---------------------- | ------------------------- |
+| P0    | agree contracts, scope and evidence / parent                                   | —                      | done                      |
+| P1    | native editing + shell discovery; retire redundant tools / tools agent         | P0                     | done                      |
+| P2    | shared SDK session handlers + thin codemode adapter / sessions agent           | P0                     | done                      |
+| P3    | native configuration; remove bds-pi roots/wiring / config agent                | P0; integrate after P2 | done                      |
+| P4    | assess automatic memory need without deleting data / memory reviewer           | P0                     | done; product choice open |
+| P5    | integrate consumers, exports, manifests, lockfile and guidance / parent        | P1, P2, P3; P4 verdict | done                      |
+| P6    | adversarial craft review, behavioral checks, incremental main landing / parent | P5                     | done                      |
 
 ### issue acceptance
 
@@ -264,8 +260,6 @@ Mac and lab had no mutable `bds-pi.local.json`; no settings import, session
 relocation or auth change was needed. local SSH signature verification remains
 unavailable without `allowedSignersFile`; signatures are embedded.
 
-the [memory assessment](packages/core/agent-memory/simplification-assessment.md)
-recommended deliberate search as a hypothesis, not a measured usefulness result.
-the user subsequently chose automatic Pi-owned capture, asynchronous recall and
-independent backlog reconciliation; [the follow-up plan](memory-simplification.md)
-supersedes that memory recommendation. pi durable remains a separate project.
+automatic memory was retired at the user's request on 2026-10-19. its extension,
+CLI, background services and implementation were removed; existing notes and
+stored data remain untouched. pi durable remains a separate project.

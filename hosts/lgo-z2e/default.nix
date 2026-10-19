@@ -127,7 +127,6 @@ in
     ../../modules/go
     ../../modules/fairy-name
     ../../modules/pi
-    ../../modules/pi-memory
     ../../modules/e-ink-glass
     ../../modules/1password
     ../../modules/helium

@@ -69,11 +69,6 @@ export default function fixture(pi: ExtensionAPI) {
                 m.toolsAdded?.some((t) => t.name === "codemode"),
             ),
           );
-          if (JSON.stringify(context.messages).includes("MEMORY_FIXTURE"))
-            writeFileSync(
-              plan.memoryObserved,
-              "observed in provider context\n",
-            );
           const first = turn++ === 0;
           if (!first) {
             const result = context.messages.findLast(

@@ -9,12 +9,11 @@ easier to verify.
 
 | source | purpose |
 |---|---|
-| [`config/global-agents.md`](../../config/global-agents.md) | voice, permissions, completion, delegation, evidence, governed memory |
+| [`config/global-agents.md`](../../config/global-agents.md) | voice, permissions, completion, delegation, evidence, project knowledge |
 | [`skills/write/SKILL.md`](skills/write/SKILL.md) | substantial prose composition/editing, not every response |
 | [`skills/review/SKILL.md`](skills/review/SKILL.md) | read-only implementation review |
 | [`skills/dig/SKILL.md`](skills/dig/SKILL.md) | uncertain multi-step investigation, direct-first and optionally delegated |
 | [`skills/making-meaningful-contributions/SKILL.md`](skills/making-meaningful-contributions/SKILL.md) | pre-submission readiness, not a second general review |
-| [`skills/remember/SKILL.md`](skills/remember/SKILL.md) | authorized personal memory capture; project knowledge stays in the repository |
 | [`skills/designing-agent-skills/SKILL.md`](skills/designing-agent-skills/SKILL.md) | authoring, selection cases, and behavioral evaluation |
 
 the default completion contract is outcome, scope, constraints, acceptance,
