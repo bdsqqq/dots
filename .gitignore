@@ -2,6 +2,7 @@
 result
 result-*
 modules/media-feeds/*.sqlite
+**/synced
 !modules/fonts/berkeley-mono/
 !modules/fonts/berkeley-mono/*.otf
 **/.terraform/
