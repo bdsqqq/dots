@@ -5,12 +5,14 @@ import { Check } from "typebox/value";
 import type * as C from "./contracts.js";
 import {
   openMemoryApplication,
+  watchMemoryApplication,
   type MemoryApplication,
 } from "./application.js";
 import { parseWindow, parseChange } from "./wire.js";
 import { importLegacyMarkdown } from "./legacy-import.js";
 import { authenticateInboundPeer } from "./peer-auth.js";
 import { serveReplicaExchange } from "./replica-transport.js";
+import { ReconciliationFailureError } from "./model.js";
 
 const obj = <P extends Record<string, TSchema>>(p: P) =>
   Type.Object(p, { additionalProperties: false });
@@ -38,6 +40,14 @@ const requestSchema = Type.Union([
   obj({ command: Type.Literal("catch-up") }),
   obj({ command: Type.Literal("replicate") }),
   obj({ command: Type.Literal("reconcile") }),
+  obj({
+    command: Type.Literal("watch"),
+    job: Type.Union([
+      Type.Literal("catch-up"),
+      Type.Literal("reconcile"),
+      Type.Literal("replicate"),
+    ]),
+  }),
   obj({
     command: Type.Literal("capture"),
     windows: Type.Array(Type.Unknown(), { maxItems: 128 }),
@@ -109,8 +119,13 @@ export async function handleMemoryJSON(
         );
       return result;
     }
-    case "reconcile":
-      return app.reconcile(signal);
+    case "reconcile": {
+      const result = await app.reconcile(signal);
+      if (result.failure) throw new ReconciliationFailureError(result.failure);
+      return result;
+    }
+    case "watch":
+      return app.watch(request.job, signal);
     case "capture":
       return app.capture(request.windows.map(parseWindow));
     case "recall": {
@@ -181,18 +196,28 @@ export async function memoryCLI(
   }
   if (command === "--help" || command === "help" || !command) {
     console.log(
-      "pi-memory status|maintain|catch-up|reconcile|replicate|capture|recall|suppress|import-legacy|json|exchange\nJSON data commands read one bounded object from stdin; json also requires command.\nlegacy <command> preserves colliding historical maintain/status/health.\nlegacy: project-proposals/project-resolve/propose/proposals/show/review/history/catalog/migrate/request/rollback",
+      "pi-memory status|maintain|catch-up|reconcile|replicate|capture|recall|suppress|import-legacy|json|exchange\npi-memory watch catch-up|reconcile|replicate\nJSON data commands read one bounded object from stdin; json also requires command.\nlegacy <command> preserves colliding historical maintain/status/health.\nlegacy: project-proposals/project-resolve/propose/proposals/show/review/history/catalog/migrate/request/rollback",
     );
     return;
   }
-  if (args.length !== 1)
-    throw new Error("native commands take JSON on stdin, not extra arguments");
+  if (args.length !== (command === "watch" ? 2 : 1))
+    throw new Error("native commands take JSON on stdin; watch takes one job");
   const controller = new AbortController();
   const abort = () => controller.abort(new Error("memory CLI interrupted"));
   process.once("SIGTERM", abort);
   process.once("SIGINT", abort);
   let app: MemoryApplication | undefined;
   try {
+    if (command === "watch") {
+      const request = { command, job: args[1] };
+      if (!Check(requestSchema, request) || request.command !== "watch")
+        throw new Error("invalid memory watch job");
+      await watchMemoryApplication({
+        job: request.job,
+        signal: controller.signal,
+      });
+      return;
+    }
     app = await openMemoryApplication({}, controller.signal);
     if (command === "exchange") {
       const peerId = await authenticateInboundPeer({

@@ -292,6 +292,9 @@ export async function watchMemoryWork(
       } catch {
         result = { progress: false, failed: true };
       }
+      // Shutdown/reconfiguration is not a failed work attempt. Preserve the
+      // previous cooldown rather than poisoning the next process's startup.
+      if (options.signal.aborted) break;
       const finished = now();
       if (result.failed) {
         state.failureMs = Math.min(
@@ -405,9 +408,9 @@ if (import.meta.vitest) {
           signal: controller.signal,
           now: () => clock,
           random: () => random,
-          run: async () => {
-            controller.abort();
-            return { progress: false, failed };
+          run: async () => ({ progress: false, failed }),
+          report: (event) => {
+            if (event.kind === "run") controller.abort();
           },
         });
         return JSON.parse(
@@ -429,6 +432,17 @@ if (import.meta.vitest) {
       saved = await round(false, 0.5);
       expect(saved.idleMs).toBe(120_000);
       expect(saved.failureMs).toBe(0);
+    });
+
+    it("shutdown during work does not persist a new failure cooldown", async () => {
+      const f = await fixture();
+      await f.start(async () => {
+        f.controller.abort();
+        throw new Error("cooperative shutdown");
+      });
+      await expect(readFile(f.checkpoint, "utf8")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
     });
 
     it("coalesces real nested mutations and ignores its checkpoint", async () => {

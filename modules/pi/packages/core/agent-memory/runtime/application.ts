@@ -1,5 +1,12 @@
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
+import { resolveGlobalSettingsPath } from "@bds_pi/config";
+import {
+  watchMemoryWork,
+  type MemoryWakePolicy,
+  type MemoryWakeEvent,
+} from "./wakeup.js";
 import type * as C from "./contracts.js";
 import { memoryConfiguration, type MemoryConfiguration } from "./config.js";
 import { FileMemoryStore } from "./store.js";
@@ -11,7 +18,11 @@ import {
   runReconciliation,
   type ReconciliationRunResult,
 } from "./reconcile.js";
-import { nativeConsolidationModel } from "./model.js";
+import {
+  nativeConsolidationModel,
+  ReconciliationFailureError,
+  type ReconciliationFailure,
+} from "./model.js";
 import { catchUpNativeSources, type CatchUpResult } from "./catch-up.js";
 import {
   synchronizeReplica,
@@ -27,6 +38,8 @@ export interface MemoryApplicationOptions {
   readonly transport?: (peer: string) => C.ReplicaTransport;
   readonly now?: () => string;
 }
+export type MemoryJob = "catch-up" | "reconcile" | "replicate";
+
 export interface MaintenanceResult {
   readonly capture: CatchUpResult | null;
   readonly reconciliation: ReconciliationRunResult;
@@ -210,8 +223,12 @@ export class MemoryApplication {
       );
       results.push(...run.results);
       idle = run.idle;
+      if (run.failure) return { results, idle, failure: run.failure };
     }
     return { results, idle };
+  }
+  async watch(job: MemoryJob, signal: AbortSignal): Promise<void> {
+    return watchMemoryApplication({ job, signal, application: this });
   }
   async maintain(signal: AbortSignal): Promise<MaintenanceResult> {
     if (!this.configuration.enabled)
@@ -237,6 +254,8 @@ export class MemoryApplication {
     if (capture.status === "fulfilled")
       for (const error of capture.value.errors)
         errors.push(new Error(`capture: ${error}`));
+    if (reconciliation.status === "fulfilled" && reconciliation.value.failure)
+      errors.push(new ReconciliationFailureError(reconciliation.value.failure));
     if (replication.status === "fulfilled")
       for (const peer of replication.value)
         if (peer.error)
@@ -284,6 +303,129 @@ export async function openMemoryApplication(
   }
 }
 
+export type MemoryWatchEvent = MemoryWakeEvent & {
+  readonly failure?: ReconciliationFailure;
+};
+export interface MemoryWatchInput {
+  readonly job: MemoryJob;
+  readonly signal: AbortSignal;
+  /** supplied applications own configuration and lifetime; no native discovery. */
+  readonly application?: MemoryApplication;
+  /** an injected opener owns discovery; its returned application is closed here. */
+  readonly open?: (signal: AbortSignal) => Promise<MemoryApplication>;
+  readonly policy?: Partial<MemoryWakePolicy>;
+  readonly report?: (event: MemoryWatchEvent) => void;
+}
+
+/**
+ * Keep validated store caches between nudges, not between immutable deployments.
+ * Native settings replacement rebuilds the application before further work;
+ * supplied applications/openers remain caller-owned configuration boundaries.
+ */
+export async function watchMemoryApplication(
+  input: MemoryWatchInput,
+): Promise<void> {
+  const native = !input.application && !input.open;
+  const settings = native ? resolveGlobalSettingsPath() : null;
+  const settingsIdentity = (): string => {
+    if (!settings) return "provided";
+    try {
+      const s = statSync(settings, { bigint: true });
+      return `${s.dev}:${s.ino}:${s.size}:${s.mtimeNs}:${s.ctimeNs}`;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "absent";
+      throw error;
+    }
+  };
+  do {
+    input.signal.throwIfAborted();
+    const identity = settingsIdentity();
+    const configuration = native ? memoryConfiguration() : undefined;
+    const app =
+      input.application ??
+      (await (input.open
+        ? input.open(input.signal)
+        : openMemoryApplication({ configuration }, input.signal)));
+    const own = new AbortController();
+    const signal = AbortSignal.any([input.signal, own.signal]);
+    const paths = runtimeStoreConfiguration(app.configuration);
+    let reload = false;
+    let failure: ReconciliationFailure | undefined;
+    try {
+      await watchMemoryWork({
+        roots: () => [
+          ...(settings ? [settings] : []),
+          ...(input.job === "catch-up"
+            ? [app.configuration.sessionRoot]
+            : [paths.root, join(paths.data, "commits")]),
+        ],
+        ignore: () => [paths.state, join(paths.data, "objects")],
+        checkpoint: join(paths.state, `wakeup-${input.job}.json`),
+        signal,
+        policy: input.policy,
+        report: (event) => {
+          const detail = { ...event, ...(failure ? { failure } : {}) };
+          if (input.report) input.report(detail);
+          else
+            console.error(
+              JSON.stringify({
+                operation: "memory.background",
+                job: input.job,
+                ...detail,
+              }),
+            );
+        },
+        run: async () => {
+          failure = undefined;
+          if (native) {
+            // Invalid mutable settings must fail closed, not use stale authority.
+            const next = memoryConfiguration();
+            if (
+              settingsIdentity() !== identity ||
+              JSON.stringify(next) !== JSON.stringify(app.configuration)
+            ) {
+              reload = true;
+              own.abort();
+              return { progress: false };
+            }
+          }
+          if (!app.configuration.enabled) return { progress: false };
+          if (input.job === "catch-up") {
+            const result = await app.catchUp(signal);
+            return {
+              progress: result.windows > 0,
+              failed: result.errors.length > 0,
+            };
+          }
+          if (input.job === "replicate") {
+            const result = await app.replicate(signal);
+            return {
+              progress: result.some(
+                (r) => (r.result?.sent ?? 0) + (r.result?.received ?? 0) > 0,
+              ),
+              // One unavailable peer must not impose its cooldown on healthy ones.
+              failed:
+                result.length > 0 &&
+                result.every((r) => r.error || r.result?.kind === "backoff"),
+            };
+          }
+          const result = await app.reconcile(signal);
+          failure = result.failure;
+          return {
+            progress: result.results.length > 0 && !failure,
+            failed: !!failure,
+          };
+        },
+      });
+    } catch (error) {
+      if (!reload || input.signal.aborted) throw error;
+    } finally {
+      if (!input.application) app.close();
+    }
+    if (!reload) return;
+  } while (!input.signal.aborted);
+}
+
 if (import.meta.vitest) {
   const { it, expect, vi } = import.meta.vitest;
   const { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } =
@@ -324,6 +466,255 @@ if (import.meta.vitest) {
     };
     return { dir, configuration, model };
   }
+  it("native watchers reload replaced settings before working in a new namespace", async () => {
+    const f = fixture();
+    const { setGlobalSettingsPath } = await import("@bds_pi/config");
+    const original = resolveGlobalSettingsPath();
+    const file = join(f.dir, "native-settings.json");
+    const controller = new AbortController();
+    const keys = [
+      "PI_MEMORY_ROOT",
+      "PI_MEMORY_DATA_DIR",
+      "PI_MEMORY_STATE_DIR",
+      "PI_MEMORY_OWNER",
+      "PI_MEMORY_MODEL",
+      "PI_MEMORY_PEERS",
+      "PI_MEMORY_DEFAULT_PEERS",
+      "PI_CODING_AGENT_SESSION_DIR",
+    ];
+    for (const key of keys) vi.stubEnv(key, undefined);
+    const config = (namespace: string) =>
+      JSON.stringify({
+        sessionDir: join(f.dir, "sessions"),
+        "@bds_pi/agent-memory": {
+          enabled: false,
+          ownerId: "fixture",
+          root: join(f.dir, namespace, "notes"),
+          data: join(f.dir, namespace, "data"),
+          state: join(f.dir, namespace, "state"),
+          peers: [],
+        },
+      });
+    writeFileSync(file, config("one"));
+    setGlobalSettingsPath(file);
+    let first!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      first = resolve;
+    });
+    const { existsSync, renameSync } = await import("node:fs");
+    const task = watchMemoryApplication({
+      job: "reconcile",
+      signal: controller.signal,
+      policy: {
+        debounceMs: 5,
+        idleInitialMs: 60_000,
+        idleMaxMs: 60_000,
+        jitterRatio: 0,
+      },
+      report: (event) => {
+        if (event.kind === "run") {
+          first();
+          if (
+            existsSync(
+              join(f.dir, "two", "state", "runtime", "coordination.sqlite"),
+            )
+          )
+            controller.abort();
+        }
+      },
+    });
+    try {
+      await ready;
+      writeFileSync(file + ".new", config("two"));
+      renameSync(file + ".new", file);
+      await Promise.race([
+        task,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(new Error("native settings replacement was not applied")),
+            5000,
+          ).unref(),
+        ),
+      ]);
+      expect(
+        existsSync(
+          join(f.dir, "two", "state", "runtime", "coordination.sqlite"),
+        ),
+      ).toBe(true);
+    } finally {
+      controller.abort();
+      await task;
+      setGlobalSettingsPath(original);
+      vi.unstubAllEnvs();
+      rmSync(f.dir, { recursive: true, force: true });
+    }
+  });
+
+  async function captureWatchFixture(
+    app: MemoryApplication,
+    dir: string,
+    text: string,
+  ): Promise<void> {
+    const manager = SessionManager.inMemory(dir);
+    const entry = manager.appendMessage({
+      role: "user",
+      content: text,
+      timestamp: Date.now(),
+    });
+    const snapshot = nativeSourceSnapshot(manager);
+    const page = await nativeSourceProducer(
+      { kind: "provided", snapshot },
+      { capturedAt: new Date().toISOString() },
+    ).read(
+      {
+        source: {
+          sourceId: snapshot.header.id as C.SourceId,
+          producer: "pi-native",
+          origin: {
+            kind: "session",
+            sessionId: snapshot.header.id as C.SessionId,
+          },
+        },
+        scope: app.scope,
+        throughEntryId: entry as C.EntryId,
+        after: null,
+        maxWindows: 1,
+        maxWindowBytes: 8192,
+      },
+      signal(),
+    );
+    expect((await app.capture(page.windows)).kind).toBe("locally-committed");
+  }
+  it("a durable native capture nudges reconciliation without waiting for the idle sweep", async () => {
+    const f = fixture();
+    const { adaptConsolidationProposal } = await import("./model.js");
+    let calls = 0;
+    const app = await openMemoryApplication({
+      configuration: f.configuration,
+      model: {
+        reconcile: async (input) => {
+          calls++;
+          return adaptConsolidationProposal(
+            {
+              notes: [],
+              outcomes: input.batch.windows.map(({ window }) => ({
+                windowId: window.windowId,
+                decision: { kind: "no-change", reason: "fixture retained" },
+              })),
+            },
+            input,
+          );
+        },
+      },
+    });
+    const controller = new AbortController();
+    let ready!: () => void;
+    const initial = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    const task = watchMemoryApplication({
+      application: app,
+      job: "reconcile",
+      signal: controller.signal,
+      policy: {
+        debounceMs: 10,
+        idleInitialMs: 60_000,
+        idleMaxMs: 60_000,
+        jitterRatio: 0,
+      },
+      report: (event) => {
+        if (event.kind === "run") {
+          ready();
+          if (event.progress) controller.abort();
+        }
+      },
+    });
+    try {
+      await initial;
+      await captureWatchFixture(app, f.dir, "the quiet room helps me sleep");
+      await Promise.race([
+        task,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("capture nudge did not reconcile")),
+            5000,
+          ).unref(),
+        ),
+      ]);
+      expect(calls).toBe(1);
+      expect(await app.store.pendingScopes()).toEqual([]);
+    } finally {
+      controller.abort();
+      await task;
+      app.close();
+      rmSync(f.dir, { recursive: true, force: true });
+    }
+  });
+  it("fresh captured work cannot bypass a failed model's cooldown or leak its error", async () => {
+    const f = fixture();
+    let calls = 0;
+    const app = await openMemoryApplication({
+      configuration: f.configuration,
+      model: {
+        reconcile: async () => {
+          calls++;
+          throw new Error("PRIVATE_PROVIDER_ERROR_MARKER");
+        },
+      },
+    });
+    const controller = new AbortController();
+    const events: MemoryWatchEvent[] = [];
+    let failed!: () => void;
+    const firstFailure = new Promise<void>((resolve) => {
+      failed = resolve;
+    });
+    await captureWatchFixture(app, f.dir, "first enrolled observation");
+    const task = watchMemoryApplication({
+      application: app,
+      job: "reconcile",
+      signal: controller.signal,
+      policy: {
+        debounceMs: 5,
+        failureInitialMs: 1000,
+        failureMaxMs: 1000,
+        jitterRatio: 0,
+      },
+      report: (event) => {
+        events.push(event);
+        if (event.kind === "run" && event.failed) failed();
+      },
+    });
+    try {
+      await firstFailure;
+      await captureWatchFixture(
+        app,
+        f.dir,
+        "new independent observation while the provider is unavailable",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(calls).toBe(1);
+      expect(events.some((e) => e.failure?.phase === "provider")).toBe(true);
+      expect(JSON.stringify(events)).not.toContain(
+        "PRIVATE_PROVIDER_ERROR_MARKER",
+      );
+      const checkpoint = JSON.parse(
+        readFileSync(
+          join(
+            runtimeStoreConfiguration(f.configuration).state,
+            "wakeup-reconcile.json",
+          ),
+          "utf8",
+        ),
+      );
+      expect(checkpoint.cooldownUntil).toBeGreaterThan(Date.now());
+    } finally {
+      controller.abort();
+      await task;
+      app.close();
+      rmSync(f.dir, { recursive: true, force: true });
+    }
+  });
   it("capture and real replica exchange progress past former deadlines while consolidation is pending", async () => {
     const f = fixture(),
       remote = fixture();
