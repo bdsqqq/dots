@@ -1,5 +1,6 @@
 {
   "name": "@bdsqqq/global-tools",
+  "packageManager": "pnpm@11.9.0",
   "version": "1.0.0",
   "private": true,
   "dependencies": {

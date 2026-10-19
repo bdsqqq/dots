@@ -1,5 +1,6 @@
 {
   "name": "@bdsqqq/pi",
+  "packageManager": "pnpm@11.9.0",
   "version": "0.0.0",
   "description": "extensions and core utilities for pi-coding-agent",
   "keywords": [
