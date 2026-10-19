@@ -5,6 +5,7 @@
 **/.git
 **/.svn
 **/.hg
+**/.woktrees
 
 **/node_modules
 **/.pnpm
