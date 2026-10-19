@@ -869,12 +869,14 @@ export class FileMemoryStore implements C.MemoryStore {
       }
       if (unchanged) {
         if (confirm) this.config.readBoundary?.("physical-scan");
-        for (const [path, identity] of cached.files) {
+        for (const [path, identity] of cached.files)
           this.preparingFiles.set(path, identity);
-          // Reusing validated bytes never substitutes for a physical ACK. Cold
-          // write callers still establish every file barrier before admission.
-          if (confirm && path !== this.commits) this.confirmPhysical(path);
-        }
+        // Cached reads have not certified disk durability. Confirm every retained
+        // descriptor before write admission, but amortize the Darwin helper.
+        if (confirm)
+          this.confirmPhysicalMany(
+            [...cached.files.keys()].filter((path) => path !== this.commits),
+          );
         return cached.view;
       }
       this.retainedView = null;
